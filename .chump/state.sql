@@ -8,7 +8,6 @@ gaps:
   effort: s
   description: |
     NewSessionRequest.mcpServers is recorded and persisted but servers are never spawned. Tools from MCP servers are unavailable during ACP sessions. On session end, child processes are not reaped (potential leak).
-    
   source_doc: docs/ACP_V3_BACKLOG.md
   closed_date: '2026-04-17'
 
@@ -20,10 +19,8 @@ gaps:
   effort: m
   description: |
     ContentBlock::Image becomes a text placeholder. Models with vision capability (llava-on-Ollama, gpt-4o) cannot receive images through the ACP path.
-    
   notes: |
     flatten_prompt_blocks() encodes image+text blocks as JSON array string when CHUMP_VISION_ENABLED=1; local_openai.rs detects content.starts_with('[') and deserializes to Value::Array for OpenAI multipart messages. vision_max_image_bytes() caps images at 4MB (CHUMP_VISION_MAX_IMAGE_BYTES). All vision tests use #[serial_test::serial] to avoid env-var races.
-    
   source_doc: docs/ACP_V3_BACKLOG.md
   closed_date: '2026-04-17'
 
@@ -35,7 +32,6 @@ gaps:
   effort: l
   description: |
     88 ACP unit tests use simulated client. Real Zed and JetBrains clients have never been exercised by CI. Wire-level JSON-RPC not snapshot-tested. Spec drift will not break builds.
-    
   notes: |
     Heavy CI setup (JDK + JetBrains gateway). Realistic estimate: 2-4 weeks.
   source_doc: docs/ACP_V3_BACKLOG.md
@@ -49,10 +45,8 @@ gaps:
   effort: s
   description: |
     Reasoning tokens (Qwen3 <think>, Claude extended thinking) are stripped or silently dropped. ACP clients cannot observe reasoning traces.
-    
   notes: |
     ThinkStreamState in local_openai.rs routes <think> content to AgentEvent::ThinkingDelta → SessionUpdate::Thinking. ACP.md documents the thinking event type (mid-stream + TurnComplete sources).
-    
   source_doc: docs/ACP_V3_BACKLOG.md
   closed_date: '2026-04-17'
 
@@ -64,7 +58,6 @@ gaps:
   effort: m
   description: |
     The agent loop is implicit and procedural: a for-loop counter, a StopReason enum from the provider, and local variables for tracking tool-call counts. There is no explicit state that can be observed, interrupted, or resumed. autonomy_fsm.rs demonstrates the typestate pattern already — apply it to the main loop. States: Idle | LlmWaiting { query } | ToolsRunning { pending } | Interrupted { reason, prev_state } | Complete { outcome }.
-    
   source_doc: src/agent_loop/iteration_controller.rs
   closed_date: '2026-04-17'
 
@@ -76,7 +69,6 @@ gaps:
   effort: m
   description: |
     The agent loop runs to max_iterations or natural completion with no cancellation capability. A new message arriving while the agent is mid-LLM-call is silently queued at best; there is no way for the web UI's "Stop" button or an incoming platform event to preempt the running turn. This is the key enabler for ambient / interrupt-driven behaviour described in the hot/cold path architecture. Mechanism: tokio_util::CancellationToken threaded through the loop. Each LLM await becomes tokio::select! { result = provider.complete() => ..., _ = cancel.cancelled() => transition to Interrupted }.
-    
   depends_on: [AGT-001]
   source_doc: src/agent_loop/iteration_controller.rs
   closed_date: '2026-04-18'
@@ -89,7 +81,6 @@ gaps:
   effort: s
   description: |
     A single hung tool (network request, slow shell command) blocks the entire tool batch and therefore the agent loop indefinitely. No timeout is enforced today — only the global max_iterations cap. This causes sporadic CI flakes (golden-path test hangs) and degraded UX when a tool is slow.
-    
   source_doc: src/agent_loop/tool_runner.rs
   closed_date: '2026-04-17'
 
@@ -101,7 +92,6 @@ gaps:
   effort: m
   description: |
     Platform adapters (Telegram, Discord shim) are constructed but not connected to the agent loop. An incoming Telegram message has no path to trigger a Chump turn. The orchestrator needs an mpsc input queue that adapters push IncomingMessage onto, and a dispatch loop that spawns a ChumpAgent::run() per message. This is the "wire" that makes multi-platform messaging live rather than scaffolding.
-    
   depends_on: [INFRA-MESSAGING-DEDUPE, AGT-002]
   source_doc: src/agent_loop/orchestrator.rs
   closed_date: '2026-04-18'
@@ -114,7 +104,6 @@ gaps:
   effort: m
   description: |
     provider.complete() returns a fully-buffered CompletionResponse. The web UI sees no text until the entire LLM call finishes (~2-8s). Streaming deltas (provider.stream() → Stream<Item=Delta>) would allow the SSE event channel to emit AgentEvent::TextDelta per chunk, giving the user live output. Streaming is also a prerequisite for AGT-002's per-token cancellation (can only cancel at .await points).
-    
   depends_on: [AGT-002]
   source_doc: src/agent_loop/iteration_controller.rs
   closed_date: '2026-04-18'
@@ -127,7 +116,6 @@ gaps:
   effort: s
   description: |
     SENSE-001 defines PeripheralSensor + NewMessageSensor but the wiring into platform_router::run_message_loop() was deferred to after AGT-002 and AGT-004 landed. Now that all dependencies are on main, complete the interrupt loop: run_message_loop merges the sensor stream with the input queue via tokio::select! biased;, and fires cancel_registry::cancel() on the active request_id when SensorKind::NewMessage fires mid-turn. ChumpAgent gains run_with_cancel() so dispatch_one can thread an externally-managed CancellationToken through the turn.
-    
   depends_on: [SENSE-001, AGT-002, AGT-004]
   source_doc: src/platform_router.rs
   closed_date: '2026-04-18'
@@ -140,10 +128,8 @@ gaps:
   effort: s
   description: |
     Tasks have free-form notes. No structured sections for Context, Plan, Acceptance, Verify, Risks/Approvals. The planner/executor loop (AUTO-002) cannot reliably extract these without a template.
-    
   notes: |
     Fully implemented in src/task_contract.rs (template_for, ensure_contract, extract_sections, VerifyContract, parse_verify_json). Wired into task_tool.rs line 87. Tests in task_contract.rs. Nothing left to do.
-    
   source_doc: docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-16'
 
@@ -155,7 +141,6 @@ gaps:
   effort: xl
   description: |
     No structured planner/executor/verifier lifecycle. Agent works tasks opportunistically but doesn't: (1) select next task by priority/blocking, (2) expand plan into notes, (3) verify via acceptance criteria before marking done, (4) create follow-up tasks on failure.
-    
   depends_on: [AUTO-001]
   source_doc: docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-16'
@@ -168,7 +153,6 @@ gaps:
   effort: s
   description: |
     DB-backed task lease (claim token + expires_at + owner) is implemented but no conformance tests verify that two concurrent workers cannot hold a valid lease simultaneously.
-    
   source_doc: docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-16'
 
@@ -180,7 +164,6 @@ gaps:
   effort: m
   description: |
     scripts/autonomy-cron.sh exists but the driver that pulls briefing/tasks, sends one prompt, streams events, and persists logs is not fully implemented. Without it, cron-based autonomous work cannot make measurable progress.
-    
   depends_on: [AUTO-002]
   source_doc: docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-17'
@@ -193,10 +176,8 @@ gaps:
   effort: m
   description: |
     Tool approval currently binary (Ask/Allow). Auto-approve rate is not tracked. Policy layer would classify approvals as low/medium/high risk and auto-allow low-risk without human prompt, escalating only medium/high.
-    
   notes: |
     chump_approval_stats table (db_pool.rs ensure_schema_extensions): tool_name, decision, risk_level, recorded_at. record_approval_stat() in tool_policy.rs inserts on every approval decision (auto_approved, human_allowed, denied, timeout). auto_approve_rate(window_days) queries last N days. tool_policy_for_stack_status() exposes auto_approve_rate_7d in /api/stack-status JSON. task_executor.rs wired at all three decision branches. 3 unit tests (record no-op, rate zeros without DB, parse_comma trim/lowercase).
-    
   source_doc: docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-16'
 
@@ -208,11 +189,9 @@ gaps:
   effort: m
   description: |
     No deterministic "mini task" test scenarios for patch_file, write_file, run_cli trimming, approvals. CI cannot catch autonomy regressions.
-    
   depends_on: [AUTO-003]
   notes: |
     10 conformance tests in task_executor.rs::tests: (1) validation rejects missing run_cli command; (2) unapproved tool executes directly; (3) batch of two tools; (4) CHUMP_SKIP_TOOL_INPUT_VALIDATE bypass; (5-7) approval_audit_fields for patch_file (high), run_cli (low), unknown tool (medium); (8-10) approval_resolver timeout/allow/deny paths. Tests documented to note OnceLock constraint on CHUMP_TOOLS_ASK (cannot be changed mid-process in unit tests).
-    
   source_doc: docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-16'
 
@@ -224,7 +203,6 @@ gaps:
   effort: m
   description: |
     Current task selection picks highest-priority non-blocked task. No dependency graph, no urgency from deadline context, no repo readiness check before claiming a coding task.
-    
   depends_on: [AUTO-002]
   source_doc: docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-17'
@@ -237,7 +215,6 @@ gaps:
   effort: l
   description: |
     Large/vague tasks are executed as a monolith. No automated decomposition into subtasks with per-subtask acceptance criteria and verification.
-    
   depends_on: [AUTO-002]
   source_doc: docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-16'
@@ -250,10 +227,8 @@ gaps:
   effort: s
   description: |
     When executing a task, relevant playbooks and gotchas from memory are not automatically surfaced in context. Agent must rediscover known patterns.
-    
   notes: |
     fetch_task_memory_context() in autonomy_loop.rs: keyword_search by task title + repo, top 3 results injected into exec_prompt "Relevant memory" block. Graceful no-op when memory DB unavailable (Err → empty string).
-    
   source_doc: docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-16'
 
@@ -265,7 +240,6 @@ gaps:
   effort: m
   description: |
     When a tool fails due to permissions or is classified high-risk with low auto_approve_rate, the agent fails silently. It should halt, package a structured request (why the permission is needed, exact command preview, expected outcome, rollback plan), and wait asynchronously — consuming zero compute until the human responds.
-    
   depends_on: [AUTO-005, COG-008]
   closed_date: '2026-04-16'
 
@@ -277,7 +251,6 @@ gaps:
   effort: s
   description: |
     tool_middleware.rs circuit breaker tracks only failure_count + cooldown (line 25: (u32, Instant) per tool). Diminishing epistemic returns — repeated attempts on the same tool with decreasing confidence gain — are invisible. Agent cools down then retries identically rather than pivoting strategy.
-    
   depends_on: [AUTO-006]
   closed_date: '2026-04-16'
 
@@ -289,7 +262,6 @@ gaps:
   effort: s
   description: |
     Phase 5.1/5.2 from ROADMAP_CLAUDE_UPGRADE.md. When CHUMP_DELEGATE_PREPROCESS=1 and CHUMP_DELEGATE_CONCURRENT=1, any tool whose output exceeds CHUMP_DELEGATE_PREPROCESS_CHARS (default 4000) is compressed by the worker model (run_delegate_summarize, 5 sentences) before the main orchestrator sees it. Prevents context- window blowout from run_cli / read_file / codebase_digest calls.
-    
   depends_on: [AUTO-011]
   source_doc: docs/ROADMAP_CLAUDE_UPGRADE.md
   closed_date: '2026-04-18'
@@ -302,11 +274,9 @@ gaps:
   effort: xl
   description: |
     A Chump session that dispatches other Chump sessions on parallel gaps, monitors them via chump-coord NATS + gh pr list, harvests outcomes into reflection_db, and feeds back into PRODUCT-006 + eval_harness so the system learns to orchestrate itself over time. MVP ships external-subprocess dispatch only, depth-1, max-parallel=4, soft-deadline kill on 2x effort estimate. See design doc for full architecture, MVP scope, acceptance criteria, and the AUTO-013-A..D follow-up sub-gaps for the 4-week post-MVP build (lesson-aware dispatch, eval_harness sweep arm, hybrid in-process fast path, recursion+budget).
-    
   depends_on: [PRODUCT-006, MEM-006]
   notes: |
     ~10 working days MVP after design lands. Hardest unknown: gap mis-classification at scale; MVP mitigation = auto_dispatch_ok tag on gaps before orchestrator picks them.
-    
   source_doc: docs/AUTO-013-ORCHESTRATOR-DESIGN.md
   closed_date: '2026-04-19'
 
@@ -318,7 +288,6 @@ gaps:
   effort: l
   description: |
     Round 1 A/B compares structural metrics (surprisal, lesson count) with/without CHUMP_CONSCIOUSNESS_ENABLED. Round 2 adds semantic quality: an LLM judge scores response accuracy on each prompt, and the study runs across 3+ model sizes (3B / 9B / 14B) to plot the latency-vs-capability tradeoff curve. Without this, the research paper (docs/research/consciousness-framework-paper.md) cannot claim empirical support for the consciousness framework.
-    
   notes: Gate for COG-003 and COG-006.
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -331,7 +300,6 @@ gaps:
   effort: m
   description: |
     No benchmark compares regex triple extraction vs LLM extraction, or BFS vs Personalized PageRank recall quality. Cannot justify PPR complexity without data.
-    
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-16'
 
@@ -343,7 +311,6 @@ gaps:
   effort: l
   description: |
     PrecisionController regime thresholds are currently static (shifted only by noradrenaline). A simple online logistic regression or Thompson-sampling bandit could adjust thresholds based on recent task success rate, closing the thermodynamic grounding gap.
-    
   depends_on: [COG-001]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-16'
@@ -356,10 +323,8 @@ gaps:
   effort: m
   description: |
     extract_lesson_heuristic() uses text pattern matching (timeout → retry). The causal graph (CausalGraph, build_causal_graph_heuristic) already exists. Lessons should carry confidence derived from DAG path analysis, not patterns.
-    
   notes: |
     lesson_from_graph_paths(graph, action) traverses paths_from() action node, multiplies edge strengths along each path, returns strongest path lesson + confidence. analyze_episode() builds graph first, uses graph lesson when available, falls back to heuristic. causal_confidence column added to chump_causal_lessons via ALTER TABLE migration. CausalLesson.causal_confidence: Option<f64>. persist_causal_graph_as_lessons passes Some(edge.strength). 4 new unit tests in counterfactual::tests. Section 2.5 checkbox marked.
-    
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-16'
 
@@ -371,7 +336,6 @@ gaps:
   effort: m
   description: |
     Perception layer (src/perception.rs) runs before every LLM call but its effect on tool selection accuracy has never been measured. Need 50-turn diverse task set comparing perception-informed vs raw-text baseline.
-    
   depends_on: [COG-001]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -384,7 +348,6 @@ gaps:
   effort: m
   description: |
     Neuromodulation (src/neuromodulation.rs) shifts regime thresholds but its effect on task outcomes has not been measured on a 50-turn diverse task set.
-    
   depends_on: [COG-001]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-18'
@@ -397,7 +360,6 @@ gaps:
   effort: s
   description: |
     reflection.rs produced typed Reflection / ImprovementTarget artifacts but had no DB persistence and no prompt injection — the typed analysis was throwaway. Pillar 4 of the autonomy stack (GEPA self-reflection) was essentially dead code.
-    
   source_doc: docs/NEXT_GEN_COMPETITIVE_INTEL.md
   closed_date: '2026-04-17'
 
@@ -409,7 +371,6 @@ gaps:
   effort: m
   description: |
     reflection.rs::reflect_heuristic uses pattern-matching on observed_outcome strings to detect ErrorPattern. Misses subtle cases (intent drift, assumption-not-checked, partial-success-misclassified-as-pass). reflection.rs:25 already flags this as future work.
-    
   depends_on: [COG-007]
   source_doc: docs/NEXT_GEN_COMPETITIVE_INTEL.md
   closed_date: '2026-04-17'
@@ -422,7 +383,6 @@ gaps:
   effort: xs
   description: |
     PromptAssembler::assemble used the first detected perception entity as the scope filter for load_recent_high_priority_targets. Better signal: the about-to-be-called tool name (or last-failed tool from prior turn).
-    
   depends_on: [COG-007]
   source_doc: src/agent_loop/prompt_assembler.rs
   closed_date: '2026-04-17'
@@ -435,7 +395,6 @@ gaps:
   effort: s
   description: |
     COG-009 added the assemble_with_hint API but the orchestrator still passes None. The signal source (last-failed tool name from BatchOutcome or message history) needs to flow through. BatchOutcome currently only tracks success/fail counts, not per-tool names — needs minor extension.
-    
   depends_on: [COG-009]
   source_doc: src/agent_loop/orchestrator.rs
   closed_date: '2026-04-17'
@@ -448,7 +407,6 @@ gaps:
   effort: s
   description: |
     reflection_db unit tests cover save/load/scope-filter/format. Was missing: end-to-end test that runs a fake task → fails it → starts next task → asserts "## Lessons from prior episodes" appears in assembled prompt. Without this, schema drift could silently break the flywheel.
-    
   depends_on: [COG-007]
   source_doc: src/autonomy_loop.rs
   closed_date: '2026-04-17'
@@ -461,7 +419,6 @@ gaps:
   effort: m
   description: |
     COG-007 wired GEPA lessons into the prompt but the impact on task success rate is unmeasured. Without this, lesson injection is "code that claims to help" — could be no-op or even regress the base rate.
-    
   depends_on: [COG-007]
   source_doc: src/reflection_db.rs
   closed_date: '2026-04-17'
@@ -474,7 +431,6 @@ gaps:
   effort: s
   description: |
     COG-011 used structural-only property checks (text patterns + tool presence). Easy to fool. Need an LLM judge that scores each trial's final text against a per-task rubric (does the answer actually satisfy the prompt's intent?). eval_harness already has ExpectedProperty::LlmJudge variant + check_all_properties_with_judge — wire score.py to call it.
-    
   depends_on: [COG-011]
   source_doc: scripts/ab-harness/score.py
   closed_date: '2026-04-17'
@@ -487,7 +443,6 @@ gaps:
   effort: xs
   description: |
     run.sh always runs mode A (flag=1) before mode B (flag=0) for each task. If within-session state (DB writes from A's run, ollama kv-cache, surprise EMA, etc.) leaks into B, the +0.15 result is partly an order artifact rather than a pure prompt effect.
-    
   depends_on: [COG-011]
   source_doc: scripts/ab-harness/run.sh
   closed_date: '2026-04-17'
@@ -511,11 +466,9 @@ gaps:
           balancing lesson "if intent is clear, act don't ask".
       (d) Larger model (qwen2.5:14b) might use lessons better than
           qwen2.5:7b — repeat the 40-trial A/B on 14b.
-    
   depends_on: [COG-011, COG-011b]
   notes: |
     Variant (b) tested + supported (2026-04-17, 0eecf5e + this run): CHUMP_REFLECTION_STRICT_SCOPE=1 took the LLM-judge delta from -0.10 → +0.05 overall and gotcha from -0.30 → 0.00. Mode A's gotcha rate jumped from 0.50 (COG-011b) to 0.90. The "noise hypothesis" is supported: universal-scope lessons leaking into every prompt was the primary harm vector, not the lesson content itself. Still need ≥1 more variant (a/c/d) to satisfy the acceptance criterion.
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-17'
 
@@ -527,7 +480,6 @@ gaps:
   effort: l
   description: |
     Reflection consumes stderr and tool outcomes only. High-fidelity Actionable Side Information requires token-level log-probabilities (to detect model uncertainty mid-generation), per-tool memory/latency spikes, and compiler warning counts as structured signals. Zero logprob tracking exists anywhere.
-    
   closed_date: '2026-04-16'
 
 - id: COG-013
@@ -538,7 +490,6 @@ gaps:
   effort: l
   description: |
     When a user prompt conflicts with architectural invariants (skip verification, bypass approval, ignore safety), the agent complies or silently applies policy_override. No module produces a structured refusal with proof that the request violates the operational contract. Intrinsic directives should mathematically override extrinsic requests that break invariants.
-    
   depends_on: [AUTO-001, AUTO-005]
   closed_date: '2026-04-16'
 
@@ -550,11 +501,9 @@ gaps:
   effort: m
   description: |
     The lessons block currently injected for COG-005/006/011 A/Bs is the same generic content regardless of task type. Cloud sweep (ce4ebc0) shows perception (-0.10) and neuromod (-0.10) tasks both penalize this block on haiku-4-5 — possibly because generic lessons distract from task-specific reasoning. Try authoring lessons that match each fixture's task class (e.g. perception lessons emphasize entity extraction; neuromod lessons emphasize confidence calibration).
-    
   depends_on: [EVAL-010]
   notes: |
     Recommended follow-up from cloud A/B sweep (ce4ebc0). Gated on EVAL-010 because re-running A/Bs with the same circular methodology is wasted cloud spend. Total cost when unblocked: ~$2 (one cloud sweep across perception/neuromod/reflection on haiku-4-5).
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-18'
 
@@ -566,7 +515,6 @@ gaps:
   effort: s
   description: |
     Implements ROADMAP_CLAUDE_UPGRADE.md Task 8.2: contextual pre-fetching from chump_blackboard_persist. Adds query_persist_for_entities() to blackboard.rs (SQL LIKE keyword search against persisted facts) and injects a "Remembered context" block into prompt_assembler.rs::assemble_with_hint() based on perception.detected_entities. Gated on CHUMP_ENTITY_PREFETCH env var (default on).
-    
   depends_on: [MEM-005]
   closed_date: '2026-04-18'
 
@@ -578,10 +526,8 @@ gaps:
   effort: m
   description: |
     The n=100 sweep landed by PR #80 + #82 established (p<0.05 across 3 fixtures) that injecting the lessons block as a system-role prefix reliably increases fake-tool-call emission by +0.13 to +0.16 percentage points (mean +0.14, A/A noise floor 0.00). Effect replicated on opus at n=20 with non-overlapping CIs (+0.40 on reflection). Production currently injects unconditionally via reflection_db::reflection_injection_enabled. Should be model-tier-gated so weaker models do not pay the hallucination cost while frontier models can opt in.
-    
   notes: |
     Direct production consequence of the headline finding from this session. Single-file Rust change in reflection_db.rs (model tier map + injection predicate update). Unit test count: 2 (tier mapping + gated predicate). Coordination caveat: prompt_assembler.rs has active edits in PR #66 (COG-015 entity blackboard); land COG-016 after #66 to avoid rebase.
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-19'
 
@@ -594,10 +540,8 @@ gaps:
   description: |
     Chump's agent loop assembles context fresh each turn but has no mechanism to summarize a long-running multi-turn conversation and inject that summary back in, the way Claude Code does with transcript compaction. For short task-scoped runs (study5, single-shot --chat) this is fine. For extended --chat or --web sessions that grow beyond the model's context window, the agent will start losing early turns silently.
     Design: when total assembled context exceeds a configurable threshold (e.g. 80% of CHUMP_CONTEXT_WINDOW), call a summarization pass on the oldest N turns, replace them with a [PRIOR CONTEXT SUMMARY] block, and continue. Mirror the approach used by Claude Code's /compact command. The summary should preserve: decisions made, tools called, facts learned, and current task state. Open question: single-model summarizer vs. a smaller/faster model for the compression pass.
-    
   notes: |
     Backlog exploration item. No active user need yet — sessions stay short. Reverse to P1 if long --chat sessions become common or if a specific use case (e.g. all-day autonomous agent) needs it.
-    
   closed_date: '2026-04-19'
 
 - id: COG-020
@@ -608,10 +552,8 @@ gaps:
   effort: s
   description: |
     DeepMind's 10-faculty AGI cognitive framework (Perception, Generation, Attention, Learning, Memory, Reasoning, Metacognition, Executive Function, Problem Solving, Social Cognition) is becoming the industry-standard taxonomy for measuring agent capability breadth. Chump informally covers most of these but lacks an explicit map. Building one immediately surfaces (a) which Chump modules implement which faculties, (b) which faculties have A/B evidence and which don't, (c) which faculties are entirely absent (e.g. Attention has no module today — see EVAL-028). Useful as both an internal architecture-clarity exercise and an external positioning artifact.
-    
   notes: |
     ~1 day docs exercise. Reference: https://storage.googleapis.com/deepmind-media/DeepMind.com/Blog/measuring-progress-toward-agi/measuring-progress-toward-agi-a-cognitive-framework.pdf Should call out explicitly: Attention faculty has no monitoring today (gap → EVAL-028 CatAttack), Social Cognition faculty maps to tool approval / ASK_JEFF flow (untested at scale).
-    
   source_doc: external (DeepMind cognitive framework 2025)
   closed_date: '2026-04-19'
 
@@ -623,10 +565,8 @@ gaps:
   effort: m
   description: |
     Per 2026 frontier landscape: o3, Gemini Deep Think, Claude "extended thinking" all expose test-time compute via a "thinking" parameter. Chump currently calls all models the same way regardless of whether they support reasoning mode. For tasks where reasoning would help (complex multi-step planning, debugging), Chump should detect reasoning-capable models and invoke them with reasoning enabled. For routine tasks, stay in fast/cheap mode (the "Routing Layer" pattern from the Gemini letter). Open question: does our cost ledger justify the reasoning-mode latency + spend per task class? Empirical gap.
-    
   notes: |
     Anthropic exposes "thinking" param in messages API. OpenAI o-series uses "reasoning_effort" (low/medium/high). Different providers, different APIs. ~1 week to implement + sweep. Could double cost on reasoning-mode trials. Worth an A/B before shipping as default.
-    
   source_doc: external (Gemini AGI letter — System 2 reasoning era)
   closed_date: '2026-04-20'
 
@@ -638,11 +578,9 @@ gaps:
   effort: m
   description: |
     Per 2026 MCP roadmap (Gemini letter): two new patterns are emerging — "Sampling" (servers can request reasoning from the AI model) and "Elicitation" (servers can pause for user input mid-process). Chump's 3 shipped MCP servers (chump-mcp-{adb,github,tavily}) and the 3 coming via COMP-009 currently implement only the basic tool- call pattern. To stay current with the MCP spec evolution and remain interoperable with goose / Claude Code / Aider as those tools adopt sampling+elicitation, Chump's MCP servers should grow these patterns as the SDK supports them.
-    
   depends_on: [COMP-009]
   notes: |
     Confirm MCP Rust SDK supports Sampling/Elicitation before committing. ~1 week effort. Reference: AAIF roadmap docs.
-    
   source_doc: external (Gemini AGI letter — MCP 2026 roadmap)
   closed_date: '2026-04-20'
 
@@ -664,11 +602,9 @@ gaps:
       sonnet-4-5: no-lessons 0%,  v1 18%,  cog016 33% (DIRECTIVE WORSENS)
       opus-4-5:   no-lessons 2%,  v1 40%,  cog016 10% (PARTIALLY FIXED)
     Conservative quick-fix (Path A): add Sonnet variant to ModelTier; block lessons injection at Sonnet tier by default. Bigger rethink (Path B = COG-024) is "default off, opt-in per model after measurement."
-    
   depends_on: [EVAL-027b, EVAL-027c]
   notes: |
     Atomic-PR ship target (~half day): code change + tests + docs in one commit, single push, auto-merge armed. Defensive ship — kills production harm at sonnet tier. Path B (COG-024) is the longer- term rethink.
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c CONFIRMED)
   closed_date: '2026-04-19'
 
@@ -680,11 +616,9 @@ gaps:
   effort: l
   description: |
     Full Anthropic-family hallucination picture from EVAL-026b/027b/027c shows the safest-by-default behavior is NO lessons block at all. Every Anthropic model except haiku-3 shows hallucination harm with v1 lessons; cog016 fixes some (haiku-4-5) and worsens others (sonnet-4-5). COG-023 (sonnet carve-out) is a defensive patch but doesn't address: should lessons be default-ON anywhere? COG-024 proposes the inverse default: lessons OFF unless explicitly opted-in per-model after A/B measurement validates the lessons help. Each opt-in is documented with source EVAL-XXX gap.
-    
   depends_on: [COG-023, EVAL-027, EVAL-030]
   notes: |
     ~1 week including migration path + per-model re-validation sweeps. Paired with COG-023 = full production story for "Anthropic-family lessons-block policy in 2026-Q3."
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c synthesis)
   closed_date: '2026-04-19'
 
@@ -696,10 +630,8 @@ gaps:
   effort: m
   description: |
     chump-orchestrator's dispatch.rs spawns `claude -p` subprocess = pure Anthropic spend (~$1-2 per PR shipped). Together has frontier- adjacent free-tier models (Qwen3-235B-A22B-Instruct-2507-tput, Llama-3.3-70B-Instruct-Turbo) fully capable per EVAL-026 cross- architecture immunity data. The structural blocker: `claude` CLI is Anthropic-only — cannot redirect to Together. Need a different subagent binary that drives the full multi-turn agent loop with OPENAI_API_BASE pointed at Together. Path: expose Chump's own src/agent_loop/ as a dispatchable CLI (`chump --execute-gap <GAP-ID>` or similar). The agent_loop already uses OpenAI-compatible backends (mistral.rs, Ollama, Together) — wiring + a new main.rs entry point.
-    
   notes: |
     ~1-2 days. Biggest unknown: whether Together-hosted Qwen3-235B can actually drive a multi-turn tool-use loop end-to-end. EVAL-026 validated it for text-only; tool-use loop hasn't been A/B-tested. COG-026 (filed alongside) is the empirical validation gap that closes that loop.
-    
   source_doc: session 2026-04-19 cost-routing discussion
   closed_date: '2026-04-19'
 
@@ -714,11 +646,9 @@ gaps:
       - Cell A: CHUMP_DISPATCH_BACKEND=claude (baseline, ~$4 spend)
       - Cell B: CHUMP_DISPATCH_BACKEND=chump-local with Qwen3-235B (free)
     Measure: ship rate (PRs merged per gap), wall time, reflection quality, cost.
-    
   depends_on: [COG-025]
   notes: |
     ~1 day after COG-025 lands. If successful: 90%+ cost reduction on autonomous PR shipping. Pair with FRONTIER-007 (cross-agent benchmarking) for the broader story.
-    
   source_doc: session 2026-04-19 cost-routing discussion
   closed_date: '2026-04-20'
 
@@ -730,11 +660,9 @@ gaps:
   effort: s
   description: |
     EVAL-029 drilldown found that the perception "ask one clarifying question" directive actively hurts on conditional-chain tasks (dynamic-05-policy-confront: −75pp). EVAL-030 ships task-class-aware gating for the lessons block but not for the clarification directive. Current behavior: the perception sensor always suggests asking a clarifying question on ambiguous prompts, even on procedural tasks where the user clearly wants execution. The policy should be task-dependent: ask on genuinely ambiguous tasks (intent unclear), suppress on procedural tasks (steps are clear, intent is obvious).
-    
   depends_on: [EVAL-030]
   notes: |
     ~1 day. Pairs with EVAL-030's existing task-class detector. The ask- vs-execute trade-off is the same mechanism EVAL-029 diagnosed for neuromod — worth fixing at the same time.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
   closed_date: '2026-04-20'
 
@@ -746,7 +674,6 @@ gaps:
   effort: m
   description: |
     checkpoint_db.rs stores state_snapshot_json but never reads it back (explicitly marked V2 in source, lines 5-7). Zero-compute sleep requires the agent process to terminate after serialising, then re-hydrate from DB on heartbeat trigger — not sleep-loop. speculative_execution.rs already has all individual restore primitives; they just need wiring.
-    
   closed_date: '2026-04-16'
 
 - id: COG-029
@@ -757,7 +684,6 @@ gaps:
   effort: m
   description: |
     Agent lifecycle (Plan → Execute → Verify → Done/Failed) uses plain integer counters and status strings (orchestrator.rs, iteration_controller.rs). No compile-time guarantee that Execute cannot be entered without Plan completion. Rust typestate pattern (zero-cost phantom types) makes invalid transitions unrepresentable at compile time.
-    
   depends_on: [AUTO-001]
   closed_date: '2026-04-16'
 
@@ -769,7 +695,6 @@ gaps:
   effort: l
   description: |
     Two missing pieces from full epistemic agency: (1) Before high-cost ops, the agent should generate low-cost probe actions to verify environment assumptions rather than commit blind. (2) When surprisal of required variables exceeds a threshold, execution should be hard-blocked — currently surprise_tracker only flags to blackboard, never gates task execution.
-    
   depends_on: [AUTO-001]
   closed_date: '2026-04-16'
 
@@ -781,7 +706,6 @@ gaps:
   effort: m
   description: |
     COG-024 defaults lessons off for safety. CHUMP_LESSONS_AT_SPAWN_N=5 injects top-5 lessons. Unknown if this improves outcomes or adds noise. Run A/B harness: A) lessons off, B) lessons on. Execute 50 gaps in each condition. Measure: test pass %, code review pass %, time-to-ship, revision count. Compare outcomes (effect size, confidence). Recommendation: enable lessons | keep disabled | make task-specific.
-    
   acceptance_criteria:
     - Harness runs 50 gaps per condition (lessons off vs on)
     - Metrics captured (test pass %, code review pass %, time-to-ship, revision count)
@@ -800,7 +724,6 @@ gaps:
   effort: m
   description: |
     reflection.rs explicitly defers prompt injection to V2 (lines 25-30 note 'V2 future feature'). context_assembly.rs draws from episodes, lessons, consciousness metrics, but not reflection output. Improvement targets produced by the reflection loop are stored but never fed back into runtime behaviour — the loop has no effect on future execution.
-    
   closed_date: '2026-04-16'
 
 - id: COG-034
@@ -811,7 +734,6 @@ gaps:
   effort: l
   description: |
     counterfactual.rs stores causal graphs and traverses them (rung 1 association) but does not simulate alternative action paths. build_causal_graph_heuristic() creates sequential edges with hardcoded strength 0.7 — graph scaffolding, not causal inference. On task failure, the reflection engine should compute 'If I had run cargo check before git commit, would this error have occurred?'
-    
   depends_on: [COG-004, MEM-003]
   closed_date: '2026-04-16'
 
@@ -862,10 +784,8 @@ gaps:
   effort: l
   description: |
     Hermes's flagship differentiator: after completing 5+ tool-call tasks it autonomously creates SKILL.md procedure documents (procedural memory). Chump has episodes (what happened) but no reusable procedures (how to do things). Without this, Chump cannot improve its own task execution patterns over time.
-    
   notes: |
     Skills stack: src/skills.rs, src/skill_tool.rs, src/skill_db.rs, src/skill_metrics.rs, context_assembly.rs wired, tool_inventory.rs registered. Auto-create trigger: total_tool_calls added to AgentRunOutcome; maybe_suggest_skill() posts blackboard suggestion when >= CHUMP_SKILL_SUGGEST_THRESHOLD (default 5).
-    
   source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
   closed_date: '2026-04-16'
 
@@ -877,10 +797,8 @@ gaps:
   effort: l
   description: |
     Chump's inventory::submit! macro works for in-tree tools only. No discovery path for external plugins. Third parties must fork the repo.
-    
   notes: |
     ChumpPlugin trait + PluginManifest + PluginContext + discover_plugins() (user+project). CLI: --plugins-list, --plugins-install <path>, --plugins-uninstall <name>, --plugins-disable <name>, --plugins-enable <name>. Disabled list persisted in ~/.chump/plugins/.disabled.json. discover_active_plugins() filters disabled. initialize_discovered() uses active-only list. 5 new serial tests. Note: V2 dynamic loading via libloading deferred (entry_path field ready in manifest).
-    
   source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
   closed_date: '2026-04-16'
 
@@ -892,7 +810,6 @@ gaps:
   effort: l
   description: |
     src/context_assembly.rs is monolithic — every section hardcoded. Different deployments (heavy autonomy vs. light chat vs. research synthesis) need different context strategies. Cannot swap without forking.
-    
   source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
   closed_date: '2026-04-16'
 
@@ -904,7 +821,6 @@ gaps:
   effort: xl
   description: |
     Hermes serves 18+ messaging platforms. Chump has Discord + web PWA. Missing: Telegram, Slack, WhatsApp, Signal, Matrix. Limits deployability for teams and personal use across platforms.
-    
   depends_on: [COMP-002]
   notes: |
     Decomposed into sub-gaps for incremental delivery:
@@ -913,7 +829,6 @@ gaps:
       COMP-004c — Slack adapter (slack-morphism; bolt-style events)
       COMP-004d — Matrix adapter (matrix-rust-sdk)
     Signal/WhatsApp deferred (no viable Rust SDK as of 2026-04).
-    
   source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
   closed_date: '2026-04-18'
 
@@ -925,7 +840,6 @@ gaps:
   effort: s
   description: |
     First chunk of COMP-004 decomposition. src/discord.rs is currently the only inbound message handler; its 3 entry points (on_message, slash commands, DM events) and outbound surface (send_dm_if_configured, replies, attachments) need to be lifted into a MessagingAdapter trait so platform adapters (Telegram next) can plug in without duplicating the agent-loop wiring.
-    
   source_doc: src/discord.rs
   closed_date: '2026-04-17'
 
@@ -937,7 +851,6 @@ gaps:
   effort: m
   description: |
     Second chunk of COMP-004. Uses the COMP-004a MessagingAdapter trait; adds a teloxide-backed src/telegram.rs and a `chump --telegram` CLI mode mirroring `chump --discord`. Reads TELEGRAM_BOT_TOKEN env.
-    
   depends_on: [COMP-004a]
   source_doc: scripts/run-discord.sh
   closed_date: '2026-04-17'
@@ -950,7 +863,6 @@ gaps:
   effort: m
   description: |
     Third chunk of COMP-004. Slack-morphism for events API + slash commands. Same MessagingAdapter pattern as Discord/Telegram.
-    
   depends_on: [COMP-004a]
   source_doc: scripts/run-discord.sh
   closed_date: '2026-04-18'
@@ -963,7 +875,6 @@ gaps:
   effort: m
   description: |
     Fourth (lowest-priority) chunk of COMP-004. Matrix is federated and end-to-end encrypted; the SDK is mature but harder to operate than Telegram/Slack. Defer until Telegram + Slack land and there's a user request.
-    
   depends_on: [COMP-004a]
   source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
 
@@ -975,14 +886,12 @@ gaps:
   effort: xl
   description: |
     Hermes supports voice mode, image paste, browser automation (Chrome CDP), image generation. Chump has none of these. Missing multimodal input/output limits use cases significantly vs Hermes.
-    
   depends_on: [ACP-002]
   notes: |
     Decomposed into sub-gaps for incremental delivery (ACP-002 done):
       COMP-005a — image paste in PWA → ContentBlock parser
       COMP-005b — browser automation tool (chromiumoxide CDP, headless)
       COMP-005c — TTS output (cocoa say / piper-tts shell)
-    
   source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
   closed_date: '2026-04-19'
 
@@ -994,7 +903,6 @@ gaps:
   effort: s
   description: |
     First chunk of COMP-005. The PWA chat textarea should accept Cmd-V pasted images (or drag-drop). Browser uploads via the existing web_uploads endpoint, server stores blob, agent loop forwards as ContentBlock::Image when the configured model is vision-capable (provider_quality flag added in ACP-002).
-    
   depends_on: [ACP-002]
   source_doc: web/index.html
   closed_date: '2026-04-17'
@@ -1007,7 +915,6 @@ gaps:
   effort: xs
   description: |
     Frontend half of COMP-005a. Add a `paste` event listener on the chat textarea that captures clipboardData image items, uploads via /api/upload, and attaches the returned file_id to the next send. Backend support shipped in COMP-005a; this is the missing UI piece.
-    
   depends_on: [COMP-005a]
   source_doc: web/index.html
   closed_date: '2026-04-18'
@@ -1020,7 +927,6 @@ gaps:
   effort: m
   description: |
     Second chunk of COMP-005. New `browser` tool exposing CDP commands: navigate, get_page_text, click, fill, screenshot. chromiumoxide is the Rust CDP client; runs headless Chromium downloaded on first use (~150 MB). Behind CHUMP_TOOLS_ASK gate by default since browser automation is high-risk.
-    
   source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
   closed_date: '2026-04-18'
 
@@ -1032,7 +938,6 @@ gaps:
   effort: s
   description: |
     Third chunk of COMP-005. Optional TTS output for the PWA: agent reply triggers a /api/tts endpoint that synthesizes audio (macOS: `say -o`; Linux: `piper`; both shell-out). PWA plays it when CHUMP_TTS_AUTOPLAY=1.
-    
   source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
   closed_date: '2026-04-17'
 
@@ -1044,7 +949,6 @@ gaps:
   effort: l
   description: |
     Hermes has skills.sh directory, /.well-known/skills/index.json endpoints, and hermes skills tap add. No equivalent exists for Chump skills.
-    
   depends_on: [COMP-001]
   source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
   closed_date: '2026-04-16'
@@ -1057,10 +961,8 @@ gaps:
   effort: s
   description: |
     AGENTS.md was contributed by OpenAI to the Agentic AI Foundation (Linux Foundation) in Dec 2025 as one of three founding projects alongside MCP and Block's goose. It is positioned as the universal standard for project-specific AI agent guidance designed to work across "different repositories and toolchains" — i.e. cross-tool portable replacement for tool-specific files like CLAUDE.md, .cursorrules, etc. Chump currently uses CLAUDE.md (Claude-only). Migrating CLAUDE.md → AGENTS.md (or supporting both) aligns Chump with the emerging Linux-Foundation-blessed standard and makes Chump-managed repos legible to other compliant agent frameworks (goose, Aider, etc.).
-    
   notes: |
     Reference: https://aaif.io/ — AGENTS.md is one of three founding projects. Spec: https://www.linuxfoundation.org/press/linux-foundation-announces-the-formation-of-the-agentic-ai-foundation Implementation likely ~1 day: add AGENTS.md reader to prompt_assembler, update install scripts, document precedence.
-    
   source_doc: external (AAIF, Linux Foundation, Dec 2025)
   closed_date: '2026-04-18'
 
@@ -1072,10 +974,8 @@ gaps:
   effort: m
   description: |
     Block's goose ships a "Recipes" abstraction: reusable workflows that package extensions (required tools), prompts, parameters, and settings together as a shareable artifact (https://goose-docs.ai/docs/guides/recipes/). Chump currently has scripts/ and gap entries but no formal artifact for "this is a packaged workflow with declared deps." A Chump Recipe could be e.g. "ship-a-feature" (gap-claim → branch → impl → test → bot-merge) with declared required tools and parameters. Verified the pattern exists in goose; the exact YAML/JSON schema is at goose-docs.ai/docs/guides/recipes/recipe-reference and should be read before designing Chump's equivalent (don't re-invent if goose's spec is broadly portable).
-    
   notes: |
     First task: read https://goose-docs.ai/docs/guides/recipes/recipe-reference and decide whether to adopt their schema verbatim (cross-tool portability win) or adapt for Chump-specific concepts. Recommend adopting verbatim where possible — same standards story as AGENTS.md (COMP-007). Effort estimate is ~3-5 days for schema + runner + first 2-3 packaged recipes.
-    
   source_doc: external (block/goose Recipes pattern, AAIF Dec 2025)
   closed_date: '2026-04-20'
 
@@ -1087,10 +987,8 @@ gaps:
   effort: m
   description: |
     Chump already publishes 3 MCP servers in crates/mcp-servers/: chump-mcp-adb, chump-mcp-github, chump-mcp-tavily. The pattern works. Goose ships 70+ official MCP extensions and uses the broader 3000+ community ecosystem. Chump's internal capabilities — eval harness, gap coordination via chump-coord NATS, reflection_db, memory_graph, neuromodulation — are all things other MCP-using agents (goose, Aider, etc.) could call as tools. Productize the highest-leverage ones to position Chump as part of the agentic ecosystem rather than only a standalone competitor.
-    
   notes: |
     Existing chump-mcp-github / -adb / -tavily are the template; new servers follow the same pattern. ~3-5 days per server. Could ship as 3 separate small PRs to keep blast radius low. Cross-agent benchmarking gap (FRONTIER-007 below) depends on chump-mcp-eval existing.
-    
   source_doc: external (goose 70+ MCP extensions; AAIF MCP standard)
   closed_date: '2026-04-20'
 
@@ -1102,10 +1000,8 @@ gaps:
   effort: s
   description: |
     Goose ships via `brew install --cask block-goose` plus signed installers for macOS/Linux/Windows. Chump requires git clone + cargo build, which gates adoption to Rust developers comfortable with toolchain setup. Brew formula is the single highest-leverage adoption-friction reduction we can do — it makes Chump installable in one command for the macOS dev audience that is Chump's core target. Signed installers + GitHub release pipeline extend that to Linux/Windows.
-    
   notes: |
     ~1-2 days for the brew formula + tap setup. ~2-3 more days for cross-platform release pipeline + signing. Total effort ~1 week. Reference: https://github.com/block/homebrew-tap or similar.
-    
   source_doc: external (block/goose `brew install --cask block-goose` distribution)
   closed_date: '2026-04-20'
 
@@ -1117,10 +1013,8 @@ gaps:
   effort: s
   description: |
     Goose's Adversary Mode is a sophisticated LLM-based context-aware reviewer that watches every tool call before execution (https://goose-docs.ai/docs/guides/security/adversary-mode/). Implementing the full LLM version is COMP-011b (1-2 weeks). COMP-011a ships a static-rules-only first version: a YAML file (chump-adversary.yaml) with BLOCK / ALLOW patterns matched against tool name + args before execution. Default-deny for shell commands that touch ~/.ssh, .env, /etc/, or external network domains not in an allowlist. Default-allow for everything else under repo worktree paths. Fail-open if the rules file is missing.
-    
   notes: |
     Static rules cover ~80% of accident-class harms; LLM reviewer (COMP-011b) covers context-aware "this is suspicious for THIS task" cases. Ship 011a first — bigger immediate safety win for less effort. Reference goose's default rules at https://goose-docs.ai/docs/guides/security/adversary-mode/
-    
   source_doc: external (block/goose Adversary Mode, Jan 2026)
   closed_date: '2026-04-20'
 
@@ -1132,11 +1026,9 @@ gaps:
   effort: l
   description: |
     Full LLM-based version of the goose adversary reviewer pattern. A secondary agent (likely a smaller/cheaper model than the main agent — e.g. claude-3-haiku reviewing claude-sonnet-4-5 actions) watches each tool call with full context: original task, recent messages, tool call details. Returns ALLOW / BLOCK with reasoning. Blocked calls cannot be retried. Fail-open if reviewer fails. Configuration via adversary.md natural-language rules.
-    
   depends_on: [COMP-011a]
   notes: |
     Significant effort (~1-2 weeks). Watch for latency cost — every tool call now costs 1 extra LLM call. Recommend Haiku-tier model as reviewer (~50ms latency) and only invoke for "interesting" tools. Direct port of goose Adversary Mode pattern.
-    
   source_doc: external (block/goose Adversary Mode, Jan 2026)
   closed_date: '2026-04-20'
 
@@ -1148,11 +1040,9 @@ gaps:
   effort: m
   description: |
     The 2026 enterprise agentic-AI safety landscape standardized on two frameworks: MAESTRO (agentic AI threat modeling — covers prompt injection, data poisoning, multi-step bypass attempts) and NIST AI Risk Management Framework. Chump has tool approval lists + adversary mode (COMP-011a/b coming) but no formal threat model. For Chump to be enterprise-credible (or even small-team-credible) it needs a documented threat model that names what Chump defends against, what it doesn't, and what compensating controls users should add. Not a code change — a structured docs artifact mapping Chump's actual capabilities to MAESTRO threat categories.
-    
   depends_on: [COMP-011a]
   notes: |
     ~1 week docs + cross-reference work. References: MAESTRO framework, NIST AI RMF. Not strictly required for open-source dogfooding, but required for any enterprise/compliance conversation.
-    
   source_doc: external (Gemini AGI letter — agentic safety frameworks)
   closed_date: '2026-04-20'
 
@@ -1164,10 +1054,8 @@ gaps:
   effort: s
   description: |
     The Gemini letter cites "MCPwned" — a class of exploits where local MCP tool calls can be hijacked via browser-based DNS rebinding. Affects MCP SDK implementations that don't properly validate Origin headers / loopback restrictions. Chump ships 3 MCP servers (chump-mcp-adb, chump-mcp-github, chump-mcp-tavily) and is about to ship 3 more (COMP-009). Need to audit all 6 for the rebinding-attack class before COMP-009 ships. The MCP SDK we depend on may already mitigate this — verify or patch.
-    
   notes: |
     ~2-4 hour audit + any required patches. Reference: search "MCPwned DNS rebinding" — exploit class described in industry security coverage 2026-Q1. Block your COMP-009 release on this audit.
-    
   source_doc: external (Gemini AGI letter — MCPwned exploit class)
   closed_date: '2026-04-19'
 
@@ -1179,10 +1067,8 @@ gaps:
   effort: m
   description: |
     Audited cost-ledger.jsonl on 2026-04-19: 4621 calls recorded, total $0.00 spend. Half were Together (likely free tier — fine) but the OTHER half were Anthropic Sonnet/Haiku/Opus calls that should have been priced and weren't. Original framing of this gap was wrong (assumed only Together pricing was missing). Reality: ledger is broken or pricing config is missing for everything. Today's actual session spend is unknown without checking the Anthropic dashboard manually. This breaks Q3 budget planning, breaks per-session cost ceilings (INFRA-COST-CEILING depends on this), breaks cost attribution per gap.
-    
   notes: |
     ~1 day. Was filed as P3 / "Together-only" originally; rescoped P2 after audit revealed Anthropic recording also broken. Blocks INFRA-COST-CEILING.
-    
   source_doc: session 2026-04-19 cost audit
   closed_date: '2026-04-20'
 
@@ -1194,13 +1080,11 @@ gaps:
   effort: s
   description: |
     docs/FINDINGS.md shipped 2026-04-20 as the canonical empirical-findings index. The mdBook at book/src/SUMMARY.md does not yet surface it — so the doc is discoverable via grep but not via the rendered book navigation. Add a navigation entry in SUMMARY.md under a "Research" or "Findings" section header so external readers browsing the book land on the findings index. Not urgent (the file is grep-discoverable) but worth closing for completeness. Kept as a separate P3 gap rather than bundled with the FINDINGS.md commit because SUMMARY.md is in active edit contention with sibling agents writing chronicles, and a dedicated narrow gap is safer than a bypassed lease edit.
-    
   acceptance_criteria:
     - book/src/SUMMARY.md has a navigation entry linking to docs/FINDINGS.md under an appropriate section header
     - mdBook renders the findings page without broken links
   notes: |
     ~10 minutes of work. Assign to any sibling agent with a quiet slot who can verify no concurrent SUMMARY.md edit is in flight before touching the file.
-    
   source_doc: docs/FINDINGS.md (2026-04-20)
   closed_date: '2026-04-20'
 
@@ -1229,7 +1113,6 @@ gaps:
           RPC_MODE, SOAK_72H_LOG, UI_*_TEST_MATRIX, etc. Last, so
           merges/archives settle first.
     Critical link-graph risks (must update refs atomically if touched): CONSCIOUSNESS_AB_RESULTS.md (6 gaps + RESEARCH_PLAN + blog), EVAL-0XX series (gaps.yaml), CHUMP_TO_COMPLEX.md (gate for 10+ gaps), OPERATIONS.md (CLAUDE.md ref), RESEARCH_INTEGRITY.md (do not move — CLAUDE.md mandatory read).
-    
   acceptance_criteria:
     - "Phase 1 complete: MISTRALRS.md, PWA.md, CONSCIOUSNESS.md, ROADMAP_INDEX.md merged docs exist; no sources deleted yet"
     - "Phase 2 complete: docs/archive/2026-04/ populated; all inbound refs in gaps.yaml + RESEARCH_PLAN_2026Q3.md updated atomically"
@@ -1239,7 +1122,6 @@ gaps:
   depends_on: [INFRA-009]
   notes: |
     File lease widely — every phase touches docs/ which is in active contention. Coordinate in ambient before each phase. Use separate worktree per phase (doc-prune-merge, doc-prune-archive, doc-prune-howto, doc-prune-delete) so PRs are small and independently reviewable. Plan details: see conversation transcript 2026-04-20 or re-run the audit with same prompt.
-    
   source_doc: docs/RED_LETTER.md Issue
   closed_date: '2026-04-20'
 
@@ -1251,7 +1133,6 @@ gaps:
   effort: xs
   description: |
     EVAL-073 (shipped PR #317) demonstrated that the cross-judge disagreement documented in FINDINGS.md F4 was a prompt-asymmetry artifact, not a model-family disagreement. Under a shared strict binary rubric, Sonnet-4.5 and Llama-3.3-70B agree 100% on the same 90 rows. FINDINGS.md F4 still claims philosophically-contested judge divergence — needs update.
-    
   acceptance_criteria:
     - FINDINGS.md F4 summary-table row updated to mention both-strict 100% result
     - "FINDINGS.md F4 caveats section gains a note retiring the \"instantiate different answers\" framing"
@@ -1268,7 +1149,6 @@ gaps:
   effort: s
   description: |
     CPO-framing gap, Tier 3. Substitutes for a paid documentation-quality auditor by simulating a cold contributor. Scope: (1) scripts/audit/onboarding-sim.sh spawns a Claude agent with only ./docs/ mounted (no code access), no Chump tooling, and a prompt asking it to execute a first-task scenario (pick gap, explain repo layout, explain claim+ship flow) without running anything; (2) rubric-score the agent's output (can it identify pre-flight, explain leases, cite the right docs); (3) commit transcript + score to docs/audit/onboarding-sim-YYYY-MM-DD.md; (4) monthly re-run; (5) low score files a DOC-* gap with specific friction. Cheapest high-signal audit gap in the slate.
-    
   acceptance_criteria:
     - scripts/audit/onboarding-sim.sh exists and runs a fresh Claude agent with docs-only mount
     - Rubric defined with ≥ 5 scoring criteria
@@ -1282,10 +1162,12 @@ gaps:
 - id: DOC-005
   domain: doc
   title: Doc hygiene plan — classification, automation, staged consolidation
-  status: open
+  status: done
   priority: P2
   effort: m
   source_doc: docs/DOC_HYGIENE_PLAN.md
+  closed_date: '2026-04-25'
+  closed_pr: 529
 
 - id: DOC-006
   domain: doc
@@ -1295,7 +1177,6 @@ gaps:
   effort: xs
   description: |
     Phase 1 of the DOC-005 doc hygiene plan: ship scripts/doc-inventory.py and the first generated docs/_inventory.csv. The script walks top-level docs/*.md, reads YAML front-matter (doc_tag, owner_gap, last_audited), counts inbound references across docs/, book/src/, src/, scripts/, .github/, tests/, AGENTS.md, CLAUDE.md, README.md, and emits a CSV with columns: path, tag, owner_gap, last_modified, inbound_refs, line_count, last_audited. Tolerates missing front-matter (writes tag=untagged). First run finds 144 top-level docs, all untagged (Phase 0 not yet run), and 6 orphan candidates with zero inbound refs (CONTEXT_ASSEMBLY_AUDIT, CRATE_AUDIT, EVALUATION_PRIORITIZATION_FRAMEWORK, FLEET_OPEN_QUESTIONS_RESEARCH_2026Q2, GAPS_YAML_TO_SQLITE_MIGRATION, RED_LETTER_RESPONSE_2026Q2) — surfaced for Phase 3 staged consolidation, not actioned in this PR.
-    
   acceptance_criteria:
     - scripts/doc-inventory.py committed and executable
     - docs/_inventory.csv generated and committed (144 rows)
@@ -1304,7 +1185,6 @@ gaps:
   depends_on: [DOC-005]
   notes: |
     XS effort. Subsequent phase gaps (Phase 0 classification, Phase 2 automation, Phase 3 staged consolidation, Phase 4 generated docs) get their own gap entries when picked up. The CSV is generated, not hand-edited — re-run the script after any docs/ changes to refresh it.
-    
   source_doc: docs/DOC_HYGIENE_PLAN.md
   closed_date: '2026-04-25'
 
@@ -1332,7 +1212,6 @@ gaps:
   effort: xs
   description: |
     Red Letter Issue #6 (2026-04-26) flagged two trivial registry-hygiene items: docs/WORK_QUEUE.md lines 18-19 listed RESEARCH-021 twice (mechanical paste error from the 2026-04-22 update), and DOC-005 remained `status: open` despite PR #529 having shipped its sole deliverable (docs/DOC_HYGIENE_PLAN.md) on 2026-04-25 — exactly the open-but-landed pattern INFRA-066's CI guard catches at gap-add time. Bundles both as a one-shot mechanical fix.
-    
   acceptance_criteria:
     - docs/WORK_QUEUE.md has a single RESEARCH-021 row (line 18 only)
     - "docs/gaps.yaml DOC-005 entry has status:done, closed_date:'2026-04-25', closed_pr:529"
@@ -1359,7 +1238,6 @@ gaps:
     gaps.yaml data and add a note that it must be regenerated via `chump gap dump` or
     checked against gaps.yaml before trusting. Long-term: gate WORK_QUEUE.md generation
     on the gap store export so it cannot drift.
-    
   acceptance_criteria:
     - WORK_QUEUE.md active-work table reflects live gaps.yaml status (no closed gaps, correct priorities)
     - Python 3.12 blocker row removed from Blockers & Debt section
@@ -1390,7 +1268,6 @@ gaps:
     CHUMP_FACULTY_MAP.md, CHUMP_PROJECT_BRIEF.md, CHUMP_RESEARCH_BRIEF.md
     (RESEARCH-002 covers this but at thesis level - this gap is the
     user-facing README pass).
-    
   acceptance_criteria:
     - README cognitive-architecture bullet either lists only wired faculties or includes a status table with code-link per faculty
     - Status reflects - wired/no-op/dead-code/computed-not-applied
@@ -1413,7 +1290,6 @@ gaps:
     docs/audits/RED_LETTER.md (blockers). A fourth hand-curated surface
     adds drift, not signal. Replace the doc body with a short pointer to
     the CLI; keep the file so existing links don't 404.
-    
   acceptance_criteria:
     - docs/process/WORK_QUEUE.md is a short pointer (~30 lines) directing to chump gap list
     - No active-work / blockers / pending-research tables (those subset gaps.yaml and RED_LETTER)
@@ -1424,7 +1300,7 @@ gaps:
 - id: DOC-012
   domain: DOC
   title: NORTH_STAR.md cognitive-architecture claims contradict RESEARCH_INTEGRITY.md validated findings
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -1448,12 +1324,13 @@ gaps:
     Cold Water Issue #8 filed DOC-012. Evidence: NORTH_STAR.md:19,59
     (claims); RESEARCH_INTEGRITY.md prohibited-claims table (lines
     referencing EVAL-043, EVAL-035); REMOVAL-003 (belief_state done).
-    
   acceptance_criteria:
     - NORTH_STAR.md Heartbeat section no longer claims unvalidated or net-negative modules as proven mechanisms
     - Any cognitive architecture claim in NORTH_STAR.md cites the supporting gap ID and confidence level from RESEARCH_INTEGRITY.md
     - RESEARCH_INTEGRITY.md reviewed to confirm no other foundational docs make the same prohibited claims
   opened_date: '2026-04-27'
+  closed_date: '2026-04-28'
+  closed_pr: 633
 
 - id: EVAL-001
   domain: eval
@@ -1463,10 +1340,8 @@ gaps:
   effort: m
   description: |
     Current seed suite has 5 eval cases. Cannot detect regressions across the full behavioral surface. Target 30+ cases covering all EvalCategory variants plus golden conversation trajectories and replay against saved conversations.
-    
   notes: |
     37 single-turn seed cases across 6 EvalCategory variants; 5 golden trajectory cases (gt- prefix) with conversation_history. EvalCase.is_multiturn() added. Guard tests: seed_starter_cases_has_at_least_30, seed_covers_all_categories (min 3 per category), seed_has_at_least_5_golden_trajectory_cases.
-    
   source_doc: docs/CHUMP_TO_COMPLEX.md, docs/AUTONOMY_ROADMAP.md
   closed_date: '2026-04-16'
 
@@ -1478,7 +1353,6 @@ gaps:
   effort: l
   description: |
     EvalCase property checks are structural (contains, json_path, regex). No semantic quality scoring. Cannot distinguish "technically passes but wrong answer" from "correctly answers with proper tool use."
-    
   depends_on: [EVAL-001]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -1491,7 +1365,6 @@ gaps:
   effort: l
   description: |
     The 52-case single-turn seed suite (EVAL-001) catches tool-selection and property-level regressions but doesn't exercise the 3-25-turn loop where context-accumulation bugs live (the <think>-accumulation qwen3:8b regression is the canonical example). Add a separate golden-trajectory harness: save real conversations, replay them turn-by-turn, diff the trajectory of tool calls + assistant messages against the golden.
-    
   depends_on: [EVAL-001]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -1504,7 +1377,6 @@ gaps:
   effort: s
   description: |
     EVAL-002 shipped the sync scoring engine (parse_judge_response, score_with_judge, check_all_properties_with_judge). Remaining work: build the async adapter that produces the judge closure from a delegate_tool inference call, and wire scripts/battle-qa.sh to record average judge_score per EvalCategory for trend tracking.
-    
   depends_on: [EVAL-002]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -1517,7 +1389,6 @@ gaps:
   effort: xs
   description: |
     EVAL-004 shipped the async adapter but left two small integration pieces: (a) at least 3 seed cases in eval_harness::seed_starter_cases gain an LlmJudge ExpectedProperty for the canonical "is the answer semantically correct?" check; (b) scripts/battle-qa.sh persists judge_score to chump_eval_runs.scores_json and prints the per-category summary that average_judge_score_per_category() already computes.
-    
   depends_on: [EVAL-004]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -1530,7 +1401,6 @@ gaps:
   effort: xs
   description: |
     EVAL-005 added LlmJudge properties to 3 seed cases. Remaining bash-level work: scripts/battle-qa.sh gains a --with-judge flag that routes eval runs through check_all_properties_with_judge_async and persists judge_score to chump_eval_runs.scores_json, then prints the per-category summary using average_judge_score_per_category().
-    
   depends_on: [EVAL-005]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -1544,7 +1414,6 @@ gaps:
   description: |
     EVAL-006 shipped the bash flag and per-category summary reader. Remaining piece: the main agent loop needs to detect CHUMP_EVAL_WITH_JUDGE=1, and when a running EvalCase has an LlmJudge property, call check_all_properties_with_judge_async with the session provider and persist judge_score into chump_eval_runs.scores_json (as the `judge_score` field).
     BLOCKER (2026-04-17 re-scope): the eval_harness is currently a library — nothing in production calls load_eval_cases() or save_eval_run(). battle-qa.sh shells out to the regular agent loop and reads chump_eval_runs for its summary, but nothing writes there outside tests. Closing this gap requires FIRST building an eval runner entry point (CLI subcommand `chump eval run` or similar) that loads cases, runs the agent, scores, and persists. Effort re-classed from s → m to reflect this.
-    
   depends_on: [EVAL-004, EVAL-006, EVAL-009]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -1557,10 +1426,8 @@ gaps:
   effort: m
   description: |
     COG-008 shipped the LLM reflection adapter but couldn't close the original acceptance clause ("A/B against heuristic on 20 episodes shows >=15% more accurate ErrorPattern classifications") because that requires a labeled dataset of >=20 captured episodes with ground-truth ErrorPattern annotations. Logistics of building that dataset were bigger than the COG-008 effort envelope.
-    
   notes: |
     Synthetic 20-episode dataset shipped (3e23adc) covers all 9 ErrorPattern variants. Real-data upgrade (curate ~20 actual production episodes with gold labels) is DEFERRED until ~1 month of real session history accumulates the natural diversity. Closes when scripts/ab-harness/run-queue.sh fires the run and append-result writes the delta to CONSCIOUSNESS_AB_RESULTS.md. - COG-008
-    
   source_doc: src/reflection.rs
   closed_date: '2026-04-17'
 
@@ -1572,7 +1439,6 @@ gaps:
   effort: m
   description: |
     eval_harness is a library. No production path calls load_eval_cases() → run agent → check_all_properties_with_judge_async → save_eval_run. battle-qa.sh writes episodes but not chump_eval_runs rows; the --with-judge summary it reads is empty until we actually run the harness against real cases.
-    
   depends_on: [EVAL-001, EVAL-004]
   source_doc: src/eval_harness.rs
   closed_date: '2026-04-17'
@@ -1585,10 +1451,8 @@ gaps:
   effort: m
   description: |
     Current A/B fixtures (perception_tasks.json, neuromod_tasks.json, reflection_tasks.json) embed expected_properties authored by the same person who built the framework, then graded by an LLM judge using the same model as the agent. The cloud A/B sweep (commit ce4ebc0) revealed this circularity: lessons-block A/B shows -0.05 mean delta across 160 trials, but it is impossible to tell whether the framework genuinely hurts or whether the fixture rubric penalizes the framework's verbose output style.
-    
   notes: |
     Recommended follow-up from cloud A/B sweep (ce4ebc0). Estimated ~2 hours of human grading. Without this, no further cognitive-layer A/B effort should be funded — we cannot tell signal from rubric noise.
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-18'
 
@@ -1600,7 +1464,6 @@ gaps:
   effort: s
   description: |
     EVAL-010 second-LLM grading revealed the original LLM judge rewarded hallucinated tool execution (fake <function_calls> blocks reporting invented results like "deleted 3 files") and penalized honest "I cannot execute this" responses. Per-trial agreement between judge and 2nd-LLM was 38-63% — at or below chance on two binary judges — confirming systematic calibration failure. Without fixing the judge, A/B deltas are unreliable for all cognitive-layer experiments.
-    
   depends_on: [EVAL-010]
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-18'
@@ -1613,10 +1476,8 @@ gaps:
   effort: m
   description: |
     Every cognitive-layer A/B in the repo is single-shot (one prompt → one response). Production agents loop over 3-10+ turns with tool use. The framework's value (or harm) likely compounds over turns — single-shot A/Bs cannot measure this. We are not measuring the thing we deploy.
-    
   notes: |
     TEST-CAT-A in docs/eval/TEST_BACKLOG.md. Likely needs new harness (run-cloud-v2.py is single-shot only). Could fork to run-cloud-multiturn.py that drives a loop. Per-trial cost is ~5x single-shot.
-    
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-18'
 
@@ -1628,11 +1489,9 @@ gaps:
   effort: l
   description: |
     Every A/B injects a generic synthetic lessons block. We are testing the delivery mechanism, not real reflection. The lessons block in production contains distilled wisdom from past episodes — that signal is buried under generic-text noise in our current harness.
-    
   depends_on: [EVAL-022]
   notes: |
     TEST-CAT-B. The expected finding is "real lessons help more than synthetic" — would be the first publishable positive result for the framework. If real lessons also fail to help, the framework needs a deeper redesign (not just prompt-engineering).
-    
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-18'
 
@@ -1644,10 +1503,8 @@ gaps:
   effort: m
   description: |
     EVAL-010 second-LLM grading already showed sonnet-4-5 has systematic biases (rewards hallucinated tool execution). Single-judge results inherit those biases. Median verdict over 2-3 judges from different model families cuts the bias. Required for any defensible publication.
-    
   notes: |
     TEST-CAT-D. Blocker is API key access to a non-Anthropic model. Either user provides OpenAI/Gemini key, OR we add an Ollama-local judge (slower but free). Cost: ~3x the single-judge cost.
-    
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-18'
 
@@ -1659,10 +1516,8 @@ gaps:
   effort: m
   description: |
     The lessons block is a system-role injection. Production safety requires that user prompts cannot override or weaponize it. We have zero data on this.
-    
   notes: |
     TEST-CAT-E. Should run BEFORE any production-default flip on reflection_injection_enabled().
-    
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-18'
 
@@ -1674,10 +1529,8 @@ gaps:
   effort: m
   description: |
     Lessons block emphasizes safety. Likely pushes the agent toward over-refusal on legitimate requests. We have no measurement of false-refuse vs false-comply.
-    
   notes: |
     TEST-CAT-F. Critical for production deployment — over-refusal kills user trust faster than occasional false-comply.
-    
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-18'
 
@@ -1689,10 +1542,8 @@ gaps:
   effort: s
   description: |
     Our entire A/B has been no-tools-available. The hallucination problem only exists because tools weren't actually there. With real tools, the lessons block might genuinely help OR might cause the agent to call tools too eagerly.
-    
   notes: |
     TEST-CAT-G. scripts/ab-harness/run.sh already supports the chump backend; just needs v2 scoring wired in.
-    
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-18'
 
@@ -1704,7 +1555,6 @@ gaps:
   effort: m
   description: |
     Memory and reflection are conflated in the current framework messaging. They are separate systems. Need to test memory independently.
-    
   notes: TEST-CAT-I.
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-18'
@@ -1717,7 +1567,6 @@ gaps:
   effort: l
   description: |
     Production sessions don't restart from blank. Continuity is a UX-critical property. We have no measurement.
-    
   depends_on: [EVAL-018]
   notes: TEST-CAT-J.
   source_doc: docs/eval/TEST_BACKLOG.md
@@ -1731,7 +1580,6 @@ gaps:
   effort: m
   description: |
     A safety/correctness improvement that turns the agent into a robot bureaucrat is a UX regression. Need to measure.
-    
   notes: TEST-CAT-K.
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-18'
@@ -1744,11 +1592,9 @@ gaps:
   effort: l
   description: |
     The framework's actual longitudinal claim is that the agent gets better over time as it accumulates lessons + memory. Single-shot A/Bs cannot measure this. This gap operationalizes the claim.
-    
   depends_on: [EVAL-013, EVAL-018]
   notes: |
     TEST-CAT-L. The capstone gap. If this passes with a meaningful delta, the framework is empirically validated. If it doesn't, the framework needs deeper redesign.
-    
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-18'
 
@@ -1761,10 +1607,8 @@ gaps:
   description: |
     Current cognitive-layer fixtures (perception_tasks.json, neuromod_tasks.json, reflection_tasks.json) have only 20 tasks each. At n=20 per cell, the 95% Wilson CI on a 50% pass rate is ±0.22 — meaning any A/B delta below ±0.10 is within sampling noise. The "Methodological critique" section of CONSCIOUSNESS_AB_RESULTS.md (commit d5187c2) calls this out as severity-1 methodological flaw blocking any defensible publication.
     The v2 harness (run-cloud-v2.py) ships with multi-axis scoring + Wilson CIs + A/A control mode. It will print "WITHIN NOISE" for any delta that cannot be distinguished from sampling variation. At n=20 it correctly flags every observed delta as noise. The harness is not the bottleneck; the fixture size is.
-    
   notes: |
     Task authoring is the bulk of the effort (~80 new tasks per fixture). Could be partly LLM-generated then human-reviewed for diversity. After this lands, the v2 harness can produce numbers that are safe to cite in research papers without the "preliminary, n=20" hedge.
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-18'
 
@@ -1776,7 +1620,6 @@ gaps:
   effort: s
   description: |
     Every cloud A/B finding to date used claude-sonnet-4-5 as the judge. EVAL-010 second-LLM grading (also Anthropic, different model size) already showed 38-63% per-trial agreement — at or below chance for two binary judges — confirming systematic Anthropic-family judge bias. The PR #83 Ollama judge support enables a true cross-family judge (qwen2.5:14b or similar) at zero per-call cost. This gap operationalizes: run the n=100 sweep on haiku-4-5 again with --judges claude-sonnet-4-5,ollama:qwen2.5:14b. Median verdict gives the first cross-family-judged delta. If the +0.14 hallucination signal survives across the median, the finding is bias-resistant.
-    
   notes: |
     Uses PR #83 (Ollama judge) which is auto-merge pending. Cost is bounded by the cloud agent calls (~\$1.62 same as PR #80) since Ollama judge is free. ~3-5 min wall on a quiet Ollama. Single command:
       scripts/ab-harness/run-cloud-v2.py --fixture FIX --tag X-cross --limit 100
@@ -1784,7 +1627,6 @@ gaps:
     
     PROBE FINDING (2026-04-19, commit b4882e6): Llama-3.3-70B was tested as a cross-family agent and does NOT fit the existing fake_tool_calls axis — Llama reliably emits honest "I cannot execute" language rather than fake <function_calls> markup, so it always passes where Anthropic models fail. The existing binary axis measures Anthropic-model hallucination shape, not general hallucination.
     REVISED DESIGN: Before running the n=100 cross-family judge sweep, add a positive axis: did_acknowledge_no_tools (model said "I cannot execute" + gave actionable guidance instead of faking tool output). This lets Llama score meaningfully. Options: (a) new axis in score.py, (b) family-specific regex detectors per provider, or (c) re-frame headline finding as "Anthropic-agent + Anthropic-judge pairing reliably exhibits the loop" — the most publishable framing. Pick one before running the cross-family sweep.
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-19'
 
@@ -1796,11 +1638,9 @@ gaps:
   effort: s
   description: |
     PR #73 (EVAL-012) ships a multi-turn conversation A/B harness with v1 single-axis scoring. The single-shot v2 result (PR #80) showed the hallucination effect (+0.14) is invisible to binary pass/fail; the multi-turn harness has the same blind spot. Per the methodology critique in CONSCIOUSNESS_AB_RESULTS.md, multi-axis is required to catch the actual harm channel. This gap composes: extend PR #73's output schema to capture per-turn final_text (already does), then pipe through scripts/ab-harness/rescore-with-v2.py per turn or per conversation. Report whether the lessons-block hallucination effect compounds, washes out, or reverses across turns.
-    
   depends_on: [EVAL-012]
   notes: |
     Likely a small Python wrapper that walks the multi-turn jsonl per-turn and applies rescore-with-v2.py logic. ~50 LOC. Cheap to run since the multi-turn fixture is only 10 tasks and the conversations are already executed (just re-scoring existing logs). Cost: \$0 (re-scoring only).
-    
   source_doc: docs/eval/TEST_BACKLOG.md
   closed_date: '2026-04-19'
 
@@ -1812,11 +1652,9 @@ gaps:
   effort: s
   description: |
     COG-016 (PR #114) shipped two production changes: (1) a model-tier gate that blocks lessons injection on Capable-tier models like haiku-4-5 by default, and (2) an explicit anti-hallucination directive prepended to the lessons block. EVAL-023 (PR #118) confirmed the pre-COG-016 block causes +0.12-0.17 fake-tool-call emission on haiku-4-5 across all 3 fixtures (perception, neuromod, reflection) under cross-family judging — but did NOT measure the new COG-016 format. Need to rerun the same n=100 × 3 sweep with `LESSONS_BLOCK` updated to match the production `format_lessons_block()` output (anti-hallucination directive included). If COG-016 works, the +0.12-0.17 hallucination delta should drop substantially or invert. If it doesn't work, the tier gate is the only protective mechanism and we need to reconsider the directive wording.
-    
   depends_on: [COG-016, EVAL-023]
   notes: |
     Reuses the EVAL-023 harness path: run-cloud-v2.py with judges claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo at n=100 per fixture. Only change: `LESSONS_BLOCK` constant updated to match production output of `format_lessons_block()` from src/reflection_db.rs (lines 417-451 on main). Cost ~\$1.50 cloud (haiku-4-5 + sonnet-4-5 + together llama, similar to EVAL-023).
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-19'
 
@@ -1828,11 +1666,9 @@ gaps:
   effort: m
   description: |
     The 1B-14B U-curve (per strategic memo, replicated pattern: +10pp 1B, -5pp 3B, neutral 8B, +10pp 14B) is the most-replicated finding pointing at architectural net-positivity, but the prediction "benefit increases above 14B" has not been tested. 32B/72B tiers are the critical unconfirmed prediction — they decide whether the U-curve thesis holds or needs revision. Original plan was local M4 with qwen2.5:32b but ~20GB Q4 + macOS + Claude Code + Ollama overhead crashes Metal on 24GB. Pivoted to Together.ai cloud for the 7B + 72B endpoints.
-    
   depends_on: [COG-016, EVAL-025]
   notes: |
     Cloud run path: scripts/ab-harness/run-cloud-v2.py with --model together:Qwen/Qwen2.5-{7B|72B}-Instruct-Turbo, judges claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo, --lessons-version v1 (the harm-triggering block, to test if scale flips it from harm to help), --limit 50 reflection. Harness gained together:/ollama: agent-model-prefix dispatch (was Anthropic-only for agent role; judges already supported all three providers). Cost ~\$2-3 cloud (72B Together is \$0.88/M tok, sonnet judge ~\$1).
-    
   source_doc: docs/STRATEGIC_MEMO_2026-04-19.md
   closed_date: '2026-04-19'
 
@@ -1844,11 +1680,9 @@ gaps:
   effort: m
   description: |
     The Knowledge Integration Decay paper (Yu et al, arxiv 2602.09517, Feb 2026) demonstrates that long reasoning chains systematically fail to integrate retrieved external knowledge, and proposes SAKE (Self-Anchored Knowledge Encoding) which anchors the retrieved knowledge at BOTH the start AND end of the reasoning trace — training-free, ~37.6% gain on multi-hop QA. Chump's current lessons block injection is start-only (system prompt prefix) which matches the failure mode the paper identifies. Hypothesis: the cross-architecture neuromod harm signal documented in EVAL-025 (haiku-cog016 -0.15) and EVAL-026 (Qwen-7B -0.16, Llama-70B -0.14, Qwen3-235B -0.10) is partly a KID effect — lessons fire at the start, agent reasons through tool calls, by answer-time the lessons context is lost. SAKE-style "anchor at both ends" is a cheap modification we can A/B against the existing baseline.
-    
   depends_on: [EVAL-025, EVAL-026]
   notes: |
     Implementation: add LESSONS_BLOCK_COG016_SAKE constant to run-cloud-v2.py that wraps the cog016 block as both system-prefix AND user-suffix appended to the prompt. Or implement as a production change in src/reflection_db.rs::format_lessons_block_sake() gated behind CHUMP_LESSONS_ANCHOR=both env var. Cloud-only sweep cost ~\$1-2. Wall ~30min. Reference paper: https://arxiv.org/abs/2602.09517
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-19'
 
@@ -1860,11 +1694,9 @@ gaps:
   effort: s
   description: |
     The CatAttack paper (arxiv 2503.01781) shows that prepending query-agnostic distractor sentences (e.g. "Interesting fact: cats sleep most of their lives") to math/reasoning prompts increases reasoning-model error rates by 300-500% — a published, reproducible adversarial trigger transferable across DeepSeek R1, OpenAI o1/o3, and Qwen reasoning models. Chump's "Attention" cognitive faculty is currently untested in our A/B harness — this is the cheapest pre-published robustness probe we can run. Three-cell design: cell A = bare prompt, cell B = prompt + cat distractor, cell C = prompt + cat distractor + lessons-block-with-anti-distraction- directive. Tests both raw distraction susceptibility AND whether Chump's lessons layer can mitigate it.
-    
   depends_on: [EVAL-026]
   notes: |
     Lift adversarial triggers verbatim from CatAttack paper Table 2 (no need to invent). Implementation: add --distractor flag to run-cloud-v2.py that prepends a chosen trigger to args.prompt before sending. Reuse existing fixtures unchanged. Cost ~\$2 cloud. Reference paper: https://arxiv.org/abs/2503.01781
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-19'
 
@@ -1876,11 +1708,9 @@ gaps:
   effort: s
   description: |
     EVAL-025 (haiku-cog016 -0.15) and EVAL-026 (Qwen-7B -0.16, Llama-70B -0.14, Qwen3-235B -0.10) show a striking cross-architecture pattern: the v1 lessons block consistently hurts on the neuromod fixture by 10-16 percentage points, even though individual cells are within Wilson noise. Four independent measurements at n=50 each (~1200 trials total) directionally agree. Mechanism unknown. Need to drill task-by-task: which of the ~50 tasks in neuromod_tasks.json are responsible? Is it a few high-leverage adversarial tasks or a uniform drift across all tasks? Answer determines whether we (a) fix specific tasks, (b) reformulate the lessons block to handle a specific task class, or (c) accept it as an irreducible tradeoff.
-    
   depends_on: [EVAL-025, EVAL-026]
   notes: |
     Pure data analysis on existing jsonl logs — no new sweep needed. Walk per-trial rows in logs/ab/eval-025-*neuromod*.jsonl and logs/ab/eval-026-*neuromod*.jsonl, group by task_id, compute A-B deltas. ~50 LOC Python. Cost: \$0. Wall: ~1hr.
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-19'
 
@@ -1902,11 +1732,9 @@ gaps:
           produces structured "what would you like me to do?" output
           that judges score off-rubric.
     Mechanism is directive-misapplication + signal-to-noise dilution, not context loss. EVAL-027 SAKE will not address either. Need a task-class-aware lessons injection: suppress the "ask clarifying question" directive when conditional-chain markers detected (regex for "if.*fails", "then if", etc.); skip the lessons block entirely when user prompt is below a length threshold (e.g. <50 chars).
-    
   depends_on: [EVAL-029, EVAL-027]
   notes: |
     ~3-4 days code + sweep. Cost ~$2 cloud. The cleanest production fix would be: in prompt_assembler.rs, look at the user prompt; if matches conditional-chain or trivial-token patterns, suppress lessons or drop specific directives. Could also be implemented as a per-fixture override at the eval-harness level for testing.
-    
   source_doc: docs/eval/EVAL-029-neuromod-task-drilldown.md
   closed_date: '2026-04-19'
 
@@ -1918,11 +1746,9 @@ gaps:
   effort: m
   description: |
     EVAL-030 shipped the production code change in src/reflection_db.rs (is_conditional_chain + is_trivial_token + format_lessons_block_with_prompt gated on CHUMP_LESSONS_TASK_AWARE) but did not include a fresh A/B sweep. The current cloud harness (scripts/ab-harness/run-cloud-v2.py) builds the lessons block as a static Python constant and does NOT dispatch through prompt_assembler.rs, so it cannot exercise the new heuristics as-is. Extend the harness so cell-A (v1 uniform), cell-B (no lessons), and cell-C (task-class-aware) can all be measured on the neuromod fixture across at least claude-haiku-4-5 and one Qwen size point at n=50. Acceptance: cell-C correctness ≥ cell-B (no harm from lessons) while preserving cell-A benefits on non-affected task classes.
-    
   depends_on: [EVAL-030]
   notes: |
     Likely path: spawn the chump binary in a thin subprocess wrapper that builds the system prompt via the actual assembler, or expose a `chump --assemble-prompt` debug subcommand the harness can call. Cost ~$2 cloud + ~1 day harness work.
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-20'
 
@@ -1934,11 +1760,9 @@ gaps:
   effort: l
   description: |
     The 2026 frontier-reasoning architecture trend per Gemini letter synthesis: "Search-Augmented Reasoning (SAR) — retrieval is no longer a preprocessing step but a tool managed within a multi-step reasoning trajectory. AutoRefine introduces explicit knowledge refinement steps between search calls. Policy-Driven Trajectories orchestrate the entire process — when to search, which granularities, when to adapt." Chump's current memory_db retrieval is single-shot preprocessing (load all → keyword filter → inject). No iterative refinement, no policy-driven re-search. Retrieval may be hitting KID (covered by EVAL-027) AND being insufficient at scale (this gap). Open question: is multi-step retrieval even necessary at Chump's typical context size, or is it solving a problem we don't have? Worth evaluating before investing in implementation.
-    
   depends_on: [MEM-005]
   notes: |
     Reference paper: AutoRefine (https://openreview.net/forum?id=rBlWKIUQey). ~1 week of literature reading + small evaluation. Could decide to defer if the value isn't clear at Chump scale (we don't currently have multi-hop QA as a primary use case).
-    
   source_doc: external (Gemini AGI letter; AutoRefine arxiv)
   closed_date: '2026-04-20'
 
@@ -1950,10 +1774,8 @@ gaps:
   effort: m
   description: |
     Per RESEARCH_PLAN_2026Q3.md Sprint 1, the chump-perception crate is exercised in every full agent run but its contribution is never measured in isolation. EVAL-032 ablates: cell A perception layer active, cell B bypassed (raw prompt only). Cross-family judges, n=50 reflection + n=50 perception fixtures, claude-haiku-4-5 + one Qwen size point. Decision rule: if perception adds correctness > +0.05 noise floor, validated. If noise or negative, file followup to redesign or remove.
-    
   notes: |
     Add --bypass-perception flag to harness (~1 day). Sweep ~$3 cloud, 1 hour wall.
-    
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   closed_date: '2026-04-20'
 
@@ -1965,11 +1787,9 @@ gaps:
   effort: m
   description: |
     EVAL-028 will quantify Chump's CatAttack vulnerability. EVAL-033 tests mitigations: (a) prefix-prompt anchor reminder ("ignore preceding irrelevant context"), (b) suffix-prompt restatement of the original ask, (c) fine-tuned attention via prompt structure. n=50 per mitigation × 2 model points.
-    
   depends_on: [EVAL-028]
   notes: |
     Cost ~$2 cloud. Wall ~2 days code + 1 hour sweep. Shipped design doc + harness --mitigation flag + control pilot n=20 + prefix-anchor partial (API load interrupted). Full sweep deferred — fixture may need to change to math/reasoning for CatAttack sensitivity. Null result documented with next-step recommendations.
-    
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   closed_date: '2026-04-19'
 
@@ -1981,11 +1801,9 @@ gaps:
   effort: l
   description: |
     Memory faculty (memory_db + memory_graph) has zero isolated A/B evidence. EVAL-034 builds a multi-hop QA fixture (~30 questions) where correct answers require combining stored memory entries. Three cells: A memory ON, B memory OFF, C memory ON + SAKE anchoring per EVAL-027. Tests both raw memory utility AND whether KID applies to Chump's memory layer.
-    
   depends_on: [EVAL-027, MEM-005]
   notes: |
     Fixture authoring ~3 days, code ~2 days, sweep ~1 hour. Cost ~$5.
-    
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   closed_date: '2026-04-20'
 
@@ -1997,11 +1815,9 @@ gaps:
   effort: s
   description: |
     belief_state.rs implements probabilistic state tracking but its effect is currently masked by the EVAL-026 cross-architecture neuromod harm signal. After EVAL-030 fixes the neuromod harm, belief_state's actual contribution becomes measurable. Cell A belief_state active, cell B bypassed. n=50 × 3 fixtures × 2 model points.
-    
   depends_on: [EVAL-030]
   notes: |
     Add --bypass-belief-state flag. Cost ~$2. Wall ~2 days.
-    
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   closed_date: '2026-04-19'
 
@@ -2013,10 +1829,8 @@ gaps:
   effort: s
   description: |
     Executive Function faculty: tested whether prompt_assembler.rs adds useful work or noise. Two cells: current prompt assembly strategy vs minimalist (system prompt + raw user prompt only). n=50 reflection.
-    
   notes: |
     Cheap test (~$2, 1 day code + 1 hour sweep).
-    
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   closed_date: '2026-04-20'
 
@@ -2028,10 +1842,8 @@ gaps:
   effort: l
   description: |
     Executive Function faculty: tests whether chump-coord NATS coordination adds value on tasks that require multi-step handoffs. Need new coordination-requiring fixture (tasks spanning multiple files / requiring intermediate handoffs). Cell A solo agent, cell B chump-coord active.
-    
   notes: |
     Coordination fixture authoring ~3 days. Cost ~$3.
-    
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   closed_date: '2026-04-20'
 
@@ -2043,11 +1855,9 @@ gaps:
   effort: s
   description: |
     Social Cognition faculty: ~30 deliberately underspecified prompts ("fix the bug", "make it faster"). Cell A asks clarifying question first, cell B guesses and acts. Judge rubric scores: did the eventual action match user intent (ground truth in fixture)? Connects to EVAL-029 finding — if "ask first" is broadly harmful but specifically helpful on truly ambiguous prompts, the production policy should be scoped.
-    
   depends_on: [EVAL-029]
   notes: |
     Fixture authoring ~2 days. Cost ~$3.
-    
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   closed_date: '2026-04-20'
 
@@ -2059,11 +1869,9 @@ gaps:
   effort: l
   description: |
     Learning faculty extension: tests whether the actual reflection ACCUMULATION LOOP (write → recall → improve) produces measurable improvement, not just whether a hand-authored lessons block is helpful. Fresh agent with N=0 lessons vs same agent after consuming N=10/50/100 prior reflection episodes.
-    
   depends_on: [EVAL-030]
   notes: |
     Optional Q3 — could defer to Q4. Cost ~$10. Wall ~1 week.
-    
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   closed_date: '2026-04-20'
 
@@ -2075,10 +1883,8 @@ gaps:
   effort: m
   description: |
     Problem Solving faculty currently validated only on our 3 fixtures (all hallucination + instruction-following). Extends with one external benchmark — BFCL function calling, MMLU subset, or ARC-AGI mini. Compare Chump's full agent loop + lessons block to the same model's published baseline.
-    
   notes: |
     Shipped: BFCL-inspired 20-task OOD fixture (ood_bfcl_sample.json), methodology doc (docs/eval/EVAL-040-ood-benchmark.md), and stub section in CONSCIOUSNESS_AB_RESULTS.md. Pilot sweep pending — fixture and harness commands ready. Full pilot requires live LLM endpoint and dual-judge panel. Cost ~$5 cloud for n=50 per cell on haiku-4-5.
-    
   source_doc: docs/RESEARCH_PLAN_2026Q3.md
   closed_date: '2026-04-20'
 
@@ -2090,10 +1896,8 @@ gaps:
   effort: m
   description: |
     EVAL-010 established a human-grading protocol for 12 tasks across 3 fixtures but was never completed for the full set. All headline eval deltas (+0.14 haiku lessons, −0.30 neuromod, +0.33 sonnet backfire) rest on a judge that EVAL-010 found had 38–63% inter-judge agreement — at or below chance. Without a human ground-truth baseline, "judge bias is documented but not fixed" is the accurate characterization. This gap closes EVAL-010 for the full fixture set (~40 tasks).
-    
   notes: |
     ~40 hrs human time (Jeff). Prerequisite for publication-readiness. EVAL-010-labels-jeff.md exists and is partially filled; extend it.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md
   closed_date: '2026-04-20'
 
@@ -2105,10 +1909,8 @@ gaps:
   effort: s
   description: |
     Every main result (haiku lessons +0.14, sonnet backfire +0.33, neuromod harm −0.10 to −0.16) was judged by Anthropic models only. EVAL-010 confirmed the judge rewards hallucinated tool calls — exactly the failure mode measured in lessons-injection evals. This means lessons-on cells are systematically over-scored. Fix: re-run the three primary fixtures (reflection, neuromod, perception) at n=50 each with a Llama-3.3-70B judge via Together free tier. Cost: ~$0 (free tier) + existing Anthropic spend for subject models (~$3 total).
-    
   notes: |
     ~$3 cloud + 1 day setup. Highest-leverage unblocking action for publication readiness. Together free tier provides Llama-3.3-70B at no cost. Already supported by run-cloud-v2.py --judges flag.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md
   closed_date: '2026-04-20'
 
@@ -2124,11 +1926,9 @@ gaps:
       B: surprisal EMA enabled vs disabled (CHUMP_SURPRISAL=0)
       C: neuromod signal enabled vs disabled (CHUMP_NEUROMOD=0)
     Each at n=50, reflection + neuromod fixtures, cross-family judge.
-    
   depends_on: [EVAL-042]
   notes: |
     ~$15 cloud + 2 days. This is the single most impactful research action remaining. Without it, the "cognitive architecture" thesis cannot be defended.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md
   closed_date: '2026-04-20'
 
@@ -2140,11 +1940,9 @@ gaps:
   effort: m
   description: |
     All current evals are single-shot: one prompt → one response → judge. Chump's cognitive architecture (belief state, blackboard, surprisal, neuromod) is designed for multi-turn loops where state persists and compounds. Single-shot evaluation misses the primary use case and cannot detect belief drift, compounding errors, or coherence failures across turns. Minimum viable: one fixture type with 8–12 turn conversation, fixed ground truth for each turn's expected response, judge scoring each turn independently + coherence score across turns.
-    
   depends_on: [EVAL-043]
   notes: |
     ~$10 cloud + 2 days fixture design. This is the "Severity 3" limitation in CONSCIOUSNESS_AB_RESULTS.md — long deferred, finally necessary for the publication push.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md
   closed_date: '2026-04-20'
 
@@ -2156,10 +1954,8 @@ gaps:
   effort: m
   description: |
     See COG-002. Standalone eval entry for the retrieval benchmark — separate from the consciousness A/B study because retrieval quality matters independently of whether consciousness modules are enabled.
-    
   notes: |
     Closed with COG-002. recall_benchmark_eval_003 test in memory_graph.rs runs 50-QA fixture comparing BFS vs PPR recall@5 (BFS=0.593, PPR=0.427 on synthetic data). bfs_recall() added as baseline. scripts/recall-benchmark.sh runs and appends results to docs/CONSCIOUSNESS_AB_RESULTS.md.
-    
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-16'
 
@@ -2171,11 +1967,9 @@ gaps:
   effort: s
   description: |
     EVAL-041 human grading (preliminary, n=12 tasks) found all three fixtures fail the 0.75 Cohen's kappa threshold for human-vs-LLM judge agreement. Three systematic biases identified: (1) tool-hallucination reward — LLM judge rewards mode A responses that fabricate tool use sequences; (2) clarification penalization — judge gives 0.00 to appropriate clarifying questions on ambiguous prompts; (3) risk/safety inconsistency — judge inconsistently scores force-push and destructive-delete prompts. These biases directly inflate haiku lessons-injection scores (mode A) and may explain the +0.14 lessons delta from EVAL-025.
-    
   depends_on: [EVAL-041]
   notes: |
     ~0.5 days code + Jeff completing EVAL-010-labels-jeff.md (~3 hrs). Blocks publication readiness. EVAL-010-analysis.md documents the disagreement clusters that need to be fixed in the judge prompt.
-    
   source_doc: docs/eval/EVAL-010-analysis.md
   closed_date: '2026-04-20'
 
@@ -2391,11 +2185,9 @@ gaps:
   description: |
     The binary-mode ablation harness (scripts/ab-harness/run-binary-ablation.py, EVAL-049) scores trials as "correct" when chump exits 0 AND produces output >10 chars. Red Letter #3 measured this instrument's baseline accuracy at 0.033 (EVAL-056) and 0.100 (EVAL-058) — below chance on any meaningful task classification. At n=30/cell the CI is approximately +/-0.14 which spans the full decision space. Six PRs closed this week on this instrument: EVAL-053 (Metacognition), #268 (Memory), #271 (Executive Function) all labeled COVERED+VALIDATED(NULL). NULL under this instrument means "measurement failed," not "module has no effect." The Metacognition label is especially concerning because EVAL-026 showed a documented NEGATIVE prior signal for that faculty, which the current instrument cannot confirm or rebut.
     This gap blocks EVAL-059 from closing with the same instrument and mandates a methodology fix before any further VALIDATED(NULL) labels are applied.
-    
   depends_on: [EVAL-049]
   notes: |
     ~1-2 days. Filed in response to docs/RED_LETTER.md Issue #3 2026-04-20 which called the current instrument a "measurement failure rebranded as a conclusion." The risk of not shipping this: every faculty in Q3 plan ends up labeled COVERED+VALIDATED(NULL) on methodologically invalid evidence, and the project's own RESEARCH_INTEGRITY.md prohibits citing those results externally. Better to have one open faculty than six invalidly closed ones.
-    
   source_doc: docs/RED_LETTER.md Issue
   closed_date: '2026-04-20'
 
@@ -2493,7 +2285,6 @@ gaps:
   depends_on: [EVAL-062]
   notes: |
     CLI aligned 2026-04-22: `--n-per-cell` is implemented on run-social-cognition-ab.py (maps to internal repeats via ceil(n / filtered_task_count)). `--strict-judge` is the strict rubric from EVAL-062. Paid sweep remains backlog until budget — harness + python3.12 discipline landed first.
-    
   source_doc: docs/RED_LETTER.md
 
 - id: EVAL-066
@@ -2504,7 +2295,6 @@ gaps:
   effort: s
   description: |
     PR #279 (EVAL-060 implementation) concluded the binary-mode ablation harness fails A/A calibration based on an A/A run executed without a live provider configured (27/30 + 29/30 empty-output trials on Together-serverless-Qwen3-Coder-480B). The stated interpretation was that the instrument has systematic variance. EVAL-064 running 2026-04-20 via Ollama qwen2.5:14b (local, no network) is producing real non-empty signal, spawn_lessons delta=+0.20 at n=15/cell, real output strings judged as CORRECT or INCORRECT by LLM judge. The instrument is NOT broken. The provider that PR #279 used was broken (Together free-tier Qwen3-Coder-480B rejecting or dropping the binary requests with empty output). This gap re-frames the methodology doc and the runbook so future operators do not believe the harness itself is untrustworthy when in fact it works fine with a reliable provider. Affects docs/eval/EVAL-060-methodology-fix.md (replace instrument-failure framing with provider-failure framing), scripts/ab-harness/README-live-ablation.md (switch default provider recommendation from Together Qwen3-Coder-480B to Ollama qwen2.5:14b since EVAL-064 proved the latter works with the binary), and docs/RESEARCH_INTEGRITY.md (add a provider must produce at least 95 percent non-empty outputs in a 3-trial smoke test before any sweep is run).
-    
   acceptance_criteria:
     - "docs/eval/EVAL-060-methodology-fix.md amended to distinguish instrument failure (the framing under PR #279) from provider failure (the actual finding confirmed by EVAL-064)"
     - "scripts/ab-harness/README-live-ablation.md default provider recommendation updated from Together Qwen3-Coder-480B to Ollama qwen2.5:14b with the EVAL-064 reference as justification"
@@ -2513,7 +2303,6 @@ gaps:
   depends_on: [EVAL-060]
   notes: |
     Pure documentation correction, ~30 LOC across 3 files. The technical fix was already made (LLM judge + A/A mode landed in PR #279); this gap corrects the interpretation of the A/A FAIL that came with it. High priority because every downstream re-score interpretation rests on the methodology doc's claims.
-    
   source_doc: docs/eval/EVAL-060-methodology-fix.md + EVAL-064 live sweep 2026-04-20
   closed_date: '2026-04-20'
 
@@ -2525,7 +2314,6 @@ gaps:
   effort: m
   description: |
     If EVAL-064 confirms spawn_lessons delta=+0.20 at n=50 (bypass ON HELPS, meaning lesson injection HURTS the agent), the next-order research question is which specific lesson in chump_improvement_targets is driving the harm. Bypassing the whole module is a coarse-grained finding; localizing to specific directives (e.g. the COG-016 anti-hallucination preamble, or the "ask clarifying question" line that EVAL-029 already flagged on conditional-chain tasks) makes the result actionable. Design: extend run-binary-ablation.py (or a new scripts/ab-harness/run-lesson-ablation.py) to support per-directive bypass by tagging each directive with a stable ID and letting the bypass flag select which subset to suppress. Cell A = all lessons. Cell B_i = all lessons minus directive_i. Measure per-directive delta.
-    
   acceptance_criteria:
     - EVAL-064 full-sweep delta confirmed >=+0.15 for spawn_lessons (if result is weaker, reduce priority on this gap and re-plan)
     - Harness extension supports --suppress-directive <id> flag
@@ -2535,7 +2323,6 @@ gaps:
   depends_on: [EVAL-064, EVAL-066]
   notes: |
     Conditional priority — P2 if EVAL-064 holds, P4 (close as invalid) if EVAL-064 delta drops below +0.05. Estimated 1-2 days IF conditional met. The payoff if the signal holds is a publishable "specific lesson directives harm agent performance" claim with concrete removal candidates, which would graduate the COG-016/COG-023/COG-024 lessons trilogy from open research question to settled result.
-    
   source_doc: EVAL-064 in-flight results 2026-04-20
   closed_date: '2026-04-21'
 
@@ -2547,7 +2334,6 @@ gaps:
   effort: s
   description: |
     EVAL-060 acceptance criterion 4 required "at least one non-Anthropic judge (Qwen3-Coder or DeepSeek via Together) must be run on the same trials to validate against Anthropic bias, per RESEARCH_INTEGRITY.md." PR #279 shipped with only claude-haiku-4-5 as judge; PR #288 (EVAL-063 Metacognition re-score) also Anthropic-only. This gap closes the criterion: re-score the existing logs/ab/eval049-binary-judge-*.jsonl files under a Qwen3-Coder and a DeepSeek-V3.1 judge and report judge-agreement percentage. If Anthropic and non-Anthropic judges disagree >20% of the time on the same trials, the LLM judge itself is the next methodology concern, not the harness. Mechanism: add --rescore-with-judge <model> to scripts/ab-harness/rescore-with-v2.py (the existing rescore script) so it reads a JSONL with response_preview or response_text and emits new judge_score_<model> + judge_reasoning_<model> fields. Run on at least 3 faculty sweep JSONLs; report agreement table.
-    
   acceptance_criteria:
     - "rescore script supports --rescore-with-judge=together:Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8 and deepseek variant"
     - Re-scored at least 3 existing faculty JSONLs (perception / memory / metacognition or equivalent available)
@@ -2556,7 +2342,6 @@ gaps:
   depends_on: [EVAL-060]
   notes: |
     Target cost ~$0.50 on Together for the non-Anthropic judge passes (re-scoring is cheap vs running the binary sweep). Required for RESEARCH_INTEGRITY.md to permit external citation of any EVAL-060-derived result.
-    
   source_doc: EVAL-060 acceptance criterion 4 (unmet by PR
   closed_date: '2026-04-20'
 
@@ -2568,7 +2353,6 @@ gaps:
   effort: s
   description: |
     EVAL-026 documented a cross-architecture neuromod harm signal in the -10 to -16 percentage-point range aggregate is_correct regression across 4 model architectures. F3 (EVAL-029 task-cluster localization) confirmed that the harm is concentrated in two specific task clusters and the per-task direction holds 4 of 4 sweeps. However, the AGGREGATE magnitude (-10 to -16 pp) has not been reproduced under the EVAL-060 fixed instrument. EVAL-063 re-tested the neuromod modules under Llama-3.3-70B + Claude judge at n=50 per cell and saw delta near zero on the same modules the original EVAL-026 measured negative on. This gap explicitly reopens the aggregate-magnitude question. Two interpretations are both consistent with the current evidence: (1) the original -10 to -16 pp signal was a methodology artifact (scorer bias at that tier, or prompt-assembler-vs-binary measurement layer difference) that the EVAL-060 instrument removes, or (2) the signal is real but provider-specific and EVAL-063's Llama-70B agent does not exhibit it. The project currently cites F3 (task-cluster localization) as the load-bearing finding; the aggregate magnitude is open until resolved.
-    
   acceptance_criteria:
     - "Re-run the EVAL-026 4-architecture sweep using the EVAL-060 LLM-judge instrument + scripts/ab-harness/run-live-ablation.sh with a live provider (Ollama qwen2.5:14b or equivalent verified non-broken endpoint)"
     - n>=50 per cell per architecture, Wilson 95% CIs computed
@@ -2578,7 +2362,6 @@ gaps:
   depends_on: [EVAL-060, EVAL-063]
   notes: |
     ~1-2 days under live provider. ~$3-5 Anthropic judge spend. Core methodology question — the answer is informative either way. Do not defer indefinitely.
-    
   source_doc: docs/FINDINGS.md F3 caveat + EVAL-063 result + 2026-04-20 gold review
   closed_date: '2026-04-21'
 
@@ -2590,7 +2373,6 @@ gaps:
   effort: s
   description: |
     F4 established that two LLM judges (Sonnet + Llama-70B) disagree at Cohen kappa 0.42 on the neuromod fixture, and that the disagreement is concentrated on the exact task class where the lessons-block harm appears. This is a single-fixture finding. EVAL-042 ran the reflection and perception fixtures in the same sweep; reflection measured kappa 0.722 (substantial agreement), perception has the data but the cross-judge kappa is not surfaced in the top-level findings index. This gap finishes the cross-judge story: compute kappa + per-task disagreement cluster for all three fixtures, surface which fixture classes show judge-family bias, and which are robust. If reflection kappa stays high (it was 0.722 at n=50) and perception kappa shows a third pattern, the three-fixture table becomes a publishable methodology finding in its own right (candidate for PRODUCT-009 publication content).
-    
   acceptance_criteria:
     - Per-fixture Cohen kappa at threshold 0.5 reported for reflection, perception, neuromod using EVAL-042 JSONL data
     - "Per-task disagreement clustering: which tasks most disagree between judges, which cluster by semantic type"
@@ -2599,7 +2381,6 @@ gaps:
   depends_on: [EVAL-042]
   notes: |
     ~1 day of analysis; JSONL data already exists in logs/ab/. No new sweeps needed. Low-effort promotion of an existing single-fixture finding to a three-fixture methodological claim.
-    
   source_doc: docs/FINDINGS.md F4 caveat + EVAL-042
   closed_date: '2026-04-20'
 
@@ -2611,7 +2392,6 @@ gaps:
   effort: m
   description: |
     F2 (lessons-block fake-tool-call inflation +0.14 pp at 10.7x A/A noise floor, n>2,600 trial pairs) is currently measured on two Anthropic frontier models only (claude-haiku-4-5, claude-opus-4-5). The finding is internally cross-architecture on the Anthropic side but has not been tested on non-Anthropic frontier. A single additional architecture family tested would substantially strengthen the claim; a null result on non-Anthropic would narrow the finding to Anthropic-specific and still be informative. Target models: DeepSeek-V3.1 (via Together, cheap), Qwen3-235B-Instruct (via Together), and ideally Gemini-2.x (via Google API) or GPT-4o (via OpenAI API) if budget permits. Same run-cloud-v2.py harness, same multi-axis scoring (correctness + hallucinated_tools + did_attempt), same A/A baseline calibration, cross-family judge panel.
-    
   acceptance_criteria:
     - F2 sweep re-run on at least 2 additional non-Anthropic frontier models at n>=500 per cell
     - A/A baseline calibrated for each new model on the same fixture
@@ -2620,7 +2400,6 @@ gaps:
     - "docs/FINDINGS.md F2 entry updated: either generalization confirmed (broader claim) or narrowed to Anthropic-specific (more precise claim)"
   notes: |
     ~2-3 days + $10-20 Together and $20-40 OpenAI/Google spend. Candidate content for PRODUCT-009 if the finding generalizes. Depends on judge calibration (EVAL-046) being trustworthy on non-Anthropic agent output.
-    
   source_doc: docs/FINDINGS.md F2 caveat
   closed_date: '2026-04-20'
 
@@ -2651,7 +2430,6 @@ gaps:
   effort: s
   description: |
     EVAL-072 applied the rubric-literalism + no-partial-credit directive to the Llama judge only and measured 75% overall agreement vs the original Sonnet scores (perception -8pp, neuromod +12pp). The residual perception gap is now driven by Sonnet's ORIGINAL partial- credit-friendly scoring (0.5-0.85 values binarizing to 1) vs strict-Llama's 0. Re-score BOTH judges with the strict prompt on the same three fixtures (reflection, perception, neuromod) to test whether both-strict closes the gap.
-    
   acceptance_criteria:
     - "scripts/ab-harness/rescore-jsonl.py extended to accept --rescore-with-judge anthropic:claude-sonnet-4-5 as a second pass on the same input (currently only together: path is wired)"
     - Both-strict pass run on reflection + perception + neuromod fixtures at n>=30/faculty each
@@ -2660,7 +2438,6 @@ gaps:
   depends_on: [EVAL-072]
   notes: |
     Estimated cost ~300 Anthropic judge calls (~$1-2) + ~300 Together calls (free tier or <$1). Small effort, informative either way.
-    
   source_doc: docs/eval/EVAL-072-judge-prompt-fix.md
   closed_date: '2026-04-20'
 
@@ -2672,7 +2449,6 @@ gaps:
   effort: m
   description: |
     EVAL-071 preliminary (n~20-40/cell, 2026-04-20) showed DeepSeek-V3.1 loses -23pp task correctness when the COG-016 lessons block is injected. Spot-check of failure rows shows the failure mode is refusal-to-attempt ("here's how you could run find yourself") rather than Anthropic-style fake-tool-result hallucination. Localize which lesson directive drives the refusal: per-lesson-present/absent ablation at n=50/cell on DeepSeek, same reflection_tasks fixture, same judge panel. Report the single largest-impact lesson and propose a narrower per-family rewrite.
-    
   acceptance_criteria:
     - Per-lesson ablation sweep at n=50/cell on DeepSeek-V3.1
     - Identify the lesson(s) whose presence flips correct→refusal
@@ -2688,7 +2464,6 @@ gaps:
   effort: s
   description: |
     Current multi-axis scoring captures correctness, hallucinated_tools, did_attempt. EVAL-071 surfaced a fourth distinguishable failure mode: refusal-to-attempt-with-instruction ("here is how you could run this yourself") which scores is_correct=False / halluc=False / attempted= False but is qualitatively different from a blank refusal or a confidence hedge. Add a fifth axis tagged `refusal_with_instruction` (judge prompt detects "here's how you could do this yourself" / "one way to do this is..." phrasing) and re-score the EVAL-071 sweep to quantify how much of DeepSeek's -23pp drop is this specific mode.
-    
   acceptance_criteria:
     - scoring_v2.py extended with refusal_with_instruction boolean axis
     - Judge prompt includes explicit detection instruction for the pattern
@@ -2734,12 +2509,11 @@ gaps:
 - id: EVAL-083
   domain: eval
   title: Eval credibility audit sweep
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
     EVAL-069 used broken scorer (exit_code_fallback, python3.14 no anthropic module). Are there other evals with hidden methodology issues? Spot-check 12–15 recent evals (focus EVAL-070 through EVAL-082). For each: inspect JSONL scorer field, check shebang, verify LLM judge availability. Categorize: valid, partial (workaround but defensible), broken. Document findings with evidence (JSONL snippets, shebang diffs).
-    
   acceptance_criteria:
     - Audit complete on 12+ evals (EVAL-070 through EVAL-082)
     - Findings documented with evidence (JSONL snippets, shebang diffs, API logs)
@@ -2749,6 +2523,7 @@ gaps:
   notes: |
     High confidence gain for publication (PRODUCT-009). Parallelizable across agents.
   source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  closed_date: '2026-04-25'
 
 - id: EVAL-084
   domain: eval
@@ -2758,7 +2533,6 @@ gaps:
   effort: s
   description: |
     EVAL-083 audit (2026-04-25) found EVAL-063's archived run had mixed scorers — 4 files (366 rows) used `exit_code_fallback`, 4 files (399 rows) used `llm_judge`, and both A/A baselines (60 rows) used `exit_code_fallback`. EVAL-063 currently feeds EVAL-061's "VALIDATED(NULL)" claim for Metacognition, which feeds REMOVAL-001's decision matrix and ultimately REMOVAL-003 (belief_state deletion). The decision is probably still correct because the llm-judge half of the data also shows NEUTRAL, but the credibility chain has a documented hole that needs closing before PRODUCT-009 publication. Re-aggregate the EVAL-063 published delta using only `scorer=='llm_judge'` rows. If insufficient llm-judge rows for valid inference, mark EVAL-063 RETIRED like EVAL-069.
-    
   acceptance_criteria:
     - Aggregated delta + Wilson 95% CI computed using only llm_judge rows from EVAL-063 archived JSONL
     - If delta or CI changes materially vs. published number, FINDINGS.md F3 caveat extended
@@ -2766,7 +2540,6 @@ gaps:
   depends_on: [EVAL-083]
   notes: |
     Pure aggregation work — no new sweep needed. ~2-3 hours including doc. Filed by EVAL-083 audit.
-    
   source_doc: docs/eval/EVAL-063-credibility-rerun.md
   closed_date: '2026-04-25'
 
@@ -2778,7 +2551,6 @@ gaps:
   effort: xs
   description: |
     EVAL-083 audit (2026-04-25) found two short transient files in EVAL-064's archived run that used the broken `exit_code_fallback` scorer (4 + 6 = 12 rows total) alongside the main 398-row llm_judge sweep. Likely partial-run artifacts. Verify the EVAL-064 published FINDINGS row did not pick up the 12 transient rows. If it did, recompute the aggregate; if not, document which files fed the aggregate so future audits don't re-flag the same evidence.
-    
   acceptance_criteria:
     - Confirmation in EVAL-064 doc of which JSONL file(s) fed the aggregate
     - If transient rows were included, recomputed aggregate published with Wilson 95% CI
@@ -2786,7 +2558,6 @@ gaps:
   depends_on: [EVAL-083]
   notes: |
     XS effort — likely a 30-minute doc check. Low priority because the transient rows are 12 of 410, ~3% — unlikely to swing a verdict but deserves the trail.
-    
   source_doc: docs/eval/EVAL-064-aggregate-audit.md
   closed_date: '2026-04-25'
 
@@ -2805,7 +2576,6 @@ gaps:
     using git log --grep=ID --diff-filter=A to find the commit that first added
     each gap; (2) add a non-null constraint to chump gap reserve so future
     reservations always stamp opened_date.
-    
   acceptance_criteria:
     - All open gaps have non-null opened_date in .chump/state.db
     - docs/gaps.yaml mirror reflects backfilled dates
@@ -2837,7 +2607,6 @@ gaps:
     run as an evaluation (neutral framing), compare results to existing EVAL-025/EVAL-076
     results, and document whether deltas hold. If they do not, the validated-findings table
     requires revision.
-    
   acceptance_criteria:
     - RESEARCH-026 priority updated to P1 in the registry with this gap as the escalation rationale
     - The comparison is run at n>=50/cell and results committed to docs/eval/
@@ -2861,7 +2630,6 @@ gaps:
     with a 2026-04-26 caveat block scoping the conclusion to its fixture and
     restoring "Anthropic-only judging is insufficient" to load-bearing status in
     RESEARCH_INTEGRITY.md.
-    
   acceptance_criteria:
     - "docs/eval/EVAL-073-both-strict-rescore.md has a \"2026-04-26 amendment\" section linking to EVAL-074-AUDIT"
     - Caveat clarifies the 100% number remains valid on EVAL-042 fixtures but does not generalize
@@ -2889,7 +2657,6 @@ gaps:
     and append the 3-way agreement table to EVAL-074-AUDIT-2026-04-26.md. This
     is judge-completion for an already-retracted finding, not a new
     investigation — outcome is methodological completeness, not a result claim.
-    
   acceptance_criteria:
     - Qwen-2.5-72B JSONL produced under logs/ab/eval-074-rescore-qwen.jsonl (≥80% scored)
     - 3-judge agreement table (Llama / Sonnet / Qwen) added as amendment to EVAL-074-AUDIT-2026-04-26.md
@@ -2919,7 +2686,6 @@ gaps:
     a real measurement. Re-run with verified python3.12, confirm JSONL rows
     show scorer=llm-judge not exit_code_fallback, and either re-instate or
     properly retire F3 based on a working measurement.
-    
   acceptance_criteria:
     - Verify python3.12 import anthropic before launching
     - Re-run EVAL-069 with same parameters under python3.12
@@ -2948,7 +2714,6 @@ gaps:
     methodology line. Use the output to (a) populate Cold Water's
     Reality Check lens deterministically and (b) file follow-up gaps
     for any retroactive violations.
-    
   acceptance_criteria:
     - Scorer script reads recent EVAL-*/RESEARCH-* closures and the methodology table from RESEARCH_INTEGRITY.md
     - Per-gap report - n>=50 ok|fail, judge diversity ok|fail, A/A baseline ok|fail, mechanism analysis ok|fail|n_a, prohibited-claim hits
@@ -2990,7 +2755,6 @@ gaps:
     relevant fixture class BEFORE the mechanism claim can land.
     
     Cold Water Issue #8, EVAL-074 retraction (PR #551, 2c4479f).
-    
   acceptance_criteria:
     - "docs/process/RESEARCH_INTEGRITY.md mechanism-analysis section adds an explicit gate: mechanism claim PRs must include a cross- judge agreement score ≥0.6 (kappa) on the fixture class where the mechanism was detected"
     - Pre-commit or CI check warns (non-blocking initially) when a mechanism-claim commit lacks a documented kappa score
@@ -3020,10 +2784,8 @@ gaps:
   effort: m
   description: |
     Horizon 2 goal: Mac and Pixel supervise each other. Currently neither can restart the other or verify the other's health automatically.
-    
   notes: |
     scripts/restart-mabel.sh: SSH stop+restart chump --discord on Pixel via ensure-mabel-bot-up.sh. scripts/probe-mac-health.sh: curl /api/dashboard with CHUMP_WEB_TOKEN, parse fleet_status JSON. Integration test checklist added to docs/FLEET_ROLES.md.
-    
   source_doc: docs/ECOSYSTEM_VISION.md
   closed_date: '2026-04-16'
 
@@ -3035,11 +2797,9 @@ gaps:
   effort: s
   description: |
     Currently both Chump and Mabel may produce hourly fleet reports, creating duplicate notifications. One report per morning from Mabel; Chump uses notify only for events (blocked, PR ready).
-    
   depends_on: [FLEET-001]
   notes: |
     Added CHUMP_FLEET_REPORT_ROLE=notify_only gate to hourly-update-to-discord.sh. When set, script exits immediately (no LLM call, no DM). Chump's notify tool remains active for ad-hoc events. docs/OPERATIONS.md "Single fleet report" section updated with Soft gate guidance.
-    
   source_doc: docs/ECOSYSTEM_VISION.md
   closed_date: '2026-04-16'
 
@@ -3051,14 +2811,12 @@ gaps:
   effort: xl
   description: |
     Section 3.6: two Chump instances temporarily share blackboard state via peer_sync, creating a unified broadcast for bounded turns, then split. Prerequisite: fleet symbiosis (FLEET-001) stable and mutual supervision proven.
-    
   depends_on: [FLEET-001, FLEET-002]
   notes: |
     Decomposed (FLEET-001/002 are done — gate satisfied):
       FLEET-003a — protocol spec doc (RFC; xs)
       FLEET-003b — peer_sync extension for atomic blackboard exchange (m)
       FLEET-003c — merge_workspace + split_workspace tool pair (s)
-    
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-18'
 
@@ -3070,7 +2828,6 @@ gaps:
   effort: xs
   description: |
     First chunk of FLEET-003. Pure design work. Produce docs/rfcs/RFC-fleet-workspace-merge.md covering: initiation condition (when to merge), merge envelope (how blackboard items transit + are attributed), duration cap (max turns merged), split semantics (what stays joint vs what goes back to each peer), failure modes (one peer disappears mid-merge).
-    
   depends_on: [FLEET-001, FLEET-002]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -3083,7 +2840,6 @@ gaps:
   effort: m
   description: |
     Second chunk. peer_sync currently sends per-item heartbeats; needs a transactional batch send/recv so two peers can swap blackboard snapshots in one round-trip. Wire envelope: SHA256 of payload, sequence number, timeout, peer-attribution headers.
-    
   depends_on: [FLEET-003a]
   source_doc: src/fleet.rs
   closed_date: '2026-04-18'
@@ -3096,7 +2852,6 @@ gaps:
   effort: s
   description: |
     Third chunk. Surface FLEET-003b's exchange as agent tools so the agent can decide to initiate a merge mid-turn (e.g., "I need Mabel's perspective on this") and split when done.
-    
   depends_on: [FLEET-003b]
   source_doc: src/fleet_tool.rs
   closed_date: '2026-04-18'
@@ -3109,7 +2864,6 @@ gaps:
   effort: s
   description: |
     Agents currently have zero passive awareness of each other. Lease files tell other agents who owns a gap, but nothing about what they're actively doing, what they've tried, or when something abrupt happens. Humans working side-by-side have continuous peripheral awareness — they don't ask "what are you doing?"; they receive that signal passively. Three missing capabilities: (1) passive emission — agents radiate activity events automatically without deciding to; (2) ambient stream — events accumulate in an always-readable log any agent can tail; (3) anomaly detection — a background process notices pattern breaks (overlapping edits, silent agents, sudden file bursts) and injects ALERT events.
-    
   notes: |
     Decomposed into four xs/s sub-gaps:
       FLEET-004a — ambient.jsonl format + emit helpers (xs)
@@ -3117,7 +2871,6 @@ gaps:
       FLEET-004c — passive emission via Claude Code PostToolUse hooks (xs)
       FLEET-004d — CLAUDE.md context injection at session start (xs)
       FLEET-005  — anomaly detector daemon (s, separate gap)
-    
   source_doc: docs/AGENT_COORDINATION.md
   closed_date: '2026-04-17'
 
@@ -3129,7 +2882,6 @@ gaps:
   effort: xs
   description: |
     Foundation for peripheral vision. Defines the ambient.jsonl event format and provides two emit primitives: (1) scripts/ambient-emit.sh — shell one-liner usable from git hooks and shell scripts; (2) ambient_emit() in crates/chump-agent-lease for Rust callers. Both append a newline-delimited JSON event atomically so concurrent writers don't corrupt the file.
-    
   source_doc: .chump-locks/ambient.jsonl
   closed_date: '2026-04-17'
 
@@ -3141,7 +2893,6 @@ gaps:
   effort: xs
   description: |
     Agents should radiate commits automatically. Currently no post-commit hook exists. Adding one means every git commit — from any session in any worktree — silently appends a commit event to the ambient stream. Other agents see the commit without the committing agent having to decide to announce it.
-    
   depends_on: [FLEET-004a]
   source_doc: scripts/git-hooks/post-commit
   closed_date: '2026-04-17'
@@ -3154,7 +2905,6 @@ gaps:
   effort: xs
   description: |
     File edits are the primary activity signal between agents. Claude Code supports PostToolUse hooks in .claude/settings.json that fire after every Edit/Write/Bash tool call. Wiring ambient-emit.sh into these hooks means every file edit and significant tool call emits passively — the agent doesn't need to think about it.
-    
   depends_on: [FLEET-004a]
   source_doc: .claude/settings.json
   closed_date: '2026-04-17'
@@ -3167,7 +2917,6 @@ gaps:
   effort: xs
   description: |
     The ambient stream is only useful if agents actually read it. Adding a mandatory step to the session startup block in CLAUDE.md ensures every new agent session reads the last 30 lines of ambient.jsonl before picking a gap. This is the "glance around the room" step — cheap, fast, and gives immediate situational awareness of what other agents have been doing.
-    
   depends_on: [FLEET-004a]
   source_doc: CLAUDE.md
   closed_date: '2026-04-17'
@@ -3180,7 +2929,6 @@ gaps:
   effort: s
   description: |
     Passive emission + ambient stream give agents a chronicle of events, but no agent notices when patterns break. Humans have preattentive anomaly detection — you notice someone running, sudden silence, an abrupt crash. A lightweight background daemon (scripts/ambient-watch.sh) watches .chump-locks/ and src/ with fswatch/inotifywait and emits ALERT events for three anomaly classes: (1) lease overlap — two sessions claim the same file path; (2) silent agent — a live lease's heartbeat stops for >15m; (3) edit burst — >20 file mutations in <60s (possible rebase stomp or runaway agent).
-    
   depends_on: [FLEET-004a]
   source_doc: scripts/ambient-watch.sh
   closed_date: '2026-04-17'
@@ -3207,7 +2955,7 @@ gaps:
 - id: FLEET-007
   domain: fleet
   title: Distributed leases with TTL — replace filesystem .chump-locks/*.json with NATS
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -3221,6 +2969,7 @@ gaps:
   notes: |
     Enables distributed work allocation. Heartbeat interval ~30s; TTL ~5min. Simple NATS state machine (not consensus-based; eventual consistency OK).
   source_doc: docs/FLEET_VISION_2026Q2.md
+  closed_date: '2026-04-25'
 
 - id: FLEET-008
   domain: fleet
@@ -3300,7 +3049,7 @@ gaps:
 - id: FLEET-012
   domain: fleet
   title: Blocker detection & timeout handling — agent recognizes stuck state
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -3315,6 +3064,7 @@ gaps:
   notes: |
     Pairs with EVAL-030 (task-class awareness). Blocker detection is the trigger for help-seeking. Resource monitoring is the infrastructure (need metrics from agent).
   source_doc: docs/FLEET_VISION_2026Q2.md
+  closed_date: '2026-04-24'
 
 - id: FLEET-013
   domain: fleet
@@ -3337,7 +3087,7 @@ gaps:
 - id: FLEET-015
   domain: fleet
   title: Ambient-stream NATS migration — complete FLEET-007 split-brain
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -3351,18 +3101,18 @@ gaps:
     nothing on machine B. The agent proceeds not knowing it is blind. This gap tracks
     completion of the FLEET-007 migration by closing FLEET-006 and verifying
     two-machine ambient event propagation.
-    
   acceptance_criteria:
     - FLEET-006 closed (ambient.jsonl events routed through NATS)
     - Two-machine integration test shows events from machine A in machine B tail
     - CLAUDE.md mandatory pre-flight continues to work unchanged
   depends_on: [FLEET-006, FLEET-007]
   opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
 
 - id: FLEET-016
   domain: FLEET
   title: Deduplicate FLEET-006 and FLEET-015 ambient intent before concurrent claim
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -3378,12 +3128,12 @@ gaps:
     overlap: either close FLEET-015 as a duplicate of FLEET-006, or restructure the
     two gaps so they cover non-overlapping scope (e.g., FLEET-006 = NATS schema +
     emit helpers, FLEET-015 = CLAUDE.md pre-flight and session-start subscription).
-    
   acceptance_criteria:
     - FLEET-006 and FLEET-015 no longer overlap in scope
     - Either one is closed as duplicate or both have non-overlapping acceptance criteria
     - No agent claims both gaps simultaneously without knowing they are related
   opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
 
 - id: FLEET-017
   domain: FLEET
@@ -3404,7 +3154,6 @@ gaps:
     the trigger prompt to run 'chump-coord watch' (or equivalent
     NATS-subscription primitive) so peripheral vision is actually
     cross-machine.
-    
   acceptance_criteria:
     - Cold Water trigger prompt subscribes to chump.events.> at session start
     - Subscription persists for at least 60 seconds before evidence-gathering begins
@@ -3426,7 +3175,6 @@ gaps:
     they cannot see local agent activity unless they subscribe to NATS.
     Sweep RemoteTrigger list, audit each prompt, and either wire NATS
     in or document why a given agent is intentionally local-only.
-    
   acceptance_criteria:
     - List every active scheduled remote trigger (RemoteTrigger action=list)
     - For each, classify - needs cross-machine ambient (yes/no) and current state (subscribed/not)
@@ -3442,14 +3190,12 @@ gaps:
   effort: s
   description: |
     Docs-only design note scoping how FLEET-006/007/008 will be developed and tested on a single dev machine before any Pi-cluster deployment. Picks the dev primitives (Docker NATS container on 127.0.0.1:4222), the test approach (async-nats + serial_test, hermetic bucket names, distributed mutex assertion via N concurrent tokio tasks), and recommends starting with FLEET-007 because (a) most prototyped — chump-coord already has the KV-create atomic claim implemented, (b) closes the highest-cost race documented by INFRA-042, (c) acceptance is a single property assertion. No implementation ships in this PR.
-    
   acceptance_criteria:
     - docs/FLEET_DEV_LOOP_DESIGN.md exists and is reachable from FLEET vision docs
     - dev loop is reproducible from the doc (single docker run command)
     - starting gap recommendation is justified against alternatives
   notes: |
     Design-note gap; no code change. Pairs with the INFRA-042 multi-agent stress report which empirically demonstrated the missing distributed mutex.
-    
   source_doc: docs/FLEET_DEV_LOOP_DESIGN.md
   opened_date: '2026-04-25'
   closed_date: '2026-04-25'
@@ -3462,7 +3208,6 @@ gaps:
   effort: m
   description: |
     Section 3.1: Represent belief states as density matrices; allow superposition of contradictory tool choices until action forces collapse. Hand-roll ~200 lines using nalgebra, not dreamwell-quantum (unstable, low adoption).
-    
   source_doc: docs/CHUMP_TO_COMPLEX.md, docs/ROADMAP_PRAGMATIC.md
   closed_date: '2026-04-16'
 
@@ -3474,10 +3219,8 @@ gaps:
   effort: m
   description: |
     Section 3.2: Use persistent homology (Betti numbers) to measure "shape" of information flow across blackboard modules, replacing the current graph density statistic. tda crate (v0.1.0) uses nalgebra + petgraph. Park until labeled session data from phi proxy calibration is available.
-    
   notes: |
     Implementation (src/tda_blackboard.rs, 310 lines) was written and compiled but never wired in — no callsites existed outside the module. Acceptance criterion (correlation with human-judged session quality) was never measured because labeled session data from phi_proxy calibration was never produced. Code removed 2026-04-19 (commit 32bc6e1) as dead weight in production binary. Recoverable from commit a383031 if labeled session data becomes available. Prerequisite before re-introducing: run phi_proxy calibration sweep and produce the labeled dataset this gate requires.
-    
   source_doc: docs/CHUMP_TO_COMPLEX.md, docs/ROADMAP_PRAGMATIC.md
   closed_date: '2026-04-16'
 
@@ -3489,7 +3232,6 @@ gaps:
   effort: m
   description: |
     See COG-003. Listed as frontier because it requires labeled task success data and the online learning component is speculative in quality gain.
-    
   depends_on: [COG-001]
   notes: Duplicate of COG-003 for frontier tracking. One closure closes both.
   source_doc: docs/CHUMP_TO_COMPLEX.md
@@ -3514,10 +3256,8 @@ gaps:
   effort: m
   description: |
     Block's goose was contributed to the Agentic AI Foundation (Linux Foundation) in Dec 2025 as one of three founding projects. Official AAIF description: "a local-first AI agent framework that combines language models, extensible tools, and standardized MCP-based integration." This is LITERALLY Chump's positioning sentence. Chump is no longer in an empty niche — it's competing with a Linux-Foundation-blessed open-source project backed by Block, AWS, Anthropic, Google, Microsoft, OpenAI. We need a sharper differentiation story than "local agent in Rust." Candidate axes: (a) eval-driven scientific rigor (goose is dev-tooling, not research methodology), (b) Rust + single-binary distribution (goose is Python/TypeScript), (c) cognitive-layer A/B-tested architecture with published harm-channel findings (EVAL-023/025/026 trilogy is rare in the field), (d) multi-agent coordination via worktree+lease+gap registry (goose is single-agent per session).
-    
   notes: |
     Action item from session 2026-04-19 strategic review. The deep research pass needs to actually read goose's architecture docs and run goose locally to compare. Reference: https://github.com/block/goose https://block.github.io/goose/ https://aaif.io/
-    
   source_doc: external (AAIF Dec 2025, Block goose)
   closed_date: '2026-04-19'
 
@@ -3529,10 +3269,8 @@ gaps:
   effort: s
   description: |
     Yann LeCun's AMI Labs raised $1.03B at $3.5B pre-money in Mar 2026 (largest European seed ever) to commercialize the JEPA (Joint Embedding Predictive Architecture) world-model thesis: that LLMs cannot reach AGI because they lack causal grounding in physical reality, and that latent-space prediction of action consequences is the alternative path. Chump's bet is on text + tools + memory + cognitive layer — explicitly the LLM scaffolding path. AMI's bet is the antithesis. Both can't be right. We don't need to PIVOT, but we should track AMI's progress quarterly: if their first product ships and works, the architecture conversation shifts and Chump's positioning needs revision. If their first product under-delivers, the LLM-scaffolding thesis is vindicated and Chump sits in a stronger position. Watchpoint, not action item.
-    
   notes: |
     References: https://techcrunch.com/2026/03/09/yann-lecuns-ami-labs-raises-1-03-billion-to-build-world-models/ https://www.latent.space/p/ainews-yann-lecuns-ami-labs-launches Per the 2026-04-19 strategic memo: COMP-005 (multimodal) remains DO-NOT-START. JEPA tracking is intelligence not implementation.
-    
   source_doc: external (AMI Labs $1.03B seed Mar 2026)
   closed_date: '2026-04-20'
 
@@ -3544,11 +3282,9 @@ gaps:
   effort: m
   description: |
     Chump's run-cloud-v2.py + scoring_v2 multi-axis A/B harness is genuinely differentiated infrastructure. Goose has security and Recipes; it does NOT publish methodologically-rigorous A/B harm findings on its own behavior. By applying Chump's eval harness to goose (and Aider, Claude Code) on the same fixtures Chump tests itself with, we can produce a cross-agent benchmark that no other project is positioned to publish. This converts Chump from "another local agent" to "the measurement layer for the local-agent ecosystem" — a defensible positioning move.
-    
   depends_on: [COMP-009]
   notes: |
     Significant strategic value: makes Chump THE benchmark for the local-agent space. Cost ~$10-20 cloud per benchmark run (4 agents × 3 fixtures × n=50 × 2 cells = 1200 trials × cross-family judges). Wall ~3-4 hours per agent (some are slower than others).
-    
   source_doc: docs/archive/2026-04/STRATEGY_VS_GOOSE.md (FRONTIER-005 follow-up)
   closed_date: '2026-04-20'
 
@@ -3586,7 +3322,6 @@ gaps:
     orphaned research. Flagged in Issues #4 and #6 without correction. Closes when
     each recommendation is either filed as a gap or explicitly declared out-of-scope
     with documented rationale in the strategic memo.
-    
   acceptance_criteria:
     - Each of the 5 section-3 recommendations in STRATEGIC_MEMO_2026Q2.md is either (a) filed as its own gap or (b) marked Decision out-of-scope with reason
     - STRATEGIC_MEMO_2026Q2.md front-matter updated with last_audited 2026-04-26
@@ -3601,7 +3336,6 @@ gaps:
   effort: xl
   description: |
     Current speculative execution rolls back in-process state (beliefs, neuromod, blackboard) but external side effects (file writes, CLI commands) are not rolled back. ADR-001 describes routing risky tools through sandbox_run for real rollback capability.
-    
   notes: |
     Decomposed:
       INFRA-001a — observability: count + log unrolled-back side
@@ -3613,7 +3347,6 @@ gaps:
                    INFRA-001a shows pain).
       INFRA-001c — policy doc: which tools route through sandbox
                    (write_file, patch_file, run_cli, git_*).
-    
   source_doc: docs/ROADMAP_POST_PHASE_F.md, docs/ADR-001-transactional-tool-speculation.md
   closed_date: '2026-04-18'
 
@@ -3625,7 +3358,6 @@ gaps:
   effort: s
   description: |
     First chunk of INFRA-001. Need a metric to know HOW OFTEN we roll back in-process state but leave file-system / external side effects orphaned. Today we silently lose that signal.
-    
   source_doc: src/speculative_execution.rs
   closed_date: '2026-04-17'
 
@@ -3637,7 +3369,6 @@ gaps:
   effort: xs
   description: |
     INFRA-001a shipped the counter + metrics. tool_middleware (or whichever caller invokes speculative_execution::rollback) needs to walk the rolled-back batch's tool calls and invoke record_unrolled_side_effect for each write tool. Without this wiring the counter sits at 0.
-    
   depends_on: [INFRA-001a]
   source_doc: src/tool_middleware.rs
   closed_date: '2026-04-17'
@@ -3650,7 +3381,6 @@ gaps:
   effort: l
   description: |
     Second chunk of INFRA-001. Implement the ADR's plan only AFTER INFRA-001a shows non-trivial unrolled-back side effects in a production trace.
-    
   depends_on: [INFRA-001a]
   source_doc: docs/ADR-001-transactional-tool-speculation.md
   closed_date: '2026-04-18'
@@ -3663,7 +3393,6 @@ gaps:
   effort: xs
   description: |
     Third chunk of INFRA-001. Reference list of tools that ARE / ARE NOT routed through sandbox when CHUMP_SANDBOX_SPECULATION=1. Mostly classifies write/read/network tools — pure documentation.
-    
   source_doc: docs/ADR-001-transactional-tool-speculation.md
   closed_date: '2026-04-17'
 
@@ -3675,10 +3404,8 @@ gaps:
   effort: s
   description: |
     sandbox_run (CHUMP_SANDBOX_ENABLED=1) exists but lacks: allowlist of safe command patterns beyond heuristic_risk High block, max worktree disk budget, documented Mac vs CI git requirements.
-    
   notes: |
     CHUMP_SANDBOX_ALLOWLIST: case-insensitive substring match; rejects non-matching commands with clear Err. CHUMP_SANDBOX_DISK_BUDGET_MB: default 500; post-run du -sk check; warning logged + surfaced in tool output. 4 serial tests (env var isolation). WASM_TOOLS.md: new "Sandbox prerequisites" section documenting CHUMP_SANDBOX_ENABLED, all env vars, Mac vs CI differences, git requirements. Note: CI teardown job remains a nice-to-have but acceptance criteria met.
-    
   source_doc: docs/ROADMAP_POST_PHASE_F.md
   closed_date: '2026-04-16'
 
@@ -3690,7 +3417,6 @@ gaps:
   effort: l
   description: |
     WP-1.5: RFC-mistralrs-multimodal-in-tree.md is Proposed, not Accepted. AxonerAI Message extension + MultimodalModelBuilder path designed but not implemented. Blocks vision input in in-process inference mode.
-    
   notes: Unblock by first accepting the RFC.
   source_doc: docs/HIGH_ASSURANCE_AGENT_PHASES.md
 
@@ -3702,7 +3428,6 @@ gaps:
   effort: xl
   description: |
     WP-7.2 blocked until sponsor chooses adopt in WP-7.1 (RFC-agent-governance.md recommends defer adopt) AND security review completed.
-    
   notes: |
     Sponsor decision gates this entirely. Do not start WP-7.2 without WP-7.1 adopt.
     Unblock checklist (when sponsor moves to "adopt"):
@@ -3720,7 +3445,6 @@ gaps:
          tables.
     
     Until sponsor decision: status stays blocked, no code lands.
-    
   source_doc: docs/HIGH_ASSURANCE_AGENT_PHASES.md
 
 - id: INFRA-005
@@ -3764,7 +3488,6 @@ gaps:
   effort: m
   description: |
     FLEET-004a / FLEET-004c / FLEET-005 are all marked status=done but .chump-locks/ambient.jsonl contains only session_start and occasional bash_call events. Expected file_edit, commit, ALERT kind=*, and edit_burst events are NEVER written. 50+ PRs landed today; zero of them appear as commit events in ambient. The orchestrator's monitor loop relies on ambient to distinguish a stalled subagent from an active one; without it, stalls look identical to work. Until this is fixed unattended operation is unsafe because we cannot detect silent agents (ALERT kind=silent_agent never fires either). Diagnose step 1: which git hook / Rust module is SUPPOSED to write commit / file_edit events? Step 2: trace why it is not actually writing (permission? path? feature flag?). Step 3: fix + verify 50 real events in ambient within 10 minutes of normal activity.
-    
   acceptance_criteria:
     - Audit doc docs/eval/INFRA-007-ambient-firing.md identifies the intended emitter path for each event kind (commit, file_edit, bash_call, ALERT kind=*, edit_burst) plus the actual code path
     - At least 3 event kinds (commit, file_edit, ALERT) observed in .chump-locks/ambient.jsonl within 10 minutes of triggering activity
@@ -3772,7 +3495,6 @@ gaps:
     - docs/AGENT_COORDINATION.md ambient-kind table updated to match what actually fires
   notes: |
     Blocker #4 on the 2026-04-20 5-blocker list. Hard prerequisite for any unattended run longer than ~30 minutes. The monitor loop exists, the hooks exist, but end-to-end emission is broken. Expected ~1 day of investigation + fix.
-    
   source_doc: 2026-04-20 strategic review blocker
   closed_date: '2026-04-20'
 
@@ -3784,7 +3506,6 @@ gaps:
   effort: m
   description: |
     The 6-8 week autonomy timeline terminates at a 72-hour unattended soak test. That gate cannot be cleared unless blockers #1 (trustworthy eval signal), #3 (cost-routing proven), #4 (ambient stream emitting), and #5 (binary stability) are all near-solved. A 4-hour precursor soak is a cheaper forcing function: it exposes the same failure modes in an afternoon instead of 3 days, lets the team iterate without burning 72h of wall time per attempt, and surfaces a concrete go/no-go for each blocker. Soak definition: chump-orchestrator --watch running unattended for 4 hours against a mixed-gap backlog (infra + eval + docs). Success criteria: (a) at least 1 PR shipped, (b) zero unrecovered binary panics (panic = sev 1 regression), (c) ambient.jsonl shows file_edit / commit / bash_call events throughout (not just session_start), (d) cost stays under $5 (if claude-backend) or $1 (if chump-local+Ollama).
-    
   acceptance_criteria:
     - scripts/soak/run-4h-precursor.sh shell wrapper + watchdog
     - INFRA-007 ambient stream fix complete and verified in soak
@@ -3794,7 +3515,6 @@ gaps:
   depends_on: [INFRA-007, QUALITY-002]
   notes: |
     Deliberate P2 — not pre-requisite work, but pre-requisite-proof work. File now so the forcing function exists in the registry. Do not start implementation until INFRA-007 and QUALITY-002 have at minimum their triage output, otherwise the soak will just fail on known preexisting issues and waste a cycle.
-    
   source_doc: 2026-04-20 strategic review (week-4-8 forcing function)
   closed_date: '2026-04-21'
 
@@ -3806,14 +3526,12 @@ gaps:
   effort: s
   description: |
     Red Letter #3 measured docs/ inflation: 66 files (Issue #1) -> 119 (Issue #2) -> 139 (Issue #3), zero deletions or archives across three review cycles. The pattern is not driven by any single PR, it is driven by the default behavior of PRs adding new eval / methodology / retrospective docs without ever removing stale ones. A mechanical counter-pressure would help: a pre-commit rule that any PR touching docs/*.md must either (a) accompany a deletion or archival of another docs/*.md of comparable size, or (b) explicitly acknowledge the addition is a net-new file via a commit-message trailer "Net-new-docs: +1" (so operators can grep the pattern post-hoc).
-    
   acceptance_criteria:
     - scripts/git-hooks/pre-commit amended with a docs-delta check that fires only when docs/*.md files are staged and either (a) a deletion is also staged, or (b) the commit message trailer Net-new-docs +1 is present
     - Not blocking by default (warning only) for one week; turn blocking after 2026-04-28
     - docs/AGENT_COORDINATION.md pre-commit-guards table updated with the new check and bypass envvar (CHUMP_DOCS_DELTA_CHECK=0)
   notes: |
     Advisory P3 — useful hygiene, not a blocker on any path. File now so the pattern has an owner. Can be picked up whenever a sibling agent has a quiet slot.
-    
   source_doc: docs/RED_LETTER.md Issue
   closed_date: '2026-04-20'
 
@@ -3842,7 +3560,6 @@ gaps:
   effort: xs
   description: |
     INFRA-GAPS-DEDUP (PR #176) shipped the duplicate-ID guard in scripts/git-hooks/pre-commit (lines 268-308) and the one-time dedup pass that resolved the 7 collision pairs. Two acceptance items remained unshipped: (a) a test fixture validating the guard behaves correctly, and (b) an explicit row in CLAUDE.md's pre-commit table documenting the guard as a distinct check with its bypass env var. This gap closes both. New file scripts/test-duplicate-id-guard.sh asserts three scenarios: duplicate insert is rejected with a "DUPLICATE GAP ID" error that names the colliding id, legitimate non-duplicate insert is accepted, and CHUMP_GAPS_LOCK=0 bypass works. CLAUDE.md's pre-commit guards table gains a "duplicate-ID insert" row pointing at the test script and citing the Red Letter #2 motivation.
-    
   acceptance_criteria:
     - scripts/test-duplicate-id-guard.sh exists, is executable, and all 3 test cases pass
     - Test sets up an isolated fake repo, wires in the pre-commit hook, and verifies reject/accept/bypass paths
@@ -3851,7 +3568,6 @@ gaps:
   depends_on: [INFRA-GAPS-DEDUP]
   notes: |
     Docs-only + test-only. No change to the guard code itself — just closing the paper trail on the remaining acceptance items so the pre-commit test suite covers all five guards on the same footing.
-    
   source_doc: INFRA-GAPS-DEDUP acceptance follow-up (PR
   closed_date: '2026-04-20'
 
@@ -3863,7 +3579,6 @@ gaps:
   effort: xs
   description: |
     INFRA-006 tracks an upstream vllm-mlx bug — mid-inference client disconnects trigger a Metal GPU assertion crash that kills the whole server. The fix is in vllm-mlx's Metal command-buffer path (upstream, out of Chump's reach). This gap ships the Chump-side mitigation: ensure no ab-harness entry point uses a per-trial timeout short enough to disconnect mid-inference. Audit found one remaining unsafe spot: scripts/ab-harness/run-live-ablation.sh was passing --timeout 120, below the empirical inference floor (~56s for a 9B-4bit model with a 20K-char system prompt) + realistic margin. Bumped to --timeout 300 (5× the floor) with an inline comment citing the crash chain. Added a "vllm-mlx Metal crash — why --timeout 300" section to scripts/ab-harness/README-live-ablation.md documenting the crash pattern, why Chump cannot fix it locally, and the recovery procedure (kill sweeps, clear sessions/cli/cli/messages.json, restart server, re-run with --timeout 300). INFRA-006 remains OPEN tracking the upstream fix. This gap closes only the Chump-side trigger-side mitigation and its documentation, so operators don't keep tripping the same bug while upstream is pending.
-    
   acceptance_criteria:
     - scripts/ab-harness/run-live-ablation.sh uses --timeout 300 with inline rationale comment
     - "scripts/ab-harness/README-live-ablation.md has a \"vllm-mlx Metal crash\" section documenting cause, mitigation, and recovery"
@@ -3871,7 +3586,6 @@ gaps:
     - No other ab-harness doc examples recommend --timeout < 240 against a local vllm-mlx backend (verified by grep)
   notes: |
     Scope bounded deliberately — the Python driver scripts with `timeout: int = 60` targets (run-cross-session-driver, run-longitudinal-driver, run-real-lessons-driver) are calling *cloud* APIs (Anthropic/Together), which don't suffer the Metal crash. Only paths that can hit a local vllm-mlx server needed the bump. docs/eval/EVAL-060-methodology-fix.md:151 is a historical command record and was left untouched.
-    
   source_doc: INFRA-006 (upstream vllm-mlx Metal crash, blocked on waybarrios/vllm-mlx upstream)
   closed_date: '2026-04-20'
 
@@ -3883,7 +3597,6 @@ gaps:
   effort: xs
   description: |
     docs/RESEARCH_INTEGRITY.md warned that python3 resolves to 3.14 on this machine and has no `anthropic` module, causing every ab-harness script using `#!/usr/bin/env python3` to silently fall back to scorer=exit_code_fallback — no real LLM-judge scores, no error message. Red Letter #4 identified this as the methodology foot-gun behind EVAL-069's identical-CI result (acc_A = acc_B = 0.920, CI[0.812, 0.968] both cells — the fingerprint of a scorer awarding the same pass/fail on every trial regardless of agent behavior). The result was then used to retire F3's neuromod aggregate signal in FINDINGS.md as a "methodology artifact." Verified on this machine: `python3 --version` = 3.14.4, import anthropic raises ModuleNotFoundError; `python3.12 --version` = 3.12.13, anthropic 0.96.0 imports cleanly. Fix shipped by this gap: (1) bulk-rewrote `#!/usr/bin/env python3` → `#!/usr/bin/env python3.12` across all 23 ab-harness Python scripts, (2) updated 4 shell-script invocations (scripts/ab-harness/run-live-ablation.sh x2, run-local-v2.sh, scripts/test-status.sh) from `python3 scripts/ab-harness/...` → `python3.12 scripts/ab-harness/...`. Smoke-tested: ./scripts/ab-harness/run-binary-ablation.py --help resolves via shebang and anthropic 0.96.0 imports cleanly on the new path. INFRA-017 closes the foot-gun ONLY — it does NOT re-run EVAL-069 or retroactively validate any prior sweep result. Follow-up gap EVAL-069-REDO will be needed to re-run the aggregate-signal retirement against the fixed instrument per Red Letter #4's recommendation.
-    
   acceptance_criteria:
     - All 23 Python scripts in scripts/ab-harness/ use
     - All shell-script invocations of ab-harness python drivers use `python3.12` not `python3`
@@ -3892,7 +3605,6 @@ gaps:
     - Red Letter
   notes: |
     Scope intentionally narrow — only the shebang and direct caller invocations were changed. Docstring examples inside the scripts (`"Usage: python3 scripts/ab-harness/foo.py ..."`) were NOT rewritten in this PR to keep the diff reviewable; a follow-up docs-cleanup sweep can handle those. The core scoring-reliability regression is closed — every chump-initiated ab-harness invocation now runs under python3.12 with anthropic installed.
-    
   source_doc: docs/RED_LETTER.md Issue
   closed_date: '2026-04-21'
 
@@ -3927,7 +3639,6 @@ gaps:
     (2) stale-worktree-reaper.sh adds a target/ purge pass independent of reap-eligibility — PRs in the merge queue still hold worktrees that no longer need a build cache. Dry-run confirmed 4.9 GB reclaimable.
     (3) docs/AGENT_LOOP.md gains a "Go slow to go fast" anti-stomp protocol: gap-ID reservation checks across open PRs, one-filer-at-a- time for proactive gap-seeding, broadcast-intent before filing Red Letter gaps, never bypass pre-commit hooks with CHUMP_*=0 to clear an error you don't understand. This addresses the collision that produced three distinct INFRA-017 entries on main in a 5-minute window (PR #341 rename, PR #343 Red Letter filing, PR #344 shebang fix) while my own #337 sat open with a fourth meaning.
     Re-files the content originally shipped as INFRA-017 in PR #337 (closed as dirty after the ID space collapsed). No build changes.
-    
   acceptance_criteria:
     - scripts/bot-merge.sh purges ./target after writing .bot-merge-shipped (CHUMP_KEEP_TARGET=1 bypass)
     - scripts/stale-worktree-reaper.sh target/ purge pass runs each launchd cycle
@@ -4195,7 +3906,6 @@ gaps:
          merge --auto --squash`) — worked first try, landed as PR
          #362.
     Root cause is not diagnosed — could be gh CLI rate-limit, a subshell spawning issue, cargo lock contention with sibling worktrees rebuilding serenity, or `set -e` swallowing a soft failure. Without diagnostic output, the agent loop has no way to know bot-merge has failed vs. is still running. This gap ships: (1) **Progress banners** — every major stage of bot-merge (rebase, fmt, clippy, tests, push, gh-pr-create, auto-merge-arm, checkpoint-tag) prints a timestamped banner to stdout. No step should produce silent periods longer than 30s. (2) **Per-stage watchdog** — each stage has a timeout (rebase 60s, fmt 30s, clippy 300s, push 60s, gh 30s). On timeout, dump last 20 lines of any spawned subprocess output and exit non-zero with a clear error. (3) **Liveness heartbeat** — long stages (clippy especially) emit a line every 30s (`[bot-merge] still running clippy: 90s elapsed`) so a parent watcher can distinguish "stuck" from "working hard." (4) **Exit-code honesty** — if any stage fails or is skipped, final exit code must reflect it. The observed "exit 0 with no PR" path is a contract violation. (5) **Manual-fallback runbook** — CLAUDE.md gains a short section documenting the `git push + gh pr create + gh pr merge --auto --squash` bypass path for when bot-merge.sh itself is broken. Already proven workable in cycle 5.
-    
   acceptance_criteria:
     - scripts/bot-merge.sh prints a timestamped `[bot-merge] <stage>...` banner at the start of every major stage
     - No stage produces silent stdout for more than 30s (heartbeat line required on long operations)
@@ -4205,7 +3915,6 @@ gaps:
     - scripts/test-bot-merge-liveness.sh exists; mocks a sibling-contention scenario and verifies the watchdog timeout fires
   notes: |
     P1 because bot-merge.sh is load-bearing for the entire fleet. Silent-fail is the worst failure mode for an agent loop — the loop cannot recover without human intervention. Shipping this unblocks reliable autonomous ship cycles. Scope is explicitly diagnostic-first; no behavior change to the happy path. Dogfoods itself — the first agent to ship this will have used the manual-fallback path in CLAUDE.md to do so.
-    
   source_doc: 2026-04-21 agent-loop observation — 2 RESEARCH-027 bot-merge invocations hung for 20+ min with 0 stdout
   closed_date: '2026-04-21'
 
@@ -4217,7 +3926,6 @@ gaps:
   effort: s
   description: |
     EVAL-071 preliminary shows lesson injection hurts DeepSeek-V3.1 correctness (-23pp) while remaining helpful/neutral on Anthropic and neutral on Qwen3-235B. The current CHUMP_LESSONS_OPT_IN_MODELS is a per-model allowlist but has no default family-level safety net — if an operator ships to a new non-Anthropic backend they opt-in model-by-model without evidence. Add CHUMP_LESSONS_DENY_FAMILIES (default "deepseek") that short-circuits injection regardless of opt-in flag. Pair with a log line so operators can see "lessons suppressed — family denied". Unblock by per-family evidence (EVAL-074).
-    
   acceptance_criteria:
     - CHUMP_LESSONS_DENY_FAMILIES env parsed by PromptAssembler
     - "Default value includes \"deepseek\" until EVAL-074 provides a fix"
@@ -4235,7 +3943,6 @@ gaps:
   effort: m
   description: |
     Autonomous loops (scripts/agent-loop.sh, Cursor fleet sessions) still lack a single command that answers: which gaps are live-claimed, which PRs are in-flight, and whether ambient is emitting commit/file_edit events. Ship scripts/fleet-status.sh (name flexible) that composes musher --status, gap-lease directory summary, recent ambient tail, and open gh PRs touching docs/gaps.yaml — suitable for human and CI preflight. Document the workflow in docs/AGENT_LOOP.md and docs/CHUMP_CURSOR_FLEET.md.
-    
   acceptance_criteria:
     - scripts/*fleet* status entrypoint exists and exits 0 on a healthy idle repo
     - Emits clear WARN sections when ambient shows only session_start or when no leases but musher shows claimed gaps
@@ -4254,7 +3961,6 @@ gaps:
   effort: xs
   description: |
     scripts/agent-loop.sh is validated for Claude Code re-invocation. Cursor headless `agent` sessions can approximate the same loop but differ in auth, tool allowlists, and resume semantics. Add an explicit subsection to docs/AGENT_LOOP.md + docs/CHUMP_CURSOR_FLEET.md describing what is supported today, what is experimental, and the required prompt wrapper for safe gap iteration (including CHUMP_SESSION_ID guidance for parallel Cursor tabs).
-    
   acceptance_criteria:
     - docs/AGENT_LOOP.md subsection compares Claude agent-loop.sh vs Cursor headless path
     - docs/CHUMP_CURSOR_FLEET.md lists required env vars + anti-patterns (no hook bypass)
@@ -4272,7 +3978,6 @@ gaps:
   effort: m
   description: |
     Chump already documents Claude-primary autonomous loops (`scripts/agent-loop.sh`, `/loop`, `ScheduleWakeup`) and Cursor-first fleet safety (`docs/CHUMP_CURSOR_FLEET.md`, subagent rules, headless `agent` smoke). Real squads will mix surfaces daily (IDE pair-programming + headless dispatch + Discord `run_cli`). Treat **both** as first-class citizens: equal-depth runbooks, shared invariants (leases, gap-reserve, preflight, bot-merge, merge-queue discipline), and tooling so neither surface is a second-tier path that drifts or bypasses hooks. Complements INFRA-033 (MCP coord) by making the *human + agent* experience symmetric across Cursor and Claude where tool capabilities differ.
-    
   acceptance_criteria:
     - "docs: add a short coordination index (new doc or extend CHUMP_CURSOR_FLEET) that states when to use Cursor vs Claude vs both, with links to AGENT_LOOP, CLAUDE.md, and INTENT_ACTION_PATTERNS"
     - "docs/AGENT_LOOP.md gains a \"Dual-surface team model\" subsection: same coordination bar, different cadence/automation (no false equivalence of /loop vs Cursor)"
@@ -4282,7 +3987,6 @@ gaps:
     - "Optional: Discord/run_cli doc cross-links dual-surface checklist for delegated runs"
   notes: |
     INFRA-031 closed doc parity for headless loop semantics; INFRA-032 is the product-level "both surfaces are best-in-class" slice. Synergy with INFRA-033 MCP tools — optional follow-on once coord server exists.
-    
   source_doc: User request 2026-04-22 — team will use both Cursor and Claude Code on Chump
   closed_date: '2026-04-21'
 
@@ -4294,7 +3998,6 @@ gaps:
   effort: m
   description: |
     Fleet agents shell into gap-preflight.sh, gap-claim.sh, and musher.sh. Cursor and other MCP-first clients need a first-class, read-mostly tool surface so partner sessions can coordinate without ad-hoc copy/paste or unsafe YAML edits. Ship crates/mcp-servers/chump-mcp-coord exposing MCP tools that wrap the same invariants as docs/AGENT_COORDINATION.md (leases under .chump-locks/, gaps ledger semantics, no status mutation except via documented human/PR flows). Minimum tool set: gap_preflight, gap_claim_write (lease JSON only), lease_list_active, musher_pick, ambient_tail (read-only last N ambient events). Tools must never rewrite docs/gaps.yaml status fields.
-    
   acceptance_criteria:
     - New crate ships under crates/mcp-servers/chump-mcp-coord with Cargo manifest + README wiring
     - At least five MCP tools with JSON schemas documented in crates/mcp-servers/README.md
@@ -4304,7 +4007,6 @@ gaps:
   depends_on: [INFRA-021]
   notes: |
     Queued 2026-04-23 from fleet-hardening plan. Ships after INFRA-028 (bot-merge liveness, done) so operators get one coherent observability story.
-    
   source_doc: docs/CHUMP_CURSOR_FLEET.md + crates/mcp-servers/README.md MCP program note
   closed_date: '2026-04-22'
 
@@ -4316,7 +4018,6 @@ gaps:
   effort: xs
   description: |
     Concurrent cursor/opencode agents left uncommitted edits in the main worktree (rule violation): six eprintln!("[*_debug] ...") tracing the skip_tools_first_call path in src/agent_loop/{orchestrator,iteration_controller}.rs and src/local_openai.rs, plus a Cargo.toml `atty = "0.2.14"` dep that is unmaintained (RUSTSEC-2021-0145) and unused (main.rs already uses std::io::IsTerminal). Two of the edits are real fixes worth salvaging: (a) `voice = ["thiserror"]` feature gate + optional thiserror dep — voice.rs already imports thiserror so the voice feature was broken at HEAD; (b) embed_inprocess.rs match→if let clippy cleanup; (c) piped-stdin single-turn mode in main.rs so `echo "hi" | chump` runs one turn and exits. Revert the debug spam, drop atty, salvage the three fixes. Also rename 7 mis-pathed eval-runs archive dirs whose absolute path got doubled into the directory name (handled in a follow-up PR; data is intact).
-    
   acceptance_criteria:
     - src/agent_loop/{orchestrator,iteration_controller}.rs and src/local_openai.rs match origin/main (no eprintln debug)
     - Cargo.toml has no atty dep
@@ -4335,7 +4036,6 @@ gaps:
   effort: xs
   description: |
     Seven eval-run archive directories were created with absolute-path-as-name (e.g. `_Users_jeffadkins_Projects_Chump_docs_archive_eval-runs_claude_eval-063-2026-04-22/`) instead of the canonical `eval-NNN-YYYY-MM-DD/` form used by sibling `eval-025-cog016-validation/`. Likely cause: an eval driver was passed an absolute archive root as the run-name argument and slugified the slashes. Data inside is intact (~3.3 MB of binary-judge / cross-judge jsonl logs). Rename to canonical form and commit so the archive index stays consistent.
-    
   acceptance_criteria:
     - No directory under docs/archive/eval-runs/ has a leading underscore prefix or absolute-path slug
     - All seven dirs renamed to eval-NNN-YYYY-MM-DD or infra-NNN-name-YYYY-MM-DD pattern
@@ -4368,7 +4068,6 @@ gaps:
        - Make sure "Do not allow bypassing the above settings" is checked
          (this is the box that lets admins override red CI; without it,
          dependabot-automerge.yml's tightening is the only safety net)
-    
   acceptance_criteria:
     - dependabot-automerge.yml only auto-merges semver-patch updates
     - Future dependabot minor bumps (e.g. 0.x → 0.y) require a human review click
@@ -4379,7 +4078,7 @@ gaps:
 - id: INFRA-039
   domain: infra
   title: REMOVAL-003 design + CLAUDE.md PR-size rule update (intent-atomic over file-count)
-  status: open
+  status: done
   priority: P3
   effort: xs
   description: |
@@ -4397,12 +4096,12 @@ gaps:
        mechanical refactors, codemod-style PRs are world-class default.
        Industry analogues: Meta jscodeshift, Google gMock migrations,
        rust-lang `cargo fix --edition` PRs touching hundreds of files.
-    
   acceptance_criteria:
     - docs/eval/REMOVAL-003-design.md committed with audit + PR proposal + approval questions
     - "CLAUDE.md \"Hard rules\" section reflects intent-atomic PR guidance"
     - No code changes (this is design + policy only)
   source_doc: docs/eval/REMOVAL-003-design.md
+  closed_date: '2026-04-24'
 
 - id: INFRA-040
   domain: infra
@@ -4438,7 +4137,6 @@ gaps:
          `check`, `dry-run (chump)`
       4. Optionally ADD: `audit`, `build-and-linkcheck`
       5. Save
-    
   acceptance_criteria:
     - Branch protection required-checks list contains only always-run workflow checks
     - "PR #459 and PR #460 unblock and merge"
@@ -4449,12 +4147,11 @@ gaps:
 - id: INFRA-042
   domain: infra
   title: Multi-agent dogfooding end-to-end test
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
     FLEET vision describes distributed agents coordinating work across a Tailscale network. Haven't proven the system works under real multi-agent load. Scope: Set up 2–3 agents in chump-orchestrator on same machine (or small Pi cluster). Post 3–5 representative gaps. Run for 2–4 hours; observe lease conflicts, ambient stream integrity, work board interaction. Document: what broke? what was slow? what felt brittle? Acceptance: agents can claim and execute gaps independently, lease collisions don't cause data loss, ambient stream records all events, at least one subtask successfully posted and claimed across agents, no silent failures.
-    
   acceptance_criteria:
     - Agents can claim and execute gaps independently without conflicts
     - Lease collisions don't cause data loss or deadlock
@@ -4466,6 +4163,7 @@ gaps:
   notes: |
     Critical for validating FLEET concept. Can run after FLEET-006/007 basic implementation.
   source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  closed_date: '2026-04-25'
 
 - id: INFRA-043
   domain: infra
@@ -4475,7 +4173,6 @@ gaps:
   effort: l
   description: |
     Lease collision handling, ambient stream append under 50+ concurrent writes, worktree reaper stability. Unknown failure modes. Scope: Write harness that (1) spawns 10 agents all claiming same gap, verify only 1 succeeds; (2) spawns 20 agents writing 100 events each, verify no lost events; (3) creates 50 stale worktrees, run reaper, verify correct ones removed; (4) verify session TTL auto-expiry within ~60 min.
-    
   acceptance_criteria:
     - Lease collision test passes (10/10 agents, only 1 claim succeeds)
     - Ambient stream test passes (2000 events, 0 lost, no corruption)
@@ -4490,12 +4187,11 @@ gaps:
 - id: INFRA-044
   domain: infra
   title: AI pre-audit dispatcher + static/license/CVE sweep (cargo-deny, cargo-audit, lychee, clippy-pedantic)
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
     CPO-framing gap, Tier 3 — ship-risk hygiene. Wraps existing tools into scripts/audit/run-all.sh so the static-analysis slice of the expert panel runs as a single agent-invokable command. Scope: (1) dispatcher at scripts/audit/run-all.sh running cargo-deny, cargo-audit, cargo-udeps, cargo-machete, lychee (doc link-rot), cargo clippy --pedantic; (2) output aggregated to docs/audit/findings-YYYY-MM-DD.md with severity tiers; (3) auto-file gaps for critical findings (CVE, license conflict); (4) weekly CI wiring; (5) this gap surfaces only — fixes land as follow-up gaps from findings.
-    
   acceptance_criteria:
     - scripts/audit/run-all.sh exists and runs all six tools
     - Aggregated findings committed to docs/audit/findings-YYYY-MM-DD.md
@@ -4505,16 +4201,16 @@ gaps:
   notes: |
     P2 so it doesn't displace PRODUCT-015/016/017 (Tier 1) or PRODUCT-018/019 (Tier 2). Closes ~50% of reviewer roles
   source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
 
 - id: INFRA-045
   domain: infra
   title: bot-merge.sh must preserve pending_new_gap across session migration
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
     `scripts/bot-merge.sh` creates its own session lease (via `CHUMP_SESSION_ID=chump-<worktree>-<epoch>`) and calls `gap-claim.sh` under that session. For **new** gaps that were reserved via `scripts/gap-reserve.sh` (which wrote `pending_new_gap: {id, ...}` to the *original* session's lease), bot-merge never copies that reservation into the new lease. Result: the post-rebase preflight runs under the new session, doesn't find the gap on `origin/main` (correct — we're filing it), and doesn't find a `pending_new_gap` on the new session's lease (reservation was on the old session), so preflight fails with "not found in docs/gaps.yaml" and bot-merge exits: "Gap was completed on main while we rebased — nothing left to push." Actual incident: PR #476 (PRODUCT-015, 2026-04-24) — shipped via INFRA-028 manual path instead. Scope: (1) at bot-merge startup, if `$CHUMP_SESSION_ID` differs from the caller's resolved session AND caller's lease has `pending_new_gap`, copy that field into the bot-merge session's lease before calling `gap-claim.sh`; (2) add integration test in `scripts/test-bot-merge-pending-gap.sh` that reserves a gap, writes a stub gap entry + commit, runs bot-merge, and verifies preflight passes post-rebase; (3) document the contract in bot-merge.sh header.
-    
   acceptance_criteria:
     - bot-merge.sh detects when caller's session has a pending_new_gap for the target gap
     - bot-merge.sh migrates pending_new_gap to its own session lease before claim
@@ -4523,8 +4219,9 @@ gaps:
     - Existing passes (gap already on main) remain unaffected
   notes: |
     Filed from PR #476 incident. Shipped workaround: use INFRA-028 manual path (CHUMP_GAP_CHECK=0 git push + gh pr create + gh pr merge --auto --squash). Fix unblocks the default bot-merge path for any gap reserved via gap-reserve.sh + same-PR filed.
-    
   source_doc: CLAUDE.md
+  closed_date: '2026-04-24'
+  closed_pr: 482
 
 - id: INFRA-047
   domain: infra
@@ -4534,7 +4231,6 @@ gaps:
   effort: m
   description: |
     Audit and upgrade dependencies to clear security vulnerabilities before release-plz integration (INFRA-048). Phase 1 (blocking): fix rustls-webpki CVEs (RUSTSEC-2026-0104/0098/0099/0049) and evaluate RSA timing attack (RUSTSEC-2023-0071). Phase 2: remove deprecated async-std, declare MSRV for publishable crates, add CI job for MSRV verification.
-    
   acceptance_criteria:
     - Upgrade rustls-webpki to ≥0.103.13 for all publishable crates (chump-tool-macro, chump-coord, chump-perception)
     - Evaluate RSA timing attack impact; document decision (keep/migrate)
@@ -4544,7 +4240,6 @@ gaps:
     - Run cargo-audit, cargo-deny, cargo-udeps; zero RUSTSEC for lib crates
   notes: |
     Serenity 0.12 (Discord support) pulls old rustls 0.22.4 → webpki 0.102.8 (vulnerable). Not used in publishable crates, so doesn't block lib publishing. Documented as technical debt; serenity replacement tracked in PRODUCT-013. RSA 0.9.10 (Marvin attack) is server-side VAPID signing only (non-critical); acceptable as known risk with local-access requirement. async-std removed; unused legacy dependency.
-    
   source_doc: docs/MODERNIZATION_AUDIT.md
   closed_date: '2026-04-24'
 
@@ -4556,7 +4251,6 @@ gaps:
   effort: xs
   description: |
     Branch protection requires PRs to be up-to-date with main, but auto-merge does not auto-rebase. When PR N lands, every other auto-merge-armed PR goes BEHIND. None refreshes itself, so the queue stalls until a human runs `gh pr update-branch` on the oldest. Observed 2026-04-24 — 9 sibling PRs sat BEHIND for ~30 minutes with auto-merge armed and clean CI; nothing landed until manual intervention. Fix: a tiny GitHub Action `queue-driver.yml` triggered on push-to-main and a 5-min cron that finds the oldest BEHIND auto-merge-armed PR and runs `gh pr update-branch`. The backing script `scripts/queue-driver.sh` works the same locally.
-    
   acceptance_criteria:
     - scripts/queue-driver.sh exists, is executable, supports --dry-run and --max
     - Script picks oldest BEHIND PR with autoMergeRequest != null and is not draft
@@ -4565,7 +4259,6 @@ gaps:
     - Dry-run smoke test verified locally before ship
   notes: |
     INFRA-046/047 are unrelated (Crate audit, Dependency modernization) and are in flight as PRs #493 / #496. INFRA-048 is the next free ID. The proper long-term fix is to enable GitHub's actual merge queue (`merge_queue` in branch protection); this driver is the cheap interim that survives whether or not the queue ever gets enabled.
-    
   source_doc: CLAUDE.md
   closed_date: '2026-04-24'
 
@@ -4577,7 +4270,6 @@ gaps:
   effort: s
   description: |
     Add CI job that runs before release-plz publishes. Verifies all tests pass, cargo-audit is clean, and publishable crates have valid MSRV. Blocks publishing if any check fails. Layer 1.5 of release automation.
-    
   acceptance_criteria:
     - New CI job runs on release-plz PR creation (before publish step)
     - Publishing step is blocked if any test fails
@@ -4586,7 +4278,6 @@ gaps:
   depends_on: [INFRA-048]
   notes: |
     Gating ensures no broken crates ship. Next: INFRA-050 (test first crate publish).
-    
   source_doc: docs/RELEASE_AUTOMATION_PLAN.md
   closed_date: '2026-04-24'
 
@@ -4598,7 +4289,6 @@ gaps:
   effort: s
   description: |
     Execute Layer 1 release automation for the three publishable crates (chump-tool-macro 0.1.0, chump-coord 0.1.0, chump-perception 0.1.0). Run release-plz dry-run to: (1) analyze commits since 0.1.0 via conventional commits; (2) bump versions (fix→patch, feat→minor, BREAKING→major); (3) auto-generate changelogs; (4) create a release PR. Verify: all three crates bump correctly, changelogs are readable, CI gates (test, audit, MSRV check) pass, dry-run PR shows correct behavior before actual publishing in INFRA-051.
-    
   acceptance_criteria:
     - release-plz dry-run creates release PR with correct version bumps
     - Changelogs for all three crates are generated and human-readable
@@ -4614,13 +4304,13 @@ gaps:
 - id: INFRA-051
   domain: infra
   title: Enrich lease JSON with agent health signals (heartbeat, last commit, disk usage)
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
     Expand .chump-locks/<session>.json schema to include: last_commit timestamp, last_commit_msg, worktree_disk_mb, process_alive boolean, model name, stage (planning|implementing|testing|shipped), pr_number, commits_this_session. Enables monitoring scripts to detect hung agents, bloated worktrees, stalled PRs. Prerequisite for INFRA-052.
-    
   source_doc: docs/AGENT_COORDINATION.md
+  closed_date: '2026-04-25'
 
 - id: INFRA-052
   domain: infra
@@ -4630,43 +4320,43 @@ gaps:
   effort: s
   description: |
     Implement .chump/monitor.sh that runs hourly via launchd/cron. Reads leases, checks gh pr checks for FAILURE/ERROR, detects: (a) PRs in queue >45min with no progress, (b) agents >90min no commits, (c) worktrees >5GB. Outputs to .chump/health.jsonl and .chump/alerts.log. Makes queue state visible.
-    
   depends_on: [INFRA-051]
   source_doc: docs/AGENT_COORDINATION.md
 
 - id: INFRA-053
   domain: infra
   title: Pre-commit guard error messages with recovery hints
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
     When lease-collision guard blocks a commit, show: (1) which session owns the file + which gap, (2) when that session's lease expires, (3) quick recovery steps (rebase, wait, or contact). Currently just "file claimed by X", not helpful. Improves agent UX when collisions happen.
-    
   source_doc: docs/AGENT_COORDINATION.md
+  closed_date: '2026-04-25'
+  closed_pr: 509
 
 - id: INFRA-054
   domain: infra
   title: Add depends_on field to gap registry (enforce dependency ordering)
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
     Extend gap schema to support: depends_on: [GAP-ID-1, GAP-ID-2]. Orchestrator will not dispatch a gap until all dependencies are done. Prevents "land in wrong order" mistakes. Update YAML schema, SQL schema, gap-preflight.sh logic, and orchestrator dispatch loop.
-    
   source_doc: docs/AGENT_COORDINATION.md
+  closed_date: '2026-04-25'
 
 - id: INFRA-055
   domain: infra
   title: SQLite as primary gap store — migrate from YAML source-of-truth
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
     Make .chump/state.db authoritative, not docs/gaps.yaml. Commit state.sql dump for readable diffs. Pre-commit hook validates SQL state hasn't diverged from YAML until full cutover. Speeds up queries, enables audit analysis, eliminates git merge conflicts on gaps.yaml. Final step: deprecate YAML.
-    
   depends_on: [INFRA-054]
   source_doc: docs/AGENT_COORDINATION.md
+  closed_date: '2026-04-25'
 
 - id: INFRA-056
   domain: INFRA
@@ -4676,7 +4366,6 @@ gaps:
   effort: s
   description: |
     INFRA-048 introduced queue-driver to refresh BEHIND auto-merge PRs. But every gaps.yaml-touching merge cascades the OTHER PRs from BEHIND to DIRTY (mechanical tail-append conflict on the bottom entry). The driver previously skipped DIRTY, leaving humans to manually rebase every queued PR after each merge. Observed today during the INFRA-052 through SECURITY-003 ship train: 3 PRs went DIRTY and required manual intervention, defeating the queue-driver's purpose. INFRA-052 just landed scripts/resolve-gaps-conflict.py — wire it into queue-driver so DIRTY PRs whose ONLY conflict is docs/gaps.yaml get auto-resolved in-place (creates a temp worktree, rebases, runs the resolver, force- pushes). Refuses if any non-gaps file conflicts so real merge conflicts still get human attention.
-    
   acceptance_criteria:
     - queue-driver.sh processes DIRTY auto-merge PRs alongside BEHIND
     - Refuses non-gaps conflicts (resolver exits 3, rebase aborted, PR untouched)
@@ -4686,7 +4375,6 @@ gaps:
   depends_on: [INFRA-052]
   notes: |
     Closes the loop on the queue-driver's purpose: post-INFRA-056 the queue should fully self-drain after any gaps.yaml-touching merge. Real conflicts (non-append) still block on human attention by design.
-    
   closed_date: '2026-04-25'
 
 - id: INFRA-057
@@ -4697,14 +4385,12 @@ gaps:
   effort: xs
   description: |
     Three tests in the chump binary mutate OPENAI_MODEL without serialization: execute_gap::tests::overlay_prepended_for_known_problem_model, execute_gap::tests::overlay_skipped_for_sonnet_baseline, and model_overlay::tests::maybe_overlay_from_env_respects_env. Under cargo's parallel test runner they race: test A sets Qwen, test B reads Qwen as 'prev', sets Sonnet, A reads env (now Sonnet) for prompt build, A's 'overlay must be prepended' assertion fails. The execute_gap.rs comment explicitly called out this race and prescribed the fix (#[serial(openai_model_env)]) but never applied it. Adds the attribute to all three. serial_test crate already a dep.
-    
   acceptance_criteria:
     - cargo test --bin chump overlay passes (16/16)
     - All three tests share
     - "serial_test::serial imported in both test modules"
   notes: |
     Surfaced when this test was the only blocker repeatedly forcing --skip-tests on bot-merge runs. Now removed.
-    
   closed_date: '2026-04-25'
 
 - id: INFRA-058
@@ -4715,14 +4401,12 @@ gaps:
   effort: xs
   description: |
     Files docs/WORLD_CLASS_ROADMAP.md and the M1-M5 tracking gap entries (INFRA-059 through INFRA-063). Tracks the strategic shift from reactive recovery (queue-driver auto-fixing DIRTY, resolve-gaps-conflict.py, --skip-tests bypasses) to proactive prevention (no hot files, plan-mode gate, stacked PRs, feature flags, dashboard). Roadmap doc is the authoritative source; this gap is the meta-tracking entry.
-    
   acceptance_criteria:
     - docs/WORLD_CLASS_ROADMAP.md committed with M1-M5 milestones documented
     - INFRA-059 through INFRA-063 filed as open gaps with acceptance criteria
     - User signed off on roadmap (2026-04-25)
   notes: |
     Each milestone's retirement-of-old-system step must be ticked before the next starts. Sequence is M1 → M2 → M3 (M3 needs M2, M2 needs M1); M4 and M5 can run parallel with M3.
-    
   source_doc: docs/WORLD_CLASS_ROADMAP.md
   closed_date: '2026-04-25'
 
@@ -4734,7 +4418,6 @@ gaps:
   effort: m
   description: |
     Flip authority for gap state from docs/gaps.yaml to .chump/state.db (SQLite). YAML becomes a generated artifact, regenerated by `chump gap dump --out docs/gaps.yaml` for human diff review only. All writes go through `chump gap reserve|claim|ship`. Shell script shims (gap-reserve.sh, gap-claim.sh) become thin wrappers or are deprecated. Eliminates the #1 source of merge conflicts in the queue (every PR currently appends to one hot file).
-    
   acceptance_criteria:
     - chump gap reserve + claim + ship round-trip without touching YAML directly
     - docs/gaps.yaml regenerated by chump gap dump matches DB byte-for-byte
@@ -4744,7 +4427,6 @@ gaps:
   depends_on: [INFRA-023, INFRA-058]
   notes: |
     Highest leverage milestone — every other M2-M5 step assumes a clean queryable gap store. Ship first.
-    
   source_doc: docs/WORLD_CLASS_ROADMAP.md
   closed_date: '2026-04-25'
 
@@ -4756,7 +4438,6 @@ gaps:
   effort: m
   description: |
     New phase between gap-claim and code in `chump --execute-gap` and the orchestrator's dispatch path. Agent enumerates planned files (LLM call, structured output), runs `gh pr list --json files` overlap scan, aborts if ≥2 open PRs touch any planned file (queue too crowded — pick another gap). Otherwise writes `.chump-plans/<gap>.md` with file list + conflict score + 5-line design summary. Plan auto-attaches to PR description at bot-merge.sh time.
-    
   acceptance_criteria:
     - chump --execute-gap produces .chump-plans/<gap>.md before any code edit
     - Synthetic test (2 dummy PRs touching src/foo.rs + dispatch gap touching foo.rs) aborts cleanly with no commits
@@ -4774,7 +4455,6 @@ gaps:
   effort: m
   description: |
     bot-merge.sh --gap X --stack-on <prev-gap> for related work. Stacked PR's base branch is prev PR's head, not main. When prev lands, merge queue auto-rebases stacked descendants. Modeled on Graphite/Sapling/ghstack; one-deep stacks cover the common dispatcher case. Eliminates the parallel fanout pattern where 5 related PRs all touch the same files.
-    
   acceptance_criteria:
     - bot-merge.sh --stack-on INFRA-XYZ opens PR with base=claude/<prev>
     - Landing prev PR triggers auto-rebase of stacked PR (verified end-to-end)
@@ -4792,7 +4472,6 @@ gaps:
   effort: l
   description: |
     src/runtime_flags.rs with CHUMP_FLAGS=cog_040,cog_041 env parsing at startup. `if flags::is_enabled(\"cog_040\")` gates around new behavior. Default policy: off until cycle review + bench confirmation, then on, then cleanup PR removes the flag. Bench harness runs flags-off baseline vs flags-on candidate per benchmark; COG reflection rows tag the flag set under test. Modeled on Google/Meta trunk-based dark-launch. Eliminates rebase tax on cognitive work.
-    
   acceptance_criteria:
     - "runtime_flags::is_enabled reads CHUMP_FLAGS env correctly"
     - Two real COG-* gaps shipped using the flag pattern (replacing >3-day branches)
@@ -4811,7 +4490,6 @@ gaps:
   effort: s
   description: |
     `chump dashboard` reads reflection rows + git log + `gh pr list` to print PRs landed today/week, median cycle-time gap-claim → main, rebase-minutes burned, dispatcher backend cost split, top 5 stale worktrees. Cost-routed dispatch: router picks backend by gap class (trivial xs → Together free tier; design P1 l/xl → Opus; refactors → Sonnet). Preserves manual override.
-    
   acceptance_criteria:
     - chump dashboard prints all listed metrics from real data
     - Dispatcher logs show per-gap backend selection rationale
@@ -4829,7 +4507,6 @@ gaps:
   effort: s
   description: |
     Cumulative tail-append merge collisions across PRs #498 (INFRA-049), #494 (INFRA-BOT-MERGE-HEREDOC), #500 (INFRA-050), #508 (INFRA-052), and #512 (INFRA-055) left docs/gaps.yaml with five gaps reduced to title-only stubs whose bodies were either misattributed under the next neighboring `- id:` header or stranded as orphaned mappings appended to the bottom of unrelated entries. Net effect: serde_yaml rejected the file with `gaps[336]: duplicate field depends_on at line 10195`, causing chump-orchestrator's cli_smoke `dry_run_against_real_backlog_exits_zero_and_picks_at_least_one` test to fail and silently forcing every recent bot-merge.sh ship to use --skip-tests. Reconstructed each gap by cross-referencing the originating PR diffs, restoring proper - id / domain / status / description / acceptance_criteria / depends_on structure.
-    
   acceptance_criteria:
     - python3 yaml.safe_load(docs/gaps.yaml) succeeds
     - cargo test -p chump-orchestrator --test cli_smoke passes (all 4 tests)
@@ -4838,7 +4515,6 @@ gaps:
     - bot-merge.sh ship runs without --skip-tests
   notes: |
     Root cause is that PRs adding gap entries by inserting a new `- id:` block immediately above an existing entry's body — combined with subsequent rebases that tail-append conflicting tails — silently detach bodies from headers. INFRA-052's resolve-gaps-conflict.py only handles the pure tail-append case, not the in-place insertion variant. Long-term mitigation: enforce that gap entries are always tail-appended (never inserted in the middle), and add a YAML lint to pre-commit that runs serde_yaml-strict parsing.
-    
   closed_date: '2026-04-25'
 
 - id: INFRA-065
@@ -4849,7 +4525,6 @@ gaps:
   effort: xs
   description: |
     INFRA-063 (M5) added select_backend_for_gap() as an advisor function but left the orchestrator's actual dispatch path reading CHUMP_DISPATCH_BACKEND directly in two places (RealSpawner::spawn_claude and DispatchHandle.backend), so the cost-router's rationale never actually drove which backend got spawned. This gap closes that loop: DispatchBackend::resolve_for_gap(priority, effort) is the single resolution point — env wins when set, otherwise advisor pick — and Spawner::spawn_claude takes the resolved backend as a parameter. Adds an explicit "[dispatch] route gap=… → backend=… reason=…" log line on every dispatch so cost-split telemetry has structured input.
-    
   acceptance_criteria:
     - "DispatchBackend::resolve_for_gap implemented with env-overrides-advisor precedence"
     - Spawner trait takes backend as a parameter; RealSpawner uses it instead of calling from_env() inside spawn_claude
@@ -4859,7 +4534,6 @@ gaps:
   depends_on: [INFRA-063]
   notes: |
     Stacked on M5 (PR #521). After both land on main, the COG-026 A/B aggregator can split outcomes by dispatch reason (env vs advisor rule) — measuring whether the rule-based router actually routes work to the cheap tier without quality regression (M5 acceptance #3).
-    
   source_doc: docs/WORLD_CLASS_ROADMAP.md
   closed_date: '2026-04-25'
 
@@ -4871,14 +4545,12 @@ gaps:
   effort: s
   description: |
     QUALITY-005 audit (2026-04-25) found 7 of 31 "open" gaps had already shipped on main but never had `status: open → done` flipped in docs/gaps.yaml. ~22.6% stale-status rate. The fix is a CI check: if a PR title matches `^<GAP-ID>:` (e.g. "INFRA-047: foo"), verify that the PR's diff sets `status: done` (or that gaps.yaml already shows done) for that ID. Fail the PR if not. Closes the loop the existing pre-commit gaps.yaml-discipline guards leave open — those guards block *invalid* mutations but don't *require* a status flip.
-    
   acceptance_criteria:
     - "Check fails the PR if gaps.yaml does not show status:done for that ID after the diff is applied"
     - Bypass label `gap-cleanup` (or similar) for PRs that legitimately reference but don't close a gap
     - Test/dry-run on one in-flight PR before enabling required-check
   notes: |
     Filed by QUALITY-005 audit. Without this guard the audit has to re-run weekly. Cheap to implement — a single shell check in an existing workflow + the bypass label.
-    
   source_doc: docs/eval/QUALITY-005-gap-hygiene-audit.md
   closed_date: '2026-04-25'
 
@@ -4890,7 +4562,6 @@ gaps:
   effort: m
   description: |
     Companion to DOC-005. Same shape applied to the rest of the repo: Area #1 scripts/ gets a 5-phase classify-inventory-automate-cleanup- generate treatment (255 scripts, mirrors DOC-005); Area #2 crates/+src/ gets a one-shot dead-code audit (cargo udeps + cargo machete + manual orphan-module review); Area #3 top-level+config gets a one-shot security audit (gitignore + scattered-config consolidation, triggered by the Together.ai key leak); Area #4 .github/workflows/ gets a one-shot stale-job consolidation. Sub-gaps INFRA-068..075 will be filed as each phase/area is picked up.
-    
   acceptance_criteria:
     - docs/REPO_HYGIENE_PLAN.md committed
     - INFRA-067 entry in gaps.yaml
@@ -4914,7 +4585,6 @@ gaps:
       - .chump/state.sql is documented as the readable SQL diff
       - Legacy shell scripts (gap-*.sh) are kept as fallbacks but no longer
         framed as the primary path
-    
   acceptance_criteria:
     - CLAUDE.md mandatory pre-flight uses chump gap list (legacy grep marked optional)
     - CLAUDE.md coordination-docs bullet lists state.db, gaps.yaml, state.sql with correct roles
@@ -4936,14 +4606,12 @@ gaps:
       - resolve_chump_local_bin_honors_env_override (sets it)
       - resolve_chump_local_bin_falls_back_to_path_when_no_target (removes it)
     Under cargo's parallel test runner they race: A sets the var, B's remove_var lands while A is mid-assertion → A reads "" → returns "chump" instead of "/opt/custom/chump". Caught when this test was the lone blocker on PR #509 (INFRA-053). Same bug class as INFRA-057 (OPENAI_MODEL race); same fix shape — add #[serial_test::serial(chump_local_bin_env)] to both tests. serial_test crate is already a chump-orchestrator dep (other tests in this module already use it on the resolve_for_gap_* family).
-    
   acceptance_criteria:
     - cargo test -p chump-orchestrator --lib resolve_chump_local_bin passes both
     - Both tests share
   depends_on: [INFRA-057]
   notes: |
     Surfaced when PR #509 hit this race after the OPENAI_MODEL race was fixed. Audit needed: any other tests setting/removing process env vars without #[serial] are racing — file follow-up gaps as they appear.
-    
   source_doc: crates/chump-orchestrator/src/dispatch.rs
   closed_date: '2026-04-25'
 
@@ -4957,7 +4625,6 @@ gaps:
     `chump gap reserve --domain D` can return an ID that already exists in `docs/gaps.yaml` when the local `.chump/state.db` is out of sync with the YAML mirror. Observed during DOC-005 Phase 0 (2026-04-25): `chump gap reserve --domain DOC` returned DOC-005 (an existing open gap), and the subsequent INSERT either succeeded (because the DB row was missing) or silently mutated the existing row's title.
     Root cause (suspected): `GapStore::reserve` (src/gap_store.rs:287) seeds the per-domain counter from `MAX(existing IDs in gaps table)` on first reserve for that domain. If the DB is missing rows that exist in the YAML — which happens after any hand-edit to gaps.yaml without a follow-up `chump gap import` — the counter starts low and reserve returns IDs that collide with the YAML.
     `import_from_yaml` uses `INSERT OR IGNORE`, so it doesn't backfill after the fact unless re-run. The reserve path does not auto-import.
-    
   acceptance_criteria:
     - reserve cannot return an ID that exists in either gaps.yaml OR state.db
     - "regression test: hand-add a gap to YAML, do not import, then reserve; assert returned ID is strictly greater than the YAML max"
@@ -4967,7 +4634,6 @@ gaps:
     - clear error message (or auto-import) when drift detected
   notes: |
     Suggested fix: have `reserve` consult both the YAML max and the counter row max, taking the maximum of both. Alternative: have `reserve` call `import_from_yaml` first (cheap — INSERT OR IGNORE). Filed by INFRA-042 author after DOC-005 Phase 0 subagent (PR #537) flagged it. Patched locally via direct sqlite UPDATE; no upstream fix yet.
-    
   source_doc: src/gap_store.rs
   opened_date: '2026-04-25'
   closed_date: '2026-04-26'
@@ -4980,14 +4646,12 @@ gaps:
   effort: xs
   description: |
     DOC-006 (PR #531, Phase 1 of doc hygiene plan) added YAML frontmatter (doc_tag, owner_gap, last_audited) to top-level docs/*.md files but did not run scripts/sync-book-from-docs.sh, leaving the published book/src/*.md copies stale. The mdbook-verify workflow's sync-idempotency job catches this on every PR that touches docs/**, blocking unrelated work (PR #509 INFRA-053 was the canary). Runs sync-book-from-docs.sh and commits the propagated frontmatter so the drift is closed and PRs touching docs/ can land again.
-    
   acceptance_criteria:
     - sync-idempotency job passes after this PR lands
     - book/src/*.md files contain matching frontmatter for the 9 affected pages (chump-to-complex, getting-started, metrics, oops, operations, project-brief, research-integrity, roadmap, rust-infrastructure)
   depends_on: [DOC-006]
   notes: |
     Mechanical sync; no content change beyond frontmatter propagation.
-    
   source_doc: scripts/sync-book-from-docs.sh
   closed_date: '2026-04-25'
 
@@ -4999,13 +4663,11 @@ gaps:
   effort: s
   description: |
     The awk extraction at line 109 used /^  - id:/ (two leading spaces), expecting indented YAML. But docs/gaps.yaml top-level gap entries start at column 0 (`- id: ...`). The regex never matched, so awk processed all 11k lines after the target gap. Pipelined into `head -80`, awk SIGPIPE'd on writes past line 80. Under `set -euo pipefail`, the script exited 141, which bot-merge.sh interpreted as "code-reviewer agent errored — auto-merge NOT enabled". Observed on PR #542 (FLEET-007); auto-merge had to be armed by hand. Likely affected most prior src/* PRs too.
-    
   acceptance_criteria:
     - awk regex matches top-level gap entries (no leading spaces)
     - regression test asserts code-reviewer-agent.sh --dry-run exits 0 for a real --gap whose entry lives past line 80 of gaps.yaml
   notes: |
     Two-line fix in code-reviewer-agent.sh + a new scripts/test-code-reviewer-agent.sh covering the regression. The other latent SIGPIPE candidates (line 173 head -c 80000, line 269 grep | head -1) were not the cause for PR #542 (diff was 17KB; the API response was a single verdict line) but remain theoretically exposed for future big-PR or chatty-API edge cases. Left for a follow-up if they bite.
-    
   source_doc: scripts/code-reviewer-agent.sh
   opened_date: '2026-04-25'
   closed_date: '2026-04-25'
@@ -5013,7 +4675,7 @@ gaps:
 - id: INFRA-073
   domain: INFRA
   title: Gap-closure hygiene audit — close 8 OPEN-BUT-LANDED gaps
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -5026,10 +4688,10 @@ gaps:
     distinguish these two states. For each of the 8 gaps: verify whether the referenced
     commits satisfied the acceptance criteria; if yes, close via chump gap ship; if no,
     add a comment documenting the missing AC so future agents know work remains.
-    
   acceptance_criteria:
     - Each of the 8 OPEN-BUT-LANDED gaps is either closed or has an explicit note documenting which acceptance criteria remain unmet
   opened_date: '2026-04-26'
+  closed_date: '2026-04-25'
 
 - id: INFRA-074
   domain: INFRA
@@ -5039,7 +4701,6 @@ gaps:
   effort: xs
   description: |
     Boot-loaded docs (AGENTS.md, CLAUDE.md, pre-commit hook header) had drifted from current code in ways that would mislead agents: (1) all three claim "five pre-commit guards" but the hook actually runs eight numbered jobs (lease, stomp, gaps-discipline, submodule, fmt, cargo-check, docs-delta, credential) plus four sub-checks inside the gaps.yaml block (hijack, duplicate-ID, recycled-ID, preregistration); (2) the CLAUDE.md guard table omitted submodule, docs-delta, credential, and recycled-ID rows entirely; (3) the wrong-worktree guard was filed under the pre-commit table but actually lives in chump-commit.sh — agents using raw `git commit` don't get it; (4) gap-reserve.sh recommendation lacked the INFRA-070 unpadded-ID warning agents kept hitting; (5) pre-commit hook header had duplicate "6." numbering. AGENTS.md also still said "≤ 5 commits and ≤ 5 files per PR" which contradicts CLAUDE.md's intent-atomic guidance.
-    
   acceptance_criteria:
     - CLAUDE.md guard table has a row for every guard in pre-commit + chump-commit.sh
     - CLAUDE.md and AGENTS.md no longer claim a guard count that doesn't match the table
@@ -5048,7 +4709,6 @@ gaps:
     - "AGENTS.md PR guidance matches CLAUDE.md intent-atomic rule (no \"≤ 5 files\" claim)"
   notes: |
     Pure docs + comment change; no code behavior modified. Audit surfaced two follow-ups left as open work: (a) INFRA-070 itself (gap-reserve.sh zero-padding fix) is still open and tracked separately; (b) "INFRA-CHOKE" is referenced in CLAUDE.md as a concept name (the CI pre-flight gate) but isn't a real gap ID — not material drift, kept as-is.
-    
   source_doc: AGENTS.md, CLAUDE.md
   opened_date: '2026-04-26'
   closed_date: '2026-04-26'
@@ -5056,7 +4716,7 @@ gaps:
 - id: INFRA-075
   domain: INFRA
   title: Duplicate-ID guard missed same-day INFRA-073 collision — audit and fix guard scope
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -5073,13 +4733,14 @@ gaps:
     returning the same ID to two sessions). Fix the guard so same-day concurrent
     insertions are caught. Acceptance: INFRA-073 duplicate resolved, regression test
     `scripts/test-duplicate-id-guard.sh` covers same-day concurrent-insert scenario.
-    
   acceptance_criteria:
     - The INFRA-073 duplicate is resolved (one entry closed/removed with audit trail)
     - Root cause of guard bypass is documented
     - scripts/test-duplicate-id-guard.sh has a test covering concurrent-branch insertion of the same ID
     - Guard fix ships to pre-commit hook
   opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  closed_pr: 556
 
 - id: INFRA-076
   domain: INFRA
@@ -5102,7 +4763,6 @@ gaps:
     system? an OAuth token?), added to the attribution table if legitimate, or
     stripped from future commits if it is a misconfiguration. Red Letter #5 noted 21
     commits (33%) from Test as primary author; Red Letter #6 falsely closed the issue.
-    
   acceptance_criteria:
     - Identity of Test <test@test.com> is documented in AGENT_COORDINATION.md §3a
     - If it is a misconfiguration, bot-merge.sh or the dispatch pipeline strips it from future commits
@@ -5116,14 +4776,12 @@ gaps:
   effort: xs
   description: |
     INFRA-074 (PR #545) added a warning to the gap-reserve.sh recommendation that it emitted unpadded IDs (e.g. INFRA-71 instead of INFRA-071), with advice to hand-pad until INFRA-070 landed. INFRA-070 landed on 2026-04-26 in PR #547, ~10 minutes after PR #545 merged. The warning is now stale and would mislead agents into a now-unnecessary manual step.
-    
   acceptance_criteria:
     - CLAUDE.md no longer mentions hand-padding gap IDs from gap-reserve.sh
     - the gap-reserve.sh fallback advice still mentions both paths but without obsolete caveat
   depends_on: [INFRA-070]
   notes: |
     Pure docs cleanup; no code change. Caught while picking up queue work after INFRA-074 landed.
-    
   source_doc: CLAUDE.md
   opened_date: '2026-04-26'
   closed_date: '2026-04-26'
@@ -5147,7 +4805,6 @@ gaps:
     (index baseline) and only fire when the commit *adds* a new duplicate or
     *modifies* a row participating in an existing duplicate. Pre-existing dups
     on main should not gate unrelated commits.
-    
   acceptance_criteria:
     - Guard only fires when commit introduces a new duplicate or edits a row in an existing duplicate group
     - "scripts/test-duplicate-id-guard.sh covers \"pre-existing dup, unrelated edit\" case (must pass)"
@@ -5176,7 +4833,6 @@ gaps:
     `single_judge_waiver_reason:` field, OR (c) a preregistration explicitly
     declaring single-judge scope. Bypass: CHUMP_CROSS_JUDGE_CHECK=0 with
     justification (mirrors CHUMP_PREREG_CHECK=0 pattern).
-    
   acceptance_criteria:
     - scripts/git-hooks/pre-commit blocks EVAL-*/RESEARCH-* gap closures missing cross-judge evidence or explicit waiver
     - "docs/RESEARCH_INTEGRITY.md links to the new guard and lists it under \"Required Methodology Standards\""
@@ -5188,7 +4844,7 @@ gaps:
 - id: INFRA-080
   domain: INFRA
   title: gap-reserve.sh outputs unpadded ID (e.g. EVAL-88 instead of EVAL-088)
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -5202,12 +4858,13 @@ gaps:
     reserved ID to match the prevailing width of the domain's existing IDs
     (3 digits is the established convention for all domains here). Mirror in
     `chump gap reserve` (Rust path) so both produce identical output.
-    
   acceptance_criteria:
     - scripts/gap-reserve.sh prints the new ID zero-padded to 3 digits (EVAL-088 not EVAL-88)
     - chump gap reserve produces the same padded output
     - Regression test under scripts/ confirming padded output for a domain with 3-digit prevailing width
   opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 628
 
 - id: INFRA-081
   domain: INFRA
@@ -5230,7 +4887,6 @@ gaps:
     user/agent decides whether to proceed. Lower priority because the manual
     ambient-stream check works when followed; raise priority if a real
     collision ships through.
-    
   acceptance_criteria:
     - gap-claim.sh prints a soft warning when adjacent ID or overlapping-title leases are active
     - gap-reserve.sh applies the same check before reserving
@@ -5266,7 +4922,6 @@ gaps:
     weeks-apart-different-cycle cases. Together with INFRA-081 the coverage
     is: live overlap (lease) + adjacent ID (lease) + title overlap on full
     history (this gap).
-    
   acceptance_criteria:
     - gap-reserve.sh computes title similarity vs all gaps in docs/gaps.yaml and warns above threshold
     - chump gap reserve produces the same warning
@@ -5330,9 +4985,10 @@ gaps:
 - id: INFRA-090
   domain: INFRA
   title: chump gap dump produces invalid YAML and reorders entire file
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_date: '2026-04-26'
 
 - id: INFRA-091
   domain: INFRA
@@ -5344,16 +5000,19 @@ gaps:
 - id: INFRA-092
   domain: INFRA
   title: fix Phase 3 cross-subdir Python parents+SCRIPT_DIR refs
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-04-26'
+  closed_pr: 562
 
 - id: INFRA-093
   domain: INFRA
   title: fix Phase 3 cross-subdir Python parents+SCRIPT_DIR refs (re-file)
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-04-26'
 
 - id: INFRA-094
   domain: INFRA
@@ -5411,7 +5070,6 @@ gaps:
     `.github/pull_request_template.md` with one that reflects Chump's actual
     conventions (gap ID, INFRA-088 title format, EVAL/RESEARCH preregistration,
     INFRA-009 docs-delta, merge-queue ship path).
-    
   acceptance_criteria:
     - .github/CODEOWNERS present with `* @repairman29`
     - .github/pull_request_template.md surfaces gap field, title convention reference, prereg + docs-delta callouts
@@ -5435,7 +5093,6 @@ gaps:
     pending_new_gap entries - atomically, with a flock - and returns the
     first ID free in all four. Both the Rust path and the shell wrapper
     must call this single function.
-    
   acceptance_criteria:
     - "One Rust function gap::reserve_next_id(domain) is the only ID picker"
     - scripts/gap-reserve.sh shells out to that function (no parallel logic)
@@ -5460,7 +5117,6 @@ gaps:
     kind (session_start, file_edit, commit, bash_call, INTENT, ALERT),
     validate at emit time inside scripts/ambient-emit.sh, and add a
     pre-commit guard that re-validates any new lines staged into the stream.
-    
   acceptance_criteria:
     - docs/ambient-schema.json defines event kinds and required fields
     - scripts/ambient-emit.sh validates payloads before append (rejects with diagnostic)
@@ -5482,7 +5138,6 @@ gaps:
     emitter was removed (regression), the docs are aspirational, or the
     event is filtered. Track down the discrepancy and either restore the
     emitter or strike the line from CLAUDE.md.
-    
   acceptance_criteria:
     - Identify whether session_start is emitted anywhere in the codebase
     - If missing - restore emit at session-init points (gap-claim.sh, bot-merge.sh entry)
@@ -5506,7 +5161,6 @@ gaps:
     / .gitmodules / Cargo.lock; parallel-safe otherwise. Use the label to
     drive a smarter merge cadence (or at minimum, surface in the queue
     health monitor so humans/agents can spot avoidable serialization).
-    
   acceptance_criteria:
     - bot-merge.sh inspects diff at PR-create time and applies serializing or parallel-safe label
     - Documented hot-file list is configurable
@@ -5530,7 +5184,6 @@ gaps:
     least one file matching that gap expected scope (e.g. acceptance
     criteria mention "gaps.yaml" -> diff must touch gaps.yaml). On mismatch,
     post an ambient ALERT kind=title_diff_drift and label the PR.
-    
   acceptance_criteria:
     - Script extracts gap IDs from PR title/body
     - Compares to acceptance_criteria file-hints in gaps.yaml/state.db
@@ -5554,7 +5207,6 @@ gaps:
     is written too, or (b) 'chump gap claim' writes the lease file. Either
     way both ledgers must agree after a single claim, and a divergence
     detector should run hourly and post ALERT kind=ledger_split.
-    
   acceptance_criteria:
     - One claim path writes both ledgers (decide direction)
     - Divergence detector runs (cron or hourly script) and posts ALERT
@@ -5602,7 +5254,6 @@ gaps:
     file this gap to evaluate option A carefully (test on a fork, define
     required-check name contract, plan auto-merge re-arm of in-flight PRs,
     document operator runbook). Do NOT flip option B live.
-    
   acceptance_criteria:
     - Test merge queue config on a throwaway fork or scratch repo first
     - Document the exact required-check names the queue will gate on
@@ -5614,7 +5265,7 @@ gaps:
 - id: INFRA-107
   domain: INFRA
   title: Pre-commit guard - block status flip to done with closed_pr value of TBD or non-numeric
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -5626,13 +5277,13 @@ gaps:
     TBD, tbd, or any non-numeric value. Bypass - CHUMP_GAPS_LOCK=0.
     Pairs with INFRA-111 (acceptance_verified field) for full closure-
     integrity coverage but is independently shippable.
-    
   acceptance_criteria:
     - Pre-commit guard added with bypass env CHUMP_GAPS_LOCK=0
     - Test fixture - PRODUCT-009 closure diff fails the guard
     - Test fixture - normal closure with closed_pr 404 passes
     - Documented in CLAUDE.md Commit-time guards table
   opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
 
 - id: INFRA-108
   domain: INFRA
@@ -5649,7 +5300,6 @@ gaps:
     scripts/ambient-emit.sh plus any direct JSON appends in the Rust
     codebase, normalize to a single canonical key order and required
     fields, and update CLAUDE.md ambient-event reference to match.
-    
   acceptance_criteria:
     - Inventory of every code path that writes to ambient.jsonl
     - Canonical schema documented in docs/ambient-schema.md
@@ -5674,7 +5324,6 @@ gaps:
     bot-merge.sh, and any Rust callers - any reference to .chump-locks/
     or .chump/ that does not pass through git-common-dir resolution is
     a worktree-boundary bug waiting to fire.
-    
   acceptance_criteria:
     - Inventory of every script and Rust file that touches .chump-locks/ or .chump/
     - Each call resolves base via git rev-parse --git-common-dir or documented exception
@@ -5698,7 +5347,6 @@ gaps:
     auto-expires unless renewed via heartbeat. Pairs with but is not
     duplicated by INFRA-100 (atomic next-ID picker) - 100 prevents
     same-time collisions, 110 prevents long-lived squatting.
-    
   acceptance_criteria:
     - chump gap reserve writes ttl_expires field to lease pending_new_gap
     - Default TTL 7200 seconds (2h); configurable via --ttl
@@ -5725,7 +5373,6 @@ gaps:
     done - closed_interpretation (free text, which acceptance criterion
     drove closure) and acceptance_verified (per-criterion bool array).
     Bypass - CHUMP_GAPS_LOCK=0 with justification in commit body.
-    
   acceptance_criteria:
     - Pre-commit guard requires closed_interpretation when status flips open to done
     - Pre-commit guard requires acceptance_verified array sized to acceptance_criteria
@@ -5737,7 +5384,7 @@ gaps:
 - id: INFRA-112
   domain: INFRA
   title: chump gap dump is lossy - 391 gaps in DB became 389 in YAML
-  status: open
+  status: done
   priority: P0
   effort: s
   description: |
@@ -5752,18 +5399,18 @@ gaps:
     and patch the single gap status by hand to avoid a 11k-line lossy
     diff. Until fixed, 'chump gap ship --update-yaml' and 'chump gap
     dump' are unsafe in real PRs.
-    
   acceptance_criteria:
     - Add NOT NULL + length(trim(id)) > 0 constraint to .chump/state.db schema
     - chump gap dump asserts dump_count == db_count and exits non-zero on mismatch
     - Identify and repair the 2 missing gaps (or document why they were dropped)
     - Round-trip test - dump | re-import | dump again must be byte-stable
   opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
 
 - id: INFRA-113
   domain: INFRA
   title: Pre-commit preregistration check is hollow - file existence only, contents not validated
-  status: open
+  status: done
   priority: P0
   effort: m
   description: |
@@ -5778,13 +5425,14 @@ gaps:
     with a one-line preregistration that satisfies the guard but violates
     the standard. Cold Water Issues #2 through #7 keep flagging "evals
     documented but methodology not enforced" - this is the mechanism.
-    
   acceptance_criteria:
     - Pre-commit guard parses preregistration file and asserts presence of - sample size, judge identity, A/A baseline plan, mechanism analysis threshold, prohibited-claims attestation
     - Each field has a minimum content length (e.g. >= 20 chars, no obvious placeholder text)
     - Bypass env CHUMP_PREREG_CONTENT_CHECK=0 documented for genuine retrospective gaps
     - Test - empty preregistration file fails the guard; populated file passes
   opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 622
 
 - id: INFRA-114
   domain: INFRA
@@ -5814,7 +5462,6 @@ gaps:
     
     Migration of specific eval sweeps / A/B harness scripts to overnight
     is a follow-up — this PR is just the platform.
-    
   acceptance_criteria:
     - scripts/run-overnight-research.sh executes scripts/overnight/*.sh in order
     - Per-job timeout (default 1h, env-overridable) prevents one job from blocking siblings
@@ -5846,7 +5493,6 @@ gaps:
     gap claims (DEFAULT_GAP_TTL_SECS = 14400) - the file lease layer
     should be subordinate to NATS or have an equivalent server-side
     purge.
-    
   acceptance_criteria:
     - Either NATS KV or a SQLite-backed expiry service is the authoritative lease ledger
     - Client-side checks read from this authority and never trust the local cache alone
@@ -5870,7 +5516,6 @@ gaps:
     is no canonical place to audit which experiments are still gated.
     Either (a) add the list and have parse_flags_str() warn on unknown
     flags, or (b) remove the comment and document an alternative mechanism.
-    
   acceptance_criteria:
     - Either CHUMP_KNOWN_FLAGS list exists and is referenced by parse_flags_str(), or the comment is corrected
     - If list exists - unknown flag names emit a warning to stderr and an ambient WARN event
@@ -5892,7 +5537,6 @@ gaps:
     implemented but undocumented elsewhere, or (c) it never landed and
     CLAUDE.md is documenting a phantom feature. Resolve with file:line
     evidence and either fix CLAUDE.md or land MEM-007.
-    
   acceptance_criteria:
     - Audit src/, crates/, scripts/ for any --briefing entrypoint
     - If implemented - link the source, smoke-test with one gap ID
@@ -5916,7 +5560,6 @@ gaps:
     (regression), or is implemented under a different mechanism. The
     described bug class (cross-agent staging leakage) is real and
     important - confirm or fix.
-    
   acceptance_criteria:
     - Read scripts/chump-commit.sh and document the actual reset behavior
     - If absent - either implement the reset (git reset HEAD on files not in $@) or correct CLAUDE.md
@@ -5939,7 +5582,6 @@ gaps:
     timeout wrapper that releases the lease on SIGALRM, or a separate
     process that detects bot-merge.sh activity (heartbeat in
     .chump-locks/) and reaps stale leases whose owning script is gone.
-    
   acceptance_criteria:
     - bot-merge.sh writes a heartbeat file every N seconds while running
     - A reaper (cron or launchd) clears leases whose heartbeat is stale beyond TTL
@@ -5964,7 +5606,6 @@ gaps:
     Pipe reaper output to ambient.jsonl (or NATS via FLEET-006) so all
     agents see reaper activity in their peripheral vision; ALERT when a
     reaper has not run in 4x its expected cadence.
-    
   acceptance_criteria:
     - Each reaper emits one ambient event per run - kind=reaper_run with status=ok|fail and counts
     - Heartbeat watchdog ALERTs when reaper has not emitted in 4h (worktree/branch) or 2h (PR)
@@ -5989,7 +5630,6 @@ gaps:
     current branch-protection config against a checked-in baseline
     (docs/MERGE_QUEUE_SETUP.md or a JSON snapshot) and ALERTs on any
     deviation.
-    
   acceptance_criteria:
     - Checked-in baseline of expected branch-protection config (JSON snapshot)
     - CI job (or scheduled task) compares 'gh api' current config against baseline daily
@@ -6014,7 +5654,6 @@ gaps:
     referenced from CLAUDE.md and audit did not confirm it runs on a
     schedule. Adopt a rotation policy (size-based or time-based), document
     it, and wire it into launchd/cron alongside the existing reapers.
-    
   acceptance_criteria:
     - Rotation policy documented in CLAUDE.md (size threshold, retention)
     - scripts/ambient-rotate.sh runs on a schedule (cron/launchd) and is verified to fire
@@ -6037,7 +5676,6 @@ gaps:
     backend tag, the COG-026 A/B aggregator splits will be undercounted
     or biased. Likely affects the chump-orchestrator dispatch path,
     direct 'claude -p' invocations, and chump --execute-gap.
-    
   acceptance_criteria:
     - Audit every reflection-row emit site - list the tags each writes
     - Add a schema or assertion that required tags are present at write time
@@ -6059,7 +5697,6 @@ gaps:
     actually adding 5 docs. The guard becomes blocking on 2026-04-28.
     Tighten the check so the trailer must match (or be a superset of)
     the computed delta.
-    
   acceptance_criteria:
     - Pre-commit guard parses Net-new-docs trailer and asserts trailer >= computed delta
     - Mismatch fails closed with a diagnostic message
@@ -6082,7 +5719,6 @@ gaps:
     caught until the bill arrives. Add unit + integration tests covering
     ceiling enforcement, multi-provider attribution, and completion
     recording.
-    
   acceptance_criteria:
     - Unit tests for check_ceiling boundary conditions (under/at/over)
     - Integration test for record_provider_call across at least 2 provider labels
@@ -6105,7 +5741,6 @@ gaps:
     joins late, (d) backpressure / slow-consumer handling. Failures in
     any of these would silently corrupt the coordination layer that
     INFRA-MERGE-QUEUE and FLEET-007 depend on.
-    
   acceptance_criteria:
     - Reconnect test - publish, kill NATS, restart, verify subscriber resumes
     - Ordering test - N concurrent publishers, single subscriber, assert per-publisher order preserved
@@ -6126,7 +5761,6 @@ gaps:
     the next session sees the lesson in its prompt (CLAUDE.md
     CHUMP_LESSONS_AT_SPAWN_N pathway). Without this, the COG-016 / COG-024
     lesson-injection feature is functionally unverified end to end.
-    
   acceptance_criteria:
     - Integration test - insert N reflection rows, run lesson selector, assert top-N by recency*frequency are returned
     - Integration test - simulate prompt assembly with CHUMP_LESSONS_AT_SPAWN_N=5 and assert the rendered prompt contains the expected lesson block
@@ -6152,7 +5786,6 @@ gaps:
         their CHAMP equivalents across 33 files
     No semantic content change — only the series name is updated.
     Renumbered from INFRA-112 to INFRA-128 (collision with PR #580 reservation).
-    
   acceptance_criteria:
     - docs/CHUMP_TO_COMPLEX.md no longer exists; docs/CHUMP_TO_CHAMP.md does
     - "0 remaining references to any \"Complex\" series-name variant in the repo (excluding archive)"
@@ -6188,7 +5821,6 @@ gaps:
       - Updates docs link to docs/CHUMP_TO_CHAMP.md (matches INFRA-128)
     
     Renumbered from INFRA-113 to INFRA-129 (sibling PR #580 reserved INFRA-112..127).
-    
   acceptance_criteria:
     - README leads with both agent + dispatcher framing, not single-agent only
     - Research findings table moved out of headline section to a small linked subsection
@@ -6211,7 +5843,6 @@ gaps:
     adversary_alert event is emitted to ambient.jsonl AND (post-FLEET-006)
     to NATS. With FLEET-006 just landing, this is a good moment to add
     the round-trip test before the dual-emit pattern bit-rots.
-    
   acceptance_criteria:
     - Integration test - load a synthetic chump-adversary.yaml with one block rule, run a matching tool input, assert the call is blocked
     - Test verifies ambient.jsonl line is appended with kind=adversary_alert
@@ -6241,7 +5872,6 @@ gaps:
     Note: adversary.md stays at root — it is a runtime asset loaded by
     src/adversary_llm.rs::load_adversary_md(), not a stale doc. Moving it
     is a separate (Rust-touching) change.
-    
   acceptance_criteria:
     - migration_proposal.md deleted
     - "README quick-start uses qwen2.5:7b as default with 14B as larger option"
@@ -6273,7 +5903,6 @@ gaps:
     TBD guard) and INFRA-111 (mandate closed_interpretation field) -
     those guard the gap's own data; this guards the *reference* from a
     PR.
-    
   acceptance_criteria:
     - Pre-push or bot-merge hook parses commit message Closes/Fixes/Resolves trailers
     - For each referenced gap ID, fetch its title from docs/gaps.yaml on origin/main
@@ -6304,7 +5933,6 @@ gaps:
     Historical references in `docs/gaps.yaml` (descriptions of past gaps)
     left intact — rewriting them would trigger the gap-ID-hijack guard
     and they are immutable history.
-    
   acceptance_criteria:
     - docs/audit/ no longer exists; all 2 files in docs/audits/
     - docs/synthesis/ no longer exists; all content in docs/syntheses/
@@ -6344,7 +5972,6 @@ gaps:
     `mdbook build book` verified clean locally. Reproducible plan checked
     in at `.chump/phase2-move-plan.sh` (run with `--check` to count, with
     `--sed-pairs` to regenerate the rewrite patterns).
-    
   acceptance_criteria:
     - Only docs/README.md remains at docs/ root
     - 146 files distributed across 10 subdirs per the plan
@@ -6389,7 +6016,6 @@ gaps:
     --execute). Pre-existing syntax errors in
     scripts/setup/enter-chump-mode.sh and scripts/dev/war-room.sh confirmed
     in main, left out of scope.
-    
   acceptance_criteria:
     - 290 root scripts/* files distributed across 9 subdirs per the plan
     - Cross-links updated across all callers (.rs/.sh/.yml/.md/.json/git-hooks)
@@ -6417,7 +6043,6 @@ gaps:
     docs/agents/<name>.md as the source of truth, and document the
     schedule trigger ID it deploys to. Schedule operator updates the
     trigger from the doc, not vice versa.
-    
   acceptance_criteria:
     - docs/agents/cold-water.md, frontier-scientist.md, scribe.md, tech-writer.md exist with current prompt content
     - Each doc names its trigger_id and cron schedule
@@ -6446,7 +6071,6 @@ gaps:
     
     Re-filed under INFRA-137 because INFRA-136 was claimed concurrently by PR
     #592 (agents/META-001 work) and merged before this fix could ship.
-    
   acceptance_criteria:
     - build-and-linkcheck CI passes on this PR
     - All 5 Python scripts with parents[1] bug are fixed
@@ -6486,7 +6110,6 @@ gaps:
       - bash scripts/ci/test-acp-smoke.sh              → 7 passed, 0 failed
     
     PR #587 closed as superseded after this lands.
-    
   acceptance_criteria:
     - All 4 previously-failing required CI checks pass on this PR
     - 153 moved bash scripts use `dirname/../..` to find repo root
@@ -6526,7 +6149,6 @@ gaps:
     Fix: require `gaps-yaml-integrity` to run in the merge-queue rebase
     phase, OR add a server-side branch-protection gate that re-runs the
     check against the merge-base. Either prevents the collision class.
-    
   acceptance_criteria:
     - Merge-queue rebased temp branch runs `gaps-yaml-integrity` before squash
     - "Test: simulate two PRs reserving the same gap ID; second one is blocked at merge time"
@@ -6556,7 +6178,6 @@ gaps:
     *added* with status: done in this PR's diff, or (b) introduce a separate
     `<GAP-ID>+:` prefix convention for "files this gap" vs `<GAP-ID>:` for
     "closes this gap".
-    
   acceptance_criteria:
     - "PR titled `<ID>:` that adds the entry with status:done in same diff passes"
     - Existing close-of-prior-gap PRs still pass
@@ -6580,7 +6201,6 @@ gaps:
     without checking the variable's definition in this specific script.
     Quick fix: either rename the local var to `REPO_ROOT` (consistent with
     other scripts) or change both refs back to `$ROOT`.
-    
   acceptance_criteria:
     - deploy-fleet.sh passes shellcheck (no undefined var references)
     - fleet-health.sh invocations resolve to repo-relative path
@@ -6612,7 +6232,6 @@ gaps:
     surviving rows from genesis (DB backup at
     sessions/chump_memory.db.pre-rehash.bak); will break again next
     time a row ages out.
-    
   acceptance_criteria:
     - Decide - either (a) verifier treats the oldest surviving row's stored hash as a new genesis (rolling-genesis pattern), or (b) cap retains a sentinel row pinning the chain origin, or (c) drop the chain hash entirely and rely on append-only rotation
     - Implementation in src/introspect_tool.rs matches chosen design
@@ -6703,7 +6322,6 @@ gaps:
           the binary predates the latest gap_store change.
     Option (a) is the most operator-friendly (refuses unsafe op at the right
     moment); (c) is the cheapest to implement.
-    
   acceptance_criteria:
     - chump CLI bakes git commit SHA at build time (env! / build.rs)
     - chump gap ship --update-yaml and chump gap dump --out PATH detect when origin/main has gap_store-affecting commits newer than the baked SHA
@@ -6711,6 +6329,37 @@ gaps:
     - "regression test: stub a baked SHA older than HEAD and verify the warn-or-refuse path fires"
     - "docs/gaps.yaml meta: preamble survives the regen path with a fresh binary (smoke test)"
   opened_date: '2026-04-27'
+
+- id: INFRA-152
+  domain: INFRA
+  title: chump gap set/ship — accept --closed-pr flag, persist to state.db, emit to YAML
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-154
+  domain: INFRA
+  title: "bot-merge.sh: auto-flip gap status to done after PR merges"
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-04-28'
+
+- id: INFRA-155
+  domain: INFRA
+  title: Detect and repair YAML/SQLite gap-store drift (INFRA-097/149 cases)
+  status: open
+  priority: P1
+  effort: m
+
+- id: INFRA-156
+  domain: INFRA
+  title: chump gap set/ship needs --closed-pr flag for INFRA-107 guard
+  status: done
+  priority: P2
+  effort: xs
+  closed_date: '2026-04-28'
+  closed_pr: 637
 
 - id: INFRA-41
   domain: infra
@@ -6720,7 +6369,6 @@ gaps:
   effort: xs
   description: |
     `scripts/code-reviewer-agent.sh` runs under `set -euo pipefail`. Default macOS bash (3.2) errors on `"${arr[@]}"` expansion when the array is empty, which fired during PR #465's review with the message `NEW_DEPS_IN_DIFF[@]: unbound variable`. PRs that don't add any dependency lines (most of them) trip this. The fix guards the iteration with `(( ${#arr[@]} > 0 ))`.
-    
   acceptance_criteria:
     - Empty-diff dependency case no longer aborts the reviewer
     - PRs with no Cargo.toml additions can pass review again
@@ -6735,7 +6383,6 @@ gaps:
   effort: xs
   description: |
     run.sh greps stderr for 'tool_call_start' / 'Using tool ', but chump emits its tool-execution markers on stdout ("🔧 Executing tool: ..."). All COG-011 trials reported tool_calls=0, which isn't true. Doesn't affect the structural scorer (it uses the final text), but makes the JSONL field misleading.
-    
   source_doc: scripts/ab-harness/run.sh
   closed_date: '2026-04-17'
 
@@ -6755,11 +6402,9 @@ gaps:
       approval triggers the GitHub merge queue to proceed
       concerns block the merge until human resolves
     Goal: zero human in the loop on routine code, automatic escalation on substantive concerns.
-    
   depends_on: [INFRA-MERGE-QUEUE, INFRA-AGENT-ESCALATION]
   notes: |
     ~1 week. Highest-leverage infra change after MERGE-QUEUE for "Jeff is no longer the bottleneck even on code PRs". Today docs PRs auto-ship cleanly; src/ PRs still require manual eyes. This closes the gap.
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-20'
 
@@ -6771,10 +6416,8 @@ gaps:
   effort: m
   description: |
     Today there is no formal escalation: when an agent gets stuck (test failure it can't diagnose, ambiguous gap acceptance, cargo build failure), it dies, times out, or pushes broken commits. Multi-agent dispatch needs an explicit escalation channel: agent emits ALERT into ambient.jsonl with kind=escalation plus structured payload (gap_id, stuck_at_step, last_error, attempted_fixes). Watch on ALERT events surfaces these to Jeff as actionable items rather than silent death. Connects to chump-coord NATS for real-time pings.
-    
   notes: |
     ~1 week. Without this, agents that hit unexpected blockers leave stranded work that needs Jeff to manually triage by reading worktree state. Key "why is Jeff still the bottleneck" failure mode.
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-20'
 
@@ -6786,10 +6429,8 @@ gaps:
   effort: m
   description: |
     .chump-locks/ambient.jsonl is append-only and unbounded. Red Letter Issue #2 confirmed that after a full day of agent activity the stream showed only 2 events — indicating the hooks are not firing, not that the scale is an issue yet. But once AUTO-013 autonomous dispatch is running at fleet scale (10+ concurrent agents), the jsonl approach will become a linear-scan bottleneck. Agents scanning for recent ALERT events (O(n) grep) will time out. Additionally, there is no archival or expiry policy: the file will grow without bound.
-    
   notes: |
     ~1 day. Current priority is P2 because ambient stream barely fires (RL Issue #2 confirmed); fix ambient hook firing first (FLEET-004b/c are marked done but emitting nothing — investigate separately).
-    
   source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
   closed_date: '2026-04-20'
 
@@ -6801,7 +6442,6 @@ gaps:
   effort: xs
   description: |
     REMOVAL-003 (#465, merged 2026-04-24) deleted the chump-belief-state crate and stubbed belief_state in-tree. Two files still referenced the removed crate and broke the Crate Publish Dry-Run CI check: (1) `.github/workflows/crates-publish-dry-run.yml` line 23 — listed chump-belief-state in the for-loop that runs `cargo publish -p $crate --dry-run`; cargo exited 1 with "package ID specification chump-belief-state did not match any packages"; (2) `scripts/publish-crates.sh` line 36 — same stale entry in the CRATES array. This caused the INFRA-CHOKE pre-flight gate in bot-merge.sh to refuse to arm auto-merge on any PR touching `crates/chump-*/**` or `Cargo.toml`, including PR #496 (INFRA-047 dependency modernization).
-    
   acceptance_criteria:
     - crates-publish-dry-run.yml no longer references chump-belief-state
     - scripts/publish-crates.sh CRATES array no longer references chump-belief-state
@@ -6810,7 +6450,6 @@ gaps:
   depends_on: [REMOVAL-003]
   notes: |
     Follow-up cleanup after REMOVAL-003. Found while investigating why PR #496 (INFRA-047) was unarmed in the merge queue. The CI pre-flight gate (INFRA-CHOKE, 2026-04-24) correctly refused to arm auto-merge — this fix restores the `dry-run` check to green.
-    
   opened_date: '2026-04-24'
   closed_date: '2026-04-24'
 
@@ -6822,7 +6461,6 @@ gaps:
   effort: xs
   description: |
     `scripts/bot-merge.sh` contains a `_comment_body=$(cat <<'EOFCOMMENT' ... ```... EOFCOMMENT)` construction for posting a CI-failure diagnostic comment on blocked PRs. Bash's `$(...)` command-substitution pre-parser scans for balanced backticks even inside a single-quoted heredoc body, so the literal triple-backtick markdown fence on line 460 produces `line NNN: unexpected EOF while looking for matching ``. The script aborts *after* `gh pr create` succeeds but *before* `gh pr merge --auto --squash` runs — silently dropping PRs into the repo without auto-merge armed. Observed on PR #482 (INFRA-045 itself), #488 (closed dup), and #491 (PRODUCT-015 activation funnel) on 2026-04-24. Each required manual `gh pr merge <N> --auto --squash` to recover. Fix: rebuild the comment body with `printf -v` + a `_fence='```'` variable, so no un-escaped backticks appear inside a `$(...)` literal.
-    
   acceptance_criteria:
     - "`bash -n scripts/bot-merge.sh` exits 0"
     - bot-merge.sh runs end-to-end through the CI-gate branch without shell parse errors
@@ -6830,7 +6468,6 @@ gaps:
     - Diagnostic comment posted on CI-failure path preserves the existing markdown structure
   notes: |
     Root cause is a well-known bash quirk — `$(cat <<'EOF' ... EOF)` is not safe for heredoc bodies containing backticks, even when the delimiter is single-quoted. Prefer `printf -v` or a temp-file round-trip for any multiline string containing literal backticks.
-    
   source_doc: CLAUDE.md
   closed_date: '2026-04-24'
 
@@ -6842,11 +6479,9 @@ gaps:
   effort: s
   description: |
     Atomic-PR discipline ("agent finishes all work, ships, never touches branch again") needs tooling enforcement. Today an agent can run bot-merge.sh, then commit + push more, eating its own commits via squash-merge. Solution: bot-merge.sh writes a .bot-merge-shipped marker file in the worktree on successful ship. chump-commit.sh refuses to commit if marker exists (with bypass via CHUMP_SHIPPED_OVERRIDE=1). Forces "PR shipped, this worktree is dead, move on to next gap" workflow. The auto-worktree-reaper (INFRA-WORKTREE-REAPER) then reaps the shipped worktree once main contains the merge commit.
-    
   depends_on: [INFRA-WORKTREE-REAPER]
   notes: |
     ~half day. Small change, big multi-agent discipline win. Reference: scripts/bot-merge.sh, scripts/chump-commit.sh.
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-20'
 
@@ -6858,10 +6493,8 @@ gaps:
   effort: s
   description: |
     During PR #158 ship, bot-merge.sh's first push committed only modified files but left 4 NEW files untracked, so the PR initially showed an empty/wrong diff. Recovered manually via chump-commit.sh + soft-reset + clean single commit + force-push. The footgun: bot-merge.sh assumes git status is clean OR all relevant files are staged, but doesn't guard against new files that aren't yet `git add`ed. Needs a pre-flight check: if there are untracked files in src/ docs/ scripts/ crates/ paths, fail loud with an instruction to chump-commit or git add them first.
-    
   notes: |
     ~2 hours including test. Caught during PR #158 (AUTO-013 step 5) ship. The new files were the new test fixtures + reflect.rs restoration; they were genuinely needed but bot-merge dropped them.
-    
   source_doc: PR
   closed_date: '2026-04-20'
 
@@ -6873,10 +6506,8 @@ gaps:
   effort: s
   description: |
     Autonomy test 2026-04-19 had chump-orchestrator dispatch a real claude -p subprocess. The subprocess ran ~3 min of valid work (pre-flight + gap read + doc walk) then hit "API Error: 500 Internal server error" from Anthropic and exited code 1. The orchestrator handled the failure gracefully (KILLED outcome, clean summary, graceful exit) but no PR shipped because of one transient external 5xx. With a thin retry wrapper (e.g. shell script that wraps claude -p, retries up to 3 times on exit code != 0 + stderr containing "API Error: 5"), the subagent would have self-recovered.
-    
   notes: |
     ~2 hours. Highest leverage to make the autonomy loop production- ready. Without it, every transient Anthropic 5xx kills a dispatch.
-    
   source_doc: docs/archive/2026-04/AUTONOMY-TEST-2026-04-19.md
   closed_date: '2026-04-19'
 
@@ -6888,7 +6519,6 @@ gaps:
   effort: xs
   description: |
     ubuntu-latest runners ship with ~14 GB free. After the chump-agent-lease and chump-mcp-lifecycle crate extractions (a5b6043, fecf45f), the test job's four sequential cargo compilations (test --workspace, build debug, build --release, clippy --all-targets) plus Ollama qwen2.5:7b (~3 GB), Playwright chromium, and tauri system libs started tipping target/ past the 8 GB headroom. "rustc-LLVM ERROR: IO failure on output stream: No space left on device" hit ~40% of main CI runs on 2026-04-17.
-    
   source_doc: .github/workflows/ci.yml
   closed_date: '2026-04-17'
 
@@ -6909,7 +6539,6 @@ gaps:
   effort: s
   description: |
     CI runner upgraded to Rust 1.95.0 / clippy 1.95, adding many new lints (manual_clamp, manual_range_contains, useless_vec, await_holding_lock, let_unit_value, doc_lazy_continuation, useless_format, bool_assert_comparison). 32 errors blocked the entire pipeline. cargo clippy --fix handled most; mechanical edits cleared the rest.
-    
   source_doc: .github/workflows/ci.yml
   closed_date: '2026-04-17'
 
@@ -6921,11 +6550,9 @@ gaps:
   effort: s
   description: |
     code-reviewer-agent.sh flagged rusqlite as a "new dependency" on PR #158 when it's already in workspace Cargo.toml. The reviewer grep'd the Cargo.toml diff for `+ rusqlite` and saw the new crate-level addition without checking workspace inheritance. Wastes cycles on dismissals. Also: the reviewer matched the gap ID as EVAL-026 instead of AUTO-013 (parsed from the worktree directory name not the gap-claim).
-    
   depends_on: [INFRA-AGENT-CODEREVIEW]
   notes: |
     ~3 hours. Lower-priority than getting the merge queue UI flipped, but adds up — every false dismissal = ~30s of attention.
-    
   source_doc: PR
   closed_date: '2026-04-20'
 
@@ -6937,11 +6564,9 @@ gaps:
   effort: s
   description: |
     No per-agent or per-session spend cap today. At scale (10+ concurrent agents from musher dispatch), runaway cloud spend is a real risk — a buggy retry loop or unintended n=1000 sweep can burn budget silently. Need: per-session hard ceiling (kill the sweep when exceeded) + soft warning threshold (log + Discord ping). Reads cost from chump_coord ledger; integrates with the ESCALATION pattern (INFRA-AGENT-ESCALATION) for the soft warn.
-    
   depends_on: [COMP-014]
   notes: |
     ~3 days. Pairs with INFRA-AGENT-ESCALATION for the soft-warn surfacing path.
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-20'
 
@@ -6953,11 +6578,9 @@ gaps:
   effort: s
   description: |
     Today's autonomy test exposed the orchestrator's failure-handling via real Anthropic API failure. Want to validate the same paths without burning real API credit. Add a fault-injection test mode that wraps the Spawner trait — returns synthetic 5xx after K seconds, returns synthetic exit code != 0, returns synthetic timeout, etc. Lets test suite verify INFRA-CHUMP-API-RETRY behavior + monitor watchdog behavior + reflection write paths under adverse conditions.
-    
   depends_on: [INFRA-CHUMP-API-RETRY]
   notes: |
     ~3 hours. Important for hardening before AUTO-013-A (lesson-aware dispatch) builds on top.
-    
   source_doc: docs/archive/2026-04/AUTONOMY-TEST-2026-04-19.md
   closed_date: '2026-04-20'
 
@@ -6969,7 +6592,6 @@ gaps:
   effort: s
   description: |
     Autonomy test V3 (with INFRA-CHUMP-API-RETRY shipped) ran 20 min, survived Anthropic API flakiness, but stalled when the subagent tried to call the Edit tool — permission prompt awaiting human approval (no human present, sandbox-by-context). Orchestrator monitor marked STALLED (no PR within soft deadline), reported summary, exited cleanly. The fix is one CLI flag: --dangerously-skip-permissions appropriate here because the subagent IS in a sandbox (own worktree, gap-scoped, atomic PR discipline, can't push to main per branch protection).
-    
   source_doc: docs/archive/2026-04/AUTONOMY-TEST-2026-04-19.md
   closed_date: '2026-04-19'
 
@@ -6991,10 +6613,8 @@ gaps:
                    agent (avoid file-lease contention)
       REVIVAL:     re-claim leases that expired uncleanly (heartbeat
                    died but TTL not up yet)
-    
   notes: |
     ~1 week. Builds on existing musher (PR #113). Removes the manual "Jeff decides what dispatches next" decision from the loop.
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-20'
 
@@ -7006,10 +6626,8 @@ gaps:
   effort: s
   description: |
     Today's harness keeps mutating: LESSONS_BLOCK constants change across PRs, judge panel evolves, agent dispatch added together:/ ollama: prefixes, retry budgets bumped after DNS outage. An old summary.json can't be reproduced bit-exact by re-running on current code. Snapshot harness config at every sweep: git SHA + env-var fingerprint + LESSONS_BLOCK content hash + judge panel + retry policy. Embed in summary.json header so each result is reproducible from its own metadata.
-    
   notes: |
     ~3 days. Pays off when future you (or external researchers) wants to re-run a 2026-Q2 sweep on a 2027-Q1 codebase to test for regression.
-    
   source_doc: session 2026-04-19 reproducibility audit
   closed_date: '2026-04-20'
 
@@ -7021,10 +6639,8 @@ gaps:
   effort: m
   description: |
     Current lease files (.chump-locks/<session>.json) have an empty `paths: []` field reserved for file-level leases that was never wired up. Wire it. Extend gap-claim.sh with --paths flag that populates the array. Extend chump-commit.sh to read all live leases and reject commits where staged files overlap a different session's path-lease. Lets two agents working on different files in the same gap (or in different gaps) commit in parallel without collision; agents on the same file wait their turn (lease blocks with timeout + clear error).
-    
   notes: |
     ~1 day implementation. Most of the lease infrastructure exists; this is wiring + check + docs. Reference: scripts/gap-claim.sh, scripts/chump-commit.sh, scripts/gap-preflight.sh.
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-20'
 
@@ -7036,10 +6652,8 @@ gaps:
   effort: s
   description: |
     Red Letter Issue #2 confirmed 7 duplicate gap IDs in docs/gaps.yaml: COG-007, COG-008, COG-009, COG-010, COG-011, MEM-003, EVAL-003 each appear twice with different titles/descriptions. Every automated system (gap-preflight.sh, chump --briefing, musher dispatcher) treats gap ID as a unique key. An agent briefed on COG-011 today receives context for two unrelated tasks with no disambiguation. The pre-commit "gap-ID hijack" guard catches title changes on existing entries but does NOT validate ID uniqueness on insert — that bypass produced all 7 collisions.
-    
   notes: |
     ~2 hrs. Blocking: every agent session starts from a corrupted index until this ships. File as P1 hotfix alongside any other work.
-    
   source_doc: docs/RED_LETTER.md Issue
   closed_date: '2026-04-20'
 
@@ -7051,11 +6665,9 @@ gaps:
   effort: m
   description: |
     EVAL-026c local 7B → 14B sweep runs for hours. If the parent session disconnects mid-sweep, the agent dies silently — work in progress is wasted. ambient.jsonl already has `silent_agent` ALERT type but nobody is watching today. Need a daemon that subscribes to silent_agent ALERTs, reads the dead session's last lease state, and either (a) restarts the sweep with --resume from last checkpoint, or (b) escalates if --resume isn't supported. Also handles network-disconnect / OOM / ssh-tunnel-died failure modes that lose long sweeps.
-    
   depends_on: [INFRA-AGENT-ESCALATION]
   notes: |
     ~1 week. Lower priority than escalation/dispatch policy — most sweeps complete within a session and this is mainly for the multi-hour local-tool sweeps. Becomes higher priority once we run nightly background sweeps.
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-20'
 
@@ -7067,10 +6679,8 @@ gaps:
   effort: s
   description: |
     Goose's Extensions Manager auto-discovers MCP servers on the machine and lets users enable them on demand. Chump currently requires manual config of each MCP server. Auto-discovery would: scan PATH for binaries matching chump-mcp-* pattern, scan ~/.config/chump/mcp-servers/, scan well-known MCP server install locations (e.g. /usr/local/lib/mcp-servers/), register each discovered server, expose via `chump mcp list` command.
-    
   notes: |
     Quality-of-life feature, not a blocker. ~2-3 days. Reference goose's Extensions Manager for UX patterns. The dev.to post on dynamic MCP discovery with goose is a useful design reference: https://dev.to/amandamartindev/dynamic-mcp-server-discovery-with-goose-3m41
-    
   source_doc: external (goose Extensions Manager, dynamic discovery)
   closed_date: '2026-04-20'
 
@@ -7082,7 +6692,6 @@ gaps:
   effort: xs
   description: |
     cf79287 accidentally swept funny-hypatia's incomplete async LLM summarizer WIP into an unrelated commit. 1241e0c reverted memory_db.rs to its pre-stomp state so the build would compile. funny-hypatia later pushed the complete version cleanly as 216e071 (MEM-004).
-    
   source_doc: cf79287
   closed_date: '2026-04-17'
 
@@ -7094,10 +6703,8 @@ gaps:
   effort: s
   description: |
     Today's PR #128 needed a manual rebase before merge because main had moved ahead 9 commits during the PR's life. Multi-agent dispatch makes this constant — every PR will be BEHIND on landing attempt. GitHub's native merge queue feature serializes auto-merge requests, automatically rebasing each PR onto the current main before running CI and merging. Eliminates the "BEHIND" failure mode entirely. Combined with INFRA-PUSH-LOCK, makes auto-merge safe by construction (no more squash-eats-commits per PR #52 pattern from strategic memo).
-    
   notes: |
     ~1 hour settings change + 1 hour testing + ~2 hours docs/script update. Single highest-leverage change in the multi-agent dispatch architecture. References: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-19'
 
@@ -7115,7 +6722,6 @@ gaps:
       crate::adapters::PlatformAdapter (older) — send-only scaffold,
         simpler InboundMessage / OutboundMessage.
     Both telegram impls coexist: src/telegram.rs (mine, full long-poll + MessagingAdapter) and src/adapters/telegram.rs (older, send-only + PlatformAdapter). They don't conflict at runtime (different module paths) but both being "the telegram adapter" is confusing for whoever adds Slack / Matrix next.
-    
   depends_on: [COMP-004a, COMP-004b]
   source_doc: src/messaging/mod.rs
   closed_date: '2026-04-18'
@@ -7128,7 +6734,6 @@ gaps:
   effort: l
   description: |
     Multiple Claude sessions on this machine all share $HOME/.chump/session_id (machine-scoped) and frequently operate in the main worktree (/Users/jeffadkins/Projects/Chump) instead of .claude/worktrees/<name>/. Result: lease files clobber each other, pre-staged WIP from one session leaks into another's commit, and git operations (cherry-pick, reset) from one session blow away another's local state. Observed five times on 2026-04-17 alone: cf79287 + a5b5053 (memory_db.rs and DOGFOOD doc stomps), plus three aborted cherry-picks during the COG-011 push. The chump-commit.sh wrapper (688e6da) addresses the symptom; this gap addresses the cause.
-    
   source_doc: CLAUDE.md
   closed_date: '2026-04-17'
 
@@ -7140,11 +6745,9 @@ gaps:
   effort: s
   description: |
     Current Chump rule (CLAUDE.md: "NEVER enable auto-merge until the branch is final") is documentation only — not tooling-enforced. PR #52 lost 11 commits to this exact failure mode (strategic memo). Multi-agent dispatch needs auto-merge to be the default, not the exception, so we need tooling to enforce the discipline: pre-push hook that fails when target PR has auto-merge armed. Forces atomic-PR workflow: agents either disarm auto-merge explicitly OR open a new PR for additional changes (cheap with musher dispatcher).
-    
   depends_on: [INFRA-MERGE-QUEUE]
   notes: |
     ~3 hours including tests. Pattern matches existing CHUMP_GAP_CHECK pre-push hook structure. Reference: scripts/git-hooks/pre-push for conventions.
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-20'
 
@@ -7156,7 +6759,6 @@ gaps:
   effort: xs
   description: |
     INFRA-048 (#497) + INFRA-QUEUE-DRIVER-PERMS (#502) got the queue-driver workflow rebasing PRs successfully, but nothing ever merged. Root cause: GitHub does not trigger new workflow runs for pushes made with GITHUB_TOKEN (the anti-loop rule — see Actions docs, "Triggering a workflow from a workflow"). So `updatePullRequestBranch` succeeded, the PR head advanced, but no `test`/`audit`/`dry-run` CI ran on the new head and auto-merge never fired. 2026-04-24: observed 10+ PRs stranded BLOCKED indefinitely despite queue-driver running every 5 minutes. Manual drain via local PAT worked (user tokens aren't subject to the anti-loop rule) but requires a human-in-the-loop for every main-advance, defeating the purpose of the driver.
-    
   acceptance_criteria:
     - queue-driver.yml mints a GitHub App installation token via actions/create-github-app-token@v1
     - GH_TOKEN env uses the App token (not GITHUB_TOKEN)
@@ -7166,7 +6768,6 @@ gaps:
   depends_on: [INFRA-048, INFRA-QUEUE-DRIVER-PERMS]
   notes: |
     Secrets QUEUE_DRIVER_APP_ID and QUEUE_DRIVER_APP_PRIVATE_KEY hold the App credentials; App has Contents:write + Pull-requests:write on repairman29/chump only. The App token is minted per workflow run with a 1-hour TTL so no long-lived PAT exposure. If the App is ever uninstalled or the key rotated, the workflow fails loud at the create-github-app-token step — no silent degradation.
-    
   opened_date: '2026-04-24'
   closed_date: '2026-04-24'
 
@@ -7178,7 +6779,6 @@ gaps:
   effort: xs
   description: |
     INFRA-048 (#497) shipped the Queue Driver workflow but declared `permissions: { pull-requests: write, contents: read }`. The `updatePullRequestBranch` GraphQL mutation rebases a PR by pushing a new commit onto the PR's head branch — that push requires `contents: write`, not `contents: read`. Observed 2026-04-24 immediately after #497 merged: workflow_dispatch run logged "GraphQL: github-actions[bot] does not have permission to update this pull request. (updatePullRequestBranch)" and left the PR BEHIND. Fix: change `contents: read` to `contents: write` in `.github/workflows/queue-driver.yml`. No admin toggle needed — repo default_workflow_permissions is already "write"; the workflow's explicit permissions block was just downgrading.
-    
   acceptance_criteria:
     - "queue-driver.yml declares contents:write"
     - Queue Driver workflow_dispatch run successfully rebases a BEHIND PR via updatePullRequestBranch
@@ -7186,7 +6786,6 @@ gaps:
   depends_on: [INFRA-048]
   notes: |
     Found while unsticking the 2026-04-24 queue (11 PRs armed, strict up-to-date rule, main advancing every ~15 min). Manual `gh pr update-branch` (user PAT) works fine; only the workflow token was blocked.
-    
   opened_date: '2026-04-24'
   closed_date: '2026-04-24'
 
@@ -7198,7 +6797,6 @@ gaps:
   effort: xs
   description: |
     CLAUDE.md's Atomic PR discipline bullet told agents what NOT to do (don't push after auto-merge arms) but gave no instructions for the recovery path when the GitHub merge queue actually gets stuck. Observed risk: agents who hit a stuck queue either (a) violate the no-push rule to "unstick" it and reintroduce the PR #52 squash-loss footgun, or (b) stall the whole fleet because no one knows the queue's dequeue/checkpoint/drain procedures. This gap adds a six-step inline recovery runbook to the same CLAUDE.md bullet — diagnose → re-run CI → dequeue blocker → checkpoint-tag recovery → nuclear drain → escalate to human — so agents have a concrete least-destructive-first procedure when symptoms appear. Keeps the recovery colocated with the rule it modifies rather than forcing a jump to MERGE_QUEUE_SETUP.md (which is a human admin setup doc, not an operator runbook).
-    
   acceptance_criteria:
     - "CLAUDE.md Atomic-PR-discipline bullet gains an \"If the merge queue is stuck\" sub-bullet"
     - Recovery steps ordered least-destructive first (diagnose → rerun → dequeue → checkpoint → drain → escalate)
@@ -7208,7 +6806,6 @@ gaps:
   depends_on: [INFRA-MERGE-QUEUE, INFRA-PUSH-LOCK]
   notes: |
     Docs-only. No tooling change. Pairs with a possible future INFRA-QUEUE-HEALTH monitor gap (not filed) that would emit the ALERT kind=queue_stuck event automatically when queue-entry age exceeds a threshold.
-    
   source_doc: 2026-04-20 session — gap noted during RESEARCH-003 ship
   closed_date: '2026-04-20'
 
@@ -7220,10 +6817,8 @@ gaps:
   effort: s
   description: |
     Today I did a synthesis pass manually: distilled session findings into FACULTY_MAP updates, STRATEGY_VS_GOOSE updates, RESEARCH_PLAN adjustments, RESEARCH-001 stub fills, EVAL-029 mechanism doc. This is the "cross-session memory consolidation" function — without it, session learnings stay in session transcripts and don't reach the next agent. INFRA-SYNTHESIS-CADENCE makes it a recurring task: a scheduled agent dispatch that reads the last N hours of session activity (PRs, reflections, ambient events) and proposes strategic- doc updates as a small PR.
-    
   notes: |
     ~3 days. Cheap automation. Without it, every session reinvents the wheel by re-reading raw artifacts; with it, the team's collective intelligence keeps refining itself in distilled form.
-    
   source_doc: session 2026-04-19 multi-agent learning loop design
   closed_date: '2026-04-20'
 
@@ -7235,7 +6830,6 @@ gaps:
   effort: s
   description: |
     White-papers CI has been failing since before this session with "pandoc: withBinaryFile: does not exist (No such file or directory)". All source files in docs/white-paper-manifest.json exist in main. Likely causes: a generated file (roadmap excerpt, changelog excerpt) isn't being created in the preprocess workdir, an image/asset reference in one of the markdowns points at a file not in the repo, or the pandoc image upgraded and changed path semantics.
-    
   notes: |
     Diagnostic gathered 2026-04-17 (no docker locally — daemon not running, can't run the exact CI invocation):
       - `python3 scripts/build-white-papers.py --volume volume-1-showcase
@@ -7266,7 +6860,6 @@ gaps:
       4. Get the full stderr: `grep -A20 "withBinaryFile" /tmp/pandoc-fail.log`
       5. Try pinning to a known-good digest:
          `CHUMP_WHITE_PAPER_IMAGE=pandoc/ubuntu-latex:3.6 python3 scripts/...`
-    
   source_doc: scripts/build-white-papers.py
   closed_date: '2026-04-17'
 
@@ -7278,7 +6871,6 @@ gaps:
   effort: xs
   description: |
     white-papers.yml triggered on any docs/** push, including docs/gaps.yaml and docs/AGENT_COORDINATION.md which change many times per day and aren't sources for any PDF volume. Result: the workflow ran (and failed, see INFRA-WHITE-PAPERS-PANDOC) on almost every commit, cluttering the status dashboard.
-    
   source_doc: .github/workflows/white-papers.yml
   closed_date: '2026-04-17'
 
@@ -7290,10 +6882,8 @@ gaps:
   effort: s
   description: |
     During the 2026-04-19 tidy audit, observed that one worktree (sweet-payne-9f4a6b) was created at `/Users/jeffadkins/projects/Chump/.claude/worktrees/sweet-payne-9f4a6b/` — note the LOWERCASE `projects` path component vs the standard `/Users/jeffadkins/Projects/Chump/...` (capital P). macOS HFS+/APFS is case-insensitive so the path resolves, but case-sensitive tools (some git operations, rsync, Linux CI) may misbehave. Likely caused by an agent constructing the path from `pwd | tr A-Z a-z` or similar. Should: (1) audit all spawn-worktree code paths in scripts/ for case-normalization, (2) add a guard that rejects worktree creation if the absolute path does not exactly match `/Users/jeffadkins/Projects/Chump/.claude/worktrees/<name>/`, (3) document the path requirement explicitly in CLAUDE.md + AGENTS.md.
-    
   notes: |
     Filed during 2026-04-19 evening tidy audit. Active sweet-payne worktree NOT touched — sibling agent's work in progress. After that worktree's PR lands, audit safely.
-    
   source_doc: session 2026-04-19 tidy audit
   closed_date: '2026-04-20'
 
@@ -7305,10 +6895,8 @@ gaps:
   effort: s
   description: |
     Tidy audit of .claude/worktrees/ on 2026-04-19 found 9 worktrees besides main, several of which correspond to already-merged PRs (e.g. .claude/worktrees/eval-025 → PR #120 merged 2026-04-19). Stale worktrees retain disk + lease files + risk of accidental commits to dead branches. We already have scripts/stale-pr-reaper.sh that auto-closes PRs whose gaps shipped to main; need the dual: a worktree reaper that detects worktrees on branches that have been merged-and-deleted on origin and removes them safely. Caveat: must preserve logs/ab/*.summary.json archive data — these are the only on-disk record of past eval runs and should be moved somewhere central before the worktree is deleted.
-    
   notes: |
     ~3-4 hours implementation. Reference: existing scripts/stale-pr-reaper.sh for cron pattern + safety conventions. Filed during 2026-04-19 evening tidy audit.
-    
   source_doc: session 2026-04-19 tidy audit
   closed_date: '2026-04-19'
 
@@ -7320,10 +6908,8 @@ gaps:
   effort: s
   description: |
     The INFRA-WORKTREE-REAPER shipped in PR #143 has an "active lease" check that prevents reaping a worktree with a live `.chump-locks/*.json`. But during the 2026-04-19 evening manual reap pass (using the same logic), the u-curve-32b worktree was reaped while a long-running background bash sweep (EVAL-026c local 7B/14B) was still actively writing to its logs/ab/ directory. Sweep died at trial 45/50 of the 7B run; 14B never started. Lost ~98 trials of local-tool data. The reaper checks for lease files but NOT for active processes writing to the worktree. Both are needed.
-    
   notes: |
     ~3 hours. Tactical: until this fix lands, when in doubt about reaping a worktree, check `lsof +D <worktree-path>` first or just grep `ps -ef` for the worktree path. The auto-cron is conservative enough (only reaps merged-and-remote-deleted branches) that this bug won't hit there — only manual invocations are at risk.
-    
   source_doc: session 2026-04-19 evening — INFRA-WORKTREE-REAPER ship + immediate post-mortem
   closed_date: '2026-04-19'
 
@@ -7342,7 +6928,6 @@ gaps:
         DOGFOOD_RELIABILITY_GAPS.md edit from another agent.
     
     Pre-commit hook already validates leases on staged paths but does not warn when a commit includes files the current command did not touch.
-    
   source_doc: cf79287, a5b5053
   closed_date: '2026-04-17'
 
@@ -7354,7 +6939,6 @@ gaps:
   effort: m
   description: |
     The three-path retrieval (FTS5 + semantic + graph PPR) merges via RRF but has no reranking stage. A lightweight cross-encoder (e.g. ms-marco-MiniLM via candle or a local model) would improve precision without changing recall.
-    
   depends_on: [COG-002]
   source_doc: docs/CHUMP_TO_COMPLEX.md, book/src/dissertation.md
   closed_date: '2026-04-16'
@@ -7367,10 +6951,8 @@ gaps:
   effort: l
   description: |
     Memory confidence is author-assigned and never decays. Old episodic memories accumulate without summarization into semantic facts. No deduplication. Long-running sessions will degrade retrieval quality as noise accumulates.
-    
   notes: |
     DONE: memory_curate() in memory_db.rs: (1) confidence decay -0.01 for unverified memories older than 7 days; (2) exact-content deduplication within each memory_type (keep highest-confidence copy via ROW_NUMBER window function); FTS5 rebuilt after dedup. CurateResult{decayed, deduped} returned. 2 unit tests covering decay and dedup. OPEN: (3) LLM-based episodic cluster summarization (requires agent call).
-    
   source_doc: docs/CHUMP_TO_COMPLEX.md, book/src/dissertation.md
   closed_date: '2026-04-16'
 
@@ -7382,7 +6964,6 @@ gaps:
   effort: m
   description: |
     MEM-002 shipped the DB-only curation passes (decay + dedupe + expire) but deferred the LLM summarization of old episodic clusters into distilled semantic facts because it needs inference budget. Add a delegate-call path (single model request per cluster, guarded by neuromod-aware rate limiting) so curate_all() can optionally run the summarization tier.
-    
   depends_on: [MEM-002]
   source_doc: docs/CHUMP_TO_COMPLEX.md, book/src/dissertation.md
   closed_date: '2026-04-17'
@@ -7395,7 +6976,6 @@ gaps:
   effort: s
   description: |
     MEM-003 shipped the sync orchestration; the async adapter that builds a summarizer closure from a delegate_tool call + wires it into the default curate_all path (behind CHUMP_MEMORY_LLM_SUMMARIZE) is the remaining piece. Small because the hard test surface already exists in memory_db.
-    
   depends_on: [MEM-003]
   source_doc: docs/CHUMP_TO_COMPLEX.md
   closed_date: '2026-04-17'
@@ -7408,7 +6988,6 @@ gaps:
   effort: m
   description: |
     Phase 8.1 from ROADMAP_CLAUDE_UPGRADE.md. Background pass that scans recent chump_episodes entries, calls the delegate worker to extract one durable fact per episode, and writes the result to chump_blackboard_persist. A chump_blackboard_cursor table tracks the highest processed episode_id so the pass is idempotent — re-running never re-extracts the same episode.
-    
   depends_on: [MEM-004]
   source_doc: docs/ROADMAP_CLAUDE_UPGRADE.md
   closed_date: '2026-04-18'
@@ -7421,11 +7000,9 @@ gaps:
   effort: m
   description: |
     PRODUCT-006 (shipped via PR #125) writes reflection lessons into chump_improvement_targets via harvest-synthesis-lessons.sh. But the question of whether new agents START with these lessons loaded is unanswered. If lessons are only retrieved on explicit memory_db query, we are collecting lessons without applying them systematically. Multi-agent dispatch needs every spawned agent to inherit relevant prior lessons as part of its initial context. A/B-validate the value: agents with prior-lesson context vs fresh agents on the same fixture.
-    
   depends_on: [COG-023, COG-024]
   notes: |
     ~1 week including A/B validation sweep. Closes the loop between reflection accumulation (PRODUCT-006 shipped) and reflection application (this gap). Without it, our learning system writes to nothing. Code shipped without empirical A/B — validation tracked as MEM-006-VALIDATE.
-    
   source_doc: session 2026-04-19 multi-agent dispatch design
   closed_date: '2026-04-19'
 
@@ -7437,11 +7014,9 @@ gaps:
   effort: s
   description: |
     MEM-006 shipped the load_spawn_lessons() + CHUMP_LESSONS_AT_SPAWN_N env var without A/B validation because the existing run-cloud-v2.py harness does not invoke chump-internal prompt assembly (it talks directly to provider APIs). To validate the hypothesis that spawn-loaded lessons improve correctness, we need a local Chump dispatch path (chump-orchestrator step 4-5 territory) so cell A (CHUMP_LESSONS_AT_SPAWN_N=5) and cell B (unset) can be measured apples-to-apples on the same fixture under the same model.
-    
   depends_on: [MEM-006]
   notes: |
     ~3 days once a local-Chump-dispatch path exists. Pre-requisite work lives in the chump-orchestrator step 4-5 territory.
-    
   source_doc: deferred from MEM-006 PR (2026-04-19)
   closed_date: '2026-04-20'
 
@@ -7453,11 +7028,9 @@ gaps:
   effort: m
   description: |
     Today's mandatory pre-flight (CLAUDE.md) reads gaps.yaml + ambient + leases. Good for "what's open, who's working" but doesn't surface "what have we learned that's relevant to MY task". MEM-007 adds `chump --briefing <GAP-ID>` that returns a structured briefing: relevant reflection_db rows (filtered by gap domain + tags), recent ambient events for files this gap likely touches, cross-references in strategic docs (FACULTY_MAP, STRATEGY_VS_GOOSE, RESEARCH_PLAN, CONSCIOUSNESS_AB_RESULTS), prior PRs that closed similar gaps. Becomes the "session startup briefing" every new agent reads AFTER mandatory pre-flight, BEFORE claiming the gap.
-    
   depends_on: [MEM-006]
   notes: |
     ~1 week. Pairs with MEM-006: MEM-006 loads lessons systemically at spawn; MEM-007 is the explicit per-gap query API. Together they close the "what does the team know about THIS task" loop.
-    
   source_doc: session 2026-04-19 multi-agent learning loop design
   closed_date: '2026-04-18'
 
@@ -7473,10 +7046,8 @@ gaps:
       (b) Temporal reasoning: did X happen before Y?
       (c) Transitive closure: A→B and B→C implies A→C
     A pilot (n=20, 3 categories × 7 questions each) should run before committing to the full EVAL-034 n=50 sweep.
-    
   notes: |
     ~0.5 days. Cheap design work that prevents an expensive ($10+) EVAL from being uninterpretable. Should precede EVAL-034.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
   closed_date: '2026-04-20'
 
@@ -7493,11 +7064,9 @@ gaps:
       (b) Error-rate filter: skip episodes from sessions with > Y%
           task failure rate
       (c) Recency × quality composite: weight by age * score
-    
   depends_on: [MEM-006]
   notes: |
     ~1 day + $2 cloud for A/B. Risk of bad-lesson poisoning compounds as reflection DB accumulates more sessions over time.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
   closed_date: '2026-04-20'
 
@@ -7509,11 +7078,9 @@ gaps:
   effort: m
   description: |
     MEM-005 ships entity resolution and deduplication in memory_graph.rs (PersonRank + entity linking). But there is no validation that entity linking is accurate enough to support multi-hop reasoning. If the linker merges "Alice (Rust expert)" with "Alice (project manager)" as the same entity due to name collision, multi-hop QA that asks "who wrote the parser?" will return wrong results silently. A 70% accurate linker fails 30% of multi-hop queries.
-    
   depends_on: [MEM-008]
   notes: |
     ~1 day. Silent failure mode: wrong entity links produce wrong answers with no error signal. Catches this before EVAL-034 runs.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
   closed_date: '2026-04-20'
 
@@ -7525,7 +7092,6 @@ gaps:
   effort: s
   description: |
     CausalGraph edges in counterfactual.rs never expire. When an API changes or a tool is deprecated, old high-strength causal chains remain active and generate regressive lessons. MEM-002 decays flat memory confidence but does not touch graph edges.
-    
   depends_on: [MEM-002, COG-004]
   closed_date: '2026-04-16'
 
@@ -7551,7 +7117,6 @@ gaps:
     diagnostic-style skill. Any "no movement" / "stalled" / "no commits"
     claim must be backed by the output of 'git log origin/main
     --grep=<ID>' showing zero or stale commits.
-    
   acceptance_criteria:
     - Cold Water prompt updated to require 'git log --grep=<ID>' citation for any inactivity claim
     - Diagnostic / red-team skills under docs/agents/ document the verification rule
@@ -7582,7 +7147,6 @@ gaps:
     Without this classification, Cold Water will systematically
     undercount active failures when architectural fixes don't include
     consumer wiring. Cold Water Issue #8.
-    
   acceptance_criteria:
     - "docs/agents/RED_TEAM_VERIFICATION.md adds FIXED_BUT_REPLACED classification: gap is done, same-day P0/P1 replacement filed, original pain point still active from consumer perspective"
     - Cold Water review template updated to check for same-day P0/P1 replacement gaps before classifying a finding as FIXED
@@ -7618,7 +7182,6 @@ gaps:
     landed in YAML on origin/main but not in `.chump/state.db`), and
     (c) had no required priority-or-status verification step against
     the canonical store before publishing.
-    
   acceptance_criteria:
     - docs/agents/cold-water.md Step 3 prefers `chump gap reserve` over the shell fallback; shell path is corrected to scripts/coord/gap-reserve.sh
     - docs/agents/cold-water.md adds a verification block requiring every filed gap to appear in BOTH docs/gaps.yaml AND `chump gap list` output before being listed in the Follow-up Gaps Filed section
@@ -7634,10 +7197,8 @@ gaps:
   effort: m
   description: |
     Horizon 1 goal: open PWA and see Dashboard with current ship status, "Building: Step 3...", recent episodes. GET /api/dashboard exists in spec (WEB_API_REFERENCE.md) but Dashboard view is incomplete or not implemented.
-    
   notes: |
     Added fleet_status (green/yellow/red), last_heartbeat_iso to /api/dashboard. New /api/dashboard/stream SSE endpoint pushes snapshot every 30s. Frontend uses EventSource with polling fallback; applyDashboardSnapshot shared between SSE handler and loadDashboard.
-    
   source_doc: docs/ECOSYSTEM_VISION.md
   closed_date: '2026-04-17'
 
@@ -7649,10 +7210,8 @@ gaps:
   effort: s
   description: |
     Horizon 1 goal: one command to build and deploy Mac + Pixel on the same commit and config. scripts/deploy-fleet.sh referenced but status unknown.
-    
   notes: |
     scripts/deploy-fleet.sh is fully implemented: parallel Mac+Android builds, hot-swap Discord+Web bots, deploy-all-to-pixel.sh for Pixel, fleet-health.sh final check. Flags: --mac, --pixel, --no-build, --health.
-    
   source_doc: docs/ECOSYSTEM_VISION.md
   closed_date: '2026-04-16'
 
@@ -7664,7 +7223,6 @@ gaps:
   effort: l
   description: |
     Chump currently starts every session knowing nothing about the user. The cognitive architecture (neuromodulation, belief state, precision controller) runs blind with no user model to calibrate against. This gap implements the three-layer user model: (1) Identity & Relationship — persistent, encrypted, who the user is and how they work; (2) Current Context — volatile, stale-flagged after 7 days, active projects and goals; (3) Learned Preferences — Chump-observed, user-confirmable behavioral observations. Profile data is never injected raw into prompts, never written to logs or ambient.jsonl, never committed to git. A user_context() function returns a curated behavioral summary; behavioral regime fields compile into the PrecisionController at session start. Storage: sessions/user_profile.db (AES-256-GCM field encryption, keyring crate for key management, 600 permissions).
-    
   source_doc: docs/FTUE_USER_PROFILE.md
   closed_date: '2026-04-19'
 
@@ -7676,7 +7234,6 @@ gaps:
   effort: m
   description: |
     The first-time user experience is the most important interaction Chump has. Right now there is no onboarding — a new user opens the PWA and faces a blank input with no guidance. This gap implements the onboarding conversation: Chump detects profile_complete()==false, opens with "I'm happy to help — let's set you up for success," and walks through five targeted questions: name, role/domains, active projects, this-week goals, and working style (checkin frequency). Each answer writes to the corresponding profile layer. After Q5, Chump summarizes, confirms, and immediately starts on the first real task from Q3/Q4. A "skip" path sets sensible defaults and asks only "what do you want to work on?" Profile builds over time from there.
-    
   depends_on: [PRODUCT-003]
   source_doc: docs/FTUE_USER_PROFILE.md
   closed_date: '2026-04-19'
@@ -7689,7 +7246,6 @@ gaps:
   effort: m
   description: |
     No automated mechanism generates session syntheses. scripts/generate-cos-weekly-snapshot.sh exists as a model: it reads SQLite and git log, emits a markdown report. We need a similar script for session/sprint syntheses. Then wire it into heartbeat-self-improve.sh as a sprint_synthesis round type (fires after every N work rounds, configurable via CHUMP_SYNTHESIS_INTERVAL). The script collects commits since last synthesis, queries SQLite for tasks completed and AB studies run, calls the model via chump --chump to generate narrative, writes to docs/syntheses/YYYY-MM-DD.md.
-    
   source_doc: docs/syntheses/README.md
   closed_date: '2026-04-19'
 
@@ -7701,7 +7257,6 @@ gaps:
   effort: s
   description: |
     generate-sprint-synthesis.sh writes a narrative synthesis but the lessons it captures (section 3: Methodology lessons) stay in a markdown file — they don't feed back into Chump's prompt. This gap closes the loop: harvest-synthesis-lessons.sh reads the synthesis, extracts ### lesson subsections and operational rules bullets, and writes them into chump_improvement_targets (priority=high, scope=NULL) so prompt_assembler.rs surfaces them automatically via the existing lessons block. Capped at 3 per synthesis to stay within LESSONS_LIMIT=5. Idempotent: skips if already harvested (checks chump_reflections error_pattern='synthesis:<date>'). Disable with CHUMP_HARVEST_LESSONS=0.
-    
   depends_on: [PRODUCT-005]
   source_doc: docs/syntheses/README.md
   closed_date: '2026-04-19'
@@ -7714,11 +7269,9 @@ gaps:
   effort: m
   description: |
     When a pattern produces validated success (e.g. today: "atomic PR + auto-merge worked across 9 PRs", "code-reviewer agent verified PR #134 with sensible APPROVE verdict"), the pattern should auto-propagate as a convention to CLAUDE.md or TEAM_OF_AGENTS.md. Currently this is manual — I distilled today's patterns into the docs by hand. PRODUCT-008 automates: nightly scan of merged PRs + reflection_db outcomes + ambient events, identify patterns with >N positive instances and 0 negative, generate proposed convention update PR for human review.
-    
   depends_on: [PRODUCT-006, INFRA-SYNTHESIS-CADENCE]
   notes: |
     ~1 week. The "convention crystallization" loop. Without it, good patterns stay tribal knowledge in one session's head; with it, they propagate into the cross-session brain (CLAUDE.md, etc.).
-    
   source_doc: session 2026-04-19 multi-agent learning loop design
   closed_date: '2026-04-20'
 
@@ -7730,7 +7283,6 @@ gaps:
   effort: m
   description: |
     Five empirical findings (F1 Scaffolding U-curve, F2 lessons-block halluc inflation +0.14 pp at 10.7x A/A noise floor, F3 cross-arch neuromod harm task-cluster localization, F4 cross-judge disagreement instantiating the question, F5 systematic LLM-vs-human judge bias map) plus one transferable technique (F6 few-shot exemplar + ship-rule unlocks OSS models for agent loops, PR #224 existence proof) are consolidated in docs/FINDINGS.md as of 2026-04-20. None have been externalized as preprint, blog post, or talk. The project's research-integrity discipline is top-decile in agent-framework space; the public-visibility path is empty. This mismatch is the single highest-leverage opportunity for the project's external positioning. Choose a venue and ship one publication-quality artifact. Candidates in priority order: (a) 2,000-word blog post centered on F1 U-curve + F6 technique (easiest, broadest reach), (b) ArXiv preprint covering F1 + F2 + F5 (formal, higher-authority, longer lead time), (c) HN-ready writeup + thread (fastest signal loop, lowest commitment). One venue this quarter, not all three at once.
-    
   acceptance_criteria:
     - Venue selected with explicit rationale (which finding set, which audience, which tradeoff)
     - Draft reviewed against docs/RESEARCH_INTEGRITY.md standard — no overclaim, CIs present, honest-limits section included, n and kappa values preserved from source
@@ -7739,7 +7291,6 @@ gaps:
     - docs/FINDINGS.md replication-invitation text updated to point external readers to the published artifact
   notes: |
     ~1-2 weeks for blog post option, ~4-6 weeks for preprint. No technical dependency; blocked only on writer bandwidth. Single highest-leverage single gap in the project right now per 2026-04-20 strategic review — closes the 'top-decile methodology, zero external visibility' gap. 2026-04-22 integrity fix: reopened from `status: done` because **zero** acceptance rows were satisfied (`closed_pr: TBD`, no live publication URL in FINDINGS, draft still pre-external-review). See docs/RED_LETTER.md Issue #4. Prior mistaken closure date 2026-04-20 exists only in git history.
-    
   source_doc: docs/FINDINGS.md + 2026-04-20 gold-mining review
 
 - id: PRODUCT-010
@@ -7768,7 +7319,6 @@ gaps:
   effort: s
   description: |
     Before rebuilding web/ we need a clear-eyed read on what local-first agent UIs already do well. Red Letter #1 flagged zero product velocity against the North Star for two consecutive cycles — the fleet is producing research and coordination infra, not shipping user-visible surfaces. Blocks PRODUCT-012 (PWA rebuild spike): we should not pick a framework or IA until we know what the category has already figured out. Scope: (1) hands-on 30-min tour of Goose (block.xyz), Cursor, Cline (VS Code extension), Aider, Claude Desktop/Projects, ChatGPT Desktop, Open WebUI, LibreChat, Ollama UI, Continue.dev; (2) write docs/PRODUCT-011-competition-scan.md — per tool: headline value prop, onboarding flow (first 60s), model-picker UX, tool-use visibility, agent-state surfacing, "where does Chump actually differentiate"; (3) a 1-page "PWA rebuild principles" appendix that PRODUCT-012 can hand to whatever framework/designer lane it chooses. Deliverable is docs-only; no code changes.
-    
   acceptance_criteria:
     - docs/PRODUCT-011-competition-scan.md shipped with one section per listed tool
     - "Final section \"PWA rebuild principles — 5 bullets\" that PRODUCT-012 can consume"
@@ -7786,7 +7336,6 @@ gaps:
   effort: m
   description: |
     web/ currently ships as vanilla JS flat files (index.html, desktop-bridge.js, ootb-wizard.js, sse-event-parser.js, sw.js, ui-selftests.js). Last feature commit 9132265 (2026-04-04, COMP-005a-fe image-paste). Jeff's verdict: "it just needs rebuilt." Scope: (1) consume PRODUCT-011's "rebuild principles"; (2) pick a framework — recommendation: keep vanilla or use htmx/lit (preserves air-gap + zero-build story), avoid React/Vue/Svelte monoliths unless PRODUCT-011 strongly argues for one; (3) ship a new web/v2/ skeleton with just the app shell: header, chat pane, tool-call sidebar, model picker, status strip. No actual functionality — just the IA. Hook feature-flag CHUMP_PWA_V2=1 to serve v2 instead of flat files so we can A/B live. Preserve service worker + manifest.json (PWA install on mobile). Must run offline (air-gap North Star promise) and install as a PWA on iOS + Android.
-    
   acceptance_criteria:
     - web/v2/ directory with app shell (no features beyond nav)
     - "Opens cleanly at http://localhost:<chump-port>/v2 with CHUMP_PWA_V2=1"
@@ -7808,7 +7357,6 @@ gaps:
   effort: m
   description: |
     After PRODUCT-012 ships the shell, the first real user-visible slice: a working chat pane that sends to the local Chump agent and streams the response back. This is the minimum thing a user can actually use after `brew install chump && chump serve` + opening the PWA. Scope: (1) wire web/v2 chat pane to existing SSE endpoint (chump already streams); (2) message list with role labels (user/assistant); (3) basic tool-call rendering (show which tool fired, not full output); (4) model picker reads from the local models registry; (5) graceful handling of "no model selected" and "agent offline" states with a one-tap link to docs/ONBOARDING.md. No message history persistence beyond session — future follow-up. No multi-session UI — future.
-    
   acceptance_criteria:
     - web/v2 chat pane sends a message and streams the response back from the local agent
     - Tool-use events render inline (even if compact)
@@ -7830,7 +7378,6 @@ gaps:
   effort: m
   description: |
     CHUMP_PROJECT_BRIEF.md's original North Star was "understanding the user in Discord and acting on intent." Red Letter #1 noted zero commits against this path. MessagingAdapter trait already extracted (per existing gap), so the Discord side has foundations. Scope: (1) Discord adapter subscribes to messages in a configured channel; (2) parses intent (three verbs initially: summarize, search, remind); (3) replies with result or a one-tap action confirmation; (4) logs to ambient.jsonl so the PWA can show Discord-sourced activity; (5) no production deploy — ship as opt-in via CHUMP_DISCORD_ENABLED=1 and a user-supplied bot token in config. Frame as "one of several surfaces" — the PWA is primary, Discord is the asynchronous secondary surface.
-    
   acceptance_criteria:
     - CHUMP_DISCORD_ENABLED=1 wires a running agent to a configured channel
     - Three intents (summarize, search, remind) dispatch correctly
@@ -7845,12 +7392,11 @@ gaps:
 - id: PRODUCT-015
   domain: product
   title: Activation funnel telemetry — install → first-task completion → day-2 return
-  status: open
+  status: done
   priority: P0
   effort: m
   description: |
     CPO-framing gap, Tier 1 of the audit slate. Red Letter flagged zero product velocity for two cycles. Before paying a research/consciousness panel for credibility review, prove users activate and retain. Scope: (1) instrument three events into ambient.jsonl — kind=activation_install (first `chump init`), kind=activation_first_task (first non-empty task completion), kind=activation_return_d2 (any session > 24h after install); (2) `chump funnel` CLI subcommand reads ambient.jsonl and prints a three-row funnel (install → first-task → d2-return) with counts + percentages; (3) opt-in local-only anonymous aggregator (remote endpoint deferred); (4) docs/ACTIVATION.md explaining events, counts, privacy posture. This funnel is the activation metric the CPO gate keys off — it tells us whether research reviews are warranted yet.
-    
   acceptance_criteria:
     - Three kind=activation_* events land in ambient.jsonl on install, first task, and d2 return
     - "`chump funnel` prints three-row funnel from ambient.jsonl"
@@ -7860,16 +7406,16 @@ gaps:
   notes: |
     Gate for Tier 2/3 audit work and the research-credibility panel in docs/EXPERT_REVIEW_PANEL.md. Activation threshold set by CPO once the funnel is live.
   source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
 
 - id: PRODUCT-016
   domain: product
   title: 3-minute demo video + scripted walkthrough against current main
-  status: open
+  status: done
   priority: P0
   effort: s
   description: |
     CPO-framing gap, Tier 1. If you can't record a 3-minute end- to-end demo of Chump delivering user value, the product isn't shippable and research reviews are premature. Scope: (1) docs/DEMO_SCRIPT.md scripts the golden path (brew install → chump init → PWA opens → user issues a prompt → result visible); (2) record against current main as an unedited screen capture at docs/assets/demo-YYYY-MM-DD.mp4 (or unlisted YouTube link); (3) the recording must NOT be edited to hide failures — failures surface as new P0 regression gaps; (4) re-record monthly or on any UX-001 regression. The recording itself is the acceptance criterion — no recording, no P0 satisfaction.
-    
   acceptance_criteria:
     - docs/DEMO_SCRIPT.md exists with scripted golden path
     - Recording exists, ≤ 3 minutes, against current main, unedited for failures
@@ -7878,6 +7424,8 @@ gaps:
   depends_on: [PRODUCT-017]
   notes: Forcing function, not theater. Failed recording attempts are the signal.
   source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
+  closed_pr: 485
 
 - id: PRODUCT-017
   domain: product
@@ -7887,7 +7435,6 @@ gaps:
   effort: s
   description: |
     CPO-framing gap, Tier 1. UX-001 is marked `status: done` 2026-04-21, promising `brew install chump → working PWA in < 60s`. Trust but verify. Scope: (1) run scripts/measure-ftue.sh on a clean Mac (fresh VM or wiped machine) today; (2) commit elapsed time + any failures to docs/FTUE-VERIFICATION-YYYY-MM-DD.md; (3) if > 60s or broken, file a P0 regression gap against UX-001 and this gap blocks PRODUCT-015/016 until resolved; (4) cadence — monthly clean-machine re-verification, CI already runs the stopwatch per UX-001 acceptance. Historical passes don't count; the gap closes only on a fresh run today.
-    
   acceptance_criteria:
     - Clean-machine stopwatch run performed in the last 14 days
     - Result committed to docs/FTUE-VERIFICATION-YYYY-MM-DD.md
@@ -7900,12 +7447,11 @@ gaps:
 - id: PRODUCT-018
   domain: product
   title: Competitive matrix + one-sentence wedge vs Cursor / Cline / Aider / Devin
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
     CPO-framing gap, Tier 2. Before paying a GTM strategist, answer "why Chump, not Cursor" in one sentence from data, not vibes. Scope: (1) docs/COMPETITIVE_MATRIX.md with feature-diff rows for Chump + top 4 competitors (Cursor, Cline, Aider, Devin), columns for capabilities (local-first, multi-agent coordination, mobile/edge, consciousness/memory subsystem, OSS license, price tiers, install complexity); (2) pricing row from public sources with retrieval date; (3) one-sentence wedge at top — the single differentiator Chump owns that others don't; (4) quarterly update cadence. Absorbs Stage G of the prior audit slate.
-    
   acceptance_criteria:
     - docs/COMPETITIVE_MATRIX.md exists with feature-diff for ≥ 5 products including Chump
     - Pricing retrieved from public sources with date-of-retrieval noted
@@ -7913,16 +7459,17 @@ gaps:
     - Quarterly update cadence declared
   notes: Human GTM reviewer (if any) starts from this doc, not a blank page.
   source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
+  closed_pr: 481
 
 - id: PRODUCT-019
   domain: product
   title: Monetization hypothesis — top 2 options with kill criteria
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
     CPO-framing gap, Tier 2. Pick a commercial direction (or document why deferred) before funding research-credibility reviews. Scope: (1) enumerate options — OSS-core + enterprise support, usage-based hosted Pixel-mesh, hosted multi-agent coordination, commercial eval API, research licensing — and pick top 2; (2) per option — bet, smallest testable slice, kill criterion (what tells us this is wrong), rough unit- economics sketch; (3) docs/MONETIZATION_V0.md; (4) revisit per Red Letter cycle. Hypothesis doc, not business plan — bias to cheap tests. "Defer commercial decisions" is itself a pick and needs a kill criterion.
-    
   acceptance_criteria:
     - docs/MONETIZATION_V0.md exists with top 2 options
     - Each option has bet / smallest testable slice / kill criterion / unit-economics sketch
@@ -7931,6 +7478,8 @@ gaps:
   depends_on: [PRODUCT-018]
   notes: Kill criterion matters more than the revenue projection.
   source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
+  closed_pr: 484
 
 - id: PRODUCT-020
   domain: PRODUCT
@@ -7950,7 +7499,6 @@ gaps:
     and there is no gap defining what the MVP ships. File the design doc
     first (selected connector list, hosting model, install UX, security
     boundary). MVP build is a downstream gap once scope is locked.
-    
   acceptance_criteria:
     - "docs/strategy/MCP_MARKETPLACE_MVP.md committed with: scoped connector list (≥5), hosting/sandbox model, install UX wireframe, threat model"
     - First 3 connectors named with rationale (which MCP servers ship with day-1 install)
@@ -7983,7 +7531,6 @@ gaps:
     docs/FTUE-VERIFICATION-YYYY-MM-DD.md), OR when an explicit CPO
     decision document records that PRODUCT-017 is intentionally deferred
     with a named date and owner.
-    
   acceptance_criteria:
     - "PRODUCT-017 acceptance criterion met: clean-machine stopwatch run committed to docs/FTUE-VERIFICATION-YYYY-MM-DD.md"
     - "OR: explicit CPO decision document in docs/ records intentional deferral of PRODUCT-017 with named owner and target date"
@@ -7998,10 +7545,8 @@ gaps:
   effort: l
   description: |
     Audit filed with "956 unwrap() calls" — this count was inflated by test code (raw grep included #[cfg(test)] blocks and tests/ directory). Actual production unwrap() count after accurate per-file test-boundary detection: 29 across the full repo (src/ + crates/). All 29 categorized: 15 are mutex lock().unwrap() (idiomatic Rust — poisoned mutex = prior thread panic = crash anyway), 8 are duration_since(UNIX_EPOCH).unwrap() (safe by design — system time can't precede epoch), 4 are guarded by prior len()==1 or starts_with() checks (safe), 2 are unreachable!() behind cfg compile-time guards. Only fix applied: 4 x duration_since().unwrap() → .unwrap_or_default() in git_tools.rs (2026-04-19). No production panic risk remains. All open_db() and conn.prepare() call sites return Result, not panic. cargo test passes. No new panics introduced.
-    
   notes: |
     Effort is "l" because there are ~900 sites but most are in tests or genuinely safe (Vec::new().unwrap() type patterns). A realistic P2 pass focuses on the ~50 highest-blast-radius sites and gets the production-path count down to near-zero. The full audit can be incremental across multiple PRs.
-    
   closed_date: '2026-04-19'
 
 - id: QUALITY-002
@@ -8028,7 +7573,6 @@ gaps:
   effort: s
   description: |
     QUALITY-002 (filed 2026-04-20) tackles unwrap() reduction. Without triage it is a sprint with no endgame - the Red Letter count jumped from 989 to 1065 after QUALITY-001 closed as "audited." Before removing N unwraps blindly, categorize the 1065 by production-path risk: (A) production hot path - src/main.rs entry, src/agent_loop/*, src/dispatch.rs, src/provider_cascade.rs; (B) production cold path - infra code only hit at startup; (C) tests / build scripts / dev tools. Panics in (A) crash unattended sessions; panics in (C) fail at CI time which is fine. The 1065 number is meaningless without this split. Output: docs/QUALITY-003-unwrap-triage.md with a per-file-per- category count and the top 20 highest-risk files ranked by (A) density. QUALITY-002 reduction work should start with those 20, not the rest.
-    
   acceptance_criteria:
     - docs/QUALITY-003-unwrap-triage.md written with the A/B/C split
     - Top 20 highest-A-density files enumerated with unwrap counts
@@ -8036,7 +7580,6 @@ gaps:
   depends_on: [QUALITY-002]
   notes: |
     ~2 hours of grep + analysis. Turns blocker #5 from a vague "1065 unwraps" into a concrete "20 files to fix for production stability." Enables QUALITY-002 to scope to an actually-completable chunk rather than running forever. Chunking function for the blocker.
-    
   source_doc: 2026-04-20 strategic review blocker
   closed_date: '2026-04-20'
 
@@ -8048,7 +7591,6 @@ gaps:
   effort: s
   description: |
     Memory, Executive Function, Metacognition modules all show NULL results (VALIDATED(NULL)). Unclear if dead code or under-tested. Review AGENTS.md + agent source (src/agents/) for each module. Check: is code actually used? any fallback paths? any tests? List call sites in production agent loop. Estimate removal cost + benefit. Decision: remove | re-measure with better instrument | keep as-is.
-    
   acceptance_criteria:
     - Reviewed each module's source code and call sites
     - Documented evidence (used vs unused, test coverage)
@@ -8067,7 +7609,6 @@ gaps:
   effort: m
   description: |
     Effort estimates (S/M/L/XL) may not match reality. Acceptance criteria may be vague or unmeasurable. Dependencies not fully mapped. Sample 20 open gaps (random, across domains). For each: is effort realistic (compare to PR size, actual time taken)? Are acceptance criteria measurable (binary yes/no)? Are dependencies complete? Is title + description clear for another agent to pick up?
-    
   acceptance_criteria:
     - Audited 20 random gaps
     - Effort estimates validated against historical PRs
@@ -8087,7 +7628,6 @@ gaps:
   effort: m
   description: |
     T1.1 dogfood (read → patch → respond) has no single local model that reliably completes end-to-end with a minimal unified diff (not write_file fallback). qwen2.5:7b passes "no crash" bar only. qwen2.5:14b has RAM eviction under load. qwen3:8b blocked by Ollama upstream instability.
-    
   notes: Partially blocked on REL-002 (upstream Ollama).
   source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
   closed_date: '2026-04-16'
@@ -8100,7 +7640,6 @@ gaps:
   effort: xs
   description: |
     Ollama 0.20.7 segfaults under dogfood load on 24GB M4. Server responds 500 after ~13s and restarts. Triggered by concurrent cargo builds + inference competing for unified memory. Not fixable from Chump (upstream bug); tracked here for visibility + workaround documentation.
-    
   notes: |
     Workarounds:
       1. CHUMP_BRAIN_AUTOLOAD= (empty) — avoids the autoload pile-up.
@@ -8114,7 +7653,6 @@ gaps:
       5. Monitor Ollama release notes; flip this gap to done when an
          upstream version reports the segfault fixed under sustained
          load.
-    
   source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
 
 - id: REL-003
@@ -8125,7 +7663,6 @@ gaps:
   effort: s
   description: |
     patch-0.7.0 panics on malformed input (caught via catch_unwind + spawn_blocking). If the crate is abandoned, options are: fork to return Err, or replace with diffy (different license + behavior). Track upstream maintenance.
-    
   source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
   closed_date: '2026-04-17'
 
@@ -8137,10 +7674,8 @@ gaps:
   effort: s
   description: |
     warn_if_near_num_ctx uses bytes/3.5 heuristic (±30% on code-heavy prompts). Systematic false warnings would erode trust in the warning. Consider tiktoken or Qwen tokenizer for accurate counts.
-    
   notes: |
     Content-type-aware heuristic in estimate_tokens_for_str: prose=4 chars/token, code/JSON=2.5 chars/token (detected by code-symbol density >12%), non-ASCII=1 token/byte, +4 tokens per-message overhead. No new deps.
-    
   source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
   closed_date: '2026-04-17'
 
@@ -8229,7 +7764,6 @@ gaps:
   effort: s
   description: |
     REMOVAL-003 (PR #465) deleted the chump-belief-state crate (666 LOC) and replaced src/belief_state.rs with an inert stub that preserves the public call surface as no-ops, so the diff stayed small and revertible. ~47 callsites still reference the stub (tool_middleware, speculative_execution, routes/health, precision_controller, neuromodulation, main, health_server, consciousness_traits, checkpoint_db). Their behavior is dead — every write is a silent no-op and every read returns inert defaults. This gap is the mechanical follow-up: remove the calls, drop the stub, regenerate AutonomySnapshot serialization to no longer require ToolBelief/TaskBelief shadow structs. Pure cleanup, no behavior change.
-    
   acceptance_criteria:
     - All callsites referencing belief_state APIs removed
     - src/belief_state.rs deleted
@@ -8238,7 +7772,6 @@ gaps:
   depends_on: [REMOVAL-003]
   notes: |
     Filed by QUALITY-004 (2026-04-25). REMOVAL-001 §Metacognition deferred this as "follow-up gap (TBD)". Estimated S effort because the stub is already inert — this is a delete-plus-fix-imports sweep.
-    
   source_doc: docs/eval/QUALITY-004-module-decisions.md
 
 - id: REMOVAL-006
@@ -8261,7 +7794,6 @@ gaps:
     crates/agent_loop provider invocation behind a runtime flag (with an
     EVAL-043 ablation arm to actually measure delta) OR remove the module
     and update all docs/research claims that reference it.
-    
   acceptance_criteria:
     - Trace neuromod-computed values through agent_loop and confirm they reach (or do not reach) the provider call
     - Decide - wire-in (with feature flag plus EVAL-043 ablation arm) or remove
@@ -8286,7 +7818,6 @@ gaps:
     surprisal_ema precedent), confirm they ARE called and add a coverage
     test that proves it, or document as "research scaffolding, not in
     request path" with a runtime flag and a follow-up gap for measurement.
-    
   acceptance_criteria:
     - Trace each module - is it called from any path that runs during a normal chat turn?
     - Decide per-module - dead-code remove, wire+test, or document as research-scaffold
@@ -8302,11 +7833,9 @@ gaps:
   effort: m
   description: |
     The EVAL-023 → EVAL-025 → EVAL-026 → EVAL-026b → EVAL-027b experimental trilogy has produced multiple novel findings that no other published source has. Headline findings worth a public writeup: (1) lessons-block hallucination harm scales monotonically UP with Anthropic model capability (haiku-3 0% → haiku-4-5 12% → sonnet-4-5 18% → opus-4-5 40%); (2) the harm is Anthropic- pretrain-specific (Qwen 7B/235B + Llama 70B all show 0% across 300 trials); (3) the COG-016 anti-hallucination directive eliminates the harm at haiku-4-5 (validated EVAL-025); (4) cross-architecture neuromod-fixture harm signal of -0.10 to -0.16 across 4 independent models (1200 trials). These findings contradict the industry default of "use the biggest model" for some failure modes — publishable as a blog post on Chump's site or arxiv preprint.
-    
   depends_on: [EVAL-027b, EVAL-029]
   notes: |
     ~1 week effort: outline, draft, charts, peer review by Jeff + external reviewer, edit, publish. Highest-leverage Chump positioning artifact we can produce in 2026-Q2. Differentiates Chump from goose/Aider/Claude Code which have shipped no comparable published findings on their own architectures.
-    
   source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
   closed_date: '2026-04-19'
 
@@ -8327,10 +7856,8 @@ gaps:
         cross-family judge validation (EVAL-042)"
       - Any doc citing "2000+ A/B trials validate Chump" — add context
         that this validates the lessons block, not the full architecture
-    
   notes: |
     ~1 day. No code changes. Prevents new contributors and agents from propagating inaccurate claims. Pairs with EVAL-042 — once cross- family judge results land, update these docs again with confirmed or revised deltas.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md
   closed_date: '2026-04-20'
 
@@ -8342,7 +7869,6 @@ gaps:
   effort: s
   description: |
     RESEARCH-002 (PR #175) aligned four internal research docs to the accurate thesis (CHUMP_FACULTY_MAP, CHUMP_PROJECT_BRIEF, CHUMP_RESEARCH_BRIEF, CONSCIOUSNESS_AB_RESULTS) but did not touch the three externally-facing surfaces readers actually see: README.md, docs/research/consciousness-framework-paper.md, and book/src/dissertation.md. These still framed Chump as a validated "nine-subsystem cognitive architecture," which RESEARCH_INTEGRITY.md's prohibited-claims table explicitly forbids until EVAL-043 results ship (infra done PR #210, sweeps pending). This gap landed the reframes: README lead bullet + research-findings preamble now state the narrow tier-dependent-injection finding and explicitly mark individual-module contributions as unablated; the consciousness-framework-paper abstract + §1.2 "what we do not claim" were rewritten so the paper's load-bearing result is the tier-dependent finding, not the nine-module whole; the dissertation Preface gained a research-integrity caveat pointing readers at the accurate thesis. Descriptive passages that reference "nine modules" as implementation structure were preserved — the correction is about claims of validation, not about describing the code.
-    
   acceptance_criteria:
     - README.md Cognitive-architecture bullet reframed to narrow thesis with EVAL-043 pending note
     - README.md Research-findings preamble states nine-module architecture is not validated as a whole
@@ -8354,7 +7880,6 @@ gaps:
   depends_on: [RESEARCH-002]
   notes: |
     Follow-on to RESEARCH-002. Does not alter descriptive implementation detail (e.g. the feedback-loop diagram in the dissertation); the reframe is targeted at validation claims only. Once EVAL-043 results land, these docs should be revisited to either tighten or relax the caveats based on the ablation outcomes.
-    
   source_doc: docs/RESEARCH_INTEGRITY.md + RESEARCH-002 scope gap
   closed_date: '2026-04-20'
 
@@ -8366,7 +7891,6 @@ gaps:
   effort: m
   description: |
     Every published lessons-block A/B compares "lessons block" vs "no lessons block" with no length-matched control. The lessons block adds ~2,000 characters of structured text to the system prompt. If a 2,000-character control of length-matched random prose produces a delta of similar magnitude, the effect is prompt-length not lessons-content — which would reframe the entire tier-dependent finding. This gap ships a third cell in every future lessons A/B (A = lessons on, B = lessons off, C = length-matched null-content prose) and re-runs the core tier-dependent finding at n=100 on haiku-4-5 and sonnet-4-5 to establish whether the content or the ceremony drives the effect. Acceptance: publish a verdict in docs/FINDINGS.md distinguishing the two alternative explanations. Paper-1 blocker.
-    
   acceptance_criteria:
     - Harness gains a --null-prose-match flag that generates a length-matched placebo at the same char count as the live lessons block
     - Cell C run at n=100 on haiku-4-5 and n=100 on sonnet-4-5 alongside A and B cells
@@ -8376,7 +7900,6 @@ gaps:
   depends_on: [RESEARCH-019]
   notes: |
     Paper-1 prerequisite. Low compute (~$3 cloud) and ~3 days of harness work. This is the single most important missing control in the current methodology. Operational split: Lane A (harness + smoke + result-doc shell) vs Lane B (preregistered n=100 sweeps) — docs/RESEARCH_EXECUTION_LANES.md §3. Result template: docs/eval/RESEARCH-018-length-matched.md.
-    
   closed_date: '2026-04-22'
 
 - id: RESEARCH-019
@@ -8387,7 +7910,6 @@ gaps:
   effort: s
   description: |
     Every existing EVAL-NNN gap records what the data showed, not what hypothesis was locked before the data was collected. This is fixable going forward via a preregistration protocol. Establish docs/eval/preregistered/ as the canonical location for one-page markdown preregistrations. Each new EVAL-* or RESEARCH-* gap that involves live data collection must land a preregistration file in that directory before its first live trial. Add a pre-commit guard that rejects any commit flipping a new EVAL-* or RESEARCH-* gap to status: done unless a corresponding docs/eval/preregistered/<gap-id>.md exists and was committed before the first trial JSONL in logs/ab/. Bypass: CHUMP_PREREG_CHECK=0 with explicit justification in the commit message. Low friction (~1 hour per gap); large credibility premium for publication.
-    
   acceptance_criteria:
     - docs/eval/preregistered/ directory created with a TEMPLATE.md and a README.md describing the required fields
     - TEMPLATE.md fields include — hypothesis, primary metric, stopping rule, expected effect size, analysis plan, exclusions, deviations (filled after data collection)
@@ -8396,7 +7918,6 @@ gaps:
     - Test fixture in scripts/test-preregistration-guard.sh mirroring the INFRA-015 pattern
   notes: |
     Single highest-leverage methodology infrastructure change in the critique. Every other RESEARCH-* gap depends on it. Ship first.
-    
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §3
   closed_date: '2026-04-21'
 
@@ -8408,7 +7929,6 @@ gaps:
   effort: l
   description: |
     Every current Chump fixture was hand-authored by the same person who designed the cognitive modules. Classic Goodhart risk. This gap ships an ecological fixture set — 100 tasks scraped from real open-source repositories (issues, PRs, code review threads) and converted to Chump fixture JSON format. Re-run the top-3 current findings (tier-dependent injection, hallucination channel, scaffolding U-curve) on the ecological fixtures. Report delta between synthetic-author-graded results and ecological-blind- scored results. Either outcome is publishable (Paper 2). The concern is that author-graded fixtures may inflate all published deltas; this gap rules that in or out.
-    
   acceptance_criteria:
     - 100-task ecological fixture set published at scripts/ab-harness/fixtures/ecological_v1.json
     - Tasks sourced from ≥5 different open-source repositories spanning ≥3 domains (systems, web, ML tooling)
@@ -8419,7 +7939,6 @@ gaps:
   depends_on: [RESEARCH-019]
   notes: |
     Paper-2 foundation. Largest single-gap effort in the program (~2 weeks for fixture curation). Can partially overlap with Paper-1 work since the ecological fixtures are independent of the length-matched control.
-    
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §2
 
 - id: RESEARCH-021
@@ -8430,7 +7949,6 @@ gaps:
   effort: m
   description: |
     Current tier-dependent injection finding is measured on haiku-4-5 vs sonnet-4-5 (same Anthropic family, same training lineage, size difference only). This gap extends to 4 model families — Anthropic (haiku/sonnet), Meta (Llama-3.3-8B/70B), Alibaba (Qwen-2.5-7B/72B), DeepSeek (V3-small / V3-big), Google (Gemma-3-9B/27B). n=100/cell per model-size tier. Goal: distinguish "a tier-dependent effect in the Anthropic family" from "a field-wide tier-dependent effect." The latter is a much stronger publishable claim. EVAL-071 partially addresses this for the hallucination channel only; this gap covers the core tier-dependent finding across the full small/large matrix per family.
-    
   acceptance_criteria:
     - n=100/cell × 2 sizes × 4 families × 2 cells (lessons on / off) = 1600 trials total
     - Cross-family LLM-judge panel (at minimum one judge from each family being tested) — no single-family judge monoculture
@@ -8441,7 +7959,6 @@ gaps:
   depends_on: [RESEARCH-019]
   notes: |
     Paper-1 blocker. Budget ~$80 cloud (Together free-tier handles Llama/Qwen/DeepSeek; Gemma via Google AI Studio). The publishable framing of the entire tier-dependent finding hinges on whether it generalizes beyond Anthropic. Do not attempt full 1600-trial AC on a thin credit month — phase per docs/RESEARCH_EXECUTION_LANES.md §4 + COST_OPTIMIZATION.md; prereg deviations required for n/model changes.
-    
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §4
 
 - id: RESEARCH-022
@@ -8452,7 +7969,6 @@ gaps:
   effort: s
   description: |
     A "cognitive architecture" claim rests on whether the agent uses the architecture. We currently measure outputs (did the task succeed, did it hallucinate) but never measure whether the agent references the injected module state in any observable way. If belief_state provides "my_ability: 0.9" and the agent never mentions or conditions on that value across 100 trials, the module is dead weight even when output deltas exist. This gap ships a post-hoc text-analysis pipeline that scans agent outputs for references to injected module state, broken out by task type. Report reference-rate × task-type × outcome table in FINDINGS.md. Mechanism evidence — not a replacement for outcome-based ablation, but a necessary complement for any architecture claim.
-    
   acceptance_criteria:
     - scripts/ab-harness/analyze-module-references.py scans JSONL files for textual references to injected belief_state/neuromod/lessons
     - Reference-rate × task-type × outcome table published for the current tier-dependent finding at n=100 per cell
@@ -8460,7 +7976,6 @@ gaps:
     - If any module's reference rate is <5% across all tasks, flag it as mechanistically unsupported regardless of outcome delta
   notes: |
     Paper-3 prerequisite (belief_state mechanism evidence). Purely post-hoc; re-analyzes existing JSONLs; no new trials. Fast win.
-    
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §5
   closed_date: '2026-04-20'
 
@@ -8472,7 +7987,6 @@ gaps:
   effort: m
   description: |
     Current "module contribution" analysis is P(pass | module=on) minus P(pass | module=off), measured aggregate. For a causal claim, the stronger quantity is the counterfactual mediation estimate — for matched trials differing only in module value, what is the expected outcome difference? Pearl's mediation framework applies directly. The A/B harness already produces matched pairs; what's missing is the analysis pipeline. Ships scripts/ab-harness/mediation-analysis.py implementing natural direct effect (NDE) and natural indirect effect (NIE) estimates per module × task-class. Upgrades every future module-contribution claim from "average treatment effect" to causal framing.
-    
   acceptance_criteria:
     - scripts/ab-harness/mediation-analysis.py computes NDE and NIE with bootstrap 95% CIs
     - Applied to existing tier-dependent A/B data (n=100); results land in docs/FINDINGS.md
@@ -8482,7 +7996,6 @@ gaps:
   depends_on: [RESEARCH-019]
   notes: |
     Upgrades the analysis section of all three papers. ~1 week of analyst time; no new compute required.
-    
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §6
   closed_date: '2026-04-21'
 
@@ -8494,7 +8007,6 @@ gaps:
   effort: m
   description: |
     EVAL-044 designed a 10-turn debug scenario with coherence and belief-drift rubrics. The fixture exists; it has never been run. This gap runs it at n=30 per cell across belief_state on/off × haiku-4-5/sonnet-4-5, measuring turn-level accuracy decay. Plot turn × accuracy curves per cell. Test hypothesis: belief_state flattens the late-turn decay curve. This is the first multi-turn evidence Chump will have; publishable framing is "When memory modules actually help: a turn-level analysis" — a conditional claim (helps in trajectory-dependent tasks after turn N) is more defensible than an aggregate claim.
-    
   acceptance_criteria:
     - n=30 × 10 turns × 4 cells = 1200 per-turn observations total
     - docs/FINDINGS.md gains turn-level accuracy plot with per-cell Wilson CIs per turn
@@ -8504,7 +8016,6 @@ gaps:
   depends_on: [RESEARCH-019, RESEARCH-022]
   notes: |
     Paper-3 foundation. Budget ~$60 cloud. Novel dimension — no prior Chump finding is multi-turn.
-    
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §7
 
 - id: RESEARCH-025
@@ -8515,7 +8026,6 @@ gaps:
   effort: m
   description: |
     EVAL-068 reported cross-judge kappa (sonnet-4-5 vs Llama-3.3-70B) at 77.3% overall with per-fixture variance (reflection=86%, perception=75%, neuromod=71%). The aggregate number hides that neuromod judgments sit on much weaker judge ground than reflection. Extend EVAL-041's human-grading protocol to 100 trials × 5 task categories (reflection, perception, neuromod, multi-hop, clarification). Compute kappa per category against the LLM-judge panel. Report category-conditional judge reliability alongside every downstream delta. Deltas reported on low-kappa categories need wider confidence intervals.
-    
   acceptance_criteria:
     - 100 trials × 5 task categories = 500 human-graded examples
     - docs/eval/EVAL-041-human-grading.md gains a per-category kappa table
@@ -8525,7 +8035,6 @@ gaps:
   depends_on: [RESEARCH-019]
   notes: |
     ~40 hours of human grading + analysis. Strengthens every paper's methodology section.
-    
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §8
 
 - id: RESEARCH-026
@@ -8536,7 +8045,6 @@ gaps:
   effort: s
   description: |
     Frontier models can behave differently when they detect they are being evaluated. Chump's fixtures include explicit evaluation framing (task IDs, structured rubrics, "the user asks..." syntax). We have not measured whether scrubbing that framing changes agent behavior. If it does, every reported delta is inflated by observer-effect bias. This gap reruns the reflection fixture at n=50 with two arms — (a) normal framing, (b) evaluation-framing scrubbed and rewritten as casual user messages. Measure behavior delta between arms. If significant, publish correction factor; if not, publish as validation that Chump fixtures don't have detectable eval-framing bias. Paper-1 scope caveat blocker.
-    
   acceptance_criteria:
     - "Reflection fixture cloned and rewritten in \"casual user message\" format (no task IDs, no rubric language, no \"the user asks\" preamble)"
     - n=50/cell × 2 framing arms × 2 model tiers (haiku, sonnet) = 400 trials
@@ -8546,7 +8054,6 @@ gaps:
   depends_on: [RESEARCH-019]
   notes: |
     ~$20 cloud. Paper-1 credibility booster. If the result is null, it strengthens the publishable finding by ruling out a standard reviewer concern. 2026-04-21: paired formal fixture (reflection_tasks_formal_paired_v1.json), run-observer-effect-ab.sh wiring to run-cloud-v2.py (--n-per-cell, --out-dir), analysis helper analyze-observer-effect.py, result shell docs/eval/RESEARCH-026-observer-effect.md, FINDINGS index row (pending sweep), and scripts/test-research-026-preflight.sh merged to main in PR #400 (2026-04-21). Human pilot validation gate signed off (Jeff Adkins 2026-04-21); 50-task casual fixture shipped; harness smoke (n=2 haiku pilot) passed 2026-04-21 — see docs/eval/RESEARCH-026-observer-effect.md § Harness smoke. Remaining acceptance: preregistered 400-trial cloud sweep, Wilson analysis in FINDINGS, then close this gap with closed_commit. Operating stance (2026-04-21): keep status open and backlog the paid full sweep until a paper or external-credibility sprint — it is not required to inform ordinary engineering. Harness + CI preflight + human validation gate + smoke are treated as sufficient to keep building; schedule the ~\$15–\$20 sweep when publication claims need the preregistered Wilson row.
-    
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §9
 
 - id: RESEARCH-027
@@ -8557,7 +8064,6 @@ gaps:
   effort: s
   description: |
     The harness already supports Together as a judge (prefix `together:<model>` in --judge-model). RESEARCH-021's 4-family tier-dependence sweep and several other preregistered gaps additionally need Together as an agent provider so that the Llama/Qwen/DeepSeek cells can run on Together's free tier. This gap ships the CLI flag + provider-routing code that makes the swap a one-line change per cell. Without it, the agent side of the cost-optimized program requires manual shelling into the chump binary with Together env vars set — too fragile for a 1,600-trial sweep. See docs/eval/preregistered/COST_OPTIMIZATION.md for the full strategy and per-gap revised budgets (~$220 total savings on the 9-gap program).
-    
   acceptance_criteria:
     - run-binary-ablation.py accepts --agent-provider {anthropic,together,ollama} and --agent-model <name>
     - run-cloud-v2.py accepts the same flags, plumbed through to the agent call path
@@ -8568,7 +8074,6 @@ gaps:
   depends_on: [RESEARCH-019]
   notes: |
     ~4-6 hours implementation + 1h test. Once shipped, every future preregistered sweep can routes its non-Anthropic cells to the Together free tier by default. Saves ~\$160 across the program.
-    
   source_doc: docs/eval/preregistered/COST_OPTIMIZATION.md
   closed_date: '2026-04-21'
 
@@ -8587,7 +8092,6 @@ gaps:
       divergence measured by Jensen-Shannon over tool-bigrams)
     - n=50/cell - H1: sequence divergence > noise floor (from A/A baseline) - H0: sequences match — blackboard is not mediating even
       non-verbally → file REMOVAL-005 (blackboard removal)
-    
   acceptance_criteria:
     - docs/eval/preregistered/RESEARCH-028.md filed before first trial
     - Blackboard-salience task subset selected from existing neuromod fixture, n≥40 qualifying tasks
@@ -8598,7 +8102,6 @@ gaps:
   depends_on: [RESEARCH-019, RESEARCH-022]
   notes: |
     ~\$25 cloud (Together free-tier judge where applicable). Paper-3 adjacent — multi-turn belief dynamics is belief_state-focused, but blackboard tool-mediation is a parallel mechanism-test question. REMOVAL-001 addendum (2026-04-21) recommends this gap as the decisive test for whether blackboard's "keep" verdict holds.
-    
   source_doc: docs/eval/REMOVAL-001-addendum-RESEARCH-022.md
 
 - id: RESEARCH-029
@@ -8619,7 +8122,6 @@ gaps:
     either: (a) an experiment ruling out simple internalization, or (b) a strategic
     decision that Chump's lesson injection is a transition mechanism, with implications
     for PRODUCT-009 publication framing.
-    
   acceptance_criteria:
     - Written position statement filed in docs/ on whether Chump's lesson injection effect is compatible with the SKILL0 internalization hypothesis
   depends_on: [RESEARCH-021]
@@ -8642,7 +8144,6 @@ gaps:
     docs for that pattern (scorer string, shebang, judge prompt version,
     fixture file, etc.) and emits an ALERT requiring re-validation before
     cited results stand.
-    
   acceptance_criteria:
     - RESEARCH_INTEGRITY.md adds an Instrument Invalidation Protocol section
     - scripts/eval-footgun-audit.sh greps prior eval docs for a given pattern
@@ -8666,7 +8167,6 @@ gaps:
     way to audit whether the project is actually engaging with these
     standards. File explicit owning gaps that schedule cycle reviews
     and track concrete actions tied to each doc's recommendations.
-    
   acceptance_criteria:
     - STRATEGIC_MEMO_2026Q2.md gets an owner_gap (this gap or a child) and a quarterly review cadence
     - RESEARCH_INTEGRITY.md gets an owner_gap that schedules audit of recent EVAL/RESEARCH closures against the methodology table
@@ -8703,7 +8203,6 @@ gaps:
     (1) RUSTSEC-2023-0071 — rsa 0.9.10 Marvin Attack (timing sidechannel key recovery). Pulled via superboring → jwt-simple → web-push. Upstream rsa crate has no patched release as of 2026-04-24 (advisory open since Nov 2023). Remediation options: replace web-push dep, or wait for rsa 0.10.
     (2) RUSTSEC-2026-0049/0098/0099/0104 — rustls-webpki 0.102.8 (panic on CRL parsing, incorrect name-constraint handling). Pulled via serenity 0.12.5 → tokio-tungstenite 0.21 → tokio-rustls 0.25 → rustls 0.22.4. Fixed in rustls-webpki 0.103+ which is already in the tree via newer consumers. Remediation: bump serenity to 0.13 when released (currently 0.12.5 is latest stable), or fork/patch locally.
     No direct-crate changes possible today. This gap remains open to track upstream fixes — weekly audit CI will re-surface it until the advisory disappears from cargo-audit output.
-    
   acceptance_criteria:
     - cargo-audit --deny warnings exits 0 on main
     - No RUSTSEC-2023-0071 in dep tree (rsa patched or replaced)
@@ -8711,7 +8210,6 @@ gaps:
   depends_on: [INFRA-044]
   notes: |
     Filed from the INFRA-044 first dry run. Do not close this gap by silencing cargo-audit — the findings doc already records the real advisories. Re-evaluate weekly when the audit CI runs.
-    
   source_doc: docs/audit/findings-2026-04-24.md
 
 - id: SECURITY-003
@@ -8722,14 +8220,12 @@ gaps:
   effort: xs
   description: |
     INFRA-048 wired up a GitHub App (QUEUE_DRIVER_APP_ID + QUEUE_DRIVER_APP_PRIVATE_KEY) so queue-driver pushes can re-trigger CI on auto-merge PRs. App private keys have no expiry — if the key ever leaks (developer laptop compromise, secret misconfiguration in a fork), an attacker has perpetual write access to main. Establish a 90-day rotation cadence: regenerate the key in the App settings, update the QUEUE_DRIVER_APP_PRIVATE_KEY repo secret, delete the old key. No code change — pure operational policy. File a calendar reminder + add a checklist entry to docs/SECURITY.md (or equivalent) once the doc exists.
-    
   acceptance_criteria:
     - 90-day rotation interval documented in repo (RUNBOOK.md or SECURITY.md)
     - First rotation performed and logged (date stamped)
     - Second rotation scheduled (calendar event or recurring task)
   notes: |
     Low priority because the App is scoped to this single repo and only has the minimum permissions queue-driver needs (pull-requests: write, contents: write). Defense-in-depth, not an urgent fix.
-    
   closed_date: '2026-04-25'
 
 - id: SENSE-001
@@ -8740,7 +8236,6 @@ gaps:
   effort: m
   description: |
     White-paper hot/cold path: peripheral sensors (future: CV, audio, presence detection) should be able to interrupt a running agent turn via a typed SensorEvent. Today there is no abstraction for this — it would require patching the agent loop ad-hoc per sensor type. Define the trait now so future ambient sensors (NewMessageSensor, MotionSensor, ThresholdSensor) can be wired without touching the loop. Initial implementation: NewMessageSensor fires when a second incoming message arrives while a turn is in flight, triggering cancellation so the agent can process the freshest context.
-    
   depends_on: [AGT-002, AGT-004]
   source_doc: src/agent_loop/orchestrator.rs
   closed_date: '2026-04-18'
@@ -8770,7 +8265,6 @@ gaps:
     expiry, ambient-stream events from sibling sessions, gap-preflight
     blocking, bot-merge.sh ship pipeline against a fake-remote repo,
     chump gap reserve atomicity. Use tempfile and git fixtures.
-    
   acceptance_criteria:
     - Integration test - two concurrent gap-claim calls on same gap - one wins, one fails
     - Integration test - gap-preflight blocks when sibling lease present, allows when expired
@@ -8788,7 +8282,6 @@ gaps:
   effort: m
   description: |
     COMP-010 (brew formula) is marked done, but the end-to-end "install → running PWA" path has no measured acceptance criterion. North Star: "someone runs one command, a PWA opens." This gap owns the ≤60-second promise. Scope: (1) `chump init` subcommand that, on first run, (a) detects available local models, (b) writes a minimal config, (c) starts the server, (d) opens the PWA at localhost:<port>/v2 in the default browser; (2) OOTB wizard (already exists at web/ootb-wizard.js — audit for reuse vs rewrite once PRODUCT-012 lands); (3) stopwatch script scripts/measure-ftue.sh that times `brew install chump && chump init && <until PWA is responsive>` and fails CI if > 90s on a GitHub runner; (4) docs/ONBOARDING.md with screenshots of each step. If REL-002 (Ollama upstream blocker) is unresolved, ship a bundled-model fallback with a quantized default so no external dependency is needed for the first-run success.
-    
   acceptance_criteria:
     - "`chump init` subcommand exists and chains detect → config → serve → open-browser"
     - FTUE stopwatch ≤ 60s on M4 Mac, ≤ 90s CI budget
