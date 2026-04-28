@@ -174,6 +174,42 @@ impl GapStore {
                   AND (closed_date IS NULL OR closed_date = '')",
             [],
         );
+        // INFRA-112: drop any pre-existing rows with NULL/empty/whitespace id.
+        // Such rows survive `INSERT OR IGNORE` (PRIMARY KEY on TEXT permits empty
+        // strings in legacy SQLite) but vanish from the YAML mirror because
+        // `serde_yaml` round-trips `- id: ` as a list entry whose `id` is null,
+        // and downstream consumers (CI guards, gap-preflight) treat that as
+        // missing. Cheap one-shot cleanup; the trigger below prevents future
+        // regressions.
+        let _ = self.conn.execute(
+            "DELETE FROM gaps WHERE id IS NULL
+               OR LENGTH(REPLACE(REPLACE(REPLACE(REPLACE(id, ' ', ''),
+                  char(9), ''), char(10), ''), char(13), '')) = 0",
+            [],
+        );
+        // INFRA-112: trigger-enforced non-empty id. SQLite cannot add CHECK
+        // constraints via ALTER TABLE, so we attach BEFORE INSERT/UPDATE
+        // triggers that RAISE(ABORT) on empty/whitespace ids. CREATE TRIGGER
+        // IF NOT EXISTS makes this idempotent across reopens.
+        self.conn.execute_batch(
+            "
+            CREATE TRIGGER IF NOT EXISTS gaps_id_nonempty_insert
+            BEFORE INSERT ON gaps
+            FOR EACH ROW
+            WHEN NEW.id IS NULL OR LENGTH(REPLACE(REPLACE(REPLACE(REPLACE(NEW.id, ' ', ''), char(9), ''), char(10), ''), char(13), '')) = 0
+            BEGIN
+                SELECT RAISE(ABORT, 'gap id must be non-empty');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS gaps_id_nonempty_update
+            BEFORE UPDATE OF id ON gaps
+            FOR EACH ROW
+            WHEN NEW.id IS NULL OR LENGTH(REPLACE(REPLACE(REPLACE(REPLACE(NEW.id, ' ', ''), char(9), ''), char(10), ''), char(13), '')) = 0
+            BEGIN
+                SELECT RAISE(ABORT, 'gap id must be non-empty');
+            END;
+            ",
+        )?;
         Ok(())
     }
 }
@@ -499,6 +535,23 @@ impl GapStore {
         let mut out = String::from("gaps:\n");
         for g in &gaps {
             out.push_str(&format_gap_yaml(g));
+        }
+        // INFRA-112: self-validating round-trip — re-parse what we just emitted
+        // and confirm the entry count matches the source. Catches future
+        // regressions in `format_gap_yaml` (e.g. an emitter change that drops a
+        // row when a field contains an unescaped colon) or in the upstream YAML
+        // parser. Cheap: parses ~half a megabyte once per dump.
+        let parsed: YamlGapsFile = serde_yaml::from_str(&out)
+            .with_context(|| "dump_yaml emitted YAML that fails to parse")?;
+        if parsed.gaps.len() != gaps.len() {
+            bail!(
+                "dump_yaml is lossy: DB has {} gaps, YAML round-trip has {} \
+                 (delta={}). Likely cause: a row with an empty/whitespace id \
+                 or a field that breaks YAML scalar quoting.",
+                gaps.len(),
+                parsed.gaps.len(),
+                gaps.len() as i64 - parsed.gaps.len() as i64,
+            );
         }
         Ok(out)
     }
@@ -1234,6 +1287,83 @@ mod tests {
         let store = GapStore::open(&repo_root).unwrap();
         let row = store.get("LEGACY-001").unwrap().expect("row exists");
         assert_eq!(row.closed_date, "2026-04-27", "backfill must be idempotent");
+    }
+
+    /// INFRA-112: empty/whitespace gap ids must be rejected at the SQL layer
+    /// so they can never enter the store via `INSERT OR IGNORE` paths
+    /// (`import_from_yaml`, hand-issued sqlite3, future codepaths). Without
+    /// the trigger, such rows survive in the DB but vanish from the YAML
+    /// mirror — silently shrinking the visible gap registry.
+    #[test]
+    fn test_migrate_rejects_empty_id_at_insert() {
+        let (store, _dir) = test_store();
+        for bad in ["", "   ", "\t", "\n"] {
+            let r = store.conn.execute(
+                "INSERT INTO gaps(id,domain,title,status,created_at)
+                 VALUES(?1,'INFRA','x','open',0)",
+                params![bad],
+            );
+            assert!(r.is_err(), "trigger must reject id={:?}", bad);
+        }
+        let r = store.conn.execute(
+            "INSERT OR IGNORE INTO gaps(id,domain,title,status,created_at)
+             VALUES('','INFRA','x','open',0)",
+            [],
+        );
+        assert!(
+            r.is_err(),
+            "trigger must reject empty id even with OR IGNORE"
+        );
+    }
+
+    /// INFRA-112: pre-existing empty-id rows (from before the trigger) must
+    /// be cleaned up on reopen, and dump_yaml's self-validation must see the
+    /// DB and YAML counts agree afterward.
+    #[test]
+    fn test_migrate_cleans_existing_empty_id_rows_and_dump_self_validates() {
+        let dir = TempDir::new().unwrap();
+        let repo_root = dir.path().to_path_buf();
+        {
+            let store = GapStore::open(&repo_root).unwrap();
+            // Drop the trigger, insert a bad row, then close. Simulates a DB
+            // written by an older binary that lacked the constraint.
+            store
+                .conn
+                .execute_batch("DROP TRIGGER IF EXISTS gaps_id_nonempty_insert;")
+                .unwrap();
+            store
+                .conn
+                .execute(
+                    "INSERT INTO gaps(id,domain,title,status,created_at)
+                     VALUES('','INFRA','orphan','open',0)",
+                    [],
+                )
+                .unwrap();
+            store
+                .conn
+                .execute(
+                    "INSERT INTO gaps(id,domain,title,status,created_at)
+                     VALUES('GOOD-001','INFRA','keeper','open',0)",
+                    [],
+                )
+                .unwrap();
+        }
+        // Reopen — migrate() must DELETE the empty-id row and recreate the
+        // trigger. dump_yaml then self-validates round-trip count.
+        let store = GapStore::open(&repo_root).unwrap();
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM gaps", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "empty-id row must be cleaned up on reopen");
+        let yaml = store
+            .dump_yaml()
+            .expect("dump_yaml must succeed and self-validate after cleanup");
+        assert!(yaml.contains("GOOD-001"));
+        assert!(
+            !yaml.contains("\n- id: \n"),
+            "no empty-id list entry should remain"
+        );
     }
 
     #[test]
