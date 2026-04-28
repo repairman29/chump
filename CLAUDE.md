@@ -105,6 +105,19 @@ lands in the same PR. Never hand-edit gaps.yaml to add `in_progress`,
 `claimed_by`, or `claimed_at` — those fields are gone. Claims live in lease
 files; status lives in the SQLite store.
 
+**Auto-close on ship (INFRA-154, 2026-04-28).** `bot-merge.sh` now runs
+`chump gap ship <ID> --closed-pr <PR#> --update-yaml` between `gh pr create`
+and arming auto-merge, then commits + pushes the resulting `docs/gaps.yaml`
++ `.chump/state.sql` diff onto the same branch. The merge queue squashes the
+close commit together with the implementation commit, so origin/main sees
+**one atomic closure** with `status=done` + `closed_pr=<this-PR>` — no more
+"flip status to done after PR #N landed" follow-up commits (5+ such
+bot-effort PRs the week of 2026-04-22..28). Disable with
+`CHUMP_AUTO_CLOSE_GAP=0` for partial-progress / split PRs that should not
+fully close their gap. Skipped automatically when the gap is already done,
+when no `--gap` was given, or when the chump binary doesn't support
+`--closed-pr` (pre-INFRA-156 binaries).
+
 ## Hard rules
 
 - **Never push directly to `main`.** Branch is `claude/<codename>`, worktree under `.claude/worktrees/<codename>/`.
