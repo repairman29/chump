@@ -222,6 +222,16 @@ jobs:
       - name: gap-reserve ID zero-padding (INFRA-080)
         run: bash scripts/ci/test-gap-reserve-padding.sh
 
+      - name: bot-merge auto-close handshake (INFRA-154)
+        run: |
+          # Build a debug chump binary so the test sees current --closed-pr
+          # support rather than whatever's in PATH (or nothing). The dev
+          # profile is already cached from `cargo test --workspace` if that
+          # ran earlier, so this is fast.
+          cargo build --bin chump
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-bot-merge-auto-close.sh
+
       - name: Dual-surface coordination smoke (INFRA-032)
         # RESEARCH-018 closed 2026-04-23; use RESEARCH-020 (still-open P1)
         run: bash scripts/ci/coord-surfaces-smoke.sh RESEARCH-020
