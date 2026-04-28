@@ -14441,3 +14441,52 @@ gaps:
     - "regression test test_dump_yaml_with_meta_preserves_preamble in src/gap_store.rs"
   raised_by: jeffadkins
   raised_in: 2026-04-27 friction during INFRA-145 ship — manual revert of 20k-line meta-loss diff
+
+- id: INFRA-148
+  domain: INFRA
+  title: chump CLI binary staleness detection — silent gaps.yaml corruption when binary predates gap_store.rs changes
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-27'
+  description: |
+    INFRA-147 (PR #616) added `dump_yaml_with_meta` to preserve the meta:
+    preamble during `chump gap dump` / `chump gap ship --update-yaml`. The
+    fix is correct in source but does NOT take effect until each operator
+    rebuilds and reinstalls the chump binary. Operators with stale binaries
+    in $PATH will still strip the meta: block on regenerate — silently
+    corrupting docs/gaps.yaml with a 20k-line diff on every ship.
+
+    Hit live on 2026-04-27 during the COG-038 / INFRA-146 closure PR: my
+    `~/.local/bin/chump` was dated Apr 26 11:55 (pre-INFRA-147), so
+    `chump gap ship --update-yaml` regenerated gaps.yaml without the meta:
+    block. Reverted manually and hand-edited the closures instead. The
+    coordination layer has no signal for "your binary is older than the
+    most recent gap_store-affecting commit on origin/main" — agents can not
+    tell their binary is dangerous before they run it.
+
+    The same risk applies to any future `gap_store.rs` / `main.rs` change
+    that affects YAML serialization: silent corruption until every operator
+    rebuilds.
+
+    Fix options (pick one or stack):
+      (a) `chump --version` bakes in the git SHA at build; `chump gap ship
+          --update-yaml` and `chump gap dump --out PATH` warn or refuse if
+          HEAD has commits touching `crates/*/src/gap_store.rs` or
+          `src/main.rs`'s gap subcommand wiring after the baked SHA.
+      (b) Pre-commit hook on PRs that mutate gap_store.rs / gap subcommand
+          wiring posts a banner reminding operators to reinstall the binary
+          before running `chump gap ship --update-yaml` again.
+      (c) `bot-merge.sh` self-checks `chump --version` against
+          `git log origin/main -- src/gap_store.rs` and prints a warning if
+          the binary predates the latest gap_store change.
+    Option (a) is the most operator-friendly (refuses unsafe op at the right
+    moment); (c) is the cheapest to implement.
+  acceptance_criteria:
+    - "chump CLI bakes git commit SHA at build time (env! / build.rs)"
+    - "chump gap ship --update-yaml and chump gap dump --out PATH detect when origin/main has gap_store-affecting commits newer than the baked SHA"
+    - "detection emits a clear warning (or refuses, behind --force) telling operators to rebuild + reinstall"
+    - "regression test: stub a baked SHA older than HEAD and verify the warn-or-refuse path fires"
+    - "docs/gaps.yaml meta: preamble survives the regen path with a fresh binary (smoke test)"
+  raised_by: jeffadkins
+  raised_in: '2026-04-27 INFRA-147 follow-up — stale binary stripped meta: block during COG-038 closure ship'
