@@ -13107,9 +13107,11 @@ gaps:
 - id: INFRA-112
   domain: INFRA
   title: chump gap dump is lossy - 391 gaps in DB became 389 in YAML
-  status: open
+  status: done
   priority: P0
   effort: s
+  closed_pr: 626
+  closed_date: '2026-04-28'
   opened_date: '2026-04-26'
   description: |
     Running 'chump gap dump --out docs/gaps.yaml' on 2026-04-26 produced
