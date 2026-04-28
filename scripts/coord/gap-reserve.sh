@@ -158,15 +158,25 @@ try:
                 used.add(pid)
 
     nums = []
+    widths = []
     for g in used:
         m = re.match(rf"^{re.escape(domain)}-(\d+)$", g)
         if m:
             nums.append(int(m.group(1)))
+            widths.append(len(m.group(1)))
     n = max(nums, default=0) + 1
-    prop = f"{domain}-{n}"
+    # INFRA-080: zero-pad to the prevailing width of this domain's existing
+    # IDs (3 digits is the established convention across every domain in
+    # the repo). Using max() of observed widths means a domain that has
+    # grown to 4 digits stays 4-digit; floor of 3 keeps the convention
+    # for new / sparsely-populated domains. Mirrors the Rust path's
+    # `format!("{}{:03}", prefix, num)` in src/gap_store.rs::reserve.
+    pad_width = max(max(widths) if widths else 0, 3)
+    fmt = "{:0" + str(pad_width) + "d}"
+    prop = f"{domain}-{fmt.format(n)}"
     while prop in used:
         n += 1
-        prop = f"{domain}-{n}"
+        prop = f"{domain}-{fmt.format(n)}"
 
     now_s = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     ttl_h = int(os.environ.get("GAP_CLAIM_TTL_HOURS", "4"))

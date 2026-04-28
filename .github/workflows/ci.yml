@@ -216,6 +216,9 @@ jobs:
           bash scripts/ci/test-gap-reserve-concurrency.sh
           bash scripts/ci/test-gap-reserve-preflight.sh
 
+      - name: gap-reserve ID zero-padding (INFRA-080)
+        run: bash scripts/ci/test-gap-reserve-padding.sh
+
       - name: Dual-surface coordination smoke (INFRA-032)
         # RESEARCH-018 closed 2026-04-23; use RESEARCH-020 (still-open P1)
         run: bash scripts/ci/coord-surfaces-smoke.sh RESEARCH-020
