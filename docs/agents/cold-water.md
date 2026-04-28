@@ -118,16 +118,19 @@ Every claim must trace to a specific file:line, PR, gap ID, commit, or ambient e
 
 ## Step 3: File follow-up gaps (with sandbox-safe fallback)
 
-For EVERY concrete finding in Steps 0 and 2 that names a problem with no existing open gap, attempt to reserve a gap ID:
+For EVERY concrete finding in Steps 0 and 2 that names a problem with no existing open gap, reserve a gap ID using the canonical Rust path first (writes both `.chump/state.db` AND lease), with shell fallback:
 
 ```bash
-CHUMP_ALLOW_MAIN_WORKTREE=1 CHUMP_GAP_RESERVE_SKIP_PR=1 scripts/coordination/gap-reserve.sh <DOMAIN> 'short title (under 70 chars)' 2>/dev/null \
-  || CHUMP_ALLOW_MAIN_WORKTREE=1 CHUMP_GAP_RESERVE_SKIP_PR=1 scripts/gap-reserve.sh <DOMAIN> 'short title (under 70 chars)'
+# PREFERRED: Rust CLI — atomically reserves ID + writes SQLite
+chump gap reserve --domain <DOMAIN> --title 'short title (under 70 chars)' \
+  || CHUMP_ALLOW_MAIN_WORKTREE=1 CHUMP_GAP_RESERVE_SKIP_PR=1 scripts/coord/gap-reserve.sh <DOMAIN> 'short title (under 70 chars)'
 ```
 
 DOMAIN is one of: INFRA, EVAL, COG, MEM, DOC, FLEET, PRODUCT, RESEARCH, FRONTIER, META.
 
-**If gap-reserve.sh exits 0**: capture the printed ID (last stdout line) and add this row to docs/gaps.yaml:
+**Note (META-003, 2026-04-27):** The shell fallback `scripts/coord/gap-reserve.sh` writes only the lease file (NOT `.chump/state.db`). If you use the fallback, you MUST run `chump gap import` after editing docs/gaps.yaml to seed the SQLite store. Otherwise `chump gap list` will not show your new gaps and downstream tooling will report them as missing. The shell script also does NOT zero-pad IDs (gives `META-3` not `META-003`); manually fix the ID in your YAML row to match the existing 3-digit convention.
+
+**If gap-reserve exits 0**: capture the printed ID (last stdout line) and add this row to docs/gaps.yaml:
 ```yaml
 - id: <RESERVED-ID>
   domain: <DOMAIN>
@@ -155,6 +158,33 @@ Special cases:
 - DO NOT file gaps for vague observations. Every filed/proposed gap must have a falsifiable acceptance criterion.
 
 Aim for 3–8 gaps per cycle (filed or proposed). Zero is suspect — re-read your findings.
+
+**Verification block (META-003, 2026-04-27) — REQUIRED before Step 4.** For each gap ID you wrote in this cycle, prove it landed in BOTH stores:
+
+```bash
+# After editing docs/gaps.yaml, run:
+chump gap import 2>&1 | tail -5  # idempotent; seeds SQLite from YAML
+for ID in <ID1> <ID2> ...; do
+  in_yaml=$(grep -c "^- id: $ID$" docs/gaps.yaml)
+  in_db=$(chump gap list --json 2>/dev/null | python3 -c "import json,sys; print(any(g['id']=='$ID' for g in json.load(sys.stdin)))")
+  echo "$ID: yaml=$in_yaml db=$in_db"
+done
+```
+
+Both must show `yaml=1` and `db=True`. If `db=False`, `chump gap import` failed silently — investigate and re-run. If `yaml=0`, the row was never written — go back to Step 3. The "Follow-up Gaps Filed" section in RED_LETTER.md MUST list ONLY IDs that pass this verification.
+
+**Priority/status sourcing (META-003, 2026-04-27).** Any claim that gap X is `priority: P0` or `status: open` MUST come from `chump gap list --json` (the canonical SQLite store), not from hand-counting docs/gaps.yaml or memory of prior cycles. The hand-counted P0 census in Issue #8 misclassified INFRA-084 (P1) and INFRA-094 (P2) as P0; the canonical query would have caught it:
+
+```bash
+chump gap list --status open --json 2>/dev/null | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+p0 = [g['id'] for g in data if g.get('priority')=='P0']
+print(f'P0 open: {len(p0)} — {sorted(p0)}')
+"
+```
+
+Similarly, before claiming a gap is "OPEN-BUT-LANDED", verify it is still `status: open` in the SQLite store, not just by `git log --grep`. Issue #8 listed INFRA-083 as OPEN-BUT-LANDED but it was actually `done` (closed via PR #561 commit `567a5d9` on 2026-04-26).
 
 ## Step 4: THE ONE BIG THING
 
