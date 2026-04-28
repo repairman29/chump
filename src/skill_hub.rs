@@ -534,7 +534,12 @@ visit
         assert!(report.warnings.iter().any(|w| w.contains("base64")));
     }
 
+    // INFRA-149: must be serial — mutates process-global CHUMP_SKILL_REGISTRIES
+    // env var that other tests in the suite read concurrently. Without the guard,
+    // the assertion at `assert_eq!(regs.len(), 2)` flakes (left=0, right=2) when
+    // a sibling test calls `remove_var` between this test's `set_var` and read.
     #[test]
+    #[serial_test::serial]
     fn default_registries_reads_env() {
         std::env::set_var(
             "CHUMP_SKILL_REGISTRIES",
