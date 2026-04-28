@@ -108,6 +108,7 @@ head -250 docs/audits/RED_LETTER.md
 For each of the most recent 3 issues, list every distinct named problem (gap ID, file, behavior). For each, classify the current state per RED_TEAM_VERIFICATION.md:
 
   FIXED               — landed on main since the issue, with commit SHA / PR
+  FIXED_BUT_REPLACED  — done with closed_pr, BUT a same-day P0/P1 replacement gap was filed that re-states the original pain (META-002, 2026-04-28). Canonical example: FLEET-006 closed by PR #572 → FLEET-017 (P0) filed same day because Cold Water never subscribed to the new NATS stream. Cite BOTH gap IDs.
   STILL_OPEN_INACTIVE — gap still open AND `git log --grep=<ID>` shows zero commits
   STILL_OPEN_ACTIVE   — gap still open BUT `git log --grep=<ID>` shows ≥1 commits (acceptance gap, not inactivity)
   STALE               — ≥1 commits but most recent >14 days old
@@ -116,6 +117,23 @@ For each of the most recent 3 issues, list every distinct named problem (gap ID,
   NO_GAP              — flagged but never filed as a gap (this is the bug — fix it)
 
 Output this as a 'Status of Prior Issues' block. **Each STILL_OPEN_* / STALE / CONTESTED line must include the verification block from RED_TEAM_VERIFICATION.md** (commit count, most recent, status, acceptance gap). Findings that are STILL_OPEN_INACTIVE or STALE across 2+ cycles are escalated automatically into Step 4 candidates.
+
+**FIXED check rule (META-002, 2026-04-28).** Before classifying any finding as plain `FIXED`, search for a same-day or next-day P0/P1 replacement gap that re-states the original pain:
+
+```bash
+chump gap list --status open --json | python3 -c "
+import json, sys
+gid = '<GAP-ID-being-classified>'  # the gap you're about to mark FIXED
+data = json.load(sys.stdin)
+for g in data:
+    if g.get('priority') not in ('P0','P1'): continue
+    blob = (g.get('title','') + ' ' + g.get('description','')).lower()
+    if gid.lower() in blob:
+        print(f'  candidate replacement: {g[\"id\"]} ({g[\"priority\"]}) — {g[\"title\"]}')
+"
+```
+
+If anything prints, classify as `FIXED_BUT_REPLACED` and link both IDs in the finding. Do NOT promote `FIXED_BUT_REPLACED` into the `FIXED:` line — it gets its own bullet so the consumer-side gap stays visible.
 
 **FLEET-017 binding (2026-04-28):** Any claim of the form "no agent activity," "ambient stream silent," or "nobody is working on this" must cite the NATS log (`$NATS_LOG` from Step -0.5) — not just `.chump-locks/ambient.jsonl`. The local file is empty in a remote sandbox by construction; treating its emptiness as evidence of "no work" is the exact mechanism Red Letter Issues #2-#7 keep flagging. If `$NATS_LOG` is also empty AND the subscription is healthy (`$NATS_PID_FILE` non-empty and the PID is alive), that IS legitimate evidence of no recent activity. If the subscription is unhealthy, downgrade the claim to "cannot verify activity from this sandbox" and file a follow-up gap noting the NATS unreachability.
 

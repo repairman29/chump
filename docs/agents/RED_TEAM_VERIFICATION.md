@@ -59,11 +59,62 @@ git log origin/main --grep="<GAP-ID>" --oneline | head -20
 | ≥1 | ≤14 days | **ACTIVE** — do not claim inactivity; investigate why gap not closed |
 | ≥1 | >14 days | **STALE** — claim "shipped work but no closure since YYYY-MM-DD" |
 | ≥1 with retraction | any | **CONTESTED** — name the retraction PR and the follow-up gap |
+| done + same-day P0/P1 replacement | any | **FIXED_BUT_REPLACED** — see below |
 
-The four classifications produce different findings. "Active gap not
+The five classifications produce different findings. "Active gap not
 closed" means the **acceptance criteria** need re-examination, not that
 nothing happened — that's a different finding, with a different remedy,
 than "gap is being ignored."
+
+### FIXED_BUT_REPLACED (META-002, 2026-04-28)
+
+A gap is **FIXED_BUT_REPLACED** when ALL three conditions hold:
+1. The original gap is `status: done` with a real `closed_pr` (the
+   technical work shipped).
+2. A same-day or next-day **replacement gap at P0 or P1** was filed
+   that re-states the original pain point — typically because the fix
+   addressed the producer side of a system but not the consumer side.
+3. From the consumer's perspective, the original failure mode is still
+   active — i.e. the producing component is fixed but nothing actually
+   uses it yet.
+
+**Canonical example: FLEET-006 → FLEET-017 (2026-04-26 / 2026-04-27).**
+FLEET-006 ("ambient stream empty for 6 cycles") was closed by PR #572
+which distributed the ambient stream over NATS. Same date, FLEET-017
+(P0, open) was filed: "Cold Water remote agent does not subscribe to
+NATS ambient stream — FLEET-006 unused." The server-side fix shipped;
+the agent that needed the fix was never wired up. From Cold Water's
+own perspective the 6-cycle void is still present.
+
+**Why it matters.** Classifying FLEET-006 as plain `FIXED` was
+technically correct (PR #572 satisfies its acceptance) but obscured
+that the original pain (Cold Water has no ambient signal) was still
+active. Cold Water Issue #8's "Status of Prior Issues" block bucketed
+this as `FIXED-WITH-REPLACEMENT` ad-hoc; this section formalizes it.
+
+**Cold Water classification rule (enforced in
+[cold-water.md](./cold-water.md) Step 0).** Before stamping any
+finding as `FIXED`, run:
+
+```bash
+# Find any open P0/P1 gap filed within ±1 day of the closure date
+# whose title or description references the gap you're about to mark FIXED.
+chump gap list --status open --json | python3 -c "
+import json, sys
+gid = '<GAP-ID-being-classified>'
+close_date = '<closing PR's merge date>'
+data = json.load(sys.stdin)
+for g in data:
+    if g.get('priority') not in ('P0','P1'): continue
+    if gid in (g.get('title','') + g.get('description','')):
+        print(f'  candidate replacement: {g[\"id\"]} ({g[\"priority\"]}) — {g[\"title\"]}')
+"
+```
+
+If any candidate appears, classify as `FIXED_BUT_REPLACED` and link
+both gap IDs in the finding. Do not promote a `FIXED_BUT_REPLACED`
+into the `FIXED:` line of the Status of Prior Issues block — it
+belongs in its own bullet so the consumer-side gap is visible.
 
 ## Required citation format
 
