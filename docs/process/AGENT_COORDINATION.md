@@ -897,3 +897,44 @@ host developer's `user.email` — commits from a bot looked indistinguishable
 from human commits, so Red Letter flagged every `<you@example.com>` as a
 foreign actor. Fix: pin dispatch-path commits to the bot identity so the
 signal is clean.
+
+---
+
+## Remote agent NATS subscription audit (FLEET-018, 2026-04-28)
+
+FLEET-006 distributed the ambient stream to NATS so remote agents in
+Anthropic-cloud sandboxes could see local agent activity. FLEET-017
+wired Cold Water in. This section is the periodic sweep of every other
+scheduled remote trigger to make sure none are stuck on the local
+file-tail blindness FLEET-017 fixed.
+
+**How to refresh this audit:** call `RemoteTrigger {action: "list"}`
+from a Claude Code session, and for each trigger record (a) whether
+the agent needs cross-machine ambient (does its prompt mention
+`ambient.jsonl` / sibling-agent activity / lease state?) and (b)
+whether the deployed prompt already reads NATS (`chump-coord watch`,
+`chump.events.>`, `NATS_LOG`, `CHUMP_NATS_URL`). Update the table
+below.
+
+### Audit results (snapshot — 2026-04-28)
+
+| Trigger ID | Name | Schedule (UTC) | Enabled | Repo | Needs ambient? | NATS-wired? | Recommendation |
+|---|---|---|---|---|---|---|---|
+| `trig_01GA2XVbAZtpkBaWfrEo1CrP` | Cold Water | `0 15 * * 1` (Mon 15:00) | ✅ | chump | yes | canonical ✅ / **deployed ❌** | Run `/schedule update trig_01GA2XVbAZtpkBaWfrEo1CrP` to sync the FLEET-017 prompt update from `docs/agents/cold-water.md` (PR #629). The 2026-05-12 audit (`trig_01665xYHXRCGyx2kfCjvpPwy`) catches this if it doesn't happen. |
+| `trig_01665xYHXRCGyx2kfCjvpPwy` | FLEET-017 deployment audit | `2026-05-12T16:00:00Z` (one-shot) | ✅ | chump | yes | ✅ | Already NATS-wired by construction; verifies the Cold Water sync above. |
+| `trig_01BqhJMF7jyjGps7GEBtCnQq` | Frontier Scientist | `0 15 * * 3` (Wed 15:00) | ❌ | chump | yes (prompt explicitly cites `ambient.jsonl` and lease files as inputs) | ❌ | Wire NATS subscription into the prompt **before re-enabling**. Until then, the agent is dormant and harmless. |
+| `trig_01K5vWmxr1pJMcTeijNvZHyB` | Scribe | `0 14 * * 0` (Sun 14:00) | ❌ | chump | no (doc-writing role, doesn't read sibling-agent state) | n/a | Local-only by design; flag for re-audit if the prompt grows to reference ambient or coordination state. |
+| `trig_01Bd9q8oadn66VBCBPNqp2WN` | documentation gardener | `0 9 * * *` (daily 09:00) | ❌ | non-chump | no | n/a | Out of repo; not in scope for chump's NATS bus. Re-audit if it ever consumes chump ambient. |
+| `trig_01QZUM4t2Xr4ZtXSahNPpwnt` | technical writer, gardener, and librarian | `0 * * * *` (hourly) | ❌ | non-chump | no | n/a | Out of repo; same as above. |
+
+**Re-enabling discipline.** When flipping a disabled chump-repo trigger to
+`enabled: true`, treat it as a checkpoint: re-read its prompt and verify
+NATS wiring is current with `docs/agents/cold-water.md`'s Step -0.5
+pattern. If the agent reads ambient state at all, it needs the
+subscription block; if it doesn't, document the local-only choice in
+this table.
+
+**Why disabled triggers are still listed.** A disabled trigger has a
+prompt frozen on the cloud side; without an audit row it's easy to
+re-enable it later without remembering it never had NATS wiring. The
+table is the receipt that the choice was deliberate.
