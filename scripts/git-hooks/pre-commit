@@ -38,6 +38,12 @@
 #        baseline plan, effect threshold, and prohibited-claims
 #        attestation per docs/RESEARCH_INTEGRITY.md; bypass via
 #        CHUMP_PREREG_CONTENT_CHECK=0 (justify in PR body)
+#      - cross-judge audit (INFRA-079): when an EVAL-* / RESEARCH-*
+#        gap closes, the gap entry must reference a cross-judge audit
+#        artifact (≥2 judge families) OR carry an explicit
+#        single_judge_waived + reason field OR have a preregistration
+#        that declares single-judge scope; bypass via
+#        CHUMP_CROSS_JUDGE_CHECK=0 (justify in PR body)
 #
 # 4. Submodule sanity (INFRA-018, 2026-04-19): rejects commits that add a
 #    new gitlink (mode 160000) without a matching `.gitmodules` entry. The
@@ -744,6 +750,75 @@ PYEOF_PREREG_FLIP
                         echo "[pre-commit] Fill the missing fields per docs/eval/preregistered/TEMPLATE.md and docs/RESEARCH_INTEGRITY.md," >&2
                         echo "[pre-commit] then re-stage and commit. Bypass (genuinely retrospective gap, justified in PR body):" >&2
                         echo "[pre-commit]   CHUMP_PREREG_CONTENT_CHECK=0 git commit ..." >&2
+                        exit 1
+                    fi
+                fi
+            fi
+
+            # INFRA-079: cross-judge audit guard. When an EVAL-* /
+            # RESEARCH-* gap closes, the gap entry must reference a
+            # cross-judge audit JSONL with ≥2 judge families, or carry
+            # an explicit single_judge_waived field, or have a
+            # preregistration declaring single-judge scope. Same
+            # flipping_gids set as the content check above.
+            if [ "${CHUMP_CROSS_JUDGE_CHECK:-1}" != "0" ]; then
+                cj_checker="$(git rev-parse --show-toplevel)/scripts/ci/check-cross-judge.py"
+                if [ -x "$cj_checker" ] && [ -n "${flipping_gids:-}" ]; then
+                    cj_failures=""
+                    new_yaml_tmp=$(mktemp)
+                    # Pull the staged gaps.yaml so we can slice gap blocks.
+                    git show :docs/gaps.yaml > "$new_yaml_tmp" 2>/dev/null || > "$new_yaml_tmp"
+                    while IFS= read -r gid; do
+                        [ -z "$gid" ] && continue
+                        # Slice from `- id: $gid` to the next `- id:` (or EOF).
+                        block_tmp=$(mktemp)
+                        python3 - "$new_yaml_tmp" "$gid" > "$block_tmp" <<'PYEOF_SLICE'
+import sys, re
+yaml_path, gid = sys.argv[1], sys.argv[2]
+text = open(yaml_path).read()
+lines = text.splitlines()
+start = None
+for i, ln in enumerate(lines):
+    m = re.match(r'^\s*-\s*id:\s*(\S+)', ln)
+    if m and m.group(1) == gid:
+        start = i
+        break
+if start is None:
+    sys.exit(0)
+end = len(lines)
+for j in range(start + 1, len(lines)):
+    if re.match(r'^\s*-\s*id:\s*\S+', lines[j]):
+        end = j
+        break
+sys.stdout.write("\n".join(lines[start:end]) + "\n")
+PYEOF_SLICE
+                        prereg_arg=()
+                        prereg_path="docs/eval/preregistered/${gid}.md"
+                        prereg_tmp=$(mktemp)
+                        for src in ":${prereg_path}" "HEAD:${prereg_path}" "origin/main:${prereg_path}"; do
+                            if git show "$src" > "$prereg_tmp" 2>/dev/null; then
+                                prereg_arg=("--prereg" "$prereg_tmp")
+                                break
+                            fi
+                        done
+                        if ! python3 "$cj_checker" "$gid" \
+                                --gap-block "$block_tmp" \
+                                "${prereg_arg[@]}" \
+                                --repo-root "$(git rev-parse --show-toplevel)" >&2; then
+                            cj_failures="${cj_failures}${gid}\n"
+                        fi
+                        rm -f "$block_tmp" "$prereg_tmp"
+                    done <<< "$flipping_gids"
+                    rm -f "$new_yaml_tmp"
+                    if [ -n "$cj_failures" ]; then
+                        echo "" >&2
+                        echo "[pre-commit] CROSS-JUDGE AUDIT MISSING (INFRA-079) — closure requires cross-judge evidence or explicit waiver:" >&2
+                        printf '%b' "$cj_failures" | while IFS= read -r gid; do
+                            [ -z "$gid" ] && continue
+                            echo "  - $gid" >&2
+                        done
+                        echo "" >&2
+                        echo "[pre-commit] Bypass (justified in PR body): CHUMP_CROSS_JUDGE_CHECK=0 git commit ..." >&2
                         exit 1
                     fi
                 fi
