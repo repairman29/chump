@@ -14255,9 +14255,11 @@ gaps:
 - id: META-003
   domain: META
   title: Cold Water agent factual errors Red Letter #8 — root cause and safeguards
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_pr: 619
+  closed_date: '2026-04-28'
   opened_date: '2026-04-27'
   description: |
     Red Letter Issue #8 (2026-04-27) shipped with three factual errors
@@ -14605,9 +14607,11 @@ gaps:
 - id: INFRA-155
   domain: INFRA
   title: Detect and repair YAML/SQLite gap-store drift (INFRA-097, INFRA-149 cases)
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_pr: 641
+  closed_date: '2026-04-28'
   opened_date: '2026-04-28'
   description: |
     Two concrete drifts observed in the 2026-04-28 session reveal that
