@@ -215,6 +215,7 @@ the COG-026 A/B aggregator can split outcomes by backend.
 - `scripts/coord/gap-preflight.sh` — gap availability check (reads lease files + checks done on main)
 - `scripts/coord/gap-claim.sh` — write a gap claim to your session's lease file
 - `scripts/coord/bot-merge.sh` — ship pipeline (calls gap-claim.sh automatically)
+- `scripts/coord/gap-doctor.py` — drift detector + repair tool (INFRA-155). Compares `.chump/state.db` against `docs/gaps.yaml` and reports four buckets: DB done / YAML open (regen YAML), DB open / YAML done (sync DB from YAML), DB-only orphans, YAML-only ghosts. Run `gap-doctor.py doctor` for a read-only report; `sync-from-yaml --apply` drains pre-INFRA-152 hand-edit drift; `sync-from-db --apply` regenerates YAML from DB. The 2026-04-28 first run drained 25 status:open-but-actually-done rows in one shot.
 - `scripts/ops/stale-pr-reaper.sh` — runs hourly, auto-closes PRs whose gaps landed on main
 - `scripts/ops/stale-worktree-reaper.sh` — removes merged / orphaned linked worktrees under `.claude/worktrees/` (default dry-run; use `--execute`). macOS hourly install: `scripts/setup/install-stale-worktree-reaper-launchd.sh` (see **Worktree disk hygiene** above)
 - `scripts/git-hooks/pre-commit` — coordination hook (see **Commit-time guards** table above)

@@ -898,6 +898,58 @@ from human commits, so Red Letter flagged every `<you@example.com>` as a
 foreign actor. Fix: pin dispatch-path commits to the bot identity so the
 signal is clean.
 
+### 3b. Local `user.email` discipline (INFRA-076, 2026-04-28)
+
+The repo-local `.git/config` `[user]` block must point at the developer's
+real GitHub identity. Setting it to a placeholder (`Test`,
+`test@test.com`, `Your Name`, `you@example.com`) silently poisons every
+PR shipped from that checkout: GitHub's **squash merge** automatically
+appends each branch-commit author as a `Co-authored-by:` trailer in the
+squashed commit message. So a local config of `user.email =
+test@test.com` produces `Co-authored-by: Test <test@test.com>` in every
+merged PR even though the visible `Author:` line is rewritten to your
+GitHub account email. This is the mechanism behind INFRA-076 (Cold Water
+Issue #5–#8 — `Test <test@test.com>` co-author appearing on 100% of
+recent commits).
+
+**Required local-config check** (run once per fresh clone, and re-run
+after any incident where commit attribution looks wrong):
+
+```bash
+git config user.name           # must be your GitHub login (e.g. repairman29)
+git config user.email          # must match your GitHub account email
+git log -1 --format='%an <%ae>%n%(trailers:only)'  # check no surprise Co-authored-by lines
+```
+
+**Sandbox-fixture discipline.** Test scripts that create throwaway
+sandbox repos and run `git config user.email "test@test.com"` must
+**scope that config to the sandbox repo only** — i.e. always use
+`git -C "$SANDBOX" config user.email "test@test.com"`, never plain
+`git config` in the parent shell's `cwd`. Several existing scripts do
+this correctly (`scripts/ci/test-file-lease.sh`,
+`scripts/ci/test-duplicate-id-guard.sh`,
+`scripts/ci/test-closed-pr-guard.sh`). The likely cause of INFRA-076
+was one such call accidentally executed at the repo root before the
+`-C` argument was added — the bad config persisted in `.git/config`
+indefinitely because git never auto-corrects user-set values.
+
+**If you find Test or placeholder identities in your local config:**
+overwrite with the correct values; no `--global` needed unless the
+global config is also a placeholder (mine was — `Your Name /
+you@example.com` — fixed in the same change).
+
+```bash
+git config user.name "<your-github-login>"
+git config user.email "<your-github-email>"
+git config --global user.name "<your-github-login>"     # if global is also placeholder
+git config --global user.email "<your-github-email>"
+```
+
+Linked worktrees (under `.claude/worktrees/`) share the main repo's
+`.git/config`, so a single fix at the repo root propagates to every
+worktree automatically — verify with
+`for wt in .claude/worktrees/*/; do git -C "$wt" config user.email; done`.
+
 ---
 
 ## Remote agent NATS subscription audit (FLEET-018, 2026-04-28)

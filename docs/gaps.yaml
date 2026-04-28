@@ -14143,10 +14143,12 @@ gaps:
 - id: DOC-012
   domain: DOC
   title: NORTH_STAR.md cognitive-architecture claims contradict RESEARCH_INTEGRITY.md validated findings
-  status: open
+  status: done
   priority: P1
   effort: xs
   opened_date: '2026-04-27'
+  closed_date: '2026-04-28'
+  closed_pr: 633
   description: |
     docs/strategy/NORTH_STAR.md:19 states "The cognitive architecture
     underneath Chump — free energy, surprise tracking, belief state,
@@ -14499,6 +14501,50 @@ gaps:
   raised_by: jeffadkins
   raised_in: '2026-04-27 INFRA-147 follow-up — stale binary stripped meta: block during COG-038 closure ship'
 
+- id: INFRA-149
+  domain: INFRA
+  title: 'skill_hub::tests::default_registries_reads_env env-leak flake — passes alone, fails in full cargo test suite'
+  status: done
+  priority: P2
+  effort: xs
+  opened_date: '2026-04-28'
+  closed_date: '2026-04-28'
+  closed_pr: 624
+  description: |
+    `src/skill_hub.rs:538` `default_registries_reads_env` mutates the
+    process-global `CHUMP_SKILL_REGISTRIES` env var without
+    `#[serial_test::serial]`. Adjacent tests in the same module DO use the
+    serial guard for the same reason (see `install_from_content_writes_skill`
+    at line 552). Under cargo's default parallel runner, another thread
+    racing on `default_registries()` can observe `len() == 0` between
+    `set_var` and the assertion at line 544 — which is exactly what shipped
+    the failure during 2026-04-27 INFRA-148 bot-merge.sh:
+
+      thread 'skill_hub::tests::default_registries_reads_env' panicked at
+      src/skill_hub.rs:544:9:
+      assertion `left == right` failed
+        left: 0
+       right: 2
+
+    Reproduces only in the full suite; `cargo test --bin chump
+    skill_hub::tests::default_registries_reads_env` passes consistently in
+    isolation. This makes bot-merge.sh's local cargo test step flaky and
+    forces the INFRA-028 manual ship recovery path on otherwise clean PRs.
+
+    Fix: add `#[serial_test::serial]` to `default_registries_reads_env`
+    (one-line change). Optional: audit other tests in `src/skill_hub.rs`
+    and `src/main.rs` that mutate process env without the serial guard.
+
+    Filing arrived after the implementation (PR #624 landed first).
+    INFRA-155 documents the ghost-gap pattern this represents and proposes
+    `chump gap doctor` to detect it systematically.
+  acceptance_criteria:
+    - "default_registries_reads_env carries #[serial_test::serial]"
+    - "cargo test --bin chump (full suite) passes 10/10 consecutive runs locally"
+    - "no other tests in src/skill_hub.rs mutate process env without serial guard (audit)"
+  raised_by: jeffadkins
+  raised_in: '2026-04-27 INFRA-148 bot-merge.sh ship: forced manual ship via gh pr create + gh pr merge --auto'
+
 - id: INFRA-154
   domain: INFRA
   title: 'bot-merge.sh: auto-flip gap status to done after PR merges'
@@ -14607,10 +14653,12 @@ gaps:
 - id: INFRA-156
   domain: INFRA
   title: 'chump gap set/ship needs --closed-pr flag for INFRA-107 guard'
-  status: open
+  status: done
   priority: P2
   effort: xs
   opened_date: '2026-04-28'
+  closed_date: '2026-04-28'
+  closed_pr: 637
   description: |
     The pre-commit closed_pr integrity guard (INFRA-107, 2026-04-26)
     requires `closed_pr: <numeric>` in the same diff that flips a gap
