@@ -14238,6 +14238,50 @@ gaps:
     - "FLEET-006 and FLEET-017 cited as the canonical example"
   raised_by: cold-water
   raised_in: RED_LETTER#8
+- id: META-003
+  domain: META
+  title: Cold Water agent factual errors Red Letter #8 — root cause and safeguards
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-27'
+  description: |
+    Red Letter Issue #8 (2026-04-27) shipped with three factual errors
+    that the agent prompt did not prevent:
+
+    1. **P0 misclassification.** Issue #8 listed 8 P0 gaps including
+       INFRA-084 (actually P1) and INFRA-094 (actually P2). Hand-counted
+       from gaps.yaml without querying the canonical SQLite store.
+    2. **Stale status claim.** INFRA-083 was listed as "OPEN-BUT-LANDED"
+       but had already been closed via PR #561 commit `567a5d9` on
+       2026-04-26 — one day before the cycle ran.
+    3. **Drifted snapshot.** Claimed "65/88 (74%) OPEN-BUT-LANDED" but
+       current open count is 116; the snapshot pre-dated multiple
+       gap-filing days.
+
+    Root cause: the agent prompt at docs/agents/cold-water.md (a) cited
+    a wrong gap-reserve.sh path (`scripts/coordination/gap-reserve.sh`
+    and `scripts/gap-reserve.sh` — neither exists; only
+    `scripts/coord/gap-reserve.sh` does), (b) instructed YAML edits
+    without `chump gap import` reconciliation so SQLite store drifts
+    from YAML (verified: DOC-012, META-002, PRODUCT-021, EVAL-092
+    landed in YAML on origin/main but not in `.chump/state.db`), and
+    (c) had no required priority-or-status verification step against
+    the canonical store before publishing.
+  acceptance_criteria:
+    - "docs/agents/cold-water.md Step 3 prefers `chump gap reserve`
+      over the shell fallback; shell path is corrected to
+      scripts/coord/gap-reserve.sh"
+    - "docs/agents/cold-water.md adds a verification block requiring
+      every filed gap to appear in BOTH docs/gaps.yaml AND
+      `chump gap list` output before being listed in the
+      Follow-up Gaps Filed section"
+    - "docs/agents/cold-water.md requires P0 census and status claims
+      to come from `chump gap list --json`, not hand-counts"
+    - "Trigger trig_01GA2XVbAZtpkBaWfrEo1CrP synced via
+      /schedule update after PR merges"
+  raised_by: claude
+  raised_in: RED_LETTER#8 audit
 - id: PRODUCT-021
   domain: PRODUCT
   title: PRODUCT-017 P0 non-compliance escalation — freeze new PRODUCT gap work until clean-machine verification completes
