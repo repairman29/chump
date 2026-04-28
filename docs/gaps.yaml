@@ -14554,10 +14554,12 @@ gaps:
 - id: INFRA-154
   domain: INFRA
   title: 'bot-merge.sh: auto-flip gap status to done after PR merges'
-  status: open
+  status: done
   priority: P1
   effort: s
   opened_date: '2026-04-28'
+  closed_date: '2026-04-28'
+  closed_pr: 639
   description: |
     Observed pattern (2026-04-28 session): 3 of 4 P0/P1 gaps picked up
     were already fully implemented but still status:open in the registry.
