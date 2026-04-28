@@ -11414,7 +11414,7 @@ gaps:
   raised_in: RED_LETTER#7
 - id: INFRA-076
   title: "Test <test@test.com> co-author in 29+ commits — document identity or purge from history"
-  status: open
+  status: done
   priority: P2
   effort: s
   domain: INFRA
@@ -11440,6 +11440,9 @@ gaps:
     - Zero new commits carry Co-authored-by: Test <test@test.com> unless intentional and documented
   raised_by: cold-water
   raised_in: RED_LETTER#7
+  closed_date: '2026-04-28'
+  closed_pr: 642
+
 - id: INFRA-083
   title: Gap-closure hygiene audit — close OPEN-BUT-LANDED gaps
   status: open
@@ -11791,7 +11794,7 @@ gaps:
 - id: INFRA-079
   domain: INFRA
   title: Pre-commit hook for EVAL/RESEARCH gap closure — require cross-judge audit or explicit waiver
-  status: open
+  status: done
   priority: P0
   effort: m
   opened_date: '2026-04-26'
@@ -11819,6 +11822,9 @@ gaps:
   depends_on: [EVAL-074]
   raised_by: process-review
   raised_in: 2026-04-26 session
+  closed_date: '2026-04-28'
+  closed_pr: 625
+
 - id: INFRA-080
   domain: INFRA
   title: gap-reserve.sh outputs unpadded ID (e.g. EVAL-88 instead of EVAL-088)
@@ -13524,7 +13530,7 @@ gaps:
 - id: FLEET-018
   domain: FLEET
   title: Audit all scheduled remote agents for NATS ambient subscription wiring
-  status: open
+  status: done
   priority: P1
   effort: xs
   opened_date: '2026-04-26'
@@ -13543,6 +13549,9 @@ gaps:
     - "Document the audit result in docs/AGENT_COORDINATION.md"
   raised_by: 2026-04-26-audit
   raised_in: 2026-04-26 audit
+  closed_date: '2026-04-28'
+  closed_pr: 635
+
 - id: RESEARCH-031
   domain: RESEARCH
   title: Strategic research docs are orphan - STRATEGIC_MEMO and RESEARCH_INTEGRITY have no owner_gap
@@ -13731,7 +13740,7 @@ gaps:
 - id: INFRA-132
   domain: INFRA
   title: Pre-push guard - cross-check Closes/Fixes trailers against gap titles to catch ID-reference hijacks
-  status: open
+  status: done
   priority: P2
   effort: s
   opened_date: '2026-04-26'
@@ -13762,6 +13771,8 @@ gaps:
     - "Documented in CLAUDE.md commit-time guards table"
   raised_by: post-tour-followup
   raised_in: 2026-04-26 PR audit (PR #577 vs PR #578 INFRA-108 cosmetic collision)
+  closed_date: '2026-04-28'
+  closed_pr: 583
 
 - id: INFRA-133
   domain: INFRA
@@ -13940,7 +13951,7 @@ gaps:
 - id: INFRA-137
   domain: INFRA
   title: Phase 3 follow-up — Python parents[1] + cross-subdir SCRIPT_DIR refs
-  status: open
+  status: done
   priority: P1
   effort: s
   opened_date: 2026-04-26
@@ -13965,6 +13976,9 @@ gaps:
     - "Cross-subdir bash sibling refs use $REPO_ROOT/scripts/<dir>/<name>"
   raised_by: ci-failure-on-591-post-merge
   raised_in: 2026-04-26 PR #591 build-and-linkcheck failure persisted after merge
+  closed_date: '2026-04-28'
+  closed_pr: 594
+
 - id: INFRA-139
   domain: INFRA
   title: Move gaps-yaml-integrity check into merge-queue rebase phase to prevent parallel-PR ID collisions
@@ -14399,7 +14413,7 @@ gaps:
 - id: INFRA-145
   domain: INFRA
   title: auto-backfill closed_date for pre-column done rows
-  status: open
+  status: done
   priority: P2
   effort: s
   opened_date: '2026-04-27'
@@ -14424,10 +14438,13 @@ gaps:
     - "rows with neither closed_at nor closed_date set (e.g. INFRA-083) are not fabricated"
   raised_by: jeffadkins
   raised_in: 2026-04-27 friction report after COG-α/β/γ trilogy closure
+  closed_date: '2026-04-28'
+  closed_pr: 613
+
 - id: INFRA-147
   domain: INFRA
   title: chump gap dump and ship --update-yaml drop the meta preamble (CPO priorities, version)
-  status: open
+  status: done
   priority: P1
   effort: xs
   opened_date: '2026-04-27'
@@ -14457,6 +14474,8 @@ gaps:
     - "regression test test_dump_yaml_with_meta_preserves_preamble in src/gap_store.rs"
   raised_by: jeffadkins
   raised_in: 2026-04-27 friction during INFRA-145 ship — manual revert of 20k-line meta-loss diff
+  closed_date: '2026-04-28'
+  closed_pr: 616
 
 - id: INFRA-148
   domain: INFRA
@@ -14659,6 +14678,8 @@ gaps:
     - "Test: synthetic divergence (manually edit one field in YAML to disagree with DB) is detected"
   raised_by: claude
   raised_in: '2026-04-28 session — observed during INFRA-097 status-flip attempt + INFRA-149 reserve collision'
+  closed_date: '2026-04-28'
+  closed_pr: 641
 
 - id: INFRA-156
   domain: INFRA
