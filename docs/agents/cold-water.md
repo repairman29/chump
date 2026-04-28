@@ -34,13 +34,69 @@ You are a remote scheduled agent running in a fresh sandbox with a clone of gith
 ```bash
 echo '=== sandbox preflight ==='
 pwd; ls -la | head -20
-which gh git python3 yq jq && echo 'all core tools present' || echo 'MISSING tools'
+which gh git python3 yq jq cargo nats && echo 'all core tools present' || echo 'MISSING tools (nats / cargo optional — used in Step -0.5)'
 gh auth status 2>&1 | head -5
 git remote -v
+echo "CHUMP_NATS_URL=${CHUMP_NATS_URL:-<unset, will default to nats://127.0.0.1:4222>}"
 echo '=== end preflight ==='
 ```
 
 If `pwd` is not the chump repo root, `cd` into it before continuing. If `gh auth status` shows logged-out, note this in the final RED_LETTER entry as a blocker — several steps will fail.
+
+## Step -0.5: NATS ambient subscription (FLEET-017, 2026-04-28)
+
+Tail-only of `.chump-locks/ambient.jsonl` is empty in this sandbox — the
+local file has never seen a sibling agent's edit. FLEET-006 distributed
+the stream to NATS (`chump.events.>`); FLEET-017 wires Cold Water in.
+Subscribe **at session start**, let it warm up while you do other
+preflight work, and read the captured log alongside the file tail in
+Step 1.
+
+```bash
+NATS_LOG=/tmp/cold-water-nats-$$.log
+NATS_PID_FILE=/tmp/cold-water-nats-$$.pid
+: > "$NATS_LOG"
+
+# Try in this order: (1) chump-coord watch (the canonical path), (2)
+# the standalone `nats sub` CLI if present. If neither works, log the
+# fact and move on — Step 1 will fall back to the local file tail.
+if cargo run -q -p chump-coord -- watch > "$NATS_LOG" 2>&1 &
+then
+    echo $! > "$NATS_PID_FILE"
+    echo "[cold-water] chump-coord watch started (pid $(cat $NATS_PID_FILE)), log $NATS_LOG"
+elif command -v nats >/dev/null 2>&1; then
+    nats sub 'chump.events.>' --raw > "$NATS_LOG" 2>&1 &
+    echo $! > "$NATS_PID_FILE"
+    echo "[cold-water] nats sub started (pid $(cat $NATS_PID_FILE)), log $NATS_LOG"
+else
+    echo "[cold-water] no NATS subscription tool available — Step 1 falls back to local .chump-locks/ambient.jsonl tail"
+    : > "$NATS_PID_FILE"  # empty — sentinel for downstream
+fi
+
+# Brief liveness check after 5s — distinguishes "tool present but NATS
+# unreachable" from "tool started cleanly".
+sleep 5
+if [ -s "$NATS_PID_FILE" ] && ! kill -0 "$(cat "$NATS_PID_FILE")" 2>/dev/null; then
+    echo "[cold-water] NATS subscriber exited early — likely CHUMP_NATS_URL unreachable. Diagnostic:"
+    head -20 "$NATS_LOG" 2>&1
+    : > "$NATS_PID_FILE"  # mark as dead so Step 1 falls back
+fi
+```
+
+The 60-second warm-up is satisfied implicitly: the subscriber stays
+running through Step 0 and Step 1 prep (>60s of `git fetch`, `head`,
+`gh pr list`, `chump gap list`, etc.) before Step 1 reads `$NATS_LOG`.
+
+**At session end** (after Step 4 commits land), kill the subscriber:
+
+```bash
+[ -s "$NATS_PID_FILE" ] && kill "$(cat "$NATS_PID_FILE")" 2>/dev/null
+```
+
+**File the gap if you observed something Step 1 caught from NATS that
+the local file tail missed** — that's evidence the migration is
+delivering value and should escalate to FLEET-018 (audit other remote
+agents).
 
 ## Step 0: Reconcile with prior issues (BEFORE evidence gathering)
 
@@ -61,6 +117,8 @@ For each of the most recent 3 issues, list every distinct named problem (gap ID,
 
 Output this as a 'Status of Prior Issues' block. **Each STILL_OPEN_* / STALE / CONTESTED line must include the verification block from RED_TEAM_VERIFICATION.md** (commit count, most recent, status, acceptance gap). Findings that are STILL_OPEN_INACTIVE or STALE across 2+ cycles are escalated automatically into Step 4 candidates.
 
+**FLEET-017 binding (2026-04-28):** Any claim of the form "no agent activity," "ambient stream silent," or "nobody is working on this" must cite the NATS log (`$NATS_LOG` from Step -0.5) — not just `.chump-locks/ambient.jsonl`. The local file is empty in a remote sandbox by construction; treating its emptiness as evidence of "no work" is the exact mechanism Red Letter Issues #2-#7 keep flagging. If `$NATS_LOG` is also empty AND the subscription is healthy (`$NATS_PID_FILE` non-empty and the PID is alive), that IS legitimate evidence of no recent activity. If the subscription is unhealthy, downgrade the claim to "cannot verify activity from this sandbox" and file a follow-up gap noting the NATS unreachability.
+
 ## Step 1: Gather evidence
 
 ```bash
@@ -73,7 +131,15 @@ data = json.load(sys.stdin)
 for g in data:
     print(f\"{g.get('status','?'):10} {g.get('id','?'):15} {g.get('title','?')}\")
 " | sort
-tail -100 .chump-locks/ambient.jsonl 2>/dev/null || echo '(no ambient stream — sandbox has no local lease state)'
+# FLEET-017: prefer NATS-observed events (cross-machine) over local file tail.
+# $NATS_LOG and $NATS_PID_FILE were set in Step -0.5.
+if [ -s "${NATS_LOG:-/dev/null}" ] && [ -s "${NATS_PID_FILE:-/dev/null}" ]; then
+    echo "=== ambient via NATS (chump.events.> over $((SECONDS))s) ==="
+    tail -100 "$NATS_LOG"
+else
+    echo "=== ambient via NATS — UNAVAILABLE in this sandbox; falling back to local file tail ==="
+    tail -100 .chump-locks/ambient.jsonl 2>/dev/null || echo '(no ambient stream — sandbox has no local lease state)'
+fi
 gh run list --branch main --limit 5 --json status,conclusion,name --jq '.[] | "\(.conclusion // .status) \(.name)"' 2>&1
 ```
 
