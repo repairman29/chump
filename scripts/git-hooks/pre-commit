@@ -33,6 +33,11 @@
 #      - preregistration required (RESEARCH-019): closing an EVAL-* /
 #        RESEARCH-* gap to status: done without a preregistered hypothesis
 #        doc; bypass via CHUMP_PREREG_CHECK=0
+#      - preregistration content check (INFRA-113): when a prereg file
+#        exists, validate it locks sample size, judge identity, A/A
+#        baseline plan, effect threshold, and prohibited-claims
+#        attestation per docs/RESEARCH_INTEGRITY.md; bypass via
+#        CHUMP_PREREG_CONTENT_CHECK=0 (justify in PR body)
 #
 # 4. Submodule sanity (INFRA-018, 2026-04-19): rejects commits that add a
 #    new gitlink (mode 160000) without a matching `.gitmodules` entry. The
@@ -672,6 +677,76 @@ PYEOF_PREREG
                 echo "[pre-commit]" >&2
                 echo "[pre-commit] Bypass (retrospective or doc-only gap): CHUMP_PREREG_CHECK=0 git commit ..." >&2
                 exit 1
+            fi
+
+            # INFRA-113: content check — file existence is not enough. The
+            # preregistration must lock the methodology contract (sample
+            # size, judge identity, A/A baseline, effect threshold,
+            # prohibited-claims attestation) BEFORE data collection.
+            if [ "${CHUMP_PREREG_CONTENT_CHECK:-1}" != "0" ]; then
+                checker="$(git rev-parse --show-toplevel)/scripts/ci/check-prereg-content.py"
+                if [ -x "$checker" ]; then
+                    flipping_gids=$(python3 - <<'PYEOF_PREREG_FLIP'
+import subprocess, sys, re
+try:
+    old_text = subprocess.check_output(["git", "show", "origin/main:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    try:
+        old_text = subprocess.check_output(["git", "show", "HEAD:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+    except Exception:
+        sys.exit(0)
+try:
+    new_text = subprocess.check_output(["git", "show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+except Exception:
+    sys.exit(0)
+def parse_statuses(text):
+    out, cur = {}, None
+    for line in text.splitlines():
+        m = re.match(r'^\s*-\s*id:\s*(\S+)', line)
+        if m:
+            cur = m.group(1); continue
+        if cur and re.match(r'^\s*status:\s*(\S+)', line):
+            out[cur] = re.match(r'^\s*status:\s*(\S+)', line).group(1)
+    return out
+old, new = parse_statuses(old_text), parse_statuses(new_text)
+for gid, ns in new.items():
+    if ns == 'done' and old.get(gid, 'open') != 'done' and re.match(r'^(EVAL|RESEARCH)-', gid):
+        print(gid)
+PYEOF_PREREG_FLIP
+)
+                    content_failures=""
+                    if [ -n "$flipping_gids" ]; then
+                        while IFS= read -r gid; do
+                            [ -z "$gid" ] && continue
+                            prereg_path="docs/eval/preregistered/${gid}.md"
+                            # Pick the version that will be on disk after commit:
+                            # staged → HEAD → origin/main.
+                            content=""
+                            for src in ":${prereg_path}" "HEAD:${prereg_path}" "origin/main:${prereg_path}"; do
+                                content=$(git show "$src" 2>/dev/null) && break || content=""
+                            done
+                            if [ -z "$content" ]; then
+                                continue  # existence check already handled this case
+                            fi
+                            if ! printf '%s' "$content" | python3 "$checker" "$gid" --stdin >&2; then
+                                content_failures="${content_failures}${gid}\n"
+                            fi
+                        done <<< "$flipping_gids"
+                    fi
+                    if [ -n "$content_failures" ]; then
+                        echo "" >&2
+                        echo "[pre-commit] PREREGISTRATION CONTENT INSUFFICIENT (INFRA-113) — preregistration files exist but do not lock the methodology contract:" >&2
+                        printf '%b' "$content_failures" | while IFS= read -r gid; do
+                            [ -z "$gid" ] && continue
+                            echo "  - $gid" >&2
+                        done
+                        echo "" >&2
+                        echo "[pre-commit] Fill the missing fields per docs/eval/preregistered/TEMPLATE.md and docs/RESEARCH_INTEGRITY.md," >&2
+                        echo "[pre-commit] then re-stage and commit. Bypass (genuinely retrospective gap, justified in PR body):" >&2
+                        echo "[pre-commit]   CHUMP_PREREG_CONTENT_CHECK=0 git commit ..." >&2
+                        exit 1
+                    fi
+                fi
             fi
         fi
     fi
