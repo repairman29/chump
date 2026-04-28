@@ -14498,3 +14498,137 @@ gaps:
     - "docs/gaps.yaml meta: preamble survives the regen path with a fresh binary (smoke test)"
   raised_by: jeffadkins
   raised_in: '2026-04-27 INFRA-147 follow-up — stale binary stripped meta: block during COG-038 closure ship'
+
+- id: INFRA-154
+  domain: INFRA
+  title: 'bot-merge.sh: auto-flip gap status to done after PR merges'
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-28'
+  description: |
+    Observed pattern (2026-04-28 session): 3 of 4 P0/P1 gaps picked up
+    were already fully implemented but still status:open in the registry.
+    INFRA-112 (PR #618 shipped 2026-04-27, status flipped 2026-04-28 via
+    PR #627), INFRA-113 (PR #622 shipped 2026-04-27, status flipped
+    via PR #632), INFRA-080 (PR #628 shipped 2026-04-27, status flipped
+    via PR #634). Each closure required:
+      (1) a separate manual session to discover the implementation landed,
+      (2) a hand-edit of docs/gaps.yaml to add closed_pr/closed_date,
+      (3) a follow-up PR to ship the flip.
+
+    INFRA-073 was a one-time manual sweep for the same pattern from
+    Cold Water Issue #6 (2026-04-26). It will recur unless the upstream
+    cause — bot-merge.sh ships the implementation but has no
+    post-merge hook to auto-flip status — is fixed.
+
+    Today's `chump gap list` shows 107/121 open gaps with at least one
+    commit referencing them on origin/main. Most of those references are
+    in-progress work, but a meaningful fraction are shipped-but-not-flipped.
+    Without automation, the open-gap list permanently mixes "never started"
+    with "shipped, awaiting closure" — agents pick the wrong work.
+
+    Fix options:
+      (a) bot-merge.sh writes a small `.bot-merge-pending-flip` marker
+          when the PR is armed; a separate cron / launchd task polls
+          merged PRs and runs `chump gap set <ID> --status done
+          --closed-pr <N> --closed-date $(date +%F)` once the PR lands.
+      (b) GitHub Actions workflow on `pull_request: closed && merged`
+          parses the PR title for `<DOMAIN>-<NNN>:` and flips status
+          via a committer bot.
+      (c) bot-merge.sh's existing post-arm sleep loop polls until the
+          PR merges, then commits the flip from the same worktree before
+          exiting. Simplest but ties up the agent session.
+    Pick (a) or (b) so the agent that shipped the implementation is free
+    to start the next gap.
+  acceptance_criteria:
+    - "Mechanism exists (workflow OR launchd/cron OR bot-merge post-poll) that auto-flips gap status to done after the implementation PR merges"
+    - "closed_pr is set to the actual PR number; closed_date is set to merge date (UTC)"
+    - "Mechanism is idempotent (safe to re-run) and skips gaps already status:done"
+    - "Mechanism does NOT flip gaps where the PR title is a follow-up / cleanup / partial-progress (e.g. PR titles starting with `fix:` or `chore:` referencing a gap need explicit consent)"
+    - "Test demonstrating: a synthetic PR ship → simulated merge → status flips with correct closed_pr"
+  raised_by: claude
+  raised_in: '2026-04-28 session — INFRA-112/113/080 all needed manual closer PRs'
+
+- id: INFRA-155
+  domain: INFRA
+  title: Detect and repair YAML/SQLite gap-store drift (INFRA-097, INFRA-149 cases)
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-04-28'
+  description: |
+    Two concrete drifts observed in the 2026-04-28 session reveal that
+    the YAML mirror (`docs/gaps.yaml`) and the canonical SQLite store
+    (`.chump/state.db`) are not always consistent — even though INFRA-059
+    promoted SQLite to canonical and INFRA-112 made `chump gap dump`
+    self-validating round-trip:
+
+    1. **INFRA-097 title divergence.** SQLite says
+       "dispatch prompt starting with --- breaks claude -p arg parsing"
+       (matches PR #599 commit `97c7c4e fix(infra-097): pipe dispatch
+       prompt via stdin so frontmatter doesn't break clap`). YAML says
+       "process-adoption enforcement check - new system shipped, who
+       actually uses it?". Two completely different gaps under one ID.
+       Status flip is risky because closing the SQLite gap would silently
+       erase the YAML idea.
+
+    2. **INFRA-149 ghost gap.** PR #624 commit message and PR title cite
+       INFRA-149 as "serial-guard default_registries_reads_env" but no
+       gap row exists in either YAML or SQLite. The ID was reserved
+       in some operator's local SQLite, the PR shipped, but the gap row
+       never reached origin/main. Result: the next `chump gap reserve`
+       call hands out 149 again, colliding silently.
+
+    Pre-existing INFRA-150/151/152 are presumably similar (today's
+    `chump gap reserve` skipped 149-152 and went to 153, suggesting
+    they're held in other agents' lease files / open-PR diff scans).
+
+    Fix scope:
+      (a) `chump gap doctor` subcommand: diff every YAML row against the
+          SQLite row; report mismatches by field (title, status, priority,
+          description hash) and orphaned IDs (in YAML not DB, or in
+          DB not YAML, or in commits not either).
+      (b) Repair flow: per-mismatch, prompt operator to keep YAML, keep
+          SQLite, or merge fields manually. Bulk-mode supports --keep-yaml
+          / --keep-db with confirmation.
+      (c) CI guard on origin/main: nightly job runs `chump gap doctor`
+          and fails if drift > 0 or ghost gaps > 0; opens a tracking
+          issue listing the drifts.
+  acceptance_criteria:
+    - "`chump gap doctor` exists; lists every YAML↔SQLite mismatch and ghost-ID per-gap"
+    - "Repair flow can resolve the INFRA-097 title divergence (decision recorded in commit message)"
+    - "Repair flow can recover the INFRA-149 ghost (filing a real gap row matching PR #624's actual scope, or marking the ID permanently retired)"
+    - "Nightly CI job runs `chump gap doctor` against origin/main; flags any drift > 0"
+    - "Test: synthetic divergence (manually edit one field in YAML to disagree with DB) is detected"
+  raised_by: claude
+  raised_in: '2026-04-28 session — observed during INFRA-097 status-flip attempt + INFRA-149 reserve collision'
+
+- id: INFRA-156
+  domain: INFRA
+  title: 'chump gap set/ship needs --closed-pr flag for INFRA-107 guard'
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-04-28'
+  description: |
+    The pre-commit closed_pr integrity guard (INFRA-107, 2026-04-26)
+    requires `closed_pr: <numeric>` in the same diff that flips a gap
+    to `status: done`. But `chump gap set` has no `--closed-pr` flag
+    (only --status, --closed-date, --notes, etc.) and `chump gap ship`
+    doesn't accept a PR number either. Result: every status flip is
+    `chump gap set --status done --closed-date YYYY-MM-DD` followed by
+    a hand-edit of docs/gaps.yaml to insert `closed_pr: NNN` before
+    commit. Three of those today (INFRA-112, INFRA-113, INFRA-080).
+
+    Fix: add `--closed-pr <N>` to `chump gap set` (and threading through
+    the SQLite schema if not already present) so a single command writes
+    every field the INFRA-107 guard checks. Ideally `chump gap ship
+    <ID> --closed-pr <N>` becomes the one-liner the closer-PR workflow uses.
+  acceptance_criteria:
+    - "`chump gap set <ID> --closed-pr <N>` writes closed_pr field to SQLite"
+    - "`chump gap dump` / `chump gap ship --update-yaml` emit closed_pr in the YAML row"
+    - "`chump gap ship <ID> --closed-pr <N> --update-yaml` is sufficient for a complete status-flip closer PR (no hand-edit needed)"
+    - "Test: round-trip — set closed_pr, dump, re-import, dump again — closed_pr preserved byte-stable (per INFRA-112 guarantees)"
+  raised_by: claude
+  raised_in: '2026-04-28 session — manual closed_pr edit needed for INFRA-112, 113, 080 closures'
