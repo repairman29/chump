@@ -211,6 +211,9 @@ jobs:
       - name: preregistration content guard (INFRA-113)
         run: bash scripts/ci/test-prereg-content-guard.sh
 
+      - name: cross-judge audit guard (INFRA-079)
+        run: bash scripts/ci/test-cross-judge-guard.sh
+
       - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
           bash scripts/ci/test-gap-reserve-concurrency.sh
