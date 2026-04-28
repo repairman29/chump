@@ -14498,6 +14498,47 @@ gaps:
     - "docs/gaps.yaml meta: preamble survives the regen path with a fresh binary (smoke test)"
   raised_by: jeffadkins
   raised_in: '2026-04-27 INFRA-147 follow-up — stale binary stripped meta: block during COG-038 closure ship'
+- id: INFRA-152
+  domain: INFRA
+  title: chump gap set/ship — accept --closed-pr flag, persist to state.db, emit to YAML
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-04-28'
+  description: |
+    Every gap closed since INFRA-059 has needed two PRs: the implementation,
+    then a separate "flip status to done after PR #N landed" follow-up.
+    `git log origin/main --grep="flip status to done"` shows 5+ such bot-effort
+    commits this week alone (#617, #623, #627, #630, #632, #634). The driver
+    is that `chump gap ship` today writes status='done' and closed_date but
+    has no way to capture the closing PR number — that has to be hand-edited
+    into docs/gaps.yaml as `closed_pr: <N>` after the implementation PR
+    merges, hence the second PR.
+
+    Fix: a `--closed-pr <N>` flag on `chump gap ship` (and `chump gap set`)
+    that persists to a new `closed_pr INTEGER` column in state.db, and emits
+    `closed_pr: <N>` from `dump_yaml` so the YAML mirror is round-trip
+    complete. The pre-existing closed_pr integrity guard (INFRA-107) already
+    asserts the YAML row is complete at PR-merge time; this gap closes the
+    persistence loop so the same call that flips status writes the PR
+    reference.
+
+    Prerequisite for an upcoming bot-merge.sh patch (INFRA-154) that calls
+    `chump gap ship --closed-pr <PR#> --update-yaml` immediately after
+    `gh pr merge --auto --squash` succeeds — that's what kills the
+    OPEN-BUT-LANDED accumulator at the root.
+
+    Note: INFRA-156 (filed concurrently 2026-04-28) describes the same scope
+    at P2/xs. This implementation supersedes it; INFRA-156 should close as
+    duplicate when INFRA-152 ships.
+  acceptance_criteria:
+    - "`chump gap ship <ID> --closed-pr <N>` persists closed_pr to state.db; positive integers only"
+    - "`chump gap set <ID> --closed-pr <N>` updates an existing row's closed_pr field"
+    - "`dump_yaml` emits `closed_pr: <N>` after `closed_date` when the column is non-NULL"
+    - "`import_from_yaml` reads existing `closed_pr: <N>` rows back into the column"
+    - "regression tests in src/gap_store.rs: ship-persists, YAML round-trip, double-close keeps first PR, import picks up legacy rows"
+  raised_by: jeffadkins
+  raised_in: 2026-04-28 follow-up to Cold Water Issue #8 OPEN-BUT-LANDED 65/88 finding
 
 - id: INFRA-154
   domain: INFRA

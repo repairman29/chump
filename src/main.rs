@@ -516,7 +516,7 @@ async fn main() -> Result<()> {
             }
             "ship" => {
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump gap ship <GAP-ID> [--update-yaml]");
+                    eprintln!("Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr <N>]");
                     std::process::exit(2);
                 });
                 let session_id = flag("--session")
@@ -524,7 +524,23 @@ async fn main() -> Result<()> {
                     .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
                 let update_yaml = args.iter().any(|a| a == "--update-yaml");
-                match store.ship(&gap_id, &session_id) {
+                // INFRA-152: --closed-pr captures the closing PR number atomically
+                // with the status flip. Must be a positive integer (rejecting 0
+                // and negative values prevents accidental "no PR" sentinels from
+                // sneaking past the closed_pr integrity guard at PR-merge time).
+                let closed_pr: Option<i64> = match flag("--closed-pr") {
+                    None => None,
+                    Some(raw) => match raw.parse::<i64>() {
+                        Ok(n) if n > 0 => Some(n),
+                        _ => {
+                            eprintln!(
+                                "chump gap ship: --closed-pr expects a positive integer, got {raw:?}"
+                            );
+                            std::process::exit(2);
+                        }
+                    },
+                };
+                match store.ship(&gap_id, &session_id, closed_pr) {
                     Ok(()) => {
                         println!("shipped {}", gap_id);
                         if update_yaml {
@@ -573,6 +589,21 @@ async fn main() -> Result<()> {
                         .collect();
                     serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
                 });
+                // INFRA-152: --closed-pr accepts a positive integer (matches
+                // the rule used by `chump gap ship --closed-pr` and the
+                // pre-commit closed_pr integrity guard).
+                let closed_pr: Option<i64> = match flag("--closed-pr") {
+                    None => None,
+                    Some(raw) => match raw.parse::<i64>() {
+                        Ok(n) if n > 0 => Some(n),
+                        _ => {
+                            eprintln!(
+                                "chump gap set: --closed-pr expects a positive integer, got {raw:?}"
+                            );
+                            std::process::exit(2);
+                        }
+                    },
+                };
                 let update = gap_store::GapFieldUpdate {
                     title: flag("--title"),
                     description: flag("--description"),
@@ -585,6 +616,7 @@ async fn main() -> Result<()> {
                     source_doc: flag("--source-doc"),
                     opened_date: flag("--opened-date"),
                     closed_date: flag("--closed-date"),
+                    closed_pr,
                 };
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {
