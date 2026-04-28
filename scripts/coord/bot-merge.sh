@@ -450,6 +450,61 @@ else
     green "PR #$EXISTING_PR already exists — updated by push."
 fi
 
+# ── 6.75. Auto-close gap on the implementation PR (INFRA-154) ────────────────
+# Before arming auto-merge, fold the gap status flip INTO the implementation PR.
+# Without this, every shipped gap needed a separate "flip status to done after
+# PR #N landed" follow-up commit (5+ such bot-effort PRs in the week of
+# 2026-04-22..28: #617, #623, #627, #630, #632, #634). The merge queue squashes
+# the close commit together with the implementation commit, so origin/main sees
+# one atomic closure with status=done + closed_pr=<this PR's number>.
+#
+# Disable with CHUMP_AUTO_CLOSE_GAP=0 for genuine partial-progress / split PRs
+# where the gap is NOT being fully closed by this ship.
+#
+# Skipped when:
+#   - DRY_RUN
+#   - --no-auto-merge (no PR number to attach)
+#   - GAP_IDS array is empty (--gap was not given)
+#   - TARGET_PR couldn't be determined from gh pr view
+#   - chump binary missing or `chump gap ship` fails (often: gap already done)
+if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP:-1}" != "0" ]] && [[ ${#GAP_IDS[@]} -gt 0 ]]; then
+    _autoclose_target_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
+    if [[ -n "$_autoclose_target_pr" ]] && command -v chump >/dev/null 2>&1; then
+        for _gid in "${GAP_IDS[@]}"; do
+            stage_start "auto-close gap $_gid via PR #$_autoclose_target_pr (INFRA-154)"
+            if chump gap ship "$_gid" \
+                    --closed-pr "$_autoclose_target_pr" \
+                    --update-yaml >/dev/null 2>&1; then
+                # Regenerate the readable SQL dump so the diff is reviewable.
+                chump gap dump --out .chump/state.sql >/dev/null 2>&1 || true
+                # Stage only the files we expect this command to have touched.
+                # If nothing changed (e.g. gap already done), skip the commit.
+                _autoclose_changed=$(git status --porcelain docs/gaps.yaml .chump/state.sql 2>/dev/null || echo "")
+                if [[ -n "$_autoclose_changed" ]]; then
+                    git add docs/gaps.yaml
+                    [[ -f .chump/state.sql ]] && git add .chump/state.sql
+                    git commit -m "chore(close): auto-close $_gid via PR #$_autoclose_target_pr (INFRA-154)" \
+                               --no-verify >/dev/null 2>&1 || {
+                        yellow "Auto-close commit failed for $_gid — leaving the PR as-is"
+                        stage_done
+                        continue
+                    }
+                    if ! run_timed_hb "git push (auto-close)" 120 git push origin "$BRANCH"; then
+                        yellow "Auto-close push failed for $_gid — the close commit is local only"
+                    else
+                        green "Auto-closed $_gid (closed_pr=$_autoclose_target_pr) — squashed atomically by merge queue"
+                    fi
+                else
+                    info "Auto-close: $_gid produced no diff (likely already status=done)"
+                fi
+            else
+                info "Auto-close skipped for $_gid (chump gap ship failed; gap may already be done or have no entry)"
+            fi
+            stage_done
+        done
+    fi
+fi
+
 # ── 7. Enable auto-merge (optional) ──────────────────────────────────────────
 if [[ $AUTO_MERGE -eq 1 ]]; then
     TARGET_PR="${EXISTING_PR:-}"
