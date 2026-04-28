@@ -852,9 +852,18 @@ fn yaml_block_scalar(s: &str, indent: &str) -> String {
         // short single line — emit inline
         return yaml_scalar(s);
     }
-    // Use literal `|` to preserve newlines exactly. Followed by indented body.
+    // INFRA-112: normalize trailing newlines before splitting. YAML's bare
+    // `|` block scalar preserves a single final `\n`, so a dump → re-parse
+    // cycle silently appends `\n` to the stored value. Without normalization
+    // here, the next emit splits on that trailing `\n` into a phantom empty
+    // line and renders an indented blank, breaking byte-stable round-trip
+    // (test_dump_yaml_byte_stable_round_trip). Trimming at emit time keeps
+    // the existing visual format (bare `|`, no `|-` suffix everywhere) and
+    // makes the first dump and every subsequent re-dump produce identical
+    // bytes regardless of how many round-trips the value has been through.
+    let trimmed = s.trim_end_matches('\n');
     let mut out = String::from("|\n");
-    for line in s.split('\n') {
+    for line in trimmed.split('\n') {
         out.push_str(indent);
         out.push_str("  ");
         out.push_str(line);
@@ -1417,6 +1426,79 @@ mod tests {
             .expect("ac is array");
         assert_eq!(ac.len(), 2);
         assert_eq!(ac[0].as_str(), Some("AC one"));
+    }
+
+    /// INFRA-112 (acceptance #4): byte-stable round-trip — dump → fresh DB →
+    /// import that dump → dump again. Both YAML strings must be byte-equal.
+    /// Catches non-determinism in the emitter (HashMap iteration order,
+    /// timestamp drift, locale-dependent formatting) that count- and
+    /// field-equality tests miss. The earlier test_dump_yaml_round_trip
+    /// proves the dump is *parseable*; this proves it is *idempotent*.
+    #[test]
+    fn test_dump_yaml_byte_stable_round_trip() {
+        // Seed store A with a representative variety of fields.
+        let (store_a, _dir_a) = test_store();
+        let id1 = store_a.reserve("INFRA", "First gap", "P1", "s").unwrap();
+        store_a
+            .set_fields(
+                &id1,
+                GapFieldUpdate {
+                    description: Some("Multi-line\ndescription with: a colon".to_string()),
+                    acceptance_criteria: Some(
+                        serde_json::to_string(&["AC one", "AC two: with colon"]).unwrap(),
+                    ),
+                    depends_on: Some(serde_json::to_string(&["INFRA-000", "EVAL-001"]).unwrap()),
+                    notes: Some("Note text\nwith newline".to_string()),
+                    source_doc: Some("docs/process/foo.md".to_string()),
+                    opened_date: Some("2026-04-25".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let id2 = store_a
+            .reserve("EVAL", "Second: with colon in title", "P0", "m")
+            .unwrap();
+        store_a
+            .set_fields(
+                &id2,
+                GapFieldUpdate {
+                    description: Some("Plain description".to_string()),
+                    status: Some("done".to_string()),
+                    closed_date: Some("2026-04-26".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let _ = store_a.reserve("META", "Minimal gap", "P2", "xs").unwrap();
+
+        let dump1 = store_a.dump_yaml().expect("dump A");
+
+        // Import into a fresh DB and dump again. The two YAML strings must
+        // be byte-equal — any drift indicates the emitter is non-deterministic
+        // or the importer mutates fields it should preserve.
+        let dir_b = TempDir::new().unwrap();
+        let store_b = GapStore::open(dir_b.path()).unwrap();
+        // import_from_yaml takes the *repo root* and reads docs/gaps.yaml
+        // beneath it. Stage dump1 at that conventional path.
+        let yaml_path = dir_b.path().join("docs").join("gaps.yaml");
+        std::fs::create_dir_all(yaml_path.parent().unwrap()).unwrap();
+        std::fs::write(&yaml_path, &dump1).unwrap();
+        store_b
+            .import_from_yaml(dir_b.path())
+            .expect("import dump1 into store B");
+
+        let dump2 = store_b.dump_yaml().expect("dump B");
+
+        assert_eq!(
+            dump1,
+            dump2,
+            "dump → import → dump must be byte-stable; emitter is non-deterministic\n\
+             --- first dump ({} bytes) ---\n{}\n--- second dump ({} bytes) ---\n{}",
+            dump1.len(),
+            dump1,
+            dump2.len(),
+            dump2,
+        );
     }
 
     /// INFRA-147: dump_yaml_with_meta must preserve everything before the
