@@ -12833,10 +12833,12 @@ gaps:
 - id: INFRA-107
   domain: INFRA
   title: Pre-commit guard - block status flip to done with closed_pr value of TBD or non-numeric
-  status: open
+  status: done
   priority: P1
   effort: xs
   opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 598
   description: |
     INTEGRITY_AUDIT_1 documented PRODUCT-009 false closure - the gap was
     flipped to status:done with closed_pr:TBD on 2026-04-20, an explicit
