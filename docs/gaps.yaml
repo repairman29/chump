@@ -11820,9 +11820,11 @@ gaps:
 - id: INFRA-080
   domain: INFRA
   title: gap-reserve.sh outputs unpadded ID (e.g. EVAL-88 instead of EVAL-088)
-  status: open
+  status: done
   priority: P1
   effort: xs
+  closed_pr: 628
+  closed_date: '2026-04-28'
   opened_date: '2026-04-26'
   description: |
     Process review (2026-04-26): scripts/gap-reserve.sh printed `EVAL-88` when
