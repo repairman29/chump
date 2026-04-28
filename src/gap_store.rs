@@ -41,6 +41,13 @@ pub struct GapRow {
     /// ISO date string from `closed_date:` in YAML. Empty if absent.
     #[serde(default)]
     pub closed_date: String,
+    /// PR number from `closed_pr:` in YAML. None if absent or unset.
+    /// Pairs with the INFRA-107 closed_pr integrity guard: a gap with
+    /// `status: done` MUST have a numeric `closed_pr`. Stored as INTEGER
+    /// in SQLite; serialized to YAML only when present and `status: done`.
+    /// INFRA-156 added the column + CLI `--closed-pr` flag plumbing.
+    #[serde(default)]
+    pub closed_pr: Option<i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -163,6 +170,14 @@ impl GapStore {
             "ALTER TABLE gaps ADD COLUMN closed_date TEXT NOT NULL DEFAULT ''",
             [],
         );
+        // INFRA-156: closed_pr (PR number that landed the closure). Nullable
+        // because (a) open gaps haven't shipped yet, (b) historical done
+        // rows imported before this column existed should keep loading
+        // without losing their YAML closed_pr value (round-tripped via
+        // import_from_yaml on next regen).
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN closed_pr INTEGER", []);
         // Backfill closed_date for done rows that predate the column. Idempotent:
         // only touches rows where closed_date is empty AND closed_at is set, so
         // re-running is a no-op once the row is healed. UTC matches `unix_to_iso_date`.
@@ -236,13 +251,14 @@ impl GapStore {
                 closed_at: row.get(12)?,
                 opened_date: row.get(13)?,
                 closed_date: row.get(14)?,
+                closed_pr: row.get(15)?,
             })
         };
         if let Some(s) = status_filter {
             let mut stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
                         acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
-                        opened_date,closed_date
+                        opened_date,closed_date,closed_pr
                  FROM gaps WHERE status=?1 ORDER BY id",
             )?;
             let rows = stmt.query_map(params![s], make_row)?;
@@ -251,7 +267,7 @@ impl GapStore {
             let mut stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
                         acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
-                        opened_date,closed_date
+                        opened_date,closed_date,closed_pr
                  FROM gaps ORDER BY id",
             )?;
             let rows = stmt.query_map([], make_row)?;
@@ -264,7 +280,7 @@ impl GapStore {
         let mut stmt = self.conn.prepare(
             "SELECT id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
-                    opened_date,closed_date
+                    opened_date,closed_date,closed_pr
              FROM gaps WHERE id=?1",
         )?;
         let row = stmt
@@ -285,6 +301,7 @@ impl GapStore {
                     closed_at: row.get(12)?,
                     opened_date: row.get(13)?,
                     closed_date: row.get(14)?,
+                    closed_pr: row.get(15)?,
                 })
             })
             .optional()?;
@@ -339,6 +356,10 @@ impl GapStore {
         }
         if let Some(v) = fields.closed_date {
             sets.push("closed_date=?");
+            vals.push(Box::new(v));
+        }
+        if let Some(v) = fields.closed_pr {
+            sets.push("closed_pr=?");
             vals.push(Box::new(v));
         }
         if sets.is_empty() {
@@ -507,15 +528,27 @@ impl GapStore {
     }
 
     /// Mark a gap as done. Stamps both `closed_at` (unix ts) and
-    /// `closed_date` (ISO yyyy-mm-dd, matching YAML convention).
-    pub fn ship(&self, gap_id: &str, session_id: &str) -> Result<()> {
+    /// `closed_date` (ISO yyyy-mm-dd, matching YAML convention). When
+    /// `closed_pr` is `Some(n)`, also sets the closed_pr column — this
+    /// is what the INFRA-107 closed_pr integrity guard requires for any
+    /// status:done flip in YAML, so passing it here keeps the canonical
+    /// state.db and the YAML mirror in agreement (INFRA-156).
+    pub fn ship(&self, gap_id: &str, session_id: &str, closed_pr: Option<i64>) -> Result<()> {
         let now = unix_now();
         let iso = unix_to_iso_date(now);
-        let changed = self.conn.execute(
-            "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2
-             WHERE id=?3 AND status='open'",
-            params![now, iso, gap_id],
-        )?;
+        let changed = if let Some(pr) = closed_pr {
+            self.conn.execute(
+                "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=?3
+                 WHERE id=?4 AND status='open'",
+                params![now, iso, pr, gap_id],
+            )?
+        } else {
+            self.conn.execute(
+                "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2
+                 WHERE id=?3 AND status='open'",
+                params![now, iso, gap_id],
+            )?
+        };
         if changed == 0 {
             bail!("gap {} not found or already done", gap_id);
         }
@@ -587,6 +620,10 @@ pub struct GapFieldUpdate {
     pub source_doc: Option<String>,
     pub opened_date: Option<String>,
     pub closed_date: Option<String>,
+    /// PR number for closure (INFRA-156). `None` leaves the column unchanged;
+    /// pass `Some(n)` to set or update. Pairs with `--closed-pr` on
+    /// `chump gap set` and `chump gap ship`.
+    pub closed_pr: Option<i64>,
 }
 
 /// Render one gap as a YAML block-list entry. Field order matches the
@@ -646,6 +683,14 @@ fn format_gap_yaml(g: &GapRow) -> String {
     if !g.closed_date.is_empty() {
         s.push_str(&format!("  closed_date: {}\n", yaml_date(&g.closed_date)));
     }
+    // INFRA-156: emit closed_pr as an integer when set. Position right after
+    // closed_date matches the prevailing convention in docs/gaps.yaml. The
+    // INFRA-107 integrity guard rejects status:done without a numeric
+    // closed_pr, so closure PRs that go through `chump gap ship --closed-pr N`
+    // produce a YAML diff this guard accepts.
+    if let Some(pr) = g.closed_pr {
+        s.push_str(&format!("  closed_pr: {}\n", pr));
+    }
     s.push('\n');
     s
 }
@@ -679,6 +724,12 @@ struct YamlGap {
     opened_date: Option<serde_yaml::Value>,
     #[serde(default)]
     closed_date: Option<serde_yaml::Value>,
+    /// INFRA-156: PR number that landed the closure. YAML may carry this as
+    /// a bare integer (`closed_pr: 598`) or, in legacy files, as a string —
+    /// we accept both via `serde_yaml::Value` and coerce in
+    /// `import_from_yaml`.
+    #[serde(default)]
+    closed_pr: Option<serde_yaml::Value>,
 }
 
 #[derive(Deserialize)]
@@ -745,13 +796,18 @@ impl GapStore {
                 .as_ref()
                 .map(yaml_value_to_string)
                 .unwrap_or_default();
+            // INFRA-156: coerce closed_pr to Option<i64>. YAML integers come
+            // through as serde_yaml::Value::Number; legacy `TBD` strings (now
+            // blocked at commit by the INFRA-107 guard) are rejected as None
+            // rather than fabricated to a number.
+            let closed_pr = g.closed_pr.as_ref().and_then(yaml_value_to_i64);
             let created_at = unix_now();
 
             let changed = self.conn.execute(
                 "INSERT OR IGNORE INTO gaps(id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,
-                    opened_date,closed_date)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+                    opened_date,closed_date,closed_pr)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
                 params![
                     g.id,
                     g.domain,
@@ -767,6 +823,7 @@ impl GapStore {
                     created_at,
                     opened_date,
                     closed_date,
+                    closed_pr,
                 ],
             )?;
             if changed > 0 {
@@ -942,6 +999,20 @@ fn yaml_value_to_loose_string(v: &serde_yaml::Value) -> String {
             .join(", ");
     }
     yaml_value_to_string(v)
+}
+
+/// INFRA-156: Convert a YAML value to `Option<i64>` for `closed_pr`. Accepts
+/// numeric YAML scalars (`closed_pr: 598`) and numeric strings; everything
+/// else (TBD, null, missing) becomes `None`. The INFRA-107 commit-time
+/// guard rejects non-numeric closed_pr values, so a clean import shouldn't
+/// see strings here — but we coerce defensively rather than crash if a
+/// pre-guard YAML is being re-imported on a fresh DB.
+fn yaml_value_to_i64(v: &serde_yaml::Value) -> Option<i64> {
+    match v {
+        serde_yaml::Value::Number(n) => n.as_i64(),
+        serde_yaml::Value::String(s) => s.trim().parse::<i64>().ok(),
+        _ => None,
+    }
 }
 
 /// Convert a serde_yaml::Value to a string for date-like fields. YAML may
@@ -1217,7 +1288,7 @@ mod tests {
         store
             .claim(&id, "session-xyz", "/worktrees/test", 3600)
             .unwrap();
-        store.ship(&id, "session-xyz").unwrap();
+        store.ship(&id, "session-xyz", None).unwrap();
 
         match store.preflight(&id).unwrap() {
             PreflightResult::Done => {}
@@ -1231,7 +1302,7 @@ mod tests {
         store.reserve("COG", "open gap", "P1", "s").unwrap();
         let id2 = store.reserve("COG", "to close", "P1", "s").unwrap();
         store.claim(&id2, "s", "/wt", 3600).unwrap();
-        store.ship(&id2, "s").unwrap();
+        store.ship(&id2, "s", None).unwrap();
 
         let open = store.list(Some("open")).unwrap();
         assert_eq!(open.len(), 1);
@@ -1244,7 +1315,7 @@ mod tests {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "x", "P1", "s").unwrap();
         store.claim(&id, "s", "/wt", 3600).unwrap();
-        store.ship(&id, "s").unwrap();
+        store.ship(&id, "s", None).unwrap();
         let row = store.get(&id).unwrap().expect("row exists");
         assert_eq!(row.status, "done");
         // ISO YYYY-MM-DD, 10 chars, dashes at positions 4 and 7.
@@ -1586,6 +1657,83 @@ meta:
         let row = store.get(&id).unwrap().expect("row");
         assert_eq!(row.title, "New title");
         assert_eq!(row.notes, "");
+    }
+
+    // ── INFRA-156: closed_pr round-trip ─────────────────────────────────
+
+    #[test]
+    fn test_set_closed_pr_persists_and_emits_to_yaml() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "x", "P1", "s").unwrap();
+        store.claim(&id, "s", "/wt", 3600).unwrap();
+        // First close via set_fields (the `chump gap set --closed-pr` path).
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_date: Some("2026-04-28".into()),
+                    closed_pr: Some(598),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let row = store.get(&id).unwrap().expect("row");
+        assert_eq!(row.status, "done");
+        assert_eq!(row.closed_pr, Some(598));
+        // YAML emit must include the integer scalar (no quotes, no TBD).
+        let yaml = store.dump_yaml().unwrap();
+        assert!(
+            yaml.contains("  closed_pr: 598\n"),
+            "yaml missing closed_pr line: {}",
+            yaml
+        );
+    }
+
+    #[test]
+    fn test_ship_with_closed_pr_stamps_pr_number() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "y", "P1", "s").unwrap();
+        store.claim(&id, "s", "/wt", 3600).unwrap();
+        // The `chump gap ship --closed-pr N` path: ship() takes the option
+        // directly so callers don't have to do a follow-up set_fields call.
+        store.ship(&id, "s", Some(631)).unwrap();
+        let row = store.get(&id).unwrap().expect("row");
+        assert_eq!(row.status, "done");
+        assert_eq!(row.closed_pr, Some(631));
+        // ship() without a closed_pr (legacy callers) must leave it None.
+        let id2 = store.reserve("INFRA", "z", "P1", "s").unwrap();
+        store.claim(&id2, "s", "/wt", 3600).unwrap();
+        store.ship(&id2, "s", None).unwrap();
+        let row2 = store.get(&id2).unwrap().expect("row");
+        assert_eq!(row2.status, "done");
+        assert_eq!(row2.closed_pr, None);
+    }
+
+    #[test]
+    fn test_yaml_import_coerces_closed_pr_integer() {
+        // Round-trip: dump → re-import should preserve closed_pr through the
+        // YAML mirror without losing the value or fabricating a string.
+        let (store, dir) = test_store();
+        let id = store.reserve("INFRA", "import test", "P1", "s").unwrap();
+        store.claim(&id, "s", "/wt", 3600).unwrap();
+        store.ship(&id, "s", Some(598)).unwrap();
+        let yaml = store.dump_yaml().unwrap();
+        // Persist YAML and re-import into a fresh store rooted at the same dir.
+        let yaml_dir = dir.path().join("docs");
+        std::fs::create_dir_all(&yaml_dir).unwrap();
+        std::fs::write(yaml_dir.join("gaps.yaml"), &yaml).unwrap();
+        let store2 = GapStore::open(dir.path()).unwrap();
+        // Existing row already in DB; round-trip via a deleted+reimported row
+        // is the more interesting test — drop it and re-import.
+        store2
+            .conn
+            .execute("DELETE FROM gaps WHERE id=?1", params![id])
+            .unwrap();
+        let (ins, _skip) = store2.import_from_yaml(dir.path()).unwrap();
+        assert!(ins >= 1, "expected at least one inserted row, got {}", ins);
+        let reimported = store2.get(&id).unwrap().expect("row reimported");
+        assert_eq!(reimported.closed_pr, Some(598));
     }
 
     // ── COG-036: routing-outcome scoreboard ─────────────────────────────
