@@ -254,7 +254,7 @@ chump gap list [--status open] [--json]   # list gaps; --json output is musher-c
 chump gap reserve --domain INFRA --title "..." [--priority P1] [--effort s]
 chump gap claim <GAP-ID> [--session ID] [--worktree PATH]
 chump gap preflight <GAP-ID>              # exit 0=available, 1=done/claimed
-chump gap ship <GAP-ID> [--update-yaml]   # flip status: done + stamp closed_date; --update-yaml regenerates docs/gaps.yaml
-chump gap set <GAP-ID> [--title|--description|--priority|--effort|--status|--notes|--source-doc|--opened-date|--closed-date|--acceptance-criteria "a|b|c"|--depends-on "X,Y"]
+chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]   # flip status: done + stamp closed_date (+ closed_pr if given); --update-yaml regenerates docs/gaps.yaml
+chump gap set <GAP-ID> [--title|--description|--priority|--effort|--status|--notes|--source-doc|--opened-date|--closed-date|--closed-pr N|--acceptance-criteria "a|b|c"|--depends-on "X,Y"]
 chump gap dump [--out docs/gaps.yaml]     # full export for git-diff review
 ```
