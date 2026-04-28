@@ -16,7 +16,7 @@ Most AI development is a race to scale: bigger models, more compute, higher API 
 
 **The thesis:** You do not need frontier models to solve complex problems and deliver real value. You need an agent with the right architecture — one that can trust its own work, stay autonomous, self-correct when wrong, and persist across sessions without losing context. A small, well-structured agent running on a MacBook or a Raspberry Pi should outperform a stateless call to GPT-4 on any task that takes longer than one conversation.
 
-The cognitive architecture underneath Chump — free energy, surprise tracking, belief state, neuromodulation, precision weighting, memory graphs, counterfactual reasoning — is not a research project. It is the mechanism that makes this possible. Every module exists to answer the same question: how does an agent stay grounded, coherent, and useful over time, without a human watching every step?
+The cognitive architecture underneath Chump — free energy, surprise tracking, neuromodulation, precision weighting, memory graphs, counterfactual reasoning — is the design hypothesis we are betting on, not a validated mechanism. It is what we believe will make a small agent stay grounded, coherent, and useful over time without a human watching every step. Each module is an answer to that question that we are testing, not asserting. Some early findings have been positive (task-class-aware lessons block: EVAL-025, EVAL-030); others have been net-negative or null pending further work (neuromodulation cross-architecture: EVAL-029; belief_state: removed in REMOVAL-003; surprisal/full architecture: gated on EVAL-035 + EVAL-043). See [`docs/process/RESEARCH_INTEGRITY.md`](../process/RESEARCH_INTEGRITY.md) for what is currently validated, what is prohibited from being claimed, and which gaps gate which claims.
 
 ---
 
@@ -56,9 +56,9 @@ Chump's internal state synchronizes with the user's actual intent.
 
 Not what they typed. Not the last message in the conversation. What they are trying to accomplish — the goal underneath the request, the thing they would say if they had time to explain it fully.
 
-This is what "heartbeat matches user intent" means. The cognitive layer (neuromodulation, precision controller, belief state, surprise tracker) is the mechanism. When Chump's belief about what the user wants drifts from what they actually want, the system detects it — surprise spikes, precision shifts, a correction happens. The heartbeat resynchronizes.
+This is what "heartbeat matches user intent" means. The cognitive layer (neuromodulation, precision controller, surprise tracker — `belief_state` is currently a 170-line inert stub per REMOVAL-003) is the candidate mechanism we are building toward. When Chump's model of what the user wants drifts from what they actually want, the design intent is for the system to detect it — surprise spikes, precision shifts, a correction happens — and for the heartbeat to resynchronize. Whether this candidate mechanism actually delivers on that intent is what EVAL-035 (belief-state revival) and EVAL-043 (full ablation suite) are designed to determine; until they ship, the cognitive layer is not "the mechanism," it is the mechanism we are testing.
 
-This is not a metaphor. It is the design requirement every cognitive module is built to serve.
+This is not a metaphor. It is the design requirement every cognitive module is built to serve — and the standard each one will be measured against.
 
 ---
 
