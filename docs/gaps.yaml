@@ -13137,9 +13137,11 @@ gaps:
 - id: INFRA-113
   domain: INFRA
   title: Pre-commit preregistration check is hollow - file existence only, contents not validated
-  status: open
+  status: done
   priority: P0
   effort: m
+  closed_pr: 622
+  closed_date: '2026-04-28'
   opened_date: '2026-04-26'
   description: |
     The 'preregistration required' guard at scripts/git-hooks/pre-commit
