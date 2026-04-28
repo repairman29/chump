@@ -5614,7 +5614,7 @@ gaps:
 - id: INFRA-107
   domain: INFRA
   title: Pre-commit guard - block status flip to done with closed_pr value of TBD or non-numeric
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -5633,6 +5633,7 @@ gaps:
     - Test fixture - normal closure with closed_pr 404 passes
     - Documented in CLAUDE.md Commit-time guards table
   opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
 
 - id: INFRA-108
   domain: INFRA
@@ -5737,7 +5738,7 @@ gaps:
 - id: INFRA-112
   domain: INFRA
   title: chump gap dump is lossy - 391 gaps in DB became 389 in YAML
-  status: open
+  status: done
   priority: P0
   effort: s
   description: |
@@ -5759,6 +5760,7 @@ gaps:
     - Identify and repair the 2 missing gaps (or document why they were dropped)
     - Round-trip test - dump | re-import | dump again must be byte-stable
   opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
 
 - id: INFRA-113
   domain: INFRA
@@ -6711,6 +6713,35 @@ gaps:
     - "regression test: stub a baked SHA older than HEAD and verify the warn-or-refuse path fires"
     - "docs/gaps.yaml meta: preamble survives the regen path with a fresh binary (smoke test)"
   opened_date: '2026-04-27'
+
+- id: INFRA-152
+  domain: INFRA
+  title: chump gap set/ship — accept --closed-pr flag, persist to state.db, emit to YAML
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-154
+  domain: INFRA
+  title: "bot-merge.sh: auto-flip gap status to done after PR merges"
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-04-28'
+
+- id: INFRA-155
+  domain: INFRA
+  title: Detect and repair YAML/SQLite gap-store drift (INFRA-097/149 cases)
+  status: open
+  priority: P1
+  effort: m
+
+- id: INFRA-156
+  domain: INFRA
+  title: chump gap set/ship needs --closed-pr flag for INFRA-107 guard
+  status: open
+  priority: P2
+  effort: xs
 
 - id: INFRA-41
   domain: infra
