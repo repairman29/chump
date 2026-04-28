@@ -208,6 +208,9 @@ jobs:
       - name: gap-preflight unregistered-ID guard (INFRA-020)
         run: bash scripts/ci/test-gap-preflight-unregistered.sh
 
+      - name: preregistration content guard (INFRA-113)
+        run: bash scripts/ci/test-prereg-content-guard.sh
+
       - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
           bash scripts/ci/test-gap-reserve-concurrency.sh
