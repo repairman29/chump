@@ -516,7 +516,7 @@ async fn main() -> Result<()> {
             }
             "ship" => {
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump gap ship <GAP-ID> [--update-yaml]");
+                    eprintln!("Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]");
                     std::process::exit(2);
                 });
                 let session_id = flag("--session")
@@ -524,7 +524,24 @@ async fn main() -> Result<()> {
                     .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
                 let update_yaml = args.iter().any(|a| a == "--update-yaml");
-                match store.ship(&gap_id, &session_id) {
+                // INFRA-156: --closed-pr N stamps the closure PR number on the
+                // row at ship time. Required by the INFRA-107 closed_pr
+                // integrity guard for any status:done flip in YAML; passing
+                // it here keeps state.db and gaps.yaml in agreement.
+                let closed_pr: Option<i64> = match flag("--closed-pr") {
+                    Some(s) => match s.trim().parse::<i64>() {
+                        Ok(n) if n > 0 => Some(n),
+                        _ => {
+                            eprintln!(
+                                "chump gap ship: --closed-pr expects a positive integer (got {:?})",
+                                s
+                            );
+                            std::process::exit(2);
+                        }
+                    },
+                    None => None,
+                };
+                match store.ship(&gap_id, &session_id, closed_pr) {
                     Ok(()) => {
                         println!("shipped {}", gap_id);
                         if update_yaml {
@@ -559,6 +576,7 @@ async fn main() -> Result<()> {
                     );
                     eprintln!("                          [--effort E] [--status S] [--notes N]");
                     eprintln!("                          [--source-doc S] [--opened-date D] [--closed-date D]");
+                    eprintln!("                          [--closed-pr N] [--acceptance-criteria \"a|b|c\"] [--depends-on \"X,Y\"]");
                     std::process::exit(2);
                 });
                 let acceptance_criteria = flag("--acceptance-criteria").map(|raw| {
@@ -573,6 +591,25 @@ async fn main() -> Result<()> {
                         .collect();
                     serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
                 });
+                // INFRA-156: --closed-pr N as Option<i64>. Empty string clears
+                // (Some(0) is an explicit "unset" signal we reject); positive
+                // integer sets. The INFRA-107 guard rejects status:done with
+                // missing/non-numeric closed_pr at commit time, so this is the
+                // canonical way to satisfy it from the CLI rather than
+                // hand-editing YAML.
+                let closed_pr: Option<i64> = match flag("--closed-pr") {
+                    Some(s) => match s.trim().parse::<i64>() {
+                        Ok(n) if n > 0 => Some(n),
+                        _ => {
+                            eprintln!(
+                                "chump gap set: --closed-pr expects a positive integer (got {:?})",
+                                s
+                            );
+                            std::process::exit(2);
+                        }
+                    },
+                    None => None,
+                };
                 let update = gap_store::GapFieldUpdate {
                     title: flag("--title"),
                     description: flag("--description"),
@@ -585,6 +622,7 @@ async fn main() -> Result<()> {
                     source_doc: flag("--source-doc"),
                     opened_date: flag("--opened-date"),
                     closed_date: flag("--closed-date"),
+                    closed_pr,
                 };
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {
@@ -656,11 +694,11 @@ async fn main() -> Result<()> {
                 eprintln!("               (positional) D title…  — same as --domain / --title");
                 eprintln!("  claim      <GAP-ID> [--session ID] [--worktree PATH] [--ttl 3600]");
                 eprintln!("  preflight  <GAP-ID>");
-                eprintln!("  ship       <GAP-ID> [--session ID] [--update-yaml]");
+                eprintln!("  ship       <GAP-ID> [--session ID] [--update-yaml] [--closed-pr N]");
                 eprintln!("  set        <GAP-ID> [--title T] [--description D] [--priority P]");
                 eprintln!("                       [--effort E] [--status S] [--notes N]");
                 eprintln!(
-                    "                       [--source-doc S] [--opened-date D] [--closed-date D]"
+                    "                       [--source-doc S] [--opened-date D] [--closed-date D] [--closed-pr N]"
                 );
                 eprintln!("                       [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
                 eprintln!("  dump       [--out PATH]");
