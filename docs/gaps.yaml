@@ -10040,7 +10040,9 @@ gaps:
   priority: P0
   effort: s
   source_doc: docs/EXPERT_REVIEW_PANEL.md
-  status: open
+  status: done
+  closed_pr: 631
+  closed_date: '2026-04-28'
   description: >
     CPO-framing gap, Tier 1. UX-001 is marked `status: done`
     2026-04-21, promising `brew install chump → working PWA in
@@ -13493,9 +13495,11 @@ gaps:
 - id: FLEET-017
   domain: FLEET
   title: Cold Water remote agent does not subscribe to NATS ambient stream - FLEET-006 unused
-  status: open
+  status: done
   priority: P0
   effort: xs
+  closed_pr: 629
+  closed_date: '2026-04-28'
   opened_date: '2026-04-26'
   description: |
     FLEET-006 (PR #572, 2026-04-26) distributed the ambient stream to
