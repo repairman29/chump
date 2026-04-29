@@ -378,12 +378,39 @@ impl GapStore {
     /// Reserve a new gap ID atomically using a per-domain counter row.
     /// The counter upsert + gap insert runs under an exclusive transaction,
     /// so concurrent callers get distinct IDs with no retries.
+    ///
+    /// Picks an ID free across all four collision sources: state.db (already
+    /// in counter logic), docs/gaps.yaml (via [`Self::import_from_yaml`]),
+    /// open-PR titles, and live `pending_new_gap` leases on disk. The two
+    /// extra sources are gathered by [`Self::external_pending_ids`] and
+    /// passed into [`Self::reserve_with_external`]. Together with the
+    /// per-domain `flock` in `scripts/coord/gap-reserve.sh`, this prevents
+    /// the 4-way INFRA-087..090 collision pattern (PRs #565/#566/#568/#569,
+    /// 2026-04-26).
     pub fn reserve(
         &self,
         domain: &str,
         title: &str,
         priority: &str,
         effort: &str,
+    ) -> Result<String> {
+        let extra = self
+            .external_pending_ids(domain)
+            .unwrap_or_else(|_| Vec::new());
+        self.reserve_with_external(domain, title, priority, effort, &extra)
+    }
+
+    /// Same as [`Self::reserve`] but with an explicit list of in-use ID
+    /// numbers from sources outside the DB (open PRs, in-flight leases).
+    /// Used by tests to inject collision scenarios deterministically without
+    /// shelling out to `gh` or fabricating lease files.
+    pub fn reserve_with_external(
+        &self,
+        domain: &str,
+        title: &str,
+        priority: &str,
+        effort: &str,
+        extra_used: &[i64],
     ) -> Result<String> {
         let domain_upper = domain.to_uppercase();
         let now = unix_now();
@@ -423,11 +450,27 @@ impl GapStore {
                 params![prefix, format!("{}%", prefix)],
                 |r| r.get(0),
             )?;
+            // INFRA-100: also bump past any IDs that exist in open PRs or
+            // pending leases (sources the DB cannot see). The counter must
+            // start above the max of (DB max, external max).
+            let extra_max = extra_used.iter().copied().max().unwrap_or(0);
+            let combined_max = std::cmp::max(existing_max, extra_max);
             self.conn.execute(
                 "INSERT INTO gap_counters(domain, next_num) VALUES(?1, ?2)
                  ON CONFLICT(domain) DO UPDATE SET next_num = MAX(next_num, excluded.next_num)",
-                params![domain_upper, existing_max + 1],
+                params![domain_upper, combined_max + 1],
             )?;
+            // INFRA-100: walk past any extra-used IDs that fall above the
+            // counter's current value too (defense-in-depth: a stale counter
+            // row could be ahead of `existing_max` but behind `extra_max`).
+            // Atomic UPDATE with arithmetic ensures concurrent reserves still
+            // get distinct numbers.
+            for &n in extra_used {
+                self.conn.execute(
+                    "UPDATE gap_counters SET next_num = MAX(next_num, ?1 + 1) WHERE domain=?2",
+                    params![n, domain_upper],
+                )?;
+            }
             // Atomically bump the counter and read the assigned number.
             self.conn.execute(
                 "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
@@ -456,6 +499,90 @@ impl GapStore {
                 Err(e)
             }
         }
+    }
+
+    /// INFRA-100: gather gap-ID numbers from sources the DB can't see —
+    /// `.chump-locks/*.json` `pending_new_gap.id` entries (in-flight reserves
+    /// from sibling sessions) and, when `CHUMP_RESERVE_SCAN_OPEN_PRS=1` is
+    /// set, open-PR titles via `gh pr list --state open --json title`.
+    ///
+    /// The PR scan defaults OFF because (a) `scripts/coord/gap-reserve.sh`
+    /// already runs `gh pr diff` against open PRs touching docs/gaps.yaml
+    /// and (b) shelling out to `gh` is a network/auth dependency that
+    /// would slow `cargo test` and break offline runs. Production
+    /// invocations through the shell wrapper get full coverage; the env
+    /// var lets a future Rust-only path enable it explicitly.
+    ///
+    /// Stale leases (expired or heartbeat older than 15 min) are skipped —
+    /// their pending IDs are unlikely to land and continuing to reserve
+    /// past them would inflate the next number indefinitely.
+    pub fn external_pending_ids(&self, domain: &str) -> Result<Vec<i64>> {
+        let mut out = Vec::new();
+        let domain_upper = domain.to_uppercase();
+        let prefix = format!("{}-", domain_upper);
+
+        // Lease scan
+        let locks_dir = self.repo_root.join(".chump-locks");
+        if let Ok(entries) = std::fs::read_dir(&locks_dir) {
+            let now = unix_now();
+            for ent in entries.flatten() {
+                let path = ent.path();
+                let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                if !name.ends_with(".json") || name.starts_with('.') || name == "ambient.jsonl" {
+                    continue;
+                }
+                let txt = match std::fs::read_to_string(&path) {
+                    Ok(t) => t,
+                    Err(_) => continue,
+                };
+                let v: serde_json::Value = match serde_json::from_str(&txt) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                // Skip stale: heartbeat older than 15 min OR expired more than 30 s ago.
+                let heartbeat = v
+                    .get("heartbeat_at")
+                    .and_then(|s| s.as_str())
+                    .and_then(parse_iso_to_unix);
+                let expires = v
+                    .get("expires_at")
+                    .and_then(|s| s.as_str())
+                    .and_then(parse_iso_to_unix);
+                if let Some(h) = heartbeat {
+                    if now - h > 900 {
+                        continue;
+                    }
+                }
+                if let Some(e) = expires {
+                    if now - e > 30 {
+                        continue;
+                    }
+                }
+                if let Some(p) = v.get("pending_new_gap").and_then(|p| p.as_object()) {
+                    if let Some(id) = p.get("id").and_then(|i| i.as_str()) {
+                        if let Some(rest) = id.strip_prefix(&prefix) {
+                            if let Ok(n) = rest.parse::<i64>() {
+                                out.push(n);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Open-PR scan (opt-in)
+        if std::env::var("CHUMP_RESERVE_SCAN_OPEN_PRS").as_deref() == Ok("1") {
+            if let Ok(pr_titles) = list_open_pr_titles() {
+                let pat = regex_lite_for_domain(&domain_upper);
+                for title in pr_titles {
+                    for n in pat.find_numbers(&title) {
+                        out.push(n);
+                    }
+                }
+            }
+        }
+
+        Ok(out)
     }
 
     /// Claim a gap for a session (write lease row).
@@ -853,6 +980,117 @@ fn unix_now() -> i64 {
         .as_secs() as i64
 }
 
+/// INFRA-100: parse `2026-04-28T22:30:00Z` style ISO-8601 (lease files use
+/// this) into a unix timestamp. Returns None on parse failure rather than
+/// panicking — leases that don't carry a heartbeat / expiry are simply not
+/// staleness-checked. Implementation is a tiny zero-dep parser since chrono
+/// isn't already in this crate's hot path and we don't need the full feature
+/// set; just yyyy-mm-ddThh:mm:ssZ.
+fn parse_iso_to_unix(s: &str) -> Option<i64> {
+    let bytes = s.as_bytes();
+    if bytes.len() < 19 || bytes[4] != b'-' || bytes[7] != b'-' || bytes[10] != b'T' {
+        return None;
+    }
+    let year: i64 = std::str::from_utf8(&bytes[0..4]).ok()?.parse().ok()?;
+    let month: u32 = std::str::from_utf8(&bytes[5..7]).ok()?.parse().ok()?;
+    let day: u32 = std::str::from_utf8(&bytes[8..10]).ok()?.parse().ok()?;
+    let hour: u32 = std::str::from_utf8(&bytes[11..13]).ok()?.parse().ok()?;
+    let minute: u32 = std::str::from_utf8(&bytes[14..16]).ok()?.parse().ok()?;
+    let second: u32 = std::str::from_utf8(&bytes[17..19]).ok()?.parse().ok()?;
+    // Days-since-epoch via the standard cumulative-days-per-month dance,
+    // adjusted for leap years. Sufficient precision for 15-min staleness checks.
+    let is_leap = |y: i64| (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let mut days: i64 = 0;
+    for y in 1970..year {
+        days += if is_leap(y) { 366 } else { 365 };
+    }
+    let dim = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    for m in 1..month {
+        days += dim[(m - 1) as usize] as i64;
+        if m == 2 && is_leap(year) {
+            days += 1;
+        }
+    }
+    days += day as i64 - 1;
+    Some(days * 86400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64)
+}
+
+/// INFRA-100: shell out to `gh pr list --state open --json title --jq '.[].title'`
+/// and return the titles. Returns Err on any failure (gh missing, no auth,
+/// network down) so the caller can degrade gracefully.
+fn list_open_pr_titles() -> Result<Vec<String>> {
+    let output = std::process::Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--json",
+            "title",
+            "--jq",
+            ".[].title",
+            "--limit",
+            "200",
+        ])
+        .output()
+        .with_context(|| "spawning gh pr list")?;
+    if !output.status.success() {
+        bail!(
+            "gh pr list failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| l.to_string())
+        .collect())
+}
+
+/// INFRA-100: lightweight matcher for `<DOMAIN>-NNN` substrings in a string.
+/// Avoids pulling in the `regex` crate just for this since it's not already
+/// a dep of chump's bin target. Domain is uppercase; NNN is one-or-more
+/// digits (we want to catch zero-padded `INFRA-080` *and* unpadded `INFRA-9`).
+struct DomainPattern {
+    prefix: String,
+}
+impl DomainPattern {
+    fn find_numbers(&self, hay: &str) -> Vec<i64> {
+        let mut out = Vec::new();
+        let mut idx = 0;
+        let bytes = hay.as_bytes();
+        while let Some(rel) = hay[idx..].find(&self.prefix) {
+            let start = idx + rel + self.prefix.len();
+            // Boundary: char before prefix should be non-alphanumeric or BOL.
+            let pre_ok = idx + rel == 0 || {
+                let b = bytes[idx + rel - 1];
+                !(b.is_ascii_alphanumeric())
+            };
+            if !pre_ok {
+                idx = start;
+                continue;
+            }
+            // Read digits.
+            let mut end = start;
+            while end < bytes.len() && bytes[end].is_ascii_digit() {
+                end += 1;
+            }
+            if end > start {
+                if let Ok(n) = hay[start..end].parse::<i64>() {
+                    out.push(n);
+                }
+            }
+            idx = if end == start { start + 1 } else { end };
+        }
+        out
+    }
+}
+fn regex_lite_for_domain(domain_upper: &str) -> DomainPattern {
+    DomainPattern {
+        prefix: format!("{}-", domain_upper),
+    }
+}
+
 fn yaml_quote(s: &str) -> String {
     if s.contains(':') || s.contains('#') || s.contains('\'') {
         format!("\"{}\"", s.replace('"', "\\\""))
@@ -1168,6 +1406,156 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = GapStore::open(dir.path()).unwrap();
         (store, dir)
+    }
+
+    // ── INFRA-100: cross-source picker tests ──────────────────────────
+
+    #[test]
+    fn reserve_with_external_bumps_past_open_pr_collisions() {
+        // Reproduces the INFRA-087..090 4-way collision pattern: 4 sibling
+        // sessions each have an in-flight ID for the same domain. The DB
+        // counter only knows about its own row, but reserve() must not
+        // hand back any of {87, 88, 89, 90} — should jump to 91.
+        let (store, _dir) = test_store();
+        // Seed the DB with one existing INFRA-086 so existing_max=86.
+        store.reserve("INFRA", "first", "P2", "s").unwrap();
+        // Manually set the DB's counter to next=87 (matches sibling reality:
+        // siblings each reserved 87..90 but those rows aren't in *this* DB).
+        store
+            .conn
+            .execute(
+                "INSERT OR REPLACE INTO gaps(id,domain,title,priority,effort,status,created_at)
+             VALUES('INFRA-086','INFRA','seed','P2','s','open',?1)",
+                params![unix_now()],
+            )
+            .unwrap();
+        // Reserve with external IDs claimed by siblings.
+        let extras = vec![87i64, 88, 89, 90];
+        let id = store
+            .reserve_with_external("INFRA", "mine", "P1", "s", &extras)
+            .unwrap();
+        assert!(
+            !extras.iter().any(|n| id == format!("INFRA-{:03}", n)),
+            "reserve picked a collision: {id} (extras: {extras:?})"
+        );
+        // Specifically: should be the next free above 90 (since DB has 086
+        // pre-existing and externals are 87..90, first free is 91).
+        assert_eq!(id, "INFRA-091", "expected INFRA-091, got {id}");
+    }
+
+    #[test]
+    fn external_pending_ids_reads_lease_files() {
+        let (store, dir) = test_store();
+        // Write a fresh lease with a pending_new_gap.
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let now = unix_now();
+        let exp = now + 3600;
+        let now_iso = chrono_like_iso(now).to_string();
+        let exp_iso = chrono_like_iso(exp).to_string();
+        let lease = serde_json::json!({
+            "session_id": "test-session",
+            "pending_new_gap": { "id": "INFRA-099", "title": "x", "domain": "INFRA" },
+            "heartbeat_at": now_iso,
+            "expires_at": exp_iso,
+        });
+        std::fs::write(
+            locks.join("test-session.json"),
+            serde_json::to_string(&lease).unwrap(),
+        )
+        .unwrap();
+        let ids = store.external_pending_ids("INFRA").unwrap();
+        assert!(ids.contains(&99), "expected 99 in {ids:?}");
+    }
+
+    #[test]
+    fn external_pending_ids_skips_stale_lease() {
+        let (store, dir) = test_store();
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        // Heartbeat 30 minutes ago — past the 15-minute staleness window.
+        let stale = unix_now() - 30 * 60;
+        let stale_iso = chrono_like_iso(stale);
+        let exp_iso = chrono_like_iso(stale + 3600);
+        let lease = serde_json::json!({
+            "session_id": "stale-session",
+            "pending_new_gap": { "id": "INFRA-200", "title": "stale", "domain": "INFRA" },
+            "heartbeat_at": stale_iso,
+            "expires_at": exp_iso,
+        });
+        std::fs::write(
+            locks.join("stale-session.json"),
+            serde_json::to_string(&lease).unwrap(),
+        )
+        .unwrap();
+        let ids = store.external_pending_ids("INFRA").unwrap();
+        assert!(
+            !ids.contains(&200),
+            "stale lease should be skipped: {ids:?}"
+        );
+    }
+
+    #[test]
+    fn domain_pattern_finds_padded_and_unpadded_ids() {
+        let pat = regex_lite_for_domain("INFRA");
+        let titles =
+            "INFRA-100: foo, INFRA-99: bar, INFRA-080 baz, EVAL-100 (skip), prefixINFRA-7 (skip)";
+        let nums = pat.find_numbers(titles);
+        assert!(nums.contains(&100));
+        assert!(nums.contains(&99));
+        assert!(nums.contains(&80));
+        // Reject non-boundary matches.
+        assert!(
+            !nums.contains(&7),
+            "should reject prefixINFRA-7 (no word boundary): {nums:?}"
+        );
+    }
+
+    #[test]
+    fn parse_iso_to_unix_handles_z_suffix() {
+        // 2026-04-28T22:30:00Z = 1777629000
+        let ts = parse_iso_to_unix("2026-04-28T22:30:00Z").unwrap();
+        // Sanity: value should be in 2026 range (>= 2026-01-01, < 2027-01-01).
+        let jan1 = parse_iso_to_unix("2026-01-01T00:00:00Z").unwrap();
+        let jan1_next = parse_iso_to_unix("2027-01-01T00:00:00Z").unwrap();
+        assert!(ts > jan1 && ts < jan1_next, "ts={ts} jan1={jan1}");
+    }
+
+    /// Tiny helper: format a unix ts as `YYYY-MM-DDTHH:MM:SSZ` without
+    /// pulling chrono. Round-trips with `parse_iso_to_unix` for tests.
+    fn chrono_like_iso(ts: i64) -> String {
+        let mut secs = ts;
+        let s = secs.rem_euclid(60);
+        secs = secs.div_euclid(60);
+        let m = secs.rem_euclid(60);
+        secs = secs.div_euclid(60);
+        let h = secs.rem_euclid(24);
+        let mut days = secs.div_euclid(24);
+        let mut year = 1970i64;
+        let is_leap = |y: i64| (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+        loop {
+            let dy = if is_leap(year) { 366 } else { 365 };
+            if days < dy {
+                break;
+            }
+            days -= dy;
+            year += 1;
+        }
+        let dim = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let mut month = 1u32;
+        for (i, d) in dim.iter().enumerate() {
+            let mut dd = *d as i64;
+            if i == 1 && is_leap(year) {
+                dd += 1;
+            }
+            if days < dd {
+                month = (i + 1) as u32;
+                break;
+            }
+            days -= dd;
+        }
+        let day = days + 1;
+        format!("{year:04}-{month:02}-{day:02}T{h:02}:{m:02}:{s:02}Z")
     }
 
     #[test]

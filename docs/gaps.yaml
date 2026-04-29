@@ -14819,8 +14819,6 @@ gaps:
     - "Test: synthetic divergence (manually edit one field in YAML to disagree with DB) is detected"
   raised_by: claude
   raised_in: '2026-04-28 session — observed during INFRA-097 status-flip attempt + INFRA-149 reserve collision'
-  closed_date: '2026-04-28'
-  closed_pr: 641
 
 - id: INFRA-156
   domain: INFRA

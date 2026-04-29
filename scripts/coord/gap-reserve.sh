@@ -1,11 +1,24 @@
 #!/usr/bin/env bash
 # gap-reserve.sh — Atomically reserve the next free gap ID for a domain (INFRA-021).
 #
-# Scans docs/gaps.yaml on origin/main (falls back to working tree when offline),
-# open PR diffs touching docs/gaps.yaml (via gh, optional), and live lease JSON
-# files for gap_id + pending_new_gap.id collisions. Under a per-domain file lock,
-# picks the next DOMAIN-NNN not in use, then writes pending_new_gap into this
-# session's lease file.
+# As of INFRA-100 (2026-04-28) this script delegates ID picking to the
+# `chump gap reserve` Rust path, which is the single source of truth across
+# all four collision sources: state.db, docs/gaps.yaml, open PRs, and live
+# `pending_new_gap` leases. Pre-INFRA-100 the picker logic lived here in a
+# 220-line inline Python script with parallel logic to the Rust path; that
+# divergence let the INFRA-087..090 4-way collision through (PRs
+# #565/#566/#568/#569, 2026-04-26).
+#
+# This wrapper still owns:
+#   1. Session-id resolution (matches gap-claim.sh).
+#   2. Main-worktree guard (refuse to reserve from /Projects/Chump directly).
+#   3. Writing `pending_new_gap` into the session's lease file so that
+#      sibling agents see the in-flight reservation immediately and the
+#      Rust path's `external_pending_ids` will pick it up next time.
+#   4. The per-domain `flock` so two concurrent shell invocations on the
+#      same machine cannot end up calling chump in parallel and racing
+#      the SQLite counter (Rust path uses BEGIN IMMEDIATE; flock here is
+#      defense-in-depth at the shell layer).
 #
 # Usage:
 #   scripts/coord/gap-reserve.sh INFRA "title words here"
@@ -16,9 +29,8 @@
 # Environment:
 #   CHUMP_SESSION_ID / CLAUDE_SESSION_ID — same resolution order as gap-claim.sh
 #   CHUMP_ALLOW_MAIN_WORKTREE=1 — allow running from the main worktree (testing)
-#   CHUMP_GAP_RESERVE_SKIP_PR=1 — skip gh pr diff scan (CI / offline speed)
+#   CHUMP_RESERVE_SCAN_OPEN_PRS=1 — opt-in `gh pr list` scan inside chump
 #   CHUMP_LOCK_DIR — override `.chump-locks/` path (tests; must match gap-preflight)
-#   REMOTE / BASE — same as gap-preflight.sh (default origin/main)
 
 set -euo pipefail
 
@@ -37,9 +49,6 @@ if ! [[ "$DOMAIN" =~ ^[A-Z][A-Z0-9]*$ ]]; then
     echo "[gap-reserve] ERROR: DOMAIN must be PREFIX letters/digits only, e.g. INFRA or EVAL (got '$DOMAIN')" >&2
     exit 1
 fi
-
-REMOTE="${REMOTE:-origin}"
-BASE="${BASE:-main}"
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
@@ -73,148 +82,50 @@ fi
 SAFE_ID="${SESSION_ID//[^a-zA-Z0-9_-]/_}"
 LEASE_FILE="$LOCK_DIR/${SAFE_ID}.json"
 
-git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || true
+# ── Pick ID under flock + write pending_new_gap to lease ─────────────────────
+# The flock prevents two concurrent shell invocations from racing the
+# `chump gap reserve` SQLite counter. Inside the lock we run `chump`,
+# capture the ID, and write `pending_new_gap` so other tools (gap-preflight,
+# external_pending_ids) see the in-flight reserve immediately.
+exec 9>"$FLOCK_PATH"
+flock -x 9
 
-MAIN_TMP="$(mktemp)"
-PR_TMP="$(mktemp)"
-trap 'rm -f "$MAIN_TMP" "$PR_TMP"' EXIT
-
-if ! git show "$REMOTE/$BASE:docs/gaps.yaml" >"$MAIN_TMP" 2>/dev/null; then
-    cp "$REPO_ROOT/docs/gaps.yaml" "$MAIN_TMP" 2>/dev/null || {
-        echo "[gap-reserve] ERROR: could not read docs/gaps.yaml (remote or local)." >&2
-        exit 1
-    }
-    echo "[gap-reserve] WARN: using working-tree docs/gaps.yaml (could not read $REMOTE/$BASE:docs/gaps.yaml)." >&2
+# Drain any stale fd inheritance: chump must not see flock fd as a tty stdin.
+NEW_ID="$(chump gap reserve --domain "$DOMAIN" --title "$TITLE" </dev/null)"
+if [[ -z "$NEW_ID" ]]; then
+    echo "[gap-reserve] ERROR: chump gap reserve returned empty output" >&2
+    exit 1
 fi
 
-: >"$PR_TMP"
-if [[ "${CHUMP_GAP_RESERVE_SKIP_PR:-0}" != "1" ]] && command -v gh >/dev/null 2>&1; then
-    while IFS= read -r prnum; do
-        [[ -z "$prnum" ]] && continue
-        gh pr diff "$prnum" -- docs/gaps.yaml 2>/dev/null >>"$PR_TMP" || true
-    done < <(cd "$REPO_ROOT" && gh pr list --state open --json number --jq '.[].number' 2>/dev/null || true)
-fi
+# Write/merge pending_new_gap into the lease file. Keeps existing fields if
+# the session already had a lease (e.g. from a prior gap-claim).
+python3 - "$LEASE_FILE" "$SESSION_ID" "$NEW_ID" "$DOMAIN" "$TITLE" <<'PY'
+import json, os, sys
+from datetime import datetime, timedelta, timezone
 
-python3 - "$FLOCK_PATH" "$DOMAIN" "$TITLE" "$SESSION_ID" "$LEASE_FILE" "$MAIN_TMP" "$PR_TMP" "$LOCK_DIR" <<'PY'
-import fcntl, json, os, re, sys
-from datetime import datetime, timezone
+lease_path, session_id, new_id, domain, title = sys.argv[1:6]
+now = datetime.now(timezone.utc)
+now_s = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+ttl_h = int(os.environ.get("GAP_CLAIM_TTL_HOURS", "4"))
+exp_s = (now + timedelta(hours=ttl_h)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-(
-    flock_path,
-    domain,
-    title,
-    session_id,
-    lease_path,
-    main_path,
-    pr_path,
-    lock_dir,
-) = sys.argv[1:9]
+if os.path.isfile(lease_path):
+    with open(lease_path, encoding="utf-8") as f:
+        d = json.load(f)
+else:
+    d = {"session_id": session_id, "paths": [], "purpose": f"gap-reserve:{new_id}"}
 
-fd = os.open(flock_path, os.O_CREAT | os.O_RDWR, 0o644)
-fcntl.flock(fd, fcntl.LOCK_EX)
-try:
-    texts = [open(main_path, encoding="utf-8", errors="replace").read()]
-    pr_extra = open(pr_path, encoding="utf-8", errors="replace").read()
-    if pr_extra.strip():
-        texts.append(pr_extra)
+d["session_id"] = session_id
+d["pending_new_gap"] = {"id": new_id, "title": title, "domain": domain}
+d.setdefault("taken_at", now_s)
+d["expires_at"] = exp_s
+d["heartbeat_at"] = now_s
+d.setdefault("paths", [])
 
-    used = set()
-    id_re = re.compile(rf"^- id: ({re.escape(domain)}-\S+)\s*$", re.MULTILINE)
-    for t in texts:
-        for m in id_re.finditer(t):
-            used.add(m.group(1))
-
-    now = datetime.now(timezone.utc)
-    for fname in os.listdir(lock_dir):
-        if not fname.endswith(".json"):
-            continue
-        if fname.startswith(".") or fname == "ambient.jsonl":
-            continue
-        path = os.path.join(lock_dir, fname)
-        try:
-            with open(path, encoding="utf-8") as f:
-                d = json.load(f)
-        except Exception:
-            continue
-        try:
-            expires = datetime.fromisoformat(d["expires_at"].rstrip("Z")).replace(tzinfo=timezone.utc)
-            heartbeat = datetime.fromisoformat(d["heartbeat_at"].rstrip("Z")).replace(tzinfo=timezone.utc)
-            grace = 30
-            stale_secs = 900
-            expired = (now - expires).total_seconds() > grace
-            stale = (now - heartbeat).total_seconds() > stale_secs
-            if expired or stale:
-                continue
-        except Exception:
-            continue
-
-        gid = d.get("gap_id")
-        if isinstance(gid, str) and gid.startswith(f"{domain}-"):
-            used.add(gid)
-        p = d.get("pending_new_gap")
-        if isinstance(p, dict):
-            pid = p.get("id")
-            if isinstance(pid, str) and pid.startswith(f"{domain}-"):
-                used.add(pid)
-
-    nums = []
-    widths = []
-    for g in used:
-        m = re.match(rf"^{re.escape(domain)}-(\d+)$", g)
-        if m:
-            nums.append(int(m.group(1)))
-            widths.append(len(m.group(1)))
-    n = max(nums, default=0) + 1
-    # INFRA-080: zero-pad to the prevailing width of this domain's existing
-    # IDs (3 digits is the established convention across every domain in
-    # the repo). Using max() of observed widths means a domain that has
-    # grown to 4 digits stays 4-digit; floor of 3 keeps the convention
-    # for new / sparsely-populated domains. Mirrors the Rust path's
-    # `format!("{}{:03}", prefix, num)` in src/gap_store.rs::reserve.
-    pad_width = max(max(widths) if widths else 0, 3)
-    fmt = "{:0" + str(pad_width) + "d}"
-    prop = f"{domain}-{fmt.format(n)}"
-    while prop in used:
-        n += 1
-        prop = f"{domain}-{fmt.format(n)}"
-
-    now_s = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    ttl_h = int(os.environ.get("GAP_CLAIM_TTL_HOURS", "4"))
-    # portable-ish +4h: delegate to same approach as gap-claim (best-effort)
-    try:
-        from datetime import timedelta
-
-        exp = (now + timedelta(hours=ttl_h)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    except Exception:
-        exp = now_s
-
-    pending = {"id": prop, "title": title, "domain": domain}
-    if os.path.isfile(lease_path):
-        with open(lease_path, encoding="utf-8") as f:
-            d = json.load(f)
-    else:
-        d = {
-            "session_id": session_id,
-            "paths": [],
-            "taken_at": now_s,
-            "expires_at": exp,
-            "heartbeat_at": now_s,
-            "purpose": f"gap-reserve:{prop}",
-        }
-    d["session_id"] = session_id
-    d["pending_new_gap"] = pending
-    d.setdefault("taken_at", now_s)
-    d.setdefault("expires_at", exp)
-    d.setdefault("heartbeat_at", now_s)
-    d.setdefault("paths", [])
-    with open(lease_path, "w", encoding="utf-8") as f:
-        json.dump(d, f, indent=2)
-        f.write("\n")
-
-    sys.stdout.write(prop + "\n")
-finally:
-    fcntl.flock(fd, fcntl.LOCK_UN)
-    os.close(fd)
+with open(lease_path, "w", encoding="utf-8") as f:
+    json.dump(d, f, indent=2)
+    f.write("\n")
 PY
 
+echo "$NEW_ID"
 echo "[gap-reserve] Wrote pending_new_gap → $LEASE_FILE (session $SESSION_ID)" >&2
