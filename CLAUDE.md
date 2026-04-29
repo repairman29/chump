@@ -29,9 +29,25 @@ ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no activ
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 chump-coord watch &  # FLEET-006: cross-machine peripheral vision (NATS); local file tail above is the durable fallback. Skip if NATS unavailable.
 chump gap list --status open                     # canonical (.chump/state.db); legacy: grep -A3 "status: open" docs/gaps.yaml
+python3 scripts/coord/gap-doctor.py doctor       # INFRA-155 (live 2026-04-28): detect YAML↔SQLite drift, ghost gaps, orphan rows BEFORE you reserve. Bucket 3 > 0 means a future `chump gap reserve` may collide silently.
 scripts/coord/gap-preflight.sh <GAP-ID>     # exits 1 if done, live-claimed/reserved, or ID missing from registry — stop if so
 chump --briefing <GAP-ID>             # MEM-007: per-gap context — gap acceptance + relevant reflections + recent ambient + strategic doc refs + prior PRs
 ```
+
+**Stale-binary alarm (INFRA-148, ongoing risk).** `chump --version` is wired
+to a model probe today (don't rely on it). To check binary freshness run
+`ls -la $(which chump)` and compare to `git log origin/main --since=...
+src/gap_store.rs src/main.rs --oneline | head` — if main has commits to
+either path *after* your binary's mtime, **rebuild before any
+`chump gap …` operation**:
+
+```bash
+cargo build --release --bin chump && cp target/release/chump ~/.local/bin/chump
+```
+
+Stale binary symptoms hit at least 4× this cycle — `chump gap import`
+rejecting valid YAML, `--closed-pr` flag missing, dump dropping rows,
+silent ID collisions. **Rebuild is cheaper than the friction it prevents.**
 
 **Lesson injection — two paths (post-MEM-006):**
 - *Spawn-time, systemic.* Set `CHUMP_LESSONS_AT_SPAWN_N=5` (max 20) to have the
@@ -141,6 +157,22 @@ when no `--gap` was given, or when the chump binary doesn't support
   5. **Nuclear option — drain the queue.** If multiple PRs are tangled and (1–4) won't untangle them, disable auto-merge on *all* queued PRs (`for n in $(gh pr list --search 'is:open' --json number -q '.[].number'); do gh pr merge $n --disable-auto 2>/dev/null; done`), let main settle, then re-arm the PRs one at a time with `gh pr merge <n> --auto --squash` in priority order. Announce in ambient.jsonl before doing this — siblings will see their PRs dequeue and may otherwise assume a failure.
   6. **When in doubt, ask the human.** The queue has admin-only failure modes (branch-protection rule changes, required-check renames, queue disabled in settings) that agents can't fix. If steps 1–5 don't move the queue, flag the state in ambient.jsonl with `ALERT kind=queue_stuck` and stop — don't start churning new PRs against a broken queue.
 - **Keep PRs intent-atomic (not file-count-bounded).** A PR is one logical change — a feature, a bug fix, a codemod, a config update. Mechanical multi-file refactors (renames, dead-code removal, dep swaps) ship as a *single* PR no matter the file count, because (a) atomic = no broken intermediate `main` state, (b) CI verifies the whole change end-to-end, and (c) one revert beats coordinating three. Stack only when the changes are *logically* distinct (e.g. "land the new API, then migrate callers, then delete the old API"). Old "≤ 5 files" guidance was for human reviewers; with merge-queue + required-CI, codemod-style PRs are the world-class default. If a human review is genuinely needed, label the PR `human-review-wanted` and split for them.
+- **GitHub Actions multi-line strings — always heredoc, never inline (INFRA-157, 2026-04-28).** A `gh pr create --body "Verdict:..."` with column-1 lines inside a `run: |` block silently terminates YAML's pipe scalar. The workflow is rejected at parse time before any step runs — and the failure mode is invisible from `gh run list` (looks like "the run failed" not "the file is malformed"). When you need a multi-line PR/issue body, build it in a bash heredoc (`BODY=$(cat <<EOF ... EOF)`) so YAML never sees the embedded newlines:
+
+  ```yaml
+  - run: |
+      BODY=$(cat <<EOF
+      First line.
+
+      Second line after blank.
+      EOF
+      )
+      gh pr create --body "${BODY}"
+  ```
+
+  The same pattern was load-bearing for `ftue-clean-machine.yml` — every clean-machine FTUE run failed at parse time for ~30 attempts before this fix. Treat any column-1 token inside `run: |` as a parse-time risk and rebuild it via heredoc.
+- **GitHub Actions cannot create PRs in this repo (INFRA-162, 2026-04-28).** `gh pr create` from a workflow returns `GraphQL: GitHub Actions is not permitted to create or approve pull requests`. Enabling it requires Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests" — a repo-admin action. Until that flips, workflows that need to deliver an artifact to main should `git push origin HEAD:main` directly (with `chump-ftue-bot` or similar bot identity); the artifact is doc-only and bot-authored, so direct push is appropriate. Branch protection allows GITHUB_TOKEN pushes for these bot identities.
+- **Homebrew formulae must live in a tap (INFRA-161, 2026-04-28).** `brew install --build-from-source ./Formula/foo.rb` fails on modern Homebrew with `Homebrew requires formulae to be in a tap`. The CI workaround is `brew tap-new <name>/local --no-git --quiet && cp Formula/foo.rb $(brew --repo <name>/local)/Formula/ && brew install --build-from-source <name>/local/foo`. This also makes the verification reflect the real user install path (the documented one is `brew tap repairman29/chump && brew install chump`) instead of a workflow-only shortcut.
 
 [^pr52]: Historical context — PR #52 (2026-04-18) lost 11 commits when an agent kept pushing after auto-merge was armed; GitHub captured the branch at first-CI-green and dropped everything pushed after. Recovery PR #65 was hand-cherry-picked. The merge queue (INFRA-MERGE-QUEUE) closes the race only if you stop pushing once the PR is in the queue.
 
