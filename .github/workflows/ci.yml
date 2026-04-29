@@ -216,11 +216,21 @@ jobs:
 
       - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
+          # INFRA-100: gap-reserve.sh now invokes `chump gap reserve`
+          # for atomic next-ID picking. Build the binary and put it on
+          # PATH so the test scripts (and the script under test) see it.
+          # Dev profile is already cached from the earlier `cargo test
+          # --workspace` step, so this is fast.
+          cargo build --bin chump
+          export PATH="$(pwd)/target/debug:$PATH"
           bash scripts/ci/test-gap-reserve-concurrency.sh
           bash scripts/ci/test-gap-reserve-preflight.sh
 
       - name: gap-reserve ID zero-padding (INFRA-080)
-        run: bash scripts/ci/test-gap-reserve-padding.sh
+        run: |
+          # INFRA-100: same chump-on-PATH requirement as the prior step.
+          export PATH="$(pwd)/target/debug:$PATH"
+          bash scripts/ci/test-gap-reserve-padding.sh
 
       - name: bot-merge auto-close handshake (INFRA-154)
         run: |
