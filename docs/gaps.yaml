@@ -8769,6 +8769,59 @@ gaps:
     - Propose either a reworded lesson variant or a per-family exclusion rule
   depends_on:
     - EVAL-071
+  notes: |
+    FEASIBILITY ASSESSMENT 2026-04-29 (from a session with no eval-runner
+    access):
+
+    Cannot execute the per-lesson ablation from this seat. Blockers:
+      - DeepSeek-V3.1 inference budget (≥4 conditions × 50 trials × ~1k
+        tokens/trial = ~200k tokens minimum, plus retry/timeout overhead).
+      - Cross-judge panel: per the cross-judge audit (see
+        docs/eval/EVAL-074-AUDIT-2026-04-26.md), Llama-3.3-70B alone is
+        not adequate (kappa=0.40 vs Sonnet on the same JSONL). Sonnet-4.5
+        rescore at n=200 saw ZERO effect on either condition — gotcha or
+        clean (ΔBA −0.4pp gotcha, −0.3pp clean, McNemar p=1.0 both). So
+        the ablation needs at least Sonnet + one other family. Qwen-2.5-72B
+        was the planned third judge; blocked by Together credit limit at
+        the time of audit. Current limit status not checked from this
+        seat.
+
+    DESIGN OBSERVATION: the original "DeepSeek -23pp regression" that
+    motivated this gap may be a Llama-judge artifact rather than a real
+    model effect. PR #549 retracted the mechanism claim; PR #551 carried
+    that retraction. If a fresh Sonnet-paneled n=100 A/B on DeepSeek-V3.1
+    (same fixture, just lessons-on vs lessons-off) shows ΔBA within ±5pp
+    consistent with the n=200 rescore, then the per-lesson ablation is
+    chasing a phantom and the right next step is to close this gap as
+    "no regression demonstrated under cross-judge audit."
+
+    RECOMMENDED CHEAP-FIRST PROTOCOL (someone with eval-runner access
+    should execute):
+      1) Spend ~$0.50 on a confirmation A/B: DeepSeek-V3.1 lessons-on
+         vs lessons-off, n=100 on the EVAL-071 reflection_tasks fixture,
+         scored only by Sonnet-4.5. Same gotcha/clean slice split.
+      2) Decision tree:
+         - If |ΔBA gotcha| < 5pp AND |ΔBA clean| < 5pp under Sonnet:
+           close this gap as "no regression under cross-judge audit;
+           original Llama signal not reproducible". Update the gap's
+           `outcome_note` field. NO ablation needed.
+         - If |ΔBA gotcha| ≥ 10pp under Sonnet: proceed with the
+           per-lesson ablation as originally specified. n=50/cell × ~5
+           lesson-conditions × DeepSeek + dual-judge panel.
+         - If 5–10pp: extend Sonnet n=100 to n=200 + add a second judge
+           (Qwen if Together credit is back, else Mistral-Large-2411 via
+           Together). Decide after that.
+      3) Pre-register before running: `docs/eval/preregistered/EVAL-074.md`
+         must exist and lock judge identity, sample size, effect threshold,
+         and stop rule (per RESEARCH-019 + INFRA-113 guards).
+
+    This gap stays open until step 1 runs. From this seat I can offer
+    the protocol design (above) but cannot execute it.
+
+    CROSS-LINK: research-integrity stance. Per
+    `docs/process/RESEARCH_INTEGRITY.md` line 35, the original EVAL-074
+    mechanism claim is prohibited from being repeated until EVAL-043
+    ablation ships. This gap as currently specified is the EVAL-043 prereq.
 - id: EVAL-075
   title: Failure-mode taxonomy — hallucinate vs refuse vs decline scoring axis
   domain: eval
@@ -14367,9 +14420,11 @@ gaps:
 - id: PRODUCT-021
   domain: PRODUCT
   title: PRODUCT-017 P0 non-compliance escalation — freeze new PRODUCT gap work until clean-machine verification completes
-  status: open
+  status: done
   priority: P1
   effort: xs
+  closed_pr: 662
+  closed_date: '2026-04-29'
   opened_date: '2026-04-27'
   description: |
     PRODUCT-017 (P0 — stopwatch clean-machine install → PWA responsive
