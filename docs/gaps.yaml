@@ -14946,3 +14946,76 @@ gaps:
     - "TEST-001 specifically: trace which test script reserved it and patch the script to use a temp/sandbox repo (per the same discipline INFRA-076 §3b applies to user.email)"
   raised_by: claude
   raised_in: '2026-04-28 bug-scour session — `python3 scripts/coord/gap-doctor.py doctor` Bucket 3 = 4'
+- id: INFRA-161
+  domain: INFRA
+  title: 'clippy unwrap_used + expect_used escalation: warn now, deny new code, triage existing 1395'
+  status: open
+  priority: P2
+  effort: m
+  opened_date: '2026-04-28'
+  description: |
+    Production paths in `src/*.rs` contain 1395 `.unwrap()` / `.expect(...)`
+    calls outside test code. Each is a potential panic at runtime; in a
+    long-running daemon or a multi-tenant ACP server these become silent
+    crashes / DoS vectors.
+
+    Top 10 files (~840 of the 1395, 60% of total) — concentration is the
+    leverage point:
+
+      296 acp_server         (ACP protocol — most surface to malformed input)
+      118 gap_store          (SQLite layer — bail!() exists, prefer that)
+       93 memory_db
+       81 web_server         (HTTP — least defensible)
+       66 task_db
+       58 reflection_db
+       42 consciousness_tests
+       34 fleet_tool
+       28 plugin
+       25 web_sessions_db
+
+    Mechanism: clippy has restriction lints `clippy::unwrap_used` and
+    `clippy::expect_used` (off by default). Workspace `Cargo.toml` has
+    NO `[workspace.lints]` table at all, so there is no single place
+    today to flip these on across all crates. SECURITY-004's HIGH
+    rustls-webpki advisory is exactly the kind of upstream issue that
+    would surface as a panic on a production unwrap path here.
+
+    Three-step rollout (each its own PR; this gap is the umbrella):
+
+      Step 1 — `[workspace.lints.clippy]` table in Cargo.toml with
+        `unwrap_used = "warn"` and `expect_used = "warn"`. Tests are
+        excluded via per-file `#![cfg_attr(test, allow(...))]`. Net
+        effect: cargo clippy emits 1395 warnings, 0 errors. Surface area
+        becomes visible without breaking the build.
+
+      Step 2 — Triage in batches. For each top-10 file, decide per
+        unwrap: (a) replace with `?` propagation (preferred when the
+        function returns `Result`), (b) replace with `.context("…")?`
+        for richer errors, (c) `.unwrap_or_else(|e| ...)` with a real
+        recovery path, (d) `#[allow(clippy::unwrap_used)]` with a
+        single-line rationale comment when the unwrap is provably
+        infallible (e.g. compile-time-known regex, post-validation
+        invariant). Track in this gap's notes per top-10 file.
+
+      Step 3 — Promote `unwrap_used` and `expect_used` to `deny` in
+        the workspace lints table. New code can't add raw unwraps
+        without an explicit `#[allow(...)]` + rationale. Pre-commit
+        cargo-check guard already runs on staged .rs; the deny
+        promotion makes it block at commit time.
+
+    Out of scope: panics in non-Result paths (those are real bugs, not
+    style nits); production `panic!()` calls (rare and usually
+    intentional). File a follow-up if the triage surfaces enough of
+    those to warrant.
+
+    Detection: `grep -nE "\.(unwrap|expect)\(" src/*.rs |
+    grep -vE "tests::|fn test_|#\[test|//"`. Future scour passes can
+    diff this count against today's 1395 to measure progress.
+  acceptance_criteria:
+    - "Step 1 PR: workspace [lints.clippy] table with unwrap_used/expect_used = warn; cargo clippy emits warnings without erroring"
+    - "Step 2 (multi-PR): triage 10 highest-density files (acp_server, gap_store, memory_db, web_server, task_db, reflection_db, consciousness_tests, fleet_tool, plugin, web_sessions_db) — count drops from 1395 to ≤500"
+    - "Step 3 PR: lints promoted from warn to deny; cargo clippy --all-targets -- -D warnings still passes (zero residual unwraps without rationale-tagged allow)"
+    - "Pre-commit cargo-check guard updated (or its existing `-D warnings` flag is enough — verify) so new unwrap_used violations block at commit"
+    - "Each acceptance is its own PR — this is an umbrella gap, not a single-PR ship"
+  raised_by: claude
+  raised_in: '2026-04-28 bug-scour follow-up — 1395 unwrap/expect calls counted in src/*.rs production paths; user requested a real plan rather than a vague audit'
