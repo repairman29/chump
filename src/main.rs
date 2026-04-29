@@ -575,6 +575,12 @@ async fn main() -> Result<()> {
                     Ok(()) => {
                         println!("shipped {}", gap_id);
                         if update_yaml {
+                            // INFRA-148: warn if this binary predates the most recent
+                            // gap_store-affecting commit on the repo's HEAD before mutating
+                            // gaps.yaml. Pre-INFRA-147 binaries silently stripped the meta:
+                            // preamble (~20k-line corruption observed 2026-04-27); a fresh
+                            // build catches that and similar future serialization changes.
+                            let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
                             let path = repo_root.join("docs").join("gaps.yaml");
                             // INFRA-147: preserve the hand-curated meta: preamble (priorities,
                             // update_instructions) by reusing the existing file's bytes before
@@ -668,6 +674,13 @@ async fn main() -> Result<()> {
             }
             "dump" => {
                 let out_path = flag("--out");
+                // INFRA-148: warn if binary is stale relative to gap_store-affecting
+                // code on HEAD. Only warn when actually writing to a file (--out PATH)
+                // — stdout dump for piping into other tools shouldn't spam stderr
+                // unconditionally.
+                if out_path.is_some() {
+                    let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
+                }
                 // INFRA-147: when --out points at an existing file, preserve its
                 // meta: preamble. For stdout or new files there is no source to
                 // preserve from — bare dump is correct.
