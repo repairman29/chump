@@ -15225,3 +15225,51 @@ gaps:
     - "After this lands, no queued PR fails sync-idempotency on a docs/process edit again (Cold Water can verify by running `gh run list --status failure --workflow mdbook-verify --created '>2026-04-29'`)"
   raised_by: claude
   raised_in: '2026-04-29 queue-jam post-mortem (PR #669) — 12 PRs blocked for hours by silent book/src drift introduced by my own PR #625 (INFRA-079) on 2026-04-28'
+- id: INFRA-164
+  domain: INFRA
+  title: 'bot-merge.sh: clippy 5min timeout + cargo test memory pressure cause spurious cold-cache failures'
+  status: done
+  closed_pr: 655
+  closed_date: '2026-04-28'
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-28'
+  description: |
+    Two distinct bot-merge.sh failures keep biting fresh worktrees on
+    this 24 GB / 10-core M4 dev machine and force the manual ship path
+    documented in CLAUDE.md (INFRA-028 recovery). Both surfaced twice
+    today (PR #611 INFRA-144, PR #652 INFRA-163). Both are
+    environmental, not real failures.
+
+    Failure 1: cargo clippy timeout. Cold workspace clippy on chump
+    takes ~8 minutes on this machine; the 300s budget triggers TIMEOUT
+    mid-compile. Real wall-clock issue.
+
+    Failure 2: cargo test SIGTERM cascade. Symptom: 2-3 rustc processes
+    fail with "(signal: 15, SIGTERM: termination signal)" within the
+    same millisecond, cargo reports "build failed, waiting for other
+    jobs to finish", bot-merge concludes "Tests failed". Wall-clock is
+    fine (well under the 3600s budget). Root cause: macOS Jetsam OOM-
+    killing rustc subprocesses when default cargo parallelism (= 10
+    logical CPUs) compiles 3+ large bin/test targets concurrently
+    across multiple chump worktrees. Each rustc on the chump crate
+    peaks at 3-4 GB; 3 in parallel = 10-12 GB; plus deps + other
+    agents = tip over.
+
+    Fix:
+    1. Bump clippy timeout 300s -> 900s (real cold-cache cost).
+    2. Default CARGO_BUILD_JOBS=4 in bot-merge env (4 jobs ≈ 12-16 GB
+       peak, fits under 24 GB with fleet contention). Operators with
+       headroom can override via env.
+    3. Diagnostic message on test failure pointing at OOM theory if
+       SIGTERM cascade is observed.
+
+    No regression risk: changes are pure resource controls in a helper
+    script. CI behavior unchanged (CI runners have their own resources).
+  acceptance_criteria:
+    - "cargo clippy timeout in scripts/coord/bot-merge.sh raised to >= 900s"
+    - "CARGO_BUILD_JOBS exported in scripts/coord/bot-merge.sh with sane default and env override"
+    - "cargo test failure message hints at OOM/SIGTERM cascade root cause"
+    - "Comment in scripts/coord/bot-merge.sh documents the OOM mechanism so future maintainers don't blindly raise the timeout instead"
+  raised_by: claude
+  raised_in: '2026-04-28 session — second consecutive bot-merge cold-cache failure on PR #652 ship'
