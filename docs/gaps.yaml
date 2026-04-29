@@ -15136,174 +15136,129 @@ gaps:
     - "Test: spawn-time assembler with CHUMP_LESSONS_AT_SPAWN_N=5 picks up a lesson added via `chump lesson add` (not just sqlite3 INSERT)"
   raised_by: claude
   raised_in: '2026-04-28 session — the day''s 6 portable lessons did not land in chump_improvement_targets because there was no CLI'
-
-- id: INFRA-163
+- id: INFRA-172
   domain: INFRA
-  title: 'chump lesson add CLI — let agents seed chump_improvement_targets without sqlite3'
+  title: 'clippy unwrap_used + expect_used escalation: warn now, deny new code, triage existing 1395'
   status: open
-  priority: P1
-  effort: s
-  opened_date: '2026-04-28'
-  description: |
-    The `chump_improvement_targets` table (MEM-006) is the canonical
-    place for cycle-specific lessons that get prepended to spawn-time
-    prompts when `CHUMP_LESSONS_AT_SPAWN_N>0` and into per-gap
-    briefings via `chump --briefing <GAP-ID>` (MEM-007). It's the
-    right system for "we learned X today; make sure the next agent
-    knows."
-
-    Today there is **no CLI to add a lesson**. Lessons get seeded only
-    by reflection-row creation (after eval / A/B runs) or by direct
-    `sqlite3 .chump/state.db "INSERT INTO chump_improvement_targets ..."`
-    edits. Manual SQL is fragile across schema changes and skips the
-    parent-reflection-row link that recency×frequency ranking depends
-    on.
-
-    Real-world miss this cycle: ~6 portable lessons surfaced during
-    the 2026-04-28 session (YAML/SQLite drift, stale-binary alarm,
-    workflow heredoc idiom, GH Actions PR-create rejection, brew tap
-    requirement, INFRA-154 auto-close) but none were captured into
-    chump_improvement_targets — they got documented in CLAUDE.md
-    instead, where future agents can read them but the spawn-time
-    assembler can't inject them. CLAUDE.md is human-paced; the lessons
-    table is agent-paced.
-
-    Fix: add `chump lesson add --directive "..." [--scope DOMAIN]
-    [--priority high|med|low] [--actioned-as PR#NNN]` that creates a
-    reflection row + improvement_targets row in one transaction. Idempotent
-    on (directive, scope) so repeated runs don't bloat the table. Optional
-    `--from-pr <N>` reads the merged PR's title/body and pre-fills directive
-    + actioned_as for one-line capture.
-
-    Also: a `chump lesson list [--scope X]` mirror of `chump gap list`
-    so agents can audit what's actually in the table.
-  acceptance_criteria:
-    - "`chump lesson add --directive '...' --scope INFRA --priority high` writes a chump_improvement_targets row + parent reflection row in a single transaction"
-    - "Re-running the same command is a no-op (idempotent on directive+scope)"
-    - "`chump lesson list` prints rows in recency×frequency order matching `load_spawn_lessons`"
-    - "`chump lesson add --from-pr <N>` reads the merged PR title/body, asks for confirmation if --interactive, otherwise commits with auto-derived directive"
-    - "Test: spawn-time assembler with CHUMP_LESSONS_AT_SPAWN_N=5 picks up a lesson added via `chump lesson add` (not just sqlite3 INSERT)"
-  raised_by: claude
-  raised_in: '2026-04-28 session — the day''s 6 portable lessons did not land in chump_improvement_targets because there was no CLI'
-- id: INFRA-170
-  domain: INFRA
-  title: 'pre-commit guard: docs/process/*.md edits require corresponding book/src/* sync'
-  status: open
-  priority: P1
-  effort: xs
+  priority: P2
+  effort: m
   opened_date: '2026-04-29'
   description: |
-    On 2026-04-29 03:00 UTC, the merge queue jammed for hours. Twelve
-    open PRs all failed CI's `sync-idempotency` check during their
-    rebase-and-test. Root cause: PR #625 (INFRA-079, cross-judge audit
-    guard, mine) added section #8 to `docs/process/RESEARCH_INTEGRITY.md`
-    on 2026-04-28 but did not run `scripts/dev/sync-book-from-docs.sh`,
-    so `book/src/research-integrity.md` (the rendered mdBook mirror)
-    silently fell out of sync. Every subsequent PR's rebase produced a
-    state where `git diff --exit-code book/src` is non-empty, failing
-    sync-idempotency on every queued temp branch. Compounded by a
-    parallel duplicate-INFRA-163 in `docs/gaps.yaml` (gaps-yaml-integrity
-    fail), the entire queue stalled until PR #669 landed both fixes
-    together.
+    Refile of original PR #654 (INFRA-161 collided with sibling #649 ftue
+    workflow shipping the same ID). Content unchanged from the
+    2026-04-28 scour finding.
 
-    The book/src ↔ docs/process drift is a coordination foot-gun
-    invisible to the author at commit time: nothing local fails. CI is
-    the only place that catches it, and by then it's blocking the
-    queue. Pre-commit-time detection would have prevented the jam.
+    Production paths in `src/*.rs` contain 1395 `.unwrap()` / `.expect(...)`
+    calls outside test code. Each is a potential panic at runtime; in a
+    long-running daemon or a multi-tenant ACP server these become silent
+    crashes / DoS vectors.
 
-    Fix: a pre-commit hook check that, for every staged
-    `docs/process/*.md` (and any other doc tracked under
-    `book/src/`), verifies the corresponding `book/src/<basename>.md`
-    is also staged with byte-identical content (or the workflow's
-    canonical sync script has been run and produced no diff).
+    Top 10 files (~840 of 1395, 60% of total):
 
-    Implementation sketch (additive in `scripts/git-hooks/pre-commit`):
+      296 acp_server         (ACP protocol — most surface to malformed input)
+      118 gap_store          (SQLite layer — bail!() exists, prefer that)
+       93 memory_db
+       81 web_server         (HTTP — least defensible)
+       66 task_db
+       58 reflection_db
+       42 consciousness_tests
+       34 fleet_tool
+       28 plugin
+       25 web_sessions_db
 
-      if [ "${CHUMP_BOOK_SYNC_CHECK:-1}" != "0" ]; then
-          changed=$(git diff --cached --name-only -- 'docs/process/*.md')
-          if [ -n "$changed" ]; then
-              # Run canonical sync; check working tree matches (no
-              # uncommitted book/ drift)
-              bash scripts/dev/sync-book-from-docs.sh >/dev/null
-              drift=$(git diff --name-only book/)
-              if [ -n "$drift" ]; then
-                  echo "[pre-commit] BOOK SYNC DRIFT (INFRA-170):"
-                  echo "$drift" | sed 's/^/  - /'
-                  echo ""
-                  echo "Run: bash scripts/dev/sync-book-from-docs.sh"
-                  echo "Then re-stage: git add book/"
-                  echo "Bypass: CHUMP_BOOK_SYNC_CHECK=0 git commit ..."
-                  exit 1
-              fi
-          fi
-      fi
+    Workspace `Cargo.toml` has NO `[workspace.lints]` table today, so
+    there's no single place to flip `clippy::unwrap_used` /
+    `clippy::expect_used` warn → deny across all crates.
 
-    Bypass envelope: `CHUMP_BOOK_SYNC_CHECK=0` for one-off doc fixes
-    where the sync script itself is being modified, or for in-progress
-    migrations where book/ deliberately lags.
+    Three-step rollout (each its own PR):
 
-    Detection method (for future scour passes): `git log origin/main
-    --grep='sync-idempotency' --oneline | wc -l` should NOT grow after
-    this lands. Also: `gh run list --status failure --workflow
-    mdbook-verify` for direct hits.
+      Step 1 — `[workspace.lints.clippy]` table with both lints set to
+        `warn`. Tests opt out via per-file `#![cfg_attr(test, allow(...))]`.
+        Effect: cargo clippy emits 1395 warnings, 0 errors.
 
-    Pairs with INFRA-158 (4 missing pre-commit guard tests) — this new
-    guard ALSO needs a regression test (`scripts/ci/test-book-sync-guard.sh`)
-    following the same pattern as test-cross-judge-guard.sh /
-    test-prereg-content-guard.sh, wired into `.github/workflows/ci.yml`.
+      Step 2 — Triage in batches per top-10 file. Per unwrap, pick:
+        (a) `?` propagation, (b) `.context("…")?`, (c)
+        `.unwrap_or_else(...)` with real recovery, (d)
+        `#[allow(clippy::unwrap_used)]` with one-line rationale (proven-
+        infallible: compile-time regex, post-validation invariant, etc).
+        Target: 1395 → ≤500.
+
+      Step 3 — Promote warn → deny. Pre-commit cargo-check guard already
+        runs with `-D warnings`, so the deny promotion is automatic at
+        commit time.
+
+    Detection: `grep -nE "\.(unwrap|expect)\(" src/*.rs | grep -vE
+    "tests::|fn test_|#\[test|//"`. Future scour passes diff against 1395.
   acceptance_criteria:
-    - "scripts/git-hooks/pre-commit gains a docs/process ↔ book/src sync check, gated by CHUMP_BOOK_SYNC_CHECK"
-    - "CLAUDE.md `Commit-time guards` table gains a row documenting the new check + bypass"
-    - "scripts/ci/test-book-sync-guard.sh exercises pass (synced) and fail (deliberate drift) cases in a sandbox repo"
-    - "Test wired into .github/workflows/ci.yml under the same job that runs the existing guard tests"
-    - "After this lands, no queued PR fails sync-idempotency on a docs/process edit again (Cold Water can verify by running `gh run list --status failure --workflow mdbook-verify --created '>2026-04-29'`)"
+    - "Step 1 PR: workspace [lints.clippy] table with unwrap_used/expect_used = warn; cargo clippy emits warnings without erroring"
+    - "Step 2 (multi-PR): triage 10 highest-density files; count drops from 1395 to ≤500"
+    - "Step 3 PR: lints promoted from warn to deny; cargo clippy --all-targets -- -D warnings still passes"
+    - "Each acceptance is its own PR — this is an umbrella gap"
   raised_by: claude
-  raised_in: '2026-04-29 queue-jam post-mortem (PR #669) — 12 PRs blocked for hours by silent book/src drift introduced by my own PR #625 (INFRA-079) on 2026-04-28'
-- id: INFRA-164
+  raised_in: '2026-04-29 refile after INFRA-161 collision (orig PR #654 abandoned, was DIRTY for 14h after main moved); content from 2026-04-28 bug-scour'
+
+- id: INFRA-173
   domain: INFRA
-  title: 'bot-merge.sh: clippy 5min timeout + cargo test memory pressure cause spurious cold-cache failures'
-  status: done
-  closed_pr: 655
-  closed_date: '2026-04-28'
+  title: Replace monolithic docs/gaps.yaml with per-file docs/gaps/<DOMAIN>-<NNN>.yaml directory
+  status: open
   priority: P1
-  effort: xs
-  opened_date: '2026-04-28'
+  effort: m
+  opened_date: '2026-04-29'
   description: |
-    Two distinct bot-merge.sh failures keep biting fresh worktrees on
-    this 24 GB / 10-core M4 dev machine and force the manual ship path
-    documented in CLAUDE.md (INFRA-028 recovery). Both surfaced twice
-    today (PR #611 INFRA-144, PR #652 INFRA-163). Both are
-    environmental, not real failures.
+    Refile of original PR #661 (INFRA-164 collided with sibling #655
+    bot-merge clippy-timeout shipping the same ID).
 
-    Failure 1: cargo clippy timeout. Cold workspace clippy on chump
-    takes ~8 minutes on this machine; the 300s budget triggers TIMEOUT
-    mid-compile. Real wall-clock issue.
+    Today: every gap-filing PR edits the same end-of-file region of
+    `docs/gaps.yaml`. 2026-04-28 session observed THREE collisions in
+    a six-hour window. Plus a lingering INFRA-163 duplicate that this
+    very PR removes (visible cost of the monolithic structure).
 
-    Failure 2: cargo test SIGTERM cascade. Symptom: 2-3 rustc processes
-    fail with "(signal: 15, SIGTERM: termination signal)" within the
-    same millisecond, cargo reports "build failed, waiting for other
-    jobs to finish", bot-merge concludes "Tests failed". Wall-clock is
-    fine (well under the 3600s budget). Root cause: macOS Jetsam OOM-
-    killing rustc subprocesses when default cargo parallelism (= 10
-    logical CPUs) compiles 3+ large bin/test targets concurrently
-    across multiple chump worktrees. Each rustc on the chump crate
-    peaks at 3-4 GB; 3 in parallel = 10-12 GB; plus deps + other
-    agents = tip over.
+    Mechanism: gaps.yaml is one ~15k-line file; every append touches
+    the same lines; git diff has no way to merge two appends without a
+    conflict. Independent of the gap-reserve race (INFRA-100, in
+    flight as #657, currently BLOCKED) — even when every agent picks
+    a unique ID, two appends still collide.
 
-    Fix:
-    1. Bump clippy timeout 300s -> 900s (real cold-cache cost).
-    2. Default CARGO_BUILD_JOBS=4 in bot-merge env (4 jobs ≈ 12-16 GB
-       peak, fits under 24 GB with fleet contention). Operators with
-       headroom can override via env.
-    3. Diagnostic message on test failure pointing at OOM theory if
-       SIGTERM cascade is observed.
+    Proposal: shard the registry into one file per gap.
 
-    No regression risk: changes are pure resource controls in a helper
-    script. CI behavior unchanged (CI runners have their own resources).
+      docs/gaps/
+        ACP-001.yaml
+        COG-001.yaml
+        INFRA-173.yaml      ← this gap, eventually
+        ...
+
+    Each file holds the existing schema for one gap. Top-level
+    `docs/gaps.yaml` either becomes an auto-generated aggregator
+    (rejected for manual edits) or is removed outright.
+
+    state.db remains canonical (per INFRA-059). The per-file YAML
+    layer is a more diff-friendly mirror.
+
+    Two agents filing concurrent NEW gaps now collide ONLY if they
+    pick the same ID — already protected by the duplicate-id guard +
+    INFRA-100's atomic next-ID picker (when it lands). Different IDs
+    → different files → trivial git rebase.
+
+    Call sites that need updates: chump gap import / dump /
+    dump_yaml_with_meta, scripts/coord/gap-doctor.py /
+    gap-reserve.sh / gap-preflight.sh / check-gap-status-flip.sh,
+    scripts/git-hooks/pre-commit (4 gap guards), and
+    .github/workflows/gaps-yaml-integrity.yml.
+
+    Migration: one-shot `scripts/migration/split-gaps-yaml.py` splits
+    the monolithic file in one commit. Same commit deletes the
+    monolithic file.
+
+    Pair with INFRA-100 — together they close ~90% of the observed
+    gap-filing collision incidents at the root.
   acceptance_criteria:
-    - "cargo clippy timeout in scripts/coord/bot-merge.sh raised to >= 900s"
-    - "CARGO_BUILD_JOBS exported in scripts/coord/bot-merge.sh with sane default and env override"
-    - "cargo test failure message hints at OOM/SIGTERM cascade root cause"
-    - "Comment in scripts/coord/bot-merge.sh documents the OOM mechanism so future maintainers don't blindly raise the timeout instead"
+    - "docs/gaps/<DOMAIN>-<NNN>.yaml directory with one file per gap (count matches state.db)"
+    - "Monolithic docs/gaps.yaml deleted OR auto-regenerated by chump gap dump (decision recorded in PR)"
+    - "chump gap import reads docs/gaps/*.yaml; round-trip parity with state.db is bit-identical"
+    - "scripts/coord/gap-doctor.py + gap-reserve.sh + gap-preflight.sh + check-gap-status-flip.sh updated"
+    - "Smoke test: simulate two agents filing concurrent NEW gaps (different IDs) — git rebase resolves cleanly"
+    - "Pre-commit guards (duplicate-id, recycled-id, closed_pr integrity) updated for the directory layout"
+    - "Migration script idempotent (no-op on already-split repo)"
+    - "INFRA-100 lands first OR ships in same PR — atomic next-ID + per-file storage are the matched pair"
   raised_by: claude
-  raised_in: '2026-04-28 session — second consecutive bot-merge cold-cache failure on PR #652 ship'
+  raised_in: '2026-04-29 refile after INFRA-164 collision (orig PR #661 abandoned, was DIRTY for 14h after main moved); content from 2026-04-28 bug-scour'

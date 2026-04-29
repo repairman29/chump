@@ -99,6 +99,21 @@ Any new eval gap filed must specify:
 7. **Reproduction:** The exact harness call (with CHUMP_EXPERIMENT_CHECKPOINT from
    INFRA-EXPERIMENT-CHECKPOINT) must be logged in the eval doc. Results without a reproducible
    call are preliminary only.
+8. **Cross-judge audit at closure (INFRA-079, enforced 2026-04-28):** Closing any `EVAL-*` /
+   `RESEARCH-*` gap to `status: done` is blocked by `scripts/git-hooks/pre-commit` unless the
+   gap entry in `docs/gaps.yaml` carries one of:
+   - `cross_judge_audit: <path>` pointing at a JSONL artifact (or directory of JSONL artifacts)
+     under `logs/ab/` whose `judge_model` / `judge` / `judges[*].model` fields cover ≥ 2 judge
+     families (anthropic / openai / google / meta / qwen / mistral / deepseek / human / …);
+   - `single_judge_waived: true` plus `single_judge_waiver_reason: <≥20 char justification>`;
+   - a preregistration at `docs/eval/preregistered/<gid>.md` that explicitly declares single-judge
+     scope (matched by the regex `single[ -]judge\s+(scope|design|run|preregistration|study)`).
+   The guard exists because EVAL-074 (PR #549) shipped a "DeepSeek over-compliance, −30pp gotcha
+   regression p=0.0007" claim labeled by a single Llama-3.3-70B judge; the cross-judge audit
+   (PR #551) flipped it to a Llama-judge artifact (κ=0.40, gotcha 52% agreement) and cost ~$1.50
+   + half a day + three follow-up amendment PRs to retract. The implementation is
+   `scripts/ci/check-cross-judge.py`; tests live in `scripts/ci/test-cross-judge-guard.sh`.
+   Bypass: `CHUMP_CROSS_JUDGE_CHECK=0` with justification in the PR body.
 
 > **⚠️ python3 foot-gun (discovered 2026-04-20):** On this machine `python3` resolves to 3.14,
 > which has no `anthropic` module. Using it silently produces `scorer=exit_code_fallback` in every
