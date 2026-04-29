@@ -68,7 +68,7 @@ A truly cold start on a fresh box would include:
 Items 1-3 likely dominate the wall-clock; the 15.3s observed here measures
 only item 4 plus warm `chump init` overhead.
 
-## Observation: bug in `scripts/eval/measure-ftue.sh`
+## Observation: bug in `scripts/eval/measure-ftue.sh` — FIXED in INFRA-163
 
 When invoked with `--port 3001` the script sets `PORT=3001` for the
 assertion URL but does NOT propagate the port to the underlying
@@ -76,10 +76,21 @@ assertion URL but does NOT propagate the port to the underlying
 port 3000, the script polls 3001, gets nothing, and fails with
 `Hard timeout at 95s`. Worked around by running with default port 3000.
 
-Not filing a follow-up gap right now (Red Letter #8 explicitly called out
-filing-vs-closing imbalance — see this session's restraint). Whoever
-closes PRODUCT-017 should either fix the script's port plumbing or
-remove the `--port` flag entirely.
+**Resolved in INFRA-163 (2026-04-28).** That change:
+- Added real `--port N` and `--no-browser` flags to `chump init`
+  (previously `--no-browser` was a non-functional `NO_BROWSER=1` env hack
+  the binary never read).
+- Propagates both flags from `measure-ftue.sh` so the assertion URL and
+  the actual server port stay in sync.
+- Stops `measure-ftue.sh` from swallowing `chump init` exit codes
+  (`|| true`) — failed inits now report explicitly instead of looking
+  like "PWA never responded".
+- Fixes `write_minimal_env` writing a hard-coded `CHUMP_WEB_PORT=3000`
+  to `.env` even when the user passed a different port.
+- Replaces the `bc` fractional-second formatter with `awk` so machines
+  without `bc` (minimal Linux images) still report `15.3s`, not `15s`.
+
+Whoever runs the next clean-machine verification won't trip on these.
 
 ## Next step (does NOT belong on this dev-machine artifact)
 
