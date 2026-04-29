@@ -264,9 +264,18 @@ async fn main() -> Result<()> {
     }
 
     // `chump init` (UX-001) — first-run setup: detect model, write .env, start server, open browser.
+    // Flags: --port N (override CHUMP_WEB_PORT), --no-browser (skip step 4 — for CI / FTUE).
     if args.get(1).map(String::as_str) == Some("init") {
+        let init_args = match chump_init::InitArgs::from_argv(&args[2..]) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("chump init: {e:#}");
+                eprintln!("usage: chump init [--port N] [--no-browser]");
+                std::process::exit(2);
+            }
+        };
         let repo_root = repo_path::repo_root();
-        if let Err(e) = chump_init::run_init(&repo_root) {
+        if let Err(e) = chump_init::run_init(&repo_root, &init_args) {
             eprintln!("chump init: {e:#}");
             std::process::exit(1);
         }
