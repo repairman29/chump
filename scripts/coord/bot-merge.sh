@@ -409,6 +409,27 @@ fi
 stage_done
 green "Pushed."
 
+# ── 5b. INFRA-084 advisory: warn if PR diff hand-edits docs/gaps.yaml ───────
+# The merge_group workflow `.github/workflows/regenerate-gaps-yaml.yml`
+# auto-regenerates the YAML from .chump/state.db on every queue temp branch,
+# so most hand-edits are unnecessary now. Common case where this matters:
+#   - filing PRs that append a new gap entry by hand instead of using
+#     `chump gap reserve`
+#   - closure PRs that hand-edit status:done instead of running
+#     `chump gap ship --closed-pr <N> --update-yaml`
+# Advisory-only for now; INFRA-094 will block these in pre-commit once the
+# merge_group regen is fully validated.
+if [[ "${CHUMP_RAW_YAML_EDIT_CHECK:-1}" != "0" ]]; then
+    if git diff --name-only "${REMOTE}/${BASE_BRANCH}..HEAD" 2>/dev/null \
+        | grep -qx 'docs/gaps.yaml'; then
+        info "[bot-merge] NOTE: this PR's diff includes docs/gaps.yaml hand-edits."
+        info "[bot-merge]   Prefer: chump gap reserve / set / ship --update-yaml so the canonical"
+        info "[bot-merge]   regenerator (.github/workflows/regenerate-gaps-yaml.yml) round-trips"
+        info "[bot-merge]   the diff cleanly. The merge_group workflow will auto-fix any drift."
+        info "[bot-merge]   Suppress this notice: CHUMP_RAW_YAML_EDIT_CHECK=0"
+    fi
+fi
+
 # ── 6. Open or update PR ─────────────────────────────────────────────────────
 EXISTING_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
 
