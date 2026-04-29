@@ -10525,10 +10525,44 @@ gaps:
     - No RUSTSEC-2023-0071 in dep tree (rsa patched or replaced)
     - No RUSTSEC-2026-0049/0098/0099/0104 in dep tree (rustls-webpki 0.102.x gone)
   depends_on: [INFRA-044]
-  notes: >
+  notes: |
     Filed from the INFRA-044 first dry run. Do not close this gap
     by silencing cargo-audit — the findings doc already records the
     real advisories. Re-evaluate weekly when the audit CI runs.
+
+    UPSTREAM STATUS CHECK 2026-04-29 (cargo audit + crates.io API):
+
+      cargo audit current count: 5 advisories
+        RUSTSEC-2023-0071  rsa@0.9.10              Marvin Attack timing sidechannel
+        RUSTSEC-2026-0049  rustls-webpki@0.102.8   CRL Distribution-Points authoritative
+        RUSTSEC-2026-0098  rustls-webpki@0.102.8   URI name-constraint mishandling
+        RUSTSEC-2026-0099  rustls-webpki@0.102.8   Name constraints accepted incorrectly
+        RUSTSEC-2026-0104  rustls-webpki@0.102.8   Reachable panic on CRL parse
+
+      Upstream version status:
+        rsa: latest is 0.10.0-rc.18 (release candidate, NOT stable). The
+          Marvin Attack mitigation requires a constant-time RSA primitives
+          rewrite; RC churn since 0.10.0-rc.* (Nov 2023) suggests they're
+          still iterating. Cannot upgrade to a stable patched release —
+          stays open.
+        web-push: still 0.11.0 (newest). No release dropping the rsa
+          dependency. Replacing web-push entirely would be a non-trivial
+          dep swap; not justified for a stale advisory in a non-load-bearing
+          push channel.
+        serenity: still 0.12.5 (newest). 0.13 has not been released. So we
+          continue pulling the rustls-webpki@0.102.8 chain via:
+            serenity 0.12.5
+              → tokio-tungstenite 0.21.0
+                → tokio-rustls 0.25.0
+                  → rustls 0.22.4
+                    → rustls-webpki 0.102.8
+          Cannot upgrade rustls-webpki without a serenity 0.13 that uses
+          newer tokio-tungstenite.
+
+      Conclusion: no fix available today. Both blockers (rsa 0.10 stable,
+      serenity 0.13) are upstream releases out of our control. Gap stays
+      open for the weekly INFRA-044 audit to re-surface. Next action is
+      a fresh upstream check next week — not a code change here.
 
 - id: INFRA-QUEUE-DRIVER-APP-TOKEN
   title: "queue-driver must push via GitHub App token, not GITHUB_TOKEN (anti-loop rule)"
