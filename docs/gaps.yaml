@@ -14678,6 +14678,8 @@ gaps:
     - "Test: synthetic divergence (manually edit one field in YAML to disagree with DB) is detected"
   raised_by: claude
   raised_in: '2026-04-28 session — observed during INFRA-097 status-flip attempt + INFRA-149 reserve collision'
+  closed_date: '2026-04-28'
+  closed_pr: 641
 
 - id: INFRA-156
   domain: INFRA
@@ -14945,76 +14947,100 @@ gaps:
   raised_by: claude
   raised_in: '2026-04-28 bug-scour session — `python3 scripts/coord/gap-doctor.py doctor` Bucket 3 = 4'
 
-- id: INFRA-161
+- id: INFRA-163
   domain: INFRA
-  title: 'ftue-clean-machine workflow: brew install fails because local-file formula path is rejected (must be in a tap)'
+  title: 'chump lesson add CLI — let agents seed chump_improvement_targets without sqlite3'
   status: open
   priority: P1
-  effort: xs
+  effort: s
   opened_date: '2026-04-28'
   description: |
-    Once INFRA-157 unblocked the workflow's parse error and the `verify`
-    job actually started running, the `Brew install chump from local
-    formula` step failed:
+    The `chump_improvement_targets` table (MEM-006) is the canonical
+    place for cycle-specific lessons that get prepended to spawn-time
+    prompts when `CHUMP_LESSONS_AT_SPAWN_N>0` and into per-gap
+    briefings via `chump --briefing <GAP-ID>` (MEM-007). It's the
+    right system for "we learned X today; make sure the next agent
+    knows."
 
-      Homebrew requires formulae to be in a tap, rejecting:
-        ./Formula/chump.rb (/Users/runner/work/chump/chump/Formula/chump.rb)
+    Today there is **no CLI to add a lesson**. Lessons get seeded only
+    by reflection-row creation (after eval / A/B runs) or by direct
+    `sqlite3 .chump/state.db "INSERT INTO chump_improvement_targets ..."`
+    edits. Manual SQL is fragile across schema changes and skips the
+    parent-reflection-row link that recency×frequency ranking depends
+    on.
 
-    Modern Homebrew (>=4.0) refuses to install a `.rb` file passed as a
-    bare path — formulae must live inside a tap. The workflow's
-    `brew install --build-from-source ./Formula/chump.rb` was written
-    against an older Homebrew version where this worked.
+    Real-world miss this cycle: ~6 portable lessons surfaced during
+    the 2026-04-28 session (YAML/SQLite drift, stale-binary alarm,
+    workflow heredoc idiom, GH Actions PR-create rejection, brew tap
+    requirement, INFRA-154 auto-close) but none were captured into
+    chump_improvement_targets — they got documented in CLAUDE.md
+    instead, where future agents can read them but the spawn-time
+    assembler can't inject them. CLAUDE.md is human-paced; the lessons
+    table is agent-paced.
 
-    The documented user install path (docs/process/ONBOARDING.md) is:
-      brew tap repairman29/chump
-      brew install chump
+    Fix: add `chump lesson add --directive "..." [--scope DOMAIN]
+    [--priority high|med|low] [--actioned-as PR#NNN]` that creates a
+    reflection row + improvement_targets row in one transaction. Idempotent
+    on (directive, scope) so repeated runs don't bloat the table. Optional
+    `--from-pr <N>` reads the merged PR's title/body and pre-fills directive
+    + actioned_as for one-line capture.
 
-    Fix: stage Formula/chump.rb into a throwaway local tap, then install
-    from the tap. Mirrors the documented user path so the verification
-    actually tests the formula-as-shipped, not a workflow shortcut.
-
-      brew tap-new chump-ci/local --no-git --quiet
-      cp ./Formula/chump.rb $(brew --repo chump-ci/local)/Formula/
-      brew install --build-from-source chump-ci/local/chump
+    Also: a `chump lesson list [--scope X]` mirror of `chump gap list`
+    so agents can audit what's actually in the table.
   acceptance_criteria:
-    - "ftue-clean-machine workflow's Brew install step exits 0 on macos-latest"
-    - "Verification reflects the documented user install path (brew tap → brew install) rather than a private workflow shortcut"
-    - "Inline comment in the workflow file explains why the local-file path doesn't work"
+    - "`chump lesson add --directive '...' --scope INFRA --priority high` writes a chump_improvement_targets row + parent reflection row in a single transaction"
+    - "Re-running the same command is a no-op (idempotent on directive+scope)"
+    - "`chump lesson list` prints rows in recency×frequency order matching `load_spawn_lessons`"
+    - "`chump lesson add --from-pr <N>` reads the merged PR title/body, asks for confirmation if --interactive, otherwise commits with auto-derived directive"
+    - "Test: spawn-time assembler with CHUMP_LESSONS_AT_SPAWN_N=5 picks up a lesson added via `chump lesson add` (not just sqlite3 INSERT)"
   raised_by: claude
-  raised_in: '2026-04-28 session — surfaced after INFRA-157 unblocked workflow parse'
+  raised_in: '2026-04-28 session — the day''s 6 portable lessons did not land in chump_improvement_targets because there was no CLI'
 
-- id: INFRA-162
+- id: INFRA-163
   domain: INFRA
-  title: 'ftue-clean-machine workflow: GitHub Actions cannot create PRs — switch to direct push'
+  title: 'chump lesson add CLI — let agents seed chump_improvement_targets without sqlite3'
   status: open
   priority: P1
-  effort: xs
+  effort: s
   opened_date: '2026-04-28'
   description: |
-    The workflow's final step opens a PR with the verification artifact
-    via `gh pr create`. On 2026-04-28 the run failed with:
+    The `chump_improvement_targets` table (MEM-006) is the canonical
+    place for cycle-specific lessons that get prepended to spawn-time
+    prompts when `CHUMP_LESSONS_AT_SPAWN_N>0` and into per-gap
+    briefings via `chump --briefing <GAP-ID>` (MEM-007). It's the
+    right system for "we learned X today; make sure the next agent
+    knows."
 
-      pull request create failed: GraphQL: GitHub Actions is not
-      permitted to create or approve pull requests (createPullRequest)
+    Today there is **no CLI to add a lesson**. Lessons get seeded only
+    by reflection-row creation (after eval / A/B runs) or by direct
+    `sqlite3 .chump/state.db "INSERT INTO chump_improvement_targets ..."`
+    edits. Manual SQL is fragile across schema changes and skips the
+    parent-reflection-row link that recency×frequency ranking depends
+    on.
 
-    GitHub disables PR creation by GITHUB_TOKEN by default; enabling it
-    requires `Settings → Actions → General → "Allow GitHub Actions to
-    create and approve pull requests"`. That's a repo-admin action;
-    the workflow itself can't enable it.
+    Real-world miss this cycle: ~6 portable lessons surfaced during
+    the 2026-04-28 session (YAML/SQLite drift, stale-binary alarm,
+    workflow heredoc idiom, GH Actions PR-create rejection, brew tap
+    requirement, INFRA-154 auto-close) but none were captured into
+    chump_improvement_targets — they got documented in CLAUDE.md
+    instead, where future agents can read them but the spawn-time
+    assembler can't inject them. CLAUDE.md is human-paced; the lessons
+    table is agent-paced.
 
-    Fix: switch to direct push to main. The artifact is one new file
-    per run (`docs/FTUE-VERIFICATION-YYYY-MM-DD.md`), purely additive
-    and bot-authored — direct push is appropriate, and avoids the
-    repo-settings dependency. The push uses GITHUB_TOKEN (default
-    workflow perms include `contents: write`).
+    Fix: add `chump lesson add --directive "..." [--scope DOMAIN]
+    [--priority high|med|low] [--actioned-as PR#NNN]` that creates a
+    reflection row + improvement_targets row in one transaction. Idempotent
+    on (directive, scope) so repeated runs don't bloat the table. Optional
+    `--from-pr <N>` reads the merged PR's title/body and pre-fills directive
+    + actioned_as for one-line capture.
 
-    Optional follow-up if the operator does enable PR creation later:
-    revert this commit and prefer the PR flow for review traceability.
-    Until then, direct-push lets PRODUCT-017 verification actually
-    land artifacts.
+    Also: a `chump lesson list [--scope X]` mirror of `chump gap list`
+    so agents can audit what's actually in the table.
   acceptance_criteria:
-    - "ftue-clean-machine workflow successfully commits docs/FTUE-VERIFICATION-YYYY-MM-DD.md to main on a green run"
-    - "Workflow does not depend on repo settings outside the .github/ tree"
-    - "Inline comment in the workflow file documents why the PR flow was replaced and how to restore it later"
+    - "`chump lesson add --directive '...' --scope INFRA --priority high` writes a chump_improvement_targets row + parent reflection row in a single transaction"
+    - "Re-running the same command is a no-op (idempotent on directive+scope)"
+    - "`chump lesson list` prints rows in recency×frequency order matching `load_spawn_lessons`"
+    - "`chump lesson add --from-pr <N>` reads the merged PR title/body, asks for confirmation if --interactive, otherwise commits with auto-derived directive"
+    - "Test: spawn-time assembler with CHUMP_LESSONS_AT_SPAWN_N=5 picks up a lesson added via `chump lesson add` (not just sqlite3 INSERT)"
   raised_by: claude
-  raised_in: '2026-04-28 session — surfaced after INFRA-157+161 unblocked workflow execution'
+  raised_in: '2026-04-28 session — the day''s 6 portable lessons did not land in chump_improvement_targets because there was no CLI'
