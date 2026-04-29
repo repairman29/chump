@@ -15018,3 +15018,50 @@ gaps:
     - "Inline comment in the workflow file documents why the PR flow was replaced and how to restore it later"
   raised_by: claude
   raised_in: '2026-04-28 session — surfaced after INFRA-157+161 unblocked workflow execution'
+- id: INFRA-163
+  domain: INFRA
+  title: 'FTUE bug sweep — chump init port/no-browser flags + measure-ftue.sh propagation + .env port'
+  status: done
+  closed_pr: 652
+  closed_date: '2026-04-28'
+  priority: P2
+  effort: xs
+  opened_date: '2026-04-28'
+  description: |
+    The PRODUCT-017 dev-machine FTUE artifact (docs/FTUE-VERIFICATION-2026-04-28.md)
+    surfaced a cluster of bugs in the FTUE measurement path that would
+    silently corrupt any future clean-machine run. None blocked the dev
+    baseline at 15.3s, but they would surface as misleading failures or
+    wrong numbers on a fresh box.
+
+    Bugs fixed:
+    1. `chump init` accepts no `--port` or `--no-browser` flags. Only the
+       `CHUMP_WEB_PORT` env var. Means `measure-ftue.sh --port 3001`
+       sets the assertion URL to 3001 but `chump init` still binds to its
+       default 3000 — script polls 3001, gets nothing, "Hard timeout at 95s".
+    2. `measure-ftue.sh` `NO_BROWSER=1 chump init` env hack is a no-op —
+       chump_init.rs never reads NO_BROWSER, browser opens regardless.
+    3. `measure-ftue.sh` `chump init 2>&1 || true` swallows exit codes.
+       A real init failure (no model, port in use, perm denied) looks
+       identical to "PWA never responded" — root cause hidden.
+    4. `chump_init::write_minimal_env` hard-codes `CHUMP_WEB_PORT=3000`
+       in the generated .env, ignoring the actual port. So even if you
+       pass --port 3001, the .env still pins the next run to 3000.
+    5. `bc`-based fractional-second formatter falls back to integer
+       seconds when bc isn't installed (minimal Linux images). 15.3s
+       reads as 15.0s — doesn't fail the budget but loses signal.
+
+    Fix: real `--port` and `--no-browser` CLI flags on `chump init`
+    (parsed via new `InitArgs::from_argv`); script propagates both;
+    script surfaces `chump init` exit codes; `.env` writes the actual
+    port; `awk` replaces `bc`. Adds 8 unit tests covering the parser
+    and the .env writer port-handling.
+  acceptance_criteria:
+    - "`chump init --port 3001 --no-browser` binds to 3001 and skips browser"
+    - "`measure-ftue.sh --port 3001 --no-browser` propagates both flags"
+    - "Failed `chump init` surfaces its exit code instead of looking like PWA timeout"
+    - "Generated `.env` contains the actual port, not hard-coded 3000"
+    - "Fractional-second output works without bc"
+    - "Unit tests cover InitArgs::from_argv and write_minimal_env port handling"
+  raised_by: claude
+  raised_in: '2026-04-28 session — bug sweep on PRODUCT-017 FTUE artifact follow-up'
