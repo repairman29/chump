@@ -14678,8 +14678,6 @@ gaps:
     - "Test: synthetic divergence (manually edit one field in YAML to disagree with DB) is detected"
   raised_by: claude
   raised_in: '2026-04-28 session — observed during INFRA-097 status-flip attempt + INFRA-149 reserve collision'
-  closed_date: '2026-04-28'
-  closed_pr: 641
 
 - id: INFRA-156
   domain: INFRA
@@ -14946,3 +14944,77 @@ gaps:
     - "TEST-001 specifically: trace which test script reserved it and patch the script to use a temp/sandbox repo (per the same discipline INFRA-076 §3b applies to user.email)"
   raised_by: claude
   raised_in: '2026-04-28 bug-scour session — `python3 scripts/coord/gap-doctor.py doctor` Bucket 3 = 4'
+
+- id: INFRA-161
+  domain: INFRA
+  title: 'ftue-clean-machine workflow: brew install fails because local-file formula path is rejected (must be in a tap)'
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-28'
+  description: |
+    Once INFRA-157 unblocked the workflow's parse error and the `verify`
+    job actually started running, the `Brew install chump from local
+    formula` step failed:
+
+      Homebrew requires formulae to be in a tap, rejecting:
+        ./Formula/chump.rb (/Users/runner/work/chump/chump/Formula/chump.rb)
+
+    Modern Homebrew (>=4.0) refuses to install a `.rb` file passed as a
+    bare path — formulae must live inside a tap. The workflow's
+    `brew install --build-from-source ./Formula/chump.rb` was written
+    against an older Homebrew version where this worked.
+
+    The documented user install path (docs/process/ONBOARDING.md) is:
+      brew tap repairman29/chump
+      brew install chump
+
+    Fix: stage Formula/chump.rb into a throwaway local tap, then install
+    from the tap. Mirrors the documented user path so the verification
+    actually tests the formula-as-shipped, not a workflow shortcut.
+
+      brew tap-new chump-ci/local --no-git --quiet
+      cp ./Formula/chump.rb $(brew --repo chump-ci/local)/Formula/
+      brew install --build-from-source chump-ci/local/chump
+  acceptance_criteria:
+    - "ftue-clean-machine workflow's Brew install step exits 0 on macos-latest"
+    - "Verification reflects the documented user install path (brew tap → brew install) rather than a private workflow shortcut"
+    - "Inline comment in the workflow file explains why the local-file path doesn't work"
+  raised_by: claude
+  raised_in: '2026-04-28 session — surfaced after INFRA-157 unblocked workflow parse'
+
+- id: INFRA-162
+  domain: INFRA
+  title: 'ftue-clean-machine workflow: GitHub Actions cannot create PRs — switch to direct push'
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-28'
+  description: |
+    The workflow's final step opens a PR with the verification artifact
+    via `gh pr create`. On 2026-04-28 the run failed with:
+
+      pull request create failed: GraphQL: GitHub Actions is not
+      permitted to create or approve pull requests (createPullRequest)
+
+    GitHub disables PR creation by GITHUB_TOKEN by default; enabling it
+    requires `Settings → Actions → General → "Allow GitHub Actions to
+    create and approve pull requests"`. That's a repo-admin action;
+    the workflow itself can't enable it.
+
+    Fix: switch to direct push to main. The artifact is one new file
+    per run (`docs/FTUE-VERIFICATION-YYYY-MM-DD.md`), purely additive
+    and bot-authored — direct push is appropriate, and avoids the
+    repo-settings dependency. The push uses GITHUB_TOKEN (default
+    workflow perms include `contents: write`).
+
+    Optional follow-up if the operator does enable PR creation later:
+    revert this commit and prefer the PR flow for review traceability.
+    Until then, direct-push lets PRODUCT-017 verification actually
+    land artifacts.
+  acceptance_criteria:
+    - "ftue-clean-machine workflow successfully commits docs/FTUE-VERIFICATION-YYYY-MM-DD.md to main on a green run"
+    - "Workflow does not depend on repo settings outside the .github/ tree"
+    - "Inline comment in the workflow file documents why the PR flow was replaced and how to restore it later"
+  raised_by: claude
+  raised_in: '2026-04-28 session — surfaced after INFRA-157+161 unblocked workflow execution'
