@@ -4421,6 +4421,9 @@
       let hadToolCallEvents = false;
       let slowModelHintStarted = false;
       let whimsyInterval = null;
+      // PRODUCT-022: once the turn ends, ignore late SSE events so the
+      // 'Thinking… NNNms' status can't restart and the timer stops ticking.
+      let turnDone = false;
       const CHUMP_WHIMSIES = [
         'Warming up the weights…',
         'Staring politely at the GPU…',
@@ -4564,30 +4567,28 @@
             hint.className = 'thinking-slow-hint';
             hint.style.cssText =
               'font-size:11px;margin-top:10px;color:var(--text-secondary);line-height:1.45;max-width:32em';
+            // PRODUCT-022: backend-aware copy. The old text always mentioned
+            // "MLX load" and recommended pointing at Ollama, which was wrong
+            // half the time (running on Ollama already, or on mistral.rs).
+            const baseLower = String(base).toLowerCase();
+            const isOllama = baseLower.includes(':11434') || baseLower.includes('ollama');
+            const isMlx = baseLower.includes(':8000') || baseLower.includes(':8001') || baseLower.includes('mlx');
+            let body;
             if (inf.primary_backend === 'mistralrs') {
               const mm = inf.mistralrs_model ? String(inf.mistralrs_model) : 'mistral.rs';
-              hint.textContent =
-                'Still waiting — primary chat uses in-process mistral.rs (' +
-                mm +
-                '). First token can be slow while the model loads (CPU/GPU) or during a heavy tool round.';
+              body = 'Still waiting — primary chat uses in-process mistral.rs (' + mm + '). First token can be slow while the model loads or during a heavy tool round.';
+            } else if (isOllama) {
+              body = 'Still waiting on Ollama' + (model ? ' (' + model + ')' : '') + '. First token after a cold start can take 5–30s while Ollama loads the model into VRAM. Check `ollama ps` to see runner state; subsequent turns should be fast.';
+            } else if (isMlx) {
+              body = 'Still waiting on vLLM-MLX' + (model ? ' (' + model + ')' : '') + ' at ' + base + '. First token can be slow while MLX warms the GPU or during a heavy tool round.';
             } else {
-              hint.textContent =
-                'Still waiting on the model at ' +
-                base +
-                (model ? ' — ' + model : '') +
-                '. The /models check can pass while the first token is slow (MLX load, GPU, or a heavy tool round). For faster dev, point OPENAI_API_BASE at Ollama on :11434 or restart your local inference server.';
+              body = 'Still waiting on the model at ' + base + (model ? ' — ' + model : '') + '. /models can pass while the first token is slow (model load or heavy tool round).';
             }
+            hint.textContent = body;
             hint.addEventListener('click', function (e) {
               e.stopPropagation();
             });
             stream.appendChild(hint);
-            const hint2 = document.createElement('div');
-            hint2.className = 'thinking-slow-hint';
-            hint2.style.cssText =
-              'font-size:11px;margin-top:8px;color:var(--text-secondary);line-height:1.45;max-width:34em';
-            hint2.textContent =
-              'Server-side speed: CHUMP_LIGHT_CONTEXT=1 (slimmer context + completion cap), optional CHUMP_LIGHT_CHAT_HISTORY_MESSAGES=12, CHUMP_LOG_TIMING=1 to log api_request_ms. With light chat, CHUMP_THINKING_XML defaults off unless you set it to 1.';
-            stream.appendChild(hint2);
           } catch (_) {}
         })();
       }
@@ -4602,6 +4603,10 @@
 
         const dispatchChatSseEvents = function (events) {
           for (const { event, data } of events) {
+            // PRODUCT-022: drop late events that arrive after the terminal
+            // turn_complete / turn_error so the 'Thinking…' status can't
+            // resurrect itself and the elapsed-ms timer doesn't keep ticking.
+            if (turnDone) continue;
             if (event === 'web_session_ready' && data.session_id) {
               sessionId = data.session_id;
               localStorage.setItem('chump_session_id', sessionId);
@@ -4721,6 +4726,7 @@
               if (denyBtn) denyBtn.addEventListener('click', function () { submitChumpApproval(false); });
               container.scrollTop = container.scrollHeight;
             } else if (event === 'turn_complete') {
+              turnDone = true;
               stopThinkingWhimsy();
               if (data.full_text != null) fullText = data.full_text;
               bubble.innerHTML = simpleMarkdown(fullText);
@@ -4780,6 +4786,7 @@
                 }, 2000);
               }
             } else if (event === 'turn_error') {
+              turnDone = true;
               stopThinkingWhimsy();
               const errBody = escapeHtml(data.error || 'Unknown');
               bubble.innerHTML =
