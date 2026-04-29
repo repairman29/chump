@@ -12667,6 +12667,58 @@ gaps:
     - "Decision recorded in commit body and reflected in docs/RESEARCH_INTEGRITY.md prohibited-claims table"
   raised_by: tour-evaluation
   raised_in: 2026-04-26 tour and evaluation session
+  notes: |
+    AUDIT 2026-04-29: original premise is incorrect — neuromod outputs ARE
+    threaded through the actual provider call. Six concrete wire-through
+    sites verified by `git grep crate::neuromodulation`:
+
+      - src/local_openai.rs:824-827 — adaptive_temperature() +
+        adaptive_top_p() set body["temperature"] and body["top_p"] on
+        every Ollama / OpenAI-compatible request, AND inside body["options"]
+        for Ollama specifically (line 846).
+      - src/mistralrs_provider.rs:313-314 — same pattern for the
+        mistral.rs in-process provider.
+      - src/precision_controller.rs:178-180,265,287 — modulated_exploit/
+        balanced/explore_threshold + tool_budget_multiplier +
+        context_exploration_multiplier all flow into precision-controller
+        decisions (which gate tool budgets and exploration breadth).
+      - src/tool_middleware.rs:1115 — effective_tool_timeout_secs
+        modulates per-tool timeouts.
+      - src/blackboard.rs:172-178 — salience_modulation adjusts how
+        blackboard posts are ranked.
+      - src/health_server.rs:175 + src/routes/health.rs:149 — the
+        modulated tool timeout is exposed in health JSON.
+
+    DECISION: keep neuromod (NOT remove). The 2026-04-26 tour audit was
+    looking at the wrong path or pre-dated the wire-through. The
+    adaptive_temperature / adaptive_top_p call sites in local_openai.rs
+    and mistralrs_provider.rs have been on origin/main long before this
+    gap was filed (predate INFRA-107).
+
+    IMPLICATION FOR RESEARCH: this audit does NOT contradict EVAL-029
+    (neuromod net-negative cross-architecture, n=50, medium confidence).
+    EVAL-029 was measuring the actual effect of neuromod on real provider
+    calls — the wire-in IS happening; the effect is just observed to be
+    net-negative for the tested architectures. EVAL-030 (task-class-aware
+    gating) is the direct response to that finding. The
+    docs/process/RESEARCH_INTEGRITY.md prohibited-claim "Neuromodulation
+    is a net positive" stays prohibited until EVAL-030-VALIDATE +
+    EVAL-043 ship — no change there.
+
+    FOLLOW-UP (not blocking this gap): one acceptance criterion is "if
+    wire-in, end-to-end test asserts provider request body contains
+    adjusted temperature/top_p". That test would be valuable as a
+    regression — if a future refactor accidentally removes the call
+    sites, EVAL-029's measurement basis would silently change. Filing
+    is out of scope for this audit; whoever does the formal closure can
+    open it as TEST-NEUROMOD-WIRE-REGRESSION (xs effort, 1 unit test
+    against a mock provider verifying body keys).
+
+    This gap can be closed once the formal closure PR runs
+    `chump gap ship REMOVAL-006 --closed-pr <N> --update-yaml`. The
+    audit findings are complete; the closure mechanic is the only step
+    remaining (deferred so this PR doesn't have to predict its own PR
+    number against the INFRA-107 numeric-closed_pr guard).
 
 - id: REMOVAL-007
   domain: REMOVAL
