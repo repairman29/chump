@@ -15151,3 +15151,77 @@ gaps:
     - "Test: spawn-time assembler with CHUMP_LESSONS_AT_SPAWN_N=5 picks up a lesson added via `chump lesson add` (not just sqlite3 INSERT)"
   raised_by: claude
   raised_in: '2026-04-28 session — the day''s 6 portable lessons did not land in chump_improvement_targets because there was no CLI'
+- id: INFRA-170
+  domain: INFRA
+  title: 'pre-commit guard: docs/process/*.md edits require corresponding book/src/* sync'
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-29'
+  description: |
+    On 2026-04-29 03:00 UTC, the merge queue jammed for hours. Twelve
+    open PRs all failed CI's `sync-idempotency` check during their
+    rebase-and-test. Root cause: PR #625 (INFRA-079, cross-judge audit
+    guard, mine) added section #8 to `docs/process/RESEARCH_INTEGRITY.md`
+    on 2026-04-28 but did not run `scripts/dev/sync-book-from-docs.sh`,
+    so `book/src/research-integrity.md` (the rendered mdBook mirror)
+    silently fell out of sync. Every subsequent PR's rebase produced a
+    state where `git diff --exit-code book/src` is non-empty, failing
+    sync-idempotency on every queued temp branch. Compounded by a
+    parallel duplicate-INFRA-163 in `docs/gaps.yaml` (gaps-yaml-integrity
+    fail), the entire queue stalled until PR #669 landed both fixes
+    together.
+
+    The book/src ↔ docs/process drift is a coordination foot-gun
+    invisible to the author at commit time: nothing local fails. CI is
+    the only place that catches it, and by then it's blocking the
+    queue. Pre-commit-time detection would have prevented the jam.
+
+    Fix: a pre-commit hook check that, for every staged
+    `docs/process/*.md` (and any other doc tracked under
+    `book/src/`), verifies the corresponding `book/src/<basename>.md`
+    is also staged with byte-identical content (or the workflow's
+    canonical sync script has been run and produced no diff).
+
+    Implementation sketch (additive in `scripts/git-hooks/pre-commit`):
+
+      if [ "${CHUMP_BOOK_SYNC_CHECK:-1}" != "0" ]; then
+          changed=$(git diff --cached --name-only -- 'docs/process/*.md')
+          if [ -n "$changed" ]; then
+              # Run canonical sync; check working tree matches (no
+              # uncommitted book/ drift)
+              bash scripts/dev/sync-book-from-docs.sh >/dev/null
+              drift=$(git diff --name-only book/)
+              if [ -n "$drift" ]; then
+                  echo "[pre-commit] BOOK SYNC DRIFT (INFRA-170):"
+                  echo "$drift" | sed 's/^/  - /'
+                  echo ""
+                  echo "Run: bash scripts/dev/sync-book-from-docs.sh"
+                  echo "Then re-stage: git add book/"
+                  echo "Bypass: CHUMP_BOOK_SYNC_CHECK=0 git commit ..."
+                  exit 1
+              fi
+          fi
+      fi
+
+    Bypass envelope: `CHUMP_BOOK_SYNC_CHECK=0` for one-off doc fixes
+    where the sync script itself is being modified, or for in-progress
+    migrations where book/ deliberately lags.
+
+    Detection method (for future scour passes): `git log origin/main
+    --grep='sync-idempotency' --oneline | wc -l` should NOT grow after
+    this lands. Also: `gh run list --status failure --workflow
+    mdbook-verify` for direct hits.
+
+    Pairs with INFRA-158 (4 missing pre-commit guard tests) — this new
+    guard ALSO needs a regression test (`scripts/ci/test-book-sync-guard.sh`)
+    following the same pattern as test-cross-judge-guard.sh /
+    test-prereg-content-guard.sh, wired into `.github/workflows/ci.yml`.
+  acceptance_criteria:
+    - "scripts/git-hooks/pre-commit gains a docs/process ↔ book/src sync check, gated by CHUMP_BOOK_SYNC_CHECK"
+    - "CLAUDE.md `Commit-time guards` table gains a row documenting the new check + bypass"
+    - "scripts/ci/test-book-sync-guard.sh exercises pass (synced) and fail (deliberate drift) cases in a sandbox repo"
+    - "Test wired into .github/workflows/ci.yml under the same job that runs the existing guard tests"
+    - "After this lands, no queued PR fails sync-idempotency on a docs/process edit again (Cold Water can verify by running `gh run list --status failure --workflow mdbook-verify --created '>2026-04-29'`)"
+  raised_by: claude
+  raised_in: '2026-04-29 queue-jam post-mortem (PR #669) — 12 PRs blocked for hours by silent book/src drift introduced by my own PR #625 (INFRA-079) on 2026-04-28'
