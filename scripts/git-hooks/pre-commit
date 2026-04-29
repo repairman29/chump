@@ -581,6 +581,72 @@ PYEOF_CLOSED_PR
 fi
 
 # ------------------------------------------------------------------
+# 3b. Raw-YAML-edit advisory (INFRA-094, 2026-04-28): warn when a commit's
+#     diff modifies docs/gaps.yaml outside the chump gap CLI path.
+#
+# Rationale: every gap-filing PR pre-INFRA-084 hand-appended a YAML block
+# at the bottom of docs/gaps.yaml. With multiple sessions in flight (4-8
+# typical), every PR collided with every other PR in the append region —
+# DIRTY-merge rebases, force-push escapes, lost atomic-PR discipline.
+# INFRA-084 ships a merge_group workflow that auto-regenerates gaps.yaml
+# from .chump/state.db on the queue's temp branch; INFRA-156 added the
+# `chump gap ship --closed-pr N --update-yaml` one-liner. So the canonical
+# path is: never hand-edit docs/gaps.yaml, use chump gap subcommands.
+#
+# Detection: chump gap dump (with --out) and chump gap ship (with
+# --update-yaml) write `.chump/.last-yaml-op` containing a recent unix
+# timestamp. The hook reads that marker. If it's within the last 5 minutes
+# AND the staged docs/gaps.yaml mtime is <= marker mtime, the diff was
+# authored by a chump CLI command — allow it silently. Otherwise warn.
+#
+# CURRENT MODE: advisory (warning only). Flips to blocking after the
+# INFRA-084 merge_group regen workflow is validated on origin/main —
+# blocking earlier would brick filing PRs before there's an alternative
+# path. Override flow once blocking lands:
+#   CHUMP_RAW_YAML_EDIT=1 plus a "RAW_YAML_REASON: <text>" line in the
+#   commit body. Skip this hook entirely with CHUMP_RAW_YAML_LOCK=0.
+
+if [ "${CHUMP_RAW_YAML_LOCK:-1}" != "0" ]; then
+    if git diff --cached --name-only --diff-filter=ACM | grep -qx 'docs/gaps.yaml'; then
+        # Look for the chump CLI yaml-op marker.
+        repo_root_canon="$(git rev-parse --show-toplevel)"
+        marker="$repo_root_canon/.chump/.last-yaml-op"
+        marker_fresh=0
+        if [ -f "$marker" ]; then
+            marker_age=$(( $(date +%s) - $(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0) ))
+            if [ "$marker_age" -lt 300 ]; then
+                marker_fresh=1
+            fi
+        fi
+        if [ "$marker_fresh" -eq 0 ]; then
+            # Did the commit body opt into the bypass?
+            commit_body=""
+            if [ -f "$repo_root_canon/.git/COMMIT_EDITMSG" ]; then
+                commit_body="$(cat "$repo_root_canon/.git/COMMIT_EDITMSG")"
+            fi
+            if [ "${CHUMP_RAW_YAML_EDIT:-0}" = "1" ] && \
+               echo "$commit_body" | grep -q '^RAW_YAML_REASON:'; then
+                : # bypass justified, allow
+            else
+                echo "[pre-commit] NOTE (INFRA-094 advisory): this commit's diff modifies docs/gaps.yaml" >&2
+                echo "[pre-commit]   without a recent chump-gap CLI marker (.chump/.last-yaml-op)." >&2
+                echo "[pre-commit]   Prefer the canonical path:" >&2
+                echo "[pre-commit]     chump gap reserve --domain D --title T          # new gap entry" >&2
+                echo "[pre-commit]     chump gap set <ID> --field VAL                  # mutate fields" >&2
+                echo "[pre-commit]     chump gap ship <ID> --closed-pr N --update-yaml # close a gap" >&2
+                echo "[pre-commit]   The merge_group workflow .github/workflows/regenerate-gaps-yaml.yml" >&2
+                echo "[pre-commit]   will auto-fix any drift on the merge queue (INFRA-084)." >&2
+                echo "[pre-commit] Suppress this advisory: CHUMP_RAW_YAML_LOCK=0 git commit ..." >&2
+                echo "[pre-commit] Future blocking-mode bypass:" >&2
+                echo "[pre-commit]   CHUMP_RAW_YAML_EDIT=1 git commit ... (with 'RAW_YAML_REASON: <text>' in body)" >&2
+                # Advisory only — no exit. Flip this to `exit 1` once
+                # INFRA-084 is validated on at least one merge_group cycle.
+            fi
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 6b. Preregistration guard (RESEARCH-019): reject EVAL-*/RESEARCH-*
 #     status:done commits that lack a docs/eval/preregistered/<GAP-ID>.md
 #     in the staged tree. Enforces the protocol that every gap with live

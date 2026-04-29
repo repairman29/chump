@@ -217,6 +217,27 @@ fn unix_ts() -> u64 {
         .as_secs()
 }
 
+/// INFRA-094: write a marker recording that the chump CLI just modified
+/// docs/gaps.yaml via a canonical operation (`gap dump --out` /
+/// `gap ship --update-yaml`). The pre-commit hook reads this marker — if
+/// it's < 5 minutes old AND docs/gaps.yaml is staged, the hook treats the
+/// diff as canonical and skips the raw-YAML-edit advisory.
+///
+/// Failures are best-effort: the worst outcome is a spurious pre-commit
+/// warning, which is recoverable.
+fn write_yaml_op_marker(repo_root: &std::path::Path, op: &str) {
+    let dir = repo_root.join(".chump");
+    let _ = std::fs::create_dir_all(&dir);
+    let marker = dir.join(".last-yaml-op");
+    let body = format!(
+        "{{\"op\":\"{}\",\"ts\":{},\"sha\":\"{}\"}}\n",
+        op,
+        unix_ts(),
+        env!("CARGO_PKG_VERSION")
+    );
+    let _ = std::fs::write(&marker, body);
+}
+
 /// Load .env from CHUMP_HOME/CHUMP_REPO first (so Chump Menu / run-discord.sh always get the right .env),
 /// then current dir, then executable dir.
 fn load_dotenv() {
@@ -565,6 +586,7 @@ async fn main() -> Result<()> {
                                         eprintln!("warning: dump-yaml write failed: {e}");
                                     } else {
                                         eprintln!("regenerated {}", path.display());
+                                        write_yaml_op_marker(&repo_root, "ship");
                                     }
                                 }
                                 Err(e) => eprintln!("warning: dump-yaml failed: {e}"),
@@ -664,6 +686,10 @@ async fn main() -> Result<()> {
                                 std::process::exit(1);
                             });
                             eprintln!("wrote {}", path);
+                            // INFRA-094: mark this as a chump-CLI yaml op so the
+                            // pre-commit hook recognizes the gaps.yaml diff as
+                            // canonical (not a raw hand-edit).
+                            write_yaml_op_marker(&repo_root, "dump");
                         } else {
                             print!("{}", yaml);
                         }

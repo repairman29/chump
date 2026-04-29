@@ -12667,6 +12667,58 @@ gaps:
     - "Decision recorded in commit body and reflected in docs/RESEARCH_INTEGRITY.md prohibited-claims table"
   raised_by: tour-evaluation
   raised_in: 2026-04-26 tour and evaluation session
+  notes: |
+    AUDIT 2026-04-29: original premise is incorrect — neuromod outputs ARE
+    threaded through the actual provider call. Six concrete wire-through
+    sites verified by `git grep crate::neuromodulation`:
+
+      - src/local_openai.rs:824-827 — adaptive_temperature() +
+        adaptive_top_p() set body["temperature"] and body["top_p"] on
+        every Ollama / OpenAI-compatible request, AND inside body["options"]
+        for Ollama specifically (line 846).
+      - src/mistralrs_provider.rs:313-314 — same pattern for the
+        mistral.rs in-process provider.
+      - src/precision_controller.rs:178-180,265,287 — modulated_exploit/
+        balanced/explore_threshold + tool_budget_multiplier +
+        context_exploration_multiplier all flow into precision-controller
+        decisions (which gate tool budgets and exploration breadth).
+      - src/tool_middleware.rs:1115 — effective_tool_timeout_secs
+        modulates per-tool timeouts.
+      - src/blackboard.rs:172-178 — salience_modulation adjusts how
+        blackboard posts are ranked.
+      - src/health_server.rs:175 + src/routes/health.rs:149 — the
+        modulated tool timeout is exposed in health JSON.
+
+    DECISION: keep neuromod (NOT remove). The 2026-04-26 tour audit was
+    looking at the wrong path or pre-dated the wire-through. The
+    adaptive_temperature / adaptive_top_p call sites in local_openai.rs
+    and mistralrs_provider.rs have been on origin/main long before this
+    gap was filed (predate INFRA-107).
+
+    IMPLICATION FOR RESEARCH: this audit does NOT contradict EVAL-029
+    (neuromod net-negative cross-architecture, n=50, medium confidence).
+    EVAL-029 was measuring the actual effect of neuromod on real provider
+    calls — the wire-in IS happening; the effect is just observed to be
+    net-negative for the tested architectures. EVAL-030 (task-class-aware
+    gating) is the direct response to that finding. The
+    docs/process/RESEARCH_INTEGRITY.md prohibited-claim "Neuromodulation
+    is a net positive" stays prohibited until EVAL-030-VALIDATE +
+    EVAL-043 ship — no change there.
+
+    FOLLOW-UP (not blocking this gap): one acceptance criterion is "if
+    wire-in, end-to-end test asserts provider request body contains
+    adjusted temperature/top_p". That test would be valuable as a
+    regression — if a future refactor accidentally removes the call
+    sites, EVAL-029's measurement basis would silently change. Filing
+    is out of scope for this audit; whoever does the formal closure can
+    open it as TEST-NEUROMOD-WIRE-REGRESSION (xs effort, 1 unit test
+    against a mock provider verifying body keys).
+
+    This gap can be closed once the formal closure PR runs
+    `chump gap ship REMOVAL-006 --closed-pr <N> --update-yaml`. The
+    audit findings are complete; the closure mechanic is the only step
+    remaining (deferred so this PR doesn't have to predict its own PR
+    number against the INFRA-107 numeric-closed_pr guard).
 
 - id: REMOVAL-007
   domain: REMOVAL
@@ -15099,3 +15151,125 @@ gaps:
     - "Test: spawn-time assembler with CHUMP_LESSONS_AT_SPAWN_N=5 picks up a lesson added via `chump lesson add` (not just sqlite3 INSERT)"
   raised_by: claude
   raised_in: '2026-04-28 session — the day''s 6 portable lessons did not land in chump_improvement_targets because there was no CLI'
+- id: INFRA-170
+  domain: INFRA
+  title: 'pre-commit guard: docs/process/*.md edits require corresponding book/src/* sync'
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-29'
+  description: |
+    On 2026-04-29 03:00 UTC, the merge queue jammed for hours. Twelve
+    open PRs all failed CI's `sync-idempotency` check during their
+    rebase-and-test. Root cause: PR #625 (INFRA-079, cross-judge audit
+    guard, mine) added section #8 to `docs/process/RESEARCH_INTEGRITY.md`
+    on 2026-04-28 but did not run `scripts/dev/sync-book-from-docs.sh`,
+    so `book/src/research-integrity.md` (the rendered mdBook mirror)
+    silently fell out of sync. Every subsequent PR's rebase produced a
+    state where `git diff --exit-code book/src` is non-empty, failing
+    sync-idempotency on every queued temp branch. Compounded by a
+    parallel duplicate-INFRA-163 in `docs/gaps.yaml` (gaps-yaml-integrity
+    fail), the entire queue stalled until PR #669 landed both fixes
+    together.
+
+    The book/src ↔ docs/process drift is a coordination foot-gun
+    invisible to the author at commit time: nothing local fails. CI is
+    the only place that catches it, and by then it's blocking the
+    queue. Pre-commit-time detection would have prevented the jam.
+
+    Fix: a pre-commit hook check that, for every staged
+    `docs/process/*.md` (and any other doc tracked under
+    `book/src/`), verifies the corresponding `book/src/<basename>.md`
+    is also staged with byte-identical content (or the workflow's
+    canonical sync script has been run and produced no diff).
+
+    Implementation sketch (additive in `scripts/git-hooks/pre-commit`):
+
+      if [ "${CHUMP_BOOK_SYNC_CHECK:-1}" != "0" ]; then
+          changed=$(git diff --cached --name-only -- 'docs/process/*.md')
+          if [ -n "$changed" ]; then
+              # Run canonical sync; check working tree matches (no
+              # uncommitted book/ drift)
+              bash scripts/dev/sync-book-from-docs.sh >/dev/null
+              drift=$(git diff --name-only book/)
+              if [ -n "$drift" ]; then
+                  echo "[pre-commit] BOOK SYNC DRIFT (INFRA-170):"
+                  echo "$drift" | sed 's/^/  - /'
+                  echo ""
+                  echo "Run: bash scripts/dev/sync-book-from-docs.sh"
+                  echo "Then re-stage: git add book/"
+                  echo "Bypass: CHUMP_BOOK_SYNC_CHECK=0 git commit ..."
+                  exit 1
+              fi
+          fi
+      fi
+
+    Bypass envelope: `CHUMP_BOOK_SYNC_CHECK=0` for one-off doc fixes
+    where the sync script itself is being modified, or for in-progress
+    migrations where book/ deliberately lags.
+
+    Detection method (for future scour passes): `git log origin/main
+    --grep='sync-idempotency' --oneline | wc -l` should NOT grow after
+    this lands. Also: `gh run list --status failure --workflow
+    mdbook-verify` for direct hits.
+
+    Pairs with INFRA-158 (4 missing pre-commit guard tests) — this new
+    guard ALSO needs a regression test (`scripts/ci/test-book-sync-guard.sh`)
+    following the same pattern as test-cross-judge-guard.sh /
+    test-prereg-content-guard.sh, wired into `.github/workflows/ci.yml`.
+  acceptance_criteria:
+    - "scripts/git-hooks/pre-commit gains a docs/process ↔ book/src sync check, gated by CHUMP_BOOK_SYNC_CHECK"
+    - "CLAUDE.md `Commit-time guards` table gains a row documenting the new check + bypass"
+    - "scripts/ci/test-book-sync-guard.sh exercises pass (synced) and fail (deliberate drift) cases in a sandbox repo"
+    - "Test wired into .github/workflows/ci.yml under the same job that runs the existing guard tests"
+    - "After this lands, no queued PR fails sync-idempotency on a docs/process edit again (Cold Water can verify by running `gh run list --status failure --workflow mdbook-verify --created '>2026-04-29'`)"
+  raised_by: claude
+  raised_in: '2026-04-29 queue-jam post-mortem (PR #669) — 12 PRs blocked for hours by silent book/src drift introduced by my own PR #625 (INFRA-079) on 2026-04-28'
+- id: INFRA-164
+  domain: INFRA
+  title: 'bot-merge.sh: clippy 5min timeout + cargo test memory pressure cause spurious cold-cache failures'
+  status: done
+  closed_pr: 655
+  closed_date: '2026-04-28'
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-28'
+  description: |
+    Two distinct bot-merge.sh failures keep biting fresh worktrees on
+    this 24 GB / 10-core M4 dev machine and force the manual ship path
+    documented in CLAUDE.md (INFRA-028 recovery). Both surfaced twice
+    today (PR #611 INFRA-144, PR #652 INFRA-163). Both are
+    environmental, not real failures.
+
+    Failure 1: cargo clippy timeout. Cold workspace clippy on chump
+    takes ~8 minutes on this machine; the 300s budget triggers TIMEOUT
+    mid-compile. Real wall-clock issue.
+
+    Failure 2: cargo test SIGTERM cascade. Symptom: 2-3 rustc processes
+    fail with "(signal: 15, SIGTERM: termination signal)" within the
+    same millisecond, cargo reports "build failed, waiting for other
+    jobs to finish", bot-merge concludes "Tests failed". Wall-clock is
+    fine (well under the 3600s budget). Root cause: macOS Jetsam OOM-
+    killing rustc subprocesses when default cargo parallelism (= 10
+    logical CPUs) compiles 3+ large bin/test targets concurrently
+    across multiple chump worktrees. Each rustc on the chump crate
+    peaks at 3-4 GB; 3 in parallel = 10-12 GB; plus deps + other
+    agents = tip over.
+
+    Fix:
+    1. Bump clippy timeout 300s -> 900s (real cold-cache cost).
+    2. Default CARGO_BUILD_JOBS=4 in bot-merge env (4 jobs ≈ 12-16 GB
+       peak, fits under 24 GB with fleet contention). Operators with
+       headroom can override via env.
+    3. Diagnostic message on test failure pointing at OOM theory if
+       SIGTERM cascade is observed.
+
+    No regression risk: changes are pure resource controls in a helper
+    script. CI behavior unchanged (CI runners have their own resources).
+  acceptance_criteria:
+    - "cargo clippy timeout in scripts/coord/bot-merge.sh raised to >= 900s"
+    - "CARGO_BUILD_JOBS exported in scripts/coord/bot-merge.sh with sane default and env override"
+    - "cargo test failure message hints at OOM/SIGTERM cascade root cause"
+    - "Comment in scripts/coord/bot-merge.sh documents the OOM mechanism so future maintainers don't blindly raise the timeout instead"
+  raised_by: claude
+  raised_in: '2026-04-28 session — second consecutive bot-merge cold-cache failure on PR #652 ship'

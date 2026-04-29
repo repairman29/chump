@@ -339,10 +339,31 @@ if command -v cargo &>/dev/null && ls src/**/*.rs &>/dev/null 2>&1; then
     stage_done
 fi
 
+# ── INFRA-164: parallelism + timeouts for cold-cache builds ───────────────────
+# A cold workspace build of all rustc test/bin targets at default parallelism
+# (= host logical CPUs, e.g. 10 on an M4) easily peaks past 16 GB RAM and gets
+# rustc subprocesses SIGTERM'd by macOS Jetsam when the fleet has other
+# concurrent worktrees building. The classic symptom is a sudden cascade of
+# "(signal: 15, SIGTERM: termination signal)" across two or three rustc
+# processes mid-build, with cargo reporting "build failed, waiting for other
+# jobs to finish". That is not a real test failure — and it isn't a bot-merge
+# timeout either; the wall-clock is fine. It is OOM pressure.
+#
+# Fix: limit cargo's parallelism. Default to 4 (safe for 24 GB / 10-core M4
+# under fleet contention); operators with more headroom can raise via env.
+#
+# Separately: cold clippy alone takes ~8 minutes on this codebase. The
+# previous 300s budget triggered TIMEOUT mid-compile — a real wall-clock
+# hit, not OOM. Bumped to 900s (15 min). cargo test budget (3600s) was
+# already generous enough for cold builds.
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
+info "cargo parallelism: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (override via env)"
+
 # ── 3. cargo clippy ───────────────────────────────────────────────────────────
+# Timeout 900s: cold workspace clippy is ~8 min on chump as of 2026-04-28.
 if command -v cargo &>/dev/null; then
     stage_start "cargo clippy --workspace --all-targets"
-    if ! run_timed_hb "cargo clippy" 300 cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
+    if ! run_timed_hb "cargo clippy" 900 cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
         red "clippy found errors — fix them before merging."
         exit 1
     fi
@@ -355,6 +376,9 @@ if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
     stage_start "cargo test --workspace"
     if ! run_timed_hb "cargo test" 3600 cargo test --workspace 2>&1; then
         red "Tests failed — fix them before merging."
+        info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
+        info "that is most likely OOM, not a real test failure. Try lowering"
+        info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
         exit 1
     fi
     stage_done
