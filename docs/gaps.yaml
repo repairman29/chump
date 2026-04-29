@@ -15262,3 +15262,67 @@ gaps:
     - "INFRA-100 lands first OR ships in same PR — atomic next-ID + per-file storage are the matched pair"
   raised_by: claude
   raised_in: '2026-04-29 refile after INFRA-164 collision (orig PR #661 abandoned, was DIRTY for 14h after main moved); content from 2026-04-28 bug-scour'
+- id: INFRA-169
+  domain: INFRA
+  title: 'ftue-clean-machine workflow: cannot land artifact on main — Actions blocked from both PR-create AND direct-push'
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-29'
+  description: |
+    The ftue-clean-machine workflow now runs end-to-end (INFRA-157 fixed
+    parse, INFRA-161 fixed brew install) and **successfully produces a
+    real verification artifact** (run 25087882070 on 2026-04-29, FTUE
+    ready in 17.0s on a clean macos-latest VM). The artifact appears in
+    `actions/upload-artifact` exactly as it should.
+
+    But the workflow's "Push verification doc to main" step still fails.
+    The repo blocks Actions from both delivery mechanisms simultaneously:
+
+      1. INFRA-162 already documented: GH Actions cannot create PRs in
+         this repo ("GitHub Actions is not permitted to create or
+         approve pull requests"). That's why we switched to direct push.
+
+      2. NEW (2026-04-29): branch protection on main rejects the direct
+         push too:
+            remote: error: GH013: Repository rule violations found for refs/heads/main
+            remote: - 3 of 3 required status checks are expected.
+            remote: - Changes must be made through a pull request.
+
+    Caught between two restrictions: can't PR, can't push. The artifact
+    lives in the Actions artifact store but never lands as a `docs/`
+    file on main, so the verification record is invisible to anyone
+    grepping `docs/FTUE-VERIFICATION-*.md` and PRODUCT-017's acceptance
+    can never be auto-satisfied.
+
+    Today's run was rescued manually: `gh run download 25087882070`
+    then a regular human PR (#662). Sustainable for monthly cron runs
+    only if a human is watching.
+
+    Three possible fixes — pick one:
+      (a) **Repo setting** (admin action): enable Settings → Actions →
+          General → "Allow GitHub Actions to create and approve pull
+          requests". Simplest. The workflow already has a `gh pr create`
+          path that worked structurally before INFRA-162 forced the
+          switch to direct push; revert INFRA-162's switch and the
+          workflow lands a PR per run that auto-merges via the queue.
+      (b) **PAT secret** with bypass rule: store a PAT in `FTUE_PUSH_TOKEN`
+          secret, add `chump-ftue-bot` to the branch-protection bypass
+          list. Workflow uses the PAT for either PR creation or direct
+          push. More fragile (token expiry, revocation), but no
+          repo-settings dependency.
+      (c) **Indirect via dispatcher**: Workflow leaves the artifact in
+          actions/upload-artifact only. A separate scheduled task (e.g.
+          stale-pr-reaper-style cron) downloads new artifacts and
+          opens PRs from a real-user identity. Adds a moving part but
+          decouples FTUE from any token/setting dependency.
+
+    Recommend (a) — single admin click, and leverages the existing
+    workflow code (just revert INFRA-162's commit-path switch).
+  acceptance_criteria:
+    - "Either: Settings → Actions → General has Actions PR creation enabled, OR a PAT/dispatcher path is wired up"
+    - "Workflow's commit-to-main step (whichever variant) succeeds end-to-end on a fresh dispatch — no manual `gh run download` needed"
+    - "Monthly cron run on the 1st produces a `docs/FTUE-VERIFICATION-YYYY-MM-01.md` artifact landed on main without human intervention"
+    - "The fix is documented in CLAUDE.md or the workflow file's inline comments so the next agent knows which path is in use"
+  raised_by: claude
+  raised_in: '2026-04-29 session — surfaced after INFRA-157+161+162 unblocked everything else; manually pulled artifact via PR #662'
