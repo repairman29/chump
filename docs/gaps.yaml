@@ -14315,9 +14315,11 @@ gaps:
 - id: PRODUCT-021
   domain: PRODUCT
   title: PRODUCT-017 P0 non-compliance escalation — freeze new PRODUCT gap work until clean-machine verification completes
-  status: open
+  status: done
   priority: P1
   effort: xs
+  closed_pr: 662
+  closed_date: '2026-04-29'
   opened_date: '2026-04-27'
   description: |
     PRODUCT-017 (P0 — stopwatch clean-machine install → PWA responsive
