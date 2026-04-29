@@ -8,13 +8,16 @@
 #   ./scripts/eval/measure-ftue.sh [--port 3000] [--budget 90] [--no-browser]
 #
 # Options:
-#   --port N       Port the chump web server listens on (default 3000)
+#   --port N       Port the chump web server listens on (default 3000).
+#                  Propagated to `chump init --port N` so the assertion URL
+#                  and the actual server port stay in sync (INFRA-163).
 #   --budget N     Fail if FTUE > N seconds (default 90 for CI, 60 for dev)
-#   --no-browser   Skip the browser-open step (for CI)
+#   --no-browser   Skip the browser-open step (for CI). Propagated to
+#                  `chump init --no-browser` (INFRA-163).
 #
 # Exit codes:
 #   0  FTUE <= budget
-#   1  FTUE > budget
+#   1  FTUE > budget OR chump init failed OR PWA never responded
 #   2  Usage error
 
 set -euo pipefail
@@ -35,14 +38,27 @@ done
 PWA_URL="http://localhost:${PORT}/v2/"
 START_TS=$(date +%s%N)  # nanoseconds
 
-echo "[ftue] Starting FTUE measurement (budget=${BUDGET_S}s)"
+echo "[ftue] Starting FTUE measurement (budget=${BUDGET_S}s, port=${PORT})"
 echo "[ftue] PWA target: ${PWA_URL}"
 
-# Run chump init (with --no-browser for clean measurement in CI)
+# Build the chump init invocation. --port flows through (INFRA-163 fix —
+# previously the script set the assertion port but `chump init` always bound
+# to its own default 3000, so a --port other than 3000 would always fail).
+INIT_ARGS=(--port "$PORT")
 if [[ "$NO_BROWSER" == "1" ]]; then
-    NO_BROWSER=1 chump init 2>&1 || true
-else
-    chump init 2>&1 || true
+    # INFRA-163 fix: previously the script tried `NO_BROWSER=1 chump init` env
+    # prefix, but `chump init` never read NO_BROWSER. Now there is a real
+    # --no-browser flag.
+    INIT_ARGS+=(--no-browser)
+fi
+
+# Run chump init. Surface its exit code instead of swallowing with `|| true`
+# (INFRA-163 fix). A failed init looks like "PWA never responded" otherwise,
+# which masks the real cause.
+if ! chump init "${INIT_ARGS[@]}"; then
+    INIT_RC=$?
+    echo "[ftue] FAIL: chump init exited with code ${INIT_RC}" >&2
+    exit 1
 fi
 
 # Poll until PWA responds or budget exceeded
@@ -69,7 +85,10 @@ done
 END_TS=$(date +%s%N)
 TOTAL_MS=$(( (END_TS - START_TS) / 1000000 ))
 TOTAL_S=$(( TOTAL_MS / 1000 ))
-TOTAL_S_FRAC=$(printf "%.1f" "$(echo "$TOTAL_MS / 1000" | bc -l 2>/dev/null || echo "$TOTAL_S")")
+# INFRA-163: format fractional seconds via awk (always present on macOS/Linux)
+# instead of bc (not on minimal Linux images by default). The previous bc
+# fallback dropped the fractional component silently — e.g. 15.3s read as 15.0s.
+TOTAL_S_FRAC=$(awk -v ms="$TOTAL_MS" 'BEGIN { printf "%.1f", ms/1000 }')
 
 if [[ "$READY" == "1" ]]; then
     echo "[ftue] READY in ${TOTAL_S_FRAC}s"
