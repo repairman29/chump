@@ -175,6 +175,13 @@ pub struct AuditChainStatus {
     /// Rows where the stored hash didn't match the recomputed hash. Each entry is
     /// `(row_id, tool_name, timestamp)`.
     pub tamper_points: Vec<(i64, String, String)>,
+    /// True when the oldest surviving row's predecessor has been deleted by
+    /// the 200-row cap, so we used that row's stored_hash as the effective
+    /// genesis for verification (rolling-genesis pattern, INFRA-142). The
+    /// oldest row's own stored_hash is unverifiable in this mode; tampering
+    /// of any *subsequent* row still surfaces as a chain break.
+    #[serde(default)]
+    pub rolling_genesis: bool,
 }
 
 /// Run on startup to verify the cryptographic integrity of the tool call chain.
@@ -186,22 +193,73 @@ pub fn verify_audit_chain() -> bool {
 
 /// Detailed audit chain verification. Use this when you need to know *where* tampering
 /// occurred, not just whether the chain is intact.
+///
+/// **Rolling-genesis semantics (INFRA-142).** The 200-row cap deletes the
+/// oldest surviving rows on every insert beyond the cap, which means after
+/// the table has filled once, the row chain no longer reaches back to the
+/// `"genesis_hash_..."` constant — the oldest surviving row's stored_hash
+/// was originally chained against a now-deleted predecessor, so a strict
+/// genesis-verifier would flag a "TAMPER DETECTED" on every chump invocation
+/// after the table fills (false positive observed 2026-04-26 at row 429).
+///
+/// Fix: treat the oldest surviving row's `stored_hash` as the effective
+/// genesis for this verification run. We can't verify that row itself —
+/// its predecessor is gone — but every subsequent row IS verified against
+/// its actual predecessor's stored_hash. Tampering with any non-oldest row
+/// still surfaces as a chain break at the row immediately after the modified
+/// one. The `rolling_genesis` field on [`AuditChainStatus`] is `true` when
+/// this mode was used so callers can reason about what was and wasn't
+/// verifiable.
+///
+/// When `id == 1` is still present (the cap has not yet been exercised) we
+/// use the literal genesis constant and verify the whole chain end-to-end.
 pub fn audit_chain_status() -> Result<AuditChainStatus> {
     let conn = crate::db_pool::get()?;
+    let status = audit_chain_status_with_conn(&conn)?;
+    // Broadcast tamper detection to the blackboard with high salience so agents see it.
+    // This side effect lives only in the public wrapper, so the pure verifier
+    // helper stays test-friendly.
+    if !status.intact {
+        crate::blackboard::post(
+            crate::blackboard::Module::Custom("audit_chain".into()),
+            format!(
+                "Security (A3): audit chain TAMPER DETECTED — {} corrupted row(s) in chump_tool_calls. Chain integrity compromised; someone modified the tool-call ledger directly in SQLite.",
+                status.tamper_points.len()
+            ),
+            crate::blackboard::SalienceFactors {
+                novelty: 1.0,
+                uncertainty_reduction: 0.9,
+                goal_relevance: 1.0,
+                urgency: 1.0,
+            },
+        );
+    }
+    Ok(status)
+}
+
+/// Inner helper: verify the chain against an arbitrary `Connection`. Split out
+/// from [`audit_chain_status`] so tests can pass a fresh in-memory SQLite
+/// without going through the global `db_pool` OnceLock (which is already
+/// initialized in any process running other tests). Pure: no side effects
+/// beyond stderr (security-warning print on tamper).
+pub(crate) fn audit_chain_status_with_conn(
+    conn: &rusqlite::Connection,
+) -> Result<AuditChainStatus> {
     let mut stmt = conn.prepare(
         "SELECT id, tool, args_snippet, outcome, called_at, audit_hash \
          FROM chump_tool_calls ORDER BY id ASC",
     )?;
-    let mut expected_prev_hash = "genesis_hash_00000000000000000000000000000000".to_string();
     let mut status = AuditChainStatus {
         intact: true,
         chained_rows: 0,
         legacy_rows: 0,
         tamper_points: Vec::new(),
+        rolling_genesis: false,
     };
 
     use sha2::{Digest, Sha256};
     let mut rows = stmt.query([])?;
+    let mut expected_prev_hash: Option<String> = None;
     while let Some(row) = rows.next()? {
         let row_id: i64 = row.get(0).unwrap_or(-1);
         let tool: String = row.get(1).unwrap_or_default();
@@ -216,8 +274,28 @@ pub fn audit_chain_status() -> Result<AuditChainStatus> {
             continue;
         }
 
+        // First chained row we encounter: pick the genesis we'll verify
+        // against. If the row is id == 1, the cap hasn't trimmed yet so the
+        // literal genesis constant is correct. Otherwise, the predecessor
+        // has been aged out by the cap, so we treat THIS row's stored_hash
+        // as the rolling genesis and skip verifying it (we have no way to
+        // recompute the deleted predecessor's hash). All subsequent rows
+        // chain forward from here normally.
+        if expected_prev_hash.is_none() {
+            if row_id == 1 {
+                expected_prev_hash =
+                    Some("genesis_hash_00000000000000000000000000000000".to_string());
+            } else {
+                status.rolling_genesis = true;
+                expected_prev_hash = Some(stored_hash.clone());
+                status.chained_rows += 1;
+                continue;
+            }
+        }
+        let prev = expected_prev_hash.as_ref().expect("set above");
+
         let mut hasher = Sha256::new();
-        hasher.update(&expected_prev_hash);
+        hasher.update(prev);
         hasher.update(&ts);
         hasher.update(&tool);
         hasher.update(&args);
@@ -235,25 +313,160 @@ pub fn audit_chain_status() -> Result<AuditChainStatus> {
             status.intact = false;
         }
         status.chained_rows += 1;
-        expected_prev_hash = stored_hash;
-    }
-
-    // Broadcast tamper detection to the blackboard with high salience so agents see it.
-    if !status.intact {
-        crate::blackboard::post(
-            crate::blackboard::Module::Custom("audit_chain".into()),
-            format!(
-                "Security (A3): audit chain TAMPER DETECTED — {} corrupted row(s) in chump_tool_calls. Chain integrity compromised; someone modified the tool-call ledger directly in SQLite.",
-                status.tamper_points.len()
-            ),
-            crate::blackboard::SalienceFactors {
-                novelty: 1.0,
-                uncertainty_reduction: 0.9,
-                goal_relevance: 1.0,
-                urgency: 1.0,
-            },
-        );
+        expected_prev_hash = Some(stored_hash);
     }
 
     Ok(status)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+    use sha2::{Digest, Sha256};
+
+    /// Spin up an in-memory SQLite with the chump_tool_calls schema and
+    /// insert `n` rows whose audit_hash chains form a valid chain rooted
+    /// at the literal genesis_hash constant. Returns the populated
+    /// connection.
+    fn make_chained_db(n: usize) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chump_tool_calls (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool          TEXT,
+                args_snippet  TEXT,
+                outcome       TEXT,
+                called_at     TEXT,
+                audit_hash    TEXT
+            );",
+        )
+        .unwrap();
+        let mut prev = "genesis_hash_00000000000000000000000000000000".to_string();
+        for i in 1..=n {
+            let tool = format!("tool_{i}");
+            let args = format!("args_{i}");
+            let outcome = "ok".to_string();
+            let ts = format!("2026-04-28T12:00:{:02}Z", i % 60);
+            let mut h = Sha256::new();
+            h.update(&prev);
+            h.update(&ts);
+            h.update(&tool);
+            h.update(&args);
+            h.update(&outcome);
+            let next = hex::encode(h.finalize());
+            conn.execute(
+                "INSERT INTO chump_tool_calls (tool, args_snippet, outcome, called_at, audit_hash) VALUES (?1,?2,?3,?4,?5)",
+                rusqlite::params![tool, args, outcome, ts, next],
+            )
+            .unwrap();
+            prev = next;
+        }
+        conn
+    }
+
+    #[test]
+    fn chain_intact_when_no_aging_yet() {
+        // Cap not exercised: id == 1 is still present, full genesis verify.
+        let conn = make_chained_db(50);
+        let s = audit_chain_status_with_conn(&conn).unwrap();
+        assert!(s.intact, "tamper_points: {:?}", s.tamper_points);
+        assert_eq!(s.chained_rows, 50);
+        assert!(!s.rolling_genesis);
+    }
+
+    #[test]
+    fn chain_intact_when_oldest_rows_aged_out_by_cap() {
+        // INFRA-142 regression: simulate the cap deleting the first 50 rows
+        // of a 250-row history. id == 1 is gone; oldest surviving row's
+        // predecessor is gone. Pre-fix this would falsely report TAMPER on
+        // every chump invocation. Post-fix: rolling_genesis kicks in and the
+        // chain verifies cleanly forward from the new oldest row.
+        let conn = make_chained_db(250);
+        conn.execute(
+            "DELETE FROM chump_tool_calls WHERE id NOT IN (
+                SELECT id FROM chump_tool_calls ORDER BY id DESC LIMIT 200
+            )",
+            [],
+        )
+        .unwrap();
+        let s = audit_chain_status_with_conn(&conn).unwrap();
+        assert!(
+            s.intact,
+            "post-cap chain should verify; tamper: {:?}",
+            s.tamper_points
+        );
+        assert!(s.rolling_genesis, "should switch to rolling-genesis mode");
+        // 200 surviving rows; oldest used as effective genesis (counted but
+        // not re-verified), 199 verified against their predecessor.
+        assert_eq!(s.chained_rows, 200);
+    }
+
+    #[test]
+    fn tamper_in_non_oldest_row_still_detected_after_cap() {
+        // Build 250 rows, cap to last 200, then UPDATE a middle row's
+        // audit_hash. The verifier must catch this — rolling-genesis must
+        // not paper over tampering of any row beyond the oldest.
+        let conn = make_chained_db(250);
+        conn.execute(
+            "DELETE FROM chump_tool_calls WHERE id NOT IN (
+                SELECT id FROM chump_tool_calls ORDER BY id DESC LIMIT 200
+            )",
+            [],
+        )
+        .unwrap();
+        // Pick a row well past the rolling genesis (id 100, which is in the
+        // middle of the surviving range 51..250).
+        conn.execute(
+            "UPDATE chump_tool_calls SET audit_hash = ?1 WHERE id = 100",
+            rusqlite::params!["deadbeef".repeat(8)],
+        )
+        .unwrap();
+        let s = audit_chain_status_with_conn(&conn).unwrap();
+        assert!(!s.intact, "expected tamper, got intact chain");
+        // Tamper at id 100 means row 100's hash doesn't match what its
+        // ancestor's hash would compute, AND row 101 chains forward against
+        // a now-bogus hash so its computed != stored either. Both rows surface.
+        assert!(
+            s.tamper_points
+                .iter()
+                .any(|(id, _, _)| *id == 100 || *id == 101),
+            "tamper should be reported at row 100 or 101: {:?}",
+            s.tamper_points
+        );
+    }
+
+    #[test]
+    fn empty_table_is_trivially_intact() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chump_tool_calls (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                tool          TEXT, args_snippet TEXT, outcome TEXT,
+                called_at     TEXT, audit_hash TEXT
+            );",
+        )
+        .unwrap();
+        let s = audit_chain_status_with_conn(&conn).unwrap();
+        assert!(s.intact);
+        assert_eq!(s.chained_rows, 0);
+        assert!(!s.rolling_genesis);
+    }
+
+    #[test]
+    fn legacy_rows_without_audit_hash_are_skipped() {
+        let conn = make_chained_db(5);
+        // Insert two more rows with empty audit_hash — these are pre-migration
+        // legacy rows, must not be counted toward chained_rows or break the
+        // verifier.
+        conn.execute(
+            "INSERT INTO chump_tool_calls (tool, args_snippet, outcome, called_at, audit_hash) VALUES (?1,?2,?3,?4,?5)",
+            rusqlite::params!["legacy", "x", "ok", "2026-04-28T13:00:00Z", ""],
+        )
+        .unwrap();
+        let s = audit_chain_status_with_conn(&conn).unwrap();
+        assert!(s.intact, "tamper: {:?}", s.tamper_points);
+        assert_eq!(s.chained_rows, 5);
+        assert_eq!(s.legacy_rows, 1);
+    }
 }
