@@ -117,3 +117,7 @@ acp_sessions/
 .idea/
 *.iml
 .chump/overnight/
+# INFRA-094: per-machine marker written by chump gap dump/ship; the
+# pre-commit raw-YAML-edit advisory reads this to confirm a docs/gaps.yaml
+# diff was authored by the chump CLI rather than a hand-edit.
+.chump/.last-yaml-op
