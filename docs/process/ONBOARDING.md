@@ -6,7 +6,17 @@ last_audited: 2026-04-25
 
 # Chump — Onboarding
 
-> **Goal:** run one command, get a working AI assistant with PWA in under 60 seconds.
+> **Goal:** `chump init` → working PWA in **under 60 seconds** (post-install).
+>
+> **Note (DOC-014, 2026-04-30):** The ≤60s budget measures `chump init →
+> PWA-ready` only — it does NOT include the install. As of 2026-04-30
+> the published Homebrew formula compiles from source on first install
+> (~20 minutes on a clean Mac), because pre-built bottles are not yet
+> shipped (tracked in INFRA-172). Once INFRA-172 lands, `brew install
+> chump` will pull a bottle (~30s-2m) and the end-to-end FTUE will
+> match the post-init number. **Honest current state: ~20m total on
+> a clean Mac, 17s post-install.** Verified via
+> `docs/FTUE-VERIFICATION-2026-04-29.md`.
 
 ## Quick start (macOS)
 
@@ -21,7 +31,7 @@ That's it. The PWA opens at `http://localhost:3000/v2/` automatically.
 
 ## Step 1 — Install
 
-**Homebrew (recommended):**
+**Homebrew (recommended once INFRA-172 ships bottles):**
 ```bash
 brew tap repairman29/chump
 brew install chump
