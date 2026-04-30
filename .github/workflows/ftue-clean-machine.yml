@@ -51,24 +51,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Brew install chump (mirror documented user path)
+      - name: Brew install chump (real user path — published tap + bottle)
         id: install
         run: |
           set -euo pipefail
-          # INFRA-161 (2026-04-28): modern Homebrew rejects formula paths
-          # outside a tap ("Homebrew requires formulae to be in a tap").
-          # The documented user install path (docs/process/ONBOARDING.md) is
-          # `brew tap repairman29/chump && brew install chump`. Mirror that
-          # exactly so the verification reflects the real user experience —
-          # not a workflow-only shortcut. Build a throwaway local tap from
-          # this checkout's Formula/chump.rb so we test the formula-as-shipped.
+          # INFRA-175 (2026-04-30): switched from local tap-new + --build-from-source
+          # (which compiled chump from source for ~19 min) to the real user path:
+          # `brew tap repairman29/chump && brew install chump`. After v0.1.1 + the
+          # tap repo bootstrap (manual on this release; INFRA-176 makes it auto on
+          # future releases), this pulls a pre-built bottle and finishes in ~30-90s.
+          #
+          # If the tap is missing or empty (e.g. a release ran but the formula
+          # didn't auto-publish — INFRA-176 not yet active), this step fails fast
+          # with a clear error rather than silently falling back to source-build.
+          # That's the right signal: the user-facing claim ("brew install chump"
+          # works) is exactly what's broken when the tap is empty.
           INSTALL_START=$(date +%s)
-          TAP_NAME="chump-ci/local"
-          brew tap-new "$TAP_NAME" --no-git --quiet
-          TAP_DIR=$(brew --repo "$TAP_NAME")
-          mkdir -p "$TAP_DIR/Formula"
-          cp ./Formula/chump.rb "$TAP_DIR/Formula/"
-          brew install --build-from-source "$TAP_NAME/chump"
+          brew tap repairman29/chump
+          brew install chump  # no --build-from-source — pulls bottle for the runner's platform
           INSTALL_END=$(date +%s)
           echo "install_seconds=$((INSTALL_END - INSTALL_START))" >> "$GITHUB_OUTPUT"
           which chump

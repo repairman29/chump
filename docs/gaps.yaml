@@ -15449,3 +15449,52 @@ gaps:
     - "ONBOARDING.md cites the verification artifact as evidence"
   raised_by: claude
   raised_in: '2026-04-30 — same finding chain as INFRA-172/173'
+
+- id: INFRA-176
+  domain: INFRA
+  title: 'release.yml: auto-publish formula to homebrew-chump tap on every release (HOMEBREW_TAP_TOKEN)'
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-04-30'
+  description: |
+    INFRA-174 (PR #677) enabled the Homebrew installer in dist-workspace.toml
+    and pointed at the repairman29/homebrew-chump tap. The first release
+    (v0.1.1, 2026-04-30) successfully built bottles for 4 platforms and
+    generated a valid `chump.rb` formula — but cargo-dist's release.yml
+    only published the formula as a release ASSET, not to the tap repo.
+    Result: tap was empty after release; users couldn't `brew install
+    chump` until the formula was manually pushed (commit cf1e8ad in
+    homebrew-chump).
+
+    Root cause: dist-workspace.toml had `installers = ["shell", "homebrew"]`
+    + `tap = "..."` but did NOT have `publish-jobs = ["homebrew"]`. Without
+    that line, cargo-dist generates the formula but skips the
+    `publish-homebrew-formula` workflow job that pushes it to the tap.
+
+    Fix in this PR:
+      1. Add `publish-jobs = ["homebrew"]` to dist-workspace.toml
+      2. Re-run `cargo dist generate` to regenerate release.yml with the
+         publish-homebrew-formula job (adds 48 lines to release.yml)
+      3. The new job requires `secrets.HOMEBREW_TAP_TOKEN` — a PAT with
+         `contents: write` on repairman29/homebrew-chump.
+
+    REQUIRES OPERATOR ACTION before next release tag:
+      - Create a fine-grained PAT scoped to repairman29/homebrew-chump
+        with "Contents: read and write" permission
+      - Add it as repo secret HOMEBREW_TAP_TOKEN to repairman29/chump
+        (Settings → Secrets and variables → Actions → New repository secret)
+
+    Without the secret, the publish job will run and fail at push time
+    (auth error). The formula still lands as a release asset as a fallback.
+
+    Verifies via INFRA-175 once both INFRA-176 + the FTUE bottle-path
+    test land — every future tag should land its formula in the tap with
+    zero manual `gh release download` + push.
+  acceptance_criteria:
+    - "dist-workspace.toml has publish-jobs = [\"homebrew\"]"
+    - "release.yml contains a publish-homebrew-formula job (regenerated via cargo dist generate)"
+    - "HOMEBREW_TAP_TOKEN secret is set on repairman29/chump (operator action)"
+    - "Next release tag (v0.1.2 or later) lands formula in repairman29/homebrew-chump/Formula/chump.rb without manual push"
+  raised_by: claude
+  raised_in: '2026-04-30 — surfaced after v0.1.1 release succeeded but tap stayed empty'
