@@ -1785,6 +1785,32 @@ async fn main() -> Result<()> {
                  Set the env var and re-run with --discord."
             ));
         }
+        // SECURITY-005: serenity 0.12.5 (latest on crates.io) pins
+        // tokio-tungstenite 0.21 → rustls 0.22 → rustls-webpki 0.102.8,
+        // which carries RUSTSEC-2026-0104 (HIGH): DoS via panic on
+        // malformed CRL BIT STRING. The Discord gateway is the only
+        // chump path that hits this transitive — REST-only callers
+        // (a2a_tool, discord_dm) use the safe rustls 0.23 chain.
+        // Until upstream serenity ships a tungstenite bump, gate
+        // gateway start behind an explicit acknowledgment so an
+        // operator can't be silently exposed to the panic risk.
+        // Remove this block when `cargo audit` shows 0
+        // rustls-webpki 0.102.x advisories AND `cargo tree -i
+        // rustls-webpki@0.102.8` returns empty (SECURITY-005 closes).
+        let rustls_acked = env::var("CHUMP_ALLOW_DISCORD_RUSTLS")
+            .map(|v| v.trim() == "1")
+            .unwrap_or(false);
+        if !rustls_acked {
+            return Err(anyhow::anyhow!(
+                "Discord gateway start is gated by SECURITY-005 — serenity 0.12.5 \
+                 (latest) pins vulnerable rustls-webpki 0.102.8 (RUSTSEC-2026-0104 \
+                 HIGH: DoS via panic on malformed CRL BIT STRING). To start anyway, \
+                 set CHUMP_ALLOW_DISCORD_RUSTLS=1 and accept the panic risk. \
+                 Track upstream: https://github.com/serenity-rs/serenity for a \
+                 tungstenite/rustls bump. Revisit this gate when SECURITY-005 \
+                 closes (cargo audit shows 0 rustls-webpki 0.102.x advisories)."
+            ));
+        }
         eprintln!("Chump version {}", version::chump_version());
         if let Some(port) = env::var("CHUMP_HEALTH_PORT")
             .ok()

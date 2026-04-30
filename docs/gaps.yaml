@@ -15407,7 +15407,7 @@ gaps:
     - "Verification artifact records install_mode: bottle | source"
     - "Run fails (or emits a warning) if install_mode == source on a release-tagged main commit (bottle should have shipped)"
     - "Manual workflow_dispatch can force --build-from-source via input parameter for the build-system test"
-  depends_on: INFRA-174
+  depends_on: [INFRA-174]
   raised_by: claude
   raised_in: '2026-04-30 — verification path follow-up to INFRA-172'
 
