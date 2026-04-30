@@ -15324,3 +15324,97 @@ gaps:
     - "The fix is documented in CLAUDE.md or the workflow file's inline comments so the next agent knows which path is in use"
   raised_by: claude
   raised_in: '2026-04-29 session — surfaced after INFRA-157+161+162 unblocked everything else; manually pulled artifact via PR #662'
+- id: SECURITY-005
+  domain: SECURITY
+  title: 'serenity 0.12.5 (latest) pins vulnerable rustls-webpki 0.102.8 — Dependabot cannot fix; pick mitigation path'
+  status: open
+  priority: P0
+  effort: m
+  opened_date: '2026-04-30'
+  description: |
+    SECURITY-004 (filed 2026-04-28, P0) names 6 open Dependabot
+    advisories, three of which trace through the same dep chain:
+
+      chump v0.1.0
+      └── serenity v0.12.5
+          └── tokio-tungstenite v0.21.0
+              └── tungstenite v0.21.0
+                  ├── rustls v0.22.4
+                  └── tokio-rustls v0.25.0
+                      └── rustls v0.22.4
+                          └── rustls-webpki v0.102.8   ← vulnerable
+
+    Affected advisories on rustls-webpki 0.102.8:
+      - RUSTSEC-2026-0104 HIGH   — DoS via panic on malformed CRL BIT STRING
+      - RUSTSEC-2026-0098 LOW    — Name constraints for URI names accepted
+      - RUSTSEC-2026-0099 LOW    — Name constraints for wildcards accepted
+      - RUSTSEC-2026-0049 MEDIUM — CRL Distribution Point matching faulty
+
+    `cargo search serenity` returns **0.12.5** — that IS the latest
+    release. **No newer serenity exists on crates.io.** Dependabot can
+    only bump direct deps to versions that are available; the bot
+    correctly reports nothing-to-do here even though the vulnerability
+    is real. The 2026-04-29 chore(deps) bumps that did land
+    (tokio-tungstenite #675, jsonschema #674, actions-all #673) all
+    addressed unrelated packages.
+
+    Reachability: src/discord.rs (1453 lines) is the only consumer of
+    serenity. Callers: a2a_tool.rs, autonomy_loop.rs, acp_server.rs,
+    platform_router.rs. Discord is currently **off by default** —
+    enabled only when DISCORD_TOKEN env var is set
+    (config_validation.rs:48-50). Most chump deployments are not
+    exposed to the panic at runtime.
+
+    Five mitigation paths (ordered by cost; pick one + record decision
+    in PR description):
+
+      (1) Wait + file upstream serenity issue. The advisory was filed
+          2026-04-22; serenity maintainers may already have a
+          tungstenite bump PR in flight. Lowest cost, highest
+          dependency risk. Track via crates.io serenity 0.13.x.
+
+      (2) Cargo `[patch.crates-io]` override forcing serenity's
+          rustls/tungstenite chain to newer versions. Compiles only if
+          serenity's actual API surface is compatible — needs CI smoke
+          on a real Discord-enabled run before shipping.
+
+      (3) Default-disable Discord at startup until upstream unjams.
+          One-line `config_validation.rs` change: refuse to push
+          'discord' onto enabled[] when DISCORD_TOKEN is set, with a
+          clear log message pointing at this gap. Zero functional
+          impact for users without DISCORD_TOKEN; existing Discord
+          users see a startup notice and a CHUMP_ALLOW_DISCORD=1
+          opt-in if they accept the panic risk. Cheapest correct play.
+
+      (4) Replace serenity with an HTTP-only Discord client. No
+          WebSocket gateway → no tungstenite → no rustls 0.22.
+          Realistic only if the discord.rs feature surface is limited
+          to REST send/receive (no presence, no voice, no gateway
+          events). ~1450 lines of work + ongoing maintenance.
+
+      (5) Vendor + patch serenity in-tree (crates/chump-serenity-vendor).
+          Take the maintenance burden until upstream catches up.
+          Largest cost, most isolated.
+
+    Recommendation: ship (3) immediately as a runtime mitigation
+    (separate PR), then open an upstream serenity issue and put (1)
+    on a 30-day watch. If upstream hasn't moved by 2026-05-30,
+    revisit (2) or (4) per cost/benefit at that point.
+
+    Out of scope: the other 3 SECURITY-004 advisories (rand, glib
+    medium) which trace different chains. Address those in their own
+    follow-ups if the cargo audit output shows similar lock-in.
+
+    Detection method (for next scour): `cargo audit 2>&1 | grep
+    "rustls-webpki 0.102"` should be empty after the chain unjams.
+    Pair with `cargo tree -i rustls-webpki@0.102.8` returning empty.
+  acceptance_criteria:
+    - "Decision recorded in PR description: which mitigation path (1-5) is chosen + why; record in gap notes"
+    - "If (3): config_validation.rs refuses to enable discord without CHUMP_ALLOW_DISCORD=1 opt-in; existing CI smoke continues to pass"
+    - "If (1): upstream serenity issue link recorded in this gap; watch date set to 2026-05-30"
+    - "If (2): cargo build --release --bin chump clean with the patch override; Discord smoke test passes locally"
+    - "If (4) or (5): full migration plan committed as a separate gap before any code changes"
+    - "After mitigation lands: cargo audit shows 0 rustls-webpki 0.102.x advisories; cargo tree -i rustls-webpki@0.102.8 returns empty"
+    - "SECURITY-004 cross-references this gap in its notes (chained closure once both mitigation lands and upstream catches up)"
+  raised_by: claude
+  raised_in: '2026-04-30 follow-up to SECURITY-004 — confirmed Dependabot cannot fix the rustls-webpki chain because serenity 0.12.5 IS the latest release. User asked for the actual blocker + decision tree.'
