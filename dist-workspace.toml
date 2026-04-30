@@ -17,6 +17,14 @@ installers = ["shell", "homebrew"]
 # Tap repo for the homebrew installer. Repo: https://github.com/repairman29/homebrew-chump
 # Created 2026-04-30 (gh CLI). cargo-dist seeds the formula on first release.
 tap = "repairman29/homebrew-chump"
+# Auto-publish the generated formula to the tap repo on every release tag.
+# INFRA-176 (2026-04-30): without this, INFRA-174's tap creation + first
+# release (v0.1.1) only produced the formula as a release asset — the tap
+# repo had to be manually bootstrapped (commit cf1e8ad in homebrew-chump).
+# Adding "homebrew" generates a `publish-homebrew-formula` job in release.yml
+# that pushes Formula/chump.rb to the tap on every release.
+# Requires HOMEBREW_TAP_TOKEN secret (PAT with write access to homebrew-chump).
+publish-jobs = ["homebrew"]
 # Target platforms. Windows is intentionally excluded — Chump on Windows is documented
 # as WSL2-only, so the Linux x86_64 binary covers Windows users.
 targets = [
