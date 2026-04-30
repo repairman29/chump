@@ -15325,12 +15325,14 @@ gaps:
   raised_by: claude
   raised_in: '2026-04-29 session — surfaced after INFRA-157+161+162 unblocked everything else; manually pulled artifact via PR #662'
 
-- id: INFRA-172
+- id: INFRA-174
   domain: INFRA
   title: 'Enable Homebrew installer in cargo-dist + create repairman29/homebrew-chump tap (true <60s FTUE)'
-  status: open
+  status: done
   priority: P0
   effort: s
+  closed_pr: 677
+  closed_date: '2026-04-30'
   opened_date: '2026-04-30'
   description: |
     The first real clean-machine FTUE verification (2026-04-29, run
@@ -15378,7 +15380,7 @@ gaps:
   raised_by: claude
   raised_in: '2026-04-30 — after FTUE-VERIFICATION-2026-04-29.md exposed 21m brew install'
 
-- id: INFRA-173
+- id: INFRA-175
   domain: INFRA
   title: 'FTUE workflow: test bottle path (real user) once bottles exist; keep source-build as fallback'
   status: open
@@ -15405,7 +15407,7 @@ gaps:
     - "Verification artifact records install_mode: bottle | source"
     - "Run fails (or emits a warning) if install_mode == source on a release-tagged main commit (bottle should have shipped)"
     - "Manual workflow_dispatch can force --build-from-source via input parameter for the build-system test"
-  depends_on: INFRA-172
+  depends_on: [INFRA-174]
   raised_by: claude
   raised_in: '2026-04-30 — verification path follow-up to INFRA-172'
 
