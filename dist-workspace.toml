@@ -7,9 +7,16 @@ members = ["cargo:."]
 cargo-dist-version = "0.31.0"
 # CI backends to support
 ci = "github"
-# Installers: shell script for curl|sh convenience (Hermes-style onboarding). Homebrew
-# requires a separate tap repo; disabled until we create repairman29/homebrew-chump.
-installers = ["shell"]
+# Installers: shell script for curl|sh convenience (Hermes-style onboarding) +
+# Homebrew bottle install via the repairman29/homebrew-chump tap (INFRA-172,
+# 2026-04-30). cargo-dist auto-publishes the formula to the tap on every
+# release, pointing at the bottle artifacts it builds for each target below.
+# Result: `brew install chump` pulls a bottle in ~30s instead of compiling
+# from source for ~20 minutes.
+installers = ["shell", "homebrew"]
+# Tap repo for the homebrew installer. Repo: https://github.com/repairman29/homebrew-chump
+# Created 2026-04-30 (gh CLI). cargo-dist seeds the formula on first release.
+tap = "repairman29/homebrew-chump"
 # Target platforms. Windows is intentionally excluded — Chump on Windows is documented
 # as WSL2-only, so the Linux x86_64 binary covers Windows users.
 targets = [
