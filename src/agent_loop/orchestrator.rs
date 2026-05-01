@@ -176,7 +176,57 @@ impl ChumpAgent {
             if ctx.light {
                 crate::agent_loop::compact_tools_for_light(raw)
             } else {
-                raw
+                // INFRA-182 (2026-05-01): tool routing. The web PWA path
+                // previously sent ALL ~46 chump tool schemas (~5 KB) on
+                // every turn, adding 15-60 s of prefill per round on
+                // local 14B models. Now we route by perception — only
+                // the 3-15 tools likely needed for this input.
+                //
+                // Safety net: if the routed subset doesn't satisfy the
+                // model (e.g. it tried a tool we filtered out), the
+                // narration-detection retry at iteration_controller:245
+                // fires the next round with the FULL tool set. So worst
+                // case = today's cost; common case is 3-10× faster.
+                //
+                // CHUMP_TOOL_ROUTING=0 disables this path and reverts
+                // to "send all tools" — useful for harness sweeps that
+                // need to compare against the v1 baseline.
+                if std::env::var("CHUMP_TOOL_ROUTING").ok().as_deref() == Some("0") {
+                    raw
+                } else {
+                    // Compute routed set as owned Strings so we can move
+                    // `raw` into the filter below without keeping a borrow.
+                    let total = raw.len();
+                    let routed: std::collections::HashSet<String> = {
+                        let names: Vec<&str> = raw.iter().map(|t| t.name.as_str()).collect();
+                        chump_perception::route_tools(&perception, &names)
+                            .into_iter()
+                            .map(String::from)
+                            .collect()
+                    };
+                    if routed.is_empty() {
+                        // No routing rule matched (and !Meta — Meta returns
+                        // empty for "no tools needed", but we know tools
+                        // ARE expected at this point because
+                        // skip_tools_first_call gates on
+                        // !needs_tools_hint earlier). Fall back to all
+                        // tools so we don't starve the model.
+                        raw
+                    } else {
+                        let kept: Vec<_> = raw
+                            .into_iter()
+                            .filter(|t| routed.contains(&t.name))
+                            .collect();
+                        tracing::debug!(
+                            target: "chump",
+                            "tool routing: {} of {} sent (perception={:?})",
+                            kept.len(),
+                            total,
+                            perception.task_type
+                        );
+                        kept
+                    }
+                }
             }
         };
 

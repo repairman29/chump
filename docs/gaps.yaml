@@ -15612,65 +15612,159 @@ gaps:
 
 - id: INFRA-182
   domain: INFRA
-  title: 'tool routing: send 3-8 relevant tools per turn (route_tools in chump-perception) instead of all 46'
+  title: 'tool routing: send 3-15 relevant tools per turn (route_tools in chump-perception) instead of all 46'
+  status: done
+  priority: P0
+  effort: m
+  closed_pr: TBD
+  closed_date: '2026-05-01'
+  opened_date: '2026-05-01'
+  description: |
+    Even after INFRA-180 (capability-question skip-tools), tool-using
+    PWA turns are slow because every turn ships ALL 46 chump tool
+    schemas (~5 KB) to the model. Verified: "hey chump show me
+    something cool" took 150 s end-to-end (71 s round 1 + 80 s round 2)
+    with ONE tool actually used (calculator). On qwen2.5:14b @ ~150-300
+    t/s prefill, 5 KB of tool schema = 15-60 s before generation.
+
+    Fix: pure-rule chump_perception::route_tools(perception,
+    all_tool_names) returns the tool subset (3-15 names) likely needed
+    based on perception.task_type + raw_text keyword matches.
+    orchestrator.rs sends the routed subset; if the subset doesn't
+    satisfy the model, the existing narration-detection retry at
+    iteration_controller:245 fires the next round with the FULL tool
+    set (worst case = today's cost; common case 3-10× faster).
+
+    Routing rules (pure-string, no LLM):
+      - TaskType::Meta → []  (capability questions; INFRA-180 also covers)
+      - math entities (calc, multiply, *, +, etc.) → [wasm_calc]
+      - "task" / "todo" / "plan" → [task, task_planner, decompose_task,
+        merge_subtask]
+      - file/path entities → [read_file, write_file, patch_file, list_dir]
+      - git/commit/branch → [git_commit, git_push, git_revert, git_stash,
+        cleanup_branches, diff_review]
+      - url/http/web/browse → [read_url, browser]
+      - cargo/build/test/shell → [run_cli, run_test]
+      - remember/recall/memory/search → [memory, memory_brain,
+        session_search]
+      - notify/message/delegate → [notify, message_peer, delegate]
+      - schedule/remind/later → [schedule]
+      - TaskType::Research / "codebase" / "how does" → [codebase_digest,
+        read_url, memory]
+      - introspect/your-config → [introspect, ego]
+      - screen/screenshot → [screen_vision]
+      - else → starter pack [wasm_calc, task, read_file, list_dir,
+        run_cli, memory, codebase_digest, schedule]
+
+    All routed names are filtered against the actual registry — never
+    invents names. Bypass with CHUMP_TOOL_ROUTING=0 (revert to send-all
+    for harness comparisons).
+
+    Ships with 22 unit tests in chump-perception (route_meta_returns_empty,
+    route_math_to_calc, route_tasks_to_task_tools, route_files_to_file_tools,
+    route_git_to_git_tools, route_research_to_research_tools,
+    route_unknown_falls_back_to_starter_pack, route_drops_names_not_in_registry,
+    route_dedupes, arithmetic_operator_detection, plus the 12 pre-existing
+    perception tests).
+
+    Companion to INFRA-183 (umbrella). Builds on INFRA-180. Stacks with
+    the partner-agent's Ollama-streaming work (INFRA-183 item #1) for
+    the full UX win.
+  acceptance_criteria:
+    - "chump_perception::route_tools(&perception, &[&str]) -> Vec<&str> exists in chump-perception/src/lib.rs"
+    - "22 unit tests pass — covers all 7 routing rules + edge cases (Meta empty, dedup, registry filter)"
+    - "orchestrator.rs uses route_tools for non-light path; CHUMP_TOOL_ROUTING=0 bypasses"
+    - "tracing::debug logs 'tool routing: N of M sent' per turn for measurability"
+    - "Live test on PWA: 'hey chump show me something cool' completes in <60s on qwen2.5:14b (down from 150s) — assuming INFRA-183 #1+#2 also shipped"
+  raised_by: claude
+  raised_in: '2026-05-01 — user reported 150s for trivial chat after INFRA-180; tracing showed tool-schema prefill as bottleneck'
+
+- id: INFRA-183
+  domain: INFRA
+  title: 'PWA latency umbrella — measured root cause is reasoning-CoT eaten by chunk processor (not the originally-suspected paths)'
   status: open
   priority: P0
   effort: m
   opened_date: '2026-05-01'
   description: |
-    Even after INFRA-180 (capability-question skip-tools), tool-using
-    PWA turns are still slow because every turn ships ALL 46 chump tool
-    schemas (~5KB) to the model. Verified 2026-05-01 15:01:58 turn:
-    "hey chump show me something cool" → 150 seconds total (71s round 1
-    + 80s round 2). Both rounds carry the full 5KB tool schema; on
-    qwen2.5:14b @ ~150-300 t/s prefill that's 15-60s per round before
-    a single token of generation. The model used 1 tool (calculator)
-    out of 46 sent.
+    Umbrella for the PWA latency-budget work. Two parallel diagnoses on
+    2026-05-01 produced an INITIAL list of 6 suspects; a follow-up
+    measurement narrowed it to a SINGLE root cause not in the original
+    list. Filing this umbrella with the corrected ground-truth so the
+    sub-tasks don't duplicate already-shipped work.
 
-    Fix: build a route_tools(perception, all_tools) → Vec<Tool> function
-    that returns only the relevant tool subset based on chump-perception's
-    structured output (already extracted to a crate, returns task_type +
-    entities + constraints + risks + ambiguity_level).
+    ## What we MEASURED (ground truth)
 
-    Routing rules to start:
-      - task_type=Meta (capability Q's)              → []
-      - task_type=Question + time/date entities      → [date, time]
-      - task_type=Action  + math entities            → [calculator]
-      - task_type=Action  + "task" in text           → [task_create, task_list, task_close, task_status]
-      - task_type=Action  + file paths in entities   → [read_file, write_file, patch_file, list_dir]
-      - task_type=Research                            → [web_search, codebase_digest, search_memory]
-      - task_type=Action  + git/cargo entities       → [bash, git, cargo]
-      - task_type=Unclear (fallback)                  → "starter pack" of ~6 most-used (calculator,
-                                                        task_create, read_file, web_search, codebase_digest, bash)
+    Probe: `Say pong, nothing else.` →
+      - 56.985 s total
+      - TTFB 47 ms (server response is fast)
+      - 1 user-visible text_delta = "pong"
+      - 114 keepalive `Thinking` pings (every 500 ms)
+      - 0 user-visible reasoning text
 
-    Architecture: extend chump-perception (NOT rebuild). The crate already
-    runs structured pure-rule perception. Add route_tools() as a new pub fn
-    in chump-perception/src/lib.rs (or a small new chump-tool-router crate
-    if it grows beyond ~100 lines). orchestrator.rs calls it instead of
-    self.registry.get_all_for_llm() — diff is ~3 lines.
+    Direct probe of `/v1/chat/completions` confirmed the served MLX
+    model is a REASONING model that emits ~57 s of plain-prose
+    Chain-of-Thought (`"Thinking Process:\n\n1.  **..."`) WITHOUT
+    `<think>` tags. The chunk processor at src/local_openai.rs:81-185
+    only routes content wrapped in `<think>...</think>` to
+    `thinking_delta`. Plain-prose CoT gets eaten — the user sees the
+    keepalive cursor for the full duration, then "pong" appears at the
+    end.
 
-    Safety net: if the model says "I need to do X" and X requires a tool
-    not in the routed subset, the agent loop's narration-detection at
-    iteration_controller line 245 already retries with the FULL tool set.
-    So worst case is one extra round (with full tools) — same as today's
-    cost — but the common case drops from 150s to ~30s.
+    ## What was originally suspected and CORRECTED OUT
 
-    Expected impact:
-      - "hey chump show me something cool" + math:    150s → 30-50s   (3-5×)
-      - "list my tasks":                              150s → 25-40s   (4-6×)
-      - "summarize this file":                        150s → 30-50s   (3-5×)
-      - "what can you do":                              8s →   5s    (already fast post-INFRA-180)
+    Partner-agent diagnosis at ~/.claude/plans/why-is-the-pwa-chump-s-radiant-minsky.md
+    listed 6 findings; verification against the live code corrected 3 of them:
 
-    Out of scope (separate gaps):
-      - Switch default model to qwen2.5:7b (config change, INFRA-181 follow-up)
-      - LLM-based intent classification (would add latency; rule-based first)
-      - Embedding-based tool retrieval (more complex, future)
+      - ❌ "HTTP doesn't stream deltas" — ALREADY IMPLEMENTED at
+        src/local_openai.rs:884-1134. STREAM_EVENT_TX task-local
+        detection, `"stream": true`, SSE chunk parsing, TextDelta
+        emission, `<think>`-tag chunk processor at lines 81-185,
+        `CHUMP_STREAM_HTTP=0` kill switch. Re-implementing would be
+        duplicate work.
+      - ❌ "No per-query phase timing" — PARTIALLY ALREADY THERE. See
+        `[timing] stream_request_ms=...` log lines at
+        src/local_openai.rs:1021, :1124, :1133. Plus orchestrator's
+        `agent_turn started`/`turn complete` with request_id +
+        prompt_len. Missing piece is PHASE breakdown
+        (compaction vs provider vs tools), not timing per se.
+      - ❌ "mistral.rs cold-start" — NOT THE ACTIVE BACKEND. run-web.sh
+        chose vLLM-MLX on :8000.
+
+    The two remaining originals (sync compaction, sync tool exec) are
+    real but unlikely to dominate against a 57 s reasoning chain —
+    defer until after the model swap shows what's left.
+
+    ## Sub-tasks (corrected, ranked by impact)
+
+    1. **Switch chat default to a non-reasoning model** (qwen2.5:14b /
+       llama3.1) — biggest immediate UX win, near-zero code. Config
+       change in run-web.sh / .env. Sub-gap to be filed.
+
+    2. **Extend chunk processor to recognize plain-prose reasoning
+       patterns** ("Thinking Process:" / "Step 1:" / numbered
+       enumerations before a final answer) and route to
+       `thinking_delta`, OR force the model to emit `<think>` via
+       prompt/grammar — fixes ALL future reasoning models, not just
+       this one. Lives in src/local_openai.rs lines 81-185.
+       Sub-gap to be filed.
+
+    3. **Phase-level timing breakdown** on top of existing `[timing]`
+       logs (compaction ms / provider ms / tools ms per turn). Smaller
+       scope than originally framed — most timing infra exists.
+       Sub-gap to be filed.
+
+    4. **INFRA-180 (capability-Q skip-tools) + INFRA-182 (route_tools)** —
+       payload-size work, complementary, both shipped/in-flight today.
+
+    Drop from scope (until post-model-swap):
+      - Async compaction (defer; unlikely to dominate vs CoT)
+      - Parallel tool execution (defer; same reason)
   acceptance_criteria:
-    - "chump-perception exposes a pub fn route_tools(perception: &PerceivedInput, all_tools: &[Tool]) -> Vec<Tool>"
-    - "orchestrator.rs calls route_tools() instead of get_all_for_llm() when tools are sent"
-    - "Unit tests cover all 7 routing rules in the table above with representative prompts"
-    - "Live test on PWA: 'hey chump show me something cool' (math path) completes in <60s on qwen2.5:14b (down from 150s)"
-    - "Regression test: 'list my tasks' still calls task tools and finishes successfully (no tool fell out of the subset)"
-    - "If routed subset doesn't satisfy the model, the existing retry-with-full-tools path at iteration_controller line 245 fires correctly (no infinite loop)"
+    - "Sub-gap filed for #1 (model swap)"
+    - "Sub-gap filed for #2 (plain-prose CoT chunk-processor extension)"
+    - "Sub-gap filed for #3 (phase-level timing breakdown)"
+    - "After #1 lands: re-probe `Say pong, nothing else.` — total time drops below 5 s OR plain-prose CoT now streams to the user as thinking_delta"
+    - "Phase breakdown logs appear per turn so we can attribute future regressions"
   raised_by: claude
-  raised_in: '2026-05-01 — user feedback: 150s for "hey chump show me something cool" after INFRA-180; tracing showed both LLM rounds carrying full 5KB tool schema'
+  raised_in: '2026-05-01 — synthesis of partner-agent plan + measured ''pong'' probe (56.985 s, TTFB 47 ms, plain-prose CoT eaten by <think>-only chunk processor)'
