@@ -170,68 +170,71 @@ pub fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
 }
 
 /// Detect when a tool-free response indicates the model wanted to use tools but couldn't.
+///
+/// INFRA-177 (2026-05-01) rewrite: the previous version had 50+ phrases
+/// that fired on routine conversational text — `"i can help"`, `"i can show"`,
+/// `"running "`, `"writing "`, `"checking "` etc. all matched capability
+/// descriptions and self-introductions. Result: the agent loop's narration-
+/// retry path (iteration_controller line 245) burned 2 extra model calls
+/// (~3.6 minutes wall-clock for the offending PWA turn) on every "what can
+/// you do?"-style question. The user saw 3 concatenated responses in the
+/// PWA bubble; only the last persisted.
+///
+/// New rule — narration is detected ONLY when the text contains a
+/// **past-tense success claim that implies a tool result**:
+///   - "I've saved/created/written/executed …"
+///   - "Saved as / saved to / saved in / wrote to / created at …"
+///   - "Successfully created/saved/wrote/executed …"
+///   - "File has been saved/created/written to …"
+///   - "Done!" / "All set" (terminal success markers)
+///
+/// Crucially this list does NOT include:
+///   - **Capability descriptions** ("I can run shell commands",
+///     "I can list files") — declarative, not claims of completed work.
+///   - **Future intent** ("I'll …", "I will …", "Let me …") — the model
+///     is planning, not claiming to have done something.
+///   - **Generic verbs** ("running ", "writing ", "checking ") that match
+///     prose constantly.
+///
+/// The retry gate at iteration_controller line 245 has its own
+/// `model_calls_count <= 2` cap — even with a perfect heuristic the loop
+/// is bounded — but the point is to stop firing on legitimate prose.
 pub fn response_wanted_tools(text: &str) -> bool {
     let lower = text.to_lowercase();
     let narration_signals = [
-        "i'll ",
-        "i will ",
-        "let me ",
-        "i'm going to ",
-        "listing ",
-        "checking ",
-        "searching ",
-        "looking up",
-        "reading ",
-        "running ",
-        "creating ",
-        "generating ",
-        "writing ",
-        "saving ",
-        "saved as ",
-        "saved in ",
-        "saved to ",
-        "the file path is",
-        "open it to view",
-        "here is the file",
-        "i can help",
-        "i can list",
-        "i can show",
-        "i can check",
-        "i can create",
-        "i can make",
-        "i can write",
-        "here are your",
-        "here's your",
-        "let me find",
-        "i'd need to",
-        "i would need to",
-        "i don't have access",
-        "i can't access",
-        "i cannot access",
-        "done!",
-        "all set",
-        "file has been created",
-        "has been saved",
-        "successfully created",
+        // Past-tense pronouned claims — model says it did something but didn't.
         "i've created",
         "i've saved",
         "i've written",
-        "would you like me to",
-        "shall i ",
-        "should i ",
-        "to do this, i",
-        "to accomplish this",
-        "unfortunately, i",
-        "unfortunately i",
-        "i need to use",
-        "i need access to",
-        "using the ",
-        "by using ",
-        "with the tool",
-        "call the ",
-        "calling the ",
-        "executing ",
-        "executed the ",
+        "i've executed",
+        "i've run",
+        "i created the",
+        "i saved the",
+        "i wrote the",
+        // Past-tense unpronouned claims with output attachment.
+        "saved as ",
+        "saved in ",
+        "saved to ",
+        "saved at ",
+        "wrote to ",
+        "created at ",
+        "the file path is",
+        "here is the file",
+        "open it to view",
+        // Explicit success markers.
+        "successfully created",
+        "successfully saved",
+        "successfully wrote",
+        "successfully executed",
+        "file has been created",
+        "file has been saved",
+        "file has been written",
+        "has been created at",
+        "has been saved to",
+        "has been written to",
+        // Terminal "done" markers — narrate completion of work that didn't happen.
+        "done!",
+        "all set",
     ];
     narration_signals.iter().any(|s| lower.contains(s))
 }
@@ -857,22 +860,64 @@ mod heuristic_tests {
 
     #[test]
     fn narration_detected() {
-        assert!(response_wanted_tools(
-            "Creating a webpage to market the project."
-        ));
-        assert!(response_wanted_tools(
-            "Saved as `chump-marketing.html`. Open it to view."
-        ));
-        assert!(response_wanted_tools("I'll list your tasks now."));
-        assert!(response_wanted_tools("Let me check the repository status."));
+        // True narration: claims a side effect that should have come from a tool.
+        assert!(
+            response_wanted_tools("Saved as `chump-marketing.html`. Open it to view."),
+            "saved-as + open-it-to-view is a classic narration pattern"
+        );
         assert!(response_wanted_tools("I've created the file for you."));
+        assert!(response_wanted_tools(
+            "Successfully created the README at /tmp/foo/README.md"
+        ));
+        assert!(response_wanted_tools("Done! The file has been saved."));
+        assert!(response_wanted_tools(
+            "I've executed the migration. All set."
+        ));
     }
 
     #[test]
     fn clean_responses_not_flagged() {
+        // Numerical / static answers — never narration.
         assert!(!response_wanted_tools("2 + 2 = 4."));
-        assert!(!response_wanted_tools("Hello! How can I help?"));
         assert!(!response_wanted_tools("The answer is 42."));
+    }
+
+    /// INFRA-177 (2026-05-01): regression test for the bug that fired the
+    /// narration retry on routine conversational replies. Each of these is
+    /// the kind of message that triggered 3 model calls (~3.6 min) on
+    /// "what can you do?"-style questions — they MUST NOT be flagged as
+    /// narration, because they're capability descriptions or planning
+    /// language, not false claims of completed work.
+    #[test]
+    fn capability_descriptions_not_narration() {
+        // The actual response that triggered the original bug.
+        assert!(!response_wanted_tools(
+            "I can perform various tasks like coding, debugging, researching, \
+             and automating repetitive work. I also have skills for specific \
+             procedures and can manage my own capabilities to improve over time. \
+             Let me know what you need help with!"
+        ));
+        // Variations on capability prose.
+        assert!(!response_wanted_tools(
+            "I can run shell commands, write files, and manage GitHub PRs."
+        ));
+        assert!(!response_wanted_tools(
+            "I can list files, check directory contents, and search code."
+        ));
+        assert!(!response_wanted_tools("Hello! How can I help?"));
+        // Future-tense intent — model is planning, not lying.
+        assert!(
+            !response_wanted_tools("I'll list your tasks now."),
+            "future-tense intent is not narration; the model is announcing what it plans to do next"
+        );
+        assert!(
+            !response_wanted_tools("Let me check the repository status."),
+            "let-me planning is not narration"
+        );
+        assert!(
+            !response_wanted_tools("Creating a webpage to market the project."),
+            "present-progressive verbs match prose constantly; this is e.g. a description, not narration"
+        );
     }
 }
 
