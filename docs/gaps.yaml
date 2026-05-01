@@ -15609,3 +15609,68 @@ gaps:
     - "No regression: 'list my tasks' still sends tools and runs the action"
   raised_by: claude
   raised_in: '2026-05-01 — user feedback "that''s so slow" after INFRA-177; tracing log identified prefill as 99% of latency'
+
+- id: INFRA-182
+  domain: INFRA
+  title: 'tool routing: send 3-8 relevant tools per turn (route_tools in chump-perception) instead of all 46'
+  status: open
+  priority: P0
+  effort: m
+  opened_date: '2026-05-01'
+  description: |
+    Even after INFRA-180 (capability-question skip-tools), tool-using
+    PWA turns are still slow because every turn ships ALL 46 chump tool
+    schemas (~5KB) to the model. Verified 2026-05-01 15:01:58 turn:
+    "hey chump show me something cool" → 150 seconds total (71s round 1
+    + 80s round 2). Both rounds carry the full 5KB tool schema; on
+    qwen2.5:14b @ ~150-300 t/s prefill that's 15-60s per round before
+    a single token of generation. The model used 1 tool (calculator)
+    out of 46 sent.
+
+    Fix: build a route_tools(perception, all_tools) → Vec<Tool> function
+    that returns only the relevant tool subset based on chump-perception's
+    structured output (already extracted to a crate, returns task_type +
+    entities + constraints + risks + ambiguity_level).
+
+    Routing rules to start:
+      - task_type=Meta (capability Q's)              → []
+      - task_type=Question + time/date entities      → [date, time]
+      - task_type=Action  + math entities            → [calculator]
+      - task_type=Action  + "task" in text           → [task_create, task_list, task_close, task_status]
+      - task_type=Action  + file paths in entities   → [read_file, write_file, patch_file, list_dir]
+      - task_type=Research                            → [web_search, codebase_digest, search_memory]
+      - task_type=Action  + git/cargo entities       → [bash, git, cargo]
+      - task_type=Unclear (fallback)                  → "starter pack" of ~6 most-used (calculator,
+                                                        task_create, read_file, web_search, codebase_digest, bash)
+
+    Architecture: extend chump-perception (NOT rebuild). The crate already
+    runs structured pure-rule perception. Add route_tools() as a new pub fn
+    in chump-perception/src/lib.rs (or a small new chump-tool-router crate
+    if it grows beyond ~100 lines). orchestrator.rs calls it instead of
+    self.registry.get_all_for_llm() — diff is ~3 lines.
+
+    Safety net: if the model says "I need to do X" and X requires a tool
+    not in the routed subset, the agent loop's narration-detection at
+    iteration_controller line 245 already retries with the FULL tool set.
+    So worst case is one extra round (with full tools) — same as today's
+    cost — but the common case drops from 150s to ~30s.
+
+    Expected impact:
+      - "hey chump show me something cool" + math:    150s → 30-50s   (3-5×)
+      - "list my tasks":                              150s → 25-40s   (4-6×)
+      - "summarize this file":                        150s → 30-50s   (3-5×)
+      - "what can you do":                              8s →   5s    (already fast post-INFRA-180)
+
+    Out of scope (separate gaps):
+      - Switch default model to qwen2.5:7b (config change, INFRA-181 follow-up)
+      - LLM-based intent classification (would add latency; rule-based first)
+      - Embedding-based tool retrieval (more complex, future)
+  acceptance_criteria:
+    - "chump-perception exposes a pub fn route_tools(perception: &PerceivedInput, all_tools: &[Tool]) -> Vec<Tool>"
+    - "orchestrator.rs calls route_tools() instead of get_all_for_llm() when tools are sent"
+    - "Unit tests cover all 7 routing rules in the table above with representative prompts"
+    - "Live test on PWA: 'hey chump show me something cool' (math path) completes in <60s on qwen2.5:14b (down from 150s)"
+    - "Regression test: 'list my tasks' still calls task tools and finishes successfully (no tool fell out of the subset)"
+    - "If routed subset doesn't satisfy the model, the existing retry-with-full-tools path at iteration_controller line 245 fires correctly (no infinite loop)"
+  raised_by: claude
+  raised_in: '2026-05-01 — user feedback: 150s for "hey chump show me something cool" after INFRA-180; tracing showed both LLM rounds carrying full 5KB tool schema'
