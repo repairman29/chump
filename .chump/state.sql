@@ -3210,7 +3210,7 @@ gaps:
 - id: FLEET-019
   domain: FLEET
   title: Ambient-on-spawn matrix wiring umbrella — auto-inject stream into every new agent
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -3220,11 +3220,13 @@ gaps:
     - FLEET-021 PreToolUse re-injection lands
     - FLEET-022 install-ambient-hooks.sh exists and is idempotent
     - new chump-orchestrator-dispatched agents inherit hooks via shared user settings dir
+  closed_date: '2026-05-01'
+  closed_pr: 696
 
 - id: FLEET-020
   domain: FLEET
   title: ambient-context-inject.sh — SessionStart hook injects last 30 events + active leases as system context
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -3234,11 +3236,13 @@ gaps:
     - outputs valid Claude Code SessionStart hook JSON with hookSpecificOutput.additionalContext
     - tested via stdin-stub and verified context block appears in a fresh session
   depends_on: [FLEET-019]
+  closed_date: '2026-05-01'
+  closed_pr: 696
 
 - id: FLEET-021
   domain: FLEET
   title: PreToolUse re-injection of ambient stream at flow points (commit / pr / gap claim)
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -3248,11 +3252,13 @@ gaps:
     - context injection script reused (no duplicate logic)
     - disabled with CHUMP_AMBIENT_REINJECT=0 env var
   depends_on: [FLEET-019]
+  closed_date: '2026-05-01'
+  closed_pr: 696
 
 - id: FLEET-022
   domain: FLEET
   title: install-ambient-hooks.sh — idempotent one-command installer for matrix hooks
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -3263,6 +3269,8 @@ gaps:
     - prints what changed
     - "--dry-run flag prints planned diff without writing"
   depends_on: [FLEET-019]
+  closed_date: '2026-05-01'
+  closed_pr: 696
 
 - id: FLEET-14
   domain: fleet

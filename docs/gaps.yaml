@@ -15802,7 +15802,9 @@ gaps:
 - id: FLEET-019
   domain: FLEET
   title: 'Ambient-on-spawn matrix wiring umbrella — auto-inject stream into every new agent'
-  status: open
+  status: done
+  closed_pr: 696
+  closed_date: '2026-05-01'
   priority: P1
   effort: m
   opened_date: '2026-05-01'
@@ -15816,7 +15818,9 @@ gaps:
 - id: FLEET-020
   domain: FLEET
   title: 'ambient-context-inject.sh — SessionStart hook injects last 30 events + active leases as system context'
-  status: open
+  status: done
+  closed_pr: 696
+  closed_date: '2026-05-01'
   priority: P1
   effort: s
   opened_date: '2026-05-01'
@@ -15831,7 +15835,9 @@ gaps:
 - id: FLEET-021
   domain: FLEET
   title: 'PreToolUse re-injection of ambient stream at flow points (commit / pr / gap claim)'
-  status: open
+  status: done
+  closed_pr: 696
+  closed_date: '2026-05-01'
   priority: P2
   effort: s
   opened_date: '2026-05-01'
@@ -15846,7 +15852,9 @@ gaps:
 - id: FLEET-022
   domain: FLEET
   title: 'install-ambient-hooks.sh — idempotent one-command installer for matrix hooks'
-  status: open
+  status: done
+  closed_pr: 696
+  closed_date: '2026-05-01'
   priority: P1
   effort: s
   opened_date: '2026-05-01'
