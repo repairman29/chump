@@ -15550,3 +15550,45 @@ gaps:
     - "PWA: 'what kind of cool tricks can you do?' completes in ONE model round (~30-90s on local model), not three"
   raised_by: claude
   raised_in: '2026-05-01 — debugged from chump_web_messages turn 547 + 3-bubble PWA repro'
+
+- id: INFRA-179
+  domain: INFRA
+  title: 'scripts/dev/restart-chump-web.sh — one-command kill + rebuild + relaunch local PWA server'
+  status: done
+  priority: P2
+  effort: xs
+  closed_pr: TBD
+  closed_date: '2026-05-01'
+  opened_date: '2026-05-01'
+  description: |
+    Shipped fixes to the agent loop / streaming provider / web server
+    don't take effect until the running binary is replaced. Manual flow
+    `pkill chump && cargo build && ./target/release/chump --web --port
+    3000 &` works but is finger-stumbling — easy to forget the rebuild
+    step and end up serving stale code (exactly the case for INFRA-177's
+    fix until this script exists).
+
+    Adds scripts/dev/restart-chump-web.sh that does it atomically:
+      1. Find + kill any existing chump --web on the target port (SIGTERM
+         3s grace, then SIGKILL stragglers)
+      2. Confirm the port is free; refuse to kill non-chump processes
+      3. git pull --rebase --autostash origin main (skippable with
+         --skip-pull)
+      4. cargo build --release --bin chump (skippable with --skip-build)
+      5. nohup launch with log to /tmp/chump-web-<ts>.log
+      6. Poll the PWA until it responds, with timeout
+
+    Defaults: port 3000, release build, background w/ log capture, 60s
+    PWA timeout. All overridable via --port / --skip-* / --foreground /
+    --timeout flags. CHUMP_RESTART_LOG env overrides log path.
+
+    Exit codes documented: 0 ok, 1 build failed, 2 PWA didn't come up,
+    3 port held by non-chump process.
+  acceptance_criteria:
+    - "scripts/dev/restart-chump-web.sh exists and is executable"
+    - "Default invocation kills existing chump --web, rebuilds, restarts on port 3000, returns 0 when PWA responds"
+    - "--skip-build and --skip-pull flags work (verified by parse test)"
+    - "Refuses to kill a non-chump process bound to the target port (exit 3)"
+    - "First end-to-end run on 2026-05-01 picks up INFRA-177's fix without the operator remembering to rebuild"
+  raised_by: claude
+  raised_in: '2026-05-01 — operator asked to restart server after INFRA-177 landed; one-command path was missing'
