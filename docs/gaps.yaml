@@ -15499,96 +15499,53 @@ gaps:
   raised_by: claude
   raised_in: '2026-04-30 — surfaced after v0.1.1 release succeeded but tap stayed empty'
 
-- id: INFRA-177
+- id: INFRA-178
   domain: INFRA
-  title: 'narration-detection retry: 50+ false-positive phrases waste 2 model rounds per conversational reply'
-  status: done
-  priority: P0
-  effort: s
-  closed_pr: TBD
-  closed_date: '2026-05-01'
-  opened_date: '2026-05-01'
-  description: |
-    `agent_loop::types::response_wanted_tools()` had 50+ phrase patterns
-    that fired on routine conversational text — `"i can help"`, `"i can show"`,
-    `"running "`, `"writing "`, `"checking "`, `"i'll "`, `"let me "` etc.
-    These all matched capability descriptions and self-introductions, so
-    EVERY reply to a "what can you do?"-style question got flagged as
-    "narration without tools" and the agent loop retried twice
-    (iteration_controller line 245's `model_calls_count <= 2 &&
-    response_wanted_tools(payload)` gate).
-
-    Concrete impact observed in chump_web_messages turn 547 (00:18:54):
-      - User: "what kind of cool tricks can you do?"
-      - duration_ms: 217543 (~3.6 minutes wall-clock)
-      - tool_calls: 0 (no tools actually ran)
-      - model_calls: 3 (first 2 wasted by narration-retry false positive)
-      - PWA bubble: 3 different responses concatenated without separator
-        (frontend's text_delta accumulator has no per-round reset)
-
-    Cost: 3× provider calls per chat turn whenever the model says anything
-    like "I can help" — which is most replies to capability questions.
-    On a 2.5 t/s local model with ~150-token responses, that's ~3 minutes
-    of extra latency + 3× tokens billed (cloud) or 3× local-GPU time per
-    turn. PWA users see 3 redundant paragraphs.
-
-    Fix: rewrote response_wanted_tools to a conservative list — only
-    actual past-tense success claims with output attachment count.
-    Capability descriptions, future-tense intent, and generic verbs
-    are removed. New tests pin both the catch (real narration still
-    flagged) and the regression (capability prose no longer triggers).
-
-    Follow-up (separate gap): the PWA frontend (web/v2/chat.js) should
-    also clear the bubble's accumulated text on `model_call_start` event
-    so multi-round responses don't visually concatenate. Even with this
-    fix, multi-round retries are still possible (legitimate tool-use
-    cases) and the bubble would still concatenate them.
-  acceptance_criteria:
-    - "response_wanted_tools no longer fires on 'I can help', 'I can show', 'I can run shell commands' etc"
-    - "Test capability_descriptions_not_narration covers the exact bug-trigger text from turn 547"
-    - "Real narration patterns ('Saved as X. Open it to view.', 'Successfully created at /tmp/foo') still detected"
-    - "PWA: 'what kind of cool tricks can you do?' completes in ONE model round (~30-90s on local model), not three"
-  raised_by: claude
-  raised_in: '2026-05-01 — debugged from chump_web_messages turn 547 + 3-bubble PWA repro'
-
-- id: INFRA-179
-  domain: INFRA
-  title: 'scripts/dev/restart-chump-web.sh — one-command kill + rebuild + relaunch local PWA server'
-  status: done
-  priority: P2
+  title: 'PWA chat bubble concatenates multi-round responses — clear text on model_call_start'
+  status: open
+  priority: P1
   effort: xs
-  closed_pr: TBD
-  closed_date: '2026-05-01'
   opened_date: '2026-05-01'
   description: |
-    Shipped fixes to the agent loop / streaming provider / web server
-    don't take effect until the running binary is replaced. Manual flow
-    `pkill chump && cargo build && ./target/release/chump --web --port
-    3000 &` works but is finger-stumbling — easy to forget the rebuild
-    step and end up serving stale code (exactly the case for INFRA-177's
-    fix until this script exists).
+    The PWA chat frontend (`web/v2/chat.js`) accumulates SSE `text_delta`
+    events into a single `fullText` variable per turn, rendered into one
+    bubble. When the agent loop runs multiple model rounds within a turn
+    (legitimate tool-use cases, OR pre-INFRA-177 narration retries), each
+    round's text streams into the SAME bubble — concatenated without
+    separator.
 
-    Adds scripts/dev/restart-chump-web.sh that does it atomically:
-      1. Find + kill any existing chump --web on the target port (SIGTERM
-         3s grace, then SIGKILL stragglers)
-      2. Confirm the port is free; refuse to kill non-chump processes
-      3. git pull --rebase --autostash origin main (skippable with
-         --skip-pull)
-      4. cargo build --release --bin chump (skippable with --skip-build)
-      5. nohup launch with log to /tmp/chump-web-<ts>.log
-      6. Poll the PWA until it responds, with timeout
+    Discovered alongside INFRA-177 (chump_web_messages turn 547,
+    2026-05-01 00:18:54): the user saw 3 different "I can do various
+    things…" responses concatenated into one bubble:
+      "I can perform various tasks like coding, debugging, researching,
+      and automating repetitive work. […] Let me know what you need help
+      with!I can perform various tasks and tricks like coding, debugging,
+      research, automating repetitive work, and even teaching you new
+      skills. […] Want to see a specific trick or task in action?I can
+      perform various coding tasks, manage project files, run shell
+      commands […]"
 
-    Defaults: port 3000, release build, background w/ log capture, 60s
-    PWA timeout. All overridable via --port / --skip-* / --foreground /
-    --timeout flags. CHUMP_RESTART_LOG env overrides log path.
+    INFRA-177 fixed the FALSE-POSITIVE retries (the 3-round "what cool
+    tricks" turn now runs in 1 round). But legitimate multi-round turns
+    — e.g. the agent calls a tool, gets a result, then calls the model
+    again to summarize — would still hit this bubble-concat bug. The
+    user would see two prose chunks fused into one paragraph with no
+    visual break.
 
-    Exit codes documented: 0 ok, 1 build failed, 2 PWA didn't come up,
-    3 port held by non-chump process.
+    Fix: on the `model_call_start` SSE event handler in chat.js, clear
+    `fullText` and reset the bubble innerHTML. Each round renders its
+    own text into a fresh bubble (or a sub-bubble in the same message
+    block). Ideally: append a thin separator + "Round N" label so the
+    user can see when the agent took a tool-use detour.
+
+    Backend already emits `AgentEvent::ModelCallStart { round: N }` per
+    `streaming_provider.rs:74`; frontend already handles it (chat.js
+    line 234) but only updates the thinking-line hint — doesn't clear
+    fullText.
   acceptance_criteria:
-    - "scripts/dev/restart-chump-web.sh exists and is executable"
-    - "Default invocation kills existing chump --web, rebuilds, restarts on port 3000, returns 0 when PWA responds"
-    - "--skip-build and --skip-pull flags work (verified by parse test)"
-    - "Refuses to kill a non-chump process bound to the target port (exit 3)"
-    - "First end-to-end run on 2026-05-01 picks up INFRA-177's fix without the operator remembering to rebuild"
+    - "On model_call_start event, web/v2/chat.js clears fullText and the bubble innerHTML"
+    - "Multi-round responses appear as N separate text blocks in the bubble (or N stacked bubbles), not concatenated"
+    - "Optional: a thin separator showing 'Round N' between blocks so the user understands the structure"
+    - "test-tauri-e2e or a new web smoke test verifies multi-round behavior — either: (a) inject a forced 2-round response into the SSE stream and assert the rendered DOM has 2 distinct text blocks, OR (b) live-fire a turn that triggers tool use + summary and assert both texts are visible separately"
   raised_by: claude
-  raised_in: '2026-05-01 — operator asked to restart server after INFRA-177 landed; one-command path was missing'
+  raised_in: '2026-05-01 — surfaced during INFRA-177 PWA bubble investigation; deferred from that PR for atomicity'
