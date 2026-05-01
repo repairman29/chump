@@ -1348,6 +1348,13 @@ gaps:
   notes: |
     See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #6 of 6. Pure doc. depends-on: INFRA-165 (the seam doesn't exist until then).
 
+- id: DOC-014
+  domain: DOC
+  title: ONBOARDING.md '<60s FTUE' claim is false until bottles ship — qualify or remove
+  status: open
+  priority: P0
+  effort: xs
+
 - id: EVAL-001
   domain: eval
   title: Expand eval suite from 5 to 30+ cases with golden trajectory tests
@@ -3199,6 +3206,63 @@ gaps:
   opened_date: '2026-04-26'
   closed_date: '2026-04-28'
   closed_pr: 635
+
+- id: FLEET-019
+  domain: FLEET
+  title: Ambient-on-spawn matrix wiring umbrella — auto-inject stream into every new agent
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Umbrella for ambient-on-spawn matrix wiring: every new Claude/chump agent immediately taps into .chump-locks/ambient.jsonl + cross-machine NATS stream as system context, not via manual tail per CLAUDE.md. Builds on FLEET-004 (write side) and FLEET-006 (NATS bridge); fills the read-on-spawn injection gap and adds PreToolUse re-injection at flow points + a one-command installer.
+  acceptance_criteria:
+    - FLEET-020 SessionStart auto-injection lands
+    - FLEET-021 PreToolUse re-injection lands
+    - FLEET-022 install-ambient-hooks.sh exists and is idempotent
+    - new chump-orchestrator-dispatched agents inherit hooks via shared user settings dir
+
+- id: FLEET-020
+  domain: FLEET
+  title: ambient-context-inject.sh — SessionStart hook injects last 30 events + active leases as system context
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    scripts/coord/ambient-context-inject.sh: tails last 30 events from .chump-locks/ambient.jsonl + lists active leases + emits as Claude Code SessionStart additionalContext JSON. Wired into ~/.claude/settings.json SessionStart hook by FLEET-022 installer.
+  acceptance_criteria:
+    - script exists and is executable
+    - outputs valid Claude Code SessionStart hook JSON with hookSpecificOutput.additionalContext
+    - tested via stdin-stub and verified context block appears in a fresh session
+  depends_on: [FLEET-019]
+
+- id: FLEET-021
+  domain: FLEET
+  title: PreToolUse re-injection of ambient stream at flow points (commit / pr / gap claim)
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    PreToolUse hook config that re-injects last 10 ambient events when matcher hits flow-point commands (git commit, gh pr, chump gap claim, bot-merge.sh). Catches sibling agents who started after our SessionStart injection.
+  acceptance_criteria:
+    - matcher pattern catches the 4 flow-point commands
+    - context injection script reused (no duplicate logic)
+    - disabled with CHUMP_AMBIENT_REINJECT=0 env var
+  depends_on: [FLEET-019]
+
+- id: FLEET-022
+  domain: FLEET
+  title: install-ambient-hooks.sh — idempotent one-command installer for matrix hooks
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    scripts/setup/install-ambient-hooks.sh: idempotent one-command installer that merges SessionStart + PostToolUse + PreToolUse + Stop hook entries into ~/.claude/settings.json without clobbering existing hooks. Detects pre-FLEET-019 inline hooks and rewrites them to the new script-based form.
+  acceptance_criteria:
+    - running twice produces no diff (idempotent)
+    - preserves existing non-ambient hooks
+    - prints what changed
+    - "--dry-run flag prints planned diff without writing"
+  depends_on: [FLEET-019]
 
 - id: FLEET-14
   domain: fleet
@@ -6530,7 +6594,7 @@ gaps:
 - id: INFRA-164
   domain: INFRA
   title: Drop ChumpMenu from steady-state launch path; document PWA as canonical local UI
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -6542,6 +6606,8 @@ gaps:
     - no Rust/Tauri code changes in this PR — pure operational/doc
   notes: |
     See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #1 of 6. Why first: closes ESTABLISHED-connection-contention failure class with zero code. Tauri code deletion deferred to its own follow-on so this PR stays scoped.
+  closed_date: '2026-04-29'
+  closed_pr: 661
 
 - id: INFRA-165
   domain: INFRA
@@ -6614,6 +6680,155 @@ gaps:
     - "test: reserve a new gap in SQLite, immediately run gap-preflight + gap-claim + bot-merge.sh on a fresh worktree — full ship without escape hatches, with gaps.yaml regenerated only at the auto-close-on-ship step"
   notes: |
     Filed during the PRODUCT-022 ship that motivated it. Today's symptom: 'M docs/gaps.yaml' kept reappearing in the unstaged column after each git checkout origin/main, blocking bot-merge.sh rebase. Likely culprits: gap-claim.sh side effect, chump-coord watch background process, or a post-checkout hook. Audit those as part of the fix. Cross-link with INFRA-155 (gap-doctor.py drift detector — already running) and the auto-close-on-ship flow (INFRA-154, 2026-04-28).
+
+- id: INFRA-169
+  domain: INFRA
+  title: "ftue-clean-machine workflow: cannot land artifact on main — Actions blocked from both PR-create AND direct-push"
+  status: open
+  priority: P1
+  effort: xs
+
+- id: INFRA-170
+  domain: INFRA
+  title: chump lesson add CLI (renamed from INFRA-163 collision)
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-171
+  domain: INFRA
+  title: "ftue-clean-machine workflow: tighten cadence — per-PR (path-filtered) + weekly cron, drop monthly"
+  status: open
+  priority: P1
+  effort: xs
+
+- id: INFRA-172
+  domain: INFRA
+  title: Enable Homebrew installer in cargo-dist + create repairman29/homebrew-chump tap (true <60s FTUE)
+  status: open
+  priority: P0
+  effort: s
+
+- id: INFRA-173
+  domain: INFRA
+  title: "FTUE workflow: test bottle path (real user) once bottles exist; keep source-build as fallback"
+  status: open
+  priority: P1
+  effort: xs
+
+- id: INFRA-174
+  domain: INFRA
+  title: Enable Homebrew installer in cargo-dist + create repairman29/homebrew-chump tap (renamed from INFRA-172 collision)
+  status: open
+  priority: P0
+  effort: s
+
+- id: INFRA-175
+  domain: INFRA
+  title: "FTUE workflow: test bottle path (real user) once bottles exist; keep source-build as fallback (renamed from INFRA-173 collision)"
+  status: open
+  priority: P1
+  effort: xs
+
+- id: INFRA-176
+  domain: INFRA
+  title: "release.yml: auto-publish formula to homebrew-chump tap on every release (HOMEBREW_TAP_TOKEN)"
+  status: open
+  priority: P1
+  effort: xs
+
+- id: INFRA-177
+  domain: INFRA
+  title: "narration-detection retry: 50+ false-positive phrases waste 2 model rounds per conversational reply"
+  status: open
+  priority: P0
+  effort: s
+
+- id: INFRA-178
+  domain: INFRA
+  title: PWA chat bubble concatenates multi-round responses — clear text on model_call_start
+  status: open
+  priority: P1
+  effort: xs
+
+- id: INFRA-179
+  domain: INFRA
+  title: scripts/dev/restart-chump-web.sh — one-command kill + rebuild + relaunch local PWA server
+  status: open
+  priority: P2
+  effort: xs
+
+- id: INFRA-180
+  domain: INFRA
+  title: send 5KB of tool schema on every PWA chat turn (46 tools, mostly unused) — 53s prefill bottleneck
+  status: open
+  priority: P0
+  effort: s
+
+- id: INFRA-181
+  domain: INFRA
+  title: "restart-chump-web.sh: silently builds stale source when git pull fails — must abort or surface"
+  status: open
+  priority: P2
+  effort: xs
+
+- id: INFRA-182
+  domain: INFRA
+  title: "tool routing: send 3-8 relevant tools per turn (route_tools in chump-perception) instead of all 46"
+  status: open
+  priority: P0
+  effort: m
+
+- id: INFRA-183
+  domain: INFRA
+  title: PWA latency budget umbrella — measure + fix the 6 known PWA slow paths (partner-agent diagnosis)
+  status: open
+  priority: P0
+  effort: l
+
+- id: INFRA-184
+  domain: INFRA
+  title: Plain-prose CoT routing to thinking_delta for reasoning models without <think> tags (INFRA-183 sub)
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Extend src/local_openai.rs:81-185 chunk processor to recognize plain-prose reasoning patterns (e.g. 'Thinking Process:\n\n1.' followed by blank line + final answer) and route them to AgentEvent::ThinkingDelta instead of dropping them. Today only <think>...</think>-wrapped content is routed; reasoning models that don't use those tags emit invisible CoT and the user sees only keepalive pings until the final answer.
+  acceptance_criteria:
+    - chunk processor detects plain-prose CoT prefix
+    - emits ThinkingDelta during reasoning phase
+    - TextDelta only fires after reasoning ends
+    - unit tests for both <think>-wrapped and plain-prose paths
+  depends_on: [INFRA-183]
+
+- id: INFRA-185
+  domain: INFRA
+  title: Phase-level timing breakdown — compaction / provider / tools ms on existing [timing] logs (INFRA-183 sub)
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Add phase-level timing instrumentation: compaction_ms / provider_ms / tools_ms on top of the existing [timing] stream_request_ms log lines at src/local_openai.rs:1021/1124/1133 and src/agent_loop/orchestrator.rs:129. So we can see where the agent loop spends its time per turn, not just the LLM round-trip.
+  acceptance_criteria:
+    - "tracing::info span per phase"
+    - fields visible in logs
+    - emit single end-of-turn structured event with all phase ms summed
+    - enabled by default; CHUMP_PHASE_TIMING=0 disables
+  depends_on: [INFRA-183]
+
+- id: INFRA-186
+  domain: INFRA
+  title: "naming convention reset: branch + worktree are chump-first (project owns namespace, not the tool)"
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-187
+  domain: INFRA
+  title: "tooling enforcement for chump-first naming: bot-merge.sh default chump/, gap-claim accepts any prefix"
+  status: open
+  priority: P2
+  effort: xs
 
 - id: INFRA-41
   domain: infra
@@ -7828,6 +8043,20 @@ gaps:
     - "verification: curl http://127.0.0.1:11434/api/ps shows qwen2.5:7b resident at ~4.7GB after first turn"
   notes: |
     See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #5 of 6. Independent — can ship anytime. Both 7B and 14B already pulled in Ollama (verified 2026-04-28).
+
+- id: PRODUCT-024
+  domain: PRODUCT
+  title: PWA chat default to non-reasoning model (INFRA-183 sub) — biggest UX win
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    Switch chat default to non-reasoning model (qwen2.5:14b or llama3.1) instead of the reasoning model currently served on MLX :8000. Measured: 56.985 s for 'pong' = 4 chars, 1 user-visible delta, 114 keepalive pings, 0 visible reasoning. Ground-truth probe captured in INFRA-183 umbrella body. Single largest UX win for near-zero code.
+  acceptance_criteria:
+    - default model env in run-web.sh / .env switched to non-reasoning
+    - measured pong-prompt turn under 5s
+    - original reasoning model still selectable via override env
+  depends_on: [INFRA-183]
 
 - id: QUALITY-001
   domain: reliability
