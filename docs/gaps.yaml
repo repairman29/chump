@@ -15884,7 +15884,9 @@ gaps:
 - id: INFRA-184
   domain: INFRA
   title: 'Plain-prose CoT routing to thinking_delta for reasoning models without <think> tags (INFRA-183 sub)'
-  status: open
+  status: done
+  closed_pr: 701
+  closed_date: '2026-05-01'
   priority: P1
   effort: m
   opened_date: '2026-05-01'

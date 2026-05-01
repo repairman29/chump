@@ -6799,7 +6799,7 @@ gaps:
 - id: INFRA-184
   domain: INFRA
   title: Plain-prose CoT routing to thinking_delta for reasoning models without <think> tags (INFRA-183 sub)
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -6810,6 +6810,8 @@ gaps:
     - TextDelta only fires after reasoning ends
     - unit tests for both <think>-wrapped and plain-prose paths
   depends_on: [INFRA-183]
+  closed_date: '2026-05-01'
+  closed_pr: 701
 
 - id: INFRA-185
   domain: INFRA
