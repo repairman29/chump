@@ -16216,9 +16216,11 @@ gaps:
 - id: INFRA-192
   domain: INFRA
   title: 'forward-chain notifier: post gap_unblocked event when a PR closes a depends_on link'
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_pr: TBD
+  closed_date: '2026-05-01'
   opened_date: '2026-05-01'
   description: |
     Today when a PR merges that closes a gap, downstream gaps with
