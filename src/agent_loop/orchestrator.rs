@@ -180,7 +180,18 @@ impl ChumpAgent {
             }
         };
 
-        let skip_tools_first_call = ctx.light && !needs_tools_hint;
+        // INFRA-180 (2026-05-01): was `ctx.light && !needs_tools_hint`. The
+        // ctx.light requirement made this gate dead code for the web PWA
+        // path (light only fires for explicit "light mode" callers; web is
+        // heavy). Every PWA chat turn shipped all 46 tool schemas (~5KB) to
+        // the model, adding 15-60s of prefill on local 14B models — observed
+        // 53s end-to-end for "what kind of cool tricks can you do?". With
+        // the gate dropped to just !needs_tools_hint, conversational and
+        // capability questions skip tools on the first call. If the model
+        // actually wanted tools (StopReason::ToolUse with empty tool_calls,
+        // or narration detected via response_wanted_tools), the loop
+        // retries with tools — see iteration_controller line 245.
+        let skip_tools_first_call = !needs_tools_hint;
 
         let tool_runner = ToolRunner {
             executor: &executor,

@@ -15549,3 +15549,63 @@ gaps:
     - "test-tauri-e2e or a new web smoke test verifies multi-round behavior — either: (a) inject a forced 2-round response into the SSE stream and assert the rendered DOM has 2 distinct text blocks, OR (b) live-fire a turn that triggers tool use + summary and assert both texts are visible separately"
   raised_by: claude
   raised_in: '2026-05-01 — surfaced during INFRA-177 PWA bubble investigation; deferred from that PR for atomicity'
+
+- id: INFRA-180
+  domain: INFRA
+  title: 'PWA chat ships 5KB tool schema every turn (46 tools) — 53s prefill bottleneck on local 14B'
+  status: done
+  priority: P0
+  effort: s
+  closed_pr: TBD
+  closed_date: '2026-05-01'
+  opened_date: '2026-05-01'
+  description: |
+    User reported "that's so slow" after INFRA-177 dropped the narration
+    retries. Even with one round, "what kind of cool tricks can you do?"
+    on the local PWA took 53 seconds — verified via /tmp/chump-web-*.log:
+    agent_turn → calling_LLM in 3ms, then LLM call alone takes 53s. ZERO
+    tool calls fired in the offending turn (chump_turn_metrics row).
+
+    Root cause: every PWA chat turn ships all 46 chump tool schemas (~50-200
+    tokens each = 2.3-9.2KB) to the model in the system prompt. On
+    qwen2.5:14b via Ollama at ~150-300 t/s prefill, that's 15-60s before
+    the first generated token. Generation itself is fast (~12 t/s × 100
+    tokens = 8s). 53s observed = mostly prefill of unused tools.
+
+    The skip-tools mechanism EXISTS (orchestrator line 183:
+    `skip_tools_first_call = ctx.light && !needs_tools_hint`) but is
+    gated on `ctx.light` which is false for the web path. So skip-tools
+    never fires for PWA users.
+
+    Compounding bug: `message_likely_needs_tools_neuromod` returns true
+    for "any message with > 2 words" or "any question with len > 10" —
+    so even with `ctx.light = true`, the gate would still skip-skip
+    tools for everything except 1-2-word greetings. Tests confirm "hi",
+    "hello", "ok", "thanks" skip tools; everything else doesn't.
+
+    Two-part fix:
+      1. types.rs: add capability-question patterns ("what can you do",
+         "what kind of", "tell me about your", "how do you work", etc.)
+         that return `false` (no tools) BEFORE the action-words and
+         question heuristics fire. Capability questions are about
+         describing capabilities, not invoking them.
+      2. orchestrator.rs: drop the `ctx.light` requirement on
+         `skip_tools_first_call`. Now any message that doesn't trigger
+         the tool-need heuristic skips tools on call 1 — for the web
+         path too. The agent loop already retries with tools at line
+         245 if the model's response narrates a tool use without
+         actually calling one (response_wanted_tools), so we keep the
+         safety net.
+
+    Expected impact: "what cool tricks" turn drops from 53s to ~8s
+    (just generation, no tool prefill). Conversational turns ("hi",
+    "thanks", "got it") drop from ~30s to ~3s. Tool-using turns
+    (e.g. "list my tasks") still send full tools — unchanged.
+  acceptance_criteria:
+    - "message_likely_needs_tools_neuromod returns false for capability-question patterns ('what can you do', 'what kind of', 'tell me about your', etc.)"
+    - "skip_tools_first_call = !needs_tools_hint (no longer gated on ctx.light)"
+    - "Build clean (cargo check --bin chump) — verified in PR"
+    - "Live test on PWA: 'what kind of cool tricks can you do?' completes in <15s on qwen2.5:14b (down from 53s)"
+    - "No regression: 'list my tasks' still sends tools and runs the action"
+  raised_by: claude
+  raised_in: '2026-05-01 — user feedback "that''s so slow" after INFRA-177; tracing log identified prefill as 99% of latency'
