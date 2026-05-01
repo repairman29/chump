@@ -15913,3 +15913,456 @@ gaps:
   - INFRA-183
   raised_by: claude
   raised_in: '2026-05-01 — FLEET-019 matrix wiring (FLEET-* rows) + INFRA-183 sub-gap reification (INFRA-184/185 + PRODUCT-024)'
+
+- id: META-004
+  domain: META
+  title: 'structural-fixes-over-symptom-patches: track 50-coordination-patch backlog vs handful of root-cause fixes'
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-05-01'
+  description: |
+    As of 2026-05-01 the gap registry has **50 open coordination-related
+    gaps** (lease, rebase, dispatcher, drift, queue, fleet, etc.). Each
+    is a real symptom flagged by an agent in the moment. None of them
+    is wrong. But the team is filing 1-3 of these per cycle and closing
+    1-2, so the backlog grows.
+
+    Meanwhile only ~5 STRUCTURAL fixes would close most of them by
+    eliminating root causes:
+
+      A. **Per-file gap registry** (INFRA-188) — kills N×N YAML conflicts
+         by giving each gap its own file. Subsumes INFRA-100, INFRA-105,
+         INFRA-115, INFRA-160, INFRA-176, INFRA-144, INFRA-148.
+
+      B. **Property-based agent contracts** (INFRA-189) — declared file
+         scope per session; pre-commit rejects out-of-scope writes. Kills
+         INFRA-076 leak class, INFRA-081 semantic-collision class,
+         INFRA-085 manual-ship-invisibility, INFRA-110 reserve-time
+         scoped-diff requirement, INFRA-118 chump-commit-reset claim.
+
+      C. **Auto-rebase on DIRTY** (INFRA-190) — bot-merge.sh / pr-watch.sh
+         auto-recover the 80% case where main moved while queued. Kills
+         the 5-times-a-session manual rebase tax. Subsumes INFRA-052,
+         INFRA-119, INFRA-121.
+
+      D. **chump dispatch canonical workflow** (INFRA-191) — single
+         command pulls main, claims, ships, releases. Subsumes the
+         un-shipped half of INFRA-100, INFRA-168.
+
+      E. **Forward-chain notifier** (INFRA-192) — when a PR closes a
+         depends_on link, post gap_unblocked event so downstream agents
+         pick up immediately. Eliminates manual queue-scan.
+
+    Plus three Tier-3 novel ideas worth filing for the future:
+
+      F. **Speculative execution** (INFRA-193) — two agents on same
+         gap; first-to-land wins; loser auto-superseded.
+
+      G. **Closer-PR auto-batcher** (INFRA-194) — coordinator ships one
+         PR with N closures every M hours; reduces queue churn 5-10×.
+
+      H. **Skills feedback loop** (INFRA-195) — shipped PRs distill
+         into chump_skills the next dispatcher reads. Subsumes META-001,
+         META-002, META-003.
+
+    Recommendation: dispatcher (or musher / on-call agent) picks ONE
+    structural fix per cycle and ships it before pulling more
+    symptom-patches. Track here in resolution_notes the PRs that
+    actually closed sub-gaps and which symptom-patches were transitively
+    closed by them.
+
+    Stop filing yet-another-coordination-patch unless it can't be
+    deferred behind one of A-H. The 50→5 collapse is worth more than
+    any single new patch.
+  acceptance_criteria:
+    - "INFRA-188..195 + META-004 (this) all filed with full design notes (this PR)"
+    - "After INFRA-190 ships: count manual rebases per agent-session — should drop from ~5/session to ~0/session"
+    - "After INFRA-188 ships: count gaps.yaml merge-conflicts per week — should drop from ~10/wk to ~0/wk"
+    - "After INFRA-189 ships: count cross-worktree commit leaks (e.g. Test <test@test.com>, INFRA-076-class) — should drop to 0"
+    - "After 3 of A-H ship: re-survey open coordination gaps; expect drop from 50 toward ~15-20 (the residual not yet covered)"
+  raised_by: claude
+  raised_in: '2026-05-01 — operator asked for structural thinking on multi-agent coordination after watching 16-PR session hit 5 manual rebases + 3 ID drifts + naming friction'
+
+- id: INFRA-188
+  domain: INFRA
+  title: 'per-file gap registry: docs/gaps/<DOMAIN>-<NNN>.yaml directory replaces monolithic gaps.yaml'
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-05-01'
+  description: |
+    Single biggest source of merge conflicts in this repo. Today every
+    PR that adds, modifies, or closes a gap touches the same monolithic
+    docs/gaps.yaml — N concurrent PRs = N×N pairwise conflicts. Today
+    alone hit 4 ID drifts (INFRA-097, INFRA-149, INFRA-158, INFRA-172)
+    and 5+ manual rebases caused by gaps.yaml moving while a PR was
+    queued.
+
+    Fix: split the monolithic gaps.yaml into per-gap files:
+      docs/gaps/INFRA-180.yaml
+      docs/gaps/INFRA-181.yaml
+      ...
+
+    Each file is the gap's full row as a top-level YAML document. New
+    gaps create a new file (zero conflict surface). Closing a gap edits
+    a single file (touches lines no other PR can touch unless they're
+    closing the same gap, which is itself a coordination smell).
+
+    Migration:
+      1. Write `chump gap dump --per-file` that emits the directory
+         layout from .chump/state.db (canonical source).
+      2. Write a small CI step that re-aggregates into a single
+         human-readable docs/gaps.yaml as a build artifact (NOT
+         committed) — preserves the gh PR diff readability for humans.
+      3. Update gap-doctor (INFRA-155) to read either layout during
+         transition; default to per-file once 100% migrated.
+      4. Cutover PR: removes monolithic gaps.yaml, adds docs/gaps/*.yaml,
+         updates pre-commit guards (gaps-yaml-integrity, duplicate-id,
+         closed_pr-integrity, etc.) to read directory.
+      5. CI guard: assert no PR adds back a file at docs/gaps.yaml after
+         cutover.
+
+    Existing tooling that reads gaps.yaml directly (rather than via
+    chump gap CLI):
+      - scripts/coord/gap-reserve.sh + gap-preflight.sh + gap-claim.sh
+      - scripts/git-hooks/pre-commit (5 separate guards)
+      - scripts/ci/test-* fixtures
+      - .github/workflows/gap-status-guard.yml
+      - .github/workflows/regenerate-gaps-yaml.yml
+    All need to be updated to use chump gap subcommands (which already
+    abstract the storage layer via SQLite).
+
+    Closes/subsumes when shipped:
+      - INFRA-100 (atomic next-ID picker)
+      - INFRA-105 (lease/state.db convergence)
+      - INFRA-115 (lease TTL server-side enforcement — partial)
+      - INFRA-144 (state.db ↔ docs/gaps.yaml drift detector at PR time —
+        no drift possible if there's no monolith)
+      - INFRA-148 (binary staleness corruption — no monolith to corrupt)
+      - INFRA-160 (orphan rows in state.db with no YAML entry — same)
+      - INFRA-176 (auto-publish formula on release — unrelated, listed
+        in error)
+  acceptance_criteria:
+    - "docs/gaps/<ID>.yaml directory layout exists; chump gap dump --per-file emits it"
+    - "All 5 pre-commit guards (gaps-yaml-integrity, duplicate-id, closed_pr, recycled-id, hijack) work against the per-file layout"
+    - "gap-reserve.sh / gap-claim.sh / gap-preflight.sh updated to use chump gap subcommands instead of reading gaps.yaml directly"
+    - "Cutover PR removes monolithic gaps.yaml; CI guard prevents re-adding it"
+    - "After cutover: 1 week with 0 gaps.yaml merge conflicts (was ~10/wk)"
+  depends_on: [INFRA-155]
+  raised_by: claude
+  raised_in: '2026-05-01 — observed 4 ID drifts + 5 manual rebases caused by monolithic gaps.yaml in a single 16-PR session'
+
+- id: INFRA-189
+  domain: INFRA
+  title: 'property-based agent contracts: declared file scope enforced by pre-commit (kills lease-overlap class)'
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-05-01'
+  description: |
+    Today every agent's "I might touch these files" is implicit — gleaned
+    from the gap description, the worktree branch name, or the commit
+    diff after the fact. No upfront declaration. Result: cross-agent
+    file leaks (INFRA-076 Test <test@test.com> co-author from a sandbox
+    fixture leaking via global git config), wrong-worktree commits
+    (chump-commit.sh reset claim), semantic collisions on the same
+    problem space (INFRA-081), and the manual gap-claim.sh --paths
+    flag that nobody uses.
+
+    Fix: declare file scope at gap-claim time. Agent posts a manifest
+    in the lease file:
+
+      # .chump-locks/<session>.json
+      {
+        "session_id": "...",
+        "gap_id": "INFRA-189",
+        "scope": [
+          "src/agent_loop/**",
+          "crates/chump-perception/**",
+          "docs/gaps/INFRA-189.yaml"
+        ],
+        ...
+      }
+
+    Pre-commit hook reads the lease, computes the staged file paths,
+    rejects writes outside the declared scope. Bypass via
+    CHUMP_SCOPE_CHECK=0 (with reason in commit message) for emergencies.
+
+    Default scope when not declared: the worktree's git diff so far PLUS
+    the canonical "every gap touches these" set
+    (docs/gaps/<gap>.yaml, docs/gaps.yaml during transition,
+    .chump-locks/<session>.json).
+
+    Subsumes/closes:
+      - INFRA-076 (Test <test@test.com>) — out-of-scope edit blocked
+      - INFRA-081 (lease misses semantic collisions) — declared scope
+        IS the semantic collision check
+      - INFRA-085 (manual-ship invisibility) — manifest is the
+        ship-invisible check
+      - INFRA-110 (reserve-time scoped-diff signature) — manifest IS
+        the signature
+      - INFRA-118 (verify chump-commit reset) — scope check makes the
+        reset unnecessary
+  acceptance_criteria:
+    - "scripts/coord/gap-claim.sh accepts a --scope flag (comma-separated globs); writes to lease JSON"
+    - "scripts/git-hooks/pre-commit reads the lease + rejects out-of-scope writes (with helpful diagnostic + bypass env)"
+    - "Default scope (when not declared) computed from already-staged files + canonical gap-row paths"
+    - "Test fixture: a script that creates a sandbox repo, declares scope X, attempts commit on Y → assert rejection"
+    - "After 1 week of agents declaring scope: count out-of-scope-leak commits — should be 0"
+  depends_on: [INFRA-188]
+  raised_by: claude
+  raised_in: '2026-05-01 — observed INFRA-076 Test co-author leak + chump-commit reset class as evidence the no-declaration model is broken'
+
+- id: INFRA-190
+  domain: INFRA
+  title: 'bot-merge.sh + pr-watch.sh: auto-rebase + auto-fix loop on DIRTY (kills 5-times-a-session manual rebase)'
+  status: done
+  priority: P1
+  effort: xs
+  closed_pr: TBD
+  closed_date: '2026-05-01'
+  opened_date: '2026-05-01'
+  description: |
+    The merge queue arms auto-merge optimistically. If main moves
+    between gh-pr-create and queue-entry, the PR goes DIRTY. Today the
+    operator/agent has to manually:
+      1. gh pr merge <N> --disable-auto
+      2. git fetch origin main && git rebase origin/main
+      3. (resolve trivial gaps.yaml conflicts)
+      4. CHUMP_GAP_CHECK=0 git push --force-with-lease
+      5. gh pr merge <N> --auto --squash
+
+    I (this session) ran this 5+ times in 16 PRs. Pure ceremony.
+
+    Fix: scripts/coord/pr-watch.sh (this PR) — polls a PR; when DIRTY,
+    disarms + fetches + rebases + force-pushes + re-arms. Handles the
+    80% case (main moved, no real conflicts). Real content conflicts
+    surface to the operator with exit 3.
+
+    Optional bot-merge.sh hook: at end of arm flow, fire-and-forget
+    `nohup pr-watch.sh "$PR" &` so the agent that shipped the PR doesn't
+    have to babysit it.
+
+    NOT in scope: auto-resolving content conflicts (those are meaningful
+    and need agent judgment); INFRA-188 (per-file gap registry) is the
+    structural fix that eliminates the conflicts altogether.
+
+    Closes/subsumes:
+      - INFRA-052 (queue health monitor — pr-watch.sh IS the per-PR
+        health monitor)
+      - INFRA-119 (bot-merge hangs leak leases — pr-watch detaches so
+        bot-merge doesn't hang)
+      - INFRA-121 (merge-queue config drift — pr-watch surfaces silent
+        auto-merge disarm)
+  acceptance_criteria:
+    - "scripts/coord/pr-watch.sh exists, executable, parses cleanly, has --once mode for one-shot recovery + polling mode"
+    - "bot-merge.sh has an opt-in hook (env var CHUMP_PR_WATCH_AFTER_ARM=1) that fires-and-forgets pr-watch.sh in background"
+    - "Test: synthetic DIRTY PR (force-push main while queued in a sandbox) → pr-watch recovers automatically without operator action"
+    - "After 1 week of pr-watch in use: count manual rebases per session — should drop from ~5/session to ~0/session"
+  raised_by: claude
+  raised_in: '2026-05-01 — counted 5+ manual rebases in a single 16-PR session; same script every time'
+
+- id: INFRA-191
+  domain: INFRA
+  title: 'chump dispatch canonical workflow — single command pulls main, claims gap, ships PR, releases'
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-05-01'
+  description: |
+    Today every agent runs the same 6-step ritual:
+      1. git fetch origin main; git status
+      2. ls .chump-locks/*.json; tail ambient.jsonl
+      3. chump gap list --status open + chump --briefing
+      4. scripts/coord/gap-preflight.sh + gap-claim.sh
+      5. (do work)
+      6. scripts/coord/bot-merge.sh; release lease
+
+    Steps 1-4 and 6 are pure boilerplate and identical across agents.
+    The only meaningful step is 5. But the boilerplate is what causes
+    drift, ID collisions, lease leaks, and "wait, was main pulled?"
+    bugs.
+
+    Fix: `chump dispatch --gap <ID>` is the single canonical entry:
+      1. Pull origin main into a fresh worktree at .chump/worktrees/<codename>
+      2. Run gap-preflight + gap-claim atomically
+      3. Apply default scope to the lease (current branch's diff so far)
+      4. Spawn the agent (any tool — Claude SDK, Cursor, Goose, etc.) via
+         the configured backend
+      5. On agent completion: bot-merge.sh ship + release lease
+      6. On agent failure: release lease, leave worktree for inspection
+
+    Tooling stays — `chump dispatch` is a thin orchestrator over the
+    existing scripts. Works for both interactive ("dispatch me a gap to
+    work on") and headless ("autonomous on this gap, ship when done")
+    modes.
+
+    Closes/subsumes:
+      - INFRA-100 (atomic next-ID picker — wrapped here)
+      - INFRA-168 (rewire coord shell scripts — wrapped here)
+
+    Depends on: INFRA-188 (per-file gap), INFRA-189 (declared scope),
+    INFRA-190 (auto-rebase) — all the building blocks.
+  acceptance_criteria:
+    - "chump dispatch --gap <ID> runs end-to-end: pull → preflight → claim → spawn → ship → release"
+    - "Works for both interactive and headless modes (--interactive flag)"
+    - "Agent failure leaves worktree for inspection but releases lease"
+    - "After 1 week: agents that use chump dispatch ship 2× more PRs than agents using manual ritual"
+  depends_on: [INFRA-188, INFRA-189, INFRA-190]
+  raised_by: claude
+  raised_in: '2026-05-01 — observed every agent in this session running the same 6-step boilerplate; 5/6 steps are identical'
+
+- id: INFRA-192
+  domain: INFRA
+  title: 'forward-chain notifier: post gap_unblocked event when a PR closes a depends_on link'
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-05-01'
+  description: |
+    Today when a PR merges that closes a gap, downstream gaps with
+    `depends_on: [<closed-gap>]` continue to sit waiting. Agents
+    discover the unblock by manual queue-scan or never. INFRA-176
+    (this session) was unblocked by INFRA-174 landing — neither agent
+    nor I noticed for 30 minutes.
+
+    Fix: a small Rust helper or shell script invoked by the
+    auto-flip-on-ship path (INFRA-154). When gap X flips to status:done,
+    scan all open gaps for depends_on entries containing X, post a
+    `gap_unblocked` event to ambient.jsonl + NATS for each downstream.
+
+    Schema for the new event:
+      {"kind":"gap_unblocked","blocking_gap":"INFRA-174",
+       "unblocked_gap":"INFRA-176","ts":"2026-05-01T..."}
+
+    Cold Water + dispatcher prompts can subscribe to this kind and
+    surface unblocks in their next sweep.
+  acceptance_criteria:
+    - "On gap X flipping status:done, the bot-merge auto-flip path scans open gaps for depends_on contains X"
+    - "For each downstream Y, an ambient gap_unblocked event is emitted with blocking_gap + unblocked_gap fields"
+    - "Cold Water Step 1 surfaces gap_unblocked events from the last week as a 'newly actionable' bullet"
+    - "Test: synthetic gap A closed → gap B (depends_on: A) gets a gap_unblocked event in ambient.jsonl"
+  depends_on: [INFRA-154]
+  raised_by: claude
+  raised_in: '2026-05-01 — INFRA-176 (auto-publish formula) was unblocked by INFRA-174 landing; 30-min discovery latency'
+
+- id: INFRA-193
+  domain: INFRA
+  title: 'speculative execution: two agents on same gap; first-to-land wins, loser auto-superseded'
+  status: open
+  priority: P3
+  effort: m
+  opened_date: '2026-05-01'
+  description: |
+    Novel idea — not currently in the model. Today gap-claim.sh enforces
+    one-agent-per-gap via lease files. That serializes work and adds
+    coordination latency.
+
+    Alternative: TWO agents pick the same gap deliberately (race).
+    Both work in parallel. First to land wins; the loser's PR is
+    auto-closed with `Closes: superseded by #N`.
+
+    Cost: 2× compute. Benefit: 0× coordination latency, plus diversity
+    bonus (two different solutions inspected; the better one wins).
+
+    When it makes sense:
+      - Latency-critical gaps (the fix is needed RIGHT NOW)
+      - Gaps where two agents have very different strengths (e.g. one
+        Claude, one Gemini, one human-in-the-loop)
+      - Research / eval gaps where the diversity is itself the signal
+
+    Implementation skeleton:
+      - chump gap claim --speculative <ID> bypasses the one-agent
+        check; logs which agents are racing
+      - bot-merge.sh on PR merge: scan open PRs for the same gap_id,
+        post a `gh pr close --comment "superseded by #N"` to losers
+      - Pre-commit guard: warn (don't block) when a speculative claim
+        is made; surface in ambient
+  acceptance_criteria:
+    - "chump gap claim --speculative <ID> writes a lease that allows N>1 simultaneous claims"
+    - "bot-merge.sh post-merge: closes other open PRs with the same gap_id, attributing"
+    - "Tests: simulated race (two PRs both claiming + shipping); one merges; the other is closed automatically"
+    - "Documented in CLAUDE.md / AGENTS.md as opt-in for latency-critical gaps; default remains exclusive lease"
+  raised_by: claude
+  raised_in: '2026-05-01 — outside-the-box thinking on coordination; novel concept not yet in the model'
+
+- id: INFRA-194
+  domain: INFRA
+  title: 'closer-PR auto-batcher: coordinator ships one PR with N gap closures every M hours'
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-05-01'
+  description: |
+    INFRA-154 (auto-flip on ship) shipped today: bot-merge.sh now
+    auto-flips gap status when the implementation PR merges. But each
+    flip is its own commit + PR (or commit-on-arm-branch). Today's
+    16-PR session shipped 4-5 closer-PRs that JUST flipped status.
+
+    Fix: a coordinator agent (cron or musher subtask) batches every N
+    hours. It scans `.chump/state.db` for status:done rows whose
+    docs/gaps.yaml entry hasn't been updated yet, generates one PR
+    that updates all of them at once, ships via bot-merge.sh.
+
+    Batch window: 4-6 hours feels right (catches a half-day of work).
+    Too short = no batching; too long = stale visibility into closures.
+
+    Reduces queue churn 5-10× during peak shipping. Reduces the
+    DIRTY-after-arm rate proportionally (fewer PRs in flight).
+  acceptance_criteria:
+    - "scripts/ops/closer-pr-batcher.sh: scans state.db, identifies pending gap-status flips, generates batched PR"
+    - "macOS launchd / Linux cron config to run every 4 hours"
+    - "Per-PR comment shows which gaps it closes (linkable to their gap files)"
+    - "Test: 3 status:done gaps with stale YAML; batcher ships one PR with all 3 flips"
+    - "After 1 week: closer-PR count drops from ~1-per-implementation to ~1-per-4-hours"
+  depends_on: [INFRA-154]
+  raised_by: claude
+  raised_in: '2026-05-01 — counted 4-5 status-flip-only PRs in a 16-PR session; pure churn'
+
+- id: INFRA-195
+  domain: INFRA
+  title: 'skills feedback loop: shipped PRs distill into chump_skills rows the next dispatcher reads'
+  status: open
+  priority: P2
+  effort: m
+  opened_date: '2026-05-01'
+  description: |
+    The infrastructure exists: chump_skills, chump_causal_lessons,
+    chump_improvement_targets all live in .chump/state.db. Spawn-time
+    prompt assembler can prepend lessons (CHUMP_LESSONS_AT_SPAWN_N).
+    Per-gap briefing (chump --briefing <ID>) reads them.
+
+    What's MISSING: a feedback loop that DISTILLS SHIPPED PRs into new
+    chump_skills / chump_causal_lessons rows. Today lessons get added
+    only by manual sqlite3 INSERT (which is why nobody adds them) or by
+    Cold Water reflection rows (low frequency).
+
+    Fix: post-merge-hook agent that:
+      1. Reads the shipped PR's diff + commit message
+      2. Identifies novel patterns ("used `chump gap reserve --domain X`
+         instead of shell script", "shipped via bot-merge.sh from a
+         linked worktree", "used pr-watch.sh for auto-recovery")
+      3. Writes a chump_skills row + chump_improvement_targets row if
+         the pattern is new
+      4. Future dispatcher runs read these via existing
+         load_spawn_lessons path
+
+    Subsumes/closes when shipped:
+      - META-001 (diagnostic agents must verify gap activity — feed in
+        as a lesson the dispatcher prepends)
+      - META-002 (FIXED-but-replaced classification — same)
+      - META-003 (Cold Water factual errors — same)
+
+    Out of scope: the LLM-based "is this a novel pattern" classifier
+    (just use rule-based pattern matching for v1; a separate
+    chump-distill crate could grow into LLM-based later).
+  acceptance_criteria:
+    - "post-merge-hook helper exists (script or cron) that scans recent merged PRs"
+    - "Identifies known-good patterns (a small initial whitelist) + writes them to chump_skills + chump_improvement_targets"
+    - "load_spawn_lessons surfaces them when CHUMP_LESSONS_AT_SPAWN_N>0"
+    - "After 1 week: chump_improvement_targets row count grows by ~10/wk (was 0/wk)"
+    - "After 2 weeks: at least 2 dispatcher runs pick up a lesson from a sibling agent's PR — verified via reflection_db row"
+  depends_on: [INFRA-192]
+  raised_by: claude
+  raised_in: '2026-05-01 — chump_skills + chump_improvement_targets schema exists but is dead-letter (manual SQL only); the feedback loop is missing'
