@@ -6524,9 +6524,11 @@ gaps:
 - id: INFRA-159
   domain: INFRA
   title: "ftue-clean-machine workflow: GitHub Actions cannot create PRs — switch to direct push"
-  status: open
+  status: done
   priority: P1
   effort: xs
+  closed_date: '2026-05-01'
+  closed_pr: 699
 
 - id: INFRA-160
   domain: INFRA
@@ -6837,6 +6839,62 @@ gaps:
   status: open
   priority: P2
   effort: xs
+
+- id: INFRA-188
+  domain: INFRA
+  title: "per-file gap registry: docs/gaps/<DOMAIN>-<NNN>.yaml directory replaces monolithic gaps.yaml"
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-189
+  domain: INFRA
+  title: "property-based agent contracts: declared file scope enforced by pre-commit (kills lease-overlap class)"
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-190
+  domain: INFRA
+  title: "bot-merge.sh: auto-rebase + auto-fix loop on DIRTY (kills 5-times-a-session manual rebase)"
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-191
+  domain: INFRA
+  title: chump dispatch canonical workflow — single command pulls main, claims gap, ships PR, releases
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-192
+  domain: INFRA
+  title: "forward-chain notifier: post gap_unblocked event when a PR closes a depends_on link"
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-193
+  domain: INFRA
+  title: "speculative execution: two agents on same gap; first-to-land wins, loser auto-closed superseded"
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-194
+  domain: INFRA
+  title: "closer-PR auto-batcher: coordinator ships one PR with N gap closures every M hours"
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-195
+  domain: INFRA
+  title: "skills feedback loop: shipped PRs distill into chump_skills rows the next dispatcher reads"
+  status: open
+  priority: P1
+  effort: s
 
 - id: INFRA-41
   domain: infra
@@ -7666,6 +7724,13 @@ gaps:
     - Trigger trig_01GA2XVbAZtpkBaWfrEo1CrP synced via /schedule update after PR merges
   opened_date: '2026-04-27'
 
+- id: META-004
+  domain: META
+  title: "structural-fixes-over-symptom-patches: track 50-coordination-patch backlog vs handful of root-cause fixes"
+  status: open
+  priority: P1
+  effort: s
+
 - id: PRODUCT-001
   domain: product
   title: PWA Dashboard — ship status, what-we're-doing, recent episodes
@@ -8055,7 +8120,7 @@ gaps:
 - id: PRODUCT-024
   domain: PRODUCT
   title: PWA chat default to non-reasoning model (INFRA-183 sub) — biggest UX win
-  status: open
+  status: done
   priority: P0
   effort: s
   description: |
@@ -8065,6 +8130,8 @@ gaps:
     - measured pong-prompt turn under 5s
     - original reasoning model still selectable via override env
   depends_on: [INFRA-183]
+  closed_date: '2026-05-01'
+  closed_pr: 697
 
 - id: QUALITY-001
   domain: reliability
