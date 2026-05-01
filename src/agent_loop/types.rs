@@ -76,6 +76,39 @@ pub fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
     let trimmed = msg.trim();
     let lower = trimmed.to_lowercase();
 
+    // INFRA-180 (2026-05-01): meta-capability questions never need tools.
+    // The model is being asked ABOUT its capabilities, not asked to USE them.
+    // This MUST be checked before action keywords / question heuristics
+    // because capability questions often contain action verbs as nouns
+    // ("what can you build?" → "build" is in action_words but it's a meta-question).
+    let capability_question_patterns = [
+        "what can you do",
+        "what kind of",
+        "what tricks",
+        "what are your",
+        "what do you",
+        "what is your",
+        "what's your",
+        "who are you",
+        "tell me about yourself",
+        "tell me about your",
+        "describe yourself",
+        "describe your",
+        "list your skills",
+        "list your capabilities",
+        "your capabilities",
+        "your tools",
+        "what tools",
+        "how do you work",
+        "how does this work",
+    ];
+    if capability_question_patterns
+        .iter()
+        .any(|p| lower.contains(p))
+    {
+        return false;
+    }
+
     // Action keywords always trigger tools.
     let action_words = [
         "run ",
