@@ -15768,3 +15768,75 @@ gaps:
     - "Phase breakdown logs appear per turn so we can attribute future regressions"
   raised_by: claude
   raised_in: '2026-05-01 — synthesis of partner-agent plan + measured ''pong'' probe (56.985 s, TTFB 47 ms, plain-prose CoT eaten by <think>-only chunk processor)'
+- id: SECURITY-005
+  domain: SECURITY
+  title: 'serenity 0.12.5 (latest) pins vulnerable rustls-webpki 0.102.8 — Dependabot cannot fix; pick mitigation path'
+  status: done
+  priority: P0
+  effort: m
+  opened_date: '2026-04-30'
+  closed_date: '2026-04-30'
+  closed_pr: 682
+  description: |
+    SECURITY-004 (filed 2026-04-28, P0) names 6 open Dependabot
+    advisories, three of which trace through the same dep chain:
+
+      chump v0.1.0
+      └── serenity v0.12.5
+          └── tokio-tungstenite v0.21.0
+              └── tungstenite v0.21.0
+                  ├── rustls v0.22.4
+                  └── tokio-rustls v0.25.0
+                      └── rustls v0.22.4
+                          └── rustls-webpki v0.102.8   ← vulnerable
+
+    Affected advisories on rustls-webpki 0.102.8:
+      - RUSTSEC-2026-0104 HIGH   — DoS via panic on malformed CRL BIT STRING
+      - RUSTSEC-2026-0098 LOW    — Name constraints for URI names accepted
+      - RUSTSEC-2026-0099 LOW    — Name constraints for wildcards accepted
+      - RUSTSEC-2026-0049 MEDIUM — CRL Distribution Point matching faulty
+
+    `cargo search serenity` returns 0.12.5 — that IS the latest release.
+    No newer serenity exists on crates.io. Dependabot cannot bump direct
+    deps to versions that are not available.
+
+    Reachability: src/discord.rs (1453 lines) is the only consumer of
+    serenity. Verified via `cargo tree -i rustls-webpki@0.102.8` that
+    ONLY the Discord gateway WebSocket path hits the vulnerable
+    transitive; REST-only callers (a2a_tool, discord_dm, serenity's
+    HTTP client) use the safe rustls 0.23 chain.
+
+    Mitigation chosen: option (3) — gate Discord gateway start behind
+    a third explicit security ack (CHUMP_ALLOW_DISCORD_RUSTLS=1) on
+    top of the existing PRODUCT-014 (--discord flag +
+    CHUMP_DISCORD_ENABLED=1) gates. Without the ack, discord_mode
+    aborts at start with a clear pointer to SECURITY-005 +
+    RUSTSEC-2026-0104 + the closure trigger. Implementation: PR #682.
+
+    Other mitigation options recorded for if upstream serenity does
+    not move:
+      (1) Wait + file upstream serenity issue (lowest cost).
+      (2) Cargo `[patch.crates-io]` override (medium, brittle).
+      (4) Replace serenity with HTTP-only Discord client
+          (~1450 LOC + ongoing maintenance).
+      (5) Vendor + patch serenity in-tree (largest cost).
+
+    Removal trigger: when `cargo audit` shows 0 rustls-webpki 0.102.x
+    advisories AND `cargo tree -i rustls-webpki@0.102.8` returns
+    empty (upstream serenity has bumped tungstenite/rustls). The
+    inline comment in src/main.rs at the gate names this condition
+    so a future agent can clean up automatically.
+
+    SECURITY-004 cross-reference: this gap closes one of SECURITY-004's
+    six advisories at the runtime-exposure level. The remaining five
+    (the 0.102.8 advisories on Discord-gateway-only consumers + 2
+    unrelated chains: rand unsoundness, glib Iterator unsoundness)
+    remain SECURITY-004's responsibility.
+  acceptance_criteria:
+    - "Decision recorded: option (3) — Discord gateway start gated behind CHUMP_ALLOW_DISCORD_RUSTLS=1 ack"
+    - "src/main.rs discord_mode block aborts without the ack, citing SECURITY-005 + RUSTSEC-2026-0104 in the error message"
+    - "Inline comment in src/main.rs names the removal trigger so cleanup is automatic when upstream catches up"
+    - "Compile-clean: cargo build --bin chump passes with the new gate"
+    - "Reachability verified: cargo tree -i rustls-webpki@0.102.8 shows ONLY the tokio-tungstenite chain (no REST-only paths)"
+  raised_by: claude
+  raised_in: '2026-04-30 — refile of orphaned PR #678 / #684; implementation already landed via PR #682. This row records the gap on main so chump gap list shows it.'
