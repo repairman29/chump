@@ -8865,6 +8865,18 @@ gaps:
     - Cargo.lock diff documents every bump in the PR description
   opened_date: '2026-04-28'
 
+- id: SECURITY-005
+  domain: SECURITY
+  title: serenity 0.12.5 (latest) pins vulnerable rustls-webpki 0.102.8 — Dependabot cannot fix; mitigation chosen
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    Three Dependabot advisories trace through chump → serenity 0.12.5 → tokio-tungstenite 0.21 → rustls 0.22 → rustls-webpki 0.102.8 (vulnerable). cargo search serenity returns 0.12.5 — that IS the latest release, so Dependabot cannot bump. Reachability verified via cargo tree -i: only the Discord gateway WebSocket path hits the vulnerable transitive; REST callers (a2a_tool, discord_dm, serenity HTTP client) use safe rustls 0.23. Mitigation chosen: option (3) — gate Discord gateway behind CHUMP_ALLOW_DISCORD_RUSTLS=1 ack on top of existing PRODUCT-014 gates. Implementation: PR #682 (commit 360c6b7). Removal trigger: cargo audit shows 0 rustls-webpki 0.102.x advisories (upstream serenity bumped tungstenite). The gap row was orphaned through three failed YAML-append refile attempts (#678, #684, #695) before this canonical-CLI shipment via INFRA-147 dump.
+  opened_date: '2026-04-30'
+  closed_date: '2026-04-30'
+  closed_pr: 682
+
 - id: SENSE-001
   domain: agent
   title: PeripheralSensor trait — hot-path interrupt bridge

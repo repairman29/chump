@@ -1085,7 +1085,7 @@ See `docs/DOGFOOD_RELIABILITY_GAPS.md` for the live backlog.
 | `qwen2.5:7b` | Ollama | Stable; tool quality weak (prefers write_file over minimal diffs) |
 | `qwen2.5:14b` | Ollama | RAM pressure when cargo builds run concurrently |
 | `qwen3:8b` | Ollama | Post-`<think>`-strip fix; verification pending |
-| `Qwen3.5-9B-OptiQ-4bit` | vLLM-MLX | Best diff quality; segfaults under sustained load |
+| `Qwen3.5-9B-OptiQ-4bit` | vLLM-MLX | Reasoning model — emits ~50 s of plain-prose CoT before user-visible text (measured 56.985 s for 4-char reply, PRODUCT-024); not chat-default until INFRA-184 routes the CoT to `thinking_delta` |
 | `Qwen3-14B-4bit` | vLLM-MLX | ~0.5 tok/s; triggers tool timeouts |
 
 The working sweet spot: **7-9B 4-bit quantized, Ollama, `num_ctx ≥ 8192`,
