@@ -15498,3 +15498,55 @@ gaps:
     - "Next release tag (v0.1.2 or later) lands formula in repairman29/homebrew-chump/Formula/chump.rb without manual push"
   raised_by: claude
   raised_in: '2026-04-30 — surfaced after v0.1.1 release succeeded but tap stayed empty'
+
+- id: INFRA-177
+  domain: INFRA
+  title: 'narration-detection retry: 50+ false-positive phrases waste 2 model rounds per conversational reply'
+  status: done
+  priority: P0
+  effort: s
+  closed_pr: TBD
+  closed_date: '2026-05-01'
+  opened_date: '2026-05-01'
+  description: |
+    `agent_loop::types::response_wanted_tools()` had 50+ phrase patterns
+    that fired on routine conversational text — `"i can help"`, `"i can show"`,
+    `"running "`, `"writing "`, `"checking "`, `"i'll "`, `"let me "` etc.
+    These all matched capability descriptions and self-introductions, so
+    EVERY reply to a "what can you do?"-style question got flagged as
+    "narration without tools" and the agent loop retried twice
+    (iteration_controller line 245's `model_calls_count <= 2 &&
+    response_wanted_tools(payload)` gate).
+
+    Concrete impact observed in chump_web_messages turn 547 (00:18:54):
+      - User: "what kind of cool tricks can you do?"
+      - duration_ms: 217543 (~3.6 minutes wall-clock)
+      - tool_calls: 0 (no tools actually ran)
+      - model_calls: 3 (first 2 wasted by narration-retry false positive)
+      - PWA bubble: 3 different responses concatenated without separator
+        (frontend's text_delta accumulator has no per-round reset)
+
+    Cost: 3× provider calls per chat turn whenever the model says anything
+    like "I can help" — which is most replies to capability questions.
+    On a 2.5 t/s local model with ~150-token responses, that's ~3 minutes
+    of extra latency + 3× tokens billed (cloud) or 3× local-GPU time per
+    turn. PWA users see 3 redundant paragraphs.
+
+    Fix: rewrote response_wanted_tools to a conservative list — only
+    actual past-tense success claims with output attachment count.
+    Capability descriptions, future-tense intent, and generic verbs
+    are removed. New tests pin both the catch (real narration still
+    flagged) and the regression (capability prose no longer triggers).
+
+    Follow-up (separate gap): the PWA frontend (web/v2/chat.js) should
+    also clear the bubble's accumulated text on `model_call_start` event
+    so multi-round responses don't visually concatenate. Even with this
+    fix, multi-round retries are still possible (legitimate tool-use
+    cases) and the bubble would still concatenate them.
+  acceptance_criteria:
+    - "response_wanted_tools no longer fires on 'I can help', 'I can show', 'I can run shell commands' etc"
+    - "Test capability_descriptions_not_narration covers the exact bug-trigger text from turn 547"
+    - "Real narration patterns ('Saved as X. Open it to view.', 'Successfully created at /tmp/foo') still detected"
+    - "PWA: 'what kind of cool tricks can you do?' completes in ONE model round (~30-90s on local model), not three"
+  raised_by: claude
+  raised_in: '2026-05-01 — debugged from chump_web_messages turn 547 + 3-bubble PWA repro'
