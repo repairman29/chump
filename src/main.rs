@@ -170,8 +170,6 @@ pub mod user_profile;
 mod vector6_verify;
 mod vector7_swarm_verify;
 mod version;
-#[cfg(feature = "voice")]
-mod voice;
 mod wasm_calc_tool;
 mod wasm_runner;
 mod wasm_text_tool;
