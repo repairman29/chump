@@ -56,12 +56,35 @@ pub(crate) fn strip_think_blocks(text: &str) -> String {
 ///
 /// Qwen3 emits `<think>...</think>` at the start of its response before any regular text.
 /// Chunks can arrive mid-tag, so we buffer uncertain bytes until we can decide.
+///
+/// **INFRA-184 plain-prose CoT extension.** Reasoning models that don't wrap their
+/// chain-of-thought in `<think>` tags (e.g. Qwen3.5-OptiQ emits `Thinking Process:\n\n1. ...`)
+/// are detected at stream start by the [`PlainCotState`] sub-state-machine and routed to
+/// `ThinkingDelta` until a transition marker (e.g. `\n\nFinal Answer:`) or end-of-stream.
+/// Disable with `CHUMP_PLAIN_COT=0` if you need the legacy "everything is text" behavior
+/// for a non-reasoning model that happens to start a reply with one of the prefix words.
 pub(crate) struct ThinkStreamState {
     /// Whether `CHUMP_THINKING=1` is in effect. When false, all content → TextDelta.
     pub enabled: bool,
     inside_think: bool,
     /// Bytes accumulated while we're unsure if they're part of a `<think>` or `</think>` tag.
     buf: String,
+    /// INFRA-184: plain-prose CoT detection state. Decided once at stream start.
+    plain_cot: PlainCotState,
+}
+
+/// INFRA-184: state machine for plain-prose Chain-of-Thought detection.
+/// Decided once per stream during the first ~64 bytes (or first newline).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlainCotState {
+    /// Initial — haven't buffered enough to classify the response prefix.
+    Undecided,
+    /// Prefix matched a known plain-CoT pattern; route as ThinkingDelta until
+    /// a transition marker is found (or end-of-stream).
+    Active,
+    /// Prefix did not match (or transition already seen) — fall through to
+    /// the existing `<think>`-tag routing logic.
+    NotApplicable,
 }
 
 const OPEN_TAG: &str = "<think>";
@@ -69,12 +92,93 @@ const CLOSE_TAG: &str = "</think>";
 const OPEN_TAG_LEN: usize = OPEN_TAG.len();
 const CLOSE_TAG_LEN: usize = CLOSE_TAG.len();
 
+/// INFRA-184: prefixes (case-insensitive, leading-whitespace tolerant) that mark
+/// the start of plain-prose CoT. Conservative list — only patterns we have
+/// directly observed or that are documented model behavior.
+const PLAIN_COT_PREFIXES: &[&str] = &[
+    "thinking process:",
+    "thinking:",
+    "reasoning:",
+    "let me think",
+    "let's think",
+    "i need to think",
+    "i'll think through",
+    "i'll work through",
+    "i should think",
+    "step 1:",
+    "## step 1",
+    "**step 1",
+    "first, ", // common CoT opener
+];
+
+/// INFRA-184: transition markers that end the plain-CoT phase. The marker
+/// itself is consumed; everything before goes as ThinkingDelta, everything
+/// after as TextDelta. Match is case-sensitive on the punctuation but
+/// case-insensitive on the keyword via [`find_case_insensitive`].
+const PLAIN_COT_TRANSITIONS: &[&str] = &[
+    "\n\nfinal answer:",
+    "\n\nanswer:",
+    "\n\noutput:",
+    "\n\nresponse:",
+    "\nfinal answer:",
+    "\nanswer:",
+    "\n## answer",
+    "\n## final",
+    "\n\n## answer",
+    "\n\n## final",
+    "\n---\n",
+];
+
+/// Bytes to buffer at stream start before deciding plain-CoT classification.
+/// Long enough to catch the longest prefix in [`PLAIN_COT_PREFIXES`] with
+/// some leading whitespace; short enough that classification happens within
+/// one or two streamed chunks.
+const PLAIN_COT_SNIFF_LEN: usize = 64;
+
+/// Case-insensitive substring search. Returns the byte offset of the first
+/// occurrence of `needle` in `haystack`, ignoring ASCII case.
+fn find_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return if needle.is_empty() { Some(0) } else { None };
+    }
+    let h_lower = haystack.to_ascii_lowercase();
+    let n_lower = needle.to_ascii_lowercase();
+    h_lower.find(&n_lower)
+}
+
+/// True when one of [`PLAIN_COT_PREFIXES`] matches at the start of `s`,
+/// after skipping leading ASCII whitespace.
+fn matches_plain_cot_prefix(s: &str) -> bool {
+    let trimmed = s.trim_start();
+    let trimmed_lower = trimmed.to_ascii_lowercase();
+    PLAIN_COT_PREFIXES
+        .iter()
+        .any(|p| trimmed_lower.starts_with(p))
+}
+
+/// Returns true unless `CHUMP_PLAIN_COT=0` / `false` is set. Default ON whenever
+/// `CHUMP_THINKING=1` enables [`ThinkStreamState`], because the user has already
+/// opted into thinking-content routing — we want plain-prose CoT to come along
+/// for the ride. Set `CHUMP_PLAIN_COT=0` to fall back to the pre-INFRA-184
+/// "tags only" behavior.
+pub(crate) fn chump_plain_cot_enabled() -> bool {
+    !std::env::var("CHUMP_PLAIN_COT")
+        .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
+        .unwrap_or(false)
+}
+
 impl ThinkStreamState {
     pub fn new(enabled: bool) -> Self {
+        let plain_cot = if enabled && chump_plain_cot_enabled() {
+            PlainCotState::Undecided
+        } else {
+            PlainCotState::NotApplicable
+        };
         Self {
             enabled,
             inside_think: false,
             buf: String::new(),
+            plain_cot,
         }
     }
 
@@ -90,6 +194,85 @@ impl ThinkStreamState {
                 .is_ok();
         }
         self.buf.push_str(delta);
+
+        // ── INFRA-184: plain-prose CoT pre-pass ───────────────────────────
+        // Decide the plain-CoT state once we have enough bytes (or a newline,
+        // because every observed prefix ends before one). If `Active`, route
+        // through plain-CoT logic and return. Otherwise fall through to the
+        // existing `<think>`-tag handling so we keep that contract intact.
+        if self.plain_cot == PlainCotState::Undecided {
+            let enough_bytes = self.buf.len() >= PLAIN_COT_SNIFF_LEN;
+            let has_newline = self.buf.contains('\n');
+            // If the buf already contains an opening `<think>` tag we know
+            // this is the tag-routed path, not plain CoT. Decide early so
+            // tag detection isn't delayed waiting for more bytes.
+            let has_open_tag = self.buf.contains(OPEN_TAG);
+            if enough_bytes || has_newline || has_open_tag {
+                self.plain_cot = if !has_open_tag && matches_plain_cot_prefix(&self.buf) {
+                    PlainCotState::Active
+                } else {
+                    PlainCotState::NotApplicable
+                };
+            } else {
+                // Not enough to decide yet; keep buffering.
+                return true;
+            }
+        }
+
+        if self.plain_cot == PlainCotState::Active {
+            // Look for any transition marker. If found, emit pre-marker as
+            // ThinkingDelta and post-marker as TextDelta, then switch to
+            // NotApplicable so the rest of the stream uses normal routing.
+            let mut earliest: Option<(usize, usize)> = None; // (pos, marker_len)
+            for marker in PLAIN_COT_TRANSITIONS {
+                if let Some(pos) = find_case_insensitive(&self.buf, marker) {
+                    if earliest.map(|(p, _)| pos < p).unwrap_or(true) {
+                        earliest = Some((pos, marker.len()));
+                    }
+                }
+            }
+            if let Some((pos, mlen)) = earliest {
+                let thinking_chunk = self.buf[..pos].to_string();
+                if !thinking_chunk.is_empty()
+                    && event_tx
+                        .send(AgentEvent::ThinkingDelta {
+                            delta: thinking_chunk,
+                        })
+                        .is_err()
+                {
+                    return false;
+                }
+                let after_marker = self.buf[pos + mlen..].trim_start_matches('\n').to_string();
+                self.buf = after_marker;
+                self.plain_cot = PlainCotState::NotApplicable;
+                // fall through to existing tag routing on whatever's left
+            } else {
+                // No transition yet — emit the safe portion (keep last
+                // (longest_marker - 1) bytes back so we don't split a marker).
+                let max_marker_len = PLAIN_COT_TRANSITIONS
+                    .iter()
+                    .map(|m| m.len())
+                    .max()
+                    .unwrap_or(0);
+                let safe_len = self
+                    .buf
+                    .len()
+                    .saturating_sub(max_marker_len.saturating_sub(1));
+                if safe_len > 0 {
+                    let safe = self.buf[..safe_len].to_string();
+                    self.buf = self.buf[safe_len..].to_string();
+                    if event_tx
+                        .send(AgentEvent::ThinkingDelta { delta: safe })
+                        .is_err()
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+        }
+
+        // ── Existing `<think>`-tag routing ─────────────────────────────────
         loop {
             if self.inside_think {
                 // Looking for </think>
@@ -167,11 +350,21 @@ impl ThinkStreamState {
             return;
         }
         let remaining = std::mem::take(&mut self.buf);
-        if self.inside_think {
-            let _ = event_tx.send(AgentEvent::ThinkingDelta { delta: remaining });
-        } else {
-            let _ = event_tx.send(AgentEvent::TextDelta { delta: remaining });
+        // INFRA-184: still in undecided state at flush time means we got a
+        // very short response (< sniff threshold and no newline). Decide now.
+        if self.plain_cot == PlainCotState::Undecided {
+            self.plain_cot = if matches_plain_cot_prefix(&remaining) {
+                PlainCotState::Active
+            } else {
+                PlainCotState::NotApplicable
+            };
         }
+        let event = if self.plain_cot == PlainCotState::Active || self.inside_think {
+            AgentEvent::ThinkingDelta { delta: remaining }
+        } else {
+            AgentEvent::TextDelta { delta: remaining }
+        };
+        let _ = event_tx.send(event);
     }
 }
 
@@ -1713,6 +1906,201 @@ mod tests {
         assert!(evs
             .iter()
             .all(|e| matches!(e, AgentEvent::TextDelta { .. })));
+    }
+
+    // ── INFRA-184: plain-prose CoT detection tests ────────────────────
+
+    fn collect_thinking(evs: &[AgentEvent]) -> String {
+        evs.iter()
+            .filter_map(|e| {
+                if let AgentEvent::ThinkingDelta { delta } = e {
+                    Some(delta.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn collect_text(evs: &[AgentEvent]) -> String {
+        evs.iter()
+            .filter_map(|e| {
+                if let AgentEvent::TextDelta { delta } = e {
+                    Some(delta.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn plain_cot_thinking_process_prefix_routes_to_thinking_delta() {
+        // The exact pattern observed from Qwen3.5-9B-OptiQ-4bit on
+        // "Say pong, nothing else." (PRODUCT-024 / INFRA-183 measurement).
+        let mut s = ThinkStreamState::new(true);
+        let cot = "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Input: \"Say pong\".\n    *   Output the word \"pong\".\n\n";
+        let answer = "pong";
+        let evs = collect_events(&mut s, &[cot, &format!("\n\nFinal Answer:\n{}", answer)]);
+        let thinking = collect_thinking(&evs);
+        let text = collect_text(&evs);
+        assert!(
+            thinking.contains("Thinking Process:"),
+            "thinking should contain CoT prefix, got: {:?}",
+            thinking
+        );
+        assert!(
+            thinking.contains("Analyze the Request"),
+            "thinking should contain CoT body"
+        );
+        // The CoT prose itself can mention the word the model will output
+        // (here: 'Output the word "pong"'), so we don't assert thinking
+        // *excludes* "pong". What matters is the final answer is in text.
+        assert!(
+            text.contains("pong"),
+            "text should contain the final answer, got: {:?}",
+            text
+        );
+        assert!(
+            !text.contains("Analyze the Request"),
+            "text should NOT contain CoT body; text={:?}",
+            text
+        );
+    }
+
+    #[test]
+    fn plain_cot_no_transition_routes_entire_response_as_thinking() {
+        // Reasoning model that doesn't use a transition marker — the
+        // chunk processor should still route everything as ThinkingDelta
+        // rather than dumping the whole CoT into the chat bubble as
+        // visible text.
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(
+            &mut s,
+            &["Thinking Process:\n\n1. Consider the input.\n2. Decide.\n"],
+        );
+        let thinking = collect_thinking(&evs);
+        let text = collect_text(&evs);
+        assert!(thinking.contains("Thinking Process:"));
+        assert!(text.is_empty(), "no transition seen → no text expected");
+    }
+
+    #[test]
+    fn plain_cot_handles_chunked_prefix_across_deltas() {
+        // The "Thinking Process:" prefix arrives split across multiple
+        // streaming deltas — detection should still fire once enough
+        // bytes have accumulated.
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(
+            &mut s,
+            &[
+                "Thinki",
+                "ng Pro",
+                "cess:\n\n",
+                "Step 1.\n\nFinal Answer:\nresult",
+            ],
+        );
+        let thinking = collect_thinking(&evs);
+        let text = collect_text(&evs);
+        assert!(thinking.contains("Step 1."));
+        assert_eq!(text.trim(), "result");
+    }
+
+    #[test]
+    fn plain_cot_inactive_when_response_is_normal_chat() {
+        // A normal chat reply that doesn't start with a CoT prefix should
+        // be routed as TextDelta unchanged (the existing tag-routing path).
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(
+            &mut s,
+            &["The capital of France is Paris. It has been since the early Middle Ages."],
+        );
+        let thinking = collect_thinking(&evs);
+        let text = collect_text(&evs);
+        assert!(thinking.is_empty(), "no CoT prefix → no thinking");
+        assert!(text.contains("Paris"));
+    }
+
+    #[test]
+    fn plain_cot_does_not_misfire_when_think_tag_present() {
+        // If the model uses `<think>` tags, the existing tag-routing path
+        // wins — plain-CoT detection must defer.
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(
+            &mut s,
+            &["<think>Thinking Process: this is fake</think>real answer"],
+        );
+        let thinking = collect_thinking(&evs);
+        let text = collect_text(&evs);
+        assert!(thinking.contains("Thinking Process:"));
+        assert!(text.contains("real answer"));
+    }
+
+    #[test]
+    fn plain_cot_short_response_below_sniff_threshold() {
+        // Very short response that ends before we have enough bytes to
+        // sniff the prefix — flush() decides at the end.
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(&mut s, &["Reasoning: yes"]);
+        let thinking = collect_thinking(&evs);
+        // "Reasoning:" matches, so the whole thing is thinking.
+        assert!(thinking.contains("yes"));
+    }
+
+    #[test]
+    fn plain_cot_prefix_is_case_insensitive() {
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(
+            &mut s,
+            &["THINKING PROCESS:\n\nstep one\n\nFinal Answer:\nok"],
+        );
+        let thinking = collect_thinking(&evs);
+        let text = collect_text(&evs);
+        assert!(thinking.contains("step one"));
+        assert_eq!(text.trim(), "ok");
+    }
+
+    #[test]
+    fn plain_cot_disabled_via_env_falls_back_to_tag_only() {
+        // Simulate CHUMP_PLAIN_COT=0 by manually constructing the state
+        // with NotApplicable from the start. This is the same shape
+        // ThinkStreamState::new produces when chump_plain_cot_enabled()
+        // returns false.
+        let mut s = ThinkStreamState {
+            enabled: true,
+            inside_think: false,
+            buf: String::new(),
+            plain_cot: PlainCotState::NotApplicable,
+        };
+        let evs = collect_events(
+            &mut s,
+            &["Thinking Process:\n\nbody\n\nFinal Answer:\ndone"],
+        );
+        let thinking = collect_thinking(&evs);
+        let text = collect_text(&evs);
+        // With plain-CoT off, the prefix is just text — no thinking events.
+        assert!(thinking.is_empty(), "plain-CoT off → no thinking");
+        assert!(text.contains("Thinking Process"));
+        assert!(text.contains("done"));
+    }
+
+    #[test]
+    fn plain_cot_transition_with_chunked_marker() {
+        // Transition marker arrives split across deltas.
+        let mut s = ThinkStreamState::new(true);
+        let evs = collect_events(
+            &mut s,
+            &[
+                "Thinking Process:\n\nfigure it out\n",
+                "\nFinal ",
+                "Answer:\n",
+                "the result",
+            ],
+        );
+        let thinking = collect_thinking(&evs);
+        let text = collect_text(&evs);
+        assert!(thinking.contains("figure it out"));
+        assert!(text.contains("the result"));
     }
 
     // ── num_ctx warning tests ─────────────────────────────────────────
