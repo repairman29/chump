@@ -274,6 +274,9 @@ jobs:
       - name: docs-delta trailer validation (INFRA-124)
         run: bash scripts/ci/test-infra-124-docs-delta-trailer.sh
 
+      - name: stale-pr-reaper file-parity check (INFRA-258)
+        run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
+
       - name: submodule-sanity guard (INFRA-158)
         run: bash scripts/ci/test-submodule-guard.sh
 

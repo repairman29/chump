@@ -196,8 +196,42 @@ while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE; do
     OPEN_LIST="${OPEN_LIST# }"
 
     if [[ $ALL_DONE -eq 1 && "$BEHIND" -gt "$STALE_BEHIND_THRESHOLD" ]]; then
-        red "  → STALE: all gaps done on main [$DONE_LIST], $BEHIND commits behind."
-        CLOSE_MSG="Auto-closing: every gap this PR was working on (${DONE_LIST}) is already \`done\` on \`main\` — the work landed via another agent's commits. The branch is **${BEHIND} commits behind** \`${BASE}\`. Nothing is lost; the code is on main.
+        # INFRA-258 (2026-05-02): "all gaps done" is necessary but NOT
+        # sufficient. Live incident: PR #833 shipped TWO deliverables
+        # (AGENTS.md doc + a test). The runtime fix landed via PR #854
+        # but the AGENTS.md doc did NOT — closing #833 silently lost the
+        # doc, requiring recovery PR #863. Check that every file in this
+        # PR's diff is byte-identical to origin/main before closing. If
+        # any file diverges, defer with a "partial-delivery" warning so
+        # an operator can review the unique content.
+        PARTIAL_FILES=""
+        if [[ "${CHUMP_REAPER_PARITY_CHECK:-1}" != "0" ]]; then
+            PR_FILES=$(gh pr diff "$PR_NUM" --name-only 2>/dev/null || true)
+            if [[ -n "$PR_FILES" ]]; then
+                while IFS= read -r f; do
+                    [[ -z "$f" ]] && continue
+                    branch_blob=$(git rev-parse "$REMOTE/$PR_BRANCH:$f" 2>/dev/null || echo "missing-on-branch")
+                    main_blob=$(git rev-parse "$REMOTE/$BASE:$f" 2>/dev/null || echo "missing-on-main")
+                    if [[ "$branch_blob" != "$main_blob" ]]; then
+                        PARTIAL_FILES+="$f"$'\n'
+                    fi
+                done <<< "$PR_FILES"
+            fi
+        fi
+
+        if [[ -n "$PARTIAL_FILES" ]]; then
+            DIVERGENT_COUNT=$(echo "$PARTIAL_FILES" | grep -c .)
+            warn "  → PARTIAL DELIVERY (INFRA-258): gap done on main but $DIVERGENT_COUNT file(s) diverge:"
+            echo "$PARTIAL_FILES" | sed 's/^/      - /'
+            warn "  Skipping close. Operator action: rebase + ship divergent files,"
+            warn "  or close manually after confirming the diverging content is intentionally dropped."
+            warn "  (Bypass: CHUMP_REAPER_PARITY_CHECK=0 — historical pre-INFRA-258 behavior.)"
+            WARNED=$((WARNED + 1))
+            continue
+        fi
+
+        red "  → STALE: all gaps done on main [$DONE_LIST], $BEHIND commits behind, file parity OK."
+        CLOSE_MSG="Auto-closing: every gap this PR was working on (${DONE_LIST}) is already \`done\` on \`main\` — the work landed via another agent's commits. The branch is **${BEHIND} commits behind** \`${BASE}\`. Verified all PR files are byte-identical to main, so nothing is lost.
 
 Run \`scripts/coord/gap-preflight.sh ${DONE_LIST// / }\` to confirm, then pick a new open gap from \`docs/gaps.yaml\`."
         if [[ $DRY_RUN -eq 1 ]]; then
