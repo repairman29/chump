@@ -56,6 +56,7 @@ mod diff_review_tool;
 mod discord;
 mod discord_dm;
 mod discord_intent;
+mod dispatch;
 mod doctor;
 mod ego_tool;
 mod env_flags;
@@ -396,6 +397,74 @@ async fn main() -> Result<()> {
             Ok(()) => return Ok(()),
             Err(e) => {
                 eprintln!("chump --recipe: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump dispatch <GAP-ID>` (INFRA-191 Phase 1) — atomic ship cycle:
+    // preflight → claim → (caller's work happened) → ship → release.
+    //
+    // Phase 1 wraps the existing shell scripts (gap-preflight.sh,
+    // gap-claim.sh, bot-merge.sh). Phase 3 ports `ship()` to native Rust.
+    // See docs/design/INFRA-191-chump-dispatch.md for the full plan.
+    //
+    // Examples:
+    //   chump dispatch INFRA-191                              # bare ship
+    //   chump dispatch INFRA-191 --auto-merge                 # arm merge queue
+    //   chump dispatch INFRA-191 --auto-merge --skip-tests    # for doc PRs
+    //   chump dispatch INFRA-191 --paths "src/dispatch.rs"    # narrow lease scope
+    if args.get(1).map(String::as_str) == Some("dispatch") {
+        let gap_id = match args.get(2) {
+            Some(g) if !g.starts_with('-') => g.clone(),
+            _ => {
+                eprintln!(
+                    "Usage: chump dispatch <GAP-ID> [--auto-merge] [--skip-tests] [--paths X,Y]"
+                );
+                std::process::exit(2);
+            }
+        };
+        let auto_merge = args.iter().any(|a| a == "--auto-merge");
+        let skip_tests = args.iter().any(|a| a == "--skip-tests");
+        let paths = args
+            .iter()
+            .position(|a| a == "--paths")
+            .and_then(|i| args.get(i + 1))
+            .cloned();
+
+        let repo_root = repo_path::repo_root();
+        let opts = dispatch::DispatchOptions {
+            gap_id: &gap_id,
+            work: dispatch::WorkBackend::Interactive,
+            auto_merge,
+            skip_tests,
+            paths: paths.as_deref(),
+            repo_root,
+        };
+
+        match dispatch::run(opts) {
+            Ok(outcome) => {
+                println!(
+                    "[dispatch] {} branch={} duration={}s",
+                    outcome.gap_id, outcome.branch, outcome.duration_secs
+                );
+                match outcome.result {
+                    dispatch::ShipResult::Shipped { pr_number } => {
+                        println!("[dispatch] shipped PR #{pr_number}");
+                        return Ok(());
+                    }
+                    dispatch::ShipResult::Blocked { reason } => {
+                        eprintln!("[dispatch] blocked: {reason}");
+                        std::process::exit(1);
+                    }
+                    dispatch::ShipResult::Aborted { error } => {
+                        eprintln!("[dispatch] aborted: {error}");
+                        std::process::exit(3);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[dispatch] failed: {e:#}");
                 std::process::exit(1);
             }
         }
