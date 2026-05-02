@@ -1,7 +1,7 @@
 - id: INFRA-258
   domain: INFRA
   title: closer-pr-batcher / stale-pr-reaper false-close on partial-delivery PRs — gap-status alone is insufficient signal
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -58,4 +58,6 @@
   depends_on: [INFRA-219]
   notes: |
     Filed during 2026-05-02 PR-watching pass after recovering #833's lost AGENTS.md doc as PR #863. The recovery cost was tiny but the failure mode (silent partial-delivery loss) is corrosive at fleet scale — every dispatched agent risks losing some of its work this way if it shares a gap-ID with parallel agents.
+  closed_date: '2026-05-02'
+  closed_pr: 878
 
