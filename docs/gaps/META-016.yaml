@@ -1,0 +1,46 @@
+- id: META-016
+  domain: META
+  title: Untracked-file loss in main worktree — git clean -fd somewhere in dispatched-agent flow eats .chump/notes/* (extends META-011)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Live incident 2026-05-02 ~22:30: 3 untracked files in /Users/jeffadkins/Projects/Chump/.chump/notes/ disappeared during the session. Files were created via the Write tool with absolute path under main repo .chump/notes/:
+    
+      - AI-COLLABORATION-DUE-DILIGENCE.md (354 lines — multi-AI vetting framework + offline-mission strategic anchor)
+      - ask-llm.sh (multi-provider LLM critique helper)
+      - external-feedback-2026-05-02.md (3 hours of captured LLM responses across 6 providers)
+    
+    When checked at end of session, only the SESSION-2026-05-02-HANDOFF.md (just-written, ~1 minute earlier) was present. The 3 earlier files were gone.
+    
+    Verified investigation:
+      - find / -name "<filename>" returns nothing (not in /tmp, not in worktrees, not in main repo)
+      - .gitignore excludes specific files under .chump/ but NOT .chump/notes/ — files SHOULD have persisted
+      - git stash list shows 8 stashes; none reference these files
+      - git fsck --lost-found shows 5 dangling commits but no dangling blobs that look like the lost content
+      - main worktree was on chump/infra-123-reflection-field-consistency at investigation time (NOT main; an agent switched it)
+      - stale-worktree-reaper log shows 0 reaped this run
+    
+    Most plausible cause: a `git clean -fd` (or equivalent destructive cleanup) somewhere in the dispatched-agent flow. Untracked files survive `git switch` normally; they only get removed by explicit clean commands. Suspects:
+      - bot-merge.sh: search for `git clean` calls
+      - scripts/coord/gap-claim.sh
+      - scripts/setup/install-hooks.sh post-install hook
+      - The agent-dispatcher harness itself doing pre-commit cleanup
+    
+    This extends META-011 — that gap covered uncommitted edits being stomped via branch switches; META-016 is uncommitted UNTRACKED files being deleted entirely. Same root cause class (background mutation of main worktree state), different failure surface (file deletion vs. branch swap).
+    
+    Fix paths:
+      (a) Find and remove `git clean -fd` from any session-flow script. Aggressive cleanup belongs in worktree-tear-down (when the worktree is being deleted), not in session-active flow.
+      (b) Move `.chump/notes/` to operate ONLY under `~/.claude/...` or another out-of-repo path, so cleanup commands cant touch it. (Loss of locality is the cost.)
+      (c) Add a hard guard: if any session script is about to run `git clean`, refuse unless `CHUMP_ALLOW_GIT_CLEAN=1` is set. Force operators to opt in to destructive cleanup.
+    
+    Recommend (a) — find the offending call site. Most-likely offenders: any script that calls `git clean` during normal flow rather than only during worktree teardown.
+  acceptance_criteria:
+    - Identify which script issues the destructive git clean (or equivalent) that ate the 3 .chump/notes/ files
+    - Either remove the call OR put it behind explicit CHUMP_ALLOW_GIT_CLEAN=1 opt-in
+    - Add a regression test in scripts/ci/ that creates an untracked file in .chump/notes/, runs through a full bot-merge.sh / gap-claim.sh cycle, and asserts the file persists
+    - "CLAUDE.md Hard Rules section adds: \"Anything you write to the main repo without committing is at risk — write under ~/.claude/... or commit immediately\""
+  depends_on: [META-011]
+  notes: |
+    Filed during 2026-05-02 session wrap when SESSION-HANDOFF doc referenced files that no longer existed on disk. The file-loss happened mid-session, silently. This is the silent-data-loss failure mode META-011 warned about, surfacing as the wrapping session was actively writing the very document that referenced the lost files. Recursive irony.
+
