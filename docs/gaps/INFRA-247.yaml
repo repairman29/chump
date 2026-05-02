@@ -1,0 +1,48 @@
+- id: INFRA-247
+  domain: INFRA
+  title: chump gap reserve walks up to outermost .git, writes per-file YAML in main worktree not linked CWD
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-02'
+  source_doc: src/repo_path.rs
+  description: |
+    `chump gap reserve` (post-INFRA-228) writes the per-file YAML mirror
+    to `<repo_root()>/docs/gaps/<ID>.yaml`. `repo_root()` walks up from
+    CWD until it finds a `.git` directory, which means linked worktrees
+    under `.claude/worktrees/<name>/` resolve to the **main checkout's**
+    `docs/gaps/`, not the linked worktree's.
+
+    Symptom (observed 2026-05-02 evening, multiple times): operator runs
+    `chump gap reserve` from a linked worktree expecting the YAML to
+    land alongside their other staged changes; instead it lands in the
+    main worktree (which is typically on a sibling agent's WIP branch),
+    requires a manual `mv`, and risks accidental commit by the sibling.
+
+    Documented as gotcha §4 in `docs/process/POST_INFRA_188_GOTCHAS.md`.
+
+    Fix options:
+      1. Detect linked worktree via `git rev-parse --git-common-dir` vs
+         `git rev-parse --git-dir`; if they differ, write to CWD's
+         worktree-local `docs/gaps/` instead of climbing to outer.
+      2. Honor a CHUMP_PER_FILE_YAML_DIR env override.
+      3. Add a stderr warning when writing outside CWD: "wrote
+         <abs-path> (outside CWD <cwd>); set CHUMP_REPO=$(pwd) to keep
+         it local."
+
+    Recommend option 1 + 3 — auto-detect the linked-worktree case AND
+    emit a one-line note so the operator knows where the file went.
+    Option 2 (env override) is fine but requires opt-in.
+
+    Out of scope: redesigning `repo_root()` for non-gap-reserve uses
+    (state.db location, etc.). This gap is narrow — only the per-file
+    YAML write path needs the worktree-local treatment.
+  acceptance_criteria:
+    - "chump gap reserve from a linked worktree writes the YAML to the worktree's own docs/gaps/, not the outer main checkout's"
+    - "the chosen path is logged to stderr ('wrote <path>') so the operator can confirm"
+    - "CHUMP_REPO env override still works (existing behavior preserved for explicit overrides)"
+    - "regression test in src/main.rs or src/gap_store.rs covers the linked-worktree path"
+  depends_on: [INFRA-228, INFRA-229]
+  notes: |
+    Discovered while shipping INFRA-240 — needed to manually `mv` the
+    INFRA-240.yaml from main worktree to linked worktree before commit.
