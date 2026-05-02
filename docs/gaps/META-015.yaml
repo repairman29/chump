@@ -1,0 +1,32 @@
+- id: META-015
+  domain: META
+  title: "tests/gap_reserve_cross_host_race.rs::two_concurrent_reserves_return_distinct_ids is flaky under CI matrix parallelism — passes/fails non-deterministically across PRs"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    The cross-host reserve race integration test added by INFRA-216 (PR #800) at tests/gap_reserve_cross_host_race.rs:84 — `two_concurrent_reserves_return_distinct_ids` — fails non-deterministically under the new INFRA-213 (PR #814) CI matrix parallelism. Observed:
+    
+      PR #824 (INFRA-219): cargo-test PASS
+      PR #832 (INFRA-104): cargo-test FAIL → PR closed (also superseded by #830, but the failure was the trigger)
+      PR #833 (INFRA-209): cargo-test FAIL → rerun in progress at time of filing
+      PR #836 (INFRA-232): cargo-test SKIPPED (only YAML changes; not affected)
+    
+    Failure mode: "session-z reserve failed: chump gap: cannot open state.db: database is locked: Error code 5". Two `chump gap reserve` processes spawned concurrently with shared state.db — SQLite BEGIN IMMEDIATE *should* serialize them but the test gets the lock-race instead of the verified-distinct-IDs result. The test was designed to verify the post-reserve verification round-trip, not the BEGIN IMMEDIATE itself.
+    
+    Likely root cause: the test process spawn timing has a narrow window where both processes hit the SQLite open() simultaneously, before either acquires the BEGIN IMMEDIATE. PR #814 INFRA-213 cargo-test shard runs with --test-threads default = 4+ on GitHub runners, increasing process contention compared to the pre-INFRA-213 serial test runner.
+    
+    Fix paths:
+      (a) Add a `busy_timeout=10000` PRAGMA on test-time SQLite connections (matches CLAUDE.md INFRA-216 gap row recommendation but for the test process itself)
+      (b) Insert a 10-100ms stagger between the two spawned processes so the second sees the first already-locked state — the test then exercises busy_timeout-driven serialization
+      (c) Add #[ignore] tag and a manual cargo-test --ignored path (degrades signal but unblocks PRs)
+      (d) Drop the test entirely and rely on the live INFRA-216 verification logic (covered by other test cases) — but loses the contention-specific signal
+    
+    (a) is the closest to "fix the actual issue"; (b) is the cheapest unblock. Recommend (a) first; if it stays flaky after busy_timeout, add (b) on top.
+  acceptance_criteria:
+    - "tests/gap_reserve_cross_host_race.rs::two_concurrent_reserves_return_distinct_ids passes on 5 consecutive cargo-test runs in the INFRA-213 CI matrix shard"
+    - "Test still exercises real concurrency (does not become a #[ignore] no-op or single-process test)"
+    - Documentation in CLAUDE.md INFRA-216 row updated if the fix changes the SQLite contract assumed by chump gap reserve
+  notes: |
+    Filed as part of the 2026-05-02 PR re-work pass — surfaced when checking my own PRs and finding 2 of 11 had this same test failure non-deterministically.
+
