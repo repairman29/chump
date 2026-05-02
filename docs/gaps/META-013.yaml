@@ -1,0 +1,37 @@
+- id: META-013
+  domain: META
+  title: src/discord.rs is a god module — owns agent factory + system prompt + Discord IO; refactor needs a focused session
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Pattern observed during 2026-05-02 SECURITY-004 spike sequence: src/discord.rs is not just a Discord backend — it is the de facto "system module" that owns:
+    
+      1. Agent factory (build_chump_agent_cli, build_chump_agent_web_components, build_chump_agent_web, WebAgentBuild) — used by 16 call sites in 9 non-discord modules
+      2. Primary system prompt assembly (chump_system_prompt — 176 lines, shapes ALL agent behavior across CLI, web, Discord, dispatched-gap, autonomy loop)
+      3. ~1250 lines of system-prompt constants (CHUMP_HARD_RULES, CHUMP_THINKING_XML_PRIMACY, etc.)
+      4. Helpers (env_is_mabel, a2a_team_block) used by the system prompt
+      5. The actual Discord IO surface (EventHandler, message dispatch, slash commands)
+    
+    Three refactoring tasks already scoped against this concentration:
+      - RELIABILITY-001 Path A: serenity 0.12 → 0.13 API migration (16 compile errors in discord.rs)
+      - RELIABILITY-001 Path B: feature-gate discord (blocked by 16 call sites importing factory)
+      - RELIABILITY-002: extract agent factory to src/agent_factory.rs (1-2 hr estimate became 3-5 hr after seeing the prompt + constants entanglement)
+    
+    Each refactor scoped at first-pass appeared small; each expanded on contact because of the god-module concentration. Filing this META so the pattern is visible at the next architectural review — the work to split discord.rs is itself a single focused project, not a series of small spikes.
+    
+    Suggested decomposition:
+      - src/system_prompt.rs (CHUMP_HARD_RULES, CHUMP_THINKING_XML_PRIMACY, chump_system_prompt, a2a_team_block, env_is_mabel)
+      - src/agent_factory.rs (build_chump_agent_cli, build_chump_agent_web_components, build_chump_agent_web, WebAgentBuild)
+      - src/discord.rs (EventHandler, run, build_agent — Discord-specific only; imports back from agent_factory + system_prompt)
+    
+    After this lands, discord becomes feature-gateable cleanly, and the system prompt has a sensible home for future evolution (light prompt, MABEL/CHUMP variants, evaluation-aware modifications, etc.).
+  acceptance_criteria:
+    - src/system_prompt.rs and src/agent_factory.rs both exist, with discord.rs importing back from them
+    - "All 16 call sites of build_chump_agent_* updated to use crate::agent_factory"
+    - Snapshot test asserting chump_system_prompt output is character-identical before/after the split
+    - cargo check + cargo test pass
+    - RELIABILITY-001 Path B and RELIABILITY-002 close as superseded by this gap, OR this gap explicitly delegates to them as sub-tasks
+  notes: |
+    Filed during 2026-05-02 cleanup pass after the third scope-expansion-on-contact in src/discord.rs. Pattern recognition matters: tag related future work to this gap rather than re-filing.
+
