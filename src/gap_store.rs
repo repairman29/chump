@@ -1016,7 +1016,15 @@ impl GapStore {
                 continue; // defense against any INFRA-112-class empty-id rows
             }
             let path = out_dir.join(format!("{}.yaml", g.id));
-            let content = format_gap_yaml(g);
+            let generated = format_gap_yaml(g);
+            // INFRA-208 preserve-on-merge: if the file exists, splice in any
+            // hand-curated fields the DB schema doesn't know about
+            // (`acceptance:`, `closed_commit:`, `runnable_now:`, …) so a
+            // round-trip dump is lossless instead of stripping them silently.
+            let content = match std::fs::read_to_string(&path) {
+                Ok(existing) => merge_preserve_unknown_fields(&generated, &existing),
+                Err(_) => generated,
+            };
             let needs_write = match std::fs::read_to_string(&path) {
                 Ok(existing) => existing != content,
                 Err(_) => true,
@@ -1052,7 +1060,17 @@ impl GapStore {
         std::fs::create_dir_all(out_dir)
             .with_context(|| format!("creating {}", out_dir.display()))?;
         let path = out_dir.join(format!("{}.yaml", row.id));
-        let content = format_gap_yaml(&row);
+        let generated = format_gap_yaml(&row);
+        // INFRA-208 preserve-on-merge: splice unknown hand-curated fields
+        // (`acceptance:`, `closed_commit:`, `runnable_now:`, …) from the
+        // existing file into the generated content so a single-gap update
+        // is lossless. Without this, every `chump gap ship --update-yaml`
+        // strips fields the DB schema doesn't know about — that's the
+        // 22500-line lossy diff the gap was filed against.
+        let content = match std::fs::read_to_string(&path) {
+            Ok(existing) => merge_preserve_unknown_fields(&generated, &existing),
+            Err(_) => generated,
+        };
         match std::fs::read_to_string(&path) {
             Ok(existing) if existing == content => Ok(false),
             _ => {
@@ -1152,6 +1170,172 @@ fn format_gap_yaml(g: &GapRow) -> String {
     }
     s.push('\n');
     s
+}
+
+// ────────────────────────── INFRA-208 preserve-on-merge ──────────────────────────
+
+/// The set of top-level gap fields the DB schema owns. Any other
+/// 2-space-indented `key:` line inside a per-file `docs/gaps/<ID>.yaml`
+/// is treated as hand-curated and preserved across `dump_per_file*` writes
+/// (see `merge_preserve_unknown_fields`).
+///
+/// Known unknown fields in the wild: `acceptance:` (free-text counterpart
+/// to the structured `acceptance_criteria:` list), `closed_commit:` (40-char
+/// SHA pin), `runnable_now:` (operational shell snippet). New fields can
+/// be hand-added without code changes — the merge is whitelist-by-DB, so
+/// anything outside the list survives automatically.
+const DB_OWNED_GAP_FIELDS: &[&str] = &[
+    "id",
+    "domain",
+    "title",
+    "status",
+    "priority",
+    "effort",
+    "description",
+    "acceptance_criteria",
+    "depends_on",
+    "notes",
+    "source_doc",
+    "opened_date",
+    "closed_date",
+    "closed_pr",
+];
+
+/// INFRA-208: take freshly-generated per-file YAML (one block-list entry as
+/// produced by `format_gap_yaml`) and splice in any top-level fields from
+/// the existing on-disk file that the DB schema doesn't own. The merge is
+/// textual — preserving original block-scalar formatting, comments inside
+/// the value, and exact whitespace — so round-trip dumps are byte-stable
+/// for the preserved regions.
+///
+/// Behavior:
+///   - DB-owned fields in `existing` are dropped (DB is the source of truth
+///     for those).
+///   - Unknown fields (e.g. `acceptance:`, `closed_commit:`, `runnable_now:`)
+///     are appended to the generated entry, in the order they appeared in
+///     `existing`, before the trailing blank line.
+///   - If `existing` fails to parse as a single block-list entry (e.g.
+///     truncated, hand-corrupted), the generated content is returned as-is
+///     so a stray bad file doesn't prevent the dump from progressing.
+fn merge_preserve_unknown_fields(generated: &str, existing: &str) -> String {
+    let unknown_blocks = extract_unknown_field_blocks(existing);
+    if unknown_blocks.is_empty() {
+        return generated.to_string();
+    }
+    // Splice the unknown blocks in just before the trailing blank line that
+    // `format_gap_yaml` emits. If the trailing-newline pattern isn't there
+    // (caller passed something hand-mangled), append at end.
+    let preserved: String = unknown_blocks.concat();
+    if let Some(stripped) = generated.strip_suffix("\n\n") {
+        format!("{}\n{}\n", stripped, preserved)
+    } else if let Some(stripped) = generated.strip_suffix('\n') {
+        format!("{}\n{}", stripped, preserved)
+    } else {
+        format!("{}\n{}", generated, preserved)
+    }
+}
+
+/// Scan a per-file gap YAML (a single block-list entry indented at 2 spaces)
+/// and return each top-level field block (key line + indented continuation
+/// lines) whose key is NOT in `DB_OWNED_GAP_FIELDS`. Each returned string is
+/// terminated with a newline.
+///
+/// Recognizes the standard per-file shape produced by `format_gap_yaml`:
+///   `- id: …\n  key1: …\n  key2: |\n    multiline\n    body\n  key3: …\n`
+/// The leading `- id:` line is treated as belonging to the `id` field;
+/// other 2-space-indent `<key>:` lines are field starts; 4+ space lines
+/// are continuation. Comment lines (`#…`) attached to an unknown field
+/// are preserved with that field.
+fn extract_unknown_field_blocks(existing: &str) -> Vec<String> {
+    let lines: Vec<&str> = existing.lines().collect();
+    let mut blocks: Vec<String> = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        // A field start at 2-space indent looks like "  <key>:" (the `- id:`
+        // line is special; we lump it under the `id` field which is DB-owned
+        // and therefore dropped anyway).
+        let key = if let Some(stripped) = line.strip_prefix("- ") {
+            // First entry: `- id: …`
+            extract_key_from_field_line(stripped)
+        } else if line.starts_with("  ") && !line.starts_with("    ") {
+            extract_key_from_field_line(&line[2..])
+        } else {
+            // Pre-entry blank line, comment line, or stray content; skip.
+            i += 1;
+            continue;
+        };
+
+        // Find the end of this field block: next field start, or end of file.
+        let block_start = i;
+        i += 1;
+        while i < lines.len() {
+            let l = lines[i];
+            // Trailing blank line — belongs to the entry as a whole, stop.
+            if l.is_empty() {
+                break;
+            }
+            // Next 2-space-indent field start ends the current block.
+            if l.starts_with("  ") && !l.starts_with("    ") {
+                // But "  - " (acceptance_criteria list items) is continuation,
+                // not a new field.
+                if l.starts_with("    -") || l[2..].starts_with('-') {
+                    i += 1;
+                    continue;
+                }
+                if extract_key_from_field_line(&l[2..]).is_some() {
+                    break;
+                }
+            }
+            // Another `- id:` would mean a multi-entry block list; per-file
+            // YAML is single-entry by convention, but stop just in case.
+            if l.starts_with("- ") {
+                break;
+            }
+            i += 1;
+        }
+
+        if let Some(k) = key {
+            if !DB_OWNED_GAP_FIELDS.contains(&k) {
+                let mut block = String::new();
+                for l in &lines[block_start..i] {
+                    block.push_str(l);
+                    block.push('\n');
+                }
+                blocks.push(block);
+            }
+        }
+    }
+    blocks
+}
+
+/// Given a line with the leading indent already stripped (so it starts at
+/// the key character), return the key name if the line is a field-start of
+/// the shape `<key>: …` or `<key>:` (block-scalar header). Returns None for
+/// list items (`- foo`), comments (`# foo`), and continuation text.
+fn extract_key_from_field_line(content: &str) -> Option<&str> {
+    if content.starts_with('#') || content.starts_with('-') || content.is_empty() {
+        return None;
+    }
+    let colon = content.find(':')?;
+    let key = &content[..colon];
+    // YAML keys: alnum + underscore + dash. Anything else means we mis-classified
+    // a continuation line as a field start.
+    if key.is_empty()
+        || !key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return None;
+    }
+    // Field-start lines either end at the colon (`key:` for block scalars)
+    // or have a space after (`key: value`). Reject `key:value` (no space) —
+    // that's almost always inside a URL or a description sentence.
+    let after = &content[colon + 1..];
+    if !after.is_empty() && !after.starts_with(' ') {
+        return None;
+    }
+    Some(key)
 }
 
 // ────────────────────────── one-shot importer ──────────────────────────
@@ -2964,5 +3148,202 @@ meta:
             .reserve_verified("INFRA", "fast", "P1", "s", "any-session")
             .unwrap();
         assert_eq!(id, "INFRA-001");
+    }
+
+    // ── INFRA-208: dump preserves unknown hand-curated fields ──────────
+
+    /// Bare round-trip: a per-file YAML containing `acceptance:`,
+    /// `closed_commit:`, and `runnable_now:` (the three fields the gap
+    /// quantified as lossy on 2026-05-02) survives `dump_per_file_single`.
+    #[test]
+    fn dump_per_file_single_preserves_acceptance_closed_commit_runnable_now() {
+        let (store, _dbdir) = test_store();
+        let id = store.reserve("INFRA", "preserve test", "P1", "s").unwrap();
+
+        let out_dir = TempDir::new().unwrap();
+        // Seed a per-file mirror with hand-curated fields the schema doesn't own.
+        let seeded = format!(
+            "- id: {id}\n  \
+             domain: INFRA\n  \
+             title: preserve test\n  \
+             status: open\n  \
+             priority: P1\n  \
+             effort: s\n  \
+             acceptance: |\n    \
+             this is a multi-line\n    \
+             acceptance free-text block\n    \
+             that the DB schema does not own\n  \
+             closed_commit: 0123456789abcdef0123456789abcdef01234567\n  \
+             runnable_now: |\n    \
+             # Reproduce in a fresh tempdir:\n    \
+             cargo test --bin chump dump_per_file_single_preserves\n\n",
+            id = id
+        );
+        let path = out_dir.path().join(format!("{}.yaml", id));
+        std::fs::write(&path, &seeded).unwrap();
+
+        // Run the dump. The bool return is "did we write?" — true OR false is
+        // valid here (the merge could be a no-op if the seeded format already
+        // matched what `format_gap_yaml` would emit). We care about post-state.
+        let _ = store.dump_per_file_single(&id, out_dir.path()).unwrap();
+
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            after.contains("acceptance: |"),
+            "acceptance: free-text field stripped\n--- got ---\n{after}"
+        );
+        assert!(
+            after.contains("acceptance free-text block"),
+            "acceptance: body content stripped\n--- got ---\n{after}"
+        );
+        assert!(
+            after.contains("closed_commit: 0123456789abcdef0123456789abcdef01234567"),
+            "closed_commit: 40-char SHA stripped\n--- got ---\n{after}"
+        );
+        assert!(
+            after.contains("runnable_now: |"),
+            "runnable_now: shell snippet header stripped\n--- got ---\n{after}"
+        );
+        assert!(
+            after.contains("cargo test --bin chump dump_per_file_single_preserves"),
+            "runnable_now: body content stripped\n--- got ---\n{after}"
+        );
+    }
+
+    /// DB-owned fields MUST update when DB diverges from disk — preservation
+    /// is opt-in only for fields the schema doesn't know about. Without this,
+    /// the merge would freeze hand-edits to title/status/etc. and silently
+    /// invert the "DB is canonical" contract (INFRA-059).
+    #[test]
+    fn dump_per_file_single_overrides_db_owned_fields() {
+        let (store, _dbdir) = test_store();
+        let id = store.reserve("INFRA", "fresh title", "P1", "s").unwrap();
+
+        let out_dir = TempDir::new().unwrap();
+        // Stale on-disk YAML claims a different title and status — exactly the
+        // drift case INFRA-059 flipped authority to .chump/state.db to fix.
+        let stale = format!(
+            "- id: {id}\n  \
+             domain: INFRA\n  \
+             title: STALE TITLE\n  \
+             status: done\n  \
+             priority: P1\n  \
+             effort: s\n  \
+             acceptance: |\n    \
+             keep this hand-curated text\n\n",
+            id = id
+        );
+        let path = out_dir.path().join(format!("{}.yaml", id));
+        std::fs::write(&path, &stale).unwrap();
+
+        store.dump_per_file_single(&id, out_dir.path()).unwrap();
+        let after = std::fs::read_to_string(&path).unwrap();
+
+        // DB wins for title + status.
+        assert!(
+            after.contains("title: fresh title"),
+            "DB title did not override disk\n--- got ---\n{after}"
+        );
+        assert!(
+            !after.contains("title: STALE TITLE"),
+            "stale title leaked through\n--- got ---\n{after}"
+        );
+        assert!(
+            after.contains("status: open"),
+            "DB status did not override disk\n--- got ---\n{after}"
+        );
+        // Unknown field still preserved.
+        assert!(
+            after.contains("keep this hand-curated text"),
+            "preservation regressed\n--- got ---\n{after}"
+        );
+    }
+
+    /// `dump_per_file` (the all-gaps variant) applies the same merge so a
+    /// `chump gap dump --per-file` after surgical hand-edits doesn't
+    /// strip them either.
+    #[test]
+    fn dump_per_file_all_preserves_unknown_fields() {
+        let (store, _dbdir) = test_store();
+        let id = store.reserve("INFRA", "all-variant", "P1", "s").unwrap();
+
+        let out_dir = TempDir::new().unwrap();
+        let seeded = format!(
+            "- id: {id}\n  \
+             domain: INFRA\n  \
+             title: all-variant\n  \
+             status: open\n  \
+             priority: P1\n  \
+             effort: s\n  \
+             closed_commit: deadbeefcafebabe1234567890abcdef12345678\n\n",
+            id = id
+        );
+        let path = out_dir.path().join(format!("{}.yaml", id));
+        std::fs::write(&path, &seeded).unwrap();
+
+        store.dump_per_file(out_dir.path()).unwrap();
+        let after = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            after.contains("closed_commit: deadbeefcafebabe1234567890abcdef12345678"),
+            "dump_per_file stripped closed_commit\n--- got ---\n{after}"
+        );
+    }
+
+    /// Unit-level tests for the field-block extractor — ensure the line
+    /// scanner correctly distinguishes block-scalar continuation from new
+    /// field starts, and ignores DB-owned keys.
+    #[test]
+    fn extract_unknown_field_blocks_handles_block_scalars() {
+        let yaml = "- id: INFRA-999\n  \
+                    domain: INFRA\n  \
+                    title: extractor test\n  \
+                    description: |\n    \
+                    db-owned, must NOT be returned\n  \
+                    acceptance: |\n    \
+                    line one of free-text\n    \
+                    line two indented further\n  \
+                    closed_commit: abcdef0123456789abcdef0123456789abcdef01\n";
+        let blocks = extract_unknown_field_blocks(yaml);
+        assert_eq!(
+            blocks.len(),
+            2,
+            "expected 2 unknown-field blocks (acceptance + closed_commit), got: {:?}",
+            blocks
+        );
+        assert!(blocks[0].starts_with("  acceptance: |\n"));
+        assert!(blocks[0].contains("line one of free-text"));
+        assert!(blocks[0].contains("line two indented further"));
+        assert!(blocks[1].starts_with("  closed_commit: "));
+        // Nothing in either block should be DB-owned.
+        for b in &blocks {
+            assert!(!b.contains("description:"), "extractor leaked description");
+            assert!(!b.contains("title:"), "extractor leaked title");
+        }
+    }
+
+    /// Acceptance_criteria list items (`  - foo`) are continuation, not
+    /// new field starts. Without the list-item guard, the extractor would
+    /// classify each `- ` line as a new entry and drop everything after.
+    #[test]
+    fn extract_unknown_field_blocks_does_not_split_on_list_items() {
+        let yaml = "- id: INFRA-998\n  \
+                    domain: INFRA\n  \
+                    title: list-item test\n  \
+                    acceptance_criteria:\n    \
+                    - first\n    \
+                    - second\n  \
+                    closed_commit: 1111111111111111111111111111111111111111\n";
+        let blocks = extract_unknown_field_blocks(yaml);
+        assert_eq!(blocks.len(), 1, "got blocks: {:?}", blocks);
+        assert!(blocks[0].starts_with("  closed_commit: "));
+    }
+
+    /// Empty-input guard: nothing to preserve, nothing returned.
+    #[test]
+    fn merge_preserve_unknown_fields_noop_when_existing_is_pure() {
+        let generated = "- id: INFRA-1\n  domain: INFRA\n  title: x\n\n";
+        let existing = "- id: INFRA-1\n  domain: INFRA\n  title: x\n\n";
+        let merged = merge_preserve_unknown_fields(generated, existing);
+        assert_eq!(merged, generated);
     }
 }
