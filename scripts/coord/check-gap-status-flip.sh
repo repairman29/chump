@@ -43,10 +43,14 @@ echo "Detected gap reference in PR title: $GAP_ID"
 status=""
 
 # 1. Try per-file layout: docs/gaps/<ID>.yaml
+# Only auto-detect docs/gaps/ when no explicit argument was provided.
+# An explicit file argument always routes through the monolithic path below.
 PER_FILE_PATH=""
 if [[ -n "$GAPS_ARG" && -d "$GAPS_ARG" ]]; then
+  # Explicit directory argument → per-file in that directory.
   PER_FILE_PATH="${GAPS_ARG%/}/${GAP_ID}.yaml"
-elif [[ -d "docs/gaps" ]]; then
+elif [[ -z "$GAPS_ARG" && -d "docs/gaps" ]]; then
+  # No argument → auto-detect per-file layout from CWD.
   PER_FILE_PATH="docs/gaps/${GAP_ID}.yaml"
 fi
 
