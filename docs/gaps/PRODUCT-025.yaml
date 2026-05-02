@@ -1,0 +1,53 @@
+- id: PRODUCT-025
+  domain: PRODUCT
+  title: PWA multi-agent orchestration dashboard — registry view + dispatch + ambient + decision channel + parallelism governor
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    Strategic deliverable from the 2026-05-02 manual multi-agent orchestration session. The current PWA (chump --web) is single-session chat. Multi-agent orchestration today runs from CLI (chump --execute-gap, bot-merge.sh, scripts/coord/*) and external dispatchers (the scheduled remote agents per /schedule). A solo human driving 8-12 parallel agents has to coordinate by manually reading gh pr list + git status + ambient.jsonl + .chump-locks/* across N worktrees. That coordination is the bottleneck — not compute, not model quality, but human attention thinning across N parallel results.
+    
+    The PWA should make this take 10 minutes instead of 2 hours.
+    
+    Mapping from manual session to PWA primitives (most already exist as data sources; UI surface is what is missing):
+    
+      Manual today                                    | PWA tomorrow                              | Already-exists
+      ------------------------------------------------|-------------------------------------------|--------------
+      Pick gap from chump gap list --status open      | Filtered registry view + click-to-dispatch| .chump/state.db + chump gap list --json (data exists)
+      Dispatch agent in /tmp/<branch> worktree        | Single button via chump-orchestrator       | COG-025 dispatch backend (claude or local LLM)
+      Watch git status + gh pr list across N worktrees| Live dashboard: lease/PR/CI status         | .chump-locks/*.json + gh API + ambient.jsonl
+      gap-preflight before dispatch                   | Pre-dispatch check (auto)                  | gap-preflight.sh (data path)
+      Cross-agent peripheral vision                   | Live ambient.jsonl tail in dashboard       | ambient.jsonl + NATS (FLEET-006)
+      Surface decision points (scope-expanded-on-contact)| Pending-questions inbox per agent       | NEW PRIMITIVE — does not exist yet
+      Self-cap parallel agents at 5-6                 | Soft + hard parallelism limits             | NEW PRIMITIVE — orchestrator-level governor needed
+    
+    Three new primitives the PWA needs:
+    
+      1. Decision channel. When an agent hits "scope expanded — A, B, or C?", it pauses and pings the PWA. Human chooses; agent continues. New event kind: .chump-locks/<session>/decision-pending.jsonl. UI surfaces it like an inbox.
+    
+      2. Orchestrator-level parallelism governor. Soft-cap warning at N=4, hard-cap refusal at N=6 concurrent agents per machine. With FLEET-* multi-machine, the cap is per-mesh. Without this, the PWA-driver reproduces the "dispatched 7 agents and got stuck tracking them" mistake the human just made manually.
+    
+      3. Live results board. Single page with all in-flight agents: gap claimed, worktree path, current commit, PR, CI status, last ambient event. Auto-updates from .chump-locks/ + gh polling. Replaces the gh pr list + git status + gh pr checks <N> grep loop.
+    
+    Offline-mission cut (per .chump/notes/AI-COLLABORATION-DUE-DILIGENCE.md): all 3 must work without GitHub. Registry in .chump/state.db (already canonical). PR-equivalent: local feature branches with NATS-broadcast review queues between mesh nodes. CI: local cargo invocations or remote per-mesh-node runners.
+    
+    Local-LLM cut (per RESEARCH-032): the orchestrator itself must work with a qwen3:14b-class operator-model. The orchestration is mostly state aggregation + button-press routing — does not need a frontier model. Agents themselves run on whatever backend (CHUMP_DISPATCH_BACKEND already supports this).
+    
+    Effort estimate: l (large). Scope:
+      Phase 1 (~1 week): Live results board reading .chump-locks/ + gh API. Read-only dashboard, no dispatch yet.
+      Phase 2 (~1 week): Click-to-dispatch via chump-orchestrator backend. Pre-dispatch gap-preflight check.
+      Phase 3 (~1 week): Parallelism governor + decision channel (new event kind in ambient.jsonl).
+      Phase 4 (~1 week): Multi-machine surface via NATS subscription (FLEET-006 already provides the transport).
+    
+    Hidden value: this gap is the literal UX spec captured during a 2-hour manual session. Every primitive in the design is something the human visibly needed and worked around. That is unusual provenance for a feature spec — most PWA features are designed up-front; this one was reverse-engineered from human pain.
+  acceptance_criteria:
+    - "Phase 1 dashboard: PWA route /agents shows live status of all .chump-locks/*.json sessions + their open PRs + CI status, auto-refreshing; reads via chump backend not direct gh call"
+    - "Phase 2 dispatch: PWA route /agents/dispatch/<GAP-ID> kicks off chump-orchestrator with the chosen backend (claude or local LLM), pre-checks via gap-preflight.sh, returns the new session id"
+    - "Phase 3 governor + decision channel: orchestrator refuses dispatch >6 concurrent on one machine; agents pause on scope-expansion and emit decision-pending event the PWA surfaces"
+    - "Phase 4 mesh: dashboard subscribes to NATS chump.events.> for cross-machine peripheral vision; works without GitHub access"
+    - "Offline-validation: full PWA + orchestration loop runs against qwen3:14b on 24GB Mac with no internet beyond LAN"
+    - Documented in docs/process/ as the canonical multi-agent operator workflow
+  depends_on: [FLEET-008, RESEARCH-032]
+  notes: |
+    Filed by Claude on 2026-05-02 after the user explicitly asked "how would Chump handle this if we were using the PWA to drive multi agent orchestration?". The session was a 2-hour reverse-engineered UX spec for this gap. Every primitive listed was visibly needed by the human and worked around manually.
+
