@@ -244,6 +244,9 @@ jobs:
       - name: raw-YAML-edit guard (INFRA-200, blocking since 2026-05-02)
         run: bash scripts/ci/test-raw-yaml-guard.sh
 
+      - name: git index mutex — concurrent chump-commit.sh stomp guard (META-011)
+        run: bash scripts/ci/test-meta-011-git-stomp.sh
+
       - name: ambient-jsonl emit-time schema validation (INFRA-101)
         run: bash scripts/ci/test-ambient-schema.sh
 

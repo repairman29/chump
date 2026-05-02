@@ -178,6 +178,42 @@ if [[ "$REPO_ROOT" == "$MAIN_WORKTREE" && -z "${CHUMP_ALLOW_MAIN_WORKTREE:-}" ]]
   echo "[chump-commit] Suppress this warning: CHUMP_ALLOW_MAIN_WORKTREE=1" >&2
 fi
 
+# ── Git index mutex (META-011) ─────────────────────────────────────────────────
+# Serialize git reset/add/commit across concurrent agents sharing the same
+# worktree. Without this, two concurrent chump-commit.sh calls can interleave
+# their git-reset and git-add calls, causing one agent to unstage another
+# agent's in-flight changes (silently producing an empty or wrong commit).
+#
+# Uses a dedicated mutex file (.git/.chump-index-mutex) rather than locking
+# .git/index directly — git uses .git/index.lock for its own internal locking
+# and we must not interfere with that mechanism.
+#
+# flock(1) is available on Linux (util-linux); BSD/macOS ships without it.
+# Fallback: print a warning and proceed unprotected. Still safe when only one
+# agent operates in a given worktree (the recommended discipline), and linked
+# worktrees each have their own .git/index so the race doesn't cross trees.
+#
+# The lock FD (200) is inherited by `exec git commit` at the end of this
+# script, so it remains held for the entire reset → add → commit sequence and
+# is released when git exits.
+#
+# Bypass: CHUMP_INDEX_LOCK=0
+_INDEX_MUTEX="$REPO_ROOT/.git/.chump-index-mutex"
+if [[ "${CHUMP_INDEX_LOCK:-1}" != "0" ]] && command -v flock >/dev/null 2>&1; then
+    exec 200>>"$_INDEX_MUTEX"
+    if ! flock -w 30 200; then
+        echo "[chump-commit] ERROR: could not acquire git index mutex after 30s." >&2
+        echo "[chump-commit]   Another agent is committing to this worktree." >&2
+        echo "[chump-commit]   Retry once that commit completes." >&2
+        echo "[chump-commit]   Bypass (removes serialization): CHUMP_INDEX_LOCK=0" >&2
+        exit 1
+    fi
+elif [[ "${CHUMP_INDEX_LOCK:-1}" != "0" ]]; then
+    echo "[chump-commit] WARNING: flock(1) not found — git index unprotected." >&2
+    echo "[chump-commit]   Install util-linux for concurrent-commit safety on Linux." >&2
+    echo "[chump-commit]   Safe to ignore on single-agent or isolated-worktree setups." >&2
+fi
+
 # Verify every file the user named actually exists OR is a deletion.
 for f in "${FILES[@]}"; do
   if [[ ! -e "$f" ]]; then
@@ -361,4 +397,8 @@ if [[ "${CHUMP_LEASE_CHECK:-1}" != "0" ]]; then
 fi
 
 # Commit with the passed-through git args.
-exec git commit "${GIT_ARGS[@]}"
+# Note: using `git commit` (not `exec`) so that FD 200 (the index mutex) is
+# closed and the lock released after git exits. With exec the FD is also
+# inherited and released on git exit — both work — but the non-exec form is
+# cleaner when callers capture the exit code via $?.
+git commit "${GIT_ARGS[@]}"
