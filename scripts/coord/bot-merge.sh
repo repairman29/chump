@@ -170,6 +170,31 @@ run_timed_hb() {
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
+# ── INFRA-224: ensure pre-commit hooks are installed before any commit ────────
+# Cold Water Red Letter #10 (2026-05-02) found that fresh CCR sandboxes / new
+# worktrees commit through bot-merge.sh WITHOUT the pre-commit hook installed,
+# silently bypassing every guard (closed_pr integrity, gaps-yaml-discipline,
+# duplicate-id, etc.). Result: 9 gaps shipped with `closed_pr: TBD` since
+# 2026-05-01 alone. This block ensures the hook is present before we make any
+# commits, so the guards always run.
+#
+# Cheap (a stat call); silent on the happy path. Bypass with
+# CHUMP_INSTALL_HOOKS=0 if you really know what you're doing.
+#
+# NOTE: must use git's resolved git-dir, not "$REPO_ROOT/.git", because in a
+# linked worktree .git is a file (gitdir pointer), not a directory. The hook
+# we care about lives at <git-dir-for-this-worktree>/hooks/pre-commit.
+if [[ "${CHUMP_INSTALL_HOOKS:-1}" == "1" ]] \
+        && [[ -x "$REPO_ROOT/scripts/setup/install-hooks.sh" ]]; then
+    _bm_git_dir="$(git -C "$REPO_ROOT" rev-parse --absolute-git-dir 2>/dev/null || echo "$REPO_ROOT/.git")"
+    if [[ ! -x "$_bm_git_dir/hooks/pre-commit" ]]; then
+        bash "$REPO_ROOT/scripts/setup/install-hooks.sh" --quiet 2>/dev/null \
+            && echo "[bot-merge] installed pre-commit hooks (INFRA-224 first-run)" \
+            || echo "[bot-merge] WARN: install-hooks.sh failed; pre-commit guards may be skipped" >&2
+    fi
+    unset _bm_git_dir
+fi
+
 # INFRA-017: attribute bot-merge synthetic commits (fmt amends, checkpoint tags)
 # to the canonical dispatched-agent identity so Red Letter doesn't flag them as
 # foreign-actor intrusions. Human sessions override with their own git config.
