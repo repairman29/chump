@@ -1,0 +1,69 @@
+- id: FLEET-030
+  domain: fleet
+  title: Tier 2 — pre-action ambient event vocabulary (OBSERVED + INVESTIGATING)
+  status: open
+  priority: P2
+  effort: m
+  opened_date: '2026-05-02'
+  source_doc: docs/gaps/FLEET-028.yaml
+  depends_on: [FLEET-028, FLEET-029]
+  description: |
+    Today's ambient.jsonl event vocabulary covers post-action signals
+    well — INTENT (lease claim), DONE (PR ship), file_edit, bash_call,
+    commit, ALERT — but lacks pre-action signals. Two agents observing
+    the same problem and forming intent to fix can't see each other
+    because nothing fires until one of them claims a lease.
+
+    Two new event kinds close the loop:
+
+    1. **`OBSERVED kind=<topic-hash>` event.** Emitted when an agent
+       recognizes a gap-worthy problem but hasn't yet reserved a gap.
+       Topic hash is a stable identifier (hash of normalized
+       free-text). Other agents glance ambient, see "agent X just
+       OBSERVED bot-merge-auto-close-failure" and yield or coordinate.
+
+       Trigger points:
+         - Operator reads a CI failure / red letter and forms intent
+           to fix → emit OBSERVED before reserving.
+         - Cold-water audit detects a pattern → emit OBSERVED with
+           the detected-pattern token.
+         - Reading bot-merge output where "fatal:" / "FAILED" appears
+           → auto-emit OBSERVED kind=<command> as a heuristic seed.
+
+    2. **`INVESTIGATING gap=<id>` event.** Emitted between gap-reserve
+       and first code edit. Signals "I have an ID and a worktree; I'm
+       scoping the fix." Today nothing fires between INTENT (lease
+       claim) and the first file_edit — usually 5–30 minutes of
+       investigation is invisible.
+
+    Implementation:
+
+    - New event kinds are a 2-line append to `src/ambient_stream.rs`
+      (or whichever module owns the event enum) + corresponding
+      JSON-schema entries. Format matches existing INTENT/DONE.
+    - Emission hooks land in two places:
+      - `chump-orchestrator` agent loop: emit OBSERVED on perception
+        of a "gap-worthy" stimulus (tooling decides; stub heuristic
+        is fine for v1).
+      - `chump gap reserve` and `chump gap claim`: emit INVESTIGATING
+        immediately after lease write (before exit).
+    - The Claude SDK skill ([global skill, not in this repo]) gets
+      a `chump observe "<topic>"` slash command for explicit user-
+      driven OBSERVED emissions.
+
+    Other agents glancing ambient see these as new event kinds and
+    treat them like INTENT — surface in the pre-flight tail with a
+    distinct color/marker.
+  acceptance_criteria:
+    - "OBSERVED + INVESTIGATING event kinds defined in ambient_stream.rs with corresponding JSON-schema entries"
+    - "chump observe \"<topic>\" CLI subcommand emits OBSERVED with topic-hash"
+    - "chump gap reserve emits INVESTIGATING gap=<id> as part of the reservation flow"
+    - "chump gap claim emits INVESTIGATING when picking up an existing reserved gap"
+    - "scripts/dev/chump-ambient-glance.sh shows OBSERVED/INVESTIGATING in the tail with distinct markers"
+    - "Schema validation (INFRA-101) accepts the new kinds"
+  notes: |
+    Tier 2 of FLEET-028. Combined with FLEET-029 (forced re-glance)
+    this catches the "I observed a bug 30s before sibling did" case —
+    the OBSERVED event fires on observation, glance fires on reserve,
+    sibling sees agent A is investigating before sibling's own reserve
+    completes.

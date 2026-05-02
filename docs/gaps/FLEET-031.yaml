@@ -1,0 +1,70 @@
+- id: FLEET-031
+  domain: fleet
+  title: Tier 3 — semantic title-similarity scoring for chump gap reserve (state-of-the-art)
+  status: open
+  priority: P2
+  effort: l
+  opened_date: '2026-05-02'
+  source_doc: docs/gaps/FLEET-028.yaml
+  depends_on: [FLEET-028, FLEET-029, FLEET-030]
+  description: |
+    Tier 1 (FLEET-029) catches exact ID + substring overlaps. Tier 2
+    (FLEET-030) catches "agent A is investigating, agent B sees it
+    before reserving." Neither catches the case where two agents type
+    different titles for the same problem — e.g. "fix bot-merge.sh
+    auto-close path post-INFRA-188" vs "patch docs/gaps.yaml ref in
+    bot-merge auto-close." Different words, same fix. This was
+    INFRA-226 ↔ INFRA-227 directly.
+
+    Tier 3 is semantic similarity matching on titles — the layer that
+    makes the system actually state-of-the-art for multi-agent
+    coordination on shared codebase work.
+
+    Two implementation paths, pick one:
+
+    **Path A — local embedding model.** Chump already has infrastructure
+    for local LLMs (mistral.rs, ollama, etc.). Use a small embedding
+    model (e.g. Qwen-0.5B-Embedding, BGE-small, or similar — ~100MB).
+    On `chump gap reserve --title "..."`, embed the proposed title +
+    each open/recently-merged PR title, compute cosine similarity,
+    flag matches ≥0.7. Cost: one inference call per reserve (~50ms
+    on M-series). Quality: high — handles paraphrase and synonyms.
+
+    **Path B — TF-IDF + cosine.** No model required. Tokenize titles,
+    compute IDF weights from the corpus of all gap titles (cached),
+    cosine similarity on vector representation. Cost: pure CPU, ~5ms.
+    Quality: medium — catches keyword overlap but misses synonym /
+    paraphrase. Good enough for many cases, much cheaper to deploy.
+
+    Recommendation: ship Path B first (fast to land, no model
+    dependency), measure miss rate against tonight's collision corpus,
+    upgrade to Path A if Path B's recall is insufficient.
+
+    Wire Path-B/A into the FLEET-029 forced-glance hook: when
+    `chump gap reserve` decides whether to flag overlap, the similarity
+    score is one input among several (also exact-substring match,
+    in-flight INTENT/INVESTIGATING events, recent OBSERVED topics).
+
+    Out of scope:
+      - Cross-repo similarity (only this repo's gaps + PR titles).
+      - Body-text similarity (titles only). Body-text would catch
+        more but adds significant cost; defer.
+      - Realtime updates (the cache is rebuilt on each ship, daily
+        cron, or manual `chump gap rebuild-similarity-cache`).
+  acceptance_criteria:
+    - "chump gap reserve --title 'foo' computes title-similarity against open + last-30-day-merged PR titles"
+    - "Matches with similarity ≥0.7 print a [WARN-similar] line listing the top-3 candidate PRs/gaps"
+    - "Operator can --force past or pick an existing gap to claim instead"
+    - "scripts/ci/test-reserve-similarity.sh covers tonight's INFRA-226 ↔ INFRA-227 collision corpus + a known-distinct pair as negative control"
+    - "v1 implementation chooses Path A or Path B with documented rationale; if Path B, miss-rate measurement against the collision corpus is logged"
+  notes: |
+    Tier 3 of FLEET-028. This is the layer that crosses the line from
+    "good multi-agent coordination" to "state of the art" — most
+    agentic-dev teams (including OSS) don't have this. Combined with
+    Tier 1+2 the system catches the three primary collision modes:
+      - exact ID race                    → Tier 1 substring scan
+      - "I'm investigating, you weren't watching" → Tier 2 OBSERVED/INVESTIGATING events
+      - paraphrased duplicate intent     → Tier 3 semantic similarity
+
+    Tier 4 (live presence feed) is deferred until 1+2+3 are in and
+    we measure what's still missing.

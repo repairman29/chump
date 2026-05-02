@@ -1,0 +1,67 @@
+- id: FLEET-029
+  domain: fleet
+  title: Tier 1 — forced ambient re-glance + open-PR scan at chump gap reserve and gh pr create
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-05-02'
+  source_doc: docs/gaps/FLEET-028.yaml
+  depends_on: [FLEET-028]
+  description: |
+    Cheapest layer of FLEET-028 (pre-action coordination). Forces an
+    ambient-glance + open-PR scan at the two decision points where
+    tonight's collisions happened.
+
+    Today ambient awareness IS forced at:
+      - session start (CLAUDE.md MANDATORY pre-flight)
+      - chump-commit.sh (`[ambient-glance]` block, last 600s of events)
+      - gap-claim.sh (`--check-overlap`)
+
+    It is NOT forced at:
+      - **chump gap reserve** — the moment a new ID is allocated. Today
+        scans `gh pr list` for exact ID collisions only; doesn't tail
+        ambient (so concurrent INTENT broadcasts within last 600s are
+        invisible) and doesn't title-match (so two agents reserving
+        nearly-identical titles get distinct IDs without a flag).
+      - **gh pr create** (inside bot-merge.sh) — the moment a branch
+        is pushed and a PR is opened. By this point code is written;
+        rebase is the only fallback if a sibling's PR with overlapping
+        scope landed in the meantime.
+
+    Fix scope:
+
+    1. Patch `src/main.rs` reserve handler:
+       - Re-tail `.chump-locks/ambient.jsonl` for INTENT/OBSERVED events
+         in the last 300s. If any match the proposed domain or fuzzy-
+         match the title (Tier 1 = exact substring; Tier 3 = embedding),
+         print a warning and require `--force` or interactive y/N to
+         continue.
+       - Same hook fires on `chump gap claim` for already-reserved IDs
+         the operator picks up later.
+
+    2. Patch `scripts/coord/bot-merge.sh`:
+       - After `gh pr create` succeeds, before arming auto-merge, run
+         a scan: `gh pr list --state open --json number,title --limit 50`
+         filtered for substring match against this PR's title or any
+         claimed gap-id in scope. Warn (don't block) if matches found
+         — operator decides whether to proceed.
+
+    3. Wire both into the existing `chump-ambient-glance.sh` script
+       so the diagnostic format matches the rest of the system.
+
+    Out of scope (covered by FLEET-030 + FLEET-031):
+      - New event kinds (OBSERVED, INVESTIGATING) — Tier 2.
+      - Semantic similarity (embedding) — Tier 3. Tier 1 uses exact
+        substring matching only.
+  acceptance_criteria:
+    - "chump gap reserve --domain X --title 'foo' tails ambient.jsonl + scans gh pr list before allocating an ID"
+    - "If a matching INTENT event or open PR exists, reserve prints a [WARN] line and requires --force OR interactive confirmation"
+    - "bot-merge.sh post-pr-create scans for overlapping open PRs and warns (non-blocking) if matches found"
+    - "Test in scripts/ci/test-reserve-glance.sh covers happy path + collision-detected path + --force bypass"
+    - "Existing reservation flow (no overlap) is unchanged — no new latency for the common case"
+  notes: |
+    Tier 1 of FLEET-028. This catches tonight's INFRA-226 ↔ INFRA-227
+    collision directly: when I'd reserved INFRA-227 with title containing
+    "bot-merge auto-close path post-INFRA-188", an ambient tail would
+    have shown sibling's INTENT for INFRA-226 with similar title and
+    flagged the overlap.

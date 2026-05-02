@@ -1,0 +1,93 @@
+- id: FLEET-028
+  domain: fleet
+  title: Pre-action coordination umbrella — agents see each other's intent before reserving / coding / PR-creating, not after
+  status: open
+  priority: P1
+  effort: l
+  opened_date: '2026-05-02'
+  source_doc: docs/strategy/FLEET_VISION_2026Q2.md
+  depends_on:
+    - FLEET-029
+    - FLEET-030
+    - FLEET-031
+  description: |
+    Tonight (2026-05-02) the post-INFRA-188 cleanup wave produced three
+    independent collisions where two agents started the same work
+    minutes apart, neither saw the other:
+
+      - INFRA-227 (mine) ↔ INFRA-226 (#766) — both fixed bot-merge.sh's
+        auto-close path post-INFRA-188 with different patches.
+      - INFRA-240 (mine) ↔ INFRA-241 (#807) — both audited the same
+        per-file YAML drift; complementary scopes but neither saw the
+        other was investigating.
+      - FLEET-024 close-flip — I prepared a manual close in a cleanup PR;
+        sibling's INFRA-241 backfill auto-closed it concurrently via PR
+        title heuristic.
+
+    Root cause is structural, not behavioral. Agents have three
+    coordination signals — lease files, ambient.jsonl, open PRs — but
+    NONE of them broadcast "I'm investigating problem X but haven't
+    reserved a gap yet." The trajectory is:
+
+      observe-bug → form-intent → reserve-gap → claim-lease → code → PR
+
+    Today the only signals fire from `claim-lease` onward. The
+    `observe-bug` and `form-intent` phases are agent-local. Two
+    agents independently arriving at the same observation within
+    5-10 minutes is invisible until both push.
+
+    Plus: the existing ambient awareness IS forced, but only at
+      (a) session start (CLAUDE.md MANDATORY pre-flight),
+      (b) chump-commit.sh wrapper time,
+      (c) gap-claim.sh time.
+    It is NOT forced at:
+      (d) chump gap reserve allocation (when the ID is picked),
+      (e) gh pr create (after code is written, before push).
+    (d) and (e) are exactly the moments where collisions tonight
+    surfaced.
+
+    Plus: the event vocabulary is too narrow.
+      - INTENT fires on lease claim (post-reservation).
+      - DONE fires on PR ship.
+      - There is no OBSERVED kind=<topic> event for "I just noticed
+        a problem worth fixing."
+      - There is no INVESTIGATING gap=<id> event for "I'm scoping a
+        fix and will write code soon."
+
+    Plus: no semantic matching. Two agents typing different titles
+    for the same fix don't trigger any flag. Title-similarity scoring
+    on open + recently-merged PRs would catch the
+    INFRA-226↔INFRA-227 case directly.
+
+    The four-tier fix architecture is sketched in the sub-gaps:
+
+      - FLEET-029 — Tier 1: forced re-glance at every reservation +
+        every PR-create. Cheapest, ~1 day shell work, catches exact
+        ID/title duplicates.
+      - FLEET-030 — Tier 2: new ambient event kinds OBSERVED and
+        INVESTIGATING with hooks to emit at the right moments.
+        ~2 days, requires Claude SDK skill changes.
+      - FLEET-031 — Tier 3: semantic similarity scoring (embedding
+        or TF-IDF) on titles for the "different words, same problem"
+        case. ~3 days, makes the system actually state-of-the-art.
+      - Tier 4 (live presence feed) — deferred. NATS infrastructure
+        already exists for it; will surface as an obvious add-on
+        once 1-3 are in.
+
+    Fundamentally this extends the FLEET vision Layer 2 (work
+    decomposition / claiming) into a Layer 2.5 — pre-action visibility.
+    Where Layer 2 says "agents claim work atomically once they pick
+    it up," Layer 2.5 says "agents see what others are about to
+    pick up, before they pick."
+  acceptance_criteria:
+    - "FLEET-029 forced re-glance lands: chump gap reserve and bot-merge.sh's gh pr create step both glance ambient + open PRs before action"
+    - "FLEET-030 event vocabulary lands: OBSERVED + INVESTIGATING event kinds defined and emitted by the dispatcher / claude SDK skill"
+    - "FLEET-031 semantic similarity lands: chump gap reserve flags ≥0.7 title-similarity matches against open + recently-merged PRs"
+    - "End-to-end smoke: two agents independently typing 'fix bot-merge.sh post-188' get a heads-up flag from each other before either reserves a gap"
+    - "Out-of-scope: live presence feed (deferred to Tier 4 / FLEET-NNN follow-up)"
+  notes: |
+    Filed in response to user feedback 2026-05-02 evening: "we should fix
+    this but not in a halfass or sloppy way. It should be state of the
+    art." The tier 1+2+3 approach is what state-of-the-art multi-agent
+    coordination looks like for shared-codebase work. Tier 4 (live
+    presence) is icing once 1-3 are in.
