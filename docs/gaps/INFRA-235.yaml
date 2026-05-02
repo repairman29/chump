@@ -1,0 +1,7 @@
+- id: INFRA-235
+  domain: INFRA
+  title: Wire adaptive_temperature + adaptive_top_p into axonerai cloud-path provider so neuromod ablation is uniform across providers (REMOVAL-006 follow-up)
+  status: open
+  priority: P2
+  effort: m
+

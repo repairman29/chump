@@ -2746,6 +2746,8 @@ gaps:
     - Per-gap report - n>=50 ok|fail, judge diversity ok|fail, A/A baseline ok|fail, mechanism analysis ok|fail|n_a, prohibited-claim hits
     - Output is consumed by Cold Water's Reality Check lens (deterministic, not narrative)
     - Any retroactive violations get a follow-up RESEARCH-*/EVAL- gap filed automatically
+  notes: |
+    Implementation: scripts/eval/score-closed-eval-gaps.sh (bash + embedded python). Reads per-file docs/gaps/EVAL-*.yaml + RESEARCH-*.yaml with status:done; scores against the 5 RESEARCH_INTEGRITY methodology criteria; emits markdown report (default) or JSONL (--json). Smoke run on 89 closed gaps: 1 pass / 88 fail. Most failures are on judge_diversity + A/A baseline — expected for gaps closed before INFRA-079 + EVAL-081 enforcement landed (2026-04-28). Cold Water sink at .chump/eval-methodology-scores.md auto-updated unless --no-cold-water.
   opened_date: '2026-04-26'
 
 - id: EVAL-092
@@ -2786,6 +2788,8 @@ gaps:
     - "docs/process/RESEARCH_INTEGRITY.md mechanism-analysis section adds an explicit gate: mechanism claim PRs must include a cross- judge agreement score ≥0.6 (kappa) on the fixture class where the mechanism was detected"
     - Pre-commit or CI check warns (non-blocking initially) when a mechanism-claim commit lacks a documented kappa score
     - EVAL-089 (finish EVAL-074 with Qwen-2.5-72B) uses this updated standard
+  notes: |
+    Implementation: scripts/ci/check-mechanism-kappa.sh (advisory), scripts/ci/test-mechanism-kappa-guard.sh (8 cases all pass), pre-commit wires it as advisory by default. RESEARCH_INTEGRITY.md §Required Methodology Standards §4 (mechanism analysis) gains a 'Cross-judge gate' subsection requiring κ ≥ 0.60 (or ≥80% binary agreement) on the fixture class where mechanism was detected. Gate modes: CHUMP_KAPPA_GATE=warn (default), =enforce (block), =0 (silence). EVAL-089 follow-up will use this updated standard.
   opened_date: '2026-04-27'
 
 - id: EVAL-094
@@ -3179,7 +3183,7 @@ gaps:
     - docs/FLEET-013-tailscale-setup.md documents setup (key sharing, exit node config if needed)
   depends_on: [FLEET-006, FLEET-007]
   notes: |
-    Air-gapped ready: Tailscale requires initial handshake but then works offline. Alternative: manual IP-based discovery (simpler but less flexible). Recommend Tailscale for the full vision (also enables remote troubleshooting).
+    Implementation: scripts/setup/install-tailscale.sh (idempotent brew install + tailscale up + NATS broker discovery via /dev/tcp probe) + docs/FLEET-013-tailscale-setup.md (auth keys, ACL example, troubleshooting). Discovery priority: CHUMP_NATS_BROKER_HOST → tailnet peer probe → localhost fallback. Writes CHUMP_NATS_URL to ~/.chump/env. CHUMP_SKIP_TAILSCALE=1 short-circuits to localhost (dev / offline). v1 (broker-move auto-recovery via ambient) and v2 (NATS tailnet ACL) deferred.
   source_doc: docs/FLEET_VISION_2026Q2.md
 
 - id: FLEET-015
@@ -3352,7 +3356,7 @@ gaps:
 - id: FLEET-023
   domain: fleet
   title: Cold Water sandbox ambient stream empty post-FLEET-019/020/021/022 — install step never executed
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -3381,6 +3385,8 @@ gaps:
     - "Or: CLAUDE.md preflight section updated to document that ambient is filesystem-local-only in sandbox and no cross-machine signal is expected"
     - "Whichever path: the empty-ambient observation is no longer a silent false negative"
   opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 768
 
 - id: FLEET-024
   domain: fleet
@@ -3415,6 +3421,39 @@ gaps:
   opened_date: '2026-05-02'
   closed_date: '2026-05-02'
   closed_pr: 747
+
+- id: FLEET-025
+  domain: FLEET
+  title: "FLEET-011 v0: bot-merge size-advisory (file_count > 5 + LOC > 500 → decomposition hint)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    v0 of FLEET-011 (work decomposition heuristics). Adds size advisory to bot-merge.sh: when n_files > 5 AND loc_changed > 500 AND codemod_ratio < 80%, emits stderr hint + ambient decomposition_hint event. Advisory-only — never blocks ship. Tunable via CHUMP_DECOMP_HINT/FILE_THRESHOLD/LOC_THRESHOLD. Codemod-ratio carve-out exempts gap-registry regen, lockfile bumps, book/src sync. v1 (learning loop, FLEET-026) and v2 (auto-decomposition, FLEET-027) deferred. Documented in docs/FLEET-011-decomposition-heuristics.md.
+  acceptance_criteria:
+    - bot-merge.sh emits decomposition_hint when thresholds exceeded
+    - advisory only, never blocks
+    - env-var-tunable thresholds
+    - codemod-ratio carve-out exempts atomic mass changes
+    - docs/FLEET-011-decomposition-heuristics.md documents rules + v1/v2 trajectory
+
+- id: FLEET-026
+  domain: FLEET
+  title: "FLEET-011 v1: heeded/ignored learning loop for decomposition_hint events"
+  status: open
+  priority: P2
+  effort: m
+  notes: |
+    Implementation: scripts/dev/decomposition-hint-tracker.sh + scripts/setup/install-decomposition-tracker-launchd.sh (daily 09:00). Tracker reads ambient.jsonl decomposition_hint events emitted by FLEET-025 v0, classifies each as heeded/landed_clean/landed_followup/pending/skipped, writes to .chump/decomposition-outcomes.jsonl. Summary stats include heeded-rate + revealed-correct-rate + tuning guidance (raise thresholds if false-alarm > 70%; lower if missing real problems > 70%). v1 'instrumentation only' — actual threshold adjustment is manual after enough hints accumulate. v2 (auto-decomposition + chump decomposition propose CLI) deferred to FLEET-027.
+
+- id: FLEET-027
+  domain: FLEET
+  title: "FLEET-011 v2: task-class-aware auto-decomposition + chump decomposition propose CLI"
+  status: open
+  priority: P2
+  effort: m
+  notes: |
+    Implementation: scripts/coord/chump-decomposition-propose.sh — heuristic-only (no LLM) decomposition proposer. Reads gap via chump gap list --json, classifies into task classes (refactor / multi-system / tests / doc-driven / per-criterion / monolithic-ok), proposes 2-5 slices with size hints. Markdown default; --json for tooling. Closes FLEET-011 trajectory: v0 (FLEET-025 size advisory) emits → v1 (FLEET-026 tracker) classifies → v2 (this gap, FLEET-027) proposes proactively. Future v3: wire into chump --briefing as auto-prefix; auto-trigger on chump gap reserve.
 
 - id: FLEET-14
   domain: fleet
@@ -5346,7 +5385,7 @@ gaps:
 - id: INFRA-101
   domain: infra
   title: JSON-schema-validate every line emitted to ambient.jsonl (pre-commit + emit-time)
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -5365,6 +5404,8 @@ gaps:
     - Pre-commit guard fails when staged ambient.jsonl lines fail schema check
     - Test fixture covers each event kind plus one schema-violation case
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 763
 
 - id: INFRA-102
   domain: infra
@@ -6003,7 +6044,7 @@ gaps:
 - id: INFRA-127
   domain: infra
   title: reflection_db has unit tests only - no end-to-end record then query then use coverage
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -6018,6 +6059,8 @@ gaps:
     - Integration test - simulate prompt assembly with CHUMP_LESSONS_AT_SPAWN_N=5 and assert the rendered prompt contains the expected lesson block
     - Cleanup - test uses a temp DB so it does not pollute prod state
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 750
 
 - id: INFRA-128
   domain: infra
@@ -6550,7 +6593,7 @@ gaps:
 - id: INFRA-148
   domain: infra
   title: chump CLI binary staleness detection — silent gaps.yaml corruption when binary predates gap_store.rs changes
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -6592,7 +6635,11 @@ gaps:
     - detection emits a clear warning (or refuses, behind --force) telling operators to rebuild + reinstall
     - "regression test: stub a baked SHA older than HEAD and verify the warn-or-refuse path fires"
     - "docs/gaps.yaml meta: preamble survives the regen path with a fresh binary (smoke test)"
+  notes: |
+    Closed via PR #767 — added chump --version handler completing the INFRA-148 staleness pipeline. Build SHA baking + gap mutation warning was already shipped in PR #651; #767 is the operator-visible end (chump --version now renders). All 5 acceptance criteria met.
   opened_date: '2026-04-27'
+  closed_date: '2026-05-02'
+  closed_pr: 767
 
 - id: INFRA-149
   domain: infra
@@ -7058,9 +7105,11 @@ gaps:
 - id: INFRA-191
   domain: infra
   title: chump dispatch canonical workflow — single command pulls main, claims gap, ships PR, releases
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-02'
+  closed_pr: 783
 
 - id: INFRA-192
   domain: infra
@@ -7705,7 +7754,7 @@ gaps:
 - id: INFRA-223
   domain: INFRA
   title: wire distill-pr-skills.sh into post-merge hook or launchd timer (auto-feed chump_improvement_targets)
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -7726,6 +7775,30 @@ gaps:
     - distill-pr-skills.sh fires automatically (launchd or post-merge hook)
     - chump_improvement_targets grows on merged PRs matching whitelist
     - "verifiable: actioned_as LIKE 'PR#%' rows present"
+  notes: |
+    2026-05-02: implementation choice DECIDED — Option C (bot-merge.sh post-ship hook).
+    
+    Rationale (vs alternatives):
+      - launchd timer: only fires on Jeff's machine; misses CCR-merged PRs anyway since chump_memory.db is local
+      - GitHub Action: chump_memory.db is host-local; CI would need artifact upload + import dance — complicated
+      - bot-merge hook (chosen): one-line addition; catches >95% of PRs (anything shipped via bot-merge); writes directly to local DB; trivially testable; misses only manual gh-web-UI / direct-push merges (rare)
+    
+    Implementation sketch:
+      - Add to scripts/coord/bot-merge.sh after the auto-merge arming step (around line 770, near the pr-watch.sh detach):
+          if [[ -x "$REPO_ROOT/scripts/ops/distill-pr-skills.sh" ]] && [[ -n "$TARGET_PR" ]]; then
+              # INFRA-223: feed the chump_improvement_targets loop after every shipped PR
+              "$REPO_ROOT/scripts/ops/distill-pr-skills.sh" --pr "$TARGET_PR" >/dev/null 2>&1 &
+          fi
+      - Run in background (&) so a slow gh-api call doesn't block the bot-merge happy path
+      - Bypass via existing CHUMP_DISTILL=0 env var (already supported by the script)
+    
+    Optional follow-up (later, if Cold Water flags missed PRs): add a launchd safety net that reaps any PRs the script didn't catch (e.g. nightly run with --last 20).
+    
+    Acceptance:
+      - chump_improvement_targets row count grows over the next ~3 days as PRs merge
+      - Spot-check: sqlite3 sessions/chump_memory.db "SELECT actioned_as, COUNT(*) FROM chump_improvement_targets WHERE actioned_as LIKE 'PR#%' GROUP BY actioned_as;" — expect at least one row per merged PR matching a whitelist pattern
+  closed_date: '2026-05-02'
+  closed_pr: 770
 
 - id: INFRA-224
   domain: INFRA
@@ -7796,6 +7869,175 @@ gaps:
     - bot-merge.sh INFRA-154 step works against docs/gaps/ directory
     - auto-merge arming reached after gap-status flip
     - "test: ship tiny PR end-to-end without manual intervention"
+
+- id: INFRA-227
+  domain: INFRA
+  title: bot-merge.sh auto-close path post-INFRA-188 fix (per-file gap YAML)
+  status: done
+  priority: P1
+  effort: xs
+  notes: |
+    Duplicate of INFRA-226 (PR #766) — same fix landed first via different approach (defensive conditional add vs my python helper). Closing without ship.
+  closed_date: '2026-05-02'
+  closed_pr: 766
+
+- id: INFRA-228
+  domain: INFRA
+  title: chump gap reserve must write per-file docs/gaps/<ID>.yaml mirror
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 777
+
+- id: INFRA-229
+  domain: INFRA
+  title: chump gap ship --update-yaml writes deleted docs/gaps.yaml; should write per-file
+  status: open
+  priority: P1
+  effort: xs
+
+- id: INFRA-230
+  domain: INFRA
+  title: "queue-health-monitor: emit pr_resolved when previously-stuck PR lands (close pr_stuck audit loop)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Cold Water Issue and recurring operator pain: queue-health-monitor.sh emits ALERT kind=pr_stuck for any PR sitting BLOCKED/DIRTY > 45 min, but the alerts are immutable in ambient.jsonl. When the PR finally lands, no counterpart event closes the audit loop — the operator querying 'recent stuck PRs' sees historical alerts that look current. Observed 2026-05-02: ambient-query showed 3 pr_stuck alerts, all of which had since merged. Add a tiny state file at .chump/pr-stuck-state.json mapping PR# → first-alert-ts. On each run, currently-stuck PRs not in state emit pr_stuck (one-shot, not re-alert). PRs in state that are no longer stuck (landed/unblocked) emit pr_resolved with duration. Closes the audit loop without changing the alert noise floor (one alert per stuck event, one resolution per landing).
+  acceptance_criteria:
+    - queue-health-monitor.sh emits pr_stuck once per PR (not on every run while still stuck)
+    - emits pr_resolved when a previously-stuck PR is no longer in gh pr list --state open OR has flipped to MERGEABLE/CLEAN
+    - state file at .chump/pr-stuck-state.json
+    - "--dry-run does not mutate state file"
+
+- id: INFRA-231
+  domain: INFRA
+  title: "overnight wrapper: prepend $HOME/.local/bin to PATH so auditor finds chump (fixes ModuleNotFoundError yaml fallback)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    2026-05-02 02:00 overnight run failed 4 of 8 auditor checks with:
+      ModuleNotFoundError: No module named 'yaml'
+    
+    Root cause: launchd's plist EnvironmentVariables.PATH is
+      /usr/local/bin:/opt/homebrew/bin:/Users/jeffadkins/.cargo/bin:/usr/bin:/bin
+    which doesn't include $HOME/.local/bin (where `cargo install --path .` symlinks
+    chump). macOS path_helper rewrites PATH at login and drops $HOME/.local/bin
+    even after `bash -lc` profile sourcing — verified by
+      env -i PATH=<launchd-PATH> /bin/bash -lc 'which chump' → CHUMP NOT FOUND
+    
+    Auditor's lib.sh `command -v chump` fails -> falls back to a python+yaml branch
+    that (a) needs PyYAML in /usr/bin/python3 (not installed) and (b) post-INFRA-188
+    reads docs/gaps.yaml which no longer exists. Both paths broken; primary
+    (chump) is the one to fix.
+    
+    Fix: 1-line export in scripts/eval/run-overnight-research.sh that prepends
+    $HOME/.local/bin to PATH if it exists. All overnight jobs (auditor + future
+    ones) inherit the fixed PATH.
+    
+    Verified: env -i + launchd PATH + the prepend → chump found at
+    /Users/jeffadkins/.local/bin/chump.
+    
+    Follow-up (separate gap, not blocking): the lib.sh python fallback is broken
+    post-INFRA-188 (gaps.yaml gone). Either retire the fallback or update it to
+    glob docs/gaps/<ID>.yaml.
+  acceptance_criteria:
+    - overnight wrapper exports HOME/.local/bin in PATH
+    - "next 02:00 launchd run produces 0 ModuleNotFoundError lines"
+    - auditor checks emit non-zero findings (proving they read state.db)
+  closed_date: '2026-05-02'
+  closed_pr: 775
+
+- id: INFRA-232
+  domain: INFRA
+  title: chump gap ship --update-yaml writes monolithic docs/gaps.yaml (deleted by INFRA-188 cutover) — should write per-file or be removed
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Post the INFRA-188 cutover (PR #753), docs/gaps.yaml was deleted in favour of per-file docs/gaps/<ID>.yaml. But chump gap ship --update-yaml at src/main.rs still calls dump_yaml_with_meta() and writes to repo_root/docs/gaps.yaml — a path that no longer exists on origin/main.
+    
+    Effect:
+      - The flag silently writes a brand-new monolithic gaps.yaml file in the repo root
+      - The CI guard at .github/workflows/ci.yml (added in INFRA-188 with 'asserting docs/gaps.yaml absent') will reject any PR that includes that file
+      - Agents trying to follow CLAUDE.md's documented gap-closure flow ('chump gap ship --update-yaml') get a working tree they cannot push
+    
+    Reproducer:
+      chump gap ship INFRA-127 --closed-pr 750 --update-yaml
+      # → 'regenerated /Users/.../docs/gaps.yaml' (CREATES the file)
+      # git status → docs/gaps.yaml untracked
+      # git push → blocked by ci.yml guard
+    
+    Fix paths:
+      (a) Remove --update-yaml flag entirely; document that gap closure is state.db only and YAML sync happens via chump gap dump --per-file
+      (b) Reroute --update-yaml to call dump_per_file(repo_root.join('docs').join('gaps')) instead of writing the monolithic file
+      (c) Add a deprecation warning + no-op when docs/gaps/ exists on disk
+    
+    Acceptance:
+      - chump gap ship --update-yaml on a post-cutover repo does NOT create docs/gaps.yaml
+      - The flag either writes the affected per-file YAML or no-ops with a clear message
+      - CLAUDE.md gap-closure flow updated to match the new behaviour
+
+- id: INFRA-233
+  domain: INFRA
+  title: Local state.db has NULL closed_pr for ~200 already-closed gaps; chump gap dump --per-file silently strips them
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Many already-closed gaps in the local .chump/state.db have closed_pr column = NULL even though their canonical docs/gaps/<ID>.yaml on origin/main carries the closed_pr field. Counted ~200 affected gaps on this machine on 2026-05-02 (e.g. COG-021 closed_pr=232 in YAML, NULL in DB; COG-022, COG-026, etc.).
+    
+    Likely root cause: closed_pr column was added in INFRA-156 (PR #637, 2026-04-25) but historical rows were imported from YAML before that schema migration ran end-to-end with backfill. The migration created the column but didn't backfill from existing YAML closed_pr fields.
+    
+    Effect:
+      - chump gap dump --per-file regenerates docs/gaps/<ID>.yaml from state.db, dropping the closed_pr line for every affected gap
+      - Committing the regen would silently strip closed_pr from ~200 files (same lossiness class as INFRA-208)
+      - Forces every gap-closure PR to be a surgical hand-edit OR a wholesale-regen PR that the operator must hand-vet for accidental closed_pr deletions
+    
+    Fix paths:
+      (a) Backfill script: read every docs/gaps/<ID>.yaml on main, parse closed_pr, UPDATE state.db SET closed_pr = ? WHERE id = ? for every gap where local DB says NULL
+      (b) Make backfill part of chump gap import — when import sees a YAML row with closed_pr that's missing in DB, populate it
+      (c) Add a chump gap doctor --backfill subcommand that runs (a) on demand
+    
+    Acceptance:
+      - chump gap dump --per-file on a backfilled tree produces ZERO diff against origin/main for the closed_pr field
+      - Backfill is idempotent (re-running produces no changes)
+      - chump gap import is the natural place to backfill on first invocation per worktree
+
+- id: INFRA-234
+  domain: INFRA
+  title: "Recycled-ID pre-commit guard misreads 'any change to status:done gap' as reopen — false-positive on closed_pr enrichment"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    The recycled-ID pre-commit guard (INFRA-014) is meant to prevent reopening a closed gap with new content under the same id. It correctly fires when status: done → status: open on the same row. But it ALSO fires when:
+      - status:done stays done
+      - and any other field changes (e.g. adding closed_pr where it was missing, adding a notes block)
+    
+    This is a false-positive: enriching a closed gap with closed_pr or notes is not a reopen — it's metadata fill-in. The guard rejected closing INFRA-130 with closed_pr:755 on 2026-05-02 even though INFRA-130 was already done on main with no closed_pr; my edit just added closed_pr:755 + closed_date.
+    
+    Reproducer:
+      - origin/main: docs/gaps/INFRA-XXX.yaml has 'status: done' (no closed_pr)
+      - local edit: add 'closed_pr: 755' + 'closed_date: 2026-05-02'
+      - git commit → guard fails with 'A gap closed on origin/main should not be reopened'
+    
+    Fix:
+      Tighten the guard to only fire when status flips from done → open (or status disappears from a previously-done row). Pure additive enrichment of a status:done row should be allowed.
+    
+    Acceptance:
+      - Adding closed_pr / closed_date / notes to a status:done row passes the guard
+      - Flipping status from done → open still fails with the recycled-ID error
+      - test-recycled-id-guard.sh extended to cover the false-positive case
+
+- id: INFRA-235
+  domain: INFRA
+  title: Wire adaptive_temperature + adaptive_top_p into axonerai cloud-path provider so neuromod ablation is uniform across providers (REMOVAL-006 follow-up)
+  status: open
+  priority: P2
+  effort: m
 
 - id: INFRA-41
   domain: infra
@@ -8738,6 +8980,49 @@ gaps:
   closed_date: '2026-05-02'
   closed_pr: 758
 
+- id: META-011
+  domain: META
+  title: main-worktree git-state stomp during concurrent agent sessions — silently lost uncommitted edits twice in 2026-05-02 cleanup pass
+  status: open
+  priority: P1
+  effort: s
+
+- id: META-012
+  domain: META
+  title: "Shared-memory layer: agent-proposed working knowledge alongside AGENTS.md (cross-tool, project-owned)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Today every agent (Claude, Cursor, Goose, Aider, future) maintains its OWN private memory store: ~/.claude/projects/.../memory/, .cursor settings, Goose profiles, etc. When ONE agent learns something the operator told it ("don't ask, just file gaps"; "always commit in /tmp worktree"; "FLEET gaps are load-bearing strategy not tech debt"), that knowledge stays trapped in that agent's private store. The next session — same tool, different conversation — relearns it. The next sibling — different tool — never learns it.
+    
+    Two existing channels work but are insufficient:
+      - AGENTS.md — human-curated doctrine, manually upgraded; great for stable patterns but high friction for in-flight learnings (one PR per memory item)
+      - chump_improvement_targets (COG-024 / INFRA-195) — auto-distilled from REFLECTION rows; great for behavioral lessons derived from outcomes, but never captures direct operator preferences that didn't come through a reflection-producing task
+    
+    Net effect: most operator behavioral feedback is project-wide ("this applies to anyone working on Chump"), but the default storage path is private-per-agent. Inverted defaults.
+    
+    Proposal — shared-memory layer:
+      - Add `share: project|tool|private` field to memory frontmatter (default: project for behavioral feedback; private only for genuine personal taste)
+      - `share: project` writes mirror to a new repo-resident `.chump/shared-memory.md` at write-time
+      - All tools read .chump/shared-memory.md at session start as a layer above AGENTS.md (AGENTS.md = doctrine; shared-memory.md = working knowledge in trial)
+      - Operator promotion path: when an entry proves out (referenced N times, never recanted, age > 7 days), it graduates into AGENTS.md and gets removed from the working file
+      - Bounded growth: pre-commit guard caps the file at ~200 entries with age-based eviction
+      - Cross-tool: matches INFRA-186 "the project owns the namespace, not the tool"
+    
+    Open design questions:
+      (a) Layer or unify with chump_skills? Either both feed the prompt assembler in priority order, OR shared-memory entries get coerced to synthetic reflection rows with outcome=pass so the existing pipeline carries them.
+      (b) Per-tool overlays — should each tool's CLAUDE.md / GEMINI.md / .cursorrules be able to override or annotate shared-memory entries? Probably yes for behavioral nuance ("Claude tends to over-explain; check yourself").
+      (c) Promotion criteria: what counts as "proven out"? Naive heuristic: referenced ≥3 times in ambient.jsonl, no recant in last 7 days. Need to track references somewhere.
+      (d) Deletion / recant signal: when a memory becomes wrong, what's the channel? Probably an operator-issued `chump memory recant <name>` that adds a tombstone entry.
+  acceptance_criteria:
+    - ".chump/shared-memory.md exists; memories with share:project field auto-mirror there at write-time"
+    - All tools (Claude, Cursor, Goose) read it at session start as a layer above AGENTS.md
+    - Operator-promotion path documented; entries graduate to AGENTS.md after proven-out criteria
+    - "Bounded growth: pre-commit guard enforces max-entries + age-based eviction"
+    - Recant channel exists for operator-rejected entries
+  depends_on: [INFRA-195]
+
 - id: PRODUCT-001
   domain: product
   title: PWA Dashboard — ship status, what-we're-doing, recent episodes
@@ -9288,6 +9573,46 @@ gaps:
   source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
   closed_date: '2026-04-17'
 
+- id: RELIABILITY-001
+  domain: RELIABILITY
+  title: serenity 0.12.5 → 0.13 (next branch) API migration — 16 compile errors in src/discord.rs block the SECURITY-004 git-dep override
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    SECURITY-004 spike on 2026-05-02 attempted the 'serenity = git/next branch' override (verified by 5 LLMs as the canonical fix, validated against crates.io that next has tokio-tungstenite 0.28 → tokio-rustls 0.26 → rustls 0.23 → rustls-webpki 0.103, all CVE-free). Cargo.lock confirmed: vulnerable rustls-webpki 0.102.8, rustls 0.22, tokio-rustls 0.25, tokio-tungstenite 0.21 all DROPPED. 
+    
+    The 1-line Cargo.toml change does not compile. serenity's 'next' branch is essentially v0.13-in-progress with breaking API changes. cargo check --bin chump produces 16 errors in src/discord.rs (1453 lines):
+    
+      - 3× E0407: EventHandler trait methods (ready, message, interaction_create) are no longer trait members — likely renamed/restructured or moved to a different trait
+      - 5× E0599: Method removals (start_typing, send_message, say) on ChannelId / PrivateChannel
+      - 5× E0308: Type mismatches — ChannelId vs GenericChannelId split (new sealed/typed channel hierarchy)
+      - 2× E0615: User.bot field is now a method (User.bot())
+      - 1× E0277: CreateActionRow/CreateComponent wrapper API change
+    
+    This is real serenity 0.12 → 0.13 API migration work, not a 1-line dependency bump. Realistic effort: 1-3 hours of focused refactoring in src/discord.rs, possibly more if runtime semantics changed.
+    
+    Three paths to evaluate:
+      (A) Spike the discord.rs migration to serenity 0.13 API (1-3 hrs). Closes SECURITY-004 cleanly, no functional loss.
+      (B) Make 'discord' a feature-gate, default OFF. Wraps src/discord.rs + serenity dep + 4 main.rs call sites in #[cfg(feature = "discord")]. ~1 hour. Default builds become CVE-free; users actively running Discord opt in by building --features discord (still vulnerable until path A or v0.13 ships).
+      (C) Wait for serenity v0.13 release. Last release was 2025-12-20 (v0.12.5), 5 months stale. next branch active (last commit 2026-04-26). ETA unknown — could be days, could be months. SECURITY-004 stays P0.
+    
+    Recommendation: (B) for fast security mitigation, (A) when bandwidth permits to restore Discord functionality on the secure dep chain. Discord is currently always-on in default chump builds (src/main.rs:56-58 declare modules, line 1875 invokes discord::run unconditionally) — feature-gating it is a meaningful UX change for current users.
+    
+    Cleanup of 2026-05-02 spike: Cargo.toml + Cargo.lock reverted to origin/main; worktree /tmp/chump-security-004 removed; no commits or PRs landed.
+  acceptance_criteria:
+    - "Either: (A) serenity dep on Cargo.toml points at a v0.13 chain (released or git tag) AND src/discord.rs compiles AND existing discord integration tests pass"
+    - "OR: (B) discord becomes optional feature, default OFF, src/discord.rs gated on #[cfg(feature = 'discord')], main.rs call sites gated, default cargo build/check passes without serenity in tree"
+    - Verify Cargo.lock has zero references to rustls-webpki 0.102.x, rustls 0.22, tokio-rustls 0.25, tokio-tungstenite 0.21
+    - Dependabot alerts SECURITY-004 (4 of 6 rustls-webpki chain) auto-close on next scan
+    - "RELIABILITY-001 closure references the actual closing PR# and notes which path (A or B) was chosen and why"
+  notes: |
+    POST-FILING UPDATE 2026-05-02 (after attempting Path B): the discord module owns the canonical agent factory (build_chump_agent_cli, build_chump_agent_web_components). 16 call sites in non-discord modules use it: web_server.rs, telegram.rs, rpc_mode.rs, autonomy_loop.rs, execute_gap.rs, e2e_bot_tests.rs, slack.rs, acp_server.rs, platform_router.rs. Feature-gating discord (Path B) breaks all of them. 
+    
+    NEW Path D added: extract build_chump_agent_* into src/agent_factory.rs first (~1-2 hrs of mechanical refactor: move 2 functions + helpers, update 16 imports). After Path D, src/discord.rs is self-contained and Path B becomes trivial. Path D is also valuable independent of SECURITY-004 — discord shouldn't own the agent factory; that's coupling debt.
+    
+    Updated recommendation: Path D → Path B (feature-gate) is the cleanest sequence. Total effort: 2-3 hrs. Or skip to Path A (full migration) if there's bandwidth. Path C (wait for v0.13) becomes more attractive given A and B both expanded in scope.
+
 - id: REMOVAL-001
   domain: reliability
   title: Audit + decision-matrix for the 5 NULL-validated cognitive modules — re-test or remove
@@ -9386,7 +9711,7 @@ gaps:
 - id: REMOVAL-006
   domain: REMOVAL
   title: Audit src/neuromodulation.rs - 21KB module computes provider-call adjustments that are never applied
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -9409,7 +9734,11 @@ gaps:
     - If wire-in - end-to-end test asserts provider request body contains adjusted temperature/top_p
     - If remove - update CHUMP_RESEARCH_BRIEF.md, CHUMP_FACULTY_MAP.md, README to reflect removal
     - Decision recorded in commit body and reflected in docs/RESEARCH_INTEGRITY.md prohibited-claims table
+  notes: |
+    Audit complete (docs/audits/REMOVAL-006-neuromodulation-trace.md). Decision: KEEP. Original gap premise was partially false: 5 of 18 public fns ARE wired into 5 distinct effect channels (provider request shaping via adaptive_temp/top_p [local providers], tool timeout multipliers, precision controller thresholds, blackboard salience scoring, telemetry). EVAL-095 (PR #737, today) shows ablation produces Δ=+0.150 directional with 3-task localization — empirical evidence supports keeping the surface. Cloud-path adaptive_temperature wiring is partial; filed as follow-up. Telemetry-only fns could be pub(crate); filed as REMOVAL-008 cleanup.
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 789
 
 - id: REMOVAL-007
   domain: REMOVAL
@@ -9433,6 +9762,13 @@ gaps:
     - Update README and CHUMP_FACULTY_MAP.md to reflect outcome
     - Pair with DOC-010 (nine-proxies reframe)
   opened_date: '2026-04-26'
+
+- id: REMOVAL-008
+  domain: REMOVAL
+  title: "Make neuromod telemetry-only fns pub(crate): modulated_balanced_threshold + modulated_explore_threshold + reward_scaling (REMOVAL-006 follow-up)"
+  status: open
+  priority: P2
+  effort: m
 
 - id: RESEARCH-001
   domain: research
