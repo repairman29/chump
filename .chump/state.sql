@@ -2621,7 +2621,7 @@ gaps:
 - id: EVAL-087
   domain: eval
   title: Evaluation-awareness literature invalidates A/B trust — reframe RESEARCH-026 to P1
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -2647,6 +2647,8 @@ gaps:
     - The comparison is run at n>=50/cell and results committed to docs/eval/
     - If delta shifts >0.05 between framings, FINDINGS.md validated-findings table is updated
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 862
 
 - id: EVAL-088
   domain: eval
@@ -6351,7 +6353,7 @@ gaps:
 - id: INFRA-124
   domain: infra
   title: docs-delta Net-new-docs trailer not validated against actual diff
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -6367,6 +6369,8 @@ gaps:
     - Mismatch fails closed with a diagnostic message
     - "Test - commit with Net-new-docs: +1 but actual +5 is rejected; matching trailer is accepted"
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 865
 
 - id: INFRA-125
   domain: infra
@@ -7534,6 +7538,8 @@ gaps:
   status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-02'
+  closed_pr: 866
 
 - id: INFRA-194
   domain: infra
@@ -9017,6 +9023,87 @@ gaps:
   priority: P1
   effort: xs
 
+- id: INFRA-256
+  domain: INFRA
+  title: "fix misleading cascade per-call log: strategy label hardcoded to 'priority'"
+  status: open
+  priority: P2
+  effort: xs
+
+- id: INFRA-257
+  domain: INFRA
+  title: "pre-commit: docs-delta + credential + raw-yaml guards skipped on doc-only commits (early-exit bug)"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    scripts/git-hooks/pre-commit lines 1331-1334 exit 0 early when no .rs files are staged. This skips ALL subsequent guards: docs-delta (INFRA-009/124), credential-pattern, raw-YAML-edit, book-sync, etc. Doc-only and yaml-only commits bypass every guard except the rust-related ones. Fix: gate the early-exit so it only skips the cargo-fmt/check blocks (which legitimately have nothing to do), but lets execution continue to the doc/yaml/credential guards. Caught while implementing INFRA-124 — the trailer-validation test needed to add a dummy .rs file to make the docs-delta block run at all.
+  acceptance_criteria:
+    - Hook script restructured so docs-delta + credential + raw-yaml + book-sync run on doc-only commits
+    - Existing rust-staged behavior preserved (cargo-fmt + cargo-check still run when rust is staged)
+    - "Test: doc-only commit with bad Net-new-docs trailer is now rejected (was silently accepted)"
+
+- id: INFRA-258
+  domain: INFRA
+  title: closer-pr-batcher / stale-pr-reaper false-close on partial-delivery PRs — gap-status alone is insufficient signal
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    INFRA-219 (PR #824) fixed the closer-pr-batcher / stale-pr-reaper false-positive on FILING PRs (chore(gaps): file ... titles + lookup against origin/main). It did NOT address the false-positive on PARTIAL-DELIVERY PRs.
+    
+    Live incident 2026-05-02 (this session):
+    
+      PR #833 (INFRA-209 hooks docs+test) shipped TWO deliverables:
+        1. AGENTS.md "Step 0 — install pre-commit hooks" doc
+        2. scripts/ci/test-hooks-auto-install.sh regression test
+    
+      The closer auto-closed #833 with the comment "Auto-closing: every gap
+      this PR was working on (INFRA-209 INFRA-224) is already done on main —
+      the work landed via another agents commits."
+    
+      But the work that landed on main via PR #854 was ONLY the runtime fix
+      (bot-merge.sh auto-installs hooks if missing) plus a different test
+      (test-bot-merge-hook-auto-install.sh). It did NOT include the AGENTS.md
+      doc from #833.
+    
+      Net: closer correctly identified gap as "done", but ONE of #833 deliverables
+      was lost in the closure. Required a separate recovery PR (#863) to
+      re-ship the AGENTS.md doc.
+    
+    The closer's heuristic ("gap is done on main → close PR") is too coarse.
+    It needs to also check: "are THIS PR's actual file diffs already on main?"
+    If a PR touches 5 files and only 4 are on main, those 4 are redundant but
+    the 5th is real new content the close would discard.
+    
+    Fix options:
+      (a) Compare PR file list (gh pr diff --name-only) against the diff
+          origin/main introduced for those files. If any file in the PR has
+          content NOT on main, defer the close (or comment "partial delivery —
+          manual review needed").
+      (b) Closer only fires when PR is BOTH (i) gap-done on main AND
+          (ii) all files in PR diff are byte-identical to origin/main.
+      (c) Whitelist-based: closer only auto-closes ledger-flip PRs (commit
+          titles starting with chore(gaps): close ...). Anything else
+          requires manual close.
+    
+    Recommend (b) — preserves the closer's value (catches duplicate work)
+    without the partial-delivery loss risk. (c) is more conservative but
+    might leave more open ghosts.
+    
+    Note: this is a P2 because the false-loss rate is low (1 out of ~30
+    session PRs, observed once) and the recovery cost is small (one tiny
+    re-doc PR). But the failure mode is silent and corrosive — operators
+    won't notice their work was lost unless they specifically grep main
+    afterward.
+  acceptance_criteria:
+    - Closer's heuristic updated per fix path (b) or (c) — only closes when gap is done AND PR contents are already on main
+    - Regression test in scripts/ci/ that simulates a partial-delivery PR (gap done, but PR has additional unique files) and asserts the closer does NOT close it
+    - If false-loss rate stays >0% after fix, document a manual-recovery procedure in CLAUDE.md so operators know to grep main for their PR's files after a closer auto-close
+  depends_on: [INFRA-219]
+  notes: |
+    Filed during 2026-05-02 PR-watching pass after recovering #833's lost AGENTS.md doc as PR #863. The recovery cost was tiny but the failure mode (silent partial-delivery loss) is corrosive at fleet scale — every dispatched agent risks losing some of its work this way if it shares a gap-ID with parallel agents.
+
 - id: INFRA-41
   domain: infra
   title: "code-reviewer-agent.sh: guard empty-array iteration under bash 3.2 set -u"
@@ -10062,7 +10149,7 @@ gaps:
 - id: META-015
   domain: META
   title: "tests/gap_reserve_cross_host_race.rs::two_concurrent_reserves_return_distinct_ids is flaky under CI matrix parallelism — passes/fails non-deterministically across PRs"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -10091,6 +10178,8 @@ gaps:
   depends_on: [INFRA-213, INFRA-216]
   notes: |
     Coupled finding: INFRA-213 (CI matrix split, PR #814) is the proximate cause — the increased parallelism exposed a pre-existing race in INFRA-216 (PR #800)s test. INFRA-216 wrote the test serially-safe; INFRA-213 increased contention. Neither is wrong individually; the coupling is. Filed during 2026-05-02 PR re-work pass when 2/11 same-session PRs hit the same flake. Side-effect surfaced via the new test job split.
+  closed_date: '2026-05-02'
+  closed_pr: 860
 
 - id: PRODUCT-001
   domain: product
