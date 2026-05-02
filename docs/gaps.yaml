@@ -17433,3 +17433,138 @@ gaps:
     - "Pick one of (a)/(b)/(c) explicitly; document the decision in CLAUDE.md ship-pipeline section so agents stop attempting direct-push and getting GH013 errors"
   raised_by: claude
   raised_in: '2026-05-02 — INFRA-177 closure session hit GH013 on pure-ledger push, had to convert to PR'
+- id: INFRA-209
+  domain: INFRA
+  title: 'pre-commit hooks not auto-installed in remote dispatch — closed_pr:TBD guard bypassed on 8 recent commits'
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    Cold Water Issue #10 audit found 8 commits on origin/main since 2026-05-01
+    that introduced `status: done` + `closed_pr: TBD` rows, bypassing the
+    INFRA-107 closed_pr integrity guard. Affected commits (verified by
+    git log scan): 4fc1d56 (INFRA-194), 51342f9 (INFRA-189), 916d85a (INFRA-195),
+    47251c4 (INFRA-186), cee75e3 (INFRA-192), 20a168e (META-004/INFRA-190),
+    b80c435 (INFRA-182), b783418 (INFRA-180).
+
+    Root cause: `scripts/setup/install-hooks.sh` is NOT called by bot-merge.sh
+    or any part of the standard dispatch pipeline. When the remote dispatch agent
+    commits directly from a fresh worktree (sandbox or ephemeral checkout), the
+    .git/hooks/ directory is empty. The pre-commit guard for INFRA-107 never runs.
+    AGENTS.md does not list hook installation as a required bootstrap step.
+    CLAUDE.md mentions install-hooks.sh only in the commit-time guards table prose,
+    not in the MANDATORY pre-flight block.
+
+    Impact: 9 done gaps in origin/main carry closed_pr: TBD (EVAL-062, INFRA-180,
+    INFRA-182, INFRA-189, INFRA-190, INFRA-192, INFRA-194, INFRA-195, INFRA-186).
+    The INFRA-107 guard exists specifically to prevent this; it is being silently
+    bypassed on every remote dispatch commit.
+  acceptance_criteria:
+    - "scripts/coord/bot-merge.sh calls scripts/setup/install-hooks.sh (or equivalent) at start if .git/hooks/pre-commit is absent or stale"
+    - "AGENTS.md bootstrap section includes install-hooks.sh as step 1 (not buried in overlay prose)"
+    - "After ship: zero new done+TBD commits land on main (verify with weekly spot-check)"
+    - "All 9 existing done+TBD gaps updated with correct closed_pr numbers"
+  raised_by: cold-water
+  raised_in: RED_LETTER#10
+
+- id: EVAL-095
+  domain: EVAL
+  title: 'EVAL-090 P0 seventh cycle — escalate to human decision: execute or downgrade priority'
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    EVAL-090 (re-run EVAL-069 under verified python3.12, P0) has now been flagged
+    in Cold Water Issues #9 (2026-05-02) and #10 (2026-05-02) with zero
+    implementation commits across both cycles. Issue #9 was filed on 2026-05-01,
+    meaning EVAL-090 has been P0 for 6+ days with exactly one commit referencing it:
+    e0ab7e7 (the Issue #9 Cold Water filing itself).
+
+    git log origin/main --grep=EVAL-090 --oneline (verified 2026-05-02):
+      e0ab7e7 chore(cold-water): Red Letter issue #9 — 2026-05-02 (#714)
+
+    A P0 gap that has zero implementation commits after two consecutive cycles
+    is either: (a) correctly P0 and not being staffed, which is a process failure,
+    or (b) incorrectly P0 and should be downgraded to P1, which is a classification
+    failure. This gap forces a human decision.
+
+    Consequence of continued inaction: the foundational claim that F3 ("neuromod harm
+    is cross-architecture") is based on valid data remains unverified. PRODUCT-009
+    (external publication) is explicitly gated on EVAL-090. The project cannot
+    publish until this resolves.
+  acceptance_criteria:
+    - "EITHER: EVAL-090 has at least one implementation commit (harness invocation, not filing) within 7 days of this gap being filed"
+    - "OR: EVAL-090 priority downgraded to P1 in .chump/state.db with a resolution_notes entry explaining why it can wait"
+    - "Either way: the current two-cycle P0-inactive pattern is broken"
+  raised_by: cold-water
+  raised_in: RED_LETTER#10
+
+- id: META-007
+  domain: META
+  title: 'gaps.yaml malformed YAML on origin/main from INFRA-202 duplicate — pre-commit guard gap'
+  status: open
+  priority: P0
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    As of Cold Water Issue #10 audit (2026-05-02), docs/gaps.yaml on origin/main
+    (commit 6d21b33) contained invalid YAML: two entries with id: INFRA-202 and
+    the second entry's description block absorbing INFRA-207's content, producing
+    a parse error at line 17133 (`did not find expected key at line 17133, column 5`).
+
+    Verification:
+      python3 -c "import yaml; yaml.safe_load(open('docs/gaps.yaml'))"
+      -> YAMLError: did not find expected key at line 17133
+
+    The gap-reserve.sh tool caught this immediately (aborted with "docs/gaps.yaml is
+    unreadable so the ID counter cannot be backfilled"). Any tool that reads the full
+    YAML (regenerate-gaps-yaml.yml workflow, chump gap import, gap-doctor.py) would
+    fail on origin/main until fixed.
+
+    Root cause: the INFRA-202 duplicate ID collision (commit ad9fa4d filed INFRA-202
+    for docs-delta; commit 6d21b33 also filed INFRA-202 for fleet-sccache; each
+    passed the duplicate-ID guard independently because they ran against different
+    HEAD states). The pre-commit duplicate-ID guard at INFRA-GAPS-DEDUP only checks
+    staged vs HEAD — it does not check staged vs origin/main, so concurrent branches
+    each see a clean HEAD when staged.
+
+    Cold Water Issue #10 fixed this by renaming the docs-delta INFRA-202 to INFRA-208
+    and separating the incorrectly merged INFRA-207 description block. The fix is
+    in the same PR as this issue filing.
+
+    The underlying guard gap (concurrent-branch duplicate ID — same failure mode as
+    INFRA-073 collision documented in Issue #7) is NOT fixed by this rename. The
+    guard needs to check against origin/main (not just HEAD) during the duplicate-ID
+    scan.
+  acceptance_criteria:
+    - "docs/gaps.yaml passes python3 -c 'import yaml; yaml.safe_load(open(\"docs/gaps.yaml\"))' on origin/main"
+    - "INFRA-202 collision resolved (INFRA-208 exists as the renamed docs-delta gap)"
+    - "Duplicate-ID guard updated to check origin/main in addition to HEAD (closes the concurrent-branch race that caused INFRA-073 in #7 and INFRA-202 here)"
+    - "Test: scripts/ci/test-duplicate-id-guard.sh extended with a concurrent-branch scenario"
+  raised_by: cold-water
+  raised_in: RED_LETTER#10
+
+- id: INFRA-222
+  domain: INFRA
+  title: 'docs-delta guard `Net-new-docs:` trailer escape hatch is unreachable at pre-commit time'
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    Pre-commit fires BEFORE git writes COMMIT_EDITMSG, so the docs-delta
+    trailer check always reads the PREVIOUS commit's message. The trailer
+    escape hatch documented in the guard's comment is unreachable for ALL
+    forms of git commit. Only two escape paths work: (a) doc-swap (1 add +
+    1 delete in same commit, net 0) or (b) CHUMP_DOCS_DELTA_CHECK=0 env
+    bypass. Surfaced during INFRA-158 test-writing. Filed as INFRA-208
+    (was duplicate INFRA-202 due to concurrent-branch ID collision with
+    INFRA-202 fleet-sccache gap filed in commit 6d21b33; resolved by
+    renumbering this entry to INFRA-208).
+  acceptance_criteria:
+    - "Either trailer check moved to commit-msg hook and test-docs-delta-guard.sh adds trailer test case that PASSES"
+    - "OR trailer mechanism removed from pre-commit; CLAUDE.md guards table updated to list only doc-swap and env-bypass"
+  raised_by: claude
+  raised_in: '2026-05-02 INFRA-158 follow-up'
