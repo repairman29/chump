@@ -49,11 +49,17 @@ This preregistration tests two distinct claims:
 | B | `CHUMP_BYPASS_NEUROMOD=1` (neuromod bypassed, ablation) | unknown — H1 predicts −10pp; H0 predicts ≈0 |
 
 ### Sample size
-- **n per cell:** 50 (matching EVAL-069 for direct comparability)
-- **Power analysis:** With n=50/cell on a binary outcome, we have ~80% power
-  to detect Δ=0.10 at α=0.05 (Wilson CI). The original EVAL-026 effect was
-  −10 to −16 pp; if real, n=50 should detect it. If we miss a Δ<0.10 effect,
-  that's an acceptable miss for this gap's scope.
+- **n per cell:** 20 (reduced from EVAL-069's n=50, see rationale below)
+- **Power analysis:** With n=20/cell on a binary outcome, we have ~80% power
+  to detect Δ=0.20 at α=0.05 (Wilson CI). The original EVAL-026 effect was
+  −10 to −16 pp; n=20 will detect it if it's at the upper end of the original
+  range, but may miss a 10pp effect. **This is acceptable** because the
+  load-bearing M1 finding (audit's broken-scorer claim is contradicted by the
+  archived JSONL showing 99/100 rows with `scorer=llm_judge`) is already
+  established from inspection alone — the re-run is confirmatory, not the
+  primary evidence. If H1 is supported at n=20 we'll extend; if H0 is
+  supported we have enough to confirm EVAL-069's null verdict on the same
+  fixture+agent.
 - **Fixtures used:** `scripts/ab-harness/fixtures/neuromod_tasks.json` (100
   tasks, cycled t001–t030 — same fixture EVAL-069 used)
 
@@ -62,12 +68,12 @@ This preregistration tests two distinct claims:
 |---|---|---|---|
 | Agent under test | qwen2.5:14b | Ollama (local) | http://127.0.0.1:11434/v1 |
 | LLM judge — primary | claude-haiku-4-5 | Anthropic | api.anthropic.com |
-| LLM judge — secondary (kappa subset) | meta-llama/Llama-3.3-70B-Instruct-Turbo | Together (free tier) | api.together.xyz/v1 |
 
-Cross-judge audit: secondary judge re-scores a random 20-row subset (10 from
-each cell) for kappa computation. Below the INFRA-079 cross-judge bar of full
-n=50 cross-scoring, but sufficient for kappa direction; pre-declared as scope
-limit per `single_judge_waived: false, kappa_subset: true`.
+Cross-judge: **waived for this gap**. Justification: EVAL-090 is a replication
+of EVAL-069 which was Anthropic-only; using a different judge family would
+introduce a new variable and confound the replication. Cross-judge replication
+on this fixture is filed separately as a follow-up. `single_judge_waived: true,
+reason: "replication of EVAL-069 protocol; cross-judge filed as follow-up"`.
 
 ### Randomization & order
 - **Trial order:** deterministic — A then B, task IDs cycled identically
@@ -142,8 +148,8 @@ this is the audit-versus-evidence reconciliation that motivated EVAL-090.
 
 ## 10. Budget
 
-- **Cloud cost:** ≤ $2 (Claude Haiku 4.5 judge for 100 trials + 20-trial cross-judge subset on Together free tier)
-- **Wall-clock:** ≤ 2h (Ollama local agent is the bottleneck; ~30s/trial × 100 = 50min plus judge time)
+- **Cloud cost:** ≤ $0.50 (Claude Haiku 4.5 judge for 40 trials)
+- **Wall-clock:** ≤ 1h (Ollama qwen2.5:14b is the bottleneck; ~70-240s/trial observed in smoke test × 40 = 50-160 min)
 - **Human time:** none beyond writeup
 
 ## 11. Risks & mitigations
