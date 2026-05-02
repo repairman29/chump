@@ -1,7 +1,7 @@
 - id: INFRA-229
   domain: infra
   title: chump gap ship --update-yaml writes deleted docs/gaps.yaml; should write per-file
-  status: open
+  status: done
   priority: P1
   effort: xs
   opened_date: '2026-05-02'
@@ -30,3 +30,5 @@
     - "no monolithic docs/gaps.yaml is ever created post-INFRA-188 by the chump binary"
     - "test in src/gap_store.rs covers post-ship per-file rewrite (status: done propagates)"
   depends_on: [INFRA-188]
+  closed_date: '2026-05-02'
+  closed_pr: 777

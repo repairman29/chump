@@ -1,7 +1,7 @@
 - id: INFRA-228
   domain: infra
   title: chump gap reserve must write per-file docs/gaps/<ID>.yaml mirror
-  status: open
+  status: done
   priority: P1
   effort: xs
   opened_date: '2026-05-02'
@@ -26,3 +26,5 @@
     - "subsequent `gap-preflight.sh <ID>` succeeds without CHUMP_ALLOW_UNREGISTERED_GAP=1 bypass"
     - "test in src/gap_store.rs covering single-gap dump (idempotent + post-mutation rewrite)"
   depends_on: [INFRA-188]
+  closed_date: '2026-05-02'
+  closed_pr: 777
