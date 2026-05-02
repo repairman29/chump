@@ -126,10 +126,12 @@ try {
   // Wait for the assistant bubble inside the shadow root to receive the
   // expected text. Poll via executeScript since elementLocated can't pierce
   // shadow DOM either.
+  // v2 message class is `msg ${role}` (chat.js line 386), not v1's
+  // `message ${role}` — selector .msg.assistant .bubble.
   await driver.wait(async () => {
     const text = await driver.executeScript(
       `const sr = document.querySelector('chump-chat').shadowRoot;
-       const b = sr.querySelector('.message.assistant .bubble');
+       const b = sr.querySelector('.msg.assistant .bubble');
        return b ? (b.textContent || '') : null;`,
     );
     return typeof text === 'string' && text.includes('Created task');
