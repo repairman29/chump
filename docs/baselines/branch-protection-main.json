@@ -1,0 +1,51 @@
+{
+  "allow_deletions": {
+    "enabled": false
+  },
+  "allow_force_pushes": {
+    "enabled": false
+  },
+  "allow_fork_syncing": {
+    "enabled": false
+  },
+  "block_creations": {
+    "enabled": false
+  },
+  "enforce_admins": {
+    "enabled": true
+  },
+  "lock_branch": {
+    "enabled": false
+  },
+  "required_conversation_resolution": {
+    "enabled": false
+  },
+  "required_linear_history": {
+    "enabled": false
+  },
+  "required_signatures": {
+    "enabled": false
+  },
+  "required_status_checks": {
+    "checks": [
+      {
+        "app_id": 15368,
+        "context": "test"
+      },
+      {
+        "app_id": 15368,
+        "context": "audit"
+      },
+      {
+        "app_id": 15368,
+        "context": "ACP protocol smoke test (Zed / JetBrains compatible)"
+      }
+    ],
+    "contexts": [
+      "test",
+      "audit",
+      "ACP protocol smoke test (Zed / JetBrains compatible)"
+    ],
+    "strict": false
+  }
+}
