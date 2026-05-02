@@ -318,7 +318,7 @@ impl TelegramAdapter {
     /// and posts the reply back. Conversation history per-chat is NOT
     /// persisted yet — each message is a fresh session.
     async fn handle_incoming(&self, incoming: &IncomingMessage) -> Result<()> {
-        let (agent, ready_session) = crate::discord::build_chump_agent_cli()
+        let (agent, ready_session) = crate::agent_factory::build_chump_agent_cli()
             .map_err(|e| anyhow!("build_chump_agent_cli: {}", e))?;
         let running = ready_session.start();
         let outcome = agent

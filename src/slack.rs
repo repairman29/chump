@@ -446,7 +446,7 @@ impl SlackAdapter {
 
     /// Inline handler used when no platform-router queue is attached.
     async fn handle_incoming(&self, incoming: &IncomingMessage) -> Result<()> {
-        let (agent, ready_session) = crate::discord::build_chump_agent_cli()
+        let (agent, ready_session) = crate::agent_factory::build_chump_agent_cli()
             .map_err(|e| anyhow!("build_chump_agent_cli: {}", e))?;
         let running = ready_session.start();
         let outcome = agent

@@ -15,7 +15,7 @@ use tokio::sync::Mutex;
 
 use crate::agent_loop::ChumpAgent;
 use crate::approval_resolver;
-use crate::discord;
+use crate::agent_factory;
 use crate::limits;
 use crate::stream_events::{self, AgentEvent};
 use crate::streaming_provider::StreamingProvider;
@@ -205,7 +205,7 @@ pub async fn run_rpc_loop() -> Result<()> {
                     tracing::warn!("rpc_mode: failed to send WebSessionReady event: {e}");
                 }
 
-                let built = discord::build_chump_agent_web_components(&sid, bot)?;
+                let built = agent_factory::build_chump_agent_web_components(&sid, bot)?;
                 #[cfg(feature = "mistralrs-infer")]
                 let streaming_provider = StreamingProvider::new_with_mistral_stream(
                     built.provider,

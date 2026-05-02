@@ -168,7 +168,7 @@ async fn dispatch_one(
     adapter: &dyn MessagingAdapter,
     cancel: CancellationToken,
 ) -> anyhow::Result<()> {
-    let (agent, ready_session) = crate::discord::build_chump_agent_cli()?;
+    let (agent, ready_session) = crate::agent_factory::build_chump_agent_cli()?;
     let running = ready_session.start();
     let outcome = agent.run_with_cancel(&incoming.content, cancel).await?;
     running.close();
