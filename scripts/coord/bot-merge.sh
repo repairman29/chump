@@ -101,6 +101,72 @@ for arg in "$@"; do
     esac
 done
 
+# INFRA-237: when --gap was not given, auto-derive from the current branch
+# name. Branches following the canonical naming convention encode the gap ID
+# (e.g. chump/infra-127-reflection-e2e → INFRA-127, claude/research-026-impl
+# → RESEARCH-026, chore/file-infra-243 → INFRA-243). When auto-derive fires,
+# print a clear info banner so the agent knows --gap was inferred (not
+# silently skipped).
+#
+# The user can suppress auto-derivation by passing --gap none for genuine
+# non-gap-bound PRs (e.g. dependabot bumps, doc-only sweeps that touch many
+# unrelated areas). The literal string "none" filters out of GAP_IDS to keep
+# downstream logic simple.
+#
+# Why this matters: when --gap is missing AND no auto-derive succeeds, the
+# INFRA-154 auto-close path silently skips, producing the OPEN-BUT-LANDED
+# ghosts INFRA-241 had to backfill. Making --gap effectively-required closes
+# that path at the bottleneck without forcing every legitimate non-gap PR
+# to add boilerplate.
+if [[ ${#GAP_IDS[@]} -eq 0 ]]; then
+    _branch_name=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
+    # Strip the canonical chump-codename prefixes (chump/, claude/, chore/file-,
+    # chore/close-) so the regex catches IDs anywhere in the remainder.
+    # Strip leading namespace token (chump/, claude/, chore/) and an optional
+    # action prefix (file-, close-, fix-) — but NOT the domain prefix
+    # (infra-, research-, etc.) because the domain IS the gap-ID prefix we
+    # want to extract. Then turn dashes into spaces and uppercase so
+    # 'infra-127-reflection' becomes 'INFRA 127 RELECTION' for the grep.
+    _branch_tail=$(echo "$_branch_name" \
+        | sed -E 's,^(chump|claude|chore)/(file-|close-|fix-)?,,' \
+        | tr '-' ' ' | tr 'a-z' 'A-Z')
+    # Extract every <DOMAIN>-<NUMBER> pattern from the cleaned branch name.
+    _derived_gaps=$(echo "$_branch_tail" \
+        | grep -oE '[A-Z]+ [0-9]+' \
+        | sed 's/ /-/' \
+        | sort -u | tr '\n' ' ')
+    if [[ -n "$_derived_gaps" ]]; then
+        for gid in $_derived_gaps; do GAP_IDS+=("$gid"); done
+        printf '\033[0;32m[bot-merge] auto-derived --gap from branch name: %s\033[0m\n' "${GAP_IDS[*]}"
+        printf '\033[0;32m[bot-merge]   (suppress with explicit --gap none for non-gap PRs)\033[0m\n'
+    elif [[ -z "$_branch_name" ]]; then
+        # Detached HEAD or non-branch state — let the script proceed; downstream
+        # checks will fail loud if a gap is needed.
+        :
+    else
+        echo "" >&2
+        printf '\033[0;31m[bot-merge] ERROR: no --gap given and could not auto-derive from branch name "%s"\033[0m\n' "$_branch_name" >&2
+        echo "[bot-merge]   INFRA-237: --gap is now effectively required to keep INFRA-154" >&2
+        echo "[bot-merge]   auto-close working. Either:" >&2
+        echo "[bot-merge]     1. Pass --gap explicitly: --gap INFRA-NNN" >&2
+        echo "[bot-merge]     2. Rename the branch to encode the gap ID:" >&2
+        echo "[bot-merge]          git branch -m chump/infra-NNN-<short>" >&2
+        echo "[bot-merge]     3. Pass --gap none for genuine non-gap PRs" >&2
+        echo "[bot-merge]        (dependabot bumps, doc-only sweeps, etc.)" >&2
+        exit 2
+    fi
+fi
+
+# Filter out the literal "none" sentinel — this is how callers explicitly
+# suppress auto-derivation for non-gap PRs without tripping downstream checks
+# that expect a real ID.
+_filtered=()
+for gid in "${GAP_IDS[@]}"; do
+    [[ "$gid" == "none" || "$gid" == "NONE" ]] && continue
+    _filtered+=("$gid")
+done
+GAP_IDS=("${_filtered[@]}")
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
