@@ -1,7 +1,7 @@
 - id: INFRA-130
   domain: infra
   title: adversary.rs has no integration tests - rule engine unverified end to end
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -15,5 +15,9 @@
     - Integration test - load a synthetic chump-adversary.yaml with one block rule, run a matching tool input, assert the call is blocked
     - Test verifies ambient.jsonl line is appended with kind=adversary_alert
     - If NATS available - test verifies chump.events.adversary_alert receives the event (skip if NATS unreachable, mirroring distributed_mutex.rs)
+  notes: |
+    Verified shipped via PR #755 (commit 715adb4): src/adversary.rs:599-834 contains the e2e_rule_to_ambient module with 4 integration tests covering the gap's full acceptance criteria (rule fires → ambient line emitted → JSON shape correct → block maps to Err → warn maps to Ok+emitted → JSON-escape security test). All 4 tests pass via 'cargo test adversary::e2e_rule_to_ambient'. Closing as done; this PR is the registry sync.
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 755
 
