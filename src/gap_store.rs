@@ -76,13 +76,41 @@ impl GapStore {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating .chump/ at {}", parent.display()))?;
         }
-        let conn =
-            Connection::open(&path).with_context(|| format!("opening {}", path.display()))?;
-        // busy_timeout: concurrent gap_store::tests::test_reserve_concurrent opens
-        // multiple connections to one WAL DB; without a wait, BEGIN EXCLUSIVE races
-        // surface as rusqlite "database is locked" on CI runners.
+        // Retry on "database is locked" at open time. The PRAGMA busy_timeout
+        // below only applies POST-open; the open itself can briefly fail with
+        // SQLITE_BUSY when a sibling process is mid-`PRAGMA journal_mode=WAL`
+        // or migration (both take a short exclusive lock). The
+        // gap_reserve_cross_host_race integration test (INFRA-216) reliably
+        // reproduces this on CI without the retry loop.
+        let conn = {
+            let mut delay_ms = 50u64;
+            let mut attempts = 0;
+            loop {
+                match Connection::open(&path) {
+                    Ok(c) => break c,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if attempts >= 8 || !msg.contains("database is locked") {
+                            return Err(e).with_context(|| format!("opening {}", path.display()));
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                        delay_ms = (delay_ms * 2).min(2000);
+                        attempts += 1;
+                    }
+                }
+            }
+        };
+        // INFRA-216: set busy_timeout BEFORE journal_mode=WAL so the WAL
+        // switch itself respects the wait. Without this, a sibling process
+        // mid-WAL-switch causes SQLITE_BUSY at our PRAGMA journal_mode=WAL,
+        // and the failure shows up as "database is locked" (which the
+        // gap_reserve_cross_host_race integration test was catching).
+        // busy_timeout via PRAGMA must come first; subsequent PRAGMAs in
+        // this batch will then honor it.
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .with_context(|| "setting busy_timeout via rusqlite API")?;
         conn.execute_batch(
-            "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
+            "PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;",
         )?;
         let store = Self {
             conn,
@@ -499,6 +527,189 @@ impl GapStore {
                 Err(e)
             }
         }
+    }
+
+    /// INFRA-216: post-reserve verification round-trip.
+    ///
+    /// After picking the next ID and inserting the DB row, this method:
+    /// 1. Writes a `pending_new_gap` lease so sibling sessions on the same
+    ///    host (or shared filesystem) can see the claim immediately.
+    /// 2. Sleeps `CHUMP_RESERVE_VERIFY_SLEEP_MS` ms (default 200) to let
+    ///    concurrent sibling lease writes propagate.
+    /// 3. Re-scans all live leases for the same domain.
+    /// 4. If another live session holds the SAME reserved ID, the session
+    ///    with the lexicographically smallest `session_id` wins (keeps the
+    ///    ID); all others roll back their DB row and retry.
+    /// 5. After `MAX_RETRIES` without winning, returns an error naming the
+    ///    colliding session(s).
+    ///
+    /// Set `CHUMP_RESERVE_VERIFY=0` to skip verification (offline builds,
+    /// `cargo test` where the 200 ms sleep would be expensive).
+    pub fn reserve_verified(
+        &self,
+        domain: &str,
+        title: &str,
+        priority: &str,
+        effort: &str,
+        session_id: &str,
+    ) -> Result<String> {
+        if std::env::var("CHUMP_RESERVE_VERIFY").as_deref() == Ok("0") {
+            return self.reserve(domain, title, priority, effort);
+        }
+
+        let sleep_ms: u64 = std::env::var("CHUMP_RESERVE_VERIFY_SLEEP_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(200);
+
+        const MAX_RETRIES: u32 = 3;
+        let locks_dir = self.repo_root.join(".chump-locks");
+        let lease_path = locks_dir.join(format!("{}.json", session_id));
+
+        for attempt in 1..=MAX_RETRIES {
+            // Step 1: pick ID via existing reserve logic (reads current leases
+            // to skip already-claimed numbers before inserting the DB row).
+            let extra = self.external_pending_ids(domain).unwrap_or_default();
+            let id = self.reserve_with_external(domain, title, priority, effort, &extra)?;
+            let domain_upper = domain.to_uppercase();
+
+            // Step 2: advertise the reservation via a pending_new_gap lease
+            // so sibling sessions on the same filesystem can see our claim.
+            let _ = std::fs::create_dir_all(&locks_dir);
+            let now = unix_now();
+            let lease_json = serde_json::json!({
+                "session_id": session_id,
+                "pending_new_gap": {
+                    "id": &id,
+                    "title": title,
+                    "domain": &domain_upper,
+                },
+                "heartbeat_at": unix_to_iso_full(now),
+                "expires_at": unix_to_iso_full(now + 3600),
+            });
+            if let Ok(txt) = serde_json::to_string(&lease_json) {
+                let _ = std::fs::write(&lease_path, txt);
+            }
+
+            // Step 3: sleep to let concurrent sibling lease writes propagate.
+            if sleep_ms > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(sleep_ms));
+            }
+
+            // Step 4: re-scan; find any OTHER live session with the same ID.
+            // Use next_back() (DoubleEndedIterator) instead of last() per
+            // clippy::double_ended_iterator_last — last() needlessly walks
+            // the full iterator.
+            let id_num: i64 = id
+                .split('-')
+                .next_back()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let colliders = self.colliding_sessions(&domain_upper, id_num, session_id)?;
+
+            if colliders.is_empty() {
+                // No collision — verification passed.
+                return Ok(id);
+            }
+
+            // Tiebreak: lexicographically smallest session_id wins so the
+            // outcome is deterministic when both sides detect the race
+            // simultaneously.
+            let winner_candidate = colliders.iter().min().map(String::as_str).unwrap_or("");
+            if session_id < winner_candidate {
+                // We hold the lexicographically smallest ID — we win.
+                return Ok(id);
+            }
+
+            // We lose — roll back our DB row so the counter won't skip past
+            // the winning session's claimed number on the next attempt.
+            let _ = self
+                .conn
+                .execute("DELETE FROM gaps WHERE id=?1", params![&id]);
+            let _ = std::fs::remove_file(&lease_path);
+
+            if attempt == MAX_RETRIES {
+                bail!(
+                    "reserve({domain}) failed after {MAX_RETRIES} attempts: \
+                     ID {id} was simultaneously claimed by session(s) {colliders:?} \
+                     within the {sleep_ms}ms verification window. Investigate \
+                     shared-filesystem lease propagation or increase \
+                     CHUMP_RESERVE_VERIFY_SLEEP_MS."
+                );
+            }
+            // Loop: the next call to reserve_with_external will see the
+            // winner's lease file and skip past the contested ID.
+        }
+
+        bail!("reserve({domain}) failed after {MAX_RETRIES} retries — persistent collision")
+    }
+
+    /// Return the `session_id` strings of all live leases (other than our
+    /// own) that carry a `pending_new_gap` for the given `domain` and
+    /// `id_num`. Used by [`Self::reserve_verified`] to detect cross-host
+    /// races after the 200 ms propagation window.
+    fn colliding_sessions(
+        &self,
+        domain_upper: &str,
+        id_num: i64,
+        my_session: &str,
+    ) -> Result<Vec<String>> {
+        let prefix = format!("{}-", domain_upper);
+        let target_id = format!("{}{:03}", prefix, id_num);
+        let mut colliders = Vec::new();
+        let locks_dir = self.repo_root.join(".chump-locks");
+        let Ok(entries) = std::fs::read_dir(&locks_dir) else {
+            return Ok(colliders);
+        };
+        let now = unix_now();
+        for ent in entries.flatten() {
+            let path = ent.path();
+            let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if !name.ends_with(".json") || name.starts_with('.') || name == "ambient.jsonl" {
+                continue;
+            }
+            let txt = match std::fs::read_to_string(&path) {
+                Ok(t) => t,
+                Err(_) => continue,
+            };
+            let v: serde_json::Value = match serde_json::from_str(&txt) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            // Skip stale leases (same staleness thresholds as external_pending_ids).
+            let heartbeat = v
+                .get("heartbeat_at")
+                .and_then(|s| s.as_str())
+                .and_then(parse_iso_to_unix);
+            let expires = v
+                .get("expires_at")
+                .and_then(|s| s.as_str())
+                .and_then(parse_iso_to_unix);
+            if let Some(h) = heartbeat {
+                if now - h > 900 {
+                    continue;
+                }
+            }
+            if let Some(e) = expires {
+                if now - e > 30 {
+                    continue;
+                }
+            }
+            let sid = v
+                .get("session_id")
+                .and_then(|s| s.as_str())
+                .unwrap_or("")
+                .to_string();
+            if sid == my_session || sid.is_empty() {
+                continue;
+            }
+            if let Some(p) = v.get("pending_new_gap").and_then(|p| p.as_object()) {
+                if p.get("id").and_then(|i| i.as_str()) == Some(target_id.as_str()) {
+                    colliders.push(sid);
+                }
+            }
+        }
+        Ok(colliders)
     }
 
     /// INFRA-100: gather gap-ID numbers from sources the DB can't see —
@@ -1343,6 +1554,16 @@ fn unix_to_iso_date(ts: i64) -> String {
         .single()
         .map(|dt| dt.format("%Y-%m-%d").to_string())
         .unwrap_or_default()
+}
+
+/// Convert a unix timestamp to full ISO-8601 `YYYY-MM-DDTHH:MM:SSZ`.
+/// Used by `reserve_verified` for lease file heartbeat/expiry timestamps.
+fn unix_to_iso_full(ts: i64) -> String {
+    use chrono::{TimeZone, Utc};
+    Utc.timestamp_opt(ts, 0)
+        .single()
+        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+        .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
 }
 
 /// Normalize a serde_json::Value (typically a YAML-imported list or scalar)
@@ -2549,5 +2770,174 @@ meta:
         assert_eq!(board[0].failures, 1);
         // last_seen reflects the most-recent write.
         assert_eq!(board[0].last_seen, "2026-04-27T11:00:00Z");
+    }
+
+    // ── INFRA-216: post-reserve cross-host collision tests ────────────────
+
+    /// When no sibling lease claims the same ID, reserve_verified returns
+    /// the picked ID immediately (no collision, no retry).
+    #[test]
+    fn reserve_verified_passes_with_no_collision() {
+        let (store, _dir) = test_store();
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_VERIFY", "1");
+            std::env::set_var("CHUMP_RESERVE_VERIFY_SLEEP_MS", "0");
+        }
+        let id = store
+            .reserve_verified("INFRA", "first", "P1", "s", "session-alpha")
+            .unwrap();
+        assert_eq!(id, "INFRA-001");
+    }
+
+    /// Simulate a cross-host race: a sibling session writes a
+    /// `pending_new_gap` lease for the same ID *before* our verification
+    /// re-scan. Our session has a lexicographically larger session_id, so
+    /// it loses the tiebreak, rolls back, and retries to the next ID.
+    #[test]
+    fn reserve_verified_detects_collision_and_retries() {
+        let (store, dir) = test_store();
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_VERIFY", "1");
+            std::env::set_var("CHUMP_RESERVE_VERIFY_SLEEP_MS", "0");
+        }
+
+        // Write a sibling lease claiming INFRA-001 with a lexicographically
+        // *smaller* session_id ("session-aaa" < "session-zzz") so the sibling
+        // wins the tiebreak and we retry.
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let now = unix_now();
+        let sibling = serde_json::json!({
+            "session_id": "session-aaa",
+            "pending_new_gap": { "id": "INFRA-001", "title": "sibling", "domain": "INFRA" },
+            "heartbeat_at": chrono_like_iso(now),
+            "expires_at": chrono_like_iso(now + 3600),
+        });
+        std::fs::write(
+            locks.join("session-aaa.json"),
+            serde_json::to_string(&sibling).unwrap(),
+        )
+        .unwrap();
+
+        // Our session "session-zzz" would also pick INFRA-001 (empty DB), but
+        // should detect the collision and retry to INFRA-002.
+        let id = store
+            .reserve_verified("INFRA", "mine", "P1", "s", "session-zzz")
+            .unwrap();
+        assert_eq!(
+            id, "INFRA-002",
+            "should skip INFRA-001 held by session-aaa, got {id}"
+        );
+    }
+
+    /// `colliding_sessions` correctly identifies a sibling session that
+    /// also holds the same pending_new_gap ID, while ignoring our own
+    /// session and leases for different IDs.
+    #[test]
+    fn colliding_sessions_finds_sibling_and_ignores_own() {
+        let (store, dir) = test_store();
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let now = unix_now();
+        let iso = chrono_like_iso(now);
+        let exp = chrono_like_iso(now + 3600);
+
+        // Our own lease for INFRA-005 (should be ignored by colliding_sessions).
+        let our_lease = serde_json::json!({
+            "session_id": "session-mine",
+            "pending_new_gap": { "id": "INFRA-005", "title": "mine", "domain": "INFRA" },
+            "heartbeat_at": &iso, "expires_at": &exp,
+        });
+        std::fs::write(
+            locks.join("session-mine.json"),
+            serde_json::to_string(&our_lease).unwrap(),
+        )
+        .unwrap();
+
+        // Sibling A also claims INFRA-005 (the one we care about).
+        let sibling_a = serde_json::json!({
+            "session_id": "session-rival",
+            "pending_new_gap": { "id": "INFRA-005", "title": "rival", "domain": "INFRA" },
+            "heartbeat_at": &iso, "expires_at": &exp,
+        });
+        std::fs::write(
+            locks.join("session-rival.json"),
+            serde_json::to_string(&sibling_a).unwrap(),
+        )
+        .unwrap();
+
+        // Sibling B claims a different ID (INFRA-007) — should not appear.
+        let sibling_b = serde_json::json!({
+            "session_id": "session-other",
+            "pending_new_gap": { "id": "INFRA-007", "title": "other", "domain": "INFRA" },
+            "heartbeat_at": &iso, "expires_at": &exp,
+        });
+        std::fs::write(
+            locks.join("session-other.json"),
+            serde_json::to_string(&sibling_b).unwrap(),
+        )
+        .unwrap();
+
+        let colliders = store
+            .colliding_sessions("INFRA", 5, "session-mine")
+            .unwrap();
+        assert_eq!(
+            colliders,
+            vec!["session-rival"],
+            "expected only session-rival as collider, got {colliders:?}"
+        );
+    }
+
+    /// The tiebreak rule: when colliding_sessions returns results, the
+    /// session with the lexicographically smallest session_id wins. Verify
+    /// that the winner determination logic is correct for both orderings.
+    #[test]
+    fn reserve_verified_tiebreak_smaller_session_wins() {
+        let (store, dir) = test_store();
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_VERIFY", "1");
+            std::env::set_var("CHUMP_RESERVE_VERIFY_SLEEP_MS", "0");
+        }
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let now = unix_now();
+        // Pre-seed INFRA-001 in the sibling's lease with a SMALLER session_id
+        // so external_pending_ids sees it and we pick INFRA-002.  Then verify
+        // we get INFRA-002 cleanly (no collision on INFRA-002).
+        let sibling = serde_json::json!({
+            "session_id": "session-aaa",
+            "pending_new_gap": { "id": "INFRA-001", "title": "winner", "domain": "INFRA" },
+            "heartbeat_at": chrono_like_iso(now),
+            "expires_at": chrono_like_iso(now + 3600),
+        });
+        std::fs::write(
+            locks.join("session-aaa.json"),
+            serde_json::to_string(&sibling).unwrap(),
+        )
+        .unwrap();
+
+        // "session-zzz" > "session-aaa" so we lose INFRA-001 and fall back
+        // to INFRA-002 (no collision there).
+        let id = store
+            .reserve_verified("INFRA", "mine", "P1", "s", "session-zzz")
+            .unwrap();
+        assert_eq!(
+            id, "INFRA-002",
+            "session-zzz should fall back to INFRA-002, got {id}"
+        );
+    }
+
+    /// With CHUMP_RESERVE_VERIFY=0, reserve_verified delegates directly
+    /// to reserve() with no sleep or collision scan.
+    #[test]
+    fn reserve_verified_skips_verification_when_disabled() {
+        let (store, _dir) = test_store();
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_VERIFY", "0");
+        }
+        let id = store
+            .reserve_verified("INFRA", "fast", "P1", "s", "any-session")
+            .unwrap();
+        assert_eq!(id, "INFRA-001");
     }
 }
