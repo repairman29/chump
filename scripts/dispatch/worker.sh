@@ -111,14 +111,23 @@ PY
 
     log "creating worktree $wt_path on branch $branch"
     if ! git -C "$REPO_ROOT" worktree add -b "$branch" "$wt_path" origin/main >/dev/null 2>&1; then
-        log "WARN: worktree create failed for $GAP_ID; sleeping 30s"
-        sleep 30
+        # INFRA-271: don't sleep 30s on worktree-add failure — most failures
+        # here are transient (sibling worker briefly held a git lock, or the
+        # branch we picked happened to collide with a stale leftover). Skip
+        # the cycle and pick a different gap on the next iteration.
+        log "WARN: worktree create failed for $GAP_ID; trying next pick"
         continue
     fi
 
     # ── Claim ─────────────────────────────────────────────────────────────
-    if ! ( cd "$wt_path" && CHUMP_AMBIENT_GLANCE=0 scripts/coord/gap-claim.sh "$GAP_ID" >/dev/null 2>&1 ); then
-        log "WARN: gap-claim failed for $GAP_ID (sibling raced us?); cleaning up"
+    # INFRA-271 + INFRA-193: enable speculative-execution claim. Two fleet
+    # workers picking the same gap in the same second is the common case at
+    # high FLEET_SIZE; with CHUMP_SPECULATIVE=1, gap-preflight allows both
+    # claims, both workers ship in parallel, and bot-merge / closer-batcher
+    # auto-closes the loser as superseded once the winner lands. Without this,
+    # one worker would silently lose a cycle (~30+ seconds) per collision.
+    if ! ( cd "$wt_path" && CHUMP_AMBIENT_GLANCE=0 CHUMP_SPECULATIVE=1 scripts/coord/gap-claim.sh "$GAP_ID" >/dev/null 2>&1 ); then
+        log "WARN: gap-claim failed for $GAP_ID even speculative; cleaning up"
         git -C "$REPO_ROOT" worktree remove --force "$wt_path" 2>/dev/null || true
         git -C "$REPO_ROOT" branch -D "$branch" 2>/dev/null || true
         continue
