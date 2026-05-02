@@ -1,7 +1,7 @@
 - id: INFRA-116
   domain: infra
   title: runtime_flags.rs - documented CHUMP_KNOWN_FLAGS list does not exist
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -19,4 +19,6 @@
     - If list exists - unknown flag names emit a warning to stderr and an ambient WARN event
     - Cycle-review process to remove dead flags is documented in CLAUDE.md
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 839
 
