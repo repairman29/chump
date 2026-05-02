@@ -8,6 +8,13 @@
 #   (4) Opt-out: "[no-close] INFRA-XXX: ..." does NOT close
 #   (5) Idempotency: re-run on already-done gap is a no-op (no error, no edit)
 #
+# Production trigger context (INFRA-261, 2026-05-02): the closer script
+# this test exercises is invoked by .github/workflows/regenerate-gaps-yaml.yml
+# on push:branches:[main] events (NOT merge_group — that trigger never
+# fires on this repo per CLAUDE.md INFRA-201). The workflow extracts the
+# closing PR number from the squashed commit subject's "(#N)" suffix and
+# passes a "BEFORE_SHA..HEAD_SHA" range to this script as its $1.
+#
 # Run: ./scripts/ci/test-close-gaps-from-commit-subjects.sh
 # Exits non-zero on any failure.
 
