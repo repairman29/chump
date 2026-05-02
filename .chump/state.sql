@@ -1249,7 +1249,7 @@ gaps:
 - id: DOC-010
   domain: DOC
   title: README and faculty docs claim nine engineering proxies - most are dead, no-op, or computed-not-applied; reframe to actual implementation status
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -1273,7 +1273,11 @@ gaps:
     - Status reflects - wired/no-op/dead-code/computed-not-applied
     - CHUMP_FACULTY_MAP.md updated to match
     - Cross-link to RESEARCH_INTEGRITY.md prohibited-claims table
+  notes: |
+    Updated CHUMP_FACULTY_MAP.md FRONTIER module audit table to reflect REMOVAL-006 + REMOVAL-007 audit findings (PRs #789 + #791). holographic_workspace flipped from KEEP to REMOVAL CANDIDATE (write-only in production; filed REMOVAL-009). phi_proxy + neuromodulation confirmed wired with audit links. Added 'nine modules with five distinct call statuses' summary table. README 'Research' section reframes vague 'nine cognitive-architecture modules' claim to point at FACULTY_MAP as the source of truth.
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 797
 
 - id: DOC-011
   domain: DOC
@@ -8039,6 +8043,122 @@ gaps:
   priority: P2
   effort: m
 
+- id: INFRA-236
+  domain: INFRA
+  title: Authoritative commit-subject gap closure — extract gap-ID from merging commit subject in regenerate-gaps-yaml.yml workflow, eliminate ghosts at the source
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    Killer fix for the OPEN-BUT-LANDED ghost class. Today closure happens via three best-effort paths that all fail in different ways:
+    
+      1. bot-merge.sh runs `chump gap ship --closed-pr <N>` (INFRA-154) — only when used; siblings using `gh pr merge` directly skip it
+      2. closer-pr-batcher polls open PRs and matches gap IDs in commit bodies (INFRA-194) — false-positive on filing PRs (INFRA-219), false-negative on partial-implementation PRs
+      3. Manual `chump gap ship` after the fact — relies on agent remembering
+    
+    Net effect: ~5-10 ghosts accumulate per cycle. Required surgical-cleanup PRs (e.g. PR #787 closing INFRA-176/175/169) on a recurring basis.
+    
+    Proposal — make commit subject the authoritative closure signal:
+    
+    The `regenerate-gaps-yaml.yml` workflow already runs on merge_group / merge events. Extend it to:
+      1. Read the commit subject(s) being merged: `git log <base>..<head> --format=%s`
+      2. Extract gap IDs via regex: `^([A-Z]+-\d+)(?:[+/, ]|:)`
+      3. For each matched gap with `status: open` in docs/gaps/<ID>.yaml:
+         - Flip to `status: done`
+         - Set `closed_pr: <merging-PR-number>`
+         - Set `closed_date: <today>`
+      4. Stage the changes into the same regenerated YAML the workflow already produces
+      5. Commit them as part of the regen commit on origin/main
+    
+    The merge then carries closure ATOMICALLY — no follow-up PR. No state.db dependency (commit subject lives in git history, immutable).
+    
+    Why this is the killer (eliminates two cause classes):
+      - Cause #1 (forgot chump gap ship) — agent uses standard commit subject convention, closure happens regardless of whether bot-merge.sh was used
+      - Cause #2 (closer-batcher false-positives/negatives) — closure is deterministic from git history, not a polling guess
+      - Reduces cause #3 (state.db drift) — workflow becomes the single closure path, state.db just mirrors
+    
+    Failure modes to handle:
+      - Multiple gap IDs in subject (e.g. "INFRA-171: ... + close INFRA-169") — close all matched
+      - Partial-progress PRs that intentionally do NOT close their gap — opt out via `[no-close]` tag in subject or commit body
+      - Filing PRs (`chore(gaps): file INFRA-NNN`) — title prefix "file" or "chore(gaps): file" should NEVER trigger closure
+      - Already-done gaps — silently skip (idempotent)
+      - PR contains gap-ID in commit body but not subject — strict-subject default; opt-in body-scan via env
+    
+    Acceptance:
+      - Workflow extracts gap-IDs from merging commit subject, flips matching status:open → status:done with closed_pr in same regen commit
+      - Test fixture covers: single closure, multi-closure ("X + close Y"), filing-PR no-op, [no-close] opt-out, already-done idempotency
+      - Documented in CLAUDE.md as the canonical closure path; chump gap ship --closed-pr remains as the explicit-override escape hatch
+      - 30-day measurement: ghost count on main drops from ~5-10/cycle to <1/cycle
+  acceptance_criteria:
+    - "regenerate-gaps-yaml.yml extracts gap-ID from commit subject and flips status:open → status:done in same merge commit"
+    - "Filing PRs (chore(gaps): file ...) never trigger closure"
+    - "[no-close] opt-out tag respected"
+    - Test fixture covers 5 scenarios (single, multi, filing, no-close, idempotency)
+    - 30-day ghost count on main drops below 1 per cycle
+
+- id: INFRA-237
+  domain: INFRA
+  title: bot-merge.sh --gap should be mandatory — refuse to ship without --gap to close the auto-close-bypass path
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    bot-merge.sh accepts --gap as optional. Many PRs ship without it (siblings using `gh pr merge` directly, hand-pushes, or chore(gaps) PRs that don't have a single canonical gap). When --gap is missing, the INFRA-154 auto-close path silently skips, and the gap stays status:open until the closer-pr-batcher catches it (or it becomes a ghost).
+    
+    Two paths:
+      (a) Make bot-merge.sh refuse to ship without --gap; agents must explicitly pass --gap=none or --gap=multi for non-gap-bound PRs
+      (b) Auto-derive --gap from the branch name (`chump/<gap-id>-...` or `chore/file-<gap-id>` patterns) when --gap is missing
+    
+    (b) is friendlier — most branches already encode the gap ID. (a) is stricter and surfaces intent.
+    
+    Pairs with INFRA-236: even if INFRA-236's commit-subject extraction lands, --gap on bot-merge.sh remains useful for the explicit-acknowledge ergonomics (the operator/agent says "this PR closes this gap" up front, not after the fact via subject parsing).
+    
+    Acceptance:
+      - bot-merge.sh refuses --gap-less invocation OR auto-derives from branch name pattern
+      - Documentation in CLAUDE.md updated with the new contract
+      - Existing chore(gaps) and filing PRs continue to work (they pass --gap=none or auto-derive)
+  acceptance_criteria:
+    - bot-merge.sh refuses --gap-less invocation or auto-derives from branch name
+    - Documentation updated
+    - Existing chore(gaps) PRs continue to work
+
+- id: INFRA-238
+  domain: INFRA
+  title: regenerate-gaps-yaml.yml propagates one host's stale state.db across all PRs — reverts surgical closures from other agents
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    NEW post-INFRA-188-cutover ghost source observed 2026-05-02:
+    
+    PR #787 surgically flipped INFRA-176/175/169 from status:open → status:done with closed_pr fields. Within an hour, all three rows reverted to status:open in the working tree (system reminders showed the linter/external-process revert).
+    
+    Likely path: regenerate-gaps-yaml.yml (added by the INFRA-188 cutover) runs on merge_group / merge events. It calls something equivalent to `chump gap dump --per-file` which regenerates docs/gaps/<ID>.yaml from the LOCAL state.db. Because state.db is gitignored and per-host, the regen propagates one host's stale view across all PRs:
+    
+      - Host A: agent ships PR #787 with surgical YAML closures (status:done)
+      - Host B (the workflow runner OR a sibling agent's machine): state.db still says status:open for those gaps because Host B never ran chump gap ship
+      - Host B's regen overwrites Host A's surgical closures with status:open
+      - Net: PR #787's closures get reverted
+    
+    Same root cause as INFRA-233 (NULL closed_pr propagation) but for the status field too.
+    
+    Two fix options:
+      (a) Stop regenerating from state.db at all — make per-file YAML the only writer, eliminate the dump-from-DB path. State.db rebuilt FROM YAML on demand via `chump gap import`.
+      (b) Pin regen to a SHARED state.db committed alongside YAML (or a SQL dump that's authoritative), so all hosts produce identical regen output.
+    
+    (a) is the architectural correction — matches "YAML is canonical" post-cutover. (b) preserves the SQLite-canonical model from INFRA-059.
+    
+    Pairs with INFRA-236 (commit-subject closure as authoritative source) — both eliminate state.db as a write target during merge-time YAML regen.
+    
+    Acceptance:
+      - regenerate-gaps-yaml.yml does not revert surgical YAML closures from other hosts
+      - Round-trip test: on host A flip status:done, push; on host B run regen, observe no revert
+      - Either state.db dropped from regen path OR a SHARED canonical SQL source defined
+  acceptance_criteria:
+    - regenerate-gaps-yaml.yml does not revert surgical closures from other hosts
+    - Round-trip test verifies no-revert on cross-host scenario
+    - Either state.db dropped from regen path or shared canonical source defined
+
 - id: INFRA-41
   domain: infra
   title: "code-reviewer-agent.sh: guard empty-array iteration under bash 3.2 set -u"
@@ -9023,6 +9143,43 @@ gaps:
     - Recant channel exists for operator-rejected entries
   depends_on: [INFRA-195]
 
+- id: META-013
+  domain: META
+  title: src/discord.rs is a god module — owns agent factory + system prompt + Discord IO; refactor needs a focused session
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Pattern observed during 2026-05-02 SECURITY-004 spike sequence: src/discord.rs is not just a Discord backend — it is the de facto "system module" that owns:
+    
+      1. Agent factory (build_chump_agent_cli, build_chump_agent_web_components, build_chump_agent_web, WebAgentBuild) — used by 16 call sites in 9 non-discord modules
+      2. Primary system prompt assembly (chump_system_prompt — 176 lines, shapes ALL agent behavior across CLI, web, Discord, dispatched-gap, autonomy loop)
+      3. ~1250 lines of system-prompt constants (CHUMP_HARD_RULES, CHUMP_THINKING_XML_PRIMACY, etc.)
+      4. Helpers (env_is_mabel, a2a_team_block) used by the system prompt
+      5. The actual Discord IO surface (EventHandler, message dispatch, slash commands)
+    
+    Three refactoring tasks already scoped against this concentration:
+      - RELIABILITY-001 Path A: serenity 0.12 → 0.13 API migration (16 compile errors in discord.rs)
+      - RELIABILITY-001 Path B: feature-gate discord (blocked by 16 call sites importing factory)
+      - RELIABILITY-002: extract agent factory to src/agent_factory.rs (1-2 hr estimate became 3-5 hr after seeing the prompt + constants entanglement)
+    
+    Each refactor scoped at first-pass appeared small; each expanded on contact because of the god-module concentration. Filing this META so the pattern is visible at the next architectural review — the work to split discord.rs is itself a single focused project, not a series of small spikes.
+    
+    Suggested decomposition:
+      - src/system_prompt.rs (CHUMP_HARD_RULES, CHUMP_THINKING_XML_PRIMACY, chump_system_prompt, a2a_team_block, env_is_mabel)
+      - src/agent_factory.rs (build_chump_agent_cli, build_chump_agent_web_components, build_chump_agent_web, WebAgentBuild)
+      - src/discord.rs (EventHandler, run, build_agent — Discord-specific only; imports back from agent_factory + system_prompt)
+    
+    After this lands, discord becomes feature-gateable cleanly, and the system prompt has a sensible home for future evolution (light prompt, MABEL/CHUMP variants, evaluation-aware modifications, etc.).
+  acceptance_criteria:
+    - src/system_prompt.rs and src/agent_factory.rs both exist, with discord.rs importing back from them
+    - "All 16 call sites of build_chump_agent_* updated to use crate::agent_factory"
+    - Snapshot test asserting chump_system_prompt output is character-identical before/after the split
+    - cargo check + cargo test pass
+    - RELIABILITY-001 Path B and RELIABILITY-002 close as superseded by this gap, OR this gap explicitly delegates to them as sub-tasks
+  notes: |
+    Filed during 2026-05-02 cleanup pass after the third scope-expansion-on-contact in src/discord.rs. Pattern recognition matters: tag related future work to this gap rather than re-filing.
+
 - id: PRODUCT-001
   domain: product
   title: PWA Dashboard — ship status, what-we're-doing, recent episodes
@@ -9613,6 +9770,51 @@ gaps:
     
     Updated recommendation: Path D → Path B (feature-gate) is the cleanest sequence. Total effort: 2-3 hrs. Or skip to Path A (full migration) if there's bandwidth. Path C (wait for v0.13) becomes more attractive given A and B both expanded in scope.
 
+- id: RELIABILITY-002
+  domain: RELIABILITY
+  title: Extract build_chump_agent_* from src/discord.rs into src/agent_factory.rs (unblocks SECURITY-004 Path B feature-gating)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Discovered during 2026-05-02 SECURITY-004 spike (RELIABILITY-001): src/discord.rs owns the canonical agent factory functions build_chump_agent_cli and build_chump_agent_web_components. 16 call sites in non-discord modules use them: web_server.rs, telegram.rs, rpc_mode.rs, autonomy_loop.rs, execute_gap.rs, e2e_bot_tests.rs, slack.rs, acp_server.rs, platform_router.rs.
+    
+    This coupling means feature-gating discord (the natural fast-path for SECURITY-004 mitigation) breaks 9+ unrelated modules. The agent factory belongs in its own module.
+    
+    Scope:
+    1. Create src/agent_factory.rs
+    2. Move pub fn build_chump_agent_cli() and pub fn build_chump_agent_web_components() (plus any private helpers they call exclusively) from src/discord.rs to src/agent_factory.rs
+    3. Add `mod agent_factory;` to src/main.rs
+    4. Update 16 call sites: replace `discord::build_chump_agent_*` with `agent_factory::build_chump_agent_*`
+    5. Verify cargo check + cargo test pass
+    6. After this lands, src/discord.rs is self-contained Discord IO surface; SECURITY-004 Path B (feature-gate discord) becomes a trivial follow-up
+    
+    Effort: ~1-2 hrs mechanical refactor + verification. No behavior changes. Pure decoupling.
+    
+    This is a load-bearing pre-requisite for closing SECURITY-004 via the lowest-risk path (feature-gate). Without it, the SECURITY-004 fix path is either (A) full serenity 0.13 API migration in discord.rs (1-3 hrs of API work) or (C) wait indefinitely for upstream serenity v0.13.
+  acceptance_criteria:
+    - src/agent_factory.rs exists with build_chump_agent_cli and build_chump_agent_web_components moved out of discord.rs
+    - All 16 call sites updated to import from agent_factory instead of discord
+    - cargo check --bin chump passes
+    - cargo test passes (no behavior changes; this is a pure rename/move)
+    - RELIABILITY-001 acceptance criteria for Path B becomes achievable as a clean follow-up PR
+  notes: |
+    POST-SCOPING UPDATE 2026-05-02: attempted to begin the extraction; discovered scope is bigger than the original 1-2hr estimate. src/discord.rs is acting as a 'god module' — it owns not just the agent factory but also:
+    
+      - chump_system_prompt() — 176-line function that assembles the PRIMARY system prompt for every agent in the project (CLI, web, Discord). Currently lives in discord.rs at lines 317-492.
+      - CHUMP_HARD_RULES + CHUMP_THINKING_XML_PRIMACY — ~1250 lines of constants (lines 204-...) that the system prompt composes.
+      - env_is_mabel() — helper at line 290.
+      - a2a_team_block() — used only by chump_system_prompt.
+      - Plus the actual factory functions (build_chump_agent_cli, build_chump_agent_web_components, build_chump_agent_web, WebAgentBuild).
+    
+    The minimal extraction to truly decouple discord.rs is to move ALL of these to a new src/agent_factory.rs (or split: src/agent_factory.rs for the build_* functions + src/system_prompt.rs for the prompt assembly). discord.rs's own remaining build_agent(channel_id) function (the Discord-specific factory) would then import chump_system_prompt back from agent_factory — a one-way dep, which is what we want.
+    
+    Real effort estimate: 3-5 hours of careful work, NOT 1-2 hours. Risk surface includes silent breakage of the agent's primary prompt assembly (only manifests at runtime, not at cargo check). New acceptance criterion: a smoke test that asserts chump_system_prompt() output is character-identical before and after the move (snapshot test on a known seed).
+    
+    This finding is the third scope-expansion-on-contact this session (after RELIABILITY-001 Path A: discord 0.12→0.13 API was 16 errors not 1 line; Path B: 16 call sites of build_*; now Path D: 1450+ lines of prompt+constants entangled with discord.rs).
+    
+    Meta-pattern: src/discord.rs is the de facto 'system module' for prompt shaping + agent factory + Discord IO. It's not just a Discord backend — it's a god module that grew because that's where the original CLI factory was first written. The decoupling work is genuinely valuable independent of SECURITY-004, but it deserves a fresh-session focus block, not a tired late-night spike. Recommendation: pick up RELIABILITY-002 first thing in a session, with no other work in flight.
+
 - id: REMOVAL-001
   domain: reliability
   title: Audit + decision-matrix for the 5 NULL-validated cognitive modules — re-test or remove
@@ -9743,7 +9945,7 @@ gaps:
 - id: REMOVAL-007
   domain: REMOVAL
   title: Audit src/phi_proxy.rs and src/holographic_workspace.rs - sized like real features, never called from request path
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -9761,11 +9963,22 @@ gaps:
     - Decide per-module - dead-code remove, wire+test, or document as research-scaffold
     - Update README and CHUMP_FACULTY_MAP.md to reflect outcome
     - Pair with DOC-010 (nine-proxies reframe)
+  notes: |
+    Audit complete (docs/audits/REMOVAL-007-phi-holographic-trace.md). Split decision per-module: phi_proxy KEEP (gated but real — wired into context_assembly:716 with regime + consciousness_enabled gating; emits 'Integration metric' line when active_coupling_pairs > 0). holographic_workspace REMOVAL CANDIDATE — encode side fires on every tool dispatch but READ side has zero production callers (substrate().query is only used by holographic_workspace's own tests). Filed REMOVAL-009 with two options: (a) remove like REMOVAL-002 surprisal_ema or (b) wire a real retrieval-augmented context consumer using query_similarity. Doc updates deferred to DOC-010 (nine-proxies reframe — already filed). Original gap premise was partially false for phi_proxy (call chain via consciousness_traits → substrate from tool_runner missed in the original audit), accurate for holographic_workspace's READ side.
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 791
 
 - id: REMOVAL-008
   domain: REMOVAL
   title: "Make neuromod telemetry-only fns pub(crate): modulated_balanced_threshold + modulated_explore_threshold + reward_scaling (REMOVAL-006 follow-up)"
+  status: open
+  priority: P2
+  effort: m
+
+- id: REMOVAL-009
+  domain: REMOVAL
+  title: src/holographic_workspace.rs is write-only in production — either remove (REMOVAL-002 precedent) or wire a retrieval-augmented context consumer using query_similarity (REMOVAL-007 follow-up)
   status: open
   priority: P2
   effort: m
