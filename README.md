@@ -133,7 +133,7 @@ Running one agent is straightforward. Running ten — on the same repo, against 
 
 ## Research
 
-Chump runs nine cognitive-architecture modules in every agent turn and studies their effect via A/B eval. **The architecture as a whole is not validated.** The validated finding to date is narrower: **instruction injection has tier-dependent effects** — prescriptive lessons help small models on specific tasks and harm frontier models. Individual-module ablation (EVAL-043) has shipped infrastructure but results are pending.
+Chump ships nine cognitive-architecture modules and studies their effect via A/B eval — but **only some of them are wired into the chat-turn flow** (status per module: wired-with-behavioral-effect, wired-but-gated, removed, write-only research scaffold, or telemetry-only — see [`docs/architecture/CHUMP_FACULTY_MAP.md`](docs/architecture/CHUMP_FACULTY_MAP.md), reframed 2026-05-02 under DOC-010). **The architecture as a whole is not validated.** The validated finding to date is narrower: **instruction injection has tier-dependent effects** — prescriptive lessons help small models on specific tasks and harm frontier models. Individual-module ablation (EVAL-043) has shipped infrastructure; results land per-module as ablation flags reach n≥50/cell.
 
 Cite results at the specificity they are reported. See [`docs/process/RESEARCH_INTEGRITY.md`](docs/process/RESEARCH_INTEGRITY.md) for the accurate thesis and prohibited claims list.
 

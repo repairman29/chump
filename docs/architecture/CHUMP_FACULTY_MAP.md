@@ -262,19 +262,32 @@ Executive Function under the LLM-judge harness (same fix as EVAL-063 for Metacog
 COVERED+UNTESTED rows into validated coverage. The reasoning stack is already the strongest
 area — the marginal research dollar belongs elsewhere.
 
-## FRONTIER module audit (FRONTIER-008, 2026-04-21)
+## FRONTIER module audit (FRONTIER-008, 2026-04-21; superseded 2026-05-02)
 
-All FRONTIER-* speculative modules audited for dead-weight status:
+All FRONTIER-* speculative modules audited for dead-weight status. **Updated 2026-05-02 (DOC-010) to incorporate the REMOVAL-006 + REMOVAL-007 follow-up audits which traced indirect call chains (via `consciousness_traits::substrate()` from `tool_runner.rs`) that the FRONTIER-008 sweep missed.**
 
 | Module | LOC | Callsites | Decision |
 |---|---|---|---|
 | `src/tda_blackboard.rs` (FRONTIER-002) | 310 | 0 | **REMOVED** — commit 32bc6e1, 2026-04-19 |
 | `experiments/quantum_tool_choice.rs` (FRONTIER-001) | 405 | 0 in src/ | **KEEP** — in `experiments/`, not compiled into binary; gate failed, prototype preserved for reference |
-| `src/holographic_workspace.rs` | 314 | 8 (health_server + consciousness_traits) | **KEEP** — active callsites; earns its weight in the consciousness substrate |
-| `src/phi_proxy.rs` | 252 | 14 | **KEEP** — TDA replacement target that remains active; 14 callsites |
+| `src/phi_proxy.rs` | 252 | 14 (incl. `tool_runner` via `consciousness_traits::substrate`) | **KEEP** — confirmed wired by REMOVAL-007 audit (2026-05-02). `context_assembly:716` emits "Integration metric" line in non-Exploit regimes when `phi.active_coupling_pairs > 0`. Gating is intentional ("expensive, context-heavy"). See [`audits/REMOVAL-007-phi-holographic-trace.md`](../audits/REMOVAL-007-phi-holographic-trace.md). |
+| `src/holographic_workspace.rs` | 314 | 8 (encode side: `tool_runner` via `consciousness_traits::DefaultHolographicStore`; read side: zero production callers) | **REMOVAL CANDIDATE** (was KEEP under FRONTIER-008). REMOVAL-007 audit (2026-05-02) found the encode side fires on every tool dispatch but the **read side (`query_similarity`) has zero production callers** — only used in module's own tests. Write-only research scaffold. **Filed REMOVAL-009** with two options: remove (REMOVAL-002 surprisal_ema precedent) or wire a real RAG-on-tool-history consumer. See [`audits/REMOVAL-007-phi-holographic-trace.md`](../audits/REMOVAL-007-phi-holographic-trace.md). |
+| `src/neuromodulation.rs` | 455 | 18 public fns / 5 effect channels | **KEEP** — confirmed wired by REMOVAL-006 audit (2026-05-02). Provider request shaping (local providers only — cloud-path is the gap, filed as INFRA-235), tool timeout multipliers, precision controller thresholds, blackboard salience scoring, telemetry. Empirical signal: EVAL-095 (PR #737, 2026-05-02) Δ=+0.150 directional with 3-task localization. See [`audits/REMOVAL-006-neuromodulation-trace.md`](../audits/REMOVAL-006-neuromodulation-trace.md). |
 
-No new removal gaps filed. The tda_blackboard dead-weight concern from Red Letter Issue #1 was
-already resolved. See [`docs/eval/FRONTIER-008-deadweight-audit.md`](./eval/FRONTIER-008-deadweight-audit.md).
+**The "nine engineering proxies" framing in older docs is more accurately stated as "nine cognitive-architecture modules with five distinct call statuses":**
+
+| Status | Modules | Notes |
+|---|---|---|
+| Wired + behavioral effect on LLM | `prompt_assembler` (lessons block), `precision_controller`, `blackboard`, `neuromodulation` (local providers), `phi_proxy` (gated) | The default chat-turn flow exercises these. |
+| Wired but gated to off / specific regime | `phi_proxy` (Exploit-regime: no contribution), `belief_state` (REMOVAL-005 partial sweep), neuromod cloud-path adaptive_temp (INFRA-235) | Effects only fire under specific conditions. |
+| Removed | `surprise_tracker` (REMOVAL-002), `tda_blackboard` (FRONTIER-002) | Trait stubs may remain; src deleted. |
+| Write-only research scaffold | `holographic_workspace` (REMOVAL-009 pending) | Encoded but never queried back in production. |
+| Telemetry / observability only | `metrics_json` surfaces, health server | Visible to operators; no LLM behavior. |
+
+See [`docs/process/RESEARCH_INTEGRITY.md`](../process/RESEARCH_INTEGRITY.md) "Prohibited Claims" table — the "Chump's cognitive architecture is validated" claim still requires the EVAL-043 full ablation suite, not the partial-status picture above.
+
+The tda_blackboard dead-weight concern from Red Letter Issue #1 was
+already resolved. See [`docs/eval/FRONTIER-008-deadweight-audit.md`](./eval/FRONTIER-008-deadweight-audit.md), [`audits/REMOVAL-006-neuromodulation-trace.md`](../audits/REMOVAL-006-neuromodulation-trace.md), [`audits/REMOVAL-007-phi-holographic-trace.md`](../audits/REMOVAL-007-phi-holographic-trace.md).
 
 ## Sources
 

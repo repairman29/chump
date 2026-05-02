@@ -1,7 +1,7 @@
 - id: DOC-010
   domain: DOC
   title: README and faculty docs claim nine engineering proxies - most are dead, no-op, or computed-not-applied; reframe to actual implementation status
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -25,5 +25,9 @@
     - Status reflects - wired/no-op/dead-code/computed-not-applied
     - CHUMP_FACULTY_MAP.md updated to match
     - Cross-link to RESEARCH_INTEGRITY.md prohibited-claims table
+  notes: |
+    Updated CHUMP_FACULTY_MAP.md FRONTIER module audit table to reflect REMOVAL-006 + REMOVAL-007 audit findings (PRs #789 + #791). holographic_workspace flipped from KEEP to REMOVAL CANDIDATE (write-only in production; filed REMOVAL-009). phi_proxy + neuromodulation confirmed wired with audit links. Added 'nine modules with five distinct call statuses' summary table. README 'Research' section reframes vague 'nine cognitive-architecture modules' claim to point at FACULTY_MAP as the source of truth.
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 797
 
