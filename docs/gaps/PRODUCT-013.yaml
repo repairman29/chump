@@ -1,0 +1,21 @@
+- id: PRODUCT-013
+  domain: product
+  title: PWA rebuild — first vertical slice — chat pane connected to live agent
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    After PRODUCT-012 ships the shell, the first real user-visible slice: a working chat pane that sends to the local Chump agent and streams the response back. This is the minimum thing a user can actually use after `brew install chump && chump serve` + opening the PWA. Scope: (1) wire web/v2 chat pane to existing SSE endpoint (chump already streams); (2) message list with role labels (user/assistant); (3) basic tool-call rendering (show which tool fired, not full output); (4) model picker reads from the local models registry; (5) graceful handling of "no model selected" and "agent offline" states with a one-tap link to docs/ONBOARDING.md. No message history persistence beyond session — future follow-up. No multi-session UI — future.
+  acceptance_criteria:
+    - web/v2 chat pane sends a message and streams the response back from the local agent
+    - Tool-use events render inline (even if compact)
+    - Model picker lists locally available models and lets the user switch
+    - Empty-state copy points to onboarding when no model is configured
+    - Works offline if a local model is already loaded (air-gap promise)
+    - Manual test plan in docs/PRODUCT-013-test-plan.md
+  depends_on: [PRODUCT-012]
+  notes: |
+    First user-visible ship against the North Star since COMP-005a-fe (2026-04-04). Keep tight — follow-ups (history, multi-session) file as separate gaps.
+  source_doc: docs/NORTH_STAR.md
+  closed_date: '2026-04-21'
+

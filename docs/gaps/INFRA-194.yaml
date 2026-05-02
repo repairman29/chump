@@ -1,0 +1,32 @@
+- id: INFRA-194
+  domain: infra
+  title: "closer-PR auto-batcher: coordinator ships one PR with N gap closures every M hours"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    INFRA-154 (auto-flip on ship) shipped today: bot-merge.sh now
+    auto-flips gap status when the implementation PR merges. But each
+    flip is its own commit + PR (or commit-on-arm-branch). Today's
+    16-PR session shipped 4-5 closer-PRs that JUST flipped status.
+    
+    Fix: a coordinator agent (cron or musher subtask) batches every N
+    hours. It scans `.chump/state.db` for status:done rows whose
+    docs/gaps.yaml entry hasn't been updated yet, generates one PR
+    that updates all of them at once, ships via bot-merge.sh.
+    
+    Batch window: 4-6 hours feels right (catches a half-day of work).
+    Too short = no batching; too long = stale visibility into closures.
+    
+    Reduces queue churn 5-10× during peak shipping. Reduces the
+    DIRTY-after-arm rate proportionally (fewer PRs in flight).
+  acceptance_criteria:
+    - "scripts/ops/closer-pr-batcher.sh: scans state.db, identifies pending gap-status flips, generates batched PR"
+    - macOS launchd / Linux cron config to run every 4 hours
+    - Per-PR comment shows which gaps it closes (linkable to their gap files)
+    - "Test: 3 status:done gaps with stale YAML; batcher ships one PR with all 3 flips"
+    - "After 1 week: closer-PR count drops from ~1-per-implementation to ~1-per-4-hours"
+  depends_on: [INFRA-154]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+

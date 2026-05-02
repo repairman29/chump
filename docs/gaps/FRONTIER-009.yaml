@@ -1,0 +1,22 @@
+- id: FRONTIER-009
+  domain: frontier
+  title: JEPA strategic memo section 3 — file orphaned architectural recommendations
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    docs/STRATEGIC_MEMO_2026Q2.md (FRONTIER-006, done) section 3 contains five
+    architectural recommendations: (1) JEPA-inspired world model integration for
+    planning, (2) explicit planning loop benchmarked against physical planning tasks,
+    (3) multi-modal groundedness path, (4) V-JEPA as perception backbone alternative,
+    (5) benchmark Chump against AMI Labs roadmap milestones. FRONTIER-006 closed the
+    watchpoint task; none of the five recommendations have follow-up gaps. The memo is
+    orphaned research. Flagged in Issues #4 and #6 without correction. Closes when
+    each recommendation is either filed as a gap or explicitly declared out-of-scope
+    with documented rationale in the strategic memo.
+  acceptance_criteria:
+    - Each of the 5 section-3 recommendations in STRATEGIC_MEMO_2026Q2.md is either (a) filed as its own gap or (b) marked Decision out-of-scope with reason
+    - STRATEGIC_MEMO_2026Q2.md front-matter updated with last_audited 2026-04-26
+  depends_on: [FRONTIER-006]
+  opened_date: '2026-04-26'
+

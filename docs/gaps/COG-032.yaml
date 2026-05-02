@@ -1,0 +1,18 @@
+- id: COG-032
+  domain: cognitive
+  title: Lesson injection feedback loop evaluation
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    COG-024 defaults lessons off for safety. CHUMP_LESSONS_AT_SPAWN_N=5 injects top-5 lessons. Unknown if this improves outcomes or adds noise. Run A/B harness: A) lessons off, B) lessons on. Execute 50 gaps in each condition. Measure: test pass %, code review pass %, time-to-ship, revision count. Compare outcomes (effect size, confidence). Recommendation: enable lessons | keep disabled | make task-specific.
+  acceptance_criteria:
+    - Harness runs 50 gaps per condition (lessons off vs on)
+    - Metrics captured (test pass %, code review pass %, time-to-ship, revision count)
+    - Effect size computed (Cohen's d or equivalent)
+    - Confidence documented (statistical test, confidence interval)
+    - Recommendation clear with rationale
+  notes: |
+    Can run in parallel. Low cost (mostly gap execution). Results inform COG-024 default and per-gap recommendations.
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+

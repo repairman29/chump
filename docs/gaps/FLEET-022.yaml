@@ -1,0 +1,13 @@
+- id: FLEET-022
+  domain: fleet
+  title: install-ambient-hooks.sh — idempotent one-command installer for matrix hooks
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    scripts/setup/install-ambient-hooks.sh: idempotent one-command installer that merges SessionStart + PostToolUse + PreToolUse + Stop hook entries into ~/.claude/settings.json without clobbering existing hooks. Detects pre-FLEET-019 inline hooks and rewrites them to the new script-based form.
+  depends_on: [FLEET-019]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 696
+

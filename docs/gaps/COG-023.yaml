@@ -1,0 +1,24 @@
+- id: COG-023
+  domain: cognition
+  title: Sonnet carve-out from cog016 directive — CONFIRMED at n=100, ship Path A
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    EVAL-027c (2026-04-19, n=100 reflection) CONFIRMED the EVAL-027b sonnet finding at statistical significance:
+      Cell A (cog016 lessons):  33/100 hallucinations (CI [0.246, 0.427])
+      Cell B (no lessons):       0/100 hallucinations (CI [0.0, 0.037])
+      Delta halluc: +0.330, NON-OVERLAPPING CIs, SIG
+      Inter-judge agreement: 0.81 (clears 0.80 threshold)
+    Production COG-016 ships with default Frontier-tier injection. Both sonnet-4-5 and opus-4-5 are Frontier in current ModelTier enum, so both get cog016 lessons by default. At sonnet this produces 33% fake-tool emission per response — actively harming users RIGHT NOW. Full Anthropic-family hallucination picture (cell A rate per lessons variant):
+      haiku-3:    no-lessons 0%,  v1  0%,  cog016 (untested, n/a)
+      haiku-4-5:  no-lessons 0%,  v1 12%,  cog016 -1% (FIXED by directive)
+      sonnet-4-5: no-lessons 0%,  v1 18%,  cog016 33% (DIRECTIVE WORSENS)
+      opus-4-5:   no-lessons 2%,  v1 40%,  cog016 10% (PARTIALLY FIXED)
+    Conservative quick-fix (Path A): add Sonnet variant to ModelTier; block lessons injection at Sonnet tier by default. Bigger rethink (Path B = COG-024) is "default off, opt-in per model after measurement."
+  depends_on: [EVAL-027b, EVAL-027c]
+  notes: |
+    Atomic-PR ship target (~half day): code change + tests + docs in one commit, single push, auto-merge armed. Defensive ship — kills production harm at sonnet tier. Path B (COG-024) is the longer- term rethink.
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c CONFIRMED)
+  closed_date: '2026-04-19'
+

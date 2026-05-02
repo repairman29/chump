@@ -1,0 +1,15 @@
+- id: INFRA-067
+  domain: infra
+  title: Repo hygiene plan (scripts/, crates+src/, top-level, workflows)
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Companion to DOC-005. Same shape applied to the rest of the repo: Area #1 scripts/ gets a 5-phase classify-inventory-automate-cleanup- generate treatment (255 scripts, mirrors DOC-005); Area #2 crates/+src/ gets a one-shot dead-code audit (cargo udeps + cargo machete + manual orphan-module review); Area #3 top-level+config gets a one-shot security audit (gitignore + scattered-config consolidation, triggered by the Together.ai key leak); Area #4 .github/workflows/ gets a one-shot stale-job consolidation. Sub-gaps INFRA-068..075 will be filed as each phase/area is picked up.
+  acceptance_criteria:
+    - docs/REPO_HYGIENE_PLAN.md committed
+    - INFRA-067 entry in gaps.yaml
+    - sequencing + scope explicit (4 areas, sub-gap shapes named)
+  source_doc: docs/REPO_HYGIENE_PLAN.md
+  closed_date: '2026-04-25'
+

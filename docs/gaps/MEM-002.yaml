@@ -1,0 +1,13 @@
+- id: MEM-002
+  domain: memory
+  title: Memory curation — confidence decay, deduplication, episodic summarization
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    Memory confidence is author-assigned and never decays. Old episodic memories accumulate without summarization into semantic facts. No deduplication. Long-running sessions will degrade retrieval quality as noise accumulates.
+  notes: |
+    DONE: memory_curate() in memory_db.rs: (1) confidence decay -0.01 for unverified memories older than 7 days; (2) exact-content deduplication within each memory_type (keep highest-confidence copy via ROW_NUMBER window function); FTS5 rebuilt after dedup. CurateResult{decayed, deduped} returned. 2 unit tests covering decay and dedup. OPEN: (3) LLM-based episodic cluster summarization (requires agent call).
+  source_doc: docs/CHUMP_TO_COMPLEX.md, book/src/dissertation.md
+  closed_date: '2026-04-16'
+

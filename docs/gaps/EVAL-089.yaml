@@ -1,0 +1,28 @@
+- id: EVAL-089
+  domain: eval
+  title: EVAL-074-CROSS-JUDGE-FINISH — third judge (Qwen-2.5-72B) rescore once Together credits restored
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Action item from docs/eval/EVAL-074-AUDIT-2026-04-26.md (§"Status changes" /
+    §"Action items"): the Sonnet rescore alone was decisive enough to retract
+    the EVAL-074 mechanism claim, but the prereg-style 3-judge cross-family
+    panel (RESEARCH-021's pattern) is incomplete without a third judge.
+    Qwen-2.5-72B-Instruct-Turbo via Together was attempted on 2026-04-26 and
+    blocked by `Credit limit exceeded` (0/200 rows scored). Once Together
+    credits are topped up (~$1 budget), re-run
+    `scripts/ab-harness/rescore-jsonl.py` with
+    `--rescore-with-judge together:Qwen/Qwen2.5-72B-Instruct-Turbo` against
+    `docs/archive/eval-runs/eval-071-2026-04-22/eval-071-deepseek-v3-1-ab-n100-1776740166.jsonl`
+    and append the 3-way agreement table to EVAL-074-AUDIT-2026-04-26.md. This
+    is judge-completion for an already-retracted finding, not a new
+    investigation — outcome is methodological completeness, not a result claim.
+  acceptance_criteria:
+    - Qwen-2.5-72B JSONL produced under logs/ab/eval-074-rescore-qwen.jsonl (≥80% scored)
+    - 3-judge agreement table (Llama / Sonnet / Qwen) added as amendment to EVAL-074-AUDIT-2026-04-26.md
+    - Cohen κ reported for each judge pair
+    - "If Qwen agrees with Sonnet (disagrees with Llama on gotcha rows), retraction stands as written; if Qwen agrees with Llama, that is itself a finding worth flagging in §\"Status changes\""
+  depends_on: [EVAL-074]
+  opened_date: '2026-04-26'
+

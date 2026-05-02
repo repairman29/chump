@@ -1,0 +1,69 @@
+- id: INFRA-188
+  domain: infra
+  title: "per-file gap registry: docs/gaps/<DOMAIN>-<NNN>.yaml directory replaces monolithic gaps.yaml"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Single biggest source of merge conflicts in this repo. Today every
+    PR that adds, modifies, or closes a gap touches the same monolithic
+    docs/gaps.yaml — N concurrent PRs = N×N pairwise conflicts. Today
+    alone hit 4 ID drifts (INFRA-097, INFRA-149, INFRA-158, INFRA-172)
+    and 5+ manual rebases caused by gaps.yaml moving while a PR was
+    queued.
+    
+    Fix: split the monolithic gaps.yaml into per-gap files:
+      docs/gaps/INFRA-180.yaml
+      docs/gaps/INFRA-181.yaml
+      ...
+    
+    Each file is the gap's full row as a top-level YAML document. New
+    gaps create a new file (zero conflict surface). Closing a gap edits
+    a single file (touches lines no other PR can touch unless they're
+    closing the same gap, which is itself a coordination smell).
+    
+    Migration:
+      1. Write `chump gap dump --per-file` that emits the directory
+         layout from .chump/state.db (canonical source).
+      2. Write a small CI step that re-aggregates into a single
+         human-readable docs/gaps.yaml as a build artifact (NOT
+         committed) — preserves the gh PR diff readability for humans.
+      3. Update gap-doctor (INFRA-155) to read either layout during
+         transition; default to per-file once 100% migrated.
+      4. Cutover PR: removes monolithic gaps.yaml, adds docs/gaps/*.yaml,
+         updates pre-commit guards (gaps-yaml-integrity, duplicate-id,
+         closed_pr-integrity, etc.) to read directory.
+      5. CI guard: assert no PR adds back a file at docs/gaps.yaml after
+         cutover.
+    
+    Existing tooling that reads gaps.yaml directly (rather than via
+    chump gap CLI):
+      - scripts/coord/gap-reserve.sh + gap-preflight.sh + gap-claim.sh
+      - scripts/git-hooks/pre-commit (5 separate guards)
+      - scripts/ci/test-* fixtures
+      - .github/workflows/gap-status-guard.yml
+      - .github/workflows/regenerate-gaps-yaml.yml
+    All need to be updated to use chump gap subcommands (which already
+    abstract the storage layer via SQLite).
+    
+    Closes/subsumes when shipped:
+      - INFRA-100 (atomic next-ID picker)
+      - INFRA-105 (lease/state.db convergence)
+      - INFRA-115 (lease TTL server-side enforcement — partial)
+      - INFRA-144 (state.db ↔ docs/gaps.yaml drift detector at PR time —
+        no drift possible if there's no monolith)
+      - INFRA-148 (binary staleness corruption — no monolith to corrupt)
+      - INFRA-160 (orphan rows in state.db with no YAML entry — same)
+      - INFRA-176 (auto-publish formula on release — unrelated, listed
+        in error)
+  acceptance_criteria:
+    - docs/gaps/<ID>.yaml directory layout exists; chump gap dump --per-file emits it
+    - All 5 pre-commit guards (gaps-yaml-integrity, duplicate-id, closed_pr, recycled-id, hijack) work against the per-file layout
+    - gap-reserve.sh / gap-claim.sh / gap-preflight.sh updated to use chump gap subcommands instead of reading gaps.yaml directly
+    - Cutover PR removes monolithic gaps.yaml; CI guard prevents re-adding it
+    - "After cutover: 1 week with 0 gaps.yaml merge conflicts (was ~10/wk)"
+  depends_on: [INFRA-155]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-02'
+  closed_pr: 753
+

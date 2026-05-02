@@ -1,0 +1,11 @@
+- id: INFRA-WHITE-PAPERS-TRIGGER
+  domain: infra
+  title: Stop white-papers workflow firing on registry-file edits
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    white-papers.yml triggered on any docs/** push, including docs/gaps.yaml and docs/AGENT_COORDINATION.md which change many times per day and aren't sources for any PDF volume. Result: the workflow ran (and failed, see INFRA-WHITE-PAPERS-PANDOC) on almost every commit, cluttering the status dashboard.
+  source_doc: .github/workflows/white-papers.yml
+  closed_date: '2026-04-17'
+

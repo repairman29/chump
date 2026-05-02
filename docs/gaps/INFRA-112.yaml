@@ -1,0 +1,27 @@
+- id: INFRA-112
+  domain: infra
+  title: chump gap dump is lossy - 391 gaps in DB became 389 in YAML
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    Running 'chump gap dump --out docs/gaps.yaml' on 2026-04-26 produced
+    a YAML mirror with 389 '- id:' entries while the SQLite store had 391.
+    Two gaps silently disappear during regeneration. Likely cause: rows
+    in .chump/state.db with empty or whitespace-only id fields fail to
+    serialize cleanly (the dump emits '- id: ' which the round-trip parser
+    drops), and there is no NOT NULL / non-empty constraint on the id
+    column to prevent such rows being inserted. This is the bug that
+    forced the FLEET-006 PR (#572) to revert a full --update-yaml dump
+    and patch the single gap status by hand to avoid a 11k-line lossy
+    diff. Until fixed, 'chump gap ship --update-yaml' and 'chump gap
+    dump' are unsafe in real PRs.
+  acceptance_criteria:
+    - Add NOT NULL + length(trim(id)) > 0 constraint to .chump/state.db schema
+    - chump gap dump asserts dump_count == db_count and exits non-zero on mismatch
+    - Identify and repair the 2 missing gaps (or document why they were dropped)
+    - Round-trip test - dump | re-import | dump again must be byte-stable
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 626
+

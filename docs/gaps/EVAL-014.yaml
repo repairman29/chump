@@ -1,0 +1,13 @@
+- id: EVAL-014
+  domain: eval
+  title: Multi-judge median verdict — eliminate single-judge bias
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    EVAL-010 second-LLM grading already showed sonnet-4-5 has systematic biases (rewards hallucinated tool execution). Single-judge results inherit those biases. Median verdict over 2-3 judges from different model families cuts the bias. Required for any defensible publication.
+  notes: |
+    TEST-CAT-D. Blocker is API key access to a non-Anthropic model. Either user provides OpenAI/Gemini key, OR we add an Ollama-local judge (slower but free). Cost: ~3x the single-judge cost.
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

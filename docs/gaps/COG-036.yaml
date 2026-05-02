@@ -1,0 +1,13 @@
+- id: COG-036
+  domain: consciousness
+  title: dispatch router v2 — routing_outcomes scoreboard SQLite table + reflection hook
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    COG-035 ships a hand-tuned routing table but has no way to learn which (task_class, model, provider) combinations actually work. Need a persistent scoreboard so future Thompson-sampling (COG-037) can replace the hand-tuned table with data-driven decisions.
+  depends_on: [COG-035]
+  opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 607
+

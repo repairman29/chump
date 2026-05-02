@@ -1,0 +1,15 @@
+- id: EVAL-82
+  domain: eval
+  title: Re-verify EVAL-069 scorer credibility under python3.12
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    AUDIT-3 finding: EVAL-069 (which retired neuromod aggregate signal as "methodology artifact") shows identical confidence intervals [0.812, 0.968] in both cells — the fingerprint of a non-cognitive exit-code-fallback scorer. Timeline: EVAL-069 closed 2026-04-21, shebang fix (python3 → python3.12) landed 2026-04-22 commit 8f3a994. High probability EVAL-069 ran under python3=3.14 (no anthropic module) instead of python3.12. Re-run the exact command from EVAL-069 doc with verified python3.12, confirm JSONL output contains "scorer": "llm-judge" (not "scorer": "exit_code_fallback").
+  acceptance_criteria:
+    - "Run: python3.12 scripts/ab-harness/run-binary-ablation.py --module neuromod --n-per-cell 50 --use-llm-judge"
+    - "Verify JSONL output contains \"scorer\": \"llm-judge\" on every row (not \"scorer\": \"exit_code_fallback\")"
+    - If result differs significantly from EVAL-069's delta=0.000, update FINDINGS.md F3
+    - Document evidence and recommendation for PRODUCT-009 publication decision
+  closed_date: '2026-04-24'
+

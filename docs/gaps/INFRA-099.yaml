@@ -1,0 +1,19 @@
+- id: INFRA-099
+  domain: infra
+  title: CODEOWNERS + chump-flavored PR template (Phase 5)
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Phase 5 of the repo-hygiene rollout (see .chump/PHASE_2_3_5_PLAN.md):
+    add `.github/CODEOWNERS` (single owner: @repairman29) so every PR auto-
+    requests review from the maintainer, and replace the generic
+    `.github/pull_request_template.md` with one that reflects Chump's actual
+    conventions (gap ID, INFRA-088 title format, EVAL/RESEARCH preregistration,
+    INFRA-009 docs-delta, merge-queue ship path).
+  acceptance_criteria:
+    - .github/CODEOWNERS present with `* @repairman29`
+    - .github/pull_request_template.md surfaces gap field, title convention reference, prereg + docs-delta callouts
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

@@ -1,0 +1,13 @@
+- id: AUTO-001
+  domain: autonomy
+  title: Task contract — structured notes with context/plan/acceptance/verify/risks
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Tasks have free-form notes. No structured sections for Context, Plan, Acceptance, Verify, Risks/Approvals. The planner/executor loop (AUTO-002) cannot reliably extract these without a template.
+  notes: |
+    Fully implemented in src/task_contract.rs (template_for, ensure_contract, extract_sections, VerifyContract, parse_verify_json). Wired into task_tool.rs line 87. Tests in task_contract.rs. Nothing left to do.
+  source_doc: docs/AUTONOMY_ROADMAP.md
+  closed_date: '2026-04-16'
+

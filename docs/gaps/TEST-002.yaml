@@ -1,0 +1,27 @@
+- id: TEST-002
+  domain: TEST
+  title: Multi-agent coordination integration test coverage - leases, ambient stream, gap-claim, bot-merge are the production layer with thinnest tests
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Tour audit on 2026-04-26 found that the highest-shipping-grade part
+    of Chump (the multi-agent coordination layer - gap-claim.sh,
+    gap-preflight.sh, bot-merge.sh, .chump-locks/, ambient.jsonl,
+    chump-ambient-glance.sh, the SQLite gap registry) has the thinnest
+    integration test coverage. Most modules in src/ allow dead_code; the
+    consciousness_exercise test is a measurement harness not a validator.
+    File a coordinated test-coverage push for the coordination layer -
+    end-to-end integration tests that exercise concurrent claims, lease
+    expiry, ambient-stream events from sibling sessions, gap-preflight
+    blocking, bot-merge.sh ship pipeline against a fake-remote repo,
+    chump gap reserve atomicity. Use tempfile and git fixtures.
+  acceptance_criteria:
+    - Integration test - two concurrent gap-claim calls on same gap - one wins, one fails
+    - Integration test - gap-preflight blocks when sibling lease present, allows when expired
+    - Integration test - ambient.jsonl tail filters self-session correctly
+    - Integration test - bot-merge.sh dry run against fake remote - PR title and body assertions
+    - Integration test - chump gap reserve picks distinct IDs under concurrent invocation
+    - All run in CI under cargo test --workspace
+  opened_date: '2026-04-26'
+

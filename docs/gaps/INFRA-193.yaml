@@ -1,0 +1,38 @@
+- id: INFRA-193
+  domain: infra
+  title: "speculative execution: two agents on same gap; first-to-land wins, loser auto-superseded"
+  status: open
+  priority: P3
+  effort: m
+  description: |
+    Novel idea — not currently in the model. Today gap-claim.sh enforces
+    one-agent-per-gap via lease files. That serializes work and adds
+    coordination latency.
+    
+    Alternative: TWO agents pick the same gap deliberately (race).
+    Both work in parallel. First to land wins; the loser's PR is
+    auto-closed with `Closes: superseded by #N`.
+    
+    Cost: 2× compute. Benefit: 0× coordination latency, plus diversity
+    bonus (two different solutions inspected; the better one wins).
+    
+    When it makes sense:
+      - Latency-critical gaps (the fix is needed RIGHT NOW)
+      - Gaps where two agents have very different strengths (e.g. one
+        Claude, one Gemini, one human-in-the-loop)
+      - Research / eval gaps where the diversity is itself the signal
+    
+    Implementation skeleton:
+      - chump gap claim --speculative <ID> bypasses the one-agent
+        check; logs which agents are racing
+      - bot-merge.sh on PR merge: scan open PRs for the same gap_id,
+        post a `gh pr close --comment "superseded by #N"` to losers
+      - Pre-commit guard: warn (don't block) when a speculative claim
+        is made; surface in ambient
+  acceptance_criteria:
+    - chump gap claim --speculative <ID> writes a lease that allows N>1 simultaneous claims
+    - "bot-merge.sh post-merge: closes other open PRs with the same gap_id, attributing"
+    - "Tests: simulated race (two PRs both claiming + shipping); one merges; the other is closed automatically"
+    - Documented in CLAUDE.md / AGENTS.md as opt-in for latency-critical gaps; default remains exclusive lease
+  opened_date: '2026-05-01'
+

@@ -1,0 +1,40 @@
+- id: INFRA-217
+  domain: infra
+  title: Branch protection on main blocks direct push for ledger-only commits — every chore(gaps) needs a PR
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Branch protection on origin/main now requires 3 status checks (added
+    2026-05-01-ish per github rules). This means even pure ledger-flip
+    commits — like 'chore(gaps): add SECURITY-005 row via surgical insert
+    at SECURITY-* block' (commit d1012f5) or the canonical 'chore(gaps):
+    close <ID> already shipped in #N' pattern — can no longer be direct-
+    pushed to main; they need a PR + CI run.
+    
+    Observed cost in the 2026-05-02 INFRA-177 closure session: 3 separate
+    chore(gaps) PRs (#716 INFRA-177 close, #718 INFRA-208/META-006 file,
+    #724 cargo-dist allow-dirty) each had to:
+      - Create a feature branch
+      - Push (with CHUMP_GAP_CHECK=0 bypass for false-positive gap-preflight)
+      - 'gh pr create' with body
+      - 'gh pr merge --auto --squash' to arm
+      - Wait for CI to run all 3 required checks (~5-10 min) before landing
+    
+    Compare against the pre-protection direct-push: ~3 commands, instant.
+    
+    Tradeoff: branch protection prevents bot misbehavior but adds friction
+    for the very narrow class of 'pure metadata flip' commits. Three
+    options:
+      (a) Accept the friction (current state) — chore(gaps) PRs are normal
+      (b) Allow specific bot identities (chump-ftue-bot, etc) to push to
+          main bypassing required checks for ledger files only — needs
+          admin rules + path-based protection
+      (c) Add a dedicated 'ledger flip' fast-track: a workflow that takes a
+          state.db change as input, opens + auto-merges its own PR with
+          self-attested CI skip — automates the friction away without
+          weakening protection
+  acceptance_criteria:
+    - Pick one of (a)/(b)/(c) explicitly; document the decision in CLAUDE.md ship-pipeline section so agents stop attempting direct-push and getting GH013 errors
+  opened_date: '2026-05-02'
+

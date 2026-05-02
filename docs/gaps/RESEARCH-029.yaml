@@ -1,0 +1,23 @@
+- id: RESEARCH-029
+  domain: research
+  title: SKILL0 competitive positioning — inference-time injection vs training internalization
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    SKILL0 (In-Context Agentic Reinforcement Learning for Skill Internalization,
+    April 2026, https://huggingface.co/papers/2604.02268) presents a framework that
+    teaches agents skills via a training-time curriculum then progressively withdraws
+    skill context at inference time, achieving under 0.5k tokens per step at deployment.
+    This directly challenges Chump's runtime lesson injection thesis: if the haiku-tier
+    improvement Chump observes is an internalization effect, Chump's per-session prompt
+    overhead is a bridge to a destination SKILL0 reaches directly. FRONTIER-006 assessed
+    the JEPA threat; no equivalent gap addresses the SKILL0 threat. This gap produces
+    either: (a) an experiment ruling out simple internalization, or (b) a strategic
+    decision that Chump's lesson injection is a transition mechanism, with implications
+    for PRODUCT-009 publication framing.
+  acceptance_criteria:
+    - Written position statement filed in docs/ on whether Chump's lesson injection effect is compatible with the SKILL0 internalization hypothesis
+  depends_on: [RESEARCH-021]
+  opened_date: '2026-04-26'
+

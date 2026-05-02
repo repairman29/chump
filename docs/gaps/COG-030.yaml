@@ -1,0 +1,11 @@
+- id: COG-030
+  domain: consciousness
+  title: Proactive epistemic probing + EIG-gated execution hard-block
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Two missing pieces from full epistemic agency: (1) Before high-cost ops, the agent should generate low-cost probe actions to verify environment assumptions rather than commit blind. (2) When surprisal of required variables exceeds a threshold, execution should be hard-blocked — currently surprise_tracker only flags to blackboard, never gates task execution.
+  depends_on: [AUTO-001]
+  closed_date: '2026-04-16'
+

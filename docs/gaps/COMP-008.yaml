@@ -1,0 +1,14 @@
+- id: COMP-008
+  domain: completeness
+  title: Recipes abstraction — package shareable workflows with declared deps + params
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Block's goose ships a "Recipes" abstraction: reusable workflows that package extensions (required tools), prompts, parameters, and settings together as a shareable artifact (https://goose-docs.ai/docs/guides/recipes/). Chump currently has scripts/ and gap entries but no formal artifact for "this is a packaged workflow with declared deps." A Chump Recipe could be e.g. "ship-a-feature" (gap-claim → branch → impl → test → bot-merge) with declared required tools and parameters. Verified the pattern exists in goose; the exact YAML/JSON schema is at goose-docs.ai/docs/guides/recipes/recipe-reference and should be read before designing Chump's equivalent (don't re-invent if goose's spec is broadly portable).
+  notes: |
+    First task: read https://goose-docs.ai/docs/guides/recipes/recipe-reference and decide whether to adopt their schema verbatim (cross-tool portability win) or adapt for Chump-specific concepts. Recommend adopting verbatim where possible — same standards story as AGENTS.md (COMP-007). Effort estimate is ~3-5 days for schema + runner + first 2-3 packaged recipes.
+  source_doc: external (block/goose Recipes pattern, AAIF Dec 2025)
+  closed_date: '2026-04-20'
+  closed_pr: 239
+

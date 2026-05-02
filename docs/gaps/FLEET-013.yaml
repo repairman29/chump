@@ -1,0 +1,18 @@
+- id: FLEET-013
+  domain: fleet
+  title: Tailscale integration & agent discovery — agents find each other on VPN
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Distributed agents live on a Tailscale VPN for zero-config, encrypted inter-device networking. NATS broker runs on Tailscale network (not internet-exposed). Agents discover each other and the NATS broker via Tailscale service discovery (or manual Tailscale IP assignment + environment variable). Integration: (1) agent starts Tailscale daemon (tailscaled), (2) joins network (tailscale up), (3) discovers NATS broker via "chump-nats.local" (mDNS on Tailscale), (4) connects to NATS.
+  acceptance_criteria:
+    - Agent startup script brings up Tailscale if not already running
+    - Agent discovers NATS broker via Tailscale (can be IP-based or mDNS)
+    - Multiple agents on different physical machines can communicate via NATS
+    - docs/FLEET-013-tailscale-setup.md documents setup (key sharing, exit node config if needed)
+  depends_on: [FLEET-006, FLEET-007]
+  notes: |
+    Air-gapped ready: Tailscale requires initial handshake but then works offline. Alternative: manual IP-based discovery (simpler but less flexible). Recommend Tailscale for the full vision (also enables remote troubleshooting).
+  source_doc: docs/FLEET_VISION_2026Q2.md
+

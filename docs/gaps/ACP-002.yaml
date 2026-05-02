@@ -1,0 +1,13 @@
+- id: ACP-002
+  domain: acp
+  title: Vision-capable model passthrough via ACP
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    ContentBlock::Image becomes a text placeholder. Models with vision capability (llava-on-Ollama, gpt-4o) cannot receive images through the ACP path.
+  notes: |
+    flatten_prompt_blocks() encodes image+text blocks as JSON array string when CHUMP_VISION_ENABLED=1; local_openai.rs detects content.starts_with('[') and deserializes to Value::Array for OpenAI multipart messages. vision_max_image_bytes() caps images at 4MB (CHUMP_VISION_MAX_IMAGE_BYTES). All vision tests use #[serial_test::serial] to avoid env-var races.
+  source_doc: docs/ACP_V3_BACKLOG.md
+  closed_date: '2026-04-17'
+

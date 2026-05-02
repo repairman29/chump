@@ -1,0 +1,16 @@
+- id: INFRA-057
+  domain: infra
+  title: "Serialize OPENAI_MODEL-mutating tests with #[serial(openai_model_env)]"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Three tests in the chump binary mutate OPENAI_MODEL without serialization: execute_gap::tests::overlay_prepended_for_known_problem_model, execute_gap::tests::overlay_skipped_for_sonnet_baseline, and model_overlay::tests::maybe_overlay_from_env_respects_env. Under cargo's parallel test runner they race: test A sets Qwen, test B reads Qwen as 'prev', sets Sonnet, A reads env (now Sonnet) for prompt build, A's 'overlay must be prepended' assertion fails. The execute_gap.rs comment explicitly called out this race and prescribed the fix (#[serial(openai_model_env)]) but never applied it. Adds the attribute to all three. serial_test crate already a dep.
+  acceptance_criteria:
+    - cargo test --bin chump overlay passes (16/16)
+    - All three tests share
+    - "serial_test::serial imported in both test modules"
+  notes: |
+    Surfaced when this test was the only blocker repeatedly forcing --skip-tests on bot-merge runs. Now removed.
+  closed_date: '2026-04-25'
+

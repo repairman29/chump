@@ -1,0 +1,17 @@
+- id: INFRA-058
+  domain: infra
+  title: World-Class Roadmap — file 5-milestone dev workflow upgrade plan
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Files docs/WORLD_CLASS_ROADMAP.md and the M1-M5 tracking gap entries (INFRA-059 through INFRA-063). Tracks the strategic shift from reactive recovery (queue-driver auto-fixing DIRTY, resolve-gaps-conflict.py, --skip-tests bypasses) to proactive prevention (no hot files, plan-mode gate, stacked PRs, feature flags, dashboard). Roadmap doc is the authoritative source; this gap is the meta-tracking entry.
+  acceptance_criteria:
+    - docs/WORLD_CLASS_ROADMAP.md committed with M1-M5 milestones documented
+    - INFRA-059 through INFRA-063 filed as open gaps with acceptance criteria
+    - User signed off on roadmap (2026-04-25)
+  notes: |
+    Each milestone's retirement-of-old-system step must be ticked before the next starts. Sequence is M1 → M2 → M3 (M3 needs M2, M2 needs M1); M4 and M5 can run parallel with M3.
+  source_doc: docs/WORLD_CLASS_ROADMAP.md
+  closed_date: '2026-04-25'
+

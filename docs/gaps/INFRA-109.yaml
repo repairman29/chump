@@ -1,0 +1,24 @@
+- id: INFRA-109
+  domain: infra
+  title: Audit coordination scripts for git-common-dir vs cwd worktree-boundary bugs
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    During INFRA-084 ship (2026-04-26), chump-ambient-glance.sh was found
+    to read .chump-locks from cwd (a linked worktree) when the canonical
+    location is the main repo .chump-locks/ (resolved via
+    git rev-parse --git-common-dir). The same boundary issue likely
+    affects other coordination scripts that read or write .chump-locks/,
+    .chump/state.db, or ambient.jsonl from cwd. Audit gap-claim.sh,
+    gap-preflight.sh, gap-reserve.sh, ambient-emit.sh, ambient-watch.sh,
+    bot-merge.sh, and any Rust callers - any reference to .chump-locks/
+    or .chump/ that does not pass through git-common-dir resolution is
+    a worktree-boundary bug waiting to fire.
+  acceptance_criteria:
+    - Inventory of every script and Rust file that touches .chump-locks/ or .chump/
+    - Each call resolves base via git rev-parse --git-common-dir or documented exception
+    - Test - run a coordination action from a linked worktree, verify it touches main-repo paths not worktree-local paths
+    - CLAUDE.md Coordination docs section adds the resolution-rule note
+  opened_date: '2026-04-26'
+

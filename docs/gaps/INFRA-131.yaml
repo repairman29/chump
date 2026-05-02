@@ -1,0 +1,30 @@
+- id: INFRA-131
+  domain: infra
+  title: stale root MDs cleanup + .env.minimal/README quickstart refresh
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Tail of the README audit (2026-04-26): three small fixes that landed in
+    one PR.
+    1. Delete migration_proposal.md — abandoned planning sketch from 2026-04-18,
+       0 references, the schema additions it proposed (created_at/updated_at)
+       were never executed.
+    2. README quick-start now defaults to qwen2.5:7b (~4.7 GB) instead of
+       qwen2.5:14b (~9 GB). The 14B model triggers Ollama eviction under
+       cargo-build memory pressure on 24 GB Apple Silicon (per dogfood
+       memory note 2026-04-15/16); the 7B model passed T1.1 cleanly.
+    3. .env.minimal now ships dogfood-tuned timeouts and context window
+       (CHUMP_TOOL_TIMEOUT_SECS=180, CHUMP_COMPLETION_MAX_TOKENS=4096,
+       CHUMP_OLLAMA_NUM_CTX=16384) so first-run users do not hit the 30s
+       tool-timeout default at 2 tok/s.
+    Note: adversary.md stays at root — it is a runtime asset loaded by
+    src/adversary_llm.rs::load_adversary_md(), not a stale doc. Moving it
+    is a separate (Rust-touching) change.
+  acceptance_criteria:
+    - migration_proposal.md deleted
+    - "README quick-start uses qwen2.5:7b as default with 14B as larger option"
+    - .env.minimal includes CHUMP_TOOL_TIMEOUT_SECS / CHUMP_COMPLETION_MAX_TOKENS / CHUMP_OLLAMA_NUM_CTX
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

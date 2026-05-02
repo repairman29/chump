@@ -1,0 +1,12 @@
+- id: COMP-005a
+  domain: competitive
+  title: PWA image-paste → ContentBlock multipart routing
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    First chunk of COMP-005. The PWA chat textarea should accept Cmd-V pasted images (or drag-drop). Browser uploads via the existing web_uploads endpoint, server stores blob, agent loop forwards as ContentBlock::Image when the configured model is vision-capable (provider_quality flag added in ACP-002).
+  depends_on: [ACP-002]
+  source_doc: web/index.html
+  closed_date: '2026-04-17'
+

@@ -1,0 +1,48 @@
+- id: INFRA-106
+  domain: infra
+  title: evaluate GitHub merge queue migration plan (currently disabled, strict=true causes serial rebase storm)
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Branch protection on main currently has strict=true required-status-checks
+    and no merge queue. Result: when N PRs are armed for auto-merge in
+    parallel, GitHub lands them serially — each landing forces the other N-1
+    to BEHIND/DIRTY, which our docs/gaps.yaml-touching PRs almost always hit
+    because the YAML appends collide. Operators (agents and humans) end up
+    hand-rebasing the same 6-8 PRs in a loop until the queue drains.
+    
+    The 2026-04-26 cycle observed this directly: 7 PRs (562, 567, 568, 569,
+    570, 572, 573, 574) all armed within minutes of each other; landing was
+    paced by a manual reset+reapply rebase loop using saved /tmp/ patches.
+    PR #565, #571, #574 landed cleanly via the loop; #569 followed; the
+    remaining 6 are still cycling at the time of filing.
+    
+    Two options were on the table:
+      (A) Enable GitHub merge queue via
+          `gh api -X PUT repos/repairman29/chump/branches/main/protection`
+          with required_merge_queue. Auto-rebases each PR onto a temp branch
+          and re-runs CI before atomic squash. Closes the rebase storm but
+          changes the contract for every future PR; required-check names
+          must match the queue's expectations exactly or PRs hang forever.
+          Pre-push hooks only fire on the PR branch, not the queue's temp
+          merge — so dup-ID guard, gap-preflight, etc. don't gate the merged
+          result.
+      (B) Flip strict=false on required-status-checks. Cheaper, but allows
+          stale-base merges — exactly the failure mode INFRA-075 / Red
+          Letter #2 were built to prevent. Two PRs touching the same gap-ID
+          region in docs/gaps.yaml could both pass CI on their own base and
+          land back-to-back with a silent semantic conflict.
+    
+    User decision (2026-04-26): keep cycling manually for the current wave,
+    file this gap to evaluate option A carefully (test on a fork, define
+    required-check name contract, plan auto-merge re-arm of in-flight PRs,
+    document operator runbook). Do NOT flip option B live.
+  acceptance_criteria:
+    - Test merge queue config on a throwaway fork or scratch repo first
+    - Document the exact required-check names the queue will gate on
+    - Define migration plan for in-flight auto-merge-armed PRs (re-arm under queue semantics)
+    - Document operator runbook for queue-stuck recovery (extends the existing one in CLAUDE.md)
+    - Define how pre-push hooks (dup-ID, gap-preflight) interact with queue temp branches
+    - Decision recorded — adopt queue OR document why we stayed with current setup
+

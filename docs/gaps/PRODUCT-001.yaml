@@ -1,0 +1,13 @@
+- id: PRODUCT-001
+  domain: product
+  title: PWA Dashboard — ship status, what-we're-doing, recent episodes
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Horizon 1 goal: open PWA and see Dashboard with current ship status, "Building: Step 3...", recent episodes. GET /api/dashboard exists in spec (WEB_API_REFERENCE.md) but Dashboard view is incomplete or not implemented.
+  notes: |
+    Added fleet_status (green/yellow/red), last_heartbeat_iso to /api/dashboard. New /api/dashboard/stream SSE endpoint pushes snapshot every 30s. Frontend uses EventSource with polling fallback; applyDashboardSnapshot shared between SSE handler and loadDashboard.
+  source_doc: docs/ECOSYSTEM_VISION.md
+  closed_date: '2026-04-17'
+

@@ -1,0 +1,14 @@
+- id: EVAL-013
+  domain: eval
+  title: Real reflection lessons (not synthetic block) — does THE thing help
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Every A/B injects a generic synthetic lessons block. We are testing the delivery mechanism, not real reflection. The lessons block in production contains distilled wisdom from past episodes — that signal is buried under generic-text noise in our current harness.
+  depends_on: [EVAL-022]
+  notes: |
+    TEST-CAT-B. The expected finding is "real lessons help more than synthetic" — would be the first publishable positive result for the framework. If real lessons also fail to help, the framework needs a deeper redesign (not just prompt-engineering).
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

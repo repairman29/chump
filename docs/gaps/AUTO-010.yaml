@@ -1,0 +1,11 @@
+- id: AUTO-010
+  domain: autonomy
+  title: HITL permission negotiation — structured escalation with full reasoning
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    When a tool fails due to permissions or is classified high-risk with low auto_approve_rate, the agent fails silently. It should halt, package a structured request (why the permission is needed, exact command preview, expected outcome, rollback plan), and wait asynchronously — consuming zero compute until the human responds.
+  depends_on: [AUTO-005, COG-008]
+  closed_date: '2026-04-16'
+

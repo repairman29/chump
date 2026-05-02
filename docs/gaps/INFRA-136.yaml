@@ -1,0 +1,26 @@
+- id: INFRA-136
+  domain: infra
+  title: Version-control adversarial agent prompts — Cold Water and siblings live only in trigger config
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Cold Water, Frontier Scientist, Scribe, and the tech-writer/gardener
+    agents are scheduled remote triggers (claude.ai/code/scheduled). Their
+    prompts live exclusively in trigger config and are not in the repo. If
+    a trigger is migrated, deleted, or accidentally reset, the prompt is
+    lost. The Cold Water prompt was substantially rewritten on 2026-04-26
+    (added Step -1 sandbox preflight, Step 0 prior-issue reconcile, five
+    lenses, mandatory gap-filing with sandbox fallback) - that work has no
+    git history. Mirror each adversarial-agent prompt under
+    docs/agents/<name>.md as the source of truth, and document the
+    schedule trigger ID it deploys to. Schedule operator updates the
+    trigger from the doc, not vice versa.
+  acceptance_criteria:
+    - docs/agents/cold-water.md, frontier-scientist.md, scribe.md, tech-writer.md exist with current prompt content
+    - Each doc names its trigger_id and cron schedule
+    - docs/agents/README.md explains the docs-are-source convention
+    - When a prompt changes - update the doc, then sync the trigger via /schedule
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

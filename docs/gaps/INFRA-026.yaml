@@ -1,0 +1,18 @@
+- id: INFRA-026
+  domain: infra
+  title: Distinguish dispatched-agent commits from foreign actors via author identity
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Red Letter Issue #1 flagged commits authored by Your Name <you@example.com> as a foreign actor bypassing all coordination guards. The actual culprit was the dispatched-agent default git config used by every orchestrator-spawned subagent, NOT a foreign actor. Misattribution wasted reviewer attention. Fix: dispatched subagents (chump-orchestrator + bot-merge.sh path) should set git author to Chump Dispatched <chump-dispatch@chump.bot> (similar pattern to Cold Water <cold-water@chump.bot>). Then ambient stream + git log + Red Letter can attribute correctly without false alarms.
+  acceptance_criteria:
+    - crates/chump-orchestrator/src/dispatch.rs sets git author env (GIT_AUTHOR_NAME/EMAIL) before spawning subagent commits
+    - scripts/bot-merge.sh similarly sets author identity for its synthetic commits
+    - docs/AGENT_COORDINATION.md identity-attribution table updated to list the canonical author identities
+    - Future Red Letter runs no longer flag dispatched commits as foreign
+  notes: |
+    P3 because the misattribution is annoying not dangerous. Small bash + Rust change.
+  source_doc: docs/RED_LETTER.md Issue
+  closed_date: '2026-04-21'
+

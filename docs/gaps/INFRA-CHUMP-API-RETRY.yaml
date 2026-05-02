@@ -1,0 +1,13 @@
+- id: INFRA-CHUMP-API-RETRY
+  domain: infra
+  title: Spawned claude subprocess needs API-5xx retry wrapper
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Autonomy test 2026-04-19 had chump-orchestrator dispatch a real claude -p subprocess. The subprocess ran ~3 min of valid work (pre-flight + gap read + doc walk) then hit "API Error: 500 Internal server error" from Anthropic and exited code 1. The orchestrator handled the failure gracefully (KILLED outcome, clean summary, graceful exit) but no PR shipped because of one transient external 5xx. With a thin retry wrapper (e.g. shell script that wraps claude -p, retries up to 3 times on exit code != 0 + stderr containing "API Error: 5"), the subagent would have self-recovered.
+  notes: |
+    ~2 hours. Highest leverage to make the autonomy loop production- ready. Without it, every transient Anthropic 5xx kills a dispatch.
+  source_doc: docs/archive/2026-04/AUTONOMY-TEST-2026-04-19.md
+  closed_date: '2026-04-19'
+

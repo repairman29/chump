@@ -1,0 +1,11 @@
+- id: COMP-005c
+  domain: competitive
+  title: TTS output — voice channel via piper or cocoa say
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Third chunk of COMP-005. Optional TTS output for the PWA: agent reply triggers a /api/tts endpoint that synthesizes audio (macOS: `say -o`; Linux: `piper`; both shell-out). PWA plays it when CHUMP_TTS_AUTOPLAY=1.
+  source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+  closed_date: '2026-04-17'
+

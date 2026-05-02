@@ -1,0 +1,11 @@
+- id: PRODUCT-005
+  domain: product
+  title: scripts/generate-sprint-synthesis.sh — automated synthesis generation in heartbeat
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    No automated mechanism generates session syntheses. scripts/generate-cos-weekly-snapshot.sh exists as a model: it reads SQLite and git log, emits a markdown report. We need a similar script for session/sprint syntheses. Then wire it into heartbeat-self-improve.sh as a sprint_synthesis round type (fires after every N work rounds, configurable via CHUMP_SYNTHESIS_INTERVAL). The script collects commits since last synthesis, queries SQLite for tasks completed and AB studies run, calls the model via chump --chump to generate narrative, writes to docs/syntheses/YYYY-MM-DD.md.
+  source_doc: docs/syntheses/README.md
+  closed_date: '2026-04-19'
+

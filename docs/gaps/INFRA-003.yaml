@@ -1,0 +1,11 @@
+- id: INFRA-003
+  domain: infra
+  title: Multimodal in-process inference — implement after RFC-mistralrs-multimodal Accepted
+  status: deferred
+  priority: P2
+  effort: l
+  description: |
+    WP-1.5: RFC-mistralrs-multimodal-in-tree.md is Proposed, not Accepted. AxonerAI Message extension + MultimodalModelBuilder path designed but not implemented. Blocks vision input in in-process inference mode.
+  notes: Unblock by first accepting the RFC.
+  source_doc: docs/HIGH_ASSURANCE_AGENT_PHASES.md
+

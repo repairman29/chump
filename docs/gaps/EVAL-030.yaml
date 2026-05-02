@@ -1,0 +1,24 @@
+- id: EVAL-030
+  domain: eval
+  title: Task-class-aware lessons block — fix neuromod harm at its root cause
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    EVAL-029 task drilldown identified TWO distinct mechanisms driving the cross-architecture neuromod fixture harm signal (-0.10 to -0.16 across 4 models, 1200 trials). Neither is the KID context-loss problem EVAL-027 SAKE addresses:
+      (a) Conditional-chain dilution — perception directive
+          "ask one clarifying question rather than guessing" causes
+          early-stopping on multi-step "do X, if it fails do Y, then Z"
+          tasks (dynamic-05-policy-confront, dynamic-08-budget-aware,
+          dynamic-13-escalation-chain, dynamic-03-retry-loop, etc.)
+      (b) Trivial-token contamination — full ~400-token lessons block
+          dwarfs short chat prompts ("lol", "k thx", "noice"); agent
+          produces structured "what would you like me to do?" output
+          that judges score off-rubric.
+    Mechanism is directive-misapplication + signal-to-noise dilution, not context loss. EVAL-027 SAKE will not address either. Need a task-class-aware lessons injection: suppress the "ask clarifying question" directive when conditional-chain markers detected (regex for "if.*fails", "then if", etc.); skip the lessons block entirely when user prompt is below a length threshold (e.g. <50 chars).
+  depends_on: [EVAL-029, EVAL-027]
+  notes: |
+    ~3-4 days code + sweep. Cost ~$2 cloud. The cleanest production fix would be: in prompt_assembler.rs, look at the user prompt; if matches conditional-chain or trivial-token patterns, suppress lessons or drop specific directives. Could also be implemented as a per-fixture override at the eval-harness level for testing.
+  source_doc: docs/eval/EVAL-029-neuromod-task-drilldown.md
+  closed_date: '2026-04-19'
+

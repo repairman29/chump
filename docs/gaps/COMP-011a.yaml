@@ -1,0 +1,14 @@
+- id: COMP-011a
+  domain: completeness
+  title: Adversary-mode-lite — static-rules runtime tool-action monitor
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Goose's Adversary Mode is a sophisticated LLM-based context-aware reviewer that watches every tool call before execution (https://goose-docs.ai/docs/guides/security/adversary-mode/). Implementing the full LLM version is COMP-011b (1-2 weeks). COMP-011a ships a static-rules-only first version: a YAML file (chump-adversary.yaml) with BLOCK / ALLOW patterns matched against tool name + args before execution. Default-deny for shell commands that touch ~/.ssh, .env, /etc/, or external network domains not in an allowlist. Default-allow for everything else under repo worktree paths. Fail-open if the rules file is missing.
+  notes: |
+    Static rules cover ~80% of accident-class harms; LLM reviewer (COMP-011b) covers context-aware "this is suspicious for THIS task" cases. Ship 011a first — bigger immediate safety win for less effort. Reference goose's default rules at https://goose-docs.ai/docs/guides/security/adversary-mode/
+  source_doc: external (block/goose Adversary Mode, Jan 2026)
+  closed_date: '2026-04-20'
+  closed_pr: 193
+

@@ -1,0 +1,12 @@
+- id: COG-009
+  domain: consciousness
+  title: Add tool_hint param to PromptAssembler for sharper lesson scope filter
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    PromptAssembler::assemble used the first detected perception entity as the scope filter for load_recent_high_priority_targets. Better signal: the about-to-be-called tool name (or last-failed tool from prior turn).
+  depends_on: [COG-007]
+  source_doc: src/agent_loop/prompt_assembler.rs
+  closed_date: '2026-04-17'
+

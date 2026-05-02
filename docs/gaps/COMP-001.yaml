@@ -1,0 +1,13 @@
+- id: COMP-001
+  domain: competitive
+  title: Skills system — reusable SKILL.md procedure documents with auto-create
+  status: done
+  priority: P0
+  effort: l
+  description: |
+    Hermes's flagship differentiator: after completing 5+ tool-call tasks it autonomously creates SKILL.md procedure documents (procedural memory). Chump has episodes (what happened) but no reusable procedures (how to do things). Without this, Chump cannot improve its own task execution patterns over time.
+  notes: |
+    Skills stack: src/skills.rs, src/skill_tool.rs, src/skill_db.rs, src/skill_metrics.rs, context_assembly.rs wired, tool_inventory.rs registered. Auto-create trigger: total_tool_calls added to AgentRunOutcome; maybe_suggest_skill() posts blackboard suggestion when >= CHUMP_SKILL_SUGGEST_THRESHOLD (default 5).
+  source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+  closed_date: '2026-04-16'
+

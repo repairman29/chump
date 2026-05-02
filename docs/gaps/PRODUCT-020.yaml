@@ -1,0 +1,25 @@
+- id: PRODUCT-020
+  domain: product
+  title: MCP marketplace MVP scope + design doc — concrete what-ships definition for North Star wedge
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    docs/strategy/NORTH_STAR.md line 43 names the "private MCP marketplace"
+    as the product wedge - "every connector you could want, self-hosted,
+    running on your hardware. GitHub. Slack. Calendar. Your database. No
+    middleman, no SaaS subscription, no data leaving your machine unless
+    you choose." PRODUCT-001..PRODUCT-019 cover PWA, profile, FTUE, intent,
+    activation funnel, demo, install verification, competitive matrix, and
+    monetization - none cover the marketplace itself. The marketplace is
+    the thing that makes "PWA + agent" defensible vs commodity wrappers,
+    and there is no gap defining what the MVP ships. File the design doc
+    first (selected connector list, hosting model, install UX, security
+    boundary). MVP build is a downstream gap once scope is locked.
+  acceptance_criteria:
+    - "docs/strategy/MCP_MARKETPLACE_MVP.md committed with: scoped connector list (≥5), hosting/sandbox model, install UX wireframe, threat model"
+    - First 3 connectors named with rationale (which MCP servers ship with day-1 install)
+    - Success metric for MVP defined - what does 'shipped' mean operationally
+    - Downstream PRODUCT-* gap filed for actual implementation once scope locked
+  opened_date: '2026-04-26'
+

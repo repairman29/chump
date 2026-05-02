@@ -1,0 +1,14 @@
+- id: INFRA-41
+  domain: infra
+  title: "code-reviewer-agent.sh: guard empty-array iteration under bash 3.2 set -u"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    `scripts/code-reviewer-agent.sh` runs under `set -euo pipefail`. Default macOS bash (3.2) errors on `"${arr[@]}"` expansion when the array is empty, which fired during PR #465's review with the message `NEW_DEPS_IN_DIFF[@]: unbound variable`. PRs that don't add any dependency lines (most of them) trip this. The fix guards the iteration with `(( ${#arr[@]} > 0 ))`.
+  acceptance_criteria:
+    - Empty-diff dependency case no longer aborts the reviewer
+    - PRs with no Cargo.toml additions can pass review again
+  source_doc: PR
+  closed_date: '2026-04-24'
+

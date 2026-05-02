@@ -1,0 +1,16 @@
+- id: EVAL-053
+  domain: eval
+  title: Metacognition binary-mode sweep n=30 — measure real bypass-flag impact via chump binary
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Binary-mode ablation sweep (n=30/cell) for all three Metacognition modules (belief_state, surprisal, neuromod) via EVAL-049 harness (run-binary-ablation.py). Ran through chump binary with Together API (Llama-3.3-70B-Instruct-Turbo). Results: all three modules show delta=0.000, Wilson 95% CIs [0.886, 1.000] both cells — fully overlapping. COVERED+VALIDATED(NULL) for all three modules and Metacognition faculty overall. Prior EVAL-026 neuromod harm signal (-0.10 to -0.16) not reproduced under binary-mode isolation, attributed to direct-API harness confounds (EVAL-048). Ceiling effect possible at n=30 on factual fixture; n=100 with harder fixture recommended to confirm NULL result under more demanding conditions. CHUMP_FACULTY_MAP.md row 7 updated.
+  acceptance_criteria:
+    - docs/eval/EVAL-049-binary-ablation.md updated with n=30 real results and Wilson CIs
+    - docs/CHUMP_FACULTY_MAP.md Metacognition row updated with COVERED+VALIDATED(NULL) verdict
+  depends_on: [EVAL-049]
+  source_doc: docs/CHUMP_FACULTY_MAP.md
+  closed_date: '2026-04-20'
+  closed_pr: 264
+

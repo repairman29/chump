@@ -1,0 +1,11 @@
+- id: COMP-005b
+  domain: competitive
+  title: Browser automation tool — chromiumoxide CDP wrapper
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    Second chunk of COMP-005. New `browser` tool exposing CDP commands: navigate, get_page_text, click, fill, screenshot. chromiumoxide is the Rust CDP client; runs headless Chromium downloaded on first use (~150 MB). Behind CHUMP_TOOLS_ASK gate by default since browser automation is high-risk.
+  source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+  closed_date: '2026-04-18'
+

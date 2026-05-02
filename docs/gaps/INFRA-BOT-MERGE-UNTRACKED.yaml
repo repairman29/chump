@@ -1,0 +1,13 @@
+- id: INFRA-BOT-MERGE-UNTRACKED
+  domain: infra
+  title: bot-merge.sh pushes wrong diff when untracked files present in worktree
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    During PR #158 ship, bot-merge.sh's first push committed only modified files but left 4 NEW files untracked, so the PR initially showed an empty/wrong diff. Recovered manually via chump-commit.sh + soft-reset + clean single commit + force-push. The footgun: bot-merge.sh assumes git status is clean OR all relevant files are staged, but doesn't guard against new files that aren't yet `git add`ed. Needs a pre-flight check: if there are untracked files in src/ docs/ scripts/ crates/ paths, fail loud with an instruction to chump-commit or git add them first.
+  notes: |
+    ~2 hours including test. Caught during PR #158 (AUTO-013 step 5) ship. The new files were the new test fixtures + reflect.rs restoration; they were genuinely needed but bot-merge dropped them.
+  source_doc: PR
+  closed_date: '2026-04-20'
+

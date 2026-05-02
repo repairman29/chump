@@ -1,0 +1,69 @@
+- id: INFRA-207
+  domain: infra
+  title: spawn-respawn lifecycle — agents exit after 1 gap; dispatcher respawns (avoids context exhaustion + lets new lessons load)
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Surfaced while writing INFRA-158 regression tests for docs-delta
+    (INFRA-009). The guard at `scripts/git-hooks/pre-commit:1023-1027`:
+    
+      MSG_FILE="${1:-$REPO_ROOT/.git/COMMIT_EDITMSG}"
+      TRAILER_OK=0
+      if [ -f "$MSG_FILE" ] && grep -qiE '^Net-new-docs:\s*\+?[0-9]+' "$MSG_FILE"; then
+          TRAILER_OK=1
+      fi
+    
+    pre-commit hooks receive zero arguments, so $1 is empty and
+    MSG_FILE falls through to `$REPO_ROOT/.git/COMMIT_EDITMSG`.
+    The pre-commit hook fires BEFORE git writes the new commit
+    message, so COMMIT_EDITMSG holds the PREVIOUS commit's text
+    at that moment. Confirmed empirically in the INFRA-158
+    sandbox: a sandbox commit with `-m "add doc
+    
+    Net-new-docs: +1"` reads back COMMIT_EDITMSG=`seed` (the
+    previous commit's message) at pre-commit time.
+    
+    Effect: the trailer escape hatch documented in the guard's
+    comment ("require EITHER a deletion of another docs/*.md OR a
+    `Net-new-docs: +N` trailer") is unreachable for ALL forms of
+    `git commit` — `-m`, `-F`, interactive editor, all alike.
+    Only two actual escape paths work:
+      (a) Doc-swap (1 add + 1 delete in same commit, net 0)
+      (b) `CHUMP_DOCS_DELTA_CHECK=0` env bypass
+    
+    Verified in test-docs-delta-guard.sh: case 1 (no trailer,
+    blocked) PASSES; case "trailer set" was REMOVED from the test
+    because it was untestable.
+    
+    Fix options:
+      (1) Move the trailer check to a `commit-msg` hook
+          (`scripts/git-hooks/commit-msg`). That hook receives the
+          message file path as $1 AFTER the commit message has
+          been written. Cost: a new hook file + install-hooks.sh
+          update. Doesn't break anything else.
+      (2) Use `prepare-commit-msg` hook to inject `Net-new-docs:`
+          automatically when `ADDED > DELETED`. Removes the manual
+          escape entirely. More magical; may surprise users.
+      (3) Drop the trailer mechanism, document only doc-swap and
+          env bypass as escape paths. Simplest; matches the
+          actual current behavior. Update CLAUDE.md guards table.
+    
+    Recommendation: (3). The trailer was good intent but the
+    implementation can't see the message; people work around with
+    the env bypass anyway. Document the actual behavior; remove
+    the dead code path; update commit-message guidance.
+    
+    Detection method: try a sandbox commit with `Net-new-docs: +1`
+    in the message. If it commits cleanly without the env bypass,
+    the trailer reaches the guard (i.e. fix landed). Today (verified
+    2026-05-02 in INFRA-158 sandbox) it doesn't.
+  acceptance_criteria:
+    - "Either: trailer check moved to commit-msg hook AND test-docs-delta-guard.sh adds a 'trailer commits cleanly' case that PASSES (option 1)"
+    - "OR: trailer mechanism removed from pre-commit:1023-1042; CLAUDE.md guards table updated to list only doc-swap and env-bypass escape paths (option 3)"
+    - "Either way: existing test-docs-delta-guard.sh continues to pass; no behavior regression for the pure-block path"
+    - Decision recorded in PR description (1 vs 3); commit message documents which option was chosen and why
+  opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 738
+

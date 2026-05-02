@@ -1,0 +1,32 @@
+- id: META-006
+  domain: META
+  title: Evaluate retiring docs/gaps.yaml — state.sql + ported shell scripts as single source
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    docs/gaps.yaml is a regenerated mirror today (canonical = .chump/state.db
+    since INFRA-059), but it has three real users that block its retirement:
+    
+      (1) Shell scripts gap-claim.sh / gap-reserve.sh / gap-preflight.sh /
+          pre-push hook / pre-commit guards parse it directly (NOT state.db).
+          Per CLAUDE.md: shell scripts still operate on docs/gaps.yaml +
+          .chump-locks/.
+      (2) Human PR reviewers consume the YAML diff (though .chump/state.sql
+          provides reviewable text diffs of the canonical store).
+      (3) gap-doctor.py exists specifically to detect YAML↔DB drift — its
+          raison d'être evaporates if YAML goes.
+    
+    Investigate cost vs benefit of porting the shell scripts to query
+    state.db and dropping YAML entirely, vs INFRA-188's opposite direction
+    (per-file docs/gaps/<DOMAIN>-<NNN>.yaml). One source of truth eliminates
+    a whole class of corruption incidents (INFRA-049/052/055/057/064 were all
+    YAML↔DB races) but breaks the human-PR-readability path unless
+    state.sql fully substitutes.
+    
+    Hard-blocked by INFRA-208 (chump gap dump is lossy) — until dump round-
+    trips losslessly, retiring YAML risks data loss for the 264 affected
+    fields.
+  depends_on: [INFRA-208]
+  opened_date: '2026-05-02'
+

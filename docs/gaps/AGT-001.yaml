@@ -1,0 +1,11 @@
+- id: AGT-001
+  domain: agent
+  title: Explicit AgentState FSM in iteration_controller
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    The agent loop is implicit and procedural: a for-loop counter, a StopReason enum from the provider, and local variables for tracking tool-call counts. There is no explicit state that can be observed, interrupted, or resumed. autonomy_fsm.rs demonstrates the typestate pattern already — apply it to the main loop. States: Idle | LlmWaiting { query } | ToolsRunning { pending } | Interrupted { reason, prev_state } | Complete { outcome }.
+  source_doc: src/agent_loop/iteration_controller.rs
+  closed_date: '2026-04-17'
+

@@ -1,0 +1,23 @@
+- id: INFRA-119
+  domain: infra
+  title: bot-merge.sh has no health monitoring - hangs leak leases and freeze worktrees silently
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    scripts/bot-merge.sh is a 27KB shell state machine (rebase, fmt,
+    clippy, test, push, PR creation, code-review fork, CI gate, auto-merge
+    arming, target/ purge). If it hangs mid-execution, the lease in
+    .chump-locks/<session>.json remains live and blocks sibling sessions.
+    CLAUDE.md acknowledges this with the "manual ship path" recovery
+    section but has no automated detection. Add a watchdog - either a
+    timeout wrapper that releases the lease on SIGALRM, or a separate
+    process that detects bot-merge.sh activity (heartbeat in
+    .chump-locks/) and reaps stale leases whose owning script is gone.
+  acceptance_criteria:
+    - bot-merge.sh writes a heartbeat file every N seconds while running
+    - A reaper (cron or launchd) clears leases whose heartbeat is stale beyond TTL
+    - If bot-merge.sh receives SIGTERM or its parent shell dies, the lease is released as part of cleanup
+    - Test - kill -9 bot-merge.sh mid-run, verify the lease becomes claimable within 2 minutes
+  opened_date: '2026-04-26'
+

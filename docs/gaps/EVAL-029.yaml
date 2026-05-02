@@ -1,0 +1,14 @@
+- id: EVAL-029
+  domain: eval
+  title: Investigate which neuromod tasks drive cross-architecture harm signal
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    EVAL-025 (haiku-cog016 -0.15) and EVAL-026 (Qwen-7B -0.16, Llama-70B -0.14, Qwen3-235B -0.10) show a striking cross-architecture pattern: the v1 lessons block consistently hurts on the neuromod fixture by 10-16 percentage points, even though individual cells are within Wilson noise. Four independent measurements at n=50 each (~1200 trials total) directionally agree. Mechanism unknown. Need to drill task-by-task: which of the ~50 tasks in neuromod_tasks.json are responsible? Is it a few high-leverage adversarial tasks or a uniform drift across all tasks? Answer determines whether we (a) fix specific tasks, (b) reformulate the lessons block to handle a specific task class, or (c) accept it as an irreducible tradeoff.
+  depends_on: [EVAL-025, EVAL-026]
+  notes: |
+    Pure data analysis on existing jsonl logs — no new sweep needed. Walk per-trial rows in logs/ab/eval-025-*neuromod*.jsonl and logs/ab/eval-026-*neuromod*.jsonl, group by task_id, compute A-B deltas. ~50 LOC Python. Cost: \$0. Wall: ~1hr.
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-19'
+

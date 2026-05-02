@@ -1,0 +1,17 @@
+- id: QUALITY-002
+  domain: reliability
+  title: Eliminate top-100 unwrap() panics in production binary — replace with graceful errors
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    QUALITY-001 audited 1,065 unwrap() calls across src/ (up from 946 at Red Letter #1, 989 at #2, 1,065 at #3 — growing every week). The audit catalogued them; it did not fix them. This gap targets the highest-risk 100: any unwrap() in a path that handles user input, HTTP responses, file I/O, or DB operations in the main agent loop. Strategy: (1) run `rg '\.unwrap()' src/ --count-matches` to baseline, (2) prioritize by file (src/local_openai.rs, src/agent_loop/, src/tool_runner.rs first), (3) replace each with `?` propagation or explicit `expect("invariant: ...")` where truly impossible. Each replaced unwrap reduces production panic surface. Acceptance: net unwrap count in src/ drops by ≥ 100 from the 1,065 baseline; no regressions in `cargo test --workspace`.
+  acceptance_criteria:
+    - "rg \"\\.unwrap()\" src/ --count-matches shows ≤ 965 total (≥ 100 replaced)"
+    - cargo test --workspace passes
+    - cargo clippy --workspace -- -D warnings passes
+    - No new unwrap() calls introduced in changed files
+  source_doc: docs/RED_LETTER.md
+  closed_date: '2026-04-20'
+  closed_pr: 300
+

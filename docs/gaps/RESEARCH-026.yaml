@@ -1,0 +1,19 @@
+- id: RESEARCH-026
+  domain: research
+  title: Observer-effect / evaluation-framing sandbagging check
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Frontier models can behave differently when they detect they are being evaluated. Chump's fixtures include explicit evaluation framing (task IDs, structured rubrics, "the user asks..." syntax). We have not measured whether scrubbing that framing changes agent behavior. If it does, every reported delta is inflated by observer-effect bias. This gap reruns the reflection fixture at n=50 with two arms — (a) normal framing, (b) evaluation-framing scrubbed and rewritten as casual user messages. Measure behavior delta between arms. If significant, publish correction factor; if not, publish as validation that Chump fixtures don't have detectable eval-framing bias. Paper-1 scope caveat blocker.
+  acceptance_criteria:
+    - "Reflection fixture cloned and rewritten in \"casual user message\" format (no task IDs, no rubric language, no \"the user asks\" preamble)"
+    - n=50/cell × 2 framing arms × 2 model tiers (haiku, sonnet) = 400 trials
+    - Observer-effect delta reported with Wilson 95% CI in docs/FINDINGS.md
+    - If delta >0.05 in either tier, the finding requires an observer-effect correction section in any publication
+    - Preregistered per RESEARCH-019
+  depends_on: [RESEARCH-019]
+  notes: |
+    ~$20 cloud. Paper-1 credibility booster. If the result is null, it strengthens the publishable finding by ruling out a standard reviewer concern. 2026-04-21: paired formal fixture (reflection_tasks_formal_paired_v1.json), run-observer-effect-ab.sh wiring to run-cloud-v2.py (--n-per-cell, --out-dir), analysis helper analyze-observer-effect.py, result shell docs/eval/RESEARCH-026-observer-effect.md, FINDINGS index row (pending sweep), and scripts/test-research-026-preflight.sh merged to main in PR #400 (2026-04-21). Human pilot validation gate signed off (Jeff Adkins 2026-04-21); 50-task casual fixture shipped; harness smoke (n=2 haiku pilot) passed 2026-04-21 — see docs/eval/RESEARCH-026-observer-effect.md § Harness smoke. Remaining acceptance: preregistered 400-trial cloud sweep, Wilson analysis in FINDINGS, then close this gap with closed_commit. Operating stance (2026-04-21): keep status open and backlog the paid full sweep until a paper or external-credibility sprint — it is not required to inform ordinary engineering. Harness + CI preflight + human validation gate + smoke are treated as sufficient to keep building; schedule the ~\$15–\$20 sweep when publication claims need the preregistered Wilson row.
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §9
+

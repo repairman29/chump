@@ -1,0 +1,20 @@
+- id: DOC-006
+  domain: doc
+  title: Doc inventory script + first CSV run (DOC-005 Phase 1)
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Phase 1 of the DOC-005 doc hygiene plan: ship scripts/doc-inventory.py and the first generated docs/_inventory.csv. The script walks top-level docs/*.md, reads YAML front-matter (doc_tag, owner_gap, last_audited), counts inbound references across docs/, book/src/, src/, scripts/, .github/, tests/, AGENTS.md, CLAUDE.md, README.md, and emits a CSV with columns: path, tag, owner_gap, last_modified, inbound_refs, line_count, last_audited. Tolerates missing front-matter (writes tag=untagged). First run finds 144 top-level docs, all untagged (Phase 0 not yet run), and 6 orphan candidates with zero inbound refs (CONTEXT_ASSEMBLY_AUDIT, CRATE_AUDIT, EVALUATION_PRIORITIZATION_FRAMEWORK, FLEET_OPEN_QUESTIONS_RESEARCH_2026Q2, GAPS_YAML_TO_SQLITE_MIGRATION, RED_LETTER_RESPONSE_2026Q2) — surfaced for Phase 3 staged consolidation, not actioned in this PR.
+  acceptance_criteria:
+    - scripts/doc-inventory.py committed and executable
+    - docs/_inventory.csv generated and committed (144 rows)
+    - Script tolerates missing front-matter without crashing
+    - Orphan candidates (zero inbound refs) reported on stderr at run time
+  depends_on: [DOC-005]
+  notes: |
+    XS effort. Subsequent phase gaps (Phase 0 classification, Phase 2 automation, Phase 3 staged consolidation, Phase 4 generated docs) get their own gap entries when picked up. The CSV is generated, not hand-edited — re-run the script after any docs/ changes to refresh it.
+  source_doc: docs/DOC_HYGIENE_PLAN.md
+  closed_date: '2026-04-25'
+  closed_pr: 531
+

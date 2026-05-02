@@ -1,0 +1,39 @@
+- id: INFRA-134
+  domain: infra
+  title: docs/ root reorg — categorize root *.md into 10 subdirs (Phase 2 main)
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Phase 2 main of the docs/ reorganization per `.chump/PHASE_2_3_5_PLAN.md`.
+    Categorized 146 root `docs/*.md` files into 10 topical subdirectories so the
+    docs/ tree mirrors the categories the rest of the repo already uses
+    (architecture / operations / process / strategy / audits / research /
+    briefs / api / syntheses / incidents). Only `docs/README.md` remains at
+    the docs/ root as the canonical entry point.
+    
+    Distribution:
+      - architecture/ +32  (system design, ADRs, protocols)
+      - operations/   +25  (runbooks, perf, ops)
+      - process/      +31  (dev workflow, coordination, governance)
+      - strategy/     +32  (direction, vision, roadmaps)
+      - audits/       +17  (retrospectives, audits, red letters)
+      - research/     +12  (methodology, results, evidence logs)
+      - briefs/       +3   (operator briefs)
+      - api/          +3   (references)
+    
+    Cross-links rewritten across 375 files (.md / .rs / .sh / .yml / .toml /
+    .json / .py / .ts) via a single 146-pattern perl pass. mdBook
+    `scripts/sync-book-from-docs.sh` updated to point at new paths;
+    `mdbook build book` verified clean locally. Reproducible plan checked
+    in at `.chump/phase2-move-plan.sh` (run with `--check` to count, with
+    `--sed-pairs` to regenerate the rewrite patterns).
+  acceptance_criteria:
+    - Only docs/README.md remains at docs/ root
+    - 146 files distributed across 10 subdirs per the plan
+    - All cross-links updated; no dangling refs introduced
+    - scripts/sync-book-from-docs.sh points at new paths
+    - mdbook build book succeeds locally
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

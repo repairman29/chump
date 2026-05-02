@@ -1,0 +1,13 @@
+- id: REL-004
+  domain: reliability
+  title: Prompt-token estimation accuracy — real tokenizer or better heuristic
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    warn_if_near_num_ctx uses bytes/3.5 heuristic (±30% on code-heavy prompts). Systematic false warnings would erode trust in the warning. Consider tiktoken or Qwen tokenizer for accurate counts.
+  notes: |
+    Content-type-aware heuristic in estimate_tokens_for_str: prose=4 chars/token, code/JSON=2.5 chars/token (detected by code-symbol density >12%), non-ASCII=1 token/byte, +4 tokens per-message overhead. No new deps.
+  source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
+  closed_date: '2026-04-17'
+

@@ -1,0 +1,12 @@
+- id: COG-008
+  domain: consciousness
+  title: Upgrade reflect_heuristic → LLM-assisted reflection via delegate worker
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    reflection.rs::reflect_heuristic uses pattern-matching on observed_outcome strings to detect ErrorPattern. Misses subtle cases (intent drift, assumption-not-checked, partial-success-misclassified-as-pass). reflection.rs:25 already flags this as future work.
+  depends_on: [COG-007]
+  source_doc: docs/NEXT_GEN_COMPETITIVE_INTEL.md
+  closed_date: '2026-04-17'
+

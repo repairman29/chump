@@ -1,0 +1,34 @@
+- id: INFRA-096
+  domain: infra
+  title: doc drift sweep - hunt outdated process refs in CLAUDE.md AGENTS.md docs
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    INFRA-068 doc-flipped the gap-registry framing on 2026-04-25, but the
+    rest of the docs corpus has accumulated process descriptions over months
+    and may still reference legacy paths as the recommended workflow. Need
+    a one-shot sweep across:
+      - CLAUDE.md (project rules)
+      - AGENTS.md (tool-agnostic entry)
+      - docs/AGENT_COORDINATION.md
+      - docs/RESEARCH_INTEGRITY.md and other RESEARCH_*.md
+      - docs/MERGE_QUEUE_SETUP.md
+      - docs/eval/README.md and eval methodology docs
+      - any *.md under docs/ that prescribes a workflow
+    
+    For each: find references to "edit gaps.yaml", "grep docs/gaps.yaml",
+    "scripts/gap-reserve.sh" (without "fallback" qualifier), or older
+    workflow patterns that pre-date INFRA-059. Open follow-up gaps for
+    rewrites and link the doc-flip context (INFRA-059, INFRA-068).
+    Stronger version: a CI lint that flags any docs/* mention of
+    gaps.yaml that's not in a "this is a mirror" context.
+    
+    Companion to INFRA-095 (script audit). This one covers the
+    documentation surface; that one covers the code surface.
+  acceptance_criteria:
+    - Sweep produces a checklist of doc files with outdated process refs
+    - Each entry tagged with severity (load-bearing vs incidental)
+    - Follow-up gaps filed for the load-bearing ones
+  depends_on: [INFRA-068]
+

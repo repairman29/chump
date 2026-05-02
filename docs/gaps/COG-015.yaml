@@ -1,0 +1,11 @@
+- id: COG-015
+  domain: consciousness
+  title: Entity-keyed blackboard injection in prompt assembler (Phase 8.2)
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Implements ROADMAP_CLAUDE_UPGRADE.md Task 8.2: contextual pre-fetching from chump_blackboard_persist. Adds query_persist_for_entities() to blackboard.rs (SQL LIKE keyword search against persisted facts) and injects a "Remembered context" block into prompt_assembler.rs::assemble_with_hint() based on perception.detected_entities. Gated on CHUMP_ENTITY_PREFETCH env var (default on).
+  depends_on: [MEM-005]
+  closed_date: '2026-04-18'
+

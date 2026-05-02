@@ -1,0 +1,12 @@
+- id: MEM-004
+  domain: memory
+  title: Wire async LLM summarizer into curate_all
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    MEM-003 shipped the sync orchestration; the async adapter that builds a summarizer closure from a delegate_tool call + wires it into the default curate_all path (behind CHUMP_MEMORY_LLM_SUMMARIZE) is the remaining piece. Small because the hard test surface already exists in memory_db.
+  depends_on: [MEM-003]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

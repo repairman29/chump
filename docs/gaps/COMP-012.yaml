@@ -1,0 +1,15 @@
+- id: COMP-012
+  domain: completeness
+  title: MAESTRO + NIST AI RMF threat modeling — formalize Chump's safety posture
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    The 2026 enterprise agentic-AI safety landscape standardized on two frameworks: MAESTRO (agentic AI threat modeling — covers prompt injection, data poisoning, multi-step bypass attempts) and NIST AI Risk Management Framework. Chump has tool approval lists + adversary mode (COMP-011a/b coming) but no formal threat model. For Chump to be enterprise-credible (or even small-team-credible) it needs a documented threat model that names what Chump defends against, what it doesn't, and what compensating controls users should add. Not a code change — a structured docs artifact mapping Chump's actual capabilities to MAESTRO threat categories.
+  depends_on: [COMP-011a]
+  notes: |
+    ~1 week docs + cross-reference work. References: MAESTRO framework, NIST AI RMF. Not strictly required for open-source dogfooding, but required for any enterprise/compliance conversation.
+  source_doc: external (Gemini AGI letter — agentic safety frameworks)
+  closed_date: '2026-04-20'
+  closed_pr: 231
+

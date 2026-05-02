@@ -1,0 +1,15 @@
+- id: INFRA-184
+  domain: infra
+  title: Plain-prose CoT routing to thinking_delta for reasoning models without <think> tags (INFRA-183 sub)
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Extend src/local_openai.rs:81-185 chunk processor to recognize plain-prose reasoning patterns (e.g. 'Thinking Process:
+    
+    1.' followed by blank line + final answer) and route them to AgentEvent::ThinkingDelta instead of dropping them. Today only <think>...</think>-wrapped content is routed; reasoning models that don't use those tags emit invisible CoT and the user sees only keepalive pings until the final answer.
+  depends_on: [INFRA-183]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 701
+

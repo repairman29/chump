@@ -1,0 +1,13 @@
+- id: COMP-014
+  domain: completeness
+  title: Cost ledger broken across ALL providers — recorded $0.00 across 4621 calls today
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Audited cost-ledger.jsonl on 2026-04-19: 4621 calls recorded, total $0.00 spend. Half were Together (likely free tier — fine) but the OTHER half were Anthropic Sonnet/Haiku/Opus calls that should have been priced and weren't. Original framing of this gap was wrong (assumed only Together pricing was missing). Reality: ledger is broken or pricing config is missing for everything. Today's actual session spend is unknown without checking the Anthropic dashboard manually. This breaks Q3 budget planning, breaks per-session cost ceilings (INFRA-COST-CEILING depends on this), breaks cost attribution per gap.
+  notes: |
+    ~1 day. Was filed as P3 / "Together-only" originally; rescoped P2 after audit revealed Anthropic recording also broken. Blocks INFRA-COST-CEILING.
+  source_doc: session 2026-04-19 cost audit
+  closed_date: '2026-04-20'
+

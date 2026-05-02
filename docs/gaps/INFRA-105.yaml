@@ -1,0 +1,23 @@
+- id: INFRA-105
+  domain: infra
+  title: Lease-file and state.db ledger convergence - claims must write both, or one must be the source
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    'scripts/gap-claim.sh' writes .chump-locks/<session>.json with gap_id
+    but never touches .chump/state.db. 'chump gap claim' writes the DB but
+    not the lease file. The two ledgers disagree on who holds what right now
+    (verified 2026-04-26 via 'chump gap list' showing INFRA-052 as a
+    queue-health gap while gaps.yaml shows it as a rebase-resolution stub).
+    Decide: either (a) gap-claim.sh shells into 'chump gap claim' so the DB
+    is written too, or (b) 'chump gap claim' writes the lease file. Either
+    way both ledgers must agree after a single claim, and a divergence
+    detector should run hourly and post ALERT kind=ledger_split.
+  acceptance_criteria:
+    - One claim path writes both ledgers (decide direction)
+    - Divergence detector runs (cron or hourly script) and posts ALERT
+    - Test - claim a gap via shell path, verify state.db reflects it; claim via Rust path, verify lease file reflects it
+    - Document the chosen direction in CLAUDE.md Coordination docs section
+  opened_date: '2026-04-26'
+

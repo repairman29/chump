@@ -1,0 +1,12 @@
+- id: FLEET-003a
+  domain: fleet
+  title: Workspace merge protocol — RFC + state diagram
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    First chunk of FLEET-003. Pure design work. Produce docs/rfcs/RFC-fleet-workspace-merge.md covering: initiation condition (when to merge), merge envelope (how blackboard items transit + are attributed), duration cap (max turns merged), split semantics (what stays joint vs what goes back to each peer), failure modes (one peer disappears mid-merge).
+  depends_on: [FLEET-001, FLEET-002]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

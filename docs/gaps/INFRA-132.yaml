@@ -1,0 +1,35 @@
+- id: INFRA-132
+  domain: infra
+  title: Pre-push guard - cross-check Closes/Fixes trailers against gap titles to catch ID-reference hijacks
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Concrete incident on 2026-04-26 - PR #578 ("stale root MDs cleanup +
+    .env.minimal/README quickstart refresh") used "(INFRA-108)" in its
+    title and "Closes INFRA-108." in the commit body, but on main the
+    INFRA-108 entry actually reads "Audit and normalize all
+    ambient.jsonl emitters" (the gap I had filed minutes earlier in
+    PR #577). The hijack guard caught nothing because PR #578 did not
+    edit the existing INFRA-108 entry in docs/gaps.yaml - it only
+    referenced the ID in commit metadata. Ship pipeline auto-closure
+    relies on those trailers, so a wrong reference can flip the wrong
+    gap to done. Add a pre-push (or pre-commit, or bot-merge.sh) check
+    that parses Closes/Fixes/Resolves trailers and warns when the
+    referenced gap's title is materially unrelated to the PR title or
+    commit subject (cosine distance threshold, or an explicit allowlist
+    via "Closes-unrelated:" trailer). Pairs with INFRA-107 (closed_pr
+    TBD guard) and INFRA-111 (mandate closed_interpretation field) -
+    those guard the gap's own data; this guards the *reference* from a
+    PR.
+  acceptance_criteria:
+    - Pre-push or bot-merge hook parses commit message Closes/Fixes/Resolves trailers
+    - For each referenced gap ID, fetch its title from docs/gaps.yaml on origin/main
+    - Compute similarity vs PR title and commit subject; below threshold emit a warning with both texts
+    - Allow override via explicit Closes-unrelated trailer with justification
+    - Test - synthetic PR titled 'cleanup X' that Closes a gap titled 'audit Y' triggers the warning
+    - Documented in CLAUDE.md commit-time guards table
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 583
+

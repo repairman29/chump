@@ -1,0 +1,19 @@
+- id: RESEARCH-019
+  domain: research
+  title: Pre-registration protocol for all future eval gaps — docs/eval/preregistered/ infrastructure + pre-commit guard
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    Every existing EVAL-NNN gap records what the data showed, not what hypothesis was locked before the data was collected. This is fixable going forward via a preregistration protocol. Establish docs/eval/preregistered/ as the canonical location for one-page markdown preregistrations. Each new EVAL-* or RESEARCH-* gap that involves live data collection must land a preregistration file in that directory before its first live trial. Add a pre-commit guard that rejects any commit flipping a new EVAL-* or RESEARCH-* gap to status: done unless a corresponding docs/eval/preregistered/<gap-id>.md exists and was committed before the first trial JSONL in logs/ab/. Bypass: CHUMP_PREREG_CHECK=0 with explicit justification in the commit message. Low friction (~1 hour per gap); large credibility premium for publication.
+  acceptance_criteria:
+    - docs/eval/preregistered/ directory created with a TEMPLATE.md and a README.md describing the required fields
+    - TEMPLATE.md fields include — hypothesis, primary metric, stopping rule, expected effect size, analysis plan, exclusions, deviations (filled after data collection)
+    - "scripts/git-hooks/pre-commit extended with a preregistration check that fires on new EVAL-*/RESEARCH-* status:done commits"
+    - "CLAUDE.md pre-commit guards table gains a \"preregistration required\" row"
+    - Test fixture in scripts/test-preregistration-guard.sh mirroring the INFRA-015 pattern
+  notes: |
+    Single highest-leverage methodology infrastructure change in the critique. Every other RESEARCH-* gap depends on it. Ship first.
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §3
+  closed_date: '2026-04-21'
+

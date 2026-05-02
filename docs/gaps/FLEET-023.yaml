@@ -1,0 +1,33 @@
+- id: FLEET-023
+  domain: fleet
+  title: Cold Water sandbox ambient stream empty post-FLEET-019/020/021/022 — install step never executed
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    FLEET-017 (closed_pr: 629) was classified FIXED in Issue #8 on the grounds
+    that FLEET-019/020/021/022 shipped hook scripts and an installer
+    (scripts/setup/install-ambient-hooks.sh). However, .chump-locks/ambient.jsonl
+    in the Cold Water remote-sandbox session for Issue #9 contains exactly 2 events —
+    both session_start from the Cold Water agent itself. Zero operational events from
+    any sibling session. The hooks (ambient-context-inject.sh, ambient-session-end.sh)
+    exist on disk but are not wired into ~/.claude/settings.json in the sandbox
+    because install-ambient-hooks.sh is never invoked. The MANDATORY pre-flight in
+    CLAUDE.md still says `tail -30 .chump-locks/ambient.jsonl` and interprets output —
+    but in a fresh remote sandbox that output is always two session_start events.
+    FLEET-017's FIXED classification was premature: it shipped the hook infrastructure
+    but not the auto-install mechanism that would run the installer in a fresh sandbox
+    without operator intervention.
+    
+    Verified: `tail -50 .chump-locks/ambient.jsonl` output in this session:
+      {"ts":"2026-04-26T05:40:41Z","session":"chump-chump-1777182041","event":"session_start"}
+      {"ts":"2026-05-02T01:23:50Z","session":"chump-chump-1777685030","event":"session_start"}
+    
+    Five Cold Water cycles have now produced the same empty-ambient observation.
+    FLEET-006 (6 cycles), FLEET-017 (3 cycles, now re-FIXED), FLEET-023 (this cycle).
+  acceptance_criteria:
+    - Cold Water agent session sees ≥1 non-session_start ambient event from a sibling session within 5 minutes of start
+    - "Or: CLAUDE.md preflight section updated to document that ambient is filesystem-local-only in sandbox and no cross-machine signal is expected"
+    - "Whichever path: the empty-ambient observation is no longer a silent false negative"
+  opened_date: '2026-05-02'
+

@@ -1,0 +1,12 @@
+- id: MEM-001
+  domain: memory
+  title: Add cross-encoder reranker to final RRF retrieval output
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    The three-path retrieval (FTS5 + semantic + graph PPR) merges via RRF but has no reranking stage. A lightweight cross-encoder (e.g. ms-marco-MiniLM via candle or a local model) would improve precision without changing recall.
+  depends_on: [COG-002]
+  source_doc: docs/CHUMP_TO_COMPLEX.md, book/src/dissertation.md
+  closed_date: '2026-04-16'
+

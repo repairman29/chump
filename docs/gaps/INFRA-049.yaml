@@ -1,0 +1,19 @@
+- id: INFRA-049
+  domain: infra
+  title: CI dry-run gate for crate publishing (block on test failure)
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Add CI job that runs before release-plz publishes. Verifies all tests pass, cargo-audit is clean, and publishable crates have valid MSRV. Blocks publishing if any check fails. Layer 1.5 of release automation.
+  acceptance_criteria:
+    - New CI job runs on release-plz PR creation (before publish step)
+    - Publishing step is blocked if any test fails
+    - Job logs are visible in PR checks
+    - Dry-run publishes still work without triggering real publish
+  depends_on: [INFRA-048]
+  notes: |
+    Gating ensures no broken crates ship. Next: INFRA-050 (test first crate publish).
+  source_doc: docs/RELEASE_AUTOMATION_PLAN.md
+  closed_date: '2026-04-24'
+

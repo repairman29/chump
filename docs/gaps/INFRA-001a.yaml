@@ -1,0 +1,11 @@
+- id: INFRA-001a
+  domain: infra
+  title: Observability — count side effects from rolled-back speculative branches
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    First chunk of INFRA-001. Need a metric to know HOW OFTEN we roll back in-process state but leave file-system / external side effects orphaned. Today we silently lose that signal.
+  source_doc: src/speculative_execution.rs
+  closed_date: '2026-04-17'
+

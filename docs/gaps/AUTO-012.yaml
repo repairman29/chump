@@ -1,0 +1,12 @@
+- id: AUTO-012
+  domain: autonomy
+  title: DelegatePreProcessor — compress heavy tool output via worker model
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Phase 5.1/5.2 from ROADMAP_CLAUDE_UPGRADE.md. When CHUMP_DELEGATE_PREPROCESS=1 and CHUMP_DELEGATE_CONCURRENT=1, any tool whose output exceeds CHUMP_DELEGATE_PREPROCESS_CHARS (default 4000) is compressed by the worker model (run_delegate_summarize, 5 sentences) before the main orchestrator sees it. Prevents context- window blowout from run_cli / read_file / codebase_digest calls.
+  depends_on: [AUTO-011]
+  source_doc: docs/ROADMAP_CLAUDE_UPGRADE.md
+  closed_date: '2026-04-18'
+

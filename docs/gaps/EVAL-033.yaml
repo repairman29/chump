@@ -1,0 +1,14 @@
+- id: EVAL-033
+  domain: eval
+  title: Attention mitigation A/B — three candidate distractor-suppression strategies
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    EVAL-028 will quantify Chump's CatAttack vulnerability. EVAL-033 tests mitigations: (a) prefix-prompt anchor reminder ("ignore preceding irrelevant context"), (b) suffix-prompt restatement of the original ask, (c) fine-tuned attention via prompt structure. n=50 per mitigation × 2 model points.
+  depends_on: [EVAL-028]
+  notes: |
+    Cost ~$2 cloud. Wall ~2 days code + 1 hour sweep. Shipped design doc + harness --mitigation flag + control pilot n=20 + prefix-anchor partial (API load interrupted). Full sweep deferred — fixture may need to change to math/reasoning for CatAttack sensitivity. Null result documented with next-step recommendations.
+  source_doc: docs/RESEARCH_PLAN_2026Q3.md
+  closed_date: '2026-04-19'
+

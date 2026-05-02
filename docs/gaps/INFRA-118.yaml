@@ -1,0 +1,23 @@
+- id: INFRA-118
+  domain: infra
+  title: Verify chump-commit.sh actually resets unrelated staged files - doc claim unverified
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    CLAUDE.md hard rules state - "Use scripts/chump-commit.sh ... The
+    wrapper resets any unrelated staged files from OTHER agents before
+    committing so their in-flight WIP doesn't leak into your commit
+    (observed twice on 2026-04-17 - memory_db.rs stomp in cf79287,
+    DOGFOOD_RELIABILITY_GAPS.md stomp in a5b5053)." Audit on 2026-04-26
+    did not find a 'git reset' or equivalent unrelated-files-reset call
+    in scripts/chump-commit.sh. Either the behavior never landed, drifted
+    (regression), or is implemented under a different mechanism. The
+    described bug class (cross-agent staging leakage) is real and
+    important - confirm or fix.
+  acceptance_criteria:
+    - Read scripts/chump-commit.sh and document the actual reset behavior
+    - If absent - either implement the reset (git reset HEAD on files not in $@) or correct CLAUDE.md
+    - Add a test - stage two files in two different worktrees, run chump-commit.sh in one, verify the other's staged file is not in the resulting commit
+  opened_date: '2026-04-26'
+

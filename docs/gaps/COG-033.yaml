@@ -1,0 +1,10 @@
+- id: COG-033
+  domain: consciousness
+  title: Reflection → dynamic system prompt injection
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    reflection.rs explicitly defers prompt injection to V2 (lines 25-30 note 'V2 future feature'). context_assembly.rs draws from episodes, lessons, consciousness metrics, but not reflection output. Improvement targets produced by the reflection loop are stored but never fed back into runtime behaviour — the loop has no effect on future execution.
+  closed_date: '2026-04-16'
+

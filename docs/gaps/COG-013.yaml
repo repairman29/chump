@@ -1,0 +1,11 @@
+- id: COG-013
+  domain: consciousness
+  title: Intrinsic alignment override — contract-proof refusal of unsafe requests
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    When a user prompt conflicts with architectural invariants (skip verification, bypass approval, ignore safety), the agent complies or silently applies policy_override. No module produces a structured refusal with proof that the request violates the operational contract. Intrinsic directives should mathematically override extrinsic requests that break invariants.
+  depends_on: [AUTO-001, AUTO-005]
+  closed_date: '2026-04-16'
+

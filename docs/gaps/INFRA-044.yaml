@@ -1,0 +1,19 @@
+- id: INFRA-044
+  domain: infra
+  title: AI pre-audit dispatcher + static/license/CVE sweep (cargo-deny, cargo-audit, lychee, clippy-pedantic)
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    CPO-framing gap, Tier 3 — ship-risk hygiene. Wraps existing tools into scripts/audit/run-all.sh so the static-analysis slice of the expert panel runs as a single agent-invokable command. Scope: (1) dispatcher at scripts/audit/run-all.sh running cargo-deny, cargo-audit, cargo-udeps, cargo-machete, lychee (doc link-rot), cargo clippy --pedantic; (2) output aggregated to docs/audit/findings-YYYY-MM-DD.md with severity tiers; (3) auto-file gaps for critical findings (CVE, license conflict); (4) weekly CI wiring; (5) this gap surfaces only — fixes land as follow-up gaps from findings.
+  acceptance_criteria:
+    - scripts/audit/run-all.sh exists and runs all six tools
+    - Aggregated findings committed to docs/audit/findings-YYYY-MM-DD.md
+    - Weekly CI job scheduled
+    - At least one dry run produces findings.md on main
+    - Critical-severity findings auto-file new gaps
+  notes: |
+    P2 so it doesn't displace PRODUCT-015/016/017 (Tier 1) or PRODUCT-018/019 (Tier 2). Closes ~50% of reviewer roles
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
+

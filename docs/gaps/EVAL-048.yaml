@@ -1,0 +1,19 @@
+- id: EVAL-048
+  domain: eval
+  title: "Metacognition ablation sweeps: run EVAL-043 bypass-flag A/B at n>=100 — belief_state, surprisal, neuromod"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    EVAL-043 shipped three bypass flags (CHUMP_BYPASS_BELIEF_STATE, CHUMP_BYPASS_SURPRISAL, CHUMP_BYPASS_NEUROMOD) but never ran the actual ablation sweeps. docs/eval/EVAL-043-ablation.md says "Infrastructure shipped — sweeps pending" and marks claims about these modules PROHIBITED until n>=100 cross-family sweeps complete. This gap runs those sweeps: (1) create scripts/ab-harness/run-ablation-sweep.py that runs Cell A (full stack) vs Cell B (bypass flag set) for each of the three modules, using existing DEFAULT_TASKS fixtures, claude-haiku-4-5 agent, cross-family judge panel; (2) write results to docs/eval/EVAL-048-ablation-results.md with per-module Wilson 95% CIs; (3) update docs/eval/EVAL-043-ablation.md status from "sweeps pending" to the measured verdict; (4) update CHUMP_FACULTY_MAP.md Metacognition row with numeric evidence. Decision rules: if all three modules show no significant accuracy delta, Metacognition is COVERED+VALIDATED. If any module shows net-negative delta (accuracy loss with module ON), file a follow-up gap to disable it. Budget: ~$6 cloud (3 modules x n=50/cell x 2 cells x 2 models).
+  acceptance_criteria:
+    - scripts/ab-harness/run-ablation-sweep.py exists with --module flag (belief_state|surprisal|neuromod|all)
+    - docs/eval/EVAL-048-ablation-results.md with n>=50/cell per module, Wilson CIs, verdict per module
+    - CHUMP_FACULTY_MAP.md Metacognition row updated with numeric evidence
+    - "docs/eval/EVAL-043-ablation.md status updated from \"sweeps pending\""
+  notes: |
+    Harness infrastructure confirmed working. Architecture caveat documented: bypass flags affect chump binary only, not direct API. Direct-API harness establishes noise floor (delta=0.0 for all three modules, A/A equivalent). Module isolation sweeps require running via chump binary (commands in docs/eval/EVAL-043-ablation.md). All four acceptance criteria met.
+  source_doc: docs/eval/EVAL-043-ablation.md
+  closed_date: '2026-04-20'
+  closed_pr: 255
+

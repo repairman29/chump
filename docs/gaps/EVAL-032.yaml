@@ -1,0 +1,14 @@
+- id: EVAL-032
+  domain: eval
+  title: Perception layer ablation A/B — does chump-perception help, hurt, or noise?
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Per RESEARCH_PLAN_2026Q3.md Sprint 1, the chump-perception crate is exercised in every full agent run but its contribution is never measured in isolation. EVAL-032 ablates: cell A perception layer active, cell B bypassed (raw prompt only). Cross-family judges, n=50 reflection + n=50 perception fixtures, claude-haiku-4-5 + one Qwen size point. Decision rule: if perception adds correctness > +0.05 noise floor, validated. If noise or negative, file followup to redesign or remove.
+  notes: |
+    Add --bypass-perception flag to harness (~1 day). Sweep ~$3 cloud, 1 hour wall.
+  source_doc: docs/RESEARCH_PLAN_2026Q3.md
+  closed_date: '2026-04-20'
+  closed_pr: 206
+

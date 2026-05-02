@@ -1,0 +1,21 @@
+- id: INFRA-047
+  domain: infra
+  title: Dependency modernization audit — clear CVEs and security blockers
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Audit and upgrade dependencies to clear security vulnerabilities before release-plz integration (INFRA-048). Phase 1 (blocking): fix rustls-webpki CVEs (RUSTSEC-2026-0104/0098/0099/0049) and evaluate RSA timing attack (RUSTSEC-2023-0071). Phase 2: remove deprecated async-std, declare MSRV for publishable crates, add CI job for MSRV verification.
+  acceptance_criteria:
+    - Upgrade rustls-webpki to ≥0.103.13 for all publishable crates (chump-tool-macro, chump-coord, chump-perception)
+    - Evaluate RSA timing attack impact; document decision (keep/migrate)
+    - Remove unused async-std dependency
+    - Declare MSRV (minimum supported Rust version) in Cargo.toml for each publishable crate
+    - Add CI job to verify MSRV using `cargo +nightly msrv`
+    - Run cargo-audit, cargo-deny, cargo-udeps; zero RUSTSEC for lib crates
+  notes: |
+    Serenity 0.12 (Discord support) pulls old rustls 0.22.4 → webpki 0.102.8 (vulnerable). Not used in publishable crates, so doesn't block lib publishing. Documented as technical debt; serenity replacement tracked in PRODUCT-013. RSA 0.9.10 (Marvin attack) is server-side VAPID signing only (non-critical); acceptable as known risk with local-access requirement. async-std removed; unused legacy dependency.
+  source_doc: docs/MODERNIZATION_AUDIT.md
+  closed_date: '2026-04-24'
+  closed_pr: 496
+

@@ -1,0 +1,14 @@
+- id: AUTO-013
+  domain: auto
+  title: Chump-orchestrator mode — dogfood meta-loop for self-dispatching
+  status: done
+  priority: P1
+  effort: xl
+  description: |
+    A Chump session that dispatches other Chump sessions on parallel gaps, monitors them via chump-coord NATS + gh pr list, harvests outcomes into reflection_db, and feeds back into PRODUCT-006 + eval_harness so the system learns to orchestrate itself over time. MVP ships external-subprocess dispatch only, depth-1, max-parallel=4, soft-deadline kill on 2x effort estimate. See design doc for full architecture, MVP scope, acceptance criteria, and the AUTO-013-A..D follow-up sub-gaps for the 4-week post-MVP build (lesson-aware dispatch, eval_harness sweep arm, hybrid in-process fast path, recursion+budget).
+  depends_on: [PRODUCT-006, MEM-006]
+  notes: |
+    ~10 working days MVP after design lands. Hardest unknown: gap mis-classification at scale; MVP mitigation = auto_dispatch_ok tag on gaps before orchestrator picks them.
+  source_doc: docs/AUTO-013-ORCHESTRATOR-DESIGN.md
+  closed_date: '2026-04-19'
+

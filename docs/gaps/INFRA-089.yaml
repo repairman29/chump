@@ -1,0 +1,29 @@
+- id: INFRA-089
+  domain: infra
+  title: stale-branch reaper workflow + script (prune claude/* and worktree-* with no open PR + last-commit > 14d)
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Sister to stale-pr-reaper.sh (which closes stale PRs whose gaps landed
+    on main). This closes the *other* leak: branches pushed but never
+    opened a PR, or whose PR was closed without merging, that now sit
+    around forever burning ref-list bandwidth and cluttering
+    `git branch -r` output.
+    
+    Implementation:
+    - scripts/stale-branch-reaper.sh — defaults to dry-run; --execute
+      actually deletes refs. Considers branches matching claude/* and
+      worktree-* (override via BRANCH_PATTERNS env). Never touches main.
+    - .github/workflows/stale-branch-reaper.yml — weekly schedule
+      (Mondays 12:00 UTC) + workflow_dispatch with execute toggle.
+      Permissions: contents:write (delete refs), pull-requests:read.
+    - Branch is safe (skipped) if it has an open PR; otherwise reapable
+      after STALE_DAYS_THRESHOLD days since last commit (default 14d).
+  acceptance_criteria:
+    - scripts/stale-branch-reaper.sh exists and is executable
+    - Default mode is dry-run; --execute required to delete refs
+    - Open PRs always protect their head branch from reaping
+    - Workflow runs weekly on cron + supports manual workflow_dispatch
+    - main is never deletable
+

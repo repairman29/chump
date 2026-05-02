@@ -1,0 +1,18 @@
+- id: FLEET-010
+  domain: fleet
+  title: Help-seeking protocol — agent requests help when blocked
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Agent encounters a blocker (timeout, missing capability, unknown task class) → posts help request to "chump/help-requests" → other agents see and can claim help task. Schema: help_request_id, parent_gap, original_agent, blocker_type (timeout/capability/unknown_class), description, posted_at, claimed_by, status. Help-seeking triggers: (1) agent timeout (execution > 60min), (2) missing model capability (task requires family X, agent has family Y), (3) unknown task class (not in agent's supported_task_classes). Original agent blocks (waits) or continues in parallel depending on urgency.
+  acceptance_criteria:
+    - Agent detects blocker condition (timeout, capability mismatch, unknown class)
+    - "Agent posts help request to \"chump/help-requests\" with structured blocker_type"
+    - Other agents see help request and can claim it
+    - Help task completes and result merged back into original gap
+  depends_on: [FLEET-009]
+  notes: |
+    Semantic question: should blocking be synchronous (agent waits) or async (agent continues, help happens in parallel)? Recommend: async for time blockers, sync for capability gaps (need the answer before proceeding).
+  source_doc: docs/FLEET_VISION_2026Q2.md
+

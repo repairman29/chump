@@ -1,0 +1,31 @@
+- id: META-005
+  domain: META
+  title: P0 open-but-landed pattern — three P0 gaps shipped but never closed
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Three P0 gaps shipped implementation commits this cycle but remain status:open:
+      - PRODUCT-024: PR #697 commit body says "PRODUCT-024: close as done (closed_pr=697)"
+        but docs/gaps.yaml shows status:open, no closed_pr.
+      - INFRA-183: all sub-tasks shipped (INFRA-184 PR#701, INFRA-185 PR#704,
+        PRODUCT-024 PR#697, INFRA-199 PR#710) but umbrella shows status:open.
+      - SECURITY-004: 1 of 6 advisories closed via SECURITY-005 (PR#682);
+        5 remain (rand, glib, 3 rustls-webpki paths); no upgrade commits.
+    
+    This is the third cycle where P0 gaps ship partial or full implementation
+    without formal closure. INFRA-107 (closed_pr integrity guard) was filed
+    precisely to prevent false closures — but it does not prevent the inverse:
+    true implementations that are never formally closed.
+    
+    The pattern: agents write "close as done" in commit bodies but do not run
+    `chump gap ship <ID> --closed-pr <N> --update-yaml`. The gap registry
+    accumulates P0-tagged open entries that are actually done, misleading the
+    next agent session about what is truly unstarted.
+  acceptance_criteria:
+    - "PRODUCT-024 shows status:done with closed_pr:697 in docs/gaps.yaml"
+    - "INFRA-183 shows status:done with a closed_pr in docs/gaps.yaml"
+    - "SECURITY-004 has an implementation commit addressing the remaining 5 advisories OR shows status:done with a documented resolution"
+    - "AGENTS.md / CLAUDE.md ship pipeline section updated with explicit reminder: 'close the gap in state.db after the PR merges, not just in the commit body'"
+  opened_date: '2026-05-02'
+

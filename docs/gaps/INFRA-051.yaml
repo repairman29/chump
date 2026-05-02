@@ -1,0 +1,15 @@
+- id: INFRA-051
+  domain: infra
+  title: queue-driver — drain in parallel (max=5) to absorb cron unreliability
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Bumps the queue-driver workflow's default `--max` from 1 to 5. With only one PR refreshed per fire, queue throughput is bottlenecked on cron firing reliably every 5 minutes. GitHub Actions' scheduled cron is best-effort: on 2026-04-25 we observed a 2h47m gap (00:08Z → 02:57Z) where no scheduled fire occurred at all, leaving 4 BEHIND PRs stranded and requiring a manual `gh workflow run`. Bumping max to 5 means each fire (push-to-main from a merge, schedule, or dispatch) drains the full BEHIND set in parallel — they all run fresh CI concurrently and the next merge cascades. Cron unreliability stops mattering.
+  acceptance_criteria:
+    - queue-driver.yml default `--max` is 5 (not 1)
+    - "workflow_dispatch input default updated from \"1\" to \"5\""
+    - non-dispatch triggers (push, schedule) pass `--max 5` even when inputs is empty
+  depends_on: [INFRA-048, INFRA-QUEUE-DRIVER-APP-TOKEN]
+  closed_date: '2026-04-25'
+

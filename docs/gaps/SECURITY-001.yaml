@@ -1,0 +1,18 @@
+- id: SECURITY-001
+  domain: infra
+  title: Verify rotation status of leaked Together + Anthropic API keys (Red Letter
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    Red Letter Issue #1 named a live Together API key (tgp_v1_Z_OJykKz-DGyKlp9lCPiX6hhVmwNLz8-p6nrWuhN1ik) committed to config/config.yaml in commit fba4b11 — permanent in git history. ANTHROPIC_API_KEY across 4 commits in config/prod.yaml (86cc884, e618bb0, cf05ce5, 62db274). EVAL-068 doc later mentioned tgp_v1_* returning HTTP 403 — possibly already rotated, but unverified. This gap closes the verification loop: confirm rotation status of every named key, document in a private internal note (NOT committed), and verify all leaked keys are now invalid.
+  acceptance_criteria:
+    - "For each named leaked key: attempt API call with key, confirm 401/403 (rotated) or escalate (still live)"
+    - "If still live: rotate immediately at provider dashboard, then re-verify"
+    - docs/SECURITY-001-key-rotation-audit.md (PUBLIC, no key material) summarizes verification protocol + outcome (rotated yes/no per key)
+    - config/ added to root .gitignore via INFRA-018
+  notes: |
+    P0 because credential exposure is unbounded-cost. ~1 hour. Red Letter #1 ONE BIG THING. Do NOT commit verification responses or keys to git — keep audit trail private; only rotation outcome is public.
+  source_doc: docs/RED_LETTER.md Issue
+  closed_date: '2026-04-20'
+

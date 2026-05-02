@@ -1,0 +1,11 @@
+- id: AGT-003
+  domain: agent
+  title: "Per-tool execution timeout with tokio::time::timeout"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    A single hung tool (network request, slow shell command) blocks the entire tool batch and therefore the agent loop indefinitely. No timeout is enforced today — only the global max_iterations cap. This causes sporadic CI flakes (golden-path test hangs) and degraded UX when a tool is slow.
+  source_doc: src/agent_loop/tool_runner.rs
+  closed_date: '2026-04-17'
+

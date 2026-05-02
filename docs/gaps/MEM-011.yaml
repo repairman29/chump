@@ -1,0 +1,11 @@
+- id: MEM-011
+  domain: memory
+  title: Causal graph edge obsolescence — invalidate stale causal chains
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    CausalGraph edges in counterfactual.rs never expire. When an API changes or a tool is deprecated, old high-strength causal chains remain active and generate regressive lessons. MEM-002 decays flat memory confidence but does not touch graph edges.
+  depends_on: [MEM-002, COG-004]
+  closed_date: '2026-04-16'
+

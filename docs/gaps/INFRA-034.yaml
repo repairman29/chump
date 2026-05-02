@@ -1,0 +1,18 @@
+- id: INFRA-034
+  domain: infra
+  title: "Cleanup: revert agent debug edits, fix voice-feature thiserror gate, add piped-stdin single-turn"
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Concurrent cursor/opencode agents left uncommitted edits in the main worktree (rule violation): six eprintln!("[*_debug] ...") tracing the skip_tools_first_call path in src/agent_loop/{orchestrator,iteration_controller}.rs and src/local_openai.rs, plus a Cargo.toml `atty = "0.2.14"` dep that is unmaintained (RUSTSEC-2021-0145) and unused (main.rs already uses std::io::IsTerminal). Two of the edits are real fixes worth salvaging: (a) `voice = ["thiserror"]` feature gate + optional thiserror dep — voice.rs already imports thiserror so the voice feature was broken at HEAD; (b) embed_inprocess.rs match→if let clippy cleanup; (c) piped-stdin single-turn mode in main.rs so `echo "hi" | chump` runs one turn and exits. Revert the debug spam, drop atty, salvage the three fixes. Also rename 7 mis-pathed eval-runs archive dirs whose absolute path got doubled into the directory name (handled in a follow-up PR; data is intact).
+  acceptance_criteria:
+    - src/agent_loop/{orchestrator,iteration_controller}.rs and src/local_openai.rs match origin/main (no eprintln debug)
+    - Cargo.toml has no atty dep
+    - "Cargo.toml `voice = [\"thiserror\"]` and `thiserror` is an optional dep"
+    - "src/main.rs uses std::io::IsTerminal to detect piped stdin and runs a single agent turn before exiting interactive mode"
+    - src/embed_inprocess.rs test uses if-let-Ok instead of match
+    - cargo check + cargo fmt --check + cargo clippy pass on default features and on --features voice
+  source_doc: "CLAUDE.md hard-rule (\"never work in main worktree\") audit, 2026-04-23"
+  closed_date: '2026-04-24'
+

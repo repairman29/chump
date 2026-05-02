@@ -1,0 +1,11 @@
+- id: FRONTIER-004
+  domain: frontier
+  title: Dynamic autopoiesis — temporary workspace merge/split between fleet agents
+  status: deferred
+  priority: P3
+  effort: xl
+  description: Same as FLEET-003. Fleet implementation track for workspace merge protocol.
+  depends_on: [FLEET-001, FLEET-002]
+  notes: Duplicate of FLEET-003 for frontier tracking.
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+

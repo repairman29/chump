@@ -1,0 +1,12 @@
+- id: FLEET-004c
+  domain: fleet
+  title: Passive emission — Claude Code PostToolUse hooks for file edits
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    File edits are the primary activity signal between agents. Claude Code supports PostToolUse hooks in .claude/settings.json that fire after every Edit/Write/Bash tool call. Wiring ambient-emit.sh into these hooks means every file edit and significant tool call emits passively — the agent doesn't need to think about it.
+  depends_on: [FLEET-004a]
+  source_doc: .claude/settings.json
+  closed_date: '2026-04-17'
+

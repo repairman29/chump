@@ -1,0 +1,11 @@
+- id: COMP-004d
+  domain: competitive
+  title: Matrix adapter via matrix-rust-sdk
+  status: deferred
+  priority: P3
+  effort: m
+  description: |
+    Fourth (lowest-priority) chunk of COMP-004. Matrix is federated and end-to-end encrypted; the SDK is mature but harder to operate than Telegram/Slack. Defer until Telegram + Slack land and there's a user request.
+  depends_on: [COMP-004a]
+  source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+

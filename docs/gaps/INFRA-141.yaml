@@ -1,0 +1,23 @@
+- id: INFRA-141
+  domain: infra
+  title: scripts/setup/deploy-fleet.sh references undefined $REPO_ROOT
+  status: open
+  priority: P3
+  effort: xs
+  description: |
+    scripts/setup/deploy-fleet.sh defines `ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"`
+    at line 27, then references `$REPO_ROOT` at lines 59 and 169 to invoke
+    `bash "$REPO_ROOT/scripts/dev/fleet-health.sh"`. `$REPO_ROOT` is never
+    defined in this script (set -u would fail; without it the path resolves
+    to `/scripts/dev/fleet-health.sh`).
+    
+    Likely a linter rewrite that mass-substituted `$ROOT` → `$REPO_ROOT`
+    without checking the variable's definition in this specific script.
+    Quick fix: either rename the local var to `REPO_ROOT` (consistent with
+    other scripts) or change both refs back to `$ROOT`.
+  acceptance_criteria:
+    - deploy-fleet.sh passes shellcheck (no undefined var references)
+    - fleet-health.sh invocations resolve to repo-relative path
+    - "--health flag actually runs the health check (currently broken)"
+  opened_date: '2026-04-26'
+

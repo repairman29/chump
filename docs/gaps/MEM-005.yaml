@@ -1,0 +1,12 @@
+- id: MEM-005
+  domain: memory
+  title: Episode extractor — synthesise durable facts from episodes into blackboard
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Phase 8.1 from ROADMAP_CLAUDE_UPGRADE.md. Background pass that scans recent chump_episodes entries, calls the delegate worker to extract one durable fact per episode, and writes the result to chump_blackboard_persist. A chump_blackboard_cursor table tracks the highest processed episode_id so the pass is idempotent — re-running never re-extracts the same episode.
+  depends_on: [MEM-004]
+  source_doc: docs/ROADMAP_CLAUDE_UPGRADE.md
+  closed_date: '2026-04-18'
+

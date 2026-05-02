@@ -1,0 +1,12 @@
+- id: AUTO-008
+  domain: autonomy
+  title: Task decomposition — large tasks split into verified subtasks
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    Large/vague tasks are executed as a monolith. No automated decomposition into subtasks with per-subtask acceptance criteria and verification.
+  depends_on: [AUTO-002]
+  source_doc: docs/AUTONOMY_ROADMAP.md
+  closed_date: '2026-04-16'
+

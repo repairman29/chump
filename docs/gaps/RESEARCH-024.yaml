@@ -1,0 +1,19 @@
+- id: RESEARCH-024
+  domain: research
+  title: Multi-turn degradation curve run — ship the EVAL-044 fixture against belief_state on/off × haiku/sonnet
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    EVAL-044 designed a 10-turn debug scenario with coherence and belief-drift rubrics. The fixture exists; it has never been run. This gap runs it at n=30 per cell across belief_state on/off × haiku-4-5/sonnet-4-5, measuring turn-level accuracy decay. Plot turn × accuracy curves per cell. Test hypothesis: belief_state flattens the late-turn decay curve. This is the first multi-turn evidence Chump will have; publishable framing is "When memory modules actually help: a turn-level analysis" — a conditional claim (helps in trajectory-dependent tasks after turn N) is more defensible than an aggregate claim.
+  acceptance_criteria:
+    - n=30 × 10 turns × 4 cells = 1200 per-turn observations total
+    - docs/FINDINGS.md gains turn-level accuracy plot with per-cell Wilson CIs per turn
+    - "Preregistered hypothesis — \"belief_state reduces accuracy decay between turn 5 and turn 10 by at least Δ\" — locked per RESEARCH-019 before first trial"
+    - If belief_state flattens the decay curve on sonnet only and not haiku, publish as a tier-conditional memory finding
+    - Reference-rate analysis per RESEARCH-022 applied to check whether agent actually uses the injected belief_state
+  depends_on: [RESEARCH-019, RESEARCH-022]
+  notes: |
+    Paper-3 foundation. Budget ~$60 cloud. Novel dimension — no prior Chump finding is multi-turn.
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §7
+

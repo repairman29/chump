@@ -1,0 +1,22 @@
+- id: INFRA-126
+  domain: infra
+  title: chump-coord test coverage limited to distributed_mutex - no reconnect/replay/ordering tests
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    crates/chump-coord/tests/ has distributed_mutex.rs (FLEET-007 proof)
+    and now ambient_distribution.rs (FLEET-006 round-trip). Critical
+    properties still untested - (a) NATS reconnect behavior when the
+    server restarts mid-session, (b) JetStream message ordering under
+    concurrent publishers, (c) replay correctness when a subscriber
+    joins late, (d) backpressure / slow-consumer handling. Failures in
+    any of these would silently corrupt the coordination layer that
+    INFRA-MERGE-QUEUE and FLEET-007 depend on.
+  acceptance_criteria:
+    - Reconnect test - publish, kill NATS, restart, verify subscriber resumes
+    - Ordering test - N concurrent publishers, single subscriber, assert per-publisher order preserved
+    - Late-join replay test - subscribe with deliver_policy=All after N messages, assert all are received
+    - Slow consumer test - subscriber with artificial delay, verify no message loss within JetStream max_age
+  opened_date: '2026-04-26'
+

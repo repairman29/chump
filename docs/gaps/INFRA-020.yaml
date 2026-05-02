@@ -1,0 +1,18 @@
+- id: INFRA-020
+  domain: infra
+  title: Close concurrent-gap-ID invention hole in process docs + preflight
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    Three agents independently invented the same next-free gap ID (INFRA-016, then INFRA-017, then INFRA-018) in overlapping sessions. gap-preflight.sh only warned on "not found in gaps.yaml" instead of blocking, so every concurrent inventor passed preflight and shipped conflicting PRs. Fix: (1) gap-preflight.sh hard-fails on unregistered IDs unless CHUMP_ALLOW_UNREGISTERED_GAP=1 is set (escape hatch for the filing PR itself). (2) AGENT_LOOP.md + CLAUDE.md explicit rule: file-then-claim, never file-and-claim in one session. (3) AGENT_LOOP.md Autonomy section updated to make the file-first flow the expectation.
+  acceptance_criteria:
+    - "scripts/gap-preflight.sh: unregistered ID triggers FAILED=1 with a red error, unless CHUMP_ALLOW_UNREGISTERED_GAP=1"
+    - "docs/AGENT_LOOP.md: Rules-that-matter-most table includes the file-first rule with INFRA-016/017/018 link as rationale"
+    - docs/AGENT_LOOP.md Autonomy §1 clarifies file-then-claim flow and points at the bypass env
+    - CLAUDE.md mandatory-preflight section states the same constraint at the claim step
+  notes: |
+    P0 because process erosion compounds — every additional week without this guard means more wasted agent-hours on collision PRs + reverts. Small code change, large collision-prevention value.
+  source_doc: 2026-04-20 live session — INFRA-016/017/018 collision chain
+  closed_date: '2026-04-22'
+

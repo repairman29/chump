@@ -1,0 +1,19 @@
+- id: EVAL-043
+  domain: eval
+  title: Ablation suite — belief_state, surprisal EMA, neuromod each in isolation
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    The central claim "Chump's cognitive architecture improves agent performance" requires that the individual architectural components contribute positively. Currently only the lessons block (a prompt-injection mechanism, not a cognitive module) has been tested. Surprisal EMA is in CHUMP_RESEARCH_BRIEF.md as "Confirmed" based on evals showing deltas ≈ 0 with a second-LLM rescore of −0.10 to −0.30. Belief state and neuromodulation are unablated. This gap runs three independent A/B sweeps:
+      A: belief_state.rs enabled vs disabled (CHUMP_BELIEF_STATE=0)
+      B: surprisal EMA enabled vs disabled (CHUMP_SURPRISAL=0)
+      C: neuromod signal enabled vs disabled (CHUMP_NEUROMOD=0)
+    Each at n=50, reflection + neuromod fixtures, cross-family judge.
+  depends_on: [EVAL-042]
+  notes: |
+    ~$15 cloud + 2 days. This is the single most impactful research action remaining. Without it, the "cognitive architecture" thesis cannot be defended.
+  source_doc: docs/RESEARCH_INTEGRITY.md
+  closed_date: '2026-04-20'
+  closed_pr: 210
+

@@ -1,0 +1,14 @@
+- id: INFRA-MERGE-QUEUE
+  domain: infra
+  title: Enable GitHub merge queue — serialize auto-merges atomically against current main
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Today's PR #128 needed a manual rebase before merge because main had moved ahead 9 commits during the PR's life. Multi-agent dispatch makes this constant — every PR will be BEHIND on landing attempt. GitHub's native merge queue feature serializes auto-merge requests, automatically rebasing each PR onto the current main before running CI and merging. Eliminates the "BEHIND" failure mode entirely. Combined with INFRA-PUSH-LOCK, makes auto-merge safe by construction (no more squash-eats-commits per PR #52 pattern from strategic memo).
+  notes: |
+    ~1 hour settings change + 1 hour testing + ~2 hours docs/script update. Single highest-leverage change in the multi-agent dispatch architecture. References: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-19'
+  closed_pr: 136
+

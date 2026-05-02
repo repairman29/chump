@@ -1,0 +1,18 @@
+- id: PRODUCT-009
+  domain: product
+  title: External publication of F1-F6 empirical findings (preprint or blog post)
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Five empirical findings (F1 Scaffolding U-curve, F2 lessons-block halluc inflation +0.14 pp at 10.7x A/A noise floor, F3 cross-arch neuromod harm task-cluster localization, F4 cross-judge disagreement instantiating the question, F5 systematic LLM-vs-human judge bias map) plus one transferable technique (F6 few-shot exemplar + ship-rule unlocks OSS models for agent loops, PR #224 existence proof) are consolidated in docs/FINDINGS.md as of 2026-04-20. None have been externalized as preprint, blog post, or talk. The project's research-integrity discipline is top-decile in agent-framework space; the public-visibility path is empty. This mismatch is the single highest-leverage opportunity for the project's external positioning. Choose a venue and ship one publication-quality artifact. Candidates in priority order: (a) 2,000-word blog post centered on F1 U-curve + F6 technique (easiest, broadest reach), (b) ArXiv preprint covering F1 + F2 + F5 (formal, higher-authority, longer lead time), (c) HN-ready writeup + thread (fastest signal loop, lowest commitment). One venue this quarter, not all three at once.
+  acceptance_criteria:
+    - Venue selected with explicit rationale (which finding set, which audience, which tradeoff)
+    - Draft reviewed against docs/RESEARCH_INTEGRITY.md standard — no overclaim, CIs present, honest-limits section included, n and kappa values preserved from source
+    - Draft reviewed by one external reader (Gemini reviewer or other) for clarity before publication
+    - "Publication goes live with a URL in docs/FINDINGS.md \"How to cite\" section"
+    - docs/FINDINGS.md replication-invitation text updated to point external readers to the published artifact
+  notes: |
+    ~1-2 weeks for blog post option, ~4-6 weeks for preprint. No technical dependency; blocked only on writer bandwidth. Single highest-leverage single gap in the project right now per 2026-04-20 strategic review — closes the 'top-decile methodology, zero external visibility' gap. 2026-04-22 integrity fix: reopened from `status: done` because **zero** acceptance rows were satisfied (`closed_pr: TBD`, no live publication URL in FINDINGS, draft still pre-external-review). See docs/RED_LETTER.md Issue #4. Prior mistaken closure date 2026-04-20 exists only in git history.
+  source_doc: docs/FINDINGS.md + 2026-04-20 gold-mining review
+

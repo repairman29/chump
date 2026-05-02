@@ -1,0 +1,51 @@
+- id: INFRA-178
+  domain: infra
+  title: PWA chat bubble concatenates multi-round responses — clear text on model_call_start
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    The PWA chat frontend (`web/v2/chat.js`) accumulates SSE `text_delta`
+    events into a single `fullText` variable per turn, rendered into one
+    bubble. When the agent loop runs multiple model rounds within a turn
+    (legitimate tool-use cases, OR pre-INFRA-177 narration retries), each
+    round's text streams into the SAME bubble — concatenated without
+    separator.
+    
+    Discovered alongside INFRA-177 (chump_web_messages turn 547,
+    2026-05-01 00:18:54): the user saw 3 different "I can do various
+    things…" responses concatenated into one bubble:
+      "I can perform various tasks like coding, debugging, researching,
+      and automating repetitive work. […] Let me know what you need help
+      with!I can perform various tasks and tricks like coding, debugging,
+      research, automating repetitive work, and even teaching you new
+      skills. […] Want to see a specific trick or task in action?I can
+      perform various coding tasks, manage project files, run shell
+      commands […]"
+    
+    INFRA-177 fixed the FALSE-POSITIVE retries (the 3-round "what cool
+    tricks" turn now runs in 1 round). But legitimate multi-round turns
+    — e.g. the agent calls a tool, gets a result, then calls the model
+    again to summarize — would still hit this bubble-concat bug. The
+    user would see two prose chunks fused into one paragraph with no
+    visual break.
+    
+    Fix: on the `model_call_start` SSE event handler in chat.js, clear
+    `fullText` and reset the bubble innerHTML. Each round renders its
+    own text into a fresh bubble (or a sub-bubble in the same message
+    block). Ideally: append a thin separator + "Round N" label so the
+    user can see when the agent took a tool-use detour.
+    
+    Backend already emits `AgentEvent::ModelCallStart { round: N }` per
+    `streaming_provider.rs:74`; frontend already handles it (chat.js
+    line 234) but only updates the thinking-line hint — doesn't clear
+    fullText.
+  acceptance_criteria:
+    - On model_call_start event, web/v2/chat.js clears fullText and the bubble innerHTML
+    - Multi-round responses appear as N separate text blocks in the bubble (or N stacked bubbles), not concatenated
+    - "Optional: a thin separator showing 'Round N' between blocks so the user understands the structure"
+    - "test-tauri-e2e or a new web smoke test verifies multi-round behavior — either: (a) inject a forced 2-round response into the SSE stream and assert the rendered DOM has 2 distinct text blocks, OR (b) live-fire a turn that triggers tool use + summary and assert both texts are visible separately"
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 711
+

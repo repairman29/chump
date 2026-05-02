@@ -1,0 +1,12 @@
+- id: COMP-004c
+  domain: competitive
+  title: Slack adapter via Socket Mode
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Third chunk of COMP-004. Slack-morphism for events API + slash commands. Same MessagingAdapter pattern as Discord/Telegram.
+  depends_on: [COMP-004a]
+  source_doc: scripts/run-discord.sh
+  closed_date: '2026-04-18'
+

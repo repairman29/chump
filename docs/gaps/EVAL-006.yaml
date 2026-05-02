@@ -1,0 +1,12 @@
+- id: EVAL-006
+  domain: eval
+  title: scripts/battle-qa.sh --with-judge integration
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    EVAL-005 added LlmJudge properties to 3 seed cases. Remaining bash-level work: scripts/battle-qa.sh gains a --with-judge flag that routes eval runs through check_all_properties_with_judge_async and persists judge_score to chump_eval_runs.scores_json, then prints the per-category summary using average_judge_score_per_category().
+  depends_on: [EVAL-005]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

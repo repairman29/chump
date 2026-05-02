@@ -1,0 +1,28 @@
+- id: INFRA-076
+  domain: infra
+  title: Test <test@test.com> co-author in 29+ commits — document identity or purge from history
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Cold Water Issue #7 (2026-04-26): every one of the last 29+ observed commits
+    on origin/main carries `Co-authored-by: Test <test@test.com>` in the commit
+    body. Cold Water Issue #5 flagged "Test" as 21 commits under that primary author
+    identity. Issue #6 classified this FIXED, having checked only the primary author
+    field (all 50 recent commits showed repairman29 as author). The co-author trailer
+    was not checked. The "Test" identity was not eliminated — it shifted from primary
+    author to co-author, appearing in the Co-authored-by trailer of every subsequent
+    commit. docs/AGENT_COORDINATION.md §3a documents three attribution identities:
+    Chump Dispatched, Cold Water, and human Jeff Adkins. Test <test@test.com> has no
+    entry. An unidentified co-author with a test-placeholder email appears on every
+    commit this project ships. This must be identified (is it a bot identity? a CI
+    system? an OAuth token?), added to the attribution table if legitimate, or
+    stripped from future commits if it is a misconfiguration. Red Letter #5 noted 21
+    commits (33%) from Test as primary author; Red Letter #6 falsely closed the issue.
+  acceptance_criteria:
+    - Identity of Test <test@test.com> is documented in AGENT_COORDINATION.md §3a
+    - If it is a misconfiguration, bot-merge.sh or the dispatch pipeline strips it from future commits
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 642
+

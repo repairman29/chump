@@ -1,0 +1,23 @@
+- id: RESEARCH-031
+  domain: research
+  title: Strategic research docs are orphan - STRATEGIC_MEMO and RESEARCH_INTEGRITY have no owner_gap
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    docs/STRATEGIC_MEMO_2026Q2.md (innovation watchpoint - JEPA, AMI Labs)
+    and docs/RESEARCH_INTEGRITY.md (binding methodology - n>=50,
+    non-Anthropic judge, A/A baseline, mechanism analysis, prohibited
+    claims) both have empty owner_gap fields. Cold Water Issue #5
+    explicitly flagged the strategic memo as an orphan. With no owner
+    gap, there is no scheduled re-review, no acceptance criteria, no
+    way to audit whether the project is actually engaging with these
+    standards. File explicit owning gaps that schedule cycle reviews
+    and track concrete actions tied to each doc's recommendations.
+  acceptance_criteria:
+    - STRATEGIC_MEMO_2026Q2.md gets an owner_gap (this gap or a child) and a quarterly review cadence
+    - RESEARCH_INTEGRITY.md gets an owner_gap that schedules audit of recent EVAL/RESEARCH closures against the methodology table
+    - Pre-commit guard or CI check warns when a docs/STRATEGIC_*.md or docs/RESEARCH_INTEGRITY*.md is modified without updating its owner_gap activity
+    - First cycle review writes a one-paragraph status note to the owner gap's notes field
+  opened_date: '2026-04-26'
+

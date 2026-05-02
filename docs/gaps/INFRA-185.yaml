@@ -1,0 +1,13 @@
+- id: INFRA-185
+  domain: infra
+  title: Phase-level timing breakdown — compaction / provider / tools ms on existing [timing] logs (INFRA-183 sub)
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Add phase-level timing instrumentation: compaction_ms / provider_ms / tools_ms on top of the existing [timing] stream_request_ms log lines at src/local_openai.rs:1021/1124/1133 and src/agent_loop/orchestrator.rs:129. So we can see where the agent loop spends its time per turn, not just the LLM round-trip.
+  depends_on: [INFRA-183]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 704
+

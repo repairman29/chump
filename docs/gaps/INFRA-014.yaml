@@ -1,0 +1,17 @@
+- id: INFRA-014
+  domain: infra
+  title: Duplicate-ID pre-commit guard — block insert of recycled gap IDs
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    The existing duplicate-ID guard (INFRA-GAPS-DEDUP) catches two entries with the same id in one staged file. The hijack guard catches title/description rewrites on an existing id. Neither catches the case where a commit flips a closed gap back to status:open under the same id — effectively recycling the id for new work. This gap adds a recycled-ID check that compares each id's status between origin/main and the staged file and rejects done->open transitions.
+  acceptance_criteria:
+    - "scripts/git-hooks/pre-commit rejects a commit that flips an id from status:done on origin/main back to status:open"
+    - Benign done-gap edits (adding resolution_notes) still pass
+    - Genuinely new ids are still accepted
+    - CHUMP_GAPS_LOCK=0 bypasses the check
+    - scripts/test-recycled-id-guard.sh covers all four cases and passes
+  source_doc: CLAUDE.md pre-commit guard table — coverage gap between duplicate-ID and hijack guards
+  closed_date: '2026-04-21'
+

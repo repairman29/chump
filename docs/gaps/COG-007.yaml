@@ -1,0 +1,11 @@
+- id: COG-007
+  domain: consciousness
+  title: Wire structured reflection (GEPA) into prompt assembly
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    reflection.rs produced typed Reflection / ImprovementTarget artifacts but had no DB persistence and no prompt injection — the typed analysis was throwaway. Pillar 4 of the autonomy stack (GEPA self-reflection) was essentially dead code.
+  source_doc: docs/NEXT_GEN_COMPETITIVE_INTEL.md
+  closed_date: '2026-04-17'
+

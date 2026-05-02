@@ -1,0 +1,12 @@
+- id: AUTO-004
+  domain: autonomy
+  title: Autonomy driver process — cron-friendly single-task-per-run loop
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    scripts/autonomy-cron.sh exists but the driver that pulls briefing/tasks, sends one prompt, streams events, and persists logs is not fully implemented. Without it, cron-based autonomous work cannot make measurable progress.
+  depends_on: [AUTO-002]
+  source_doc: docs/AUTONOMY_ROADMAP.md
+  closed_date: '2026-04-17'
+

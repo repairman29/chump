@@ -1,0 +1,22 @@
+- id: INFRA-123
+  domain: infra
+  title: Reflection-row fields not consistently populated across dispatch paths
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    src/reflection_db.rs writes rows for every gap completion. CLAUDE.md
+    documents specific tag conventions - notes prefix 'backend=<label>'
+    (COG-025) and 'flags=cog_NNN' (COG-* experiments). Cold Water-style
+    queries depend on these tags being present. Audit which dispatch
+    paths actually populate which tags - if some emitters skip the
+    backend tag, the COG-026 A/B aggregator splits will be undercounted
+    or biased. Likely affects the chump-orchestrator dispatch path,
+    direct 'claude -p' invocations, and chump --execute-gap.
+  acceptance_criteria:
+    - Audit every reflection-row emit site - list the tags each writes
+    - Add a schema or assertion that required tags are present at write time
+    - Backfill missing tags on historical rows where possible (or document the gap in measurements)
+    - CLAUDE.md table of required tags per emitter path
+  opened_date: '2026-04-26'
+

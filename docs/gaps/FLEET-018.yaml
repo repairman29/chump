@@ -1,0 +1,23 @@
+- id: FLEET-018
+  domain: fleet
+  title: Audit all scheduled remote agents for NATS ambient subscription wiring
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    FLEET-017 covers Cold Water specifically. There may be other
+    scheduled remote triggers (gardener, journalist, tech writer per
+    project_doc_infrastructure.md, plus any one-off triggers the operator
+    has set). All of them face the same blindness FLEET-017 describes -
+    they cannot see local agent activity unless they subscribe to NATS.
+    Sweep RemoteTrigger list, audit each prompt, and either wire NATS
+    in or document why a given agent is intentionally local-only.
+  acceptance_criteria:
+    - List every active scheduled remote trigger (RemoteTrigger action=list)
+    - For each, classify - needs cross-machine ambient (yes/no) and current state (subscribed/not)
+    - Update prompts of yes/not-subscribed agents to add chump-coord watch
+    - Document the audit result in docs/AGENT_COORDINATION.md
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 635
+

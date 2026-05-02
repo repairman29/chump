@@ -1,0 +1,20 @@
+- id: RESEARCH-020
+  domain: research
+  title: Ecological fixture set — 100 real-world tasks scraped from open-source GitHub issues and PRs
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    Every current Chump fixture was hand-authored by the same person who designed the cognitive modules. Classic Goodhart risk. This gap ships an ecological fixture set — 100 tasks scraped from real open-source repositories (issues, PRs, code review threads) and converted to Chump fixture JSON format. Re-run the top-3 current findings (tier-dependent injection, hallucination channel, scaffolding U-curve) on the ecological fixtures. Report delta between synthetic-author-graded results and ecological-blind- scored results. Either outcome is publishable (Paper 2). The concern is that author-graded fixtures may inflate all published deltas; this gap rules that in or out.
+  acceptance_criteria:
+    - 100-task ecological fixture set published at scripts/ab-harness/fixtures/ecological_v1.json
+    - Tasks sourced from ≥5 different open-source repositories spanning ≥3 domains (systems, web, ML tooling)
+    - Top-3 findings re-run at n=50/cell on the ecological fixture set
+    - "Docs/FINDINGS.md gains an \"ecological replication\" table with per-finding deltas"
+    - If any delta shrinks by >50% going from synthetic to ecological, flag it explicitly in FINDINGS.md as an author-graded-fixture limitation
+    - Preregistered per RESEARCH-019 before re-running
+  depends_on: [RESEARCH-019]
+  notes: |
+    Paper-2 foundation. Largest single-gap effort in the program (~2 weeks for fixture curation). Can partially overlap with Paper-1 work since the ecological fixtures are independent of the length-matched control.
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §2
+

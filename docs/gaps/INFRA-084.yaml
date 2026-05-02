@@ -1,0 +1,37 @@
+- id: INFRA-084
+  domain: infra
+  title: stop appending to gaps.yaml in PRs (write to state.db, regen on merge queue)
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    Every gap-filing PR today appends a YAML block to the bottom of
+    docs/gaps.yaml. With multiple sessions in flight (typical: 4-8 concurrent
+    worktrees), every PR collides with every other PR at the bottom append
+    region — manifesting as DIRTY merge state requiring rebase + manual
+    conflict resolution. The 2026-04-26 session forced 4 rebases on PRs 554,
+    557, 558 alone; conflict resolution is mechanical (keep both blocks)
+    but eats minutes per rebase and loses pre-push hook protection (need
+    CHUMP_AUTOMERGE_OVERRIDE=1 + CHUMP_GAP_CHECK=0 to push the rebase).
+    
+    Root cause: docs/gaps.yaml is a flat append-only list and the lease
+    system gates per-file ownership but cannot gate same-region edits when
+    leases don't overlap in time. INFRA-023 already shipped the SQLite gap
+    store at .chump/state.db as the canonical store; gaps.yaml is just a
+    git-readable mirror. The two-store discipline was supposed to be
+    "PRs write to state.db, dump to YAML for review", but in practice every
+    PR still hand-edits gaps.yaml.
+    
+    Proposed fix: PRs that file/close gaps write to .chump/state.db only.
+    A merge-queue hook (or pre-merge action) regenerates gaps.yaml from
+    state.db on the queue's temp branch right before squash. The squashed
+    commit on main contains the regenerated YAML; PR branches never touch
+    it. Implementation surface: GitHub Actions workflow on merge_group event
+    that runs `chump gap dump --out docs/gaps.yaml && git commit --amend
+    --no-edit -a` if the diff is non-empty.
+  acceptance_criteria:
+    - PRs filing/closing gaps modify .chump/state.db (and .chump/state.sql for review) but not docs/gaps.yaml
+    - GitHub Actions merge_group workflow regenerates docs/gaps.yaml from state.db before squash
+    - bot-merge.sh refuses to add docs/gaps.yaml to a PR's diff (warn + exit 1)
+    - Documentation updated in CLAUDE.md and AGENTS.md
+

@@ -1,0 +1,15 @@
+- id: COG-027
+  domain: cognition
+  title: Task-aware ask-vs-execute policy — gate clarifying questions on task type
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    EVAL-029 drilldown found that the perception "ask one clarifying question" directive actively hurts on conditional-chain tasks (dynamic-05-policy-confront: −75pp). EVAL-030 ships task-class-aware gating for the lessons block but not for the clarification directive. Current behavior: the perception sensor always suggests asking a clarifying question on ambiguous prompts, even on procedural tasks where the user clearly wants execution. The policy should be task-dependent: ask on genuinely ambiguous tasks (intent unclear), suppress on procedural tasks (steps are clear, intent is obvious).
+  depends_on: [EVAL-030]
+  notes: |
+    ~1 day. Pairs with EVAL-030's existing task-class detector. The ask- vs-execute trade-off is the same mechanism EVAL-029 diagnosed for neuromod — worth fixing at the same time.
+  source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+  closed_date: '2026-04-20'
+  closed_pr: 212
+

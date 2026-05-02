@@ -1,0 +1,14 @@
+- id: INFRA-EXPERIMENT-CHECKPOINT
+  domain: infra
+  title: Experiment-config checkpoint — versioned harness state per A/B sweep
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Today's harness keeps mutating: LESSONS_BLOCK constants change across PRs, judge panel evolves, agent dispatch added together:/ ollama: prefixes, retry budgets bumped after DNS outage. An old summary.json can't be reproduced bit-exact by re-running on current code. Snapshot harness config at every sweep: git SHA + env-var fingerprint + LESSONS_BLOCK content hash + judge panel + retry policy. Embed in summary.json header so each result is reproducible from its own metadata.
+  notes: |
+    ~3 days. Pays off when future you (or external researchers) wants to re-run a 2026-Q2 sweep on a 2027-Q1 codebase to test for regression.
+  source_doc: session 2026-04-19 reproducibility audit
+  closed_date: '2026-04-20'
+  closed_pr: 220
+

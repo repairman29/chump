@@ -1,0 +1,23 @@
+- id: REL-002
+  domain: reliability
+  title: Ollama upstream stability on 24GB M4 (upstream blocker)
+  status: blocked
+  priority: P0
+  effort: xs
+  description: |
+    Ollama 0.20.7 segfaults under dogfood load on 24GB M4. Server responds 500 after ~13s and restarts. Triggered by concurrent cargo builds + inference competing for unified memory. Not fixable from Chump (upstream bug); tracked here for visibility + workaround documentation.
+  notes: |
+    Workarounds:
+      1. CHUMP_BRAIN_AUTOLOAD= (empty) — avoids the autoload pile-up.
+      2. Avoid concurrent cargo builds while inference is hot.
+      3. Use qwen2.5:7b instead of 14b — fits comfortably under 24 GB.
+      4. scripts/ollama-watchdog.sh (NEW, since this gap was filed) —
+         detects the crash signature (process gone / API timeout / log
+         panic) within DETECT_WINDOW_SEC and auto-restarts. Run as a
+         daemon: `scripts/ollama-watchdog.sh --loop` in a tmux pane,
+         or wire into a launchd plist for unattended sessions.
+      5. Monitor Ollama release notes; flip this gap to done when an
+         upstream version reports the segfault fixed under sustained
+         load.
+  source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
+

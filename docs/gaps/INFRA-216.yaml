@@ -1,0 +1,36 @@
+- id: INFRA-216
+  domain: infra
+  title: "chump gap reserve: cross-host race against merge-queue arrivals — atomic picker only protects within-host"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    'chump gap reserve' uses INFRA-100's atomic next-ID picker, which reads
+    all 4 sources on the local host (state.db, open PRs, live leases, main
+    YAML). It does NOT git fetch first. So if a sibling agent on the same
+    host or remote landed a PR that added a new gap row to docs/gaps.yaml
+    on origin/main BETWEEN your last fetch and your reserve, the picker
+    assigns an ID that's already taken on origin/main.
+    
+    Reproducer (observed 2026-05-02 in the INFRA-177 closure session):
+      1. Agent A FFs main, runs 'chump gap reserve --domain INFRA' → returns INFRA-200
+      2. Agent B's PR (e0ab7e7, e.g.) lands on origin/main with INFRA-200 already assigned
+      3. Agent A surgically inserts INFRA-200 into YAML and tries to commit
+      4. Pre-commit gap-ID-hijack guard catches the title mismatch → reject
+      5. Recovery: sqlite3 DELETE the poisoned local row + chump gap import + reserve again (gets INFRA-208)
+    
+    Fix paths:
+      (a) 'chump gap reserve' calls 'git fetch origin main --quiet' before
+          the atomic pick (slow when offline; needs careful timeout)
+      (b) 'chump gap reserve' reads origin/main's gaps.yaml via
+          'git show origin/main:docs/gaps.yaml' (no network, but stale until
+          next fetch)
+      (c) Pessimistic ID picker: skip N additional IDs as a safety buffer
+          when the local picker hasn't fetched in >5min
+      (d) Document the failure mode + recovery in CLAUDE.md so agents know
+          to git fetch + chump gap import before reserve
+  acceptance_criteria:
+    - Under stress test of 3+ concurrent reserve calls split across local DB + simulated origin/main updates, no ID collision occurs OR the collision is detected at reserve-time (not at commit-time)
+    - Recovery procedure documented in CLAUDE.md if collision detection is reactive rather than preventative
+  opened_date: '2026-05-02'
+

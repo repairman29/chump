@@ -1,0 +1,21 @@
+- id: PRODUCT-012
+  domain: product
+  title: PWA rebuild spike — framework choice + shell skeleton for web/
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    web/ currently ships as vanilla JS flat files (index.html, desktop-bridge.js, ootb-wizard.js, sse-event-parser.js, sw.js, ui-selftests.js). Last feature commit 9132265 (2026-04-04, COMP-005a-fe image-paste). Jeff's verdict: "it just needs rebuilt." Scope: (1) consume PRODUCT-011's "rebuild principles"; (2) pick a framework — recommendation: keep vanilla or use htmx/lit (preserves air-gap + zero-build story), avoid React/Vue/Svelte monoliths unless PRODUCT-011 strongly argues for one; (3) ship a new web/v2/ skeleton with just the app shell: header, chat pane, tool-call sidebar, model picker, status strip. No actual functionality — just the IA. Hook feature-flag CHUMP_PWA_V2=1 to serve v2 instead of flat files so we can A/B live. Preserve service worker + manifest.json (PWA install on mobile). Must run offline (air-gap North Star promise) and install as a PWA on iOS + Android.
+  acceptance_criteria:
+    - web/v2/ directory with app shell (no features beyond nav)
+    - "Opens cleanly at http://localhost:<chump-port>/v2 with CHUMP_PWA_V2=1"
+    - Passes air-gap test — throttle to offline, reload — shell still renders
+    - Installable as PWA on iOS Safari + Android Chrome (manifest + SW work)
+    - docs/PRODUCT-012-rebuild-decision.md records framework choice + reasoning tied back to PRODUCT-011
+    - Old web/ flat files remain untouched — v2 is additive until feature-parity
+  depends_on: [PRODUCT-011]
+  notes: |
+    Rebuild spike, not feature implementation. Follow-ups (chat pane wire-up, tool-call UI, etc.) file as PRODUCT-013..N.
+  source_doc: web/index.html
+  closed_date: '2026-04-21'
+

@@ -1,0 +1,23 @@
+- id: INFRA-125
+  domain: infra
+  title: chump-cost-tracker has zero tests - cost ceiling correctness unverified
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    crates/chump-cost-tracker/ exposes pub APIs (check_ceiling,
+    session_cost_usd, record_provider_call, record_completion) used to
+    enforce per-session spend caps and to attribute cost across providers.
+    There is no tests/ subdirectory and no integration coverage. A
+    regression that off-by-one errors the ceiling, attributes Together
+    spend to OpenAI, or fails to record a completion would not be
+    caught until the bill arrives. Add unit + integration tests covering
+    ceiling enforcement, multi-provider attribution, and completion
+    recording.
+  acceptance_criteria:
+    - Unit tests for check_ceiling boundary conditions (under/at/over)
+    - Integration test for record_provider_call across at least 2 provider labels
+    - Integration test that a session crossing the ceiling rejects further dispatch
+    - All dispatch paths (claude, chump-local, orchestrator) verified to call record_*
+  opened_date: '2026-04-26'
+

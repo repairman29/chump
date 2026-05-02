@@ -1,0 +1,10 @@
+- id: COG-012
+  domain: consciousness
+  title: ASI telemetry — token log-probabilities + resource spikes in reflection
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    Reflection consumes stderr and tool outcomes only. High-fidelity Actionable Side Information requires token-level log-probabilities (to detect model uncertainty mid-generation), per-tool memory/latency spikes, and compiler warning counts as structured signals. Zero logprob tracking exists anywhere.
+  closed_date: '2026-04-16'
+

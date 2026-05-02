@@ -1,0 +1,15 @@
+- id: EVAL-031
+  domain: eval
+  title: Search-Augmented Reasoning patterns — AutoRefine + policy trajectories evaluation
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    The 2026 frontier-reasoning architecture trend per Gemini letter synthesis: "Search-Augmented Reasoning (SAR) — retrieval is no longer a preprocessing step but a tool managed within a multi-step reasoning trajectory. AutoRefine introduces explicit knowledge refinement steps between search calls. Policy-Driven Trajectories orchestrate the entire process — when to search, which granularities, when to adapt." Chump's current memory_db retrieval is single-shot preprocessing (load all → keyword filter → inject). No iterative refinement, no policy-driven re-search. Retrieval may be hitting KID (covered by EVAL-027) AND being insufficient at scale (this gap). Open question: is multi-step retrieval even necessary at Chump's typical context size, or is it solving a problem we don't have? Worth evaluating before investing in implementation.
+  depends_on: [MEM-005]
+  notes: |
+    Reference paper: AutoRefine (https://openreview.net/forum?id=rBlWKIUQey). ~1 week of literature reading + small evaluation. Could decide to defer if the value isn't clear at Chump scale (we don't currently have multi-hop QA as a primary use case).
+  source_doc: external (Gemini AGI letter; AutoRefine arxiv)
+  closed_date: '2026-04-20'
+  closed_pr: 238
+

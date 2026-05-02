@@ -1,0 +1,18 @@
+- id: FLEET-14
+  domain: fleet
+  title: "FLEET dev loop design note: Docker NATS, async-nats integration tests, FLEET-007 first"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Docs-only design note scoping how FLEET-006/007/008 will be developed and tested on a single dev machine before any Pi-cluster deployment. Picks the dev primitives (Docker NATS container on 127.0.0.1:4222), the test approach (async-nats + serial_test, hermetic bucket names, distributed mutex assertion via N concurrent tokio tasks), and recommends starting with FLEET-007 because (a) most prototyped — chump-coord already has the KV-create atomic claim implemented, (b) closes the highest-cost race documented by INFRA-042, (c) acceptance is a single property assertion. No implementation ships in this PR.
+  acceptance_criteria:
+    - docs/FLEET_DEV_LOOP_DESIGN.md exists and is reachable from FLEET vision docs
+    - dev loop is reproducible from the doc (single docker run command)
+    - starting gap recommendation is justified against alternatives
+  notes: |
+    Design-note gap; no code change. Pairs with the INFRA-042 multi-agent stress report which empirically demonstrated the missing distributed mutex.
+  source_doc: docs/FLEET_DEV_LOOP_DESIGN.md
+  opened_date: '2026-04-25'
+  closed_date: '2026-04-25'
+

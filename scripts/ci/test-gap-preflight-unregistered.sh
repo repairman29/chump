@@ -15,8 +15,10 @@ if [[ "$rc" -ne 1 ]]; then
     echo "$out" >&2
     exit 1
 fi
-if ! echo "$out" | grep -q "not found in docs/gaps.yaml"; then
-    echo "expected 'not found in docs/gaps.yaml' in stderr" >&2
+# INFRA-188: gap-preflight.sh now emits "not found in gap registry (docs/gaps/ or docs/gaps.yaml)"
+# to cover both per-file and monolithic layouts. Match either form.
+if ! echo "$out" | grep -qE "not found in (docs/gaps\.yaml|gap registry)"; then
+    echo "expected 'not found in docs/gaps.yaml' or 'not found in gap registry' in output" >&2
     echo "$out" >&2
     exit 1
 fi

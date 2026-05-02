@@ -1,0 +1,25 @@
+- id: INFRA-100
+  domain: infra
+  title: Unify gap reserve flow across SQLite DB, open PRs, and live leases - single atomic next-ID picker
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    The 4-way INFRA-087..090 collision on 2026-04-26 (PRs #565/#566/#568/#569,
+    captured by ambient ALERT id_collision_4way at 18:10:00Z) showed that
+    'chump gap reserve' (state.db) and 'scripts/gap-reserve.sh' (gaps.yaml)
+    pick IDs from different sources, and neither consults open PR titles.
+    INFRA-082 covers title similarity; this gap is the broader fix: a single
+    next-ID picker that scans (a) .chump/state.db, (b) docs/gaps.yaml,
+    (c) open PR titles via 'gh pr list', and (d) .chump-locks/*.json
+    pending_new_gap entries - atomically, with a flock - and returns the
+    first ID free in all four. Both the Rust path and the shell wrapper
+    must call this single function.
+  acceptance_criteria:
+    - "One Rust function gap::reserve_next_id(domain) is the only ID picker"
+    - scripts/gap-reserve.sh shells out to that function (no parallel logic)
+    - Picker reads state.db + gaps.yaml + gh pr list --state open + lease pending_new_gap
+    - flock-protected so two concurrent reservations cannot pick the same ID
+    - Test reproduces the INFRA-087..090 4-way collision and shows it now picks 4 distinct IDs
+  opened_date: '2026-04-26'
+

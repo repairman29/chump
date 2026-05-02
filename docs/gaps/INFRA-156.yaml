@@ -1,0 +1,29 @@
+- id: INFRA-156
+  domain: infra
+  title: chump gap set/ship needs --closed-pr flag for INFRA-107 guard
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    The pre-commit closed_pr integrity guard (INFRA-107, 2026-04-26)
+    requires `closed_pr: <numeric>` in the same diff that flips a gap
+    to `status: done`. But `chump gap set` has no `--closed-pr` flag
+    (only --status, --closed-date, --notes, etc.) and `chump gap ship`
+    doesn't accept a PR number either. Result: every status flip is
+    `chump gap set --status done --closed-date YYYY-MM-DD` followed by
+    a hand-edit of docs/gaps.yaml to insert `closed_pr: NNN` before
+    commit. Three of those today (INFRA-112, INFRA-113, INFRA-080).
+    
+    Fix: add `--closed-pr <N>` to `chump gap set` (and threading through
+    the SQLite schema if not already present) so a single command writes
+    every field the INFRA-107 guard checks. Ideally `chump gap ship
+    <ID> --closed-pr <N>` becomes the one-liner the closer-PR workflow uses.
+  acceptance_criteria:
+    - "`chump gap set <ID> --closed-pr <N>` writes closed_pr field to SQLite"
+    - "`chump gap dump` / `chump gap ship --update-yaml` emit closed_pr in the YAML row"
+    - "`chump gap ship <ID> --closed-pr <N> --update-yaml` is sufficient for a complete status-flip closer PR (no hand-edit needed)"
+    - "Test: round-trip — set closed_pr, dump, re-import, dump again — closed_pr preserved byte-stable (per INFRA-112 guarantees)"
+  opened_date: '2026-04-28'
+  closed_date: '2026-04-28'
+  closed_pr: 637
+

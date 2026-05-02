@@ -1,0 +1,13 @@
+- id: COG-025
+  domain: cognition
+  title: Dispatch-backend pluggability — route orchestrator subagents via Together (free tier)
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    chump-orchestrator's dispatch.rs spawns `claude -p` subprocess = pure Anthropic spend (~$1-2 per PR shipped). Together has frontier- adjacent free-tier models (Qwen3-235B-A22B-Instruct-2507-tput, Llama-3.3-70B-Instruct-Turbo) fully capable per EVAL-026 cross- architecture immunity data. The structural blocker: `claude` CLI is Anthropic-only — cannot redirect to Together. Need a different subagent binary that drives the full multi-turn agent loop with OPENAI_API_BASE pointed at Together. Path: expose Chump's own src/agent_loop/ as a dispatchable CLI (`chump --execute-gap <GAP-ID>` or similar). The agent_loop already uses OpenAI-compatible backends (mistral.rs, Ollama, Together) — wiring + a new main.rs entry point.
+  notes: |
+    ~1-2 days. Biggest unknown: whether Together-hosted Qwen3-235B can actually drive a multi-turn tool-use loop end-to-end. EVAL-026 validated it for text-only; tool-use loop hasn't been A/B-tested. COG-026 (filed alongside) is the empirical validation gap that closes that loop.
+  source_doc: session 2026-04-19 cost-routing discussion
+  closed_date: '2026-04-19'
+

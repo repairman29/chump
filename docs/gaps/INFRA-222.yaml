@@ -1,0 +1,21 @@
+- id: INFRA-222
+  domain: infra
+  title: "docs-delta guard `Net-new-docs:` trailer escape hatch is unreachable at pre-commit time"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Pre-commit fires BEFORE git writes COMMIT_EDITMSG, so the docs-delta
+    trailer check always reads the PREVIOUS commit's message. The trailer
+    escape hatch documented in the guard's comment is unreachable for ALL
+    forms of git commit. Only two escape paths work: (a) doc-swap (1 add +
+    1 delete in same commit, net 0) or (b) CHUMP_DOCS_DELTA_CHECK=0 env
+    bypass. Surfaced during INFRA-158 test-writing. Filed as INFRA-208
+    (was duplicate INFRA-202 due to concurrent-branch ID collision with
+    INFRA-202 fleet-sccache gap filed in commit 6d21b33; resolved by
+    renumbering this entry to INFRA-208).
+  acceptance_criteria:
+    - Either trailer check moved to commit-msg hook and test-docs-delta-guard.sh adds trailer test case that PASSES
+    - OR trailer mechanism removed from pre-commit; CLAUDE.md guards table updated to list only doc-swap and env-bypass
+  opened_date: '2026-05-02'
+

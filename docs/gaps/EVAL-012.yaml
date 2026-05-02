@@ -1,0 +1,13 @@
+- id: EVAL-012
+  domain: eval
+  title: Multi-turn conversation A/B — does framework effect compound or wash out
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Every cognitive-layer A/B in the repo is single-shot (one prompt → one response). Production agents loop over 3-10+ turns with tool use. The framework's value (or harm) likely compounds over turns — single-shot A/Bs cannot measure this. We are not measuring the thing we deploy.
+  notes: |
+    TEST-CAT-A in docs/eval/TEST_BACKLOG.md. Likely needs new harness (run-cloud-v2.py is single-shot only). Could fork to run-cloud-multiturn.py that drives a loop. Per-trial cost is ~5x single-shot.
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

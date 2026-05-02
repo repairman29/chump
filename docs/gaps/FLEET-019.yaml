@@ -1,0 +1,12 @@
+- id: FLEET-019
+  domain: fleet
+  title: Ambient-on-spawn matrix wiring umbrella — auto-inject stream into every new agent
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Umbrella for ambient-on-spawn matrix wiring: every new Claude/chump agent immediately taps into .chump-locks/ambient.jsonl + cross-machine NATS stream as system context, not via manual tail per CLAUDE.md. Builds on FLEET-004 (write side) and FLEET-006 (NATS bridge); fills the read-on-spawn injection gap and adds PreToolUse re-injection at flow points + a one-command installer.
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 696
+

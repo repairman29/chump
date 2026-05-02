@@ -1,0 +1,14 @@
+- id: INFRA-BOT-MERGE-LOCK
+  domain: infra
+  title: bot-merge.sh marks worktree shipped; chump-commit.sh refuses to commit after
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Atomic-PR discipline ("agent finishes all work, ships, never touches branch again") needs tooling enforcement. Today an agent can run bot-merge.sh, then commit + push more, eating its own commits via squash-merge. Solution: bot-merge.sh writes a .bot-merge-shipped marker file in the worktree on successful ship. chump-commit.sh refuses to commit if marker exists (with bypass via CHUMP_SHIPPED_OVERRIDE=1). Forces "PR shipped, this worktree is dead, move on to next gap" workflow. The auto-worktree-reaper (INFRA-WORKTREE-REAPER) then reaps the shipped worktree once main contains the merge commit.
+  depends_on: [INFRA-WORKTREE-REAPER]
+  notes: |
+    ~half day. Small change, big multi-agent discipline win. Reference: scripts/bot-merge.sh, scripts/chump-commit.sh.
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-20'
+

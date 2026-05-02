@@ -1,0 +1,15 @@
+- id: INFRA-DISPATCH-FAULT-INJECTION
+  domain: infra
+  title: Fault-injection test mode for chump-orchestrator dispatch
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Today's autonomy test exposed the orchestrator's failure-handling via real Anthropic API failure. Want to validate the same paths without burning real API credit. Add a fault-injection test mode that wraps the Spawner trait — returns synthetic 5xx after K seconds, returns synthetic exit code != 0, returns synthetic timeout, etc. Lets test suite verify INFRA-CHUMP-API-RETRY behavior + monitor watchdog behavior + reflection write paths under adverse conditions.
+  depends_on: [INFRA-CHUMP-API-RETRY]
+  notes: |
+    ~3 hours. Important for hardening before AUTO-013-A (lesson-aware dispatch) builds on top.
+  source_doc: docs/archive/2026-04/AUTONOMY-TEST-2026-04-19.md
+  closed_date: '2026-04-20'
+  closed_pr: 188
+

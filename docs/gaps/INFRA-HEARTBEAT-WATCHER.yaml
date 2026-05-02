@@ -1,0 +1,15 @@
+- id: INFRA-HEARTBEAT-WATCHER
+  domain: infra
+  title: Heartbeat / liveness daemon — restart silent long-running sweeps
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    EVAL-026c local 7B → 14B sweep runs for hours. If the parent session disconnects mid-sweep, the agent dies silently — work in progress is wasted. ambient.jsonl already has `silent_agent` ALERT type but nobody is watching today. Need a daemon that subscribes to silent_agent ALERTs, reads the dead session's last lease state, and either (a) restarts the sweep with --resume from last checkpoint, or (b) escalates if --resume isn't supported. Also handles network-disconnect / OOM / ssh-tunnel-died failure modes that lose long sweeps.
+  depends_on: [INFRA-AGENT-ESCALATION]
+  notes: |
+    ~1 week. Lower priority than escalation/dispatch policy — most sweeps complete within a session and this is mainly for the multi-hour local-tool sweeps. Becomes higher priority once we run nightly background sweeps.
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-20'
+  closed_pr: 228
+

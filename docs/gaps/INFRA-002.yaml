@@ -1,0 +1,13 @@
+- id: INFRA-002
+  domain: infra
+  title: Sandbox hardening — command allowlist, disk budget, CI git requirements
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    sandbox_run (CHUMP_SANDBOX_ENABLED=1) exists but lacks: allowlist of safe command patterns beyond heuristic_risk High block, max worktree disk budget, documented Mac vs CI git requirements.
+  notes: |
+    CHUMP_SANDBOX_ALLOWLIST: case-insensitive substring match; rejects non-matching commands with clear Err. CHUMP_SANDBOX_DISK_BUDGET_MB: default 500; post-run du -sk check; warning logged + surfaced in tool output. 4 serial tests (env var isolation). WASM_TOOLS.md: new "Sandbox prerequisites" section documenting CHUMP_SANDBOX_ENABLED, all env vars, Mac vs CI differences, git requirements. Note: CI teardown job remains a nice-to-have but acceptance criteria met.
+  source_doc: docs/ROADMAP_POST_PHASE_F.md
+  closed_date: '2026-04-16'
+

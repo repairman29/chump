@@ -1,0 +1,32 @@
+- id: INFRA-079
+  domain: infra
+  title: Pre-commit hook for EVAL/RESEARCH gap closure — require cross-judge audit or explicit waiver
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    Process review (2026-04-26): EVAL-074 PR #549 shipped a mechanism claim
+    ("DeepSeek over-compliance, -30pp gotcha regression p=0.0007") based on a
+    single Llama-3.3-70B judge. The cross-judge audit (PR #551) flipped the
+    finding to a Llama-judge artifact (κ=0.40, gotcha 52% agreement). Cost of
+    the retraction: ~$1.50 + half a day + three follow-up amendment PRs (#552,
+    #554, this gap). The standing rule from the EVAL-074-AUDIT doc — "any
+    claim that depends on judge labels must include a cross-judge audit on the
+    same JSONL before it is stamped as a result" — is documented but not
+    enforced. Fix: pre-commit hook that, when an EVAL-* or RESEARCH-* gap is
+    set to status: done, requires one of (a) a `cross_judge_audit:` field
+    referencing JSONL artifact(s) under `logs/ab/` with at least two judges
+    from different families, OR (b) `single_judge_waived: true` with a
+    `single_judge_waiver_reason:` field, OR (c) a preregistration explicitly
+    declaring single-judge scope. Bypass: CHUMP_CROSS_JUDGE_CHECK=0 with
+    justification (mirrors CHUMP_PREREG_CHECK=0 pattern).
+  acceptance_criteria:
+    - scripts/git-hooks/pre-commit blocks EVAL-*/RESEARCH-* gap closures missing cross-judge evidence or explicit waiver
+    - "docs/RESEARCH_INTEGRITY.md links to the new guard and lists it under \"Required Methodology Standards\""
+    - At least one regression test under scripts/test-cross-judge-guard.sh covering pass/fail/waiver cases
+    - "CHUMP_CROSS_JUDGE_CHECK=0 escape hatch documented in CLAUDE.md \"Pre-commit guards\" table"
+  depends_on: [EVAL-074]
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 625
+

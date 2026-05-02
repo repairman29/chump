@@ -1,0 +1,19 @@
+- id: COMP-004
+  domain: competitive
+  title: Multi-platform messaging gateway — Telegram/Slack/Signal/WhatsApp
+  status: done
+  priority: P2
+  effort: xl
+  description: |
+    Hermes serves 18+ messaging platforms. Chump has Discord + web PWA. Missing: Telegram, Slack, WhatsApp, Signal, Matrix. Limits deployability for teams and personal use across platforms.
+  depends_on: [COMP-002]
+  notes: |
+    Decomposed into sub-gaps for incremental delivery:
+      COMP-004a — extract MessagingAdapter trait from src/discord.rs
+      COMP-004b — Telegram adapter (teloxide; webhook + polling modes)
+      COMP-004c — Slack adapter (slack-morphism; bolt-style events)
+      COMP-004d — Matrix adapter (matrix-rust-sdk)
+    Signal/WhatsApp deferred (no viable Rust SDK as of 2026-04).
+  source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+  closed_date: '2026-04-18'
+

@@ -1,0 +1,41 @@
+- id: INFRA-138
+  domain: infra
+  title: Phase 3 follow-up — fix relative-path scripts broken by reorg (supersedes PR
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    PR #587 (INFRA-135 Phase 3 scripts/ reorg) failed required CI on 4 jobs because
+    the move from `scripts/<name>.sh` to `scripts/<subdir>/<name>.sh` broke 155
+    scripts that resolved repo root via `dirname/..`:
+    
+      ROOT="$(cd "$(dirname "$0")/.." && pwd)"          # was repo root, now scripts/
+    
+    Failures observed:
+      - mdBook verify (build-and-linkcheck) — sync-book-from-docs.sh `cp` from wrong CWD
+      - mdBook verify (sync-idempotency)    — same
+      - test (Verify web/index.html inline JS parses) — verify-web-index-inline-scripts.cjs
+        looked for scripts/web/index.html
+      - ACP protocol smoke test — test-acp-smoke.sh exec'd ./target/debug/chump from
+        scripts/ instead of repo root → empty output → `FAIL: No output from chump --acp`
+    
+    This PR (1) supersedes #587 by including all 290 Phase 3 moves AND (2) bumps
+    `dirname/..` → `dirname/../..` in 153 bash scripts and adds an extra `'..'`
+    to 2 .cjs files (verify-web-index-inline-scripts.cjs, run-web-ui-selftests.cjs).
+    
+    Smoke-tested locally before push:
+      - bash scripts/dev/sync-book-from-docs.sh        → silent success
+      - node scripts/ci/verify-web-index-inline-scripts.cjs → OK
+      - node scripts/ci/run-web-ui-selftests.cjs       → 11 checks passed
+      - bash scripts/ci/test-acp-smoke.sh              → 7 passed, 0 failed
+    
+    PR #587 closed as superseded after this lands.
+  acceptance_criteria:
+    - All 4 previously-failing required CI checks pass on this PR
+    - 153 moved bash scripts use `dirname/../..` to find repo root
+    - 2 .cjs files use `__dirname, '..', '..'` to find repo root
+    - Smoke tests for sync-book / verify-web-index / acp-smoke all pass locally
+    - "PR #587 closed as superseded; this PR lands the combined work"
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

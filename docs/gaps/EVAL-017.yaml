@@ -1,0 +1,13 @@
+- id: EVAL-017
+  domain: eval
+  title: Real tool integration A/B — do lessons help when tools EXIST
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Our entire A/B has been no-tools-available. The hallucination problem only exists because tools weren't actually there. With real tools, the lessons block might genuinely help OR might cause the agent to call tools too eagerly.
+  notes: |
+    TEST-CAT-G. scripts/ab-harness/run.sh already supports the chump backend; just needs v2 scoring wired in.
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

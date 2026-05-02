@@ -1,0 +1,15 @@
+- id: EVAL-039
+  domain: eval
+  title: Longitudinal learning A/B — does the reflection-DB accumulation loop work?
+  status: done
+  priority: P3
+  effort: l
+  description: |
+    Learning faculty extension: tests whether the actual reflection ACCUMULATION LOOP (write → recall → improve) produces measurable improvement, not just whether a hand-authored lessons block is helpful. Fresh agent with N=0 lessons vs same agent after consuming N=10/50/100 prior reflection episodes.
+  depends_on: [EVAL-030]
+  notes: |
+    Optional Q3 — could defer to Q4. Cost ~$10. Wall ~1 week.
+  source_doc: docs/RESEARCH_PLAN_2026Q3.md
+  closed_date: '2026-04-20'
+  closed_pr: 248
+

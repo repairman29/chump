@@ -1,0 +1,25 @@
+- id: EVAL-091
+  domain: eval
+  title: Closed EVAL-* gaps are not scored against RESEARCH_INTEGRITY methodology table
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Pre-commit gate INFRA-113 (preregistration content) catches violations
+    at close time but does not retroactively score already-closed gaps.
+    Cold Water's "Reality Check" lens is supposed to score recent evals
+    against docs/RESEARCH_INTEGRITY.md (n>=50, judge diversity, A/A
+    baseline, mechanism analysis for |delta|>0.05, prohibited claims),
+    but it does this by hand and has been inconsistent. Build a one-shot
+    scorer (script or CI job) that walks closed EVAL-*/RESEARCH-* gaps
+    in the last 30 days and reports per-gap pass/fail against each
+    methodology line. Use the output to (a) populate Cold Water's
+    Reality Check lens deterministically and (b) file follow-up gaps
+    for any retroactive violations.
+  acceptance_criteria:
+    - Scorer script reads recent EVAL-*/RESEARCH-* closures and the methodology table from RESEARCH_INTEGRITY.md
+    - Per-gap report - n>=50 ok|fail, judge diversity ok|fail, A/A baseline ok|fail, mechanism analysis ok|fail|n_a, prohibited-claim hits
+    - Output is consumed by Cold Water's Reality Check lens (deterministic, not narrative)
+    - Any retroactive violations get a follow-up RESEARCH-*/EVAL- gap filed automatically
+  opened_date: '2026-04-26'
+

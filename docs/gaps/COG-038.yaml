@@ -1,0 +1,13 @@
+- id: COG-038
+  domain: consciousness
+  title: plumb cascade-head Candidate (model + provider_pfx) through DispatchHandle
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    COG-035/036/037 landed the routing cascade, the scoreboard, and the Thompson sampler — but `dispatch_gap_with` still routes via the legacy `DispatchBackend::resolve_for_gap` heuristic, so the YAML cascade head is dead code in production and `routing_outcomes.model` / `routing_outcomes.provider_pfx` come from env vars (empty in default runs). The Thompson sampler joins arms on `(backend|model|provider_pfx)`, so empty model/provider columns collapse every chump-local arm into one undifferentiated bucket and the sampler can not learn provider-level preferences.
+  depends_on: [COG-035, COG-037]
+  opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 614
+

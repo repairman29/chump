@@ -396,9 +396,10 @@ fi
 # hot-write loop (6 docs(gaps) commits in 48h before this audit).
 
 if [ "${CHUMP_GAPS_LOCK:-1}" != "0" ]; then
-    if git diff --cached --name-only --diff-filter=ACM | grep -qx 'docs/gaps.yaml'; then
+    # INFRA-188: trigger on per-file docs/gaps/*.yaml OR legacy monolithic docs/gaps.yaml
+    if git diff --cached --name-only --diff-filter=ACM | grep -qE '^docs/gaps(\.yaml|/[^/]+\.yaml)$'; then
         # NEW (INFRA-073, 2026-04-25): YAML-validity guard.
-        # Catches commits that leave docs/gaps.yaml unparseable. Concrete
+        # Catches commits that leave a gap YAML file unparseable. Concrete
         # incident: commit 26e74937 (INFRA-070) wrote `- regression test:
         # hand-add ...` as an unquoted list item — the embedded colon
         # turned the list item into a malformed mapping. The YAML stayed
@@ -409,37 +410,68 @@ if [ "${CHUMP_GAPS_LOCK:-1}" != "0" ]; then
         # any parse error blocks the commit. Bypass: CHUMP_GAPS_LOCK=0
         if command -v python3 >/dev/null 2>&1; then
             yaml_err=$(python3 - <<'PYEOF_YAMLLINT'
-import subprocess, sys
+import subprocess, sys, re
 try:
     import yaml
 except ImportError:
     sys.exit(0)  # PyYAML not installed — silent skip (CI catches it)
-try:
-    staged = subprocess.check_output(["git", "show", ":docs/gaps.yaml"],
-                                     text=True, stderr=subprocess.DEVNULL)
-except Exception:
-    sys.exit(0)
-try:
-    yaml.safe_load(staged)
-except yaml.YAMLError as e:
-    print(str(e))
+def _gaps_text(ref=None):
+    """Read all gaps as monolithic YAML text from per-file or monolithic layout."""
+    prefix = f"{ref}:" if ref else ":"
+    try:
+        if ref is None:
+            ls_out = subprocess.check_output(["git","ls-files","--cached","docs/gaps/"],
+                                             text=True,stderr=subprocess.DEVNULL)
+        else:
+            ls_out = subprocess.check_output(["git","ls-tree","--name-only","-r",ref,"docs/gaps/"],
+                                             text=True,stderr=subprocess.DEVNULL)
+        files = sorted(f for f in ls_out.splitlines() if f.endswith(".yaml"))
+        if files:
+            parts = [subprocess.check_output(["git","show",f"{prefix}{f}"],
+                                             text=True,stderr=subprocess.DEVNULL).rstrip()
+                     for f in files]
+            return "gaps:\n" + "\n".join(parts) + "\n"
+    except Exception:
+        pass
+    try:
+        return subprocess.check_output(["git","show",f"{prefix}docs/gaps.yaml"],
+                                       text=True,stderr=subprocess.DEVNULL)
+    except Exception:
+        return ""
+# Check each staged gap file for valid YAML
+errors = []
+staged_files = subprocess.check_output(
+    ["git","diff","--cached","--name-only","--diff-filter=ACM"],
+    text=True, stderr=subprocess.DEVNULL).splitlines()
+for f in staged_files:
+    if not (f == "docs/gaps.yaml" or (f.startswith("docs/gaps/") and f.endswith(".yaml"))):
+        continue
+    try:
+        content = subprocess.check_output(["git","show",f":{f}"],
+                                          text=True,stderr=subprocess.DEVNULL)
+        yaml.safe_load(content)
+    except yaml.YAMLError as e:
+        errors.append(f"{f}: {e}")
+    except Exception:
+        pass
+print("\n".join(errors))
 PYEOF_YAMLLINT
 )
             if [ -n "$yaml_err" ]; then
-                echo "[pre-commit] gaps.yaml INVALID YAML — staged file does not parse:" >&2
+                echo "[pre-commit] gap YAML INVALID — staged gap file does not parse:" >&2
                 printf '%s\n' "$yaml_err" | sed 's/^/  /' >&2
                 echo "" >&2
                 echo "[pre-commit] Fix the offending line (often: an unquoted colon in a list" >&2
                 echo "[pre-commit]   item value, e.g. '- regression test: foo' should be" >&2
                 echo "[pre-commit]   '- ''regression test: foo''' or use a block scalar (>)." >&2
-                echo "[pre-commit] Verify locally: python3 -c \"import yaml; yaml.safe_load(open('docs/gaps.yaml'))\"" >&2
                 echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ..." >&2
                 exit 1
             fi
         fi
 
         # Added lines only (ignore context + deletions).
-        added=$(git diff --cached --unified=0 -- docs/gaps.yaml \
+        # INFRA-188: check per-file docs/gaps/*.yaml AND legacy docs/gaps.yaml
+        added=$(git diff --cached --unified=0 -- 'docs/gaps.yaml' 'docs/gaps/*.yaml' \
             | grep -E '^\+[^+]' | sed 's/^\+//')
         offending=""
         if printf '%s\n' "$added" | grep -qE '^[[:space:]]*status:[[:space:]]*in_progress[[:space:]]*$'; then
@@ -470,12 +502,30 @@ PYEOF_YAMLLINT
         if command -v python3 >/dev/null 2>&1; then
             dup_ids=$(python3 - <<'PYEOF_DUP'
 import subprocess, sys, re
-# Get the staged gaps.yaml content
-try:
-    staged = subprocess.check_output(["git", "show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+def _gaps_text(ref=None):
+    prefix = f"{ref}:" if ref else ":"
+    try:
+        cmd = ["git","ls-files","--cached","docs/gaps/"] if ref is None else \
+              ["git","ls-tree","--name-only","-r",ref,"docs/gaps/"]
+        ls_out = subprocess.check_output(cmd,text=True,stderr=subprocess.DEVNULL)
+        files = sorted(f for f in ls_out.splitlines() if f.endswith(".yaml"))
+        if files:
+            parts = [subprocess.check_output(["git","show",f"{prefix}{f}"],
+                                             text=True,stderr=subprocess.DEVNULL).rstrip()
+                     for f in files]
+            return "gaps:\n" + "\n".join(parts) + "\n"
+    except Exception:
+        pass
+    try:
+        return subprocess.check_output(["git","show",f"{prefix}docs/gaps.yaml"],
+                                       text=True,stderr=subprocess.DEVNULL)
+    except Exception:
+        return ""
+# Get the staged gaps content (per-file or monolithic)
+staged = _gaps_text()
+if not staged:
     sys.exit(0)
-# Collect all ids in the staged file
+# Collect all ids in the staged content
 all_ids = re.findall(r'^\s*-\s*id:\s*(\S+)', staged, re.MULTILINE)
 # Find duplicates
 seen = {}
@@ -521,6 +571,25 @@ PYEOF_DUP
             redefinitions=$(python3 - "$base" <<'PYEOF'
 import subprocess, sys, re
 base = sys.argv[1]
+def _gaps_text(ref=None):
+    prefix = f"{ref}:" if ref else ":"
+    try:
+        cmd = ["git","ls-files","--cached","docs/gaps/"] if ref is None else \
+              ["git","ls-tree","--name-only","-r",ref,"docs/gaps/"]
+        ls_out = subprocess.check_output(cmd,text=True,stderr=subprocess.DEVNULL)
+        files = sorted(f for f in ls_out.splitlines() if f.endswith(".yaml"))
+        if files:
+            parts = [subprocess.check_output(["git","show",f"{prefix}{f}"],
+                                             text=True,stderr=subprocess.DEVNULL).rstrip()
+                     for f in files]
+            return "gaps:\n" + "\n".join(parts) + "\n"
+    except Exception:
+        pass
+    try:
+        return subprocess.check_output(["git","show",f"{prefix}docs/gaps.yaml"],
+                                       text=True,stderr=subprocess.DEVNULL)
+    except Exception:
+        return ""
 def gap_titles(text):
     """Returns {gap_id: (title, description_first_line)}."""
     out = {}
@@ -542,13 +611,11 @@ def gap_titles(text):
             out[cur_id][1] = line.strip()[:80]
             desc_seen = False
     return out
-try:
-    base_text = subprocess.check_output(["git","show", f"{base}:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+base_text = _gaps_text(base)
+if not base_text:
     sys.exit(0)
-try:
-    new_text = subprocess.check_output(["git","show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+new_text = _gaps_text()
+if not new_text:
     sys.exit(0)
 old = gap_titles(base_text)
 new = gap_titles(new_text)
@@ -587,6 +654,25 @@ PYEOF
         if command -v python3 >/dev/null 2>&1 && git rev-parse --quiet --verify origin/main >/dev/null 2>&1; then
             reopened=$(python3 - <<'PYEOF_RECYCLE'
 import subprocess, sys, re
+def _gaps_text(ref=None):
+    prefix = f"{ref}:" if ref else ":"
+    try:
+        cmd = ["git","ls-files","--cached","docs/gaps/"] if ref is None else \
+              ["git","ls-tree","--name-only","-r",ref,"docs/gaps/"]
+        ls_out = subprocess.check_output(cmd,text=True,stderr=subprocess.DEVNULL)
+        files = sorted(f for f in ls_out.splitlines() if f.endswith(".yaml"))
+        if files:
+            parts = [subprocess.check_output(["git","show",f"{prefix}{f}"],
+                                             text=True,stderr=subprocess.DEVNULL).rstrip()
+                     for f in files]
+            return "gaps:\n" + "\n".join(parts) + "\n"
+    except Exception:
+        pass
+    try:
+        return subprocess.check_output(["git","show",f"{prefix}docs/gaps.yaml"],
+                                       text=True,stderr=subprocess.DEVNULL)
+    except Exception:
+        return ""
 def gap_statuses(text):
     out = {}
     cur_id = None
@@ -601,10 +687,9 @@ def gap_statuses(text):
             if s:
                 out[cur_id] = s.group(1)
     return out
-try:
-    base_text = subprocess.check_output(["git","show","origin/main:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-    new_text = subprocess.check_output(["git","show",":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+base_text = _gaps_text("origin/main")
+new_text = _gaps_text()
+if not base_text or not new_text:
     sys.exit(0)
 old = gap_statuses(base_text)
 new = gap_statuses(new_text)
@@ -664,19 +749,30 @@ def parse_gaps(text):
                 out[cur_id]["closed_pr"] = c.group(1)
     return out
 
-try:
-    old_text = subprocess.check_output(
-        ["git", "show", "origin/main:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+def _gaps_text(ref=None):
+    prefix = f"{ref}:" if ref else ":"
     try:
-        old_text = subprocess.check_output(
-            ["git", "show", "HEAD:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+        cmd = ["git","ls-files","--cached","docs/gaps/"] if ref is None else \
+              ["git","ls-tree","--name-only","-r",ref,"docs/gaps/"]
+        ls_out = subprocess.check_output(cmd,text=True,stderr=subprocess.DEVNULL)
+        files = sorted(f for f in ls_out.splitlines() if f.endswith(".yaml"))
+        if files:
+            parts = [subprocess.check_output(["git","show",f"{prefix}{f}"],
+                                             text=True,stderr=subprocess.DEVNULL).rstrip()
+                     for f in files]
+            return "gaps:\n" + "\n".join(parts) + "\n"
     except Exception:
-        sys.exit(0)
-try:
-    new_text = subprocess.check_output(
-        ["git", "show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+        pass
+    try:
+        return subprocess.check_output(["git","show",f"{prefix}docs/gaps.yaml"],
+                                       text=True,stderr=subprocess.DEVNULL)
+    except Exception:
+        return ""
+old_text = _gaps_text("origin/main") or _gaps_text("HEAD")
+if not old_text:
+    sys.exit(0)
+new_text = _gaps_text()
+if not new_text:
     sys.exit(0)
 
 old = parse_gaps(old_text)
@@ -738,7 +834,8 @@ fi
 #   commit body. Skip this hook entirely with CHUMP_RAW_YAML_LOCK=0.
 
 if [ "${CHUMP_RAW_YAML_LOCK:-1}" != "0" ]; then
-    if git diff --cached --name-only --diff-filter=ACM | grep -qx 'docs/gaps.yaml'; then
+    # INFRA-188: trigger on per-file docs/gaps/*.yaml OR legacy monolithic docs/gaps.yaml
+    if git diff --cached --name-only --diff-filter=ACM | grep -qE '^docs/gaps(\.yaml|/[^/]+\.yaml)$'; then
         # Look for the chump CLI yaml-op marker.
         repo_root_canon="$(git rev-parse --show-toplevel)"
         marker="$repo_root_canon/.chump/.last-yaml-op"
@@ -822,7 +919,8 @@ fi
 # ------------------------------------------------------------------
 
 if [ "${CHUMP_PREREG_CHECK:-1}" != "0" ]; then
-    if git diff --cached --name-only --diff-filter=ACM | grep -qx 'docs/gaps.yaml'; then
+    # INFRA-188: trigger on per-file docs/gaps/*.yaml OR legacy monolithic docs/gaps.yaml
+    if git diff --cached --name-only --diff-filter=ACM | grep -qE '^docs/gaps(\.yaml|/[^/]+\.yaml)$'; then
         # Find gap IDs being flipped to status: done in this commit.
         # Strategy: scan +lines in the gaps.yaml diff for 'status: done' that
         # are immediately preceded (within the same hunk) by a gap ID line.
@@ -832,17 +930,32 @@ if [ "${CHUMP_PREREG_CHECK:-1}" != "0" ]; then
             missing_prereg=$(python3 - <<'PYEOF_PREREG'
 import subprocess, sys, re
 
-# Get the old and new gaps.yaml content
-try:
-    old_text = subprocess.check_output(["git", "show", "origin/main:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+def _gaps_text(ref=None):
+    prefix = f"{ref}:" if ref else ":"
     try:
-        old_text = subprocess.check_output(["git", "show", "HEAD:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+        cmd = ["git","ls-files","--cached","docs/gaps/"] if ref is None else \
+              ["git","ls-tree","--name-only","-r",ref,"docs/gaps/"]
+        ls_out = subprocess.check_output(cmd,text=True,stderr=subprocess.DEVNULL)
+        files = sorted(f for f in ls_out.splitlines() if f.endswith(".yaml"))
+        if files:
+            parts = [subprocess.check_output(["git","show",f"{prefix}{f}"],
+                                             text=True,stderr=subprocess.DEVNULL).rstrip()
+                     for f in files]
+            return "gaps:\n" + "\n".join(parts) + "\n"
     except Exception:
-        sys.exit(0)
-try:
-    new_text = subprocess.check_output(["git", "show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+        pass
+    try:
+        return subprocess.check_output(["git","show",f"{prefix}docs/gaps.yaml"],
+                                       text=True,stderr=subprocess.DEVNULL)
+    except Exception:
+        return ""
+
+# Get the old and new gaps content (per-file or monolithic)
+old_text = _gaps_text("origin/main") or _gaps_text("HEAD")
+if not old_text:
+    sys.exit(0)
+new_text = _gaps_text()
+if not new_text:
     sys.exit(0)
 
 def parse_statuses(text):
@@ -927,16 +1040,28 @@ PYEOF_PREREG
                 if [ -x "$checker" ]; then
                     flipping_gids=$(python3 - <<'PYEOF_PREREG_FLIP'
 import subprocess, sys, re
-try:
-    old_text = subprocess.check_output(["git", "show", "origin/main:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+def _gaps_text(ref=None):
+    prefix = f"{ref}:" if ref else ":"
     try:
-        old_text = subprocess.check_output(["git", "show", "HEAD:docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
+        cmd = ["git","ls-files","--cached","docs/gaps/"] if ref is None else \
+              ["git","ls-tree","--name-only","-r",ref,"docs/gaps/"]
+        ls_out = subprocess.check_output(cmd,text=True,stderr=subprocess.DEVNULL)
+        files = sorted(f for f in ls_out.splitlines() if f.endswith(".yaml"))
+        if files:
+            parts = [subprocess.check_output(["git","show",f"{prefix}{f}"],
+                                             text=True,stderr=subprocess.DEVNULL).rstrip()
+                     for f in files]
+            return "gaps:\n" + "\n".join(parts) + "\n"
     except Exception:
-        sys.exit(0)
-try:
-    new_text = subprocess.check_output(["git", "show", ":docs/gaps.yaml"], text=True, stderr=subprocess.DEVNULL)
-except Exception:
+        pass
+    try:
+        return subprocess.check_output(["git","show",f"{prefix}docs/gaps.yaml"],
+                                       text=True,stderr=subprocess.DEVNULL)
+    except Exception:
+        return ""
+old_text = _gaps_text("origin/main") or _gaps_text("HEAD")
+new_text = _gaps_text()
+if not old_text or not new_text:
     sys.exit(0)
 def parse_statuses(text):
     out, cur = {}, None
@@ -999,8 +1124,33 @@ PYEOF_PREREG_FLIP
                 if [ -x "$cj_checker" ] && [ -n "${flipping_gids:-}" ]; then
                     cj_failures=""
                     new_yaml_tmp=$(mktemp)
-                    # Pull the staged gaps.yaml so we can slice gap blocks.
-                    git show :docs/gaps.yaml > "$new_yaml_tmp" 2>/dev/null || > "$new_yaml_tmp"
+                    # Pull the staged gaps content (per-file or monolithic) so we can slice gap blocks.
+                    # INFRA-188: use per-file docs/gaps/*.yaml if available, else fall back to monolithic.
+                    python3 - > "$new_yaml_tmp" <<'PYEOF_CJ_LOAD'
+import subprocess, sys
+def _gaps_text(ref=None):
+    prefix = f"{ref}:" if ref else ":"
+    try:
+        cmd = ["git","ls-files","--cached","docs/gaps/"] if ref is None else \
+              ["git","ls-tree","--name-only","-r",ref,"docs/gaps/"]
+        ls_out = subprocess.check_output(cmd,text=True,stderr=subprocess.DEVNULL)
+        files = sorted(f for f in ls_out.splitlines() if f.endswith(".yaml"))
+        if files:
+            parts = [subprocess.check_output(["git","show",f"{prefix}{f}"],
+                                             text=True,stderr=subprocess.DEVNULL).rstrip()
+                     for f in files]
+            sys.stdout.write("gaps:\n" + "\n".join(parts) + "\n")
+            return True
+    except Exception:
+        pass
+    try:
+        sys.stdout.write(subprocess.check_output(["git","show",f"{prefix}docs/gaps.yaml"],
+                                                 text=True,stderr=subprocess.DEVNULL))
+        return True
+    except Exception:
+        return False
+_gaps_text()
+PYEOF_CJ_LOAD
                     while IFS= read -r gid; do
                         [ -z "$gid" ] && continue
                         # Slice from `- id: $gid` to the next `- id:` (or EOF).

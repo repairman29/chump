@@ -1,0 +1,14 @@
+- id: EVAL-035
+  domain: eval
+  title: Belief-state ablation A/B — is belief_state.rs net-contributing?
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    belief_state.rs implements probabilistic state tracking but its effect is currently masked by the EVAL-026 cross-architecture neuromod harm signal. After EVAL-030 fixes the neuromod harm, belief_state's actual contribution becomes measurable. Cell A belief_state active, cell B bypassed. n=50 × 3 fixtures × 2 model points.
+  depends_on: [EVAL-030]
+  notes: |
+    Add --bypass-belief-state flag. Cost ~$2. Wall ~2 days.
+  source_doc: docs/RESEARCH_PLAN_2026Q3.md
+  closed_date: '2026-04-19'
+

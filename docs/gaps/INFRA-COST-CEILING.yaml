@@ -1,0 +1,15 @@
+- id: INFRA-COST-CEILING
+  domain: infra
+  title: Per-session cloud spend cap — hard ceiling + soft warn
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    No per-agent or per-session spend cap today. At scale (10+ concurrent agents from musher dispatch), runaway cloud spend is a real risk — a buggy retry loop or unintended n=1000 sweep can burn budget silently. Need: per-session hard ceiling (kill the sweep when exceeded) + soft warning threshold (log + Discord ping). Reads cost from chump_coord ledger; integrates with the ESCALATION pattern (INFRA-AGENT-ESCALATION) for the soft warn.
+  depends_on: [COMP-014]
+  notes: |
+    ~3 days. Pairs with INFRA-AGENT-ESCALATION for the soft-warn surfacing path.
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-20'
+  closed_pr: 187
+

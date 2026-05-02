@@ -1,0 +1,52 @@
+- id: INFRA-211
+  domain: infra
+  title: scripts/dispatch/run-fleet.sh — canonical fleet launcher (tmux + per-agent worker loop, headless claude -p)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Today there is no canonical way to spawn N parallel Claude Code
+    agents on this repo. The chump-orchestrator's COG-025 backend can
+    run `claude -p --dangerously-skip-permissions` per dispatched
+    subagent, but it's invoked one-at-a-time from the dispatcher's
+    inner loop, not as a fleet.
+    
+    This gap adds scripts/dispatch/run-fleet.sh which:
+      1. Spawns N tmux panes, one per agent (visible state, easy
+         kill/restart, scrollback for postmortem)
+      2. Each pane runs a worker loop: pull main → pick highest-
+         priority unclaimed P0/P1 gap → claim via gap-claim.sh
+         (atomic flock) → create worktree at .chump/worktrees/
+         <gap-id>-<ts> → spawn `claude -p` with a focused prompt →
+         on exit, release lease + loop back
+      3. Per-agent log at /tmp/chump-fleet-<sid>/agent-<N>.log
+      4. Control pane shows live status (ambient.jsonl tail + PR
+         queue depth + per-agent current gap)
+    
+    Defaults: FLEET_SIZE=8 (Tier 2 from META-004 analysis), 30-min
+    per-agent timeout (longer = stuck loop), excludes EVAL-* /
+    RESEARCH-* / META-* gaps from auto-pickup (those need human
+    judgment), filters to xs/s/m effort only.
+    
+    Configurable via env: FLEET_SIZE, FLEET_TIMEOUT_S,
+    FLEET_PRIORITY_FILTER ('P0,P1' default), FLEET_DOMAIN_FILTER
+    (e.g. 'INFRA' for INFRA-only fleet — pairs with INFRA-206 affinity).
+    
+    Hard rules (enforced in worker.sh):
+      - Use scripts/coord/bot-merge.sh as ship pipeline (auto-handles
+        INFRA-154 close, INFRA-190 pr-watch, INFRA-192 forward-chain)
+      - Use chump gap reserve (NEVER raw YAML) for new IDs
+      - Pass --paths to gap-claim.sh declaring scope (INFRA-189
+        warn-mode catches drift)
+    
+    Stop: FLEET_SIZE=0 OR `tmux kill-session -t <session>` OR per-agent
+    Ctrl-C in the pane.
+  acceptance_criteria:
+    - scripts/dispatch/run-fleet.sh exists, executable, parses cleanly, default FLEET_SIZE=8
+    - Per-agent worker.sh handles full lifecycle (claim → worktree → claude → ship → release → loop)
+    - Control pane shows live fleet status (ambient + PR queue + per-agent activity)
+    - "Test: spawn FLEET_SIZE=2 for 1 hour; expect 4-8 PRs shipped; zero ID collisions; zero unrecovered DIRTY events (pr-watch handles)"
+    - Documented in CLAUDE.md + AGENTS.md as the canonical fleet entry
+  depends_on: [INFRA-188, INFRA-189, INFRA-210]
+  opened_date: '2026-05-02'
+

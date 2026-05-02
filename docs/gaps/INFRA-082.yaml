@@ -1,0 +1,38 @@
+- id: INFRA-082
+  domain: infra
+  title: Reserve-time title similarity check — warn when filing a gap whose title overlaps an existing one
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Process review (2026-04-26 follow-up): we have zero gates that check
+    whether a gap being filed *already exists* under a different ID. INFRA-081
+    catches lease-time concurrent sessions; this gap catches the stronger
+    case — agent A filed INFRA-073 "pre-commit YAML-validity guard" on
+    2026-04-25 (PR #544, shipped same day), agent B filed INFRA-073 "Gap-closure
+    hygiene audit" on 2026-04-26 from cold-water Issue #6. Different work,
+    same ID, no overlap in time-of-claim, so no live lease to compare against.
+    A title-similarity check at reserve time (against ALL gaps in docs/gaps.yaml,
+    open or done) would have surfaced the prior INFRA-073 row before assigning
+    a colliding ID. Fix: in scripts/gap-reserve.sh and `chump gap reserve`,
+    after picking the next free numeric ID, scan all existing gaps and
+    compute a cheap similarity score (title token Jaccard, or trigram
+    overlap) against the candidate title. If any existing gap scores above
+    a threshold (e.g., 0.5 Jaccard on lowercased token set minus stopwords),
+    print:
+      WARN: title overlaps existing <ID> "<title>" (<status>) — review before proceeding
+      Continue anyway? [y/N]
+    Default deny on tty; `CHUMP_GAP_DUP_CHECK=0` bypass for scripted reserves.
+    Stronger than INFRA-081 because it covers same-day-different-session AND
+    weeks-apart-different-cycle cases. Together with INFRA-081 the coverage
+    is: live overlap (lease) + adjacent ID (lease) + title overlap on full
+    history (this gap).
+  acceptance_criteria:
+    - gap-reserve.sh computes title similarity vs all gaps in docs/gaps.yaml and warns above threshold
+    - chump gap reserve produces the same warning
+    - Threshold is documented and tunable (env or config)
+    - CHUMP_GAP_DUP_CHECK=0 bypass for non-interactive use, listed in CLAUDE.md
+    - "Regression test under scripts/ covering \"title matches existing closed gap\" case"
+  depends_on: [INFRA-081]
+  opened_date: '2026-04-26'
+

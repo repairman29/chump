@@ -1,0 +1,34 @@
+- id: INFRA-086
+  domain: infra
+  title: chump pr-stack per-session view
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    During the 2026-04-26 session, with 4 concurrent open PRs in flight
+    (#554, #557, #558, #559), there was no single command to answer
+    "what's the current state of MY work?" — required mixing
+    `gh pr list --author @me`, `git log --oneline`, and reading lease files.
+    Every check during the session was an ad-hoc combo of those.
+    
+    Proposed: `chump pr-stack` reads the local lease files in
+    .chump-locks/, the git reflog for branch creation, and `gh pr list`
+    output, and prints a per-session summary:
+    
+      Session chump-XYZ (worktree: eval-074-followup-filing)
+        Branch: claude/eval-074-followup-filing
+        Lease: gap=EVAL-074, expires=2026-04-26T21:00Z
+        PRs:
+          #558 OPEN/DIRTY  EVAL-089 followup    auto-merge=armed
+          #554 MERGED      EVAL-073 caveat
+        Worktree commits ahead: 2 / behind: 0
+    
+    Useful for: end-of-session cleanup ("what do I have open?"), recovery
+    after compaction ("what was I doing?"), and seeing whether queue is
+    stuck on a PR you own.
+  acceptance_criteria:
+    - chump pr-stack subcommand exists, reads local-only state by default
+    - Shows lease, branch, PR list, queue state per session
+    - "--all flag shows all sessions in this checkout"
+    - Output is plain text + --json mode for tooling
+

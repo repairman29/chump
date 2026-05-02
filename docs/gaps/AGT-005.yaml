@@ -1,0 +1,12 @@
+- id: AGT-005
+  domain: agent
+  title: "LLM response streaming deltas → SSE AgentEvent::TextDelta"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    provider.complete() returns a fully-buffered CompletionResponse. The web UI sees no text until the entire LLM call finishes (~2-8s). Streaming deltas (provider.stream() → Stream<Item=Delta>) would allow the SSE event channel to emit AgentEvent::TextDelta per chunk, giving the user live output. Streaming is also a prerequisite for AGT-002's per-token cancellation (can only cancel at .await points).
+  depends_on: [AGT-002]
+  source_doc: src/agent_loop/iteration_controller.rs
+  closed_date: '2026-04-18'
+

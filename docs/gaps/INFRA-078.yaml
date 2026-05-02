@@ -1,0 +1,25 @@
+- id: INFRA-078
+  domain: infra
+  title: Duplicate-ID pre-commit guard fires on pre-existing dups, training bypass habit
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Process review (2026-04-26): the duplicate-ID pre-commit guard
+    (INFRA-GAPS-DEDUP, 2026-04-19) checks the *total* state of docs/gaps.yaml
+    after the commit. If main already contains a duplicate ID (e.g. the
+    INFRA-073 collision tracked by INFRA-075), every doc-only PR that touches
+    gaps.yaml has to bypass the guard with CHUMP_GAPS_LOCK=0 even though it
+    introduces no new duplicate. Observed today on PR #554 (EVAL-088 caveat) —
+    the bypass was correct in this case but trains the habit of reaching for
+    CHUMP_GAPS_LOCK=0 reflexively, which is exactly what the original
+    duplicate-ID incidents were caused by. Fix: diff against `git show :gaps.yaml`
+    (index baseline) and only fire when the commit *adds* a new duplicate or
+    *modifies* a row participating in an existing duplicate. Pre-existing dups
+    on main should not gate unrelated commits.
+  acceptance_criteria:
+    - Guard only fires when commit introduces a new duplicate or edits a row in an existing duplicate group
+    - "scripts/test-duplicate-id-guard.sh covers \"pre-existing dup, unrelated edit\" case (must pass)"
+    - PR touching gaps.yaml in a repo with a known dup does not require CHUMP_GAPS_LOCK=0 unless it touches the dup
+  opened_date: '2026-04-26'
+

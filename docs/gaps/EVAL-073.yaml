@@ -1,0 +1,19 @@
+- id: EVAL-073
+  domain: eval
+  title: Both-strict cross-judge rescore — close EVAL-072 residual perception gap
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    EVAL-072 applied the rubric-literalism + no-partial-credit directive to the Llama judge only and measured 75% overall agreement vs the original Sonnet scores (perception -8pp, neuromod +12pp). The residual perception gap is now driven by Sonnet's ORIGINAL partial- credit-friendly scoring (0.5-0.85 values binarizing to 1) vs strict-Llama's 0. Re-score BOTH judges with the strict prompt on the same three fixtures (reflection, perception, neuromod) to test whether both-strict closes the gap.
+  acceptance_criteria:
+    - "scripts/ab-harness/rescore-jsonl.py extended to accept --rescore-with-judge anthropic:claude-sonnet-4-5 as a second pass on the same input (currently only together: path is wired)"
+    - Both-strict pass run on reflection + perception + neuromod fixtures at n>=30/faculty each
+    - Output posted to docs/eval/EVAL-073-both-strict-rescore.md with a 3x2 agreement table (per fixture, orig vs both-strict)
+    - If overall agreement >=80% under both-strict, update RESEARCH_INTEGRITY.md per the EVAL-072 acceptance gate that was not met with single-sided strict
+  depends_on: [EVAL-072]
+  notes: |
+    Estimated cost ~300 Anthropic judge calls (~$1-2) + ~300 Together calls (free tier or <$1). Small effort, informative either way.
+  source_doc: docs/eval/EVAL-072-judge-prompt-fix.md
+  closed_date: '2026-04-20'
+

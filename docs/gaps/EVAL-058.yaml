@@ -1,0 +1,20 @@
+- id: EVAL-058
+  domain: eval
+  title: Executive Function ablation — ship CHUMP_BYPASS_BLACKBOARD flag and binary-mode sweep
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Ship CHUMP_BYPASS_BLACKBOARD env flag (src/env_flags.rs + COG-015 entity-prefetch guard in src/agent_loop/prompt_assembler.rs) and add --module blackboard to scripts/ab-harness/run-binary-ablation.py. Run binary-mode n=30/cell sweep: Cell A (bypass OFF) acc=0.100 CI [0.035, 0.256], Cell B (bypass ON) acc=0.067 CI [0.018, 0.213], delta=-0.033, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-056 Memory and EVAL-053 Metacognition sweep. Executive Function faculty row updated from COVERED+UNTESTED to COVERED+VALIDATED(NULL). Results in docs/eval/EVAL-058-executive-function-ablation.md.
+  acceptance_criteria:
+    - CHUMP_BYPASS_BLACKBOARD=1 implemented in src/env_flags.rs
+    - blackboard injection skipped when flag set in prompt_assembler.rs
+    - run-binary-ablation.py --module blackboard runs end-to-end
+    - docs/eval/EVAL-058-executive-function-ablation.md with n=30/cell Wilson CIs
+    - CHUMP_FACULTY_MAP.md Executive Function row updated from COVERED+UNTESTED
+  depends_on: [EVAL-049]
+  notes: |
+    Flag shipped and wired. n=30/cell binary-mode sweep complete. Delta=-0.033 with overlapping CIs — NO SIGNAL. Binary-mode noise floor (~90% exit-code-1 failures) limits interpretability per RESEARCH_INTEGRITY.md. Verdict: COVERED+VALIDATED(NULL).
+  source_doc: docs/CHUMP_FACULTY_MAP.md
+  closed_date: '2026-04-20'
+

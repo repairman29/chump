@@ -1,0 +1,11 @@
+- id: FRONTIER-001
+  domain: frontier
+  title: Quantum cognition prototype — density matrix tool-choice vs classical argmax
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    Section 3.1: Represent belief states as density matrices; allow superposition of contradictory tool choices until action forces collapse. Hand-roll ~200 lines using nalgebra, not dreamwell-quantum (unstable, low adoption).
+  source_doc: docs/CHUMP_TO_COMPLEX.md, docs/ROADMAP_PRAGMATIC.md
+  closed_date: '2026-04-16'
+

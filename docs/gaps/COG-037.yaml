@@ -1,0 +1,13 @@
+- id: COG-037
+  domain: consciousness
+  title: dispatch router v3 — Thompson-sampling self-learning router (gated)
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    COG-035 hand-tuned the routing table; COG-036 added a scoreboard of dispatch outcomes. The next step is a router that uses scoreboard posteriors to make explore/exploit decisions, replacing the static YAML cascade with data-driven Beta(α,β) Thompson sampling per arm (=(backend, model, provider)). Behind a runtime flag (cog_037, default OFF) per the M4 long-COG-branch rule.
+  depends_on: [COG-035, COG-036]
+  opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 608
+

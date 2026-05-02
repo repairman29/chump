@@ -1,0 +1,20 @@
+- id: EVAL-067
+  domain: eval
+  title: Lesson-level ablation — localize which lesson directive drives spawn_lessons harm
+  status: done
+  priority: P4
+  effort: m
+  description: |
+    If EVAL-064 confirms spawn_lessons delta=+0.20 at n=50 (bypass ON HELPS, meaning lesson injection HURTS the agent), the next-order research question is which specific lesson in chump_improvement_targets is driving the harm. Bypassing the whole module is a coarse-grained finding; localizing to specific directives (e.g. the COG-016 anti-hallucination preamble, or the "ask clarifying question" line that EVAL-029 already flagged on conditional-chain tasks) makes the result actionable. Design: extend run-binary-ablation.py (or a new scripts/ab-harness/run-lesson-ablation.py) to support per-directive bypass by tagging each directive with a stable ID and letting the bypass flag select which subset to suppress. Cell A = all lessons. Cell B_i = all lessons minus directive_i. Measure per-directive delta.
+  acceptance_criteria:
+    - EVAL-064 full-sweep delta confirmed >=+0.15 for spawn_lessons (if result is weaker, reduce priority on this gap and re-plan)
+    - Harness extension supports --suppress-directive <id> flag
+    - "Per-directive ablation run for top 10 most-injected directives at n=30/cell (Ollama qwen2.5:14b backend)"
+    - docs/eval/EVAL-067-lesson-level-ablation.md identifies which directives are net-helpful, net-neutral, net-harmful
+    - chump_improvement_targets quality-threshold default updated to block the worst directives (builds on MEM-009's filter)
+  depends_on: [EVAL-064, EVAL-066]
+  notes: |
+    Conditional priority — P2 if EVAL-064 holds, P4 (close as invalid) if EVAL-064 delta drops below +0.05. Estimated 1-2 days IF conditional met. The payoff if the signal holds is a publishable "specific lesson directives harm agent performance" claim with concrete removal candidates, which would graduate the COG-016/COG-023/COG-024 lessons trilogy from open research question to settled result.
+  source_doc: EVAL-064 in-flight results 2026-04-20
+  closed_date: '2026-04-21'
+

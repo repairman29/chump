@@ -1,0 +1,12 @@
+- id: COG-010
+  domain: consciousness
+  title: Integration test for reflection feedback flywheel
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    reflection_db unit tests cover save/load/scope-filter/format. Was missing: end-to-end test that runs a fake task → fails it → starts next task → asserts "## Lessons from prior episodes" appears in assembled prompt. Without this, schema drift could silently break the flywheel.
+  depends_on: [COG-007]
+  source_doc: src/autonomy_loop.rs
+  closed_date: '2026-04-17'
+

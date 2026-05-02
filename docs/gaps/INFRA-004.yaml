@@ -1,0 +1,27 @@
+- id: INFRA-004
+  domain: infra
+  title: Agent governance toolkit integration (WP-7.2)
+  status: blocked
+  priority: P3
+  effort: xl
+  description: |
+    WP-7.2 blocked until sponsor chooses adopt in WP-7.1 (RFC-agent-governance.md recommends defer adopt) AND security review completed.
+  notes: |
+    Sponsor decision gates this entirely. Do not start WP-7.2 without WP-7.1 adopt.
+    Unblock checklist (when sponsor moves to "adopt"):
+      1. Security review per docs/rfcs/RFC-agent-governance.md §1 —
+         threat model for in-process vs sidecar boundary.
+      2. Narrow API spec (RFC §2): allow/deny + audit_id per tool
+         invocation; no dynamic tool discovery without WP-13 gates.
+      3. Sidecar contract: protocol (gRPC vs HTTP), schema, retry
+         policy, identity (mTLS or shared secret), failure mode
+         (fail-closed vs fail-open per CHUMP_AIR_GAP_MODE).
+      4. Wire into src/tool_middleware.rs::ToolMiddleware — currently
+         the only gate; sidecar call slots in before circuit-breaker.
+      5. Audit-trail compatibility — sidecar's audit_id must
+         round-trip into the existing chump_tool_calls + chump_audit
+         tables.
+    
+    Until sponsor decision: status stays blocked, no code lands.
+  source_doc: docs/HIGH_ASSURANCE_AGENT_PHASES.md
+

@@ -1,0 +1,14 @@
+- id: INFRA-SYNTHESIS-CADENCE
+  domain: infra
+  title: Periodic synthesis pass — distill session learnings into strategic docs
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Today I did a synthesis pass manually: distilled session findings into FACULTY_MAP updates, STRATEGY_VS_GOOSE updates, RESEARCH_PLAN adjustments, RESEARCH-001 stub fills, EVAL-029 mechanism doc. This is the "cross-session memory consolidation" function — without it, session learnings stay in session transcripts and don't reach the next agent. INFRA-SYNTHESIS-CADENCE makes it a recurring task: a scheduled agent dispatch that reads the last N hours of session activity (PRs, reflections, ambient events) and proposes strategic- doc updates as a small PR.
+  notes: |
+    ~3 days. Cheap automation. Without it, every session reinvents the wheel by re-reading raw artifacts; with it, the team's collective intelligence keeps refining itself in distilled form.
+  source_doc: session 2026-04-19 multi-agent learning loop design
+  closed_date: '2026-04-20'
+  closed_pr: 217
+

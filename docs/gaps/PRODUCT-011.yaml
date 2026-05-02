@@ -1,0 +1,17 @@
+- id: PRODUCT-011
+  domain: product
+  title: Competition analysis — survey Goose/Cursor/Cline/Aider/Claude Desktop/Open WebUI for PWA rebuild inspiration
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Before rebuilding web/ we need a clear-eyed read on what local-first agent UIs already do well. Red Letter #1 flagged zero product velocity against the North Star for two consecutive cycles — the fleet is producing research and coordination infra, not shipping user-visible surfaces. Blocks PRODUCT-012 (PWA rebuild spike): we should not pick a framework or IA until we know what the category has already figured out. Scope: (1) hands-on 30-min tour of Goose (block.xyz), Cursor, Cline (VS Code extension), Aider, Claude Desktop/Projects, ChatGPT Desktop, Open WebUI, LibreChat, Ollama UI, Continue.dev; (2) write docs/PRODUCT-011-competition-scan.md — per tool: headline value prop, onboarding flow (first 60s), model-picker UX, tool-use visibility, agent-state surfacing, "where does Chump actually differentiate"; (3) a 1-page "PWA rebuild principles" appendix that PRODUCT-012 can hand to whatever framework/designer lane it chooses. Deliverable is docs-only; no code changes.
+  acceptance_criteria:
+    - docs/PRODUCT-011-competition-scan.md shipped with one section per listed tool
+    - "Final section \"PWA rebuild principles — 5 bullets\" that PRODUCT-012 can consume"
+    - No generated code; this unblocks product decisions
+  notes: |
+    Red Letter #1/#2/#3 all flagged zero product velocity. Must land before PRODUCT-012 rebuild spike to prevent another framework misfire.
+  source_doc: docs/NORTH_STAR.md
+  closed_date: '2026-04-21'
+

@@ -1,0 +1,13 @@
+- id: EVAL-008
+  domain: eval
+  title: A/B-grade reflect_via_provider vs reflect_heuristic on labeled episodes
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    COG-008 shipped the LLM reflection adapter but couldn't close the original acceptance clause ("A/B against heuristic on 20 episodes shows >=15% more accurate ErrorPattern classifications") because that requires a labeled dataset of >=20 captured episodes with ground-truth ErrorPattern annotations. Logistics of building that dataset were bigger than the COG-008 effort envelope.
+  notes: |
+    Synthetic 20-episode dataset shipped (3e23adc) covers all 9 ErrorPattern variants. Real-data upgrade (curate ~20 actual production episodes with gold labels) is DEFERRED until ~1 month of real session history accumulates the natural diversity. Closes when scripts/ab-harness/run-queue.sh fires the run and append-result writes the delta to CONSCIOUSNESS_AB_RESULTS.md. - COG-008
+  source_doc: src/reflection.rs
+  closed_date: '2026-04-17'
+

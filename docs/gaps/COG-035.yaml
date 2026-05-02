@@ -1,0 +1,13 @@
+- id: COG-035
+  domain: consciousness
+  title: dispatch router v1 — hand-tuned routing.yaml + Vec<Candidate> cascade
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Dispatch backend choice today is a hardcoded heuristic in DispatchBackend::resolve_for_gap (priority/effort → claude vs chump-local). No way to tune by task class, by model strengths, or to express "try Groq Llama-3 first, fall back to Claude on failure." Need a declarative routing table the team can edit, plus a Vec<Candidate> shape so future phases (scoreboard, Thompson sampling) plug in without rewriting callers.
+  depends_on: [COG-025]
+  opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 606
+

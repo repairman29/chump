@@ -1,0 +1,13 @@
+- id: FRONTIER-002
+  domain: frontier
+  title: TDA replacement for phi_proxy — persistent homology on blackboard traffic
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    Section 3.2: Use persistent homology (Betti numbers) to measure "shape" of information flow across blackboard modules, replacing the current graph density statistic. tda crate (v0.1.0) uses nalgebra + petgraph. Park until labeled session data from phi proxy calibration is available.
+  notes: |
+    Implementation (src/tda_blackboard.rs, 310 lines) was written and compiled but never wired in — no callsites existed outside the module. Acceptance criterion (correlation with human-judged session quality) was never measured because labeled session data from phi_proxy calibration was never produced. Code removed 2026-04-19 (commit 32bc6e1) as dead weight in production binary. Recoverable from commit a383031 if labeled session data becomes available. Prerequisite before re-introducing: run phi_proxy calibration sweep and produce the labeled dataset this gate requires.
+  source_doc: docs/CHUMP_TO_COMPLEX.md, docs/ROADMAP_PRAGMATIC.md
+  closed_date: '2026-04-16'
+

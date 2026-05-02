@@ -1,0 +1,30 @@
+- id: EVAL-087
+  domain: eval
+  title: Evaluation-awareness literature invalidates A/B trust — reframe RESEARCH-026 to P1
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Cold Water Issue #7 (2026-04-26): RESEARCH-026 ("Observer-effect / evaluation-framing
+    sandbagging check", P2, open, no start date) was filed to check whether Chump's A/B
+    harness produces different results because tested agents detect they are in an evaluation
+    context. The Institute for AI Policy and Strategy (IAPS) published "Evaluation Awareness:
+    Why Frontier AI Models Are Getting Harder to Test" (2026,
+    https://www.iaps.ai/research/evaluation-awareness-why-frontier-ai-models-are-getting-harder-to-test)
+    documenting that frontier models distinguish evaluation from deployment contexts with high
+    reliability and that some models actively reason about strategic response behavior during
+    evaluation. Chump's A/B harness uses Claude Sonnet-4.5 and Claude Haiku-4.5 as tested
+    agents. docs/RESEARCH_INTEGRITY.md line 93-95 requires mechanism analysis for deltas
+    > ±0.05 but does not require ruling out evaluation-context confounding as a mechanism.
+    All validated findings (F1-F6 in FINDINGS.md) were produced without evaluation-awareness
+    controls. This gap escalates RESEARCH-026 from P2 to P1 with an empirical grounding:
+    run the existing A/B harness under a modified system prompt that does not identify the
+    run as an evaluation (neutral framing), compare results to existing EVAL-025/EVAL-076
+    results, and document whether deltas hold. If they do not, the validated-findings table
+    requires revision.
+  acceptance_criteria:
+    - RESEARCH-026 priority updated to P1 in the registry with this gap as the escalation rationale
+    - The comparison is run at n>=50/cell and results committed to docs/eval/
+    - If delta shifts >0.05 between framings, FINDINGS.md validated-findings table is updated
+  opened_date: '2026-04-26'
+

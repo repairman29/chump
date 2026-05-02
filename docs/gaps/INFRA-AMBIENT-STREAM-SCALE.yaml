@@ -1,0 +1,13 @@
+- id: INFRA-AMBIENT-STREAM-SCALE
+  domain: infra
+  title: Ambient stream retention policy + query performance at fleet scale
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    .chump-locks/ambient.jsonl is append-only and unbounded. Red Letter Issue #2 confirmed that after a full day of agent activity the stream showed only 2 events — indicating the hooks are not firing, not that the scale is an issue yet. But once AUTO-013 autonomous dispatch is running at fleet scale (10+ concurrent agents), the jsonl approach will become a linear-scan bottleneck. Agents scanning for recent ALERT events (O(n) grep) will time out. Additionally, there is no archival or expiry policy: the file will grow without bound.
+  notes: |
+    ~1 day. Current priority is P2 because ambient stream barely fires (RL Issue #2 confirmed); fix ambient hook firing first (FLEET-004b/c are marked done but emitting nothing — investigate separately).
+  source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+  closed_date: '2026-04-20'
+

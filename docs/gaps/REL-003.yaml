@@ -1,0 +1,11 @@
+- id: REL-003
+  domain: reliability
+  title: Patch crate — fork or replace if upstream abandons panic-on-malformed
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    patch-0.7.0 panics on malformed input (caught via catch_unwind + spawn_blocking). If the crate is abandoned, options are: fork to return Err, or replace with diffy (different license + behavior). Track upstream maintenance.
+  source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
+  closed_date: '2026-04-17'
+

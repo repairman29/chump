@@ -1,0 +1,13 @@
+- id: ACP-004
+  domain: acp
+  title: Thinking streaming for reasoning models via ACP
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Reasoning tokens (Qwen3 <think>, Claude extended thinking) are stripped or silently dropped. ACP clients cannot observe reasoning traces.
+  notes: |
+    ThinkStreamState in local_openai.rs routes <think> content to AgentEvent::ThinkingDelta → SessionUpdate::Thinking. ACP.md documents the thinking event type (mid-stream + TurnComplete sources).
+  source_doc: docs/ACP_V3_BACKLOG.md
+  closed_date: '2026-04-17'
+

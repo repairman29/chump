@@ -1,0 +1,17 @@
+- id: INFRA-060
+  domain: infra
+  title: M2 — Plan-mode gate in dispatcher (file enumeration + open-PR overlap scan)
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    New phase between gap-claim and code in `chump --execute-gap` and the orchestrator's dispatch path. Agent enumerates planned files (LLM call, structured output), runs `gh pr list --json files` overlap scan, aborts if ≥2 open PRs touch any planned file (queue too crowded — pick another gap). Otherwise writes `.chump-plans/<gap>.md` with file list + conflict score + 5-line design summary. Plan auto-attaches to PR description at bot-merge.sh time.
+  acceptance_criteria:
+    - chump --execute-gap produces .chump-plans/<gap>.md before any code edit
+    - Synthetic test (2 dummy PRs touching src/foo.rs + dispatch gap touching foo.rs) aborts cleanly with no commits
+    - Plan body appears verbatim in PR description after bot-merge
+    - Cost <0.10 per dispatch (Sonnet/Haiku call)
+  depends_on: [INFRA-058, INFRA-059]
+  source_doc: docs/WORLD_CLASS_ROADMAP.md
+  closed_date: '2026-04-25'
+

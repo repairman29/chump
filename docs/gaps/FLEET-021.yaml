@@ -1,0 +1,13 @@
+- id: FLEET-021
+  domain: fleet
+  title: PreToolUse re-injection of ambient stream at flow points (commit / pr / gap claim)
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    PreToolUse hook config that re-injects last 10 ambient events when matcher hits flow-point commands (git commit, gh pr, chump gap claim, bot-merge.sh). Catches sibling agents who started after our SessionStart injection.
+  depends_on: [FLEET-019]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 696
+

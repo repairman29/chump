@@ -1,0 +1,51 @@
+- id: INFRA-154
+  domain: infra
+  title: "bot-merge.sh: auto-flip gap status to done after PR merges"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Observed pattern (2026-04-28 session): 3 of 4 P0/P1 gaps picked up
+    were already fully implemented but still status:open in the registry.
+    INFRA-112 (PR #618 shipped 2026-04-27, status flipped 2026-04-28 via
+    PR #627), INFRA-113 (PR #622 shipped 2026-04-27, status flipped
+    via PR #632), INFRA-080 (PR #628 shipped 2026-04-27, status flipped
+    via PR #634). Each closure required:
+      (1) a separate manual session to discover the implementation landed,
+      (2) a hand-edit of docs/gaps.yaml to add closed_pr/closed_date,
+      (3) a follow-up PR to ship the flip.
+    
+    INFRA-073 was a one-time manual sweep for the same pattern from
+    Cold Water Issue #6 (2026-04-26). It will recur unless the upstream
+    cause — bot-merge.sh ships the implementation but has no
+    post-merge hook to auto-flip status — is fixed.
+    
+    Today's `chump gap list` shows 107/121 open gaps with at least one
+    commit referencing them on origin/main. Most of those references are
+    in-progress work, but a meaningful fraction are shipped-but-not-flipped.
+    Without automation, the open-gap list permanently mixes "never started"
+    with "shipped, awaiting closure" — agents pick the wrong work.
+    
+    Fix options:
+      (a) bot-merge.sh writes a small `.bot-merge-pending-flip` marker
+          when the PR is armed; a separate cron / launchd task polls
+          merged PRs and runs `chump gap set <ID> --status done
+          --closed-pr <N> --closed-date $(date +%F)` once the PR lands.
+      (b) GitHub Actions workflow on `pull_request: closed && merged`
+          parses the PR title for `<DOMAIN>-<NNN>:` and flips status
+          via a committer bot.
+      (c) bot-merge.sh's existing post-arm sleep loop polls until the
+          PR merges, then commits the flip from the same worktree before
+          exiting. Simplest but ties up the agent session.
+    Pick (a) or (b) so the agent that shipped the implementation is free
+    to start the next gap.
+  acceptance_criteria:
+    - Mechanism exists (workflow OR launchd/cron OR bot-merge post-poll) that auto-flips gap status to done after the implementation PR merges
+    - closed_pr is set to the actual PR number; closed_date is set to merge date (UTC)
+    - "Mechanism is idempotent (safe to re-run) and skips gaps already status:done"
+    - "Mechanism does NOT flip gaps where the PR title is a follow-up / cleanup / partial-progress (e.g. PR titles starting with `fix:` or `chore:` referencing a gap need explicit consent)"
+    - "Test demonstrating: a synthetic PR ship → simulated merge → status flips with correct closed_pr"
+  opened_date: '2026-04-28'
+  closed_date: '2026-04-28'
+  closed_pr: 639
+

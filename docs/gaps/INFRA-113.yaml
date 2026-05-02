@@ -1,0 +1,27 @@
+- id: INFRA-113
+  domain: infra
+  title: Pre-commit preregistration check is hollow - file existence only, contents not validated
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    The 'preregistration required' guard at scripts/git-hooks/pre-commit
+    rejects EVAL-* / RESEARCH-* closures without docs/eval/preregistered/
+    <GAP-ID>.md, but it only checks file existence. An empty preregistration
+    file passes the gate. The file is supposed to lock the methodology
+    contract (n>=50, non-Anthropic judge, A/A baseline, mechanism analysis
+    threshold |delta|>0.05, prohibited claims per docs/RESEARCH_INTEGRITY.md)
+    BEFORE data collection, but nothing in the gate ensures those fields
+    are present or non-trivial. The result - an EVAL-* gap can ship 'done'
+    with a one-line preregistration that satisfies the guard but violates
+    the standard. Cold Water Issues #2 through #7 keep flagging "evals
+    documented but methodology not enforced" - this is the mechanism.
+  acceptance_criteria:
+    - Pre-commit guard parses preregistration file and asserts presence of - sample size, judge identity, A/A baseline plan, mechanism analysis threshold, prohibited-claims attestation
+    - Each field has a minimum content length (e.g. >= 20 chars, no obvious placeholder text)
+    - Bypass env CHUMP_PREREG_CONTENT_CHECK=0 documented for genuine retrospective gaps
+    - Test - empty preregistration file fails the guard; populated file passes
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 622
+

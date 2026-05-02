@@ -1,0 +1,29 @@
+- id: META-002
+  domain: META
+  title: FIXED-but-immediately-replaced classification missing from RED_TEAM_VERIFICATION.md
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    FLEET-006 (ambient stream — 6 cycles) was classified FIXED in
+    Issue #8 (PR #572, bb596c2). On the same date, FLEET-017 (P0, open)
+    was filed: "Cold Water remote agent does not subscribe to NATS
+    ambient stream — FLEET-006 unused." The fix shipped; the agent
+    that needed the fix was never wired up.
+    
+    docs/agents/RED_TEAM_VERIFICATION.md has no classification for
+    this pattern: a gap is FIXED in the technical sense (code shipped)
+    but a same-day P0/P1 replacement gap was filed that makes the
+    original pain point still unresolved. Classifying FLEET-006 as
+    FIXED is technically correct but obscures that the 6-cycle void is
+    still present from the ambient stream's consumer perspective.
+    
+    Without this classification, Cold Water will systematically
+    undercount active failures when architectural fixes don't include
+    consumer wiring. Cold Water Issue #8.
+  acceptance_criteria:
+    - "docs/agents/RED_TEAM_VERIFICATION.md adds FIXED_BUT_REPLACED classification: gap is done, same-day P0/P1 replacement filed, original pain point still active from consumer perspective"
+    - Cold Water review template updated to check for same-day P0/P1 replacement gaps before classifying a finding as FIXED
+    - FLEET-006 and FLEET-017 cited as the canonical example
+  opened_date: '2026-04-27'
+

@@ -28,6 +28,7 @@ ChumpMenu/ChumpMenu.app/
 .chump/state.db
 .chump/state.db-shm
 .chump/state.db-wal
+.chump/state.db.bak
 
 # Auditor (INFRA-087) runtime state — strikes index + raw findings dumps
 .chump/auditor-strikes.json

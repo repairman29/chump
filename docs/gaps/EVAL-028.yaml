@@ -1,0 +1,14 @@
+- id: EVAL-028
+  domain: eval
+  title: CatAttack adversarial robustness sweep on Chump fixtures
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    The CatAttack paper (arxiv 2503.01781) shows that prepending query-agnostic distractor sentences (e.g. "Interesting fact: cats sleep most of their lives") to math/reasoning prompts increases reasoning-model error rates by 300-500% — a published, reproducible adversarial trigger transferable across DeepSeek R1, OpenAI o1/o3, and Qwen reasoning models. Chump's "Attention" cognitive faculty is currently untested in our A/B harness — this is the cheapest pre-published robustness probe we can run. Three-cell design: cell A = bare prompt, cell B = prompt + cat distractor, cell C = prompt + cat distractor + lessons-block-with-anti-distraction- directive. Tests both raw distraction susceptibility AND whether Chump's lessons layer can mitigate it.
+  depends_on: [EVAL-026]
+  notes: |
+    Lift adversarial triggers verbatim from CatAttack paper Table 2 (no need to invent). Implementation: add --distractor flag to run-cloud-v2.py that prepends a chosen trigger to args.prompt before sending. Reuse existing fixtures unchanged. Cost ~\$2 cloud. Reference paper: https://arxiv.org/abs/2503.01781
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-19'
+

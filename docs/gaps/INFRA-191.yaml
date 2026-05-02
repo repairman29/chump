@@ -1,0 +1,48 @@
+- id: INFRA-191
+  domain: infra
+  title: chump dispatch canonical workflow — single command pulls main, claims gap, ships PR, releases
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Today every agent runs the same 6-step ritual:
+      1. git fetch origin main; git status
+      2. ls .chump-locks/*.json; tail ambient.jsonl
+      3. chump gap list --status open + chump --briefing
+      4. scripts/coord/gap-preflight.sh + gap-claim.sh
+      5. (do work)
+      6. scripts/coord/bot-merge.sh; release lease
+    
+    Steps 1-4 and 6 are pure boilerplate and identical across agents.
+    The only meaningful step is 5. But the boilerplate is what causes
+    drift, ID collisions, lease leaks, and "wait, was main pulled?"
+    bugs.
+    
+    Fix: `chump dispatch --gap <ID>` is the single canonical entry:
+      1. Pull origin main into a fresh worktree at .chump/worktrees/<codename>
+      2. Run gap-preflight + gap-claim atomically
+      3. Apply default scope to the lease (current branch's diff so far)
+      4. Spawn the agent (any tool — Claude SDK, Cursor, Goose, etc.) via
+         the configured backend
+      5. On agent completion: bot-merge.sh ship + release lease
+      6. On agent failure: release lease, leave worktree for inspection
+    
+    Tooling stays — `chump dispatch` is a thin orchestrator over the
+    existing scripts. Works for both interactive ("dispatch me a gap to
+    work on") and headless ("autonomous on this gap, ship when done")
+    modes.
+    
+    Closes/subsumes:
+      - INFRA-100 (atomic next-ID picker — wrapped here)
+      - INFRA-168 (rewire coord shell scripts — wrapped here)
+    
+    Depends on: INFRA-188 (per-file gap), INFRA-189 (declared scope),
+    INFRA-190 (auto-rebase) — all the building blocks.
+  acceptance_criteria:
+    - "chump dispatch --gap <ID> runs end-to-end: pull → preflight → claim → spawn → ship → release"
+    - Works for both interactive and headless modes (--interactive flag)
+    - Agent failure leaves worktree for inspection but releases lease
+    - "After 1 week: agents that use chump dispatch ship 2× more PRs than agents using manual ritual"
+  depends_on: [INFRA-188, INFRA-189, INFRA-190]
+  opened_date: '2026-05-01'
+

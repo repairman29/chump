@@ -1,0 +1,14 @@
+- id: EVAL-040
+  domain: eval
+  title: Out-of-distribution problem solving — extend Problem Solving validation
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    Problem Solving faculty currently validated only on our 3 fixtures (all hallucination + instruction-following). Extends with one external benchmark — BFCL function calling, MMLU subset, or ARC-AGI mini. Compare Chump's full agent loop + lessons block to the same model's published baseline.
+  notes: |
+    Shipped: BFCL-inspired 20-task OOD fixture (ood_bfcl_sample.json), methodology doc (docs/eval/EVAL-040-ood-benchmark.md), and stub section in CONSCIOUSNESS_AB_RESULTS.md. Pilot sweep pending — fixture and harness commands ready. Full pilot requires live LLM endpoint and dual-judge panel. Cost ~$5 cloud for n=50 per cell on haiku-4-5.
+  source_doc: docs/RESEARCH_PLAN_2026Q3.md
+  closed_date: '2026-04-20'
+  closed_pr: 236
+

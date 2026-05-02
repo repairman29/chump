@@ -1,0 +1,13 @@
+- id: FLEET-001
+  domain: fleet
+  title: Mutual supervision — Mac can restart Mabel; Pixel can probe Mac health
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Horizon 2 goal: Mac and Pixel supervise each other. Currently neither can restart the other or verify the other's health automatically.
+  notes: |
+    scripts/restart-mabel.sh: SSH stop+restart chump --discord on Pixel via ensure-mabel-bot-up.sh. scripts/probe-mac-health.sh: curl /api/dashboard with CHUMP_WEB_TOKEN, parse fleet_status JSON. Integration test checklist added to docs/FLEET_ROLES.md.
+  source_doc: docs/ECOSYSTEM_VISION.md
+  closed_date: '2026-04-16'
+

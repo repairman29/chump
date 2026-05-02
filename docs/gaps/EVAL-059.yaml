@@ -1,0 +1,17 @@
+- id: EVAL-059
+  domain: eval
+  title: Perception binary-mode validation — run CHUMP_BYPASS_PERCEPTION sweep via chump binary
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    EVAL-054 used run-ablation-sweep.py (direct-API), confirming the noise floor (delta=-0.040 via direct API). run-binary-ablation.py already supports --module perception (added in EVAL-056 context). Run the proper binary-mode test: python3 scripts/ab-harness/run-binary-ablation.py --module perception --n-per-cell 30. This exercises the actual CHUMP_BYPASS_PERCEPTION=1 env var through the chump binary, measuring real module isolation vs just the LLM noise floor. Append results to docs/eval/EVAL-054-perception-ablation.md and update CHUMP_FACULTY_MAP.md if verdict changes.
+  acceptance_criteria:
+    - run-binary-ablation.py --module perception runs with n=30/cell
+    - docs/eval/EVAL-054-perception-ablation.md updated with binary-mode results
+    - CHUMP_FACULTY_MAP.md Perception row updated if verdict changes from direct-API baseline
+  depends_on: [EVAL-049]
+  source_doc: docs/eval/EVAL-054-perception-ablation.md
+  closed_date: '2026-04-20'
+  closed_pr: 275
+

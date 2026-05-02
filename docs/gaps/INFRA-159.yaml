@@ -1,0 +1,45 @@
+- id: INFRA-159
+  domain: infra
+  title: src/voice.rs is 236 lines of stub TODOs with zero callers — implement or remove
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    `src/voice.rs` was added behind a `voice` feature flag and contains
+    three explicit TODO stubs: Whisper STT context init (line 64),
+    whisper-rs full inference (line 76), and ElevenLabs HTTP POST
+    (line 140). The Stt::transcribe path returns `VoiceError::NotCompiled`
+    unconditionally; the TtsBackend::ElevenLabs / Cartesia branches
+    return `VoiceError::TtsError("...not yet implemented")`.
+    
+    Production usage check: `grep -rn "use.*voice\|crate::voice\|mod voice"`
+    finds exactly one reference — `src/main.rs:174 mod voice;`. No code
+    in the binary or any crate calls into `voice::stt::*` or
+    `voice::tts::*`. The module is loaded but unreachable.
+    
+    This is one of two failure modes for unused/stub code:
+      - Reviewers and agents skim the file and assume voice works
+        ("hey, there's a Stt struct, let me wire it up") — wasting time
+        when transcribe() returns NotCompiled.
+      - Static-analysis tools count voice.rs as "implemented" surface
+        area, polluting LOC / coverage / module-count metrics.
+    
+    Pick a path:
+      (a) Delete src/voice.rs + the mod statement + the `voice` feature
+          in Cargo.toml. Net-new-docs trailer not needed (it's source).
+          File a separate gap when voice is genuinely on the roadmap.
+      (b) Move src/voice.rs to crates/chump-voice with a clear `// STUB`
+          banner at module top, and downgrade `voice` to a workspace
+          member that is deliberately not wired in until SENSE / AGT
+          gaps land.
+    
+    Recommendation: (a). Voice is not on a near-term roadmap, and a stub
+    with three TODOs is worse than no module — it implies progress that
+    isn't happening.
+  acceptance_criteria:
+    - "Either: src/voice.rs deleted + mod voice line removed + Cargo.toml `voice` feature pruned (option a)"
+    - "OR: src/voice.rs moved to crates/chump-voice/src with a STUB banner and out-of-tree until called (option b)"
+    - cargo build --workspace clean after the change
+    - PR description picks (a) or (b) and explains why
+  opened_date: '2026-04-28'
+

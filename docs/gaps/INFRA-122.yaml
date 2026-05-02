@@ -1,0 +1,24 @@
+- id: INFRA-122
+  domain: infra
+  title: ambient.jsonl has no retention or rotation policy - grows unbounded
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    .chump-locks/ambient.jsonl is the file-side of the peripheral-vision
+    stream and is appended to by every agent on every event. CLAUDE.md
+    pre-flight reads only 'tail -30' so the file size is invisible to
+    operators. There is no documented rotation, no size cap, no archival.
+    On a long-running deployment (or after a busy multi-day burst like
+    2026-04-25 / 2026-04-26) the file becomes multi-GB and slows down
+    agents that read it. scripts/ambient-rotate.sh exists but is not
+    referenced from CLAUDE.md and audit did not confirm it runs on a
+    schedule. Adopt a rotation policy (size-based or time-based), document
+    it, and wire it into launchd/cron alongside the existing reapers.
+  acceptance_criteria:
+    - Rotation policy documented in CLAUDE.md (size threshold, retention)
+    - scripts/ambient-rotate.sh runs on a schedule (cron/launchd) and is verified to fire
+    - Rotated archives are accessible to scripts/ambient-query.sh for historical lookups
+    - Ambient ALERT when ambient.jsonl exceeds size threshold without rotation
+  opened_date: '2026-04-26'
+

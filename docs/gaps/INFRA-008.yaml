@@ -1,0 +1,21 @@
+- id: INFRA-008
+  domain: infra
+  title: 4h unattended precursor soak test — forcing function for 72h autonomy gate
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    The 6-8 week autonomy timeline terminates at a 72-hour unattended soak test. That gate cannot be cleared unless blockers #1 (trustworthy eval signal), #3 (cost-routing proven), #4 (ambient stream emitting), and #5 (binary stability) are all near-solved. A 4-hour precursor soak is a cheaper forcing function: it exposes the same failure modes in an afternoon instead of 3 days, lets the team iterate without burning 72h of wall time per attempt, and surfaces a concrete go/no-go for each blocker. Soak definition: chump-orchestrator --watch running unattended for 4 hours against a mixed-gap backlog (infra + eval + docs). Success criteria: (a) at least 1 PR shipped, (b) zero unrecovered binary panics (panic = sev 1 regression), (c) ambient.jsonl shows file_edit / commit / bash_call events throughout (not just session_start), (d) cost stays under $5 (if claude-backend) or $1 (if chump-local+Ollama).
+  acceptance_criteria:
+    - scripts/soak/run-4h-precursor.sh shell wrapper + watchdog
+    - INFRA-007 ambient stream fix complete and verified in soak
+    - QUALITY-002 unwrap audit output (at least the triage doc; removals optional at this stage)
+    - 1 clean 4h soak run completed with all four success criteria met
+    - docs/eval/INFRA-008-soak-run-YYYYMMDD.md per-run report
+  depends_on: [INFRA-007, QUALITY-002]
+  notes: |
+    Deliberate P2 — not pre-requisite work, but pre-requisite-proof work. File now so the forcing function exists in the registry. Do not start implementation until INFRA-007 and QUALITY-002 have at minimum their triage output, otherwise the soak will just fail on known preexisting issues and waste a cycle.
+  source_doc: 2026-04-20 strategic review (week-4-8 forcing function)
+  closed_date: '2026-04-21'
+  closed_pr: 376
+

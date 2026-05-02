@@ -1,0 +1,12 @@
+- id: AUTO-007
+  domain: autonomy
+  title: Better task selection — dependency awareness and urgency scoring
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Current task selection picks highest-priority non-blocked task. No dependency graph, no urgency from deadline context, no repo readiness check before claiming a coding task.
+  depends_on: [AUTO-002]
+  source_doc: docs/AUTONOMY_ROADMAP.md
+  closed_date: '2026-04-17'
+

@@ -1,0 +1,36 @@
+- id: INFRA-187
+  domain: infra
+  title: "tooling enforcement for chump-first naming: bot-merge.sh defaults chump/, gap-claim accepts any prefix"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Follow-up to INFRA-186. Tooling currently doesn't enforce or even
+    suggest the chump-first naming convention — agents have to manually
+    type `claude/<codename>` (or now `chump/<codename>`) into git
+    worktree add and bot-merge.sh.
+    
+    Wishlist:
+      1. bot-merge.sh: when invoked from a worktree without an existing
+         branch arg, derive a sensible default `chump/<codename>` from
+         the worktree directory name. Operator can override.
+      2. gap-claim.sh: explicit acceptance of both claude/* and chump/*
+         prefixes (already the case implicitly; document it).
+      3. gap-preflight.sh: same.
+      4. Optional: a one-time migration helper that renames
+         .claude/worktrees/<name> → .chump/worktrees/<name> for a single
+         worktree (with git worktree move + branch rename). NOT a bulk
+         migration — by-tree opt-in only.
+      5. Optional: pre-commit warns (not blocks) on new branches that
+         start with a tool prefix (claude/, cursor/, goose/, aider/) and
+         suggest chump/ instead. Off by default; enable with
+         CHUMP_BRANCH_NAME_NUDGE=1.
+    
+    All optional — INFRA-186's docs change is the meaningful behavior
+    shift; this is the friction-reducer.
+  acceptance_criteria:
+    - "bot-merge.sh: when no branch is set and the worktree dir name doesn't already start with chump/ or another tool prefix, derive chump/<dirname> as the branch"
+    - "gap-claim.sh + gap-preflight.sh: explicit comment + log line documenting both prefixes accepted"
+    - Either INFRA-187 ships the optional migration helper (item 4) and pre-commit nudge (item 5), OR a follow-up gap is filed for them
+  opened_date: '2026-05-01'
+

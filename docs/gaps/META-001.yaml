@@ -1,0 +1,29 @@
+- id: META-001
+  domain: META
+  title: Diagnostic and red-team agents must verify gap activity via git log before 'no movement' claims
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Cold Water Issue #5 (2026-04-25) noted "Documentation of failure is now
+    a recurring ritual. The failure itself is undisturbed." A 2026-04-26
+    diagnostic pass made eight specific incorrect "no movement" or "still
+    open" claims that git-log verification refuted - PRODUCT-015 had 6
+    commits including PR #491 shipping activation funnel telemetry,
+    RESEARCH-021 had 14 commits, EVAL-074 had 11 (mechanism shipped via
+    #549, retracted via #551, follow-up filed via #558), FLEET-006 was
+    actually status:done, EVAL-043 was actually status:done, the
+    "INFRA-073 8th duplicate-ID collision in YAML" claim found only one
+    entry. The pattern: agents read status:open and infer inactivity
+    without checking 'git log --grep'. Add the verification rule to the
+    Cold Water prompt, the Explore-agent template guidance, and any
+    diagnostic-style skill. Any "no movement" / "stalled" / "no commits"
+    claim must be backed by the output of 'git log origin/main
+    --grep=<ID>' showing zero or stale commits.
+  acceptance_criteria:
+    - Cold Water prompt updated to require 'git log --grep=<ID>' citation for any inactivity claim
+    - Diagnostic / red-team skills under docs/agents/ document the verification rule
+    - Next Red Letter cycle has zero unverified inactivity claims (manual spot-check)
+    - Rule lives in docs/agents/RED_TEAM_VERIFICATION.md or equivalent so future agents inherit it
+  opened_date: '2026-04-26'
+

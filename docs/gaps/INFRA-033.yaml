@@ -1,0 +1,20 @@
+- id: INFRA-033
+  domain: infra
+  title: "chump-mcp-coord: MCP tools for gap preflight, lease introspection, and musher hints"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Fleet agents shell into gap-preflight.sh, gap-claim.sh, and musher.sh. Cursor and other MCP-first clients need a first-class, read-mostly tool surface so partner sessions can coordinate without ad-hoc copy/paste or unsafe YAML edits. Ship crates/mcp-servers/chump-mcp-coord exposing MCP tools that wrap the same invariants as docs/AGENT_COORDINATION.md (leases under .chump-locks/, gaps ledger semantics, no status mutation except via documented human/PR flows). Minimum tool set: gap_preflight, gap_claim_write (lease JSON only), lease_list_active, musher_pick, ambient_tail (read-only last N ambient events). Tools must never rewrite docs/gaps.yaml status fields.
+  acceptance_criteria:
+    - New crate ships under crates/mcp-servers/chump-mcp-coord with Cargo manifest + README wiring
+    - At least five MCP tools with JSON schemas documented in crates/mcp-servers/README.md
+    - "Integration smoke: one Cursor session can run gap_preflight + musher_pick against a dev repo without shell"
+    - docs/CHUMP_CURSOR_FLEET.md documents how to enable the server for local fleet runs
+    - "Security review: tools cannot exfiltrate .env or bypass CHUMP_GAPS_LOCK invariants"
+  depends_on: [INFRA-021]
+  notes: |
+    Queued 2026-04-23 from fleet-hardening plan. Ships after INFRA-028 (bot-merge liveness, done) so operators get one coherent observability story.
+  source_doc: docs/CHUMP_CURSOR_FLEET.md + crates/mcp-servers/README.md MCP program note
+  closed_date: '2026-04-22'
+

@@ -1,0 +1,14 @@
+- id: INFRA-WORKTREE-PATH-CASE
+  domain: infra
+  title: Sibling agent created worktree at lowercase /Users/jeffadkins/projects/Chump
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    During the 2026-04-19 tidy audit, observed that one worktree (sweet-payne-9f4a6b) was created at `/Users/jeffadkins/projects/Chump/.claude/worktrees/sweet-payne-9f4a6b/` — note the LOWERCASE `projects` path component vs the standard `/Users/jeffadkins/Projects/Chump/...` (capital P). macOS HFS+/APFS is case-insensitive so the path resolves, but case-sensitive tools (some git operations, rsync, Linux CI) may misbehave. Likely caused by an agent constructing the path from `pwd | tr A-Z a-z` or similar. Should: (1) audit all spawn-worktree code paths in scripts/ for case-normalization, (2) add a guard that rejects worktree creation if the absolute path does not exactly match `/Users/jeffadkins/Projects/Chump/.claude/worktrees/<name>/`, (3) document the path requirement explicitly in CLAUDE.md + AGENTS.md.
+  notes: |
+    Filed during 2026-04-19 evening tidy audit. Active sweet-payne worktree NOT touched — sibling agent's work in progress. After that worktree's PR lands, audit safely.
+  source_doc: session 2026-04-19 tidy audit
+  closed_date: '2026-04-20'
+  closed_pr: 218
+

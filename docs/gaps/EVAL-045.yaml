@@ -1,0 +1,13 @@
+- id: EVAL-045
+  domain: eval
+  title: Retrieval pipeline benchmark — recall@5 on curated multi-hop QA
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    See COG-002. Standalone eval entry for the retrieval benchmark — separate from the consciousness A/B study because retrieval quality matters independently of whether consciousness modules are enabled.
+  notes: |
+    Closed with COG-002. recall_benchmark_eval_003 test in memory_graph.rs runs 50-QA fixture comparing BFS vs PPR recall@5 (BFS=0.593, PPR=0.427 on synthetic data). bfs_recall() added as baseline. scripts/recall-benchmark.sh runs and appends results to docs/CONSCIOUSNESS_AB_RESULTS.md.
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-16'
+

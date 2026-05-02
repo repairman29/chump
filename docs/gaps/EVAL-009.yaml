@@ -1,0 +1,12 @@
+- id: EVAL-009
+  domain: eval
+  title: Eval runner CLI — `chump eval run` loads cases, runs agent, persists EvalRunResult
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    eval_harness is a library. No production path calls load_eval_cases() → run agent → check_all_properties_with_judge_async → save_eval_run. battle-qa.sh writes episodes but not chump_eval_runs rows; the --with-judge summary it reads is empty until we actually run the harness against real cases.
+  depends_on: [EVAL-001, EVAL-004]
+  source_doc: src/eval_harness.rs
+  closed_date: '2026-04-17'
+

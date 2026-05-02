@@ -1,0 +1,20 @@
+- id: FLEET-012
+  domain: fleet
+  title: Blocker detection & timeout handling — agent recognizes stuck state
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Agent needs to recognize when it is stuck: (1) execution timeout (running > 60min with no progress output), (2) compile failure loop (cargo check fails, fix loop repeats >3 times), (3) resource exhaustion (available_ram < 1GB), (4) capability gap (task requires model X, agent has model Y, no translation path). Current: agent just times out and dies. Better: agent detects blocker, posts help request (FLEET-010), lets peer take over or provides context for human intervention.
+  acceptance_criteria:
+    - Agent monitors execution time; flags if > 60min with no progress
+    - Agent detects compile failure loops (cargo check failures > 3 consecutive)
+    - Agent detects resource exhaustion (available_ram < threshold)
+    - Agent detects capability gap (required model family not available)
+    - Agent posts help request (FLEET-010) when blocker detected
+  depends_on: [FLEET-010]
+  notes: |
+    Pairs with EVAL-030 (task-class awareness). Blocker detection is the trigger for help-seeking. Resource monitoring is the infrastructure (need metrics from agent).
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  closed_date: '2026-04-24'
+

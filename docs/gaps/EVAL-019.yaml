@@ -1,0 +1,13 @@
+- id: EVAL-019
+  domain: eval
+  title: Cross-session continuity A/B — do new sessions resume context
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    Production sessions don't restart from blank. Continuity is a UX-critical property. We have no measurement.
+  depends_on: [EVAL-018]
+  notes: TEST-CAT-J.
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

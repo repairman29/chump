@@ -1,0 +1,54 @@
+- id: INFRA-155
+  domain: infra
+  title: Detect and repair YAML/SQLite gap-store drift (INFRA-097, INFRA-149 cases)
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Two concrete drifts observed in the 2026-04-28 session reveal that
+    the YAML mirror (`docs/gaps.yaml`) and the canonical SQLite store
+    (`.chump/state.db`) are not always consistent — even though INFRA-059
+    promoted SQLite to canonical and INFRA-112 made `chump gap dump`
+    self-validating round-trip:
+    
+    1. **INFRA-097 title divergence.** SQLite says
+       "dispatch prompt starting with --- breaks claude -p arg parsing"
+       (matches PR #599 commit `97c7c4e fix(infra-097): pipe dispatch
+       prompt via stdin so frontmatter doesn't break clap`). YAML says
+       "process-adoption enforcement check - new system shipped, who
+       actually uses it?". Two completely different gaps under one ID.
+       Status flip is risky because closing the SQLite gap would silently
+       erase the YAML idea.
+    
+    2. **INFRA-149 ghost gap.** PR #624 commit message and PR title cite
+       INFRA-149 as "serial-guard default_registries_reads_env" but no
+       gap row exists in either YAML or SQLite. The ID was reserved
+       in some operator's local SQLite, the PR shipped, but the gap row
+       never reached origin/main. Result: the next `chump gap reserve`
+       call hands out 149 again, colliding silently.
+    
+    Pre-existing INFRA-150/151/152 are presumably similar (today's
+    `chump gap reserve` skipped 149-152 and went to 153, suggesting
+    they're held in other agents' lease files / open-PR diff scans).
+    
+    Fix scope:
+      (a) `chump gap doctor` subcommand: diff every YAML row against the
+          SQLite row; report mismatches by field (title, status, priority,
+          description hash) and orphaned IDs (in YAML not DB, or in
+          DB not YAML, or in commits not either).
+      (b) Repair flow: per-mismatch, prompt operator to keep YAML, keep
+          SQLite, or merge fields manually. Bulk-mode supports --keep-yaml
+          / --keep-db with confirmation.
+      (c) CI guard on origin/main: nightly job runs `chump gap doctor`
+          and fails if drift > 0 or ghost gaps > 0; opens a tracking
+          issue listing the drifts.
+  acceptance_criteria:
+    - "`chump gap doctor` exists; lists every YAML↔SQLite mismatch and ghost-ID per-gap"
+    - Repair flow can resolve the INFRA-097 title divergence (decision recorded in commit message)
+    - "Repair flow can recover the INFRA-149 ghost (filing a real gap row matching PR #624's actual scope, or marking the ID permanently retired)"
+    - Nightly CI job runs `chump gap doctor` against origin/main; flags any drift > 0
+    - "Test: synthetic divergence (manually edit one field in YAML to disagree with DB) is detected"
+  opened_date: '2026-04-28'
+  closed_date: '2026-04-28'
+  closed_pr: 641
+

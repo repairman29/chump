@@ -1,0 +1,11 @@
+- id: COMP-003
+  domain: competitive
+  title: Pluggable context engine — ContextEngine trait for per-deployment strategies
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    src/context_assembly.rs is monolithic — every section hardcoded. Different deployments (heavy autonomy vs. light chat vs. research synthesis) need different context strategies. Cannot swap without forking.
+  source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+  closed_date: '2026-04-16'
+

@@ -1,0 +1,15 @@
+- id: EVAL-034
+  domain: eval
+  title: Memory retrieval evaluation — multi-hop QA with SAKE comparison
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    Memory faculty (memory_db + memory_graph) has zero isolated A/B evidence. EVAL-034 builds a multi-hop QA fixture (~30 questions) where correct answers require combining stored memory entries. Three cells: A memory ON, B memory OFF, C memory ON + SAKE anchoring per EVAL-027. Tests both raw memory utility AND whether KID applies to Chump's memory layer.
+  depends_on: [EVAL-027, MEM-005]
+  notes: |
+    Fixture authoring ~3 days, code ~2 days, sweep ~1 hour. Cost ~$5.
+  source_doc: docs/RESEARCH_PLAN_2026Q3.md
+  closed_date: '2026-04-20'
+  closed_pr: 226
+

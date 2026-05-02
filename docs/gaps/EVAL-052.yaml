@@ -1,0 +1,16 @@
+- id: EVAL-052
+  domain: eval
+  title: CatAttack hallucination sweep n=50 — confirm or refute Attention faculty distractor-halluc signal
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    EVAL-051 (n=20/cell) showed Δhalluc=+0.300 (0/20 baseline vs 6/20 distractor), but Wilson CIs just barely overlap: Cell A [0.000, 0.161] vs Cell B [0.145, 0.519]. This gap runs n=50/cell to resolve definitively. Results: Cell A halluc_rate=0.000 CI [0.000, 0.071], Cell B halluc_rate=0.340 CI [0.224, 0.478]. CIs do NOT overlap → COVERED+VALIDATED(NEGATIVE). Distractor increases hallucination Δ+0.340 confirmed; no accuracy degradation (ceiling effect). Attention row updated in CHUMP_FACULTY_MAP.md.
+  acceptance_criteria:
+    - docs/eval/EVAL-047-catattack-full.md updated with n=50 results + Wilson CIs
+    - docs/CHUMP_FACULTY_MAP.md Attention row updated with definitive verdict
+  depends_on: [EVAL-051]
+  source_doc: docs/eval/EVAL-047-catattack-full.md
+  closed_date: '2026-04-20'
+  closed_pr: 262
+

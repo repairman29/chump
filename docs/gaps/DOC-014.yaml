@@ -1,0 +1,37 @@
+- id: DOC-014
+  domain: DOC
+  title: ONBOARDING.md '<60s FTUE' claim is false until bottles ship — qualify or remove
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    `docs/process/ONBOARDING.md:9` claims "run one command, get a
+    working AI assistant with PWA in under 60 seconds." On a clean
+    Mac the brew install takes ~20 minutes (compile from source — no
+    bottles yet, see INFRA-172). The 60s budget only describes
+    `chump init → PWA-ready`, which is the last 1.4% of the user
+    experience.
+    
+    Cold Water Issue #8 specifically flagged this mismatch: PRODUCT-015
+    metering "conversion into a funnel whose first step may not have
+    worked." The 60s claim is exactly the kind of marketing-vs-reality
+    gap RESEARCH_INTEGRITY.md prohibits in research; the same standard
+    should apply to product claims.
+    
+    Fix (this PR):
+      - Qualify the goal line: 60s is the post-install budget; total
+        FTUE on a clean machine is ~20m today.
+      - Note INFRA-172 is the gap that makes the original claim true.
+      - Cite the verification artifact (FTUE-VERIFICATION-2026-04-29.md)
+        as evidence.
+    
+    When INFRA-172 ships bottles, the qualification can be removed
+    (or replaced with the post-bottle measurement).
+  acceptance_criteria:
+    - ONBOARDING.md goal line distinguishes post-install FTUE from total FTUE
+    - ONBOARDING.md cites INFRA-172 as the gap that closes the gap between claim and reality
+    - ONBOARDING.md cites the verification artifact as evidence
+  opened_date: '2026-04-30'
+  closed_date: '2026-04-30'
+  closed_pr: 676
+

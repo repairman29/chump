@@ -1,0 +1,11 @@
+- id: PRODUCT-003
+  domain: product
+  title: User profile system — three-layer identity, context, and learned preferences
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Chump currently starts every session knowing nothing about the user. The cognitive architecture (neuromodulation, belief state, precision controller) runs blind with no user model to calibrate against. This gap implements the three-layer user model: (1) Identity & Relationship — persistent, encrypted, who the user is and how they work; (2) Current Context — volatile, stale-flagged after 7 days, active projects and goals; (3) Learned Preferences — Chump-observed, user-confirmable behavioral observations. Profile data is never injected raw into prompts, never written to logs or ambient.jsonl, never committed to git. A user_context() function returns a curated behavioral summary; behavioral regime fields compile into the PrecisionController at session start. Storage: sessions/user_profile.db (AES-256-GCM field encryption, keyring crate for key management, 600 permissions).
+  source_doc: docs/FTUE_USER_PROFILE.md
+  closed_date: '2026-04-19'
+

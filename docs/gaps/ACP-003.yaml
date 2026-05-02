@@ -1,0 +1,13 @@
+- id: ACP-003
+  domain: acp
+  title: Real-editor integration tests — Zed and JetBrains CI
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    88 ACP unit tests use simulated client. Real Zed and JetBrains clients have never been exercised by CI. Wire-level JSON-RPC not snapshot-tested. Spec drift will not break builds.
+  notes: |
+    Heavy CI setup (JDK + JetBrains gateway). Realistic estimate: 2-4 weeks.
+  source_doc: docs/ACP_V3_BACKLOG.md
+  closed_date: '2026-04-16'
+

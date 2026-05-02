@@ -1,0 +1,28 @@
+- id: FLEET-017
+  domain: fleet
+  title: Cold Water remote agent does not subscribe to NATS ambient stream - FLEET-006 unused
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    FLEET-006 (PR #572, 2026-04-26) distributed the ambient stream to
+    NATS, but the Cold Water scheduled-trigger prompt (saved at
+    /Users/jeffadkins/.claude/plans/help-me-improve-this-velvet-thunder.md
+    and in the actual /schedule remote trigger) still tails only the
+    local file (.chump-locks/ambient.jsonl). When Cold Water runs in
+    Anthropic cloud, that file is empty - it has never seen a local
+    edit. This is THE mechanism behind the recurring "documenting
+    failure but not seeing it" loop in Red Letter Issues #2 through #7.
+    FLEET-006 makes the fix possible; this gap is wiring it in. Update
+    the trigger prompt to run 'chump-coord watch' (or equivalent
+    NATS-subscription primitive) so peripheral vision is actually
+    cross-machine.
+  acceptance_criteria:
+    - Cold Water trigger prompt subscribes to chump.events.> at session start
+    - Subscription persists for at least 60 seconds before evidence-gathering begins
+    - If NATS is unreachable, prompt logs the fact and continues with file fallback
+    - Next Cold Water cycle Status of Prior Issues block cites NATS-observed activity, not just file tail
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 629
+

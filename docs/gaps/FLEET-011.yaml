@@ -1,0 +1,18 @@
+- id: FLEET-011
+  domain: fleet
+  title: Work decomposition heuristics & learning — agent learns when to break tasks
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    Agents today ship monolithic PRs. They should learn to decompose work: multi-file refactors split into per-file changes, large feature branches split by subsystem, blocked tasks escalated to help-requests. Heuristics: (1) file count > 5 + LOC > 500 → consider decomposition; (2) execution time > 30min + no progress → ask for help; (3) task_class in (refactor, rebase, multi-system) → decompose by default. Learning: track which decompositions succeeded vs failed; bias toward decomposition if success rate > 70%.
+  acceptance_criteria:
+    - Heuristic rules implemented and documented
+    - Agent tracks decomposition outcomes (success/failure/abort)
+    - Agent adjusts decomposition bias based on learned success rate
+    - docs/FLEET-011-decomposition-heuristics.md documents rules and learning trajectory
+  depends_on: [FLEET-008, FLEET-010]
+  notes: |
+    Connects to EVAL-030 (task-class-aware lessons): decomposition heuristics + capability matching + lessons gating are three parts of task-aware execution. Large effort; consider staging in two quarters (heuristics Q4, learning Q1 2027).
+  source_doc: docs/FLEET_VISION_2026Q2.md
+

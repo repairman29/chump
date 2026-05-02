@@ -1,0 +1,33 @@
+- id: INFRA-024
+  domain: infra
+  title: apalis research — evaluate Rust-native job-queue for durable multi-agent work
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    apalis (https://github.com/geofmureithi/apalis) is a Rust-native async job-queue framework with pluggable backends (Redis, Postgres, SQLite, MySQL). Flagged as phase-2 in INFRA-023 because the current lease/preflight/bot-merge flow is advisory — a crashed agent leaves a stale lease that only expires via TTL, retries are manual, and ambient.jsonl is observational not actionable. apalis would upgrade that to durable work: jobs with typed payloads, automatic retries with backoff, worker crash recovery, cron schedules, timeouts, metrics.
+    
+    QUESTIONS THE RESEARCH MUST ANSWER.
+    1. Does apalis's SQLite backend play nicely alongside the INFRA-023 .chump/state.db (one file, two schemas? separate files?) or does it push us to Postgres?
+    2. Is apalis's job model a natural fit for Chump's work (gap execution as a durable job, with the worker = a Claude Code session) or does it conceptually mismatch (apalis assumes short-lived jobs, our 'jobs' are 30-min+ agent sessions)?
+    3. What does worker registration look like on a Pi mesh? One apalis Worker per Pi, picking from a shared SQLite over NFS? Or per-node DBs with a sync layer?
+    4. Maturity: production users, release cadence, breaking-change frequency, Rust MSRV, async runtime coupling (tokio-only?).
+    5. Alternatives in the same space: underway (Postgres-only, ruled out for offline), fang, tokio-cron-scheduler (schedule-only), sidekiq-rs. Does apalis actually win?
+    6. Integration cost: what's the smallest slice that gives real value? Likely 'migrate bot-merge.sh retries to apalis' or 'migrate stale-pr-reaper.sh cron to apalis'.
+    7. What does losing apalis look like? If it goes unmaintained in 18 months, can we rip it out cleanly, or does it shape the DB schema in a way that becomes load-bearing?
+    
+    DELIVERABLE. docs/eval/INFRA-024-apalis-research.md: memo with a recommend/hold/reject verdict, one 50-LOC proof-of-concept (apalis SQLite worker that runs one trivial Chump job — e.g. 'purge stale leases'), integration-cost estimate, and a concrete phase-2 plan if recommended.
+    
+    CONSTRAINTS CARRIED FROM INFRA-023. Must stay offline-capable (so Redis/Postgres backends are evaluation-only, SQLite is the target). Must not require a daemon. Must co-exist with INFRA-023's .chump/state.db. Must not add a mandatory new external dependency on a Pi (tokio is already there via the Chump runtime).
+  acceptance_criteria:
+    - docs/eval/INFRA-024-apalis-research.md with verdict + evidence (all 7 questions above answered)
+    - "Proof-of-concept in examples/apalis-poc/ (or scratch crate): one apalis SQLite worker, one registered job, one successful dispatch and completion — total <100 LOC"
+    - "Integration-cost estimate: LOC delta + new deps + MSRV impact + any schema changes to the INFRA-023 .chump/state.db"
+    - If verdict is 'recommend', file INFRA-025 as the concrete migration gap with sequenced sub-gaps
+    - If verdict is 'reject' or 'hold', document the reason so future sessions don't re-litigate
+  depends_on: [INFRA-023]
+  notes: |
+    2026-04-22: Phase 1 audit complete, CLAUDE/AGENTS hygiene added, CI dry-run workflow draft in. Remaining: real publishes, release automation., effort small. Research-only — the output is a memo + PoC, not a migration. Rationale for priority: INFRA-023 (SQLite state) gives us most of the durability wins already (atomic writes, TTL leases, SQL queries). apalis is an upgrade, not a fix. Worth researching because it could replace stale-pr-reaper.sh + bot-merge retry logic + ambient.jsonl consumers with a single typed job model. But we should not commit to it before INFRA-023 ships — the research needs the new DB to reason about integration.
+  source_doc: "2026-04-20 live session — Jeff \"we should do apalis research\""
+  closed_date: '2026-04-22'
+

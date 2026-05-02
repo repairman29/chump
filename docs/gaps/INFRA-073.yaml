@@ -1,0 +1,19 @@
+- id: INFRA-073
+  domain: infra
+  title: pre-commit YAML-validity guard for docs/gaps.yaml
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Commit 26e74937 (INFRA-070) wrote `- regression test: hand-add ...` as an unquoted list item in gaps.yaml. The embedded colon turned the list item into a malformed mapping; PyYAML refused to parse the file. chump-orchestrator cli_smoke tests crashed in CI for every PR until PR #542 drive-by quoted the line. The five existing pre-commit guards on gaps.yaml (discipline, duplicate-ID, hijack, recycled-ID, fmt) all pattern-match on text — none of them check that the file is still parseable YAML. This guard runs PyYAML safe_load on the staged content and blocks the commit on parse error.
+  acceptance_criteria:
+    - hook rejects a commit that leaves gaps.yaml unparseable
+    - hook allows a commit that keeps gaps.yaml parseable
+    - CHUMP_GAPS_LOCK=0 bypasses the guard
+    - regression test in scripts/test-yaml-lint-guard.sh covers all three
+  notes: |
+    Lives at the top of the gaps.yaml block in pre-commit so it runs before the other discipline checks (which assume parseable YAML). Silent no-op if PyYAML is not installed in the local env (CI's cli_smoke catches it then).
+  source_doc: scripts/git-hooks/pre-commit
+  opened_date: '2026-04-25'
+  closed_date: '2026-04-25'
+

@@ -1,0 +1,13 @@
+- id: EVAL-010
+  domain: eval
+  title: Human-labeled fixture subset — break circular author-grades-author A/B loop
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Current A/B fixtures (perception_tasks.json, neuromod_tasks.json, reflection_tasks.json) embed expected_properties authored by the same person who built the framework, then graded by an LLM judge using the same model as the agent. The cloud A/B sweep (commit ce4ebc0) revealed this circularity: lessons-block A/B shows -0.05 mean delta across 160 trials, but it is impossible to tell whether the framework genuinely hurts or whether the fixture rubric penalizes the framework's verbose output style.
+  notes: |
+    Recommended follow-up from cloud A/B sweep (ce4ebc0). Estimated ~2 hours of human grading. Without this, no further cognitive-layer A/B effort should be funded — we cannot tell signal from rubric noise.
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-18'
+

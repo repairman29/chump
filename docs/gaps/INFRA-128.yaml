@@ -1,0 +1,27 @@
+- id: INFRA-128
+  domain: infra
+  title: rename CHUMP_TO_COMPLEX → CHUMP_TO_CHAMP across repo (series-name finalization)
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    The series was renamed from "Chump to Complex" to "Chump to Champ" on
+    2026-04-19, but the file at docs/CHUMP_TO_COMPLEX.md and 30+ references
+    across docs/, book/src/, scripts/, and README.md still used the old name.
+    This PR finalizes the rename:
+      - git mv docs/CHUMP_TO_COMPLEX.md → docs/CHUMP_TO_CHAMP.md
+      - git mv book/src/chump-to-complex.md → book/src/chump-to-champ.md
+      - update scripts/sync-book-from-docs.sh to reflect the new path
+      - sed-replace all variants (CHUMP_TO_COMPLEX, chump-to-complex,
+        Chump-to-Complex, "Chump to Complex", "chump to complex") to
+        their CHAMP equivalents across 33 files
+    No semantic content change — only the series name is updated.
+    Renumbered from INFRA-112 to INFRA-128 (collision with PR #580 reservation).
+  acceptance_criteria:
+    - docs/CHUMP_TO_COMPLEX.md no longer exists; docs/CHUMP_TO_CHAMP.md does
+    - "0 remaining references to any \"Complex\" series-name variant in the repo (excluding archive)"
+    - scripts/sync-book-from-docs.sh points at the new path
+    - mdBook build script unchanged in shape
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

@@ -1,0 +1,12 @@
+- id: COMP-006
+  domain: competitive
+  title: Skills sharing ecosystem — index.json endpoint and tap install
+  status: done
+  priority: P3
+  effort: l
+  description: |
+    Hermes has skills.sh directory, /.well-known/skills/index.json endpoints, and hermes skills tap add. No equivalent exists for Chump skills.
+  depends_on: [COMP-001]
+  source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+  closed_date: '2026-04-16'
+

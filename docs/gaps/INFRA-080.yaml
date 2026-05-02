@@ -1,0 +1,25 @@
+- id: INFRA-080
+  domain: infra
+  title: gap-reserve.sh outputs unpadded ID (e.g. EVAL-88 instead of EVAL-088)
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Process review (2026-04-26): scripts/gap-reserve.sh printed `EVAL-88` when
+    reserving the next free EVAL ID; existing entries are padded to 3 digits
+    (EVAL-085, 086, 087). I noticed and wrote `EVAL-088` manually into
+    docs/gaps.yaml on PR #554. CLAUDE.md notes INFRA-070 partially addressed
+    silent ID collisions in `chump gap reserve`, and INFRA-077 (in flight on
+    PR #555) removes the obsolete unpadded-ID warning from gap-reserve.sh —
+    but the output formatting itself is still wrong. Fix: zero-pad the
+    reserved ID to match the prevailing width of the domain's existing IDs
+    (3 digits is the established convention for all domains here). Mirror in
+    `chump gap reserve` (Rust path) so both produce identical output.
+  acceptance_criteria:
+    - scripts/gap-reserve.sh prints the new ID zero-padded to 3 digits (EVAL-088 not EVAL-88)
+    - chump gap reserve produces the same padded output
+    - Regression test under scripts/ confirming padded output for a domain with 3-digit prevailing width
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 628
+

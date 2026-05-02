@@ -1,0 +1,18 @@
+- id: PRODUCT-018
+  domain: product
+  title: Competitive matrix + one-sentence wedge vs Cursor / Cline / Aider / Devin
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    CPO-framing gap, Tier 2. Before paying a GTM strategist, answer "why Chump, not Cursor" in one sentence from data, not vibes. Scope: (1) docs/COMPETITIVE_MATRIX.md with feature-diff rows for Chump + top 4 competitors (Cursor, Cline, Aider, Devin), columns for capabilities (local-first, multi-agent coordination, mobile/edge, consciousness/memory subsystem, OSS license, price tiers, install complexity); (2) pricing row from public sources with retrieval date; (3) one-sentence wedge at top — the single differentiator Chump owns that others don't; (4) quarterly update cadence. Absorbs Stage G of the prior audit slate.
+  acceptance_criteria:
+    - docs/COMPETITIVE_MATRIX.md exists with feature-diff for ≥ 5 products including Chump
+    - Pricing retrieved from public sources with date-of-retrieval noted
+    - One-sentence wedge stated at top of doc
+    - Quarterly update cadence declared
+  notes: Human GTM reviewer (if any) starts from this doc, not a blank page.
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
+  closed_pr: 481
+

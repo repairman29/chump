@@ -1,0 +1,12 @@
+- id: MEM-003
+  domain: memory
+  title: LLM episodic → semantic summarization (curation third pillar)
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    MEM-002 shipped the DB-only curation passes (decay + dedupe + expire) but deferred the LLM summarization of old episodic clusters into distilled semantic facts because it needs inference budget. Add a delegate-call path (single model request per cluster, guarded by neuromod-aware rate limiting) so curate_all() can optionally run the summarization tier.
+  depends_on: [MEM-002]
+  source_doc: docs/CHUMP_TO_COMPLEX.md, book/src/dissertation.md
+  closed_date: '2026-04-17'
+

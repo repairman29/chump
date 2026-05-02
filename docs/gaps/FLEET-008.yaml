@@ -1,0 +1,19 @@
+- id: FLEET-008
+  domain: fleet
+  title: Work board / task queue — post subtasks for other agents to claim
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Agents today cannot decompose work. If an agent encounters a large gap, it ships the whole thing. With distributed coordination, agents should be able to post subtasks to a shared "work board" for other agents to claim. Schema: subtask_id, parent_gap, title, description, task_class, estimated_duration, requirements (model_family, vram, etc), posted_by, claimed_by, status (open/claimed/completed/failed). Transport: NATS topic "chump/work-board" (or git-backed queue as fallback). Agents check board on startup; claim subtasks that match their capabilities (see FLEET-009).
+  acceptance_criteria:
+    - "Agents can post subtasks to \"chump/work-board\" via NATS"
+    - Subtask schema includes metadata (task_class, requirements, estimated_duration)
+    - Agents can query work board and list open subtasks
+    - Agent can claim a subtask (sets claimed_by, status=claimed)
+    - Subtask completion updates board and merges result back into parent gap
+  depends_on: [FLEET-006, FLEET-007]
+  notes: |
+    Unblocks work decomposition (FLEET-011). Initial version: manual posting by agents. Later: automatic decomposition heuristics.
+  source_doc: docs/FLEET_VISION_2026Q2.md
+

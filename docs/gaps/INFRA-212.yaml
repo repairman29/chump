@@ -1,0 +1,39 @@
+- id: INFRA-212
+  domain: infra
+  title: fleet status dashboard — tmux control pane shows ambient.jsonl tail + PR queue depth + per-agent throughput
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Once INFRA-203 ships, the operator has N tmux panes each running
+    one agent. To know FLEET HEALTH (vs just per-agent state) they
+    need a control pane that aggregates:
+    
+      - Per-agent: current gap, time-on-gap, last commit hash
+      - Fleet-wide: PRs in flight, PRs merged this hour, ID collision
+        count, DIRTY-recovery count (from pr-watch logs)
+      - Ambient.jsonl tail: latest INTENT / HANDOFF / STUCK / DONE
+        events with sender attribution
+      - Gap supply: open P0 + P1 count by domain (warn when exhausted)
+    
+    Implementation: `watch -n 5 scripts/dispatch/fleet-status.sh`
+    inside the control tmux pane (INFRA-203 wires it up).
+    fleet-status.sh aggregates from:
+      - .chump-locks/*.json (active leases → who's working on what)
+      - .chump-locks/ambient.jsonl (recent events)
+      - gh pr list (queue depth) — cached 30s to avoid rate-limit
+      - chump gap list --status open --json (gap supply)
+    
+    Color: green if all agents have a gap and ship rate > 1/hr; yellow
+    if any agent idle > 5min OR queue depth > 20; red if any agent
+    stuck > 30min OR pr-watch CONFLICT exit > 0 in last hour.
+    
+    Out of scope: web dashboard (separate gap if needed).
+  acceptance_criteria:
+    - scripts/dispatch/fleet-status.sh exists, prints aggregated status in < 2 s
+    - Color-coded green/yellow/red status banner
+    - Wired into INFRA-203's control pane via watch -n 5
+    - "Test: at FLEET_SIZE=4 with 1 stuck agent, the dashboard shows yellow within 5 min"
+  depends_on: [INFRA-211]
+  opened_date: '2026-05-02'
+
