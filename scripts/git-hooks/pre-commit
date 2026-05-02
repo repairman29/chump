@@ -1213,6 +1213,25 @@ PYEOF_SLICE
 fi
 
 # ------------------------------------------------------------------
+# 3a. mechanism-kappa advisory (EVAL-093, 2026-05-02): warn when a
+# commit introduces mechanism language with |Δ|>0.05 and no κ citation.
+# Catches the EVAL-074 class (PR #549 → #551 retraction): single-judge
+# mechanism claim that flipped under cross-rescore. Advisory by default
+# (CHUMP_KAPPA_GATE=warn); flips to blocking via =enforce; silenced via =0.
+# ------------------------------------------------------------------
+mech_kappa_check="$(git rev-parse --show-toplevel)/scripts/ci/check-mechanism-kappa.sh"
+if [ -x "$mech_kappa_check" ] && [ "${CHUMP_KAPPA_GATE:-warn}" != "0" ]; then
+    msg_arg=()
+    if [ -n "${COMMIT_MSG_FILE:-}" ] && [ -f "${COMMIT_MSG_FILE}" ]; then
+        msg_arg=("--commit-msg-file" "${COMMIT_MSG_FILE}")
+    fi
+    if ! "$mech_kappa_check" "${msg_arg[@]}"; then
+        # Only blocks if the script returned non-zero (enforce mode).
+        exit 1
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 4. Submodule sanity (NEW 2026-04-19): catch dangling gitlinks BEFORE
 #    they land. Commit 08da134 ("Updated config files") added the
 #    sql-migrate gitlink (mode 160000) without an entry in .gitmodules,
