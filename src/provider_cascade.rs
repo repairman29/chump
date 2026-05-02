@@ -88,6 +88,16 @@ pub enum CascadeStrategy {
     Bandit,
 }
 
+impl CascadeStrategy {
+    pub fn label(self) -> &'static str {
+        match self {
+            CascadeStrategy::Priority => "priority",
+            CascadeStrategy::TaskAware => "task_aware",
+            CascadeStrategy::Bandit => "bandit",
+        }
+    }
+}
+
 pub struct ProviderSlot {
     pub name: String,
     pub base_url: String,
@@ -573,7 +583,8 @@ impl Provider for ProviderCascade {
             let slot = &self.slots[i];
             if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                 eprintln!(
-                    "[cascade] strategy=priority selected={} (priority={}, rpm={}/{}, rpd={}/{})",
+                    "[cascade] strategy={} selected={} (priority={}, rpm={}/{}, rpd={}/{})",
+                    self._strategy.label(),
                     slot.name,
                     slot.priority,
                     slot.calls_this_minute.load(Ordering::Relaxed),

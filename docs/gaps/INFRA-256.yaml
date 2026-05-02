@@ -1,0 +1,7 @@
+- id: INFRA-256
+  domain: INFRA
+  title: "fix misleading cascade per-call log: strategy label hardcoded to 'priority'"
+  status: open
+  priority: P2
+  effort: xs
+
