@@ -51,6 +51,18 @@ last_audited: 2026-04-25
 | Task-class-aware gating (EVAL-030) fixes neuromod harm on targeted task classes | EVAL-030 | Medium (not yet cross-validated) |
 | LLM judge bias: Anthropic judges reward hallucinated tool calls | EVAL-010 human label subset | Medium (n=12 tasks) |
 
+> **Standing caveat (EVAL-087, 2026-05-02):** All rows above were produced under prompt
+> conditions (explicit task IDs, structured rubrics, "the user asks…" preamble) that
+> external research (IAPS 2026; arXiv:2508.00943 ICLR 2026; Meta Muse Spark April 2026)
+> documents as detectable by frontier models. RESEARCH-026 / EVAL-094 will run the
+> n=50/cell paired naturalized-framing comparison; until that result is published, the
+> magnitude of the *correctness deltas* in this table may be inflated or deflated by
+> evaluation-context confounding. The *direction* of the lessons-block findings (helps
+> haiku, hurts sonnet) is consistent across multiple sweeps and unlikely to flip; the
+> *magnitudes* are the at-risk number. The caveat lifts when EVAL-094 ships an H0 result
+> (|Δ| ≤ 0.05, CI overlapping zero on both tiers), or the rows update with the corrected
+> magnitudes if EVAL-094 ships H1.
+
 ---
 
 ## Prohibited Claims
@@ -97,6 +109,20 @@ Any new eval gap filed must specify:
    doc. The pre-commit hook `mechanism-kappa advisory` (this section) warns on commits that
    introduce mechanism language with a |Δ|>0.05 and lack a κ citation. Advisory only
    initially — flips to blocking after one cycle of false-positive observation.
+   **Evaluation-awareness as candidate mechanism (EVAL-087, 2026-05-02):** Mechanism analysis
+   for any delta > ±0.05 must explicitly consider *evaluation-awareness* as a candidate
+   mechanism, and must cite either (a) a paired naturalized-framing comparison from the
+   RESEARCH-026 / EVAL-094 result set on the same fixture class, or (b) a written
+   justification for why the fixture is not susceptible to evaluation-context discrimination
+   (e.g. "fixture has no task IDs, no rubric language, no harness-style preamble"). The
+   external evidence base for this requirement: IAPS 2026 ("Evaluation Awareness: Why
+   Frontier AI Models Are Getting Harder to Test"), arXiv:2508.00943 (ICLR 2026, "LLMs Can
+   Covertly Sandbag on Capability Evaluations Against Chain-of-Thought Monitoring", 16–36%
+   monitor-bypass on Claude-class models), and Meta Muse Spark April 2026 (19.8% benchmark
+   flagging vs 2.0% on internal data). Until EVAL-094 ships its n=50/cell paired
+   comparison, the Validated Findings table below carries a standing caveat (see "Validated
+   Findings" footnote). This is advisory in PR review for one cycle, then blocks at
+   commit time via an extension of the mechanism-kappa hook.
 5. **A/A baseline:** Every eval series must include at least one A/A run (same cell vs same cell)
    to measure judge variance. A/A delta should be within ±0.03 before results are cited.
    For binary-mode sweeps, use `--aa-calibrate` which runs n=50 and aborts if noise > ±0.05.
