@@ -301,6 +301,9 @@ jobs:
       - name: PWA root redirect / -> /v2/ (INFRA-254)
         run: bash scripts/ci/test-infra-254-pwa-root-redirect.sh
 
+      - name: PWA v1 retirement — assets deleted, tauri.conf.json, v2 wizard (INFRA-250)
+        run: bash scripts/ci/test-infra-250-v1-retirement.sh
+
       - name: install-ambient-hooks idempotence + bypass (FLEET-023)
         run: bash scripts/ci/test-install-ambient-hooks.sh
 

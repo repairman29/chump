@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "dev.chump.desktop",
   "build": {
-    "frontendDist": "../../web",
+    "frontendDist": "../../web/v2",
     "beforeBuildCommand": {
       "cwd": "../..",
       "script": "cargo build --release --bin chump"
