@@ -3475,306 +3475,6 @@ gaps:
   notes: |
     Implementation: scripts/coord/chump-decomposition-propose.sh — heuristic-only (no LLM) decomposition proposer. Reads gap via chump gap list --json, classifies into task classes (refactor / multi-system / tests / doc-driven / per-criterion / monolithic-ok), proposes 2-5 slices with size hints. Markdown default; --json for tooling. Closes FLEET-011 trajectory: v0 (FLEET-025 size advisory) emits → v1 (FLEET-026 tracker) classifies → v2 (this gap, FLEET-027) proposes proactively. Future v3: wire into chump --briefing as auto-prefix; auto-trigger on chump gap reserve.
 
-- id: FLEET-028
-  domain: fleet
-  title: Pre-action coordination umbrella — agents see each other's intent before reserving / coding / PR-creating, not after
-  status: open
-  priority: P1
-  effort: l
-  description: |
-    Tonight (2026-05-02) the post-INFRA-188 cleanup wave produced three
-    independent collisions where two agents started the same work
-    minutes apart, neither saw the other:
-    
-      - INFRA-227 (mine) ↔ INFRA-226 (#766) — both fixed bot-merge.sh's
-        auto-close path post-INFRA-188 with different patches.
-      - INFRA-240 (mine) ↔ INFRA-241 (#807) — both audited the same
-        per-file YAML drift; complementary scopes but neither saw the
-        other was investigating.
-      - FLEET-024 close-flip — I prepared a manual close in a cleanup PR;
-        sibling's INFRA-241 backfill auto-closed it concurrently via PR
-        title heuristic.
-    
-    Root cause is structural, not behavioral. Agents have three
-    coordination signals — lease files, ambient.jsonl, open PRs — but
-    NONE of them broadcast "I'm investigating problem X but haven't
-    reserved a gap yet." The trajectory is:
-    
-      observe-bug → form-intent → reserve-gap → claim-lease → code → PR
-    
-    Today the only signals fire from `claim-lease` onward. The
-    `observe-bug` and `form-intent` phases are agent-local. Two
-    agents independently arriving at the same observation within
-    5-10 minutes is invisible until both push.
-    
-    Plus: the existing ambient awareness IS forced, but only at
-      (a) session start (CLAUDE.md MANDATORY pre-flight),
-      (b) chump-commit.sh wrapper time,
-      (c) gap-claim.sh time.
-    It is NOT forced at:
-      (d) chump gap reserve allocation (when the ID is picked),
-      (e) gh pr create (after code is written, before push).
-    (d) and (e) are exactly the moments where collisions tonight
-    surfaced.
-    
-    Plus: the event vocabulary is too narrow.
-      - INTENT fires on lease claim (post-reservation).
-      - DONE fires on PR ship.
-      - There is no OBSERVED kind=<topic> event for "I just noticed
-        a problem worth fixing."
-      - There is no INVESTIGATING gap=<id> event for "I'm scoping a
-        fix and will write code soon."
-    
-    Plus: no semantic matching. Two agents typing different titles
-    for the same fix don't trigger any flag. Title-similarity scoring
-    on open + recently-merged PRs would catch the
-    INFRA-226↔INFRA-227 case directly.
-    
-    The four-tier fix architecture is sketched in the sub-gaps:
-    
-      - FLEET-029 — Tier 1: forced re-glance at every reservation +
-        every PR-create. Cheapest, ~1 day shell work, catches exact
-        ID/title duplicates.
-      - FLEET-030 — Tier 2: new ambient event kinds OBSERVED and
-        INVESTIGATING with hooks to emit at the right moments.
-        ~2 days, requires Claude SDK skill changes.
-      - FLEET-031 — Tier 3: semantic similarity scoring (embedding
-        or TF-IDF) on titles for the "different words, same problem"
-        case. ~3 days, makes the system actually state-of-the-art.
-      - Tier 4 (live presence feed) — deferred. NATS infrastructure
-        already exists for it; will surface as an obvious add-on
-        once 1-3 are in.
-    
-    Fundamentally this extends the FLEET vision Layer 2 (work
-    decomposition / claiming) into a Layer 2.5 — pre-action visibility.
-    Where Layer 2 says "agents claim work atomically once they pick
-    it up," Layer 2.5 says "agents see what others are about to
-    pick up, before they pick."
-  acceptance_criteria:
-    - "FLEET-029 forced re-glance lands: chump gap reserve and bot-merge.sh's gh pr create step both glance ambient + open PRs before action"
-    - "FLEET-030 event vocabulary lands: OBSERVED + INVESTIGATING event kinds defined and emitted by the dispatcher / claude SDK skill"
-    - "FLEET-031 semantic similarity lands: chump gap reserve flags ≥0.7 title-similarity matches against open + recently-merged PRs"
-    - "End-to-end smoke: two agents independently typing 'fix bot-merge.sh post-188' get a heads-up flag from each other before either reserves a gap"
-    - "Out-of-scope: live presence feed (deferred to Tier 4 / FLEET-NNN follow-up)"
-  depends_on: [FLEET-029, FLEET-030, FLEET-031]
-  notes: |
-    Filed in response to user feedback 2026-05-02 evening: "we should fix
-    this but not in a halfass or sloppy way. It should be state of the
-    art." The tier 1+2+3 approach is what state-of-the-art multi-agent
-    coordination looks like for shared-codebase work. Tier 4 (live
-    presence) is icing once 1-3 are in.
-  source_doc: docs/strategy/FLEET_VISION_2026Q2.md
-  opened_date: '2026-05-02'
-
-- id: FLEET-029
-  domain: fleet
-  title: Tier 1 — forced ambient re-glance + open-PR scan at chump gap reserve and gh pr create
-  status: open
-  priority: P1
-  effort: m
-  description: |
-    Cheapest layer of FLEET-028 (pre-action coordination). Forces an
-    ambient-glance + open-PR scan at the two decision points where
-    tonight's collisions happened.
-    
-    Today ambient awareness IS forced at:
-      - session start (CLAUDE.md MANDATORY pre-flight)
-      - chump-commit.sh (`[ambient-glance]` block, last 600s of events)
-      - gap-claim.sh (`--check-overlap`)
-    
-    It is NOT forced at:
-      - **chump gap reserve** — the moment a new ID is allocated. Today
-        scans `gh pr list` for exact ID collisions only; doesn't tail
-        ambient (so concurrent INTENT broadcasts within last 600s are
-        invisible) and doesn't title-match (so two agents reserving
-        nearly-identical titles get distinct IDs without a flag).
-      - **gh pr create** (inside bot-merge.sh) — the moment a branch
-        is pushed and a PR is opened. By this point code is written;
-        rebase is the only fallback if a sibling's PR with overlapping
-        scope landed in the meantime.
-    
-    Fix scope:
-    
-    1. Patch `src/main.rs` reserve handler:
-       - Re-tail `.chump-locks/ambient.jsonl` for INTENT/OBSERVED events
-         in the last 300s. If any match the proposed domain or fuzzy-
-         match the title (Tier 1 = exact substring; Tier 3 = embedding),
-         print a warning and require `--force` or interactive y/N to
-         continue.
-       - Same hook fires on `chump gap claim` for already-reserved IDs
-         the operator picks up later.
-    
-    2. Patch `scripts/coord/bot-merge.sh`:
-       - After `gh pr create` succeeds, before arming auto-merge, run
-         a scan: `gh pr list --state open --json number,title --limit 50`
-         filtered for substring match against this PR's title or any
-         claimed gap-id in scope. Warn (don't block) if matches found
-         — operator decides whether to proceed.
-    
-    3. Wire both into the existing `chump-ambient-glance.sh` script
-       so the diagnostic format matches the rest of the system.
-    
-    Out of scope (covered by FLEET-030 + FLEET-031):
-      - New event kinds (OBSERVED, INVESTIGATING) — Tier 2.
-      - Semantic similarity (embedding) — Tier 3. Tier 1 uses exact
-        substring matching only.
-  acceptance_criteria:
-    - chump gap reserve --domain X --title 'foo' tails ambient.jsonl + scans gh pr list before allocating an ID
-    - If a matching INTENT event or open PR exists, reserve prints a [WARN] line and requires --force OR interactive confirmation
-    - bot-merge.sh post-pr-create scans for overlapping open PRs and warns (non-blocking) if matches found
-    - Test in scripts/ci/test-reserve-glance.sh covers happy path + collision-detected path + --force bypass
-    - Existing reservation flow (no overlap) is unchanged — no new latency for the common case
-  depends_on: [FLEET-028]
-  notes: |
-    Tier 1 of FLEET-028. This catches tonight's INFRA-226 ↔ INFRA-227
-    collision directly: when I'd reserved INFRA-227 with title containing
-    "bot-merge auto-close path post-INFRA-188", an ambient tail would
-    have shown sibling's INTENT for INFRA-226 with similar title and
-    flagged the overlap.
-  source_doc: docs/gaps/FLEET-028.yaml
-  opened_date: '2026-05-02'
-
-- id: FLEET-030
-  domain: fleet
-  title: Tier 2 — pre-action ambient event vocabulary (OBSERVED + INVESTIGATING)
-  status: open
-  priority: P2
-  effort: m
-  description: |
-    Today's ambient.jsonl event vocabulary covers post-action signals
-    well — INTENT (lease claim), DONE (PR ship), file_edit, bash_call,
-    commit, ALERT — but lacks pre-action signals. Two agents observing
-    the same problem and forming intent to fix can't see each other
-    because nothing fires until one of them claims a lease.
-    
-    Two new event kinds close the loop:
-    
-    1. **`OBSERVED kind=<topic-hash>` event.** Emitted when an agent
-       recognizes a gap-worthy problem but hasn't yet reserved a gap.
-       Topic hash is a stable identifier (hash of normalized
-       free-text). Other agents glance ambient, see "agent X just
-       OBSERVED bot-merge-auto-close-failure" and yield or coordinate.
-    
-       Trigger points:
-         - Operator reads a CI failure / red letter and forms intent
-           to fix → emit OBSERVED before reserving.
-         - Cold-water audit detects a pattern → emit OBSERVED with
-           the detected-pattern token.
-         - Reading bot-merge output where "fatal:" / "FAILED" appears
-           → auto-emit OBSERVED kind=<command> as a heuristic seed.
-    
-    2. **`INVESTIGATING gap=<id>` event.** Emitted between gap-reserve
-       and first code edit. Signals "I have an ID and a worktree; I'm
-       scoping the fix." Today nothing fires between INTENT (lease
-       claim) and the first file_edit — usually 5–30 minutes of
-       investigation is invisible.
-    
-    Implementation:
-    
-    - New event kinds are a 2-line append to `src/ambient_stream.rs`
-      (or whichever module owns the event enum) + corresponding
-      JSON-schema entries. Format matches existing INTENT/DONE.
-    - Emission hooks land in two places:
-      - `chump-orchestrator` agent loop: emit OBSERVED on perception
-        of a "gap-worthy" stimulus (tooling decides; stub heuristic
-        is fine for v1).
-      - `chump gap reserve` and `chump gap claim`: emit INVESTIGATING
-        immediately after lease write (before exit).
-    - The Claude SDK skill ([global skill, not in this repo]) gets
-      a `chump observe "<topic>"` slash command for explicit user-
-      driven OBSERVED emissions.
-    
-    Other agents glancing ambient see these as new event kinds and
-    treat them like INTENT — surface in the pre-flight tail with a
-    distinct color/marker.
-  acceptance_criteria:
-    - OBSERVED + INVESTIGATING event kinds defined in ambient_stream.rs with corresponding JSON-schema entries
-    - "chump observe \"<topic>\" CLI subcommand emits OBSERVED with topic-hash"
-    - chump gap reserve emits INVESTIGATING gap=<id> as part of the reservation flow
-    - chump gap claim emits INVESTIGATING when picking up an existing reserved gap
-    - scripts/dev/chump-ambient-glance.sh shows OBSERVED/INVESTIGATING in the tail with distinct markers
-    - Schema validation (INFRA-101) accepts the new kinds
-  depends_on: [FLEET-028, FLEET-029]
-  notes: |
-    Tier 2 of FLEET-028. Combined with FLEET-029 (forced re-glance)
-    this catches the "I observed a bug 30s before sibling did" case —
-    the OBSERVED event fires on observation, glance fires on reserve,
-    sibling sees agent A is investigating before sibling's own reserve
-    completes.
-  source_doc: docs/gaps/FLEET-028.yaml
-  opened_date: '2026-05-02'
-
-- id: FLEET-031
-  domain: fleet
-  title: Tier 3 — semantic title-similarity scoring for chump gap reserve (state-of-the-art)
-  status: open
-  priority: P2
-  effort: l
-  description: |
-    Tier 1 (FLEET-029) catches exact ID + substring overlaps. Tier 2
-    (FLEET-030) catches "agent A is investigating, agent B sees it
-    before reserving." Neither catches the case where two agents type
-    different titles for the same problem — e.g. "fix bot-merge.sh
-    auto-close path post-INFRA-188" vs "patch docs/gaps.yaml ref in
-    bot-merge auto-close." Different words, same fix. This was
-    INFRA-226 ↔ INFRA-227 directly.
-    
-    Tier 3 is semantic similarity matching on titles — the layer that
-    makes the system actually state-of-the-art for multi-agent
-    coordination on shared codebase work.
-    
-    Two implementation paths, pick one:
-    
-    **Path A — local embedding model.** Chump already has infrastructure
-    for local LLMs (mistral.rs, ollama, etc.). Use a small embedding
-    model (e.g. Qwen-0.5B-Embedding, BGE-small, or similar — ~100MB).
-    On `chump gap reserve --title "..."`, embed the proposed title +
-    each open/recently-merged PR title, compute cosine similarity,
-    flag matches ≥0.7. Cost: one inference call per reserve (~50ms
-    on M-series). Quality: high — handles paraphrase and synonyms.
-    
-    **Path B — TF-IDF + cosine.** No model required. Tokenize titles,
-    compute IDF weights from the corpus of all gap titles (cached),
-    cosine similarity on vector representation. Cost: pure CPU, ~5ms.
-    Quality: medium — catches keyword overlap but misses synonym /
-    paraphrase. Good enough for many cases, much cheaper to deploy.
-    
-    Recommendation: ship Path B first (fast to land, no model
-    dependency), measure miss rate against tonight's collision corpus,
-    upgrade to Path A if Path B's recall is insufficient.
-    
-    Wire Path-B/A into the FLEET-029 forced-glance hook: when
-    `chump gap reserve` decides whether to flag overlap, the similarity
-    score is one input among several (also exact-substring match,
-    in-flight INTENT/INVESTIGATING events, recent OBSERVED topics).
-    
-    Out of scope:
-      - Cross-repo similarity (only this repo's gaps + PR titles).
-      - Body-text similarity (titles only). Body-text would catch
-        more but adds significant cost; defer.
-      - Realtime updates (the cache is rebuilt on each ship, daily
-        cron, or manual `chump gap rebuild-similarity-cache`).
-  acceptance_criteria:
-    - chump gap reserve --title 'foo' computes title-similarity against open + last-30-day-merged PR titles
-    - Matches with similarity ≥0.7 print a [WARN-similar] line listing the top-3 candidate PRs/gaps
-    - Operator can --force past or pick an existing gap to claim instead
-    - scripts/ci/test-reserve-similarity.sh covers tonight's INFRA-226 ↔ INFRA-227 collision corpus + a known-distinct pair as negative control
-    - v1 implementation chooses Path A or Path B with documented rationale; if Path B, miss-rate measurement against the collision corpus is logged
-  depends_on: [FLEET-028, FLEET-029, FLEET-030]
-  notes: |
-    Tier 3 of FLEET-028. This is the layer that crosses the line from
-    "good multi-agent coordination" to "state of the art" — most
-    agentic-dev teams (including OSS) don't have this. Combined with
-    Tier 1+2 the system catches the three primary collision modes:
-      - exact ID race                    → Tier 1 substring scan
-      - "I'm investigating, you weren't watching" → Tier 2 OBSERVED/INVESTIGATING events
-      - paraphrased duplicate intent     → Tier 3 semantic similarity
-    
-    Tier 4 (live presence feed) is deferred until 1+2+3 are in and
-    we measure what's still missing.
-  source_doc: docs/gaps/FLEET-028.yaml
-  opened_date: '2026-05-02'
-
 - id: FLEET-14
   domain: fleet
   title: "FLEET dev loop design note: Docker NATS, async-nats integration tests, FLEET-007 first"
@@ -5558,11 +5258,9 @@ gaps:
 - id: INFRA-085
   domain: infra
   title: manual-ship invisibility - auto-write lease on gh pr create
-  status: done
+  status: open
   priority: P2
   effort: s
-  closed_date: '2026-05-02'
-  closed_pr: 838
 
 - id: INFRA-086
   domain: infra
@@ -5756,7 +5454,7 @@ gaps:
 - id: INFRA-102
   domain: infra
   title: session_start ambient events absent - audit emitter and restore advertised behavior
-  status: done
+  status: open
   priority: P1
   effort: xs
   description: |
@@ -5773,8 +5471,6 @@ gaps:
     - If intentionally removed - delete the line from CLAUDE.md ambient-event list
     - Add a test that asserts session_start lands in ambient.jsonl during dispatcher startup
   opened_date: '2026-04-26'
-  closed_date: '2026-05-02'
-  closed_pr: 821
 
 - id: INFRA-103
   domain: infra
@@ -5802,7 +5498,7 @@ gaps:
 - id: INFRA-104
   domain: infra
   title: PR title-vs-implementation drift detector - ALERT when a PR gap-ID has no matching diff signal
-  status: done
+  status: open
   priority: P1
   effort: s
   description: |
@@ -5821,8 +5517,7 @@ gaps:
     - Posts ALERT and labels PR on mismatch
     - "Backtest - when fed PR #565 plus gap registry of that moment, alert fires; when fed PR #570 (INFRA-084 layer 2), alert does NOT fire"
   opened_date: '2026-04-26'
-  closed_date: '2026-05-02'
-  closed_pr: 830
+  closed_date: '2026-05-01'
 
 - id: INFRA-105
   domain: infra
@@ -5949,7 +5644,7 @@ gaps:
 - id: INFRA-109
   domain: infra
   title: Audit coordination scripts for git-common-dir vs cwd worktree-boundary bugs
-  status: done
+  status: open
   priority: P2
   effort: s
   description: |
@@ -5969,8 +5664,6 @@ gaps:
     - Test - run a coordination action from a linked worktree, verify it touches main-repo paths not worktree-local paths
     - CLAUDE.md Coordination docs section adds the resolution-rule note
   opened_date: '2026-04-26'
-  closed_date: '2026-05-02'
-  closed_pr: 858
 
 - id: INFRA-110
   domain: infra
@@ -6249,7 +5942,7 @@ gaps:
 - id: INFRA-120
   domain: infra
   title: Stale reapers (PR, worktree, branch) have no log aggregation or failure alerting
-  status: done
+  status: open
   priority: P1
   effort: s
   description: |
@@ -6269,13 +5962,11 @@ gaps:
     - Reaper logs rotated and capped at a sensible size
     - CLAUDE.md Worktree disk hygiene section documents the alert mechanism
   opened_date: '2026-04-26'
-  closed_date: '2026-05-02'
-  closed_pr: 835
 
 - id: INFRA-121
   domain: infra
   title: Merge queue config drift undetected - silent auto-merge disarm when branch protection changes
-  status: done
+  status: open
   priority: P1
   effort: s
   description: |
@@ -6295,8 +5986,6 @@ gaps:
     - Drift posts ALERT kind=queue_config_drift with the field-level diff
     - docs/MERGE_QUEUE_SETUP.md updated to describe the detector
   opened_date: '2026-04-26'
-  closed_date: '2026-05-02'
-  closed_pr: 829
 
 - id: INFRA-122
   domain: infra
@@ -7072,13 +6761,11 @@ gaps:
 - id: INFRA-152
   domain: infra
   title: chump gap set/ship — accept --closed-pr flag, persist to state.db, emit to YAML
-  status: done
+  status: open
   priority: P1
   effort: s
   notes: |
     Duplicate of INFRA-156 (PR #637) which actually shipped the implementation. Acceptance verified post-INFRA-188 by scripts/ci/test-gap-closed-pr-cli.sh.
-  closed_date: '2026-05-02'
-  closed_pr: 826
 
 - id: INFRA-154
   domain: infra
@@ -7325,11 +7012,9 @@ gaps:
 - id: INFRA-171
   domain: infra
   title: "ftue-clean-machine workflow: tighten cadence — per-PR (path-filtered) + weekly cron, drop monthly"
-  status: done
+  status: open
   priority: P1
   effort: xs
-  closed_date: '2026-05-02'
-  closed_pr: 668
 
 - id: INFRA-172
   domain: infra
@@ -7531,7 +7216,7 @@ gaps:
 - id: INFRA-193
   domain: infra
   title: "speculative execution: two agents on same gap; first-to-land wins, loser auto-closed superseded"
-  status: done
+  status: open
   priority: P1
   effort: s
 
@@ -7942,8 +7627,6 @@ gaps:
     - test step uses cargo-nextest with --test-threads=4 OR parallel-by-package
     - Median PR-to-merged time at queue depth 10 drops from ~30 min to ~15 min
     - "Test: run the fleet at FLEET_SIZE=10 for 1 hour; measure PRs/hour throughput; expect 25-30 (vs 10-15 today)"
-  notes: |
-    Side-effect surfaced post-merge: the matrix split raised parallelism enough to expose META-015 (flaky two_concurrent_reserves_return_distinct_ids in INFRA-216s test). Not a regression in INFRA-213 — the test was always race-prone — but the higher contention shifted the flake from "rarely seen" to "1-in-N PRs". Tracked in META-015. INFRA-213 closure deferred until #814 lands; #814 will set closed_pr automatically.
   opened_date: '2026-05-02'
 
 - id: INFRA-214
@@ -8384,7 +8067,7 @@ gaps:
 - id: INFRA-232
   domain: INFRA
   title: chump gap ship --update-yaml writes monolithic docs/gaps.yaml (deleted by INFRA-188 cutover) — should write per-file or be removed
-  status: done
+  status: open
   priority: P1
   effort: s
   description: |
@@ -8410,8 +8093,6 @@ gaps:
       - chump gap ship --update-yaml on a post-cutover repo does NOT create docs/gaps.yaml
       - The flag either writes the affected per-file YAML or no-ops with a clear message
       - CLAUDE.md gap-closure flow updated to match the new behaviour
-  closed_date: '2026-05-02'
-  closed_pr: 836
 
 - id: INFRA-233
   domain: INFRA
@@ -8844,11 +8525,9 @@ gaps:
 - id: INFRA-247
   domain: INFRA
   title: redirect / -> /v2/ in PWA (browser users land on the modern shell)
-  status: done
+  status: open
   priority: P3
   effort: xs
-  closed_date: '2026-05-02'
-  closed_pr: 842
 
 - id: INFRA-248
   domain: INFRA
@@ -8921,101 +8600,6 @@ gaps:
     - chat round trip works in Tauri shell after frontendDist flip
     - web/index.html and v1-only assets are deleted from the repo
     - browser users at / still land on v2 (INFRA-247 redirect intact)
-
-- id: INFRA-252
-  domain: INFRA
-  title: "bot-merge.sh --fast flag: skip local clippy/test (CI is the gate) so agents fit in budget"
-  status: done
-  priority: P1
-  effort: xs
-  description: |
-    The Anthropic general-purpose agent's per-task budget (~10-15 min) is too
-    tight for bot-merge.sh's cold-cache cargo clippy step (5-7 min on its own).
-    Result: agents commit cleanly but time out before bot-merge reaches the
-    push + gh-pr-create + auto-merge-arm phases, leaving orphan branches that
-    the parent session must rescue.
-    
-    Observed this session (2026-05-02): 5 commit-but-don't-push rescues
-    required across the second + third agent batches (Agents L, J, H + 2
-    others). Each rescue is ~30 sec of operator time but masks a real
-    throughput problem.
-    
-    ## Fix
-    
-    Add a `--fast` flag to scripts/coord/bot-merge.sh that SKIPS the local
-    cargo clippy + cargo test stages. The CI on GitHub Actions runs the same
-    checks anyway — local clippy is belt-and-suspenders, not the gate.
-    
-      scripts/coord/bot-merge.sh --gap INFRA-X --auto-merge --fast
-    
-    In --fast mode, bot-merge.sh's stages reduce to:
-      1. fmt auto-fix (still runs — fast, ~2 sec)
-      2. cargo check (fast syntax-only validation, ~30 sec)
-      3. push + gh pr create
-      4. INFRA-154 auto-close
-      5. CI pre-flight (gh pr checks)
-      6. arm auto-merge + checkpoint tag
-      7. pr-watch detach
-    
-    Total wall time: ~30-60 seconds vs the current 5-10 minutes.
-    
-    ## Trade-off
-    
-    A clippy-broken PR could briefly exist on origin/main's open-PR list. The
-    GitHub Actions clippy job will fail (since it runs the same check), so
-    auto-merge will refuse to land it. Cost: maybe one extra failed CI run
-    per week. Benefit: agent throughput goes from ~3 PRs/15min to ~10
-    PRs/15min on a fleet of 5+ workers.
-    
-    Default OFF (preserves human-developer ergonomics — they want local checks
-    to fail fast). Agents pass --fast explicitly when running from the
-    dispatcher / Agent tool / Task subagent.
-    
-    ## Acceptance
-    
-    - bot-merge.sh accepts --fast; documented in usage block
-    - With --fast: cargo clippy + cargo test stages skipped (still runs fmt
-      + cargo check)
-    - Without --fast: behavior unchanged
-    - Test: scripts/ci/test-bot-merge-fast-flag.sh asserts both modes
-  acceptance_criteria:
-    - bot-merge.sh --fast flag implemented + documented
-    - default OFF (no behavior change without flag)
-    - "--fast skips clippy + test, still runs fmt + cargo check"
-    - test asserts both modes
-  closed_date: '2026-05-02'
-  closed_pr: 850
-
-- id: INFRA-253
-  domain: INFRA
-  title: flaky test_concurrent_reserves_return_distinct_ids — sqlite database-locked race in CI
-  status: done
-  priority: P1
-  effort: s
-  description: |
-    tests/gap_reserve_cross_host_race.rs:79 — test_concurrent_reserves_return_distinct_ids fails intermittently in CI with 'database is locked' (SQLite error code 5). Caused 6+ blocked-PR re-runs in single dispatcher cycle on 2026-05-02 (PRs 819, 826, 828, 829, 833, 839, all failing on the same test in independent CI runs). Test exercises concurrent chump gap reserve from two simulated sessions; SQLite WAL mode + busy_timeout should resolve, but the test setup may be opening conn without proper retry. Fix likely a one-line PRAGMA busy_timeout=5000 or a sqlite::Connection::busy_handler() in the gap_store init.
-  acceptance_criteria:
-    - Test passes 10 consecutive CI runs
-    - Root cause documented in test file or gap_store.rs comment
-    - "If unfixable, mark #[ignore] with explicit gap reference"
-  closed_date: '2026-05-02'
-  closed_pr: 849
-
-- id: INFRA-254
-  domain: INFRA
-  title: "redirect / -> /v2/ in PWA (browser users land on the modern shell) [renumbered from INFRA-247 due to cross-host reserve race with PR #842]"
-  status: done
-  priority: P3
-  effort: xs
-  closed_date: '2026-05-02'
-  closed_pr: 851
-
-- id: INFRA-255
-  domain: INFRA
-  title: "implement INFRA-240 backfill: materialize 40 orphan per-file gap YAML mirrors from state.db"
-  status: open
-  priority: P1
-  effort: xs
 
 - id: INFRA-41
   domain: infra
@@ -10059,41 +9643,6 @@ gaps:
   priority: P2
   effort: xs
 
-- id: META-015
-  domain: META
-  title: "tests/gap_reserve_cross_host_race.rs::two_concurrent_reserves_return_distinct_ids is flaky under CI matrix parallelism — passes/fails non-deterministically across PRs"
-  status: done
-  priority: P2
-  effort: s
-  description: |
-    The cross-host reserve race integration test added by INFRA-216 (PR #800) at tests/gap_reserve_cross_host_race.rs:84 — `two_concurrent_reserves_return_distinct_ids` — fails non-deterministically under the new INFRA-213 (PR #814) CI matrix parallelism. Observed:
-    
-      PR #824 (INFRA-219): cargo-test PASS
-      PR #832 (INFRA-104): cargo-test FAIL → PR closed (also superseded by #830, but the failure was the trigger)
-      PR #833 (INFRA-209): cargo-test FAIL → rerun in progress at time of filing
-      PR #836 (INFRA-232): cargo-test SKIPPED (only YAML changes; not affected)
-    
-    Failure mode: "session-z reserve failed: chump gap: cannot open state.db: database is locked: Error code 5". Two `chump gap reserve` processes spawned concurrently with shared state.db — SQLite BEGIN IMMEDIATE *should* serialize them but the test gets the lock-race instead of the verified-distinct-IDs result. The test was designed to verify the post-reserve verification round-trip, not the BEGIN IMMEDIATE itself.
-    
-    Likely root cause: the test process spawn timing has a narrow window where both processes hit the SQLite open() simultaneously, before either acquires the BEGIN IMMEDIATE. PR #814 INFRA-213 cargo-test shard runs with --test-threads default = 4+ on GitHub runners, increasing process contention compared to the pre-INFRA-213 serial test runner.
-    
-    Fix paths:
-      (a) Add a `busy_timeout=10000` PRAGMA on test-time SQLite connections (matches CLAUDE.md INFRA-216 gap row recommendation but for the test process itself)
-      (b) Insert a 10-100ms stagger between the two spawned processes so the second sees the first already-locked state — the test then exercises busy_timeout-driven serialization
-      (c) Add #[ignore] tag and a manual cargo-test --ignored path (degrades signal but unblocks PRs)
-      (d) Drop the test entirely and rely on the live INFRA-216 verification logic (covered by other test cases) — but loses the contention-specific signal
-    
-    (a) is the closest to "fix the actual issue"; (b) is the cheapest unblock. Recommend (a) first; if it stays flaky after busy_timeout, add (b) on top.
-  acceptance_criteria:
-    - "tests/gap_reserve_cross_host_race.rs::two_concurrent_reserves_return_distinct_ids passes on 5 consecutive cargo-test runs in the INFRA-213 CI matrix shard"
-    - "Test still exercises real concurrency (does not become a #[ignore] no-op or single-process test)"
-    - Documentation in CLAUDE.md INFRA-216 row updated if the fix changes the SQLite contract assumed by chump gap reserve
-  depends_on: [INFRA-213, INFRA-216]
-  notes: |
-    Coupled finding: INFRA-213 (CI matrix split, PR #814) is the proximate cause — the increased parallelism exposed a pre-existing race in INFRA-216 (PR #800)s test. INFRA-216 wrote the test serially-safe; INFRA-213 increased contention. Neither is wrong individually; the coupling is. Filed during 2026-05-02 PR re-work pass when 2/11 same-session PRs hit the same flake. Side-effect surfaced via the new test job split.
-  closed_date: '2026-05-02'
-  closed_pr: 860
-
 - id: PRODUCT-001
   domain: product
   title: PWA Dashboard — ship status, what-we're-doing, recent episodes
@@ -10505,59 +10054,6 @@ gaps:
   depends_on: [INFRA-183]
   closed_date: '2026-05-01'
   closed_pr: 697
-
-- id: PRODUCT-025
-  domain: PRODUCT
-  title: PWA multi-agent orchestration dashboard — registry view + dispatch + ambient + decision channel + parallelism governor
-  status: open
-  priority: P1
-  effort: l
-  description: |
-    Strategic deliverable from the 2026-05-02 manual multi-agent orchestration session. The current PWA (chump --web) is single-session chat. Multi-agent orchestration today runs from CLI (chump --execute-gap, bot-merge.sh, scripts/coord/*) and external dispatchers (the scheduled remote agents per /schedule). A solo human driving 8-12 parallel agents has to coordinate by manually reading gh pr list + git status + ambient.jsonl + .chump-locks/* across N worktrees. That coordination is the bottleneck — not compute, not model quality, but human attention thinning across N parallel results.
-    
-    The PWA should make this take 10 minutes instead of 2 hours.
-    
-    Mapping from manual session to PWA primitives (most already exist as data sources; UI surface is what is missing):
-    
-      Manual today                                    | PWA tomorrow                              | Already-exists
-      ------------------------------------------------|-------------------------------------------|--------------
-      Pick gap from chump gap list --status open      | Filtered registry view + click-to-dispatch| .chump/state.db + chump gap list --json (data exists)
-      Dispatch agent in /tmp/<branch> worktree        | Single button via chump-orchestrator       | COG-025 dispatch backend (claude or local LLM)
-      Watch git status + gh pr list across N worktrees| Live dashboard: lease/PR/CI status         | .chump-locks/*.json + gh API + ambient.jsonl
-      gap-preflight before dispatch                   | Pre-dispatch check (auto)                  | gap-preflight.sh (data path)
-      Cross-agent peripheral vision                   | Live ambient.jsonl tail in dashboard       | ambient.jsonl + NATS (FLEET-006)
-      Surface decision points (scope-expanded-on-contact)| Pending-questions inbox per agent       | NEW PRIMITIVE — does not exist yet
-      Self-cap parallel agents at 5-6                 | Soft + hard parallelism limits             | NEW PRIMITIVE — orchestrator-level governor needed
-    
-    Three new primitives the PWA needs:
-    
-      1. Decision channel. When an agent hits "scope expanded — A, B, or C?", it pauses and pings the PWA. Human chooses; agent continues. New event kind: .chump-locks/<session>/decision-pending.jsonl. UI surfaces it like an inbox.
-    
-      2. Orchestrator-level parallelism governor. Soft-cap warning at N=4, hard-cap refusal at N=6 concurrent agents per machine. With FLEET-* multi-machine, the cap is per-mesh. Without this, the PWA-driver reproduces the "dispatched 7 agents and got stuck tracking them" mistake the human just made manually.
-    
-      3. Live results board. Single page with all in-flight agents: gap claimed, worktree path, current commit, PR, CI status, last ambient event. Auto-updates from .chump-locks/ + gh polling. Replaces the gh pr list + git status + gh pr checks <N> grep loop.
-    
-    Offline-mission cut (per .chump/notes/AI-COLLABORATION-DUE-DILIGENCE.md): all 3 must work without GitHub. Registry in .chump/state.db (already canonical). PR-equivalent: local feature branches with NATS-broadcast review queues between mesh nodes. CI: local cargo invocations or remote per-mesh-node runners.
-    
-    Local-LLM cut (per RESEARCH-032): the orchestrator itself must work with a qwen3:14b-class operator-model. The orchestration is mostly state aggregation + button-press routing — does not need a frontier model. Agents themselves run on whatever backend (CHUMP_DISPATCH_BACKEND already supports this).
-    
-    Effort estimate: l (large). Scope:
-      Phase 1 (~1 week): Live results board reading .chump-locks/ + gh API. Read-only dashboard, no dispatch yet.
-      Phase 2 (~1 week): Click-to-dispatch via chump-orchestrator backend. Pre-dispatch gap-preflight check.
-      Phase 3 (~1 week): Parallelism governor + decision channel (new event kind in ambient.jsonl).
-      Phase 4 (~1 week): Multi-machine surface via NATS subscription (FLEET-006 already provides the transport).
-    
-    Hidden value: this gap is the literal UX spec captured during a 2-hour manual session. Every primitive in the design is something the human visibly needed and worked around. That is unusual provenance for a feature spec — most PWA features are designed up-front; this one was reverse-engineered from human pain.
-  acceptance_criteria:
-    - "Phase 1 dashboard: PWA route /agents shows live status of all .chump-locks/*.json sessions + their open PRs + CI status, auto-refreshing; reads via chump backend not direct gh call"
-    - "Phase 2 dispatch: PWA route /agents/dispatch/<GAP-ID> kicks off chump-orchestrator with the chosen backend (claude or local LLM), pre-checks via gap-preflight.sh, returns the new session id"
-    - "Phase 3 governor + decision channel: orchestrator refuses dispatch >6 concurrent on one machine; agents pause on scope-expansion and emit decision-pending event the PWA surfaces"
-    - "Phase 4 mesh: dashboard subscribes to NATS chump.events.> for cross-machine peripheral vision; works without GitHub access"
-    - "Offline-validation: full PWA + orchestration loop runs against qwen3:14b on 24GB Mac with no internet beyond LAN"
-    - Documented in docs/process/ as the canonical multi-agent operator workflow
-  depends_on: [FLEET-008, RESEARCH-032]
-  notes: |
-    Filed by Claude on 2026-05-02 after the user explicitly asked "how would Chump handle this if we were using the PWA to drive multi agent orchestration?". The session was a 2-hour reverse-engineered UX spec for this gap. Every primitive listed was visibly needed by the human and worked around manually.
 
 - id: QUALITY-001
   domain: reliability
@@ -11162,7 +10658,7 @@ gaps:
   domain: research
   title: Observer-effect / evaluation-framing sandbagging check
   status: done
-  priority: P1
+  priority: P2
   effort: s
   description: |
     Frontier models can behave differently when they detect they are being evaluated. Chump's fixtures include explicit evaluation framing (task IDs, structured rubrics, "the user asks..." syntax). We have not measured whether scrubbing that framing changes agent behavior. If it does, every reported delta is inflated by observer-effect bias. This gap reruns the reflection fixture at n=50 with two arms — (a) normal framing, (b) evaluation-framing scrubbed and rewritten as casual user messages. Measure behavior delta between arms. If significant, publish correction factor; if not, publish as validation that Chump fixtures don't have detectable eval-framing bias. Paper-1 scope caveat blocker.
@@ -11175,8 +10671,6 @@ gaps:
   depends_on: [RESEARCH-019]
   notes: |
     ~$20 cloud. Paper-1 credibility booster. If the result is null, it strengthens the publishable finding by ruling out a standard reviewer concern. 2026-04-21: paired formal fixture (reflection_tasks_formal_paired_v1.json), run-observer-effect-ab.sh wiring to run-cloud-v2.py (--n-per-cell, --out-dir), analysis helper analyze-observer-effect.py, result shell docs/eval/RESEARCH-026-observer-effect.md, FINDINGS index row (pending sweep), and scripts/test-research-026-preflight.sh merged to main in PR #400 (2026-04-21). Human pilot validation gate signed off (Jeff Adkins 2026-04-21); 50-task casual fixture shipped; harness smoke (n=2 haiku pilot) passed 2026-04-21 — see docs/eval/RESEARCH-026-observer-effect.md § Harness smoke. Remaining acceptance: preregistered 400-trial cloud sweep, Wilson analysis in FINDINGS, then close this gap with closed_commit. Operating stance (2026-04-21): keep status open and backlog the paid full sweep until a paper or external-credibility sprint — it is not required to inform ordinary engineering. Harness + CI preflight + human validation gate + smoke are treated as sufficient to keep building; schedule the ~\$15–\$20 sweep when publication claims need the preregistered Wilson row.
-    
-    2026-05-02 (EVAL-087): priority escalated P2 → P1. Three independent external publications (IAPS 2026 evaluation-awareness paper; arXiv:2508.00943 ICLR 2026 covert sandbagging on Claude-class models, 16-36% monitor bypass; Meta Muse Spark April 2026 19.8% benchmark flagging vs 2.0% internal) make the empirical concern quantified, not theoretical. Although this gap was closed status=done at P2 on harness + smoke + human pilot grounds, the n=50/cell sweep in the original acceptance criteria was never run; EVAL-094 is the execution gap that completes that work. EVAL-087 ships the methodology preregistration (docs/eval/preregistered/EVAL-087.md) and the standing caveat in RESEARCH_INTEGRITY.md.
   source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §9
   closed_date: '2026-05-02'
   closed_pr: 348
