@@ -1,7 +1,9 @@
 - id: INFRA-104
   domain: infra
   title: PR title-vs-implementation drift detector - ALERT when a PR gap-ID has no matching diff signal
-  status: open
+  status: done
+  closed_pr: 824
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |
