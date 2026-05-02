@@ -1,0 +1,43 @@
+# Auto-arm `gh pr merge --auto --squash` on PRs opened by dependabot[bot].
+#
+# Why: Dependabot opens PRs with auto-merge OFF. Without an explicit arm,
+# the PR sits in BEHIND state forever — observed on 2026-04-29..05-02 with
+# PR #673 (chore(deps): bump the actions-all group) sitting 24h+ until
+# manually rebased and armed. This workflow runs once at PR-open time so
+# the queue handles the rest.
+#
+# Scope: only triggers on dependabot's PRs. Human and other-bot PRs are
+# unaffected (they go through bot-merge.sh which arms auto-merge as part
+# of the ship pipeline).
+#
+# Failure mode: if a Dependabot PR has CI failures or required reviews
+# pending, GitHub holds the auto-merge until those resolve — same
+# semantics as a human-armed auto-merge. No bypass of branch protection.
+
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  arm:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge (squash)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          # Idempotent: re-running is a no-op if auto-merge is already armed.
+          # `--auto` waits for required checks; `--squash` matches the
+          # repo's default merge strategy (see .github/CODEOWNERS / branch
+          # protection).
+          gh pr merge "$PR" --auto --squash \
+            --repo "${{ github.repository }}" \
+            || echo "auto-merge arm failed (likely already armed or no required checks); continuing"
