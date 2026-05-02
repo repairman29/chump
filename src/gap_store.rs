@@ -76,8 +76,30 @@ impl GapStore {
             std::fs::create_dir_all(parent)
                 .with_context(|| format!("creating .chump/ at {}", parent.display()))?;
         }
-        let conn =
-            Connection::open(&path).with_context(|| format!("opening {}", path.display()))?;
+        // Retry on "database is locked" at open time. The PRAGMA busy_timeout
+        // below only applies POST-open; the open itself can briefly fail with
+        // SQLITE_BUSY when a sibling process is mid-`PRAGMA journal_mode=WAL`
+        // or migration (both take a short exclusive lock). The
+        // gap_reserve_cross_host_race integration test (INFRA-216) reliably
+        // reproduces this on CI without the retry loop.
+        let conn = {
+            let mut delay_ms = 50u64;
+            let mut attempts = 0;
+            loop {
+                match Connection::open(&path) {
+                    Ok(c) => break c,
+                    Err(e) => {
+                        let msg = e.to_string();
+                        if attempts >= 8 || !msg.contains("database is locked") {
+                            return Err(e).with_context(|| format!("opening {}", path.display()));
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                        delay_ms = (delay_ms * 2).min(2000);
+                        attempts += 1;
+                    }
+                }
+            }
+        };
         // busy_timeout: concurrent gap_store::tests::test_reserve_concurrent opens
         // multiple connections to one WAL DB; without a wait, BEGIN EXCLUSIVE races
         // surface as rusqlite "database is locked" on CI runners.
