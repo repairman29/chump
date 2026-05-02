@@ -744,7 +744,12 @@ if [ "${CHUMP_RAW_YAML_LOCK:-1}" != "0" ]; then
         marker="$repo_root_canon/.chump/.last-yaml-op"
         marker_fresh=0
         if [ -f "$marker" ]; then
-            marker_age=$(( $(date +%s) - $(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0) ))
+            # GNU stat (`-c %Y`) tried FIRST: on Linux `stat -f` reports
+            # filesystem-level info (wrong-but-non-zero) instead of failing,
+            # so the macOS-first ordering returned a wrong value and the
+            # `||` fallback to GNU never ran. Surfaced as "stale marker
+            # (>5min) unexpectedly allowed" on PR #729 Linux CI runs.
+            marker_age=$(( $(date +%s) - $(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || echo 0) ))
             if [ "$marker_age" -lt 300 ]; then
                 marker_fresh=1
             fi

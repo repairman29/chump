@@ -36,10 +36,10 @@ git -C "$SANDBOX" -c user.email=t@t -c user.name=t commit -q -m seed
 git -C "$SANDBOX" config core.hooksPath scripts/git-hooks
 
 # Disable sibling guards that would interfere on this minimal sandbox.
-SANDBOX_ENV='CHUMP_LEASE_CHECK=0 CHUMP_STOMP_WARN=0 CHUMP_GAPS_LOCK=0 CHUMP_PREREG_CHECK=0
-             CHUMP_CROSS_JUDGE_CHECK=0 CHUMP_SUBMODULE_CHECK=0 CHUMP_CHECK_BUILD=0
-             CHUMP_DOCS_DELTA_CHECK=0 CHUMP_CREDENTIAL_CHECK=0 CHUMP_PREREG_CONTENT_CHECK=0
-             CHUMP_BOOK_SYNC_CHECK=0'
+# Single-line: multi-line continuations injected literal newlines into the
+# env-var list when expanded as `env $SANDBOX_ENV cmd`, which Linux CI's
+# bash interpreted differently from macOS, breaking case 4/5/6.
+SANDBOX_ENV='CHUMP_LEASE_CHECK=0 CHUMP_STOMP_WARN=0 CHUMP_GAPS_LOCK=0 CHUMP_PREREG_CHECK=0 CHUMP_CROSS_JUDGE_CHECK=0 CHUMP_SUBMODULE_CHECK=0 CHUMP_CHECK_BUILD=0 CHUMP_DOCS_DELTA_CHECK=0 CHUMP_CREDENTIAL_CHECK=0 CHUMP_PREREG_CONTENT_CHECK=0 CHUMP_BOOK_SYNC_CHECK=0'
 
 # ── case 1: raw YAML edit without marker → guard BLOCKS ──────────────────────
 cat >> "$SANDBOX/docs/gaps.yaml" <<'EOF'
@@ -76,10 +76,24 @@ cat >> "$SANDBOX/docs/gaps.yaml" <<'EOF'
   status: open
 EOF
 # Stale-set marker mtime to 10 minutes ago (300s threshold + buffer).
-# Use python3 os.utime — the prior BSD/GNU date+touch -t dance worked on
-# macOS but silently failed on Linux runners, so the marker stayed fresh
-# and tests 3/5/6 cascaded as failures. os.utime is identical everywhere.
-python3 -c "import os, time; t = time.time() - 600; os.utime('$SANDBOX/.chump/.last-yaml-op', (t, t))"
+# Try, in order: GNU touch -d (Linux CI), BSD touch -A (macOS local dev),
+# python3 os.utime (last-resort portable). We previously relied on python3
+# but the GitHub Actions "Free disk space" step deletes
+# /opt/hostedtoolcache/Python before our test runs, which left python3
+# unreliable on the runner (tests 3/5/6 cascaded as failures because the
+# marker stayed fresh). touch -d is built into GNU coreutils so it works
+# without any tool cache.
+touch -d '10 minutes ago' "$SANDBOX/.chump/.last-yaml-op" 2>/dev/null \
+  || touch -A -001000 "$SANDBOX/.chump/.last-yaml-op" 2>/dev/null \
+  || python3 -c "import os, time; t = time.time() - 600; os.utime('$SANDBOX/.chump/.last-yaml-op', (t, t))"
+# Verify the mtime actually moved — failing loudly here is better than
+# the cascade-of-cryptic-failures we'd otherwise see further down the test.
+_marker_age=$(( $(date +%s) - $(stat -c %Y "$SANDBOX/.chump/.last-yaml-op" 2>/dev/null || stat -f %m "$SANDBOX/.chump/.last-yaml-op" 2>/dev/null || echo 0) ))
+if [ "$_marker_age" -lt 500 ]; then
+    echo "FATAL: stale-set failed — marker_age=${_marker_age}s, expected ~600s. \
+Cannot proceed; dependent tests would cascade as false failures." >&2
+    exit 99
+fi
 git -C "$SANDBOX" add docs/gaps.yaml
 if env $SANDBOX_ENV \
     git -C "$SANDBOX" -c user.email=t@t -c user.name=t commit -q -m "stale marker" >/dev/null 2>&1; then
