@@ -3378,6 +3378,38 @@ gaps:
     - "Whichever path: the empty-ambient observation is no longer a silent false negative"
   opened_date: '2026-05-02'
 
+- id: FLEET-024
+  domain: fleet
+  title: FLEET L2 umbrella — Work Decomposition & Claiming (work board, help-seeking, decomposition heuristics)
+  status: open
+  priority: P1
+  effort: l
+  description: |
+    Umbrella tracking the FLEET vision's Layer 2 (Work Decomposition & Claiming) per docs/strategy/FLEET_VISION_2026Q2.md. Layer 1 (Distributed Coordination) is now complete: FLEET-006 (NATS ambient stream), FLEET-007 (NATS-backed distributed leases with TTL), FLEET-009 (capability declaration & task-fit scoring), and FLEET-017-022 (Cold Water NATS subscription + ambient hooks installer) all shipped.
+    
+    The next layer ships three coordinated capabilities so agents on the fleet can break work apart and route subtasks to the right teammate:
+    
+      FLEET-008 (P1/m) — Work board / task queue: NATS-backed shared queue where any agent posts subtasks with required-capability metadata, others read+claim. Schema sketched in FLEET_VISION_2026Q2.md (subtask_id, parent_gap, requirement, claimed_by, status, help_requests).
+    
+      FLEET-010 (P2/m) — Help-seeking protocol: agent hits a blocker → posts a help_request to the work board → another agent claims it. Open question from the vision doc: blocking vs parallel semantics.
+    
+      FLEET-011 (P2/l) — Work decomposition heuristics & learning: when to split, how big each piece, which task classes split well. Learns from outcome history.
+    
+    The first single-sprint demo (per FLEET_VISION_2026Q2.md "First Demo: Single Sprint (Q4)") is two agents on different machines, coordinated work — Agent A claims a gap, decomposes it, posts SUBTASK-001; Agent B claims SUBTASK-001, completes it, result merges back. That demo is the L2 acceptance smoke.
+    
+    Out of scope for this umbrella: L3 Intelligent Decomposition (no concrete gaps yet — scoped after L2 evidence). FLEET-013 Tailscale + agent discovery is L1 operationalization, not L2 logic.
+  acceptance_criteria:
+    - "FLEET-008 work board lands: NATS topic chump/work-board accepts subtask messages with the FLEET_VISION_2026Q2 schema; chump CLI subcommand to post and read subtasks"
+    - "FLEET-010 help-seeking: agent posts a help_request to the work board when a tool/capability is unavailable; another agent picks it up; outcome rolls into reflection_db"
+    - "FLEET-011 decomposition heuristics: at least one learned policy that decides decomposable=true/false based on gap effort + task class historical success rate"
+    - "Single-sprint demo passes: two agents on different machines coordinate one parent-gap + one subtask end-to-end; ambient stream shows the full timeline"
+    - Out-of-scope L3 follow-ups filed once L2 telemetry surfaces real cases worth automating
+  depends_on: [FLEET-008, FLEET-010, FLEET-011]
+  notes: |
+    Audit-refresh side effect: FLEET_VISION_2026Q2.md and WORLD_CLASS_ROADMAP.md last_audited dates bumped from 2026-04-25 to 2026-05-02 in the same PR; M1-M5 of WORLD_CLASS marked done; L1 of FLEET vision marked done.
+  source_doc: docs/strategy/FLEET_VISION_2026Q2.md
+  opened_date: '2026-05-02'
+
 - id: FLEET-14
   domain: fleet
   title: "FLEET dev loop design note: Docker NATS, async-nats integration tests, FLEET-007 first"

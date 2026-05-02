@@ -208,15 +208,28 @@ Hallucinated-tool rate ≈ 0 in both cells across all 4 sweeps — this is a
   (`docs/archive/eval-runs/eval-069-2026-04-22/eval049-binary-judge-1776739765.jsonl`,
   100 rows): **99/100 rows show `scorer=llm_judge`**, not exit_code_fallback.
   The user invoked the harness via `python3.12 …` directly, bypassing the
-  broken shebang, consistent with the writeup's recorded command line.
-  Per-task results differ between cells (t005: A=0.50/B=0.00; t028:
-  A=0.00/B=1.00) — the "broken-scorer fingerprint" of identical-per-trial
-  scoring is not present. F3's aggregate-magnitude retirement therefore
-  rests on a *working* instrument; the broken-vs-broken framing is
-  withdrawn. The earlier AUDIT-3 reasoning chain is preserved as a
-  methodological lesson: audits of past runs must inspect the JSONL
-  evidence itself, not just infer from configuration timelines (filed as
-  follow-up gap). See [`eval/EVAL-090-neuromod-aggregate-rerun.md`](eval/EVAL-090-neuromod-aggregate-rerun.md).
+  broken shebang. F3's aggregate-magnitude retirement rests on a *working*
+  instrument; the broken-vs-broken framing is withdrawn. See
+  [`eval/EVAL-090-neuromod-aggregate-rerun.md`](eval/EVAL-090-neuromod-aggregate-rerun.md).
+- **EVAL-095 (2026-05-02) — replication on current binary contradicts
+  EVAL-069's null verdict.** Re-ran EVAL-069's exact protocol (qwen2.5:14b
+  agent, Claude Haiku judge, neuromod fixture) on the current chump binary
+  at n=20/cell. Result: Δ = +0.150 (cell A acc=0.850 [0.640, 0.948] vs
+  cell B acc=0.700 [0.481, 0.855]) — **directionally supports F3**, with
+  the entire signal concentrated in three specific tasks (t015, t017,
+  t019; each shows cell-A=1.0, cell-B=0.0). Wilson 95% CIs **overlap
+  zero**, so the result is directional not statistically confirmed at
+  n=20. The 2026-04-21 binary state EVAL-069 measured produced Δ=0.000;
+  the 2026-05-02 binary state EVAL-095 measured produces Δ=+0.150 — the
+  ~10 days of intervening neuromod work appears to have shifted the
+  ablation's behavioral footprint. Combined with EVAL-076 (cog016-n100,
+  claude-haiku agent, Δ=−0.15 directional), this is the **second
+  independent directionally-supportive replication**. Two underpowered
+  replications pointing the same direction is suggestive but not
+  confirmatory; F3's aggregate-magnitude retirement (made in 2026-04-21
+  on a now-stale binary) should be reopened pending a properly-powered
+  cross-judge run (filed as EVAL-096). See
+  [`eval/EVAL-095-neuromod-rerun.md`](eval/EVAL-095-neuromod-rerun.md).
 - **The EVAL-026 aggregate −10 to −16 pp signal: model-tier-specific, not
   generally retired.** EVAL-069 was meant to validate this but failed due to
   scorer fallback. The 4 EVAL-026 source sweeps show unequal measurement
