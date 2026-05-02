@@ -59,16 +59,29 @@ OPENAI_API_BASE="http://127.0.0.1:11434/v1" \
     --agent-provider ollama \
     --agent-model qwen2.5:14b \
     --output-dir "${SMOKE_OUT}" \
-    --timeout 120 2>&1 | tail -10
+    --timeout 300 2>&1 | tail -10
 
 SMOKE_JSONL="$(ls -t "${SMOKE_OUT}"/eval049-binary-llmjudge-*.jsonl 2>/dev/null | head -1)"
+# Guard against BOTH (a) the EVAL-069 broken-scorer foot-gun AND (b) a wholly
+# degenerate run where chump returns empty output (observed 2026-05-02:
+# ~120s wall-clock per trial means the harness's old 120s timeout fires
+# first and produces scorer=llm_judge but output_chars=0). Either failure
+# would silently produce a fake delta=0 result.
 if [[ -z "${SMOKE_JSONL}" ]] || ! python3.12 -c "
 import json, sys
 rows = [json.loads(l) for l in open('${SMOKE_JSONL}')]
-ok = all(r.get('scorer') == 'llm_judge' for r in rows)
-sys.exit(0 if ok else 1)
+scorer_ok = all(r.get('scorer') == 'llm_judge' for r in rows)
+output_ok = all(r.get('output_chars', 0) > 0 for r in rows)
+exit_ok = all(r.get('exit_code', -1) == 0 for r in rows)
+if not scorer_ok:
+    print('SMOKE FAIL: scorer not llm_judge')
+elif not output_ok:
+    print('SMOKE FAIL: chump returned empty output (chars=0). Probably a binary-too-slow-for-timeout regression — try bumping --timeout or rebuilding the binary.')
+elif not exit_ok:
+    print('SMOKE FAIL: chump exit_code != 0 — check binary or env')
+sys.exit(0 if (scorer_ok and output_ok and exit_ok) else 1)
 "; then
-  echo "[${TS}] ${GAP}: smoke FAILED (scorer not llm_judge) — aborting full sweep"
+  echo "[${TS}] ${GAP}: smoke FAILED — aborting full sweep (see line above)"
   exit 1
 fi
 
@@ -85,7 +98,7 @@ OPENAI_API_BASE="http://127.0.0.1:11434/v1" \
     --agent-provider ollama \
     --agent-model qwen2.5:14b \
     --output-dir logs/ab \
-    --timeout 180
+    --timeout 300
 
 JSONL="$(ls -t logs/ab/eval049-binary-llmjudge-*.jsonl 2>/dev/null | head -1)"
 echo "[${TS}] ${GAP}: sweep complete — $(wc -l < "${JSONL}") rows in ${JSONL}"
