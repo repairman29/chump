@@ -26,6 +26,7 @@ Every Claude session, every time. Do not pick a gap, create a branch, or edit fi
 ```bash
 git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
+bash scripts/setup/install-ambient-hooks.sh 2>&1 | tail -2  # FLEET-023: idempotent — wires SessionStart/PreToolUse/PostToolUse/Stop hooks into ~/.claude/settings.json so this session emits to ambient.jsonl. Bypass with CHUMP_AMBIENT_INSTALL_SKIP=1 in env.
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 chump-coord watch &  # FLEET-006: cross-machine peripheral vision (NATS); local file tail above is the durable fallback. Skip if NATS unavailable.
 chump gap list --status open                     # canonical (.chump/state.db); legacy: grep -A3 "status: open" docs/gaps.yaml
@@ -72,7 +73,11 @@ trivial chat tokens (< 30 chars trimmed), (b) suppresses the perception
 disable for harness sweeps measuring the v1 baseline.
 
 The `ambient.jsonl` tail is your peripheral vision — recent file edits, commits, bash calls, and
-ALERT events from other concurrent sessions. Event kinds to know:
+ALERT events from other concurrent sessions.
+
+**Scope reminder (FLEET-023, 2026-05-02).** `ambient.jsonl` is **filesystem-local** to whatever machine / sandbox you're on. Cross-machine peripheral vision goes through NATS (FLEET-006: `chump-coord watch`, subjects `chump.events.>`). In a fresh remote sandbox (Cold Water, ephemeral CI runner, etc.) where no NATS broker is reachable, the file tail will only show *this* session's own events — typically just two `session_start` lines from this session itself. That's expected, not a bug. If you need cross-machine signal, ensure `CHUMP_NATS_URL` is set to a reachable broker before flagging "ambient empty" as a finding.
+
+Event kinds to know:
 - `session_start` — another agent just opened a session (note their worktree and gap)
 - `file_edit` — another agent edited a file (note the path — may overlap yours)
 - `commit` — a commit landed (note the sha and gap — may have advanced main)
