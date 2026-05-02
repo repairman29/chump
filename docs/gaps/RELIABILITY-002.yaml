@@ -1,7 +1,9 @@
 - id: RELIABILITY-002
   domain: RELIABILITY
   title: Extract build_chump_agent_* from src/discord.rs into src/agent_factory.rs (unblocks SECURITY-004 Path B feature-gating)
-  status: open
+  status: done
+  closed_pr: 801
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

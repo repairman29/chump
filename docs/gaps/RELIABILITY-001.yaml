@@ -1,7 +1,9 @@
 - id: RELIABILITY-001
   domain: RELIABILITY
   title: serenity 0.12.5 → 0.13 (next branch) API migration — 16 compile errors in src/discord.rs block the SECURITY-004 git-dep override
-  status: open
+  status: done
+  closed_pr: 805
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |
