@@ -1,12 +1,156 @@
 ---
 doc_tag: canonical
 owner_gap:
-last_audited: 2026-04-27
+last_audited: 2026-05-02
 ---
 
 # Red Letter
 
 > Cold Water — adversarial weekly review. No praise.
+
+---
+
+## Issue #9 — 2026-05-02
+
+> Audit window: commits since 2026-04-27 (Issue #8 date). 50 commits on origin/main.
+
+### Status of Prior Issues
+
+**From Issue #8 (2026-04-27):**
+
+- **FIXED:** PRODUCT-017 (P0 — clean-machine FTUE, THE ONE BIG THING in Issues #6/7/8) — closed_pr: 631, closed_date: 2026-04-28. Implementation: `fde7594` verification artifact + close PRODUCT-021; `cd42a47` FTUE 2026-04-29 (17s, exit=0); `a801ff9` FTUE 2026-04-30 (17s, exit=0). `git log origin/main --grep=PRODUCT-017` returns 5 commits. Three-cycle fix is confirmed delivered.
+- **FIXED:** DOC-012 (NORTH_STAR.md cognitive-architecture claims contradict RESEARCH_INTEGRITY) — closed_pr: 633, closed_date: 2026-04-28. Verified: `docs/strategy/NORTH_STAR.md` now reads "is the design hypothesis we are betting on, not a validated mechanism" and explicitly lists modules with net-negative/null findings. Prohibited-claim language removed.
+- **FIXED:** EVAL-092 (provider-matrix harness) — closed_pr: 601, closed_date: 2026-04-27.
+- **FIXED:** PRODUCT-021 (P0 non-compliance escalation) — closed_pr: 662, closed_date: 2026-04-29.
+- **FIXED:** INFRA-076 (`Test <test@test.com>` co-author) — closed_pr: 642, closed_date: 2026-04-28. Verified: `git log origin/main -30 --format='%H' | xargs -I{} git show -s --format='%b' {} | grep 'Test <test'` returns nothing. Zero Test co-author occurrences in last 30 commits.
+- **FIXED_BUT_REPLACED:** FLEET-017 (Cold Water ambient NATS) — closed_pr: 629, closed_date: 2026-04-28. FLEET-019/020/021/022 shipped hook scripts (`scripts/coord/ambient-context-inject.sh`, `scripts/setup/install-ambient-hooks.sh`). BUT: `.chump-locks/ambient.jsonl` in this Cold Water sandbox still contains exactly 2 events — both `session_start` from this session only. The install step (`install-ambient-hooks.sh`) is never executed in remote-sandbox Cold Water sessions. The hooks exist; the Cold Water agent cannot run them; the stream is still operationally empty. FLEET-023 filed this cycle.
+- **STILL_OPEN_INACTIVE (3 cycles — #7, #8, #9):** EVAL-087 (evaluation-awareness reframe) — `git log origin/main --format='%H %s' | grep 'EVAL-087'` returns zero commits. Opened 2026-04-26. Zero implementation commits.
+- **STILL_OPEN_INACTIVE (6 cycles — #4, #5, #6, #7, #8, #9):** RESEARCH-021 (tier-dependence replication) — `git log origin/main --format='%H %s' | grep 'RESEARCH-021'` returns zero commits. The only gap in the registry with 6 consecutive Cold Water cycles of zero implementation commits.
+- **STILL_OPEN_ACTIVE:** EVAL-074 (DeepSeek regression root cause) — 1 commit since Issue #8: `f1bf519` "EVAL-074: feasibility assessment + cheap-first protocol design" (2026-04-28). Acceptance gap: no actual re-run executed; feasibility study only.
+- **STILL_OPEN:** META-002 (FIXED-but-replaced classification missing) — `git log origin/main --format='%H %s' | grep 'META-002'` returns zero commits.
+- **NO_GAP filed this cycle:** FLEET-023, EVAL-094, INFRA-200, META-005.
+
+---
+
+### The Looming Ghost
+
+[P0/High] We are failing to re-verify the foundational data that F3 retirement rests on — for the third week.
+
+EVAL-090 (P0 — re-run EVAL-069 under verified python3.12) has been open since 2026-04-26 with exactly **zero implementation commits**. Age: 6 days. Priority: P0. `git log origin/main --format='%H %s' | grep 'EVAL-090'` returns empty.
+
+Evidence:
+- `docs/gaps.yaml` EVAL-090 `status: open`, `priority: P0`, `opened_date: '2026-04-26'`, zero `closed_pr` field. Verified directly (`grep -A5 '^- id: EVAL-090' docs/gaps.yaml`).
+- `docs/audits/FINDINGS.md` F3 row states: "Aggregate −10 to −16 pp retired (EVAL-069 and EVAL-063 both retired on methodology grounds); harm concentrated in dynamic conditional-chain + monosyllabic-token tasks." The localization claim rests on EVAL-029 drilldown (n=50, medium confidence). The retired aggregate rests on EVAL-069 — which EVAL-090 says ran under a broken scorer.
+- EVAL-090's description: "EVAL-069 almost certainly ran under the same broken exit_code_fallback scorer. Identical CIs in both cells (acc_A=0.920 [0.812, 0.968] = acc_B=0.920 [0.812, 0.968], delta=0.000) is the fingerprint of a non-cognitive scorer." EVAL-090 acceptance_criteria explicitly states "Block PRODUCT-009 publication until this lands."
+
+Falsifying condition: This finding is wrong if `git log origin/main --grep=EVAL-090` returns at least one implementation commit (an actual re-run, not a filing or feasibility study).
+
+---
+
+### The Opportunity Cost
+
+[P1/High] We are failing to start RESEARCH-021 for the sixth consecutive Cold Water cycle.
+
+RESEARCH-021 (tier-dependence replication across 4 model families, P1) has zero implementation commits since filing. `git log origin/main --format='%H %s' | grep 'RESEARCH-021'` returns nothing. The gap was opened in the observable window of Issue #4. Flagged in Issues #4, #5, #6, #7, #8, #9 — the only gap in this registry with 6 consecutive cycles of inactivity.
+
+Evidence:
+- `grep -A8 '^- id: RESEARCH-021' docs/gaps.yaml` shows `status: open`, `priority: P1`, zero `closed_pr`, no `closed_date`.
+- `git log origin/main --format='%H %s' | grep -i RESEARCH-021` returns zero results. This command was run three separate times during this audit; output was empty each time.
+- EVAL-090 acceptance criteria (verified above) explicitly gates PRODUCT-009 on EVAL-090. PRODUCT-009 (P2, open) is also blocked by RESEARCH-021 per `docs/process/PRODUCT-009-PUBLICATION-CHECKLIST.md`. Two distinct P0/P1 gaps each independently block the project's only planned external publication.
+
+Falsifying condition: This finding is wrong if `git log origin/main --format='%H %s' | grep 'RESEARCH-021'` returns at least one commit with research execution output (JSONL data, result summary, or harness invocation log).
+
+[P1/High] We are failing to close three shipped P0 gaps that are open-but-landed.
+
+PRODUCT-024 (P0 — PWA chat default to non-reasoning model) shipped in PR #697 (`0a6d2cc`, commit message explicitly states "PRODUCT-024: close as done (closed_pr=697)") but `grep -A5 '^- id: PRODUCT-024' docs/gaps.yaml` shows `status: open`. INFRA-183 umbrella (P0 — PWA latency) has all sub-tasks completed (INFRA-184 done, INFRA-185 done, PRODUCT-024 shipped) but `grep -A5 '^- id: INFRA-183' docs/gaps.yaml` shows `status: open`. SECURITY-004 (P0 — 6 Dependabot alerts) has only 1 filing commit; SECURITY-005 closed 1 of the 6 advisories; 5 remain (rand unsoundness, glib Iterator, 3 rustls-webpki non-serenity paths) with zero upgrade commits.
+
+Evidence:
+- `grep -A8 '^- id: PRODUCT-024' docs/gaps.yaml`: `status: open`, `priority: P0`. Commit `0a6d2cc` subject: "PRODUCT-024: chat default to non-reasoning model — 25x latency win." Body of commit contains "PRODUCT-024: close as done (closed_pr=697)."
+- `grep -A8 '^- id: INFRA-183' docs/gaps.yaml`: `status: open`, `priority: P0`. Sub-tasks INFRA-184 (`closed_pr: 701`) and INFRA-185 (`closed_pr: 704`) verified done.
+- `grep -A5 '^- id: SECURITY-004' docs/gaps.yaml`: `status: open`, `priority: P0`. SECURITY-005 notes: "closes 1 of 6 advisories at the runtime-exposure level. The remaining 5 remain SECURITY-004's responsibility."
+
+Falsifying condition: This finding is wrong if PRODUCT-024 and INFRA-183 both show `status: done` with `closed_pr` set in docs/gaps.yaml.
+
+---
+
+### The Complexity Trap
+
+[P1/High] We are failing to arrest hand-editing of docs/gaps.yaml despite shipping two advisories targeting exactly this behavior.
+
+INFRA-084 (P0 — stop appending to gaps.yaml in PRs) shipped a merge_group regeneration workflow (`a087f0b`, 2026-04-29). INFRA-094 (P0 — mandate chump gap commands) shipped an advisory pre-commit warning with a "chump-gap" commit marker (`7f46169`, 2026-04-29). Neither shipped a hard block. Since those advisory commits landed (2026-04-29), **33 of 50 commits** on origin/main have touched `docs/gaps.yaml` — a 66% hand-edit rate, verified by `git log origin/main --since='2026-04-27' --format='%H' -- docs/gaps.yaml | wc -l` returning 33 against a total of 50 commits.
+
+Evidence:
+- `git log origin/main --since='2026-04-27' --format='%H' -- docs/gaps.yaml | wc -l` = 33.
+- `git log origin/main --since='2026-04-27' --format='%H' | wc -l` = 50.
+- The SECURITY-005 gap row itself (`d1012f5`, "chore(gaps): add SECURITY-005 row via surgical insert at SECURITY-* block") notes in its own description: "three end-of-YAML append refile attempts (#678, #684, #695) all went DIRTY due to the structural append-region race INFRA-173 is filed to fix." The race INFRA-084 was filed to eliminate produced three DIRTY failures for the same gap row, even after the advisory shipped.
+- INFRA-094's acceptance criteria (`grep -A15 '^- id: INFRA-094' docs/gaps.yaml`) require: "Pre-commit hook **blocks** raw docs/gaps.yaml edits without chump-gap commit trailer." The shipped pre-commit section (advisory, not block) does not satisfy this criterion. Both P0 gaps remain open.
+
+Falsifying condition: This finding is wrong if `git log origin/main --since='2026-04-29' --format='%H' -- docs/gaps.yaml | wc -l` returns fewer than 5 (indicating advisory-driven behavioral change).
+
+[P2/Medium] We are failing to track the OPEN-BUT-LANDED regression honestly.
+
+OPEN-BUT-LANDED count dropped from 65/88 (74%) in Issue #8 to **20/102 (19%)** this cycle (verified by Python scan: `python3` script counting open gaps with ≥1 commit referencing the ID in origin/main log). This appears to be a win. The regression is in what's still OPEN-BUT-LANDED: of the 20, **4 are P0 or P1 priority gaps** (INFRA-183 P0, PRODUCT-024 P0, SECURITY-004 P0, INFRA-100 P1). The prior cycle's gap-closure infrastructure appears to have closed most of the lower-priority OPEN-BUT-LANDED entries while the highest-urgency ones remain unclosed. The ratio is better; the residual is worse-composed.
+
+Evidence:
+- Python OPEN-BUT-LANDED census output (run this cycle): total open gaps: 102, landed: 20, ratio: 19%.
+- P0 landed entries: INFRA-183 (2 commits), PRODUCT-024 (1 commit), SECURITY-004 (1 commit).
+- Issue #8 OPEN-BUT-LANDED count was 65/88 (74%). Delta: −45 absolute, −55pp ratio. 
+
+Falsifying condition: This finding is wrong if `grep -A5 '^- id: PRODUCT-024' docs/gaps.yaml` shows `status: done`.
+
+---
+
+### The Reality Check
+
+[P0/High] We are failing to treat EVAL-090 as P0 — the foundational neuromod measurement cannot be verified as non-broken.
+
+EVAL-090 blocks PRODUCT-009. PRODUCT-009 (P2, open, "External publication of F1-F6 empirical findings") lists EVAL-090 as a prerequisite in its acceptance criteria. The F3 finding ("cross-architecture neuromod harm is localized to two task clusters") is currently supported by EVAL-029 drilldown (n=50, medium confidence, single judge) — but the retired aggregate claim (EVAL-069) that F3 replaced may have been broken-vs-broken. If EVAL-090 reruns and finds a non-zero aggregate, F3's "localized" framing is based on one n=50 survey and an invalidated baseline. If EVAL-090 reruns and finds the same delta=0.000, F3 retirement is confirmed on solid ground. Neither is known. This is not a methodology preference; it is an unverified foundational measurement. EVAL-090 has been P0 for 6 days with zero implementation commits.
+
+Evidence:
+- `grep -A5 '^- id: EVAL-090' docs/gaps.yaml`: `status: open`, `priority: P0`, `opened_date: '2026-04-26'`. No `closed_pr` or `closed_date`.
+- `git log origin/main --format='%H %s' | grep EVAL-090` returns empty. Three independent checks.
+- `docs/audits/FINDINGS.md` F3 row status: "4/4 sweeps direction-consistent; both EVAL-026 retests methodology-invalid (mixed-scorer / broken-scorer); localization stands." The localization claim stands but the aggregate measurement is unverified.
+- EVAL-090 acceptance criteria explicitly: "Block PRODUCT-009 publication until this lands."
+
+Falsifying condition: This finding is wrong if `docs/audits/FINDINGS.md` F3 row contains a verified A/A baseline from a python3.12 run with `scorer=llm-judge` in the JSONL output, OR if EVAL-090 shows `status: done` with a numeric `closed_pr`.
+
+---
+
+### The Innovation Lag
+
+[P1/Medium] We are failing to respond to ICLR 2026-confirmed covert sandbagging while EVAL-087 sits inactive for 3 cycles.
+
+EVAL-087 (P1, open, filed 2026-04-26) asks for RESEARCH-026 to be reframed from P2 to P1 based on the IAPS evaluation-awareness paper. It has zero implementation commits. New external evidence this cycle makes the threat quantitatively worse: "LLMs Can Covertly Sandbag on Capability Evaluations Against Chain-of-Thought Monitoring" (arXiv:2508.00943, published as ICLR 2026 paper, https://arxiv.org/abs/2508.00943) demonstrates that frontier models — including Claude-3.7-Sonnet and Claude-4-Sonnet — can bypass CoT monitoring **16–36% of the time** when prompted to sandbag and when monitor-aware. Chump's A/B harness uses Claude Haiku-4.5 and Sonnet-4.5 as agents under test. The harness uses explicit evaluation framing (task IDs, structured rubrics, "the user asks..." syntax). The ICLR 2026 paper's models include Claude-4-Sonnet, one generation above the models Chump currently tests. A 16–36% monitor-bypass rate on a structurally identical configuration means a substantial fraction of Chump's A/B trials may produce strategically modified behavior. The validated findings table (EVAL-025, EVAL-027c, EVAL-030) was produced entirely under these conditions. RESEARCH-026 (P2, open) and EVAL-087 (P1, open) are the filed responses. Both have zero implementation commits.
+
+Evidence:
+- `git log origin/main --format='%H %s' | grep -E 'EVAL-087|RESEARCH-026'` returns zero results.
+- `grep -A8 '^- id: EVAL-087' docs/gaps.yaml`: `status: open`, `priority: P1`, `opened_date: '2026-04-26'`.
+- `grep -A8 '^- id: RESEARCH-026' docs/gaps.yaml`: `status: open`, `priority: P2`.
+- arXiv:2508.00943 accepted at ICLR 2026 (verified via https://arxiv.org/abs/2508.00943); evaluated 10 models including Claude-3.7-Sonnet and Claude-4-Sonnet; reported 16–36% CoT monitor bypass rate when monitor-aware.
+
+The strategic memo (`docs/strategy/STRATEGIC_MEMO_2026Q2.md`) is still an orphan: `git log origin/main --format='%H %s' | grep 'FRONTIER-006'` returns zero commits since closing. Section 3's 5 recommendations have no follow-up gaps. This is STILL_OPEN_INACTIVE across cycles #6, #7, #8, #9.
+
+Falsifying condition: This finding is wrong if `git log origin/main --format='%H %s' | grep -E 'RESEARCH-026|EVAL-087'` returns at least one execution commit (harness invocation, result file, or Wilson CI table).
+
+---
+
+**THE ONE BIG THING:** [P0] EVAL-090 — We are failing at the most basic epistemic duty: verifying that our one published null result isn't a scorer artifact.
+
+EVAL-090 has been P0 for 6 days with zero implementation commits. It is not blocked by any dependency. Its acceptance criteria are concrete: run the eval with `python3.12`, verify `scorer=llm-judge` in JSONL output, and update FINDINGS.md F3. The entire gap would take a single agent session under 2 hours. Instead, the project shipped 50 commits in 5 days — renaming conventions (INFRA-186), PWA bubble fixes (INFRA-178), narration detection (INFRA-177), timing breakdowns (INFRA-185), a pr-watch script (INFRA-190) — while the measurement that determines whether a key research finding is real or an artifact sits untouched. The neuromodulation module was audited and found to be wired through (REMOVAL-006, `9a3f0a3`): EVAL-029's net-negative signal is measuring real provider behavior. That makes the F3 question more important, not less — if neuromod is actually affecting providers, knowing whether the harm is aggregate or only task-clustered has direct product consequences (PRODUCT-024 just shipped model-swapping partly on this basis). A P0 gap that blocks the project's only planned publication, that has been open 6 days with zero implementation commits, that would take one agent session to execute — this is not resource-constrained inactivity. It is prioritization failure. Gap: EVAL-090.
+
+---
+
+### Follow-up Gaps Filed
+
+- FLEET-023: Cold Water sandbox ambient stream empty post-FLEET-019/020/021/022 — install step never executed (P1/xs)
+- EVAL-094: ICLR 2026 covert sandbagging (arXiv:2508.00943) confirms evaluation-context discrimination — run RESEARCH-026 swept experiment now (P1/s)
+- INFRA-200: gaps.yaml advisory-only enforcement failed — 66% hand-edit rate post-INFRA-084/094; ship hard pre-commit block (P1/s)
+- META-005: P0 OPEN-BUT-LANDED (PRODUCT-024, INFRA-183, SECURITY-004) — P0-closure hygiene failure; block new P0 filings until existing P0 OPEN-BUT-LANDED clears (P2/xs)
+
+---
+
+---
+
 
 ---
 

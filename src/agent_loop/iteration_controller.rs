@@ -169,6 +169,14 @@ impl<'a> IterationController<'a> {
             }
             tracing::debug!(agent_state = ?self.state, "agent loop: calling LLM");
 
+            // INFRA-185: time the provider call. We measure here (not via
+            // ctx.time_phase) because the cancel branch must not be timed
+            // and the &mut ctx borrow conflicts with `self.provider` access.
+            let provider_start = if crate::agent_loop::phase_timing_enabled() {
+                Some(std::time::Instant::now())
+            } else {
+                None
+            };
             let response = tokio::select! {
                 biased;
                 _ = cancel.cancelled() => {
@@ -183,6 +191,10 @@ impl<'a> IterationController<'a> {
                     result?
                 }
             };
+            if let Some(t) = provider_start {
+                ctx.phase_timings.provider_ms += t.elapsed().as_millis();
+                ctx.phase_timings.rounds += 1;
+            }
 
             model_calls_count += 1;
 
@@ -207,6 +219,11 @@ impl<'a> IterationController<'a> {
                                 self.state = next_tools;
                             }
                             tracing::debug!(agent_state = ?self.state, "agent loop: running synthetic tools (EndTurn)");
+                            let tools_t = if crate::agent_loop::phase_timing_enabled() {
+                                Some(std::time::Instant::now())
+                            } else {
+                                None
+                            };
                             let outcome = tokio::select! {
                                 biased;
                                 _ = cancel.cancelled() => {
@@ -216,6 +233,9 @@ impl<'a> IterationController<'a> {
                                     result?
                                 }
                             };
+                            if let Some(t) = tools_t {
+                                ctx.phase_timings.tools_ms += t.elapsed().as_millis();
+                            }
                             last_failed_tool = outcome.last_failed_tool.clone();
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
@@ -308,6 +328,11 @@ impl<'a> IterationController<'a> {
                                     self.state = next_tools;
                                 }
                                 tracing::debug!(agent_state = ?self.state, "agent loop: running synthetic tools (ToolUse)");
+                                let tools_t = if crate::agent_loop::phase_timing_enabled() {
+                                    Some(std::time::Instant::now())
+                                } else {
+                                    None
+                                };
                                 let outcome = tokio::select! {
                                     biased;
                                     _ = cancel.cancelled() => {
@@ -321,6 +346,9 @@ impl<'a> IterationController<'a> {
                                         result?
                                     }
                                 };
+                                if let Some(t) = tools_t {
+                                    ctx.phase_timings.tools_ms += t.elapsed().as_millis();
+                                }
                                 last_failed_tool = outcome.last_failed_tool.clone();
                                 if let Some(err) =
                                     track_outcome(outcome, &mut consecutive_failed_batches)
@@ -353,6 +381,11 @@ impl<'a> IterationController<'a> {
                                 self.state = next_tools;
                             }
                             tracing::debug!(agent_state = ?self.state, "agent loop: running rescued patch tool");
+                            let tools_t = if crate::agent_loop::phase_timing_enabled() {
+                                Some(std::time::Instant::now())
+                            } else {
+                                None
+                            };
                             let outcome = tokio::select! {
                                 biased;
                                 _ = cancel.cancelled() => {
@@ -366,6 +399,9 @@ impl<'a> IterationController<'a> {
                                     result?
                                 }
                             };
+                            if let Some(t) = tools_t {
+                                ctx.phase_timings.tools_ms += t.elapsed().as_millis();
+                            }
                             last_failed_tool = outcome.last_failed_tool.clone();
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
@@ -421,6 +457,11 @@ impl<'a> IterationController<'a> {
                         self.state = next_tools;
                     }
                     tracing::debug!(agent_state = ?self.state, "agent loop: running native tool batch");
+                    let tools_t = if crate::agent_loop::phase_timing_enabled() {
+                        Some(std::time::Instant::now())
+                    } else {
+                        None
+                    };
                     let outcome = tokio::select! {
                         biased;
                         _ = cancel.cancelled() => {
@@ -430,6 +471,9 @@ impl<'a> IterationController<'a> {
                             result?
                         }
                     };
+                    if let Some(t) = tools_t {
+                        ctx.phase_timings.tools_ms += t.elapsed().as_millis();
+                    }
                     last_failed_tool = outcome.last_failed_tool.clone();
                     if let Some(err) = track_outcome(outcome, &mut consecutive_failed_batches) {
                         // FSM: → Interrupted (storm breaker)
@@ -772,6 +816,7 @@ mod cancellation_tests {
             session: AgentSession::new("test-session".to_string()),
             event_tx: None,
             light: false,
+            phase_timings: crate::agent_loop::PhaseTimings::default(),
         }
     }
 
