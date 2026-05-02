@@ -58,7 +58,7 @@ if [[ "$_GIT_COMMON" == ".git" ]]; then
 else
     MAIN_REPO="$(cd "$_GIT_COMMON/.." && pwd)"
 fi
-LOCK_DIR="$MAIN_REPO/.chump-locks"
+LOCK_DIR="${QUEUE_HEALTH_LOCK_DIR_OVERRIDE:-$MAIN_REPO/.chump-locks}"
 CHUMP_DIR="$MAIN_REPO/.chump"
 HEALTH_JSONL="$CHUMP_DIR/health.jsonl"
 ALERTS_LOG="$CHUMP_DIR/alerts.log"
@@ -222,6 +222,46 @@ for parent in "$WT_PARENT_NEW" "$WT_PARENT_OLD"; do
         fi
     done
 done
+
+# ── Check 4: stale bot-merge health files (INFRA-119) ────────────────────────
+# bot-merge.sh writes .chump-locks/bot-merge-<pid>.health every 30s while
+# running. A file whose last_heartbeat_at is > BOT_MERGE_STALE_MIN minutes
+# old means bot-merge either died without cleanup or is truly hung.
+BOT_MERGE_STALE_MIN="${QUEUE_HEALTH_BOT_MERGE_STALE_MIN:-5}"
+say "checking bot-merge health files (stale > ${BOT_MERGE_STALE_MIN} min)..."
+shopt -s nullglob
+for hf in "$LOCK_DIR"/bot-merge-*.health; do
+    [[ -f "$hf" ]] || continue
+    hf_data="$(python3 -c "
+import json, sys
+try:
+    print(json.dumps(json.load(open(sys.argv[1]))))
+except Exception as e:
+    print('{}')
+" "$hf" 2>/dev/null || echo '{}')"
+    last_hb="$(printf '%s' "$hf_data" | python3 -c "
+import json,sys
+d=json.loads(sys.stdin.read() or '{}')
+print(d.get('last_heartbeat_at',''))
+" 2>/dev/null || true)"
+    [[ -z "$last_hb" ]] && continue
+    age_min="$(python3 -c "
+from datetime import datetime, timezone
+import sys
+try:
+    ts = datetime.fromisoformat(sys.argv[1].replace('Z','+00:00'))
+    print(int((datetime.now(timezone.utc) - ts).total_seconds() / 60))
+except Exception:
+    print(-1)
+" "$last_hb" 2>/dev/null || echo -1)"
+    [[ "$age_min" -lt 0 ]] && continue
+    if (( age_min >= BOT_MERGE_STALE_MIN )); then
+        hf_pid="$(printf '%s' "$hf_data" | python3 -c "import json,sys; print(json.loads(sys.stdin.read() or '{}').get('pid','?'))" 2>/dev/null || echo '?')"
+        hf_step="$(printf '%s' "$hf_data" | python3 -c "import json,sys; print(json.loads(sys.stdin.read() or '{}').get('current_step','?'))" 2>/dev/null || echo '?')"
+        emit_alert "bot_merge_hung" "pid=${hf_pid} step=${hf_step} last_heartbeat_age=${age_min}m health_file=$(basename "$hf")"
+    fi
+done
+shopt -u nullglob
 
 # ── Write health.jsonl record ────────────────────────────────────────────────
 # Pass alerts via env so we don't have to escape them through nested heredocs.

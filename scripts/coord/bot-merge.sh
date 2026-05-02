@@ -34,6 +34,25 @@
 
 set -euo pipefail
 
+# ── INFRA-119: health-file globals + cleanup traps ───────────────────────────
+_BM_PID=$$
+_BM_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+_BM_HEALTH_FILE=""
+_BM_STEP_FILE=""
+_BM_HEALTH_PID=""
+_BM_WATCHDOG_PID=""
+_BM_CLEANUP_DONE=0
+
+_bm_cleanup() {
+    [[ "$_BM_CLEANUP_DONE" == "1" ]] && return
+    _BM_CLEANUP_DONE=1
+    [[ -n "${_BM_HEALTH_PID:-}" ]]   && kill "$_BM_HEALTH_PID"   2>/dev/null || true
+    [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
+    rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" 2>/dev/null || true
+}
+trap '_bm_cleanup' EXIT
+trap '_bm_cleanup; exit 1' TERM INT
+
 # ── INFRA-017: dispatched-agent identity ─────────────────────────────────────
 # When bot-merge.sh runs inside a dispatched subagent (chump-orchestrator set
 # CHUMP_DISPATCH_DEPTH=1), stamp git author/committer so amend commits and
@@ -100,6 +119,8 @@ stage_start() {
     __STAGE_LABEL="$1"
     __STAGE_T0=$(date +%s)
     info "▶ $__STAGE_LABEL starting …"
+    # INFRA-119: keep step file current so the health-file writer tracks progress
+    [[ -n "${_BM_STEP_FILE:-}" ]] && printf '%s' "$__STAGE_LABEL" > "$_BM_STEP_FILE" 2>/dev/null || true
 }
 stage_done() {
     local elapsed=$(( $(date +%s) - __STAGE_T0 ))
@@ -164,6 +185,73 @@ run_timed_hb() {
     set -e
     heartbeat_end
     return "$_rc"
+}
+
+# ── INFRA-119: health-file writer + total-budget watchdog ────────────────────
+# Call _bm_health_init once after REPO_ROOT is known. It:
+#   1. Creates .chump-locks/bot-merge-<pid>.health — read by queue-health-monitor
+#      to detect hangs when last_heartbeat_at goes > 5 min stale.
+#   2. Starts a background loop that rewrites the health file every 30s with the
+#      current stage label (read from .chump-locks/bot-merge-<pid>.step).
+#   3. Starts a budget-watchdog: if CHUMP_BOT_MERGE_BUDGET_SECS (default 600)
+#      elapses without the script completing, the watchdog emits an ambient
+#      ALERT kind=bot_merge_hung and sends SIGTERM to this process.
+#      Set to 0 to disable (e.g. for full cargo-test runs).
+_bm_health_write() {
+    [[ -z "${_BM_HEALTH_FILE:-}" ]] && return 0
+    local step now
+    step="$(cat "$_BM_STEP_FILE" 2>/dev/null || echo init)"
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"pid":%d,"started_at":"%s","current_step":"%s","last_heartbeat_at":"%s"}\n' \
+        "$_BM_PID" "$_BM_STARTED_AT" "$step" "$now" \
+        > "${_BM_HEALTH_FILE}.tmp" 2>/dev/null \
+    && mv "${_BM_HEALTH_FILE}.tmp" "$_BM_HEALTH_FILE" 2>/dev/null || true
+}
+
+_bm_health_init() {
+    local lock_dir="$1"
+    [[ $DRY_RUN -eq 1 ]] && return 0
+    mkdir -p "$lock_dir" 2>/dev/null || true
+    _BM_HEALTH_FILE="${lock_dir}/bot-merge-${_BM_PID}.health"
+    _BM_STEP_FILE="${lock_dir}/bot-merge-${_BM_PID}.step"
+    printf 'init' > "$_BM_STEP_FILE" 2>/dev/null || true
+    _bm_health_write
+
+    # Background heartbeat: rewrite health file every 30s
+    local hf="$_BM_HEALTH_FILE" sf="$_BM_STEP_FILE"
+    local pid="$_BM_PID" sa="$_BM_STARTED_AT"
+    (
+        while true; do
+            sleep 30
+            local step now
+            step="$(cat "$sf" 2>/dev/null || echo unknown)"
+            now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '{"pid":%d,"started_at":"%s","current_step":"%s","last_heartbeat_at":"%s"}\n' \
+                "$pid" "$sa" "$step" "$now" \
+                > "${hf}.tmp" && mv "${hf}.tmp" "$hf" || true
+        done
+    ) &
+    _BM_HEALTH_PID=$!
+
+    # Budget watchdog: SIGTERM + ambient ALERT if total runtime exceeds budget
+    local budget="${CHUMP_BOT_MERGE_BUDGET_SECS:-600}"
+    if [[ "$budget" -gt 0 ]]; then
+        local ppid="$_BM_PID" ambient="${lock_dir}/ambient.jsonl"
+        (
+            sleep "$budget"
+            local step now
+            step="$(cat "$sf" 2>/dev/null || echo unknown)"
+            now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '{"ts":"%s","session":"bot-merge-%d","event":"ALERT","kind":"bot_merge_hung","pid":%d,"step":"%s","note":"total budget %ss exceeded — sending SIGTERM"}\n' \
+                "$now" "$ppid" "$ppid" "$step" "$budget" >> "$ambient" 2>/dev/null || true
+            rm -f "$hf" 2>/dev/null || true
+            kill -TERM "$ppid" 2>/dev/null || true
+        ) &
+        _BM_WATCHDOG_PID=$!
+        disown "$_BM_WATCHDOG_PID" 2>/dev/null || true
+    fi
+
+    info "INFRA-119: health monitoring active (file=$(basename "$_BM_HEALTH_FILE") budget=${budget}s)"
 }
 
 # ── Repo context ──────────────────────────────────────────────────────────────
@@ -256,6 +344,9 @@ fi
 
 BASE_BRANCH="${BASE_BRANCH:-main}"
 REMOTE="${REMOTE:-origin}"
+
+# ── INFRA-119: start health monitoring now that REPO_ROOT is set ──────────────
+_bm_health_init "$REPO_ROOT/.chump-locks"
 
 # INFRA-061 (M3): if --stack-on <PREV-GAP> was passed, look up the open PR for
 # that gap and use its head branch as our base. Falls back to main with a
