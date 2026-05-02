@@ -11,7 +11,6 @@
 //! to the pre-extraction implementation. See tests/system_prompt_snapshot.rs
 //! for the structural assertions guarding that.
 
-
 use crate::a2a_tool::a2a_peer_configured;
 use crate::git_tools::git_tools_enabled;
 use crate::state_db;
@@ -339,16 +338,29 @@ mod meta013_snapshot {
         std::env::remove_var("CHUMP_LIGHT_INTERACTIVE");
         std::env::remove_var("CHUMP_AIR_GAP_MODE");
         std::env::remove_var("CHUMP_MABEL");
-        let prompt = super::chump_system_prompt(
-            "## Test context\nseed=meta-013-baseline\n",
-            false,
+        let prompt = super::chump_system_prompt("## Test context\nseed=meta-013-baseline\n", false);
+        assert!(
+            prompt.contains("HARD RULES"),
+            "must contain HARD RULES section"
         );
-        assert!(prompt.contains("HARD RULES"), "must contain HARD RULES section");
-        assert!(prompt.contains("ACT, don't narrate"), "first hard-rule must survive");
-        assert!(prompt.contains("seed=meta-013-baseline"), "context must be embedded");
+        assert!(
+            prompt.contains("ACT, don't narrate"),
+            "first hard-rule must survive"
+        );
+        assert!(
+            prompt.contains("seed=meta-013-baseline"),
+            "context must be embedded"
+        );
         assert!(prompt.contains("/no_think"), "no_think directive present");
-        assert!(!prompt.contains("You are Mabel"), "Mabel persona absent when is_mabel=false");
+        assert!(
+            !prompt.contains("You are Mabel"),
+            "Mabel persona absent when is_mabel=false"
+        );
         let len = prompt.len();
-        assert!(len > 2000 && len < 20000, "prompt length {} outside 2-20 KB", len);
+        assert!(
+            len > 2000 && len < 20000,
+            "prompt length {} outside 2-20 KB",
+            len
+        );
     }
 }

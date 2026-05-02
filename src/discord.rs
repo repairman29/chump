@@ -152,11 +152,8 @@ fn pop_queued_message() -> Option<QueuedMessage> {
 // queue helpers, ensure_ovens_warm, plus a few small helpers). The constants
 // + chump_system_prompt + factories live in crate::system_prompt and
 // crate::agent_factory respectively.
-use crate::agent_factory::{
-    build_chump_agent_web_components,
-};
+use crate::agent_factory::build_chump_agent_web_components;
 use crate::system_prompt::{chump_system_prompt, env_is_mabel, strip_thinking};
-
 
 /// If CHUMP_WARM_SERVERS=1, run warm-the-ovens.sh and wait (up to 90s). Returns true if ready or skipped, false if timeout.
 async fn ensure_ovens_warm() -> bool {
@@ -193,7 +190,6 @@ async fn ensure_ovens_warm() -> bool {
         Err(_) => false,
     }
 }
-
 
 fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     tool_routing::log_tool_inventory();

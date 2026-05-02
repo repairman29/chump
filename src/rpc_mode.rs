@@ -13,9 +13,9 @@ use std::io::{self, BufRead, Write};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::agent_factory;
 use crate::agent_loop::ChumpAgent;
 use crate::approval_resolver;
-use crate::agent_factory;
 use crate::limits;
 use crate::stream_events::{self, AgentEvent};
 use crate::streaming_provider::StreamingProvider;

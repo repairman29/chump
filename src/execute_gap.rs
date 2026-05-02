@@ -37,8 +37,8 @@
 
 use anyhow::{anyhow, Context, Result};
 
-use crate::agent_loop::ChumpAgent;
 use crate::agent_factory::build_chump_agent_cli;
+use crate::agent_loop::ChumpAgent;
 use crate::model_overlay::maybe_overlay_from_env;
 use crate::plan_mode::{self, PlanOutcome};
 
