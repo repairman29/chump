@@ -2828,7 +2828,7 @@ gaps:
 - id: EVAL-095
   domain: EVAL
   title: Empirical re-run of CHUMP_BYPASS_NEUROMOD on current binary (deferred from EVAL-090)
-  status: open
+  status: done
   priority: P3
   effort: s
   description: |
@@ -2837,6 +2837,23 @@ gaps:
     - n=20/cell sweep completes with scorer=llm_judge for ≥95% of rows
     - result doc at docs/eval/EVAL-095-*.md compares to EVAL-069 baseline
     - FINDINGS.md F3 caveat updated if delta > 0.10pp
+  closed_date: '2026-05-02'
+  closed_pr: 737
+
+- id: EVAL-096
+  domain: EVAL
+  title: "EVAL-096: n=100/cell + cross-judge replication of CHUMP_BYPASS_NEUROMOD on current binary"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    EVAL-095 (2026-05-02) found Δ=+0.150 on current chump binary vs Δ=0.000 from EVAL-069 (2026-04-21) on the older binary, same fixture+agent. The +0.150 has Wilson 95% CIs overlapping zero so it's directional only — not enough to settle the F3 aggregate-magnitude retirement question. EVAL-076 (cog016-n100) also showed Δ=−0.15 directional. Two underpowered replications pointing the same direction is suggestive; this gap is the properly-powered settle: n=100/cell with cross-judge audit (Anthropic + Together Llama-3.3-70B per INFRA-079). Decision threshold per RESEARCH_INTEGRITY.md: |Δ|≥0.10 with non-overlapping CIs reinstates F3 aggregate-magnitude; |Δ|<0.10 with non-overlapping CIs confirms retirement; otherwise file another follow-up. Cost estimate: ~ Anthropic + free Together; ~3-4h wall-clock at current 90s/trial chump speed. Run as overnight job — drop into scripts/overnight/.
+  acceptance_criteria:
+    - n=100/cell sweep with scorer=llm_judge for ≥95% of rows
+    - cross-judge audit (Anthropic + Together Llama-3.3-70B), kappa reported
+    - Wilson 95% CIs computed for both cells
+    - F3 aggregate-magnitude verdict reinstated or confirmed-retired based on threshold rule
+    - FINDINGS.md F3 caveat updated with the result
 
 - id: EVAL-82
   domain: eval
@@ -6821,9 +6838,13 @@ gaps:
 - id: INFRA-173
   domain: INFRA
   title: "FTUE workflow: test bottle path (real user) once bottles exist; keep source-build as fallback"
-  status: open
+  status: done
   priority: P1
   effort: xs
+  notes: |
+    Superseded by INFRA-188; PR #731 shipped chump gap dump --per-file v0; 3 downstream gaps depend on INFRA-188.
+  closed_date: '2026-05-02'
+  closed_pr: 731
 
 - id: INFRA-174
   domain: INFRA
@@ -7166,9 +7187,13 @@ gaps:
 - id: INFRA-207
   domain: INFRA
   title: spawn-respawn lifecycle — agents exit after 1 gap; dispatcher respawns (avoids context exhaustion + lets new lessons load)
-  status: open
+  status: done
   priority: P1
   effort: s
+  notes: |
+    Duplicate of INFRA-222 (Cold Water Issue #10, PR #738). Title was hijacked from INFRA-215 during the 2026-05-02 INFRA-202..207 YAML race; description content is the docs-delta trailer guard issue captured in INFRA-222.
+  closed_date: '2026-05-02'
+  closed_pr: 738
 
 - id: INFRA-208
   domain: INFRA
@@ -7576,6 +7601,13 @@ gaps:
   effort: xs
   closed_date: '2026-05-02'
   closed_pr: 736
+
+- id: INFRA-222
+  domain: INFRA
+  title: "bot-merge.sh: pre-push test gate (cargo test --workspace before arming auto-merge)"
+  status: open
+  priority: P2
+  effort: m
 
 - id: INFRA-41
   domain: infra
