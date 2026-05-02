@@ -6701,9 +6701,11 @@ gaps:
 - id: INFRA-170
   domain: INFRA
   title: chump lesson add CLI (renamed from INFRA-163 collision)
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-02'
+  closed_pr: 706
 
 - id: INFRA-171
   domain: INFRA
@@ -6816,7 +6818,7 @@ gaps:
 - id: INFRA-185
   domain: INFRA
   title: Phase-level timing breakdown — compaction / provider / tools ms on existing [timing] logs (INFRA-183 sub)
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -6827,6 +6829,8 @@ gaps:
     - emit single end-of-turn structured event with all phase ms summed
     - enabled by default; CHUMP_PHASE_TIMING=0 disables
   depends_on: [INFRA-183]
+  closed_date: '2026-05-02'
+  closed_pr: 704
 
 - id: INFRA-186
   domain: INFRA
