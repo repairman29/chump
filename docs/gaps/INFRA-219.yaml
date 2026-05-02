@@ -1,7 +1,7 @@
 - id: INFRA-219
   domain: infra
   title: "closer-pr-batcher false-positive: closes filing PRs after seeing reserved IDs in local DB"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -50,4 +50,6 @@
     - Filing-vs-closure heuristic uses origin/main YAML state, not local state.db
     - Test added to scripts/ci/ that simulates the false-close scenario
   opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 824
 
