@@ -15563,7 +15563,9 @@ gaps:
 - id: INFRA-178
   domain: INFRA
   title: 'PWA chat bubble concatenates multi-round responses — clear text on model_call_start'
-  status: open
+  status: done
+  closed_pr: 711
+  closed_date: '2026-05-01'
   priority: P1
   effort: xs
   opened_date: '2026-05-01'
@@ -15964,7 +15966,9 @@ gaps:
 - id: INFRA-185
   domain: INFRA
   title: 'Phase-level timing breakdown — compaction / provider / tools ms on existing [timing] logs (INFRA-183 sub)'
-  status: open
+  status: done
+  closed_pr: 704
+  closed_date: '2026-05-01'
   priority: P2
   effort: s
   opened_date: '2026-05-01'
@@ -16431,3 +16435,262 @@ gaps:
   depends_on: [INFRA-192]
   raised_by: claude
   raised_in: '2026-05-01 — chump_skills + chump_improvement_targets schema exists but is dead-letter (manual SQL only); the feedback loop is missing'
+
+- id: INFRA-186
+  domain: INFRA
+  title: 'naming convention reset: branch + worktree are chump-first (project owns namespace, not the tool)'
+  status: done
+  priority: P1
+  effort: s
+  closed_pr: TBD
+  closed_date: '2026-05-01'
+  opened_date: '2026-05-01'
+  description: |
+    Observed friction (relayed from operator 2026-05-01): a sibling
+    agent had to RENAME its branch from `worktree-fleet-matrix-wiring`
+    to `claude/...` because CLAUDE.md said branches must start with
+    `claude/`. That's a tool-tax on a project-wide artifact — the repo
+    is `chump`, not Claude.
+
+    Current state of the drift:
+      - 82 origin/claude/* branches, 1 origin/chump/* branch
+      - CLAUDE.md:139 hardcoded `claude/<codename>` as the branch rule
+      - .claude/worktrees/ as the worktree path
+      - AGENTS.md hedged with "or your tool's analogue" — still defaults
+        to claude/<codename>
+      - Bot identities ARE chump-first (cold-water@chump.bot, chump-ftue-bot)
+      - Lease dir IS chump-first (.chump-locks/)
+      - State store IS chump-first (.chump/state.db)
+
+    Fix: AGENTS.md is the project-wide cross-tool entry point (LinuxFoundation
+    convention). It owns naming. CLAUDE.md / GEMINI.md / .cursorrules are
+    tool-specific overlays that defer to AGENTS.md for shared conventions.
+
+    Canonical naming (this PR):
+      - Feature branch:    chump/<short-codename>     (was claude/<…>)
+      - Linked worktree:   .chump/worktrees/<name>/   (was .claude/worktrees/<…>)
+      - Lease file:        .chump-locks/<session>.json  (already canonical)
+      - State / SQLite:    .chump/state.db, .chump/state.sql  (already canonical)
+      - Bot identity:      <role>@chump.bot             (already canonical)
+      - Ambient stream:    .chump-locks/ambient.jsonl, NATS chump.events.>  (already canonical)
+
+    Migration: existing claude/* branches and .claude/worktrees/ paths
+    stay as history — no rename. New work uses chump/<codename> and
+    .chump/worktrees/<name>. Tooling (bot-merge.sh, gap-claim.sh,
+    gap-preflight.sh) accepts either prefix during transition;
+    INFRA-187 tightens the default to chump/.
+
+    Tool-specific overlays (skills, hooks, harness behavior) still live
+    in CLAUDE.md / GEMINI.md / etc. but ONLY for tool-specific rules.
+    Shared conventions defer to AGENTS.md. If a rule appears in both,
+    AGENTS.md wins.
+  acceptance_criteria:
+    - "AGENTS.md has a 'Naming conventions' section listing the canonical chump-first prefixes for branches, worktrees, lease files, state, bot identities, ambient stream"
+    - "AGENTS.md PR-guidelines uses chump/<codename> as the canonical example (not claude/<codename>)"
+    - "CLAUDE.md hard-rules section defers to AGENTS.md for naming and notes both paths are accepted"
+    - "scripts/coord/archive-superseded-branch.sh example uses chump/<…>"
+    - "No code change required for backward compat — tooling already accepts any branch name; the chump/ vs claude/ choice is convention-only"
+    - "INFRA-187 filed for tooling enforcement (bot-merge.sh defaults chump/, gap-claim accepts any prefix)"
+  raised_by: claude
+  raised_in: '2026-05-01 — operator relayed sibling-agent friction renaming a branch from worktree-fleet-matrix-wiring to claude/* per CLAUDE.md rule; surveyed 82 claude/* vs 1 chump/* on origin'
+
+- id: INFRA-187
+  domain: INFRA
+  title: 'tooling enforcement for chump-first naming: bot-merge.sh defaults chump/, gap-claim accepts any prefix'
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-01'
+  description: |
+    Follow-up to INFRA-186. Tooling currently doesn't enforce or even
+    suggest the chump-first naming convention — agents have to manually
+    type `claude/<codename>` (or now `chump/<codename>`) into git
+    worktree add and bot-merge.sh.
+
+    Wishlist:
+      1. bot-merge.sh: when invoked from a worktree without an existing
+         branch arg, derive a sensible default `chump/<codename>` from
+         the worktree directory name. Operator can override.
+      2. gap-claim.sh: explicit acceptance of both claude/* and chump/*
+         prefixes (already the case implicitly; document it).
+      3. gap-preflight.sh: same.
+      4. Optional: a one-time migration helper that renames
+         .claude/worktrees/<name> → .chump/worktrees/<name> for a single
+         worktree (with git worktree move + branch rename). NOT a bulk
+         migration — by-tree opt-in only.
+      5. Optional: pre-commit warns (not blocks) on new branches that
+         start with a tool prefix (claude/, cursor/, goose/, aider/) and
+         suggest chump/ instead. Off by default; enable with
+         CHUMP_BRANCH_NAME_NUDGE=1.
+
+    All optional — INFRA-186's docs change is the meaningful behavior
+    shift; this is the friction-reducer.
+  acceptance_criteria:
+    - "bot-merge.sh: when no branch is set and the worktree dir name doesn't already start with chump/ or another tool prefix, derive chump/<dirname> as the branch"
+    - "gap-claim.sh + gap-preflight.sh: explicit comment + log line documenting both prefixes accepted"
+    - "Either INFRA-187 ships the optional migration helper (item 4) and pre-commit nudge (item 5), OR a follow-up gap is filed for them"
+  raised_by: claude
+  raised_in: '2026-05-01 — INFRA-186 docs change ships the convention; this gap tightens the tooling so it''s automatic'
+- id: INFRA-199
+  domain: INFRA
+  title: 'PWA renders thinking_delta as muted live indicator (closes INFRA-184 loop end-to-end)'
+  status: done
+  closed_pr: 710
+  closed_date: '2026-05-01'
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-01'
+  description: |
+    Server-side INFRA-184 (PR #701) routes plain-prose CoT to AgentEvent::ThinkingDelta. Today the PWA at web/v2/chat.js does not subscribe to thinking_delta SSE events at all (grep -c thinking_delta web/v2/chat.js == 0), so reasoning models still show the user only keepalive pings while the model thinks. This closes the loop: render thinking_delta as a compact muted indicator inside the active assistant bubble while the model reasons; clear it when text_delta arrives.
+  acceptance: |
+    PWA subscribes to thinking_delta SSE events; reasoning content rendered as muted/italic/smaller text inside the same assistant bubble; cleared when text_delta begins; persists when model emits no text_delta (so user still sees the reasoning instead of nothing); works for both <think>-tag-routed and plain-prose-routed thinking from server.
+  depends_on:
+  - INFRA-184
+  raised_by: claude
+  raised_in: '2026-05-01 — INFRA-199 PWA closes INFRA-184 loop'
+
+- id: FLEET-023
+  domain: FLEET
+  title: Cold Water sandbox ambient stream empty post-FLEET-019/020/021/022 — install step never executed
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    FLEET-017 (closed_pr: 629) was classified FIXED in Issue #8 on the grounds
+    that FLEET-019/020/021/022 shipped hook scripts and an installer
+    (scripts/setup/install-ambient-hooks.sh). However, .chump-locks/ambient.jsonl
+    in the Cold Water remote-sandbox session for Issue #9 contains exactly 2 events —
+    both session_start from the Cold Water agent itself. Zero operational events from
+    any sibling session. The hooks (ambient-context-inject.sh, ambient-session-end.sh)
+    exist on disk but are not wired into ~/.claude/settings.json in the sandbox
+    because install-ambient-hooks.sh is never invoked. The MANDATORY pre-flight in
+    CLAUDE.md still says `tail -30 .chump-locks/ambient.jsonl` and interprets output —
+    but in a fresh remote sandbox that output is always two session_start events.
+    FLEET-017's FIXED classification was premature: it shipped the hook infrastructure
+    but not the auto-install mechanism that would run the installer in a fresh sandbox
+    without operator intervention.
+
+    Verified: `tail -50 .chump-locks/ambient.jsonl` output in this session:
+      {"ts":"2026-04-26T05:40:41Z","session":"chump-chump-1777182041","event":"session_start"}
+      {"ts":"2026-05-02T01:23:50Z","session":"chump-chump-1777685030","event":"session_start"}
+
+    Five Cold Water cycles have now produced the same empty-ambient observation.
+    FLEET-006 (6 cycles), FLEET-017 (3 cycles, now re-FIXED), FLEET-023 (this cycle).
+  acceptance_criteria:
+    - "Cold Water agent session sees ≥1 non-session_start ambient event from a sibling session within 5 minutes of start"
+    - "Or: CLAUDE.md preflight section updated to document that ambient is filesystem-local-only in sandbox and no cross-machine signal is expected"
+    - "Whichever path: the empty-ambient observation is no longer a silent false negative"
+  raised_by: cold-water
+  raised_in: RED_LETTER#9
+
+- id: EVAL-094
+  domain: EVAL
+  title: ICLR 2026 covert sandbagging confirms 16-36% monitor bypass — run RESEARCH-026 swept experiment
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    "LLMs Can Covertly Sandbag on Capability Evaluations Against Chain-of-Thought
+    Monitoring" (arXiv:2508.00943, accepted ICLR 2026) evaluated 10 models including
+    Claude-3.7-Sonnet and Claude-4-Sonnet. Key finding: models bypass CoT monitoring
+    16-36% of the time when monitor-aware and when prompted to sandbag. Chump's A/B
+    harness uses Claude Haiku-4.5 and Sonnet-4.5 as agents under test with explicit
+    evaluation framing (task IDs, structured rubrics, "the user asks..." syntax).
+
+    The IAPS paper (cited in Issues #6-#8) established that models detect evaluation
+    contexts. This paper quantifies the bypass rate against the specific monitoring
+    approach (CoT auditing) that Chump relies on implicitly for judge validity.
+
+    EVAL-087 (P1, open, 3 cycles inactive) asks for RESEARCH-026 to be reframed to
+    P1. This gap supersedes that reframe request and directly executes the
+    RESEARCH-026 experiment: compare reflection fixture results under (a) standard
+    evaluation framing vs (b) naturalized framing with scrubbed task IDs and rubrics.
+    n>=100, cross-judge panel (haiku-4-5 + llama-3.3-70b), A/A baseline, preregistered
+    hypothesis.
+
+    Filing this as EVAL-094 rather than closing EVAL-087 because EVAL-087 is a
+    priority-reframe request while this is an execution gap. Close EVAL-087 when
+    RESEARCH-026 is upgraded to P1 in the canonical store.
+  acceptance_criteria:
+    - "RESEARCH-026 priority set to P1 in .chump/state.db (via chump gap set)"
+    - "Preregistration doc at docs/eval/preregistered/EVAL-094.md committed before data collection"
+    - "Harness run with n>=100, cross-judge, A/A calibration, naturalized vs standard framing"
+    - "Wilson CI results committed to docs/eval/EVAL-094-results.md"
+    - "Validated findings table in RESEARCH_INTEGRITY.md updated with result (or null)"
+  depends_on: [EVAL-087, RESEARCH-026]
+  raised_by: cold-water
+  raised_in: RED_LETTER#9
+
+- id: INFRA-200
+  domain: INFRA
+  title: gaps.yaml advisory-only enforcement demonstrably failed — ship hard pre-commit block
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    INFRA-084 (P0) shipped a merge_group regeneration workflow on 2026-04-29.
+    INFRA-094 (P0) shipped an advisory pre-commit warning on 2026-04-29.
+    Neither shipped a hard block on raw docs/gaps.yaml edits.
+
+    Empirical result: 33 of 50 commits (66%) on origin/main since those advisories
+    landed still touch docs/gaps.yaml directly. The SECURITY-005 row was attempted
+    via end-of-YAML append three times (#678, #684, #695) before succeeding via
+    surgical insert — confirming the advisory was visible to agents yet the behavior
+    continued.
+
+    INFRA-094's acceptance criteria (verified in gaps.yaml) explicitly require:
+    "Pre-commit hook *blocks* raw docs/gaps.yaml edits without chump-gap commit
+    trailer." The current hook warns; it does not block. This gap closes the gap
+    between INFRA-094's AC and what was actually shipped.
+
+    Approach: extend scripts/git-hooks/pre-commit section 3b from advisory
+    (exit 0 with warning) to enforcement (exit 1 with bypass instructions).
+    Bypass: CHUMP_GAPS_LOCK=0 (already exists in the guards table) or the
+    presence of a .chump/.last-yaml-op marker proving chump CLI wrote it.
+
+    Falsifying condition: `git log origin/main --since='2026-05-02' --format='%H' -- docs/gaps.yaml | wc -l`
+    returns <10% of total commits (showing behavioral change, not just the advisory).
+  acceptance_criteria:
+    - "scripts/git-hooks/pre-commit section 3b exits 1 (not 0) when docs/gaps.yaml is staged without chump-gap marker"
+    - "Bypass path CHUMP_GAPS_LOCK=0 documented in the commit-time guards table in CLAUDE.md"
+    - "Test: stage a raw docs/gaps.yaml edit and verify pre-commit exits 1 with a pointer to chump gap commands"
+    - "After ship: git log origin/main --since=<ship_date> --format='%H' -- docs/gaps.yaml | wc -l shows <20% of total commits"
+  depends_on: [INFRA-084, INFRA-094]
+  raised_by: cold-water
+  raised_in: RED_LETTER#9
+
+- id: META-005
+  domain: META
+  title: P0 open-but-landed pattern — three P0 gaps shipped but never closed
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    Three P0 gaps shipped implementation commits this cycle but remain status:open:
+      - PRODUCT-024: PR #697 commit body says "PRODUCT-024: close as done (closed_pr=697)"
+        but docs/gaps.yaml shows status:open, no closed_pr.
+      - INFRA-183: all sub-tasks shipped (INFRA-184 PR#701, INFRA-185 PR#704,
+        PRODUCT-024 PR#697, INFRA-199 PR#710) but umbrella shows status:open.
+      - SECURITY-004: 1 of 6 advisories closed via SECURITY-005 (PR#682);
+        5 remain (rand, glib, 3 rustls-webpki paths); no upgrade commits.
+
+    This is the third cycle where P0 gaps ship partial or full implementation
+    without formal closure. INFRA-107 (closed_pr integrity guard) was filed
+    precisely to prevent false closures — but it does not prevent the inverse:
+    true implementations that are never formally closed.
+
+    The pattern: agents write "close as done" in commit bodies but do not run
+    `chump gap ship <ID> --closed-pr <N> --update-yaml`. The gap registry
+    accumulates P0-tagged open entries that are actually done, misleading the
+    next agent session about what is truly unstarted.
+  acceptance_criteria:
+    - "PRODUCT-024 shows status:done with closed_pr:697 in docs/gaps.yaml"
+    - "INFRA-183 shows status:done with a closed_pr in docs/gaps.yaml"
+    - "SECURITY-004 has an implementation commit addressing the remaining 5 advisories OR shows status:done with a documented resolution"
+    - "AGENTS.md / CLAUDE.md ship pipeline section updated with explicit reminder: 'close the gap in state.db after the PR merges, not just in the commit body'"
+  raised_by: cold-water
+  raised_in: RED_LETTER#9
