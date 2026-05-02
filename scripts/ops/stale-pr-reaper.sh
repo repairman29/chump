@@ -52,15 +52,59 @@ git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     red "Could not fetch $REMOTE/$BASE — aborting."; exit 1
 }
 
-GAPS_YAML=$(git show "$REMOTE/$BASE:docs/gaps.yaml" 2>/dev/null) || {
-    red "docs/gaps.yaml not found on $REMOTE/$BASE — aborting."; exit 1
-}
+# INFRA-219 (2026-05-02): the source of truth on origin/main is per-file
+# `docs/gaps/<ID>.yaml` (post-INFRA-188 deletion of the monolith). The
+# previous implementation read `docs/gaps.yaml` and would silently abort
+# on every modern run; worse, when wired against a local state.db it
+# would false-close filing PRs (the gap exists in local DB precisely
+# because the PR being inspected reserved it). The fix here:
+#
+#   1. gap_status() queries `git show origin/main:docs/gaps/<ID>.yaml`
+#      directly, NEVER local state. Returns "" if the gap isn't on main.
+#   2. Filing PRs (titled "chore(gaps): file ..." / "chore(gaps): reserve
+#      ...") are skipped entirely. They cannot be duplicates of themselves.
+#
+# Optional monolith fallback — only used if `docs/gaps.yaml` still exists
+# on $REMOTE/$BASE (i.e. some downstream fork hasn't yet absorbed
+# INFRA-188). The post-INFRA-188 path is the canonical one.
+GAPS_YAML_LEGACY=$(git show "$REMOTE/$BASE:docs/gaps.yaml" 2>/dev/null || true)
 
-# gap_status GAP_ID — returns the status field value or empty string.
+# gap_status GAP_ID — returns the status field value, querying ONLY
+# origin/main (never local state.db). Empty string if the gap is not on
+# main. Looks up per-file YAML first (canonical post-INFRA-188), falls
+# back to the monolith only if it still exists.
 gap_status() {
     local gid="$1"
-    echo "$GAPS_YAML" | awk \
-        "/^  - id: ${gid}\$/{f=1} f && /^    status:/{sub(/^    status: */,\"\"); print; exit}"
+    local per_file
+    per_file=$(git show "$REMOTE/$BASE:docs/gaps/${gid}.yaml" 2>/dev/null || true)
+    if [[ -n "$per_file" ]]; then
+        # Per-file format: top-level list with one entry. Indented
+        # under "- id:" so status: is at column 2 (vs column 4 in the
+        # legacy monolith). Match either indentation defensively.
+        echo "$per_file" | awk '
+            /^- id:/{f=1; next}
+            f && /^[[:space:]]+status:[[:space:]]/{
+                sub(/^[[:space:]]+status:[[:space:]]*/,""); print; exit
+            }'
+        return
+    fi
+    if [[ -n "$GAPS_YAML_LEGACY" ]]; then
+        echo "$GAPS_YAML_LEGACY" | awk \
+            "/^  - id: ${gid}\$/{f=1} f && /^    status:/{sub(/^    status: */,\"\"); print; exit}"
+    fi
+}
+
+# is_filing_pr_title TITLE — returns 0 if the PR title looks like a gap
+# filing PR (whose only intent is to add a `docs/gaps/<ID>.yaml` row).
+# Filing PRs are NEVER duplicates of themselves — even if local state.db
+# has the gap (because `chump gap reserve` put it there), origin/main
+# does not yet, and that's exactly what the PR is about to fix.
+is_filing_pr_title() {
+    local title="$1"
+    case "$title" in
+        "chore(gaps): file "*|"chore(gaps): reserve "*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 # List open PRs (number branch title)
@@ -79,6 +123,16 @@ WARNED=0
 while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE; do
     info "PR #$PR_NUM  branch=$PR_BRANCH"
     info "  title: $PR_TITLE"
+
+    # INFRA-219: filing PRs are never duplicates of themselves. Their
+    # entire purpose is to land a new `docs/gaps/<ID>.yaml` on origin/main.
+    # Local state.db already has the row (because `chump gap reserve`
+    # put it there before pushing). Closing the PR strands the gap
+    # local-only forever — the exact incident from PR #718 (2026-05-02).
+    if is_filing_pr_title "$PR_TITLE"; then
+        info "  → Filing PR (chore(gaps): file/reserve …) — skipping reaper checks."
+        continue
+    fi
 
     # Fetch the PR branch; skip if unreachable (deleted remote etc.)
     if ! git fetch "$REMOTE" "$PR_BRANCH" --quiet 2>/dev/null; then
