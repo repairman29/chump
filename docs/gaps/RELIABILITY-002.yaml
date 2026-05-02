@@ -1,0 +1,31 @@
+- id: RELIABILITY-002
+  domain: RELIABILITY
+  title: Extract build_chump_agent_* from src/discord.rs into src/agent_factory.rs (unblocks SECURITY-004 Path B feature-gating)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Discovered during 2026-05-02 SECURITY-004 spike (RELIABILITY-001): src/discord.rs owns the canonical agent factory functions build_chump_agent_cli and build_chump_agent_web_components. 16 call sites in non-discord modules use them: web_server.rs, telegram.rs, rpc_mode.rs, autonomy_loop.rs, execute_gap.rs, e2e_bot_tests.rs, slack.rs, acp_server.rs, platform_router.rs.
+    
+    This coupling means feature-gating discord (the natural fast-path for SECURITY-004 mitigation) breaks 9+ unrelated modules. The agent factory belongs in its own module.
+    
+    Scope:
+    1. Create src/agent_factory.rs
+    2. Move pub fn build_chump_agent_cli() and pub fn build_chump_agent_web_components() (plus any private helpers they call exclusively) from src/discord.rs to src/agent_factory.rs
+    3. Add `mod agent_factory;` to src/main.rs
+    4. Update 16 call sites: replace `discord::build_chump_agent_*` with `agent_factory::build_chump_agent_*`
+    5. Verify cargo check + cargo test pass
+    6. After this lands, src/discord.rs is self-contained Discord IO surface; SECURITY-004 Path B (feature-gate discord) becomes a trivial follow-up
+    
+    Effort: ~1-2 hrs mechanical refactor + verification. No behavior changes. Pure decoupling.
+    
+    This is a load-bearing pre-requisite for closing SECURITY-004 via the lowest-risk path (feature-gate). Without it, the SECURITY-004 fix path is either (A) full serenity 0.13 API migration in discord.rs (1-3 hrs of API work) or (C) wait indefinitely for upstream serenity v0.13.
+  acceptance_criteria:
+    - src/agent_factory.rs exists with build_chump_agent_cli and build_chump_agent_web_components moved out of discord.rs
+    - All 16 call sites updated to import from agent_factory instead of discord
+    - cargo check --bin chump passes
+    - cargo test passes (no behavior changes; this is a pure rename/move)
+    - RELIABILITY-001 acceptance criteria for Path B becomes achievable as a clean follow-up PR
+  notes: |
+    Filed as Path D in RELIABILITY-001 follow-up; promoted to its own gap so it can be picked up independently.
+
