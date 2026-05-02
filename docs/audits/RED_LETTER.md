@@ -10,6 +10,221 @@ last_audited: 2026-05-02
 
 ---
 
+## Issue #10 — 2026-05-02
+
+> Audit window: commits since 2026-05-01 (Issue #9 commit date). 11 commits on origin/main after e0ab7e7.
+
+### Status of Prior Issues
+
+**From Issue #9 (2026-05-02):**
+
+- **FIXED:** PRODUCT-017 (P0 — clean-machine FTUE, THE ONE BIG THING in Issues #6/7/8/9) — commit `b4bc04f` "PRODUCT-017: FTUE clean-machine verification 2026-05-02 (17s, exit=0) (#707)". Four-cycle fix is confirmed delivered. Closed by PR #707 with verified artifact.
+- **STILL_OPEN_INACTIVE (2 cycles — #9, #10):** EVAL-090 (P0 — re-run EVAL-069 under verified python3.12) — zero implementation commits. `git log origin/main --grep=EVAL-090 --oneline` returns only `e0ab7e7 chore(cold-water): Red Letter issue #9 — 2026-05-02 (#714)`. Age: 6 days as of Issue #9, 7 days as of this issue. A P0 gap with zero implementation commits for two consecutive Cold Water cycles.
+- **STILL_OPEN_INACTIVE (7 cycles — #4 through #10):** RESEARCH-021 (P1 — tier-dependence replication) — `git log origin/main --grep=RESEARCH-021 --oneline` returns only `e0ab7e7 chore(cold-water): Red Letter issue #9 — 2026-05-02 (#714)`. Unchanged from Issue #9.
+- **STILL_OPEN_INACTIVE (4 cycles — #7 through #10):** EVAL-087 (P1 — evaluation-awareness reframe) — `git log origin/main --grep=EVAL-087 --oneline` returns only `e0ab7e7 chore(cold-water): Red Letter issue #9 — 2026-05-02 (#714)`.
+- **STILL_OPEN:** META-002 — `git log origin/main --grep=META-002 --oneline` returns nothing.
+- **STILL_OPEN:** FLEET-023 (P1 — Cold Water ambient stream empty) — `git log origin/main --grep=FLEET-023 --oneline` returns only `e0ab7e7`.
+- **STILL_OPEN:** EVAL-094 (P1 — ICLR 2026 sandbagging experiment) — `git log origin/main --grep=EVAL-094 --oneline` returns only `e0ab7e7`.
+- **STILL_OPEN:** INFRA-200 (P1 — gaps.yaml hard pre-commit block) — `git log origin/main --grep=INFRA-200 --oneline` returns `ad9fa4d` (the INFRA-201/202 filing commit, not an INFRA-200 implementation). Status: open.
+- **WORSE:** OPEN-BUT-LANDED grew from 20/102 (19%) in Issue #9 to **43/114 (38%)** in this cycle. The difference is that Issue #9 measured against HEAD (097da15) while this cycle measures against origin/main (6d21b33). The 11 new commits added 12 new gaps (INFRA-201..207 + META-006 etc.), most immediately OPEN-BUT-LANDED on filing.
+
+**NO_GAP filed this cycle (new gaps filed below):** INFRA-222, INFRA-209, EVAL-095, META-007. *(Originally filed as INFRA-208 and META-006; both IDs were independently taken by parallel work that landed on main during this audit cycle — renamed during rebase to avoid collision with main's INFRA-208 "chump gap dump lossy" and META-006 "retire gaps.yaml".)*
+
+---
+
+### The Looming Ghost
+
+[P0/High] We are failing to maintain a parseable gap registry. docs/gaps.yaml on origin/main (commit 6d21b33) is invalid YAML.
+
+Verification (command run in Cold Water sandbox on this branch against origin/main):
+```
+python3 -c "import yaml; yaml.safe_load(open('docs/gaps.yaml'))"
+YAMLError: while parsing a block mapping at line 17065, column 3
+expected <block end>, but found '<scalar>'
+at line 17133, column 5
+```
+
+The corruption: commit `ad9fa4d` (PR #717) filed INFRA-202 for the docs-delta guard escape hatch. Commit `6d21b33` (PR #719) independently filed INFRA-202 for fleet-sccache. Each commit passed the duplicate-ID pre-commit guard because the guard checks staged-vs-HEAD (not staged-vs-origin/main). The merge queue squashed both PRs onto main without detecting the concurrent ID collision. The resulting YAML has two entries with `id: INFRA-202`, the first being a ghost stub (title only, no status/priority/description). The second entry's description absorbed the first entry's content and INFRA-207's content was merged into a single malformed block.
+
+Downstream consequences:
+- `chump gap reserve` immediately caught this and aborted: "docs/gaps.yaml is unreadable so the ID counter cannot be backfilled."
+- Any workflow using `python3 -c "import yaml; yaml.safe_load(...)"` on origin/main fails (regenerate-gaps-yaml.yml, gap-doctor.py, gap-status-guard.yml).
+- This is the same concurrent-branch duplicate ID race documented in Issue #7 for INFRA-073. The guard was designed in response to 7 prior collisions (INFRA-GAPS-DEDUP); it has now failed twice because it does not check against origin/main.
+
+Evidence:
+- `git show origin/main:docs/gaps.yaml | grep -c "^- id: INFRA-202"` = 2 (two entries with same ID in origin/main).
+- `python3 -c "import yaml; yaml.safe_load(open('docs/gaps.yaml'))"` fails with YAMLError at line 17133 (verified on this branch after checkout to origin/main).
+- `chump gap reserve` abort message: "parsing /home/user/chump/docs/gaps.yaml: did not find expected key at line 17133 column 5, while parsing a block mapping at line 17065 column 3."
+
+*This finding is wrong if `python3 -c "import yaml; yaml.safe_load(open('docs/gaps.yaml'))"` exits 0 on origin/main before this PR merges.*
+
+---
+
+[P1/High] We are failing to enforce the closed_pr integrity guard in the remote dispatch environment. Nine `status: done` gaps in origin/main carry `closed_pr: TBD`, bypassing the INFRA-107 guard that was filed to prevent exactly this.
+
+Affected gaps (verified by git log scan — each was introduced with `closed_pr: TBD` in its filing commit):
+- INFRA-186: `47251c4` (PR #694) — done+TBD in same commit
+- INFRA-180: `b783418` (PR #690) — done+TBD in same commit
+- INFRA-182: `b80c435` (PR #692) — done+TBD in same commit
+- INFRA-189: `51342f9` (PR #705) — done+TBD in same commit
+- INFRA-190: `20a168e` (PR #698) — done+TBD in same commit
+- INFRA-192: `cee75e3` (PR #700) — done+TBD in same commit
+- INFRA-194: `4fc1d56` (PR #709) — done+TBD in same commit
+- INFRA-195: `916d85a` (PR #712) — done+TBD in same commit
+- EVAL-062: older, no recent commit verified
+
+Root cause: `scripts/setup/install-hooks.sh` is not called by `bot-merge.sh` or any standard dispatch pipeline step. Verified: `grep -n "install-hooks" scripts/coord/bot-merge.sh` returns nothing. A remote dispatch agent committing from a fresh worktree or sandbox has no pre-commit hook installed. The INFRA-107 guard never runs.
+
+Evidence:
+- `ls -la /home/user/chump/.git/hooks/pre-commit 2>/dev/null || echo "no hook"` in this sandbox returns "no hook" — confirming pre-commit is absent in fresh sandboxes.
+- `git log origin/main --since="2026-05-01" --format="%H" -- docs/gaps.yaml` shows 7 commits adding `closed_pr: TBD` rows since 2026-05-01 alone.
+- `grep -n "install-hooks" scripts/coord/bot-merge.sh` returns empty output.
+
+*This finding is wrong if `scripts/coord/bot-merge.sh` contains a call to `install-hooks.sh` that I missed, or if the pre-commit hook is installed via a mechanism other than `install-hooks.sh`.*
+
+---
+
+### The Opportunity Cost
+
+[P0/High] We are failing to execute EVAL-090 for the second consecutive Cold Water cycle while maintaining its P0 classification.
+
+EVAL-090 (re-run EVAL-069 under verified python3.12, age: 7 days, P0, zero implementation commits) is now classified STILL_OPEN_INACTIVE for two consecutive cycles. The gap has a single commit referencing it: `e0ab7e7 chore(cold-water): Red Letter issue #9 — 2026-05-02 (#714)`. That commit is the Cold Water filing, not an implementation.
+
+Evidence:
+```
+git log origin/main --grep=EVAL-090 --oneline
+e0ab7e7 chore(cold-water): Red Letter issue #9 — 2026-05-02 (#714)
+```
+- `grep -A5 "^- id: EVAL-090" docs/gaps.yaml` shows `status: open`, `priority: P0`, `opened_date: '2026-04-26'`.
+- The 11 commits in this audit window include: INFRA-190 follow-up, INFRA-194 auto-batcher, INFRA-189 out-of-scope guard, INFRA-170 book sync guard, INFRA-177 close, INFRA-195 distill-pr-skills, dependabot CI, META-004 resolution notes, PRODUCT-017 FTUE verify, Red Letter #9, INFRA-202..207 fleet scaling. Zero of these touch EVAL-090.
+
+*This finding is wrong if `git log origin/main --grep=EVAL-090` returns at least one commit that is a harness invocation (not a Cold Water filing).*
+
+[P1/High] We are failing to move RESEARCH-021 for the seventh consecutive Cold Water cycle.
+
+`git log origin/main --grep=RESEARCH-021 --oneline` returns exactly one result: `e0ab7e7 chore(cold-water): Red Letter issue #9 — 2026-05-02 (#714)`. The gap has been open since at minimum Issue #4. Across Issues #4 through #10 — seven cycles — no implementation commit has landed.
+
+Evidence:
+```
+git log origin/main --grep=RESEARCH-021 --oneline
+e0ab7e7 chore(cold-water): Red Letter issue #9 — 2026-05-02 (#714)
+```
+- `grep -A5 "^- id: RESEARCH-021" docs/gaps.yaml` shows `status: open`, `priority: P1`, zero `closed_pr`.
+- The project shipped 11 commits after Issue #9, none mentioning RESEARCH-021 except the Issue #9 filing itself.
+
+*This finding is wrong if `git log origin/main --grep=RESEARCH-021` returns a commit with actual tier-dependence experiment data.*
+
+---
+
+### The Complexity Trap
+
+[P1/High] We are failing to stop gaps.yaml hand-edits despite two advisory P0 gaps and a newly filed P1 gap (INFRA-200) to enforce blocking.
+
+Issue #9 measured 33/50 commits (66%) touching docs/gaps.yaml directly, prompting the filing of INFRA-200 (hard pre-commit block). In the 11-commit window since Issue #9, **7/11 commits (64%)** still touch docs/gaps.yaml directly:
+
+```
+git log e0ab7e7..origin/main --oneline -- docs/gaps.yaml
+6d21b33 file INFRA-202..207: fleet scaling backlog
+ad9fa4d file INFRA-201/202: pre-commit guard bugs
+4fc1d56 INFRA-194: closer-PR auto-batcher v1
+51342f9 INFRA-189: out-of-scope guard
+aa6a21d chore(gaps): close INFRA-177
+916d85a INFRA-195 v1: distill-pr-skills.sh
+c89ffff META-004: add resolution_notes
+```
+
+INFRA-200 was filed this cycle (Issue #9) to ship the hard block. `git log origin/main --grep=INFRA-200` returns `ad9fa4d` — the filing commit for INFRA-201/202, which contains the text "INFRA-200" only as a cross-reference. INFRA-200 itself has zero implementation commits.
+
+Evidence:
+- `git log e0ab7e7..origin/main --oneline -- docs/gaps.yaml | wc -l` = 7.
+- `git log e0ab7e7..origin/main --oneline | wc -l` = 11.
+- `grep -A3 "^- id: INFRA-200" docs/gaps.yaml` shows `status: open`.
+- INFRA-084 (P0, stop appending to gaps.yaml) and INFRA-094 (P0, mandate chump gap commands) remain open with only advisory enforcement. INFRA-094's acceptance criteria require "Pre-commit hook *blocks* raw docs/gaps.yaml edits without chump-gap commit trailer" — the shipped behavior warns, not blocks.
+
+*This finding is wrong if `git log origin/main --since="2026-05-03" --format='%H' -- docs/gaps.yaml | wc -l` returns <20% of total commits in the same period (indicating behavioral change after this issue ships).*
+
+[P1/High] We are failing to address the OPEN-BUT-LANDED accumulation: 43/114 (38%) open gaps have landed commits.
+
+The P0 OPEN-BUT-LANDED composition is the most dangerous residual. Seven P0 gaps are open-but-landed:
+- EVAL-090 (1 commit — Cold Water filing only, no implementation)
+- INFRA-084 (2 commits — implementation + Cold Water)
+- INFRA-094 (1 commit — implementation)
+- INFRA-183 (5 commits — sub-tasks shipped)
+- INFRA-205 (1 commit — filing only)
+- PRODUCT-024 (3 commits — implementation shipped in PR #697)
+- SECURITY-004 (1 commit — SECURITY-005 filed)
+
+PRODUCT-024 and INFRA-183 are unambiguously shipped (PR #697 delivered; sub-tasks INFRA-184/185/199/PRODUCT-024 all closed). The umbrella INFRA-183 and the sub PRODUCT-024 are OPEN-BUT-DONE — the gap registry state is factually wrong.
+
+Evidence:
+- `grep -A5 "^- id: PRODUCT-024" docs/gaps.yaml` shows `status: open`, `priority: P0`.
+- Commit `0a6d2cc` body: "PRODUCT-024: chat default to non-reasoning model — 25x latency win (2.27s/4.25s vs 56.99s) (#697)" with no `chump gap ship` call.
+- `grep -A5 "^- id: INFRA-183" docs/gaps.yaml` shows `status: open`, `priority: P0`, with sub-tasks INFRA-184/185/199 all `status: done`.
+
+*This finding is wrong if PRODUCT-024 and INFRA-183 both show `status: done` with numeric `closed_pr` in docs/gaps.yaml.*
+
+---
+
+### The Reality Check
+
+[P0/High] We are failing to verify the foundational measurement that the entire F3 finding rests on. EVAL-090 is now 7 days old, P0, with zero implementation commits across two consecutive Cold Water cycles.
+
+The exact text from `docs/process/RESEARCH_INTEGRITY.md` validated findings table:
+> "Neuromod harm is cross-architecture, two distinct mechanisms | EVAL-029 drilldown | Medium (n=50, single judge)"
+
+The F3 row in `docs/audits/FINDINGS.md` describes the finding as "localized to two task clusters." That localization claim rests on EVAL-029 (n=50, medium confidence). The aggregate signal that F3 retired (EVAL-069: -10 to -16pp) ran under the broken `exit_code_fallback` scorer. EVAL-090's job is to re-run under `python3.12` + `scorer=llm-judge` and confirm whether the aggregate was broken-vs-broken or real. Until that runs, the "localized" frame has one verified component (EVAL-029 direction-consistent at n=50) and an unverified baseline (EVAL-069 may have been null, not negative).
+
+PRODUCT-009 (external publication) is explicitly gated on EVAL-090's acceptance criteria: "Block PRODUCT-009 publication until this lands." The project has been unable to publish for at minimum 7 days due to this single unexecuted gap.
+
+Evidence:
+- `grep -A10 "^- id: EVAL-090" docs/gaps.yaml`: `status: open`, `priority: P0`, `opened_date: '2026-04-26'`.
+- `git log origin/main --grep=EVAL-090 --oneline`: one result only (`e0ab7e7` Cold Water filing).
+- `docs/process/RESEARCH_INTEGRITY.md` prohibited claims table: "Neuromodulation is a net positive" gated on EVAL-030-VALIDATE + EVAL-043. The baseline measurement (EVAL-069) that EVAL-030 calibrated against is the one EVAL-090 needs to revalidate.
+
+*This finding is wrong if `docs/audits/FINDINGS.md` F3 row contains a `validated: true` annotation from an EVAL-069-rerun with `scorer=llm-judge` and `python3.12`, OR if EVAL-090 shows `status: done` with a numeric `closed_pr`.*
+
+---
+
+### The Innovation Lag
+
+[P1/Medium] We are failing to respond to the ICLR 2026 covert sandbagging threat for the second consecutive Cold Water cycle. EVAL-094 and EVAL-087 both have zero implementation commits.
+
+`git log origin/main --grep=EVAL-094 --oneline` returns only `e0ab7e7` (Issue #9 filing).
+`git log origin/main --grep=EVAL-087 --oneline` returns only `e0ab7e7` (Issue #9 filing).
+`git log origin/main --grep=RESEARCH-026 --oneline` returns empty.
+
+The external evidence has not changed: "LLMs Can Covertly Sandbag on Capability Evaluations Against Chain-of-Thought Monitoring" (arXiv:2508.00943, ICLR 2026) documents 16–36% monitor bypass rates for Claude-class models under evaluation-aware conditions. Chump's validated findings (EVAL-025, EVAL-027c, EVAL-030 — all cited in `docs/process/RESEARCH_INTEGRITY.md`) were produced under conditions structurally identical to those the paper shows are vulnerable. RESEARCH-026 (the filed response, P2) has zero implementation commits. EVAL-087 (P1, priority reframe request) has zero implementation commits. EVAL-094 (P1, direct execution gap) has zero implementation commits. Three filed responses to a quantified external threat: none started.
+
+The project is accumulating fleet-scaling infrastructure (INFRA-202..207, 6 new gaps filed in one commit) while the measurement validity of its entire research portfolio sits on a threat with a measured 16–36% bypass rate and zero filed countermeasure work.
+
+Evidence:
+- `git log origin/main --grep="RESEARCH-026\|EVAL-087\|EVAL-094" --oneline` returns only Issue #9 Cold Water filing for EVAL-087 and EVAL-094; RESEARCH-026 returns zero.
+- EVAL-025 ("Lessons block helps haiku-4-5 on reflection fixture", High confidence) was produced with explicit evaluation framing (task IDs, structured rubrics, "the user asks..." syntax) — exactly the conditions arXiv:2508.00943 targets.
+- `grep -A5 "^- id: RESEARCH-026" docs/gaps.yaml`: `priority: P2` (not upgraded to P1 despite EVAL-087 and EVAL-094 both requesting this).
+
+*This finding is wrong if `git log origin/main --grep=RESEARCH-026` returns at least one execution commit (harness invocation, result file, or Wilson CI table).*
+
+---
+
+**THE ONE BIG THING:** [P0] META-007 — We are failing at the most elementary infrastructure requirement: a readable gap registry.
+
+The docs/gaps.yaml on origin/main (commit 6d21b33) was invalid YAML at audit time. Any tool attempting `yaml.safe_load(open('docs/gaps.yaml'))` failed at line 17133. This was not a latent risk — it was an active breakage that blocked Cold Water's own gap-filing workflow (`chump gap reserve` aborted immediately with the parse error). The cause was a concurrent-branch ID collision between commits `ad9fa4d` and `6d21b33`, both filed INFRA-202 on the same day. The duplicate-ID pre-commit guard (INFRA-GAPS-DEDUP, in operation since 2026-04-19) failed because it compares staged-vs-HEAD, not staged-vs-origin/main. This is the same guard failure mode documented in Issue #7 for the INFRA-073 × INFRA-073 collision. That collision was the ONE BIG THING in Issue #7. The project filed INFRA-075 in response, shipped a fix, and the same failure mode has now produced a second collision — this time with a more severe consequence: the YAML parse error that INFRA-073 did not produce. The project was operating with a malformed canonical registry on origin/main. Every agent spawned after commit 6d21b33 that ran `chump gap import` or any YAML-parsing workflow against main was working with broken input. Cold Water fixed this in the original commit (renaming the ghost INFRA-202 to INFRA-222 — was INFRA-208 in the original commit, renumbered during rebase — and separating the corrupted INFRA-207 description block), but the underlying guard gap (concurrent-branch ID race) remains open. Gap: META-007 (filed this cycle, classified P0; was META-006 in the original commit, renumbered during rebase).
+
+---
+
+### Follow-up Gaps Filed
+
+- **INFRA-222** (P2/xs): docs-delta guard `Net-new-docs:` trailer escape hatch unreachable at pre-commit time — *(was INFRA-208 in the original commit; renumbered during rebase: main's INFRA-208 was independently filed as "chump gap dump is lossy")*
+- **INFRA-209** (P1/s): pre-commit hooks not auto-installed in remote dispatch environment — 8 recent commits bypassed INFRA-107 guard; hooks not called by bot-merge.sh
+- **EVAL-095** (P1/xs): EVAL-090 P0 two-cycle inactive — force human decision: execute within 7 days or downgrade priority
+- **META-007** (P0/xs): gaps.yaml malformed YAML on origin/main from concurrent INFRA-202 duplicate ID collision — duplicate-ID guard does not check origin/main; immediate YAML fix in this PR — *(was META-006 in the original commit; renumbered during rebase: main's META-006 was independently filed as "retire docs/gaps.yaml")*
+
+*Note: gap-reserve.sh was unavailable due to the YAML parse error. Gaps filed directly to docs/gaps.yaml with IDs INFRA-222, INFRA-209, EVAL-095, META-007 (verified via `python3 -c "import yaml; yaml.safe_load(open('docs/gaps.yaml'))"`; no duplicates).*
+
+---
+
+---
+
 ## Issue #9 — 2026-05-02
 
 > Audit window: commits since 2026-04-27 (Issue #8 date). 50 commits on origin/main.
