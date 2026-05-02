@@ -1329,66 +1329,69 @@ fi
 # ------------------------------------------------------------------
 
 staged_rust=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
-if [ -z "$staged_rust" ]; then
-    exit 0
-fi
 
-if ! command -v cargo > /dev/null 2>&1; then
-    echo "[pre-commit] cargo not found; skipping fmt check (CI will catch drift)" >&2
-    exit 0
-fi
+# INFRA-257 (2026-05-02): rust-only blocks (cargo fmt + cargo check) are now
+# gated on staged_rust, but execution falls through so doc-only / yaml-only
+# commits still hit the docs-delta, credential, raw-yaml, and book-sync
+# guards below. Previously this section did `exit 0` when no .rs was staged
+# — silently bypassing every later guard.
+if [ -n "$staged_rust" ]; then
+    if ! command -v cargo > /dev/null 2>&1; then
+        echo "[pre-commit] cargo not found; skipping fmt + check (CI will catch drift)" >&2
+    else
+        if ! cargo fmt --all 2> /tmp/chump-pre-commit-fmt.log; then
+            echo "[pre-commit] cargo fmt failed (likely a syntax error). Output:" >&2
+            cat /tmp/chump-pre-commit-fmt.log >&2
+            echo "[pre-commit] Fix the syntax error or commit with --no-verify." >&2
+            exit 1
+        fi
 
-if ! cargo fmt --all 2> /tmp/chump-pre-commit-fmt.log; then
-    echo "[pre-commit] cargo fmt failed (likely a syntax error). Output:" >&2
-    cat /tmp/chump-pre-commit-fmt.log >&2
-    echo "[pre-commit] Fix the syntax error or commit with --no-verify." >&2
-    exit 1
-fi
+        modified=$(git diff --name-only --diff-filter=M | grep -E '\.rs$' || true)
+        if [ -n "$modified" ]; then
+            restage=$(comm -12 <(echo "$staged_rust" | sort -u) <(echo "$modified" | sort -u))
+            if [ -n "$restage" ]; then
+                echo "$restage" | xargs git add
+                echo "[pre-commit] cargo fmt auto-formatted + re-staged:" >&2
+                echo "$restage" | sed 's/^/  - /' >&2
+            fi
+        fi
 
-modified=$(git diff --name-only --diff-filter=M | grep -E '\.rs$' || true)
-if [ -n "$modified" ]; then
-    restage=$(comm -12 <(echo "$staged_rust" | sort -u) <(echo "$modified" | sort -u))
-    if [ -n "$restage" ]; then
-        echo "$restage" | xargs git add
-        echo "[pre-commit] cargo fmt auto-formatted + re-staged:" >&2
-        echo "$restage" | sed 's/^/  - /' >&2
-    fi
-fi
+        # ------------------------------------------------------------------
+        # 6. Cargo-check build guard — fails fast on compile errors
+        # ------------------------------------------------------------------
+        #
+        # CI runs the full test suite; that's slow (~2 min on a fresh runner,
+        # plus queue time). Running `cargo check --bin chump` locally first is
+        # ~5-15s incremental — much cheaper than a CI round-trip. The cost/
+        # benefit flips hard the moment TWO bots push broken-compile commits
+        # close together: the second agent's rebase onto main fails, they
+        # write a "fix(ci):" commit, the cycle compounds.
+        #
+        # This guard runs `cargo check --bin chump --tests` so it catches
+        # both library and test-binary compile errors. Default ON; bypass
+        # with CHUMP_CHECK_BUILD=0 (for WIP commits you know won't compile)
+        # or --no-verify.
 
-# ------------------------------------------------------------------
-# 6. Cargo-check build guard — fails fast on compile errors
-# ------------------------------------------------------------------
-#
-# CI runs the full test suite; that's slow (~2 min on a fresh runner,
-# plus queue time). Running `cargo check --bin chump` locally first is
-# ~5-15s incremental — much cheaper than a CI round-trip. The cost/
-# benefit flips hard the moment TWO bots push broken-compile commits
-# close together: the second agent's rebase onto main fails, they
-# write a "fix(ci):" commit, the cycle compounds.
-#
-# This guard runs `cargo check --bin chump --tests` so it catches
-# both library and test-binary compile errors. Default ON; bypass
-# with CHUMP_CHECK_BUILD=0 (for WIP commits you know won't compile)
-# or --no-verify.
-
-if [ "${CHUMP_CHECK_BUILD:-1}" != "0" ]; then
-    # Use `--bin chump --tests` to cover both runtime and test compiles.
-    # `--release` would be more faithful to CI but too slow for a hook;
-    # the debug profile catches >99% of type/borrow errors.
-    check_log="/tmp/chump-pre-commit-check-$$.log"
-    trap 'rm -f "$check_log"' EXIT
-    if ! cargo check --bin chump --tests >"$check_log" 2>&1; then
-        echo "[pre-commit] CARGO CHECK FAILED — compile error in staged code." >&2
-        echo "[pre-commit] ---- last 30 lines of error output: ----" >&2
-        tail -30 "$check_log" >&2
-        echo "[pre-commit] -----------------------------------------" >&2
-        echo "[pre-commit] Fix the errors, or:" >&2
-        echo "[pre-commit]   - CHUMP_CHECK_BUILD=0 git commit ...  (explicit WIP)" >&2
-        echo "[pre-commit]   - git commit --no-verify              (bypass all hooks)" >&2
-        echo "[pre-commit] Full log: $check_log" >&2
-        # Let the log persist on failure for the developer to read.
-        trap - EXIT
-        exit 1
+        if [ "${CHUMP_CHECK_BUILD:-1}" != "0" ]; then
+            # Use `--bin chump --tests` to cover both runtime and test compiles.
+            # `--release` would be more faithful to CI but too slow for a hook;
+            # the debug profile catches >99% of type/borrow errors.
+            check_log="/tmp/chump-pre-commit-check-$$.log"
+            trap 'rm -f "$check_log"' EXIT
+            if ! cargo check --bin chump --tests >"$check_log" 2>&1; then
+                echo "[pre-commit] CARGO CHECK FAILED — compile error in staged code." >&2
+                echo "[pre-commit] ---- last 30 lines of error output: ----" >&2
+                tail -30 "$check_log" >&2
+                echo "[pre-commit] -----------------------------------------" >&2
+                echo "[pre-commit] Fix the errors, or:" >&2
+                echo "[pre-commit]   - CHUMP_CHECK_BUILD=0 git commit ...  (explicit WIP)" >&2
+                echo "[pre-commit]   - git commit --no-verify              (bypass all hooks)" >&2
+                echo "[pre-commit] Full log: $check_log" >&2
+                # Let the log persist on failure for the developer to read.
+                trap - EXIT
+                exit 1
+            fi
+        fi
     fi
 fi
 
