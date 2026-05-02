@@ -1,0 +1,15 @@
+- id: INFRA-253
+  domain: INFRA
+  title: flaky test_concurrent_reserves_return_distinct_ids — sqlite database-locked race in CI
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    tests/gap_reserve_cross_host_race.rs:79 — test_concurrent_reserves_return_distinct_ids fails intermittently in CI with 'database is locked' (SQLite error code 5). Caused 6+ blocked-PR re-runs in single dispatcher cycle on 2026-05-02 (PRs 819, 826, 828, 829, 833, 839, all failing on the same test in independent CI runs). Test exercises concurrent chump gap reserve from two simulated sessions; SQLite WAL mode + busy_timeout should resolve, but the test setup may be opening conn without proper retry. Fix likely a one-line PRAGMA busy_timeout=5000 or a sqlite::Connection::busy_handler() in the gap_store init.
+  acceptance_criteria:
+    - Test passes 10 consecutive CI runs
+    - Root cause documented in test file or gap_store.rs comment
+    - "If unfixable, mark #[ignore] with explicit gap reference"
+  closed_date: '2026-05-02'
+  closed_pr: 849
+
