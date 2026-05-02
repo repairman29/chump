@@ -16531,3 +16531,20 @@ gaps:
     - "Either INFRA-187 ships the optional migration helper (item 4) and pre-commit nudge (item 5), OR a follow-up gap is filed for them"
   raised_by: claude
   raised_in: '2026-05-01 — INFRA-186 docs change ships the convention; this gap tightens the tooling so it''s automatic'
+- id: INFRA-199
+  domain: INFRA
+  title: 'PWA renders thinking_delta as muted live indicator (closes INFRA-184 loop end-to-end)'
+  status: done
+  closed_pr: 710
+  closed_date: '2026-05-01'
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-01'
+  description: |
+    Server-side INFRA-184 (PR #701) routes plain-prose CoT to AgentEvent::ThinkingDelta. Today the PWA at web/v2/chat.js does not subscribe to thinking_delta SSE events at all (grep -c thinking_delta web/v2/chat.js == 0), so reasoning models still show the user only keepalive pings while the model thinks. This closes the loop: render thinking_delta as a compact muted indicator inside the active assistant bubble while the model reasons; clear it when text_delta arrives.
+  acceptance: |
+    PWA subscribes to thinking_delta SSE events; reasoning content rendered as muted/italic/smaller text inside the same assistant bubble; cleared when text_delta begins; persists when model emits no text_delta (so user still sees the reasoning instead of nothing); works for both <think>-tag-routed and plain-prose-routed thinking from server.
+  depends_on:
+  - INFRA-184
+  raised_by: claude
+  raised_in: '2026-05-01 — INFRA-199 PWA closes INFRA-184 loop'

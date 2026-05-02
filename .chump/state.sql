@@ -8117,7 +8117,7 @@ gaps:
 - id: PRODUCT-021
   domain: PRODUCT
   title: PRODUCT-017 P0 non-compliance escalation — freeze new PRODUCT gap work until clean-machine verification completes
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -8144,6 +8144,8 @@ gaps:
     - "OR: explicit CPO decision document in docs/ records intentional deferral of PRODUCT-017 with named owner and target date"
     - PRODUCT-020 work does not advance past design-doc phase until one of the above is true
   opened_date: '2026-04-27'
+  closed_date: '2026-05-02'
+  closed_pr: 713
 
 - id: PRODUCT-022
   domain: PRODUCT
@@ -8169,7 +8171,7 @@ gaps:
 - id: PRODUCT-023
   domain: PRODUCT
   title: "Default chat model -> qwen2.5:7b (.env, run-web.sh, profile doc)"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -8182,6 +8184,8 @@ gaps:
     - "verification: curl http://127.0.0.1:11434/api/ps shows qwen2.5:7b resident at ~4.7GB after first turn"
   notes: |
     See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #5 of 6. Independent — can ship anytime. Both 7B and 14B already pulled in Ollama (verified 2026-04-28).
+  closed_date: '2026-05-02'
+  closed_pr: 713
 
 - id: PRODUCT-024
   domain: PRODUCT
