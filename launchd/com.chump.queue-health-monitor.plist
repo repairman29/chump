@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.queue-health-monitor — INFRA-052 LaunchAgent.
+
+  Runs scripts/ops/queue-health-monitor.sh hourly. Output goes to:
+    .chump/health.jsonl       per-pass record (always)
+    .chump/alerts.log         tab-separated alerts (only when something is wrong)
+    .chump-locks/ambient.jsonl  ALERT events for sibling agents to see
+
+  INSTALLATION (use scripts/setup/install-queue-health-monitor-launchd.sh
+  for the templated path-replace + launchctl load; manual is below):
+    1. Edit this file: replace /path/to/Chump with your repo path.
+    2. cp launchd/com.chump.queue-health-monitor.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.queue-health-monitor.plist
+    4. Verify: launchctl list | grep chump.queue-health-monitor
+    5. Manual run: launchctl start com.chump.queue-health-monitor
+       Logs: tail /tmp/chump-queue-health-monitor.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.queue-health-monitor.plist
+    rm ~/Library/LaunchAgents/com.chump.queue-health-monitor.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.queue-health-monitor</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/ops/queue-health-monitor.sh</string>
+    <string>--quiet</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Hourly: every 3600 seconds. Sleep-aware (skipped while laptop sleeping). -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <!-- Don't start at load — wait for the first tick. The first run is just
+       "look at the queue right now" which is fine to defer 1 hour. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-queue-health-monitor.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-queue-health-monitor.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- gh + git + python3 must be on PATH. -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>
