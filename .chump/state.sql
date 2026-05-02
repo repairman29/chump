@@ -8159,6 +8159,49 @@ gaps:
     - Round-trip test verifies no-revert on cross-host scenario
     - Either state.db dropped from regen path or shared canonical source defined
 
+- id: INFRA-239
+  domain: INFRA
+  title: stacked-PR rebase silently drops upper-PR squash-merge — pr-watch.sh + manual rebase both vulnerable
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Caught on PR #783/#798 (2026-05-02 INFRA-191 Phase 1+2 stack).
+    
+    Symptom: stacked PR pair where upper PR (Phase 2) squash-merges into the
+    lower branch (chump/foo-phase1) BEFORE the lower PR (Phase 1) lands. Then
+    main moves and the lower PR goes DIRTY. A plain `git rebase origin/main`
+    on the lower branch silently drops the upper PR's squash-merge — only the
+    original Phase 1 commits get replayed onto current main. pr-watch.sh's
+    auto-rebase has the same blind spot (it just does `git rebase origin/main`
+    internally). Result: the lower PR ships missing the Phase 2 work.
+    
+    Recovery (caught on PR #783): after the rebase completes, cherry-pick the
+    upper PR's merge commit:
+        git fetch origin --tags
+        UPPER_SHA=$(gh pr view <upper-PR> --json mergeCommit -q .mergeCommit.oid)
+        git cherry-pick $UPPER_SHA
+        grep -c '<known symbol from upper PR>' src/<file>   # MUST be > 0
+        git push --force-with-lease
+    
+    Documented inline in CLAUDE.md (this PR).
+    
+    Possible fixes:
+      (a) pr-watch.sh: detect that the branch had merge commits beyond the
+          original PR creation, and either bail (let operator fix) or use
+          `git rebase --rebase-merges` (preserves the merge structure).
+      (b) bot-merge.sh --stack-on: never squash-merge the upper PR into the
+          lower branch; instead, wait for the lower to land then re-base the
+          upper on main and ship normally.
+      (c) Document only (this PR — minimum viable safety net).
+    
+    Acceptance:
+      - CLAUDE.md describes the failure mode and recovery (this PR — done).
+      - Optional: pr-watch.sh detection (separate gap if desired).
+  acceptance_criteria:
+    - CLAUDE.md describes the footgun and recovery procedure
+    - pr-watch.sh detection (optional, can defer)
+
 - id: INFRA-41
   domain: infra
   title: "code-reviewer-agent.sh: guard empty-array iteration under bash 3.2 set -u"

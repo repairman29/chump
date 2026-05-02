@@ -1,7 +1,7 @@
 - id: REMOVAL-007
   domain: REMOVAL
   title: Audit src/phi_proxy.rs and src/holographic_workspace.rs - sized like real features, never called from request path
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -19,5 +19,9 @@
     - Decide per-module - dead-code remove, wire+test, or document as research-scaffold
     - Update README and CHUMP_FACULTY_MAP.md to reflect outcome
     - Pair with DOC-010 (nine-proxies reframe)
+  notes: |
+    Audit complete (docs/audits/REMOVAL-007-phi-holographic-trace.md). Split decision per-module: phi_proxy KEEP (gated but real — wired into context_assembly:716 with regime + consciousness_enabled gating; emits 'Integration metric' line when active_coupling_pairs > 0). holographic_workspace REMOVAL CANDIDATE — encode side fires on every tool dispatch but READ side has zero production callers (substrate().query is only used by holographic_workspace's own tests). Filed REMOVAL-009 with two options: (a) remove like REMOVAL-002 surprisal_ema or (b) wire a real retrieval-augmented context consumer using query_similarity. Doc updates deferred to DOC-010 (nine-proxies reframe — already filed). Original gap premise was partially false for phi_proxy (call chain via consciousness_traits → substrate from tool_runner missed in the original audit), accurate for holographic_workspace's READ side.
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 791
 

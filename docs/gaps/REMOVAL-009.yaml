@@ -1,0 +1,7 @@
+- id: REMOVAL-009
+  domain: REMOVAL
+  title: src/holographic_workspace.rs is write-only in production — either remove (REMOVAL-002 precedent) or wire a retrieval-augmented context consumer using query_similarity (REMOVAL-007 follow-up)
+  status: open
+  priority: P2
+  effort: m
+
