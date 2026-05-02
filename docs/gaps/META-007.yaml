@@ -1,9 +1,18 @@
 - id: META-007
   domain: META
   title: gaps.yaml malformed YAML on origin/main from INFRA-202 duplicate — pre-commit guard gap
-  status: open
+  status: done
+  closed_pr: 808
+  closed_date: '2026-05-02'
   priority: P0
   effort: xs
+  closed_interpretation: |
+    Resolved by supersession via INFRA-188 cutover (#753). The
+    docs/gaps.yaml file was DELETED entirely as part of the per-file
+    gap registry migration. The malformed-YAML problem is therefore
+    moot — the file no longer exists. Per-file YAML at docs/gaps/<ID>.yaml
+    has its own integrity guards (pre-commit closed_pr / recycled-ID /
+    duplicate-ID checks all updated to scan the per-file directory).
   description: |
     As of Cold Water Issue #10 audit (2026-05-02), docs/gaps.yaml on origin/main
     (commit 6d21b33) contained invalid YAML: two entries with id: INFRA-202 and

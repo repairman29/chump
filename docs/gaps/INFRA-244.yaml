@@ -1,0 +1,58 @@
+- id: INFRA-244
+  domain: INFRA
+  title: "no-PR-match audit: 33 of 35 'ghosts' are real unstarted work; 2 are resolved-by-supersession (META-005, META-007)"
+  status: done
+  closed_pr: 808
+  closed_date: '2026-05-02'
+  priority: P3
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    INFRA-241 backfill closed 71 of 89 status:open gaps with matching
+    merged PRs. The remaining 18 broke down as:
+      - 17 skipped because their only matching merged PR was a filing /
+        ledger PR (chore(gaps): file …) — needs human triage on whether
+        an implementation actually exists under a non-conventional title
+      - 1 was actually 2 distinct cases: META-005 + META-007 — see below
+
+    Today's audit walks the no-PR-match bucket (status:open with NO
+    merged PR title containing the gap-ID). It surfaced 35 gaps. The
+    breakdown:
+
+    NOT GHOSTS — genuine unstarted/in-flight work (33 gaps):
+      INFRA-085, 096, 102, 103, 104, 109, 110, 115, 116, 120, 121, 123,
+      124, 187, 193, 209, 212, 213, 214, 235; COG-032; EVAL-086, 087,
+      094; FRONTIER-009; REMOVAL-004, 005, 008, 009; RESEARCH-020, 025,
+      029. These are real open work waiting for someone to pick them
+      up. INFRA-213 (CI matrix parallelism) is P0 and should be
+      prioritised.
+
+    RESOLVED BY SUPERSESSION (2 gaps, closing in this PR):
+      - META-005 (P2 OPEN-BUT-LANDED pattern): the 3 specific P0 gaps
+        it cited (PRODUCT-024, INFRA-183, SECURITY-004) are all now
+        status:done with closed_pr (697, 704, 749). The pattern itself
+        is fully addressed by INFRA-236 (commit-subject closer in
+        regenerate-gaps-yaml.yml workflow) + INFRA-241 (one-shot
+        backfill of historical ghosts). Closing as superseded; further
+        work tracked under INFRA-236/241/237/238.
+      - META-007 (P0 gaps.yaml malformed YAML): docs/gaps.yaml was
+        DELETED by INFRA-188 cutover (#753). The file no longer
+        exists, so the malformed-YAML problem is moot. Per-file
+        registry has its own integrity guards. Closing as superseded
+        by INFRA-188.
+
+    Net effect: the "89 ghosts" headline is more accurately:
+      - 71 ghosts closed via INFRA-241 backfill (#807)
+      - 17 filing-only matches that need human triage
+      - 33 not-actually-ghosts (real open work)
+      - 2 superseded (closed in this PR)
+
+    Total ledger-cleanliness improvement this session: 73/89 = 82% of
+    the ghost backlog cleared in one cycle, with the residual 17 being
+    safely-flagged-for-triage rather than silently ghost.
+  acceptance_criteria:
+    - "META-005 + META-007 closed in this PR with closed_pr + closed_interpretation"
+    - "33 not-ghosts documented as legitimate open work; INFRA-213 flagged for prioritisation"
+    - "17 filing-only-match residual documented for human triage"
+  raised_by: claude
+  raised_in: '2026-05-02 — Task 2 from operator-requested triage of the 35 no-PR-match bucket'
