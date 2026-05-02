@@ -1,0 +1,63 @@
+- id: INFRA-271
+  domain: INFRA
+  title: "scripts/dispatch/worker.sh: use chump dispatch + INFRA-193 speculative execution (kill gap-pick race)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Caught during the first dogfood run of scripts/dispatch/run-fleet.sh
+    (2026-05-02T23:32, FLEET_SIZE=2):
+    
+      [worker:1] picked gap INFRA-261
+      [worker:2] picked gap INFRA-261
+      [worker:2] WARN: worktree create failed for INFRA-261; sleeping 30s
+    
+    Both workers ran `chump gap list --status open --json` at the same instant;
+    neither saw the other's claim because gap-claim.sh hadn't fired yet. Worker 2
+    hit the worktree-already-exists collision when it tried to create chump/infra-261-fleet-2-...
+    because Worker 1 had already created chump/infra-261-fleet-1-...
+    
+    The fix already exists upstream:
+      - INFRA-193 (PR #866, OPEN+armed): opt-in speculative execution where
+        racing claims both proceed; first-to-land wins, loser auto-closes
+        superseded.
+      - INFRA-191 (PR #783 + #798, MERGED): chump dispatch with
+        WorkBackend::Headless that wraps the claim → claude-p → ship → release
+        cycle as a single command.
+    
+    worker.sh predates both. It directly calls gap-claim.sh + claude -p +
+    bot-merge.sh in sequence, missing the speculative-execution race-resolution
+    that INFRA-193 introduces.
+    
+    ## Fix
+    Refactor worker.sh's pick→claim→work→ship loop to call:
+    
+        chump dispatch --backend headless \
+            --prompt "$WORKER_PROMPT" \
+            --model "${FLEET_MODEL:-claude-sonnet-4-6}" \
+            --auto-merge \
+            --fast \
+            --paths "$(chump gap files <gap-id>)"
+    
+    — and let chump dispatch handle preflight (which post-INFRA-193 will
+    allow speculative claims with race-resolution). Removes ~80 lines of
+    shell glue from worker.sh, gives workers the same surface as the Rust
+    test suite already covers.
+    
+    Secondary (smaller): the cycle-1 git-fetch races between siblings
+    ("error: cannot lock ref 'refs/remotes/origin/main'"). git itself
+    serializes via .git/HEAD.lock so it's mostly self-recovering, but worker.sh
+    should retry on this specific error rather than treating it as fatal-warn.
+    
+    ## Acceptance
+    - N>=2 fleet workers picking the same gap → exactly one PR ships, the
+      loser is auto-closed superseded
+    - worker.sh shrinks (less shell glue duplicated from chump dispatch)
+    - Test: scripts/ci/test-worker-race.sh spawns 2 workers, asserts both
+      exit non-zero only if no PR was created (not 1 succeeds + 1 errors)
+  acceptance_criteria:
+    - worker.sh uses chump dispatch instead of inline gap-claim+claude-p+bot-merge
+    - race between 2 workers on same gap → exactly one PR ships
+    - loser auto-closes superseded (INFRA-193 path)
+    - test scripts/ci/test-worker-race.sh covers it
+

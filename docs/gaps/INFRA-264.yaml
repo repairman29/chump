@@ -1,0 +1,7 @@
+- id: INFRA-264
+  domain: INFRA
+  title: "two-tier code review: cascade-judge gates trivial PRs; Anthropic only on contentious diffs"
+  status: open
+  priority: P2
+  effort: s
+

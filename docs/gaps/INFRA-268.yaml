@@ -1,0 +1,7 @@
+- id: INFRA-268
+  domain: INFRA
+  title: "privacy-tier auto-selection: prompts touching src/ default safe-only; only public-doc prompts allow Trains slots"
+  status: open
+  priority: P2
+  effort: s
+
