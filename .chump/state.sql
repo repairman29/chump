@@ -6810,9 +6810,11 @@ gaps:
 - id: INFRA-172
   domain: INFRA
   title: Enable Homebrew installer in cargo-dist + create repairman29/homebrew-chump tap (true <60s FTUE)
-  status: open
+  status: done
   priority: P0
   effort: s
+  closed_date: '2026-05-02'
+  closed_pr: 677
 
 - id: INFRA-173
   domain: INFRA
@@ -7069,7 +7071,7 @@ gaps:
 - id: INFRA-200
   domain: INFRA
   title: gaps.yaml advisory-only enforcement demonstrably failed — ship hard pre-commit block
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -7102,6 +7104,8 @@ gaps:
     - "After ship: git log origin/main --since=<ship_date> --format='%H' -- docs/gaps.yaml | wc -l shows <20% of total commits"
   depends_on: [INFRA-084, INFRA-094]
   opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 729
 
 - id: INFRA-201
   domain: INFRA
@@ -7192,6 +7196,280 @@ gaps:
   status: open
   priority: P2
   effort: xs
+
+- id: INFRA-210
+  domain: INFRA
+  title: shared CARGO_TARGET_DIR + sccache for fleet worktrees (kill 5GB-per-worktree disk + cold-build time)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Each linked worktree under .chump/worktrees/<name>/ today maintains
+    its own target/ directory (typically 2-8 GB after cargo clippy +
+    cargo test). With ~25 frozen worktrees today the disk is at risk;
+    at FLEET_SIZE=10-50 (META-004 / fleet scaling discussion) this
+    becomes a hard ceiling — 50 × 5 GB = 250 GB on a 460 GB M4.
+    
+    Fix path:
+      1. Set CARGO_TARGET_DIR to a single shared location
+         (e.g. ~/.cache/chump-fleet-target/) — all worktrees share
+         the same target dir. cargo handles concurrent reads safely;
+         concurrent writes for the SAME crate on different branches
+         is the failure mode to test.
+      2. If concurrent writes break (likely on heavy clippy/test
+         loads), layer sccache on top — sccache caches by (crate,
+         hash) so each worktree's cargo build hits the cache and
+         only rebuilds what differs.
+      3. Document in CLAUDE.md "Worktree disk hygiene" section.
+      4. Update bot-merge.sh's "purge ./target" step to be a no-op
+         when CARGO_TARGET_DIR points outside the worktree.
+    
+    Acceptance: 10 worktrees building concurrently use < 15 GB total
+    target dir (vs 50 GB unshared). Build time for the 11th worktree
+    starting from a warm shared cache is < 90 s (vs cold 5-10 min).
+    No build correctness regression in any worktree.
+  acceptance_criteria:
+    - CARGO_TARGET_DIR documented in CLAUDE.md and exported by scripts/dispatch/run-fleet.sh (INFRA-203) by default
+    - sccache config wired in if needed for concurrent-write safety; documented as optional
+    - bot-merge.sh's target-purge step is no-op when CARGO_TARGET_DIR points outside worktree
+    - "10-worktree concurrent build test: total target disk < 15 GB; build correctness verified by cargo test --workspace pass"
+  opened_date: '2026-05-02'
+
+- id: INFRA-211
+  domain: INFRA
+  title: scripts/dispatch/run-fleet.sh — canonical fleet launcher (tmux + per-agent worker loop, headless claude -p)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Today there is no canonical way to spawn N parallel Claude Code
+    agents on this repo. The chump-orchestrator's COG-025 backend can
+    run `claude -p --dangerously-skip-permissions` per dispatched
+    subagent, but it's invoked one-at-a-time from the dispatcher's
+    inner loop, not as a fleet.
+    
+    This gap adds scripts/dispatch/run-fleet.sh which:
+      1. Spawns N tmux panes, one per agent (visible state, easy
+         kill/restart, scrollback for postmortem)
+      2. Each pane runs a worker loop: pull main → pick highest-
+         priority unclaimed P0/P1 gap → claim via gap-claim.sh
+         (atomic flock) → create worktree at .chump/worktrees/
+         <gap-id>-<ts> → spawn `claude -p` with a focused prompt →
+         on exit, release lease + loop back
+      3. Per-agent log at /tmp/chump-fleet-<sid>/agent-<N>.log
+      4. Control pane shows live status (ambient.jsonl tail + PR
+         queue depth + per-agent current gap)
+    
+    Defaults: FLEET_SIZE=8 (Tier 2 from META-004 analysis), 30-min
+    per-agent timeout (longer = stuck loop), excludes EVAL-* /
+    RESEARCH-* / META-* gaps from auto-pickup (those need human
+    judgment), filters to xs/s/m effort only.
+    
+    Configurable via env: FLEET_SIZE, FLEET_TIMEOUT_S,
+    FLEET_PRIORITY_FILTER ('P0,P1' default), FLEET_DOMAIN_FILTER
+    (e.g. 'INFRA' for INFRA-only fleet — pairs with INFRA-206 affinity).
+    
+    Hard rules (enforced in worker.sh):
+      - Use scripts/coord/bot-merge.sh as ship pipeline (auto-handles
+        INFRA-154 close, INFRA-190 pr-watch, INFRA-192 forward-chain)
+      - Use chump gap reserve (NEVER raw YAML) for new IDs
+      - Pass --paths to gap-claim.sh declaring scope (INFRA-189
+        warn-mode catches drift)
+    
+    Stop: FLEET_SIZE=0 OR `tmux kill-session -t <session>` OR per-agent
+    Ctrl-C in the pane.
+  acceptance_criteria:
+    - scripts/dispatch/run-fleet.sh exists, executable, parses cleanly, default FLEET_SIZE=8
+    - Per-agent worker.sh handles full lifecycle (claim → worktree → claude → ship → release → loop)
+    - Control pane shows live fleet status (ambient + PR queue + per-agent activity)
+    - "Test: spawn FLEET_SIZE=2 for 1 hour; expect 4-8 PRs shipped; zero ID collisions; zero unrecovered DIRTY events (pr-watch handles)"
+    - Documented in CLAUDE.md + AGENTS.md as the canonical fleet entry
+  depends_on: [INFRA-188, INFRA-189, INFRA-210]
+  opened_date: '2026-05-02'
+
+- id: INFRA-212
+  domain: INFRA
+  title: fleet status dashboard — tmux control pane shows ambient.jsonl tail + PR queue depth + per-agent throughput
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Once INFRA-203 ships, the operator has N tmux panes each running
+    one agent. To know FLEET HEALTH (vs just per-agent state) they
+    need a control pane that aggregates:
+    
+      - Per-agent: current gap, time-on-gap, last commit hash
+      - Fleet-wide: PRs in flight, PRs merged this hour, ID collision
+        count, DIRTY-recovery count (from pr-watch logs)
+      - Ambient.jsonl tail: latest INTENT / HANDOFF / STUCK / DONE
+        events with sender attribution
+      - Gap supply: open P0 + P1 count by domain (warn when exhausted)
+    
+    Implementation: `watch -n 5 scripts/dispatch/fleet-status.sh`
+    inside the control tmux pane (INFRA-203 wires it up).
+    fleet-status.sh aggregates from:
+      - .chump-locks/*.json (active leases → who's working on what)
+      - .chump-locks/ambient.jsonl (recent events)
+      - gh pr list (queue depth) — cached 30s to avoid rate-limit
+      - chump gap list --status open --json (gap supply)
+    
+    Color: green if all agents have a gap and ship rate > 1/hr; yellow
+    if any agent idle > 5min OR queue depth > 20; red if any agent
+    stuck > 30min OR pr-watch CONFLICT exit > 0 in last hour.
+    
+    Out of scope: web dashboard (separate gap if needed).
+  acceptance_criteria:
+    - scripts/dispatch/fleet-status.sh exists, prints aggregated status in < 2 s
+    - Color-coded green/yellow/red status banner
+    - Wired into INFRA-203's control pane via watch -n 5
+    - "Test: at FLEET_SIZE=4 with 1 stuck agent, the dashboard shows yellow within 5 min"
+  depends_on: [INFRA-211]
+  opened_date: '2026-05-02'
+
+- id: INFRA-213
+  domain: INFRA
+  title: CI matrix parallelism — split fast-checks/clippy/tests/e2e to run in parallel (cut queue depth 2-3x)
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    GitHub merge queue throughput is the HARD ceiling for fleet
+    scaling. Today the required CI checks (test, clippy, audit,
+    fast-checks, ACP smoke) run mostly serially within a single
+    workflow job — each PR's merge takes 2-5 min of queue time. At
+    FLEET_SIZE=20 with 20 PRs queued, the last PR waits 40-100 min.
+    Beyond ~30 PRs/hour throughput the queue saturates.
+    
+    Fix: refactor required CI into a matrix that runs the heavy
+    checks in parallel:
+      - fast-checks    (10 s, gate to test)
+      - clippy         (parallel, ~3 min)
+      - test           (parallel, ~10 min)
+      - audit          (parallel, ~3 min)
+      - ACP smoke      (parallel, ~2 min)
+    
+    Each runs on its own GitHub-hosted runner. Total wall-clock per
+    PR drops from sum(checks) ~20 min to max(checks) ~10 min.
+    Throughput at fixed runner pool roughly doubles.
+    
+    Plus: split test by package (gap_store, agent_loop, web_server,
+    perception, etc.) to further parallelize the test step itself.
+    Cargo nextest already supports this; the workflow needs to
+    invoke it.
+    
+    Out of scope: self-hosted runners (separate gap if needed; cost
+    + ops overhead).
+  acceptance_criteria:
+    - .github/workflows/ci.yml uses matrix strategy for clippy + test + audit + ACP smoke
+    - test step uses cargo-nextest with --test-threads=4 OR parallel-by-package
+    - Median PR-to-merged time at queue depth 10 drops from ~30 min to ~15 min
+    - "Test: run the fleet at FLEET_SIZE=10 for 1 hour; measure PRs/hour throughput; expect 25-30 (vs 10-15 today)"
+  opened_date: '2026-05-02'
+
+- id: INFRA-214
+  domain: INFRA
+  title: per-agent gap-domain affinity — agent-1 INFRA only, agent-2 EVAL only, etc (kill hot-spot bias at 10+ agents)
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Today gap-claim.sh's "pick the highest-priority unclaimed gap"
+    naturally biases the fleet toward INFRA-* (which dominates the
+    backlog). At FLEET_SIZE=10, all 10 agents end up working INFRA
+    while EVAL / FLEET / DOC sit idle.
+    
+    Fix: per-agent FLEET_DOMAIN_FILTER env (used by INFRA-203's
+    worker.sh). Operator launches:
+      FLEET_DOMAIN_FILTER=INFRA  scripts/dispatch/run-fleet.sh    # agents 1-3
+      FLEET_DOMAIN_FILTER=EVAL   scripts/dispatch/run-fleet.sh    # agents 4-5
+      FLEET_DOMAIN_FILTER=FLEET  scripts/dispatch/run-fleet.sh    # agents 6-7
+      FLEET_DOMAIN_FILTER=DOC    scripts/dispatch/run-fleet.sh    # agent 8
+    
+    Worker.sh's gap-pick step filters by domain. If no gap matches
+    the affinity, agent waits 60s and retries (vs picking outside
+    affinity).
+    
+    Bonus: a config file scripts/dispatch/fleet.toml that names the
+    affinity layout so ops doesn't have to remember it.
+  acceptance_criteria:
+    - INFRA-203's worker.sh respects FLEET_DOMAIN_FILTER env
+    - scripts/dispatch/fleet.toml documents affinity layout
+    - "Test: launch FLEET_SIZE=4 with affinity (2 INFRA, 1 EVAL, 1 FLEET); verify each agent only picks gaps in its domain"
+  depends_on: [INFRA-211]
+  opened_date: '2026-05-02'
+
+- id: INFRA-215
+  domain: INFRA
+  title: spawn-respawn fleet lifecycle — agents exit after 1 gap; dispatcher respawns (load new lessons)
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Long-running Claude sessions hit context limits. Fresh spawns
+    pick up the latest chump_improvement_targets rows (INFRA-195) so
+    new lessons propagate each cycle.
+    
+    Fix: in INFRA-211's worker.sh, structure the loop so each `claude
+    -p` invocation handles ONE gap then EXITS. The bash loop respawns
+    a fresh `claude -p` for the next gap.
+    
+    (Originally filed as INFRA-207 but main's INFRA-207 was a docs-delta
+    guard work item — renumbered to INFRA-215 to avoid collision.)
+  acceptance_criteria:
+    - INFRA-211 worker.sh documents the spawn-respawn pattern
+    - Each `claude -p` invocation works ONE gap then exits
+    - CHUMP_LESSONS_AT_SPAWN_N=5 set in worker env so INFRA-195 distillation flows to next spawn
+  depends_on: [INFRA-211, INFRA-195]
+  opened_date: '2026-05-02'
+
+- id: INFRA-216
+  domain: INFRA
+  title: "chump gap reserve: cross-host race against merge-queue arrivals — atomic picker only protects within-host"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    'chump gap reserve' uses INFRA-100's atomic next-ID picker, which reads all 4 sources on the local host (state.db, open PRs, live leases, main YAML). It does NOT git fetch first. So if a sibling agent on the same host or remote landed a PR that added a new gap row to docs/gaps.yaml on origin/main BETWEEN your last fetch and your reserve, the picker assigns an ID that's already taken on origin/main.
+    
+    Reproducer (observed 2026-05-02 in the INFRA-177 closure session):
+      1. Agent A FFs main, runs 'chump gap reserve --domain INFRA' → returns INFRA-200
+      2. Agent B's PR (e0ab7e7, e.g.) lands on origin/main with INFRA-200 already assigned
+      3. Agent A surgically inserts INFRA-200 into YAML and tries to commit
+      4. Pre-commit gap-ID-hijack guard catches the title mismatch → reject
+      5. Recovery: sqlite3 DELETE the poisoned local row + chump gap import + reserve again (gets INFRA-208)
+    
+    Fix paths:
+      (a) 'chump gap reserve' calls 'git fetch origin main --quiet' before the atomic pick (slow when offline; needs careful timeout)
+      (b) 'chump gap reserve' reads origin/main's gaps.yaml via 'git show origin/main:docs/gaps.yaml' (no network, but stale until next fetch)
+      (c) Pessimistic ID picker: skip N additional IDs as a safety buffer when the local picker hasn't fetched in >5min
+      (d) Document the failure mode + recovery in CLAUDE.md so agents know to git fetch + chump gap import before reserve
+    
+    Acceptance: under a stress test of 3+ concurrent reserve calls split across local DB + simulated origin/main updates, no ID collision occurs OR the collision is detected at reserve-time (not at commit-time).
+
+- id: INFRA-217
+  domain: INFRA
+  title: Branch protection on main blocks direct push for ledger-only commits — every chore(gaps) needs a PR
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Branch protection on origin/main now requires 3 status checks (added 2026-05-01-ish per github rules). This means even pure ledger-flip commits — like 'chore(gaps): add SECURITY-005 row via surgical insert at SECURITY-* block' (commit d1012f5) or the canonical 'chore(gaps): close <ID> already shipped in #N' pattern — can no longer be direct-pushed to main; they need a PR + CI run.
+    
+    Observed cost in the 2026-05-02 INFRA-177 closure session: 3 separate chore(gaps) PRs (#716 INFRA-177 close, #718 INFRA-208/META-006 file, #724 cargo-dist allow-dirty) each had to:
+      - Create a feature branch
+      - Push (with CHUMP_GAP_CHECK=0 bypass for false-positive gap-preflight)
+      - 'gh pr create' with body
+      - 'gh pr merge --auto --squash' to arm
+      - Wait for CI to run all 3 required checks (~5-10 min) before landing
+    
+    Compare against the pre-protection direct-push: ~3 commands, instant.
+    
+    Tradeoff: branch protection prevents bot misbehavior but adds friction for the very narrow class of 'pure metadata flip' commits. Three options:
+      (a) Accept the friction (current state) — chore(gaps) PRs are normal
+      (b) Allow specific bot identities (chump-ftue-bot, etc) to push to main bypassing required checks for ledger files only — needs admin rules + path-based protection
+      (c) Add a dedicated 'ledger flip' fast-track: a workflow that takes a state.db change as input, opens + auto-merges its own PR with self-attested CI skip — automates the friction away without weakening protection
+    
+    Acceptance: pick one of (a)/(b)/(c) explicitly; document the decision in CLAUDE.md ship-pipeline section so agents stop attempting direct-push and getting GH013 errors.
 
 - id: INFRA-41
   domain: infra
