@@ -420,11 +420,25 @@ mod tests {
     #[test]
     fn validate_required_tags_fails_when_backend_missing() {
         let r = refl_with_notes("AUTO-1", "shipped successfully");
-        let err = r.validate_required_tags().expect_err("missing backend tag should fail");
+        let err = r
+            .validate_required_tags()
+            .expect_err("missing backend tag should fail");
         let msg = format!("{}", err);
-        assert!(msg.contains("INFRA-123"), "error should reference INFRA-123: {}", msg);
-        assert!(msg.contains("backend="), "error should mention required tag: {}", msg);
-        assert!(msg.contains("AUTO-1"), "error should include gap id: {}", msg);
+        assert!(
+            msg.contains("INFRA-123"),
+            "error should reference INFRA-123: {}",
+            msg
+        );
+        assert!(
+            msg.contains("backend="),
+            "error should mention required tag: {}",
+            msg
+        );
+        assert!(
+            msg.contains("AUTO-1"),
+            "error should include gap id: {}",
+            msg
+        );
     }
 
     #[test]
@@ -450,9 +464,15 @@ mod tests {
         let _ = std::fs::remove_file(&tmp);
         let w = SqliteReflectionWriter::at_path(tmp.clone());
         let bad = refl_with_notes("AUTO-2", ""); // empty notes
-        let err = w.write(&bad).expect_err("write should fail with INFRA-123 error");
+        let err = w
+            .write(&bad)
+            .expect_err("write should fail with INFRA-123 error");
         let msg = format!("{}", err);
-        assert!(msg.contains("INFRA-123"), "error should reference INFRA-123: {}", msg);
+        assert!(
+            msg.contains("INFRA-123"),
+            "error should reference INFRA-123: {}",
+            msg
+        );
         let _ = std::fs::remove_file(&tmp);
     }
 
