@@ -274,6 +274,9 @@ jobs:
       - name: doc-only commits run all guards (INFRA-257)
         run: bash scripts/ci/test-infra-257-doc-only-guards.sh
 
+      - name: worktree-boundary path resolution (INFRA-109)
+        run: bash scripts/ci/test-infra-109-worktree-boundary.sh
+
       - name: submodule-sanity guard (INFRA-158)
         run: bash scripts/ci/test-submodule-guard.sh
 

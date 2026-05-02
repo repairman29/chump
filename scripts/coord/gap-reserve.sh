@@ -50,8 +50,9 @@ if ! [[ "$DOMAIN" =~ ^[A-Z][A-Z0-9]*$ ]]; then
     exit 1
 fi
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
+# INFRA-109: resolve REPO_ROOT + LOCK_DIR via main-repo path (linked worktree safe).
+# shellcheck source=../lib/repo-paths.sh
+source "$(dirname "$0")/../lib/repo-paths.sh"
 mkdir -p "$LOCK_DIR"
 FLOCK_PATH="$LOCK_DIR/.gap-reserve-${DOMAIN}.flock"
 
