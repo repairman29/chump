@@ -4494,13 +4494,15 @@ gaps:
 - id: INFRA-052
   domain: infra
   title: Queue health monitor — hourly check for blocked PRs and stalled agents
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
     Implement .chump/monitor.sh that runs hourly via launchd/cron. Reads leases, checks gh pr checks for FAILURE/ERROR, detects: (a) PRs in queue >45min with no progress, (b) agents >90min no commits, (c) worktrees >5GB. Outputs to .chump/health.jsonl and .chump/alerts.log. Makes queue state visible.
   depends_on: [INFRA-051]
   source_doc: docs/AGENT_COORDINATION.md
+  closed_date: '2026-05-02'
+  closed_pr: 734
 
 - id: INFRA-053
   domain: infra
@@ -7524,6 +7526,47 @@ gaps:
     - "Closer-pr-batcher does NOT close PRs whose intent is gap filing (titled 'chore(gaps): file ...') based on local DB presence"
     - Filing-vs-closure heuristic uses origin/main YAML state, not local state.db
     - Test added to scripts/ci/ that simulates the false-close scenario
+
+- id: INFRA-220
+  domain: INFRA
+  title: closed_pr-integrity guard parses fields inside description blocks at any indentation
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    The closed_pr-integrity guard at scripts/git-hooks/pre-commit:638 (INFRA-107) parses gaps with greedy regexes:
+    
+      re.match(r'^\s*-\s*id:\s*(\S+)', line)         # any indent
+      re.match(r'^\s*status:\s*(\S+)', line)         # any indent
+      re.match(r'^\s*closed_pr:\s*(\S+)', line)      # any indent
+    
+    These match at ANY indentation level, including inside a 'description: |' block. So a multi-line description containing example text like:
+    
+        closed_pr: TBD will fail
+        Test fixture: closed_pr: 404 passes
+    
+    gets parsed as ACTUAL closed_pr fields belonging to the enclosing gap. This causes false-positive guard fires on commits whose new content (or content adjacent to it in the YAML) describes the guard itself or contains examples in description text.
+    
+    Reproducer (observed 2026-05-02 during INFRA-219 filing):
+      1. Commit added INFRA-219 row at YAML end
+      2. Pre-commit guard parsed full YAML, including INFRA-107's acceptance_criteria text 'Test fixture - normal closure with closed_pr 404 passes'
+      3. Guard interpreted '404 passes' as a non-numeric closed_pr value and rejected
+      4. Bypass: CHUMP_GAPS_LOCK=0
+    
+    Fix: pin field regexes to exactly 2 leading spaces (the YAML indentation for gap-row sibling fields). Top-level '- id:' is at column 1 (literal dash). Inside-block 'closed_pr:' lines have 4+ spaces and won't match.
+    
+      ^- id:           # gap row only
+      ^  status:       # exactly 2 spaces
+      ^  closed_pr:    # exactly 2 spaces
+    
+    Acceptance:
+      - regex requires literal 2-space indent
+      - test added to scripts/ci/test-closed-pr-guard.sh covering description-block-text case
+      - INFRA-107 acceptance_criteria text 'closed_pr 404 passes' no longer triggers the guard
+  acceptance_criteria:
+    - Pre-commit closed_pr guard regex pinned to 2-space gap-row indent
+    - "description-block text containing 'closed_pr:' patterns no longer triggers false-positive"
+    - test-closed-pr-guard.sh extended to cover the false-positive case
 
 - id: INFRA-41
   domain: infra
