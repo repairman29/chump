@@ -10062,7 +10062,7 @@ gaps:
 - id: META-015
   domain: META
   title: "tests/gap_reserve_cross_host_race.rs::two_concurrent_reserves_return_distinct_ids is flaky under CI matrix parallelism — passes/fails non-deterministically across PRs"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -10091,6 +10091,8 @@ gaps:
   depends_on: [INFRA-213, INFRA-216]
   notes: |
     Coupled finding: INFRA-213 (CI matrix split, PR #814) is the proximate cause — the increased parallelism exposed a pre-existing race in INFRA-216 (PR #800)s test. INFRA-216 wrote the test serially-safe; INFRA-213 increased contention. Neither is wrong individually; the coupling is. Filed during 2026-05-02 PR re-work pass when 2/11 same-session PRs hit the same flake. Side-effect surfaced via the new test job split.
+  closed_date: '2026-05-02'
+  closed_pr: 860
 
 - id: PRODUCT-001
   domain: product
