@@ -1,7 +1,9 @@
 - id: INFRA-144
   domain: infra
   title: "skills::tests::save_and_load_skill_roundtrip races on global CHUMP_BRAIN_PATH"
-  status: open
+  status: done
+  closed_pr: 615
+  closed_date: '2026-05-02'
   priority: P2
   effort: xs
   description: |

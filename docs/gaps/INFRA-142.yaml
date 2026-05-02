@@ -1,7 +1,9 @@
 - id: INFRA-142
   domain: infra
   title: Audit chain verifier vs 200-row cap interaction - false-positive tamper warnings every time a row ages out
-  status: open
+  status: done
+  closed_pr: 653
+  closed_date: '2026-05-02'
   priority: P2
   effort: s
   description: |

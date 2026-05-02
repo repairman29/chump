@@ -1,7 +1,9 @@
 - id: INFRA-172
   domain: infra
   title: "clippy unwrap_used + expect_used escalation: warn now, deny new code, triage existing 1395"
-  status: open
+  status: done
+  closed_pr: 672
+  closed_date: '2026-05-02'
   priority: P2
   effort: m
   description: |

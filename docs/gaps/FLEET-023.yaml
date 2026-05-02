@@ -1,7 +1,9 @@
 - id: FLEET-023
   domain: fleet
   title: Cold Water sandbox ambient stream empty post-FLEET-019/020/021/022 — install step never executed
-  status: open
+  status: done
+  closed_pr: 768
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |

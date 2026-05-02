@@ -1,7 +1,9 @@
 - id: INFRA-139
   domain: infra
   title: Move gaps-yaml-integrity check into merge-queue rebase phase to prevent parallel-PR ID collisions
-  status: open
+  status: done
+  closed_pr: 596
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

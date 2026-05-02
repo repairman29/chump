@@ -1,7 +1,9 @@
 - id: INFRA-158
   domain: infra
   title: 4 pre-commit guards have no regression tests (docs-delta, submodule, credential, gap-status)
-  status: open
+  status: done
+  closed_pr: 717
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

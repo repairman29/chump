@@ -1,7 +1,9 @@
 - id: INFRA-043
   domain: infra
   title: Coordination system stress test
-  status: open
+  status: done
+  closed_pr: 210
+  closed_date: '2026-05-02'
   priority: P2
   effort: l
   description: |

@@ -1,7 +1,9 @@
 - id: INFRA-222
   domain: infra
   title: "docs-delta guard `Net-new-docs:` trailer escape hatch is unreachable at pre-commit time"
-  status: open
+  status: done
+  closed_pr: 740
+  closed_date: '2026-05-02'
   priority: P2
   effort: xs
   description: |

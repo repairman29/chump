@@ -1,7 +1,9 @@
 - id: META-002
   domain: META
   title: FIXED-but-immediately-replaced classification missing from RED_TEAM_VERIFICATION.md
-  status: open
+  status: done
+  closed_pr: 647
+  closed_date: '2026-05-02'
   priority: P2
   effort: s
   description: |

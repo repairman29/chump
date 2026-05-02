@@ -1,7 +1,9 @@
 - id: INFRA-236
   domain: INFRA
   title: Authoritative commit-subject gap closure — extract gap-ID from merging commit subject in regenerate-gaps-yaml.yml workflow, eliminate ghosts at the source
-  status: open
+  status: done
+  closed_pr: 795
+  closed_date: '2026-05-02'
   priority: P0
   effort: m
   opened_date: '2026-05-02'

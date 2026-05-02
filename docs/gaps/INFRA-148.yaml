@@ -1,7 +1,9 @@
 - id: INFRA-148
   domain: infra
   title: chump CLI binary staleness detection — silent gaps.yaml corruption when binary predates gap_store.rs changes
-  status: open
+  status: done
+  closed_pr: 767
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

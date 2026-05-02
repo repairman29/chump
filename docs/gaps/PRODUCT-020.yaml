@@ -1,7 +1,9 @@
 - id: PRODUCT-020
   domain: product
   title: MCP marketplace MVP scope + design doc — concrete what-ships definition for North Star wedge
-  status: open
+  status: done
+  closed_pr: 590
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

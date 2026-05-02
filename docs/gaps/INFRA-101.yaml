@@ -1,7 +1,9 @@
 - id: INFRA-101
   domain: infra
   title: JSON-schema-validate every line emitted to ambient.jsonl (pre-commit + emit-time)
-  status: open
+  status: done
+  closed_pr: 763
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

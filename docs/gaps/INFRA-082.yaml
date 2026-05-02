@@ -1,7 +1,9 @@
 - id: INFRA-082
   domain: infra
   title: Reserve-time title similarity check — warn when filing a gap whose title overlaps an existing one
-  status: open
+  status: done
+  closed_pr: 557
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

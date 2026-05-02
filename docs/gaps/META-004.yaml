@@ -1,7 +1,9 @@
 - id: META-004
   domain: META
   title: "structural-fixes-over-symptom-patches: track 50-coordination-patch backlog vs handful of root-cause fixes"
-  status: open
+  status: done
+  closed_pr: 715
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

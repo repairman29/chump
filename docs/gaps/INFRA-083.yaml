@@ -1,7 +1,9 @@
 - id: INFRA-083
   domain: infra
   title: Gap-closure hygiene audit — close OPEN-BUT-LANDED gaps
-  status: open
+  status: done
+  closed_pr: 561
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |

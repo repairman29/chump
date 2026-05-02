@@ -1,7 +1,9 @@
 - id: INFRA-094
   domain: infra
   title: mandate chump gap commands - block raw docs/gaps.yaml edits in pre-commit
-  status: open
+  status: done
+  closed_pr: 565
+  closed_date: '2026-05-02'
   priority: P0
   effort: m
   description: |

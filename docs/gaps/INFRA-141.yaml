@@ -1,7 +1,9 @@
 - id: INFRA-141
   domain: infra
   title: scripts/setup/deploy-fleet.sh references undefined $REPO_ROOT
-  status: open
+  status: done
+  closed_pr: 596
+  closed_date: '2026-05-02'
   priority: P3
   effort: xs
   description: |

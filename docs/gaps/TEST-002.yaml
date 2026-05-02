@@ -1,7 +1,9 @@
 - id: TEST-002
   domain: TEST
   title: Multi-agent coordination integration test coverage - leases, ambient stream, gap-claim, bot-merge are the production layer with thinnest tests
-  status: open
+  status: done
+  closed_pr: 300
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

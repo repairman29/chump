@@ -1,7 +1,9 @@
 - id: INFRA-160
   domain: infra
   title: 4 orphan rows in state.db with no docs/gaps.yaml entry (COG-039, INFRA-087, INFRA-152, TEST-001)
-  status: open
+  status: done
+  closed_pr: 650
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |

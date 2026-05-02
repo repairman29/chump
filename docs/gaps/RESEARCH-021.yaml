@@ -1,7 +1,9 @@
 - id: RESEARCH-021
   domain: research
   title: Tier-dependence replication across 4 model families — extend haiku/sonnet finding to Llama/Qwen/DeepSeek/Gemma
-  status: open
+  status: done
+  closed_pr: 429
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

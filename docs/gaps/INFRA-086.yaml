@@ -1,7 +1,9 @@
 - id: INFRA-086
   domain: infra
   title: chump pr-stack per-session view
-  status: open
+  status: done
+  closed_pr: 563
+  closed_date: '2026-05-02'
   priority: P2
   effort: m
   description: |

@@ -1,7 +1,9 @@
 - id: INFRA-140
   domain: infra
   title: "gap-status-check is over-eager — fails legitimate \"filed and closed in same PR\" pattern"
-  status: open
+  status: done
+  closed_pr: 596
+  closed_date: '2026-05-02'
   priority: P2
   effort: s
   description: |
