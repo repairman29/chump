@@ -90,30 +90,50 @@ try {
 
   await driver.manage().setTimeouts({ implicit: 2000, pageLoad: 120_000, script: 60_000 });
 
-  await driver.wait(until.elementLocated(By.css('header h1')), 90_000);
-  const h1 = await driver.findElement(By.css('header h1'));
-  const title = await h1.getText();
+  // INFRA-250 (v1 retirement): the PWA is now web/v2, a Web-Components app.
+  // The chat surface is `<chump-chat>` — its <input>, <send-btn>, and message
+  // bubbles all live INSIDE its shadow root, so plain `By.css(...)` can't reach
+  // them. Use shadowRoot.querySelector via executeScript instead.
+
+  // Page-load smoke: the brand title is `#app-title` (light DOM, plain selector).
+  await driver.wait(until.elementLocated(By.id('app-title')), 90_000);
+  const title = await driver.findElement(By.id('app-title')).getText();
   if (!/Chump/i.test(title)) {
-    throw new Error(`Expected "Chump" in header h1, got: ${JSON.stringify(title)}`);
+    throw new Error(`Expected "Chump" in #app-title, got: ${JSON.stringify(title)}`);
   }
 
-  await driver.wait(until.elementLocated(By.id('msg-input')), 60_000);
-  const msg = `/task tauri-wd-${Date.now()}`;
-  const input = await driver.findElement(By.id('msg-input'));
-  await input.clear();
-  await input.sendKeys(msg);
-  await driver.findElement(By.id('send-btn')).click();
-
-  await driver.wait(until.elementLocated(By.css('.message.assistant .bubble')), 90_000);
-  const bubble = await driver.findElement(By.css('.message.assistant .bubble'));
-  // The frontend appends an empty assistant bubble immediately and streams
-  // text in via SSE — `getText()` right after `elementLocated` races against
-  // that stream and returns "". Poll until the bubble has the marker.
+  // Wait for `<chump-chat>` to upgrade and attach its shadow root.
+  await driver.wait(until.elementLocated(By.css('chump-chat')), 60_000);
   await driver.wait(async () => {
-    const t = await bubble.getText();
-    return typeof t === 'string' && t.includes('Created task');
+    const ready = await driver.executeScript(
+      `return !!document.querySelector('chump-chat')?.shadowRoot?.getElementById('input');`,
+    );
+    return ready === true;
+  }, 60_000, 'chump-chat shadow root never produced #input');
+
+  // Type into the shadow-root textarea and click the shadow-root send button.
+  // executeScript runs in page context where shadowRoot.getElementById works.
+  const msg = `/task tauri-wd-${Date.now()}`;
+  await driver.executeScript(
+    `const sr = document.querySelector('chump-chat').shadowRoot;
+     const t = sr.getElementById('input');
+     t.value = arguments[0];
+     t.dispatchEvent(new Event('input', { bubbles: true }));
+     sr.getElementById('send-btn').click();`,
+    msg,
+  );
+
+  // Wait for the assistant bubble inside the shadow root to receive the
+  // expected text. Poll via executeScript since elementLocated can't pierce
+  // shadow DOM either.
+  await driver.wait(async () => {
+    const text = await driver.executeScript(
+      `const sr = document.querySelector('chump-chat').shadowRoot;
+       const b = sr.querySelector('.message.assistant .bubble');
+       return b ? (b.textContent || '') : null;`,
+    );
+    return typeof text === 'string' && text.includes('Created task');
   }, 90_000, 'assistant bubble never received "Created task"');
-  const reply = await bubble.getText();
   console.log('tauri webdriver e2e: ok');
 } finally {
   exiting = true;
