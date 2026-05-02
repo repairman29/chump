@@ -5764,7 +5764,7 @@ gaps:
 - id: INFRA-115
   domain: infra
   title: Lease TTL has no server-side enforcement - stale .chump-locks/ ignored only client-side
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -5786,6 +5786,8 @@ gaps:
     - Pre-commit timestamp parser fails closed (refuses to merge) on malformed expires_at
     - Test - simulate a stale local lease file with expired ts, verify a sibling agent can claim despite the local file
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 809
 
 - id: INFRA-116
   domain: infra
@@ -8247,6 +8249,108 @@ gaps:
     - "Filing PRs (chore(gaps): file ...) correctly skipped"
     - Post-backfill audit shows 0 ghosts
   depends_on: [INFRA-236]
+
+- id: INFRA-242
+  domain: INFRA
+  title: auditor lib.sh python+yaml fallback is broken post-INFRA-188 (reads docs/gaps.yaml that no longer exists)
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Caught while diagnosing the 02:00 launchd auditor failure on 2026-05-02
+    (Cold Water Red Letter #10 trigger). Resolved the production issue via
+    INFRA-231 (launchd PATH fix), but the underlying secondary-defense path is
+    still broken.
+    
+    scripts/audit/auditor-checks/lib.sh has two helpers — all_gap_ids() and
+    all_gaps_json() — both with the same shape:
+    
+        if command -v chump >/dev/null 2>&1; then
+            chump gap list --json ...
+        else
+            # Fallback: parse docs/gaps.yaml via python+yaml
+            python3 -c "import yaml; ..."
+        fi
+    
+    The else-branch is broken for two compounding reasons post-INFRA-188:
+      1. /usr/bin/python3 (the macOS default in launchd PATH) doesn't have
+         PyYAML installed → ModuleNotFoundError
+      2. docs/gaps.yaml no longer exists post-INFRA-188 cutover (PR #753).
+         Even if PyYAML were installed, the open() would FileNotFoundError.
+    
+    Today the fallback only fires when chump is genuinely absent. Post-
+    INFRA-231 that's a CI-only corner case. But "secondary-defense path is
+    quietly broken" is a latent bug — when something else breaks the primary
+    chump-binary path (a regression, a CI sandbox without /home/user/.local
+    mounted, a fresh dev machine), the fallback won't catch it; auditor will
+    crash with confusing errors.
+    
+    Fix sketch (any one):
+      (a) Replace yaml fallback with a glob over docs/gaps/*.yaml using
+          python's safe_load (still needs PyYAML)
+      (b) Make the fallback shell out to a tiny rust binary `gap-list-min`
+          that has no deps
+      (c) Just retire the fallback — emit a clear error if chump isn't found
+          ('install with `cargo install --path .`')
+    
+    Recommend (c) — chump is a hard dependency for everything else in the
+    auditor anyway; pretending we have a fallback is a footgun.
+    
+    Acceptance:
+      - command -v chump fails && auditor runs → clear "chump not found,
+        install via …" error (NOT a python ModuleNotFoundError)
+      - Or: fallback works against docs/gaps/<ID>.yaml directory
+  acceptance_criteria:
+    - auditor with chump absent emits clear missing-dependency error
+    - "OR: fallback reads docs/gaps/<ID>.yaml directory format"
+    - no python ModuleNotFoundError under any chump-presence scenario
+  closed_date: '2026-05-02'
+  closed_pr: 811
+
+- id: INFRA-243
+  domain: INFRA
+  title: "Pre-commit guard friction: 6 separate bypass envs needed for legitimate ledger-only commits — consolidate or auto-detect"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    A single ledger-only commit (e.g. INFRA-241 backfill of 71 historical ghosts) required SIX bypass envs to land:
+    
+      CHUMP_RAW_YAML_LOCK=0      # surgical YAML edit, not via chump CLI
+      CHUMP_GAPS_LOCK=0          # INFRA-234 recycled-ID guard misfires on enrichment
+      CHUMP_PREREG_CHECK=0       # closing EVAL-* / RESEARCH-* needs prereg doc
+      CHUMP_PREREG_CONTENT_CHECK=0  # prereg content guard
+      CHUMP_CROSS_JUDGE_CHECK=0  # closing EVAL-* / RESEARCH-* needs cross-judge audit
+      CHUMP_GAP_CHECK=0          # pre-push gap-preflight false-positive
+    
+    Each guard has a real reason to exist — they were filed to catch specific incidents (PRODUCT-009 false-closure, EVAL-074 single-judge cost, etc.). But the cumulative friction for legitimate ledger-only commits is high, and agents have started reflexively bypassing them all (which defeats the original purpose).
+    
+    Three consolidation paths:
+    
+      (a) Auto-detect ledger-only commits — when a commit ONLY modifies docs/gaps/<ID>.yaml files (no .rs, no docs/eval/, etc.) AND the diff is purely additive (closed_pr / closed_date / status:done flips on already-done implementation PRs), skip the EVAL-/RESEARCH-specific guards entirely. Implementation guards (prereg, cross-judge) only matter for the IMPLEMENTING PR, not the LEDGER-FLIP PR that follows weeks later.
+    
+      (b) Single CHUMP_LEDGER_ONLY=1 env that bundles the safe set — one bypass for the documented "I am only flipping registry status fields, not closing-as-implementation" case. Replaces 5 separate envs.
+    
+      (c) Consolidate the EVAL/RESEARCH closure guards behind a single check: any closure of EVAL-* / RESEARCH-* gaps requires preregistration + cross-judge OR a documented retrospective-closure tag. Currently three independent guards each with their own bypass.
+    
+    Tradeoff: defense-in-depth vs friction. The current N=6 bypasses lean too hard on the agent to know which envs apply to which guard. Risk of ledger-only PRs reflexively setting CHUMP_*_CHECK=0 across the board, accidentally weakening guards meant to catch real misses.
+    
+    Acceptance:
+      - Ledger-only commits (no code changes, only status:open → status:done flips with closed_pr) require ≤2 bypass envs OR none with auto-detection
+      - Implementation PRs still hit all guards — defense-in-depth preserved for the actual closing event
+      - CLAUDE.md guard table updated to reflect new bypass surface
+  acceptance_criteria:
+    - Ledger-only commits require ≤2 bypass envs (or zero with auto-detect)
+    - Implementation PRs still hit all guards
+    - CLAUDE.md guard table updated
+  depends_on: [INFRA-234]
+
+- id: INFRA-244
+  domain: INFRA
+  title: "no-PR-match audit: 33 of 35 'ghosts' are real unstarted work; 2 are resolved-by-supersession (META-005, META-007)"
+  status: open
+  priority: P3
+  effort: xs
 
 - id: INFRA-41
   domain: infra

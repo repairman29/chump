@@ -47,39 +47,33 @@ log() {
 }
 
 # Returns space-separated list of all gap IDs from canonical .chump/state.db
-# (via `chump gap list --json`). Falls back to docs/gaps.yaml if chump CLI is
-# unavailable (CI without the binary), tolerating its known bad-escape artifacts.
+# (via `chump gap list --json`). The previous python+yaml fallback against
+# docs/gaps.yaml was retired in INFRA-242: post-INFRA-188 the YAML mirror is
+# gone and the python fallback also lacked the `yaml` module on most CI hosts.
+# The auditor depends on chump for everything else anyway — fail loud with an
+# actionable install hint instead of pretending we have a working fallback.
 all_gap_ids() {
-    if command -v chump >/dev/null 2>&1; then
-        chump gap list --json 2>/dev/null | python3 -c "
+    if ! command -v chump >/dev/null 2>&1; then
+        echo "auditor: chump binary not found in PATH. Install with:" >&2
+        echo "  cargo install --path . --bin chump --force" >&2
+        echo "  (or add \$HOME/.local/bin to PATH)" >&2
+        return 1
+    fi
+    chump gap list --json 2>/dev/null | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 print(' '.join(g['id'] for g in d if g.get('id')))
 "
-    else
-        python3 -c "
-import yaml, re
-with open('$REPO_ROOT/docs/gaps.yaml') as f:
-    raw = f.read()
-raw = re.sub(r'\\\\\\$', '\$', raw)  # strip bad \$ escapes from chump-gap-dump
-data = yaml.safe_load(raw)
-print(' '.join(g['id'] for g in data.get('gaps', []) if g.get('id')))
-"
-    fi
 }
 
-# Returns canonical gap data as JSON array. Same fallback as all_gap_ids.
+# Returns canonical gap data as JSON array. Requires the chump binary; see
+# all_gap_ids for the rationale (INFRA-242 retired the python+yaml fallback).
 all_gaps_json() {
-    if command -v chump >/dev/null 2>&1; then
-        chump gap list --json 2>/dev/null
-    else
-        python3 -c "
-import yaml, json, re
-with open('$REPO_ROOT/docs/gaps.yaml') as f:
-    raw = f.read()
-raw = re.sub(r'\\\\\\$', '\$', raw)
-data = yaml.safe_load(raw)
-print(json.dumps(data.get('gaps', [])))
-"
+    if ! command -v chump >/dev/null 2>&1; then
+        echo "auditor: chump binary not found in PATH. Install with:" >&2
+        echo "  cargo install --path . --bin chump --force" >&2
+        echo "  (or add \$HOME/.local/bin to PATH)" >&2
+        return 1
     fi
+    chump gap list --json 2>/dev/null
 }
