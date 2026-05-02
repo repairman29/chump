@@ -55,7 +55,10 @@ UNFIXED=0
 
 shopt -s nullglob
 PLISTS=()
-for p in "$LAUNCHAGENTS"/ai.openclaw.chump-*.plist \
+# All ai.openclaw.* plists (chump-prefixed AND siblings like farmer-brown that
+# coexist on the same machine and share the same broken-path failure mode),
+# plus ai.chump.* / com.chump.* legacy labels.
+for p in "$LAUNCHAGENTS"/ai.openclaw.*.plist \
          "$LAUNCHAGENTS"/ai.chump.*.plist \
          "$LAUNCHAGENTS"/com.chump.*.plist; do
     PLISTS+=("$p")
@@ -130,6 +133,27 @@ for plist in "${PLISTS[@]}"; do
         /usr/bin/sed -i.bak "s|${old_path}|${new_path}|g" "$plist"
         PLIST_CHANGED=1
     done
+
+    # WorkingDirectory check: when a plist was installed from a linked worktree,
+    # WorkingDirectory captures that worktree's path. If the worktree was reaped,
+    # launchctl silently fails to start the job. Rewrite to MAIN_REPO when the
+    # captured path is a missing /.../{.claude,.chump}/worktrees/<name> subpath.
+    wd="$(plutil -extract WorkingDirectory xml1 -o - "$plist" 2>/dev/null \
+              | grep -oE '<string>[^<]+</string>' | head -1 | sed 's/<[^>]*>//g')"
+    if [[ -n "$wd" && ! -d "$wd" ]]; then
+        if echo "$wd" | grep -qE '/\.(claude|chump)/worktrees/'; then
+            warn "  ✗ WorkingDirectory $wd missing (reaped worktree) — rewriting to $MAIN_REPO"
+            if [[ "$DRY_RUN" -eq 1 ]]; then
+                say "    (dry-run; no changes written)"
+            else
+                /usr/bin/sed -i.bak "s|<string>${wd}</string>|<string>${MAIN_REPO}</string>|" "$plist"
+                PLIST_CHANGED=1
+            fi
+        else
+            err "    WorkingDirectory $wd missing — manual fix needed"
+            UNFIXED=$((UNFIXED + 1))
+        fi
+    fi
 
     # Reload only if we changed anything (and not dry-run).
     if [[ "$PLIST_CHANGED" -eq 1 && "$DRY_RUN" -eq 0 ]]; then
