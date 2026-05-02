@@ -709,6 +709,22 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         fi
         stage_done
         green "Auto-merge enabled — PR will land when CI passes."
+
+        # INFRA-190: fire-and-forget pr-watch.sh so the PR auto-recovers
+        # if main moves while it's queued (DIRTY → rebase + force-push +
+        # re-arm). The script handles the 80% case (no real conflicts);
+        # real conflicts surface to the operator via exit 3.
+        # Default ON; opt out with CHUMP_PR_WATCH_AFTER_ARM=0 (e.g. when
+        # the operator wants to babysit the PR manually).
+        if [[ "${CHUMP_PR_WATCH_AFTER_ARM:-1}" != "0" ]] \
+            && [[ -x "$REPO_ROOT/scripts/coord/pr-watch.sh" ]]; then
+            _watch_log="/tmp/pr-watch-${TARGET_PR}-$(date +%s).log"
+            nohup "$REPO_ROOT/scripts/coord/pr-watch.sh" "$TARGET_PR" \
+                > "$_watch_log" 2>&1 &
+            _watch_pid=$!
+            disown "$_watch_pid" 2>/dev/null || true
+            info "pr-watch.sh detached (pid $_watch_pid, log $_watch_log) — PR will auto-recover from DIRTY"
+        fi
     fi
 fi
 
