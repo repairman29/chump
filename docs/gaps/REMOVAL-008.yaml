@@ -1,7 +1,9 @@
 - id: REMOVAL-008
   domain: REMOVAL
   title: "Make neuromod telemetry-only fns pub(crate): modulated_balanced_threshold + modulated_explore_threshold + reward_scaling (REMOVAL-006 follow-up)"
-  status: open
+  status: done
   priority: P2
   effort: m
+  closed_date: '2026-05-02'
+  closed_pr: 828
 
