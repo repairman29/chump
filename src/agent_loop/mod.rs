@@ -7,7 +7,7 @@ pub mod state;
 pub mod tool_runner;
 pub mod types;
 
-pub use context::AgentLoopContext;
+pub use context::{phase_timing_enabled, AgentLoopContext, PhaseTimings};
 pub use iteration_controller::IterationController;
 pub use orchestrator::ChumpAgent;
 pub use perception_layer::PerceptionLayer;
