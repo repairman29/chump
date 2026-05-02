@@ -16388,9 +16388,11 @@ gaps:
 - id: INFRA-195
   domain: INFRA
   title: 'skills feedback loop: shipped PRs distill into chump_skills rows the next dispatcher reads'
-  status: open
+  status: done
   priority: P2
   effort: m
+  closed_pr: TBD
+  closed_date: '2026-05-01'
   opened_date: '2026-05-01'
   description: |
     The infrastructure exists: chump_skills, chump_causal_lessons,
