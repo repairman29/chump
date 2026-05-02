@@ -229,6 +229,9 @@ jobs:
       - name: gap-status-flip guard (INFRA-158)
         run: bash scripts/ci/test-gap-status-flip.sh
 
+      - name: raw-YAML-edit guard (INFRA-200, blocking since 2026-05-02)
+        run: bash scripts/ci/test-raw-yaml-guard.sh
+
       - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
           # INFRA-100: gap-reserve.sh now invokes `chump gap reserve`
