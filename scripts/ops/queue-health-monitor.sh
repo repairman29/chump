@@ -263,6 +263,54 @@ except Exception:
 done
 shopt -u nullglob
 
+# ── Check 5: expired lease files (INFRA-115 — server-side TTL reaper) ────────
+# Lease files declare an expires_at timestamp. Today nothing actually reaps
+# them server-side once expired — gap-preflight.sh ignores them client-side
+# but the file persists indefinitely. Under high parallelism (or a Pi that
+# crashed mid-claim), stale leases accumulate and confuse other agents.
+# Reap any lease whose expires_at is more than LEASE_GRACE_MIN minutes past.
+# (5-min grace lets clock skew + final-act commit cleanup race without us
+# yanking a still-completing agent's lease.)
+LEASE_GRACE_MIN="${QUEUE_HEALTH_LEASE_GRACE_MIN:-5}"
+say "checking lease files for expired (>${LEASE_GRACE_MIN} min past expires_at)..."
+shopt -s nullglob
+for lease in "$LOCK_DIR"/*.json; do
+    [[ -f "$lease" ]] || continue
+    sess_id="$(basename "$lease" .json)"
+    [[ "$sess_id" == ".wt-session-id" ]] && continue
+    expires_at="$(python3 -c "
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get('expires_at',''))
+except Exception:
+    print('')
+" "$lease" 2>/dev/null || true)"
+    [[ -z "$expires_at" ]] && continue
+    age_min="$(python3 -c "
+from datetime import datetime, timezone
+import sys
+try:
+    ts = datetime.fromisoformat(sys.argv[1].replace('Z','+00:00'))
+    print(int((datetime.now(timezone.utc) - ts).total_seconds() / 60))
+except Exception:
+    print(-9999)
+" "$expires_at" 2>/dev/null || echo -9999)"
+    [[ "$age_min" -lt "$LEASE_GRACE_MIN" ]] && continue
+    # This lease is past its declared TTL + grace. Reap.
+    gap_id="$(python3 -c "
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get('gap_id', json.load(open(sys.argv[1])).get('purpose','?')))
+except Exception:
+    print('?')
+" "$lease" 2>/dev/null || echo '?')"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        rm -f "$lease"
+    fi
+    emit_alert "lease_expired_server" "session=${sess_id} gap=${gap_id} expired=${age_min}m_ago lease_file=$(basename "$lease") (reaped)"
+done
+shopt -u nullglob
+
 # ── Write health.jsonl record ────────────────────────────────────────────────
 # Pass alerts via env so we don't have to escape them through nested heredocs.
 ALERTS_JOINED=""
