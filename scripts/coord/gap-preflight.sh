@@ -319,6 +319,38 @@ for GAP_ID in "$@"; do
         fi
     fi
 
+    # ── Check 1.5: open PR with this gap-ID in title (INFRA-273) ──────────
+    # Caught during the 2026-05-02 dogfood fleet run: 2 fleet workers picked
+    # INFRA-261 even though PR #874 ("INFRA-261: ...") was already OPEN+armed.
+    # gap-preflight had no idea because Check 1 only looks at the registry's
+    # status:done state, and PR #874 hadn't merged yet. Both workers spent
+    # claude -p quota on a gap that was actively being shipped — pure waste.
+    #
+    # This check searches open PRs by exact gap-ID match in title and blocks
+    # the claim if found, unless:
+    #   - CHUMP_PREFLIGHT_PR_CHECK=0 (operator opt-out)
+    #   - CHUMP_SPECULATIVE=1        (INFRA-193 speculative race wanted)
+    if [[ "${CHUMP_PREFLIGHT_PR_CHECK:-1}" != "0" ]] \
+            && [[ "${CHUMP_SPECULATIVE:-0}" != "1" ]] \
+            && command -v gh >/dev/null 2>&1; then
+        PR_FOR_GAP="$(gh pr list --state open --search "${GAP_ID} in:title" \
+            --json number,headRefName -q '.[0]' 2>/dev/null || true)"
+        if [[ -n "$PR_FOR_GAP" && "$PR_FOR_GAP" != "null" && "$PR_FOR_GAP" != "{}" ]]; then
+            PR_NUM="$(printf '%s' "$PR_FOR_GAP" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("number",""))' 2>/dev/null)"
+            PR_HEAD="$(printf '%s' "$PR_FOR_GAP" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("headRefName",""))' 2>/dev/null)"
+            # Skip if it's our OWN branch (we're re-running preflight on the same work).
+            CURRENT_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+            if [[ -n "$PR_NUM" && "$PR_HEAD" != "$CURRENT_BRANCH" ]]; then
+                red "SKIP $GAP_ID — open PR #$PR_NUM ($PR_HEAD) is already implementing this gap."
+                red "  Pick a different gap, or wait for #$PR_NUM to land/close."
+                red "  Bypass: CHUMP_PREFLIGHT_PR_CHECK=0 (skip this check)"
+                red "  Or: CHUMP_SPECULATIVE=1 (race against the existing PR per INFRA-193)"
+                FAILED=1
+                continue
+            fi
+        fi
+    fi
+
     # ── Check 2: live lease claim by another session ───────────────────────
     CLAIM="$(check_lease_claim "$GAP_ID" "$SESSION_ID")"
     if [[ -n "$CLAIM" ]]; then
