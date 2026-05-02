@@ -1,15 +1,41 @@
 ---
 doc_tag: runbook
-owner_gap:
-last_audited: 2026-04-25
+owner_gap: INFRA-201
+last_audited: 2026-05-01
 ---
 
-# GitHub merge queue — setup guide (INFRA-MERGE-QUEUE)
+# GitHub merge queue — setup guide (INFRA-MERGE-QUEUE → superseded by INFRA-201)
 
-**Status as of 2026-04-19:** Repo is configured for atomic PR merges, but the
-**merge queue itself must be enabled by a repo admin via the GitHub UI** — the
-REST and GraphQL APIs do not currently accept a `required_merge_queue` payload
-on `repairman29/chump`. See [API attempts](#api-attempts-failed) below.
+**Status as of 2026-05-01:** **No real merge queue exists on this repo.** The
+feature is an org Team / Enterprise paid plan capability and is not exposed on
+personal-account public repos like `repairman29/chump`. Three independent
+attempts to enable it via REST/GraphQL all failed (see [API attempts](#api-attempts-failed)
+below). The 2026-04-19 doc was aspirational.
+
+**What we actually have (INFRA-201, 2026-05-01):** the `strict` (require-up-to-date-branches)
+flag is **disabled** on the legacy branch protection rule for `main`. Every PR
+auto-merges as soon as its **own** required checks (`test`, `audit`, `ACP smoke
+test`) are green, regardless of how many commits `main` has advanced
+underneath it. This eliminates the BEHIND-cascade traffic jam we used to hit
+when 5–10 PRs auto-armed in parallel — only one could land per CI cycle, the
+rest went BEHIND, someone had to `gh pr update-branch` them sequentially. Now
+they all land independently.
+
+**What this trades off:** without `strict`, a PR can land that was tested
+against an older `main`. Two PRs touching the same file with non-overlapping
+edits will textually merge cleanly; two PRs touching the same lines go DIRTY
+and need a hand rebase (visible immediately in the PR list, no surprise).
+Logical conflicts (same gap-ID added twice; redundant doc edits; etc.) are
+caught by the pre-commit guards and `gap-doctor.py`. This is the correct
+tradeoff for a single-maintainer fast-moving repo.
+
+**Squash-loss footgun (PR #52)** is still mitigated by atomic-PR discipline
+and the `pr-<N>-checkpoint` tag `bot-merge.sh` writes — see CLAUDE.md
+"Auto-merge IS the default" note.
+
+---
+
+## Original 2026-04-19 framing (kept for context)
 
 ---
 
