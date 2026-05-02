@@ -1,0 +1,41 @@
+name: PR Title Drift Detector
+
+# INFRA-104 — ALERT when a PR's title declares a gap-ID but the diff
+# doesn't show any implementation signature for that gap. Catches the
+# "INFRA-XXX: foo" titled PR whose actual diff is only docs/gaps/INFRA-XXX.yaml
+# (filing-only) or only registry/lock files (null-impact).
+#
+# Behaviour: advisory only. The job exits 0 even when drift is detected;
+# the script labels the PR with `title-diff-drift` and posts a comment
+# explaining what to fix. Auto-merge is **not** blocked.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    # Skip on PRs that already have the gap-cleanup or skip-drift-check label.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'gap-cleanup') && !contains(github.event.pull_request.labels.*.name, 'skip-drift-check') }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run drift detector
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          chmod +x scripts/ci/check-pr-drift.sh
+          # Advisory mode: drift exit 0; the script labels + comments on its own.
+          CHUMP_DRIFT_FAIL=0 \
+            scripts/ci/check-pr-drift.sh --pr "${PR_NUMBER}"
