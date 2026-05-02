@@ -16531,3 +16531,121 @@ gaps:
     - "Either INFRA-187 ships the optional migration helper (item 4) and pre-commit nudge (item 5), OR a follow-up gap is filed for them"
   raised_by: claude
   raised_in: '2026-05-01 — INFRA-186 docs change ships the convention; this gap tightens the tooling so it''s automatic'
+
+# ── Cold Water Issue #9 follow-up gaps (2026-05-02) ──────────────────────────
+
+- id: PRODUCT-025
+  title: "FTUE bottle-path timing unverified — post-INFRA-175 UX-001 ≤60s promise at risk"
+  domain: product
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-02'
+  raised_by: cold-water
+  raised_in: RED_LETTER#9
+  description: >-
+    INFRA-175 (PR #686, merged 2026-04-30) switched ftue-clean-machine.yml from
+    --build-from-source (1123s) to the real user path: brew tap repairman29/chump
+    && brew install chump (bottle). INFRA-175's own commit message estimates the
+    post-change total as "~30-90s brew install + ~17s chump init = ~50-110s total."
+    UX-001 promises chump init ≤60s on M4 Mac and ≤90s CI budget, but UX-001's
+    description specifies the stopwatch covers brew install AND chump init as one
+    measurement. At the estimated upper bound (110s), both UX-001 thresholds are
+    violated. No post-INFRA-175 verification artifact has been committed: all three
+    docs/FTUE-VERIFICATION-*.md files were generated from the OLD build-from-source
+    workflow against pre-INFRA-175 commits (360c6b7, 86012a7, earlier). PRODUCT-017
+    is status:done but the measurement that justified closure was not measuring the
+    real user path. Additionally, INFRA-176 (auto-publish formula) gates on
+    HOMEBREW_TAP_TOKEN secret being set — if absent, brew install fails; that
+    failure path has not been tested.
+  acceptance_criteria:
+    - "A post-INFRA-175 FTUE verification artifact committed to docs/FTUE-VERIFICATION-YYYY-MM-DD.md"
+    - "The artifact's 'brew install chump' row reflects actual bottle-install time (not --build-from-source)"
+    - "Total elapsed (brew install + chump init) reported against the 60s UX-001 promise and 90s CI budget"
+    - "If total > 60s, a P0 regression gap filed against UX-001 and this gap blocks PRODUCT-015/016 until resolved"
+    - "HOMEBREW_TAP_TOKEN absent path tested — failure mode is documented"
+
+- id: EVAL-094
+  title: "EVAL-090 P0 zero-execution escalation — 6 days at P0, F3 retirement data integrity"
+  domain: EVAL
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-02'
+  raised_by: cold-water
+  raised_in: RED_LETTER#9
+  depends_on:
+    - EVAL-090
+  description: >-
+    EVAL-090 (P0, opened 2026-04-26) requires re-running EVAL-069 under verified
+    python3.12 to confirm or overturn F3 retirement. EVAL-069's retirement of the
+    neuromodulation aggregate signal (−10 to −16pp, Issues #4–#6) was flagged as
+    suspect because python3 resolved to 3.14 on the test machine, producing
+    scorer=exit_code_fallback (silent scoring failure). Six days after filing,
+    EVAL-090 has zero execution commits. The P0 designation means "stop everything,
+    fix this." Six days of zero movement at P0 indicates the priority escalation
+    mechanism is not functioning. This meta-gap is filed to track the breach of the
+    P0 contract independently of EVAL-090's technical scope: if EVAL-090 is P0 and
+    has zero execution for >5 days, something in the project's prioritization
+    process is broken regardless of execution capacity.
+  acceptance_criteria:
+    - "EVAL-090 has at least one execution commit (a JSONL result file committed to docs/eval/)"
+    - "OR EVAL-090 is explicitly downgraded from P0 with a documented reason for the downgrade"
+    - "The project documents a process change to prevent P0 gaps from sitting zero-execution >5 days"
+
+- id: SECURITY-006
+  title: "cargo audit continue-on-error: true in CI — HIGH rustls-webpki advisory never blocks merge"
+  domain: SECURITY
+  status: open
+  priority: P0
+  effort: xs
+  opened_date: '2026-05-02'
+  raised_by: cold-water
+  raised_in: RED_LETTER#9
+  description: >-
+    .github/workflows/ci.yml runs cargo audit with continue-on-error: true.
+    SECURITY-004 (P0, open, 2026-04-28) documents a HIGH-severity rustls-webpki
+    DoS advisory in Cargo.lock. The CI step that would catch this is configured
+    to never fail a PR. SECURITY-004's acceptance criteria explicitly require
+    "cargo deny advisories step in CI fails on HIGH (regression guard)" but the
+    step is configured as advisory-only. A HIGH vulnerability has been open in
+    Cargo.lock for 4 days with a CI gate that has been confirmed to not block
+    anything. Evidence: .github/workflows/ci.yml, the "Run cargo audit" step,
+    line: continue-on-error: true.
+  acceptance_criteria:
+    - "cargo audit (or cargo deny advisories) step in CI has continue-on-error: false for HIGH severity"
+    - "A PR with a new HIGH advisory is blocked by CI — demonstrated with a test or by the check failing on a known-bad branch"
+    - "SECURITY-004 acceptance criteria #2 is satisfied by this fix"
+
+- id: META-005
+  title: "chump gap dump is lossy — YAML-only fields dropped, INFRA-084/094 P0 mandates structurally impossible"
+  domain: INFRA
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-05-02'
+  raised_by: cold-water
+  raised_in: RED_LETTER#9
+  depends_on:
+    - INFRA-084
+    - INFRA-094
+  description: >-
+    INFRA-084 (P0) and INFRA-094 (P0) mandate that agents stop hand-editing
+    docs/gaps.yaml and use chump gap CLI instead. Commit d1012f5 (PR #702,
+    2026-05-01) documents why this mandate cannot be followed: "chump gap dump
+    --update-yaml turned out to be lossy — state.db doesn't preserve YAML-only
+    fields like closed_commit, runnable_now, full block notes (~14k lines would
+    have been dropped). Surgical insert preserves everything else byte-for-byte."
+    Examination of docs/gaps.yaml confirms fields present in the YAML that have
+    no corresponding SQLite column: closed_commit, runnable_now, acceptance,
+    source_doc. The gap-doctor (scripts/coord/gap-doctor.py) fails with
+    sqlite3.OperationalError: no such table: gaps in this environment, confirming
+    the local DB schema is incomplete. Until chump gap dump round-trips all YAML
+    fields, complying with INFRA-084/094 is destructive: it would silently delete
+    data that is not recoverable from state.db. The mandate generates the very
+    raw-YAML-edit violations it was filed to prevent.
+  acceptance_criteria:
+    - "chump gap dump --out docs/gaps.yaml round-trips all fields present in the current gaps.yaml without data loss"
+    - "Fields closed_commit, runnable_now, acceptance, source_doc are either added to the SQLite schema or explicitly documented as deprecated and removed from all gap entries"
+    - "A dry-run test verifies: import gaps.yaml → dump to temp file → diff original vs temp = empty (modulo whitespace)"
+    - "INFRA-084 and INFRA-094 acceptance criteria can then be re-evaluated against a non-lossy CLI path"
