@@ -22,11 +22,11 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 
+use crate::agent_factory;
 use crate::agent_loop::ChumpAgent;
 use crate::approval_resolver;
 use crate::autopilot;
 use crate::db_pool;
-use crate::discord;
 use crate::episode_db;
 use crate::limits;
 use crate::pilot_metrics;
@@ -2102,7 +2102,7 @@ async fn handle_chat(
         session_id: session_id.clone(),
     });
     let bot = body.bot.as_deref();
-    let built = discord::build_chump_agent_web_components(&session_id, bot)
+    let built = agent_factory::build_chump_agent_web_components(&session_id, bot)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     #[cfg(feature = "mistralrs-infer")]
     let streaming_provider = StreamingProvider::new_with_mistral_stream(
@@ -2135,7 +2135,7 @@ async fn handle_chat(
             match agent.run(&message_clone).await {
                 Ok(outcome) => {
                     let full_reply = outcome.reply.clone();
-                    let stripped = crate::discord::strip_thinking(&full_reply);
+                    let stripped = crate::system_prompt::strip_thinking(&full_reply);
                     crate::context_assembly::record_last_reply(&stripped);
                     if let Err(e) = web_sessions_db::message_append_assistant(
                         &session_id_clone,

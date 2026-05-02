@@ -8,7 +8,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::discord;
+    use crate::agent_factory;
     use serde_json::json;
     use serial_test::serial;
     use wiremock::matchers::{method, path};
@@ -130,7 +130,7 @@ mod tests {
         let pred_before = 0u64;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
-        let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
+        let (agent, _session) = agent_factory::build_chump_agent_cli().expect("build agent");
         let _reply = agent
             .run("Remember that Chump uses Rust and connects to Ollama for inference")
             .await;
@@ -180,7 +180,7 @@ mod tests {
         }
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
-        let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
+        let (agent, _session) = agent_factory::build_chump_agent_cli().expect("build agent");
         let outcome = agent
             .run("Remember this fact: Thinking-then-tool e2e fact")
             .await
@@ -227,7 +227,7 @@ mod tests {
             .await;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
-        let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
+        let (agent, _session) = agent_factory::build_chump_agent_cli().expect("build agent");
         let reply = agent
             .run("Log an episode: run_cli timed out during npm test, sentiment frustrating")
             .await;
@@ -277,7 +277,7 @@ mod tests {
         let pred_before = 0u64;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
-        let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
+        let (agent, _session) = agent_factory::build_chump_agent_cli().expect("build agent");
         let reply = agent.run("What is 42 * 17 + 99?").await.map(|o| o.reply);
 
         let pred_after = 0u64;
@@ -408,7 +408,7 @@ mod tests {
         let pred_before = 0u64;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
-        let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
+        let (agent, _session) = agent_factory::build_chump_agent_cli().expect("build agent");
         let reply = agent
             .run("Check your state and recall what you know about the system architecture")
             .await;
@@ -474,7 +474,7 @@ mod tests {
             .await;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
-        let (agent, _session) = discord::build_chump_agent_cli().expect("build agent");
+        let (agent, _session) = agent_factory::build_chump_agent_cli().expect("build agent");
         let _ = agent.run("Test the consciousness pipeline").await;
 
         // Print full metrics report

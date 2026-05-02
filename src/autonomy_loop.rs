@@ -7,7 +7,7 @@
 
 use anyhow::{anyhow, Result};
 
-use crate::discord;
+use crate::agent_factory;
 use crate::episode_db;
 use crate::mcp_bridge;
 use crate::memory_db;
@@ -748,7 +748,7 @@ struct RealExecutor;
 #[async_trait::async_trait]
 impl Executor for RealExecutor {
     async fn run(&self, prompt: &str) -> String {
-        match discord::build_chump_agent_cli() {
+        match agent_factory::build_chump_agent_cli() {
             Ok((agent, _ready)) => agent
                 .run(prompt)
                 .await

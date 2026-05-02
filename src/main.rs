@@ -11,6 +11,7 @@ mod acp_server;
 mod activation;
 mod adversary;
 mod adversary_llm;
+mod agent_factory;
 mod agent_lease;
 pub mod agent_loop;
 mod agent_session;
@@ -147,6 +148,7 @@ mod speculative_execution;
 mod state_db;
 mod stream_events;
 mod streaming_provider;
+mod system_prompt;
 mod task_contract;
 mod task_db;
 mod task_executor;
@@ -2029,7 +2031,7 @@ async fn main() -> Result<()> {
         {
             tokio::spawn(health_server::run(port));
         }
-        let (agent, ready_session) = discord::build_chump_agent_cli()?;
+        let (agent, ready_session) = agent_factory::build_chump_agent_cli()?;
         let running_session = ready_session.start();
         let single_message = args
             .get(2)
@@ -3152,7 +3154,7 @@ async fn run_reflection_ab_mode(episodes_path: Option<std::path::PathBuf>) {
 
 #[cfg(test)]
 mod tests {
-    use crate::discord;
+    use crate::agent_factory;
     use serde_json::json;
     use serial_test::serial;
     use wiremock::matchers::{method, path};
@@ -3179,7 +3181,7 @@ mod tests {
             .await;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
-        let (agent, _) = discord::build_chump_agent_cli().expect("build agent");
+        let (agent, _) = agent_factory::build_chump_agent_cli().expect("build agent");
         let outcome = agent.run("Hello").await.unwrap();
         std::env::remove_var("OPENAI_API_BASE");
         assert!(
