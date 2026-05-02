@@ -1,0 +1,7 @@
+- id: INFRA-270
+  domain: INFRA
+  title: "speculative parallel inference for high-confidence prompts: fan-out to N cascade slots, take first sane response"
+  status: open
+  priority: P3
+  effort: m
+

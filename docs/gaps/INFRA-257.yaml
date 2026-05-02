@@ -1,0 +1,15 @@
+- id: INFRA-257
+  domain: INFRA
+  title: "pre-commit: docs-delta + credential + raw-yaml guards skipped on doc-only commits (early-exit bug)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    scripts/git-hooks/pre-commit lines 1331-1334 exit 0 early when no .rs files are staged. This skips ALL subsequent guards: docs-delta (INFRA-009/124), credential-pattern, raw-YAML-edit, book-sync, etc. Doc-only and yaml-only commits bypass every guard except the rust-related ones. Fix: gate the early-exit so it only skips the cargo-fmt/check blocks (which legitimately have nothing to do), but lets execution continue to the doc/yaml/credential guards. Caught while implementing INFRA-124 — the trailer-validation test needed to add a dummy .rs file to make the docs-delta block run at all.
+  acceptance_criteria:
+    - Hook script restructured so docs-delta + credential + raw-yaml + book-sync run on doc-only commits
+    - Existing rust-staged behavior preserved (cargo-fmt + cargo-check still run when rust is staged)
+    - "Test: doc-only commit with bad Net-new-docs trailer is now rejected (was silently accepted)"
+  closed_date: '2026-05-02'
+  closed_pr: 869
+

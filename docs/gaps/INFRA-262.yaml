@@ -1,0 +1,48 @@
+- id: INFRA-262
+  domain: INFRA
+  title: "bot-merge.sh INFRA-154: stop touching .chump/state.sql — kills the conflict cascade hot-spot"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    This session (2026-05-02) hit `.chump/state.sql` merge conflicts on EVERY rebase
+    of an OPEN PR — 6+ times across 23 PRs. Root cause:
+    
+    bot-merge.sh's INFRA-154 auto-close step does:
+      chump gap dump --out .chump/state.sql
+      git add .chump/state.sql
+      git commit ...
+    
+    With N PRs in flight (parallel agents), each one's auto-close commit edits the
+    SAME state.sql file. Sibling auto-close commits land on main → my PR goes DIRTY
+    on state.sql → I rebase → regenerate state.sql from canonical state.db →
+    git add → continue. Repeat for each in-flight PR. Cascading rebase pain.
+    
+    The state.sql file is a regenerated artifact from .chump/state.db (the canonical
+    SQLite store). It's tracked so reviewers can see human-readable diffs of state.db
+    changes. But post-INFRA-188 (per-file gaps), the human-readable diff is in
+    `docs/gaps/<ID>.yaml` — state.sql is now redundant for PR review.
+    
+    The .github/workflows/regenerate-gaps-yaml.yml workflow already keeps state.sql
+    in sync on main via merge_group. We don't need bot-merge.sh to do it too.
+    
+    ## Fix
+    bot-merge.sh INFRA-154 step:
+      - REMOVE: `chump gap dump --out .chump/state.sql`
+      - REMOVE: `git add .chump/state.sql`
+      - KEEP: docs/gaps.yaml + docs/gaps/ git-add (still relevant for PR review)
+    
+    The regenerate-gaps-yaml workflow handles state.sql on main (unchanged).
+    
+    ## Acceptance
+    - bot-merge.sh INFRA-154 step does NOT touch .chump/state.sql
+    - Documented in CLAUDE.md (state.sql is regen-only, not part of PR diff)
+    - state.sql still exists in tree (other tools depend on it; this just changes
+      who's responsible for updating it in PR contexts)
+  acceptance_criteria:
+    - bot-merge.sh INFRA-154 step skips state.sql
+    - state.sql still tracked, just regen-only
+    - CLAUDE.md notes state.sql is post-merge artifact
+  closed_date: '2026-05-02'
+  closed_pr: 877
+
