@@ -138,17 +138,25 @@ gap_status() {
 # Parse .chump-locks/*.json with python3 (always available; no jq dependency).
 # Returns "session_id:expires_at" for any live lease with matching gap_id that
 # belongs to a different session, or empty string if free.
+#
+# INFRA-193 (speculative execution): if the CALLER is speculative
+# (CHUMP_SPECULATIVE=1) AND the existing claim is also marked
+# `"speculative": true`, the conflict is allowed — both sessions race in
+# parallel and first-to-land wins. Any non-speculative collision still
+# blocks: exclusive lease semantics remain the safe default.
 check_lease_claim() {
     local gap_id="$1"
     local my_session="$2"
+    local my_speculative="${CHUMP_SPECULATIVE:-0}"
     [[ -d "$LOCK_DIR" ]] || return 0
 
-    python3 - "$LOCK_DIR" "$gap_id" "$my_session" <<'PYEOF'
+    python3 - "$LOCK_DIR" "$gap_id" "$my_session" "$my_speculative" <<'PYEOF'
 import json, os, sys
 from datetime import datetime, timezone
 
-lock_dir, gap_id, my_session = sys.argv[1], sys.argv[2], sys.argv[3]
+lock_dir, gap_id, my_session, my_spec = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 now = datetime.now(timezone.utc)
+my_spec = my_spec == "1"
 
 for fname in os.listdir(lock_dir):
     if not fname.endswith(".json"):
@@ -184,6 +192,16 @@ for fname in os.listdir(lock_dir):
             continue  # stale claim — treat as free
     except Exception:
         continue  # unparseable timestamps → treat as expired
+
+    # INFRA-193: speculative-on-speculative is NOT a conflict — both race.
+    other_spec = bool(d.get("speculative"))
+    if my_spec and other_spec:
+        # Surface as advisory note so the operator sees the race
+        sys.stderr.write(
+            f"[gap-preflight] INFRA-193 speculative race: '{d['session_id']}' is also "
+            f"working on {gap_id} (both speculative). First-to-land wins.\n"
+        )
+        continue
 
     print(f"{d['session_id']}:{d.get('expires_at', '?')}")
     sys.exit(0)
