@@ -19,7 +19,18 @@ name: Regenerate per-file gap registry on merge
 #      merge_group temp ref so the squashed commit on main is canonical.
 
 on:
-  merge_group:
+  # INFRA-236 follow-up (2026-05-02): merge_group triggers NEVER fire on this
+  # repo — real GitHub merge queue is org Team/Enterprise only and the
+  # merge_queue rule type returns 422 on personal-account repos (per
+  # CLAUDE.md INFRA-201, 2026-05-01). Switched to push:main so each landed
+  # commit on main runs the closer + round-trip regen. The closer extracts
+  # gap-IDs from the head commit subject (which is the squashed PR commit
+  # for our auto-merge flow) and flips matching open gaps to done.
+  push:
+    branches: [main]
+    paths-ignore:
+      # Skip self-runs from the regen bot's own [skip ci] commits.
+      - '.github/workflows/regenerate-gaps-yaml.yml'
 
 permissions:
   contents: write
@@ -57,13 +68,12 @@ jobs:
       - name: Build chump CLI (release)
         run: cargo build --release --bin chump
 
-      - name: INFRA-236 — close gaps named in merging commit subjects
-        # Authoritative ghost-elimination: extract gap-IDs from each commit
-        # subject in the merge_group range and surgically flip matching
-        # status:open per-file YAMLs to status:done with closed_pr +
-        # closed_date BEFORE the round-trip regen runs. This way, the
-        # subsequent import + dump sees the closures and they survive the
-        # round-trip atomically with the merge.
+      - name: INFRA-236 — close gaps named in the landed commit subject
+        # Authoritative ghost-elimination: extract gap-IDs from the just-
+        # pushed commit subject and surgically flip matching status:open
+        # per-file YAMLs to status:done with closed_pr + closed_date
+        # BEFORE the round-trip regen runs. Subsequent import + dump
+        # carries the closure atomically into the next regen commit.
         #
         # Filing PRs (chore(gaps): file …) are skipped. [no-close] tag
         # opts a commit out for partial-progress / staged-rollout PRs.
@@ -71,24 +81,34 @@ jobs:
         # behaviour and scripts/ci/test-close-gaps-from-commit-subjects.sh
         # for the test fixture.
         run: |
-          # PR number for closed_pr lookup. merge_group runs on the
-          # queue's temp branch; github.event.pull_requests carries the
-          # source PR(s). Use the first one as the canonical closer.
-          PR_NUMBER="$(jq -r '.pull_requests[0].number // empty' \
-            "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
-          if [ -z "$PR_NUMBER" ]; then
-            echo "[infra-236] no PR number on this merge_group event — skipping closer (regen still runs)"
+          # On a push event, github.sha is the landed commit and
+          # github.event.before is its parent (or all-zeros for branch
+          # creation). For our auto-merge flow, github.sha is the squashed
+          # PR commit whose subject matches the PR title (e.g.
+          # "INFRA-236: ... (#795)").
+          HEAD_SHA="${{ github.sha }}"
+          BEFORE_SHA="${{ github.event.before }}"
+
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "[infra-236] no before-sha (branch creation?) — scanning HEAD only"
+            RANGE="${HEAD_SHA}~1..${HEAD_SHA}"
           else
-            # The merge_group base is github.event.merge_group.base_sha;
-            # the head is HEAD on the temp branch.
-            BASE_SHA="$(jq -r '.merge_group.base_sha // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
-            if [ -z "$BASE_SHA" ]; then
-              echo "[infra-236] no base_sha in merge_group event — falling back to origin/main"
-              BASE_SHA="origin/main"
-            fi
-            echo "[infra-236] scanning $BASE_SHA..HEAD for gap-ID closures targeting PR #$PR_NUMBER"
+            RANGE="${BEFORE_SHA}..${HEAD_SHA}"
+          fi
+
+          # Extract the closing PR number from the squashed commit subject.
+          # GitHub auto-merge squashes append " (#N)" to the title; we use
+          # that as the closed_pr value. Falls back to 0 if extraction fails
+          # (closer will warn and skip).
+          PR_NUMBER="$(git log -1 --format='%s' "$HEAD_SHA" \
+            | grep -oE '\(#[0-9]+\)' | head -1 | tr -d '(#)')"
+          if [ -z "$PR_NUMBER" ]; then
+            echo "[infra-236] could not extract (#N) from commit subject — skipping closer"
+            echo "[infra-236]   subject: $(git log -1 --format='%s' "$HEAD_SHA")"
+          else
+            echo "[infra-236] scanning $RANGE for gap-ID closures targeting PR #$PR_NUMBER"
             ./scripts/coord/close-gaps-from-commit-subjects.sh \
-              "$BASE_SHA..HEAD" "$PR_NUMBER" || \
+              "$RANGE" "$PR_NUMBER" || \
               echo "[infra-236] closer non-zero exit (continuing — regen below is the safety net)"
           fi
 
