@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# install-ambient-rotate-launchd.sh — INFRA-122: install daily launchd agent
+# that runs scripts/dev/ambient-rotate.sh.
+#
+# Without scheduled rotation, .chump-locks/ambient.jsonl grows unbounded
+# (~4MB / 21k lines on a single busy day; would reach multi-GB over a few
+# weeks of fleet activity). The rotate script archives events older than
+# 7 days to .chump-locks/ambient.jsonl.YYYY-MM-DD.gz; ambient-query.sh
+# transparently reads from both live + archives.
+#
+# Idempotent: safe to re-run.
+# Disable: launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-ambient-rotate.plist
+# Manually fire: launchctl start ai.openclaw.chump-ambient-rotate
+set -euo pipefail
+
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+PLIST_NAME="ai.openclaw.chump-ambient-rotate.plist"
+DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
+
+mkdir -p "$HOME/Library/LaunchAgents"
+
+cat >"$DEST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.openclaw.chump-ambient-rotate</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>$REPO/scripts/dev/ambient-rotate.sh</string>
+  </array>
+  <!-- Daily at 03:00 local. Archives events older than AMBIENT_RETAIN_DAYS
+       (default 7) to .chump-locks/ambient.jsonl.YYYY-MM-DD.gz and writes a
+       {"event":"rotated",...} summary line to the live log. Override
+       retention with AMBIENT_RETAIN_DAYS in this plist's EnvironmentVariables
+       if you want different windows. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-ambient-rotate.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-ambient-rotate.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>$REPO</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>$HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:$HOME/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
+EOF
+
+launchctl unload "$DEST" 2>/dev/null || true
+launchctl load "$DEST"
+
+echo "Installed and loaded: $DEST"
+launchctl list | grep -F "ai.openclaw.chump-ambient-rotate" || true
+echo
+echo "Smoke test (dry-run): $REPO/scripts/dev/ambient-rotate.sh --dry-run"
+echo "Manually fire        : launchctl start ai.openclaw.chump-ambient-rotate"
+echo "Tail logs            : tail -f /tmp/chump-ambient-rotate.{out,err}.log"

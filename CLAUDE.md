@@ -188,6 +188,15 @@ Linked worktrees under `.claude/worktrees/` are the main **disk** risk on agent-
 
 Manual escape hatch from the **main** checkout: `git worktree remove .claude/worktrees/<name>` when you are sure nothing has that directory as its cwd.
 
+## ambient.jsonl rotation (INFRA-122, 2026-05-02)
+
+`.chump-locks/ambient.jsonl` is the file-side of the peripheral-vision stream and is appended-to by every agent on every event. Without rotation it grows ~4MB/day under fleet load and reaches multi-GB over a few weeks.
+
+- **Rotation script:** `scripts/dev/ambient-rotate.sh` — keeps `AMBIENT_RETAIN_DAYS` (default 7) of events in-place, archives older events to `.chump-locks/ambient.jsonl.YYYY-MM-DD.gz`, and writes a `{"event":"rotated",...}` summary line.
+- **macOS install (do this once per dogfood machine):** `scripts/setup/install-ambient-rotate-launchd.sh` — runs the rotate script daily at 03:00 local. **Verify:** `launchctl list | grep ai.openclaw.chump-ambient-rotate`. **Logs:** `/tmp/chump-ambient-rotate.{out,err}.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-ambient-rotate.plist`.
+- **Self-monitoring:** if `ambient.jsonl` exceeds `AMBIENT_SIZE_ALERT_MB` (default 50MB), the rotate script emits an `ALERT kind=ambient_oversize` event into the stream itself — visible during the standard pre-flight `tail -30 .chump-locks/ambient.jsonl`. Catches the case where rotation isn't installed or the schedule broke.
+- **Querying historical data:** `scripts/dev/ambient-query.sh` transparently reads from the live log + all rotated `.gz` archives in chronological order. Use `--since 24h` to bound the search.
+
 ## Overnight research scheduler (INFRA-114, 2026-04-26)
 
 Research churn (eval sweeps, A/B studies, ablations) runs overnight, not during the workday. Daytime is for the dispatcher and agent work.
