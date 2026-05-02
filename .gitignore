@@ -124,3 +124,8 @@ acp_sessions/
 
 # INFRA-202: per-machine sccache config (created by scripts/setup/install-sccache.sh)
 .cargo/config.toml
+
+# Runtime/operational state (local only — not committed)
+.chump/activation/
+.chump/alerts.log
+.chump/health.jsonl
