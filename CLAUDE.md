@@ -197,6 +197,31 @@ when no `--gap` was given, or when the chump binary doesn't support
 
 [^pr52]: Historical context — PR #52 (2026-04-18) lost 11 commits when an agent kept pushing after auto-merge was armed; GitHub captured the branch at first-CI-green and dropped everything pushed after. Recovery PR #65 was hand-cherry-picked. The merge queue (INFRA-MERGE-QUEUE) closes the race only if you stop pushing once the PR is in the queue.
 
+## Speculative execution (INFRA-193, opt-in)
+
+Default coordination is **exclusive lease** — one agent per gap. That serializes work and adds coordination latency. For latency-critical or high-diversity gaps you can opt two (or more) agents into a deliberate race:
+
+```bash
+# Both agents add --speculative when claiming the same gap:
+scripts/coord/gap-claim.sh INFRA-NNN --speculative              # agent A
+CHUMP_SPECULATIVE=1 scripts/coord/gap-preflight.sh INFRA-NNN    # agent B preflight
+scripts/coord/gap-claim.sh INFRA-NNN --speculative              # agent B claim
+
+# Or via bot-merge.sh end-to-end (propagates to gap-claim.sh + post-arm sweep):
+scripts/coord/bot-merge.sh --gap INFRA-NNN --auto-merge --speculative
+```
+
+**Semantics:**
+- `gap-claim.sh --speculative` writes `"speculative": true` into the lease.
+- `gap-preflight.sh` allows concurrent claims **only when both sides are speculative**. A non-speculative claimer is still blocked by any existing claim (and a speculative claimer is still blocked by an existing non-speculative claim — opting out of the race forfeits the right to race).
+- `bot-merge.sh --speculative` propagates the flag to gap-claim.sh AND, after auto-merge is armed, runs a **loser sweep**: scans open PRs that cite the same gap ID and closes them with `Auto-closing as superseded by #N`. The losers' branches stay intact (no force-push, no commit loss) — re-open or cherry-pick if the winner is later reverted.
+
+**When it makes sense:** latency-critical gaps; gaps where two agents have very different strengths (e.g. one Claude, one Gemini); research/eval gaps where the diversity is itself the signal. Cost: 2x compute. Benefit: 0x coordination latency + diversity bonus.
+
+**Bypass envs:** `CHUMP_SPECULATIVE_SWEEP=0` skips the loser-PR closure step; `CHUMP_SPECULATIVE=1` enables the mode without `--speculative`.
+
+**Tests:** `scripts/ci/test-speculative-execution.sh` covers the four-quadrant claim matrix (spec×spec allow, spec×excl block, excl×spec block, lease writes `speculative=true`).
+
 ## Worktree disk hygiene
 
 Linked worktrees under `.claude/worktrees/` are the main **disk** risk on agent-heavy machines: each keeps its own `target/` (often multi‑GB after `cargo clippy` / `cargo test`). After a successful ship, `bot-merge.sh` **purges `./target`** in that worktree when it writes `.bot-merge-shipped` (skip with **`CHUMP_KEEP_TARGET=1`** if you still need the cache there).
