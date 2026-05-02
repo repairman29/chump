@@ -1,0 +1,11 @@
+- id: META-010
+  domain: META
+  title: Close INFRA-117 + INFRA-118 audits — both features verified present
+  status: done
+  priority: P2
+  effort: m
+  notes: |
+    Closure PR for INFRA-117 + INFRA-118 verification audits — both features confirmed implemented. No code changes; pure registry hygiene.
+  closed_date: '2026-05-02'
+  closed_pr: 758
+
