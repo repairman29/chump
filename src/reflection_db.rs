@@ -2427,3 +2427,350 @@ mod tests {
         assert_eq!(all_lessons.len(), 2, "no threshold → all lessons returned");
     }
 }
+
+// ---------------------------------------------------------------------------
+// INFRA-127: end-to-end record → query → use coverage.
+//
+// Existing tests cover individual functions in isolation but never trace the
+// full lesson-injection pathway: a session writes a reflection row, the
+// spawn-lessons assembler queries it, and the rendered block contains the
+// directive in the form the prompt assembler will paste into a child agent's
+// system prompt. Without this, the COG-016 / COG-024 / MEM-006 lesson
+// injection feature is functionally unverified end to end — a regression in
+// any of save_reflection, load_spawn_lessons,
+// format_lessons_block_with_prompt, CHUMP_LESSONS_AT_SPAWN_N parsing,
+// CHUMP_BYPASS_SPAWN_LESSONS bypass, or the quality-threshold filter would
+// slip past the existing unit tests.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod e2e_record_query_use {
+    use super::*;
+    use serial_test::serial;
+
+    /// Per-test fresh DB root with isolated env vars.
+    fn fresh_test_root() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump_reflection_db_e2e_{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        set_test_db_root(Some(dir));
+    }
+
+    /// Build a reflection row matching the shape the autonomy loop produces.
+    fn reflection_with_directive(
+        directive: &str,
+        priority: Priority,
+        scope: Option<&str>,
+        outcome: OutcomeClass,
+    ) -> Reflection {
+        Reflection {
+            id: None,
+            episode_id: None,
+            intended_goal: "e2e test goal".into(),
+            observed_outcome: "e2e test outcome".into(),
+            outcome_class: outcome,
+            error_pattern: match outcome {
+                OutcomeClass::Pass => None,
+                _ => Some(ErrorPattern::ToolMisuse),
+            },
+            improvements: vec![ImprovementTarget {
+                directive: directive.into(),
+                priority,
+                scope: scope.map(String::from),
+                actioned_as: None,
+            }],
+            hypothesis: "e2e hypothesis".into(),
+            surprisal_at_reflect: Some(0.5),
+            confidence_at_reflect: Some(0.7),
+            created_at: "2026-04-17T00:00:00Z".into(),
+        }
+    }
+
+    /// Mirrors the prompt_assembler.rs:96-116 spawn-block assembly path.
+    /// Returns the rendered block text the assembler would prepend to the
+    /// system prompt (empty string when no lessons would be injected — same
+    /// contract as the real path).
+    fn assembler_path(domain: &str, user_prompt: &str) -> String {
+        let n = match spawn_lessons_n() {
+            Some(n) if n > 0 => n,
+            _ => return String::new(),
+        };
+        if !reflection_available() {
+            return String::new();
+        }
+        let targets = load_spawn_lessons(domain, n);
+        format_lessons_block_with_prompt(&targets, Some(user_prompt))
+    }
+
+    /// Save → query → assembler-render → assert directive appears in block.
+    /// This is the load-bearing contract: a recorded directive reaches the
+    /// next agent's system prompt unmodified.
+    #[test]
+    #[serial(reflection_db)]
+    fn full_path_directive_reaches_assembled_block() {
+        fresh_test_root();
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "5");
+        std::env::remove_var("CHUMP_BYPASS_SPAWN_LESSONS");
+        std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
+        std::env::set_var("CHUMP_LESSONS_TASK_AWARE", "0");
+
+        save_reflection(
+            &reflection_with_directive(
+                "verify file exists before patch",
+                Priority::High,
+                Some("patch_file"),
+                OutcomeClass::Pass,
+            ),
+            Some(101),
+        )
+        .expect("save_reflection should persist row");
+
+        let block = assembler_path("patch_file", "implement the new feature please");
+
+        assert!(
+            !block.is_empty(),
+            "assembler must produce non-empty block when a high-priority directive matches the domain"
+        );
+        assert!(
+            block.contains("verify file exists before patch"),
+            "directive text must reach the assembled prompt verbatim; got:\n{}",
+            block
+        );
+        assert!(
+            block.contains("[patch_file]"),
+            "scope tag must render alongside the directive; got:\n{}",
+            block
+        );
+        assert!(
+            block.contains("Lessons from prior episodes"),
+            "block must carry the COG-016 header that frames the directives; got:\n{}",
+            block
+        );
+
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+        std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
+    }
+
+    /// CHUMP_LESSONS_AT_SPAWN_N unset → no block, even with rows in the DB.
+    #[test]
+    #[serial(reflection_db)]
+    fn no_spawn_n_means_no_block() {
+        fresh_test_root();
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+        std::env::remove_var("CHUMP_BYPASS_SPAWN_LESSONS");
+
+        save_reflection(
+            &reflection_with_directive(
+                "should not appear",
+                Priority::High,
+                None,
+                OutcomeClass::Pass,
+            ),
+            Some(102),
+        )
+        .expect("save_reflection should persist row");
+
+        let block = assembler_path("", "do the thing");
+        assert!(
+            block.is_empty(),
+            "without CHUMP_LESSONS_AT_SPAWN_N the assembler must not inject anything; got:\n{}",
+            block
+        );
+    }
+
+    /// CHUMP_BYPASS_SPAWN_LESSONS=1 short-circuits load_spawn_lessons before
+    /// any DB work. EVAL-056 ablation gate.
+    #[test]
+    #[serial(reflection_db)]
+    fn bypass_env_returns_empty_lessons() {
+        fresh_test_root();
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "5");
+        std::env::set_var("CHUMP_BYPASS_SPAWN_LESSONS", "1");
+
+        save_reflection(
+            &reflection_with_directive(
+                "ablation suppressed",
+                Priority::High,
+                None,
+                OutcomeClass::Pass,
+            ),
+            Some(103),
+        )
+        .expect("save_reflection should persist row");
+
+        let direct = load_spawn_lessons("", 5);
+        assert!(
+            direct.is_empty(),
+            "CHUMP_BYPASS_SPAWN_LESSONS=1 must short-circuit load_spawn_lessons; got {:?}",
+            direct.iter().map(|t| &t.directive).collect::<Vec<_>>()
+        );
+
+        let block = assembler_path("", "do the thing");
+        assert!(
+            block.is_empty(),
+            "bypass must propagate end-to-end through the assembler path"
+        );
+
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+        std::env::remove_var("CHUMP_BYPASS_SPAWN_LESSONS");
+    }
+
+    /// Quality threshold filters out lessons whose parent reflection had a
+    /// failure outcome. Save one Pass + one Failure, set threshold above
+    /// failure quality, verify only Pass reaches the block.
+    #[test]
+    #[serial(reflection_db)]
+    fn quality_threshold_filters_failure_lessons_end_to_end() {
+        fresh_test_root();
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "5");
+        std::env::remove_var("CHUMP_BYPASS_SPAWN_LESSONS");
+        std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "0.75");
+        std::env::set_var("CHUMP_LESSONS_TASK_AWARE", "0");
+
+        save_reflection(
+            &reflection_with_directive(
+                "lesson from clean pass",
+                Priority::High,
+                None,
+                OutcomeClass::Pass,
+            ),
+            Some(201),
+        )
+        .expect("save_reflection should persist row");
+        save_reflection(
+            &reflection_with_directive(
+                "lesson from failure run",
+                Priority::High,
+                None,
+                OutcomeClass::Failure,
+            ),
+            Some(202),
+        )
+        .expect("save_reflection should persist row");
+
+        let block = assembler_path("", "implement the new feature");
+        assert!(
+            block.contains("lesson from clean pass"),
+            "Pass-derived lesson must surface above 0.75 quality threshold; got:\n{}",
+            block
+        );
+        assert!(
+            !block.contains("lesson from failure run"),
+            "Failure-derived lesson (quality=0.0) must be filtered at threshold 0.75; got:\n{}",
+            block
+        );
+
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+        std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
+        std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
+    }
+
+    /// Scope filter: a directive scoped to "patch_file" must surface under
+    /// that domain hint AND under universal queries, but a directive scoped
+    /// to a different tool must NOT surface for the patch_file domain.
+    /// End-to-end via the assembler path so a regression in load_spawn_lessons
+    /// or the assembler surfaces here.
+    #[test]
+    #[serial(reflection_db)]
+    fn scope_hint_filters_unrelated_lessons_in_assembled_block() {
+        fresh_test_root();
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "5");
+        std::env::remove_var("CHUMP_BYPASS_SPAWN_LESSONS");
+        std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
+        std::env::set_var("CHUMP_LESSONS_TASK_AWARE", "0");
+
+        save_reflection(
+            &reflection_with_directive(
+                "patch-only lesson",
+                Priority::High,
+                Some("patch_file"),
+                OutcomeClass::Pass,
+            ),
+            Some(301),
+        )
+        .expect("save_reflection should persist row");
+        save_reflection(
+            &reflection_with_directive(
+                "git-only lesson",
+                Priority::High,
+                Some("git_commit"),
+                OutcomeClass::Pass,
+            ),
+            Some(302),
+        )
+        .expect("save_reflection should persist row");
+        save_reflection(
+            &reflection_with_directive(
+                "universal lesson",
+                Priority::High,
+                None,
+                OutcomeClass::Pass,
+            ),
+            Some(303),
+        )
+        .expect("save_reflection should persist row");
+
+        let patch_block = assembler_path("patch_file", "patch this file");
+        assert!(
+            patch_block.contains("patch-only lesson"),
+            "patch-scoped lesson must surface for patch_file domain; got:\n{}",
+            patch_block
+        );
+        assert!(
+            patch_block.contains("universal lesson"),
+            "universal-scope lessons must surface under any domain hint; got:\n{}",
+            patch_block
+        );
+        assert!(
+            !patch_block.contains("git-only lesson"),
+            "different-tool lesson must be filtered out by scope; got:\n{}",
+            patch_block
+        );
+
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+        std::env::remove_var("CHUMP_LESSONS_TASK_AWARE");
+    }
+
+    /// EVAL-030 task-class-aware suppression: trivial-token user prompts
+    /// (single-word chat like "hi") must skip the entire block even when
+    /// rows are present and CHUMP_LESSONS_AT_SPAWN_N is set. Default-on; only
+    /// disabled by CHUMP_LESSONS_TASK_AWARE=0. End-to-end coverage so a
+    /// regression in is_trivial_token or the assembler's prompt-passthrough
+    /// surfaces here.
+    #[test]
+    #[serial(reflection_db)]
+    fn trivial_token_prompt_skips_entire_block() {
+        fresh_test_root();
+        std::env::set_var("CHUMP_LESSONS_AT_SPAWN_N", "5");
+        std::env::remove_var("CHUMP_BYPASS_SPAWN_LESSONS");
+        std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
+        std::env::remove_var("CHUMP_LESSONS_TASK_AWARE"); // default-on
+
+        save_reflection(
+            &reflection_with_directive(
+                "should not appear for trivial chat",
+                Priority::High,
+                None,
+                OutcomeClass::Pass,
+            ),
+            Some(401),
+        )
+        .expect("save_reflection should persist row");
+
+        let trivial_block = assembler_path("", "hi");
+        assert!(
+            trivial_block.is_empty(),
+            "EVAL-030: trivial-token prompts must skip the entire lessons block; got:\n{}",
+            trivial_block
+        );
+
+        let real_block = assembler_path("", "implement the authentication feature end to end");
+        assert!(
+            !real_block.is_empty(),
+            "substantive prompts must still receive the lessons block when rows exist"
+        );
+
+        std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+    }
+}
