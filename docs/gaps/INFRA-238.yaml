@@ -1,0 +1,58 @@
+- id: INFRA-238
+  domain: INFRA
+  title: regenerate-gaps-yaml.yml propagates one host's stale state.db across all PRs — reverts surgical closures from other agents
+  status: open
+  priority: P0
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    NEW post-INFRA-188-cutover ghost source observed 2026-05-02:
+
+    PR #787 surgically flipped INFRA-176/175/169 from status:open →
+    status:done with closed_pr fields. Within an hour, all three rows
+    reverted to status:open in the working tree (system reminders
+    showed the linter/external-process revert).
+
+    Likely path: regenerate-gaps-yaml.yml (added by the INFRA-188
+    cutover) runs on merge_group / merge events. It calls something
+    equivalent to `chump gap dump --per-file` which regenerates
+    docs/gaps/<ID>.yaml from the LOCAL state.db. Because state.db is
+    gitignored and per-host, the regen propagates one host's stale
+    view across all PRs:
+
+      - Host A: agent ships PR #787 with surgical YAML closures
+        (status:done)
+      - Host B (the workflow runner OR a sibling agent's machine):
+        state.db still says status:open for those gaps because Host B
+        never ran chump gap ship
+      - Host B's regen overwrites Host A's surgical closures with
+        status:open
+      - Net: PR #787's closures get reverted
+
+    Same root cause as INFRA-233 (NULL closed_pr propagation) but for
+    the status field too.
+
+    Two fix options:
+      (a) Stop regenerating from state.db at all — make per-file YAML
+          the only writer, eliminate the dump-from-DB path. State.db
+          rebuilt FROM YAML on demand via `chump gap import`.
+      (b) Pin regen to a SHARED state.db committed alongside YAML (or
+          a SQL dump that's authoritative), so all hosts produce
+          identical regen output.
+
+    (a) is the architectural correction — matches "YAML is canonical"
+    post-cutover. (b) preserves the SQLite-canonical model from
+    INFRA-059.
+
+    Pairs with INFRA-236 (commit-subject closure as authoritative
+    source) — both eliminate state.db as a write target during merge-
+    time YAML regen.
+  acceptance_criteria:
+    - "regenerate-gaps-yaml.yml does not revert surgical YAML closures from other hosts"
+    - "Round-trip test: on host A flip status:done, push; on host B run regen, observe no revert"
+    - "Either state.db dropped from regen path OR a SHARED canonical SQL source defined"
+  depends_on:
+    - INFRA-188
+    - INFRA-233
+  raised_by: claude
+  raised_in: '2026-05-02 — surfaced when PR #787 surgical closures got reverted within an hour by external regen process'
