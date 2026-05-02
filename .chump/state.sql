@@ -3381,7 +3381,7 @@ gaps:
 - id: FLEET-024
   domain: fleet
   title: FLEET L2 umbrella — Work Decomposition & Claiming (work board, help-seeking, decomposition heuristics)
-  status: open
+  status: done
   priority: P1
   effort: l
   description: |
@@ -3409,6 +3409,8 @@ gaps:
     Audit-refresh side effect: FLEET_VISION_2026Q2.md and WORLD_CLASS_ROADMAP.md last_audited dates bumped from 2026-04-25 to 2026-05-02 in the same PR; M1-M5 of WORLD_CLASS marked done; L1 of FLEET vision marked done.
   source_doc: docs/strategy/FLEET_VISION_2026Q2.md
   opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 747
 
 - id: FLEET-14
   domain: fleet
