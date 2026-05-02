@@ -271,6 +271,9 @@ jobs:
       - name: book/src ↔ docs/process sync guard (INFRA-170)
         run: bash scripts/ci/test-book-sync-guard.sh
 
+      - name: docs-delta trailer validation (INFRA-124)
+        run: bash scripts/ci/test-infra-124-docs-delta-trailer.sh
+
       - name: submodule-sanity guard (INFRA-158)
         run: bash scripts/ci/test-submodule-guard.sh
 
