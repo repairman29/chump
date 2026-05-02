@@ -46,6 +46,14 @@
 //! | `CHUMP_NATS_TIMEOUT_MS` | `500` | Connection + op timeout in ms |
 //! | `CHUMP_GAP_CLAIM_TTL_SECS` | `14400` (4h) | KV entry TTL |
 //! | `CHUMP_NATS_GAP_BUCKET` | `chump_gaps` | KV bucket name (override for tests) |
+//! | `CHUMP_NATS_WORK_BOARD_BUCKET` | `chump_work_board` | KV bucket name for FLEET-008 work board (override for tests) |
+//! | `CHUMP_WORK_BOARD_TTL_SECS` | `604800` (7d) | Work-board entry TTL |
+//!
+//! ## Modules
+//!
+//! - [`work_board`] — FLEET-008 shared subtask queue (post / claim / complete).
+
+pub mod work_board;
 
 use anyhow::{anyhow, Result};
 use async_nats::jetstream::{self, kv};
@@ -121,6 +129,9 @@ pub struct CoordClient {
     pub nats: async_nats::Client,
     js: jetstream::Context,
     gaps_kv: kv::Store,
+    /// FLEET-008 work-board KV bucket. Populated lazily during
+    /// [`Self::connect`] so the work_board module can rely on it.
+    pub(crate) work_board_kv: kv::Store,
 }
 
 impl CoordClient {
@@ -170,7 +181,17 @@ impl CoordClient {
         .await
         .map_err(|e| anyhow!("JetStream stream setup failed: {}", e))?;
 
-        Ok(Self { nats, js, gaps_kv })
+        // FLEET-008 work-board KV bucket. Independent of the gap-claim
+        // bucket so its TTL (7d default) and history depth (16) can be
+        // tuned without affecting atomic gap claims.
+        let work_board_kv = work_board::init_bucket(&js).await?;
+
+        Ok(Self {
+            nats,
+            js,
+            gaps_kv,
+            work_board_kv,
+        })
     }
 
     /// Like [`connect`] but returns `None` instead of an error when NATS is
@@ -318,6 +339,21 @@ impl CoordClient {
             ..Default::default()
         })
         .await
+    }
+
+    /// Internal: publish a raw payload on an arbitrary JetStream
+    /// subject. Used by sibling modules ([`work_board`]) that emit on
+    /// nested subjects like `chump.events.work_board.posted` rather
+    /// than the top-level `chump.events.<type>` shape that
+    /// [`Self::emit`] produces.
+    pub(crate) async fn js_publish_raw(&self, subject: &str, payload: Bytes) -> Result<()> {
+        self.js
+            .publish(subject.to_string(), payload)
+            .await
+            .map_err(|e| anyhow!("JetStream publish error: {}", e))?
+            .await
+            .map_err(|e| anyhow!("JetStream ack error: {}", e))?;
+        Ok(())
     }
 
     /// Flush pending pub acks.
