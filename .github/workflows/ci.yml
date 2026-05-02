@@ -250,6 +250,9 @@ jobs:
       - name: ambient-jsonl emit-time schema validation (INFRA-101)
         run: bash scripts/ci/test-ambient-schema.sh
 
+      - name: lease TTL file-based reaper (INFRA-115)
+        run: bash scripts/ci/test-infra-115-lease-ttl-file.sh
+
       - name: install-ambient-hooks idempotence + bypass (FLEET-023)
         run: bash scripts/ci/test-install-ambient-hooks.sh
 
