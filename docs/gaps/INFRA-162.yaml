@@ -1,0 +1,11 @@
+- id: INFRA-162
+  domain: infra
+  title: "ftue-clean-machine workflow: GitHub Actions cannot create PRs — switch to direct push"
+  status: done
+  priority: P1
+  effort: xs
+  notes: |
+    Resolved by INFRA-169 (2026-04-29): operator enabled Settings → Actions → General → 'Allow GitHub Actions to create and approve pull requests'. Workflow continues to use gh pr create successfully — verified via PR #707 (2026-05-02), #685 (2026-04-30), #671 (2026-04-29) all created and auto-merged. No code change needed; closing as obsolete.
+  closed_date: '2026-05-02'
+  closed_pr: 840
+
