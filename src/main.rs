@@ -486,7 +486,13 @@ async fn main() -> Result<()> {
                 let priority = flag("--priority").unwrap_or_else(|| "P2".into());
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
                 let stack_on = flag("--stack-on");
-                match store.reserve(&domain, &title, &priority, &effort) {
+                // INFRA-216: use reserve_verified so sibling sessions on the
+                // same host (shared .chump-locks/) detect and resolve ID
+                // collisions within the 200ms verification window.
+                let session_id = std::env::var("CHUMP_SESSION_ID")
+                    .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+                    .unwrap_or_else(|_| format!("chump-anon-{}", unix_ts()));
+                match store.reserve_verified(&domain, &title, &priority, &effort, &session_id) {
                     Ok(id) => {
                         // INFRA-061 (M3): when --stack-on is passed, emit the
                         // bot-merge.sh hint so dispatchers (and humans) know
