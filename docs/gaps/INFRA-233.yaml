@@ -1,0 +1,42 @@
+- id: INFRA-233
+  domain: infra
+  title: Local state.db has NULL closed_pr for ~200 already-closed gaps; chump gap dump --per-file silently strips them
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-05-02'
+  description: |
+    Many already-closed gaps in the local .chump/state.db have closed_pr
+    column = NULL even though their canonical docs/gaps/<ID>.yaml on
+    origin/main carries the closed_pr field. Counted ~200 affected gaps
+    on this machine on 2026-05-02 (e.g. COG-021 closed_pr=232 in YAML,
+    NULL in DB; COG-022, COG-026, etc.).
+
+    Likely root cause: closed_pr column was added in INFRA-156 (PR #637,
+    2026-04-25) but historical rows were imported from YAML before that
+    schema migration ran end-to-end with backfill. The migration created
+    the column but didn't backfill from existing YAML closed_pr fields.
+
+    Effect:
+      - chump gap dump --per-file regenerates docs/gaps/<ID>.yaml from
+        state.db, dropping the closed_pr line for every affected gap
+      - Committing the regen would silently strip closed_pr from ~200
+        files (same lossiness class as INFRA-208)
+      - Forces every gap-closure PR to be a surgical hand-edit OR a
+        wholesale-regen PR that the operator must hand-vet for
+        accidental closed_pr deletions
+
+    Fix paths:
+      (a) Backfill script: read every docs/gaps/<ID>.yaml on main, parse
+          closed_pr, UPDATE state.db SET closed_pr = ? WHERE id = ? for
+          every gap where local DB says NULL
+      (b) Make backfill part of chump gap import — when import sees a
+          YAML row with closed_pr that's missing in DB, populate it
+      (c) Add a chump gap doctor --backfill subcommand that runs (a) on
+          demand
+  acceptance_criteria:
+    - "chump gap dump --per-file on a backfilled tree produces ZERO diff against origin/main for the closed_pr field"
+    - "Backfill is idempotent (re-running produces no changes)"
+    - "chump gap import is the natural place to backfill on first invocation per worktree"
+  raised_by: claude
+  raised_in: '2026-05-02 — surfaced during INFRA-127 closure post-INFRA-188 cutover'
