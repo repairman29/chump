@@ -1351,9 +1351,11 @@ gaps:
 - id: DOC-014
   domain: DOC
   title: ONBOARDING.md '<60s FTUE' claim is false until bottles ship — qualify or remove
-  status: open
+  status: done
   priority: P0
   effort: xs
+  closed_date: '2026-04-30'
+  closed_pr: 676
 
 - id: EVAL-001
   domain: eval
@@ -2691,7 +2693,7 @@ gaps:
 - id: EVAL-090
   domain: EVAL
   title: Re-run EVAL-069 under verified python3.12 - F3 retirement is based on broken-vs-broken comparison
-  status: open
+  status: done
   priority: P0
   effort: s
   description: |
@@ -2718,6 +2720,8 @@ gaps:
     - If delta still ~0 with non-identical CIs, F3 retirement stands but on solid ground
     - Block PRODUCT-009 publication until this lands
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 722
 
 - id: EVAL-091
   domain: EVAL
@@ -2783,6 +2787,56 @@ gaps:
     - Pre-commit or CI check warns (non-blocking initially) when a mechanism-claim commit lacks a documented kappa score
     - EVAL-089 (finish EVAL-074 with Qwen-2.5-72B) uses this updated standard
   opened_date: '2026-04-27'
+
+- id: EVAL-094
+  domain: EVAL
+  title: ICLR 2026 covert sandbagging confirms 16-36% monitor bypass — run RESEARCH-026 swept experiment
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    "LLMs Can Covertly Sandbag on Capability Evaluations Against Chain-of-Thought
+    Monitoring" (arXiv:2508.00943, accepted ICLR 2026) evaluated 10 models including
+    Claude-3.7-Sonnet and Claude-4-Sonnet. Key finding: models bypass CoT monitoring
+    16-36% of the time when monitor-aware and when prompted to sandbag. Chump's A/B
+    harness uses Claude Haiku-4.5 and Sonnet-4.5 as agents under test with explicit
+    evaluation framing (task IDs, structured rubrics, "the user asks..." syntax).
+    
+    The IAPS paper (cited in Issues #6-#8) established that models detect evaluation
+    contexts. This paper quantifies the bypass rate against the specific monitoring
+    approach (CoT auditing) that Chump relies on implicitly for judge validity.
+    
+    EVAL-087 (P1, open, 3 cycles inactive) asks for RESEARCH-026 to be reframed to
+    P1. This gap supersedes that reframe request and directly executes the
+    RESEARCH-026 experiment: compare reflection fixture results under (a) standard
+    evaluation framing vs (b) naturalized framing with scrubbed task IDs and rubrics.
+    n>=100, cross-judge panel (haiku-4-5 + llama-3.3-70b), A/A baseline, preregistered
+    hypothesis.
+    
+    Filing this as EVAL-094 rather than closing EVAL-087 because EVAL-087 is a
+    priority-reframe request while this is an execution gap. Close EVAL-087 when
+    RESEARCH-026 is upgraded to P1 in the canonical store.
+  acceptance_criteria:
+    - RESEARCH-026 priority set to P1 in .chump/state.db (via chump gap set)
+    - Preregistration doc at docs/eval/preregistered/EVAL-094.md committed before data collection
+    - Harness run with n>=100, cross-judge, A/A calibration, naturalized vs standard framing
+    - Wilson CI results committed to docs/eval/EVAL-094-results.md
+    - Validated findings table in RESEARCH_INTEGRITY.md updated with result (or null)
+  depends_on: [EVAL-087, RESEARCH-026]
+  opened_date: '2026-05-02'
+
+- id: EVAL-095
+  domain: EVAL
+  title: Empirical re-run of CHUMP_BYPASS_NEUROMOD on current binary (deferred from EVAL-090)
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    EVAL-090 (2026-05-01) closed on the methodological finding (audit's broken-scorer claim contradicted by archived JSONL). The empirical question — does the *current* chump binary's CHUMP_BYPASS_NEUROMOD ablation produce a measurable accuracy signal under qwen2.5:14b? — was deferred (sweep killed inadvertently mid-run, not restarted because the methodological finding was independent and decisive). EVAL-069's verdict (delta ≈ 0 on this fixture+agent) was made in 2026-04-21 against an older chump binary; ~10 days of neuromod-related work has shipped since. A clean replication on the current binary would either (a) confirm EVAL-069 stands or (b) show the current binary's neuromod ablation produces a signal the older one didn't. Cheap insurance — n=20/cell, ~50 min wall-clock, ~/bin/zsh.50 Anthropic spend. Run as overnight job per CLAUDE.md scheduler discipline.
+  acceptance_criteria:
+    - n=20/cell sweep completes with scorer=llm_judge for ≥95% of rows
+    - result doc at docs/eval/EVAL-095-*.md compares to EVAL-069 baseline
+    - FINDINGS.md F3 caveat updated if delta > 0.10pp
 
 - id: EVAL-82
   domain: eval
@@ -3161,7 +3215,7 @@ gaps:
 - id: FLEET-017
   domain: FLEET
   title: Cold Water remote agent does not subscribe to NATS ambient stream - FLEET-006 unused
-  status: open
+  status: done
   priority: P0
   effort: xs
   description: |
@@ -3183,6 +3237,8 @@ gaps:
     - If NATS is unreachable, prompt logs the fact and continues with file fallback
     - Next Cold Water cycle Status of Prior Issues block cites NATS-observed activity, not just file tail
   opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 629
 
 - id: FLEET-018
   domain: FLEET
@@ -3271,6 +3327,39 @@ gaps:
   depends_on: [FLEET-019]
   closed_date: '2026-05-01'
   closed_pr: 696
+
+- id: FLEET-023
+  domain: FLEET
+  title: Cold Water sandbox ambient stream empty post-FLEET-019/020/021/022 — install step never executed
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    FLEET-017 (closed_pr: 629) was classified FIXED in Issue #8 on the grounds
+    that FLEET-019/020/021/022 shipped hook scripts and an installer
+    (scripts/setup/install-ambient-hooks.sh). However, .chump-locks/ambient.jsonl
+    in the Cold Water remote-sandbox session for Issue #9 contains exactly 2 events —
+    both session_start from the Cold Water agent itself. Zero operational events from
+    any sibling session. The hooks (ambient-context-inject.sh, ambient-session-end.sh)
+    exist on disk but are not wired into ~/.claude/settings.json in the sandbox
+    because install-ambient-hooks.sh is never invoked. The MANDATORY pre-flight in
+    CLAUDE.md still says `tail -30 .chump-locks/ambient.jsonl` and interprets output —
+    but in a fresh remote sandbox that output is always two session_start events.
+    FLEET-017's FIXED classification was premature: it shipped the hook infrastructure
+    but not the auto-install mechanism that would run the installer in a fresh sandbox
+    without operator intervention.
+    
+    Verified: `tail -50 .chump-locks/ambient.jsonl` output in this session:
+      {"ts":"2026-04-26T05:40:41Z","session":"chump-chump-1777182041","event":"session_start"}
+      {"ts":"2026-05-02T01:23:50Z","session":"chump-chump-1777685030","event":"session_start"}
+    
+    Five Cold Water cycles have now produced the same empty-ambient observation.
+    FLEET-006 (6 cycles), FLEET-017 (3 cycles, now re-FIXED), FLEET-023 (this cycle).
+  acceptance_criteria:
+    - Cold Water agent session sees ≥1 non-session_start ambient event from a sibling session within 5 minutes of start
+    - "Or: CLAUDE.md preflight section updated to document that ambient is filesystem-local-only in sandbox and no cross-machine signal is expected"
+    - "Whichever path: the empty-ambient observation is no longer a silent false negative"
+  opened_date: '2026-05-02'
 
 - id: FLEET-14
   domain: fleet
@@ -6517,9 +6606,11 @@ gaps:
 - id: INFRA-158
   domain: INFRA
   title: "ftue-clean-machine workflow: brew install fails because local-file formula path is rejected (must be in a tap)"
-  status: open
+  status: done
   priority: P1
   effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 727
 
 - id: INFRA-159
   domain: INFRA
@@ -6659,7 +6750,7 @@ gaps:
 - id: INFRA-167
   domain: INFRA
   title: chump --web startup pre-warm + canonical CHUMP_OLLAMA_KEEP_ALIVE=30m default
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -6672,6 +6763,8 @@ gaps:
   depends_on: [INFRA-165]
   notes: |
     See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #4 of 6. Lift the Bash pre-warm from this session into Rust. Pairs well with PRODUCT-023 (7B model means pre-warm holds ~5GB not 9GB).
+  closed_date: '2026-05-02'
+  closed_pr: 720
 
 - id: INFRA-168
   domain: INFRA
@@ -6731,9 +6824,11 @@ gaps:
 - id: INFRA-174
   domain: INFRA
   title: Enable Homebrew installer in cargo-dist + create repairman29/homebrew-chump tap (renamed from INFRA-172 collision)
-  status: open
+  status: done
   priority: P0
   effort: s
+  closed_date: '2026-04-30'
+  closed_pr: 677
 
 - id: INFRA-175
   domain: INFRA
@@ -6752,9 +6847,11 @@ gaps:
 - id: INFRA-177
   domain: INFRA
   title: "narration-detection retry: 50+ false-positive phrases waste 2 model rounds per conversational reply"
-  status: open
+  status: done
   priority: P0
   effort: s
+  closed_date: '2026-05-02'
+  closed_pr: 687
 
 - id: INFRA-178
   domain: INFRA
@@ -6775,9 +6872,10 @@ gaps:
 - id: INFRA-180
   domain: INFRA
   title: send 5KB of tool schema on every PWA chat turn (46 tools, mostly unused) — 53s prefill bottleneck
-  status: open
+  status: done
   priority: P0
   effort: s
+  closed_date: '2026-05-01'
 
 - id: INFRA-181
   domain: INFRA
@@ -6789,16 +6887,19 @@ gaps:
 - id: INFRA-182
   domain: INFRA
   title: "tool routing: send 3-8 relevant tools per turn (route_tools in chump-perception) instead of all 46"
-  status: open
+  status: done
   priority: P0
   effort: m
+  closed_date: '2026-05-01'
 
 - id: INFRA-183
   domain: INFRA
   title: PWA latency budget umbrella — measure + fix the 6 known PWA slow paths (partner-agent diagnosis)
-  status: open
+  status: done
   priority: P0
   effort: l
+  closed_date: '2026-05-02'
+  closed_pr: 710
 
 - id: INFRA-184
   domain: INFRA
@@ -6837,9 +6938,10 @@ gaps:
 - id: INFRA-186
   domain: INFRA
   title: "naming convention reset: branch + worktree are chump-first (project owns namespace, not the tool)"
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-01'
 
 - id: INFRA-187
   domain: INFRA
@@ -6865,9 +6967,10 @@ gaps:
 - id: INFRA-190
   domain: INFRA
   title: "bot-merge.sh: auto-rebase + auto-fix loop on DIRTY (kills 5-times-a-session manual rebase)"
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-01'
 
 - id: INFRA-191
   domain: INFRA
@@ -6879,9 +6982,10 @@ gaps:
 - id: INFRA-192
   domain: INFRA
   title: "forward-chain notifier: post gap_unblocked event when a PR closes a depends_on link"
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-01'
 
 - id: INFRA-193
   domain: INFRA
@@ -6961,6 +7065,133 @@ gaps:
   depends_on: [INFRA-184]
   closed_date: '2026-05-02'
   closed_pr: 710
+
+- id: INFRA-200
+  domain: INFRA
+  title: gaps.yaml advisory-only enforcement demonstrably failed — ship hard pre-commit block
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    INFRA-084 (P0) shipped a merge_group regeneration workflow on 2026-04-29.
+    INFRA-094 (P0) shipped an advisory pre-commit warning on 2026-04-29.
+    Neither shipped a hard block on raw docs/gaps.yaml edits.
+    
+    Empirical result: 33 of 50 commits (66%) on origin/main since those advisories
+    landed still touch docs/gaps.yaml directly. The SECURITY-005 row was attempted
+    via end-of-YAML append three times (#678, #684, #695) before succeeding via
+    surgical insert — confirming the advisory was visible to agents yet the behavior
+    continued.
+    
+    INFRA-094's acceptance criteria (verified in gaps.yaml) explicitly require:
+    "Pre-commit hook *blocks* raw docs/gaps.yaml edits without chump-gap commit
+    trailer." The current hook warns; it does not block. This gap closes the gap
+    between INFRA-094's AC and what was actually shipped.
+    
+    Approach: extend scripts/git-hooks/pre-commit section 3b from advisory
+    (exit 0 with warning) to enforcement (exit 1 with bypass instructions).
+    Bypass: CHUMP_GAPS_LOCK=0 (already exists in the guards table) or the
+    presence of a .chump/.last-yaml-op marker proving chump CLI wrote it.
+    
+    Falsifying condition: `git log origin/main --since='2026-05-02' --format='%H' -- docs/gaps.yaml | wc -l`
+    returns <10% of total commits (showing behavioral change, not just the advisory).
+  acceptance_criteria:
+    - scripts/git-hooks/pre-commit section 3b exits 1 (not 0) when docs/gaps.yaml is staged without chump-gap marker
+    - Bypass path CHUMP_GAPS_LOCK=0 documented in the commit-time guards table in CLAUDE.md
+    - "Test: stage a raw docs/gaps.yaml edit and verify pre-commit exits 1 with a pointer to chump gap commands"
+    - "After ship: git log origin/main --since=<ship_date> --format='%H' -- docs/gaps.yaml | wc -l shows <20% of total commits"
+  depends_on: [INFRA-084, INFRA-094]
+  opened_date: '2026-05-02'
+
+- id: INFRA-201
+  domain: INFRA
+  title: Enable GitHub merge queue on main + add merge_group triggers to required-check workflows
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Disabled the 'strict' (require-up-to-date) flag on the legacy branch protection for main. Eliminates the BEHIND-cascade traffic jam that hit when 5-10 PRs auto-armed in parallel. Real GitHub merge queue is not available on personal-account repos (org Team/Enterprise only) — 422 on the merge_queue rule type, confirmed three times in MERGE_QUEUE_SETUP.md. Trade-off: PRs can land tested against older main; textual conflicts go DIRTY (immediately visible); logical conflicts caught by pre-commit guards + gap-doctor. Validated empirically on 2026-05-01: 10 open PRs → 4 → 2 within seconds when strict was flipped off.
+  acceptance_criteria:
+    - branch protection 'strict' is false on main
+    - CLAUDE.md auto-merge section explains the actual mechanism (no queue)
+    - MERGE_QUEUE_SETUP.md has updated status header
+    - allow_update_branch=true at repo level (manual rebase button works)
+    - "empirical validation: 10 stuck PRs cleared within 5 min"
+
+- id: INFRA-202
+  domain: INFRA
+  title: shared CARGO_TARGET_DIR + sccache for fleet worktrees (kill 5GB-per-worktree disk + cold-build time)
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-203
+  domain: INFRA
+  title: scripts/dispatch/run-fleet.sh canonical fleet launcher (tmux + per-agent worker loop, headless claude -p)
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-204
+  domain: INFRA
+  title: fleet status dashboard — tmux control pane shows ambient.jsonl tail + PR queue depth + per-agent throughput
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-205
+  domain: INFRA
+  title: CI matrix parallelism — split fast-checks/clippy/tests/e2e to run in parallel (cut queue depth 2-3x)
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-206
+  domain: INFRA
+  title: per-agent gap-domain affinity — agent-1 INFRA only, agent-2 EVAL only, etc (kills hot-spot bias at 10+ agents)
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-207
+  domain: INFRA
+  title: spawn-respawn lifecycle — agents exit after 1 gap; dispatcher respawns (avoids context exhaustion + lets new lessons load)
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-208
+  domain: INFRA
+  title: chump gap dump is lossy — strips acceptance/closed_commit/runnable_now fields
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    chump gap dump emits a YAML schema that is a STRICT SUBSET of the canonical docs/gaps.yaml on main. Quantified by gap-doctor diff on 2026-05-02:
+    
+      - 222 gap rows lose 'acceptance:' free-text field (the dump only emits 'acceptance_criteria:' as a list; rows where the source had 'acceptance:' as a multi-line string get the text dropped, not migrated)
+      - 41 gap rows lose 'closed_commit:' field (40-char SHAs of the closing commit, attested to by the audit trail)
+      - 1 gap row loses 'runnable_now:' operational note (~10 line shell snippet for triggering the work)
+    
+    Net effect: any 'chump gap ship --update-yaml' or 'chump gap dump --out docs/gaps.yaml' produces a 22500-line diff that LOSES information it cannot recreate. The team has informally adopted a 'surgical YAML insert' pattern (commit d1012f5 SECURITY-005, PR #716 INFRA-177) to avoid this — but that pattern is undocumented and error-prone for new contributors / agents.
+    
+    Fix paths:
+      (a) Extend state.db schema to hold acceptance / closed_commit / runnable_now fields and emit them in dump.
+      (b) Make 'chump gap dump' read the existing YAML and PRESERVE unknown fields per gap row when regenerating.
+      (c) Add 'chump gap surgical-set <ID> --field=value' subcommand that does a hand-edit-equivalent in-place YAML mutation.
+    
+    Acceptance: chump gap dump --out docs/gaps.yaml on a synced tree produces ZERO diff against the on-disk YAML for fields the dump doesn't intend to change.
+  acceptance_criteria:
+    - chump gap dump on a synced tree produces zero YAML diff
+    - "acceptance: closed_commit: runnable_now: fields preserved through dump roundtrip"
+    - gap-doctor sync-from-db --apply does not destroy data
+
+- id: INFRA-209
+  domain: INFRA
+  title: spawn-respawn fleet lifecycle — agents exit after 1 gap; dispatcher respawns (load new lessons)
+  status: open
+  priority: P2
+  effort: xs
 
 - id: INFRA-41
   domain: infra
@@ -7757,7 +7988,7 @@ gaps:
 - id: META-003
   domain: META
   title: Cold Water agent factual errors Red Letter
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -7789,6 +8020,8 @@ gaps:
     - docs/agents/cold-water.md requires P0 census and status claims to come from `chump gap list --json`, not hand-counts
     - Trigger trig_01GA2XVbAZtpkBaWfrEo1CrP synced via /schedule update after PR merges
   opened_date: '2026-04-27'
+  closed_date: '2026-04-28'
+  closed_pr: 619
 
 - id: META-004
   domain: META
@@ -7796,6 +8029,68 @@ gaps:
   status: open
   priority: P1
   effort: s
+
+- id: META-005
+  domain: META
+  title: P0 open-but-landed pattern — three P0 gaps shipped but never closed
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Three P0 gaps shipped implementation commits this cycle but remain status:open:
+      - PRODUCT-024: PR #697 commit body says "PRODUCT-024: close as done (closed_pr=697)"
+        but docs/gaps.yaml shows status:open, no closed_pr.
+      - INFRA-183: all sub-tasks shipped (INFRA-184 PR#701, INFRA-185 PR#704,
+        PRODUCT-024 PR#697, INFRA-199 PR#710) but umbrella shows status:open.
+      - SECURITY-004: 1 of 6 advisories closed via SECURITY-005 (PR#682);
+        5 remain (rand, glib, 3 rustls-webpki paths); no upgrade commits.
+    
+    This is the third cycle where P0 gaps ship partial or full implementation
+    without formal closure. INFRA-107 (closed_pr integrity guard) was filed
+    precisely to prevent false closures — but it does not prevent the inverse:
+    true implementations that are never formally closed.
+    
+    The pattern: agents write "close as done" in commit bodies but do not run
+    `chump gap ship <ID> --closed-pr <N> --update-yaml`. The gap registry
+    accumulates P0-tagged open entries that are actually done, misleading the
+    next agent session about what is truly unstarted.
+  acceptance_criteria:
+    - "PRODUCT-024 shows status:done with closed_pr:697 in docs/gaps.yaml"
+    - "INFRA-183 shows status:done with a closed_pr in docs/gaps.yaml"
+    - "SECURITY-004 has an implementation commit addressing the remaining 5 advisories OR shows status:done with a documented resolution"
+    - "AGENTS.md / CLAUDE.md ship pipeline section updated with explicit reminder: 'close the gap in state.db after the PR merges, not just in the commit body'"
+  opened_date: '2026-05-02'
+
+- id: META-006
+  domain: META
+  title: Evaluate retiring docs/gaps.yaml — state.sql + ported shell scripts as single source
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    docs/gaps.yaml is a regenerated mirror today (canonical = .chump/state.db since INFRA-059), but it has three real users that block its retirement:
+    
+      (1) Shell scripts gap-claim.sh / gap-reserve.sh / gap-preflight.sh / pre-push hook / pre-commit guards parse it directly (NOT state.db). Per CLAUDE.md: shell scripts still operate on docs/gaps.yaml + .chump-locks/.
+      (2) Human PR reviewers consume the YAML diff (though .chump/state.sql provides reviewable text diffs of the canonical store).
+      (3) gap-doctor.py exists specifically to detect YAML↔DB drift — its raison d'être evaporates if YAML goes.
+    
+    Investigate cost vs benefit of porting the shell scripts to query state.db and dropping YAML entirely, vs INFRA-188's opposite direction (per-file docs/gaps/<DOMAIN>-<NNN>.yaml). One source of truth eliminates a whole class of corruption incidents (INFRA-049/052/055/057/064 were all YAML↔DB races) but breaks the human-PR-readability path unless state.sql fully substitutes.
+    
+    Hard-blocked by INFRA-208 (chump gap dump is lossy) — until dump round-trips losslessly, retiring YAML risks data loss for the 264 affected fields.
+  depends_on: [INFRA-208]
+
+- id: META-007
+  domain: META
+  title: "Audit methodology: must inspect JSONL evidence, not just shebang/timestamp inference"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    EVAL-090 (2026-05-01) found that INTEGRITY_AUDIT_3's claim 'EVAL-069 ran under broken scorer' was contradicted by direct inspection of the archived JSONL — 99/100 rows showed scorer=llm_judge. The audit reasoned correctly about the python3.12 shebang foot-gun's existence, but inferred from configuration timeline (shebang state, commit date) without checking whether the run actually fell into that foot-gun. Going forward, audits of past runs must inspect the actual JSONL outputs (scorer field distribution, output_chars, exit_code per row) and compare against the writeup's stated method. The shebang/binary/config state is a *prediction* of what the run did; the JSONL is *evidence* of what it actually did. When the two disagree, the JSONL wins. Action: add a one-paragraph 'Audit checklist' header to docs/audits/AUDIT_PROTOCOL.md (or create it if missing) listing 'inspect output JSONL before claiming credibility break' as the first step.
+  acceptance_criteria:
+    - audit checklist documented in docs/audits/AUDIT_PROTOCOL.md
+    - past audits cite EVAL-090 as the originating example
+    - future EVAL/RESEARCH credibility audits inspect JSONL before drawing mechanism conclusions
 
 - id: PRODUCT-001
   domain: product
@@ -8038,7 +8333,7 @@ gaps:
 - id: PRODUCT-017
   domain: product
   title: UX-001 verification — stopwatch clean-machine install → PWA responsive today
-  status: open
+  status: done
   priority: P0
   effort: s
   description: |
@@ -8051,6 +8346,8 @@ gaps:
   notes: |
     UX-001 closed 2026-04-21 — re-verify before assuming the activation funnel measures a working path.
   source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-28'
+  closed_pr: 631
 
 - id: PRODUCT-018
   domain: product
