@@ -57,10 +57,46 @@ jobs:
       - name: Build chump CLI (release)
         run: cargo build --release --bin chump
 
+      - name: INFRA-236 — close gaps named in merging commit subjects
+        # Authoritative ghost-elimination: extract gap-IDs from each commit
+        # subject in the merge_group range and surgically flip matching
+        # status:open per-file YAMLs to status:done with closed_pr +
+        # closed_date BEFORE the round-trip regen runs. This way, the
+        # subsequent import + dump sees the closures and they survive the
+        # round-trip atomically with the merge.
+        #
+        # Filing PRs (chore(gaps): file …) are skipped. [no-close] tag
+        # opts a commit out for partial-progress / staged-rollout PRs.
+        # Idempotent on already-done gaps. See script header for full
+        # behaviour and scripts/ci/test-close-gaps-from-commit-subjects.sh
+        # for the test fixture.
+        run: |
+          # PR number for closed_pr lookup. merge_group runs on the
+          # queue's temp branch; github.event.pull_requests carries the
+          # source PR(s). Use the first one as the canonical closer.
+          PR_NUMBER="$(jq -r '.pull_requests[0].number // empty' \
+            "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
+          if [ -z "$PR_NUMBER" ]; then
+            echo "[infra-236] no PR number on this merge_group event — skipping closer (regen still runs)"
+          else
+            # The merge_group base is github.event.merge_group.base_sha;
+            # the head is HEAD on the temp branch.
+            BASE_SHA="$(jq -r '.merge_group.base_sha // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
+            if [ -z "$BASE_SHA" ]; then
+              echo "[infra-236] no base_sha in merge_group event — falling back to origin/main"
+              BASE_SHA="origin/main"
+            fi
+            echo "[infra-236] scanning $BASE_SHA..HEAD for gap-ID closures targeting PR #$PR_NUMBER"
+            ./scripts/coord/close-gaps-from-commit-subjects.sh \
+              "$BASE_SHA..HEAD" "$PR_NUMBER" || \
+              echo "[infra-236] closer non-zero exit (continuing — regen below is the safety net)"
+          fi
+
       - name: Import docs/gaps/*.yaml -> state.db (idempotent)
         run: |
           # Post-INFRA-188: import from per-file directory.
           # The import subcommand already reads both layouts.
+          # Picks up the closures the INFRA-236 step above just wrote.
           ./target/release/chump gap import
 
       - name: Regenerate docs/gaps/*.yaml + state.sql from state.db
