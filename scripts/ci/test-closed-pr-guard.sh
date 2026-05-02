@@ -161,6 +161,36 @@ else
     fail "CHUMP_GAPS_LOCK=0 bypass did not work"
 fi
 
+# Reset between tests so the next case starts from the same state.
+git -C "$FAKE_REPO" reset -q --hard HEAD~1 2>/dev/null || true
+
+# ── Test 5 (INFRA-220): description-block text containing 'closed_pr:' is NOT treated as a real field ──
+echo "--- Test 5: INFRA-220 — 'closed_pr:' inside description block does NOT trigger guard ---"
+cat >"$FAKE_REPO/docs/gaps.yaml" <<'YAML'
+gaps:
+- id: PRODUCT-009
+  title: product gap used for false-closure incident
+  status: open
+- id: TEST-B
+  title: open gap B
+  status: open
+- id: NEW-FILING
+  title: new gap whose description references the guard
+  status: open
+  description: |
+    The guard rejects any closure where:
+        closed_pr: TBD
+        closed_pr: 404 passes only when numeric
+    Test fixture: status: done with closed_pr: TBD must be rejected.
+YAML
+git -C "$FAKE_REPO" add docs/gaps.yaml
+if git -C "$FAKE_REPO" commit -q -m "file NEW-FILING with description-block closed_pr text" 2>/dev/null; then
+    ok "description-block 'closed_pr:' / 'status:' lines are NOT parsed as real fields"
+    git -C "$FAKE_REPO" reset -q --hard HEAD~1
+else
+    fail "INFRA-220 regression: guard treated description-block 'closed_pr:' text as a real field"
+fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="

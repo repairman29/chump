@@ -639,20 +639,27 @@ PYEOF_RECYCLE
 import subprocess, sys, re
 
 def parse_gaps(text):
-    """Returns {gap_id: {status, closed_pr}} for all gaps in text."""
+    """Returns {gap_id: {status, closed_pr}} for all gaps in text.
+
+    INFRA-220: pin regexes to exact gap-row indentation (top-level '- id:'
+    at column 1, sibling fields at exactly 2-space indent). Loose '\\s*'
+    indentation matched lines INSIDE 'description: |' blocks too, so
+    example text like "closed_pr: 404 passes" inside a description was
+    parsed as a real closed_pr field and false-failed the guard.
+    """
     out = {}
     cur_id = None
     for line in text.splitlines():
-        m = re.match(r'^\s*-\s*id:\s*(\S+)', line)
+        m = re.match(r'^- id:\s*(\S+)', line)
         if m:
             cur_id = m.group(1)
             out[cur_id] = {"status": None, "closed_pr": None}
             continue
         if cur_id:
-            s = re.match(r'^\s*status:\s*(\S+)', line)
+            s = re.match(r'^  status:\s*(\S+)', line)
             if s:
                 out[cur_id]["status"] = s.group(1)
-            c = re.match(r'^\s*closed_pr:\s*(\S+)', line)
+            c = re.match(r'^  closed_pr:\s*(\S+)', line)
             if c:
                 out[cur_id]["closed_pr"] = c.group(1)
     return out
