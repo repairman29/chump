@@ -278,6 +278,9 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-bot-merge-auto-close.sh
 
+      - name: bot-merge health monitoring + hung-process detection (INFRA-119)
+        run: bash scripts/ci/test-infra-119-bot-merge-hang.sh
+
       - name: Dual-surface coordination smoke (INFRA-032)
         # RESEARCH-018 closed 2026-04-23; use RESEARCH-020 (still-open P1)
         run: bash scripts/ci/coord-surfaces-smoke.sh RESEARCH-020
