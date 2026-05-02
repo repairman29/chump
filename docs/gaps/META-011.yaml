@@ -1,0 +1,83 @@
+- id: META-011
+  domain: meta
+  title: 'main-worktree git-state stomp during concurrent agent sessions — silently lost uncommitted edits twice in 2026-05-02 cleanup pass'
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    Observed live during the 2026-05-02 INFRA-148 closure pass: while
+    editing src/main.rs in the main worktree (/Users/jeffadkins/Projects/Chump),
+    something — almost certainly the chump-keepalive launchd job
+    (scripts/dev/keep-chump-online.sh, every 2 min) or an agent process
+    in one of the 25 active linked worktrees — silently switched the
+    main worktree's branch out from under the editing session TWICE in
+    ~10 minutes, dropping the uncommitted src/main.rs edit each time.
+
+    Symptom sequence:
+      1. git switch -c chump/version-flag-and-close-infra-148 (clean)
+      2. Edit src/main.rs (17-line --version handler addition)
+      3. cargo build (background)
+      4. Run `chump gap list` to verify INFRA-148 status
+         — this triggered a chump auto-sync that mutated ~150
+         docs/gaps/<ID>.yaml files AND re-created docs/gaps.yaml
+         (deleted by INFRA-188 just hours earlier)
+      5. Restored the spurious gap-yaml mutations
+      6. git add src/main.rs && git commit -m "..."
+         → "On branch chore/close-infra-127-130 / nothing to commit"
+         (a different branch! commit by another process landed at HEAD,
+         and switched MY branch silently.)
+      7. git switch back to chump/version-flag-and-close-infra-148
+         → status shows stray docs/gaps/INFRA-127.yaml mutation, my
+         src/main.rs edit is GONE.
+      8. Re-edit src/main.rs, attempt commit again
+         → "On branch chore/close-infra-127-130-v2", same loss pattern.
+      9. Recovery: git worktree add /tmp/chump-version-flag, edit
+         + commit there in isolation. Worked first try.
+
+    Two separate failure modes compounded:
+
+    (A) **Background mutator switches branches in main worktree.**
+        Some launchd job or agent process is calling `git switch` /
+        `git checkout` in the shared main worktree to ship its own
+        commits. This nukes any in-flight edits the human (or another
+        agent) has there. Suspects:
+          - chump-keepalive (every 2 min, runs from main worktree)
+          - farmer-brown (just fixed in the same session — runs from
+            main worktree per WorkingDirectory: /Users/.../Chump)
+          - one of the agent dispatch loops in active worktrees that
+            does `git -C <main-repo>` operations to land closure PRs
+
+    (B) **chump CLI auto-mutates per-file gaps + re-creates monolithic
+        gaps.yaml on routine read commands.** Every `chump gap list` /
+        `chump --version` invocation against an old binary triggers an
+        auto-sync that overwrites files. Combined with (A), the human
+        session can't tell whose edit landed where.
+
+    Why this matters now:
+      - INFRA-188 just shipped per-file gaps. Any background mutator
+        running an OLD chump binary will keep regenerating gaps.yaml
+        and overwriting per-file rows until every consumer rebuilds.
+      - With 25 linked worktrees and multiple launchd jobs, the
+        attack surface for git-state races in the main worktree is
+        wide and silent.
+      - CLAUDE.md's "Always work in a linked worktree, never in the
+        main repo root" rule exists for exactly this reason —
+        gap-claim.sh refuses to run from main. But Edit/Write tools
+        don't have that gate; nothing prevents an agent (or human)
+        from editing src/* files in the main worktree.
+
+    Falsifying condition: this finding is wrong if reproducing the
+    sequence above (clean main worktree, switch to a feature branch,
+    edit src/main.rs, wait 5 min, attempt commit) does NOT result in
+    the branch silently switching or the edit being dropped.
+
+  acceptance_criteria:
+    - "Identify which background process(es) issue git switch/checkout against the main worktree (chump-keepalive, farmer-brown, agent dispatch, or other) — log who, when, and why"
+    - "Either: (a) move all background mutators to operate in their own dedicated worktree (never the main checkout), OR (b) add a guard that errors if `git switch` is invoked when working tree has uncommitted changes from a different process"
+    - "Add a CLAUDE.md / AGENTS.md note: 'Edit src/* files only in linked worktrees, never in the main repo root — concurrent agents WILL stomp uncommitted work'"
+    - "Add a pre-commit / pre-edit hook that warns when the main worktree has been on its current branch for >5 minutes with uncommitted edits and another process modifies HEAD"
+    - "Reproducer test: spawn a sibling process that does git switch + commit on a fresh branch every 30s, run a long edit-then-commit in the main worktree, verify the edit lands cleanly (or fails loud)"
+
+  raised_by: claude
+  raised_in: '2026-05-02 — INFRA-148 closure session: lost uncommitted src/main.rs edit twice in main worktree before recovering via /tmp/chump-version-flag isolated worktree. Compounded by chump auto-sync rewriting per-file gaps on every CLI invocation (separate but related to INFRA-208).'
