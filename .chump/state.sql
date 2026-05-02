@@ -7156,7 +7156,14 @@ gaps:
   title: shared CARGO_TARGET_DIR + sccache for fleet worktrees (kill 5GB-per-worktree disk + cold-build time)
   status: open
   priority: P1
-  effort: s
+  effort: xs
+  description: |
+    Each linked worktree under .claude/worktrees/ has its own target/ dir. Without a shared compilation cache, every fresh worktree pays a 5-15 min cold-build cost when bot-merge.sh runs cargo check / clippy / test. Observed 2026-05-01: bot-merge.sh hit a 900s clippy timeout because the worktree was on a fresh cargo cache (INFRA-201 worktree). With sccache as a rustc wrapper, the second worktree to build a given crate version gets it from cache in seconds — drops cold-build from 10-15 min to <60s. Implementation: scripts/setup/install-sccache.sh (idempotent brew install + writes .cargo/config.toml with rustc-wrapper=sccache, 10G cache size). .cargo/config.toml is .gitignored so per-machine. Run once per developer machine.
+  acceptance_criteria:
+    - scripts/setup/install-sccache.sh exists, executable, idempotent
+    - .gitignore covers .cargo/config.toml
+    - second cold-worktree cargo check completes in <60s after sccache populated
+    - CLAUDE.md mentions install-sccache.sh in setup notes
 
 - id: INFRA-203
   domain: infra
@@ -7175,9 +7182,13 @@ gaps:
 - id: INFRA-205
   domain: infra
   title: CI matrix parallelism — split fast-checks/clippy/tests/e2e to run in parallel (cut queue depth 2-3x)
-  status: open
+  status: done
   priority: P1
   effort: s
+  notes: |
+    Duplicate of INFRA-213 - closed in dedupe sweep PR #743. Both rows filed within seconds on 2026-05-01 by sibling sessions racing on chump gap reserve, before the open-PR scan was flipped default-on (INFRA-100, PR #742). Work tracked under INFRA-213.
+  closed_date: '2026-05-02'
+  closed_pr: 744
 
 - id: INFRA-206
   domain: infra
@@ -7226,14 +7237,18 @@ gaps:
 - id: INFRA-209
   domain: infra
   title: spawn-respawn fleet lifecycle — agents exit after 1 gap; dispatcher respawns (load new lessons)
-  status: open
+  status: done
   priority: P2
   effort: xs
+  notes: |
+    Duplicate of INFRA-215 - closed in dedupe sweep PR #743. Both rows filed within seconds on 2026-05-01 by sibling sessions racing on chump gap reserve, before the open-PR scan was flipped default-on (INFRA-100, PR #742). Work tracked under INFRA-215.
+  closed_date: '2026-05-02'
+  closed_pr: 744
 
 - id: INFRA-210
   domain: infra
   title: shared CARGO_TARGET_DIR + sccache for fleet worktrees (kill 5GB-per-worktree disk + cold-build time)
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -7266,12 +7281,16 @@ gaps:
     - sccache config wired in if needed for concurrent-write safety; documented as optional
     - bot-merge.sh's target-purge step is no-op when CARGO_TARGET_DIR points outside worktree
     - "10-worktree concurrent build test: total target disk < 15 GB; build correctness verified by cargo test --workspace pass"
+  notes: |
+    Duplicate of INFRA-202 - closed in dedupe sweep PR #743. Both rows filed within seconds on 2026-05-01 by sibling sessions racing on chump gap reserve, before the open-PR scan was flipped default-on (INFRA-100, PR #742). Work tracked under INFRA-202.
   opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 744
 
 - id: INFRA-211
   domain: infra
   title: scripts/dispatch/run-fleet.sh — canonical fleet launcher (tmux + per-agent worker loop, headless claude -p)
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -7318,12 +7337,16 @@ gaps:
     - "Test: spawn FLEET_SIZE=2 for 1 hour; expect 4-8 PRs shipped; zero ID collisions; zero unrecovered DIRTY events (pr-watch handles)"
     - Documented in CLAUDE.md + AGENTS.md as the canonical fleet entry
   depends_on: [INFRA-188, INFRA-189, INFRA-210]
+  notes: |
+    Duplicate of INFRA-203 - closed in dedupe sweep PR #743. Both rows filed within seconds on 2026-05-01 by sibling sessions racing on chump gap reserve, before the open-PR scan was flipped default-on (INFRA-100, PR #742). Work tracked under INFRA-203.
   opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 744
 
 - id: INFRA-212
   domain: infra
   title: fleet status dashboard — tmux control pane shows ambient.jsonl tail + PR queue depth + per-agent throughput
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -7357,7 +7380,11 @@ gaps:
     - Wired into INFRA-203's control pane via watch -n 5
     - "Test: at FLEET_SIZE=4 with 1 stuck agent, the dashboard shows yellow within 5 min"
   depends_on: [INFRA-211]
+  notes: |
+    Duplicate of INFRA-204 - closed in dedupe sweep PR #743. Both rows filed within seconds on 2026-05-01 by sibling sessions racing on chump gap reserve, before the open-PR scan was flipped default-on (INFRA-100, PR #742). Work tracked under INFRA-204.
   opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 744
 
 - id: INFRA-213
   domain: infra
@@ -7402,7 +7429,7 @@ gaps:
 - id: INFRA-214
   domain: infra
   title: per-agent gap-domain affinity — agent-1 INFRA only, agent-2 EVAL only, etc (kill hot-spot bias at 10+ agents)
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -7429,7 +7456,11 @@ gaps:
     - scripts/dispatch/fleet.toml documents affinity layout
     - "Test: launch FLEET_SIZE=4 with affinity (2 INFRA, 1 EVAL, 1 FLEET); verify each agent only picks gaps in its domain"
   depends_on: [INFRA-211]
+  notes: |
+    Duplicate of INFRA-206 - closed in dedupe sweep PR #743. Both rows filed within seconds on 2026-05-01 by sibling sessions racing on chump gap reserve, before the open-PR scan was flipped default-on (INFRA-100, PR #742). Work tracked under INFRA-206.
   opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 744
 
 - id: INFRA-215
   domain: infra
