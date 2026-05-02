@@ -1,4 +1,15 @@
 - id: INFRA-202
   domain: infra
-  title: "docs-delta guard `Net-new-docs:` trailer escape hatch is unreachable at pre-commit time"
-
+  title: shared CARGO_TARGET_DIR + sccache for fleet worktrees (kill 5GB-per-worktree disk + cold-build time)
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Each linked worktree under .claude/worktrees/ has its own target/ dir. Without a shared compilation cache, every fresh worktree pays a 5-15 min cold-build cost when bot-merge.sh runs cargo check / clippy / test. Observed 2026-05-01: bot-merge.sh hit a 900s clippy timeout because the worktree was on a fresh cargo cache (INFRA-201 worktree). With sccache as a rustc wrapper, the second worktree to build a given crate version gets it from cache in seconds — drops cold-build from 10-15 min to <60s. Implementation: scripts/setup/install-sccache.sh (idempotent brew install + writes .cargo/config.toml with rustc-wrapper=sccache, 10G cache size). .cargo/config.toml is .gitignored so per-machine. Run once per developer machine.
+  acceptance_criteria:
+    - scripts/setup/install-sccache.sh exists, executable, idempotent
+    - .gitignore covers .cargo/config.toml
+    - second cold-worktree cargo check completes in <60s after sccache populated
+    - CLAUDE.md mentions install-sccache.sh in setup notes
+  notes: Closed by ship pipeline; sccache install script and .gitignore landed in PR #745.
+  closed_date: '2026-05-02'
