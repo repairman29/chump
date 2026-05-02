@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0a0a0a">
-  <link rel="manifest" href="/v2/manifest.json">
+  <link rel="manifest" href="manifest.json">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <title>Chump</title>
   <style>
@@ -291,9 +291,14 @@
 
   <chump-ootb-wizard></chump-ootb-wizard>
 
-  <script src="/v2/chat.js" type="module"></script>
-  <script src="/v2/app.js" type="module"></script>
-  <script src="/v2/ootb-wizard.js" type="module"></script>
+  <!-- INFRA-250: relative paths so the same index works in both contexts:
+       (a) browser via axum sidecar at http://host/v2/ (after the / -> /v2/
+           redirect from INFRA-254) where /v2/chat.js resolves correctly
+           against the page URL, and (b) Tauri webview where frontendDist
+           is web/v2 itself, so absolute /v2/* paths would 404. -->
+  <script src="chat.js" type="module"></script>
+  <script src="app.js" type="module"></script>
+  <script src="ootb-wizard.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));
