@@ -1,7 +1,9 @@
 - id: META-011
   domain: meta
   title: 'main-worktree git-state stomp during concurrent agent sessions — silently lost uncommitted edits twice in 2026-05-02 cleanup pass'
-  status: open
+  status: done
+  closed_pr: 794
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   opened_date: '2026-05-02'

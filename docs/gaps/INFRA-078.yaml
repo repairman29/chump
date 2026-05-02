@@ -1,7 +1,9 @@
 - id: INFRA-078
   domain: infra
   title: Duplicate-ID pre-commit guard fires on pre-existing dups, training bypass habit
-  status: open
+  status: done
+  closed_pr: 557
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

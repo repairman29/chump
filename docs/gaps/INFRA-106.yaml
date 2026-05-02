@@ -1,7 +1,9 @@
 - id: INFRA-106
   domain: infra
   title: evaluate GitHub merge queue migration plan (currently disabled, strict=true causes serial rebase storm)
-  status: open
+  status: done
+  closed_pr: 575
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

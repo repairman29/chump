@@ -1,7 +1,9 @@
 - id: INFRA-122
   domain: infra
   title: ambient.jsonl has no retention or rotation policy - grows unbounded
-  status: open
+  status: done
+  closed_pr: 752
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

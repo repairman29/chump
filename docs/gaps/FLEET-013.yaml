@@ -1,7 +1,9 @@
 - id: FLEET-013
   domain: fleet
   title: Tailscale integration & agent discovery — agents find each other on VPN
-  status: open
+  status: done
+  closed_pr: 780
+  closed_date: '2026-05-02'
   priority: P2
   effort: s
   description: |

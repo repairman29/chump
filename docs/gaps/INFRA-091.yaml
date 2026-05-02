@@ -1,7 +1,9 @@
 - id: INFRA-091
   domain: infra
   title: stale-worktree-reaper squash-merge blindness - use gh pr state, not git ancestry
-  status: open
+  status: done
+  closed_pr: 571
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

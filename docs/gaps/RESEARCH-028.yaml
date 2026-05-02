@@ -1,7 +1,9 @@
 - id: RESEARCH-028
   domain: research
   title: Blackboard tool-selection-mediation test — does the blackboard mediate behavior non-verbally via tool sequences?
-  status: open
+  status: done
+  closed_pr: 371
+  closed_date: '2026-05-02'
   priority: P2
   effort: m
   description: |

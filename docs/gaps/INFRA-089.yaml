@@ -1,7 +1,9 @@
 - id: INFRA-089
   domain: infra
   title: stale-branch reaper workflow + script (prune claude/* and worktree-* with no open PR + last-commit > 14d)
-  status: open
+  status: done
+  closed_pr: 568
+  closed_date: '2026-05-02'
   priority: P2
   effort: s
   description: |

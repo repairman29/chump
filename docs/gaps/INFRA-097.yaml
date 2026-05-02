@@ -1,7 +1,9 @@
 - id: INFRA-097
   domain: infra
   title: process-adoption enforcement check - new system shipped, who actually uses it?
-  status: open
+  status: done
+  closed_pr: 565
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

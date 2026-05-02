@@ -1,7 +1,9 @@
 - id: INFRA-220
   domain: infra
   title: closed_pr-integrity guard parses fields inside description blocks at any indentation
-  status: open
+  status: done
+  closed_pr: 735
+  closed_date: '2026-05-02'
   priority: P2
   effort: xs
   description: |

@@ -1,7 +1,9 @@
 - id: EVAL-074
   domain: eval
   title: DeepSeek lesson-injection correctness regression root cause
-  status: open
+  status: done
+  closed_pr: 666
+  closed_date: '2026-05-02'
   priority: P2
   effort: m
   description: |

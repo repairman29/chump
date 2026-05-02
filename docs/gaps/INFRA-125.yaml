@@ -1,7 +1,9 @@
 - id: INFRA-125
   domain: infra
   title: chump-cost-tracker has zero tests - cost ceiling correctness unverified
-  status: open
+  status: done
+  closed_pr: 764
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

@@ -1,7 +1,9 @@
 - id: DOC-011
   domain: DOC
   title: Replace WORK_QUEUE.md with CLI pointer — chump gap list is canonical, parallel doc drifts
-  status: open
+  status: done
+  closed_pr: 589
+  closed_date: '2026-05-02'
   priority: P2
   effort: xs
   description: |

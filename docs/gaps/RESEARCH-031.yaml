@@ -1,7 +1,9 @@
 - id: RESEARCH-031
   domain: research
   title: Strategic research docs are orphan - STRATEGIC_MEMO and RESEARCH_INTEGRITY have no owner_gap
-  status: open
+  status: done
+  closed_pr: 580
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

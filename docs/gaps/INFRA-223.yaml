@@ -1,7 +1,9 @@
 - id: INFRA-223
   domain: INFRA
   title: wire distill-pr-skills.sh into post-merge hook or launchd timer (auto-feed chump_improvement_targets)
-  status: open
+  status: done
+  closed_pr: 759
+  closed_date: '2026-05-02'
   priority: P2
   effort: xs
   description: |

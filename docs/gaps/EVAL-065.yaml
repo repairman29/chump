@@ -1,7 +1,9 @@
 - id: EVAL-065
   domain: eval
   title: "Social Cognition graduation: n≥200/cell strict-judge sweep — resolve PRELIMINARY ceiling"
-  status: open
+  status: done
+  closed_pr: 405
+  closed_date: '2026-05-02'
   priority: P2
   effort: l
   description: |

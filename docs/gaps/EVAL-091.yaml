@@ -1,7 +1,9 @@
 - id: EVAL-091
   domain: eval
   title: Closed EVAL-* gaps are not scored against RESEARCH_INTEGRITY methodology table
-  status: open
+  status: done
+  closed_pr: 778
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

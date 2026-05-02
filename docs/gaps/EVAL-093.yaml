@@ -1,7 +1,9 @@
 - id: EVAL-093
   domain: eval
   title: RESEARCH_INTEGRITY.md mechanism-analysis standard lacks pre-commit kappa threshold gate — EVAL-074 retraction consequence
-  status: open
+  status: done
+  closed_pr: 779
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

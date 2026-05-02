@@ -1,7 +1,9 @@
 - id: INFRA-163
   domain: infra
   title: chump lesson add CLI — let agents seed chump_improvement_targets without sqlite3
-  status: open
+  status: done
+  closed_pr: 672
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

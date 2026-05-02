@@ -1,7 +1,9 @@
 - id: INFRA-088
   domain: infra
   title: PR title convention — lead with human-readable change, gap ID in parens
-  status: open
+  status: done
+  closed_pr: 569
+  closed_date: '2026-05-02'
   priority: P3
   effort: xs
   description: |

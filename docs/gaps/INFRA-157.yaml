@@ -1,7 +1,9 @@
 - id: INFRA-157
   domain: infra
   title: "fix: ftue-clean-machine workflow YAML parse error blocked all PRODUCT-017 verification runs"
-  status: open
+  status: done
+  closed_pr: 648
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |

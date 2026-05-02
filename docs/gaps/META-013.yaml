@@ -1,7 +1,9 @@
 - id: META-013
   domain: META
   title: src/discord.rs is a god module — owns agent factory + system prompt + Discord IO; refactor needs a focused session
-  status: open
+  status: done
+  closed_pr: 137
+  closed_date: '2026-05-02'
   priority: P2
   effort: m
   description: |

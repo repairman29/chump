@@ -1,7 +1,9 @@
 - id: INFRA-126
   domain: infra
   title: chump-coord test coverage limited to distributed_mutex - no reconnect/replay/ordering tests
-  status: open
+  status: done
+  closed_pr: 802
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

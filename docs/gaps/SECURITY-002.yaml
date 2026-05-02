@@ -1,7 +1,9 @@
 - id: SECURITY-002
   domain: infra
   title: Track RUSTSEC advisories in transitive deps (rsa, rustls-webpki)
-  status: open
+  status: done
+  closed_pr: 665
+  closed_date: '2026-05-02'
   priority: P2
   effort: m
   description: |

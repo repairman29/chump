@@ -1,7 +1,9 @@
 - id: INFRA-111
   domain: infra
   title: Mandate closed_interpretation and acceptance_verified fields on every gap closure
-  status: open
+  status: done
+  closed_pr: 577
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

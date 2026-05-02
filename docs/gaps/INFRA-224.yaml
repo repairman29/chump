@@ -1,7 +1,9 @@
 - id: INFRA-224
   domain: INFRA
   title: "bot-merge.sh: install pre-commit hooks via install-hooks.sh if missing (closes Cold Water #10 closed_pr=TBD leak)"
-  status: open
+  status: done
+  closed_pr: 759
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |

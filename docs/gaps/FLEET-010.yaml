@@ -1,7 +1,9 @@
 - id: FLEET-010
   domain: fleet
   title: Help-seeking protocol — agent requests help when blocked
-  status: open
+  status: done
+  closed_pr: 760
+  closed_date: '2026-05-02'
   priority: P2
   effort: m
   description: |

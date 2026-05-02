@@ -1,7 +1,9 @@
 - id: INFRA-084
   domain: infra
   title: stop appending to gaps.yaml in PRs (write to state.db, regen on merge queue)
-  status: open
+  status: done
+  closed_pr: 563
+  closed_date: '2026-05-02'
   priority: P0
   effort: m
   description: |

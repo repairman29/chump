@@ -1,7 +1,9 @@
 - id: INFRA-159
   domain: infra
   title: src/voice.rs is 236 lines of stub TODOs with zero callers — implement or remove
-  status: open
+  status: done
+  closed_pr: 649
+  closed_date: '2026-05-02'
   priority: P2
   effort: s
   description: |

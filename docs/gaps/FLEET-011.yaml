@@ -1,7 +1,9 @@
 - id: FLEET-011
   domain: fleet
   title: Work decomposition heuristics & learning — agent learns when to break tasks
-  status: open
+  status: done
+  closed_pr: 784
+  closed_date: '2026-05-02'
   priority: P2
   effort: l
   description: |

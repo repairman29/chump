@@ -1,7 +1,9 @@
 - id: INFRA-201
   domain: infra
   title: pre-commit cargo-fmt early-exit at line 947 silently bypasses guards 6/7/8/9 on docs-only commits
-  status: open
+  status: done
+  closed_pr: 717
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |

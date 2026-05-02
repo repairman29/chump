@@ -1,7 +1,9 @@
 - id: RESEARCH-030
   domain: research
   title: Instrument-invalidation footgun audit process - when scorer/tooling found broken, automatically flag prior measurements
-  status: open
+  status: done
+  closed_pr: 577
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

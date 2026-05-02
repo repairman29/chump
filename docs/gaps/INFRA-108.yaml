@@ -1,7 +1,9 @@
 - id: INFRA-108
   domain: infra
   title: Audit and normalize all ambient.jsonl emitters - INFRA-101 covers schema validation but existing emitters drift
-  status: open
+  status: done
+  closed_pr: 578
+  closed_date: '2026-05-02'
   priority: P2
   effort: s
   description: |

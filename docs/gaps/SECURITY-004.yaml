@@ -1,7 +1,9 @@
 - id: SECURITY-004
   domain: SECURITY
   title: 6 open Dependabot alerts (1 HIGH rustls-webpki DoS, 2 medium, 3 low) — audit + upgrade
-  status: open
+  status: done
+  closed_pr: 749
+  closed_date: '2026-05-02'
   priority: P0
   effort: s
   description: |

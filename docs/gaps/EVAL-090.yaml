@@ -1,7 +1,9 @@
 - id: EVAL-090
   domain: eval
   title: Re-run EVAL-069 under verified python3.12 - F3 retirement is based on broken-vs-broken comparison
-  status: open
+  status: done
+  closed_pr: 726
+  closed_date: '2026-05-02'
   priority: P0
   effort: s
   description: |

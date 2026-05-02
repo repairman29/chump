@@ -1,7 +1,9 @@
 - id: EVAL-095
   domain: eval
   title: "EVAL-090 P0 seventh cycle — escalate to human decision: execute or downgrade priority"
-  status: open
+  status: done
+  closed_pr: 726
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |

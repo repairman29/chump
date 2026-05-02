@@ -1,7 +1,9 @@
 - id: INFRA-100
   domain: infra
   title: Unify gap reserve flow across SQLite DB, open PRs, and live leases - single atomic next-ID picker
-  status: open
+  status: done
+  closed_pr: 742
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

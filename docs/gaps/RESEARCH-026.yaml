@@ -1,7 +1,9 @@
 - id: RESEARCH-026
   domain: research
   title: Observer-effect / evaluation-framing sandbagging check
-  status: open
+  status: done
+  closed_pr: 348
+  closed_date: '2026-05-02'
   priority: P2
   effort: s
   description: |

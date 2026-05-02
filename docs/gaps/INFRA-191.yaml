@@ -1,7 +1,9 @@
 - id: INFRA-191
   domain: infra
   title: chump dispatch canonical workflow — single command pulls main, claims gap, ships PR, releases
-  status: open
+  status: done
+  closed_pr: 759
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

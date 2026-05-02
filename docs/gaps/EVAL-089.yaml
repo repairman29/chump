@@ -1,7 +1,9 @@
 - id: EVAL-089
   domain: eval
   title: EVAL-074-CROSS-JUDGE-FINISH — third judge (Qwen-2.5-72B) rescore once Together credits restored
-  status: open
+  status: done
+  closed_pr: 558
+  closed_date: '2026-05-02'
   priority: P2
   effort: xs
   description: |

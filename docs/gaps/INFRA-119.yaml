@@ -1,7 +1,9 @@
 - id: INFRA-119
   domain: infra
   title: bot-merge.sh has no health monitoring - hangs leak leases and freeze worktrees silently
-  status: open
+  status: done
+  closed_pr: 796
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

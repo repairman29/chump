@@ -1,7 +1,9 @@
 - id: INFRA-215
   domain: infra
   title: spawn-respawn fleet lifecycle — agents exit after 1 gap; dispatcher respawns (load new lessons)
-  status: open
+  status: done
+  closed_pr: 744
+  closed_date: '2026-05-02'
   priority: P2
   effort: xs
   description: |

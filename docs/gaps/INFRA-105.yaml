@@ -1,7 +1,9 @@
 - id: INFRA-105
   domain: infra
   title: Lease-file and state.db ledger convergence - claims must write both, or one must be the source
-  status: open
+  status: done
+  closed_pr: 574
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |
