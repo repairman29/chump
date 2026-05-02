@@ -25,6 +25,8 @@
 #   1  build failed
 #   2  server failed to come up within timeout
 #   3  port still bound after kill (something else holding it)
+#   4  git pull failed — refusing to build from a possibly-stale tree (INFRA-181;
+#      use --skip-pull to deliberately build from the current checkout)
 
 set -euo pipefail
 
@@ -103,7 +105,16 @@ fi
 if [[ "$SKIP_PULL" -eq 0 ]]; then
     say "git pull origin main…"
     if ! git pull --rebase --autostash origin main >>"$LOG" 2>&1; then
-        warn "git pull failed — continuing with current HEAD (see $LOG)"
+        # INFRA-181: pre-fix behavior was to print a warning and keep going,
+        # which silently rebuilt + relaunched chump-web from whatever HEAD
+        # was checked out — possibly many commits behind main, possibly with
+        # an unresolved rebase. Operators reported re-running this script
+        # to "fix" a bug that had already shipped, only to discover the
+        # binary was being built from a stale checkout.
+        # Now: abort with a clear message. Operator must either resolve
+        # the conflict (git status; git rebase --abort) or pass
+        # --skip-pull explicitly to acknowledge they want a stale build.
+        die "git pull failed — refusing to build from a possibly-stale tree (INFRA-181). Resolve manually (git status; git rebase --abort) and re-run, or pass --skip-pull to deliberately build from the current checkout. Pull errors in $LOG" 4
     fi
 fi
 
