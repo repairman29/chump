@@ -1,7 +1,9 @@
 - id: INFRA-241
   domain: INFRA
   title: Backfill 89 historical ghost gaps — apply INFRA-236 closer in batch mode against full PR list
-  status: open
+  status: done
+  closed_pr: 825
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   opened_date: '2026-05-02'
