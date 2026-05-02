@@ -402,24 +402,28 @@ async fn main() -> Result<()> {
         }
     }
 
-    // `chump dispatch <GAP-ID>` (INFRA-191 Phase 1) — atomic ship cycle:
-    // preflight → claim → (caller's work happened) → ship → release.
+    // `chump dispatch <GAP-ID>` (INFRA-191 Phase 1+2) — atomic ship cycle:
+    // preflight → claim → (work) → ship → release.
     //
-    // Phase 1 wraps the existing shell scripts (gap-preflight.sh,
-    // gap-claim.sh, bot-merge.sh). Phase 3 ports `ship()` to native Rust.
-    // See docs/design/INFRA-191-chump-dispatch.md for the full plan.
+    // Phase 1 wraps gap-preflight.sh, gap-claim.sh, bot-merge.sh.
+    // Phase 2 adds --backend headless / exec-gap (spawns `claude -p` or
+    // `chump --execute-gap`). Phase 3 ports ship() to native Rust.
+    // See docs/design/INFRA-191-chump-dispatch.md.
     //
     // Examples:
-    //   chump dispatch INFRA-191                              # bare ship
+    //   chump dispatch INFRA-191                              # interactive (default)
     //   chump dispatch INFRA-191 --auto-merge                 # arm merge queue
     //   chump dispatch INFRA-191 --auto-merge --skip-tests    # for doc PRs
     //   chump dispatch INFRA-191 --paths "src/dispatch.rs"    # narrow lease scope
+    //   chump dispatch INFRA-191 --backend headless \
+    //       --prompt "ship the gap" --model claude-sonnet-4-6 # spawn `claude -p`
+    //   chump dispatch INFRA-191 --backend exec-gap           # spawn `chump --execute-gap`
     if args.get(1).map(String::as_str) == Some("dispatch") {
         let gap_id = match args.get(2) {
             Some(g) if !g.starts_with('-') => g.clone(),
             _ => {
                 eprintln!(
-                    "Usage: chump dispatch <GAP-ID> [--auto-merge] [--skip-tests] [--paths X,Y]"
+                    "Usage: chump dispatch <GAP-ID> [--auto-merge] [--skip-tests] [--paths X,Y] [--backend BACKEND] [--model M] [--prompt P]"
                 );
                 std::process::exit(2);
             }
@@ -431,11 +435,45 @@ async fn main() -> Result<()> {
             .position(|a| a == "--paths")
             .and_then(|i| args.get(i + 1))
             .cloned();
+        let backend = args
+            .iter()
+            .position(|a| a == "--backend")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .or_else(|| std::env::var("CHUMP_DISPATCH_BACKEND").ok())
+            .unwrap_or_else(|| "interactive".into());
+        let model = args
+            .iter()
+            .position(|a| a == "--model")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_default();
+        let prompt = args
+            .iter()
+            .position(|a| a == "--prompt")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_default();
+
+        let work = match backend.as_str() {
+            "interactive" | "claude" /* alias */ => dispatch::WorkBackend::Interactive,
+            "headless" => dispatch::WorkBackend::Headless {
+                model: model.clone(),
+                prompt: prompt.clone(),
+            },
+            "exec-gap" | "chump-local" /* alias */ => dispatch::WorkBackend::ExecGap,
+            other => {
+                eprintln!(
+                    "chump dispatch: unknown --backend {other:?}; expected one of: interactive, headless, exec-gap"
+                );
+                std::process::exit(2);
+            }
+        };
 
         let repo_root = repo_path::repo_root();
         let opts = dispatch::DispatchOptions {
             gap_id: &gap_id,
-            work: dispatch::WorkBackend::Interactive,
+            work,
             auto_merge,
             skip_tests,
             paths: paths.as_deref(),
