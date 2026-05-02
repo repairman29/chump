@@ -591,9 +591,12 @@ impl GapStore {
             }
 
             // Step 4: re-scan; find any OTHER live session with the same ID.
+            // Use next_back() (DoubleEndedIterator) instead of last() per
+            // clippy::double_ended_iterator_last — last() needlessly walks
+            // the full iterator.
             let id_num: i64 = id
                 .split('-')
-                .last()
+                .next_back()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
             let colliders = self.colliding_sessions(&domain_upper, id_num, session_id)?;
