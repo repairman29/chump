@@ -1,0 +1,57 @@
+- id: INFRA-243
+  domain: INFRA
+  title: "Pre-commit guard friction: 6 separate bypass envs needed for legitimate ledger-only commits — consolidate or auto-detect"
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    A single ledger-only commit (e.g. INFRA-241 backfill of 71
+    historical ghosts) required SIX bypass envs to land:
+
+      CHUMP_RAW_YAML_LOCK=0      # surgical YAML edit, not via chump CLI
+      CHUMP_GAPS_LOCK=0          # INFRA-234 recycled-ID guard misfires on enrichment
+      CHUMP_PREREG_CHECK=0       # closing EVAL-* / RESEARCH-* needs prereg doc
+      CHUMP_PREREG_CONTENT_CHECK=0  # prereg content guard
+      CHUMP_CROSS_JUDGE_CHECK=0  # closing EVAL-* / RESEARCH-* needs cross-judge audit
+      CHUMP_GAP_CHECK=0          # pre-push gap-preflight false-positive
+
+    Each guard has a real reason to exist — they were filed to catch
+    specific incidents (PRODUCT-009 false-closure, EVAL-074 single-judge
+    cost, etc.). But the cumulative friction for legitimate ledger-only
+    commits is high, and agents have started reflexively bypassing them
+    all (which defeats the original purpose).
+
+    Three consolidation paths:
+
+      (a) Auto-detect ledger-only commits — when a commit ONLY modifies
+          docs/gaps/<ID>.yaml files (no .rs, no docs/eval/, etc.) AND
+          the diff is purely additive (closed_pr / closed_date /
+          status:done flips on already-done implementation PRs), skip
+          the EVAL-/RESEARCH-specific guards entirely. Implementation
+          guards (prereg, cross-judge) only matter for the IMPLEMENTING
+          PR, not the LEDGER-FLIP PR that follows weeks later.
+
+      (b) Single CHUMP_LEDGER_ONLY=1 env that bundles the safe set —
+          one bypass for the documented "I am only flipping registry
+          status fields, not closing-as-implementation" case. Replaces
+          5 separate envs.
+
+      (c) Consolidate the EVAL/RESEARCH closure guards behind a single
+          check: any closure of EVAL-* / RESEARCH-* gaps requires
+          preregistration + cross-judge OR a documented retrospective-
+          closure tag. Currently three independent guards each with
+          their own bypass.
+
+    Tradeoff: defense-in-depth vs friction. The current N=6 bypasses
+    lean too hard on the agent to know which envs apply to which guard.
+    Risk of ledger-only PRs reflexively setting CHUMP_*_CHECK=0 across
+    the board, accidentally weakening guards meant to catch real misses.
+  acceptance_criteria:
+    - "Ledger-only commits (no code changes, only status:open → status:done flips with closed_pr) require ≤2 bypass envs OR none with auto-detection"
+    - "Implementation PRs still hit all guards — defense-in-depth preserved for the actual closing event"
+    - "CLAUDE.md guard table updated to reflect new bypass surface"
+  depends_on:
+    - INFRA-234
+  raised_by: claude
+  raised_in: '2026-05-02 — surfaced during INFRA-241 backfill which required 6 separate bypass envs to land 71 ghost-closures'
