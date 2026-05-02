@@ -597,9 +597,17 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
                 chump gap dump --out .chump/state.sql >/dev/null 2>&1 || true
                 # Stage only the files we expect this command to have touched.
                 # If nothing changed (e.g. gap already done), skip the commit.
-                _autoclose_changed=$(git status --porcelain docs/gaps.yaml .chump/state.sql 2>/dev/null || echo "")
+                # INFRA-226: post-INFRA-188-cutover the monolithic docs/gaps.yaml
+                # may not exist anymore — gaps live in docs/gaps/<ID>.yaml.
+                # Stat both paths so the auto-close commit picks up whichever
+                # mirror chump gap ship --update-yaml wrote into. Conditional
+                # `git add` calls avoid the `pathspec did not match any files`
+                # fatal that previously aborted bot-merge BEFORE auto-merge
+                # arming, leaving every post-cutover PR un-armed (PR #759 etc).
+                _autoclose_changed=$(git status --porcelain docs/gaps.yaml docs/gaps/ .chump/state.sql 2>/dev/null || echo "")
                 if [[ -n "$_autoclose_changed" ]]; then
-                    git add docs/gaps.yaml
+                    [[ -f docs/gaps.yaml ]] && git add docs/gaps.yaml
+                    [[ -d docs/gaps ]]      && git add docs/gaps/
                     [[ -f .chump/state.sql ]] && git add .chump/state.sql
                     git commit -m "chore(close): auto-close $_gid via PR #$_autoclose_target_pr (INFRA-154)" \
                                --no-verify >/dev/null 2>&1 || {
