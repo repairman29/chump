@@ -795,6 +795,37 @@ impl GapStore {
         }
         Ok((written, skipped))
     }
+
+    /// Dump exactly one gap's per-file YAML mirror. Used by
+    /// `chump gap reserve` and `chump gap ship --update-yaml` post-INFRA-188
+    /// (INFRA-228, INFRA-229) so the per-file directory at
+    /// `docs/gaps/<ID>.yaml` stays in sync with `.chump/state.db` without
+    /// regenerating all 542+ files on every gap mutation.
+    ///
+    /// Returns `Ok(true)` if the file was written (new or content changed),
+    /// `Ok(false)` if the existing content was byte-identical and no
+    /// write happened (preserves mtime for INFRA-148 staleness checks).
+    /// Returns `Err` if the gap id is not in the store, or if I/O fails.
+    pub fn dump_per_file_single(&self, gap_id: &str, out_dir: &std::path::Path) -> Result<bool> {
+        let row = self
+            .get(gap_id)?
+            .ok_or_else(|| anyhow::anyhow!("gap {} not found in store", gap_id))?;
+        if row.id.trim().is_empty() {
+            anyhow::bail!("gap {} has an empty id row in store", gap_id);
+        }
+        std::fs::create_dir_all(out_dir)
+            .with_context(|| format!("creating {}", out_dir.display()))?;
+        let path = out_dir.join(format!("{}.yaml", row.id));
+        let content = format_gap_yaml(&row);
+        match std::fs::read_to_string(&path) {
+            Ok(existing) if existing == content => Ok(false),
+            _ => {
+                std::fs::write(&path, &content)
+                    .with_context(|| format!("writing {}", path.display()))?;
+                Ok(true)
+            }
+        }
+    }
 }
 
 /// Mutable-field bundle for `chump gap set`. None means "leave unchanged".
@@ -2164,6 +2195,66 @@ meta:
         let (written2, skipped2) = store.dump_per_file(&out_dir).unwrap();
         assert_eq!(written2, 0, "second dump should write 0 files");
         assert_eq!(skipped2, 3, "second dump should skip all 3");
+    }
+
+    /// INFRA-228/229: single-gap per-file dump. New since 2026-05-02
+    /// to back `chump gap reserve` (write per-file mirror at create
+    /// time) and `chump gap ship --update-yaml` (write per-file
+    /// mirror on ship instead of the deleted monolithic gaps.yaml).
+    #[test]
+    fn test_dump_per_file_single_writes_one_gap() {
+        let (store, dir) = test_store();
+        let id1 = store.reserve("INFRA", "alpha", "P1", "s").unwrap();
+        let _id2 = store.reserve("EVAL", "beta", "P0", "m").unwrap();
+
+        let out_dir = dir.path().join("docs/gaps");
+        let wrote = store.dump_per_file_single(&id1, &out_dir).unwrap();
+        assert!(wrote, "first single-dump should write");
+
+        let path = out_dir.join(format!("{}.yaml", id1));
+        assert!(path.exists(), "{} missing", path.display());
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains(&format!("- id: {}", id1)));
+        // Crucially, the second gap's file is NOT written — single-gap
+        // dump only touches its target. This is the property `reserve`
+        // and `ship --update-yaml` rely on for cheap per-mutation writes.
+        let other = out_dir.join("EVAL-001.yaml");
+        assert!(
+            !other.exists(),
+            "single-dump must not touch sibling gap files"
+        );
+
+        // Idempotency: a second call with no DB change returns false.
+        let wrote2 = store.dump_per_file_single(&id1, &out_dir).unwrap();
+        assert!(!wrote2, "second single-dump should skip (byte-identical)");
+
+        // After mutating the gap (set status to done), single-dump
+        // must re-write.
+        store.ship(&id1, "test-session", Some(999)).unwrap();
+        let wrote3 = store.dump_per_file_single(&id1, &out_dir).unwrap();
+        assert!(wrote3, "post-ship single-dump must rewrite");
+        let updated = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            updated.contains("status: done"),
+            "post-ship dump must reflect new status; got: {updated}"
+        );
+    }
+
+    /// INFRA-228/229: a single-dump on an unknown id is an error,
+    /// not a silent no-op. Callers (reserve / ship --update-yaml)
+    /// already have the id in scope so this is a programmer-error
+    /// condition worth surfacing.
+    #[test]
+    fn test_dump_per_file_single_unknown_id_errors() {
+        let (store, dir) = test_store();
+        let out_dir = dir.path().join("docs/gaps");
+        let err = store
+            .dump_per_file_single("DOES-NOT-EXIST-001", &out_dir)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("not found"),
+            "expected 'not found' error, got: {err}"
+        );
     }
 
     /// INFRA-188 v0: per-file dump's content is byte-equal to what the

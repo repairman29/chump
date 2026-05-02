@@ -1,0 +1,28 @@
+- id: INFRA-228
+  domain: infra
+  title: chump gap reserve must write per-file docs/gaps/<ID>.yaml mirror
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-02'
+  source_doc: src/main.rs
+  description: |
+    Post-INFRA-188 (per-file gap registry, PR #753), `chump gap reserve`
+    only writes the SQLite row in `.chump/state.db` and skips the
+    per-file YAML mirror at `docs/gaps/<ID>.yaml`. Result: every
+    reserved gap requires a hand-written YAML before
+    `scripts/coord/gap-preflight.sh` will let the implementing PR
+    ship — observed mid-flight on INFRA-227 (had to push
+    docs/gaps/INFRA-227.yaml manually + bypass with
+    CHUMP_ALLOW_UNREGISTERED_GAP=1).
+
+    Fix: after `store.reserve(...)` succeeds, also call
+    `dump_per_file_single` to write `docs/gaps/<ID>.yaml`. SQLite stays
+    canonical; the per-file mirror is best-effort (write failure logs
+    but doesn't fail the reserve). Pairs with INFRA-229 which fixes
+    `chump gap ship --update-yaml`.
+  acceptance_criteria:
+    - "`chump gap reserve --domain X --title Y` writes both .chump/state.db AND docs/gaps/<ID>.yaml"
+    - "subsequent `gap-preflight.sh <ID>` succeeds without CHUMP_ALLOW_UNREGISTERED_GAP=1 bypass"
+    - "test in src/gap_store.rs covering single-gap dump (idempotent + post-mutation rewrite)"
+  depends_on: [INFRA-188]
