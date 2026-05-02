@@ -8451,7 +8451,7 @@ gaps:
 - id: INFRA-245
   domain: INFRA
   title: gap-doctor.py broken post-INFRA-188 — reads deleted docs/gaps.yaml; same class as INFRA-226
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -8485,6 +8485,15 @@ gaps:
     - gap-doctor.py reads docs/gaps/*.yaml not docs/gaps.yaml
     - exits 0/1 cleanly post-INFRA-188
     - reports current drift
+  closed_date: '2026-05-02'
+  closed_pr: 819
+
+- id: INFRA-246
+  domain: INFRA
+  title: "Per-file YAML mid-flight collision: sibling agents independently editing same docs/gaps/<ID>.yaml — needs file-level lock or auto-rebase strategy"
+  status: open
+  priority: P1
+  effort: m
 
 - id: INFRA-41
   domain: infra
@@ -9520,6 +9529,13 @@ gaps:
     Closed via PR #801 (god-module decomposition shipped). Followed by PR #805 SECURITY-004 Path B which exercised the new module boundaries. The pattern META-013 documented (3 scope-expansions on contact in src/discord.rs) is now permanently fixed structurally.
   closed_date: '2026-05-02'
   closed_pr: 801
+
+- id: META-014
+  domain: META
+  title: Verify-against-origin/main before filing RCA gaps — stale working tree caused INFRA-238 P0 misdiagnosis (codify in AGENTS.md)
+  status: open
+  priority: P2
+  effort: xs
 
 - id: PRODUCT-001
   domain: product
@@ -10681,6 +10697,43 @@ gaps:
   status: open
   priority: P1
   effort: l
+  description: |
+    Convergent finding from 3 Gemini reviewer-persona passes (CPO / distributed-systems architect / research-integrity reviewer) on docs/strategy/NORTH_STAR.md + EXPERT_REVIEW_PANEL.md, run during the 2026-05-02 cleanup pass. All three independently surfaced the same load-bearing doubt:
+    
+      The capability ceiling of qwen3:14b-class local LLMs is ASSERTED in NORTH_STAR.md as the quality bar Chump must hit, but never bridged to evidence.
+    
+    Three framings of the same gap:
+      - CPO: orchestration-feasibility — can the full agent loop (tool selection, multi-step planning, error recovery, code synthesis) actually compose at this model class?
+      - Distributed-systems architect: state-reconciliation under partition — small models may be fine on isolated turns but fail on cross-machine consistency reasoning
+      - Research-integrity: can the validated interventions (EVAL-025 lessons, A/B-positive findings) reach the "What Success Looks Like" criteria when the substrate is qwen3:14b instead of frontier?
+    
+    This is the offline-mission strategic-anchors load-bearing assumption (per .chump/notes/AI-COLLABORATION-DUE-DILIGENCE.md). Chump filters all LLM advice through "would this work for the offline kid running qwen3:14b on 24GB?" — but the project has no eval that VALIDATES that claim end-to-end.
+    
+    Related-but-not-overlapping gaps:
+      - EVAL-035 (done): belief_state ablation — substrate-quality not addressed
+      - EVAL-043 (done): full ablation suite for cognitive components — substrate-quality not addressed
+      - COG-026 (done): Together-big models on agent loop — proves frontier works, opposite direction
+      - COG-001 (done): A/B study with multi-model scaling curves — touches scaling but not the "ceiling reached at 14B?" question
+    
+    Scope (3 stages):
+      1. CHARACTERIZE: pick 3-5 representative Chump end-to-end workflows (file gap reserve→implement→ship pipeline; ambient-stream coordination; gap-doctor drift repair; eval harness invocation; a multi-turn agent debugging task). For each, define a "ships shipping-quality output" success criterion that a human can binary-judge.
+      2. EXECUTE: run each workflow against (a) qwen3:14b on 24GB Mac, (b) a frontier baseline (Claude Opus 4.7 or similar) for comparison. n=10+ trials per workflow per substrate. Single-judge waived if A/A baseline cited per RESEARCH_INTEGRITY.md cross-judge requirements.
+      3. REPORT: matrix of (workflow × substrate) → success rate. Identify which workflows CAN be sustained at qwen3:14b quality and which require frontier substrate. This becomes the empirical anchor for the strategic-anchor frame; tools/workflows that fail get either (a) restructured, (b) flagged as frontier-only with a fallback path, or (c) acknowledged as "Chump v1 requires frontier; offline path needs more research."
+    
+    This is RESEARCH-tier work because the answer determines the boundary of the offline mission. If qwen3:14b can do 4 of 5 critical workflows, the mission is largely intact. If it can do 1 of 5, the mission needs reframing or the substrate bar needs raising (e.g. qwen3:32b or larger).
+    
+    Methodology constraints (RESEARCH_INTEGRITY.md): preregistration required; n>=50 per cell or single-judge waiver justified; cross-judge audit; A/A baseline; mechanism analysis for any |Delta| > 0.05; no Prohibited Claims phrasing.
+    
+    Estimated effort: l (large) — multi-week study including preregistration, n=10+ runs across 3-5 workflows on 2 substrates, results writeup. Realistic timeline if prioritized: 2-4 weeks of focused work.
+  acceptance_criteria:
+    - Preregistration committed at docs/eval/preregistered/RESEARCH-032.md (sample size, judge identity per workflow, success criteria, A/A baseline reference, prohibited-claims pointer)
+    - Workflow definitions with binary success criteria committed at docs/eval/RESEARCH-032-workflows.md (3-5 workflows, each with input/expected-shape/judge-rubric)
+    - Results matrix at docs/audits/RESEARCH-032-local-llm-ceiling.md showing per-(workflow, substrate) success rate with Wilson 95% CI
+    - "Cross-judge audit: kappa>=0.6 across two judge families, OR single-judge waiver with 20+ char justification per RESEARCH_INTEGRITY.md"
+    - "Strategic implications written up: which workflows CAN survive at qwen3:14b, which require frontier, what the offline mission scope becomes after evidence"
+    - "If any workflow fails entirely at qwen3:14b, file follow-up gap with the specific bottleneck (provider/architecture/training-data) so future evals can target it"
+  notes: |
+    Filed by Claude on 2026-05-02 after a multi-LLM strategic critique of NORTH_STAR.md surfaced this as the convergent finding (3 reviewer personas, 3 distinct framings, 1 underlying gap). The offline mission as stated in .chump/notes/AI-COLLABORATION-DUE-DILIGENCE.md depends on this being answered — currently it sits as an axiom rather than a measured result.
 
 - id: SECURITY-001
   domain: infra
