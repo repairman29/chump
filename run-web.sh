@@ -17,11 +17,15 @@ fi
 export CHUMP_REPO="${CHUMP_REPO:-$CHUMP_HOME}"
 export OPENAI_API_BASE="${OPENAI_API_BASE:-http://localhost:11434/v1}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-ollama}"
-export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:14b}"
+# PRODUCT-023: chat default is 7B (~4.7 GB VRAM, 1-3 s first token cold).
+# 14B remains opt-in via OPENAI_MODEL=qwen2.5:14b in .env for heavy turns.
+# Frees ~5 GB headroom on 24 GB Air so rust-analyzer + browser + chump
+# coexist without swap thrash.
+export OPENAI_MODEL="${OPENAI_MODEL:-qwen2.5:7b}"
 if [[ "${CHUMP_GOLDEN_PATH_OLLAMA:-}" == "1" ]]; then
   export OPENAI_API_BASE="http://localhost:11434/v1"
   export OPENAI_API_KEY="ollama"
-  export OPENAI_MODEL="qwen2.5:14b"
+  export OPENAI_MODEL="qwen2.5:7b"
 fi
 
 # In-process mistral.rs primary: do not start vLLM-MLX or touch Ollama here (avoids two LLMs on Metal/RAM).

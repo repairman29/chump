@@ -139,15 +139,18 @@ OPENAI_MODEL=mlx-community/Qwen2.5-7B-Instruct-4bit
 
 **When to use:** Quick development, minimal setup, or when **vLLM-MLX** is unavailable.
 
-**Requirements:** **`ollama serve`**, **`ollama pull`** for your model (e.g. **`qwen2.5:14b`**).
+**Requirements:** **`ollama serve`**, **`ollama pull`** for your model (default **`qwen2.5:7b`**; opt-in **`qwen2.5:14b`** for heavy turns).
+
+**Chat default — `qwen2.5:7b`** (PRODUCT-023). 7B is the steady chat default in `run-web.sh` and `.env.example`: ~4.7 GB VRAM, 1-3 s first token cold, fits comfortably on a 24 GB Air alongside rust-analyzer + a browser. **`qwen2.5:14b`** remains opt-in for tool-heavy or long-context turns by setting `OPENAI_MODEL=qwen2.5:14b` in `.env`. Don't ship 14B as the default unless the operator has shed load — it pushes RAM under sustained build/agent activity.
 
 **`.env` example**
 
 ```bash
 OPENAI_API_BASE=http://127.0.0.1:11434/v1
 OPENAI_API_KEY=ollama
-OPENAI_MODEL=qwen2.5:14b
+OPENAI_MODEL=qwen2.5:7b
 # Clear or omit CHUMP_TEST_CONFIG=max_m4 if set
+# Heavy turns? OPENAI_MODEL=qwen2.5:14b (opt-in; ~9 GB VRAM)
 ```
 
 **Scripts:** **`./run-discord-ollama.sh`** (Ollama reachability check + **`cargo run -- --discord`**), **`./run-local.sh`** for CLI.
