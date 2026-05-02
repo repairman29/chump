@@ -138,6 +138,86 @@ implementing PR** (one commit, not a follow-up).
   under working LLM judge (EVAL-069 used broken scorer); task-cluster
   localization (EVAL-029) stands independently." Makes evolution visible in diffs.
 
+## Filing follow-up gaps — the feeder system (2026-05-02)
+
+**The gap registry only stays useful if it is actively fed.** When you
+spot a real bug, design hole, tooling drift, reproducible guard misfire,
+coordination race, or non-obvious finding while doing other work — file
+it as a gap **immediately**. Do not ask the operator first.
+
+**Why this is non-negotiable:**
+
+The cost of NOT filing is silent regression: every shipped session leaves
+behind 2–5 unfiled findings the agent diagnosed end-to-end. Without a
+filing reflex, those findings die with the session context and resurface
+later as fresh incidents (with the same root cause and a new
+investigator). The cost of an over-eager filing is near zero: gap-doctor
+detects YAML↔DB drift, the closer-pr-batcher reaps stale ones (modulo
+INFRA-219 false-closes), and humans can re-prioritize freely. **Asymmetric
+cost = bias toward filing.** This is exactly why the registry has
+hundreds of small-effort gaps and is still load-bearing.
+
+**Triggers (file when you observe any of these):**
+
+- A bug you diagnosed end-to-end (root cause + reproducer in hand).
+- A tool / script / workflow that doesn't behave as documented.
+- A pre-commit / pre-push / CI guard that misfires reproducibly.
+- A coordination race or stomp you recovered from manually.
+- A toolchain mismatch surfaced by a major change (e.g. a flag that
+  references a now-deleted file, an env var with stale defaults).
+- A pattern you recognize that already happened ≥2 times in this session
+  or recent ambient.jsonl.
+
+**Skip filing only when:**
+
+- You lack confidence the finding is real (it could be a one-off, a
+  user-error, an environment quirk).
+- It's pure speculation about hypothetical edge cases nobody's hit.
+- It's already filed (search `chump gap list --status open` first; the
+  ID picker race + closer-batcher false-close mean dup-filings happen).
+
+**The filing flow (post-INFRA-188 cutover):**
+
+```bash
+chump gap reserve --domain INFRA --title "<one-line title>" \
+  --priority P1 --effort s
+# → returns INFRA-NNN
+chump gap set INFRA-NNN --description "$(cat <<'EOF'
+<paragraph: what's broken, reproducer, fix paths>
+EOF
+)" --acceptance-criteria "<criterion 1>|<criterion 2>"
+# Surgical YAML write (the canonical state.db → docs/gaps/<ID>.yaml
+# tooling has known lossiness — INFRA-208 / INFRA-233; surgical Write
+# is the only safe per-file path until those land):
+#   create docs/gaps/INFRA-NNN.yaml mirroring the schema of a sibling.
+git add docs/gaps/INFRA-NNN.yaml
+CHUMP_RAW_YAML_LOCK=0 scripts/coord/chump-commit.sh \
+  docs/gaps/INFRA-NNN.yaml -m "chore(gaps): file INFRA-NNN — <title>"
+CHUMP_GAP_CHECK=0 git push -u origin chore/file-infra-NNN
+gh pr create --base main --title "..." --body "..." && \
+  gh pr merge $(gh pr list --head chore/file-infra-NNN \
+    --json number -q '.[0].number') --auto --squash
+```
+
+**Priority guidance** (set your best judgement; operator re-prioritizes):
+- **P0** — blocks current work for the team / fleet (queue-jam, every-PR
+  guard misfire, data-loss bug).
+- **P1** — observed-and-painful (tools that misbehave when you reach for
+  them, drift that bites repeatedly).
+- **P2** — niggling (test coverage holes, stale comments, ergonomic
+  improvements, doc-vs-code drift not actively biting).
+
+**Bundling:** when multiple findings share a session origin or causal
+chain, bundle them into ONE PR with multiple `chore(gaps): file …`
+entries to save merge-queue friction. Atomic-PR discipline still holds
+— bundle ≠ pushing after arm. But each individual gap still gets its
+own per-file YAML + state.db row.
+
+**Lessons fed back:** the `chump_skills` table (INFRA-195) and the
+COG-024 lessons-injection pipeline both depend on this feeder system.
+Filings → reflections → distilled directives → next-session prompt
+context. The loop is only as strong as the upstream filing rate.
+
 ## Naming conventions (INFRA-186, 2026-05-01)
 
 **The project owns the namespace, not the tool.** Branches, worktree
