@@ -1,7 +1,9 @@
 - id: INFRA-169
   domain: infra
   title: "ftue-clean-machine workflow: cannot land artifact on main — Actions blocked from both PR-create AND direct-push"
-  status: open
+  status: done
+  closed_pr: 668
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |
