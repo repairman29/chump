@@ -15560,6 +15560,30 @@ gaps:
   raised_by: claude
   raised_in: '2026-04-30 — surfaced after v0.1.1 release succeeded but tap stayed empty'
 
+- id: INFRA-177
+  domain: INFRA
+  title: 'narration-detection retry: 50+ false-positive phrases waste 2 model rounds per conversational reply'
+  status: done
+  closed_pr: 687
+  closed_date: '2026-05-02'
+  priority: P0
+  effort: s
+  opened_date: '2026-04-30'
+  description: |
+    The narration retry gate at `src/agent_loop/iteration_controller.rs:245`
+    fires when `response_wanted_tools()` thinks a tool-free response was
+    actually a side-effect claim that should have come from a tool call.
+    The pre-rewrite phrase list (~50+) included generic capability prose
+    — `"i can help"`, `"i can show"`, `"running "`, `"writing "`,
+    `"checking "` — so any "what can you do?"-style answer matched and
+    burned 2 extra model rounds (~3.6 minutes wall-clock) while the PWA
+    bubble concatenated 3 separate replies.
+  acceptance_criteria:
+    - "response_wanted_tools() only fires on past-tense success claims that imply a tool result"
+    - "Capability descriptions and future-tense intent ('I can ...', 'I'll ...', 'Let me ...') are NOT flagged"
+    - "Regression test capability_descriptions_not_narration in src/agent_loop/types.rs"
+  raised_by: claude
+
 - id: INFRA-178
   domain: INFRA
   title: 'PWA chat bubble concatenates multi-round responses — clear text on model_call_start'
