@@ -60,6 +60,13 @@ telegram = []
 # docs/operations/BROWSER_AUTOMATION.md). V2 will pull in chromiumoxide / thirtyfour and
 # enable the real `browser` tool backend.
 browser-automation = []
+# SECURITY-004 Path B: Discord gateway (serenity). Default OFF because
+# serenity 0.12.5 (latest crates.io) pins tokio-tungstenite 0.21 →
+# tokio-rustls 0.25 → rustls 0.22 → rustls-webpki 0.102.8 (HIGH DoS,
+# RUSTSEC-2026-0104). Default builds drop the entire vulnerable chain.
+# Build with `--features discord` to opt back in (still vulnerable until
+# serenity v0.13 ships; track via RELIABILITY-001 / SECURITY-005).
+discord = ["dep:serenity"]
 # Sprint A1 (Defense Trinity): encrypted-at-rest SQLite via sqlcipher.
 # Disabled by default — requires a passphrase strategy (CHUMP_DB_PASSPHRASE env var
 # or Keychain) and a migration path from existing plain DBs. When enabled, db_pool
@@ -107,7 +114,7 @@ serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0"
 base64 = "0.22"
 aes-gcm = "0.10"
-serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "rustls_backend"] }
+serenity = { version = "0.12", optional = true, default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "rustls_backend"] }
 fastembed = { version = "5", optional = true }
 once_cell = { version = "1.19", optional = true }
 axum = { version = "0.8", features = ["macros", "json", "multipart"] }
