@@ -1,7 +1,7 @@
 - id: INFRA-124
   domain: infra
   title: docs-delta Net-new-docs trailer not validated against actual diff
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -17,4 +17,6 @@
     - Mismatch fails closed with a diagnostic message
     - "Test - commit with Net-new-docs: +1 but actual +5 is rejected; matching trailer is accepted"
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 865
 
