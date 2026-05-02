@@ -1,7 +1,9 @@
 - id: INFRA-213
   domain: infra
   title: CI matrix parallelism — split fast-checks/clippy/tests/e2e to run in parallel (cut queue depth 2-3x)
-  status: open
+  status: done
+  closed_pr: 814
+  closed_date: '2026-05-02'
   priority: P0
   effort: m
   description: |

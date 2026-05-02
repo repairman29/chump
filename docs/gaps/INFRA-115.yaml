@@ -1,7 +1,9 @@
 - id: INFRA-115
   domain: infra
   title: Lease TTL has no server-side enforcement - stale .chump-locks/ ignored only client-side
-  status: open
+  status: done
+  closed_pr: 809
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |

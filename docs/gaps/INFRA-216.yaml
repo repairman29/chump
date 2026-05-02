@@ -1,7 +1,9 @@
 - id: INFRA-216
   domain: infra
   title: "chump gap reserve: cross-host race against merge-queue arrivals — atomic picker only protects within-host"
-  status: open
+  status: done
+  closed_pr: 800
+  closed_date: '2026-05-02'
   priority: P1
   effort: m
   description: |
