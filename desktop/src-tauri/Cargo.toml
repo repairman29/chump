@@ -4,6 +4,12 @@ version = "0.1.0"
 description = "Tauri shell for Chump PWA (Cowork UI scaffold)"
 edition = "2021"
 rust-version = "1.77.2"
+# Tauri app shell, not a publishable library. Excluding from crates.io publish
+# also fixes the CI dry-run gate (crates-publish-dry-run.yml) which was
+# failing because Ubuntu CI doesn't have libglib2.0-dev installed for the
+# Tauri Linux backend dep tree. PR #805 hit this; the dry-run is supposed
+# to gate publishable crates only.
+publish = false
 
 [lib]
 name = "chump_desktop_lib"
