@@ -17353,3 +17353,83 @@ gaps:
     - "test-closed-pr-guard.sh extended to cover the false-positive case"
   raised_by: claude
   raised_in: '2026-05-02 — INFRA-219 filing tripped the guard on INFRA-107 acceptance_criteria text'
+
+- id: INFRA-216
+  domain: INFRA
+  title: 'chump gap reserve: cross-host race against merge-queue arrivals — atomic picker only protects within-host'
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-05-02'
+  description: |
+    'chump gap reserve' uses INFRA-100's atomic next-ID picker, which reads
+    all 4 sources on the local host (state.db, open PRs, live leases, main
+    YAML). It does NOT git fetch first. So if a sibling agent on the same
+    host or remote landed a PR that added a new gap row to docs/gaps.yaml
+    on origin/main BETWEEN your last fetch and your reserve, the picker
+    assigns an ID that's already taken on origin/main.
+
+    Reproducer (observed 2026-05-02 in the INFRA-177 closure session):
+      1. Agent A FFs main, runs 'chump gap reserve --domain INFRA' → returns INFRA-200
+      2. Agent B's PR (e0ab7e7, e.g.) lands on origin/main with INFRA-200 already assigned
+      3. Agent A surgically inserts INFRA-200 into YAML and tries to commit
+      4. Pre-commit gap-ID-hijack guard catches the title mismatch → reject
+      5. Recovery: sqlite3 DELETE the poisoned local row + chump gap import + reserve again (gets INFRA-208)
+
+    Fix paths:
+      (a) 'chump gap reserve' calls 'git fetch origin main --quiet' before
+          the atomic pick (slow when offline; needs careful timeout)
+      (b) 'chump gap reserve' reads origin/main's gaps.yaml via
+          'git show origin/main:docs/gaps.yaml' (no network, but stale until
+          next fetch)
+      (c) Pessimistic ID picker: skip N additional IDs as a safety buffer
+          when the local picker hasn't fetched in >5min
+      (d) Document the failure mode + recovery in CLAUDE.md so agents know
+          to git fetch + chump gap import before reserve
+  acceptance_criteria:
+    - "Under stress test of 3+ concurrent reserve calls split across local DB + simulated origin/main updates, no ID collision occurs OR the collision is detected at reserve-time (not at commit-time)"
+    - "Recovery procedure documented in CLAUDE.md if collision detection is reactive rather than preventative"
+  raised_by: claude
+  raised_in: '2026-05-02 — INFRA-177 closure session lost INFRA-200 + META-005 to sibling PRs landing between FF and reserve'
+
+- id: INFRA-217
+  domain: INFRA
+  title: 'Branch protection on main blocks direct push for ledger-only commits — every chore(gaps) needs a PR'
+  status: open
+  priority: P2
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    Branch protection on origin/main now requires 3 status checks (added
+    2026-05-01-ish per github rules). This means even pure ledger-flip
+    commits — like 'chore(gaps): add SECURITY-005 row via surgical insert
+    at SECURITY-* block' (commit d1012f5) or the canonical 'chore(gaps):
+    close <ID> already shipped in #N' pattern — can no longer be direct-
+    pushed to main; they need a PR + CI run.
+
+    Observed cost in the 2026-05-02 INFRA-177 closure session: 3 separate
+    chore(gaps) PRs (#716 INFRA-177 close, #718 INFRA-208/META-006 file,
+    #724 cargo-dist allow-dirty) each had to:
+      - Create a feature branch
+      - Push (with CHUMP_GAP_CHECK=0 bypass for false-positive gap-preflight)
+      - 'gh pr create' with body
+      - 'gh pr merge --auto --squash' to arm
+      - Wait for CI to run all 3 required checks (~5-10 min) before landing
+
+    Compare against the pre-protection direct-push: ~3 commands, instant.
+
+    Tradeoff: branch protection prevents bot misbehavior but adds friction
+    for the very narrow class of 'pure metadata flip' commits. Three
+    options:
+      (a) Accept the friction (current state) — chore(gaps) PRs are normal
+      (b) Allow specific bot identities (chump-ftue-bot, etc) to push to
+          main bypassing required checks for ledger files only — needs
+          admin rules + path-based protection
+      (c) Add a dedicated 'ledger flip' fast-track: a workflow that takes a
+          state.db change as input, opens + auto-merges its own PR with
+          self-attested CI skip — automates the friction away without
+          weakening protection
+  acceptance_criteria:
+    - "Pick one of (a)/(b)/(c) explicitly; document the decision in CLAUDE.md ship-pipeline section so agents stop attempting direct-push and getting GH013 errors"
+  raised_by: claude
+  raised_in: '2026-05-02 — INFRA-177 closure session hit GH013 on pure-ledger push, had to convert to PR'
