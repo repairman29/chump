@@ -1,7 +1,7 @@
 - id: INFRA-104
   domain: infra
   title: PR title-vs-implementation drift detector - ALERT when a PR gap-ID has no matching diff signal
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -20,4 +20,6 @@
     - Posts ALERT and labels PR on mismatch
     - "Backtest - when fed PR #565 plus gap registry of that moment, alert fires; when fed PR #570 (INFRA-084 layer 2), alert does NOT fire"
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 832
 
