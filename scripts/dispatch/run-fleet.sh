@@ -23,6 +23,12 @@
 #   FLEET_SESSION           (default "chump-fleet") tmux session name
 #   FLEET_LOG_DIR           (default /tmp/chump-fleet-<sid>) per-agent logs
 #   FLEET_DRY_RUN           (default 0)   if 1, print plan and exit
+#   FLEET_BACKEND           (default chump-local) "chump-local" runs each
+#                           gap via `chump --execute-gap` so calls fan out
+#                           through src/provider_cascade.rs (free tiers).
+#                           "claude" preserves the original AUTO-013 path
+#                           (`claude -p` with Anthropic API). Use claude
+#                           for tasks the cascade can't carry yet.
 #   CARGO_TARGET_DIR        recommended: shared target across worktrees
 #                           (see INFRA-210 — exported below if unset)
 #
@@ -43,6 +49,15 @@ FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 FLEET_SESSION="${FLEET_SESSION:-chump-fleet}"
 FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
+FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+
+case "$FLEET_BACKEND" in
+    claude|chump-local) ;;
+    *)
+        echo "[run-fleet] ERROR: FLEET_BACKEND must be 'claude' or 'chump-local' (got: $FLEET_BACKEND)" >&2
+        exit 2
+        ;;
+esac
 
 SID="$(date +%Y%m%d-%H%M%S)-$$"
 FLEET_LOG_DIR="${FLEET_LOG_DIR:-/tmp/chump-fleet-${SID}}"
@@ -95,6 +110,7 @@ cat <<EOF
   domain        : ${FLEET_DOMAIN_FILTER:-<any>}
   effort        : $FLEET_EFFORT_FILTER
   log dir       : $FLEET_LOG_DIR
+  backend       : $FLEET_BACKEND
   CARGO_TARGET_DIR : $CARGO_TARGET_DIR
 EOF
 
@@ -111,6 +127,7 @@ worker_env=(
     "FLEET_PRIORITY_FILTER=$FLEET_PRIORITY_FILTER"
     "FLEET_DOMAIN_FILTER=$FLEET_DOMAIN_FILTER"
     "FLEET_EFFORT_FILTER=$FLEET_EFFORT_FILTER"
+    "FLEET_BACKEND=$FLEET_BACKEND"
     "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
 )
 env_prefix="$(printf '%s ' "${worker_env[@]}")"

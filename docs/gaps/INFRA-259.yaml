@@ -1,0 +1,6 @@
+- id: INFRA-259
+  domain: INFRA
+  title: "default fleet workers to chump-local backend (consume free-tier cascade)"
+  status: open
+  priority: P1
+  effort: xs

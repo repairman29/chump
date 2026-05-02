@@ -22,6 +22,11 @@
 #   FLEET_PRIORITY_FILTER   default P0,P1
 #   FLEET_DOMAIN_FILTER     default "" = any
 #   FLEET_EFFORT_FILTER     default xs,s,m
+#   FLEET_BACKEND           default chump-local — "claude" runs `claude -p`
+#                           (original AUTO-013 path, Anthropic API).
+#                           "chump-local" runs `chump --execute-gap` so
+#                           every inference call fans out through the
+#                           free-tier provider cascade (INFRA-259).
 #   IDLE_SLEEP_S            default 60 — sleep when no pickable gap
 
 set -uo pipefail   # NOT -e: we want the loop to recover from individual cycle failures
@@ -33,6 +38,7 @@ FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
+FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
 IDLE_SLEEP_S="${IDLE_SLEEP_S:-60}"
 
 mkdir -p "$FLEET_LOG_DIR"
@@ -118,11 +124,8 @@ PY
         continue
     fi
 
-    # ── Spawn claude -p ───────────────────────────────────────────────────
+    # ── Spawn agent (claude or chump-local) ───────────────────────────────
     cycle_log="$FLEET_LOG_DIR/agent-${AGENT_ID}-cycle${cycle}-${GAP_ID}.log"
-    prompt="Ship gap $GAP_ID in this repository. Read CLAUDE.md and AGENTS.md first. The gap is already claimed for this session; the lease is in .chump-locks/. Implement the gap per its description, commit via scripts/coord/chump-commit.sh, and ship via scripts/coord/bot-merge.sh --gap $GAP_ID --auto-merge. Reply with the PR number only."
-
-    log "spawning claude -p (timeout ${FLEET_TIMEOUT_S}s) → $cycle_log"
 
     # Pick `timeout` (linux) or `gtimeout` (mac brew coreutils); fall back to none.
     if command -v timeout >/dev/null 2>&1; then
@@ -133,20 +136,43 @@ PY
         TO=""
     fi
 
-    (
-        cd "$wt_path" || exit 99
-        # Same surface as src/dispatch.rs WorkBackend::Headless.
-        # shellcheck disable=SC2086
-        $TO claude -p "$prompt" --dangerously-skip-permissions
-    ) >"$cycle_log" 2>&1
-    rc=$?
+    case "$FLEET_BACKEND" in
+        claude)
+            prompt="Ship gap $GAP_ID in this repository. Read CLAUDE.md and AGENTS.md first. The gap is already claimed for this session; the lease is in .chump-locks/. Implement the gap per its description, commit via scripts/coord/chump-commit.sh, and ship via scripts/coord/bot-merge.sh --gap $GAP_ID --auto-merge. Reply with the PR number only."
+            log "spawning claude -p (timeout ${FLEET_TIMEOUT_S}s, backend=claude) → $cycle_log"
+            (
+                cd "$wt_path" || exit 99
+                # Same surface as src/dispatch.rs WorkBackend::Headless.
+                # shellcheck disable=SC2086
+                $TO claude -p "$prompt" --dangerously-skip-permissions
+            ) >"$cycle_log" 2>&1
+            rc=$?
+            ;;
+        chump-local)
+            log "spawning chump --execute-gap $GAP_ID (timeout ${FLEET_TIMEOUT_S}s, backend=chump-local) → $cycle_log"
+            (
+                cd "$wt_path" || exit 99
+                # COG-025: route inference through src/provider_cascade.rs
+                # so this gap is carried by free-tier providers (Cerebras,
+                # Groq, Together, etc.). Reflection rows tag backend=chump-local
+                # so COG-026 A/B can split outcomes.
+                # shellcheck disable=SC2086
+                $TO chump --execute-gap "$GAP_ID"
+            ) >"$cycle_log" 2>&1
+            rc=$?
+            ;;
+        *)
+            log "ERROR: unknown FLEET_BACKEND=$FLEET_BACKEND; skipping cycle"
+            rc=2
+            ;;
+    esac
 
     if [ $rc -eq 0 ]; then
-        log "claude exited cleanly for $GAP_ID"
+        log "$FLEET_BACKEND exited cleanly for $GAP_ID"
     elif [ $rc -eq 124 ]; then
-        log "WARN: claude timed out (${FLEET_TIMEOUT_S}s) on $GAP_ID"
+        log "WARN: $FLEET_BACKEND timed out (${FLEET_TIMEOUT_S}s) on $GAP_ID"
     else
-        log "WARN: claude exited rc=$rc on $GAP_ID"
+        log "WARN: $FLEET_BACKEND exited rc=$rc on $GAP_ID"
     fi
 
     # ── Release lease + prune worktree ────────────────────────────────────
