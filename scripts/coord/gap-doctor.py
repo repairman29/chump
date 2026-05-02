@@ -78,10 +78,37 @@ def repo_root() -> Path:
 
 
 def load_yaml_status(root: Path) -> dict:
-    """Returns {gap_id: yaml_dict_for_that_gap}. Reads working-tree YAML."""
-    text = (root / "docs" / "gaps.yaml").read_text(encoding="utf-8")
-    data = yaml.safe_load(text)
+    """Returns {gap_id: yaml_dict_for_that_gap}. Reads working-tree YAML.
+
+    INFRA-245: post-INFRA-188 the canonical mirror is the per-file directory
+    docs/gaps/<ID>.yaml, not the monolithic docs/gaps.yaml (which was
+    retired in PR #753). Prefer the per-file directory when present; fall
+    back to the monolithic file only for backward-compat.
+    """
     out = {}
+    per_file_dir = root / "docs" / "gaps"
+    monolithic = root / "docs" / "gaps.yaml"
+
+    if per_file_dir.is_dir():
+        # Each docs/gaps/<ID>.yaml is the chump-gap-dump-per-file shape:
+        # a one-element list whose first entry is the gap dict.
+        for path in sorted(per_file_dir.glob("*.yaml")):
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            entries = data if isinstance(data, list) else [data]
+            for g in entries:
+                if not isinstance(g, dict):
+                    continue
+                gid = g.get("id")
+                if gid:
+                    out[gid] = g
+        return out
+
+    # Legacy monolithic path (pre-INFRA-188 fallback).
+    text = monolithic.read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
     for g in data.get("gaps", []):
         gid = g.get("id")
         if not gid:
