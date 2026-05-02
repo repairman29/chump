@@ -484,10 +484,10 @@ PYEOF_YAMLLINT
             offending="${offending}  - adds 'claimed_at:' (put claim in .chump-locks/ instead)"$'\n'
         fi
         if [ -n "$offending" ]; then
-            echo "[pre-commit] gaps.yaml DISCIPLINE — per CLAUDE.md, claim state lives in .chump-locks/" >&2
+            echo "[pre-commit] gap-row DISCIPLINE — per CLAUDE.md, claim state lives in .chump-locks/" >&2
             printf '%s' "$offending" >&2
             echo "[pre-commit] Claim the gap via: scripts/coord/gap-claim.sh <GAP-ID>" >&2
-            echo "[pre-commit] Only flip gaps.yaml on ship (status: done + closed_by + closed_date)." >&2
+            echo "[pre-commit] Only flip docs/gaps/<ID>.yaml on ship (status: done + closed_pr + closed_date)." >&2
             echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ..." >&2
             exit 1
         fi
@@ -541,12 +541,14 @@ if dups:
 PYEOF_DUP
 )
             if [ -n "$dup_ids" ]; then
-                echo "[pre-commit] DUPLICATE GAP ID — gaps.yaml now contains duplicate id(s):" >&2
+                echo "[pre-commit] DUPLICATE GAP ID — gap registry now contains duplicate id(s):" >&2
                 echo "$dup_ids" | sed 's/^/  - /' >&2
                 echo "" >&2
                 echo "[pre-commit] Each gap must have a unique id. Use the next available ID in its series." >&2
-                echo "[pre-commit] To find the next available id, run:" >&2
-                echo "[pre-commit]   python3 -c \"import yaml; d=yaml.safe_load(open('docs/gaps.yaml')); print(sorted(g['id'] for g in d['gaps'] if g['id'].startswith('COG-')))\"" >&2
+                echo "[pre-commit] To find the next available id, prefer:" >&2
+                echo "[pre-commit]   chump gap reserve --domain <DOMAIN> --title \"...\"" >&2
+                echo "[pre-commit] Or list a series:" >&2
+                echo "[pre-commit]   chump gap list --json | jq -r '.[].id' | grep ^COG- | sort" >&2
                 echo "[pre-commit] Bypass (e.g. for the dedup fix itself): CHUMP_GAPS_LOCK=0 git commit ..." >&2
                 exit 1
             fi
@@ -631,7 +633,7 @@ print("\n".join(collisions))
 PYEOF
 )
             if [ -n "$redefinitions" ]; then
-                echo "[pre-commit] gap-ID HIJACK — gaps.yaml diff redefines existing gap(s):" >&2
+                echo "[pre-commit] gap-ID HIJACK — gap-row diff redefines existing gap(s):" >&2
                 echo "$redefinitions" | sed 's/^/  /' >&2
                 echo "" >&2
                 echo "[pre-commit] If you meant to track NEW work, use a NEW gap ID." >&2
@@ -875,8 +877,8 @@ if [ "${CHUMP_RAW_YAML_LOCK:-1}" != "0" ]; then
             else
                 echo "" >&2
                 echo "🚫 raw-YAML-edit guard (INFRA-094, blocking since INFRA-200 — 2026-05-02):" >&2
-                echo "   this commit modifies docs/gaps.yaml without a recent chump-gap CLI marker" >&2
-                echo "   (.chump/.last-yaml-op)." >&2
+                echo "   this commit modifies docs/gaps/<ID>.yaml (or legacy docs/gaps.yaml)" >&2
+                echo "   without a recent chump-gap CLI marker (.chump/.last-yaml-op)." >&2
                 echo "" >&2
                 echo "   Why blocking now: Cold Water Issue #9 measured a 66% hand-edit rate" >&2
                 echo "   (33 of 50 commits) post-INFRA-084 advisory. Behavioral change required" >&2
