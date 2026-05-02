@@ -595,3 +595,240 @@ rules:
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// INFRA-130: rule-engine integration tests — load YAML → check → emit →
+// verify ambient.jsonl line shape end-to-end.
+//
+// The existing `tests` module covers parsing, rule matching, and the
+// disabled-default async path in isolation. None of them exercise the
+// emit_ambient_alert sink or verify the on-disk JSON line shape that
+// downstream consumers (war-room, musher, Cold Water) parse. A regression in
+// the JSON template, the field names, or the JSON-escaping of user-controlled
+// content would slip past the existing tests and only surface when an alert
+// actually fires in production.
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod e2e_rule_to_ambient {
+    use super::*;
+    use serde_json::json;
+    use std::sync::Mutex;
+    use tempfile::TempDir;
+
+    /// Serialize tests that mutate CHUMP_AMBIENT_LOG / CHUMP_SESSION_ID — these
+    /// are process-global env vars and parallel tests would interleave them.
+    static AMBIENT_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Build a fresh rules struct from a YAML literal, the same way the
+    /// existing parsing tests do.
+    fn make_rules(yaml: &str) -> AdversaryRules {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("chump-adversary.yaml");
+        std::fs::write(&path, yaml).unwrap();
+        AdversaryRules::load_from_path(&path)
+    }
+
+    /// Read the temp ambient file the test pointed CHUMP_AMBIENT_LOG at.
+    fn read_ambient(path: &std::path::Path) -> Vec<serde_json::Value> {
+        let raw = std::fs::read_to_string(path).unwrap_or_default();
+        raw.lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                serde_json::from_str::<serde_json::Value>(l)
+                    .expect("ambient line must be valid JSON")
+            })
+            .collect()
+    }
+
+    /// Full integration: YAML rule fires on a tool call, emit_ambient_alert
+    /// writes one line, the line parses as JSON and carries all fields the
+    /// downstream consumers depend on.
+    #[test]
+    fn rule_check_emits_ambient_line_with_correct_shape() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let ambient_path = tmp.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);
+        std::env::set_var("CHUMP_SESSION_ID", "infra130-test-session");
+        std::env::set_var("CHUMP_AMBIENT_NATS", "0");
+
+        let yaml = r#"
+rules:
+  - name: no-force-push
+    match: "bash"
+    pattern: "cmd contains 'git push --force'"
+    action: block
+    reason: force-push protection
+"#;
+        let rules = make_rules(yaml);
+        let alert = rules
+            .check("bash", &json!({"cmd": "git push --force origin main"}))
+            .expect("rule must match the input");
+
+        emit_ambient_alert(&alert);
+
+        let lines = read_ambient(&ambient_path);
+        assert_eq!(lines.len(), 1, "exactly one ambient line should be emitted");
+        let row = &lines[0];
+
+        for field in &[
+            "ts", "session", "worktree", "event", "rule", "tool", "action", "reason", "snippet",
+        ] {
+            assert!(
+                row.get(field).is_some(),
+                "ambient line missing required field '{}'; got: {}",
+                field,
+                row
+            );
+        }
+        assert_eq!(row["event"], "adversary_alert");
+        assert_eq!(row["rule"], "no-force-push");
+        assert_eq!(row["tool"], "bash");
+        assert_eq!(row["action"], "block");
+        assert_eq!(row["session"], "infra130-test-session");
+        assert!(
+            row["snippet"]
+                .as_str()
+                .unwrap_or("")
+                .contains("git push --force"),
+            "snippet should preserve the matched substring; got: {:?}",
+            row["snippet"]
+        );
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        std::env::remove_var("CHUMP_SESSION_ID");
+        std::env::remove_var("CHUMP_AMBIENT_NATS");
+    }
+
+    /// Block-action callers (ToolTimeoutWrapper) must see the alert encoded
+    /// such that the pattern at adversary.rs:385-392 produces an Err. We
+    /// inline the dispatcher logic here because the public adversary_check
+    /// path uses a process-wide OnceLock for rules() which we can't override
+    /// in a test, so the contract we verify is the alert→Result mapping the
+    /// caller depends on.
+    #[test]
+    fn block_action_alert_maps_to_err() {
+        let yaml = r#"
+rules:
+  - name: rm-rf-root
+    match: "bash"
+    pattern: "cmd contains 'rm -rf /'"
+    action: block
+    reason: filesystem-wipe protection
+"#;
+        let rules = make_rules(yaml);
+        let alert = rules
+            .check("bash", &json!({"cmd": "rm -rf /"}))
+            .expect("rule must match");
+        assert_eq!(alert.action, AdversaryAction::Block);
+        // Mirror the dispatch logic at adversary_check lines 385-392.
+        let mapped: Result<()> = match alert.action {
+            AdversaryAction::Allow | AdversaryAction::Warn => Ok(()),
+            AdversaryAction::Block => Err(anyhow::anyhow!(
+                "DENIED (adversary rule '{}'): {}",
+                alert.rule_name,
+                alert.reason
+            )),
+        };
+        let err = mapped.expect_err("Block action must map to Err");
+        let err_msg = format!("{}", err);
+        assert!(err_msg.contains("rm-rf-root"));
+        assert!(err_msg.contains("filesystem-wipe protection"));
+    }
+
+    /// Warn-action callers must continue execution (Ok(())) but the alert
+    /// must still be emitted to ambient.jsonl. Same dispatcher contract as
+    /// the block test, opposite outcome.
+    #[test]
+    fn warn_action_emits_but_caller_continues() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let ambient_path = tmp.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);
+        std::env::set_var("CHUMP_SESSION_ID", "infra130-warn-session");
+        std::env::set_var("CHUMP_AMBIENT_NATS", "0");
+
+        let yaml = r#"
+rules:
+  - name: warn-on-rm-rf-tmp
+    match: "bash"
+    pattern: "cmd contains 'rm -rf /tmp'"
+    action: warn
+    reason: dangerous-but-allowed
+"#;
+        let rules = make_rules(yaml);
+        let alert = rules
+            .check("bash", &json!({"cmd": "rm -rf /tmp/old"}))
+            .expect("rule must match");
+        assert_eq!(alert.action, AdversaryAction::Warn);
+
+        emit_ambient_alert(&alert);
+
+        let mapped: Result<()> = match alert.action {
+            AdversaryAction::Allow | AdversaryAction::Warn => Ok(()),
+            AdversaryAction::Block => Err(anyhow::anyhow!("would block")),
+        };
+        assert!(mapped.is_ok(), "Warn action must map to Ok(())");
+
+        let lines = read_ambient(&ambient_path);
+        assert_eq!(lines.len(), 1, "Warn action must still emit ambient line");
+        assert_eq!(lines[0]["action"], "warn");
+        assert_eq!(lines[0]["rule"], "warn-on-rm-rf-tmp");
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        std::env::remove_var("CHUMP_SESSION_ID");
+        std::env::remove_var("CHUMP_AMBIENT_NATS");
+    }
+
+    /// User-controlled content (a tool input matching a quote/newline pattern)
+    /// must be JSON-escaped end-to-end so the ambient line stays parseable
+    /// by downstream consumers. This is the security-shaped half of the
+    /// integration: an attacker whose tool input contains a `"` or `\n`
+    /// must not be able to break the JSON shape downstream parsers depend on.
+    #[test]
+    fn emit_handles_malicious_input_safely() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
+        let tmp = TempDir::new().unwrap();
+        let ambient_path = tmp.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);
+        std::env::set_var("CHUMP_SESSION_ID", "infra130-escape-session");
+        std::env::set_var("CHUMP_AMBIENT_NATS", "0");
+
+        let yaml = r#"
+rules:
+  - name: secret-leak
+    match: "bash"
+    pattern: "cmd contains 'secret'"
+    action: warn
+    reason: secret-detected
+"#;
+        let rules = make_rules(yaml);
+        // Input deliberately contains the JSON-breaking characters: " and \n.
+        let attack = "echo \"my secret\nis: 123\"";
+        let alert = rules
+            .check("bash", &json!({"cmd": attack}))
+            .expect("rule must match");
+        emit_ambient_alert(&alert);
+
+        let lines = read_ambient(&ambient_path);
+        assert_eq!(lines.len(), 1);
+        // serde_json::from_str succeeded inside read_ambient — that alone
+        // proves the line is valid JSON despite the embedded quote/newline.
+        // Cross-check the snippet decoded back to the original characters.
+        let snippet = lines[0]["snippet"].as_str().unwrap_or_default();
+        assert!(
+            snippet.contains("secret"),
+            "snippet should still carry the matched substring; got: {:?}",
+            snippet
+        );
+        assert!(
+            snippet.contains('"') || snippet.contains('\n'),
+            "snippet should preserve the dangerous characters once JSON-decoded; got: {:?}",
+            snippet
+        );
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        std::env::remove_var("CHUMP_SESSION_ID");
+        std::env::remove_var("CHUMP_AMBIENT_NATS");
+    }
+}
