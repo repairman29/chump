@@ -195,12 +195,12 @@ pub fn modulated_exploit_threshold() -> f64 {
     crate::precision_controller::base_exploit_threshold() * na
 }
 
-pub fn modulated_balanced_threshold() -> f64 {
+pub(crate) fn modulated_balanced_threshold() -> f64 {
     let na = levels().noradrenaline;
     crate::precision_controller::base_balanced_threshold() * na
 }
 
-pub fn modulated_explore_threshold() -> f64 {
+pub(crate) fn modulated_explore_threshold() -> f64 {
     let na = levels().noradrenaline;
     crate::precision_controller::base_explore_threshold() * na
 }
@@ -213,7 +213,7 @@ pub fn tool_budget_multiplier() -> f64 {
 }
 
 /// Dopamine-modulated reward scaling (exported for metrics_json).
-pub fn reward_scaling() -> f64 {
+pub(crate) fn reward_scaling() -> f64 {
     levels().dopamine.clamp(0.5, 1.5)
 }
 
