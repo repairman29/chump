@@ -48,11 +48,15 @@
 //! | `CHUMP_NATS_GAP_BUCKET` | `chump_gaps` | KV bucket name (override for tests) |
 //! | `CHUMP_NATS_WORK_BOARD_BUCKET` | `chump_work_board` | KV bucket name for FLEET-008 work board (override for tests) |
 //! | `CHUMP_WORK_BOARD_TTL_SECS` | `604800` (7d) | Work-board entry TTL |
+//! | `CHUMP_NATS_HELP_REQUESTS_BUCKET` | `chump_help_requests` | KV bucket name for FLEET-010 help requests (override for tests) |
+//! | `CHUMP_HELP_REQUEST_TTL_SECS` | `604800` (7d) | Help-request entry TTL |
 //!
 //! ## Modules
 //!
 //! - [`work_board`] — FLEET-008 shared subtask queue (post / claim / complete).
+//! - [`help_request`] — FLEET-010 help-seeking protocol (post / claim / complete).
 
+pub mod help_request;
 pub mod work_board;
 
 use anyhow::{anyhow, Result};
@@ -132,6 +136,10 @@ pub struct CoordClient {
     /// FLEET-008 work-board KV bucket. Populated lazily during
     /// [`Self::connect`] so the work_board module can rely on it.
     pub(crate) work_board_kv: kv::Store,
+    /// FLEET-010 help-requests KV bucket. Independent of the work
+    /// board so help requests can hang off either subtasks or gaps
+    /// and survive subtask state transitions.
+    pub(crate) help_requests_kv: kv::Store,
 }
 
 impl CoordClient {
@@ -186,11 +194,19 @@ impl CoordClient {
         // tuned without affecting atomic gap claims.
         let work_board_kv = work_board::init_bucket(&js).await?;
 
+        // FLEET-010 help-requests KV bucket. Separate bucket so
+        // help-request lifecycle is independent of the parent
+        // subtask / gap (a subtask can stay claimed while its help
+        // request is being resolved) and so help-request TTL can
+        // be tuned independently.
+        let help_requests_kv = help_request::init_bucket(&js).await?;
+
         Ok(Self {
             nats,
             js,
             gaps_kv,
             work_board_kv,
+            help_requests_kv,
         })
     }
 
