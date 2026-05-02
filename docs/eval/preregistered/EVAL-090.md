@@ -165,7 +165,7 @@ this is the audit-versus-evidence reconciliation that motivated EVAL-090.
 
 ## Deviations (append-only, timestamped)
 
-_(none yet)_
+- **2026-05-02 02:00 UTC** — chump-eval-090-rerun-1777683833 — **n=20/cell empirical sweep abandoned; closing on M1 (methodological) finding alone.** Reason: sibling-task `pkill -f "run-binary-ablation.py"` (intended to clean up an earlier n=50 attempt) inadvertently killed the n=20 sweep mid-run before any JSONL was written; restart not warranted because the load-bearing M1 finding (audit's broken-scorer claim is contradicted by archived JSONL) is independent of the empirical re-run and already established from inspection of `docs/archive/eval-runs/eval-069-2026-04-22/eval049-binary-judge-1776739765.jsonl` (99/100 rows show `scorer=llm_judge`). The empirical question (does the current chump's neuromod ablation produce a real signal under qwen2.5:14b?) is filed as a separate follow-up gap rather than retried here. Per §9 of this prereg, this is an **ambiguous** outcome on the empirical H1/H0 axis — punt — and a **decisive** outcome on the M1 axis: audit's mechanism claim is rejected by direct evidence.
 
 ---
 
