@@ -1,0 +1,9 @@
+- id: INFRA-152
+  domain: infra
+  title: chump gap set/ship — accept --closed-pr flag, persist to state.db, emit to YAML
+  status: open
+  priority: P1
+  effort: s
+  notes: |
+    Duplicate of INFRA-156 (PR #637) which actually shipped the implementation. Acceptance verified post-INFRA-188 by scripts/ci/test-gap-closed-pr-cli.sh.
+

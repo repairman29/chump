@@ -1,0 +1,7 @@
+- id: INFRA-171
+  domain: infra
+  title: "ftue-clean-machine workflow: tighten cadence — per-PR (path-filtered) + weekly cron, drop monthly"
+  status: open
+  priority: P1
+  effort: xs
+

@@ -1,0 +1,14 @@
+- id: INFRA-197
+  domain: infra
+  title: CLAUDE.md consolidation pass — file is approaching 400 lines, agents truncate
+  status: open
+  priority: P3
+  effort: m
+  description: |
+    CLAUDE.md is ~400 lines and growing. Recent additions (gap-doctor.py, INFRA-154 auto-close, INFRA-157 heredoc rule, INFRA-161 homebrew tap, INFRA-162 actions PR rule) are all valuable, but cumulative size means agents will skim or hit context-truncation before reading critical sections. The docs-delta guard (advisory→blocking) counter-pressures sprawl but doesn't bend the curve. Do a consolidation pass: (1) move incident-specific footnotes to docs/process/INCIDENTS.md, (2) collapse the commit-time guards table to a one-line pointer to scripts/git-hooks/pre-commit header, (3) move the merge-queue recovery runbook to docs/process/MERGE_QUEUE_RECOVERY.md, (4) leave only operational rules + 'where to look next' pointers in CLAUDE.md. Target: ≤200 lines.
+  acceptance_criteria:
+    - CLAUDE.md ≤200 lines
+    - all moved content lives in linked docs/process/*.md
+    - no operational rule deleted, only relocated
+    - run wc -l before/after in PR description
+

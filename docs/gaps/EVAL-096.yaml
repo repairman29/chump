@@ -1,0 +1,15 @@
+- id: EVAL-096
+  domain: eval
+  title: "EVAL-096: n=100/cell + cross-judge replication of CHUMP_BYPASS_NEUROMOD on current binary"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    EVAL-095 (2026-05-02) found Δ=+0.150 on current chump binary vs Δ=0.000 from EVAL-069 (2026-04-21) on the older binary, same fixture+agent. The +0.150 has Wilson 95% CIs overlapping zero so it's directional only — not enough to settle the F3 aggregate-magnitude retirement question. EVAL-076 (cog016-n100) also showed Δ=−0.15 directional. Two underpowered replications pointing the same direction is suggestive; this gap is the properly-powered settle: n=100/cell with cross-judge audit (Anthropic + Together Llama-3.3-70B per INFRA-079). Decision threshold per RESEARCH_INTEGRITY.md: |Δ|≥0.10 with non-overlapping CIs reinstates F3 aggregate-magnitude; |Δ|<0.10 with non-overlapping CIs confirms retirement; otherwise file another follow-up. Cost estimate: ~ Anthropic + free Together; ~3-4h wall-clock at current 90s/trial chump speed. Run as overnight job — drop into scripts/overnight/.
+  acceptance_criteria:
+    - n=100/cell sweep with scorer=llm_judge for ≥95% of rows
+    - cross-judge audit (Anthropic + Together Llama-3.3-70B), kappa reported
+    - Wilson 95% CIs computed for both cells
+    - F3 aggregate-magnitude verdict reinstated or confirmed-retired based on threshold rule
+    - FINDINGS.md F3 caveat updated with the result
+

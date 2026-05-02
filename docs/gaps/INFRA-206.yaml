@@ -1,0 +1,7 @@
+- id: INFRA-206
+  domain: infra
+  title: per-agent gap-domain affinity — agent-1 INFRA only, agent-2 EVAL only, etc (kills hot-spot bias at 10+ agents)
+  status: open
+  priority: P1
+  effort: s
+

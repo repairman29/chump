@@ -1,0 +1,9 @@
+- id: INFRA-221
+  domain: infra
+  title: launchd plists for chump auto-ops point at wrong script paths — every hourly run exits 127
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 736
+

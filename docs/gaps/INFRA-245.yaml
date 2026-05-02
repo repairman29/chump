@@ -1,0 +1,40 @@
+- id: INFRA-245
+  domain: INFRA
+  title: gap-doctor.py broken post-INFRA-188 — reads deleted docs/gaps.yaml; same class as INFRA-226
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Caught while triaging Agent D's INFRA-097 finding (2026-05-02): state.db says
+    status:open, docs/gaps/INFRA-097.yaml says status:done. Quick scan found
+    71 gaps with the same drift (~12% of registry) plus 28 gaps in DB only.
+    
+    Tried to use the canonical reconciliation tool, gap-doctor (INFRA-155),
+    but it's broken:
+    
+      $ python3 scripts/coord/gap-doctor.py doctor
+      FileNotFoundError: [Errno 2] No such file or directory: 'docs/gaps.yaml'
+    
+    Same class of bug as INFRA-226 (bot-merge.sh's auto-close step) — multiple
+    scripts depend on the monolithic docs/gaps.yaml that was retired by
+    INFRA-188 cutover (PR #753).
+    
+    Fix sketch:
+      - Update load_yaml_status() in scripts/coord/gap-doctor.py to glob
+        docs/gaps/*.yaml and aggregate their status fields, instead of
+        reading docs/gaps.yaml.
+      - Each per-file YAML has the same shape as a single entry in the old
+        monolithic file, just wrapped in a one-element list (the dump format).
+    
+    Acceptance:
+      - python3 scripts/coord/gap-doctor.py doctor exits 0 (or 1 if drift
+        detected) without FileNotFoundError
+      - When run on current main, reports the drift Agent D and this gap
+        discovered (would have caught it before any agent wasted cycles)
+  acceptance_criteria:
+    - gap-doctor.py reads docs/gaps/*.yaml not docs/gaps.yaml
+    - exits 0/1 cleanly post-INFRA-188
+    - reports current drift
+  closed_date: '2026-05-02'
+  closed_pr: 819
+

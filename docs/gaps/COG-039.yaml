@@ -1,0 +1,7 @@
+- id: COG-039
+  domain: COG
+  title: bench harness — flag-off baseline vs cog_037-on Thompson router (M4 step 2 prerequisite to flipping default)
+  status: open
+  priority: P1
+  effort: m
+

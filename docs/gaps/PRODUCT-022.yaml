@@ -1,0 +1,21 @@
+- id: PRODUCT-022
+  domain: product
+  title: Replace static 'Behind the scenes' blurb with live orchestrator state
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    PWA's 'Behind the scenes' panel during a slow turn renders a static troubleshooting blurb (web/index.html:4578) — same text every time: 'No tools yet — the model is doing the heavy lifting' + paragraphs about /models check, MLX/Ollama, CHUMP_LIGHT_CONTEXT. Spinner flavor-text varies but body is identical regardless of orchestrator state. Implies live insight it doesn't have; becomes noise after first sighting. Replace with actual stage + elapsed timer (perception -> tool_routing -> llm_waiting -> streaming) and ideally live milestones (token count, first-token latency, tok/s) streamed via SSE. Orchestrator already logs all of this (chump::agent_loop::iteration_controller: 'calling LLM', etc.). Reported by Jeff 2026-04-28 while debugging a slow qwen3:14b turn — the static MLX-flavored copy was actively misleading because we were on Ollama.
+  acceptance_criteria:
+    - Behind the scenes panel reflects current orchestrator stage (perception/tool_routing/llm_waiting/streaming/tool_call), not a static blurb
+    - Stage shows elapsed time since entry
+    - Elapsed timer STOPS when the assistant response completes (currently keeps ticking)
+    - Static troubleshooting copy in web/index.html removed or moved to an explicit Help/Diagnose link
+    - At least one live metric streamed end-to-end (e.g. prompt token count or first-token latency)
+    - Panel does not visually duplicate/repeat itself within a single turn
+    - "Manual smoke: send a chat msg, observe stage transitions in PWA match log lines, observe timer freezes on completion"
+  notes: |
+    Caught while booting Chump on Ollama (env switch from MLX): blurb said 'MLX load' but we'd just switched to Ollama. Two-tier scope: (1) quick win — render orchestrator state names with a stage timer, hide static blurb, fix timer-doesn't-stop bug; (2) better — SSE live milestones (prompt assembled N tokens, first-token in Xs, decoding @ Y tok/s). Additional symptoms reported 2026-04-28: 'Thinking... NNNNNms' ticker keeps incrementing AFTER the assistant reply has rendered; panel may render duplicate copies within one turn.
+  closed_date: '2026-04-29'
+  closed_pr: 659
+

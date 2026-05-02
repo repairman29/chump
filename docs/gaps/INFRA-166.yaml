@@ -1,0 +1,17 @@
+- id: INFRA-166
+  domain: infra
+  title: Autopilot/background loops skip-if-busy via inference-semaphore probe
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    src/web_server.rs:2496-2518 schedules an autopilot reconcile every 3 minutes via tokio::task::spawn_blocking with no semaphore awareness. It can fire mid-user-turn, queue behind interactive chat, or trigger model load races. Discord has CHUMP_MAX_CONCURRENT_TURNS but the web path has no equivalent. Once INFRA-165 lands, the global inference semaphore exists; this gap makes the autopilot tick read inference_semaphore.available_permits() and no-op (with an ambient.jsonl log entry) when 0.
+  acceptance_criteria:
+    - autopilot tick reads available_permits() before scheduling LLM-touching work
+    - "when permits=0, tick logs 'autopilot: skipped — inference busy' and emits an ambient.jsonl entry"
+    - no LLM call is made on a skipped tick
+    - "verification: send a long PWA turn; tail /tmp/chump-web.log shows the skip log on the next 3-min tick"
+  depends_on: [INFRA-165]
+  notes: |
+    See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #3 of 6. ~10 lines once INFRA-165 is in. Restores to the web path the Discord-only CHUMP_MAX_CONCURRENT_TURNS bound, implicitly via the global semaphore.
+

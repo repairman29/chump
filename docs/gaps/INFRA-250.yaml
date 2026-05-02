@@ -1,0 +1,14 @@
+- id: INFRA-250
+  domain: INFRA
+  title: "retire PWA v1: port OOTB wizard to v2, flip Tauri frontendDist, delete web/*.html|js"
+  status: open
+  priority: P3
+  effort: m
+  description: |
+    Follow-up to INFRA-247 (which only redirects browser users / -> /v2/). Three-step retirement: (1) port the Tauri-only OOTB wizard from web/ootb-wizard.js (682 lines + ~150 lines of CSS in web/index.html#ootb-wizard) into a v2 Web Component that activates when isTauriHost(); (2) flip desktop/src-tauri/tauri.conf.json frontendDist from ../../web to ../../web/v2 and smoke-test the desktop shell end-to-end (OOTB flow + chat round trip); (3) git rm web/index.html web/desktop-bridge.js web/ootb-wizard.js web/sse-event-parser.js web/sw.js web/ui-selftests.js. Net deletion ~6,000 lines, single source of truth for PWA. Every recent PWA gap (INFRA-178/184/199, PRODUCT-022) shipped against v2 only — v1 has been actively serving a worse UX since 2026-04.
+  acceptance_criteria:
+    - OOTB wizard renders in Tauri desktop shell pointed at web/v2
+    - chat round trip works in Tauri shell after frontendDist flip
+    - web/index.html and v1-only assets are deleted from the repo
+    - browser users at / still land on v2 (INFRA-247 redirect intact)
+

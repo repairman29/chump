@@ -1,0 +1,18 @@
+- id: INFRA-168
+  domain: infra
+  title: Rewire coord shell scripts (gap-preflight/claim/reserve/bot-merge) to read .chump/state.db, not docs/gaps.yaml
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    scripts/coord/gap-preflight.sh, gap-claim.sh, gap-reserve.sh, and bot-merge.sh still parse docs/gaps.yaml as their source of truth. Authority moved to .chump/state.db in INFRA-059 (2026-04-25), so the shells are now operating on a regenerated mirror. Today's PRODUCT-022 ship cycle hit two cascading failures: (1) preflight rejected a gap that was reserved in SQLite but not yet mirrored to YAML; (2) something (hook? chump-coord watch? gap-claim itself?) regenerated gaps.yaml from SQLite mid-flow, which dirtied the working tree and made bot-merge.sh's rebase abort. The Rust CLI already has chump gap preflight/claim/reserve/ship — this gap rewires the shells to call them, so the YAML is no longer load-bearing for tooling (only for human PR review).
+  acceptance_criteria:
+    - scripts/coord/gap-preflight.sh calls 'chump gap preflight <ID>' instead of grepping docs/gaps.yaml
+    - scripts/coord/gap-claim.sh calls 'chump gap claim' for SQLite-side state (lease file behavior unchanged)
+    - scripts/coord/gap-reserve.sh delegates to 'chump gap reserve' (the shell wrapper still exists for back-compat but no longer parses YAML)
+    - scripts/coord/bot-merge.sh's preflight invocation works for gaps that exist in SQLite even when not yet in YAML (eliminating the CHUMP_ALLOW_UNREGISTERED_GAP=1 escape hatch for normal flows)
+    - nothing regenerates docs/gaps.yaml outside 'chump gap ship --update-yaml' and 'chump gap dump' — verified by audit of hooks and chump-coord watch
+    - "test: reserve a new gap in SQLite, immediately run gap-preflight + gap-claim + bot-merge.sh on a fresh worktree — full ship without escape hatches, with gaps.yaml regenerated only at the auto-close-on-ship step"
+  notes: |
+    Filed during the PRODUCT-022 ship that motivated it. Today's symptom: 'M docs/gaps.yaml' kept reappearing in the unstaged column after each git checkout origin/main, blocking bot-merge.sh rebase. Likely culprits: gap-claim.sh side effect, chump-coord watch background process, or a post-checkout hook. Audit those as part of the fix. Cross-link with INFRA-155 (gap-doctor.py drift detector — already running) and the auto-close-on-ship flow (INFRA-154, 2026-04-28).
+

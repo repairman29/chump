@@ -1,0 +1,14 @@
+- id: INFRA-230
+  domain: INFRA
+  title: "queue-health-monitor: emit pr_resolved when previously-stuck PR lands (close pr_stuck audit loop)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Cold Water Issue and recurring operator pain: queue-health-monitor.sh emits ALERT kind=pr_stuck for any PR sitting BLOCKED/DIRTY > 45 min, but the alerts are immutable in ambient.jsonl. When the PR finally lands, no counterpart event closes the audit loop — the operator querying 'recent stuck PRs' sees historical alerts that look current. Observed 2026-05-02: ambient-query showed 3 pr_stuck alerts, all of which had since merged. Add a tiny state file at .chump/pr-stuck-state.json mapping PR# → first-alert-ts. On each run, currently-stuck PRs not in state emit pr_stuck (one-shot, not re-alert). PRs in state that are no longer stuck (landed/unblocked) emit pr_resolved with duration. Closes the audit loop without changing the alert noise floor (one alert per stuck event, one resolution per landing).
+  acceptance_criteria:
+    - queue-health-monitor.sh emits pr_stuck once per PR (not on every run while still stuck)
+    - emits pr_resolved when a previously-stuck PR is no longer in gh pr list --state open OR has flipped to MERGEABLE/CLEAN
+    - state file at .chump/pr-stuck-state.json
+    - "--dry-run does not mutate state file"
+

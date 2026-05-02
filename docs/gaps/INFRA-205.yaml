@@ -1,0 +1,11 @@
+- id: INFRA-205
+  domain: infra
+  title: CI matrix parallelism — split fast-checks/clippy/tests/e2e to run in parallel (cut queue depth 2-3x)
+  status: done
+  priority: P1
+  effort: s
+  notes: |
+    Duplicate of INFRA-213 - closed in dedupe sweep PR #743. Both rows filed within seconds on 2026-05-01 by sibling sessions racing on chump gap reserve, before the open-PR scan was flipped default-on (INFRA-100, PR #742). Work tracked under INFRA-213.
+  closed_date: '2026-05-02'
+  closed_pr: 744
+

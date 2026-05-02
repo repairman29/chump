@@ -1,0 +1,16 @@
+- id: DOC-013
+  domain: DOC
+  title: Document fleet inference seam (Provider trait + Semaphore) in INFERENCE_PROFILES.md
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    Document the fleet seam created by INFRA-165: all in-process callers route through app.inference (Arc<dyn Provider>). FLEET-014 (multi-machine inference, deferred to 2027) replaces this with a remote Provider impl via gRPC/tonic; the rest of the codebase does not change. One paragraph at the bottom of docs/operations/INFERENCE_PROFILES.md. No new files, no RPC stubs, no half-built distribution layer.
+  acceptance_criteria:
+    - docs/operations/INFERENCE_PROFILES.md has a 'Fleet seam' section (1 paragraph) explaining the Provider trait + Semaphore as the abstraction boundary
+    - references FLEET-014 by ID for traceability
+    - no code changes
+  depends_on: [INFRA-165]
+  notes: |
+    See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #6 of 6. Pure doc. depends-on: INFRA-165 (the seam doesn't exist until then).
+
