@@ -200,15 +200,23 @@ Hallucinated-tool rate ≈ 0 in both cells across all 4 sweeps — this is a
 | `dynamic-03-retry-loop` | −50% | 3/4 | conditional-chain |
 
 **Caveats.**
-- **AUDIT-3 CRITICAL (2026-04-24): EVAL-069 credibility broken.** EVAL-069
-  was intended to re-validate EVAL-026 under the fixed LLM-judge scorer
-  (EVAL-060). However, EVAL-069 closed 2026-04-21 using python3 shebang
-  (python3=3.14, no anthropic module), which caused silent fallback to
-  exit_code_fallback scorer. The shebang was not fixed to python3.12 until
-  2026-04-22 (commit 8f3a994). EVAL-069 JSONL output confirms `"scorer":
-  "exit_code_fallback"` in actual rows. **The neuromod aggregate signal has
-  never been properly measured under a working LLM judge.** F3 task-cluster
-  localization (EVAL-029) stands independently and is unaffected.
+- **AUDIT-3 (2026-04-24) re-evaluated under EVAL-090 (2026-05-01): claim
+  contradicted by archived JSONL.** AUDIT-3 inferred from the python3.12
+  shebang fix timeline that EVAL-069 must have run under broken
+  `exit_code_fallback`. EVAL-090 re-checked by direct inspection of the
+  archived JSONL the original retirement cited
+  (`docs/archive/eval-runs/eval-069-2026-04-22/eval049-binary-judge-1776739765.jsonl`,
+  100 rows): **99/100 rows show `scorer=llm_judge`**, not exit_code_fallback.
+  The user invoked the harness via `python3.12 …` directly, bypassing the
+  broken shebang, consistent with the writeup's recorded command line.
+  Per-task results differ between cells (t005: A=0.50/B=0.00; t028:
+  A=0.00/B=1.00) — the "broken-scorer fingerprint" of identical-per-trial
+  scoring is not present. F3's aggregate-magnitude retirement therefore
+  rests on a *working* instrument; the broken-vs-broken framing is
+  withdrawn. The earlier AUDIT-3 reasoning chain is preserved as a
+  methodological lesson: audits of past runs must inspect the JSONL
+  evidence itself, not just infer from configuration timelines (filed as
+  follow-up gap). See [`eval/EVAL-090-neuromod-aggregate-rerun.md`](eval/EVAL-090-neuromod-aggregate-rerun.md).
 - **The EVAL-026 aggregate −10 to −16 pp signal: model-tier-specific, not
   generally retired.** EVAL-069 was meant to validate this but failed due to
   scorer fallback. The 4 EVAL-026 source sweeps show unequal measurement
