@@ -127,6 +127,19 @@ diff lands in the same PR. Never hand-edit any `docs/gaps/<ID>.yaml` to add
 `in_progress`, `claimed_by`, or `claimed_at` — those fields are gone. Claims
 live in lease files; status lives in the SQLite store.
 
+**`--gap` is effectively required (INFRA-237, 2026-05-02).** `bot-merge.sh`
+refuses to ship without a gap ID — either passed explicitly (`--gap INFRA-NNN`),
+auto-derived from a canonical branch name (`chump/infra-NNN-...`,
+`claude/research-NNN-...`, `chore/file-infra-NNN`), or explicitly suppressed
+with `--gap none` for genuine non-gap PRs (dependabot bumps, doc-only sweeps).
+Without one of these, the script exits 2 with a banner naming all three
+remediation paths. This closes the path that left `status:open` ghosts after
+their implementing PR landed (INFRA-241 backfill class) by guaranteeing the
+INFRA-154 auto-close step always has a gap ID to flip. Tests:
+`scripts/ci/test-bot-merge-gap-auto-derive.sh` (auto-derive happy paths) and
+`scripts/ci/test-bot-merge-requires-gap.sh` (the contract: missing-gap exits
+non-zero with an actionable error).
+
 **Auto-close on ship (INFRA-154, 2026-04-28).** `bot-merge.sh` now runs
 `chump gap ship <ID> --closed-pr <PR#> --update-yaml` between `gh pr create`
 and arming auto-merge, then commits + pushes the resulting
