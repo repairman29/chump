@@ -7568,6 +7568,15 @@ gaps:
     - "description-block text containing 'closed_pr:' patterns no longer triggers false-positive"
     - test-closed-pr-guard.sh extended to cover the false-positive case
 
+- id: INFRA-221
+  domain: INFRA
+  title: launchd plists for chump auto-ops point at wrong script paths — every hourly run exits 127
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 736
+
 - id: INFRA-41
   domain: infra
   title: "code-reviewer-agent.sh: guard empty-array iteration under bash 3.2 set -u"
