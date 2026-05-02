@@ -16851,7 +16851,7 @@ gaps:
   domain: INFRA
   title: 'docs-delta guard `Net-new-docs:` trailer escape hatch is unreachable at pre-commit time'
 
-- id: INFRA-202
+- id: INFRA-210
   domain: INFRA
   title: 'shared CARGO_TARGET_DIR + sccache for fleet worktrees (kill 5GB-per-worktree disk + cold-build time)'
   status: open
@@ -16891,7 +16891,7 @@ gaps:
   raised_by: claude
   raised_in: '2026-05-01 — fleet scaling discussion: max claude code agents in parallel; disk is one of the four hard ceilings'
 
-- id: INFRA-203
+- id: INFRA-211
   domain: INFRA
   title: 'scripts/dispatch/run-fleet.sh — canonical fleet launcher (tmux + per-agent worker loop, headless claude -p)'
   status: open
@@ -16941,11 +16941,11 @@ gaps:
     - "Control pane shows live fleet status (ambient + PR queue + per-agent activity)"
     - "Test: spawn FLEET_SIZE=2 for 1 hour; expect 4-8 PRs shipped; zero ID collisions; zero unrecovered DIRTY events (pr-watch handles)"
     - "Documented in CLAUDE.md + AGENTS.md as the canonical fleet entry"
-  depends_on: [INFRA-188, INFRA-189, INFRA-202]
+  depends_on: [INFRA-188, INFRA-189, INFRA-210]
   raised_by: claude
   raised_in: '2026-05-02 — fleet scaling discussion; canonical headless dispatcher pattern'
 
-- id: INFRA-204
+- id: INFRA-212
   domain: INFRA
   title: 'fleet status dashboard — tmux control pane shows ambient.jsonl tail + PR queue depth + per-agent throughput'
   status: open
@@ -16982,11 +16982,11 @@ gaps:
     - "Color-coded green/yellow/red status banner"
     - "Wired into INFRA-203's control pane via watch -n 5"
     - "Test: at FLEET_SIZE=4 with 1 stuck agent, the dashboard shows yellow within 5 min"
-  depends_on: [INFRA-203]
+  depends_on: [INFRA-211]
   raised_by: claude
   raised_in: '2026-05-02 — fleet scaling: visibility at 8+ agents'
 
-- id: INFRA-205
+- id: INFRA-213
   domain: INFRA
   title: 'CI matrix parallelism — split fast-checks/clippy/tests/e2e to run in parallel (cut queue depth 2-3x)'
   status: open
@@ -17028,7 +17028,7 @@ gaps:
   raised_by: claude
   raised_in: '2026-05-02 — fleet scaling: GH merge queue is the hard ceiling on PRs/hour'
 
-- id: INFRA-206
+- id: INFRA-214
   domain: INFRA
   title: 'per-agent gap-domain affinity — agent-1 INFRA only, agent-2 EVAL only, etc (kill hot-spot bias at 10+ agents)'
   status: open
@@ -17058,7 +17058,7 @@ gaps:
     - "INFRA-203's worker.sh respects FLEET_DOMAIN_FILTER env"
     - "scripts/dispatch/fleet.toml documents affinity layout"
     - "Test: launch FLEET_SIZE=4 with affinity (2 INFRA, 1 EVAL, 1 FLEET); verify each agent only picks gaps in its domain"
-  depends_on: [INFRA-203]
+  depends_on: [INFRA-211]
   raised_by: claude
   raised_in: '2026-05-02 — fleet scaling: hot-spot bias at 10+ agents'
 
@@ -17130,30 +17130,29 @@ gaps:
     - "Decision recorded in PR description (1 vs 3); commit message documents which option was chosen and why"
   raised_by: claude
   raised_in: '2026-05-02 INFRA-158 follow-up — pre-commit hooks fire before COMMIT_EDITMSG is written, making $REPO_ROOT/.git/COMMIT_EDITMSG always-stale at that point'
-    Long-running Claude sessions hit context limits and produce
-    degraded output. Plus: a fresh spawn picks up the latest
-    chump_improvement_targets rows (INFRA-195) so the team's new
-    lessons propagate.
 
-    Fix: in INFRA-203's worker.sh, structure the loop so each `claude
+- id: INFRA-215
+  domain: INFRA
+  title: 'spawn-respawn fleet lifecycle — agents exit after 1 gap; dispatcher respawns (load new lessons)'
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    Long-running Claude sessions hit context limits. Fresh spawns
+    pick up the latest chump_improvement_targets rows (INFRA-195) so
+    new lessons propagate each cycle.
+
+    Fix: in INFRA-211's worker.sh, structure the loop so each `claude
     -p` invocation handles ONE gap then EXITS. The bash loop respawns
-    a fresh `claude -p` for the next gap. Each agent thus starts with
-    a clean context + the latest spawn-time lessons.
+    a fresh `claude -p` for the next gap.
 
-    Trade-off: small startup overhead per gap (~2-5 s for prompt
-    assembly + briefing). Worth it because:
-      - Fresh context = fresh perception
-      - New lessons load every cycle (INFRA-195 feedback loop)
-      - Failures isolated to one gap (don't poison the next)
-
-    Implementation: already the natural shape of INFRA-203's loop —
-    just document it explicitly + add CHUMP_LESSONS_AT_SPAWN_N=5 to
-    the env so spawn-time injection fires each respawn.
+    (Originally filed as INFRA-207 but main's INFRA-207 was a docs-delta
+    guard work item — renumbered to INFRA-215 to avoid collision.)
   acceptance_criteria:
-    - "INFRA-203 worker.sh documents the spawn-respawn pattern"
+    - "INFRA-211 worker.sh documents the spawn-respawn pattern"
     - "Each `claude -p` invocation works ONE gap then exits"
     - "CHUMP_LESSONS_AT_SPAWN_N=5 set in worker env so INFRA-195 distillation flows to next spawn"
-    - "Test: spawn an agent; ship a gap; verify the next spawn's prompt includes the lesson row written by INFRA-195 distill on the just-shipped PR"
-  depends_on: [INFRA-203, INFRA-195]
+  depends_on: [INFRA-211, INFRA-195]
   raised_by: claude
-  raised_in: '2026-05-02 — fleet scaling: context lifecycle + skills feedback loop'
+  raised_in: '2026-05-02 — fleet scaling lifecycle. Renumbered from INFRA-207 due to ID drift.'
