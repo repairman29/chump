@@ -1,7 +1,9 @@
 - id: INFRA-130
   domain: infra
   title: adversary.rs has no integration tests - rule engine unverified end to end
-  status: open
+  status: done
+  closed_pr: 755
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |
