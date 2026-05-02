@@ -188,3 +188,232 @@ pub fn check_ceiling() -> Result<bool, String> {
 
     Ok(false)
 }
+
+// ── Tests (INFRA-125) ───────────────────────────────────────────────────────
+//
+// All public state lives in process-global atomics + a Mutex. Parallel test
+// execution would interleave reads/writes, so every test that touches state
+// takes STATE_LOCK first and calls `fresh()` to start from a known floor.
+// Tests that rely on env vars hold the lock for the full body so the
+// set/remove doesn't race with sibling tests.
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static STATE_LOCK: Mutex<()> = Mutex::new(());
+
+    fn fresh() {
+        reset();
+        if let Ok(mut g) = PROVIDER_CALLS.lock() {
+            *g = None;
+        }
+        std::env::remove_var("CHUMP_SESSION_BUDGET_TAVILY");
+        std::env::remove_var("CHUMP_SESSION_BUDGET_REQUESTS");
+        std::env::remove_var("CHUMP_COST_CEILING_USD");
+        std::env::remove_var("CHUMP_COST_WARN_USD");
+    }
+
+    #[test]
+    fn record_tavily_accumulates() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        record_tavily(1, 2);
+        record_tavily(3, 5);
+        let s = summary();
+        assert!(s.contains("4 Tavily calls"), "got: {s}");
+        assert!(s.contains("7 credits"), "got: {s}");
+    }
+
+    #[test]
+    fn record_completion_accumulates() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        record_completion(1, 100, 50);
+        record_completion(2, 200, 150);
+        let s = summary();
+        assert!(s.contains("3 model requests"), "got: {s}");
+        assert!(s.contains("300 in"), "got: {s}");
+        assert!(s.contains("200 out"), "got: {s}");
+    }
+
+    #[test]
+    fn record_provider_call_groups_by_slot() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        record_provider_call("haiku", 4_000);
+        record_provider_call("haiku", 6_000);
+        record_provider_call("sonnet", 12_000);
+        let s = provider_daily_summary();
+        // sorted alphabetically per impl
+        assert!(s.contains("haiku: 2 calls"), "got: {s}");
+        assert!(s.contains("sonnet: 1 calls"), "got: {s}");
+        assert!(
+            s.contains("~10k tokens"),
+            "haiku 4k+6k = 10k tokens; got: {s}"
+        );
+        assert!(s.contains("~12k tokens"), "got: {s}");
+    }
+
+    #[test]
+    fn record_provider_call_ignores_empty_slot() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        record_provider_call("", 1_000);
+        assert_eq!(provider_daily_summary(), "", "empty slot should be no-op");
+    }
+
+    #[test]
+    fn provider_daily_summary_empty_when_no_calls() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        assert_eq!(provider_daily_summary(), "");
+    }
+
+    #[test]
+    fn budget_warning_none_when_unset() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        record_tavily(10, 100);
+        record_completion(50, 0, 0);
+        assert!(budget_warning().is_none(), "no env var → no warning");
+    }
+
+    #[test]
+    fn budget_warning_fires_at_or_over_tavily_threshold() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        std::env::set_var("CHUMP_SESSION_BUDGET_TAVILY", "5");
+        record_tavily(1, 5);
+        let w = budget_warning().expect("at-threshold should warn");
+        assert!(w.contains("Tavily"), "got: {w}");
+        assert!(w.contains("(5)"), "got: {w}");
+    }
+
+    #[test]
+    fn budget_warning_fires_for_requests_too() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        std::env::set_var("CHUMP_SESSION_BUDGET_REQUESTS", "3");
+        record_completion(3, 0, 0);
+        let w = budget_warning().expect("at-threshold should warn");
+        assert!(w.contains("model requests"), "got: {w}");
+    }
+
+    #[test]
+    fn budget_warning_combines_both_overruns() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        std::env::set_var("CHUMP_SESSION_BUDGET_TAVILY", "1");
+        std::env::set_var("CHUMP_SESSION_BUDGET_REQUESTS", "1");
+        record_tavily(1, 2);
+        record_completion(2, 0, 0);
+        let w = budget_warning().expect("both budgets exceeded");
+        assert!(
+            w.contains("Tavily") && w.contains("model requests"),
+            "got: {w}"
+        );
+    }
+
+    #[test]
+    fn add_session_cost_usd_accumulates_microdollars() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        add_session_cost_usd(0.10);
+        add_session_cost_usd(0.25);
+        let v = session_cost_usd();
+        assert!((v - 0.35).abs() < 1e-6, "expected ~0.35, got {v}");
+    }
+
+    #[test]
+    fn add_session_cost_usd_ignores_zero_and_negative() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        add_session_cost_usd(0.0);
+        add_session_cost_usd(-1.50);
+        assert_eq!(session_cost_usd(), 0.0);
+    }
+
+    #[test]
+    fn cost_ceiling_defaults_when_unset() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        assert!((cost_ceiling_usd() - DEFAULT_COST_CEILING_USD).abs() < 1e-9);
+        assert!((cost_warn_usd() - DEFAULT_COST_WARN_USD).abs() < 1e-9);
+    }
+
+    #[test]
+    fn cost_ceiling_reads_env_var() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        std::env::set_var("CHUMP_COST_CEILING_USD", "42.50");
+        std::env::set_var("CHUMP_COST_WARN_USD", "10.00");
+        assert!((cost_ceiling_usd() - 42.50).abs() < 1e-6);
+        assert!((cost_warn_usd() - 10.00).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cost_ceiling_falls_back_to_default_on_invalid_env() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        std::env::set_var("CHUMP_COST_CEILING_USD", "not-a-number");
+        std::env::set_var("CHUMP_COST_WARN_USD", "0");
+        assert!(
+            (cost_ceiling_usd() - DEFAULT_COST_CEILING_USD).abs() < 1e-9,
+            "non-numeric should fall back to default"
+        );
+        assert!(
+            (cost_warn_usd() - DEFAULT_COST_WARN_USD).abs() < 1e-9,
+            "zero is filtered out → fallback to default"
+        );
+    }
+
+    #[test]
+    fn check_ceiling_below_warn_returns_false() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        std::env::set_var("CHUMP_COST_CEILING_USD", "5.00");
+        std::env::set_var("CHUMP_COST_WARN_USD", "2.00");
+        add_session_cost_usd(1.00);
+        assert_eq!(check_ceiling(), Ok(false));
+    }
+
+    #[test]
+    fn check_ceiling_at_warn_returns_true() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        std::env::set_var("CHUMP_COST_CEILING_USD", "5.00");
+        std::env::set_var("CHUMP_COST_WARN_USD", "2.00");
+        add_session_cost_usd(2.00);
+        assert_eq!(check_ceiling(), Ok(true), "exactly at warn → soft warn");
+    }
+
+    #[test]
+    fn check_ceiling_at_hard_returns_err() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        std::env::set_var("CHUMP_COST_CEILING_USD", "5.00");
+        std::env::set_var("CHUMP_COST_WARN_USD", "2.00");
+        add_session_cost_usd(5.00);
+        let r = check_ceiling();
+        assert!(r.is_err(), "at hard ceiling → Err");
+        let msg = r.unwrap_err();
+        assert!(msg.contains("COST CEILING REACHED"), "got: {msg}");
+        assert!(msg.contains("CHUMP_COST_CEILING_USD"), "got: {msg}");
+    }
+
+    #[test]
+    fn reset_clears_all_counters() {
+        let _g = STATE_LOCK.lock().unwrap();
+        fresh();
+        record_tavily(5, 10);
+        record_completion(3, 100, 200);
+        add_session_cost_usd(1.50);
+        reset();
+        let s = summary();
+        assert!(s.contains("0 model requests"), "got: {s}");
+        assert!(s.contains("0 Tavily"), "got: {s}");
+        assert_eq!(session_cost_usd(), 0.0);
+    }
+}
