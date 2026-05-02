@@ -1,0 +1,73 @@
+- id: INFRA-236
+  domain: INFRA
+  title: Authoritative commit-subject gap closure — extract gap-ID from merging commit subject in regenerate-gaps-yaml.yml workflow, eliminate ghosts at the source
+  status: open
+  priority: P0
+  effort: m
+  opened_date: '2026-05-02'
+  description: |
+    Killer fix for the OPEN-BUT-LANDED ghost class. Today closure
+    happens via three best-effort paths that all fail in different
+    ways:
+
+      1. bot-merge.sh runs `chump gap ship --closed-pr <N>` (INFRA-154)
+         — only when used; siblings using `gh pr merge` directly skip it
+      2. closer-pr-batcher polls open PRs and matches gap IDs in commit
+         bodies (INFRA-194) — false-positive on filing PRs (INFRA-219),
+         false-negative on partial-implementation PRs
+      3. Manual `chump gap ship` after the fact — relies on agent
+         remembering
+
+    Net effect: ~5-10 ghosts accumulate per cycle. Required surgical-
+    cleanup PRs (e.g. PR #787 closing INFRA-176/175/169) on a recurring
+    basis.
+
+    Proposal — make commit subject the authoritative closure signal:
+
+    The `regenerate-gaps-yaml.yml` workflow already runs on merge_group /
+    merge events. Extend it to:
+      1. Read the commit subject(s) being merged:
+         `git log <base>..<head> --format=%s`
+      2. Extract gap IDs via regex: `^([A-Z]+-\d+)(?:[+/, ]|:)`
+      3. For each matched gap with `status: open` in
+         docs/gaps/<ID>.yaml:
+           - Flip to `status: done`
+           - Set `closed_pr: <merging-PR-number>`
+           - Set `closed_date: <today>`
+      4. Stage the changes into the same regenerated YAML the workflow
+         already produces
+      5. Commit them as part of the regen commit on origin/main
+
+    The merge then carries closure ATOMICALLY — no follow-up PR. No
+    state.db dependency (commit subject lives in git history, immutable).
+
+    Why this is the killer (eliminates two cause classes):
+      - Cause #1 (forgot chump gap ship) — agent uses standard commit
+        subject convention, closure happens regardless of whether
+        bot-merge.sh was used
+      - Cause #2 (closer-batcher false-positives/negatives) — closure is
+        deterministic from git history, not a polling guess
+      - Reduces cause #3 (state.db drift) — workflow becomes the single
+        closure path, state.db just mirrors
+
+    Failure modes to handle:
+      - Multiple gap IDs in subject (e.g. "INFRA-171: ... + close
+        INFRA-169") — close all matched
+      - Partial-progress PRs that intentionally do NOT close their gap
+        — opt out via `[no-close]` tag in subject or commit body
+      - Filing PRs (`chore(gaps): file INFRA-NNN`) — title prefix "file"
+        or "chore(gaps): file" should NEVER trigger closure
+      - Already-done gaps — silently skip (idempotent)
+      - PR contains gap-ID in commit body but not subject — strict-
+        subject default; opt-in body-scan via env
+  acceptance_criteria:
+    - "regenerate-gaps-yaml.yml extracts gap-ID from commit subject and flips status:open → status:done in same merge commit"
+    - "Filing PRs (chore(gaps): file ...) never trigger closure"
+    - "[no-close] opt-out tag respected"
+    - "Test fixture covers 5 scenarios (single, multi, filing, no-close, idempotency)"
+    - "30-day ghost count on main drops below 1 per cycle"
+  depends_on:
+    - INFRA-194
+    - INFRA-219
+  raised_by: claude
+  raised_in: '2026-05-02 — operator asked how to automate or eliminate ghosts after PR #787 surgical closures got reverted'

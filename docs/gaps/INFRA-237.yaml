@@ -1,0 +1,35 @@
+- id: INFRA-237
+  domain: INFRA
+  title: bot-merge.sh --gap should be mandatory — refuse to ship without --gap to close the auto-close-bypass path
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    bot-merge.sh accepts --gap as optional. Many PRs ship without it
+    (siblings using `gh pr merge` directly, hand-pushes, or chore(gaps)
+    PRs that don't have a single canonical gap). When --gap is missing,
+    the INFRA-154 auto-close path silently skips, and the gap stays
+    status:open until the closer-pr-batcher catches it (or it becomes
+    a ghost).
+
+    Two paths:
+      (a) Make bot-merge.sh refuse to ship without --gap; agents must
+          explicitly pass --gap=none or --gap=multi for non-gap-bound
+          PRs
+      (b) Auto-derive --gap from the branch name (`chump/<gap-id>-...`
+          or `chore/file-<gap-id>` patterns) when --gap is missing
+
+    (b) is friendlier — most branches already encode the gap ID. (a) is
+    stricter and surfaces intent.
+
+    Pairs with INFRA-236: even if INFRA-236's commit-subject extraction
+    lands, --gap on bot-merge.sh remains useful for the explicit-
+    acknowledge ergonomics (the operator/agent says "this PR closes
+    this gap" up front, not after the fact via subject parsing).
+  acceptance_criteria:
+    - "bot-merge.sh refuses --gap-less invocation OR auto-derives from branch name pattern"
+    - "Documentation in CLAUDE.md updated with the new contract"
+    - "Existing chore(gaps) and filing PRs continue to work (they pass --gap=none or auto-derive)"
+  raised_by: claude
+  raised_in: '2026-05-02 — operator asked how to automate or eliminate ghosts; defense-in-depth for INFRA-236'
