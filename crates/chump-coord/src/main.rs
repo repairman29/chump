@@ -11,6 +11,7 @@
 //!   status                     — show all active claims + recent events
 //!   emit <type> [key=value …]  — publish a structured event
 //!   watch                      — stream live events (ctrl-c to stop)
+//!   ttl-watchdog               — reap KV claims whose claimed_at + TTL + grace has passed (INFRA-115)
 //!   work-board <sub> [args …]  — FLEET-008 shared subtask queue (post|list|claim|complete|fail|show)
 //!   help-request <sub> [args …] — FLEET-010 help-seeking protocol (post|list|claim|complete|fail|show)
 //!
@@ -773,6 +774,88 @@ async fn main() -> Result<()> {
             }
         }
 
+        // ── ttl-watchdog (INFRA-115) ──────────────────────────────────────────
+        // Mirrors the file-based lease TTL reaper in queue-health-monitor.sh but
+        // operates against the NATS KV gap-claims bucket so crashed cross-machine
+        // agents (FLEET-007) don't leave KV orphans that block future claims.
+        //
+        // Degrades gracefully: exits 0 when NATS is unreachable so callers can
+        // run it unconditionally alongside the file-based reaper.
+        //
+        // Environment:
+        //   CHUMP_GAP_CLAIM_TTL_SECS       — claim TTL (default: 14400 = 4h)
+        //   CHUMP_TTL_WATCHDOG_GRACE_SECS  — seconds past expiry before reaped (default: 300)
+        "ttl-watchdog" => {
+            let ttl_secs: i64 = env::var("CHUMP_GAP_CLAIM_TTL_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(chump_coord::DEFAULT_GAP_TTL_SECS as i64);
+            let grace_secs: i64 = env::var("CHUMP_TTL_WATCHDOG_GRACE_SECS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(300i64);
+
+            match CoordClient::connect_or_skip().await {
+                None => {
+                    eprintln!(
+                        "[chump-coord ttl-watchdog] NATS unreachable — skipping (file-based reaper handles .chump-locks/)"
+                    );
+                    std::process::exit(0);
+                }
+                Some(c) => {
+                    let claims = c.list_gap_claims().await.unwrap_or_default();
+                    let now_ts = chrono::Utc::now().timestamp();
+                    let mut expired_count: u32 = 0;
+
+                    for (gap_id, claim) in claims {
+                        let claimed_ts = chrono::DateTime::parse_from_rfc3339(&claim.claimed_at)
+                            .map(|t| t.timestamp())
+                            .unwrap_or(0);
+                        if claimed_ts == 0 {
+                            continue;
+                        }
+                        let overdue_secs = now_ts - claimed_ts - ttl_secs;
+                        if overdue_secs <= grace_secs {
+                            continue;
+                        }
+                        let age_min = overdue_secs / 60;
+                        let sess_short = &claim.session_id[..16.min(claim.session_id.len())];
+                        eprintln!(
+                            "[chump-coord ttl-watchdog] EXPIRED gap={} session={}… expired {}m ago — purging KV entry",
+                            gap_id, sess_short, age_min
+                        );
+                        c.release_gap(&gap_id).await.ok();
+
+                        let note = format!(
+                            "session={} gap={} expired {}m ago",
+                            claim.session_id, gap_id, age_min
+                        );
+                        c.emit(CoordEvent {
+                            event: "ALERT".to_string(),
+                            session: session_id(),
+                            ts: chrono::Utc::now().to_rfc3339(),
+                            kind: Some("lease_expired_server".to_string()),
+                            reason: Some(note),
+                            gap: Some(gap_id),
+                            ..Default::default()
+                        })
+                        .await
+                        .ok();
+                        expired_count += 1;
+                    }
+
+                    if expired_count > 0 {
+                        println!(
+                            "[chump-coord ttl-watchdog] reaped {} expired KV claim(s)",
+                            expired_count
+                        );
+                    } else {
+                        println!("[chump-coord ttl-watchdog] ok — no expired claims in NATS KV");
+                    }
+                }
+            }
+        }
+
         // ── help / default ────────────────────────────────────────────────────
         _ => {
             eprintln!(
@@ -785,6 +868,7 @@ COMMANDS
   status                     Show all active NATS KV claims
   emit <TYPE> [key=value …]  Publish event (TYPE: INTENT DONE STUCK WARN ALERT)
   watch                      Stream live events from chump.events.>
+  ttl-watchdog               Reap KV claims expired > grace period ago; emit ALERT per reaped entry
   work-board <sub> [args …]  FLEET-008 shared subtask queue
                              post <parent-gap> <task-class> "<title>" [--decomposable] [--description "..."] [--est-secs N] [--model <fam>] [--min-vram-gb N]
                              list   [--status open|claimed|completed|failed|all]
@@ -805,8 +889,9 @@ ENVIRONMENT
   CHUMP_NATS_URL             NATS server URL (default: nats://127.0.0.1:4222)
   CHUMP_SESSION_ID           Session identity (override)
   CHUMP_COORD_FILES          Comma-separated files for claim (optional)
-  CHUMP_GAP_CLAIM_TTL_SECS   Claim TTL seconds (default: 14400 = 4h)
-  CHUMP_NATS_TIMEOUT_MS      Connect timeout ms (default: 500)
+  CHUMP_GAP_CLAIM_TTL_SECS         Claim TTL seconds (default: 14400 = 4h)
+  CHUMP_TTL_WATCHDOG_GRACE_SECS    Seconds past expiry before ttl-watchdog reaps (default: 300)
+  CHUMP_NATS_TIMEOUT_MS            Connect timeout ms (default: 500)
 
 INTEGRATION
   gap-claim.sh calls 'chump-coord claim' before writing file leases.

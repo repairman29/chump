@@ -263,6 +263,42 @@ except Exception:
 done
 shopt -u nullglob
 
+# ── Check 5: expired lease TTL reaper (INFRA-115) ────────────────────────────
+# Lease files declare an expires_at timestamp but nothing reaps them server-side.
+# A crashed cross-machine agent (FLEET-007) leaves an orphan that gap-preflight
+# sees as valid forever. Delete files that expired > LEASE_GRACE_SEC ago.
+LEASE_GRACE_SEC="${QUEUE_HEALTH_LEASE_GRACE_SEC:-300}"
+say "scanning for expired lease files (grace period ${LEASE_GRACE_SEC}s)..."
+shopt -s nullglob
+for lease in "$LOCK_DIR"/*.json; do
+    [[ -f "$lease" ]] || continue
+    sess_id="$(python3 -c "import json; d=json.load(open('$lease')); print(d.get('session_id',''))" 2>/dev/null || true)"
+    [[ -z "$sess_id" ]] && continue  # not a lease file (e.g. pr-stuck-state.json)
+    expires_at="$(python3 -c "import json; d=json.load(open('$lease')); print(d.get('expires_at',''))" 2>/dev/null || true)"
+    [[ -z "$expires_at" ]] && continue  # no TTL declared — skip
+    overdue_sec="$(python3 -c "
+from datetime import datetime, timezone
+import sys
+try:
+    exp = datetime.fromisoformat(sys.argv[1].replace('Z','+00:00'))
+    overdue = int((datetime.now(timezone.utc) - exp).total_seconds())
+    print(overdue if overdue > 0 else 0)
+except Exception:
+    print(-1)
+" "$expires_at" 2>/dev/null || echo -1)"
+    [[ "$overdue_sec" -le 0 ]] && continue  # not yet expired
+    if (( overdue_sec > LEASE_GRACE_SEC )); then
+        age_min=$(( overdue_sec / 60 ))
+        gap_id="$(python3 -c "import json; d=json.load(open('$lease')); print(d.get('gap_id','?'))" 2>/dev/null || echo '?')"
+        emit_alert "lease_expired_server" "session=${sess_id} gap=${gap_id} expired ${age_min}m ago"
+        if [[ "$DRY_RUN" -eq 0 ]]; then
+            rm -f "$lease"
+            say "reaped expired lease: $(basename "$lease") (session=${sess_id} gap=${gap_id})"
+        fi
+    fi
+done
+shopt -u nullglob
+
 # ── Write health.jsonl record ────────────────────────────────────────────────
 # Pass alerts via env so we don't have to escape them through nested heredocs.
 ALERTS_JOINED=""
