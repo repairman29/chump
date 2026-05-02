@@ -6882,9 +6882,11 @@ gaps:
 - id: INFRA-181
   domain: INFRA
   title: "restart-chump-web.sh: silently builds stale source when git pull fails — must abort or surface"
-  status: open
+  status: done
   priority: P2
   effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 732
 
 - id: INFRA-182
   domain: INFRA

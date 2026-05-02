@@ -17172,3 +17172,80 @@ gaps:
   depends_on: []
   raised_by: claude
   raised_in: '2026-05-01 — PRODUCT-023 closes PRODUCT-024 persistence loop'
+
+- id: INFRA-208
+  domain: INFRA
+  title: 'chump gap dump is lossy — strips acceptance/closed_commit/runnable_now fields'
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-05-02'
+  description: |
+    chump gap dump emits a YAML schema that is a STRICT SUBSET of the
+    canonical docs/gaps.yaml on main. Quantified by gap-doctor diff on
+    2026-05-02:
+
+      - 222 gap rows lose 'acceptance:' free-text field (the dump only emits
+        'acceptance_criteria:' as a list; rows where the source had
+        'acceptance:' as a multi-line string get the text dropped, not migrated)
+      - 41 gap rows lose 'closed_commit:' field (40-char SHAs of the closing
+        commit, attested to by the audit trail)
+      - 1 gap row loses 'runnable_now:' operational note (~10 line shell
+        snippet for triggering the work)
+
+    Net effect: any 'chump gap ship --update-yaml' or 'chump gap dump --out
+    docs/gaps.yaml' produces a 22500-line diff that LOSES information it
+    cannot recreate. The team has informally adopted a 'surgical YAML
+    insert' pattern (commit d1012f5 SECURITY-005, PR #716 INFRA-177) to
+    avoid this — but that pattern is undocumented and error-prone for new
+    contributors / agents.
+
+    Fix paths:
+      (a) Extend state.db schema to hold acceptance / closed_commit /
+          runnable_now fields and emit them in dump.
+      (b) Make 'chump gap dump' read the existing YAML and PRESERVE unknown
+          fields per gap row when regenerating (preserve-on-merge semantics).
+      (c) Add 'chump gap surgical-set <ID> --field=value' subcommand that
+          does a hand-edit-equivalent in-place YAML mutation, leaving the
+          rest of the file byte-stable.
+  acceptance_criteria:
+    - "chump gap dump on a synced tree produces zero YAML diff"
+    - "acceptance: closed_commit: runnable_now: fields preserved through dump roundtrip"
+    - "gap-doctor sync-from-db --apply does not destroy data"
+  raised_by: claude
+  raised_in: '2026-05-02 — surfaced during INFRA-177 closure (PR #716) when chump gap dump --update-yaml produced 22539-line diff that wiped 264 fields'
+
+- id: META-006
+  domain: META
+  title: 'Evaluate retiring docs/gaps.yaml — state.sql + ported shell scripts as single source'
+  status: open
+  priority: P2
+  effort: m
+  opened_date: '2026-05-02'
+  description: |
+    docs/gaps.yaml is a regenerated mirror today (canonical = .chump/state.db
+    since INFRA-059), but it has three real users that block its retirement:
+
+      (1) Shell scripts gap-claim.sh / gap-reserve.sh / gap-preflight.sh /
+          pre-push hook / pre-commit guards parse it directly (NOT state.db).
+          Per CLAUDE.md: shell scripts still operate on docs/gaps.yaml +
+          .chump-locks/.
+      (2) Human PR reviewers consume the YAML diff (though .chump/state.sql
+          provides reviewable text diffs of the canonical store).
+      (3) gap-doctor.py exists specifically to detect YAML↔DB drift — its
+          raison d'être evaporates if YAML goes.
+
+    Investigate cost vs benefit of porting the shell scripts to query
+    state.db and dropping YAML entirely, vs INFRA-188's opposite direction
+    (per-file docs/gaps/<DOMAIN>-<NNN>.yaml). One source of truth eliminates
+    a whole class of corruption incidents (INFRA-049/052/055/057/064 were all
+    YAML↔DB races) but breaks the human-PR-readability path unless
+    state.sql fully substitutes.
+
+    Hard-blocked by INFRA-208 (chump gap dump is lossy) — until dump round-
+    trips losslessly, retiring YAML risks data loss for the 264 affected
+    fields.
+  depends_on:
+  - INFRA-208
+  raised_by: claude
+  raised_in: '2026-05-02 — surfaced during INFRA-177 closure (PR #716) when wholesale chump gap dump produced lossy 22539-line diff'
