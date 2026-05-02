@@ -16729,7 +16729,9 @@ gaps:
 - id: INFRA-200
   domain: infra
   title: gaps.yaml advisory-only enforcement demonstrably failed — ship hard pre-commit block
-  status: open
+  status: done
+  closed_pr: 729
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   opened_date: '2026-05-02'

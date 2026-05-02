@@ -75,8 +75,11 @@ cat >> "$SANDBOX/docs/gaps.yaml" <<'EOF'
 - id: TEST-004
   status: open
 EOF
-# Stale-set marker mtime to 10 minutes ago (300s threshold + buffer)
-touch -t "$(date -v -10M +%Y%m%d%H%M.%S 2>/dev/null || date -d '10 minutes ago' +%Y%m%d%H%M.%S)" "$SANDBOX/.chump/.last-yaml-op"
+# Stale-set marker mtime to 10 minutes ago (300s threshold + buffer).
+# Use python3 os.utime — the prior BSD/GNU date+touch -t dance worked on
+# macOS but silently failed on Linux runners, so the marker stayed fresh
+# and tests 3/5/6 cascaded as failures. os.utime is identical everywhere.
+python3 -c "import os, time; t = time.time() - 600; os.utime('$SANDBOX/.chump/.last-yaml-op', (t, t))"
 git -C "$SANDBOX" add docs/gaps.yaml
 if env $SANDBOX_ENV \
     git -C "$SANDBOX" -c user.email=t@t -c user.name=t commit -q -m "stale marker" >/dev/null 2>&1; then
