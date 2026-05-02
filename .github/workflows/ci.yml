@@ -295,6 +295,9 @@ jobs:
       - name: lease TTL file-based reaper (INFRA-115)
         run: bash scripts/ci/test-infra-115-lease-ttl-file.sh
 
+      - name: PWA root redirect / -> /v2/ (INFRA-254)
+        run: bash scripts/ci/test-infra-254-pwa-root-redirect.sh
+
       - name: install-ambient-hooks idempotence + bypass (FLEET-023)
         run: bash scripts/ci/test-install-ambient-hooks.sh
 
