@@ -29,7 +29,7 @@ ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no activ
 bash scripts/setup/install-ambient-hooks.sh 2>&1 | tail -2  # FLEET-023: idempotent — wires SessionStart/PreToolUse/PostToolUse/Stop hooks into ~/.claude/settings.json so this session emits to ambient.jsonl. Bypass with CHUMP_AMBIENT_INSTALL_SKIP=1 in env.
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 chump-coord watch &  # FLEET-006: cross-machine peripheral vision (NATS); local file tail above is the durable fallback. Skip if NATS unavailable.
-chump gap list --status open                     # canonical (.chump/state.db); legacy: grep -A3 "status: open" docs/gaps.yaml
+chump gap list --status open                     # canonical (.chump/state.db); per-file mirror fallback: grep -lE 'status:[[:space:]]*open' docs/gaps/*.yaml
 python3 scripts/coord/gap-doctor.py doctor       # INFRA-155 (live 2026-04-28): detect YAML↔SQLite drift, ghost gaps, orphan rows BEFORE you reserve. Bucket 3 > 0 means a future `chump gap reserve` may collide silently.
 scripts/coord/gap-preflight.sh <GAP-ID>     # exits 1 if done, live-claimed/reserved, or ID missing from registry — stop if so
 chump --briefing <GAP-ID>             # MEM-007: per-gap context — gap acceptance + relevant reflections + recent ambient + strategic doc refs + prior PRs
@@ -60,7 +60,7 @@ silent ID collisions. **Rebuild is cheaper than the friction it prevents.**
   user-provided base → task planner → COG-016/COG-024 lessons block →
   blackboard → perception summary.
 - *Explicit per-gap, intentional.* `chump --briefing <GAP-ID>` (MEM-007) is the
-  on-demand query path. Reads docs/gaps.yaml + chump_improvement_targets +
+  on-demand query path. Reads `.chump/state.db` (mirrored in `docs/gaps/<ID>.yaml`) + chump_improvement_targets +
   ambient.jsonl + strategic docs + closed PRs into a single markdown briefing.
   Run after `gap-preflight.sh` and before `gap-claim.sh` so you start the gap
   knowing what the team has already learned about it.
@@ -98,10 +98,10 @@ For **new** gaps, prefer **`chump gap reserve --domain INFRA --title "short titl
 `scripts/coord/gap-reserve.sh <DOMAIN> "short title"` shell path still works as a
 fallback. Both paths atomically pick the next free ID (main registry + open PRs +
 live leases) and write `pending_new_gap: {id, title, domain}` into your lease.
-Run `chump gap ship <ID> --update-yaml` (or add the `- id:` row by hand) so the
-human-readable mirror at `docs/gaps.yaml` reflects the new gap, and ship
-implementation in the **same** PR. `gap-preflight.sh` blocks other sessions on
-that ID until the lease expires.
+Run `chump gap ship <ID> --update-yaml` so the human-readable mirror at
+`docs/gaps/<ID>.yaml` reflects the new gap, and ship implementation in the
+**same** PR. `gap-preflight.sh` blocks other sessions on that ID until the
+lease expires.
 **Bootstrap only:** if you cannot run `gap-reserve.sh`, use
 `CHUMP_ALLOW_UNREGISTERED_GAP=1 scripts/coord/gap-preflight.sh …` on the tiny filing PR
 (INFRA-020 escape hatch). Concurrent invention caused INFRA-016/017/018.
@@ -121,15 +121,15 @@ It also writes the gap claim at start and re-checks the gap after rebase.
 
 **Gap status changes go through `chump gap ship --update-yaml`** (canonical
 since INFRA-059). It flips `status: done` + stamps `closed_date` in
-`.chump/state.db` AND regenerates `docs/gaps.yaml` so the human-readable diff
-lands in the same PR. Never hand-edit gaps.yaml to add `in_progress`,
-`claimed_by`, or `claimed_at` — those fields are gone. Claims live in lease
-files; status lives in the SQLite store.
+`.chump/state.db` AND regenerates `docs/gaps/<ID>.yaml` so the human-readable
+diff lands in the same PR. Never hand-edit any `docs/gaps/<ID>.yaml` to add
+`in_progress`, `claimed_by`, or `claimed_at` — those fields are gone. Claims
+live in lease files; status lives in the SQLite store.
 
 **Auto-close on ship (INFRA-154, 2026-04-28).** `bot-merge.sh` now runs
 `chump gap ship <ID> --closed-pr <PR#> --update-yaml` between `gh pr create`
-and arming auto-merge, then commits + pushes the resulting `docs/gaps.yaml`
-+ `.chump/state.sql` diff onto the same branch. The merge queue squashes the
+and arming auto-merge, then commits + pushes the resulting
+`docs/gaps/<ID>.yaml` + `.chump/state.sql` diff onto the same branch. The merge queue squashes the
 close commit together with the implementation commit, so origin/main sees
 **one atomic closure** with `status=done` + `closed_pr=<this-PR>` — no more
 "flip status to done after PR #N landed" follow-up commits (5+ such
@@ -154,7 +154,7 @@ when no `--gap` was given, or when the chump binary doesn't support
 - **Auto-merge IS the default** (since INFRA-MERGE-QUEUE, 2026-04-19; **strict mode disabled INFRA-201, 2026-05-01**). `bot-merge.sh --auto-merge` arms `gh pr merge --auto --squash` at PR creation — **BUT ONLY if all required CI checks are passing** (see **CI pre-flight gate** below). **There is no real GitHub merge queue on this repo** — the feature is org Team/Enterprise only and the `merge_queue` rule type returns 422 on a personal-account repo (see `docs/process/MERGE_QUEUE_SETUP.md` for the failed API attempts). INFRA-201 disabled the `strict` (require-up-to-date-branches) flag on the legacy branch protection: PRs land as soon as their **own** required checks (`test`, `audit`, `ACP smoke test`) are green, regardless of whether `main` has moved underneath them. This eliminates the BEHIND-cascade traffic jam that happens when N PRs auto-merge in parallel (observed 2026-05-01: 10 PRs blocked → 4 → 2 within seconds when strict was flipped off). The squash-loss footgun PR #52 originally taught us about is still mitigated by **atomic PR discipline** (don't push after arming auto-merge) plus the `pr-<N>-checkpoint` tag `bot-merge.sh` writes; treat the absence of a real queue as the reason that discipline is non-negotiable.
 - **CI pre-flight gate (INFRA-CHOKE prevention, 2026-04-24).** `bot-merge.sh` now checks `gh pr checks <N>` before arming auto-merge. If Release job, Crate Publish dry-run, or any other required check is failing, auto-merge is NOT armed and a diagnostic comment is posted to the PR. This prevents PR #470-style situations where a PR is queued waiting for broken shared infrastructure. If your PR fails this check: (1) check the failing job logs, (2) fix the underlying issue (often in `.github/workflows/release.yml` or infrastructure), (3) re-run `scripts/coord/bot-merge.sh --gap <ID> --auto-merge` when checks pass. Disable with `CHUMP_SKIP_CI_GATE=1` only for genuine edge cases (legacy infra jobs, known flakes you've already triaged).
 - **Atomic PR discipline.** Once `bot-merge.sh` runs, treat the PR as frozen — **do not push more commits to it**. If you need to add work, open a *new* PR from a fresh worktree (cheap with the musher dispatcher) and let the queue land them in order. Pushing-after-arm reintroduces the squash-loss footgun the queue exists to prevent.[^pr52]
-- **bot-merge.sh recovery — manual ship path (INFRA-028).** If `scripts/coord/bot-merge.sh` hangs, times out, or is broken while you still have a clean branch in a linked worktree, ship by hand the same way that unblocked RESEARCH-027 cycle 5: `git push -u origin <branch> --force-with-lease` (or without `-u` if upstream exists), then `gh pr create --base main --title "…" --body "…"`, then `gh pr merge <N> --auto --squash` when you want the merge queue. Re-run `scripts/coord/gap-preflight.sh <GAP-ID>` first if you are gap-scoped. After a manual ship, update `docs/gaps.yaml` on the same branch (and run `chump gap ship <GAP-ID>` if you use the SQLite gap store) and release any `.chump-locks/<session>.json` lease for that gap so the ledger matches reality.
+- **bot-merge.sh recovery — manual ship path (INFRA-028).** If `scripts/coord/bot-merge.sh` hangs, times out, or is broken while you still have a clean branch in a linked worktree, ship by hand the same way that unblocked RESEARCH-027 cycle 5: `git push -u origin <branch> --force-with-lease` (or without `-u` if upstream exists), then `gh pr create --base main --title "…" --body "…"`, then `gh pr merge <N> --auto --squash` when you want the merge queue. Re-run `scripts/coord/gap-preflight.sh <GAP-ID>` first if you are gap-scoped. After a manual ship, run `chump gap ship <GAP-ID> --update-yaml` to flip status in `.chump/state.db` and regenerate `docs/gaps/<GAP-ID>.yaml` on the same branch, and release any `.chump-locks/<session>.json` lease for that gap so the ledger matches reality.
 - **If auto-merge is stuck.** (Pre-INFRA-201 framing was "queue stuck"; in practice the symptoms and recovery are identical because there is no queue — see auto-merge note above.) Symptoms: `gh pr view <n> --json autoMergeRequest` shows auto-merge armed but PR state is still `OPEN` long after CI finished. Recovery (in order — try least-destructive first):
   1. **Diagnose.** `gh pr checks <n>` + open `https://github.com/repairman29/chump/queue/main` — identify the blocking PR. Common causes: CI failure on the queue's temp merge branch, required-check timeout, a rebase conflict the queue couldn't resolve, or auto-merge silently disarmed by a force-push / branch-protection change.
   2. **Re-run CI if flaky.** `gh run rerun <run-id> --failed` on the queue's temp branch run. Do NOT rerun on the PR branch itself — the queue grades its own temp branch, not yours.
@@ -250,7 +250,7 @@ Every commit runs the checks below. Most are silent no-ops; each one fails loud 
 | docs-delta check (INFRA-009, 2026-04-20) | pre-commit | adds a `docs/*.md` without deleting one or adding a `Net-new-docs:` trailer | `CHUMP_DOCS_DELTA_CHECK=0` | counter-pressure on doc sprawl per Red Letter #3 (advisory until 2026-04-28, blocking after) |
 | credential-pattern guard (INFRA-018, 2026-04-20) | pre-commit | staged diff matches common API-key / token shapes | `CHUMP_CREDENTIAL_CHECK=0` | secrets caught before they hit git history |
 | book sync guard (INFRA-170, 2026-05-01) | pre-commit | staged `docs/process/*.md` edit drifts `book/src/` (canonical sync script produces uncommitted book/ changes) | `CHUMP_BOOK_SYNC_CHECK=0` | PR #625 silently drifted the book mirror, jamming the merge queue 12 PRs deep on 2026-04-29; runs the sync script automatically and tells you to `git add book/`; test: `scripts/ci/test-book-sync-guard.sh` |
-| raw-YAML-edit guard (INFRA-094 advisory → INFRA-200 blocking, 2026-05-02) | pre-commit | commit modifies `docs/gaps.yaml` without a fresh chump-gap CLI marker (`.chump/.last-yaml-op` within last 5 min) | `CHUMP_RAW_YAML_EDIT=1` env + `RAW_YAML_REASON: <text>` trailer (intentional manual edit), or `CHUMP_RAW_YAML_LOCK=0` (kill switch) | Cold Water Issue #9 measured 66% hand-edit rate (33/50 commits) under the prior advisory mode; flipped to blocking; test: `scripts/ci/test-raw-yaml-guard.sh` |
+| raw-YAML-edit guard (INFRA-094 advisory → INFRA-200 blocking, 2026-05-02) | pre-commit | commit modifies any `docs/gaps/<ID>.yaml` (post-INFRA-188; previously `docs/gaps.yaml`) without a fresh chump-gap CLI marker (`.chump/.last-yaml-op` within last 5 min) | `CHUMP_RAW_YAML_EDIT=1` env + `RAW_YAML_REASON: <text>` trailer (intentional manual edit), or `CHUMP_RAW_YAML_LOCK=0` (kill switch) | Cold Water Issue #9 measured 66% hand-edit rate (33/50 commits) under the prior advisory mode; flipped to blocking; test: `scripts/ci/test-raw-yaml-guard.sh` |
 | wrong-worktree commit (2026-04-18) | `chump-commit.sh` | named files have no changes in this worktree but DO have changes in a sibling worktree | `CHUMP_WRONG_WORKTREE_CHECK=0` | catches the "edited the wrong checkout" failure mode that wasted ~30 min on 2026-04-18; only runs if you use `chump-commit.sh` |
 
 `git commit --no-verify` bypasses ALL pre-commit guards (the chump-commit.sh wrapper has its own bypass envs). Use very sparingly — `--no-verify` is the reason task #58 (Metal crash) and half the duplicate-work incidents shipped.
@@ -273,13 +273,13 @@ the COG-026 A/B aggregator can split outcomes by backend.
 ## Coordination docs
 
 - `.chump/state.db` — **canonical** gap registry (SQLite, since INFRA-059); accessed via `chump gap …` subcommands
-- `docs/gaps.yaml` — human-readable mirror, regenerated by `chump gap ship --update-yaml` and `chump gap dump`; commit alongside DB mutations so PRs are reviewable
+- `docs/gaps/<ID>.yaml` — human-readable per-file mirror (post-INFRA-188; the legacy monolithic `docs/gaps.yaml` was deleted), regenerated by `chump gap set/ship/dump`; commit alongside DB mutations so PRs are reviewable
 - `.chump/state.sql` — readable diff of the SQLite schema/data; regenerate with `chump gap dump --out .chump/state.sql` after merge conflicts
 - `docs/process/AGENT_COORDINATION.md` — full coordination system (leases, branches, failure modes, pre-commit spec)
 - `scripts/coord/gap-preflight.sh` — gap availability check (reads lease files + checks done on main)
 - `scripts/coord/gap-claim.sh` — write a gap claim to your session's lease file
 - `scripts/coord/bot-merge.sh` — ship pipeline (calls gap-claim.sh automatically)
-- `scripts/coord/gap-doctor.py` — drift detector + repair tool (INFRA-155). Compares `.chump/state.db` against `docs/gaps.yaml` and reports four buckets: DB done / YAML open (regen YAML), DB open / YAML done (sync DB from YAML), DB-only orphans, YAML-only ghosts. Run `gap-doctor.py doctor` for a read-only report; `sync-from-yaml --apply` drains pre-INFRA-152 hand-edit drift; `sync-from-db --apply` regenerates YAML from DB. The 2026-04-28 first run drained 25 status:open-but-actually-done rows in one shot.
+- `scripts/coord/gap-doctor.py` — drift detector + repair tool (INFRA-155). Compares `.chump/state.db` against `docs/gaps/<ID>.yaml` files (post-INFRA-188; previously the monolithic `docs/gaps.yaml`) and reports four buckets: DB done / YAML open (regen YAML), DB open / YAML done (sync DB from YAML), DB-only orphans, YAML-only ghosts. Run `gap-doctor.py doctor` for a read-only report; `sync-from-yaml --apply` drains pre-INFRA-152 hand-edit drift; `sync-from-db --apply` regenerates YAML from DB. The 2026-04-28 first run drained 25 status:open-but-actually-done rows in one shot.
 - `scripts/ops/stale-pr-reaper.sh` — runs hourly, auto-closes PRs whose gaps landed on main
 - `scripts/ops/stale-worktree-reaper.sh` — removes merged / orphaned linked worktrees under `.claude/worktrees/` (default dry-run; use `--execute`). macOS hourly install: `scripts/setup/install-stale-worktree-reaper-launchd.sh` (see **Worktree disk hygiene** above)
 - `scripts/git-hooks/pre-commit` — coordination hook (see **Commit-time guards** table above)
@@ -289,38 +289,41 @@ the COG-026 A/B aggregator can split outcomes by backend.
 ## Gap registry — `.chump/state.db` is canonical (INFRA-059, 2026-04-25)
 
 INFRA-023 (2026-04-21) added the SQLite store; INFRA-059 (M1 of the
-World-Class Roadmap) **flipped authority** from `docs/gaps.yaml` to
-`.chump/state.db` so concurrent agents no longer race on a single hot YAML
-file. (The April 2026 corruption incidents — INFRA-049/052/055/057/064 — were
-all instances of that race.)
+World-Class Roadmap) **flipped authority** from the then-monolithic
+`docs/gaps.yaml` to `.chump/state.db` so concurrent agents no longer race
+on a single hot YAML file. (The April 2026 corruption incidents —
+INFRA-049/052/055/057/064 — were all instances of that race.) INFRA-188
+(2026-05-02) then deleted the monolithic `docs/gaps.yaml` and replaced it
+with per-file `docs/gaps/<ID>.yaml` mirrors, eliminating the merge-conflict
+hotspot entirely.
 
 - **`chump gap …` subcommands are the primary interface.** They mutate
   `.chump/state.db` directly.
-- **`docs/gaps.yaml` is a regenerated mirror**, not a source. It exists so
-  PRs have a human-readable diff. Regenerate via `chump gap ship
-  --update-yaml` (per-ship) or `chump gap dump --out docs/gaps.yaml`
-  (full export).
+- **`docs/gaps/<ID>.yaml` files are a regenerated mirror**, not a source.
+  They exist so PRs have a human-readable diff. Regenerate via `chump gap
+  ship --update-yaml` (per-ship) or `chump gap dump` (full export to
+  `docs/gaps/`).
 - **`.chump/state.sql` is the readable diff of the SQLite store** — commit
   it alongside any DB mutation so reviewers can see what changed (binary
   SQLite is unreviewable). After a merge conflict in the SQL dump,
   regenerate with `chump gap dump --out .chump/state.sql`.
 - **Legacy shell scripts (`gap-claim.sh`, `gap-reserve.sh`,
   `gap-preflight.sh`) still work** as fallbacks and are wired into hooks,
-  but the Rust-native commands are preferred. Note: as of 2026-04-26 the
-  shell scripts still operate on `docs/gaps.yaml` + `.chump-locks/` —
-  they do **not** read or write `.chump/state.db`. So when an agent is
-  driving via `bot-merge.sh` (which calls `gap-claim.sh`), the lease
-  layer and the SQLite store are independent. The two converge when
-  `chump gap ship --update-yaml` regenerates the YAML mirror at ship
-  time.
+  but the Rust-native commands are preferred. Note: the shell scripts
+  predate the SQLite store — they operate on lease files and (post-INFRA-188)
+  `docs/gaps/<ID>.yaml` files; they do **not** read or write
+  `.chump/state.db`. So when an agent is driving via `bot-merge.sh` (which
+  calls `gap-claim.sh`), the lease layer and the SQLite store are
+  independent. The two converge when `chump gap ship --update-yaml`
+  regenerates the per-file YAML mirrors at ship time.
 
 ```bash
-chump gap import                          # one-time: seed DB from docs/gaps.yaml (idempotent)
+chump gap import                          # one-time: seed DB from per-file docs/gaps/<ID>.yaml mirrors (historical: pre-INFRA-188 it read the monolithic docs/gaps.yaml)
 chump gap list [--status open] [--json]   # list gaps; --json output is musher-compatible
 chump gap reserve --domain INFRA --title "..." [--priority P1] [--effort s]
 chump gap claim <GAP-ID> [--session ID] [--worktree PATH]
 chump gap preflight <GAP-ID>              # exit 0=available, 1=done/claimed
-chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]   # flip status: done + stamp closed_date (+ closed_pr if given); --update-yaml regenerates docs/gaps.yaml
+chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]   # flip status: done + stamp closed_date (+ closed_pr if given); --update-yaml regenerates docs/gaps/<ID>.yaml
 chump gap set <GAP-ID> [--title|--description|--priority|--effort|--status|--notes|--source-doc|--opened-date|--closed-date|--closed-pr N|--acceptance-criteria "a|b|c"|--depends-on "X,Y"]
-chump gap dump [--out docs/gaps.yaml]     # full export for git-diff review
+chump gap dump                            # full export to per-file docs/gaps/<ID>.yaml mirrors
 ```
