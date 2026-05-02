@@ -806,6 +806,25 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             disown "$_watch_pid" 2>/dev/null || true
             info "pr-watch.sh detached (pid $_watch_pid, log $_watch_log) — PR will auto-recover from DIRTY"
         fi
+
+        # INFRA-223: feed the chump_improvement_targets loop after every
+        # shipped PR. distill-pr-skills.sh shipped in PR #712 but produces 0
+        # rows in production because no scheduler fires it (Cold Water #10
+        # finding). Hook it into bot-merge's post-arm step so every shipped
+        # PR feeds the loop. Background (&) so a slow gh-api call doesn't
+        # block the bot-merge happy path; bypass via existing CHUMP_DISTILL=0
+        # env var (already supported by the script) or CHUMP_DISTILL_AFTER_SHIP=0
+        # to disable just the bot-merge hook without affecting manual runs.
+        if [[ "${CHUMP_DISTILL_AFTER_SHIP:-1}" != "0" ]] \
+            && [[ -x "$REPO_ROOT/scripts/ops/distill-pr-skills.sh" ]] \
+            && [[ -n "$TARGET_PR" ]]; then
+            _distill_log="/tmp/distill-pr-${TARGET_PR}-$(date +%s).log"
+            nohup "$REPO_ROOT/scripts/ops/distill-pr-skills.sh" --pr "$TARGET_PR" \
+                > "$_distill_log" 2>&1 &
+            _distill_pid=$!
+            disown "$_distill_pid" 2>/dev/null || true
+            info "distill-pr-skills.sh detached (pid $_distill_pid, log $_distill_log) — feeds chump_improvement_targets"
+        fi
     fi
 fi
 
