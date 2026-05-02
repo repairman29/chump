@@ -940,6 +940,53 @@ if [ "${CHUMP_SUBMODULE_CHECK:-1}" != "0" ]; then
 fi
 
 # ------------------------------------------------------------------
+# 4b. book/src ↔ docs/process sync guard (INFRA-170, 2026-05-01)
+# ------------------------------------------------------------------
+# Runs BEFORE the cargo-fmt early-exit (which exits 0 on docs-only
+# commits) so docs-only PRs are still gated. PR #625 silently
+# drifted book/src/research-integrity.md when section #8 was added
+# to docs/process/RESEARCH_INTEGRITY.md without re-running
+# scripts/dev/sync-book-from-docs.sh — that drift jammed the merge
+# queue 12 PRs deep on 2026-04-29 (sync-idempotency check failing
+# on every rebased temp branch). Bypass: CHUMP_BOOK_SYNC_CHECK=0
+# (one-off doc fixes, sync-script edits, deliberate lag).
+
+if [ "${CHUMP_BOOK_SYNC_CHECK:-1}" != "0" ]; then
+    DOCS_PROCESS_STAGED=$(git diff --cached --name-only --diff-filter=ACM 2>/dev/null \
+        | grep -E '^docs/process/.*\.md$' || true)
+    if [ -n "$DOCS_PROCESS_STAGED" ]; then
+        SYNC_SCRIPT="scripts/dev/sync-book-from-docs.sh"
+        if [ -x "$SYNC_SCRIPT" ]; then
+            bash "$SYNC_SCRIPT" >/dev/null 2>&1 || true
+            BOOK_DRIFT=$(git diff --name-only -- 'book/' 2>/dev/null || true)
+            if [ -n "$BOOK_DRIFT" ]; then
+                echo "" >&2
+                echo "🚫 book sync guard (INFRA-170): docs/process edits drift book/src/" >&2
+                echo "" >&2
+                echo "   Staged docs/process/ files:" >&2
+                printf '%s\n' "$DOCS_PROCESS_STAGED" | sed 's/^/     - /' >&2
+                echo "" >&2
+                echo "   Files in book/ that need re-sync (already updated by the script):" >&2
+                printf '%s\n' "$BOOK_DRIFT" | sed 's/^/     - /' >&2
+                echo "" >&2
+                echo "   The sync script has been run for you; stage book/ and retry:" >&2
+                echo "     git add book/" >&2
+                echo "     git commit ..." >&2
+                echo "" >&2
+                echo "   Why this matters: PR #625 silently drifted" >&2
+                echo "   book/src/research-integrity.md on 2026-04-28 and jammed the" >&2
+                echo "   merge queue (sync-idempotency check failing on every rebase)" >&2
+                echo "   until PR #669 fixed both at once." >&2
+                echo "" >&2
+                echo "   Bypass (one-off fix, sync-script edit, deliberate lag):" >&2
+                echo "     CHUMP_BOOK_SYNC_CHECK=0 git commit ..." >&2
+                exit 1
+            fi
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 5. Cargo-fmt auto-fix
 # ------------------------------------------------------------------
 
@@ -1067,5 +1114,6 @@ if [ "${CHUMP_CREDENTIAL_CHECK:-1}" != "0" ]; then
         fi
     fi
 fi
+
 
 exit 0

@@ -214,6 +214,9 @@ jobs:
       - name: cross-judge audit guard (INFRA-079)
         run: bash scripts/ci/test-cross-judge-guard.sh
 
+      - name: book/src ↔ docs/process sync guard (INFRA-170)
+        run: bash scripts/ci/test-book-sync-guard.sh
+
       - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
           # INFRA-100: gap-reserve.sh now invokes `chump gap reserve`
