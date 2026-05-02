@@ -16355,9 +16355,11 @@ gaps:
 - id: INFRA-194
   domain: INFRA
   title: 'closer-PR auto-batcher: coordinator ships one PR with N gap closures every M hours'
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_pr: TBD
+  closed_date: '2026-05-01'
   opened_date: '2026-05-01'
   description: |
     INFRA-154 (auto-flip on ship) shipped today: bot-merge.sh now
