@@ -1,0 +1,50 @@
+- id: INFRA-240
+  domain: INFRA
+  title: audit + repair gaps in SQLite missing per-file docs/gaps/<ID>.yaml mirror (38 found 2026-05-02)
+  status: open
+  priority: P1
+  effort: s
+
+  description: |
+    Audit on 2026-05-02 evening (post-INFRA-188 cutover, post-INFRA-228/229
+    chump CLI fix) found 38 gaps with rows in `.chump/state.db` but no
+    matching `docs/gaps/<ID>.yaml` per-file mirror. Sample: FLEET-025
+    (sibling-shipped #773), FLEET-026 (#782), FLEET-027 (#784), COG-039,
+    DOC-013, INFRA-087, etc.
+
+    Root cause: gaps reserved before INFRA-228/229's `chump gap reserve`
+    auto-write fix landed (PR #777, merged 2026-05-02 ~10:53 UTC). For
+    these, the SQLite row was created but the per-file YAML was never
+    generated because `dump_per_file` ran from a state.db that didn't
+    include them yet, OR the gap was reserved on an agent whose binary
+    predated #777.
+
+    Symptoms: `gap-preflight.sh <ID>` skips the gap with "not found in
+    gap registry"; bot-merge.sh fails preflight without
+    `CHUMP_ALLOW_UNREGISTERED_GAP=1` bypass. INFRA-236's commit-subject
+    closer doesn't help because its workflow only fires on `merge_group`
+    events (merge queue), and per-file YAMLs are inputs not outputs.
+
+    Fix scope:
+      1. Audit script (or extend an existing one): list every gap id in
+         state.db that has no docs/gaps/<id>.yaml mirror.
+      2. Repair: for each missing id, run `chump gap dump --per-file
+         <id> --out docs/gaps/` (or the equivalent) to generate the
+         mirror from the canonical SQLite row. The new
+         `dump_per_file_single` helper (INFRA-228/229) is the right
+         primitive.
+      3. Commit the 38 generated YAMLs as a single chore PR. Verify
+         post-PR `gap-preflight.sh` succeeds on each restored id without
+         bypass.
+
+    Out of scope: repair of state.db ↔ YAML status drift in the OPPOSITE
+    direction (e.g. FLEET-024.yaml shows status:open but state.db shows
+    status:done with closed_pr=747). That's a separate cleanup tracked
+    separately — typically caught by INFRA-236's commit-subject closer
+    once the YAML is reachable.
+  acceptance_criteria:
+    - "audit script identifies all gaps in state.db missing per-file YAML"
+    - "all 38 missing per-file YAMLs generated from canonical SQLite rows"
+    - "gap-preflight.sh <ID> succeeds without bypass for each restored gap"
+    - "follow-up audit run shows zero drift"
+  depends_on: [INFRA-188, INFRA-228, INFRA-229]
