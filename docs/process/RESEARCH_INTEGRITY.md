@@ -87,6 +87,16 @@ Any new eval gap filed must specify:
 4. **Mechanism analysis:** If a delta is > ±0.05, document a hypothesis for *why* it appears.
    Unexplained deltas may be judge artifacts. Reference EVAL-029 as the model for mechanism
    drilldown.
+   **Cross-judge gate (EVAL-093, 2026-05-02):** Mechanism claims must clear cross-judge
+   agreement of **κ ≥ 0.60** (or **≥ 80% binary agreement** under the strict rubric) on the
+   *fixture class where the mechanism was detected* — not just the aggregate. Single-judge
+   mechanism claims are forbidden after the EVAL-074 retraction (PR #549 → #551, 2c4479f):
+   a Llama-only judge labeled "DeepSeek over-compliance −30pp gotcha p=0.0007"; Sonnet
+   cross-rescore returned −0.4pp p=1.0 with κ=0.40 on the gotcha class. The kappa value,
+   judge panel, and fixture-class scope must appear in the commit body or the linked result
+   doc. The pre-commit hook `mechanism-kappa advisory` (this section) warns on commits that
+   introduce mechanism language with a |Δ|>0.05 and lack a κ citation. Advisory only
+   initially — flips to blocking after one cycle of false-positive observation.
 5. **A/A baseline:** Every eval series must include at least one A/A run (same cell vs same cell)
    to measure judge variance. A/A delta should be within ±0.03 before results are cited.
    For binary-mode sweeps, use `--aa-calibrate` which runs n=50 and aborts if noise > ±0.05.
