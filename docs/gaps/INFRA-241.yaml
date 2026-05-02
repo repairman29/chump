@@ -1,0 +1,51 @@
+- id: INFRA-241
+  domain: INFRA
+  title: Backfill 89 historical ghost gaps — apply INFRA-236 closer in batch mode against full PR list
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    Audit 2026-05-02 (post-INFRA-188 cutover) found 89 of 561 per-file
+    gaps (16%) are status:open on origin/main while a merged PR with
+    the gap-ID in its title exists. These are historical OPEN-BUT-LANDED
+    ghosts that accumulated since INFRA-154 / INFRA-194 closure paths
+    started missing edges.
+
+    Sample (first 15 of 89):
+      DOC-011 (PR #589), EVAL-065 (#405), EVAL-074 (#666), EVAL-089
+      (#558), EVAL-090 (#726), EVAL-091 (#778), EVAL-093 (#779),
+      EVAL-095 (#726), FLEET-008 (#754), FLEET-010 (#760), FLEET-011
+      (#784), FLEET-013 (#780), FLEET-023 (#768), FLEET-024 (#747),
+      INFRA-043 (#210), ...
+
+    Approach: one-shot backfill script that walks every status:open
+    per-file YAML, queries `gh pr list --state merged --search
+    "in:title <gap-id>"` for the closing PR, and surgically writes
+    status:done + closed_pr + closed_date using the same logic as
+    scripts/coord/close-gaps-from-commit-subjects.sh (INFRA-236).
+
+    Safety:
+      - Skip filing PRs (chore(gaps): file ...) — a gap-id appearing in
+        a filing PR title doesn't mean closure
+      - Skip if the most recent merged PR with that ID is itself a
+        'chore(gaps): close' or 'chore(gaps): file' (ledger-only, not
+        implementation)
+      - Idempotent: re-running on already-done gaps is no-op
+      - Bundle all 89 closures into ONE PR labeled 'chore(gaps):
+        backfill 89 historical ghosts' so reviewers see the full scope
+
+    Why now: INFRA-236 (commit-subject closer in workflow) only catches
+    NEW closures going forward. The 89 historical ghosts need a
+    one-time sweep. Without them, gap-list, briefings, and the COG-024
+    lessons pipeline all surface stale "open" rows that distract agents
+    from real work.
+  acceptance_criteria:
+    - "Backfill script implemented and runs successfully"
+    - "89 ghosts surgically closed in single PR with proper closed_pr"
+    - "Filing PRs (chore(gaps): file ...) correctly skipped"
+    - "Post-backfill audit shows 0 ghosts"
+  depends_on:
+    - INFRA-236
+  raised_by: claude
+  raised_in: '2026-05-02 — audit found 89 ghosts (16% of 561 gaps) while validating INFRA-236 effectiveness'
