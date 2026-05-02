@@ -18,9 +18,13 @@
 //!   posted_by, posted_at,
 //!   claimed_by, claimed_at, completed_at, completed_commit,
 //!   status: open | claimed | completed | failed,
-//!   help_requests: [],   // reserved for FLEET-010
 //! }
 //! ```
+//!
+//! FLEET-010 (help-seeking) lives in its own bucket
+//! [`crate::help_request`] rather than nested on Subtask, so help
+//! requests can hang off either a subtask or a parent gap and survive
+//! across subtask state transitions.
 //!
 //! ## Atomicity
 //!
@@ -154,21 +158,6 @@ pub struct Subtask {
     pub failure_reason: Option<String>,
     /// Current lifecycle state.
     pub status: SubtaskStatus,
-    /// Reserved for FLEET-010 help-seeking protocol — list of help
-    /// requests posted by the claimant when blocked. Empty in v1.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub help_requests: Vec<HelpRequest>,
-}
-
-/// FLEET-010 placeholder type. Defined here so the schema is forward-
-/// compatible: when FLEET-010 ships it just populates this list.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HelpRequest {
-    pub posted_by: String,
-    pub posted_at: String,
-    pub need: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub claimed_by: Option<String>,
 }
 
 impl Subtask {
@@ -189,7 +178,6 @@ impl Subtask {
             completed_commit: None,
             failure_reason: None,
             status: SubtaskStatus::Open,
-            help_requests: Vec::new(),
         }
     }
 }

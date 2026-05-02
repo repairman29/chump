@@ -12,6 +12,7 @@
 //!   emit <type> [key=value …]  — publish a structured event
 //!   watch                      — stream live events (ctrl-c to stop)
 //!   work-board <sub> [args …]  — FLEET-008 shared subtask queue (post|list|claim|complete|fail|show)
+//!   help-request <sub> [args …] — FLEET-010 help-seeking protocol (post|list|claim|complete|fail|show)
 //!
 //! Environment:
 //!   CHUMP_NATS_URL             — default nats://127.0.0.1:4222
@@ -19,6 +20,7 @@
 //!   CHUMP_COORD_FILES          — comma-separated file hints for claim command
 
 use anyhow::Result;
+use chump_coord::help_request::{BlockerType, HelpRequest, HelpStatus};
 use chump_coord::work_board::{Requirement, Subtask, SubtaskStatus, TransitionMiss};
 use chump_coord::{CoordClient, CoordEvent};
 use std::env;
@@ -532,6 +534,245 @@ async fn main() -> Result<()> {
             }
         }
 
+        // ── help-request (FLEET-010) ─────────────────────────────────────────
+        // Usage:
+        //   chump-coord help-request post <blocker-type> "<description>" \
+        //       [--parent-subtask SUBTASK-…] [--parent-gap FLEET-…] \
+        //       [--needed-capability "..."] [--blocking]
+        //   chump-coord help-request list [--status open|claimed|completed|failed|all] \
+        //       [--parent-subtask SUBTASK-…] [--parent-gap FLEET-…]
+        //   chump-coord help-request claim    <help-id>
+        //   chump-coord help-request complete <help-id> [--resolution "..."]
+        //   chump-coord help-request fail     <help-id> --reason "..."
+        //   chump-coord help-request show     <help-id>
+        "help-request" => {
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            let client = match CoordClient::connect_or_skip().await {
+                Some(c) => c,
+                None => {
+                    eprintln!(
+                        "[chump-coord] NATS unavailable — help-request requires a reachable broker"
+                    );
+                    std::process::exit(1);
+                }
+            };
+            match sub {
+                "post" => {
+                    let blocker_arg = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord help-request post <blocker-type> \"<description>\" [flags…]");
+                        eprintln!("  blocker-type: timeout | missing_capability | unknown_task_class | other");
+                        std::process::exit(2);
+                    });
+                    let description = args.get(4).cloned().unwrap_or_else(|| {
+                        eprintln!("Missing \"<description>\"");
+                        std::process::exit(2);
+                    });
+                    let blocker_type = match blocker_arg.as_str() {
+                        "timeout" => BlockerType::Timeout,
+                        "missing_capability" => BlockerType::MissingCapability,
+                        "unknown_task_class" => BlockerType::UnknownTaskClass,
+                        "other" => BlockerType::Other,
+                        other => {
+                            eprintln!(
+                                "Unknown blocker-type: {} (expected timeout|missing_capability|unknown_task_class|other)",
+                                other
+                            );
+                            std::process::exit(2);
+                        }
+                    };
+                    let mut req = HelpRequest::new(blocker_type, &description, &session_id());
+                    let mut i = 5;
+                    while i < args.len() {
+                        match args[i].as_str() {
+                            "--parent-subtask" => {
+                                i += 1;
+                                if let Some(v) = args.get(i) {
+                                    req.parent_subtask = Some(v.clone());
+                                }
+                            }
+                            "--parent-gap" => {
+                                i += 1;
+                                if let Some(v) = args.get(i) {
+                                    req.parent_gap = Some(v.clone());
+                                }
+                            }
+                            "--needed-capability" => {
+                                i += 1;
+                                if let Some(v) = args.get(i) {
+                                    req.needed_capability = Some(v.clone());
+                                }
+                            }
+                            "--blocking" => req.blocking = true,
+                            other => {
+                                eprintln!("Unknown flag: {}", other);
+                                std::process::exit(2);
+                            }
+                        }
+                        i += 1;
+                    }
+                    client.post_help_request(&req).await?;
+                    println!("{}", req.help_id);
+                }
+                "list" => {
+                    let mut filter_status: Option<HelpStatus> = Some(HelpStatus::Open);
+                    let mut filter_parent_subtask: Option<String> = None;
+                    let mut filter_parent_gap: Option<String> = None;
+                    let mut i = 3;
+                    while i < args.len() {
+                        match args[i].as_str() {
+                            "--status" => {
+                                i += 1;
+                                filter_status = match args.get(i).map(|s| s.as_str()) {
+                                    Some("open") => Some(HelpStatus::Open),
+                                    Some("claimed") => Some(HelpStatus::Claimed),
+                                    Some("completed") => Some(HelpStatus::Completed),
+                                    Some("failed") => Some(HelpStatus::Failed),
+                                    Some("all") => None,
+                                    Some(other) => {
+                                        eprintln!("Unknown status: {}", other);
+                                        std::process::exit(2);
+                                    }
+                                    None => Some(HelpStatus::Open),
+                                };
+                            }
+                            "--parent-subtask" => {
+                                i += 1;
+                                filter_parent_subtask = args.get(i).cloned();
+                            }
+                            "--parent-gap" => {
+                                i += 1;
+                                filter_parent_gap = args.get(i).cloned();
+                            }
+                            other => {
+                                eprintln!("Unknown flag: {}", other);
+                                std::process::exit(2);
+                            }
+                        }
+                        i += 1;
+                    }
+                    let reqs = client
+                        .list_help_requests(
+                            filter_status,
+                            filter_parent_subtask.as_deref(),
+                            filter_parent_gap.as_deref(),
+                        )
+                        .await?;
+                    if reqs.is_empty() {
+                        println!("[chump-coord] No help requests match.");
+                    } else {
+                        println!(
+                            "{:<14} {:<10} {:<22} {:<14} {:<14} description",
+                            "help_id", "status", "blocker_type", "parent_gap", "parent_sub"
+                        );
+                        for r in reqs {
+                            println!(
+                                "{:<14} {:<10} {:<22} {:<14} {:<14} {}",
+                                r.help_id,
+                                format!("{:?}", r.status).to_lowercase(),
+                                format!("{:?}", r.blocker_type).to_lowercase(),
+                                r.parent_gap.unwrap_or_else(|| "—".to_string()),
+                                r.parent_subtask.unwrap_or_else(|| "—".to_string()),
+                                r.description
+                            );
+                        }
+                    }
+                }
+                "claim" => {
+                    let id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord help-request claim <help-id>");
+                        std::process::exit(2);
+                    });
+                    let sess = session_id();
+                    match client.claim_help_request(&id, &sess).await? {
+                        Ok(r) => println!(
+                            "[chump-coord] CLAIMED {} (blocker={:?}, description={})",
+                            r.help_id, r.blocker_type, r.description
+                        ),
+                        Err(miss) => {
+                            print_transition_miss("claim", &id, &miss);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                "complete" => {
+                    let id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord help-request complete <help-id> [--resolution \"…\"]");
+                        std::process::exit(2);
+                    });
+                    let mut resolution: Option<String> = None;
+                    let mut i = 4;
+                    while i < args.len() {
+                        if args[i] == "--resolution" {
+                            i += 1;
+                            resolution = args.get(i).cloned();
+                        }
+                        i += 1;
+                    }
+                    let sess = session_id();
+                    match client
+                        .complete_help_request(&id, &sess, resolution.as_deref())
+                        .await?
+                    {
+                        Ok(r) => println!(
+                            "[chump-coord] COMPLETED {} (resolution={})",
+                            r.help_id,
+                            r.resolution.as_deref().unwrap_or("—")
+                        ),
+                        Err(miss) => {
+                            print_transition_miss("complete", &id, &miss);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                "fail" => {
+                    let id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord help-request fail <help-id> --reason \"…\"");
+                        std::process::exit(2);
+                    });
+                    let mut reason = String::new();
+                    let mut i = 4;
+                    while i < args.len() {
+                        if args[i] == "--reason" {
+                            i += 1;
+                            reason = args.get(i).cloned().unwrap_or_default();
+                        }
+                        i += 1;
+                    }
+                    if reason.is_empty() {
+                        eprintln!("--reason is required");
+                        std::process::exit(2);
+                    }
+                    let sess = session_id();
+                    match client.fail_help_request(&id, &sess, &reason).await? {
+                        Ok(r) => println!("[chump-coord] FAILED {} (reason={})", r.help_id, reason),
+                        Err(miss) => {
+                            print_transition_miss("fail", &id, &miss);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                "show" => {
+                    let id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord help-request show <help-id>");
+                        std::process::exit(2);
+                    });
+                    match client.get_help_request(&id).await? {
+                        Some(r) => println!("{}", serde_json::to_string_pretty(&r)?),
+                        None => {
+                            eprintln!("[chump-coord] not found: {}", id);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!(
+                        "Usage: chump-coord help-request {{post|list|claim|complete|fail|show}} …"
+                    );
+                    std::process::exit(2);
+                }
+            }
+        }
+
         // ── help / default ────────────────────────────────────────────────────
         _ => {
             eprintln!(
@@ -551,6 +792,14 @@ COMMANDS
                              complete <subtask-id> [--commit <sha-or-pr>]
                              fail     <subtask-id> --reason "..."
                              show     <subtask-id>
+  help-request <sub> [args …] FLEET-010 help-seeking protocol
+                             post <blocker-type> "<description>" [--parent-subtask SUBTASK-…] [--parent-gap FLEET-…] [--needed-capability "…"] [--blocking]
+                                  blocker-type: timeout|missing_capability|unknown_task_class|other
+                             list   [--status open|claimed|completed|failed|all] [--parent-subtask …] [--parent-gap …]
+                             claim    <help-id>
+                             complete <help-id> [--resolution "…"]
+                             fail     <help-id> --reason "…"
+                             show     <help-id>
 
 ENVIRONMENT
   CHUMP_NATS_URL             NATS server URL (default: nats://127.0.0.1:4222)
