@@ -100,11 +100,17 @@ impl GapStore {
                 }
             }
         };
-        // busy_timeout: concurrent gap_store::tests::test_reserve_concurrent opens
-        // multiple connections to one WAL DB; without a wait, BEGIN EXCLUSIVE races
-        // surface as rusqlite "database is locked" on CI runners.
+        // INFRA-216: set busy_timeout BEFORE journal_mode=WAL so the WAL
+        // switch itself respects the wait. Without this, a sibling process
+        // mid-WAL-switch causes SQLITE_BUSY at our PRAGMA journal_mode=WAL,
+        // and the failure shows up as "database is locked" (which the
+        // gap_reserve_cross_host_race integration test was catching).
+        // busy_timeout via PRAGMA must come first; subsequent PRAGMAs in
+        // this batch will then honor it.
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .with_context(|| "setting busy_timeout via rusqlite API")?;
         conn.execute_batch(
-            "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",
+            "PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;",
         )?;
         let store = Self {
             conn,
