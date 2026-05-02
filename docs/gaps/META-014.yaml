@@ -1,0 +1,66 @@
+- id: META-014
+  domain: META
+  title: "Verify-against-origin/main before filing RCA gaps — stale working tree caused INFRA-238 P0 misdiagnosis (codify in AGENTS.md)"
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    Behavioural guardrail surfaced from INFRA-238's misdiagnosis in the
+    2026-05-02 ghost-elimination session.
+
+    What happened:
+      1. Agent (me) ran PR #787 closing INFRA-176/175/169 — landed
+         successfully on origin/main.
+      2. System reminders showed the 3 files at status:open AGAIN in
+         the local working tree shortly after.
+      3. Agent inferred "regen workflow reverted my closures" → filed
+         INFRA-238 as P0 with elaborate root-cause analysis.
+      4. Hours later, while implementing the alleged fix, agent ran
+         `git show origin/main:docs/gaps/INFRA-176.yaml` and discovered
+         the closures had ALWAYS BEEN status:done on origin/main. The
+         system reminders had been showing the LOCAL working tree's
+         pre-pull state (working tree was 8 commits behind origin).
+      5. INFRA-238 had to be closed as misdiagnosis (PR #804) with a
+         long closed_interpretation explaining the false alarm.
+
+    Cost: ~30 minutes of investigation chasing a phantom + 1 P0 gap
+    filing + 1 closure-by-supersession PR. Pure waste.
+
+    Pattern: agents read local working tree state and infer origin
+    behavior. The system reminders deepen this by surfacing local file
+    state directly into the conversation, conflating "what the file
+    looks like in my checkout" with "what's true on the trunk."
+
+    Codification (the actual deliverable for this gap):
+
+    Add to AGENTS.md "How to claim work" section, under a new
+    "Diagnosing divergence" subsection:
+
+      Before filing an RCA gap that claims "X reverted my change /
+      X overwrote my edit / origin has unexpected state," verify
+      against origin directly:
+
+        git fetch origin main --quiet
+        git show origin/main:<path>
+
+      NOT:
+        cat <path>            # local working tree, may be stale
+        git log -- <path>     # local refs, may be stale
+        system-reminder file content (often the local checkout state)
+
+      If the verify-against-origin step shows the expected state, the
+      "divergence" was a stale local working tree, not a real revert.
+      Don't file the gap.
+
+    Acceptance:
+      - AGENTS.md gets the "Diagnosing divergence" subsection
+      - Optionally: pre-commit hint when filing a gap whose description
+        contains keywords like "reverted my", "overwrote my", "regen
+        broke" — prompt to verify-against-origin first
+  acceptance_criteria:
+    - "AGENTS.md 'How to claim work' section gets a 'Diagnosing divergence' subsection"
+    - "Subsection includes the canonical verify-against-origin commands (git fetch + git show origin/main:<path>)"
+    - "Subsection cites INFRA-238 as the cautionary example (~30min wasted on phantom revert)"
+  raised_by: claude
+  raised_in: '2026-05-02 — RCA review surfaced this as a recurring agent-behaviour pattern not previously codified'

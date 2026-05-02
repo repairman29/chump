@@ -1,0 +1,68 @@
+- id: INFRA-246
+  domain: INFRA
+  title: "Per-file YAML mid-flight collision: sibling agents independently editing same docs/gaps/<ID>.yaml — needs file-level lock or auto-rebase strategy"
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-05-02'
+  description: |
+    Hit ≥3x in the 2026-05-02 ghost-elimination session:
+
+      - PR #765 (close INFRA-127 + INFRA-130) had to be closed and
+        reshipped as PR #771 because a sibling agent independently
+        enriched docs/gaps/INFRA-130.yaml with closed_pr in a parallel
+        PR. My PR's INFRA-130 changes became a redundant reopen-attempt;
+        only INFRA-127 survived to land separately.
+      - PR #787 surgical closures of INFRA-176/175/169 succeeded but
+        my LOCAL working tree showed status:open immediately after
+        (sibling agent's chump gap reserve generated per-file YAML
+        files in the same directory, and `git pull --ff-only` brought
+        in conflicting state).
+      - Multiple rebase dances on PRs #718, #728, #735 because main
+        moved underneath while I edited (siblings landing other gap
+        closures in adjacent files).
+
+    Root cause: docs/gaps/<ID>.yaml is a single small file edited by
+    multiple agents simultaneously. The current "atomic PR discipline"
+    handles the squash-loss footgun (don't push after auto-merge arm)
+    but does NOT handle "two PRs concurrently modifying the same
+    per-file YAML." Whichever lands first wins; the second has to
+    rebase or re-ship.
+
+    With a fleet size of 2-3 active agents this happens 2-3x per cycle.
+    At fleet size 8+ (per FLEET-* roadmap), it would dominate session
+    time.
+
+    Fix paths:
+      (a) File-level lease in .chump-locks/<session>.json — agents
+          declare paths they intend to edit; pre-commit refuses if
+          another live lease covers the same path. Already partially
+          implemented for code paths (INFRA-189 out-of-scope guard);
+          extend to docs/gaps/<ID>.yaml.
+      (b) Auto-rebase strategy in bot-merge.sh — when a per-file YAML
+          conflict is detected during pre-push fetch, automatically
+          rebase + retry once before failing. The diffs are usually
+          additive (status flip + closed_pr), so 3-way merge resolves
+          cleanly in 90% of cases.
+      (c) Single-writer queue — all per-file YAML mutations go through
+          a single sequencing process (NATS subject? Workflow? Hook?)
+          that serializes them. Heaviest implementation but eliminates
+          the race entirely.
+      (d) Field-level CRDT — closed_pr / closed_date / status are
+          last-writer-wins safely; description / acceptance_criteria
+          are diff-merge-safe; the YAML format itself is the
+          serialization bottleneck. Could split per-file into
+          per-(gap-id, field) JSON. Big architectural shift.
+
+    (a) is the lowest-friction fix and matches the existing lease
+    coordination model. (b) is fastest to ship but doesn't prevent —
+    just heals. (c) and (d) are roadmap territory.
+  acceptance_criteria:
+    - "File-level lease declared on docs/gaps/<ID>.yaml prevents two agents from concurrently editing the same row"
+    - "Pre-commit guard fires when MY lease's paths field is missing the gap row I'm editing AND a sibling lease covers it"
+    - "Bot-merge.sh auto-rebase loop heals the 90% case where conflict is purely additive"
+    - "Test fixture: spin up 3 simulated agents all closing different gaps in the same minute; expect 0 collisions"
+  depends_on:
+    - INFRA-189
+  raised_by: claude
+  raised_in: '2026-05-02 — operator-requested RCA review identified this as the highest repeat-risk pattern not yet filed'
