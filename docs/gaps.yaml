@@ -15563,7 +15563,9 @@ gaps:
 - id: INFRA-178
   domain: INFRA
   title: 'PWA chat bubble concatenates multi-round responses — clear text on model_call_start'
-  status: open
+  status: done
+  closed_pr: 711
+  closed_date: '2026-05-01'
   priority: P1
   effort: xs
   opened_date: '2026-05-01'

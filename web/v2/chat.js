@@ -237,6 +237,15 @@ class ChumpChat extends HTMLElement {
         hint.textContent = event === 'model_call_start'
           ? `Model round ${(data.round || 0) + 1}…`
           : `Thinking… ${data.elapsed_ms || 0}ms`;
+        // INFRA-178: each new model round starts with a fresh response.
+        // Previously fullText accumulated across all rounds, so round-2
+        // text was glued onto round-1 text inside the same bubble.
+        // Reset on every model_call_start (round 0 is the first call,
+        // where there's no prior text to clear, so the reset is a no-op).
+        if (event === 'model_call_start') {
+          fullText = '';
+          bubble.innerHTML = '<span class="cursor">▋</span>';
+        }
       } else if (event === 'text_delta' && data.delta) {
         fullText += data.delta;
         bubble.innerHTML = renderMarkdown(fullText);
