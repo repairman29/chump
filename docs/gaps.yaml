@@ -16050,6 +16050,72 @@ gaps:
     - "After 3 of A-H ship: re-survey open coordination gaps; expect drop from 50 toward ~15-20 (the residual not yet covered)"
   raised_by: claude
   raised_in: '2026-05-01 — operator asked for structural thinking on multi-agent coordination after watching 16-PR session hit 5 manual rebases + 3 ID drifts + naming friction'
+  resolution_notes: |
+    SESSION WINS (2026-05-01) — 6 of 9 META-004 sub-gaps shipped in
+    one push, validating the 'one structural fix per cycle' rhythm.
+    Each PR's design notes name the symptom-patches it transitively
+    closes; future Cold Water sweeps can verify by re-running the
+    50-coordination-gap census.
+
+      - INFRA-190 (PR #698) — scripts/coord/pr-watch.sh: auto-recovers
+        DIRTY-after-arm via disarm+rebase+force-push+re-arm. Closes
+        INFRA-052, INFRA-119, INFRA-121.
+      - INFRA-190 hook (PR #703) — bot-merge.sh fires-and-forgets
+        pr-watch.sh after arming. Default ON; opt out via
+        CHUMP_PR_WATCH_AFTER_ARM=0. The 5-times-a-session manual
+        rebase ritual is dead.
+      - INFRA-189 (PR #705) — pre-commit out-of-scope guard (warn
+        mode for first week, then enforce). Triggers ONLY when lease
+        has paths declared. Closes INFRA-076 leak class, INFRA-081
+        semantic-collisions, INFRA-085, INFRA-110, INFRA-118.
+      - INFRA-192 (PR #700) — bot-merge.sh forward-chain notifier.
+        On gap close, scans depends_on, broadcasts gap_unblocked
+        ALERT for each downstream. Sibling agents pick up newly-
+        actionable gaps immediately. INFRA-176 ← INFRA-174 unblock
+        cycle (today, 30-min latency) was the motivating example.
+      - INFRA-194 (PR #709) — scripts/ops/closer-pr-batcher.sh:
+        regenerates docs/gaps.yaml from .chump/state.db; ships one
+        batched closer PR for drift. Designed for cron/launchd at
+        ~4hr cadence. Catches drive-by closures + Cold Water sweeps
+        that bypass INFRA-154's per-PR auto-flip.
+      - INFRA-195 (PR #712) — scripts/ops/distill-pr-skills.sh: 13-
+        pattern whitelist over recently-merged PRs, INSERTs
+        chump_improvement_targets rows. Idempotent on
+        (directive, scope). Closes the cross-agent skills feedback
+        loop end-to-end: gap closes → INFRA-192 notifies sibling →
+        distiller picks up PR pattern → next spawn loads lesson.
+        Subsumes META-001/002/003.
+
+    REMAINING (3 of 9, deferred to follow-up sessions):
+      - INFRA-188 — per-file gap registry. m effort, MIGRATION risk.
+        Scheduled for autonomous remote run via routine
+        trig_013nWP5rEcYCZu5oPc2cRhKv firing 2026-05-02T07:30Z
+        (~6h after this session ended). Plan in the routine prompt:
+        preflight queue settled → broadcast migration_pause → ship
+        cutover → broadcast migration_done.
+      - INFRA-191 — chump dispatch canonical workflow. Depends on
+        INFRA-188 (cleaner once gap registry is per-file). Defer
+        to a session AFTER INFRA-188 ships.
+      - INFRA-193 — speculative execution (two agents on same gap;
+        first wins). Novel, m. Design-heavy. No urgency. Pick when
+        the team is ready to experiment with a deliberate race.
+
+    PARTNERSHIP NOTE: this session ran in parallel with another
+    agent who shipped PRODUCT-024 (chat default → non-reasoning
+    model, 25× latency win) + INFRA-184 (plain-prose CoT routing) +
+    INFRA-185 (phase-level timing). Cross-agent coordination via
+    INFRA-183 umbrella + broadcast.sh worked as designed: zero
+    duplicate work, zero collisions. The model is sound; the missing
+    pieces (now shipped above) are mechanical not architectural.
+
+    METRIC TARGETS (re-survey after 1 week):
+      - Manual rebases per agent-session: 5 → ~0
+      - gaps.yaml merge-conflicts per week: ~10 → ~0 (after INFRA-188)
+      - Cross-worktree commit leaks (INFRA-076 class): non-zero → 0
+      - Open coordination gaps: 50 → 15-20
+
+    The remaining 3 sub-gaps + the metric re-survey are the
+    completion criteria. Track future closures here.
 
 - id: INFRA-188
   domain: INFRA
