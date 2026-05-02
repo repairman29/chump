@@ -1,0 +1,58 @@
+- id: INFRA-272
+  domain: INFRA
+  title: "Workflow-only PRs hit required-CI path-filter skip trap — killed #803, almost killed #874"
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    Branch protection on origin/main requires 3 status checks: `test`,
+    `audit`, and `ACP protocol smoke test`. All three workflows have
+    path filters in their `on: pull_request:` `paths:` block that match
+    `Cargo.toml`, `src/**`, `crates/**`, etc — but NOT
+    `.github/workflows/**` and NOT `docs/gaps/**`.
+
+    Effect: a PR whose only diff is a workflow file change + a gap row
+    triggers ZERO required CI checks. PR state goes MERGEABLE/BLOCKED
+    permanently — the queue is waiting on checks that will never run.
+    Auto-merge is armed but can never satisfy the required-checks
+    invariant. Only escape is to add a meaningful change to a path that
+    DOES trigger CI (polluting the diff) or admin-bypass.
+
+    Observed kills:
+      - PR #803 (INFRA-236 trigger fix, 2026-05-02): closed without
+        merging at 17:05Z. Almost certainly hit this trap — the diff
+        was workflow-file-only.
+      - PR #874 (INFRA-261 re-ship of #803, 2026-05-02): hit the same
+        trap. Recovered by adding a clarifying comment to
+        scripts/ci/test-close-gaps-from-commit-subjects.sh which is
+        substantively related (the closer the workflow calls). One-off
+        rescue; not a sustainable pattern.
+
+    Fix paths:
+      (a) Extend `.github/workflows/{ci,audit,acp}.yml` `on:
+          pull_request:` `paths:` to include `.github/workflows/**`
+          and/or `docs/gaps/**`. Most direct; lets the required checks
+          fire on any PR that touches anything we care about.
+      (b) Add a `[force-ci]` opt-in tag in PR body that the workflows'
+          conditional `if:` clauses respect — bypass the path filter
+          on demand.
+      (c) Use `paths-ignore` (denylist) instead of `paths` (allowlist)
+          on the required workflows. Catches everything by default;
+          only docs/* style sweeps that genuinely don't need CI get
+          excluded.
+      (d) Mark `arm` (which already runs unconditionally) as a required
+          check so workflow-only PRs at least have one passing check
+          to satisfy branch protection — together with adjusting which
+          checks are actually required.
+
+    Cost of doing nothing: every workflow tweak / config change lives
+    inside a PR that needs an unrelated meaningful-file no-op to
+    trigger CI. That pollutes diffs, encourages bypasses, and means
+    workflow improvements are silently expensive to ship.
+  acceptance_criteria:
+    - "A PR whose only diff is .github/workflows/*.yml + docs/gaps/<ID>.yaml triggers all 3 required checks (test, audit, ACP smoke)"
+    - "Decision documented in CLAUDE.md or .github/workflows/README — which of (a)/(b)/(c)/(d) was chosen and why"
+    - "PR #803 or #874 retroactively used as the regression test fixture"
+  raised_by: claude
+  raised_in: '2026-05-02 — operator-requested PR-status check caught #874 stuck in same trap that killed #803, after which operator reinforced "always file follow-ups"'
