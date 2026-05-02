@@ -129,6 +129,17 @@ When the gap ships, run `chump gap ship <GAP-ID> --update-yaml` to flip
 `docs/gaps/<GAP-ID>.yaml` so the human-readable diff lands **atomically with
 the implementing PR** (one commit, not a follow-up).
 
+**Running a fleet of agents (INFRA-203).** The canonical multi-agent
+launcher is `scripts/dispatch/run-fleet.sh` — it spawns N tmux panes plus a
+control pane, with each worker looping pick-gap → claim → worktree →
+`claude -p --dangerously-skip-permissions` → ship via `bot-merge.sh` →
+release. Defaults: `FLEET_SIZE=8`, P0/P1 only, xs/s/m effort only,
+auto-pickup excludes EVAL-/RESEARCH-/META-. Knobs: `FLEET_SIZE`,
+`FLEET_DOMAIN_FILTER`, `FLEET_TIMEOUT_S`, `FLEET_DRY_RUN=1` (plan-only).
+Stop with `tmux kill-session -t chump-fleet` or `FLEET_SIZE=0
+scripts/dispatch/run-fleet.sh`. See `CLAUDE.md` section **Fleet launcher**
+for the full env reference.
+
 **Gap closure precision fields (2026-04-24):**
 - `acceptance_verified:` — array of `yes` / `no` for each acceptance criterion,
   documenting which criteria justified closure when not all are met. Prevents
