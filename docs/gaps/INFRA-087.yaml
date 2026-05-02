@@ -1,0 +1,7 @@
+- id: INFRA-087
+  domain: infra
+  title: automated repo failure-detection auditor + CI-time health checks
+  status: open
+  priority: P1
+  effort: m
+

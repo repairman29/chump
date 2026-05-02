@@ -1,0 +1,13 @@
+- id: INFRA-198
+  domain: infra
+  title: Required-review gate for infra-touching PRs (workflows, hooks, dist config, branch protection)
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Single-maintainer repo with no required-review gate means infra-touching PRs (workflows, git hooks, dist config, pre-commit guards, branch protection) can land via auto-merge with zero second-pair-of-eyes. The cross-judge audit guard (INFRA-079) acknowledges this risk for evals; the same logic argues for a lightweight gate on infra paths. Options: (a) CODEOWNERS rule requiring review for paths in {.github/, scripts/git-hooks/, scripts/coord/, dist-workspace.toml, Cargo.toml [workspace.metadata.dist], CLAUDE.md, AGENTS.md} — review can be from a designated bot with stricter checks, not necessarily a human; (b) a 'two-agent rule' where infra-touching PRs require an explicit ack ambient event from a sibling session before auto-merge arms; (c) post-merge audit job that diffs infra changes against a known-good template and opens an issue if anomalous. Scope this gap = pick an approach + prototype.
+  acceptance_criteria:
+    - approach selected with rationale (CODEOWNERS / two-agent ack / post-merge audit)
+    - prototype lands behind a runtime flag if it changes ship pipeline
+    - "measure: how many infra PRs in the prior 4 weeks would have been caught"
+

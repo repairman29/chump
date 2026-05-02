@@ -1,0 +1,18 @@
+- id: INFRA-164
+  domain: infra
+  title: Drop ChumpMenu from steady-state launch path; document PWA as canonical local UI
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    ChumpMenu (Tauri menubar) auto-spawns its own chump --web sidecar (desktop/src-tauri/src/lib.rs:28-199). When operator also launches ./run-web.sh, two chump processes each maintain independent reqwest::Client → ESTABLISHED connections to ollama:11434. Ollama serializes per-runner so the two queues block each other (observed: 3 ESTABLISHED conns, 80+ s stalled turns). ChumpMenu adds no inference-unique workload — it's a UI wrapper around the PWA. This gap removes ChumpMenu from the steady-state launch path; doc the canonical UI as http://localhost:3000 in a regular browser. Code-level deletion of the Tauri sidecar-spawn block is a follow-on gap.
+  acceptance_criteria:
+    - "docs/operations/INFERENCE_PROFILES.md names PWA at localhost:3000 as the canonical local UI"
+    - run-web.sh referenced as the canonical entry point
+    - operator launchd plist for ChumpMenu (if any) called out as 'remove for steady-state' in the doc
+    - no Rust/Tauri code changes in this PR — pure operational/doc
+  notes: |
+    See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #1 of 6. Why first: closes ESTABLISHED-connection-contention failure class with zero code. Tauri code deletion deferred to its own follow-on so this PR stays scoped.
+  closed_date: '2026-04-29'
+  closed_pr: 661
+

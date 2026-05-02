@@ -1,0 +1,7 @@
+- id: INFRA-255
+  domain: INFRA
+  title: "implement INFRA-240 backfill: materialize 40 orphan per-file gap YAML mirrors from state.db"
+  status: open
+  priority: P1
+  effort: xs
+

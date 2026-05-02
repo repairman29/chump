@@ -1,0 +1,9 @@
+- id: INFRA-161
+  domain: infra
+  title: "ftue-clean-machine workflow: brew install fails because local-file formula path rejected (must be in tap)"
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-04-29'
+  closed_pr: 654
+

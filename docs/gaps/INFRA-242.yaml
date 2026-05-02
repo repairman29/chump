@@ -1,0 +1,57 @@
+- id: INFRA-242
+  domain: INFRA
+  title: auditor lib.sh python+yaml fallback is broken post-INFRA-188 (reads docs/gaps.yaml that no longer exists)
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Caught while diagnosing the 02:00 launchd auditor failure on 2026-05-02
+    (Cold Water Red Letter #10 trigger). Resolved the production issue via
+    INFRA-231 (launchd PATH fix), but the underlying secondary-defense path is
+    still broken.
+    
+    scripts/audit/auditor-checks/lib.sh has two helpers — all_gap_ids() and
+    all_gaps_json() — both with the same shape:
+    
+        if command -v chump >/dev/null 2>&1; then
+            chump gap list --json ...
+        else
+            # Fallback: parse docs/gaps.yaml via python+yaml
+            python3 -c "import yaml; ..."
+        fi
+    
+    The else-branch is broken for two compounding reasons post-INFRA-188:
+      1. /usr/bin/python3 (the macOS default in launchd PATH) doesn't have
+         PyYAML installed → ModuleNotFoundError
+      2. docs/gaps.yaml no longer exists post-INFRA-188 cutover (PR #753).
+         Even if PyYAML were installed, the open() would FileNotFoundError.
+    
+    Today the fallback only fires when chump is genuinely absent. Post-
+    INFRA-231 that's a CI-only corner case. But "secondary-defense path is
+    quietly broken" is a latent bug — when something else breaks the primary
+    chump-binary path (a regression, a CI sandbox without /home/user/.local
+    mounted, a fresh dev machine), the fallback won't catch it; auditor will
+    crash with confusing errors.
+    
+    Fix sketch (any one):
+      (a) Replace yaml fallback with a glob over docs/gaps/*.yaml using
+          python's safe_load (still needs PyYAML)
+      (b) Make the fallback shell out to a tiny rust binary `gap-list-min`
+          that has no deps
+      (c) Just retire the fallback — emit a clear error if chump isn't found
+          ('install with `cargo install --path .`')
+    
+    Recommend (c) — chump is a hard dependency for everything else in the
+    auditor anyway; pretending we have a fallback is a footgun.
+    
+    Acceptance:
+      - command -v chump fails && auditor runs → clear "chump not found,
+        install via …" error (NOT a python ModuleNotFoundError)
+      - Or: fallback works against docs/gaps/<ID>.yaml directory
+  acceptance_criteria:
+    - auditor with chump absent emits clear missing-dependency error
+    - "OR: fallback reads docs/gaps/<ID>.yaml directory format"
+    - no python ModuleNotFoundError under any chump-presence scenario
+  closed_date: '2026-05-02'
+  closed_pr: 811
+

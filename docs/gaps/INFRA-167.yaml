@@ -1,0 +1,19 @@
+- id: INFRA-167
+  domain: infra
+  title: chump --web startup pre-warm + canonical CHUMP_OLLAMA_KEEP_ALIVE=30m default
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    On chump --web startup, fire one stateless keep_alive-only request to the local model so the first user turn doesn't pay cold-load (~10-30s for a 9GB Q4 14B; 5-15s for a 4.7GB 7B). Canonicalize CHUMP_OLLAMA_KEEP_ALIVE=30m in .env.example. Document the trade in docs/PERFORMANCE.md: 30m is the default; raise to never (-1) only if operator has headroom. Pattern: POST /api/generate with {model, keep_alive:'30m', prompt:'warmup', options:{num_predict:1}} — same as the manual pre-warm used in this session.
+  acceptance_criteria:
+    - src/web_server.rs startup hook (after bind) issues a keep_alive-only request to the local model
+    - .env.example sets CHUMP_OLLAMA_KEEP_ALIVE=30m as canonical
+    - docs/PERFORMANCE.md has a paragraph on the keep-alive/RAM trade
+    - "verification: kill chump --web, relaunch, send a one-word turn within first 5s — total <20s vs 60+s without pre-warm; /api/ps shows model resident with 30m expiry"
+  depends_on: [INFRA-165]
+  notes: |
+    See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #4 of 6. Lift the Bash pre-warm from this session into Rust. Pairs well with PRODUCT-023 (7B model means pre-warm holds ~5GB not 9GB).
+  closed_date: '2026-05-02'
+  closed_pr: 720
+

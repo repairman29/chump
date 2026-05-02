@@ -1,0 +1,7 @@
+- id: INFRA-203
+  domain: infra
+  title: scripts/dispatch/run-fleet.sh canonical fleet launcher (tmux + per-agent worker loop, headless claude -p)
+  status: open
+  priority: P1
+  effort: s
+

@@ -1,0 +1,11 @@
+- id: INFRA-227
+  domain: INFRA
+  title: bot-merge.sh auto-close path post-INFRA-188 fix (per-file gap YAML)
+  status: done
+  priority: P1
+  effort: xs
+  notes: |
+    Duplicate of INFRA-226 (PR #766) — same fix landed first via different approach (defensive conditional add vs my python helper). Closing without ship.
+  closed_date: '2026-05-02'
+  closed_pr: 766
+
