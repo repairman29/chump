@@ -1,0 +1,83 @@
+- id: INFRA-248
+  domain: INFRA
+  title: chump-coord ambient_distribution test flake — second test in same binary times out even with #[serial]
+  status: open
+  priority: P2
+  effort: m
+  opened_date: '2026-05-02'
+  source_doc: crates/chump-coord/tests/ambient_distribution.rs
+  description: |
+    `cargo test -p chump-coord --test ambient_distribution` consistently
+    fails locally on this machine: the FIRST test passes, the SECOND
+    test times out at 5s waiting for a published event to arrive on
+    its subject. Symptoms reproduce regardless of:
+
+      - Order (whichever runs second fails)
+      - NATS state (fresh `docker rm -f chump-nats` + restart, same)
+      - Concurrency (#[serial_test::serial] on both tests, same)
+      - Run in isolation (each test passes alone)
+
+    Observed 4× tonight (2026-05-02) blocking three of my bot-merge.sh
+    ship attempts:
+
+      - cleanup PR retry: `custom_event_kinds_route_to_their_subjects`
+        timed out (run #1)
+      - cleanup PR retry-retry: `emit_round_trips_to_subscriber`
+        timed out (run #2 — different test failed!)
+      - flake-fix PR's own test run: `custom_event_kinds_*` timed out
+        even with #[serial] markers added
+
+    Root-cause hypotheses (none verified):
+
+      1. async-nats client in 0.47 has a known race between
+         `subscribe()` returning and the broker actually registering
+         the subscription. If publish happens in the few-µs window
+         after subscribe returns but before the broker's internal
+         routing table updates, the message is broadcast to no
+         subscribers and lost.
+
+      2. JetStream stream state from the FIRST test leaves the
+         broker in a state where the SECOND test's core-NATS
+         subscribe doesn't see fan-out from JetStream publish. (Both
+         tests use `js.publish` then `nats.subscribe` — the
+         subscriber should see the message via core fan-out, but
+         doesn't.)
+
+      3. Each test's `connect_or_skip` creates a fresh NATS client.
+         The first client's drop on test exit may not fully close
+         the connection before the second client connects, leaving
+         the broker with conflicting state for the same client_id
+         hint.
+
+    Workaround in use: `bot-merge.sh --skip-tests` for PRs that
+    don't touch chump-coord code (which is most of them — the
+    coordination crate is small and stable). Filed as a workaround,
+    not a fix.
+
+    Real fix scope:
+
+      a. Reproduce reliably (need a clean rust environment + repeated
+         runs to confirm the flake rate vs intermittent).
+      b. Try newer async-nats version (we're on 0.47; current is 0.51+).
+      c. Try JetStream consumer subscription instead of core
+         `nats.subscribe` — JS consumers have replay semantics and
+         won't lose messages between publish-ack and subscribe-receive.
+      d. If none of (b)/(c) help, mark the test `#[ignore]` with a
+         pointer to this gap, and write a separate integration smoke
+         that runs against a dedicated test broker.
+  acceptance_criteria:
+    - "Both tests in crates/chump-coord/tests/ambient_distribution.rs pass reliably (10/10 runs) on a freshly-restarted local NATS broker"
+    - "bot-merge.sh's cargo test --workspace step no longer blocks on this flake"
+    - "Root cause is identified (one of the three hypotheses or a fourth) and the fix references it"
+    - "If the fix is to ignore + re-implement: the new test exercises the same property (pub/sub round-trip across the chump.events.> stream) reliably"
+  notes: |
+    Filed because three of tonight's bot-merge ships hit this flake
+    and each retry burned 5+ minutes. Total wasted time ~20 minutes
+    just from this one issue. Worth investing 1-2 hours of debug
+    time later to nuke it permanently.
+
+    Discovered while working on the post-INFRA-188 cleanup wave.
+    Not introduced by INFRA-228/229 — the flake pre-exists those
+    changes; verified by reproducing on a worktree at
+    `claude/fix-chump-coord-ambient-flake` based on origin/main HEAD
+    which doesn't include any of my recent changes to this code path.
