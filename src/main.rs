@@ -54,6 +54,7 @@ mod decompose_task_tool;
 mod delegate_tool;
 mod desktop_launcher;
 mod diff_review_tool;
+#[cfg(feature = "discord")]
 mod discord;
 mod discord_dm;
 mod discord_intent;
@@ -1965,62 +1966,80 @@ async fn main() -> Result<()> {
     plugin::initialize_discovered(&[]);
 
     if discord_mode {
-        // PRODUCT-014: opt-in env gate. Discord mode also requires
-        // CHUMP_DISCORD_ENABLED=1 in addition to a token, so deployments
-        // can ship the binary with a token in .env without auto-attaching
-        // to Discord on every start.
-        let enabled = env::var("CHUMP_DISCORD_ENABLED")
-            .map(|v| v.trim() == "1")
-            .unwrap_or(false);
-        if !enabled {
+        // SECURITY-004 Path B: Discord gateway is opt-in at compile-time.
+        // Default builds drop serenity (and the vulnerable
+        // rustls-webpki 0.102.x chain). Build with `--features discord`
+        // to enable.
+        #[cfg(not(feature = "discord"))]
+        {
             return Err(anyhow::anyhow!(
-                "Discord mode requires CHUMP_DISCORD_ENABLED=1 (PRODUCT-014 opt-in). \
-                 Set the env var and re-run with --discord."
+                "Discord mode requires building with `--features discord`. \
+                 Default builds exclude serenity to avoid the SECURITY-004 \
+                 vulnerable rustls-webpki 0.102.8 chain. Rebuild with \
+                 `cargo build --release --features discord` (still vulnerable \
+                 until serenity v0.13 ships) or wait for upstream fix."
             ));
         }
-        // SECURITY-005: serenity 0.12.5 (latest on crates.io) pins
-        // tokio-tungstenite 0.21 → rustls 0.22 → rustls-webpki 0.102.8,
-        // which carries RUSTSEC-2026-0104 (HIGH): DoS via panic on
-        // malformed CRL BIT STRING. The Discord gateway is the only
-        // chump path that hits this transitive — REST-only callers
-        // (a2a_tool, discord_dm) use the safe rustls 0.23 chain.
-        // Until upstream serenity ships a tungstenite bump, gate
-        // gateway start behind an explicit acknowledgment so an
-        // operator can't be silently exposed to the panic risk.
-        // Remove this block when `cargo audit` shows 0
-        // rustls-webpki 0.102.x advisories AND `cargo tree -i
-        // rustls-webpki@0.102.8` returns empty (SECURITY-005 closes).
-        let rustls_acked = env::var("CHUMP_ALLOW_DISCORD_RUSTLS")
-            .map(|v| v.trim() == "1")
-            .unwrap_or(false);
-        if !rustls_acked {
-            return Err(anyhow::anyhow!(
-                "Discord gateway start is gated by SECURITY-005 — serenity 0.12.5 \
+
+        #[cfg(feature = "discord")]
+        {
+            // PRODUCT-014: opt-in env gate. Discord mode also requires
+            // CHUMP_DISCORD_ENABLED=1 in addition to a token, so deployments
+            // can ship the binary with a token in .env without auto-attaching
+            // to Discord on every start.
+            let enabled = env::var("CHUMP_DISCORD_ENABLED")
+                .map(|v| v.trim() == "1")
+                .unwrap_or(false);
+            if !enabled {
+                return Err(anyhow::anyhow!(
+                    "Discord mode requires CHUMP_DISCORD_ENABLED=1 (PRODUCT-014 opt-in). \
+                 Set the env var and re-run with --discord."
+                ));
+            }
+            // SECURITY-005: serenity 0.12.5 (latest on crates.io) pins
+            // tokio-tungstenite 0.21 → rustls 0.22 → rustls-webpki 0.102.8,
+            // which carries RUSTSEC-2026-0104 (HIGH): DoS via panic on
+            // malformed CRL BIT STRING. The Discord gateway is the only
+            // chump path that hits this transitive — REST-only callers
+            // (a2a_tool, discord_dm) use the safe rustls 0.23 chain.
+            // Until upstream serenity ships a tungstenite bump, gate
+            // gateway start behind an explicit acknowledgment so an
+            // operator can't be silently exposed to the panic risk.
+            // Remove this block when `cargo audit` shows 0
+            // rustls-webpki 0.102.x advisories AND `cargo tree -i
+            // rustls-webpki@0.102.8` returns empty (SECURITY-005 closes).
+            let rustls_acked = env::var("CHUMP_ALLOW_DISCORD_RUSTLS")
+                .map(|v| v.trim() == "1")
+                .unwrap_or(false);
+            if !rustls_acked {
+                return Err(anyhow::anyhow!(
+                    "Discord gateway start is gated by SECURITY-005 — serenity 0.12.5 \
                  (latest) pins vulnerable rustls-webpki 0.102.8 (RUSTSEC-2026-0104 \
                  HIGH: DoS via panic on malformed CRL BIT STRING). To start anyway, \
                  set CHUMP_ALLOW_DISCORD_RUSTLS=1 and accept the panic risk. \
                  Track upstream: https://github.com/serenity-rs/serenity for a \
                  tungstenite/rustls bump. Revisit this gate when SECURITY-005 \
                  closes (cargo audit shows 0 rustls-webpki 0.102.x advisories)."
-            ));
-        }
-        eprintln!("Chump version {}", version::chump_version());
-        if let Some(port) = env::var("CHUMP_HEALTH_PORT")
-            .ok()
-            .and_then(|p| p.parse::<u16>().ok())
-        {
-            tokio::spawn(health_server::run(port));
-        }
-        let token = env::var("DISCORD_TOKEN")
-            .map_err(|_| anyhow::anyhow!("DISCORD_TOKEN must be set for Discord mode"))?;
-        let token = normalize_discord_token(token.trim());
-        if let Err(e) = discord::run(&token).await {
-            return Err(anyhow::anyhow!(
-                "{}",
-                crate::chump_log::redact(&e.to_string())
-            ));
-        }
-        return Ok(());
+                ));
+            }
+            eprintln!("Chump version {}", version::chump_version());
+            if let Some(port) = env::var("CHUMP_HEALTH_PORT")
+                .ok()
+                .and_then(|p| p.parse::<u16>().ok())
+            {
+                tokio::spawn(health_server::run(port));
+            }
+            let token = env::var("DISCORD_TOKEN")
+                .map_err(|_| anyhow::anyhow!("DISCORD_TOKEN must be set for Discord mode"))?;
+            let token = normalize_discord_token(token.trim());
+            if let Err(e) = discord::run(&token).await {
+                return Err(anyhow::anyhow!(
+                    "{}",
+                    crate::chump_log::redact(&e.to_string())
+                ));
+            }
+            return Ok(());
+        } // end #[cfg(feature = "discord")] block
     }
 
     if chump_mode {
