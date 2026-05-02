@@ -109,8 +109,10 @@ with a stable ID (e.g. `COMP-007`, `MEM-007`). Before starting work:
    The registry records `status: open` / `status: done` and nothing else
    about ownership. The `CHUMP_GAPS_LOCK` pre-commit guard rejects writes
    of `in_progress` / `claimed_by` / `claimed_at` to gaps.yaml.
-4. **Work in a linked worktree** — `git worktree add .claude/worktrees/<name>
-   -b <branch> origin/main`. Never work in the main repo root.
+4. **Work in a linked worktree** — `git worktree add .chump/worktrees/<name>
+   -b chump/<codename> origin/main` (canonical; see "Naming conventions"
+   below). Existing `.claude/worktrees/` paths still accepted by tooling.
+   Never work in the main repo root.
 5. **Reclaim disk (many worktrees / agents)** — Each linked worktree grows its
    own `target/` (multi‑GB). After ship, `bot-merge.sh` deletes `./target` in
    that tree unless `CHUMP_KEEP_TARGET=1`. For merged or abandoned trees, run
@@ -136,10 +138,51 @@ implementing PR** (one commit, not a follow-up).
   under working LLM judge (EVAL-069 used broken scorer); task-cluster
   localization (EVAL-029) stands independently." Makes evolution visible in diffs.
 
+## Naming conventions (INFRA-186, 2026-05-01)
+
+**The project owns the namespace, not the tool.** Branches, worktree
+paths, lease files, ambient events, and bot identities use the
+`chump-` / `chump/` / `.chump/` prefix regardless of which agent
+(Claude, Cursor, Goose, Aider, future tools) is the actor. The
+specific tool identity is captured separately — in commit author /
+co-author fields, lease metadata, and ambient `session_start` events
+— not embedded in shared project artifacts.
+
+**Why this matters:** when the convention is `claude/<codename>`,
+every other tool that joins the fleet either renames-on-arrival
+(observed friction: an agent recently renamed
+`worktree-fleet-matrix-wiring` → `claude/...` because CLAUDE.md said
+so) or pollutes the namespace with `cursor/`, `goose/`, `aider/`
+prefixes. Both leak the tool of origin into project history where it
+doesn't belong.
+
+| Artifact | Canonical | Acceptable (legacy) |
+|---|---|---|
+| Feature branch | `chump/<short-codename>` | `claude/<…>`, `cursor/<…>`, etc. |
+| Linked worktree | `.chump/worktrees/<name>/` | `.claude/worktrees/<…>` |
+| Lease file dir | `.chump-locks/<session>.json` | (already canonical) |
+| State / SQLite | `.chump/state.db`, `.chump/state.sql` | (already canonical) |
+| Bot commit identity | `<role>@chump.bot` (e.g. `cold-water@chump.bot`, `chump-ftue-bot@…`) | (already canonical) |
+| Ambient stream | `.chump-locks/ambient.jsonl`, NATS subject `chump.events.>` | (already canonical) |
+
+**Migration:** existing `claude/*` branches and `.claude/worktrees/`
+trees stay as history — no rename. New branches and worktrees use
+`chump/<codename>` and `.chump/worktrees/<name>` from this commit
+forward. `bot-merge.sh` and `gap-claim.sh` accept either prefix during
+the transition (INFRA-187 will tighten the default to `chump/`).
+
+**Tool-specific overlays** (skills, hooks, harness behavior) still
+live in tool-named files: `CLAUDE.md`, `GEMINI.md`, `.cursorrules`,
+etc. Those defer to AGENTS.md for shared conventions and only carry
+tool-specific overlays. If a rule appears in both AGENTS.md and a
+tool-specific file, AGENTS.md wins.
+
 ## Pull request guidelines
 
-- **Branch:** `claude/<short-codename>` (or your tool's analogue, e.g.
-  `cursor/<codename>`, `goose/<codename>`). Never push directly to `main`.
+- **Branch:** `chump/<short-codename>` (canonical, see "Naming
+  conventions" above). Never push directly to `main`. Existing
+  tool-prefixed branches (`claude/<…>`, `cursor/<…>`) still accepted
+  by tooling for backward compat; new branches use `chump/<codename>`.
 - **Intent-atomic, not file-count-bounded.** A PR is one logical change — a
   feature, a bug fix, a codemod, a config update. Mechanical multi-file
   refactors (renames, dead-code removal, dep swaps) ship as one PR no matter

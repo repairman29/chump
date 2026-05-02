@@ -14939,6 +14939,67 @@ gaps:
   raised_by: claude
   raised_in: '2026-04-28 bug-scour session — `gh api .../dependabot/alerts` returned 1 HIGH + 2 medium + 3 low'
 
+- id: SECURITY-005
+  domain: SECURITY
+  title: 'serenity 0.12.5 (latest) pins vulnerable rustls-webpki 0.102.8 — Dependabot cannot fix; mitigation chosen'
+  status: done
+  priority: P0
+  effort: m
+  opened_date: '2026-04-30'
+  closed_date: '2026-04-30'
+  closed_pr: 682
+  description: |
+    Three Dependabot advisories trace through:
+      chump → serenity 0.12.5 → tokio-tungstenite 0.21
+        → rustls 0.22 → rustls-webpki 0.102.8 (vulnerable)
+
+    Affected: RUSTSEC-2026-0104 HIGH (DoS via panic on malformed CRL),
+    RUSTSEC-2026-0049 MEDIUM, RUSTSEC-2026-0098/0099 LOW.
+
+    `cargo search serenity` returns 0.12.5 — that IS the latest release.
+    No newer serenity exists on crates.io. Dependabot cannot bump direct
+    deps to versions that aren't available; the bot correctly reports
+    nothing-to-do here.
+
+    Reachability verified via `cargo tree -i rustls-webpki@0.102.8`:
+    only the Discord gateway WebSocket path hits the vulnerable
+    transitive. REST callers (a2a_tool, discord_dm, serenity HTTP
+    client) use the safe rustls 0.23 chain.
+
+    Mitigation chosen: option (3) — gate Discord gateway start behind
+    a third explicit security ack (CHUMP_ALLOW_DISCORD_RUSTLS=1) on
+    top of existing PRODUCT-014 gates. Without the ack, discord_mode
+    aborts at start with a clear pointer to SECURITY-005 +
+    RUSTSEC-2026-0104. Implementation: PR #682 (commit 360c6b7).
+
+    Other options recorded for if upstream serenity does not move:
+      (1) Wait + file upstream serenity issue
+      (2) Cargo [patch.crates-io] override (brittle)
+      (4) Replace serenity with HTTP-only Discord client (~1450 LOC)
+      (5) Vendor + patch serenity in-tree
+
+    Removal trigger: `cargo audit` shows 0 rustls-webpki 0.102.x
+    advisories AND `cargo tree -i rustls-webpki@0.102.8` returns
+    empty. Inline comment in src/main.rs at the gate names this
+    closure condition so future cleanup is automatic.
+
+    SECURITY-004 cross-reference: closes 1 of 6 advisories at the
+    runtime-exposure level. The remaining 5 (other 0.102.8 advisories
+    on Discord-gateway-only consumers + rand unsoundness + glib
+    Iterator unsoundness) remain SECURITY-004's responsibility.
+
+    Filing history: this row landed via surgical-insert at the
+    SECURITY-* alphabetical block after three end-of-YAML append
+    refile attempts (#678, #684, #695) all went DIRTY due to the
+    structural append-region race INFRA-173 is filed to fix.
+  acceptance_criteria:
+    - "Decision recorded: option (3) — Discord gateway gated behind CHUMP_ALLOW_DISCORD_RUSTLS=1"
+    - "src/main.rs discord_mode block aborts without the ack, citing SECURITY-005 + RUSTSEC-2026-0104"
+    - "Inline comment names removal trigger so cleanup is automatic when upstream catches up"
+    - "Reachability verified: cargo tree -i rustls-webpki@0.102.8 shows ONLY tokio-tungstenite chain"
+  raised_by: claude
+  raised_in: '2026-04-30 — implementation PR #682 / row finally landed via surgical-insert 2026-05-01'
+
 - id: INFRA-158
   domain: INFRA
   title: 4 pre-commit guards have no regression tests (docs-delta, submodule, credential, gap-status)
@@ -16372,3 +16433,99 @@ gaps:
   depends_on: [INFRA-192]
   raised_by: claude
   raised_in: '2026-05-01 — chump_skills + chump_improvement_targets schema exists but is dead-letter (manual SQL only); the feedback loop is missing'
+
+- id: INFRA-186
+  domain: INFRA
+  title: 'naming convention reset: branch + worktree are chump-first (project owns namespace, not the tool)'
+  status: done
+  priority: P1
+  effort: s
+  closed_pr: TBD
+  closed_date: '2026-05-01'
+  opened_date: '2026-05-01'
+  description: |
+    Observed friction (relayed from operator 2026-05-01): a sibling
+    agent had to RENAME its branch from `worktree-fleet-matrix-wiring`
+    to `claude/...` because CLAUDE.md said branches must start with
+    `claude/`. That's a tool-tax on a project-wide artifact — the repo
+    is `chump`, not Claude.
+
+    Current state of the drift:
+      - 82 origin/claude/* branches, 1 origin/chump/* branch
+      - CLAUDE.md:139 hardcoded `claude/<codename>` as the branch rule
+      - .claude/worktrees/ as the worktree path
+      - AGENTS.md hedged with "or your tool's analogue" — still defaults
+        to claude/<codename>
+      - Bot identities ARE chump-first (cold-water@chump.bot, chump-ftue-bot)
+      - Lease dir IS chump-first (.chump-locks/)
+      - State store IS chump-first (.chump/state.db)
+
+    Fix: AGENTS.md is the project-wide cross-tool entry point (LinuxFoundation
+    convention). It owns naming. CLAUDE.md / GEMINI.md / .cursorrules are
+    tool-specific overlays that defer to AGENTS.md for shared conventions.
+
+    Canonical naming (this PR):
+      - Feature branch:    chump/<short-codename>     (was claude/<…>)
+      - Linked worktree:   .chump/worktrees/<name>/   (was .claude/worktrees/<…>)
+      - Lease file:        .chump-locks/<session>.json  (already canonical)
+      - State / SQLite:    .chump/state.db, .chump/state.sql  (already canonical)
+      - Bot identity:      <role>@chump.bot             (already canonical)
+      - Ambient stream:    .chump-locks/ambient.jsonl, NATS chump.events.>  (already canonical)
+
+    Migration: existing claude/* branches and .claude/worktrees/ paths
+    stay as history — no rename. New work uses chump/<codename> and
+    .chump/worktrees/<name>. Tooling (bot-merge.sh, gap-claim.sh,
+    gap-preflight.sh) accepts either prefix during transition;
+    INFRA-187 tightens the default to chump/.
+
+    Tool-specific overlays (skills, hooks, harness behavior) still live
+    in CLAUDE.md / GEMINI.md / etc. but ONLY for tool-specific rules.
+    Shared conventions defer to AGENTS.md. If a rule appears in both,
+    AGENTS.md wins.
+  acceptance_criteria:
+    - "AGENTS.md has a 'Naming conventions' section listing the canonical chump-first prefixes for branches, worktrees, lease files, state, bot identities, ambient stream"
+    - "AGENTS.md PR-guidelines uses chump/<codename> as the canonical example (not claude/<codename>)"
+    - "CLAUDE.md hard-rules section defers to AGENTS.md for naming and notes both paths are accepted"
+    - "scripts/coord/archive-superseded-branch.sh example uses chump/<…>"
+    - "No code change required for backward compat — tooling already accepts any branch name; the chump/ vs claude/ choice is convention-only"
+    - "INFRA-187 filed for tooling enforcement (bot-merge.sh defaults chump/, gap-claim accepts any prefix)"
+  raised_by: claude
+  raised_in: '2026-05-01 — operator relayed sibling-agent friction renaming a branch from worktree-fleet-matrix-wiring to claude/* per CLAUDE.md rule; surveyed 82 claude/* vs 1 chump/* on origin'
+
+- id: INFRA-187
+  domain: INFRA
+  title: 'tooling enforcement for chump-first naming: bot-merge.sh defaults chump/, gap-claim accepts any prefix'
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-01'
+  description: |
+    Follow-up to INFRA-186. Tooling currently doesn't enforce or even
+    suggest the chump-first naming convention — agents have to manually
+    type `claude/<codename>` (or now `chump/<codename>`) into git
+    worktree add and bot-merge.sh.
+
+    Wishlist:
+      1. bot-merge.sh: when invoked from a worktree without an existing
+         branch arg, derive a sensible default `chump/<codename>` from
+         the worktree directory name. Operator can override.
+      2. gap-claim.sh: explicit acceptance of both claude/* and chump/*
+         prefixes (already the case implicitly; document it).
+      3. gap-preflight.sh: same.
+      4. Optional: a one-time migration helper that renames
+         .claude/worktrees/<name> → .chump/worktrees/<name> for a single
+         worktree (with git worktree move + branch rename). NOT a bulk
+         migration — by-tree opt-in only.
+      5. Optional: pre-commit warns (not blocks) on new branches that
+         start with a tool prefix (claude/, cursor/, goose/, aider/) and
+         suggest chump/ instead. Off by default; enable with
+         CHUMP_BRANCH_NAME_NUDGE=1.
+
+    All optional — INFRA-186's docs change is the meaningful behavior
+    shift; this is the friction-reducer.
+  acceptance_criteria:
+    - "bot-merge.sh: when no branch is set and the worktree dir name doesn't already start with chump/ or another tool prefix, derive chump/<dirname> as the branch"
+    - "gap-claim.sh + gap-preflight.sh: explicit comment + log line documenting both prefixes accepted"
+    - "Either INFRA-187 ships the optional migration helper (item 4) and pre-commit nudge (item 5), OR a follow-up gap is filed for them"
+  raised_by: claude
+  raised_in: '2026-05-01 — INFRA-186 docs change ships the convention; this gap tightens the tooling so it''s automatic'
