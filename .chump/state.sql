@@ -7489,6 +7489,42 @@ gaps:
     - smoke gate checks output_chars>0 AND exit_code==0 AND scorer==llm_judge
     - tonight's overnight run produces real data (not 40 rows of empty output)
 
+- id: INFRA-219
+  domain: INFRA
+  title: "closer-pr-batcher false-positive: closes filing PRs after seeing reserved IDs in local DB"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    The closer-pr-batcher (sibling INFRA-194 work) auto-closed PR #718 ('chore(gaps): file INFRA-208 + META-006') with the comment 'Superseded — both gaps already exist in current state.db (INFRA-208 status=open, META-006 status=open). Closing as redundant.' This was wrong:
+    
+      - The two gaps existed in the closer's LOCAL state.db
+      - They did NOT exist in origin/main's docs/gaps.yaml
+      - They were in local DB precisely because PR #718's chump gap reserve put them there
+      - Closing the PR meant the gaps were never propagated to origin/main YAML
+      - Net effect: filing intent was DESTROYED by the closer's "DB has it = redundant" heuristic
+    
+    Reproducer (observed 2026-05-02 ~02:27Z):
+      1. Agent A runs 'chump gap reserve' → gets INFRA-208 (in local state.db)
+      2. Agent A creates PR #718 with surgical YAML insert for INFRA-208
+      3. Closer-pr-batcher polls open PRs, sees INFRA-208 in commit body
+      4. Closer queries state.db (local), finds INFRA-208 with status=open
+      5. Closer concludes 'duplicate filing' and auto-closes the PR
+    
+    Root cause: the closer assumes 'DB has gap row' implies 'gap is on main'. But the DB is a LOCAL store that any 'chump gap reserve' mutates immediately, before the corresponding YAML row reaches main. The check should compare against `git show origin/main:docs/gaps.yaml`, not local state.db.
+    
+    Fix paths:
+      (a) Closer queries origin/main YAML (or a cached fetch of it) instead of local state.db when deciding 'already filed'
+      (b) Closer queries the GAP STATUS field too — only auto-close when the PR's filing matches a gap that is status:done on main, not just present
+      (c) Closer skips PRs whose title starts with 'chore(gaps): file' (filing PRs are never duplicates of themselves)
+      (d) Closer requires a positive signal (e.g. 'closing-PR-N' commit on main with the gap ID) before closing
+    
+    Recovery cost in this incident: reopen #718 + git rebase --onto + force-push + re-arm auto-merge — 5 minutes, but only because I noticed within 30min. If the closer's comment had been overlooked, the gaps would have stayed local-only forever.
+  acceptance_criteria:
+    - "Closer-pr-batcher does NOT close PRs whose intent is gap filing (titled 'chore(gaps): file ...') based on local DB presence"
+    - Filing-vs-closure heuristic uses origin/main YAML state, not local state.db
+    - Test added to scripts/ci/ that simulates the false-close scenario
+
 - id: INFRA-41
   domain: infra
   title: "code-reviewer-agent.sh: guard empty-array iteration under bash 3.2 set -u"
