@@ -1,0 +1,8 @@
+- id: INFRA-261
+  domain: INFRA
+  title: "INFRA-236 trigger still broken on main: regenerate-gaps-yaml.yml uses merge_group (never fires) — re-ship #803 fix"
+  status: open
+  priority: P0
+  effort: xs
+  closed_date: '2026-05-02'
+
