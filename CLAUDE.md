@@ -280,6 +280,36 @@ ONLY with the PR number. The orchestrator records which backend ran on the
 reflection row (`notes` field, prefix `backend=<label>`) so PRODUCT-006 and
 the COG-026 A/B aggregator can split outcomes by backend.
 
+## Fleet launcher (INFRA-203, canonical entry point)
+
+`scripts/dispatch/run-fleet.sh` is the canonical way to spawn N parallel
+Claude Code agents on this repo. It opens a tmux session with one control
+pane (live status) plus N worker panes; each worker loops:
+pick-gap → claim → worktree → spawn `claude -p` → ship via `bot-merge.sh` →
+release → loop. The `claude -p --dangerously-skip-permissions` invocation
+matches `WorkBackend::Headless` from `src/dispatch.rs` (INFRA-191 Phase 2).
+
+```bash
+scripts/dispatch/run-fleet.sh                         # default FLEET_SIZE=8
+FLEET_SIZE=4 scripts/dispatch/run-fleet.sh
+FLEET_DOMAIN_FILTER=INFRA scripts/dispatch/run-fleet.sh   # INFRA-only fleet
+FLEET_DRY_RUN=1 scripts/dispatch/run-fleet.sh             # print plan, exit
+FLEET_SIZE=0 scripts/dispatch/run-fleet.sh                # tear down
+tmux attach -t chump-fleet                                # watch the panes
+```
+
+Knobs (all env): `FLEET_SIZE`, `FLEET_TIMEOUT_S` (per-agent claude timeout,
+default 1800s), `FLEET_PRIORITY_FILTER` (default `P0,P1`),
+`FLEET_DOMAIN_FILTER` (default any; use for INFRA-206-style domain affinity),
+`FLEET_EFFORT_FILTER` (default `xs,s,m`), `FLEET_SESSION` (tmux session name,
+default `chump-fleet`), `FLEET_LOG_DIR` (default `/tmp/chump-fleet-<sid>`),
+`CARGO_TARGET_DIR` (auto-set to a shared `target/` per INFRA-210 to avoid
+per-worktree multi-GB rebuilds).
+
+Auto-pickup excludes `EVAL-*`, `RESEARCH-*`, `META-*` (those need human
+judgment) and any gap with non-empty `depends_on`. Smoke test:
+`scripts/ci/test-run-fleet-smoke.sh`.
+
 ## Coordination docs
 
 - `.chump/state.db` — **canonical** gap registry (SQLite, since INFRA-059); accessed via `chump gap …` subcommands
