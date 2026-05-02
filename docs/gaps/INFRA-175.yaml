@@ -1,7 +1,9 @@
 - id: INFRA-175
   domain: infra
   title: "FTUE workflow: test bottle path (real user) once bottles exist; keep source-build as fallback"
-  status: open
+  status: done
+  closed_pr: 686
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |
