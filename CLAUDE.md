@@ -218,6 +218,7 @@ Every commit runs the checks below. Most are silent no-ops; each one fails loud 
 | Check | Where | What it blocks | Bypass env | Why |
 |---|---|---|---|---|
 | lease-collision | pre-commit | file claimed by a different live session | `CHUMP_LEASE_CHECK=0` | silent stomps |
+| out-of-scope (INFRA-189, 2026-05-01) | pre-commit | MY lease declares `paths` and I'm staging files OUTSIDE that scope | `CHUMP_SCOPE_CHECK=0` (disable) / `CHUMP_SCOPE_CHECK=enforce` (block instead of warn) | wrong-worktree commits + cross-fixture leaks (INFRA-076 class). Default **warn** for the first week so we observe false-positive rate; flip to `enforce` after. Only triggers when the lease has a non-empty `paths` field — agents that don't declare scope still work as before. |
 | stomp-warning | pre-commit | staged file mtime > 10 min (non-blocking) | `CHUMP_STOMP_WARN=0` | cross-agent staging drift |
 | gaps.yaml discipline | pre-commit | adds `status: in_progress` / `claimed_by:` / `claimed_at:` to the YAML | `CHUMP_GAPS_LOCK=0` | claim fields live in `.chump-locks/`, not the ledger |
 | gap-ID hijack (2026-04-18) | pre-commit | gaps.yaml diff *changes* an existing gap's `title:` or `description:` (silent ID reuse) | `CHUMP_GAPS_LOCK=0` | caught PR #60 ↔ #65 EVAL-011 collision; new work needs a new ID, not redefinition |

@@ -16058,9 +16058,11 @@ gaps:
 - id: INFRA-189
   domain: INFRA
   title: 'property-based agent contracts: declared file scope enforced by pre-commit (kills lease-overlap class)'
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_pr: TBD
+  closed_date: '2026-05-01'
   opened_date: '2026-05-01'
   description: |
     Today every agent's "I might touch these files" is implicit — gleaned
