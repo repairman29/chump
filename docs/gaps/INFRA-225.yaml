@@ -1,0 +1,9 @@
+- id: INFRA-225
+  domain: INFRA
+  title: "pre-commit hook: update user-facing error messages from docs/gaps.yaml to docs/gaps/<ID>.yaml (post-INFRA-188 cleanup)"
+  status: done
+  priority: P2
+  effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 761
+

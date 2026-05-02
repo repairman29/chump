@@ -1,0 +1,9 @@
+- id: INFRA-170
+  domain: infra
+  title: chump lesson add CLI (renamed from INFRA-163 collision)
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-05-02'
+  closed_pr: 706
+

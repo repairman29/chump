@@ -1,0 +1,9 @@
+- id: FLEET-027
+  domain: FLEET
+  title: "FLEET-011 v2: task-class-aware auto-decomposition + chump decomposition propose CLI"
+  status: open
+  priority: P2
+  effort: m
+  notes: |
+    Implementation: scripts/coord/chump-decomposition-propose.sh — heuristic-only (no LLM) decomposition proposer. Reads gap via chump gap list --json, classifies into task classes (refactor / multi-system / tests / doc-driven / per-criterion / monolithic-ok), proposes 2-5 slices with size hints. Markdown default; --json for tooling. Closes FLEET-011 trajectory: v0 (FLEET-025 size advisory) emits → v1 (FLEET-026 tracker) classifies → v2 (this gap, FLEET-027) proposes proactively. Future v3: wire into chump --briefing as auto-prefix; auto-trigger on chump gap reserve.
+

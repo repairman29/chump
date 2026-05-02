@@ -1,0 +1,39 @@
+- id: INFRA-231
+  domain: INFRA
+  title: "overnight wrapper: prepend $HOME/.local/bin to PATH so auditor finds chump (fixes ModuleNotFoundError yaml fallback)"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    2026-05-02 02:00 overnight run failed 4 of 8 auditor checks with:
+      ModuleNotFoundError: No module named 'yaml'
+    
+    Root cause: launchd's plist EnvironmentVariables.PATH is
+      /usr/local/bin:/opt/homebrew/bin:/Users/jeffadkins/.cargo/bin:/usr/bin:/bin
+    which doesn't include $HOME/.local/bin (where `cargo install --path .` symlinks
+    chump). macOS path_helper rewrites PATH at login and drops $HOME/.local/bin
+    even after `bash -lc` profile sourcing — verified by
+      env -i PATH=<launchd-PATH> /bin/bash -lc 'which chump' → CHUMP NOT FOUND
+    
+    Auditor's lib.sh `command -v chump` fails -> falls back to a python+yaml branch
+    that (a) needs PyYAML in /usr/bin/python3 (not installed) and (b) post-INFRA-188
+    reads docs/gaps.yaml which no longer exists. Both paths broken; primary
+    (chump) is the one to fix.
+    
+    Fix: 1-line export in scripts/eval/run-overnight-research.sh that prepends
+    $HOME/.local/bin to PATH if it exists. All overnight jobs (auditor + future
+    ones) inherit the fixed PATH.
+    
+    Verified: env -i + launchd PATH + the prepend → chump found at
+    /Users/jeffadkins/.local/bin/chump.
+    
+    Follow-up (separate gap, not blocking): the lib.sh python fallback is broken
+    post-INFRA-188 (gaps.yaml gone). Either retire the fallback or update it to
+    glob docs/gaps/<ID>.yaml.
+  acceptance_criteria:
+    - overnight wrapper exports HOME/.local/bin in PATH
+    - "next 02:00 launchd run produces 0 ModuleNotFoundError lines"
+    - auditor checks emit non-zero findings (proving they read state.db)
+  closed_date: '2026-05-02'
+  closed_pr: 775
+

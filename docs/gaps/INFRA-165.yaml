@@ -1,0 +1,20 @@
+- id: INFRA-165
+  domain: infra
+  title: Singleton Arc<Provider> + global inference Semaphore (CHUMP_INFERENCE_PERMITS)
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Today: provider_cascade::build_provider() (src/provider_cascade.rs:859-901) creates a fresh LocalOpenAIProvider + reqwest::Client on every call. No connection reuse, no shared inference owner. handle_chat in src/web_server.rs:1955, discord.rs:564-603, spawn_worker_tool.rs:207 all build their own. Result: free-for-all async; no backpressure; autopilot can collide with user turn. This gap makes the provider a process-singleton (Arc<dyn Provider + Send + Sync> in AppState) and wraps complete() in a tokio::sync::Semaphore with CHUMP_INFERENCE_PERMITS env (default 1, mirroring the CHUMP_MAX_CONCURRENT_TURNS=1 steady-state recommendation in STEADY_RUN.md/PERFORMANCE.md §3). This same semaphore is the fleet seam: future FLEET-014 swaps the Provider impl for a remote one without changing the trait surface.
+  acceptance_criteria:
+    - src/web_server.rs AppState owns Arc<dyn Provider> initialized once at startup
+    - tokio Semaphore with CHUMP_INFERENCE_PERMITS env (default 1) gates complete() calls
+    - all in-process callers (web handle_chat, discord, spawn_worker_tool) use the shared instance — no remaining build_provider calls outside bootstrap
+    - two concurrent /api/chat curls show the second waiting on the first (verified via CHUMP_LOG_TIMING=1)
+    - "lsof -nP -iTCP:11434 shows ONE ESTABLISHED chump→ollama connection, not N"
+    - "new test: cargo nextest run --package chump web_server::semaphore_gate (2 concurrent fake-LLM calls, second waits)"
+    - existing agent_loop + web_server test suites pass unchanged
+  depends_on: [INFRA-164]
+  notes: |
+    See ~/.claude/plans/local-first-is-the-eager-hopcroft.md (approved 2026-04-28). Part of the local-first redesign filed after today's three-way runner contention incident (ChumpMenu + chump --web + autopilot all queued on one Ollama runner). Sub-problem #2 of 6 (the core fix). Reuses tokio::sync::Semaphore (already used for SPAWN_SEMAPHORE in spawn_worker_tool.rs) and the existing Provider trait. Lifecycle change, not a new abstraction. depends-on: INFRA-164.
+

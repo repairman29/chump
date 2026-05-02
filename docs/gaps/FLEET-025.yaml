@@ -1,0 +1,15 @@
+- id: FLEET-025
+  domain: FLEET
+  title: "FLEET-011 v0: bot-merge size-advisory (file_count > 5 + LOC > 500 → decomposition hint)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    v0 of FLEET-011 (work decomposition heuristics). Adds size advisory to bot-merge.sh: when n_files > 5 AND loc_changed > 500 AND codemod_ratio < 80%, emits stderr hint + ambient decomposition_hint event. Advisory-only — never blocks ship. Tunable via CHUMP_DECOMP_HINT/FILE_THRESHOLD/LOC_THRESHOLD. Codemod-ratio carve-out exempts gap-registry regen, lockfile bumps, book/src sync. v1 (learning loop, FLEET-026) and v2 (auto-decomposition, FLEET-027) deferred. Documented in docs/FLEET-011-decomposition-heuristics.md.
+  acceptance_criteria:
+    - bot-merge.sh emits decomposition_hint when thresholds exceeded
+    - advisory only, never blocks
+    - env-var-tunable thresholds
+    - codemod-ratio carve-out exempts atomic mass changes
+    - docs/FLEET-011-decomposition-heuristics.md documents rules + v1/v2 trajectory
+

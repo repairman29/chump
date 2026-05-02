@@ -1,0 +1,9 @@
+- id: FLEET-026
+  domain: FLEET
+  title: "FLEET-011 v1: heeded/ignored learning loop for decomposition_hint events"
+  status: open
+  priority: P2
+  effort: m
+  notes: |
+    Implementation: scripts/dev/decomposition-hint-tracker.sh + scripts/setup/install-decomposition-tracker-launchd.sh (daily 09:00). Tracker reads ambient.jsonl decomposition_hint events emitted by FLEET-025 v0, classifies each as heeded/landed_clean/landed_followup/pending/skipped, writes to .chump/decomposition-outcomes.jsonl. Summary stats include heeded-rate + revealed-correct-rate + tuning guidance (raise thresholds if false-alarm > 70%; lower if missing real problems > 70%). v1 'instrumentation only' — actual threshold adjustment is manual after enough hints accumulate. v2 (auto-decomposition + chump decomposition propose CLI) deferred to FLEET-027.
+
