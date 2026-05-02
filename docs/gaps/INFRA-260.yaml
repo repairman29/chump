@@ -1,0 +1,7 @@
+- id: INFRA-260
+  domain: INFRA
+  title: "daily cascade consumption report (overnight): per-slot RPD utilization to ambient.jsonl"
+  status: open
+  priority: P2
+  effort: s
+
