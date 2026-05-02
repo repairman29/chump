@@ -1,9 +1,7 @@
 - id: INFRA-213
   domain: infra
   title: CI matrix parallelism — split fast-checks/clippy/tests/e2e to run in parallel (cut queue depth 2-3x)
-  status: done
-  closed_pr: 814
-  closed_date: '2026-05-02'
+  status: open
   priority: P0
   effort: m
   description: |
@@ -38,5 +36,7 @@
     - test step uses cargo-nextest with --test-threads=4 OR parallel-by-package
     - Median PR-to-merged time at queue depth 10 drops from ~30 min to ~15 min
     - "Test: run the fleet at FLEET_SIZE=10 for 1 hour; measure PRs/hour throughput; expect 25-30 (vs 10-15 today)"
+  notes: |
+    Side-effect surfaced post-merge: the matrix split raised parallelism enough to expose META-015 (flaky two_concurrent_reserves_return_distinct_ids in INFRA-216s test). Not a regression in INFRA-213 — the test was always race-prone — but the higher contention shifted the flake from "rarely seen" to "1-in-N PRs". Tracked in META-015. INFRA-213 closure deferred until #814 lands; #814 will set closed_pr automatically.
   opened_date: '2026-05-02'
 
