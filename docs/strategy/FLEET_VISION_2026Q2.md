@@ -6,7 +6,7 @@ last_audited: 2026-05-02
 
 # Fleet Vision: Distributed Agent Orchestration (2026 Q2+)
 
-**Status:** Layer 1 complete; Layer 2 ready to start (umbrella: FLEET-024)
+**Status:** Layer 1 complete; Layer 2 building blocks landed, end-to-end demo pending (umbrella: FLEET-024)
 **Scope:** Multi-gap initiative spanning 6+ quarters
 **Motivation:** Move from single-machine multi-agent to networked heterogeneous fleet with task decomposition and capability-aware work allocation
 
@@ -14,16 +14,20 @@ last_audited: 2026-05-02
 
 ## 2026-05-02 status snapshot
 
+**Update (2026-05-02 evening): L2 building blocks landed.** FLEET-008 (work board) and FLEET-010 (help-seeking) shipped as `crates/chump-coord` modules with NATS KV CAS-guarded transitions, full CLI subcommands, and 13 integration tests between them. FLEET-025 landed a v0 of FLEET-011 (bot-merge size advisory) — the static-heuristics half of decomposition; the learning half is deferred per the FLEET-011 spec's own "stage in two quarters" guidance. FLEET-023 closed the Cold Water sandbox ambient-install loop.
+
 | Layer | Status | What landed |
 |---|---|---|
 | **L1 — Distributed Coordination** | ✅ done | FLEET-006 NATS ambient stream (#572), FLEET-007 NATS-backed distributed leases with TTL, FLEET-009 capability declaration & task-fit scoring, FLEET-017 Cold Water NATS subscription (#629), FLEET-018 audit table (#635), FLEET-019/020/021/022 ambient hooks installer (#696) |
-| **L2 — Work Decomposition & Claiming** | 🟡 next (FLEET-024 umbrella) | FLEET-008 (work board), FLEET-010 (help-seeking), FLEET-011 (decomposition heuristics) — all open |
-| **L3 — Intelligent Decomposition** | ⏳ scoped post-L2 | No concrete gaps yet; pending L2 telemetry |
-| **L1 operationalization (cross-cutting)** | 🟡 partial | FLEET-013 Tailscale + agent discovery still open; FLEET-023 Cold Water-sandbox install gap filed |
+| **L2 — Work Decomposition & Claiming** | 🟢 building blocks done; demo pending (FLEET-024 umbrella) | FLEET-008 work board (#754), FLEET-010 help-seeking (#760), FLEET-025 / FLEET-011 v0 size advisory (#773). End-to-end two-agents-on-different-machines demo from §"First Demo: Single Sprint (Q4)" still owed. FLEET-011 v1 (outcome tracking + learned bias) deferred to 2027 Q1 per the gap's own stage-in-two-quarters guidance. |
+| **L3 — Intelligent Decomposition** | ⏳ scoped post-L2 | No concrete gaps yet; pending L2 demo telemetry |
+| **L1 operationalization (cross-cutting)** | 🟡 partial | FLEET-013 Tailscale + agent discovery in flight (#780); FLEET-023 Cold Water sandbox ambient install ✅ done (#768) |
 
 **WORLD_CLASS_ROADMAP M1-M5 (the dispatcher upgrade arc that gates L2 sanely)** — all five milestones done as of 2026-05-02 (INFRA-059..063). See `docs/strategy/WORLD_CLASS_ROADMAP.md`.
 
-**Post-M5 hardening backlog** — Cold Water Issues #6-#9 surfaced real-world cracks in the now-loaded orchestrator (lease TTL server-side, ambient.jsonl schema validation, multi-agent integration tests). These are filed as INFRA-105/115/119/101/108/122/123/126/127/203/204/206/216 + TEST-002 and tracked separately from the FLEET vision layers; they're hardening, not new architecture.
+**Post-M5 hardening backlog** — Cold Water Issues #6-#9 surfaced real-world cracks in the now-loaded orchestrator (lease TTL server-side, ambient.jsonl schema validation, multi-agent integration tests). These are filed as INFRA-105/115/119/101/108/122/123/126/127/203/204/206/216 + TEST-002 and tracked separately from the FLEET vision layers; they're hardening, not new architecture. Plus a fresh wave (2026-05-02): INFRA-226 / INFRA-228 / INFRA-229 — post-INFRA-188 cutover follow-ups (bot-merge.sh + chump CLI per-file YAML parity).
+
+**Open acceptance still owed:** the §"First Demo: Single Sprint (Q4)" — Agent A on machine 1 posts a subtask, Agent B on machine 2 claims and completes it, ambient stream shows the full timeline. The CLI surfaces are now there (`chump-coord work-board {post,claim,complete}` + `help-request {post,claim,complete}`); what's missing is an operator-facing demo script + a NATS broker reachable across machines (FLEET-013 unblocks the latter).
 
 ---
 
