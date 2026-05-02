@@ -29,6 +29,15 @@
 
 set -euo pipefail
 
+# INFRA-120: shared instrumentation (heartbeat + ambient reaper_run event +
+# log rotation). Watchdog reads /tmp/chump-reaper-branch.heartbeat.
+# shellcheck source=../lib/reaper-instrumentation.sh
+source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
+reaper_setup branch
+reaper_rotate_log /tmp/chump-stale-branch-reaper.out.log
+reaper_rotate_log /tmp/chump-stale-branch-reaper.err.log
+trap 'rc=$?; [[ $rc -ne 0 ]] && reaper_finish fail "{\"exit\":$rc}"' EXIT
+
 EXECUTE=0
 [[ "${1:-}" == "--execute" ]] && EXECUTE=1
 
@@ -105,3 +114,8 @@ done < <(git for-each-ref --format='%(refname)%09%(committerdate:unix)' \
 
 echo ""
 green "=== reaper done: $REAPED reaped, $SKIPPED_PR skipped (open PR), $SKIPPED_FRESH skipped (fresh) ==="
+
+# INFRA-120: emit heartbeat + reaper_run event so the watchdog and other
+# agents can see this reaper completed.
+trap - EXIT
+reaper_finish ok "{\"reaped\":$REAPED,\"skipped_pr\":$SKIPPED_PR,\"skipped_fresh\":$SKIPPED_FRESH,\"execute\":$EXECUTE}"

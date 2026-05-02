@@ -52,6 +52,16 @@
 
 set -euo pipefail
 
+# INFRA-120: shared instrumentation (heartbeat + ambient reaper_run event +
+# log rotation). Watchdog reads /tmp/chump-reaper-worktree.heartbeat.
+# shellcheck source=../lib/reaper-instrumentation.sh
+source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
+reaper_setup worktree
+reaper_rotate_log /tmp/chump-stale-worktree-reaper.out.log
+reaper_rotate_log /tmp/chump-stale-worktree-reaper.err.log
+reaper_rotate_log /tmp/stale-worktree-reaper.log
+trap 'rc=$?; [[ $rc -ne 0 ]] && reaper_finish fail "{\"exit\":$rc}"' EXIT
+
 # ---- arg parsing ----
 DRY_RUN=1
 AGE_MIN_HOURS=1
@@ -344,4 +354,9 @@ process_worktree "$current_path" "$current_branch"
 echo ""
 green "=== reaper done: ${REAPED} reapable, ${KEPT} kept, ${SKIPPED} skipped ==="
 [[ $DRY_RUN -eq 1 ]] && info "Re-run with --execute to actually remove worktrees."
+
+# INFRA-120: emit heartbeat + reaper_run event (counts include target/ purge).
+trap - EXIT
+reaper_finish ok "{\"reaped\":$REAPED,\"kept\":$KEPT,\"skipped\":$SKIPPED,\"target_purged\":${_target_purged:-0},\"target_freed_kb\":${_target_freed_kb:-0},\"dry_run\":$DRY_RUN}"
+
 exit 0
