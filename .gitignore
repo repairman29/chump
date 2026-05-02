@@ -121,3 +121,6 @@ acp_sessions/
 # pre-commit raw-YAML-edit advisory reads this to confirm a docs/gaps.yaml
 # diff was authored by the chump CLI rather than a hand-edit.
 .chump/.last-yaml-op
+
+# INFRA-202: per-machine sccache config (created by scripts/setup/install-sccache.sh)
+.cargo/config.toml
