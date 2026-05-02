@@ -99,6 +99,18 @@ per-file mirror (post-INFRA-188) that gets regenerated, not edited by hand.
 Each gap is an atomic unit of work with a stable ID (e.g. `COMP-007`,
 `MEM-007`). Before starting work:
 
+0. **Install pre-commit hooks** (one-shot, after fresh clone or `git worktree add`) —
+   `scripts/setup/install-hooks.sh`. Idempotent. The hooks (`docs-delta`,
+   `closed_pr-integrity`, `raw-YAML-edit`, `recycled-id`, `duplicate-id-insert`,
+   `cross-judge-audit`, `preregistration-required`, etc.) catch silent ledger
+   corruption + research-methodology violations at commit time. **Without
+   them, your commits silently bypass every guard** — Cold Water Issue #10
+   (2026-05-02) found 9 gaps shipped to `origin/main` with `closed_pr: TBD`
+   precisely because remote-dispatched sandboxes had skipped this step.
+   `bot-merge.sh` and `gap-claim.sh` now auto-bootstrap if hooks are missing
+   (INFRA-209/INFRA-224), but the explicit one-shot is still the right call
+   when you first land in a fresh checkout.
+
 1. **Pick an open gap** — `chump gap list --status open` (canonical) or
    `grep -lE 'status:[[:space:]]*open' docs/gaps/*.yaml` (per-file mirror fallback).
 2. **Preflight** — `chump gap preflight <GAP-ID>` (or
