@@ -1,0 +1,16 @@
+- id: INFRA-218
+  domain: infra
+  title: "EVAL-095 overnight script: bump timeout to 300s + add output_chars>0 smoke gate"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    EVAL-095 overnight script (shipped 2026-05-01 via PR #726) had two bugs that surfaced when manually fired the same night: (1) smoke timeout 120s is too tight — chump binary regressed to ~120-130s wall-clock per neuromod trial under qwen2.5:14b, so the 1-trial probe always times out and produces output_chars=0 + exit_code=-1; (2) smoke gate only checked scorer=='llm_judge' which passes even on degenerate empty-output runs, so the full sweep would run, write 40 rows of 0/0/correct=False, and produce a fake delta=0.000 (looks like 'EVAL-069 reproduces the null' but is actually the same broken-instrument footgun EVAL-090 was filed to detect). Fix: bump smoke + sweep timeout to 300s; tighten smoke gate to also check output_chars>0 and exit_code==0. Tested manually 2026-05-02: smoke passed cleanly at 300s with chars=71, both cells correct.
+  acceptance_criteria:
+    - smoke timeout=300s
+    - sweep timeout=300s
+    - smoke gate checks output_chars>0 AND exit_code==0 AND scorer==llm_judge
+    - tonight's overnight run produces real data (not 40 rows of empty output)
+  closed_date: '2026-05-02'
+  closed_pr: 730
+
