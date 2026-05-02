@@ -1,7 +1,9 @@
 - id: INFRA-123
   domain: infra
   title: Reflection-row fields not consistently populated across dispatch paths
-  status: open
+  status: done
+  closed_pr: 858
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

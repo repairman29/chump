@@ -43,6 +43,30 @@ pub struct DispatchReflection {
 }
 
 impl DispatchReflection {
+    /// INFRA-123: assert required tags are present in `notes` so downstream
+    /// queries (PRODUCT-006, COG-026 A/B aggregator, INFRA-249 pattern
+    /// detector) don't silently undercount.
+    ///
+    /// Required tags for the orchestrator-dispatch reflection class:
+    ///   - `backend=<label>` — set by [`crate::monitor::MonitorLoop`]
+    ///     before write so COG-026 can split by backend
+    ///
+    /// Returns Err with a descriptive message when a required tag is
+    /// missing. Callers may choose to fail loudly (`?`) or downgrade to a
+    /// log + continue (best-effort write). Production writer fails loudly.
+    pub fn validate_required_tags(&self) -> Result<()> {
+        if !self.notes.contains("backend=") {
+            anyhow::bail!(
+                "INFRA-123: dispatch reflection for gap={} missing required \
+                'backend=<label>' tag in notes (got: {:?}). Set notes via \
+                MonitorLoop::record_reflection or include the tag manually.",
+                self.gap_id,
+                self.notes
+            );
+        }
+        Ok(())
+    }
+
     /// Render the structured directive PRODUCT-006 / MEM-006 read. The exact
     /// shape is the contract — keep new fields appended with `key=value`.
     pub fn directive(&self) -> String {
@@ -198,6 +222,10 @@ impl SqliteReflectionWriter {
 
 impl ReflectionWriter for SqliteReflectionWriter {
     fn write(&self, reflection: &DispatchReflection) -> Result<()> {
+        // INFRA-123: enforce tag schema at the production writer boundary so
+        // a missing backend tag (the COG-026 split signal) fails loud rather
+        // than silently writing an unsplittable row.
+        reflection.validate_required_tags()?;
         if let Some(parent) = self.db_path.parent() {
             std::fs::create_dir_all(parent).with_context(|| {
                 format!("creating parent dir {} for reflection DB", parent.display())
@@ -264,6 +292,10 @@ mod tests {
     use super::*;
 
     fn refl(gap: &str, outcome: &str, pr: Option<u32>) -> DispatchReflection {
+        // INFRA-123: validate_required_tags requires backend= in notes for
+        // SqliteReflectionWriter. Test helper now provides a default tag so
+        // existing fixtures keep working; tests that exercise the validation
+        // failure path build their own DispatchReflection with empty notes.
         DispatchReflection {
             gap_id: gap.into(),
             effort: "m".into(),
@@ -272,7 +304,7 @@ mod tests {
             duration_s: 12,
             parallel_siblings: 1,
             pr_number: pr,
-            notes: String::new(),
+            notes: "backend=test".into(),
         }
     }
 
@@ -362,5 +394,77 @@ mod tests {
             .unwrap();
         assert_eq!(m, 2);
         let _ = std::fs::remove_file(&tmp);
+    }
+
+    // ── INFRA-123: validate_required_tags + writer-boundary enforcement ──
+
+    fn refl_with_notes(gap: &str, notes: &str) -> DispatchReflection {
+        DispatchReflection {
+            gap_id: gap.into(),
+            effort: "m".into(),
+            gap_domain: gap_domain(gap),
+            outcome: "shipped".into(),
+            duration_s: 5,
+            parallel_siblings: 0,
+            pr_number: Some(1),
+            notes: notes.into(),
+        }
+    }
+
+    #[test]
+    fn validate_required_tags_passes_with_backend() {
+        let r = refl_with_notes("AUTO-1", "backend=claude shipped");
+        assert!(r.validate_required_tags().is_ok());
+    }
+
+    #[test]
+    fn validate_required_tags_fails_when_backend_missing() {
+        let r = refl_with_notes("AUTO-1", "shipped successfully");
+        let err = r.validate_required_tags().expect_err("missing backend tag should fail");
+        let msg = format!("{}", err);
+        assert!(msg.contains("INFRA-123"), "error should reference INFRA-123: {}", msg);
+        assert!(msg.contains("backend="), "error should mention required tag: {}", msg);
+        assert!(msg.contains("AUTO-1"), "error should include gap id: {}", msg);
+    }
+
+    #[test]
+    fn validate_required_tags_fails_on_empty_notes() {
+        let r = refl_with_notes("EVAL-9", "");
+        assert!(r.validate_required_tags().is_err());
+    }
+
+    #[test]
+    fn sqlite_writer_rejects_row_missing_backend_tag() {
+        // The production writer enforces validate_required_tags() at
+        // write-time. A reflection with empty notes (no backend= tag) must
+        // bubble up an INFRA-123 error rather than silently writing an
+        // unsplittable row.
+        let tmp = std::env::temp_dir().join(format!(
+            "chump-orch-reflect-infra123-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_file(&tmp);
+        let w = SqliteReflectionWriter::at_path(tmp.clone());
+        let bad = refl_with_notes("AUTO-2", ""); // empty notes
+        let err = w.write(&bad).expect_err("write should fail with INFRA-123 error");
+        let msg = format!("{}", err);
+        assert!(msg.contains("INFRA-123"), "error should reference INFRA-123: {}", msg);
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn memory_writer_does_not_validate() {
+        // The MemoryReflectionWriter is for tests; it deliberately does
+        // not validate so harnesses can exercise edge cases like
+        // partially-populated rows. Production paths go through
+        // SqliteReflectionWriter which enforces at the boundary.
+        let w = MemoryReflectionWriter::new();
+        let bad = refl_with_notes("AUTO-3", ""); // empty notes
+        assert!(w.write(&bad).is_ok());
+        assert_eq!(w.snapshot().len(), 1);
     }
 }
