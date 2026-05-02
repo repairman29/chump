@@ -1,7 +1,9 @@
 - id: INFRA-226
   domain: INFRA
   title: bot-merge.sh INFRA-154 auto-close step references docs/gaps.yaml which no longer exists post-INFRA-188
-  status: open
+  status: done
+  closed_pr: 766
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |
