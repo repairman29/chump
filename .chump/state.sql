@@ -3109,7 +3109,7 @@ gaps:
 - id: FLEET-010
   domain: fleet
   title: Help-seeking protocol — agent requests help when blocked
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -3123,6 +3123,8 @@ gaps:
   notes: |
     Semantic question: should blocking be synchronous (agent waits) or async (agent continues, help happens in parallel)? Recommend: async for time blockers, sync for capability gaps (need the answer before proceeding).
   source_doc: docs/FLEET_VISION_2026Q2.md
+  closed_date: '2026-05-02'
+  closed_pr: 760
 
 - id: FLEET-011
   domain: fleet
@@ -6083,7 +6085,7 @@ gaps:
 - id: INFRA-130
   domain: infra
   title: adversary.rs has no integration tests - rule engine unverified end to end
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -6097,7 +6099,11 @@ gaps:
     - Integration test - load a synthetic chump-adversary.yaml with one block rule, run a matching tool input, assert the call is blocked
     - Test verifies ambient.jsonl line is appended with kind=adversary_alert
     - If NATS available - test verifies chump.events.adversary_alert receives the event (skip if NATS unreachable, mirroring distributed_mutex.rs)
+  notes: |
+    Verified shipped via PR #755 (commit 715adb4): src/adversary.rs:599-834 contains the e2e_rule_to_ambient module with 4 integration tests covering the gap's full acceptance criteria (rule fires → ambient line emitted → JSON shape correct → block maps to Err → warn maps to Ok+emitted → JSON-escape security test). All 4 tests pass via 'cargo test adversary::e2e_rule_to_ambient'. Closing as done; this PR is the registry sync.
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 755
 
 - id: INFRA-131
   domain: infra
@@ -7724,7 +7730,7 @@ gaps:
 - id: INFRA-224
   domain: INFRA
   title: "bot-merge.sh: install pre-commit hooks via install-hooks.sh if missing (closes Cold Water #10 closed_pr=TBD leak)"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -7748,6 +7754,48 @@ gaps:
     - bot-merge.sh installs pre-commit hooks if missing
     - fresh sandbox commit through bot-merge picks up INFRA-107 guard
     - "verifiable test: status:done + closed_pr:TBD commit rejected"
+  closed_date: '2026-05-02'
+  closed_pr: 759
+
+- id: INFRA-225
+  domain: INFRA
+  title: "pre-commit hook: update user-facing error messages from docs/gaps.yaml to docs/gaps/<ID>.yaml (post-INFRA-188 cleanup)"
+  status: done
+  priority: P2
+  effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 761
+
+- id: INFRA-226
+  domain: INFRA
+  title: bot-merge.sh INFRA-154 auto-close step references docs/gaps.yaml which no longer exists post-INFRA-188
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Discovered while shipping PR #759 (INFRA-224 + filings) on 2026-05-02.
+    
+    bot-merge.sh's INFRA-154 auto-close step (~lines invoking gap-status flip post-PR-creation) still tries to operate on docs/gaps.yaml. Post-INFRA-188 cutover (PR #753, 2026-05-02), that file no longer exists; gaps live in docs/gaps/<ID>.yaml. Result:
+    
+      fatal: pathspec 'docs/gaps.yaml' did not match any files
+    
+    The script aborts BEFORE the auto-merge arming step (the next stage), so every PR shipping after the cutover gets auto-merge stranded. Workaround: manually run gh pr merge <N> --auto --squash after the bot-merge abort.
+    
+    Fix: bot-merge.sh's INFRA-154 path should switch to:
+      - chump gap ship <ID> --closed-pr <N> --update-yaml  (canonical Rust path)
+      OR detect the per-file directory and update docs/gaps/<ID>.yaml directly.
+    
+    Smaller incremental fix: make the auto-close step non-fatal (warn + continue) so it doesn't block the auto-merge arming downstream.
+    
+    Symptom seen on PR #759. Likely affecting any other PR shipped after PR #753 landed via bot-merge.sh.
+    
+    Acceptance:
+    - bot-merge.sh ships a PR end-to-end (gap status flip + auto-merge arming) post-INFRA-188 without manual intervention
+    - Test: ship a tiny doc-only PR through bot-merge.sh; PR.autoMergeRequest is non-null without manual gh pr merge
+  acceptance_criteria:
+    - bot-merge.sh INFRA-154 step works against docs/gaps/ directory
+    - auto-merge arming reached after gap-status flip
+    - "test: ship tiny PR end-to-end without manual intervention"
 
 - id: INFRA-41
   domain: infra
