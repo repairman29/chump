@@ -92,10 +92,16 @@ if [[ -f "$ROOT/logs/chump.log" ]]; then
   SQLITE_ERRORS=$(tail -500 "$ROOT/logs/chump.log" 2>/dev/null | grep -c -i "database is locked\|sqlite.*error" || true)
 fi
 
-# Largest log files
+# Largest log files.
+# `set -o pipefail` + `head -4` closing stdin causes SIGPIPE on `ls`
+# whenever logs/ holds more than 4 files (always true on a real soak
+# run — observed 6294 files), giving the whole script exit 141 with
+# only the timestamp header in the launchd log. The `|| true` inside
+# the substitution catches the pipe failure so the metric falls back
+# to empty rather than killing the whole checkpoint.
 LARGEST_LOGS=""
 if [[ -d "$ROOT/logs" ]]; then
-  LARGEST_LOGS=$(ls -lhS "$ROOT/logs" 2>/dev/null | head -4 | tail -3 | awk '{print $5, $NF}' | tr '\n' '; ')
+  LARGEST_LOGS=$(ls -lhS "$ROOT/logs" 2>/dev/null | head -4 | tail -3 | awk '{print $5, $NF}' | tr '\n' '; ' || true)
 fi
 
 # --- Save raw JSON ---
