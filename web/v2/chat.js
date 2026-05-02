@@ -95,6 +95,43 @@ const CHAT_CSS = `
     font-style: italic;
   }
 
+  /* INFRA-199: live reasoning content from thinking_delta events.
+     Reasoning models stream their CoT here while they work; once text_delta
+     begins, the answer renders below in the regular bubble. The block
+     stays visible after turn_complete so the user can scroll back through
+     the model's reasoning trail. */
+  .thinking-content {
+    max-width: 100%;
+    padding: 6px 10px;
+    background: var(--bg-elevated, #1e1e1e);
+    border-left: 2px solid var(--text-secondary, #8a8a8e);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-secondary, #8a8a8e);
+    font-style: italic;
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 4px;
+    white-space: pre-wrap;
+    line-height: 1.4;
+  }
+  .thinking-content.collapsed {
+    max-height: 28px;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .thinking-label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    opacity: 0.8;
+    font-style: normal;
+    user-select: none;
+  }
+  .thinking-text { display: block; }
+
   .empty-state {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 12px; padding: 32px; text-align: center; color: var(--text-secondary, #8a8a8e);
@@ -246,6 +283,24 @@ class ChumpChat extends HTMLElement {
           fullText = '';
           bubble.innerHTML = '<span class="cursor">▋</span>';
         }
+      } else if (event === 'thinking_delta' && data.delta) {
+        // INFRA-199: live reasoning content from server-side <think>-tag
+        // routing (ACP-004) or plain-prose CoT routing (INFRA-184).
+        // Stream into a muted box ABOVE the bubble so the user can watch
+        // the model think instead of staring at keepalive pings.
+        let thinkingEl = assistantEl.querySelector('.thinking-content');
+        if (!thinkingEl) {
+          thinkingEl = document.createElement('div');
+          thinkingEl.className = 'thinking-content';
+          thinkingEl.innerHTML = '<span class="thinking-label">💭 Thinking</span><span class="thinking-text"></span>';
+          // Insert before the bubble so reasoning visually precedes answer.
+          assistantEl.insertBefore(thinkingEl, bubble);
+        }
+        const textEl = thinkingEl.querySelector('.thinking-text');
+        textEl.textContent += data.delta;
+        // Keep the most recent reasoning visible (auto-scroll the box).
+        thinkingEl.scrollTop = thinkingEl.scrollHeight;
+        this.#scrollBottom();
       } else if (event === 'text_delta' && data.delta) {
         fullText += data.delta;
         bubble.innerHTML = renderMarkdown(fullText);
@@ -270,6 +325,19 @@ class ChumpChat extends HTMLElement {
       } else if (event === 'turn_complete') {
         const hint = assistantEl.querySelector('.thinking-line');
         if (hint) hint.remove();
+        // INFRA-199: collapse the thinking box on turn end so completed
+        // turns stay scannable. User can click to re-expand.
+        const thinkingEl = assistantEl.querySelector('.thinking-content');
+        if (thinkingEl && thinkingEl.querySelector('.thinking-text')?.textContent) {
+          thinkingEl.classList.add('collapsed');
+          if (!thinkingEl.dataset.toggleBound) {
+            thinkingEl.dataset.toggleBound = '1';
+            thinkingEl.addEventListener('click', () => thinkingEl.classList.toggle('collapsed'));
+          }
+        } else if (thinkingEl) {
+          // Empty thinking-content (no actual reasoning streamed) — drop it.
+          thinkingEl.remove();
+        }
       }
     });
 
