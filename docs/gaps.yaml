@@ -15769,10 +15769,12 @@ gaps:
 - id: INFRA-183
   domain: INFRA
   title: 'PWA latency umbrella — measured root cause is reasoning-CoT eaten by chunk processor (not the originally-suspected paths)'
-  status: open
+  status: done
   priority: P0
   effort: m
   opened_date: '2026-05-01'
+  closed_date: '2026-05-02'
+  closed_pr: 704
   description: |
     Umbrella for the PWA latency-budget work. Two parallel diagnoses on
     2026-05-01 produced an INITIAL list of 6 suspects; a follow-up
@@ -15956,10 +15958,12 @@ gaps:
 - id: PRODUCT-024
   domain: PRODUCT
   title: 'PWA chat default to non-reasoning model (INFRA-183 sub) — biggest UX win'
-  status: open
+  status: done
   priority: P0
   effort: s
   opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 697
   description: |
     Switch chat default to non-reasoning model (qwen2.5:14b or llama3.1) instead of the reasoning model currently served on MLX :8000. Measured: 56.985 s for 'pong' = 4 chars, 1 user-visible delta, 114 keepalive pings, 0 visible reasoning. Ground-truth probe captured in INFRA-183 umbrella body. Single largest UX win for near-zero code.
   acceptance: |
