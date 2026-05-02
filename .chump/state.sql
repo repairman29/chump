@@ -1351,9 +1351,11 @@ gaps:
 - id: DOC-014
   domain: DOC
   title: ONBOARDING.md '<60s FTUE' claim is false until bottles ship — qualify or remove
-  status: open
+  status: done
   priority: P0
   effort: xs
+  closed_date: '2026-04-30'
+  closed_pr: 676
 
 - id: EVAL-001
   domain: eval
@@ -3161,7 +3163,7 @@ gaps:
 - id: FLEET-017
   domain: FLEET
   title: Cold Water remote agent does not subscribe to NATS ambient stream - FLEET-006 unused
-  status: open
+  status: done
   priority: P0
   effort: xs
   description: |
@@ -3183,6 +3185,8 @@ gaps:
     - If NATS is unreachable, prompt logs the fact and continues with file fallback
     - Next Cold Water cycle Status of Prior Issues block cites NATS-observed activity, not just file tail
   opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 629
 
 - id: FLEET-018
   domain: FLEET
@@ -6731,9 +6735,11 @@ gaps:
 - id: INFRA-174
   domain: INFRA
   title: Enable Homebrew installer in cargo-dist + create repairman29/homebrew-chump tap (renamed from INFRA-172 collision)
-  status: open
+  status: done
   priority: P0
   effort: s
+  closed_date: '2026-04-30'
+  closed_pr: 677
 
 - id: INFRA-175
   domain: INFRA
@@ -6752,9 +6758,11 @@ gaps:
 - id: INFRA-177
   domain: INFRA
   title: "narration-detection retry: 50+ false-positive phrases waste 2 model rounds per conversational reply"
-  status: open
+  status: done
   priority: P0
   effort: s
+  closed_date: '2026-05-02'
+  closed_pr: 687
 
 - id: INFRA-178
   domain: INFRA
@@ -6775,9 +6783,10 @@ gaps:
 - id: INFRA-180
   domain: INFRA
   title: send 5KB of tool schema on every PWA chat turn (46 tools, mostly unused) — 53s prefill bottleneck
-  status: open
+  status: done
   priority: P0
   effort: s
+  closed_date: '2026-05-01'
 
 - id: INFRA-181
   domain: INFRA
@@ -6789,16 +6798,19 @@ gaps:
 - id: INFRA-182
   domain: INFRA
   title: "tool routing: send 3-8 relevant tools per turn (route_tools in chump-perception) instead of all 46"
-  status: open
+  status: done
   priority: P0
   effort: m
+  closed_date: '2026-05-01'
 
 - id: INFRA-183
   domain: INFRA
   title: PWA latency budget umbrella — measure + fix the 6 known PWA slow paths (partner-agent diagnosis)
-  status: open
+  status: done
   priority: P0
   effort: l
+  closed_date: '2026-05-02'
+  closed_pr: 710
 
 - id: INFRA-184
   domain: INFRA
@@ -6837,9 +6849,10 @@ gaps:
 - id: INFRA-186
   domain: INFRA
   title: "naming convention reset: branch + worktree are chump-first (project owns namespace, not the tool)"
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-01'
 
 - id: INFRA-187
   domain: INFRA
@@ -6865,9 +6878,10 @@ gaps:
 - id: INFRA-190
   domain: INFRA
   title: "bot-merge.sh: auto-rebase + auto-fix loop on DIRTY (kills 5-times-a-session manual rebase)"
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-01'
 
 - id: INFRA-191
   domain: INFRA
@@ -6879,9 +6893,10 @@ gaps:
 - id: INFRA-192
   domain: INFRA
   title: "forward-chain notifier: post gap_unblocked event when a PR closes a depends_on link"
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-01'
 
 - id: INFRA-193
   domain: INFRA
@@ -7757,7 +7772,7 @@ gaps:
 - id: META-003
   domain: META
   title: Cold Water agent factual errors Red Letter
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -7789,6 +7804,8 @@ gaps:
     - docs/agents/cold-water.md requires P0 census and status claims to come from `chump gap list --json`, not hand-counts
     - Trigger trig_01GA2XVbAZtpkBaWfrEo1CrP synced via /schedule update after PR merges
   opened_date: '2026-04-27'
+  closed_date: '2026-04-28'
+  closed_pr: 619
 
 - id: META-004
   domain: META
@@ -8038,7 +8055,7 @@ gaps:
 - id: PRODUCT-017
   domain: product
   title: UX-001 verification — stopwatch clean-machine install → PWA responsive today
-  status: open
+  status: done
   priority: P0
   effort: s
   description: |
@@ -8051,6 +8068,8 @@ gaps:
   notes: |
     UX-001 closed 2026-04-21 — re-verify before assuming the activation funnel measures a working path.
   source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-28'
+  closed_pr: 631
 
 - id: PRODUCT-018
   domain: product
