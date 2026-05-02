@@ -30,6 +30,16 @@
 
 set -euo pipefail
 
+# INFRA-120: shared instrumentation (heartbeat + ambient reaper_run event +
+# log rotation). Sourced from scripts/lib/ so all reapers share the same
+# emit/rotate path; the watchdog reads /tmp/chump-reaper-<NAME>.heartbeat.
+# shellcheck source=../lib/reaper-instrumentation.sh
+source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
+reaper_setup pr
+reaper_rotate_log /tmp/chump-stale-pr-reaper.out.log
+reaper_rotate_log /tmp/chump-stale-pr-reaper.err.log
+trap 'rc=$?; [[ $rc -ne 0 ]] && reaper_finish fail "{\"exit\":$rc}"' EXIT
+
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
@@ -215,3 +225,8 @@ done <<< "$PRS"
 
 echo ""
 green "=== reaper done: $CLOSED closed, $WARNED warnings ==="
+
+# INFRA-120: stamp heartbeat + emit reaper_run event. Disarm trap first so we
+# don't double-emit on the EXIT trap.
+trap - EXIT
+reaper_finish ok "{\"closed\":$CLOSED,\"warned\":$WARNED}"

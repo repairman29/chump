@@ -197,6 +197,14 @@ Manual escape hatch from the **main** checkout: `git worktree remove .claude/wor
 
 **Cold-build cost (INFRA-202, 2026-05-02).** Disk reclaim doesn't help the *time* tax: every fresh worktree pays a 5–15 min cold `cargo check` / `clippy` because each `target/` starts empty. Observed 2026-05-01: `bot-merge.sh` hit a 900s clippy timeout on a freshly-created worktree. Fix is **sccache as a rustc wrapper** — install once per machine with `scripts/setup/install-sccache.sh` (idempotent: `brew install sccache` + writes `.cargo/config.toml` with `rustc-wrapper = "sccache"` and a 10G cache). The first worktree to build a given crate version populates the cache; every subsequent worktree gets it in <60s. `.cargo/config.toml` is `.gitignore`d so each machine controls its own cache config (CI runners without sccache won't break). Opt out with `rm .cargo/config.toml`.
 
+**Reaper visibility — heartbeat + ambient events (INFRA-120, 2026-05-01).** All three reapers (`stale-pr-reaper.sh`, `stale-worktree-reaper.sh`, `stale-branch-reaper.sh`) emit a `kind=reaper_run` event into `.chump-locks/ambient.jsonl` on every run with `status=ok|fail` and per-reaper counts. They also stamp `/tmp/chump-reaper-<name>.heartbeat` (`pr` / `worktree` / `branch`). Each reaper rotates its own `/tmp/chump-stale-*-reaper.{out,err}.log` to a single `.1` archive at 5MB so logs never grow unbounded.
+
+A separate watchdog grades the heartbeats and ALERTs the fleet when a reaper goes silent:
+- **Watchdog:** `scripts/ops/reaper-heartbeat-watchdog.sh` — emits `ALERT kind=reaper_silent` into `ambient.jsonl` when a reaper hasn't heartbeated in 2h (pr), 4h (worktree), or 48h (branch) — i.e. ~2-4× the launchd cadence per the gap acceptance criteria. Visible in the standard pre-flight `tail -30 .chump-locks/ambient.jsonl`.
+- **macOS install (do this once per dogfood machine):** `scripts/setup/install-reaper-watchdog-launchd.sh` — runs every 30 min. **Verify:** `launchctl list | grep ai.openclaw.chump-reaper-watchdog`. **Disable:** `launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-reaper-watchdog.plist`.
+- **Manual check:** `scripts/ops/reaper-heartbeat-watchdog.sh` (no flags) prints per-reaper status and exits 0 even with ALERTs (so launchd doesn't loop on it).
+- **Quickly grep the stream:** `tail -200 .chump-locks/ambient.jsonl | grep -E '"kind":"reaper_(run|silent)"'`.
+
 ## ambient.jsonl rotation (INFRA-122, 2026-05-02)
 
 `.chump-locks/ambient.jsonl` is the file-side of the peripheral-vision stream and is appended-to by every agent on every event. Without rotation it grows ~4MB/day under fleet load and reaches multi-GB over a few weeks.
@@ -284,6 +292,7 @@ the COG-026 A/B aggregator can split outcomes by backend.
 - `scripts/coord/gap-doctor.py` — drift detector + repair tool (INFRA-155). Compares `.chump/state.db` against `docs/gaps/<ID>.yaml` files (post-INFRA-188; previously the monolithic `docs/gaps.yaml`) and reports four buckets: DB done / YAML open (regen YAML), DB open / YAML done (sync DB from YAML), DB-only orphans, YAML-only ghosts. Run `gap-doctor.py doctor` for a read-only report; `sync-from-yaml --apply` drains pre-INFRA-152 hand-edit drift; `sync-from-db --apply` regenerates YAML from DB. The 2026-04-28 first run drained 25 status:open-but-actually-done rows in one shot.
 - `scripts/ops/stale-pr-reaper.sh` — runs hourly, auto-closes PRs whose gaps landed on main
 - `scripts/ops/stale-worktree-reaper.sh` — removes merged / orphaned linked worktrees under `.claude/worktrees/` (default dry-run; use `--execute`). macOS hourly install: `scripts/setup/install-stale-worktree-reaper-launchd.sh` (see **Worktree disk hygiene** above)
+- `scripts/ops/reaper-heartbeat-watchdog.sh` — INFRA-120 watchdog that ALERTs `ambient.jsonl` when any stale-* reaper misses its expected cadence (pr 2h / worktree 4h / branch 48h). macOS install: `scripts/setup/install-reaper-watchdog-launchd.sh`
 - `scripts/git-hooks/pre-commit` — coordination hook (see **Commit-time guards** table above)
 - `scripts/git-hooks/pre-push` — gap-preflight gate (blocks pushes with `done`/stolen-claim gap IDs)
 - `scripts/git-hooks/post-checkout` — auto-installs hooks into every worktree after `git worktree add`
