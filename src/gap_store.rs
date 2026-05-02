@@ -570,14 +570,34 @@ impl GapStore {
             }
         }
 
-        // Open-PR scan (opt-in)
-        if std::env::var("CHUMP_RESERVE_SCAN_OPEN_PRS").as_deref() == Ok("1") {
-            if let Ok(pr_titles) = list_open_pr_titles() {
-                let pat = regex_lite_for_domain(&domain_upper);
-                for title in pr_titles {
-                    for n in pat.find_numbers(&title) {
-                        out.push(n);
+        // Open-PR scan (INFRA-100: default ON since 2026-05-02). On 2026-05-01
+        // we shipped 8 collision pairs (INFRA-202..215 cluster) because this
+        // scan was opt-in via CHUMP_RESERVE_SCAN_OPEN_PRS=1 and nobody had it
+        // enabled. Open-PR titles are the most direct evidence of "an ID is
+        // already claimed by a sibling session about to push" — there's no
+        // good reason to default it off. Opt out via CHUMP_RESERVE_SCAN_OPEN_PRS=0
+        // for offline / no-gh-CLI scenarios.
+        //
+        // Network failure is non-fatal: print a one-line warning and continue
+        // with lease+DB+YAML coverage. Bricking reserve on a flaky network
+        // would be worse than tolerating a slightly higher residual race risk.
+        if std::env::var("CHUMP_RESERVE_SCAN_OPEN_PRS").as_deref() != Ok("0") {
+            match list_open_pr_titles() {
+                Ok(pr_titles) => {
+                    let pat = regex_lite_for_domain(&domain_upper);
+                    for title in pr_titles {
+                        for n in pat.find_numbers(&title) {
+                            out.push(n);
+                        }
                     }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[gap reserve] WARN: open-PR scan failed ({e}). Continuing \
+                         with lease+DB coverage only — slight collision risk against \
+                         in-flight PRs from sibling sessions. Set \
+                         CHUMP_RESERVE_SCAN_OPEN_PRS=0 to silence."
+                    );
                 }
             }
         }
@@ -1448,6 +1468,16 @@ mod tests {
     use tempfile::TempDir;
 
     fn test_store() -> (GapStore, TempDir) {
+        // INFRA-100: open-PR scan is default-ON in production but tests must
+        // not hit the live `gh pr list` (would pick up real PR titles like
+        // INFRA-200, INFRA-222 and pollute the deterministic fixtures).
+        // Set the opt-out for the duration of every test that uses this
+        // helper. SAFETY: tests in this file share the same process so an
+        // env-var set is visible across them — that's exactly what we want
+        // because every test in this module operates on synthetic fixtures.
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+        }
         let dir = TempDir::new().unwrap();
         let store = GapStore::open(dir.path()).unwrap();
         (store, dir)
