@@ -17156,3 +17156,19 @@ gaps:
   depends_on: [INFRA-211, INFRA-195]
   raised_by: claude
   raised_in: '2026-05-02 — fleet scaling lifecycle. Renumbered from INFRA-207 due to ID drift.'
+- id: PRODUCT-023
+  domain: PRODUCT
+  title: 'Default chat model -> qwen2.5:7b (.env, run-web.sh, profile doc)'
+  status: done
+  closed_pr: 713
+  closed_date: '2026-05-01'
+  priority: P2
+  effort: s
+  opened_date: '2026-05-01'
+  description: |
+    Today proved 14B + cold-load + thinking-mode = bad interactive UX. Default chat model swaps to qwen2.5:7b (~4.7GB VRAM, 1-3s first token cold). 14B remains opt-in for heavy turns by setting OPENAI_MODEL=qwen2.5:14b in .env. Frees ~5GB for system headroom on 24GB Air (rust-analyzer + browser + chump can all coexist without swap thrash). Independent of the singleton/semaphore work — safe to land anytime.
+  acceptance: |
+    .env: OPENAI_MODEL=qwen2.5:7b; run-web.sh:21 fallback default updated; run-web.sh:23-26 CHUMP_GOLDEN_PATH_OLLAMA block updated; docs/operations/INFERENCE_PROFILES.md notes 7B as steady chat default; 14B as opt-in for heavy turns; verification: curl http://127.0.0.1:11434/api/ps shows qwen2.5:7b resident at ~4.7GB after first turn.
+  depends_on: []
+  raised_by: claude
+  raised_in: '2026-05-01 — PRODUCT-023 closes PRODUCT-024 persistence loop'
