@@ -3,13 +3,13 @@
 # does not delete the remote branch). See docs/archive/SUPERSEDED_BRANCHES.md.
 #
 # Usage:
-#   ./scripts/coord/archive-superseded-branch.sh origin/claude/heuristic-swanson
+#   ./scripts/coord/archive-superseded-branch.sh origin/chump/heuristic-swanson
 # Then: git push origin "archive/..."   # tag name printed at end
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
-REMOTE_REF="${1:?usage: $0 <remote-ref>  e.g. origin/claude/heuristic-swanson}"
+REMOTE_REF="${1:?usage: $0 <remote-ref>  e.g. origin/chump/heuristic-swanson}"
 
 git fetch origin
 if ! git rev-parse --verify -q "${REMOTE_REF}^{commit}" >/dev/null; then
