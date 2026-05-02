@@ -120,6 +120,24 @@ and point demo scripts at it via `CHUMP_COORD_BIN`.
 ## Closing the loop
 
 Once the post-INFRA-188 follow-up wave clears (INFRA-226 ✅ #766,
-INFRA-228/229 ✅ #777, INFRA-236 ✅ #795, INFRA-240 ⏳ open, INFRA-238
-[cross-host state.db drift] ⏳ open), most of these gotchas should
-become irrelevant. Re-audit this doc in 2026 Q3 and prune.
+INFRA-228/229 ✅ #777, INFRA-236 ✅ #795, INFRA-240 ⏳ open, INFRA-247
+⏳ open, INFRA-238 [cross-host state.db drift] ⏳ open), most of these
+gotchas become irrelevant.
+
+## Prune criteria (concrete)
+
+Delete this file when **all** of:
+
+1. **INFRA-240 closed** — the 38 lost per-file YAMLs are restored.
+2. **INFRA-247 closed** — `chump gap reserve` no longer walks past
+   linked-worktree CWD.
+3. **No edits to this file in 30 days** — `git log --since=30.days.ago
+   -- docs/process/POST_INFRA_188_GOTCHAS.md` returns no commits.
+4. **All five gotchas have either a structural fix landed OR an
+   explicit "doc-only — no fix is sensible" disposition.**
+
+`scripts/audit/check-post-infra-188-gotchas-prunable.sh` runs all four
+checks and exits 0 (prunable) or 1 (still keep). Run it manually or
+wire into `gap-doctor.py doctor` so the next agent that hits this
+section sees a green "PRUNABLE" line and can `git rm` the doc + drop
+the CLAUDE.md link in a tiny housekeeping PR.
