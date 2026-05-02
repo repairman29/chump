@@ -82,6 +82,10 @@ impl GapStore {
         // or migration (both take a short exclusive lock). The
         // gap_reserve_cross_host_race integration test (INFRA-216) reliably
         // reproduces this on CI without the retry loop.
+        //
+        // INFRA-253 (2026-05-02): bumped attempts 8 → 20 (cap 1000ms; total
+        // budget ~16s) after observing 6+ blocked PRs in a single dispatcher
+        // cycle hitting the 8-attempt ceiling under CI scheduler jitter.
         let conn = {
             let mut delay_ms = 50u64;
             let mut attempts = 0;
@@ -90,11 +94,11 @@ impl GapStore {
                     Ok(c) => break c,
                     Err(e) => {
                         let msg = e.to_string();
-                        if attempts >= 8 || !msg.contains("database is locked") {
+                        if attempts >= 20 || !msg.contains("database is locked") {
                             return Err(e).with_context(|| format!("opening {}", path.display()));
                         }
                         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
-                        delay_ms = (delay_ms * 2).min(2000);
+                        delay_ms = (delay_ms * 2).min(1000);
                         attempts += 1;
                     }
                 }
