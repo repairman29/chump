@@ -1,0 +1,44 @@
+- id: INFRA-232
+  domain: infra
+  title: chump gap ship --update-yaml writes monolithic docs/gaps.yaml (deleted by INFRA-188 cutover) — should write per-file or be removed
+  status: open
+  priority: P1
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    Post the INFRA-188 cutover (PR #753), docs/gaps.yaml was deleted in
+    favour of per-file docs/gaps/<ID>.yaml. But chump gap ship
+    --update-yaml at src/main.rs still calls dump_yaml_with_meta() and
+    writes to repo_root/docs/gaps.yaml — a path that no longer exists on
+    origin/main.
+
+    Effect:
+      - The flag silently writes a brand-new monolithic gaps.yaml file
+        in the repo root
+      - The CI guard at .github/workflows/ci.yml (added in INFRA-188 with
+        'asserting docs/gaps.yaml absent') will reject any PR that
+        includes that file
+      - Agents trying to follow CLAUDE.md's documented gap-closure flow
+        ('chump gap ship --update-yaml') get a working tree they cannot
+        push
+
+    Reproducer:
+      chump gap ship INFRA-127 --closed-pr 750 --update-yaml
+      # → 'regenerated /Users/.../docs/gaps.yaml' (CREATES the file)
+      # git status → docs/gaps.yaml untracked
+      # git push → blocked by ci.yml guard
+
+    Fix paths:
+      (a) Remove --update-yaml flag entirely; document that gap closure
+          is state.db only and YAML sync happens via chump gap dump
+          --per-file
+      (b) Reroute --update-yaml to call dump_per_file(repo_root.join(
+          'docs').join('gaps')) instead of writing the monolithic file
+      (c) Add a deprecation warning + no-op when docs/gaps/ exists on
+          disk
+  acceptance_criteria:
+    - "chump gap ship --update-yaml on a post-cutover repo does NOT create docs/gaps.yaml"
+    - "The flag either writes the affected per-file YAML or no-ops with a clear message"
+    - "CLAUDE.md gap-closure flow updated to match the new behaviour"
+  raised_by: claude
+  raised_in: '2026-05-02 — surfaced during INFRA-127 closure post-INFRA-188 cutover'
