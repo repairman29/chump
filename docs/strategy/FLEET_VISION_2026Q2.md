@@ -1,14 +1,29 @@
 ---
 doc_tag: log
-owner_gap:
-last_audited: 2026-04-25
+owner_gap: FLEET-024
+last_audited: 2026-05-02
 ---
 
 # Fleet Vision: Distributed Agent Orchestration (2026 Q2+)
 
-**Status:** Architecture planning  
-**Scope:** Multi-gap initiative spanning 6+ quarters  
+**Status:** Layer 1 complete; Layer 2 ready to start (umbrella: FLEET-024)
+**Scope:** Multi-gap initiative spanning 6+ quarters
 **Motivation:** Move from single-machine multi-agent to networked heterogeneous fleet with task decomposition and capability-aware work allocation
+
+---
+
+## 2026-05-02 status snapshot
+
+| Layer | Status | What landed |
+|---|---|---|
+| **L1 — Distributed Coordination** | ✅ done | FLEET-006 NATS ambient stream (#572), FLEET-007 NATS-backed distributed leases with TTL, FLEET-009 capability declaration & task-fit scoring, FLEET-017 Cold Water NATS subscription (#629), FLEET-018 audit table (#635), FLEET-019/020/021/022 ambient hooks installer (#696) |
+| **L2 — Work Decomposition & Claiming** | 🟡 next (FLEET-024 umbrella) | FLEET-008 (work board), FLEET-010 (help-seeking), FLEET-011 (decomposition heuristics) — all open |
+| **L3 — Intelligent Decomposition** | ⏳ scoped post-L2 | No concrete gaps yet; pending L2 telemetry |
+| **L1 operationalization (cross-cutting)** | 🟡 partial | FLEET-013 Tailscale + agent discovery still open; FLEET-023 Cold Water-sandbox install gap filed |
+
+**WORLD_CLASS_ROADMAP M1-M5 (the dispatcher upgrade arc that gates L2 sanely)** — all five milestones done as of 2026-05-02 (INFRA-059..063). See `docs/strategy/WORLD_CLASS_ROADMAP.md`.
+
+**Post-M5 hardening backlog** — Cold Water Issues #6-#9 surfaced real-world cracks in the now-loaded orchestrator (lease TTL server-side, ambient.jsonl schema validation, multi-agent integration tests). These are filed as INFRA-105/115/119/101/108/122/123/126/127/203/204/206/216 + TEST-002 and tracked separately from the FLEET vision layers; they're hardening, not new architecture.
 
 ---
 
