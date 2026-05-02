@@ -1,0 +1,42 @@
+- id: INFRA-261
+  domain: INFRA
+  title: "INFRA-236 trigger still broken on main: regenerate-gaps-yaml.yml uses merge_group (never fires) — re-ship #803 fix"
+  status: done
+  closed_pr: 870
+  closed_date: '2026-05-02'
+  priority: P0
+  effort: xs
+  opened_date: '2026-05-02'
+  description: |
+    INFRA-236 (PR #795) shipped the commit-subject closer logic into
+    .github/workflows/regenerate-gaps-yaml.yml. PR #803 was the trigger
+    fix — switch from `on: merge_group:` to `on: push: branches: [main]`
+    because per CLAUDE.md INFRA-201 (2026-05-01) real GitHub merge queue
+    is org Team/Enterprise only and `gh run list --event merge_group`
+    returns zero results on this repo, ever.
+
+    PR #803 was closed (without merging) on 2026-05-02T17:05:40Z. As of
+    audit on 2026-05-02 the workflow on origin/main still has
+    `on: merge_group:` — the closer logic is unreachable in production.
+    Net effect: every gap closure still requires the manual `chump gap
+    ship --closed-pr <N>` path or the closer-pr-batcher (INFRA-194)
+    polling, both of which leak ghosts INFRA-241 had to backfill.
+
+    This PR re-applies #803's trigger fix to the canonical workflow on
+    current main. Same diff shape as #803, plus paths-ignore for the
+    workflow file itself so the regen bot's [skip ci] commits don't
+    cascade.
+
+    Why this gap was closed without re-shipping: META-014's diagnosis-
+    correction trail showed I'd misdiagnosed the regen workflow as a
+    GHOST CREATOR (in INFRA-238) when it was actually dead code. After
+    closing INFRA-238 as misdiagnosis, I lost confidence in #803 too
+    and let it close. But #803's trigger-fix logic was correct on its
+    own merits — fixing the trigger doesn't bring the regen back as a
+    ghost creator, it brings INFRA-236's commit-subject CLOSER online.
+  acceptance_criteria:
+    - "regenerate-gaps-yaml.yml uses on: push: branches: [main] trigger"
+    - "gh run list --workflow='Regenerate per-file gap registry on merge' shows >=1 run after this PR lands"
+    - "Next gap-closing PR after this lands sees its gap auto-flipped to status:done by the workflow"
+  raised_by: claude
+  raised_in: '2026-05-02 — operator-requested check on session PRs caught #803 closed without merging, leaving INFRA-236 dead'
