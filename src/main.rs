@@ -672,13 +672,49 @@ async fn main() -> Result<()> {
             }
             "dump" => {
                 let out_path = flag("--out");
+                // INFRA-188 v0 (2026-05-02): --per-file emits one file per
+                // gap at <out_dir>/<ID>.yaml instead of a monolithic dump.
+                // --out-dir overrides the default `docs/gaps/`.
+                let per_file = args.iter().any(|a| a == "--per-file");
+                let out_dir_flag = flag("--out-dir");
+
                 // INFRA-148: warn if binary is stale relative to gap_store-affecting
-                // code on HEAD. Only warn when actually writing to a file (--out PATH)
-                // — stdout dump for piping into other tools shouldn't spam stderr
-                // unconditionally.
-                if out_path.is_some() {
+                // code on HEAD. Only warn when actually writing to a file
+                // (--out PATH or --per-file) — stdout dump for piping shouldn't
+                // spam stderr unconditionally.
+                if out_path.is_some() || per_file {
                     let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
                 }
+
+                // ── INFRA-188 v0: --per-file path ────────────────────────────
+                if per_file {
+                    let dir_str = out_dir_flag.unwrap_or_else(|| "docs/gaps".to_string());
+                    let dir = std::path::PathBuf::from(&dir_str);
+                    let dir_abs = if dir.is_absolute() {
+                        dir
+                    } else {
+                        repo_root.join(dir)
+                    };
+                    match store.dump_per_file(&dir_abs) {
+                        Ok((written, skipped)) => {
+                            eprintln!(
+                                "wrote {} file(s) to {} ({} unchanged)",
+                                written,
+                                dir_abs.display(),
+                                skipped
+                            );
+                            // INFRA-094 marker: this dir is also a canonical
+                            // chump-CLI yaml op surface.
+                            write_yaml_op_marker(&repo_root, "dump --per-file");
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            eprintln!("chump gap dump --per-file: {e:#}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
                 // INFRA-147: when --out points at an existing file, preserve its
                 // meta: preamble. For stdout or new files there is no source to
                 // preserve from — bare dump is correct.
@@ -747,7 +783,7 @@ async fn main() -> Result<()> {
                     "                       [--source-doc S] [--opened-date D] [--closed-date D] [--closed-pr N]"
                 );
                 eprintln!("                       [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
-                eprintln!("  dump       [--out PATH]");
+                eprintln!("  dump       [--out PATH] [--per-file [--out-dir docs/gaps/]]");
                 eprintln!("  import     [--yaml docs/gaps.yaml]");
                 std::process::exit(2);
             }
