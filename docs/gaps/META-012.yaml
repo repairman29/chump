@@ -1,0 +1,72 @@
+- id: META-012
+  domain: meta
+  title: 'Shared-memory layer: agent-proposed working knowledge alongside AGENTS.md (cross-tool, project-owned)'
+  status: open
+  priority: P1
+  effort: m
+  opened_date: '2026-05-02'
+  description: |
+    Today every agent (Claude, Cursor, Goose, Aider, future) maintains
+    its OWN private memory store: ~/.claude/projects/.../memory/, .cursor
+    settings, Goose profiles, etc. When ONE agent learns something the
+    operator told it ("don't ask, just file gaps"; "always commit in /tmp
+    worktree"; "FLEET gaps are load-bearing strategy not tech debt"),
+    that knowledge stays trapped in that agent's private store. The next
+    session — same tool, different conversation — relearns it. The next
+    sibling — different tool — never learns it.
+
+    Two existing channels work but are insufficient:
+      - AGENTS.md — human-curated doctrine, manually upgraded; great for
+        stable patterns but high friction for in-flight learnings (one
+        PR per memory item)
+      - chump_improvement_targets (COG-024 / INFRA-195) — auto-distilled
+        from REFLECTION rows; great for behavioural lessons derived from
+        outcomes, but never captures direct operator preferences that
+        didn't come through a reflection-producing task
+
+    Net effect: most operator behavioural feedback is project-wide
+    ("this applies to anyone working on Chump"), but the default storage
+    path is private-per-agent. Inverted defaults.
+
+    Proposal — shared-memory layer:
+      - Add `share: project|tool|private` field to memory frontmatter
+        (default: project for behavioural feedback; private only for
+        genuine personal taste)
+      - `share: project` writes mirror to a new repo-resident
+        `.chump/shared-memory.md` at write-time
+      - All tools read `.chump/shared-memory.md` at session start as a
+        layer above AGENTS.md (AGENTS.md = doctrine; shared-memory.md =
+        working knowledge in trial)
+      - Operator promotion path: when an entry proves out (referenced
+        N times, never recanted, age > 7 days), it graduates into
+        AGENTS.md and gets removed from the working file
+      - Bounded growth: pre-commit guard caps the file at ~200 entries
+        with age-based eviction
+      - Cross-tool: matches INFRA-186 "the project owns the namespace,
+        not the tool"
+
+    Open design questions:
+      (a) Layer or unify with chump_skills? Either both feed the prompt
+          assembler in priority order, OR shared-memory entries get
+          coerced to synthetic reflection rows with outcome=pass so the
+          existing pipeline carries them.
+      (b) Per-tool overlays — should each tool's CLAUDE.md / GEMINI.md /
+          .cursorrules be able to override or annotate shared-memory
+          entries? Probably yes for behavioural nuance ("Claude tends to
+          over-explain; check yourself").
+      (c) Promotion criteria: what counts as "proven out"? Naive
+          heuristic: referenced ≥3 times in ambient.jsonl, no recant in
+          last 7 days. Need to track references somewhere.
+      (d) Deletion / recant signal: when a memory becomes wrong, what's
+          the channel? Probably an operator-issued `chump memory recant
+          <name>` that adds a tombstone entry.
+  acceptance_criteria:
+    - ".chump/shared-memory.md exists; memories with share:project field auto-mirror there at write-time"
+    - "All tools (Claude, Cursor, Goose) read it at session start as a layer above AGENTS.md"
+    - "Operator-promotion path documented; entries graduate to AGENTS.md after proven-out criteria"
+    - "Bounded growth: pre-commit guard enforces max-entries + age-based eviction"
+    - "Recant channel exists for operator-rejected entries"
+  depends_on:
+    - INFRA-195
+  raised_by: claude
+  raised_in: '2026-05-02 — operator asked how to scale per-agent memory into shared knowledge after observing private memories captured project-wide preferences (file-gaps-don''t-ask, /tmp worktree)'
