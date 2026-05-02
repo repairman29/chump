@@ -460,6 +460,54 @@ if [[ $SKIP_TESTS -eq 0 ]] && [[ "${CHUMP_SKIP_CI_SHELL:-0}" != "1" ]]; then
     fi
 fi
 
+# ── 4a-decomp. Decomposition advisory (FLEET-025 / FLEET-011 v0) ─────────────
+# Surface heuristic-based decomposition hints for monolithic PRs. Per the
+# FLEET-011 vision: file_count > 5 + LOC > 500 → consider decomposition.
+# This is ADVISORY only (never blocks ship) — agents see the hint and decide
+# whether to split or proceed. v0 emits the hint to stderr + ambient as
+# kind=decomposition_hint so we can build a learning loop later (track
+# whether agents heeded the hint vs proceeded; bias future hints).
+#
+# Bypass: CHUMP_DECOMP_HINT=0 (silence entirely)
+# Tune:   CHUMP_DECOMP_FILE_THRESHOLD (default 5), CHUMP_DECOMP_LOC_THRESHOLD (default 500)
+if [[ "${CHUMP_DECOMP_HINT:-1}" != "0" ]]; then
+    DECOMP_FILES_T="${CHUMP_DECOMP_FILE_THRESHOLD:-5}"
+    DECOMP_LOC_T="${CHUMP_DECOMP_LOC_THRESHOLD:-500}"
+    DECOMP_BASE="${CHUMP_BASE_REF:-origin/main}"
+    DECOMP_FILES="$(git diff --name-only --diff-filter=AM "$DECOMP_BASE...HEAD" 2>/dev/null | wc -l | tr -d ' ')"
+    DECOMP_LOC="$(git diff --shortstat "$DECOMP_BASE...HEAD" 2>/dev/null \
+                  | awk '{ins=0;del=0; for(i=1;i<=NF;i++){if($i~/insertion/)ins=$(i-1); if($i~/deletion/)del=$(i-1)} print ins+del}')"
+    DECOMP_LOC="${DECOMP_LOC:-0}"
+
+    # Heuristic exemptions: codemod-style changes (gap registry regen, lockfile
+    # bumps, mass formatting) shouldn't trigger because they're already atomic
+    # by intent. Detect by checking if >80% of touched files are in known
+    # codemod paths.
+    DECOMP_CODEMOD="$(git diff --name-only --diff-filter=AM "$DECOMP_BASE...HEAD" 2>/dev/null \
+                     | grep -cE '^(docs/gaps/|\.chump/state\.sql|Cargo\.lock|book/src/)' || echo 0)"
+    DECOMP_CODEMOD_RATIO=0
+    if [[ "$DECOMP_FILES" -gt 0 ]]; then
+        DECOMP_CODEMOD_RATIO=$(( DECOMP_CODEMOD * 100 / DECOMP_FILES ))
+    fi
+
+    if [[ "$DECOMP_FILES" -gt "$DECOMP_FILES_T" ]] && [[ "$DECOMP_LOC" -gt "$DECOMP_LOC_T" ]] \
+       && [[ "$DECOMP_CODEMOD_RATIO" -lt 80 ]]; then
+        warn "decomposition hint: ${DECOMP_FILES} files, ${DECOMP_LOC} LOC changed"
+        info "  thresholds: > ${DECOMP_FILES_T} files AND > ${DECOMP_LOC_T} LOC (FLEET-011 v0 heuristic)"
+        info "  consider: split by subsystem / per-file / 'land then migrate' stack — not blocking, just a nudge"
+        info "  silence: CHUMP_DECOMP_HINT=0 scripts/coord/bot-merge.sh ..."
+        # Best-effort emit to ambient so we can build the learning loop later
+        if [[ -x "$REPO_ROOT/scripts/dev/ambient-emit.sh" ]]; then
+            "$REPO_ROOT/scripts/dev/ambient-emit.sh" decomposition_hint \
+                "kind=oversize" \
+                "files=$DECOMP_FILES" \
+                "loc=$DECOMP_LOC" \
+                "gap=${GAP_ID:-unknown}" \
+                "branch=$BRANCH" 2>/dev/null || true
+        fi
+    fi
+fi
+
 # ── 4b. Ambient glance (INFRA-083) ───────────────────────────────────────────
 # Final peripheral-vision check before push: surface any sibling that already
 # committed or pushed against the same gap (race window between gap-claim and
