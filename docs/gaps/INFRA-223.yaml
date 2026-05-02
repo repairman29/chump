@@ -1,0 +1,25 @@
+- id: INFRA-223
+  domain: INFRA
+  title: wire distill-pr-skills.sh into post-merge hook or launchd timer (auto-feed chump_improvement_targets)
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    distill-pr-skills.sh shipped in PR #712 but has never run in production. 0 rows in chump_improvement_targets from distill (all 18 are COG-025 dispatcher telemetry). Dry-run on last 5 PRs would insert 3 rows — script works, just not wired to a scheduler.
+    
+    Fix:
+    - Option A (simple): launchd entry firing every 30 min OR after every git fetch
+    - Option B (better): GitHub Actions step in the merge-queue post-merge workflow (.github/workflows/post-merge.yml) that calls distill-pr-skills.sh --pr <merged-pr>
+    
+    Option B closes the loop tighter but requires a CI secret to write to the host's chump_memory.db. Option A is safer for v1.
+    
+    Acceptance:
+    - chump_improvement_targets grows by ≥1 row per merged PR matching a whitelisted pattern
+    - Verifiable via: sqlite3 sessions/chump_memory.db "SELECT COUNT(*) FROM chump_improvement_targets WHERE actioned_as LIKE 'PR#%';"
+    
+    Related: INFRA-195 (the script itself), Red Letter #10 (the audit that surfaced this)
+  acceptance_criteria:
+    - distill-pr-skills.sh fires automatically (launchd or post-merge hook)
+    - chump_improvement_targets grows on merged PRs matching whitelist
+    - "verifiable: actioned_as LIKE 'PR#%' rows present"
+
