@@ -1,7 +1,9 @@
 - id: INFRA-085
   domain: infra
   title: manual-ship invisibility - auto-write lease on gh pr create
-  status: open
+  status: done
+  closed_pr: 832
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |

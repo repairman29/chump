@@ -396,6 +396,68 @@ if [[ "${CHUMP_LEASE_CHECK:-1}" != "0" ]]; then
     fi
 fi
 
+# ── INFRA-085: auto-write lease from gap-IDs in commit message ───────────────
+# The third bypass-path closure (after INFRA-236 commit-subject closer and
+# INFRA-237 bot-merge.sh --gap auto-derive). Manual-ship paths (gh pr
+# create after chump-commit.sh) used to skip gap-claim.sh entirely, leaving
+# no lease for siblings to see — they could pick the same gap and both
+# sessions would silently race. This block parses the commit message we're
+# about to pass to git, extracts gap-IDs, and idempotently writes a lease
+# for each before the commit lands. gap-claim.sh is no-op when this session
+# already holds the gap.
+#
+# Disable: CHUMP_AUTO_LEASE_FROM_MSG=0
+if [[ "${CHUMP_AUTO_LEASE_FROM_MSG:-1}" != "0" ]]; then
+    # Reconstruct the commit message text from GIT_ARGS:
+    #   -m "msg"             → next arg is literal message
+    #   -F path              → read message from file
+    #   --message / --file   → same shape, less common
+    # Editor / -C / --amend  → skip (rare in bot workflow; lease is
+    #                          best-effort, not load-bearing)
+    _commit_msg_text=""
+    _next_is_msg=0
+    _next_is_file=0
+    for _a in "${GIT_ARGS[@]}"; do
+        if [[ $_next_is_msg -eq 1 ]]; then
+            _commit_msg_text+="$_a"$'\n'
+            _next_is_msg=0
+            continue
+        fi
+        if [[ $_next_is_file -eq 1 ]]; then
+            if [[ -r "$_a" ]]; then
+                _commit_msg_text+="$(cat "$_a")"$'\n'
+            fi
+            _next_is_file=0
+            continue
+        fi
+        case "$_a" in
+            -m|--message) _next_is_msg=1 ;;
+            -F|--file)    _next_is_file=1 ;;
+        esac
+    done
+    if [[ -n "$_commit_msg_text" ]]; then
+        # Extract gap-IDs (e.g. INFRA-127, RESEARCH-026) — both leading
+        # "INFRA-127:" and inline "Closes INFRA-127" patterns.
+        _gap_ids=$(echo "$_commit_msg_text" | grep -oE '[A-Z]+-[0-9]+' | sort -u || true)
+        if [[ -n "$_gap_ids" ]]; then
+            _claim_script="$REPO_ROOT/scripts/coord/gap-claim.sh"
+            if [[ -x "$_claim_script" ]]; then
+                for _gid in $_gap_ids; do
+                    # Only attempt to claim gaps that exist on origin/main
+                    # (avoid spurious claims on filing PRs that just-reserved
+                    # IDs the local DB hasn't synced). gap-claim.sh has its
+                    # own preflight that handles the not-yet-on-main case
+                    # gracefully via CHUMP_ALLOW_UNREGISTERED_GAP, so we
+                    # just call it and let it decide. Output goes to /dev/null
+                    # — this is best-effort, not load-bearing.
+                    "$_claim_script" "$_gid" >/dev/null 2>&1 || true
+                done
+                echo "[chump-commit] auto-leased gap(s) from commit message: $(echo "$_gap_ids" | tr '\n' ' ')" >&2
+            fi
+        fi
+    fi
+fi
+
 # Commit with the passed-through git args.
 # Note: using `git commit` (not `exec`) so that FD 200 (the index mutex) is
 # closed and the lock released after git exits. With exec the FD is also
