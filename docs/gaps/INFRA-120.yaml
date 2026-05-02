@@ -1,7 +1,9 @@
 - id: INFRA-120
   domain: infra
   title: Stale reapers (PR, worktree, branch) have no log aggregation or failure alerting
-  status: open
+  status: done
+  closed_pr: 835
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |
