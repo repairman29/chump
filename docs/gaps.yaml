@@ -16916,7 +16916,10 @@ gaps:
 - id: INFRA-210
   domain: infra
   title: 'shared CARGO_TARGET_DIR + sccache for fleet worktrees (kill 5GB-per-worktree disk + cold-build time)'
-  status: open
+  status: done
+  closed_pr: 744
+  closed_date: '2026-05-02'
+  notes: 'Deduped against canonical twin (META-009 / PR #744).'
   priority: P1
   effort: s
   opened_date: '2026-05-02'
@@ -16956,7 +16959,10 @@ gaps:
 - id: INFRA-211
   domain: infra
   title: 'scripts/dispatch/run-fleet.sh — canonical fleet launcher (tmux + per-agent worker loop, headless claude -p)'
-  status: open
+  status: done
+  closed_pr: 744
+  closed_date: '2026-05-02'
+  notes: 'Deduped against canonical twin (META-009 / PR #744).'
   priority: P1
   effort: s
   opened_date: '2026-05-02'
@@ -17010,7 +17016,10 @@ gaps:
 - id: INFRA-212
   domain: infra
   title: 'fleet status dashboard — tmux control pane shows ambient.jsonl tail + PR queue depth + per-agent throughput'
-  status: open
+  status: done
+  closed_pr: 744
+  closed_date: '2026-05-02'
+  notes: 'Deduped against canonical twin (META-009 / PR #744).'
   priority: P2
   effort: s
   opened_date: '2026-05-02'
@@ -17093,7 +17102,10 @@ gaps:
 - id: INFRA-214
   domain: infra
   title: 'per-agent gap-domain affinity — agent-1 INFRA only, agent-2 EVAL only, etc (kill hot-spot bias at 10+ agents)'
-  status: open
+  status: done
+  closed_pr: 744
+  closed_date: '2026-05-02'
+  notes: 'Deduped against canonical twin (META-009 / PR #744).'
   priority: P2
   effort: s
   opened_date: '2026-05-02'
@@ -17497,7 +17509,10 @@ gaps:
 - id: INFRA-209
   domain: infra
   title: 'pre-commit hooks not auto-installed in remote dispatch — closed_pr:TBD guard bypassed on 8 recent commits'
-  status: open
+  status: done
+  closed_pr: 744
+  closed_date: '2026-05-02'
+  notes: 'Deduped against canonical twin (META-009 / PR #744).'
   priority: P1
   effort: s
   opened_date: '2026-05-02'
