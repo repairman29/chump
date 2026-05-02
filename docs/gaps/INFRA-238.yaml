@@ -1,9 +1,42 @@
 - id: INFRA-238
   domain: INFRA
   title: regenerate-gaps-yaml.yml propagates one host's stale state.db across all PRs — reverts surgical closures from other agents
-  status: open
+  status: done
+  closed_pr: 803
+  closed_date: '2026-05-02'
   priority: P0
   effort: s
+  closed_interpretation: |
+    Misdiagnosis — closing as resolved-by-correction.
+
+    Subsequent investigation (within hours of filing) found that:
+      (1) The merge_group trigger NEVER fires on this repo (verified via
+          `gh run list --event merge_group` returning zero results).
+          Real GitHub merge queue is org Team/Enterprise only and the
+          merge_queue rule type returns 422 on personal-account repos
+          (per CLAUDE.md INFRA-201, 2026-05-01). The entire
+          regenerate-gaps-yaml.yml workflow has been DEAD CODE since the
+          INFRA-188 cutover — it never ran, so it never reverted
+          anything.
+      (2) The "PR #787 closures got reverted" observation was a
+          misreading of stale local working-tree state. Verified after
+          the fact: `git show origin/main:docs/gaps/INFRA-176.yaml`
+          shows status:done with closed_pr:683 — the closures DID land
+          and were not reverted. The system reminders that showed
+          status:open were the local checkout's pre-pull state, not
+          origin/main.
+
+    Both fix paths in the original description (drop state.db from
+    regen / pin shared canonical SQL) were predicated on a false
+    premise. INFRA-236 fix-trigger PR #803 redirects the workflow to
+    push:branches:[main] which DOES fire — that solves the underlying
+    "the workflow doesn't run" problem and supersedes this gap's intent.
+
+    The actual ghost-creation pathway is still partially open: 89
+    historical ghosts on origin/main as of 2026-05-02 audit (16% of 561
+    per-file gaps). INFRA-236 prevents NEW ghosts going forward;
+    INFRA-241 (filed in this PR) backfills the historical 89 in a
+    single sweep.
   opened_date: '2026-05-02'
   description: |
     NEW post-INFRA-188-cutover ghost source observed 2026-05-02:
