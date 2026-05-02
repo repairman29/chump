@@ -73,6 +73,38 @@ if [[ "${CHUMP_DISPATCH_DEPTH:-0}" == "1" ]]; then
     export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-chump-dispatch@chump.bot}"
 fi
 
+# ── INFRA-209: ensure pre-commit hooks are installed in this worktree ────────
+# Cold Water Issue #10 audit (2026-05-02) found 8 commits on origin/main since
+# 2026-05-01 introducing status:done with closed_pr:TBD — the INFRA-107 guard
+# was supposed to block these but was bypassed because the remote dispatch
+# agents had empty .git/hooks/ dirs. install-hooks.sh is per-worktree (post-
+# checkout hook does it on `git worktree add` since INFRA-072) but ephemeral
+# sandbox checkouts skip the post-checkout hook.
+#
+# Idempotent guard: if pre-commit is missing OR points at a path that no
+# longer exists, run install-hooks.sh --quiet. This protects every bot-merge
+# invocation regardless of how the worktree was created.
+#
+# Disable: CHUMP_AUTO_INSTALL_HOOKS=0
+if [[ "${CHUMP_AUTO_INSTALL_HOOKS:-1}" != "0" ]]; then
+    _bm_repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    _bm_git_dir="$(git rev-parse --git-dir 2>/dev/null || echo "$_bm_repo_root/.git")"
+    _bm_hook="$_bm_git_dir/hooks/pre-commit"
+    _bm_install_sh="$_bm_repo_root/scripts/setup/install-hooks.sh"
+    _bm_needs_install=0
+    if [[ ! -e "$_bm_hook" ]]; then
+        _bm_needs_install=1
+    elif [[ -L "$_bm_hook" ]] && [[ ! -e "$_bm_hook" ]]; then
+        # symlink to a missing target (stale install from another machine)
+        _bm_needs_install=1
+    fi
+    if [[ "$_bm_needs_install" == "1" ]] && [[ -x "$_bm_install_sh" ]]; then
+        printf '\033[0;32m[bot-merge] INFRA-209: pre-commit hook missing, running install-hooks.sh\033[0m\n'
+        "$_bm_install_sh" --quiet 2>&1 | sed 's/^/[bot-merge] /' || \
+            printf '\033[0;31m[bot-merge] WARN: install-hooks.sh failed; continuing without hooks\033[0m\n'
+    fi
+fi
+
 # ── Flags ────────────────────────────────────────────────────────────────────
 AUTO_MERGE=0
 SKIP_TESTS=0
