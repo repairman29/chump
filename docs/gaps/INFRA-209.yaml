@@ -1,7 +1,9 @@
 - id: INFRA-209
   domain: infra
   title: "pre-commit hooks not auto-installed in remote dispatch — closed_pr:TBD guard bypassed on 8 recent commits"
-  status: open
+  status: done
+  closed_pr: 840
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |
