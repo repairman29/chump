@@ -217,6 +217,18 @@ jobs:
       - name: book/src ↔ docs/process sync guard (INFRA-170)
         run: bash scripts/ci/test-book-sync-guard.sh
 
+      - name: submodule-sanity guard (INFRA-158)
+        run: bash scripts/ci/test-submodule-guard.sh
+
+      - name: credential-pattern guard (INFRA-158)
+        run: bash scripts/ci/test-credential-pattern-guard.sh
+
+      - name: docs-delta guard (INFRA-158)
+        run: bash scripts/ci/test-docs-delta-guard.sh
+
+      - name: gap-status-flip guard (INFRA-158)
+        run: bash scripts/ci/test-gap-status-flip.sh
+
       - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
           # INFRA-100: gap-reserve.sh now invokes `chump gap reserve`
