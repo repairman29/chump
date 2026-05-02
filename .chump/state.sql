@@ -8311,7 +8311,7 @@ gaps:
 - id: INFRA-188
   domain: infra
   title: "per-file gap registry: docs/gaps/<DOMAIN>-<NNN>.yaml directory replaces monolithic gaps.yaml"
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -8374,6 +8374,8 @@ gaps:
     - "After cutover: 1 week with 0 gaps.yaml merge conflicts (was ~10/wk)"
   depends_on: [INFRA-155]
   opened_date: '2026-05-01'
+  closed_date: '2026-05-02'
+  closed_pr: 753
 
 - id: INFRA-189
   domain: infra
