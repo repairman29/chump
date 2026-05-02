@@ -260,6 +260,23 @@ fn load_dotenv() {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
+
+    // INFRA-148: surface the baked build SHA + date so operators can verify
+    // their binary's staleness against `git log src/gap_store.rs src/main.rs`
+    // *before* running `chump gap ship --update-yaml` / `chump gap dump`.
+    // Pre-this-fix, `chump --version` fell through to the model-prompt path
+    // (printed "Response from Agent: ...") because there was no top-level
+    // flag handler — defeating the point of baking the SHA at build time.
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!(
+            "chump {} ({} built {})",
+            version::chump_version(),
+            version::chump_build_sha(),
+            version::chump_build_date(),
+        );
+        return Ok(());
+    }
+
     if args.iter().any(|a| a == "--desktop") {
         desktop_launcher::launch_and_wait(&args);
     }
