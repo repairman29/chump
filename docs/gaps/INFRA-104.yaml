@@ -1,0 +1,23 @@
+- id: INFRA-104
+  domain: infra
+  title: PR title-vs-implementation drift detector - ALERT when a PR gap-ID has no matching diff signal
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    PR #565 on 2026-04-26 titled "INFRA-087..090: mandate chump gap canonical
+    path + audit outdated processes" reserved four gap IDs by title only
+    while parallel PRs #566/#568/#569 actually implemented INFRA-090/089/088.
+    The merge queue has no way to detect this kind of name-squatting.
+    Add a check (post-PR-create, runs in CI or via the stale-pr-reaper) that
+    extracts gap IDs from a PR title/body and asserts the diff touches at
+    least one file matching that gap expected scope (e.g. acceptance
+    criteria mention "gaps.yaml" -> diff must touch gaps.yaml). On mismatch,
+    post an ambient ALERT kind=title_diff_drift and label the PR.
+  acceptance_criteria:
+    - Script extracts gap IDs from PR title/body
+    - Compares to acceptance_criteria file-hints in gaps.yaml/state.db
+    - Posts ALERT and labels PR on mismatch
+    - "Backtest - when fed PR #565 plus gap registry of that moment, alert fires; when fed PR #570 (INFRA-084 layer 2), alert does NOT fire"
+  opened_date: '2026-04-26'
+

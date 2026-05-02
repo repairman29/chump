@@ -1,0 +1,19 @@
+- id: RESEARCH-025
+  domain: research
+  title: Per-task-category human-LLM-judge kappa — extend EVAL-041 to 100 trials × 5 task categories
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    EVAL-068 reported cross-judge kappa (sonnet-4-5 vs Llama-3.3-70B) at 77.3% overall with per-fixture variance (reflection=86%, perception=75%, neuromod=71%). The aggregate number hides that neuromod judgments sit on much weaker judge ground than reflection. Extend EVAL-041's human-grading protocol to 100 trials × 5 task categories (reflection, perception, neuromod, multi-hop, clarification). Compute kappa per category against the LLM-judge panel. Report category-conditional judge reliability alongside every downstream delta. Deltas reported on low-kappa categories need wider confidence intervals.
+  acceptance_criteria:
+    - 100 trials × 5 task categories = 500 human-graded examples
+    - docs/eval/EVAL-041-human-grading.md gains a per-category kappa table
+    - "docs/FINDINGS.md gains \"judge reliability\" footnote on every reported delta indicating the category's kappa"
+    - Deltas on categories with kappa <0.60 flagged as instrument-limited
+    - Preregistered rubric before human grading begins
+  depends_on: [RESEARCH-019]
+  notes: |
+    ~40 hours of human grading + analysis. Strengthens every paper's methodology section.
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §8
+

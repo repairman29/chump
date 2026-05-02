@@ -1,0 +1,15 @@
+- id: EVAL-044
+  domain: eval
+  title: Multi-turn eval fixture — test cognitive layer over 8+ turn conversation
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    All current evals are single-shot: one prompt → one response → judge. Chump's cognitive architecture (belief state, blackboard, surprisal, neuromod) is designed for multi-turn loops where state persists and compounds. Single-shot evaluation misses the primary use case and cannot detect belief drift, compounding errors, or coherence failures across turns. Minimum viable: one fixture type with 8–12 turn conversation, fixed ground truth for each turn's expected response, judge scoring each turn independently + coherence score across turns.
+  depends_on: [EVAL-043]
+  notes: |
+    ~$10 cloud + 2 days fixture design. This is the "Severity 3" limitation in CONSCIOUSNESS_AB_RESULTS.md — long deferred, finally necessary for the publication push.
+  source_doc: docs/RESEARCH_INTEGRITY.md
+  closed_date: '2026-04-20'
+  closed_pr: 211
+

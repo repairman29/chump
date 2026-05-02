@@ -1,0 +1,18 @@
+- id: RESEARCH-022
+  domain: research
+  title: Module-use reference analysis — does the agent actually read the scaffolding it is given?
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    A "cognitive architecture" claim rests on whether the agent uses the architecture. We currently measure outputs (did the task succeed, did it hallucinate) but never measure whether the agent references the injected module state in any observable way. If belief_state provides "my_ability: 0.9" and the agent never mentions or conditions on that value across 100 trials, the module is dead weight even when output deltas exist. This gap ships a post-hoc text-analysis pipeline that scans agent outputs for references to injected module state, broken out by task type. Report reference-rate × task-type × outcome table in FINDINGS.md. Mechanism evidence — not a replacement for outcome-based ablation, but a necessary complement for any architecture claim.
+  acceptance_criteria:
+    - scripts/ab-harness/analyze-module-references.py scans JSONL files for textual references to injected belief_state/neuromod/lessons
+    - Reference-rate × task-type × outcome table published for the current tier-dependent finding at n=100 per cell
+    - "docs/FINDINGS.md gains a \"mechanism evidence\" subsection per finding with reference-rate data"
+    - If any module's reference rate is <5% across all tasks, flag it as mechanistically unsupported regardless of outcome delta
+  notes: |
+    Paper-3 prerequisite (belief_state mechanism evidence). Purely post-hoc; re-analyzes existing JSONLs; no new trials. Fast win.
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §5
+  closed_date: '2026-04-20'
+

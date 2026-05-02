@@ -1,0 +1,11 @@
+- id: INFRA-CI-DISKSPACE
+  domain: infra
+  title: "CI: free pre-installed SDKs to stop rustc-LLVM 'no space left on device'"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    ubuntu-latest runners ship with ~14 GB free. After the chump-agent-lease and chump-mcp-lifecycle crate extractions (a5b6043, fecf45f), the test job's four sequential cargo compilations (test --workspace, build debug, build --release, clippy --all-targets) plus Ollama qwen2.5:7b (~3 GB), Playwright chromium, and tauri system libs started tipping target/ past the 8 GB headroom. "rustc-LLVM ERROR: IO failure on output stream: No space left on device" hit ~40% of main CI runs on 2026-04-17.
+  source_doc: .github/workflows/ci.yml
+  closed_date: '2026-04-17'
+

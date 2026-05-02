@@ -1,0 +1,26 @@
+- id: FLEET-016
+  domain: fleet
+  title: Deduplicate FLEET-006 and FLEET-015 ambient intent before concurrent claim
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Cold Water Issue #7 (2026-04-26): the gap registry contains two open P1 gaps
+    describing the same ambient-stream-to-NATS migration: FLEET-006 ("Distributed
+    ambient stream — bridge .chump-locks/ambient.jsonl to NATS topics", P1, effort L,
+    no opened_date) and FLEET-015 ("Ambient-stream NATS migration — complete FLEET-007
+    split-brain", P1, effort M, opened 2026-04-26). FLEET-015 was filed by Cold Water
+    Issue #6 without checking whether FLEET-006 was already open for the same work.
+    An agent claiming FLEET-006 and an agent claiming FLEET-015 can work concurrently
+    on substantially overlapping scope with distinct gap IDs, each believing their work
+    is non-redundant. Before any agent claims either gap, this gap must resolve the
+    overlap: either close FLEET-015 as a duplicate of FLEET-006, or restructure the
+    two gaps so they cover non-overlapping scope (e.g., FLEET-006 = NATS schema +
+    emit helpers, FLEET-015 = CLAUDE.md pre-flight and session-start subscription).
+  acceptance_criteria:
+    - FLEET-006 and FLEET-015 no longer overlap in scope
+    - Either one is closed as duplicate or both have non-overlapping acceptance criteria
+    - No agent claims both gaps simultaneously without knowing they are related
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

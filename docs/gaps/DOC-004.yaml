@@ -1,0 +1,18 @@
+- id: DOC-004
+  domain: doc
+  title: Onboarding simulation — fresh Claude agent, docs-only mount, first-task completion
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    CPO-framing gap, Tier 3. Substitutes for a paid documentation-quality auditor by simulating a cold contributor. Scope: (1) scripts/audit/onboarding-sim.sh spawns a Claude agent with only ./docs/ mounted (no code access), no Chump tooling, and a prompt asking it to execute a first-task scenario (pick gap, explain repo layout, explain claim+ship flow) without running anything; (2) rubric-score the agent's output (can it identify pre-flight, explain leases, cite the right docs); (3) commit transcript + score to docs/audit/onboarding-sim-YYYY-MM-DD.md; (4) monthly re-run; (5) low score files a DOC-* gap with specific friction. Cheapest high-signal audit gap in the slate.
+  acceptance_criteria:
+    - scripts/audit/onboarding-sim.sh exists and runs a fresh Claude agent with docs-only mount
+    - Rubric defined with ≥ 5 scoring criteria
+    - Run committed to docs/audit/onboarding-sim-YYYY-MM-DD.md
+    - Low scores auto-file DOC-* follow-up gaps
+    - Monthly re-run cadence declared
+  notes: Closes reviewer role
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
+

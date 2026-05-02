@@ -1,0 +1,15 @@
+- id: DOC-008
+  domain: DOC
+  title: "Red Letter #6 cleanup — WORK_QUEUE.md duplicate + DOC-005 stale-open"
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Red Letter Issue #6 (2026-04-26) flagged two trivial registry-hygiene items: docs/WORK_QUEUE.md lines 18-19 listed RESEARCH-021 twice (mechanical paste error from the 2026-04-22 update), and DOC-005 remained `status: open` despite PR #529 having shipped its sole deliverable (docs/DOC_HYGIENE_PLAN.md) on 2026-04-25 — exactly the open-but-landed pattern INFRA-066's CI guard catches at gap-add time. Bundles both as a one-shot mechanical fix.
+  acceptance_criteria:
+    - docs/WORK_QUEUE.md has a single RESEARCH-021 row (line 18 only)
+    - "docs/gaps.yaml DOC-005 entry has status:done, closed_date:'2026-04-25', closed_pr:529"
+  source_doc: docs/RED_LETTER.md
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

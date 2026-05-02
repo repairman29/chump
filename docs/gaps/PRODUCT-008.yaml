@@ -1,0 +1,14 @@
+- id: PRODUCT-008
+  domain: product
+  title: Best-practice extraction — successful patterns auto-propagate to CLAUDE.md / TEAM_OF_AGENTS.md
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    When a pattern produces validated success (e.g. today: "atomic PR + auto-merge worked across 9 PRs", "code-reviewer agent verified PR #134 with sensible APPROVE verdict"), the pattern should auto-propagate as a convention to CLAUDE.md or TEAM_OF_AGENTS.md. Currently this is manual — I distilled today's patterns into the docs by hand. PRODUCT-008 automates: nightly scan of merged PRs + reflection_db outcomes + ambient events, identify patterns with >N positive instances and 0 negative, generate proposed convention update PR for human review.
+  depends_on: [PRODUCT-006, INFRA-SYNTHESIS-CADENCE]
+  notes: |
+    ~1 week. The "convention crystallization" loop. Without it, good patterns stay tribal knowledge in one session's head; with it, they propagate into the cross-session brain (CLAUDE.md, etc.).
+  source_doc: session 2026-04-19 multi-agent learning loop design
+  closed_date: '2026-04-20'
+

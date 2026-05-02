@@ -1,0 +1,11 @@
+- id: INFRA-DISPATCH-PERMISSIONS-FLAG
+  domain: infra
+  title: Spawned claude subagent stalls on permission prompts — pass --dangerously-skip-permissions
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Autonomy test V3 (with INFRA-CHUMP-API-RETRY shipped) ran 20 min, survived Anthropic API flakiness, but stalled when the subagent tried to call the Edit tool — permission prompt awaiting human approval (no human present, sandbox-by-context). Orchestrator monitor marked STALLED (no PR within soft deadline), reported summary, exited cleanly. The fix is one CLI flag: --dangerously-skip-permissions appropriate here because the subagent IS in a sandbox (own worktree, gap-scoped, atomic PR discipline, can't push to main per branch protection).
+  source_doc: docs/archive/2026-04/AUTONOMY-TEST-2026-04-19.md
+  closed_date: '2026-04-19'
+

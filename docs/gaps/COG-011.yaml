@@ -1,0 +1,12 @@
+- id: COG-011
+  domain: eval
+  title: Eval A/B — does lesson injection actually improve outcomes?
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    COG-007 wired GEPA lessons into the prompt but the impact on task success rate is unmeasured. Without this, lesson injection is "code that claims to help" — could be no-op or even regress the base rate.
+  depends_on: [COG-007]
+  source_doc: src/reflection_db.rs
+  closed_date: '2026-04-17'
+

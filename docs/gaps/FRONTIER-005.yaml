@@ -1,0 +1,13 @@
+- id: FRONTIER-005
+  domain: frontier
+  title: goose competitive positioning + Chump differentiation strategy
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Block's goose was contributed to the Agentic AI Foundation (Linux Foundation) in Dec 2025 as one of three founding projects. Official AAIF description: "a local-first AI agent framework that combines language models, extensible tools, and standardized MCP-based integration." This is LITERALLY Chump's positioning sentence. Chump is no longer in an empty niche — it's competing with a Linux-Foundation-blessed open-source project backed by Block, AWS, Anthropic, Google, Microsoft, OpenAI. We need a sharper differentiation story than "local agent in Rust." Candidate axes: (a) eval-driven scientific rigor (goose is dev-tooling, not research methodology), (b) Rust + single-binary distribution (goose is Python/TypeScript), (c) cognitive-layer A/B-tested architecture with published harm-channel findings (EVAL-023/025/026 trilogy is rare in the field), (d) multi-agent coordination via worktree+lease+gap registry (goose is single-agent per session).
+  notes: |
+    Action item from session 2026-04-19 strategic review. The deep research pass needs to actually read goose's architecture docs and run goose locally to compare. Reference: https://github.com/block/goose https://block.github.io/goose/ https://aaif.io/
+  source_doc: external (AAIF Dec 2025, Block goose)
+  closed_date: '2026-04-19'
+

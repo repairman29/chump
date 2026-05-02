@@ -1,0 +1,22 @@
+- id: INFRA-001
+  domain: infra
+  title: Transactional speculation — real per-tool rollback via sandbox_run
+  status: done
+  priority: P2
+  effort: xl
+  description: |
+    Current speculative execution rolls back in-process state (beliefs, neuromod, blackboard) but external side effects (file writes, CLI commands) are not rolled back. ADR-001 describes routing risky tools through sandbox_run for real rollback capability.
+  notes: |
+    Decomposed:
+      INFRA-001a — observability: count + log unrolled-back side
+                   effects per turn so the "product pain" criterion
+                   is measurable. Without this we can't tell whether
+                   the gate is satisfied.
+      INFRA-001b — sandbox_run integration in speculative_execution
+                   (gated behind CHUMP_SANDBOX_SPECULATION=1 once
+                   INFRA-001a shows pain).
+      INFRA-001c — policy doc: which tools route through sandbox
+                   (write_file, patch_file, run_cli, git_*).
+  source_doc: docs/ROADMAP_POST_PHASE_F.md, docs/ADR-001-transactional-tool-speculation.md
+  closed_date: '2026-04-18'
+

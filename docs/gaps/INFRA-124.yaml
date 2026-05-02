@@ -1,0 +1,20 @@
+- id: INFRA-124
+  domain: infra
+  title: docs-delta Net-new-docs trailer not validated against actual diff
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    The pre-commit docs-delta check (INFRA-009) computes ADDED-DELETED
+    on docs/*.md and accepts a 'Net-new-docs: +N' trailer to declare
+    intent. The trailer value is not verified to match the actual
+    computed delta - a commit can claim 'Net-new-docs: +1' while
+    actually adding 5 docs. The guard becomes blocking on 2026-04-28.
+    Tighten the check so the trailer must match (or be a superset of)
+    the computed delta.
+  acceptance_criteria:
+    - Pre-commit guard parses Net-new-docs trailer and asserts trailer >= computed delta
+    - Mismatch fails closed with a diagnostic message
+    - "Test - commit with Net-new-docs: +1 but actual +5 is rejected; matching trailer is accepted"
+  opened_date: '2026-04-26'
+

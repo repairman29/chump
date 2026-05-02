@@ -1,0 +1,22 @@
+- id: INFRA-108
+  domain: infra
+  title: Audit and normalize all ambient.jsonl emitters - INFRA-101 covers schema validation but existing emitters drift
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    INFRA-101 adds a JSON schema validator at emit time, but does not
+    standardize the existing emitter shapes. Audit on 2026-04-26 found
+    INTENT events use {event, session, ts, gap, files} key order while
+    every other event kind uses {ts, session, event, ...}. ALERT events
+    have inconsistent subkind/kind field naming. Audit all callers of
+    scripts/ambient-emit.sh plus any direct JSON appends in the Rust
+    codebase, normalize to a single canonical key order and required
+    fields, and update CLAUDE.md ambient-event reference to match.
+  acceptance_criteria:
+    - Inventory of every code path that writes to ambient.jsonl
+    - Canonical schema documented in docs/ambient-schema.md
+    - All emitters updated to canonical form
+    - INFRA-101 schema validator passes on every existing event-kind sample
+  opened_date: '2026-04-26'
+

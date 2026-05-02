@@ -1,0 +1,20 @@
+- id: INFRA-032
+  domain: infra
+  title: Dual-surface coordination excellence — Cursor + Claude parity for Chump team workflows
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Chump already documents Claude-primary autonomous loops (`scripts/agent-loop.sh`, `/loop`, `ScheduleWakeup`) and Cursor-first fleet safety (`docs/CHUMP_CURSOR_FLEET.md`, subagent rules, headless `agent` smoke). Real squads will mix surfaces daily (IDE pair-programming + headless dispatch + Discord `run_cli`). Treat **both** as first-class citizens: equal-depth runbooks, shared invariants (leases, gap-reserve, preflight, bot-merge, merge-queue discipline), and tooling so neither surface is a second-tier path that drifts or bypasses hooks. Complements INFRA-033 (MCP coord) by making the *human + agent* experience symmetric across Cursor and Claude where tool capabilities differ.
+  acceptance_criteria:
+    - "docs: add a short coordination index (new doc or extend CHUMP_CURSOR_FLEET) that states when to use Cursor vs Claude vs both, with links to AGENT_LOOP, CLAUDE.md, and INTENT_ACTION_PATTERNS"
+    - "docs/AGENT_LOOP.md gains a \"Dual-surface team model\" subsection: same coordination bar, different cadence/automation (no false equivalence of /loop vs Cursor)"
+    - "docs/CHUMP_CURSOR_FLEET.md gains explicit \"Claude session handoff\" bullets (what a Cursor parent should paste back when a Claude sibling shipped mid-gap)"
+    - "scripts: one combined smoke or checklist entrypoint (extend cursor-cli-status-and-test.sh or add scripts/coord-surfaces-smoke.sh) that verifies gap-preflight, gap-claim, musher pick, and chump --briefing from repo root without API keys"
+    - .cursor/rules/chump-multi-agent-fleet.mdc (or companion) references the dual-surface index so Cursor agents load parity guidance on every session
+    - "Optional: Discord/run_cli doc cross-links dual-surface checklist for delegated runs"
+  notes: |
+    INFRA-031 closed doc parity for headless loop semantics; INFRA-032 is the product-level "both surfaces are best-in-class" slice. Synergy with INFRA-033 MCP tools — optional follow-on once coord server exists.
+  source_doc: User request 2026-04-22 — team will use both Cursor and Claude Code on Chump
+  closed_date: '2026-04-21'
+

@@ -1,0 +1,32 @@
+- id: INFRA-214
+  domain: infra
+  title: per-agent gap-domain affinity — agent-1 INFRA only, agent-2 EVAL only, etc (kill hot-spot bias at 10+ agents)
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Today gap-claim.sh's "pick the highest-priority unclaimed gap"
+    naturally biases the fleet toward INFRA-* (which dominates the
+    backlog). At FLEET_SIZE=10, all 10 agents end up working INFRA
+    while EVAL / FLEET / DOC sit idle.
+    
+    Fix: per-agent FLEET_DOMAIN_FILTER env (used by INFRA-203's
+    worker.sh). Operator launches:
+      FLEET_DOMAIN_FILTER=INFRA  scripts/dispatch/run-fleet.sh    # agents 1-3
+      FLEET_DOMAIN_FILTER=EVAL   scripts/dispatch/run-fleet.sh    # agents 4-5
+      FLEET_DOMAIN_FILTER=FLEET  scripts/dispatch/run-fleet.sh    # agents 6-7
+      FLEET_DOMAIN_FILTER=DOC    scripts/dispatch/run-fleet.sh    # agent 8
+    
+    Worker.sh's gap-pick step filters by domain. If no gap matches
+    the affinity, agent waits 60s and retries (vs picking outside
+    affinity).
+    
+    Bonus: a config file scripts/dispatch/fleet.toml that names the
+    affinity layout so ops doesn't have to remember it.
+  acceptance_criteria:
+    - INFRA-203's worker.sh respects FLEET_DOMAIN_FILTER env
+    - scripts/dispatch/fleet.toml documents affinity layout
+    - "Test: launch FLEET_SIZE=4 with affinity (2 INFRA, 1 EVAL, 1 FLEET); verify each agent only picks gaps in its domain"
+  depends_on: [INFRA-211]
+  opened_date: '2026-05-02'
+

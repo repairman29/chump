@@ -1,0 +1,55 @@
+- id: INFRA-201
+  domain: infra
+  title: pre-commit cargo-fmt early-exit at line 947 silently bypasses guards 6/7/8/9 on docs-only commits
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Surfaced while writing the INFRA-158 regression tests
+    (test-docs-delta-guard.sh case 4 verifies the limitation):
+    `scripts/git-hooks/pre-commit` lines 946-948 unconditionally
+    exit 0 when no `.rs` files are staged.
+    
+      staged_rust=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.rs$' || true)
+      if [ -z "$staged_rust" ]; then
+          exit 0
+      fi
+    
+    Effect: docs-only commits, YAML-only commits, shell-only commits,
+    and any other non-Rust-touching commit silently skip:
+      - cargo-check build guard      (#6, INFRA-CHECK-BUILD)
+      - docs-delta check             (#7, INFRA-009)
+      - credential-pattern guard     (#8, INFRA-018)
+      - book/src sync guard          (#4b, INFRA-170 — already
+        worked around by inserting BEFORE the early-exit)
+    
+    Real-world cost: every `chore(gaps): add ...` PR I shipped this
+    session (#702 SECURITY-005, #684, #695, #650 filings) bypassed
+    docs-delta + credential-pattern entirely. PR #706 (book-sync
+    guard) only worked because I noticed the issue and placed it at
+    line 942 (BEFORE the early-exit). The other three guards
+    remain blind to docs-only commits.
+    
+    Fix: convert the early-exit into a conditional skip of just the
+    cargo-fmt + cargo-check stages. Re-run guards 7-9 (cargo-check
+    is genuinely Rust-only and should keep its early-exit) on every
+    commit. Pseudocode:
+    
+      if [ -n "$staged_rust" ] && command -v cargo >/dev/null; then
+          run_cargo_fmt_and_check
+      fi
+      # … docs-delta, credential-pattern, etc. always run …
+    
+    Out of scope: INFRA-202 (trailer-blind-spot in docs-delta) —
+    that's a separate guard logic bug, not an early-exit issue.
+    
+    Detection method: grep for `^exit 0` in `scripts/git-hooks/pre-commit`;
+    the early-exit at line ~948 should be the ONLY one before guards 7+.
+  acceptance_criteria:
+    - "scripts/git-hooks/pre-commit: cargo-fmt + cargo-check run only when .rs files staged; remaining guards run unconditionally"
+    - scripts/ci/test-docs-delta-guard.sh case 4 (`docs-only commit bypasses guard`) flips from PASS to FAIL — reflecting the fixed behavior — and is updated to assert that the guard now FIRES on docs-only commits
+    - scripts/ci/test-credential-pattern-guard.sh adds a docs-only-credential-leak case (was excluded as 'known blind spot') and verifies guard fires
+    - scripts/ci/test-book-sync-guard.sh continues to pass (already correctly placed)
+    - Existing Rust-touching commits continue to pass (no regression in cargo-fmt auto-fix or cargo-check)
+  opened_date: '2026-05-02'
+

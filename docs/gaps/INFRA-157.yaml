@@ -1,0 +1,44 @@
+- id: INFRA-157
+  domain: infra
+  title: "fix: ftue-clean-machine workflow YAML parse error blocked all PRODUCT-017 verification runs"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    The `.github/workflows/ftue-clean-machine.yml` workflow's PR-creation
+    step had a multi-line `--body "..."` string whose newlines dropped
+    indentation back to column 1 inside a YAML `run: |` pipe scalar.
+    YAML's pipe-block ends when indentation drops below the block's
+    level, so the parser saw `Verdict:` (column 1) as a new top-level
+    mapping key, choked when the next line wasn't `:`-followed, and
+    emitted "could not find expected ':' at line 134 column 1." The
+    workflow was rejected at parse time before any step could run.
+    
+    Effect: every clean-machine FTUE verification run failed at
+    workflow-load — not at the brew install or the FTUE stopwatch — so
+    the CI lane that was supposed to satisfy PRODUCT-017's acceptance
+    criterion #1 ("clean-machine stopwatch run committed to
+    docs/FTUE-VERIFICATION-YYYY-MM-DD.md") never produced a single
+    artifact. PRODUCT-017 was nonetheless closed via PR #631 ("dev-machine
+    FTUE baseline — 15.3s") on the strength of a non-clean-machine
+    measurement. Cold Water Issue #8's THE ONE BIG THING called out
+    PRODUCT-017 as 3-cycle stalled; the closure was technically false
+    because the verification artifact required by acceptance #1 never
+    existed.
+    
+    Fix: build the PR body in a bash heredoc (`BODY=$(cat <<EOF ... EOF)`)
+    so YAML never sees the embedded newlines, then pass `--body
+    "${BODY}"`. Adds an inline comment warning future editors against
+    column-1 lines inside `run: |` blocks.
+    
+    PRODUCT-017 should be re-opened (or a follow-up gap filed) once the
+    first successful clean-machine run produces an artifact —
+    docs/FTUE-VERIFICATION-2026-04-28.md or later — at which point the
+    ONE BIG THING from Issue #8 is genuinely resolved.
+  acceptance_criteria:
+    - ".github/workflows/ftue-clean-machine.yml parses cleanly (python3 -c \"import yaml; yaml.safe_load(open('.github/workflows/ftue-clean-machine.yml'))\")"
+    - Workflow run on main completes its `verify` job (no parse-time failure)
+    - First successful run produces docs/FTUE-VERIFICATION-YYYY-MM-DD.md and opens an auto-PR with it
+    - Inline comment in the workflow file documents the column-1 indentation footgun so it doesn't recur
+  opened_date: '2026-04-28'
+

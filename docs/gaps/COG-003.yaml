@@ -1,0 +1,12 @@
+- id: COG-003
+  domain: consciousness
+  title: Adaptive regime transitions — learned threshold tuning
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    PrecisionController regime thresholds are currently static (shifted only by noradrenaline). A simple online logistic regression or Thompson-sampling bandit could adjust thresholds based on recent task success rate, closing the thermodynamic grounding gap.
+  depends_on: [COG-001]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-16'
+

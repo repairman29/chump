@@ -1,0 +1,18 @@
+- id: INFRA-064
+  domain: infra
+  title: Fix gaps.yaml duplicate-field corruption from merge collisions
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Cumulative tail-append merge collisions across PRs #498 (INFRA-049), #494 (INFRA-BOT-MERGE-HEREDOC), #500 (INFRA-050), #508 (INFRA-052), and #512 (INFRA-055) left docs/gaps.yaml with five gaps reduced to title-only stubs whose bodies were either misattributed under the next neighboring `- id:` header or stranded as orphaned mappings appended to the bottom of unrelated entries. Net effect: serde_yaml rejected the file with `gaps[336]: duplicate field depends_on at line 10195`, causing chump-orchestrator's cli_smoke `dry_run_against_real_backlog_exits_zero_and_picks_at_least_one` test to fail and silently forcing every recent bot-merge.sh ship to use --skip-tests. Reconstructed each gap by cross-referencing the originating PR diffs, restoring proper - id / domain / status / description / acceptance_criteria / depends_on structure.
+  acceptance_criteria:
+    - python3 yaml.safe_load(docs/gaps.yaml) succeeds
+    - cargo test -p chump-orchestrator --test cli_smoke passes (all 4 tests)
+    - "No two gap entries share an id (grep `^- id:` uniq check)"
+    - INFRA-047, INFRA-048, INFRA-049, INFRA-050, INFRA-052, INFRA-055, INFRA-BOT-MERGE-HEREDOC each have non-stub bodies with description and acceptance_criteria
+    - bot-merge.sh ship runs without --skip-tests
+  notes: |
+    Root cause is that PRs adding gap entries by inserting a new `- id:` block immediately above an existing entry's body — combined with subsequent rebases that tail-append conflicting tails — silently detach bodies from headers. INFRA-052's resolve-gaps-conflict.py only handles the pure tail-append case, not the in-place insertion variant. Long-term mitigation: enforce that gap entries are always tail-appended (never inserted in the middle), and add a YAML lint to pre-commit that runs serde_yaml-strict parsing.
+  closed_date: '2026-04-25'
+

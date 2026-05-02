@@ -1,0 +1,59 @@
+- id: INFRA-172
+  domain: infra
+  title: "clippy unwrap_used + expect_used escalation: warn now, deny new code, triage existing 1395"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Refile of original PR #654 (INFRA-161 collided with sibling #649 ftue
+    workflow shipping the same ID). Content unchanged from the
+    2026-04-28 scour finding.
+    
+    Production paths in `src/*.rs` contain 1395 `.unwrap()` / `.expect(...)`
+    calls outside test code. Each is a potential panic at runtime; in a
+    long-running daemon or a multi-tenant ACP server these become silent
+    crashes / DoS vectors.
+    
+    Top 10 files (~840 of 1395, 60% of total):
+    
+      296 acp_server         (ACP protocol — most surface to malformed input)
+      118 gap_store          (SQLite layer — bail!() exists, prefer that)
+       93 memory_db
+       81 web_server         (HTTP — least defensible)
+       66 task_db
+       58 reflection_db
+       42 consciousness_tests
+       34 fleet_tool
+       28 plugin
+       25 web_sessions_db
+    
+    Workspace `Cargo.toml` has NO `[workspace.lints]` table today, so
+    there's no single place to flip `clippy::unwrap_used` /
+    `clippy::expect_used` warn → deny across all crates.
+    
+    Three-step rollout (each its own PR):
+    
+      Step 1 — `[workspace.lints.clippy]` table with both lints set to
+        `warn`. Tests opt out via per-file `#![cfg_attr(test, allow(...))]`.
+        Effect: cargo clippy emits 1395 warnings, 0 errors.
+    
+      Step 2 — Triage in batches per top-10 file. Per unwrap, pick:
+        (a) `?` propagation, (b) `.context("…")?`, (c)
+        `.unwrap_or_else(...)` with real recovery, (d)
+        `#[allow(clippy::unwrap_used)]` with one-line rationale (proven-
+        infallible: compile-time regex, post-validation invariant, etc).
+        Target: 1395 → ≤500.
+    
+      Step 3 — Promote warn → deny. Pre-commit cargo-check guard already
+        runs with `-D warnings`, so the deny promotion is automatic at
+        commit time.
+    
+    Detection: `grep -nE "\.(unwrap|expect)\(" src/*.rs | grep -vE
+    "tests::|fn test_|#\[test|//"`. Future scour passes diff against 1395.
+  acceptance_criteria:
+    - "Step 1 PR: workspace [lints.clippy] table with unwrap_used/expect_used = warn; cargo clippy emits warnings without erroring"
+    - "Step 2 (multi-PR): triage 10 highest-density files; count drops from 1395 to ≤500"
+    - "Step 3 PR: lints promoted from warn to deny; cargo clippy --all-targets -- -D warnings still passes"
+    - Each acceptance is its own PR — this is an umbrella gap
+  opened_date: '2026-04-29'
+

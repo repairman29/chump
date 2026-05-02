@@ -1,0 +1,46 @@
+- id: INFRA-195
+  domain: infra
+  title: "skills feedback loop: shipped PRs distill into chump_skills rows the next dispatcher reads"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    The infrastructure exists: chump_skills, chump_causal_lessons,
+    chump_improvement_targets all live in .chump/state.db. Spawn-time
+    prompt assembler can prepend lessons (CHUMP_LESSONS_AT_SPAWN_N).
+    Per-gap briefing (chump --briefing <ID>) reads them.
+    
+    What's MISSING: a feedback loop that DISTILLS SHIPPED PRs into new
+    chump_skills / chump_causal_lessons rows. Today lessons get added
+    only by manual sqlite3 INSERT (which is why nobody adds them) or by
+    Cold Water reflection rows (low frequency).
+    
+    Fix: post-merge-hook agent that:
+      1. Reads the shipped PR's diff + commit message
+      2. Identifies novel patterns ("used `chump gap reserve --domain X`
+         instead of shell script", "shipped via bot-merge.sh from a
+         linked worktree", "used pr-watch.sh for auto-recovery")
+      3. Writes a chump_skills row + chump_improvement_targets row if
+         the pattern is new
+      4. Future dispatcher runs read these via existing
+         load_spawn_lessons path
+    
+    Subsumes/closes when shipped:
+      - META-001 (diagnostic agents must verify gap activity — feed in
+        as a lesson the dispatcher prepends)
+      - META-002 (FIXED-but-replaced classification — same)
+      - META-003 (Cold Water factual errors — same)
+    
+    Out of scope: the LLM-based "is this a novel pattern" classifier
+    (just use rule-based pattern matching for v1; a separate
+    chump-distill crate could grow into LLM-based later).
+  acceptance_criteria:
+    - post-merge-hook helper exists (script or cron) that scans recent merged PRs
+    - Identifies known-good patterns (a small initial whitelist) + writes them to chump_skills + chump_improvement_targets
+    - load_spawn_lessons surfaces them when CHUMP_LESSONS_AT_SPAWN_N>0
+    - "After 1 week: chump_improvement_targets row count grows by ~10/wk (was 0/wk)"
+    - "After 2 weeks: at least 2 dispatcher runs pick up a lesson from a sibling agent's PR — verified via reflection_db row"
+  depends_on: [INFRA-192]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+

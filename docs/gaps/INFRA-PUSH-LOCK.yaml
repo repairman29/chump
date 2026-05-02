@@ -1,0 +1,14 @@
+- id: INFRA-PUSH-LOCK
+  domain: infra
+  title: Pre-push hook blocks pushes to PRs with auto-merge armed
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Current Chump rule (CLAUDE.md: "NEVER enable auto-merge until the branch is final") is documentation only — not tooling-enforced. PR #52 lost 11 commits to this exact failure mode (strategic memo). Multi-agent dispatch needs auto-merge to be the default, not the exception, so we need tooling to enforce the discipline: pre-push hook that fails when target PR has auto-merge armed. Forces atomic-PR workflow: agents either disarm auto-merge explicitly OR open a new PR for additional changes (cheap with musher dispatcher).
+  depends_on: [INFRA-MERGE-QUEUE]
+  notes: |
+    ~3 hours including tests. Pattern matches existing CHUMP_GAP_CHECK pre-push hook structure. Reference: scripts/git-hooks/pre-push for conventions.
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-20'
+

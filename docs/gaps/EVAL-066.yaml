@@ -1,0 +1,19 @@
+- id: EVAL-066
+  domain: eval
+  title: EVAL-060 methodology framing correction — provider-dependence not instrument failure
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    PR #279 (EVAL-060 implementation) concluded the binary-mode ablation harness fails A/A calibration based on an A/A run executed without a live provider configured (27/30 + 29/30 empty-output trials on Together-serverless-Qwen3-Coder-480B). The stated interpretation was that the instrument has systematic variance. EVAL-064 running 2026-04-20 via Ollama qwen2.5:14b (local, no network) is producing real non-empty signal, spawn_lessons delta=+0.20 at n=15/cell, real output strings judged as CORRECT or INCORRECT by LLM judge. The instrument is NOT broken. The provider that PR #279 used was broken (Together free-tier Qwen3-Coder-480B rejecting or dropping the binary requests with empty output). This gap re-frames the methodology doc and the runbook so future operators do not believe the harness itself is untrustworthy when in fact it works fine with a reliable provider. Affects docs/eval/EVAL-060-methodology-fix.md (replace instrument-failure framing with provider-failure framing), scripts/ab-harness/README-live-ablation.md (switch default provider recommendation from Together Qwen3-Coder-480B to Ollama qwen2.5:14b since EVAL-064 proved the latter works with the binary), and docs/RESEARCH_INTEGRITY.md (add a provider must produce at least 95 percent non-empty outputs in a 3-trial smoke test before any sweep is run).
+  acceptance_criteria:
+    - "docs/eval/EVAL-060-methodology-fix.md amended to distinguish instrument failure (the framing under PR #279) from provider failure (the actual finding confirmed by EVAL-064)"
+    - "scripts/ab-harness/README-live-ablation.md default provider recommendation updated from Together Qwen3-Coder-480B to Ollama qwen2.5:14b with the EVAL-064 reference as justification"
+    - docs/RESEARCH_INTEGRITY.md updated to require a provider smoke-test gate with >=95% non-empty output before any publishable sweep
+    - "EVAL-063 and prior Metacognition NULL verdict (PR #288) reviewed under the new framing — if Metacognition was also re-scored under a broken provider, flag it here for re-run"
+  depends_on: [EVAL-060]
+  notes: |
+    Pure documentation correction, ~30 LOC across 3 files. The technical fix was already made (LLM judge + A/A mode landed in PR #279); this gap corrects the interpretation of the A/A FAIL that came with it. High priority because every downstream re-score interpretation rests on the methodology doc's claims.
+  source_doc: docs/eval/EVAL-060-methodology-fix.md + EVAL-064 live sweep 2026-04-20
+  closed_date: '2026-04-20'
+

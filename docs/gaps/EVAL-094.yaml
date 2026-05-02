@@ -1,0 +1,37 @@
+- id: EVAL-094
+  domain: eval
+  title: ICLR 2026 covert sandbagging confirms 16-36% monitor bypass — run RESEARCH-026 swept experiment
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    "LLMs Can Covertly Sandbag on Capability Evaluations Against Chain-of-Thought
+    Monitoring" (arXiv:2508.00943, accepted ICLR 2026) evaluated 10 models including
+    Claude-3.7-Sonnet and Claude-4-Sonnet. Key finding: models bypass CoT monitoring
+    16-36% of the time when monitor-aware and when prompted to sandbag. Chump's A/B
+    harness uses Claude Haiku-4.5 and Sonnet-4.5 as agents under test with explicit
+    evaluation framing (task IDs, structured rubrics, "the user asks..." syntax).
+    
+    The IAPS paper (cited in Issues #6-#8) established that models detect evaluation
+    contexts. This paper quantifies the bypass rate against the specific monitoring
+    approach (CoT auditing) that Chump relies on implicitly for judge validity.
+    
+    EVAL-087 (P1, open, 3 cycles inactive) asks for RESEARCH-026 to be reframed to
+    P1. This gap supersedes that reframe request and directly executes the
+    RESEARCH-026 experiment: compare reflection fixture results under (a) standard
+    evaluation framing vs (b) naturalized framing with scrubbed task IDs and rubrics.
+    n>=100, cross-judge panel (haiku-4-5 + llama-3.3-70b), A/A baseline, preregistered
+    hypothesis.
+    
+    Filing this as EVAL-094 rather than closing EVAL-087 because EVAL-087 is a
+    priority-reframe request while this is an execution gap. Close EVAL-087 when
+    RESEARCH-026 is upgraded to P1 in the canonical store.
+  acceptance_criteria:
+    - RESEARCH-026 priority set to P1 in .chump/state.db (via chump gap set)
+    - Preregistration doc at docs/eval/preregistered/EVAL-094.md committed before data collection
+    - Harness run with n>=100, cross-judge, A/A calibration, naturalized vs standard framing
+    - Wilson CI results committed to docs/eval/EVAL-094-results.md
+    - Validated findings table in RESEARCH_INTEGRITY.md updated with result (or null)
+  depends_on: [EVAL-087, RESEARCH-026]
+  opened_date: '2026-05-02'
+

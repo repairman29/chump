@@ -1,0 +1,19 @@
+- id: EVAL-083
+  domain: eval
+  title: Eval credibility audit sweep
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    EVAL-069 used broken scorer (exit_code_fallback, python3.14 no anthropic module). Are there other evals with hidden methodology issues? Spot-check 12–15 recent evals (focus EVAL-070 through EVAL-082). For each: inspect JSONL scorer field, check shebang, verify LLM judge availability. Categorize: valid, partial (workaround but defensible), broken. Document findings with evidence (JSONL snippets, shebang diffs).
+  acceptance_criteria:
+    - Audit complete on 12+ evals (EVAL-070 through EVAL-082)
+    - Findings documented with evidence (JSONL snippets, shebang diffs, API logs)
+    - Risk categorized for each (safe, needs re-run, broken)
+    - Recommended actions clear (re-run with fix, retire finding, no action)
+    - Report published in docs/eval-credibility-audit.md
+  notes: |
+    High confidence gain for publication (PRODUCT-009). Parallelizable across agents.
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  closed_date: '2026-04-25'
+

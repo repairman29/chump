@@ -1,0 +1,12 @@
+- id: PRODUCT-023
+  domain: product
+  title: "Default chat model -> qwen2.5:7b (.env, run-web.sh, profile doc)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Today proved 14B + cold-load + thinking-mode = bad interactive UX. Default chat model swaps to qwen2.5:7b (~4.7GB VRAM, 1-3s first token cold). 14B remains opt-in for heavy turns by setting OPENAI_MODEL=qwen2.5:14b in .env. Frees ~5GB for system headroom on 24GB Air (rust-analyzer + browser + chump can all coexist without swap thrash). Independent of the singleton/semaphore work — safe to land anytime.
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 713
+

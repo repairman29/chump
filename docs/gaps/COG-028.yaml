@@ -1,0 +1,10 @@
+- id: COG-028
+  domain: consciousness
+  title: Checkpoint V2 — zero-compute sleep + full state re-hydration
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    checkpoint_db.rs stores state_snapshot_json but never reads it back (explicitly marked V2 in source, lines 5-7). Zero-compute sleep requires the agent process to terminate after serialising, then re-hydrate from DB on heartbeat trigger — not sleep-loop. speculative_execution.rs already has all individual restore primitives; they just need wiring.
+  closed_date: '2026-04-16'
+

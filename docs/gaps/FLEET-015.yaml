@@ -1,0 +1,27 @@
+- id: FLEET-015
+  domain: fleet
+  title: Ambient-stream NATS migration — complete FLEET-007 split-brain
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    FLEET-007 (done, PR #542) shipped NATS-backed distributed leases, creating
+    machine-agnostic lease coordination. FLEET-006 (P1, open) bridges the ambient
+    stream to NATS but remains unstarted. Result: lease coordination is NATS-backed
+    (correct on any machine); ambient perception (.chump-locks/ambient.jsonl) is
+    filesystem-local (broken on any machine other than the primary). An agent on
+    machine B has correct lease mutual exclusion but receives empty ambient events.
+    The CLAUDE.md mandatory pre-flight (tail -30 .chump-locks/ambient.jsonl) returns
+    nothing on machine B. The agent proceeds not knowing it is blind. This gap tracks
+    completion of the FLEET-007 migration by closing FLEET-006 and verifying
+    two-machine ambient event propagation.
+  acceptance_criteria:
+    - FLEET-006 closed (ambient.jsonl events routed through NATS)
+    - Two-machine integration test shows events from machine A in machine B tail
+    - CLAUDE.md mandatory pre-flight continues to work unchanged
+  depends_on: [FLEET-006, FLEET-007]
+  notes: |
+    Closed as duplicate of FLEET-006 via FLEET-016 dedup (2026-04-26). The split-brain framing (FLEET-007 NATS leases shipped but ambient.jsonl still filesystem-local) is folded into FLEET-006's description and acceptance criteria. Track all ambient-stream-to-NATS work under FLEET-006.
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

@@ -1,0 +1,19 @@
+- id: INFRA-048
+  domain: infra
+  title: Queue driver — refresh oldest BEHIND auto-merge PR so branch protection doesn't strand the train
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Branch protection requires PRs to be up-to-date with main, but auto-merge does not auto-rebase. When PR N lands, every other auto-merge-armed PR goes BEHIND. None refreshes itself, so the queue stalls until a human runs `gh pr update-branch` on the oldest. Observed 2026-04-24 — 9 sibling PRs sat BEHIND for ~30 minutes with auto-merge armed and clean CI; nothing landed until manual intervention. Fix: a tiny GitHub Action `queue-driver.yml` triggered on push-to-main and a 5-min cron that finds the oldest BEHIND auto-merge-armed PR and runs `gh pr update-branch`. The backing script `scripts/queue-driver.sh` works the same locally.
+  acceptance_criteria:
+    - scripts/queue-driver.sh exists, is executable, supports --dry-run and --max
+    - Script picks oldest BEHIND PR with autoMergeRequest != null and is not draft
+    - .github/workflows/queue-driver.yml runs on push to main + 5-min schedule + workflow_dispatch
+    - "Workflow uses concurrency group \"queue-driver\" so two runs don't race"
+    - Dry-run smoke test verified locally before ship
+  notes: |
+    INFRA-046/047 are unrelated (Crate audit, Dependency modernization) and are in flight as PRs #493 / #496. INFRA-048 is the next free ID. The proper long-term fix is to enable GitHub's actual merge queue (`merge_queue` in branch protection); this driver is the cheap interim that survives whether or not the queue ever gets enabled.
+  source_doc: CLAUDE.md
+  closed_date: '2026-04-24'
+

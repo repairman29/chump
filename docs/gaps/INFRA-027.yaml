@@ -1,0 +1,16 @@
+- id: INFRA-027
+  domain: infra
+  title: Fix SIGPIPE in gap-claim.sh — silent lease-write failure under set -o pipefail
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    scripts/gap-claim.sh line 136 used `git worktree list --porcelain | awk '…exit'` — awk's early exit closes the pipe while git is still writing, SIGPIPE propagates, and under `set -o pipefail` the whole pipeline exits 141. Script terminates before writing the lease file, producing silent claim failures that force callers to fall back to hand-written python3 lease writes (observed twice in one session). Fix: capture git output into a variable first, then run awk against it via herestring — no pipeline, no SIGPIPE race.
+  acceptance_criteria:
+    - scripts/gap-claim.sh exits 0 and writes the lease file in a fresh linked worktree
+    - No regression on the main-worktree refusal guard
+  notes: |
+    Shipped with the fix in the same PR as the gap entry since the bug blocked normal claim-shipping; xs effort, one-line structural fix.
+  source_doc: "Observed 2026-04-21 during autonomous /loop: gap-claim.sh exit 141 + empty .chump-locks/ in removal-003-belief worktree"
+  closed_date: '2026-04-21'
+

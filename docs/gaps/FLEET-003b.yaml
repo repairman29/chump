@@ -1,0 +1,12 @@
+- id: FLEET-003b
+  domain: fleet
+  title: peer_sync extension — atomic blackboard exchange
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    Second chunk. peer_sync currently sends per-item heartbeats; needs a transactional batch send/recv so two peers can swap blackboard snapshots in one round-trip. Wire envelope: SHA256 of payload, sequence number, timeout, peer-attribution headers.
+  depends_on: [FLEET-003a]
+  source_doc: src/fleet.rs
+  closed_date: '2026-04-18'
+

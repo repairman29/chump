@@ -1,0 +1,19 @@
+- id: EVAL-064
+  domain: eval
+  title: Re-score Memory + Executive Function under EVAL-060 instrument — LLM judge n≥50/cell
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Memory (EVAL-056) and Executive Function (EVAL-058) both labeled COVERED+VALIDATED(NULL) under the broken exit-code harness. Unlike Metacognition, neither has a known NEGATIVE prior. EVAL-061 mandates a decision: keep NULL labels and file removal gaps, OR re-score. This gap takes path (b) — re-score — for both faculties using the EVAL-060 LLM judge. Run: run-binary-ablation.py --module spawn_lessons --use-llm-judge --n-per-cell 50, and: run-binary-ablation.py --module blackboard --use-llm-judge --n-per-cell 50. If NULL is confirmed under the better instrument, the removal path (EVAL-061 path a) becomes the right next step. If signal is detected, update the faculty map accordingly.
+  acceptance_criteria:
+    - "PREREQUISITE — live API endpoint before any sweep. Same trap as EVAL-063: PR #279 A/A calibration showed the chump binary exits 1 with no output on ~95% of trials when no live provider is configured. Running this gap without OPENAI_API_BASE + OPENAI_API_KEY + OPENAI_MODEL set to a live endpoint reproduces the noise-floor problem. See docs/eval/EVAL-060-methodology-fix.md."
+    - "Verification gate — run 3-trial smoke test first per module: python3 scripts/ab-harness/run-binary-ablation.py --module spawn_lessons --n-per-cell 3 --use-llm-judge. Abort if any trial has exit_code != 0 or output_chars <= 50. Only proceed to n=50 sweep after smoke trials pass for both spawn_lessons and blackboard."
+    - spawn_lessons and blackboard both swept at n=50/cell with --use-llm-judge
+    - docs/eval/EVAL-056-memory-ablation.md updated with LLM-judge section
+    - docs/eval/EVAL-058-executive-function-ablation.md updated with LLM-judge section
+    - CHUMP_FACULTY_MAP.md Memory + Executive Function rows updated
+  depends_on: [EVAL-060, EVAL-061]
+  source_doc: docs/RED_LETTER.md
+  closed_date: '2026-04-20'
+

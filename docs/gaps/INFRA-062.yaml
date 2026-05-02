@@ -1,0 +1,18 @@
+- id: INFRA-062
+  domain: infra
+  title: M4 — Feature flags for COG-* (kill long-lived cognitive branches)
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    src/runtime_flags.rs with CHUMP_FLAGS=cog_040,cog_041 env parsing at startup. `if flags::is_enabled(\"cog_040\")` gates around new behavior. Default policy: off until cycle review + bench confirmation, then on, then cleanup PR removes the flag. Bench harness runs flags-off baseline vs flags-on candidate per benchmark; COG reflection rows tag the flag set under test. Modeled on Google/Meta trunk-based dark-launch. Eliminates rebase tax on cognitive work.
+  acceptance_criteria:
+    - "runtime_flags::is_enabled reads CHUMP_FLAGS env correctly"
+    - Two real COG-* gaps shipped using the flag pattern (replacing >3-day branches)
+    - cargo bench produces flag-on vs flag-off rows
+    - CLAUDE.md Hard Rules updated; long COG branches forbidden
+  depends_on: [INFRA-058]
+  notes: Parallelizable with M3 — independent code paths.
+  source_doc: docs/WORLD_CLASS_ROADMAP.md
+  closed_date: '2026-04-25'
+

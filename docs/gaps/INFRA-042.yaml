@@ -1,0 +1,21 @@
+- id: INFRA-042
+  domain: infra
+  title: Multi-agent dogfooding end-to-end test
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    FLEET vision describes distributed agents coordinating work across a Tailscale network. Haven't proven the system works under real multi-agent load. Scope: Set up 2–3 agents in chump-orchestrator on same machine (or small Pi cluster). Post 3–5 representative gaps. Run for 2–4 hours; observe lease conflicts, ambient stream integrity, work board interaction. Document: what broke? what was slow? what felt brittle? Acceptance: agents can claim and execute gaps independently, lease collisions don't cause data loss, ambient stream records all events, at least one subtask successfully posted and claimed across agents, no silent failures.
+  acceptance_criteria:
+    - Agents can claim and execute gaps independently without conflicts
+    - Lease collisions don't cause data loss or deadlock
+    - Ambient stream records all coordination events
+    - At least one subtask successfully posted and claimed across agents
+    - All errors surfaced in logs (no silent failures)
+    - Stress test report documenting bottlenecks or edge cases
+  depends_on: [FLEET-006, FLEET-007]
+  notes: |
+    Single-machine scope shipped 2026-04-25 — scripts/test-multi-agent-stress.sh + docs/INFRA-042-MULTI-AGENT-REPORT.md. File-based COORD-NATS race window measured and documented (every concurrent agent wins; mutex is caller-side via gap-preflight + chump-coord atomic CAS when present). Cross-machine FLEET scope deferred to FLEET-006/007.
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  closed_date: '2026-04-25'
+

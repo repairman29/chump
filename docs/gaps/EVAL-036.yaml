@@ -1,0 +1,14 @@
+- id: EVAL-036
+  domain: eval
+  title: Prompt-assembler ablation — minimalist vs full context-assembly
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Executive Function faculty: tested whether prompt_assembler.rs adds useful work or noise. Two cells: current prompt assembly strategy vs minimalist (system prompt + raw user prompt only). n=50 reflection.
+  notes: |
+    Cheap test (~$2, 1 day code + 1 hour sweep).
+  source_doc: docs/RESEARCH_PLAN_2026Q3.md
+  closed_date: '2026-04-20'
+  closed_pr: 221
+

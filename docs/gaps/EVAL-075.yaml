@@ -1,0 +1,16 @@
+- id: EVAL-075
+  domain: eval
+  title: Failure-mode taxonomy — hallucinate vs refuse vs decline scoring axis
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Current multi-axis scoring captures correctness, hallucinated_tools, did_attempt. EVAL-071 surfaced a fourth distinguishable failure mode: refusal-to-attempt-with-instruction ("here is how you could run this yourself") which scores is_correct=False / halluc=False / attempted= False but is qualitatively different from a blank refusal or a confidence hedge. Add a fifth axis tagged `refusal_with_instruction` (judge prompt detects "here's how you could do this yourself" / "one way to do this is..." phrasing) and re-score the EVAL-071 sweep to quantify how much of DeepSeek's -23pp drop is this specific mode.
+  acceptance_criteria:
+    - scoring_v2.py extended with refusal_with_instruction boolean axis
+    - Judge prompt includes explicit detection instruction for the pattern
+    - Re-score EVAL-071 sweep and report breakdown (refusal vs other fail)
+  depends_on: [EVAL-071]
+  source_doc: docs/eval/EVAL-071-halluc-generalization.md
+  closed_date: '2026-04-21'
+

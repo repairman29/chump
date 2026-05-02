@@ -1,0 +1,14 @@
+- id: EVAL-022
+  domain: eval
+  title: Expand cognitive-layer fixtures to n>=100 tasks each
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Current cognitive-layer fixtures (perception_tasks.json, neuromod_tasks.json, reflection_tasks.json) have only 20 tasks each. At n=20 per cell, the 95% Wilson CI on a 50% pass rate is ±0.22 — meaning any A/B delta below ±0.10 is within sampling noise. The "Methodological critique" section of CONSCIOUSNESS_AB_RESULTS.md (commit d5187c2) calls this out as severity-1 methodological flaw blocking any defensible publication.
+    The v2 harness (run-cloud-v2.py) ships with multi-axis scoring + Wilson CIs + A/A control mode. It will print "WITHIN NOISE" for any delta that cannot be distinguished from sampling variation. At n=20 it correctly flags every observed delta as noise. The harness is not the bottleneck; the fixture size is.
+  notes: |
+    Task authoring is the bulk of the effort (~80 new tasks per fixture). Could be partly LLM-generated then human-reviewed for diversity. After this lands, the v2 harness can produce numbers that are safe to cite in research papers without the "preliminary, n=20" hedge.
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-18'
+

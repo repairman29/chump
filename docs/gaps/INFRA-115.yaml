@@ -1,0 +1,26 @@
+- id: INFRA-115
+  domain: infra
+  title: Lease TTL has no server-side enforcement - stale .chump-locks/ ignored only client-side
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Lease expiry is computed in scripts/gap-reserve.sh (Python, 30s grace
+    window) and pre-commit hook (shell date arithmetic, fragile parsing).
+    Both are client-side checks - an offline agent with a stale .chump-locks/
+    cache can reuse expired leases. Pre-commit timestamp parsing is
+    shell-fragile - if the timestamp is malformed, $exp_epoch becomes
+    empty and the check silently passes. There is no canonical authority
+    that says 'this lease is dead' that all agents consult. INFRA-105
+    addresses lease-vs-state.db convergence; this gap addresses TTL
+    enforcement specifically. NATS KV (chump-coord) already has TTL on
+    gap claims (DEFAULT_GAP_TTL_SECS = 14400) - the file lease layer
+    should be subordinate to NATS or have an equivalent server-side
+    purge.
+  acceptance_criteria:
+    - Either NATS KV or a SQLite-backed expiry service is the authoritative lease ledger
+    - Client-side checks read from this authority and never trust the local cache alone
+    - Pre-commit timestamp parser fails closed (refuses to merge) on malformed expires_at
+    - Test - simulate a stale local lease file with expired ts, verify a sibling agent can claim despite the local file
+  opened_date: '2026-04-26'
+

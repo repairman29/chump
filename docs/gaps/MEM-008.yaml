@@ -1,0 +1,18 @@
+- id: MEM-008
+  domain: memory
+  title: Multi-hop QA fixture spec — define what multi-hop means before building
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    EVAL-034 (memory retrieval multi-hop QA) acceptance says "build a multi-hop QA fixture (~30 questions)" without specifying what kind of multi-hop reasoning is tested. Without a fixture spec, a negative result is uninterpretable: does it mean the memory graph is broken, or that the fixture only tests simple recall? Three meaningful categories:
+      (a) Entity resolution: "Alice" = "my coworker Alice" = "alice@work"
+      (b) Temporal reasoning: did X happen before Y?
+      (c) Transitive closure: A→B and B→C implies A→C
+    A pilot (n=20, 3 categories × 7 questions each) should run before committing to the full EVAL-034 n=50 sweep.
+  notes: |
+    ~0.5 days. Cheap design work that prevents an expensive ($10+) EVAL from being uninterpretable. Should precede EVAL-034.
+  source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+  closed_date: '2026-04-20'
+  closed_pr: 202
+

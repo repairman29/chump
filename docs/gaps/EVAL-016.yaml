@@ -1,0 +1,13 @@
+- id: EVAL-016
+  domain: eval
+  title: Refusal calibration A/B — false-refuse vs false-comply
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Lessons block emphasizes safety. Likely pushes the agent toward over-refusal on legitimate requests. We have no measurement of false-refuse vs false-comply.
+  notes: |
+    TEST-CAT-F. Critical for production deployment — over-refusal kills user trust faster than occasional false-comply.
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

@@ -1,0 +1,22 @@
+- id: FLEET-006
+  domain: fleet
+  title: Distributed ambient stream — bridge .chump-locks/ambient.jsonl to NATS topics
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Ambient stream currently lives on filesystem (.chump-locks/ambient.jsonl). This breaks when agents run on different machines. Replace with NATS-backed event topics. Every agent publishes events (bash_call, file_edit, commit, session_start) to NATS. Every agent subscribes to all events for peripheral vision. Fallback: git itself remains the distributed audit trail (commits, refs). Design: single NATS topic "chump/ambient-stream" with multiplexed event kinds, or one topic per kind. Schema: same JSON as current ambient.jsonl entries. Note: FLEET-007 (NATS leases, PR #542) is done; until this gap lands, machine B has correct lease mutual exclusion but blind ambient perception — CLAUDE.md mandatory pre-flight (tail .chump-locks/ ambient.jsonl) returns nothing on non-primary machines and the agent proceeds unaware. Acceptance must include a two-machine integration test showing events from machine A appear in machine B's tail.
+  acceptance_criteria:
+    - NATS broker operational (local, air-gapped capable)
+    - Agents publish bash_call, file_edit, commit, session_start, ALERT events to NATS
+    - Agents subscribe and tail 100 recent events on startup
+    - Event schema matches current ambient.jsonl (ts, session, event, payload)
+    - git commits remain the primary audit trail
+    - Two-machine integration test shows events from machine A in machine B tail
+    - CLAUDE.md mandatory pre-flight continues to work unchanged
+  notes: |
+    Critical path for distributed fleet. Unblocks FLEET-008/009. NATS can run entirely offline on Tailscale network (FLEET-013 prereq). Prototype in 2–3 days. FLEET-015 was a duplicate of this gap (closed via FLEET-016 dedup, 2026-04-26) — its split-brain framing is folded into the description above.
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  closed_date: '2026-04-26'
+  closed_pr: 572
+

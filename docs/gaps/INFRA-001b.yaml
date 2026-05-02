@@ -1,0 +1,12 @@
+- id: INFRA-001b
+  domain: infra
+  title: Speculative execution routes write tools through sandbox_run
+  status: done
+  priority: P3
+  effort: l
+  description: |
+    Second chunk of INFRA-001. Implement the ADR's plan only AFTER INFRA-001a shows non-trivial unrolled-back side effects in a production trace.
+  depends_on: [INFRA-001a]
+  source_doc: docs/ADR-001-transactional-tool-speculation.md
+  closed_date: '2026-04-18'
+

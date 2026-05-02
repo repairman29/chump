@@ -1,0 +1,18 @@
+- id: INFRA-WORKTREE-STAGING
+  domain: infra
+  title: Pre-staged WIP from other agents leaks into commits in shared worktree
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Multiple agents share /Users/jeffadkins/Projects/Chump (the main worktree) while also having their own .claude/worktrees/<name>. When agent A `git add`s a file but doesn't commit, then agent B runs `git add <unrelated>` and `git commit`, the commit accidentally includes agent A's pre-staged file too.
+    Observed twice this session:
+      - cf79287: my needless_return fix swept funny-hypatia's incomplete
+        memory_db.rs WIP (broken stmt lifetime); had to revert in 1241e0c.
+      - a5b5053: my gaps.yaml additions swept an unrelated
+        DOGFOOD_RELIABILITY_GAPS.md edit from another agent.
+    
+    Pre-commit hook already validates leases on staged paths but does not warn when a commit includes files the current command did not touch.
+  source_doc: cf79287, a5b5053
+  closed_date: '2026-04-17'
+

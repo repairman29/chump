@@ -1,0 +1,17 @@
+- id: SECURITY-003
+  domain: SECURITY
+  title: Rotate QUEUE_DRIVER_APP_PRIVATE_KEY every 90 days
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    INFRA-048 wired up a GitHub App (QUEUE_DRIVER_APP_ID + QUEUE_DRIVER_APP_PRIVATE_KEY) so queue-driver pushes can re-trigger CI on auto-merge PRs. App private keys have no expiry — if the key ever leaks (developer laptop compromise, secret misconfiguration in a fork), an attacker has perpetual write access to main. Establish a 90-day rotation cadence: regenerate the key in the App settings, update the QUEUE_DRIVER_APP_PRIVATE_KEY repo secret, delete the old key. No code change — pure operational policy. File a calendar reminder + add a checklist entry to docs/SECURITY.md (or equivalent) once the doc exists.
+  acceptance_criteria:
+    - 90-day rotation interval documented in repo (RUNBOOK.md or SECURITY.md)
+    - First rotation performed and logged (date stamped)
+    - Second rotation scheduled (calendar event or recurring task)
+  notes: |
+    Low priority because the App is scoped to this single repo and only has the minimum permissions queue-driver needs (pull-requests: write, contents: write). Defense-in-depth, not an urgent fix.
+  closed_date: '2026-04-25'
+  closed_pr: 511
+

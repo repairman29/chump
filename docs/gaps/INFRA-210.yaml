@@ -1,0 +1,38 @@
+- id: INFRA-210
+  domain: infra
+  title: shared CARGO_TARGET_DIR + sccache for fleet worktrees (kill 5GB-per-worktree disk + cold-build time)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Each linked worktree under .chump/worktrees/<name>/ today maintains
+    its own target/ directory (typically 2-8 GB after cargo clippy +
+    cargo test). With ~25 frozen worktrees today the disk is at risk;
+    at FLEET_SIZE=10-50 (META-004 / fleet scaling discussion) this
+    becomes a hard ceiling — 50 × 5 GB = 250 GB on a 460 GB M4.
+    
+    Fix path:
+      1. Set CARGO_TARGET_DIR to a single shared location
+         (e.g. ~/.cache/chump-fleet-target/) — all worktrees share
+         the same target dir. cargo handles concurrent reads safely;
+         concurrent writes for the SAME crate on different branches
+         is the failure mode to test.
+      2. If concurrent writes break (likely on heavy clippy/test
+         loads), layer sccache on top — sccache caches by (crate,
+         hash) so each worktree's cargo build hits the cache and
+         only rebuilds what differs.
+      3. Document in CLAUDE.md "Worktree disk hygiene" section.
+      4. Update bot-merge.sh's "purge ./target" step to be a no-op
+         when CARGO_TARGET_DIR points outside the worktree.
+    
+    Acceptance: 10 worktrees building concurrently use < 15 GB total
+    target dir (vs 50 GB unshared). Build time for the 11th worktree
+    starting from a warm shared cache is < 90 s (vs cold 5-10 min).
+    No build correctness regression in any worktree.
+  acceptance_criteria:
+    - CARGO_TARGET_DIR documented in CLAUDE.md and exported by scripts/dispatch/run-fleet.sh (INFRA-203) by default
+    - sccache config wired in if needed for concurrent-write safety; documented as optional
+    - bot-merge.sh's target-purge step is no-op when CARGO_TARGET_DIR points outside worktree
+    - "10-worktree concurrent build test: total target disk < 15 GB; build correctness verified by cargo test --workspace pass"
+  opened_date: '2026-05-02'
+

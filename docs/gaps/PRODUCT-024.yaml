@@ -1,0 +1,13 @@
+- id: PRODUCT-024
+  domain: product
+  title: PWA chat default to non-reasoning model (INFRA-183 sub) — biggest UX win
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    Switch chat default to non-reasoning model (qwen2.5:14b or llama3.1) instead of the reasoning model currently served on MLX :8000. Measured: 56.985 s for 'pong' = 4 chars, 1 user-visible delta, 114 keepalive pings, 0 visible reasoning. Ground-truth probe captured in INFRA-183 umbrella body. Single largest UX win for near-zero code.
+  depends_on: [INFRA-183]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 697
+

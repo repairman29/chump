@@ -1,0 +1,33 @@
+- id: INFRA-192
+  domain: infra
+  title: "forward-chain notifier: post gap_unblocked event when a PR closes a depends_on link"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Today when a PR merges that closes a gap, downstream gaps with
+    `depends_on: [<closed-gap>]` continue to sit waiting. Agents
+    discover the unblock by manual queue-scan or never. INFRA-176
+    (this session) was unblocked by INFRA-174 landing — neither agent
+    nor I noticed for 30 minutes.
+    
+    Fix: a small Rust helper or shell script invoked by the
+    auto-flip-on-ship path (INFRA-154). When gap X flips to status:done,
+    scan all open gaps for depends_on entries containing X, post a
+    `gap_unblocked` event to ambient.jsonl + NATS for each downstream.
+    
+    Schema for the new event:
+      {"kind":"gap_unblocked","blocking_gap":"INFRA-174",
+       "unblocked_gap":"INFRA-176","ts":"2026-05-01T..."}
+    
+    Cold Water + dispatcher prompts can subscribe to this kind and
+    surface unblocks in their next sweep.
+  acceptance_criteria:
+    - "On gap X flipping status:done, the bot-merge auto-flip path scans open gaps for depends_on contains X"
+    - For each downstream Y, an ambient gap_unblocked event is emitted with blocking_gap + unblocked_gap fields
+    - Cold Water Step 1 surfaces gap_unblocked events from the last week as a 'newly actionable' bullet
+    - "Test: synthetic gap A closed → gap B (depends_on: A) gets a gap_unblocked event in ambient.jsonl"
+  depends_on: [INFRA-154]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+

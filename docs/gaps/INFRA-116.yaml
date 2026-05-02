@@ -1,0 +1,22 @@
+- id: INFRA-116
+  domain: infra
+  title: runtime_flags.rs - documented CHUMP_KNOWN_FLAGS list does not exist
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    src/runtime_flags.rs comment line 20 says "The flag ... removed from
+    this module's CHUMP_KNOWN_FLAGS list." No such constant or list exists
+    in the file (only parse_flags_str() and enabled_flags_sorted()). The
+    documented invariant (every cog_NNN flag must appear in the known-flags
+    list, removal is the cleanup signal per CLAUDE.md "Long COG-* branches
+    forbidden") is therefore unenforced - dead flags can linger and there
+    is no canonical place to audit which experiments are still gated.
+    Either (a) add the list and have parse_flags_str() warn on unknown
+    flags, or (b) remove the comment and document an alternative mechanism.
+  acceptance_criteria:
+    - Either CHUMP_KNOWN_FLAGS list exists and is referenced by parse_flags_str(), or the comment is corrected
+    - If list exists - unknown flag names emit a warning to stderr and an ambient WARN event
+    - Cycle-review process to remove dead flags is documented in CLAUDE.md
+  opened_date: '2026-04-26'
+

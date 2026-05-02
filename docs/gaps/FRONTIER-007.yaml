@@ -1,0 +1,15 @@
+- id: FRONTIER-007
+  domain: frontier
+  title: Cross-agent benchmarking — apply Chump's eval harness to goose, Aider, Claude Code
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Chump's run-cloud-v2.py + scoring_v2 multi-axis A/B harness is genuinely differentiated infrastructure. Goose has security and Recipes; it does NOT publish methodologically-rigorous A/B harm findings on its own behavior. By applying Chump's eval harness to goose (and Aider, Claude Code) on the same fixtures Chump tests itself with, we can produce a cross-agent benchmark that no other project is positioned to publish. This converts Chump from "another local agent" to "the measurement layer for the local-agent ecosystem" — a defensible positioning move.
+  depends_on: [COMP-009]
+  notes: |
+    Significant strategic value: makes Chump THE benchmark for the local-agent space. Cost ~$10-20 cloud per benchmark run (4 agents × 3 fixtures × n=50 × 2 cells = 1200 trials × cross-family judges). Wall ~3-4 hours per agent (some are slower than others).
+  source_doc: docs/archive/2026-04/STRATEGY_VS_GOOSE.md (FRONTIER-005 follow-up)
+  closed_date: '2026-04-20'
+  closed_pr: 240
+

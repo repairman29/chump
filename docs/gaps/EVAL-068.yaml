@@ -1,0 +1,19 @@
+- id: EVAL-068
+  domain: eval
+  title: Cross-judge validation for EVAL-060 — non-Anthropic judge on the A/A + re-score JSONLs
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    EVAL-060 acceptance criterion 4 required "at least one non-Anthropic judge (Qwen3-Coder or DeepSeek via Together) must be run on the same trials to validate against Anthropic bias, per RESEARCH_INTEGRITY.md." PR #279 shipped with only claude-haiku-4-5 as judge; PR #288 (EVAL-063 Metacognition re-score) also Anthropic-only. This gap closes the criterion: re-score the existing logs/ab/eval049-binary-judge-*.jsonl files under a Qwen3-Coder and a DeepSeek-V3.1 judge and report judge-agreement percentage. If Anthropic and non-Anthropic judges disagree >20% of the time on the same trials, the LLM judge itself is the next methodology concern, not the harness. Mechanism: add --rescore-with-judge <model> to scripts/ab-harness/rescore-with-v2.py (the existing rescore script) so it reads a JSONL with response_preview or response_text and emits new judge_score_<model> + judge_reasoning_<model> fields. Run on at least 3 faculty sweep JSONLs; report agreement table.
+  acceptance_criteria:
+    - "rescore script supports --rescore-with-judge=together:Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8 and deepseek variant"
+    - Re-scored at least 3 existing faculty JSONLs (perception / memory / metacognition or equivalent available)
+    - docs/eval/EVAL-068-cross-judge-agreement.md reports per-faculty judge-agreement %, with the expected pattern (>80% agreement)
+    - If judge agreement <80%, file EVAL-069 follow-up for judge-methodology investigation (do not close this gap; reopen as blocking the re-score interpretation)
+  depends_on: [EVAL-060]
+  notes: |
+    Target cost ~$0.50 on Together for the non-Anthropic judge passes (re-scoring is cheap vs running the binary sweep). Required for RESEARCH_INTEGRITY.md to permit external citation of any EVAL-060-derived result.
+  source_doc: EVAL-060 acceptance criterion 4 (unmet by PR
+  closed_date: '2026-04-20'
+

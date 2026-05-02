@@ -1,0 +1,13 @@
+- id: AUTO-009
+  domain: autonomy
+  title: Memory linkage — project playbooks auto-attached to task context
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    When executing a task, relevant playbooks and gotchas from memory are not automatically surfaced in context. Agent must rediscover known patterns.
+  notes: |
+    fetch_task_memory_context() in autonomy_loop.rs: keyword_search by task title + repo, top 3 results injected into exec_prompt "Relevant memory" block. Graceful no-op when memory DB unavailable (Err → empty string).
+  source_doc: docs/AUTONOMY_ROADMAP.md
+  closed_date: '2026-04-16'
+

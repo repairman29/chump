@@ -1,0 +1,24 @@
+- id: INFRA-121
+  domain: infra
+  title: Merge queue config drift undetected - silent auto-merge disarm when branch protection changes
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    The GitHub merge queue (INFRA-MERGE-QUEUE, 2026-04-19) is a load-bearing
+    invariant - 'auto-merge IS the default'. If branch-protection rules
+    drift (a required check is renamed, a status context is removed, the
+    queue is disabled in settings), auto-merge silently disarms on already
+    queued PRs and the queue can stop without an alarm. CLAUDE.md "If the
+    merge queue is stuck" recovery section documents the symptoms but not
+    the prevention. Add a periodic config-drift detector that diffs the
+    current branch-protection config against a checked-in baseline
+    (docs/MERGE_QUEUE_SETUP.md or a JSON snapshot) and ALERTs on any
+    deviation.
+  acceptance_criteria:
+    - Checked-in baseline of expected branch-protection config (JSON snapshot)
+    - CI job (or scheduled task) compares 'gh api' current config against baseline daily
+    - Drift posts ALERT kind=queue_config_drift with the field-level diff
+    - docs/MERGE_QUEUE_SETUP.md updated to describe the detector
+  opened_date: '2026-04-26'
+

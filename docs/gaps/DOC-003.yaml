@@ -1,0 +1,16 @@
+- id: DOC-003
+  domain: infra
+  title: FINDINGS.md F4 reframed with EVAL-073 both-strict 100% result
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    EVAL-073 (shipped PR #317) demonstrated that the cross-judge disagreement documented in FINDINGS.md F4 was a prompt-asymmetry artifact, not a model-family disagreement. Under a shared strict binary rubric, Sonnet-4.5 and Llama-3.3-70B agree 100% on the same 90 rows. FINDINGS.md F4 still claims philosophically-contested judge divergence — needs update.
+  acceptance_criteria:
+    - FINDINGS.md F4 summary-table row updated to mention both-strict 100% result
+    - "FINDINGS.md F4 caveats section gains a note retiring the \"instantiate different answers\" framing"
+    - Load-bearing methodological implication (strict binary required) preserved
+  depends_on: [EVAL-073]
+  source_doc: docs/eval/EVAL-073-both-strict-rescore.md
+  closed_date: '2026-04-20'
+

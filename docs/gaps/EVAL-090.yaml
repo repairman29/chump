@@ -1,0 +1,31 @@
+- id: EVAL-090
+  domain: eval
+  title: Re-run EVAL-069 under verified python3.12 - F3 retirement is based on broken-vs-broken comparison
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    INTEGRITY_AUDIT_3 (2026-04-24) walked through the EVAL-069 credibility
+    crisis - the original EVAL-026 neuromod aggregate signal (-10 to -16 pp)
+    was measured under the exit-code scorer that EVAL-060 later proved
+    broken. EVAL-069 reran the measurement to test the signal under a
+    fixed instrument - but the python3 shebang fix (python3 -> python3.12)
+    didn't land until 2026-04-22, one day AFTER EVAL-069 closed. EVAL-069
+    almost certainly ran under the same broken exit_code_fallback scorer.
+    Identical CIs in both cells (acc_A=0.920 [0.812, 0.968] = acc_B=0.920
+    [0.812, 0.968], delta=0.000) is the fingerprint of a non-cognitive
+    scorer. F3 (neuromod aggregate harm) was RETIRED in FINDINGS.md based
+    on EVAL-069 - i.e. retired based on a broken-vs-broken comparison, not
+    a real measurement. Re-run with verified python3.12, confirm JSONL rows
+    show scorer=llm-judge not exit_code_fallback, and either re-instate or
+    properly retire F3 based on a working measurement.
+  acceptance_criteria:
+    - Verify python3.12 import anthropic before launching
+    - Re-run EVAL-069 with same parameters under python3.12
+    - Inspect JSONL output - every row must show scorer llm-judge
+    - Run A/A baseline alongside (n>=50) to confirm judge is producing variance
+    - If delta materially differs from EVAL-069, update FINDINGS.md F3 status
+    - If delta still ~0 with non-identical CIs, F3 retirement stands but on solid ground
+    - Block PRODUCT-009 publication until this lands
+  opened_date: '2026-04-26'
+

@@ -1,0 +1,14 @@
+- id: FLEET-002
+  domain: fleet
+  title: Single fleet report — Mabel drives briefing, Chump notifies only
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Currently both Chump and Mabel may produce hourly fleet reports, creating duplicate notifications. One report per morning from Mabel; Chump uses notify only for events (blocked, PR ready).
+  depends_on: [FLEET-001]
+  notes: |
+    Added CHUMP_FLEET_REPORT_ROLE=notify_only gate to hourly-update-to-discord.sh. When set, script exits immediately (no LLM call, no DM). Chump's notify tool remains active for ad-hoc events. docs/OPERATIONS.md "Single fleet report" section updated with Soft gate guidance.
+  source_doc: docs/ECOSYSTEM_VISION.md
+  closed_date: '2026-04-16'
+

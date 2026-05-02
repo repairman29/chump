@@ -1,0 +1,9 @@
+- id: INFRA-CI-TEST-SPLIT
+  domain: infra
+  title: Split monolithic CI test job into fast unit + gated E2E
+  status: done
+  priority: P2
+  effort: s
+  source_doc: .github/workflows/ci.yml
+  closed_date: '2026-04-18'
+

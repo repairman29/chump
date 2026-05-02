@@ -1,0 +1,11 @@
+- id: INFRA-MULTIAGENT-HYGIENE
+  domain: infra
+  title: Per-session worktree + unique session IDs (structural fix)
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Multiple Claude sessions on this machine all share $HOME/.chump/session_id (machine-scoped) and frequently operate in the main worktree (/Users/jeffadkins/Projects/Chump) instead of .claude/worktrees/<name>/. Result: lease files clobber each other, pre-staged WIP from one session leaks into another's commit, and git operations (cherry-pick, reset) from one session blow away another's local state. Observed five times on 2026-04-17 alone: cf79287 + a5b5053 (memory_db.rs and DOGFOOD doc stomps), plus three aborted cherry-picks during the COG-011 push. The chump-commit.sh wrapper (688e6da) addresses the symptom; this gap addresses the cause.
+  source_doc: CLAUDE.md
+  closed_date: '2026-04-17'
+

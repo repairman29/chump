@@ -1,0 +1,17 @@
+- id: FLEET-003
+  domain: fleet
+  title: Workspace merge protocol for dynamic autopoiesis
+  status: done
+  priority: P3
+  effort: xl
+  description: |
+    Section 3.6: two Chump instances temporarily share blackboard state via peer_sync, creating a unified broadcast for bounded turns, then split. Prerequisite: fleet symbiosis (FLEET-001) stable and mutual supervision proven.
+  depends_on: [FLEET-001, FLEET-002]
+  notes: |
+    Decomposed (FLEET-001/002 are done — gate satisfied):
+      FLEET-003a — protocol spec doc (RFC; xs)
+      FLEET-003b — peer_sync extension for atomic blackboard exchange (m)
+      FLEET-003c — merge_workspace + split_workspace tool pair (s)
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-18'
+

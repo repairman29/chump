@@ -1,0 +1,13 @@
+- id: INFRA-GAPS-DEDUP
+  domain: infra
+  title: Fix gap registry ID collision — 7 duplicate ID pairs
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Red Letter Issue #2 confirmed 7 duplicate gap IDs in docs/gaps.yaml: COG-007, COG-008, COG-009, COG-010, COG-011, MEM-003, EVAL-003 each appear twice with different titles/descriptions. Every automated system (gap-preflight.sh, chump --briefing, musher dispatcher) treats gap ID as a unique key. An agent briefed on COG-011 today receives context for two unrelated tasks with no disambiguation. The pre-commit "gap-ID hijack" guard catches title changes on existing entries but does NOT validate ID uniqueness on insert — that bypass produced all 7 collisions.
+  notes: |
+    ~2 hrs. Blocking: every agent session starts from a corrupted index until this ships. File as P1 hotfix alongside any other work.
+  source_doc: docs/RED_LETTER.md Issue
+  closed_date: '2026-04-20'
+

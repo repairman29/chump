@@ -1,0 +1,12 @@
+- id: AGT-006
+  domain: agent
+  title: Wire NewMessageSensor into platform_router — mid-turn interrupt
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    SENSE-001 defines PeripheralSensor + NewMessageSensor but the wiring into platform_router::run_message_loop() was deferred to after AGT-002 and AGT-004 landed. Now that all dependencies are on main, complete the interrupt loop: run_message_loop merges the sensor stream with the input queue via tokio::select! biased;, and fires cancel_registry::cancel() on the active request_id when SensorKind::NewMessage fires mid-turn. ChumpAgent gains run_with_cancel() so dispatch_one can thread an externally-managed CancellationToken through the turn.
+  depends_on: [SENSE-001, AGT-002, AGT-004]
+  source_doc: src/platform_router.rs
+  closed_date: '2026-04-18'
+

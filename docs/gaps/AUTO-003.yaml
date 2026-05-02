@@ -1,0 +1,11 @@
+- id: AUTO-003
+  domain: autonomy
+  title: Task lease conformance tests — two workers cannot claim same task
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    DB-backed task lease (claim token + expires_at + owner) is implemented but no conformance tests verify that two concurrent workers cannot hold a valid lease simultaneously.
+  source_doc: docs/AUTONOMY_ROADMAP.md
+  closed_date: '2026-04-16'
+

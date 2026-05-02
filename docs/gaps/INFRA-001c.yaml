@@ -1,0 +1,11 @@
+- id: INFRA-001c
+  domain: infra
+  title: Policy doc — which tools opt into sandbox routing
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Third chunk of INFRA-001. Reference list of tools that ARE / ARE NOT routed through sandbox when CHUMP_SANDBOX_SPECULATION=1. Mostly classifies write/read/network tools — pure documentation.
+  source_doc: docs/ADR-001-transactional-tool-speculation.md
+  closed_date: '2026-04-17'
+

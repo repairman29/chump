@@ -1,0 +1,14 @@
+- id: COG-014
+  domain: consciousness
+  title: Task-specific lessons content — replace generic block per fixture
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    The lessons block currently injected for COG-005/006/011 A/Bs is the same generic content regardless of task type. Cloud sweep (ce4ebc0) shows perception (-0.10) and neuromod (-0.10) tasks both penalize this block on haiku-4-5 — possibly because generic lessons distract from task-specific reasoning. Try authoring lessons that match each fixture's task class (e.g. perception lessons emphasize entity extraction; neuromod lessons emphasize confidence calibration).
+  depends_on: [EVAL-010]
+  notes: |
+    Recommended follow-up from cloud A/B sweep (ce4ebc0). Gated on EVAL-010 because re-running A/Bs with the same circular methodology is wasted cloud spend. Total cost when unblocked: ~$2 (one cloud sweep across perception/neuromod/reflection on haiku-4-5).
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-18'
+

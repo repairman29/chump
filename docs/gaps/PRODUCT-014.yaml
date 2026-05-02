@@ -1,0 +1,19 @@
+- id: PRODUCT-014
+  domain: product
+  title: "Discord intent parsing — first visible slice of the \"understand and act\" promise"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    CHUMP_PROJECT_BRIEF.md's original North Star was "understanding the user in Discord and acting on intent." Red Letter #1 noted zero commits against this path. MessagingAdapter trait already extracted (per existing gap), so the Discord side has foundations. Scope: (1) Discord adapter subscribes to messages in a configured channel; (2) parses intent (three verbs initially: summarize, search, remind); (3) replies with result or a one-tap action confirmation; (4) logs to ambient.jsonl so the PWA can show Discord-sourced activity; (5) no production deploy — ship as opt-in via CHUMP_DISCORD_ENABLED=1 and a user-supplied bot token in config. Frame as "one of several surfaces" — the PWA is primary, Discord is the asynchronous secondary surface.
+  acceptance_criteria:
+    - CHUMP_DISCORD_ENABLED=1 wires a running agent to a configured channel
+    - Three intents (summarize, search, remind) dispatch correctly
+    - Agent reply posts back to the same channel with response or confirmation
+    - Activity streams into ambient.jsonl under kind=discord_intent
+    - docs/PRODUCT-014-discord.md with setup guide + limitations
+  notes: |
+    P2 so PRODUCT-011/012/013/UX-001 ship first (PWA path is the primary North Star). This surface is secondary but closes the original brief.
+  source_doc: docs/CHUMP_PROJECT_BRIEF.md
+  closed_date: '2026-04-24'
+

@@ -1,0 +1,23 @@
+- id: INFRA-DISPATCH-POLICY
+  domain: infra
+  title: musher dispatch policy — capacity-aware, priority-ordered, dependency-aware
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    musher (PR #113) handles agent spawn but dispatch policy is currently round-robin / manual. For sustained multi-agent operation across the 38-gap Q3 backlog, dispatch needs:
+      PRIORITY:    P1 gaps before P2 before P3
+      DEPENDENCIES: don't dispatch a gap whose depends_on entries
+                    aren't done
+      CAPACITY:    respect concurrency limits (cloud rate-limit
+                   budget, M4 memory if local sweeps, repo lock
+                   collision risk)
+      AFFINITY:    prefer dispatching gaps that share files to same
+                   agent (avoid file-lease contention)
+      REVIVAL:     re-claim leases that expired uncleanly (heartbeat
+                   died but TTL not up yet)
+  notes: |
+    ~1 week. Builds on existing musher (PR #113). Removes the manual "Jeff decides what dispatches next" decision from the loop.
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-20'
+

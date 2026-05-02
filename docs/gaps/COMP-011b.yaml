@@ -1,0 +1,15 @@
+- id: COMP-011b
+  domain: completeness
+  title: Adversary mode full — LLM-based context-aware reviewer (after COMP-011a)
+  status: done
+  priority: P3
+  effort: l
+  description: |
+    Full LLM-based version of the goose adversary reviewer pattern. A secondary agent (likely a smaller/cheaper model than the main agent — e.g. claude-3-haiku reviewing claude-sonnet-4-5 actions) watches each tool call with full context: original task, recent messages, tool call details. Returns ALLOW / BLOCK with reasoning. Blocked calls cannot be retried. Fail-open if reviewer fails. Configuration via adversary.md natural-language rules.
+  depends_on: [COMP-011a]
+  notes: |
+    Significant effort (~1-2 weeks). Watch for latency cost — every tool call now costs 1 extra LLM call. Recommend Haiku-tier model as reviewer (~50ms latency) and only invoke for "interesting" tools. Direct port of goose Adversary Mode pattern.
+  source_doc: external (block/goose Adversary Mode, Jan 2026)
+  closed_date: '2026-04-20'
+  closed_pr: 245
+

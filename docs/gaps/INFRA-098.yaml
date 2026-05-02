@@ -1,0 +1,16 @@
+- id: INFRA-098
+  domain: infra
+  title: Layer 2 ambient sibling-activity block — inject into Rust prompt assembler
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Companion to INFRA-092 shell-wrapper glance. Layer 2 makes the chump-local agent loop ambient-aware via prompt-assembler injection.
+  acceptance_criteria:
+    - src/ambient_stream.rs parses ambient.jsonl with self-session filter and recency window
+    - "prompt_assembler.rs injects \"Recent sibling activity\" block when stream is non-empty"
+    - main.rs wires the helper into the chump-local loop
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  closed_pr: 570
+

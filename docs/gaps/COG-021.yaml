@@ -1,0 +1,14 @@
+- id: COG-021
+  domain: cognition
+  title: Test-time-compute / reasoning-mode integration — Chump uses o3/Deep Think when available
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    Per 2026 frontier landscape: o3, Gemini Deep Think, Claude "extended thinking" all expose test-time compute via a "thinking" parameter. Chump currently calls all models the same way regardless of whether they support reasoning mode. For tasks where reasoning would help (complex multi-step planning, debugging), Chump should detect reasoning-capable models and invoke them with reasoning enabled. For routine tasks, stay in fast/cheap mode (the "Routing Layer" pattern from the Gemini letter). Open question: does our cost ledger justify the reasoning-mode latency + spend per task class? Empirical gap.
+  notes: |
+    Anthropic exposes "thinking" param in messages API. OpenAI o-series uses "reasoning_effort" (low/medium/high). Different providers, different APIs. ~1 week to implement + sweep. Could double cost on reasoning-mode trials. Worth an A/B before shipping as default.
+  source_doc: external (Gemini AGI letter — System 2 reasoning era)
+  closed_date: '2026-04-20'
+  closed_pr: 232
+

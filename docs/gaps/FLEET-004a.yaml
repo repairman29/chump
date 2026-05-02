@@ -1,0 +1,11 @@
+- id: FLEET-004a
+  domain: fleet
+  title: Ambient event stream — ambient.jsonl format + emit helpers
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Foundation for peripheral vision. Defines the ambient.jsonl event format and provides two emit primitives: (1) scripts/ambient-emit.sh — shell one-liner usable from git hooks and shell scripts; (2) ambient_emit() in crates/chump-agent-lease for Rust callers. Both append a newline-delimited JSON event atomically so concurrent writers don't corrupt the file.
+  source_doc: .chump-locks/ambient.jsonl
+  closed_date: '2026-04-17'
+

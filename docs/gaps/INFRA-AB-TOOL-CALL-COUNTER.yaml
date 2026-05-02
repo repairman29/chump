@@ -1,0 +1,11 @@
+- id: INFRA-AB-TOOL-CALL-COUNTER
+  domain: infra
+  title: ab-harness tool_calls counter greps wrong stream (always 0)
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    run.sh greps stderr for 'tool_call_start' / 'Using tool ', but chump emits its tool-execution markers on stdout ("🔧 Executing tool: ..."). All COG-011 trials reported tool_calls=0, which isn't true. Doesn't affect the structural scorer (it uses the final text), but makes the JSONL field misleading.
+  source_doc: scripts/ab-harness/run.sh
+  closed_date: '2026-04-17'
+

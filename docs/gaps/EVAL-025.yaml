@@ -1,0 +1,14 @@
+- id: EVAL-025
+  domain: eval
+  title: Validate COG-016 anti-hallucination directive — rerun n=100 cross-family
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    COG-016 (PR #114) shipped two production changes: (1) a model-tier gate that blocks lessons injection on Capable-tier models like haiku-4-5 by default, and (2) an explicit anti-hallucination directive prepended to the lessons block. EVAL-023 (PR #118) confirmed the pre-COG-016 block causes +0.12-0.17 fake-tool-call emission on haiku-4-5 across all 3 fixtures (perception, neuromod, reflection) under cross-family judging — but did NOT measure the new COG-016 format. Need to rerun the same n=100 × 3 sweep with `LESSONS_BLOCK` updated to match the production `format_lessons_block()` output (anti-hallucination directive included). If COG-016 works, the +0.12-0.17 hallucination delta should drop substantially or invert. If it doesn't work, the tier gate is the only protective mechanism and we need to reconsider the directive wording.
+  depends_on: [COG-016, EVAL-023]
+  notes: |
+    Reuses the EVAL-023 harness path: run-cloud-v2.py with judges claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo at n=100 per fixture. Only change: `LESSONS_BLOCK` constant updated to match production output of `format_lessons_block()` from src/reflection_db.rs (lines 417-451 on main). Cost ~\$1.50 cloud (haiku-4-5 + sonnet-4-5 + together llama, similar to EVAL-023).
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-19'
+

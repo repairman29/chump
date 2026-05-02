@@ -1,0 +1,30 @@
+- id: EVAL-093
+  domain: eval
+  title: RESEARCH_INTEGRITY.md mechanism-analysis standard lacks pre-commit kappa threshold gate — EVAL-074 retraction consequence
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    docs/process/RESEARCH_INTEGRITY.md line 93-95 requires a hypothesis
+    for deltas >±0.05. It does not require verifying cross-judge
+    agreement before committing the mechanism claim. PR #549 committed a
+    mechanism claim for EVAL-074 (over-compliance on gotcha tasks, -30pp,
+    McNemar p=0.0007) using a single Llama-3.3-70B judge. PR #551
+    (2c4479f) retracted it: Sonnet-4.5 cross-rescore showed -0.4pp
+    (McNemar p=1.0); Llama vs Sonnet kappa=0.40 on gotcha tasks, below
+    the project's own 80%/0.6 thresholds cited in the retraction commit.
+    
+    The standard that required mechanism analysis allowed a
+    methodologically invalid mechanism claim to merge to main. The
+    cross-judge verification step was applied only after the claim was
+    committed, not before. The gap: mechanism analysis must clear the
+    project's existing kappa threshold (κ≥0.6, ≥80% agreement) on the
+    relevant fixture class BEFORE the mechanism claim can land.
+    
+    Cold Water Issue #8, EVAL-074 retraction (PR #551, 2c4479f).
+  acceptance_criteria:
+    - "docs/process/RESEARCH_INTEGRITY.md mechanism-analysis section adds an explicit gate: mechanism claim PRs must include a cross- judge agreement score ≥0.6 (kappa) on the fixture class where the mechanism was detected"
+    - Pre-commit or CI check warns (non-blocking initially) when a mechanism-claim commit lacks a documented kappa score
+    - EVAL-089 (finish EVAL-074 with Qwen-2.5-72B) uses this updated standard
+  opened_date: '2026-04-27'
+

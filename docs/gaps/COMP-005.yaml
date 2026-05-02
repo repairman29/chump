@@ -1,0 +1,17 @@
+- id: COMP-005
+  domain: competitive
+  title: Voice/Vision/Browser — voice mode, image paste, browser automation
+  status: done
+  priority: P2
+  effort: xl
+  description: |
+    Hermes supports voice mode, image paste, browser automation (Chrome CDP), image generation. Chump has none of these. Missing multimodal input/output limits use cases significantly vs Hermes.
+  depends_on: [ACP-002]
+  notes: |
+    Decomposed into sub-gaps for incremental delivery (ACP-002 done):
+      COMP-005a — image paste in PWA → ContentBlock parser
+      COMP-005b — browser automation tool (chromiumoxide CDP, headless)
+      COMP-005c — TTS output (cocoa say / piper-tts shell)
+  source_doc: docs/HERMES_COMPETITIVE_ROADMAP.md
+  closed_date: '2026-04-19'
+

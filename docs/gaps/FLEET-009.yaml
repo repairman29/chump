@@ -1,0 +1,20 @@
+- id: FLEET-009
+  domain: fleet
+  title: Capability declaration & task-fit scoring — agents declare capabilities, tasks declare needs
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Agents vary in capability: different models, different inference speeds, different task-class experience. Agents should only claim work they are "the right fit" for. Schema: agent publishes {model_family, model_name, vram_gb, inference_speed_tok_per_sec, supported_task_classes, reliability_score}. Task declares {required_model_family, min_vram_gb, min_inference_speed, task_class, decomposable}. Scoring function: fit_score = base_score * model_match * reliability * task_class_match. Agents filter work board by fit_score > threshold; claim best matches first.
+  acceptance_criteria:
+    - Agent capability schema defined and documented
+    - Task requirement schema defined and documented
+    - fit_score() function implemented (at least model_family, vram, task_class)
+    - "Agent publishes capability on startup (NATS topic \"chump/agent-capabilities\")"
+    - Agent filters work board by fit_score >= 0.5 threshold
+  depends_on: [FLEET-006, FLEET-008]
+  notes: |
+    Early version: simple heuristic scoring. Later (FLEET-011): learn from outcomes, adjust reliability_score based on success/failure. Model family matching is critical (Anthropic vs open-source agents will make different decisions).
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  closed_date: '2026-04-24'
+

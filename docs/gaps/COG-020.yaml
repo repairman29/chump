@@ -1,0 +1,13 @@
+- id: COG-020
+  domain: cognition
+  title: DeepMind 10-faculty Chump architecture map — taxonomy alignment doc
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    DeepMind's 10-faculty AGI cognitive framework (Perception, Generation, Attention, Learning, Memory, Reasoning, Metacognition, Executive Function, Problem Solving, Social Cognition) is becoming the industry-standard taxonomy for measuring agent capability breadth. Chump informally covers most of these but lacks an explicit map. Building one immediately surfaces (a) which Chump modules implement which faculties, (b) which faculties have A/B evidence and which don't, (c) which faculties are entirely absent (e.g. Attention has no module today — see EVAL-028). Useful as both an internal architecture-clarity exercise and an external positioning artifact.
+  notes: |
+    ~1 day docs exercise. Reference: https://storage.googleapis.com/deepmind-media/DeepMind.com/Blog/measuring-progress-toward-agi/measuring-progress-toward-agi-a-cognitive-framework.pdf Should call out explicitly: Attention faculty has no monitoring today (gap → EVAL-028 CatAttack), Social Cognition faculty maps to tool approval / ASK_JEFF flow (untested at scale).
+  source_doc: external (DeepMind cognitive framework 2025)
+  closed_date: '2026-04-19'
+

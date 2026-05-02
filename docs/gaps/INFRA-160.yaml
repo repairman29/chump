@@ -1,0 +1,48 @@
+- id: INFRA-160
+  domain: infra
+  title: 4 orphan rows in state.db with no docs/gaps.yaml entry (COG-039, INFRA-087, INFRA-152, TEST-001)
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    `gap-doctor.py doctor` (INFRA-155, shipped 2026-04-28) flags Bucket 3
+    drift: gap rows present in `.chump/state.db` but with no
+    corresponding `- id:` entry in `docs/gaps.yaml`. As of 2026-04-28
+    21:30 UTC, four rows are in this state:
+    
+      - COG-039     — title: "bench harness — flag-off baseline vs cog_037-on Thompson router"
+      - INFRA-087   — title: "automated repo failure-detection auditor + CI-time health checks"
+      - INFRA-152   — title: "chump gap set/ship — accept --closed-pr flag, persist to state.db, emit to YAML"
+      - TEST-001    — title: (unknown — test fixture leakage)
+    
+    Mechanism: `chump gap reserve` writes pending_new_gap to the local
+    lease + bumps the SQL counter. If the corresponding YAML row never
+    lands on origin/main (PR closed without merging, branch abandoned,
+    YAML edit rolled back during a conflict), the DB row persists.
+    `chump gap reserve` then can't reuse the ID (counter has advanced),
+    but no human-readable record of the gap exists either. Cold Water
+    can't classify them. INFRA-149 was a recent example with the same
+    pattern (PR shipped #624 referencing the ID without the YAML row;
+    later filed as a real gap in #621).
+    
+    For each of the 4 rows, decide:
+      (a) Dump to YAML — `chump gap dump --out docs/gaps.yaml` writes
+          all DB rows; preserves meta: preamble per INFRA-147. This is
+          right when the work is real and ongoing.
+      (b) Delete from DB — `sqlite3 .chump/state.db "DELETE FROM gaps
+          WHERE id='XXX'"`. Right when the row was a test artifact or
+          a reserve that should never have happened.
+      (c) Mark retired — set status=done with a notes:
+          "retired without filing: <reason>" if the work was abandoned
+          intentionally.
+    
+    TEST-001 is almost certainly (b) — the test-suite probably leaked
+    a fixture row. The other three need per-row research (look at
+    `git log --grep=<ID>` on origin/main).
+  acceptance_criteria:
+    - Bucket 3 drift count is 0 (or only contains rows that were intentionally orphaned with documented reason)
+    - Each of COG-039, INFRA-087, INFRA-152, TEST-001 has an explicit fate (filed / deleted / retired) recorded in this PR's body
+    - If any row was added to YAML, it has the standard fields and a `raised_by` / `raised_in` recording the original reservation date
+    - "TEST-001 specifically: trace which test script reserved it and patch the script to use a temp/sandbox repo (per the same discipline INFRA-076 §3b applies to user.email)"
+  opened_date: '2026-04-28'
+

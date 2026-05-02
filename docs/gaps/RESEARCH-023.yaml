@@ -1,0 +1,20 @@
+- id: RESEARCH-023
+  domain: research
+  title: Counterfactual mediation analysis — upgrade module-contribution claims from average-treatment to natural-direct-effect
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Current "module contribution" analysis is P(pass | module=on) minus P(pass | module=off), measured aggregate. For a causal claim, the stronger quantity is the counterfactual mediation estimate — for matched trials differing only in module value, what is the expected outcome difference? Pearl's mediation framework applies directly. The A/B harness already produces matched pairs; what's missing is the analysis pipeline. Ships scripts/ab-harness/mediation-analysis.py implementing natural direct effect (NDE) and natural indirect effect (NIE) estimates per module × task-class. Upgrades every future module-contribution claim from "average treatment effect" to causal framing.
+  acceptance_criteria:
+    - scripts/ab-harness/mediation-analysis.py computes NDE and NIE with bootstrap 95% CIs
+    - Applied to existing tier-dependent A/B data (n=100); results land in docs/FINDINGS.md
+    - Per-module NDE reported in CHUMP_FACULTY_MAP.md alongside the existing aggregate delta
+    - Analysis method references cited — Pearl 2001 Direct and Indirect Effects, VanderWeele 2015 Explanation in Causal Inference
+    - Preregistered per RESEARCH-019 if applied to new data collection
+  depends_on: [RESEARCH-019]
+  notes: |
+    Upgrades the analysis section of all three papers. ~1 week of analyst time; no new compute required.
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §6
+  closed_date: '2026-04-21'
+

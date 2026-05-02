@@ -1,0 +1,39 @@
+- id: INFRA-200
+  domain: infra
+  title: gaps.yaml advisory-only enforcement demonstrably failed — ship hard pre-commit block
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    INFRA-084 (P0) shipped a merge_group regeneration workflow on 2026-04-29.
+    INFRA-094 (P0) shipped an advisory pre-commit warning on 2026-04-29.
+    Neither shipped a hard block on raw docs/gaps.yaml edits.
+    
+    Empirical result: 33 of 50 commits (66%) on origin/main since those advisories
+    landed still touch docs/gaps.yaml directly. The SECURITY-005 row was attempted
+    via end-of-YAML append three times (#678, #684, #695) before succeeding via
+    surgical insert — confirming the advisory was visible to agents yet the behavior
+    continued.
+    
+    INFRA-094's acceptance criteria (verified in gaps.yaml) explicitly require:
+    "Pre-commit hook *blocks* raw docs/gaps.yaml edits without chump-gap commit
+    trailer." The current hook warns; it does not block. This gap closes the gap
+    between INFRA-094's AC and what was actually shipped.
+    
+    Approach: extend scripts/git-hooks/pre-commit section 3b from advisory
+    (exit 0 with warning) to enforcement (exit 1 with bypass instructions).
+    Bypass: CHUMP_GAPS_LOCK=0 (already exists in the guards table) or the
+    presence of a .chump/.last-yaml-op marker proving chump CLI wrote it.
+    
+    Falsifying condition: `git log origin/main --since='2026-05-02' --format='%H' -- docs/gaps.yaml | wc -l`
+    returns <10% of total commits (showing behavioral change, not just the advisory).
+  acceptance_criteria:
+    - scripts/git-hooks/pre-commit section 3b exits 1 (not 0) when docs/gaps.yaml is staged without chump-gap marker
+    - Bypass path CHUMP_GAPS_LOCK=0 documented in the commit-time guards table in CLAUDE.md
+    - "Test: stage a raw docs/gaps.yaml edit and verify pre-commit exits 1 with a pointer to chump gap commands"
+    - "After ship: git log origin/main --since=<ship_date> --format='%H' -- docs/gaps.yaml | wc -l shows <20% of total commits"
+  depends_on: [INFRA-084, INFRA-094]
+  opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 729
+

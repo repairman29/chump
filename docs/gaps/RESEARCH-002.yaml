@@ -1,0 +1,22 @@
+- id: RESEARCH-002
+  domain: research
+  title: Docs thesis reframe — align all docs to tier-dependent injection finding
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Multiple docs contain research claims that conflict with docs/RESEARCH_INTEGRITY.md (the accurate thesis). These must be updated before any external publication or new contributor reads them. Files requiring updates:
+      - docs/CHUMP_RESEARCH_BRIEF.md: "Surprisal EMA Confirmed" → "Unablated"
+      - docs/CHUMP_PROJECT_BRIEF.md: "cognitive architecture validated
+        across 4 faculties" → narrow to lessons-block finding
+      - docs/CHUMP_FACULTY_MAP.md: add ablation-pending status per faculty
+      - docs/CONSCIOUSNESS_AB_RESULTS.md: add standing judge-bias caveat
+        at top of file; mark all Anthropic-only deltas as "pending
+        cross-family judge validation (EVAL-042)"
+      - Any doc citing "2000+ A/B trials validate Chump" — add context
+        that this validates the lessons block, not the full architecture
+  notes: |
+    ~1 day. No code changes. Prevents new contributors and agents from propagating inaccurate claims. Pairs with EVAL-042 — once cross- family judge results land, update these docs again with confirmed or revised deltas.
+  source_doc: docs/RESEARCH_INTEGRITY.md
+  closed_date: '2026-04-20'
+

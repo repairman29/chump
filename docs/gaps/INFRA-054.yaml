@@ -1,0 +1,17 @@
+- id: INFRA-054
+  domain: infra
+  title: queue-driver — add check_suite trigger to defang cron flakiness
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Promotes a /tmp helper used 6+ times in the 2026-04-25 queue-driver incident into a checked-in script. Every PR that adds a gap entry appends to the bottom of docs/gaps.yaml; when two are in flight, the rebase of the second produces a tail conflict where the correct resolution is always "keep both sides, in order." The script does that substitution mechanically and refuses to write if any marker remains after the pass (which would indicate a real content overlap, not a tail-append). Future automation (e.g. bot-merge.sh on rebase failure) can call this without risk of silent corruption.
+  acceptance_criteria:
+    - scripts/resolve-gaps-conflict.py exists, executable
+    - exits 0 with both sides preserved on a tail-append conflict
+    - exits 3 (no write) if any conflict marker remains after substitution
+    - exits 2 if no markers found in the file
+  notes: |
+    Mechanical resolver for the tail-append conflict pattern that arose repeatedly during the 2026-04-25 queue-driver incident. Refuses to write on non-append conflicts so real merge conflicts still surface.
+  closed_date: '2026-04-25'
+

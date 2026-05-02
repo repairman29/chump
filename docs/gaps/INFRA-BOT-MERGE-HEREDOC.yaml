@@ -1,0 +1,18 @@
+- id: INFRA-BOT-MERGE-HEREDOC
+  domain: infra
+  title: bot-merge.sh heredoc backtick parse bug blocks auto-merge arming
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    `scripts/bot-merge.sh` contains a `_comment_body=$(cat <<'EOFCOMMENT' ... ```... EOFCOMMENT)` construction for posting a CI-failure diagnostic comment on blocked PRs. Bash's `$(...)` command-substitution pre-parser scans for balanced backticks even inside a single-quoted heredoc body, so the literal triple-backtick markdown fence on line 460 produces `line NNN: unexpected EOF while looking for matching ``. The script aborts *after* `gh pr create` succeeds but *before* `gh pr merge --auto --squash` runs — silently dropping PRs into the repo without auto-merge armed. Observed on PR #482 (INFRA-045 itself), #488 (closed dup), and #491 (PRODUCT-015 activation funnel) on 2026-04-24. Each required manual `gh pr merge <N> --auto --squash` to recover. Fix: rebuild the comment body with `printf -v` + a `_fence='```'` variable, so no un-escaped backticks appear inside a `$(...)` literal.
+  acceptance_criteria:
+    - "`bash -n scripts/bot-merge.sh` exits 0"
+    - bot-merge.sh runs end-to-end through the CI-gate branch without shell parse errors
+    - auto-merge is armed on every PR that bot-merge.sh --auto-merge creates (when CI is green)
+    - Diagnostic comment posted on CI-failure path preserves the existing markdown structure
+  notes: |
+    Root cause is a well-known bash quirk — `$(cat <<'EOF' ... EOF)` is not safe for heredoc bodies containing backticks, even when the delimiter is single-quoted. Prefer `printf -v` or a temp-file round-trip for any multiline string containing literal backticks.
+  source_doc: CLAUDE.md
+  closed_date: '2026-04-24'
+

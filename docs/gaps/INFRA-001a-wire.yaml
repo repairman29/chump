@@ -1,0 +1,12 @@
+- id: INFRA-001a-wire
+  domain: infra
+  title: Hook tool_middleware to record_unrolled_side_effect on rollback
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    INFRA-001a shipped the counter + metrics. tool_middleware (or whichever caller invokes speculative_execution::rollback) needs to walk the rolled-back batch's tool calls and invoke record_unrolled_side_effect for each write tool. Without this wiring the counter sits at 0.
+  depends_on: [INFRA-001a]
+  source_doc: src/tool_middleware.rs
+  closed_date: '2026-04-17'
+

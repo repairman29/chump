@@ -1,0 +1,18 @@
+- id: EVAL-023
+  domain: eval
+  title: Cross-family judge run — break Anthropic-only judge bias
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Every cloud A/B finding to date used claude-sonnet-4-5 as the judge. EVAL-010 second-LLM grading (also Anthropic, different model size) already showed 38-63% per-trial agreement — at or below chance for two binary judges — confirming systematic Anthropic-family judge bias. The PR #83 Ollama judge support enables a true cross-family judge (qwen2.5:14b or similar) at zero per-call cost. This gap operationalizes: run the n=100 sweep on haiku-4-5 again with --judges claude-sonnet-4-5,ollama:qwen2.5:14b. Median verdict gives the first cross-family-judged delta. If the +0.14 hallucination signal survives across the median, the finding is bias-resistant.
+  notes: |
+    Uses PR #83 (Ollama judge) which is auto-merge pending. Cost is bounded by the cloud agent calls (~\$1.62 same as PR #80) since Ollama judge is free. ~3-5 min wall on a quiet Ollama. Single command:
+      scripts/ab-harness/run-cloud-v2.py --fixture FIX --tag X-cross --limit 100
+        --model claude-haiku-4-5 --judges claude-sonnet-4-5,ollama:qwen2.5:14b
+    
+    PROBE FINDING (2026-04-19, commit b4882e6): Llama-3.3-70B was tested as a cross-family agent and does NOT fit the existing fake_tool_calls axis — Llama reliably emits honest "I cannot execute" language rather than fake <function_calls> markup, so it always passes where Anthropic models fail. The existing binary axis measures Anthropic-model hallucination shape, not general hallucination.
+    REVISED DESIGN: Before running the n=100 cross-family judge sweep, add a positive axis: did_acknowledge_no_tools (model said "I cannot execute" + gave actionable guidance instead of faking tool output). This lets Llama score meaningfully. Options: (a) new axis in score.py, (b) family-specific regex detectors per provider, or (c) re-frame headline finding as "Anthropic-agent + Anthropic-judge pairing reliably exhibits the loop" — the most publishable framing. Pick one before running the cross-family sweep.
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-19'
+

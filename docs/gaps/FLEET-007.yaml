@@ -1,0 +1,19 @@
+- id: FLEET-007
+  domain: fleet
+  title: Distributed leases with TTL — replace filesystem .chump-locks/*.json with NATS
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Current leases live in .chump-locks/<session>.json on local filesystem. This breaks when agents run on different machines. Replace with NATS-backed exclusive claims: agents publish a claim message (gap_id, session_id, ttl_seconds) to NATS topic "chump/leases". NATS broker tracks which session owns which gap (simple in-memory state machine, TTL auto-expires claims). gap-preflight.sh queries NATS to check if gap is available. gap-claim.sh publishes a claim. Heartbeat mechanism: agent renews lease every N seconds or lease expires.
+  acceptance_criteria:
+    - "Agent can claim a gap via NATS (gap-claim.sh publishes to \"chump/leases\")"
+    - "Agent can check availability via NATS (gap-preflight.sh queries \"chump/leases\")"
+    - Lease auto-expires if agent stops renewing (TTL validation in test)
+    - Two agents cannot claim the same gap simultaneously
+  depends_on: [FLEET-006]
+  notes: |
+    Shipped via crates/chump-coord NATS JetStream KV (atomic create CAS) + new integration test suite crates/chump-coord/tests/distributed_mutex.rs (5 tests, all green against Docker NATS). The load-bearing property — N concurrent claims yield exactly one winner — is asserted in concurrent_claims_exactly_one_winner. TTL auto-expiry validated in ttl_expiry_allows_reclaim. Filesystem fallback preserved via existing .chump-locks/ path in gap-claim.sh (chump-coord block exits early only on CAS conflict; otherwise falls through to file lease). Two latent bugs fixed in the same PR: (1) GAP_BUCKET renamed chump.gaps → chump_gaps (NATS rejects dots in bucket names), (2) gap-claim.sh referenced $SESSION_ID before resolution under set -u. Heartbeat/renewal deferred to a follow-up gap; current impl uses NATS KV max_age for TTL expiry rather than active heartbeat.
+  source_doc: docs/FLEET_VISION_2026Q2.md
+  closed_date: '2026-04-25'
+

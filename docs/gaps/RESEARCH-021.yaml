@@ -1,0 +1,20 @@
+- id: RESEARCH-021
+  domain: research
+  title: Tier-dependence replication across 4 model families — extend haiku/sonnet finding to Llama/Qwen/DeepSeek/Gemma
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Current tier-dependent injection finding is measured on haiku-4-5 vs sonnet-4-5 (same Anthropic family, same training lineage, size difference only). This gap extends to 4 model families — Anthropic (haiku/sonnet), Meta (Llama-3.3-8B/70B), Alibaba (Qwen-2.5-7B/72B), DeepSeek (V3-small / V3-big), Google (Gemma-3-9B/27B). n=100/cell per model-size tier. Goal: distinguish "a tier-dependent effect in the Anthropic family" from "a field-wide tier-dependent effect." The latter is a much stronger publishable claim. EVAL-071 partially addresses this for the hallucination channel only; this gap covers the core tier-dependent finding across the full small/large matrix per family.
+  acceptance_criteria:
+    - n=100/cell × 2 sizes × 4 families × 2 cells (lessons on / off) = 1600 trials total
+    - Cross-family LLM-judge panel (at minimum one judge from each family being tested) — no single-family judge monoculture
+    - Per-family tier-dependent delta reported with Wilson 95% CIs in docs/FINDINGS.md
+    - "If the effect replicates in ≥3 of 4 families, publish as \"field-wide tier-dependent injection backfire\""
+    - "If it replicates in only Anthropic, reframe paper as \"an Anthropic-family-specific finding\" with explicit scope caveat"
+    - Preregistered per RESEARCH-019
+  depends_on: [RESEARCH-019]
+  notes: |
+    Paper-1 blocker. Budget ~$80 cloud (Together free-tier handles Llama/Qwen/DeepSeek; Gemma via Google AI Studio). The publishable framing of the entire tier-dependent finding hinges on whether it generalizes beyond Anthropic. Do not attempt full 1600-trial AC on a thin credit month — phase per docs/RESEARCH_EXECUTION_LANES.md §4 + COST_OPTIMIZATION.md; prereg deviations required for n/model changes.
+  source_doc: docs/RESEARCH_CRITIQUE_2026-04-21.md §4
+

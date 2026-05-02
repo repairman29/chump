@@ -1,0 +1,14 @@
+- id: COMP-010
+  domain: completeness
+  title: Brew formula + signed installer — `brew install chump` adoption path
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Goose ships via `brew install --cask block-goose` plus signed installers for macOS/Linux/Windows. Chump requires git clone + cargo build, which gates adoption to Rust developers comfortable with toolchain setup. Brew formula is the single highest-leverage adoption-friction reduction we can do — it makes Chump installable in one command for the macOS dev audience that is Chump's core target. Signed installers + GitHub release pipeline extend that to Linux/Windows.
+  notes: |
+    ~1-2 days for the brew formula + tap setup. ~2-3 more days for cross-platform release pipeline + signing. Total effort ~1 week. Reference: https://github.com/block/homebrew-tap or similar.
+  source_doc: external (block/goose `brew install --cask block-goose` distribution)
+  closed_date: '2026-04-20'
+  closed_pr: 203
+

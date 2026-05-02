@@ -1,0 +1,12 @@
+- id: COG-009b
+  domain: consciousness
+  title: Wire actual tool_hint signal source from BatchOutcome into orchestrator
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    COG-009 added the assemble_with_hint API but the orchestrator still passes None. The signal source (last-failed tool name from BatchOutcome or message history) needs to flow through. BatchOutcome currently only tracks success/fail counts, not per-tool names — needs minor extension.
+  depends_on: [COG-009]
+  source_doc: src/agent_loop/orchestrator.rs
+  closed_date: '2026-04-17'
+

@@ -1,0 +1,17 @@
+- id: INFRA-063
+  domain: infra
+  title: M5 — Cycle-time dashboard + cost-routed dispatcher
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    `chump dashboard` reads reflection rows + git log + `gh pr list` to print PRs landed today/week, median cycle-time gap-claim → main, rebase-minutes burned, dispatcher backend cost split, top 5 stale worktrees. Cost-routed dispatch: router picks backend by gap class (trivial xs → Together free tier; design P1 l/xl → Opus; refactors → Sonnet). Preserves manual override.
+  acceptance_criteria:
+    - chump dashboard prints all listed metrics from real data
+    - Dispatcher logs show per-gap backend selection rationale
+    - One week operation shows ≥40% of dispatches on cheap tier without quality regression
+  depends_on: [INFRA-058]
+  notes: Independent of M2-M4. Can ship anytime after M1.
+  source_doc: docs/WORLD_CLASS_ROADMAP.md
+  closed_date: '2026-04-25'
+

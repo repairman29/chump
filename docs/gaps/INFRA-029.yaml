@@ -1,0 +1,17 @@
+- id: INFRA-029
+  domain: infra
+  title: Architecture-family deny-list for CHUMP_LESSONS_AT_SPAWN_N
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    EVAL-071 preliminary shows lesson injection hurts DeepSeek-V3.1 correctness (-23pp) while remaining helpful/neutral on Anthropic and neutral on Qwen3-235B. The current CHUMP_LESSONS_OPT_IN_MODELS is a per-model allowlist but has no default family-level safety net — if an operator ships to a new non-Anthropic backend they opt-in model-by-model without evidence. Add CHUMP_LESSONS_DENY_FAMILIES (default "deepseek") that short-circuits injection regardless of opt-in flag. Pair with a log line so operators can see "lessons suppressed — family denied". Unblock by per-family evidence (EVAL-074).
+  acceptance_criteria:
+    - CHUMP_LESSONS_DENY_FAMILIES env parsed by PromptAssembler
+    - "Default value includes \"deepseek\" until EVAL-074 provides a fix"
+    - Log at WARN when suppression fires so operator notices
+    - Unit test covers deny-list wins over opt-in-model
+  depends_on: [EVAL-071]
+  source_doc: docs/eval/EVAL-071-halluc-generalization.md
+  closed_date: '2026-04-21'
+

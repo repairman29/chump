@@ -1,0 +1,12 @@
+- id: FLEET-003c
+  domain: fleet
+  title: merge_workspace + split_workspace tool pair
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Third chunk. Surface FLEET-003b's exchange as agent tools so the agent can decide to initiate a merge mid-turn (e.g., "I need Mabel's perspective on this") and split when done.
+  depends_on: [FLEET-003b]
+  source_doc: src/fleet_tool.rs
+  closed_date: '2026-04-18'
+

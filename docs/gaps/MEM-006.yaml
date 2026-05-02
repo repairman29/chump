@@ -1,0 +1,14 @@
+- id: MEM-006
+  domain: memory
+  title: Lessons-loaded-at-spawn — agents inherit prior reflection lessons on start
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    PRODUCT-006 (shipped via PR #125) writes reflection lessons into chump_improvement_targets via harvest-synthesis-lessons.sh. But the question of whether new agents START with these lessons loaded is unanswered. If lessons are only retrieved on explicit memory_db query, we are collecting lessons without applying them systematically. Multi-agent dispatch needs every spawned agent to inherit relevant prior lessons as part of its initial context. A/B-validate the value: agents with prior-lesson context vs fresh agents on the same fixture.
+  depends_on: [COG-023, COG-024]
+  notes: |
+    ~1 week including A/B validation sweep. Closes the loop between reflection accumulation (PRODUCT-006 shipped) and reflection application (this gap). Without it, our learning system writes to nothing. Code shipped without empirical A/B — validation tracked as MEM-006-VALIDATE.
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-19'
+

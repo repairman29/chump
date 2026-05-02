@@ -1,0 +1,14 @@
+- id: EVAL-026
+  domain: eval
+  title: Cognitive-layer U-curve at 32B — extend 1B-14B sweep upward
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    The 1B-14B U-curve (per strategic memo, replicated pattern: +10pp 1B, -5pp 3B, neutral 8B, +10pp 14B) is the most-replicated finding pointing at architectural net-positivity, but the prediction "benefit increases above 14B" has not been tested. 32B/72B tiers are the critical unconfirmed prediction — they decide whether the U-curve thesis holds or needs revision. Original plan was local M4 with qwen2.5:32b but ~20GB Q4 + macOS + Claude Code + Ollama overhead crashes Metal on 24GB. Pivoted to Together.ai cloud for the 7B + 72B endpoints.
+  depends_on: [COG-016, EVAL-025]
+  notes: |
+    Cloud run path: scripts/ab-harness/run-cloud-v2.py with --model together:Qwen/Qwen2.5-{7B|72B}-Instruct-Turbo, judges claude-sonnet-4-5,together:meta-llama/Llama-3.3-70B-Instruct-Turbo, --lessons-version v1 (the harm-triggering block, to test if scale flips it from harm to help), --limit 50 reflection. Harness gained together:/ollama: agent-model-prefix dispatch (was Anthropic-only for agent role; judges already supported all three providers). Cost ~\$2-3 cloud (72B Together is \$0.88/M tok, sonnet judge ~\$1).
+  source_doc: docs/STRATEGIC_MEMO_2026-04-19.md
+  closed_date: '2026-04-19'
+

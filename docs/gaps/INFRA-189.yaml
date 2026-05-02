@@ -1,0 +1,60 @@
+- id: INFRA-189
+  domain: infra
+  title: "property-based agent contracts: declared file scope enforced by pre-commit (kills lease-overlap class)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Today every agent's "I might touch these files" is implicit — gleaned
+    from the gap description, the worktree branch name, or the commit
+    diff after the fact. No upfront declaration. Result: cross-agent
+    file leaks (INFRA-076 Test <test@test.com> co-author from a sandbox
+    fixture leaking via global git config), wrong-worktree commits
+    (chump-commit.sh reset claim), semantic collisions on the same
+    problem space (INFRA-081), and the manual gap-claim.sh --paths
+    flag that nobody uses.
+    
+    Fix: declare file scope at gap-claim time. Agent posts a manifest
+    in the lease file:
+    
+      # .chump-locks/<session>.json
+      {
+        "session_id": "...",
+        "gap_id": "INFRA-189",
+        "scope": [
+          "src/agent_loop/**",
+          "crates/chump-perception/**",
+          "docs/gaps/INFRA-189.yaml"
+        ],
+        ...
+      }
+    
+    Pre-commit hook reads the lease, computes the staged file paths,
+    rejects writes outside the declared scope. Bypass via
+    CHUMP_SCOPE_CHECK=0 (with reason in commit message) for emergencies.
+    
+    Default scope when not declared: the worktree's git diff so far PLUS
+    the canonical "every gap touches these" set
+    (docs/gaps/<gap>.yaml, docs/gaps.yaml during transition,
+    .chump-locks/<session>.json).
+    
+    Subsumes/closes:
+      - INFRA-076 (Test <test@test.com>) — out-of-scope edit blocked
+      - INFRA-081 (lease misses semantic collisions) — declared scope
+        IS the semantic collision check
+      - INFRA-085 (manual-ship invisibility) — manifest is the
+        ship-invisible check
+      - INFRA-110 (reserve-time scoped-diff signature) — manifest IS
+        the signature
+      - INFRA-118 (verify chump-commit reset) — scope check makes the
+        reset unnecessary
+  acceptance_criteria:
+    - scripts/coord/gap-claim.sh accepts a --scope flag (comma-separated globs); writes to lease JSON
+    - scripts/git-hooks/pre-commit reads the lease + rejects out-of-scope writes (with helpful diagnostic + bypass env)
+    - Default scope (when not declared) computed from already-staged files + canonical gap-row paths
+    - "Test fixture: a script that creates a sandbox repo, declares scope X, attempts commit on Y → assert rejection"
+    - "After 1 week of agents declaring scope: count out-of-scope-leak commits — should be 0"
+  depends_on: [INFRA-188]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+

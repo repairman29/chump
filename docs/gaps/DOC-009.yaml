@@ -1,0 +1,27 @@
+- id: DOC-009
+  domain: DOC
+  title: WORK_QUEUE.md stale — priority and status drift misleads agents on active P0 decisions
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Cold Water Issue #7 (2026-04-26): docs/WORK_QUEUE.md (added 2026-04-22 as "single
+    source of truth for what to work on next") now contains: RESEARCH-021 listed as P0
+    (demoted to P1 on 2026-04-24); REMOVAL-003 listed as "P2 OPEN" (closed PR #465,
+    2026-04-25); PRODUCT-009 listed as P1 (demoted to P2 on 2026-04-24); Python 3.12
+    discipline listed as an "active blocker" (resolved Issue #4 addendum, 2026-04-22);
+    EVAL-042, EVAL-043, COG-031 listed as "pending research" (all status: done in
+    gaps.yaml). An agent reading WORK_QUEUE.md today will attempt closed gaps and
+    investigate resolved blockers. DOC-008 corrected only the RESEARCH-021 dedup; none
+    of the priority or status errors were fixed. Fix: update WORK_QUEUE.md from live
+    gaps.yaml data and add a note that it must be regenerated via `chump gap dump` or
+    checked against gaps.yaml before trusting. Long-term: gate WORK_QUEUE.md generation
+    on the gap store export so it cannot drift.
+  acceptance_criteria:
+    - WORK_QUEUE.md active-work table reflects live gaps.yaml status (no closed gaps, correct priorities)
+    - Python 3.12 blocker row removed from Blockers & Debt section
+    - Pending Research section reflects live gaps.yaml status
+    - Either WORK_QUEUE.md is regenerated automatically from `chump gap dump` or it carries a header warning that it is manually maintained and may lag gaps.yaml
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

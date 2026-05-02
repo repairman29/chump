@@ -1,0 +1,23 @@
+- id: REMOVAL-007
+  domain: REMOVAL
+  title: Audit src/phi_proxy.rs and src/holographic_workspace.rs - sized like real features, never called from request path
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Tour audit on 2026-04-26 found two cognitive-architecture modules that
+    appear in the binary but are never invoked from agent_loop or any tool
+    dispatch path: src/phi_proxy.rs (252 LOC) and src/holographic_workspace.rs
+    (314 LOC). Both are listed in README "nine engineering proxies" framing
+    and CHUMP_FACULTY_MAP.md, but neither has a wire-up confirmed by trace.
+    Either confirm they are dead code and remove (per the REMOVAL-002
+    surprisal_ema precedent), confirm they ARE called and add a coverage
+    test that proves it, or document as "research scaffolding, not in
+    request path" with a runtime flag and a follow-up gap for measurement.
+  acceptance_criteria:
+    - Trace each module - is it called from any path that runs during a normal chat turn?
+    - Decide per-module - dead-code remove, wire+test, or document as research-scaffold
+    - Update README and CHUMP_FACULTY_MAP.md to reflect outcome
+    - Pair with DOC-010 (nine-proxies reframe)
+  opened_date: '2026-04-26'
+

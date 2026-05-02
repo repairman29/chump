@@ -1,0 +1,19 @@
+- id: INFRA-043
+  domain: infra
+  title: Coordination system stress test
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    Lease collision handling, ambient stream append under 50+ concurrent writes, worktree reaper stability. Unknown failure modes. Scope: Write harness that (1) spawns 10 agents all claiming same gap, verify only 1 succeeds; (2) spawns 20 agents writing 100 events each, verify no lost events; (3) creates 50 stale worktrees, run reaper, verify correct ones removed; (4) verify session TTL auto-expiry within ~60 min.
+  acceptance_criteria:
+    - Lease collision test passes (10/10 agents, only 1 claim succeeds)
+    - Ambient stream test passes (2000 events, 0 lost, no corruption)
+    - Worktree reaper test passes (50 worktrees, correct removals, no crashes)
+    - Session TTL test passes (lease auto-expires within 65 min)
+    - Stress test report identifies bottlenecks, race conditions, edge cases
+  depends_on: [FLEET-007]
+  notes: |
+    Validates coordination system for fleet scale. Defer until FLEET-007 basic implementation.
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+

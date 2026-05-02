@@ -1,0 +1,14 @@
+- id: EVAL-027
+  domain: eval
+  title: SAKE knowledge anchoring — apply Feb 2026 KID paper to Chump's lessons + memory
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    The Knowledge Integration Decay paper (Yu et al, arxiv 2602.09517, Feb 2026) demonstrates that long reasoning chains systematically fail to integrate retrieved external knowledge, and proposes SAKE (Self-Anchored Knowledge Encoding) which anchors the retrieved knowledge at BOTH the start AND end of the reasoning trace — training-free, ~37.6% gain on multi-hop QA. Chump's current lessons block injection is start-only (system prompt prefix) which matches the failure mode the paper identifies. Hypothesis: the cross-architecture neuromod harm signal documented in EVAL-025 (haiku-cog016 -0.15) and EVAL-026 (Qwen-7B -0.16, Llama-70B -0.14, Qwen3-235B -0.10) is partly a KID effect — lessons fire at the start, agent reasons through tool calls, by answer-time the lessons context is lost. SAKE-style "anchor at both ends" is a cheap modification we can A/B against the existing baseline.
+  depends_on: [EVAL-025, EVAL-026]
+  notes: |
+    Implementation: add LESSONS_BLOCK_COG016_SAKE constant to run-cloud-v2.py that wraps the cog016 block as both system-prefix AND user-suffix appended to the prompt. Or implement as a production change in src/reflection_db.rs::format_lessons_block_sake() gated behind CHUMP_LESSONS_ANCHOR=both env var. Cloud-only sweep cost ~\$1-2. Wall ~30min. Reference paper: https://arxiv.org/abs/2602.09517
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-19'
+

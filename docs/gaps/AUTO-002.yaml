@@ -1,0 +1,12 @@
+- id: AUTO-002
+  domain: autonomy
+  title: Planner → Executor → Verifier loop (core autonomy)
+  status: done
+  priority: P1
+  effort: xl
+  description: |
+    No structured planner/executor/verifier lifecycle. Agent works tasks opportunistically but doesn't: (1) select next task by priority/blocking, (2) expand plan into notes, (3) verify via acceptance criteria before marking done, (4) create follow-up tasks on failure.
+  depends_on: [AUTO-001]
+  source_doc: docs/AUTONOMY_ROADMAP.md
+  closed_date: '2026-04-16'
+

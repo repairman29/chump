@@ -1,0 +1,18 @@
+- id: INFRA-030
+  domain: infra
+  title: "Fleet observability: musher + ambient single-pane status for unattended loops"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Autonomous loops (scripts/agent-loop.sh, Cursor fleet sessions) still lack a single command that answers: which gaps are live-claimed, which PRs are in-flight, and whether ambient is emitting commit/file_edit events. Ship scripts/fleet-status.sh (name flexible) that composes musher --status, gap-lease directory summary, recent ambient tail, and open gh PRs touching docs/gaps.yaml — suitable for human and CI preflight. Document the workflow in docs/AGENT_LOOP.md and docs/CHUMP_CURSOR_FLEET.md.
+  acceptance_criteria:
+    - scripts/*fleet* status entrypoint exists and exits 0 on a healthy idle repo
+    - Emits clear WARN sections when ambient shows only session_start or when no leases but musher shows claimed gaps
+    - docs/AGENT_LOOP.md references the script in Checking what's available + Signals sections
+    - "Optional: GitHub Actions job dry-run on schedule (advisory) posting artifact — only if rate limits acceptable"
+  notes: |
+    Queued 2026-04-23. Keep scope read-only; do not turn this into another silent auto-healer without explicit gap.
+  source_doc: docs/AGENT_LOOP.md + docs/CHUMP_CURSOR_FLEET.md
+  closed_date: '2026-04-21'
+

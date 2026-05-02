@@ -1,0 +1,12 @@
+- id: EVAL-020
+  domain: eval
+  title: Persona/tone consistency A/B — does framework alter UX
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    A safety/correctness improvement that turns the agent into a robot bureaucrat is a UX regression. Need to measure.
+  notes: TEST-CAT-K.
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

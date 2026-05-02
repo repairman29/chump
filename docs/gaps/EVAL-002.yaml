@@ -1,0 +1,12 @@
+- id: EVAL-002
+  domain: eval
+  title: LLM-as-judge response quality scoring for eval runs
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    EvalCase property checks are structural (contains, json_path, regex). No semantic quality scoring. Cannot distinguish "technically passes but wrong answer" from "correctly answers with proper tool use."
+  depends_on: [EVAL-001]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

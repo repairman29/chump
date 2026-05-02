@@ -1,0 +1,12 @@
+- id: COMP-004b
+  domain: competitive
+  title: Telegram adapter via teloxide
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Second chunk of COMP-004. Uses the COMP-004a MessagingAdapter trait; adds a teloxide-backed src/telegram.rs and a `chump --telegram` CLI mode mirroring `chump --discord`. Reads TELEGRAM_BOT_TOKEN env.
+  depends_on: [COMP-004a]
+  source_doc: scripts/run-discord.sh
+  closed_date: '2026-04-17'
+

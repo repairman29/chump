@@ -1,0 +1,18 @@
+- id: COG-026
+  domain: cognition
+  title: Validate Together-big models on chump agent loop — A/B vs claude
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    After COG-025 ships the dispatch-backend pluggability, need to empirically validate: can Qwen3-235B / Llama-3.3-70B drive Chump's multi-turn agent loop end-to-end (read CLAUDE.md → do gap work → ship via bot-merge.sh)? The autonomy test V4 (PR #167) proved claude-sonnet-4-5 can; the open question is whether Together big models are competent at the same task. A/B: same synthetic backlog (docs/test-fixtures/synthetic-backlog.yaml from AUTO-013 step 5), 4 gaps, two arms:
+      - Cell A: CHUMP_DISPATCH_BACKEND=claude (baseline, ~$4 spend)
+      - Cell B: CHUMP_DISPATCH_BACKEND=chump-local with Qwen3-235B (free)
+    Measure: ship rate (PRs merged per gap), wall time, reflection quality, cost.
+  depends_on: [COG-025]
+  notes: |
+    ~1 day after COG-025 lands. If successful: 90%+ cost reduction on autonomous PR shipping. Pair with FRONTIER-007 (cross-agent benchmarking) for the broader story.
+  source_doc: session 2026-04-19 cost-routing discussion
+  closed_date: '2026-04-20'
+  closed_pr: 186
+

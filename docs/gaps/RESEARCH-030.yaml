@@ -1,0 +1,24 @@
+- id: RESEARCH-030
+  domain: research
+  title: Instrument-invalidation footgun audit process - when scorer/tooling found broken, automatically flag prior measurements
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    INTEGRITY_AUDIT_3 surfaced a systemic vulnerability - when EVAL-060
+    found the exit-code scorer was broken, no automated review of prior
+    measurements that depended on it was triggered. EVAL-026 (broken
+    scorer) and EVAL-069 (probably broken scorer) both went unflagged.
+    The python3 shebang fix landed without a re-run requirement on prior
+    eval gaps. Add a process rule to RESEARCH_INTEGRITY.md and a script
+    that, when an instrument-invalidating gap closes, greps prior eval
+    docs for that pattern (scorer string, shebang, judge prompt version,
+    fixture file, etc.) and emits an ALERT requiring re-validation before
+    cited results stand.
+  acceptance_criteria:
+    - RESEARCH_INTEGRITY.md adds an Instrument Invalidation Protocol section
+    - scripts/eval-footgun-audit.sh greps prior eval docs for a given pattern
+    - "When an EVAL-* gap with notes:instrument_invalidation closes, the script auto-runs and posts ambient ALERT kind=eval_recheck_required"
+    - Backtest against EVAL-060 - ALERT would have flagged EVAL-026 and EVAL-049-058 binary-mode runs
+  opened_date: '2026-04-26'
+

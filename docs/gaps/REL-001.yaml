@@ -1,0 +1,12 @@
+- id: REL-001
+  domain: reliability
+  title: Model quality matrix — one local model reliably completes T1.1 end-to-end
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    T1.1 dogfood (read → patch → respond) has no single local model that reliably completes end-to-end with a minimal unified diff (not write_file fallback). qwen2.5:7b passes "no crash" bar only. qwen2.5:14b has RAM eviction under load. qwen3:8b blocked by Ollama upstream instability.
+  notes: Partially blocked on REL-002 (upstream Ollama).
+  source_doc: docs/DOGFOOD_RELIABILITY_GAPS.md
+  closed_date: '2026-04-16'
+

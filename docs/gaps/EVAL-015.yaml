@@ -1,0 +1,13 @@
+- id: EVAL-015
+  domain: eval
+  title: Adversarial prompt-injection robustness A/B
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    The lessons block is a system-role injection. Production safety requires that user prompts cannot override or weaponize it. We have zero data on this.
+  notes: |
+    TEST-CAT-E. Should run BEFORE any production-default flip on reflection_injection_enabled().
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

@@ -1,0 +1,12 @@
+- id: PRODUCT-004
+  domain: product
+  title: FTUE — first-run onboarding conversation that populates the user profile
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    The first-time user experience is the most important interaction Chump has. Right now there is no onboarding — a new user opens the PWA and faces a blank input with no guidance. This gap implements the onboarding conversation: Chump detects profile_complete()==false, opens with "I'm happy to help — let's set you up for success," and walks through five targeted questions: name, role/domains, active projects, this-week goals, and working style (checkin frequency). Each answer writes to the corresponding profile layer. After Q5, Chump summarizes, confirms, and immediately starts on the first real task from Q3/Q4. A "skip" path sets sensible defaults and asks only "what do you want to work on?" Profile builds over time from there.
+  depends_on: [PRODUCT-003]
+  source_doc: docs/FTUE_USER_PROFILE.md
+  closed_date: '2026-04-19'
+

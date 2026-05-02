@@ -1,0 +1,25 @@
+- id: COG-011d
+  domain: consciousness
+  title: Investigate why lesson injection hurts on gotchas (-0.30 delta)
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    COG-011b's LLM-judge run showed lesson injection hurts gotcha tasks by 30 percentage points. Hypotheses to test:
+      (a) The lesson block adds 200-500 tokens of noise that crowds
+          out the user prompt's signal — try a prompt-position swap
+          (lessons after user prompt instead of in system).
+      (b) Generic lessons ("validate preconditions before tool call")
+          are too vague — try scope-filtered lessons only when the
+          scope hint matches, otherwise skip the block.
+      (c) The model over-asks-for-clarification when the "ask
+          clarifying question" lesson is in scope — add a counter-
+          balancing lesson "if intent is clear, act don't ask".
+      (d) Larger model (qwen2.5:14b) might use lessons better than
+          qwen2.5:7b — repeat the 40-trial A/B on 14b.
+  depends_on: [COG-011, COG-011b]
+  notes: |
+    Variant (b) tested + supported (2026-04-17, 0eecf5e + this run): CHUMP_REFLECTION_STRICT_SCOPE=1 took the LLM-judge delta from -0.10 → +0.05 overall and gotcha from -0.30 → 0.00. Mode A's gotcha rate jumped from 0.50 (COG-011b) to 0.90. The "noise hypothesis" is supported: universal-scope lessons leaking into every prompt was the primary harm vector, not the lesson content itself. Still need ≥1 more variant (a/c/d) to satisfy the acceptance criterion.
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-17'
+

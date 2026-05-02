@@ -1,0 +1,18 @@
+- id: EVAL-084
+  domain: eval
+  title: EVAL-063 re-aggregate using only scorer=='llm_judge' rows
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    EVAL-083 audit (2026-04-25) found EVAL-063's archived run had mixed scorers — 4 files (366 rows) used `exit_code_fallback`, 4 files (399 rows) used `llm_judge`, and both A/A baselines (60 rows) used `exit_code_fallback`. EVAL-063 currently feeds EVAL-061's "VALIDATED(NULL)" claim for Metacognition, which feeds REMOVAL-001's decision matrix and ultimately REMOVAL-003 (belief_state deletion). The decision is probably still correct because the llm-judge half of the data also shows NEUTRAL, but the credibility chain has a documented hole that needs closing before PRODUCT-009 publication. Re-aggregate the EVAL-063 published delta using only `scorer=='llm_judge'` rows. If insufficient llm-judge rows for valid inference, mark EVAL-063 RETIRED like EVAL-069.
+  acceptance_criteria:
+    - Aggregated delta + Wilson 95% CI computed using only llm_judge rows from EVAL-063 archived JSONL
+    - If delta or CI changes materially vs. published number, FINDINGS.md F3 caveat extended
+    - All evidence preserved in docs/eval/EVAL-063-credibility-rerun.md
+  depends_on: [EVAL-083]
+  notes: |
+    Pure aggregation work — no new sweep needed. ~2-3 hours including doc. Filed by EVAL-083 audit.
+  source_doc: docs/eval/EVAL-063-credibility-rerun.md
+  closed_date: '2026-04-25'
+

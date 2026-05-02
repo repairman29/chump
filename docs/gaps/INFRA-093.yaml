@@ -1,0 +1,26 @@
+- id: INFRA-093
+  domain: infra
+  title: Repo-hygiene Phase 1 — move root-level audit/brief docs into docs/audits and docs/briefs
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Repo-hygiene review (2026-04-26 "what are we doing wrong" audit, Phase 1):
+    repo root had 14 .md files including 3 INTEGRITY_AUDIT_*.md, RESEARCH_DEEP_DIVE.md,
+    BETA_TESTERS.md — drive-by readers can't tell what is canonical scaffolding
+    versus a one-shot retrospective. Move audit retrospectives into
+    docs/audits/, beta/operator-facing briefs into docs/briefs/. NOTE:
+    chump-adversary.yaml and adversary.md are NOT moved — they are runtime
+    config loaded from repo root by src/adversary.rs and src/adversary_llm.rs
+    (would break the adversary subsystem to relocate without code changes).
+    Update README.md beta-testers link to new path.
+  acceptance_criteria:
+    - INTEGRITY_AUDIT_1/2/3 moved to docs/audits/ via git mv (history preserved)
+    - RESEARCH_DEEP_DIVE.md moved to docs/audits/
+    - BETA_TESTERS.md moved to docs/briefs/
+    - README.md link to BETA_TESTERS updated to docs/briefs/BETA_TESTERS.md
+    - chump-adversary.yaml and adversary.md remain at root (runtime config)
+    - Root .md count drops from 14 to 9 (README, LICENSE, CHANGELOG, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, AGENTS, CLAUDE, adversary)
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+

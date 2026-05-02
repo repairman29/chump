@@ -1,0 +1,11 @@
+- id: INFRA-MEMDB-RACE
+  domain: infra
+  title: Track funny-hypatia memory_db.rs WIP — clean push after revert
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    cf79287 accidentally swept funny-hypatia's incomplete async LLM summarizer WIP into an unrelated commit. 1241e0c reverted memory_db.rs to its pre-stomp state so the build would compile. funny-hypatia later pushed the complete version cleanly as 216e071 (MEM-004).
+  source_doc: cf79287
+  closed_date: '2026-04-17'
+

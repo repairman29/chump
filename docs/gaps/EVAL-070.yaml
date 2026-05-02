@@ -1,0 +1,19 @@
+- id: EVAL-070
+  domain: eval
+  title: Extend F4 cross-judge methodology to reflection and perception fixtures
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    F4 established that two LLM judges (Sonnet + Llama-70B) disagree at Cohen kappa 0.42 on the neuromod fixture, and that the disagreement is concentrated on the exact task class where the lessons-block harm appears. This is a single-fixture finding. EVAL-042 ran the reflection and perception fixtures in the same sweep; reflection measured kappa 0.722 (substantial agreement), perception has the data but the cross-judge kappa is not surfaced in the top-level findings index. This gap finishes the cross-judge story: compute kappa + per-task disagreement cluster for all three fixtures, surface which fixture classes show judge-family bias, and which are robust. If reflection kappa stays high (it was 0.722 at n=50) and perception kappa shows a third pattern, the three-fixture table becomes a publishable methodology finding in its own right (candidate for PRODUCT-009 publication content).
+  acceptance_criteria:
+    - Per-fixture Cohen kappa at threshold 0.5 reported for reflection, perception, neuromod using EVAL-042 JSONL data
+    - "Per-task disagreement clustering: which tasks most disagree between judges, which cluster by semantic type"
+    - docs/eval/EVAL-070-crossjudge-three-fixture.md shipped with the table + interpretation
+    - docs/FINDINGS.md F4 entry updated with the three-fixture kappa table and the elevated claim
+  depends_on: [EVAL-042]
+  notes: |
+    ~1 day of analysis; JSONL data already exists in logs/ab/. No new sweeps needed. Low-effort promotion of an existing single-fixture finding to a three-fixture methodological claim.
+  source_doc: docs/FINDINGS.md F4 caveat + EVAL-042
+  closed_date: '2026-04-20'
+

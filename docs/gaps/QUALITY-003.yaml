@@ -1,0 +1,18 @@
+- id: QUALITY-003
+  domain: reliability
+  title: Audit which unwrap() calls are in production hot paths (triage before reduction)
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    QUALITY-002 (filed 2026-04-20) tackles unwrap() reduction. Without triage it is a sprint with no endgame - the Red Letter count jumped from 989 to 1065 after QUALITY-001 closed as "audited." Before removing N unwraps blindly, categorize the 1065 by production-path risk: (A) production hot path - src/main.rs entry, src/agent_loop/*, src/dispatch.rs, src/provider_cascade.rs; (B) production cold path - infra code only hit at startup; (C) tests / build scripts / dev tools. Panics in (A) crash unattended sessions; panics in (C) fail at CI time which is fine. The 1065 number is meaningless without this split. Output: docs/QUALITY-003-unwrap-triage.md with a per-file-per- category count and the top 20 highest-risk files ranked by (A) density. QUALITY-002 reduction work should start with those 20, not the rest.
+  acceptance_criteria:
+    - docs/QUALITY-003-unwrap-triage.md written with the A/B/C split
+    - Top 20 highest-A-density files enumerated with unwrap counts
+    - QUALITY-002 gap description updated to reference this triage as its starting point (scope narrowing to top-20 is fine — rest can be follow-up)
+  depends_on: [QUALITY-002]
+  notes: |
+    ~2 hours of grep + analysis. Turns blocker #5 from a vague "1065 unwraps" into a concrete "20 files to fix for production stability." Enables QUALITY-002 to scope to an actually-completable chunk rather than running forever. Chunking function for the blocker.
+  source_doc: 2026-04-20 strategic review blocker
+  closed_date: '2026-04-20'
+

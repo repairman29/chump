@@ -1,0 +1,35 @@
+- id: DOC-012
+  domain: DOC
+  title: NORTH_STAR.md cognitive-architecture claims contradict RESEARCH_INTEGRITY.md validated findings
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    docs/strategy/NORTH_STAR.md:19 states "The cognitive architecture
+    underneath Chump — free energy, surprise tracking, belief state,
+    neuromodulation, precision weighting, memory graphs, counterfactual
+    reasoning — is not a research project. It is the mechanism that
+    makes this possible." NORTH_STAR.md:59 reinforces: "The cognitive
+    layer (neuromodulation, precision controller, belief state, surprise
+    tracker) is the mechanism."
+    
+    docs/process/RESEARCH_INTEGRITY.md's validated findings table and
+    prohibited-claims section directly contradict every module named:
+    neuromodulation is net-negative (EVAL-029, medium confidence);
+    belief_state was removed (REMOVAL-003 done, PR #465, inert stub
+    at src/belief_state.rs); surprisal EMA is unvalidated until
+    EVAL-043 ships; belief state improvement is prohibited until
+    EVAL-035 + EVAL-043. DOC-010 (P1, open) covers README and faculty
+    docs only — NORTH_STAR.md is not in scope.
+    
+    Cold Water Issue #8 filed DOC-012. Evidence: NORTH_STAR.md:19,59
+    (claims); RESEARCH_INTEGRITY.md prohibited-claims table (lines
+    referencing EVAL-043, EVAL-035); REMOVAL-003 (belief_state done).
+  acceptance_criteria:
+    - NORTH_STAR.md Heartbeat section no longer claims unvalidated or net-negative modules as proven mechanisms
+    - Any cognitive architecture claim in NORTH_STAR.md cites the supporting gap ID and confidence level from RESEARCH_INTEGRITY.md
+    - RESEARCH_INTEGRITY.md reviewed to confirm no other foundational docs make the same prohibited claims
+  opened_date: '2026-04-27'
+  closed_date: '2026-04-28'
+  closed_pr: 633
+

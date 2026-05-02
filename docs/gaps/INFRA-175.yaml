@@ -1,0 +1,29 @@
+- id: INFRA-175
+  domain: infra
+  title: "FTUE workflow: test bottle path (real user) once bottles exist; keep source-build as fallback"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Once INFRA-172 ships bottles, the ftue-clean-machine workflow
+    should test the **real user install path** (`brew tap … && brew
+    install chump` — bottle pull, no compile) rather than `--build-
+    from-source` (which simulates a build-system test, not a UX test).
+    
+    Two-mode approach: try bottle install first (fast, real-user);
+    if it fails (no bottle published, network issue), fall back to
+    `--build-from-source` and emit a CI warning. The artifact records
+    which mode was used so the verification doc honestly reflects
+    "tested as a real user would" vs "tested the source-build path."
+    
+    Without this, even after INFRA-172 ships, the workflow could
+    silently keep testing the source-build path forever and miss
+    "we forgot to ship bottles for this release" as a regression.
+  acceptance_criteria:
+    - Workflow's brew install step tries bottle install first; falls back to --build-from-source on failure
+    - "Verification artifact records install_mode: bottle | source"
+    - Run fails (or emits a warning) if install_mode == source on a release-tagged main commit (bottle should have shipped)
+    - Manual workflow_dispatch can force --build-from-source via input parameter for the build-system test
+  depends_on: [INFRA-174]
+  opened_date: '2026-04-30'
+

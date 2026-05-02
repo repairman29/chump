@@ -1,0 +1,48 @@
+- id: INFRA-158
+  domain: infra
+  title: 4 pre-commit guards have no regression tests (docs-delta, submodule, credential, gap-status)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Audit of `scripts/git-hooks/pre-commit` against `scripts/ci/test-*.sh`
+    (2026-04-28) found 4 pre-commit guards that ship in production but
+    have NO regression test:
+    
+      - **docs-delta check (INFRA-009)** — rejects docs/*.md additions
+        without a balancing delete or `Net-new-docs:` trailer. No
+        scripts/ci/test-docs-delta-guard.sh.
+      - **submodule sanity (INFRA-018)** — rejects new gitlinks (mode
+        160000) without a matching `.gitmodules` entry. No
+        scripts/ci/test-submodule-guard.sh. The original incident this
+        guard was built for (sql-migrate gitlink, ~20 stalled CI runs)
+        could recur silently if the guard's diff parser regressed.
+      - **credential-pattern guard (INFRA-018)** — rejects API key /
+        token shapes in staged diffs. No
+        scripts/ci/test-credential-pattern-guard.sh.
+      - **gap-status-check (INFRA-066)** — runs in
+        .github/workflows/gap-status-guard.yml; checks PR title vs
+        gaps.yaml status. No scripts/ci/test-gap-status-flip.sh —
+        the very guard that just blocked PR #639 has no unit test of
+        its own logic.
+    
+    Pre-commit guards are coordination infrastructure: a silent regression
+    in one means the failure mode it was built to catch reappears with
+    no warning. INFRA-014 (recycled-id), INFRA-073 (duplicate-id),
+    INFRA-079 (cross-judge), INFRA-107 (closed_pr), INFRA-113 (prereg
+    content), INFRA-070 (yaml-lint), RESEARCH-019 (preregistration
+    required) all DO have test scripts. These four don't, and the
+    test-coverage gap is invisible until something breaks.
+    
+    Fix: add 4 test scripts following the existing
+    test-duplicate-id-guard.sh / test-cross-judge-guard.sh pattern (build
+    sandbox repo, exercise pass/fail cases, assert exit code), wire each
+    into .github/workflows/ci.yml.
+  acceptance_criteria:
+    - scripts/ci/test-docs-delta-guard.sh exists and exercises pass + fail cases
+    - scripts/ci/test-submodule-guard.sh exists and exercises pass + fail cases
+    - scripts/ci/test-credential-pattern-guard.sh exists and exercises pass + fail cases (without leaking real-looking keys)
+    - scripts/ci/test-gap-status-flip.sh exists and exercises title-with-id / title-without-id / gap-cleanup-label cases
+    - All four wired into .github/workflows/ci.yml under the same job that runs the existing guard tests
+  opened_date: '2026-04-28'
+

@@ -1,0 +1,19 @@
+- id: PRODUCT-017
+  domain: product
+  title: UX-001 verification — stopwatch clean-machine install → PWA responsive today
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    CPO-framing gap, Tier 1. UX-001 is marked `status: done` 2026-04-21, promising `brew install chump → working PWA in < 60s`. Trust but verify. Scope: (1) run scripts/measure-ftue.sh on a clean Mac (fresh VM or wiped machine) today; (2) commit elapsed time + any failures to docs/FTUE-VERIFICATION-YYYY-MM-DD.md; (3) if > 60s or broken, file a P0 regression gap against UX-001 and this gap blocks PRODUCT-015/016 until resolved; (4) cadence — monthly clean-machine re-verification, CI already runs the stopwatch per UX-001 acceptance. Historical passes don't count; the gap closes only on a fresh run today.
+  acceptance_criteria:
+    - Clean-machine stopwatch run performed in the last 14 days
+    - Result committed to docs/FTUE-VERIFICATION-YYYY-MM-DD.md
+    - If failing, at least one regression gap filed and linked
+    - Monthly re-run cadence declared
+  notes: |
+    UX-001 closed 2026-04-21 — re-verify before assuming the activation funnel measures a working path.
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-28'
+  closed_pr: 631
+

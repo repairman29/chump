@@ -1,0 +1,23 @@
+- id: INFRA-103
+  domain: infra
+  title: PR parallelism classifier - tag serializing vs parallel-safe PRs so queue can land non-conflicting PRs concurrently
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    With 8+ concurrent auto-merge PRs (observed 2026-04-26 18:00-18:10),
+    the GitHub merge queue serializes everything because any one of them
+    might conflict with main. In practice, doc-only PRs and src-only PRs
+    that don't touch shared hot files (gaps.yaml, state.db, CLAUDE.md)
+    cannot conflict with each other. Classify each PR at creation time:
+    serializing if its diff touches gaps.yaml / .chump/state.db / CLAUDE.md
+    / .gitmodules / Cargo.lock; parallel-safe otherwise. Use the label to
+    drive a smarter merge cadence (or at minimum, surface in the queue
+    health monitor so humans/agents can spot avoidable serialization).
+  acceptance_criteria:
+    - bot-merge.sh inspects diff at PR-create time and applies serializing or parallel-safe label
+    - Documented hot-file list is configurable
+    - Queue health monitor (INFRA-052) reports when serializing PRs are blocking parallel-safe ones
+    - Optional follow-up gap for actually changing merge cadence - out of scope here
+  opened_date: '2026-04-26'
+

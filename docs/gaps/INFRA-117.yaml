@@ -1,0 +1,21 @@
+- id: INFRA-117
+  domain: infra
+  title: Verify chump --briefing is implemented - CLAUDE.md cites it but src/ unchecked
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    CLAUDE.md mandatory pre-flight (line 32) and the lesson-injection
+    discussion both reference 'chump --briefing <GAP-ID>' as MEM-007's
+    on-demand context-assembly path. A grep of src/main.rs in this audit
+    did not surface a matching subcommand. Either (a) the command exists
+    under a different name and CLAUDE.md is wrong, (b) it is partially
+    implemented but undocumented elsewhere, or (c) it never landed and
+    CLAUDE.md is documenting a phantom feature. Resolve with file:line
+    evidence and either fix CLAUDE.md or land MEM-007.
+  acceptance_criteria:
+    - Audit src/, crates/, scripts/ for any --briefing entrypoint
+    - If implemented - link the source, smoke-test with one gap ID
+    - If not implemented - either remove the references from CLAUDE.md or file MEM-007 follow-up to land it
+  opened_date: '2026-04-26'
+

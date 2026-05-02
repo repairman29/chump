@@ -1,0 +1,27 @@
+- id: INFRA-081
+  domain: infra
+  title: Lease coordination misses semantic collisions on the same problem space
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Process review (2026-04-26): four worktrees were active today on adjacent
+    INFRA-073-area work — infra-073-dedup (mine), infra-073-yaml-lint (stale,
+    PR #544 already shipped), infra-077-cleanup (different scope), and the
+    INFRA-075 tracker for the dedup itself. The lease system caught zero
+    overlap because each worktree edited different files. Only the user's
+    "make sure you aren't colliding" prompt and a careful read of
+    .chump-locks/ambient.jsonl surfaced the collision risk before I shipped.
+    Fix: gap-claim.sh / gap-reserve.sh should warn when claiming a gap whose
+    ID prefix is within ±5 of any open lease's gap_id, *or* when the title's
+    first 3 keywords overlap with another active lease's title (cheap
+    fuzzy-match on title tokens). This is a soft warn, not a block — the
+    user/agent decides whether to proceed. Lower priority because the manual
+    ambient-stream check works when followed; raise priority if a real
+    collision ships through.
+  acceptance_criteria:
+    - gap-claim.sh prints a soft warning when adjacent ID or overlapping-title leases are active
+    - gap-reserve.sh applies the same check before reserving
+    - Documentation under docs/AGENT_COORDINATION.md explains the new warning and how to override
+  opened_date: '2026-04-26'
+

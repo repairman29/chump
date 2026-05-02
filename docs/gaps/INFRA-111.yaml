@@ -1,0 +1,26 @@
+- id: INFRA-111
+  domain: infra
+  title: Mandate closed_interpretation and acceptance_verified fields on every gap closure
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    INTEGRITY_AUDIT_1 (2026-04-24) traced definition drift as the real
+    closure-integrity problem - QUALITY-001 was filed as eliminate
+    panics, executed as categorize and fix unsafe ones, closed under
+    interpretation #2 without noting the scope change. PRODUCT-009 was
+    filed with four acceptance criteria, closed when only one was met.
+    closed_interpretation field is already used organically (grep finds
+    it on a handful of recent closures) but is not mandatory. Add a
+    pre-commit guard that requires both fields when status flips to
+    done - closed_interpretation (free text, which acceptance criterion
+    drove closure) and acceptance_verified (per-criterion bool array).
+    Bypass - CHUMP_GAPS_LOCK=0 with justification in commit body.
+  acceptance_criteria:
+    - Pre-commit guard requires closed_interpretation when status flips open to done
+    - Pre-commit guard requires acceptance_verified array sized to acceptance_criteria
+    - chump gap ship --update-yaml prompts for both fields
+    - Documented in CLAUDE.md Commit-time guards table
+    - Backtest - PRODUCT-009 closure would have been blocked at the TBD point
+  opened_date: '2026-04-26'
+

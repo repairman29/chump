@@ -1,0 +1,32 @@
+- id: INFRA-037
+  domain: infra
+  title: "Branch protection: enforce required CI checks (failing PRs are merging to main)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    PR #451 (tokio-tungstenite 0.24 → 0.28) and PR #453 (wasmtime-wasi 20 → 44) both landed on main with FAILING `test`, `check`, `dry-run (chump)`, and `ACP protocol smoke test` checks, broke `cargo check --bin chump` for ~12 hours, and required emergency revert in INFRA-035 (PR #455). Both were merged manually by the repo admin — the admin override button was clicked despite red CI. The CI itself was working; branch protection just wasn't enforcing required checks.
+    Two complementary fixes:
+    1. CODE (this PR): tighten dependabot-automerge.yml to PATCH-only.
+       Pre-1.0 crates (like tokio-tungstenite at 0.x) use minor bumps for
+       breaking changes, so `version-update:semver-minor` is unsafe to
+       auto-merge. Patch bumps are the only truly safe class.
+    
+    2. ADMIN (manual, must be done by jeff in GitHub UI — agents cannot do
+       this from a PR):
+       - Open: github.com/repairman29/chump/settings/branches
+       - Edit the `main` branch protection rule
+       - Under "Require status checks to pass before merging", add:
+         `test`, `check`, `dry-run (chump)`, and
+         `ACP protocol smoke test (Zed / JetBrains compatible)`
+       - Make sure "Require branches to be up to date before merging" is checked
+       - Make sure "Do not allow bypassing the above settings" is checked
+         (this is the box that lets admins override red CI; without it,
+         dependabot-automerge.yml's tightening is the only safety net)
+  acceptance_criteria:
+    - dependabot-automerge.yml only auto-merges semver-patch updates
+    - Future dependabot minor bumps (e.g. 0.x → 0.y) require a human review click
+    - "ADMIN follow-up tracked: required-checks list updated in branch protection (this PR cannot enforce; needs UI access)"
+  source_doc: PRs
+  closed_date: '2026-04-24'
+

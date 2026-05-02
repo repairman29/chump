@@ -1,0 +1,29 @@
+- id: INFRA-140
+  domain: infra
+  title: "gap-status-check is over-eager — fails legitimate \"filed and closed in same PR\" pattern"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    The `gap-status-check` CI guard interprets a PR title with `<GAP-ID>:`
+    prefix as "this PR closes that gap" and fails if gaps.yaml does not
+    show `status: done` for that ID. It does not handle the legitimate
+    pattern of filing a new gap and closing it in the same PR (the
+    PR opens with the gap as the entry, the same PR flips it to done).
+    
+    Observed on PR #593 (sibling-agent attempt at the INFRA-136 path-fix):
+    title `INFRA-136: fix Python parents[1]...` triggered the close-implies-flip
+    rule but INFRA-136 in main was status: open at the time. The agent had
+    not yet committed the status flip. False-positive blocked the PR until
+    self-closed.
+    
+    Fix: either (a) require the YAML to show done OR show the entry being
+    *added* with status: done in this PR's diff, or (b) introduce a separate
+    `<GAP-ID>+:` prefix convention for "files this gap" vs `<GAP-ID>:` for
+    "closes this gap".
+  acceptance_criteria:
+    - "PR titled `<ID>:` that adds the entry with status:done in same diff passes"
+    - Existing close-of-prior-gap PRs still pass
+    - Documentation explains the convention in CLAUDE.md
+  opened_date: '2026-04-26'
+

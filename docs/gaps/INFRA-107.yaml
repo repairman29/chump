@@ -1,0 +1,24 @@
+- id: INFRA-107
+  domain: infra
+  title: Pre-commit guard - block status flip to done with closed_pr value of TBD or non-numeric
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    INTEGRITY_AUDIT_1 documented PRODUCT-009 false closure - the gap was
+    flipped to status:done with closed_pr:TBD on 2026-04-20, an explicit
+    incomplete-closure signal that no automated guard caught.
+    RED_LETTER #2 caught it days later. Add a pre-commit check that fails
+    when a gaps.yaml diff sets status:done while closed_pr is missing,
+    TBD, tbd, or any non-numeric value. Bypass - CHUMP_GAPS_LOCK=0.
+    Pairs with INFRA-111 (acceptance_verified field) for full closure-
+    integrity coverage but is independently shippable.
+  acceptance_criteria:
+    - Pre-commit guard added with bypass env CHUMP_GAPS_LOCK=0
+    - Test fixture - PRODUCT-009 closure diff fails the guard
+    - Test fixture - normal closure with closed_pr 404 passes
+    - Documented in CLAUDE.md Commit-time guards table
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 598
+

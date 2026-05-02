@@ -1,0 +1,12 @@
+- id: EVAL-004
+  domain: eval
+  title: Wire async LLM-as-judge into battle_qa + report per-category score
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    EVAL-002 shipped the sync scoring engine (parse_judge_response, score_with_judge, check_all_properties_with_judge). Remaining work: build the async adapter that produces the judge closure from a delegate_tool inference call, and wire scripts/battle-qa.sh to record average judge_score per EvalCategory for trend tracking.
+  depends_on: [EVAL-002]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

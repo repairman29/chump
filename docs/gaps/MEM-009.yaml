@@ -1,0 +1,19 @@
+- id: MEM-009
+  domain: memory
+  title: Reflection episode quality filtering before spawn-load
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    MEM-006 ships load_spawn_lessons() which pulls the N most recent reflection episodes into the lessons block at session spawn. If the agent had a bad session (5 consecutive task failures, reflection DB rows with low confidence or repeated errors), it will inherit "bad lessons" that poison the spawn-time context. No quality threshold or filtering exists today. Mechanisms to filter:
+      (a) Confidence score threshold: only load episodes with
+          reflection_score > X
+      (b) Error-rate filter: skip episodes from sessions with > Y%
+          task failure rate
+      (c) Recency × quality composite: weight by age * score
+  depends_on: [MEM-006]
+  notes: |
+    ~1 day + $2 cloud for A/B. Risk of bad-lesson poisoning compounds as reflection DB accumulates more sessions over time.
+  source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+  closed_date: '2026-04-20'
+

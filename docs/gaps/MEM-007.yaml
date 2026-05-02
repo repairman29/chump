@@ -1,0 +1,14 @@
+- id: MEM-007
+  domain: memory
+  title: "Agent context-query — \"what should I know before working on gap X?\""
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Today's mandatory pre-flight (CLAUDE.md) reads gaps.yaml + ambient + leases. Good for "what's open, who's working" but doesn't surface "what have we learned that's relevant to MY task". MEM-007 adds `chump --briefing <GAP-ID>` that returns a structured briefing: relevant reflection_db rows (filtered by gap domain + tags), recent ambient events for files this gap likely touches, cross-references in strategic docs (FACULTY_MAP, STRATEGY_VS_GOOSE, RESEARCH_PLAN, CONSCIOUSNESS_AB_RESULTS), prior PRs that closed similar gaps. Becomes the "session startup briefing" every new agent reads AFTER mandatory pre-flight, BEFORE claiming the gap.
+  depends_on: [MEM-006]
+  notes: |
+    ~1 week. Pairs with MEM-006: MEM-006 loads lessons systemically at spawn; MEM-007 is the explicit per-gap query API. Together they close the "what does the team know about THIS task" loop.
+  source_doc: session 2026-04-19 multi-agent learning loop design
+  closed_date: '2026-04-18'
+

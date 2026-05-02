@@ -1,0 +1,20 @@
+- id: INFRA-018
+  domain: infra
+  title: Add config/ + secrets paths to .gitignore + pre-commit credential-pattern guard
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    Red Letter Issue #1 noted config/ is not in .gitignore and a pre-commit hook does not detect credential patterns. The 4 commits that leaked ANTHROPIC_API_KEY and the one that leaked TOGETHER API key all bypassed every existing pre-commit guard because the guards do not look for credential patterns. Fix: add config/, *.env, secrets/, .env.local, .env.production to .gitignore root. Add pre-commit hook that grep for known credential prefixes (sk-, tgp_v1_, AIzaSy, ghp_, github_pat_) on staged file diffs and blocks commit if present.
+  acceptance_criteria:
+    - Root .gitignore updated with config/, .env*, secrets/, *.key, *.pem
+    - "scripts/git-hooks/pre-commit credential-pattern check: regex scan of git diff --cached for sk-[A-Za-z0-9]{20,} | tgp_v1_[A-Za-z0-9_-]{30,} | AIzaSy[A-Za-z0-9_-]{30,} | ghp_[A-Za-z0-9]{30,} | github_pat_[A-Za-z0-9_]{30,}"
+    - "On match: block commit with bypass env (CHUMP_CREDENTIAL_CHECK=0) and clear error message naming the offending pattern + line number"
+    - docs/AGENT_COORDINATION.md pre-commit-guards table extended with the new check
+  depends_on: [SECURITY-001]
+  notes: |
+    P0 because credential leakage is the worst-case failure mode this project has so far avoided structurally. ~1 hour. Pairs with SECURITY-001 (verify past leaks rotated, prevent future leaks).
+  source_doc: docs/RED_LETTER.md Issue
+  closed_date: '2026-04-21'
+  closed_pr: 347
+

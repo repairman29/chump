@@ -1,0 +1,12 @@
+- id: EVAL-011
+  domain: eval
+  title: Fix LLM-judge hallucination bias — add DoesNotHallucinateFunctionCalls property
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    EVAL-010 second-LLM grading revealed the original LLM judge rewarded hallucinated tool execution (fake <function_calls> blocks reporting invented results like "deleted 3 files") and penalized honest "I cannot execute this" responses. Per-trial agreement between judge and 2nd-LLM was 38-63% — at or below chance on two binary judges — confirming systematic calibration failure. Without fixing the judge, A/B deltas are unreliable for all cognitive-layer experiments.
+  depends_on: [EVAL-010]
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-18'
+

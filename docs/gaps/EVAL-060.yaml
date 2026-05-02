@@ -1,0 +1,16 @@
+- id: EVAL-060
+  domain: eval
+  title: BLOCK EVAL-059 closure — ablation harness methodology fix before further VALIDATED(NULL) labels
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    The binary-mode ablation harness (scripts/ab-harness/run-binary-ablation.py, EVAL-049) scores trials as "correct" when chump exits 0 AND produces output >10 chars. Red Letter #3 measured this instrument's baseline accuracy at 0.033 (EVAL-056) and 0.100 (EVAL-058) — below chance on any meaningful task classification. At n=30/cell the CI is approximately +/-0.14 which spans the full decision space. Six PRs closed this week on this instrument: EVAL-053 (Metacognition), #268 (Memory), #271 (Executive Function) all labeled COVERED+VALIDATED(NULL). NULL under this instrument means "measurement failed," not "module has no effect." The Metacognition label is especially concerning because EVAL-026 showed a documented NEGATIVE prior signal for that faculty, which the current instrument cannot confirm or rebut.
+    This gap blocks EVAL-059 from closing with the same instrument and mandates a methodology fix before any further VALIDATED(NULL) labels are applied.
+  depends_on: [EVAL-049]
+  notes: |
+    ~1-2 days. Filed in response to docs/RED_LETTER.md Issue #3 2026-04-20 which called the current instrument a "measurement failure rebranded as a conclusion." The risk of not shipping this: every faculty in Q3 plan ends up labeled COVERED+VALIDATED(NULL) on methodologically invalid evidence, and the project's own RESEARCH_INTEGRITY.md prohibits citing those results externally. Better to have one open faculty than six invalidly closed ones.
+  source_doc: docs/RED_LETTER.md Issue
+  closed_date: '2026-04-20'
+  closed_pr: 279
+

@@ -1,0 +1,17 @@
+- id: INFRA-061
+  domain: infra
+  title: M3 — Stacked-PR dispatcher (--stack-on for related work)
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    bot-merge.sh --gap X --stack-on <prev-gap> for related work. Stacked PR's base branch is prev PR's head, not main. When prev lands, merge queue auto-rebases stacked descendants. Modeled on Graphite/Sapling/ghstack; one-deep stacks cover the common dispatcher case. Eliminates the parallel fanout pattern where 5 related PRs all touch the same files.
+  acceptance_criteria:
+    - bot-merge.sh --stack-on INFRA-XYZ opens PR with base=claude/<prev>
+    - Landing prev PR triggers auto-rebase of stacked PR (verified end-to-end)
+    - chump gap reserve --stack option emits --stack-on for dispatcher
+    - AGENTS.md documents the stack pattern
+  depends_on: [INFRA-058, INFRA-059, INFRA-060]
+  source_doc: docs/WORLD_CLASS_ROADMAP.md
+  closed_date: '2026-04-25'
+

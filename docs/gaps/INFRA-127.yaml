@@ -1,0 +1,19 @@
+- id: INFRA-127
+  domain: infra
+  title: reflection_db has unit tests only - no end-to-end record then query then use coverage
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    src/reflection_db.rs has #[cfg(test)] blocks for individual functions
+    but no integration test that traces the full path - a session writes
+    a reflection row, the lessons-injection assembler queries it, and
+    the next session sees the lesson in its prompt (CLAUDE.md
+    CHUMP_LESSONS_AT_SPAWN_N pathway). Without this, the COG-016 / COG-024
+    lesson-injection feature is functionally unverified end to end.
+  acceptance_criteria:
+    - Integration test - insert N reflection rows, run lesson selector, assert top-N by recency*frequency are returned
+    - Integration test - simulate prompt assembly with CHUMP_LESSONS_AT_SPAWN_N=5 and assert the rendered prompt contains the expected lesson block
+    - Cleanup - test uses a temp DB so it does not pollute prod state
+  opened_date: '2026-04-26'
+

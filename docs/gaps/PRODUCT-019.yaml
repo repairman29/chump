@@ -1,0 +1,19 @@
+- id: PRODUCT-019
+  domain: product
+  title: Monetization hypothesis — top 2 options with kill criteria
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    CPO-framing gap, Tier 2. Pick a commercial direction (or document why deferred) before funding research-credibility reviews. Scope: (1) enumerate options — OSS-core + enterprise support, usage-based hosted Pixel-mesh, hosted multi-agent coordination, commercial eval API, research licensing — and pick top 2; (2) per option — bet, smallest testable slice, kill criterion (what tells us this is wrong), rough unit- economics sketch; (3) docs/MONETIZATION_V0.md; (4) revisit per Red Letter cycle. Hypothesis doc, not business plan — bias to cheap tests. "Defer commercial decisions" is itself a pick and needs a kill criterion.
+  acceptance_criteria:
+    - docs/MONETIZATION_V0.md exists with top 2 options
+    - Each option has bet / smallest testable slice / kill criterion / unit-economics sketch
+    - Revisit cadence declared (per Red Letter cycle)
+    - "Kill criterion stated for any \"defer\" option"
+  depends_on: [PRODUCT-018]
+  notes: Kill criterion matters more than the revenue projection.
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
+  closed_pr: 484
+

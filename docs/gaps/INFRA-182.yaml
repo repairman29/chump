@@ -1,0 +1,66 @@
+- id: INFRA-182
+  domain: infra
+  title: "tool routing: send 3-15 relevant tools per turn (route_tools in chump-perception) instead of all 46"
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    Even after INFRA-180 (capability-question skip-tools), tool-using
+    PWA turns are slow because every turn ships ALL 46 chump tool
+    schemas (~5 KB) to the model. Verified: "hey chump show me
+    something cool" took 150 s end-to-end (71 s round 1 + 80 s round 2)
+    with ONE tool actually used (calculator). On qwen2.5:14b @ ~150-300
+    t/s prefill, 5 KB of tool schema = 15-60 s before generation.
+    
+    Fix: pure-rule chump_perception::route_tools(perception,
+    all_tool_names) returns the tool subset (3-15 names) likely needed
+    based on perception.task_type + raw_text keyword matches.
+    orchestrator.rs sends the routed subset; if the subset doesn't
+    satisfy the model, the existing narration-detection retry at
+    iteration_controller:245 fires the next round with the FULL tool
+    set (worst case = today's cost; common case 3-10× faster).
+    
+    Routing rules (pure-string, no LLM):
+      - TaskType::Meta → []  (capability questions; INFRA-180 also covers)
+      - math entities (calc, multiply, *, +, etc.) → [wasm_calc]
+      - "task" / "todo" / "plan" → [task, task_planner, decompose_task,
+        merge_subtask]
+      - file/path entities → [read_file, write_file, patch_file, list_dir]
+      - git/commit/branch → [git_commit, git_push, git_revert, git_stash,
+        cleanup_branches, diff_review]
+      - url/http/web/browse → [read_url, browser]
+      - cargo/build/test/shell → [run_cli, run_test]
+      - remember/recall/memory/search → [memory, memory_brain,
+        session_search]
+      - notify/message/delegate → [notify, message_peer, delegate]
+      - schedule/remind/later → [schedule]
+      - TaskType::Research / "codebase" / "how does" → [codebase_digest,
+        read_url, memory]
+      - introspect/your-config → [introspect, ego]
+      - screen/screenshot → [screen_vision]
+      - else → starter pack [wasm_calc, task, read_file, list_dir,
+        run_cli, memory, codebase_digest, schedule]
+    
+    All routed names are filtered against the actual registry — never
+    invents names. Bypass with CHUMP_TOOL_ROUTING=0 (revert to send-all
+    for harness comparisons).
+    
+    Ships with 22 unit tests in chump-perception (route_meta_returns_empty,
+    route_math_to_calc, route_tasks_to_task_tools, route_files_to_file_tools,
+    route_git_to_git_tools, route_research_to_research_tools,
+    route_unknown_falls_back_to_starter_pack, route_drops_names_not_in_registry,
+    route_dedupes, arithmetic_operator_detection, plus the 12 pre-existing
+    perception tests).
+    
+    Companion to INFRA-183 (umbrella). Builds on INFRA-180. Stacks with
+    the partner-agent's Ollama-streaming work (INFRA-183 item #1) for
+    the full UX win.
+  acceptance_criteria:
+    - "chump_perception::route_tools(&perception, &[&str]) -> Vec<&str> exists in chump-perception/src/lib.rs"
+    - 22 unit tests pass — covers all 7 routing rules + edge cases (Meta empty, dedup, registry filter)
+    - orchestrator.rs uses route_tools for non-light path; CHUMP_TOOL_ROUTING=0 bypasses
+    - "tracing::debug logs 'tool routing: N of M sent' per turn for measurability"
+    - "Live test on PWA: 'hey chump show me something cool' completes in <60s on qwen2.5:14b (down from 150s) — assuming INFRA-183 #1+#2 also shipped"
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+

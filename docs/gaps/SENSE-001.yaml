@@ -1,0 +1,12 @@
+- id: SENSE-001
+  domain: agent
+  title: PeripheralSensor trait — hot-path interrupt bridge
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    White-paper hot/cold path: peripheral sensors (future: CV, audio, presence detection) should be able to interrupt a running agent turn via a typed SensorEvent. Today there is no abstraction for this — it would require patching the agent loop ad-hoc per sensor type. Define the trait now so future ambient sensors (NewMessageSensor, MotionSensor, ThresholdSensor) can be wired without touching the loop. Initial implementation: NewMessageSensor fires when a second incoming message arrives while a turn is in flight, triggering cancellation so the agent can process the freshest context.
+  depends_on: [AGT-002, AGT-004]
+  source_doc: src/agent_loop/orchestrator.rs
+  closed_date: '2026-04-18'
+

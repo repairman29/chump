@@ -1,0 +1,19 @@
+- id: QUALITY-005
+  domain: quality
+  title: Gap hygiene & estimation audit
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Effort estimates (S/M/L/XL) may not match reality. Acceptance criteria may be vague or unmeasurable. Dependencies not fully mapped. Sample 20 open gaps (random, across domains). For each: is effort realistic (compare to PR size, actual time taken)? Are acceptance criteria measurable (binary yes/no)? Are dependencies complete? Is title + description clear for another agent to pick up?
+  acceptance_criteria:
+    - Audited 20 random gaps
+    - Effort estimates validated against historical PRs
+    - Criteria clarity graded (poor/fair/good/excellent)
+    - Dependency gaps documented
+    - Summary report with patterns and recommendations
+    - Rewritten gaps committed (if clarity issues found)
+  notes: Improves Q2/Q3 planning accuracy. Results feed into gap registry refresh.
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  closed_date: '2026-04-25'
+

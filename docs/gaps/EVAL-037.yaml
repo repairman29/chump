@@ -1,0 +1,14 @@
+- id: EVAL-037
+  domain: eval
+  title: Multi-agent coordination A/B — does chump-coord pay for its overhead?
+  status: done
+  priority: P3
+  effort: l
+  description: |
+    Executive Function faculty: tests whether chump-coord NATS coordination adds value on tasks that require multi-step handoffs. Need new coordination-requiring fixture (tasks spanning multiple files / requiring intermediate handoffs). Cell A solo agent, cell B chump-coord active.
+  notes: |
+    Coordination fixture authoring ~3 days. Cost ~$3.
+  source_doc: docs/RESEARCH_PLAN_2026Q3.md
+  closed_date: '2026-04-20'
+  closed_pr: 249
+

@@ -1,0 +1,12 @@
+- id: EVAL-003
+  domain: eval
+  title: Golden trajectory tests — multi-turn replay against saved conversations
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    The 52-case single-turn seed suite (EVAL-001) catches tool-selection and property-level regressions but doesn't exercise the 3-25-turn loop where context-accumulation bugs live (the <think>-accumulation qwen3:8b regression is the canonical example). Add a separate golden-trajectory harness: save real conversations, replay them turn-by-turn, diff the trajectory of tool calls + assistant messages against the golden.
+  depends_on: [EVAL-001]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

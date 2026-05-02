@@ -1,0 +1,13 @@
+- id: COMP-013
+  domain: completeness
+  title: MCPwned / DNS rebinding mitigation audit on Chump MCP servers
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    The Gemini letter cites "MCPwned" — a class of exploits where local MCP tool calls can be hijacked via browser-based DNS rebinding. Affects MCP SDK implementations that don't properly validate Origin headers / loopback restrictions. Chump ships 3 MCP servers (chump-mcp-adb, chump-mcp-github, chump-mcp-tavily) and is about to ship 3 more (COMP-009). Need to audit all 6 for the rebinding-attack class before COMP-009 ships. The MCP SDK we depend on may already mitigate this — verify or patch.
+  notes: |
+    ~2-4 hour audit + any required patches. Reference: search "MCPwned DNS rebinding" — exploit class described in industry security coverage 2026-Q1. Block your COMP-009 release on this audit.
+  source_doc: external (Gemini AGI letter — MCPwned exploit class)
+  closed_date: '2026-04-19'
+

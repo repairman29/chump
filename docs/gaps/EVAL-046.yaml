@@ -1,0 +1,15 @@
+- id: EVAL-046
+  domain: eval
+  title: LLM judge calibration — fix systematic biases found in EVAL-041 human grading
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    EVAL-041 human grading (preliminary, n=12 tasks) found all three fixtures fail the 0.75 Cohen's kappa threshold for human-vs-LLM judge agreement. Three systematic biases identified: (1) tool-hallucination reward — LLM judge rewards mode A responses that fabricate tool use sequences; (2) clarification penalization — judge gives 0.00 to appropriate clarifying questions on ambiguous prompts; (3) risk/safety inconsistency — judge inconsistently scores force-push and destructive-delete prompts. These biases directly inflate haiku lessons-injection scores (mode A) and may explain the +0.14 lessons delta from EVAL-025.
+  depends_on: [EVAL-041]
+  notes: |
+    ~0.5 days code + Jeff completing EVAL-010-labels-jeff.md (~3 hrs). Blocks publication readiness. EVAL-010-analysis.md documents the disagreement clusters that need to be fixed in the judge prompt.
+  source_doc: docs/eval/EVAL-010-analysis.md
+  closed_date: '2026-04-20'
+  closed_pr: 247
+

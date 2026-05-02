@@ -1,0 +1,19 @@
+- id: INFRA-017
+  domain: infra
+  title: Fix ab-harness python3 shebang foot-gun — python3 resolves to 3.14 (no anthropic), silently fell back to exit-code scoring
+  status: done
+  priority: P0
+  effort: xs
+  description: |
+    docs/RESEARCH_INTEGRITY.md warned that python3 resolves to 3.14 on this machine and has no `anthropic` module, causing every ab-harness script using `#!/usr/bin/env python3` to silently fall back to scorer=exit_code_fallback — no real LLM-judge scores, no error message. Red Letter #4 identified this as the methodology foot-gun behind EVAL-069's identical-CI result (acc_A = acc_B = 0.920, CI[0.812, 0.968] both cells — the fingerprint of a scorer awarding the same pass/fail on every trial regardless of agent behavior). The result was then used to retire F3's neuromod aggregate signal in FINDINGS.md as a "methodology artifact." Verified on this machine: `python3 --version` = 3.14.4, import anthropic raises ModuleNotFoundError; `python3.12 --version` = 3.12.13, anthropic 0.96.0 imports cleanly. Fix shipped by this gap: (1) bulk-rewrote `#!/usr/bin/env python3` → `#!/usr/bin/env python3.12` across all 23 ab-harness Python scripts, (2) updated 4 shell-script invocations (scripts/ab-harness/run-live-ablation.sh x2, run-local-v2.sh, scripts/test-status.sh) from `python3 scripts/ab-harness/...` → `python3.12 scripts/ab-harness/...`. Smoke-tested: ./scripts/ab-harness/run-binary-ablation.py --help resolves via shebang and anthropic 0.96.0 imports cleanly on the new path. INFRA-017 closes the foot-gun ONLY — it does NOT re-run EVAL-069 or retroactively validate any prior sweep result. Follow-up gap EVAL-069-REDO will be needed to re-run the aggregate-signal retirement against the fixed instrument per Red Letter #4's recommendation.
+  acceptance_criteria:
+    - All 23 Python scripts in scripts/ab-harness/ use
+    - All shell-script invocations of ab-harness python drivers use `python3.12` not `python3`
+    - Smoke test — ./scripts/ab-harness/run-binary-ablation.py --help exits 0 via the shebang path
+    - "Smoke test — `python3.12 -c \"import anthropic\"` succeeds (anthropic 0.96.0)"
+    - Red Letter
+  notes: |
+    Scope intentionally narrow — only the shebang and direct caller invocations were changed. Docstring examples inside the scripts (`"Usage: python3 scripts/ab-harness/foo.py ..."`) were NOT rewritten in this PR to keep the diff reviewable; a follow-up docs-cleanup sweep can handle those. The core scoring-reliability regression is closed — every chump-initiated ab-harness invocation now runs under python3.12 with anthropic installed.
+  source_doc: docs/RED_LETTER.md Issue
+  closed_date: '2026-04-21'
+

@@ -1,0 +1,11 @@
+- id: COG-029
+  domain: consciousness
+  title: Typestate FSM — compile-time-provable autonomy lifecycle transitions
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Agent lifecycle (Plan → Execute → Verify → Done/Failed) uses plain integer counters and status strings (orchestrator.rs, iteration_controller.rs). No compile-time guarantee that Execute cannot be entered without Plan completion. Rust typestate pattern (zero-cost phantom types) makes invalid transitions unrepresentable at compile time.
+  depends_on: [AUTO-001]
+  closed_date: '2026-04-16'
+

@@ -1,0 +1,15 @@
+- id: INFRA-CODEREVIEWER-FALSE-POSITIVES
+  domain: infra
+  title: Code-reviewer agent false-positives on existing dependencies
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    code-reviewer-agent.sh flagged rusqlite as a "new dependency" on PR #158 when it's already in workspace Cargo.toml. The reviewer grep'd the Cargo.toml diff for `+ rusqlite` and saw the new crate-level addition without checking workspace inheritance. Wastes cycles on dismissals. Also: the reviewer matched the gap ID as EVAL-026 instead of AUTO-013 (parsed from the worktree directory name not the gap-claim).
+  depends_on: [INFRA-AGENT-CODEREVIEW]
+  notes: |
+    ~3 hours. Lower-priority than getting the merge queue UI flipped, but adds up — every false dismissal = ~30s of attention.
+  source_doc: PR
+  closed_date: '2026-04-20'
+  closed_pr: 201
+

@@ -1,0 +1,56 @@
+- id: INFRA-025
+  domain: infra
+  title: Update all Rust crates + publish to crates.io
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Chump has ~10 workspace crates (chump-agent-lease, chump-belief-state, chump-cancel-registry, chump-coord, chump-cost-tracker, chump-mcp-lifecycle, chump-messaging, chump-orchestrator, chump-perception, plus mcp-servers/*) that currently live only in the monorepo. Publishing to crates.io gives external visibility, reproducible dependency pinning for downstream users, and forces the hygiene audit that monorepo-only Rust projects usually skip (real version numbers, license files, docs metadata, no path-only deps, MSRV declared). Also dogfoods the 'bots can scaffold products' vision — if our own building blocks aren't on crates.io, a bot spawning a new product can't pull them cleanly.
+    
+    WORK REQUIRED (per crate, phased).
+    
+    PHASE 1 — AUDIT.
+    - Inventory every publishable crate in Cargo.toml workspace members + mcp-servers/* + wasm/*. Mark each: (a) public-API-shaped (publish), (b) internal-glue-only (keep path-only), (c) dead (remove).
+    - For publish candidates: verify package metadata — name uniqueness on crates.io (reserve names now), version, description, license (MIT/Apache-2.0 dual is Rust default; pick one explicitly), repository, readme, keywords, categories.
+    - Run `cargo publish --dry-run` per crate; capture errors (path-only deps, missing license file, workspace version inheritance issues).
+    
+    PHASE 2 — DEPENDENCY MODERNIZATION.
+    - `cargo update` + `cargo outdated` audit — capture all major-version bumps needed. Many crates are probably pinned to older tokio/serde/anyhow versions that need updating for crates.io-quality.
+    - `cargo +nightly udeps` — remove unused dependencies (bloat reduction, faster builds, fewer advisory surfaces).
+    - `cargo audit` — zero RUSTSEC advisories on publish.
+    - MSRV declared explicitly (rust-toolchain.toml + package.rust-version), CI green on that version.
+    
+    PHASE 3 — RELEASE AUTOMATION.
+    - release-plz or cargo-release or cargo-smart-release — pick one, wire into CI. release-plz is the current community favourite (automated version bumps + changelogs from conventional commits + PR-gated publishes).
+    - Per-crate CHANGELOG.md generated from conventional commits (we already use conventional commit prefixes, so this is cheap).
+    - CI gate: `cargo publish --dry-run` on every PR that touches a publishable crate, so breakage is caught at review time not publish time.
+    - Publish token stored as CRATES_IO_TOKEN secret, scoped to the publish workflow only.
+    
+    PHASE 4 — FIRST PUBLISH.
+    - Start with the leafmost crate (least internal deps) — probably chump-agent-lease or chump-cancel-registry — to shake out the pipeline on something low-risk.
+    - Publish at 0.1.0 (signal: pre-1.0, API may break). Don't publish at 0.0.x — signals 'abandoned' to discoverability ranking.
+    - Once leaf works, publish the rest in topo order. Internal deps become crates.io deps in one commit per crate.
+    
+    RISKS.
+    - Name squatting: reserve names on crates.io TODAY (publish 0.0.0 placeholder with a real description) even before Phase 4 to prevent someone else grabbing 'chump-*' namespace.
+    - License uncertainty: some files may be missing SPDX headers or have ambiguous provenance. Fix before publish.
+    - Public API exposure: any `pub` item becomes a semver commitment. Tighten visibility (pub(crate) where possible) before the first publish.
+    - mcp-servers/* binaries probably shouldn't publish as crates (binary crates are noisy on crates.io); package them as optional features or leave as repo-only.
+    
+    NON-GOALS (for this gap).
+    - Rewriting any crate for crates.io consumption (e.g. removing Chump-specific assumptions). That's per-crate follow-up work if discovered during audit.
+    - Publishing mcp-servers/* binaries. They stay in the repo unless explicitly decided otherwise.
+  acceptance_criteria:
+    - "docs/eval/INFRA-025-crate-publish-audit.md: per-crate table (publish/internal/dead, license, MSRV, dry-run status, name-reservation status on crates.io)"
+    - All publish-candidate crates pass `cargo publish --dry-run` in CI on every PR touching them
+    - "`cargo audit` + `cargo outdated --exit-code 1` green across the workspace"
+    - release-plz (or chosen tool) installed + wired into .github/workflows/; first automated release PR lands
+    - At least 3 leaf crates published to crates.io at 0.1.0 with CHANGELOGs, readmes, and repository links
+    - All 'chump-*' names reserved on crates.io via 0.0.0 placeholders (guards against squatting while the real audit proceeds)
+    - CLAUDE.md + AGENTS.md updated with publish-hygiene rules (no path-only deps in publish-candidate crates, conventional commits required for auto-changelog)
+  notes: |
+    2026-04-22: Phase 1 audit complete, CLAUDE/AGENTS hygiene added, CI dry-run workflow draft in. Remaining: real publishes, release automation., effort medium. Real value = forcing the hygiene audit + unlocking 'bots publishing products' as a capability. Biggest risk is time-sink: per-crate license/metadata/docs polish can burn a week if done maximally. Recommended slicing: Phase 1+2 + name reservation is one PR (audit + deps modernization). Phase 3 (release automation) is a second PR. Phase 4 (actual publishes) is one PR per crate, landed in topological order. Don't try to ship all of this at once — the first leaf publish teaches us what the pipeline actually needs. 2026-04-22: Phase 1 audit memo landed — docs/eval/INFRA-025-crate-publish-audit.md (gap remains open for CI dry-run gate, cargo audit/outdated, release automation, real publishes, name placeholders, CLAUDE/AGENTS hygiene).
+  source_doc: "2026-04-20 live session — Jeff \"update all our rust crates and publish them to crates.io\""
+  closed_date: '2026-04-22'
+  closed_pr: 446
+

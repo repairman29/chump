@@ -1,0 +1,17 @@
+- id: INFRA-066
+  domain: infra
+  title: CI guard — fail PR if title implies gap close but gaps.yaml still open
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    QUALITY-005 audit (2026-04-25) found 7 of 31 "open" gaps had already shipped on main but never had `status: open → done` flipped in docs/gaps.yaml. ~22.6% stale-status rate. The fix is a CI check: if a PR title matches `^<GAP-ID>:` (e.g. "INFRA-047: foo"), verify that the PR's diff sets `status: done` (or that gaps.yaml already shows done) for that ID. Fail the PR if not. Closes the loop the existing pre-commit gaps.yaml-discipline guards leave open — those guards block *invalid* mutations but don't *require* a status flip.
+  acceptance_criteria:
+    - "Check fails the PR if gaps.yaml does not show status:done for that ID after the diff is applied"
+    - Bypass label `gap-cleanup` (or similar) for PRs that legitimately reference but don't close a gap
+    - Test/dry-run on one in-flight PR before enabling required-check
+  notes: |
+    Filed by QUALITY-005 audit. Without this guard the audit has to re-run weekly. Cheap to implement — a single shell check in an existing workflow + the bypass label.
+  source_doc: docs/eval/QUALITY-005-gap-hygiene-audit.md
+  closed_date: '2026-04-25'
+

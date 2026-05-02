@@ -1,0 +1,16 @@
+- id: DOC-001
+  domain: infra
+  title: Integrate FINDINGS.md into book/src/SUMMARY.md navigation
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    docs/FINDINGS.md shipped 2026-04-20 as the canonical empirical-findings index. The mdBook at book/src/SUMMARY.md does not yet surface it — so the doc is discoverable via grep but not via the rendered book navigation. Add a navigation entry in SUMMARY.md under a "Research" or "Findings" section header so external readers browsing the book land on the findings index. Not urgent (the file is grep-discoverable) but worth closing for completeness. Kept as a separate P3 gap rather than bundled with the FINDINGS.md commit because SUMMARY.md is in active edit contention with sibling agents writing chronicles, and a dedicated narrow gap is safer than a bypassed lease edit.
+  acceptance_criteria:
+    - book/src/SUMMARY.md has a navigation entry linking to docs/FINDINGS.md under an appropriate section header
+    - mdBook renders the findings page without broken links
+  notes: |
+    ~10 minutes of work. Assign to any sibling agent with a quiet slot who can verify no concurrent SUMMARY.md edit is in flight before touching the file.
+  source_doc: docs/FINDINGS.md (2026-04-20)
+  closed_date: '2026-04-20'
+

@@ -1,0 +1,20 @@
+- id: EVAL-069
+  domain: eval
+  title: Reopen EVAL-026 aggregate magnitude question under EVAL-060 fixed instrument
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    EVAL-026 documented a cross-architecture neuromod harm signal in the -10 to -16 percentage-point range aggregate is_correct regression across 4 model architectures. F3 (EVAL-029 task-cluster localization) confirmed that the harm is concentrated in two specific task clusters and the per-task direction holds 4 of 4 sweeps. However, the AGGREGATE magnitude (-10 to -16 pp) has not been reproduced under the EVAL-060 fixed instrument. EVAL-063 re-tested the neuromod modules under Llama-3.3-70B + Claude judge at n=50 per cell and saw delta near zero on the same modules the original EVAL-026 measured negative on. This gap explicitly reopens the aggregate-magnitude question. Two interpretations are both consistent with the current evidence: (1) the original -10 to -16 pp signal was a methodology artifact (scorer bias at that tier, or prompt-assembler-vs-binary measurement layer difference) that the EVAL-060 instrument removes, or (2) the signal is real but provider-specific and EVAL-063's Llama-70B agent does not exhibit it. The project currently cites F3 (task-cluster localization) as the load-bearing finding; the aggregate magnitude is open until resolved.
+  acceptance_criteria:
+    - "Re-run the EVAL-026 4-architecture sweep using the EVAL-060 LLM-judge instrument + scripts/ab-harness/run-live-ablation.sh with a live provider (Ollama qwen2.5:14b or equivalent verified non-broken endpoint)"
+    - n>=50 per cell per architecture, Wilson 95% CIs computed
+    - Result posted to docs/eval/EVAL-069-neuromod-aggregate-rerun.md with per-architecture delta tables + interpretation
+    - "If aggregate magnitude reproduces (delta in -10 to -16 pp range): F3 narrative in docs/FINDINGS.md promoted from task-cluster-only to task-cluster-AND-aggregate"
+    - "If aggregate magnitude does NOT reproduce: F3 narrative explicitly caveats that the aggregate claim has been retired under the EVAL-060 instrument and only the task-cluster localization stands"
+  depends_on: [EVAL-060, EVAL-063]
+  notes: |
+    ~1-2 days under live provider. ~$3-5 Anthropic judge spend. Core methodology question — the answer is informative either way. Do not defer indefinitely.
+  source_doc: docs/FINDINGS.md F3 caveat + EVAL-063 result + 2026-04-20 gold review
+  closed_date: '2026-04-21'
+

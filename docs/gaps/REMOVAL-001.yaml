@@ -1,0 +1,19 @@
+- id: REMOVAL-001
+  domain: reliability
+  title: Audit + decision-matrix for the 5 NULL-validated cognitive modules — re-test or remove
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    EVAL-048 explicit decision criterion: Module delta within +/-0.05 (CIs overlap) means NEUTRAL — document no-detectable-signal, candidate for removal to simplify codebase. Five modules currently fall under this rule per EVAL-063 + EVAL-064 + EVAL-069 aggregates: surprisal_ema (src/surprise_tracker.rs), belief_state (crates/chump-belief-state/), neuromodulation (src/neuromodulation.rs), spawn-time lesson loading (src/reflection_db.rs::load_spawn_lessons), blackboard (src/blackboard.rs). All run in production every session, consume CPU + memory, inject prompt content; none show measurable effect at current n. Per Red Letter Issue #3 ONE BIG THING: project must choose either (a) file removal gaps and cut the dead code, or (b) ship a proper instrument that resolves haiku-tier-specific harm before declaring NULL. EVAL-076 (haiku-4-5 targeted re-run) addresses (b) for one cell; this gap forces the broader decision matrix.
+  acceptance_criteria:
+    - "docs/eval/REMOVAL-001-decision-matrix.md per-module table: current verdict, EVAL-076 result if available, decision (re-test more / keep with caveat / file removal sub-gap)"
+    - "For any module marked remove: file REMOVAL-002+ sub-gap with concrete file/function/env-flag cut list"
+    - "For any module marked keep with caveat: docs/CHUMP_FACULTY_MAP.md updated with explicit caveat (not just NULL label)"
+    - docs/eval/EVAL-048-ablation-results.md decision rule re-cited in the matrix doc
+  depends_on: [EVAL-076]
+  notes: |
+    Filed in response to Red Letter #3 ONE BIG THING. ~1-2 days analysis + decision; removals themselves filed as sub-gaps.
+  source_doc: docs/RED_LETTER.md Issue
+  closed_date: '2026-04-21'
+

@@ -1,0 +1,29 @@
+- id: DOC-010
+  domain: DOC
+  title: README and faculty docs claim nine engineering proxies - most are dead, no-op, or computed-not-applied; reframe to actual implementation status
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    README.md advertises nine engineering proxies inspired by cognitive
+    science (surprise tracking, belief state, blackboard/global workspace,
+    neuromodulation, precision controller, memory graph, counterfactual
+    reasoning, phi proxy, holographic workspace). Code reality (verified
+    2026-04-26) - surprise tracking removed in REMOVAL-002 (trait stubs
+    remain); belief_state default impl is no-op (REMOVAL-005 sweeps the
+    callsites); neuromodulation values computed but never applied
+    (REMOVAL-006); phi_proxy and holographic_workspace not called from
+    request path (REMOVAL-007). Only blackboard, memory_graph, and
+    perception layer are actually wired. Reframe README to either (a) list
+    only the wired faculties or (b) keep the nine-faculty framing but add
+    a status-per-faculty table that matches code. Same treatment for
+    CHUMP_FACULTY_MAP.md, CHUMP_PROJECT_BRIEF.md, CHUMP_RESEARCH_BRIEF.md
+    (RESEARCH-002 covers this but at thesis level - this gap is the
+    user-facing README pass).
+  acceptance_criteria:
+    - README cognitive-architecture bullet either lists only wired faculties or includes a status table with code-link per faculty
+    - Status reflects - wired/no-op/dead-code/computed-not-applied
+    - CHUMP_FACULTY_MAP.md updated to match
+    - Cross-link to RESEARCH_INTEGRITY.md prohibited-claims table
+  opened_date: '2026-04-26'
+

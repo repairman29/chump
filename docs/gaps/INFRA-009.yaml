@@ -1,0 +1,17 @@
+- id: INFRA-009
+  domain: infra
+  title: Doc-deletion pre-commit hook — net-zero docs rule for future PR cycles
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Red Letter #3 measured docs/ inflation: 66 files (Issue #1) -> 119 (Issue #2) -> 139 (Issue #3), zero deletions or archives across three review cycles. The pattern is not driven by any single PR, it is driven by the default behavior of PRs adding new eval / methodology / retrospective docs without ever removing stale ones. A mechanical counter-pressure would help: a pre-commit rule that any PR touching docs/*.md must either (a) accompany a deletion or archival of another docs/*.md of comparable size, or (b) explicitly acknowledge the addition is a net-new file via a commit-message trailer "Net-new-docs: +1" (so operators can grep the pattern post-hoc).
+  acceptance_criteria:
+    - scripts/git-hooks/pre-commit amended with a docs-delta check that fires only when docs/*.md files are staged and either (a) a deletion is also staged, or (b) the commit message trailer Net-new-docs +1 is present
+    - Not blocking by default (warning only) for one week; turn blocking after 2026-04-28
+    - docs/AGENT_COORDINATION.md pre-commit-guards table updated with the new check and bypass envvar (CHUMP_DOCS_DELTA_CHECK=0)
+  notes: |
+    Advisory P3 — useful hygiene, not a blocker on any path. File now so the pattern has an owner. Can be picked up whenever a sibling agent has a quiet slot.
+  source_doc: docs/RED_LETTER.md Issue
+  closed_date: '2026-04-20'
+

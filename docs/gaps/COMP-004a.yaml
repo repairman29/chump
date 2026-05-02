@@ -1,0 +1,11 @@
+- id: COMP-004a
+  domain: competitive
+  title: Extract MessagingAdapter trait from Discord adapter
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    First chunk of COMP-004 decomposition. src/discord.rs is currently the only inbound message handler; its 3 entry points (on_message, slash commands, DM events) and outbound surface (send_dm_if_configured, replies, attachments) need to be lifted into a MessagingAdapter trait so platform adapters (Telegram next) can plug in without duplicating the agent-loop wiring.
+  source_doc: src/discord.rs
+  closed_date: '2026-04-17'
+

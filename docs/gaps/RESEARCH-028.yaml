@@ -1,0 +1,27 @@
+- id: RESEARCH-028
+  domain: research
+  title: Blackboard tool-selection-mediation test — does the blackboard mediate behavior non-verbally via tool sequences?
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    REMOVAL-001's original KEEP verdict for the blackboard module rested on (a) a directional +0.060 outcome delta at n=50 (NEUTRAL per EVAL-048's CI-overlap criterion) and (b) architectural plausibility — the agent should be able to see cross-turn state and condition on it. RESEARCH-022 (PR #368) measured textual reference rate for the blackboard at 1% — far below the 5% mechanistic-support threshold. The architectural-plausibility argument now requires an explicit mechanism hypothesis. The most plausible non-verbal mediation channel is tool selection. Blackboard carries high-salience state (tool failures, risk flags, recent-tool-outcomes). If the blackboard is load-bearing, Cell A (blackboard ON) and Cell B (blackboard OFF) should produce measurably different tool-call sequences on blackboard-salience- rich tasks even when verbal reference rate is low. Preregistered design: - Cells: A (blackboard ON), B (CHUMP_BYPASS_BLACKBOARD=1) - Fixture: blackboard-salience subset of neuromod fixture —
+      tasks with tool retries, escalations, or risky tool outputs
+      where prior-turn state should matter
+    - Metric: tool-call sequence divergence per matched task pair
+      (edit distance on normalized tool sequences; or distribution
+      divergence measured by Jensen-Shannon over tool-bigrams)
+    - n=50/cell - H1: sequence divergence > noise floor (from A/A baseline) - H0: sequences match — blackboard is not mediating even
+      non-verbally → file REMOVAL-005 (blackboard removal)
+  acceptance_criteria:
+    - docs/eval/preregistered/RESEARCH-028.md filed before first trial
+    - Blackboard-salience task subset selected from existing neuromod fixture, n≥40 qualifying tasks
+    - Metric definition locked — tool-sequence divergence metric specified to the point two analysts compute the same number
+    - n=50/cell sweep run against the subset with Cell A (blackboard ON) and Cell B (CHUMP_BYPASS_BLACKBOARD=1)
+    - A/A baseline run first to establish noise floor on tool-sequence divergence
+    - Result doc docs/eval/RESEARCH-028-blackboard-tool-mediation.md published with verdict per §9 decision rule
+  depends_on: [RESEARCH-019, RESEARCH-022]
+  notes: |
+    ~\$25 cloud (Together free-tier judge where applicable). Paper-3 adjacent — multi-turn belief dynamics is belief_state-focused, but blackboard tool-mediation is a parallel mechanism-test question. REMOVAL-001 addendum (2026-04-21) recommends this gap as the decisive test for whether blackboard's "keep" verdict holds.
+  source_doc: docs/eval/REMOVAL-001-addendum-RESEARCH-022.md
+

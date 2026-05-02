@@ -1,0 +1,18 @@
+- id: FRONTIER-008
+  domain: frontier
+  title: Audit + remove dead-weight FRONTIER modules (TDA blackboard et al.)
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Red Letter Issue #1 named src/tda_blackboard.rs as 310 LOC implementing persistent homology on blackboard traffic with NO callsites outside the module — dead weight shipping in every binary. FRONTIER-002 was the parent gap. Likely other FRONTIER-* modules have similar zero-callsite status (FRONTIER-001 quantum cognition? FRONTIER-003+?). This gap audits all FRONTIER-* modules for callsite count + downstream consumers + A/B-result presence; for any module with zero callsites + zero results, file a removal sub-gap or downgrade the parent FRONTIER-* gap to closed-as-not-needed. Reduce binary size + cognitive overhead.
+  acceptance_criteria:
+    - "docs/eval/FRONTIER-008-deadweight-audit.md: per-FRONTIER-module table of callsite count, A/B result presence, decision (keep / remove / refactor)"
+    - "For any module marked remove: dedicated removal sub-gap with file/function cut list"
+    - docs/CHUMP_FACULTY_MAP.md updated to note any FRONTIER work explicitly retired
+    - "Cargo dependencies that became unused after removals: drop them too (cargo +nightly udeps if available)"
+  notes: |
+    P3 — speculative-feature cleanup is non-urgent but real-cost. ~1 day audit + per-module removal PRs. Pairs with REMOVAL-001 in spirit (both are "remove what does not earn its weight").
+  source_doc: docs/RED_LETTER.md Issue
+  closed_date: '2026-04-21'
+

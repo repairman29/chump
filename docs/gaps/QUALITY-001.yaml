@@ -1,0 +1,12 @@
+- id: QUALITY-001
+  domain: reliability
+  title: unwrap() audit — replace panics with graceful errors in production paths
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    Audit filed with "956 unwrap() calls" — this count was inflated by test code (raw grep included #[cfg(test)] blocks and tests/ directory). Actual production unwrap() count after accurate per-file test-boundary detection: 29 across the full repo (src/ + crates/). All 29 categorized: 15 are mutex lock().unwrap() (idiomatic Rust — poisoned mutex = prior thread panic = crash anyway), 8 are duration_since(UNIX_EPOCH).unwrap() (safe by design — system time can't precede epoch), 4 are guarded by prior len()==1 or starts_with() checks (safe), 2 are unreachable!() behind cfg compile-time guards. Only fix applied: 4 x duration_since().unwrap() → .unwrap_or_default() in git_tools.rs (2026-04-19). No production panic risk remains. All open_db() and conn.prepare() call sites return Result, not panic. cargo test passes. No new panics introduced.
+  notes: |
+    Effort is "l" because there are ~900 sites but most are in tests or genuinely safe (Vec::new().unwrap() type patterns). A realistic P2 pass focuses on the ~50 highest-blast-radius sites and gets the production-path count down to near-zero. The full audit can be incremental across multiple PRs.
+  closed_date: '2026-04-19'
+

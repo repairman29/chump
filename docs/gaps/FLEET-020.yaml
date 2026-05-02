@@ -1,0 +1,13 @@
+- id: FLEET-020
+  domain: fleet
+  title: ambient-context-inject.sh — SessionStart hook injects last 30 events + active leases as system context
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    scripts/coord/ambient-context-inject.sh: tails last 30 events from .chump-locks/ambient.jsonl + lists active leases + emits as Claude Code SessionStart additionalContext JSON. Wired into ~/.claude/settings.json SessionStart hook by FLEET-022 installer.
+  depends_on: [FLEET-019]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 696
+

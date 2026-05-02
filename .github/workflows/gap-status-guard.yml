@@ -1,14 +1,17 @@
 name: Gap Status Guard
 
 # INFRA-066 — close the stale-status loop QUALITY-005 found.
-# If a PR title is "<GAP-ID>: …" then docs/gaps.yaml at PR head must show
-# status: done for that ID. Bypass with the gap-cleanup label.
+# If a PR title is "<GAP-ID>: …" then the gap's YAML file at PR head must
+# show status: done for that ID. Bypass with the gap-cleanup label.
 #
 # INFRA-075 — close the concurrent-branch race the duplicate-ID pre-commit
 # guard cannot catch. The pre-commit guard only sees the locally-staged file,
 # so two branches that each add the same id pass independently and only
 # collide after the merge queue rebases server-side. This job re-checks the
 # rebased state and fails CI if any duplicate id remains.
+#
+# INFRA-188 — migrated from monolithic docs/gaps.yaml to per-file
+# docs/gaps/<ID>.yaml layout. Guards now read the per-file directory.
 
 on:
   pull_request:
@@ -33,9 +36,41 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set -euo pipefail
-          bash scripts/coord/check-gap-status-flip.sh "$PR_TITLE" docs/gaps.yaml
+          # INFRA-188: use per-file docs/gaps/<ID>.yaml if it exists,
+          # fall back to monolithic docs/gaps.yaml for backward compat.
+          GAP_ID=$(echo "$PR_TITLE" | grep -oE '^[A-Z]+-[0-9]+' || true)
+          if [ -z "$GAP_ID" ]; then
+            echo "No gap ID found in PR title, skipping status check."
+            exit 0
+          fi
+          PER_FILE="docs/gaps/${GAP_ID}.yaml"
+          if [ -f "$PER_FILE" ]; then
+            STATUS=$(grep -m1 '^  status:' "$PER_FILE" | awk '{print $2}' || true)
+          elif [ -f "docs/gaps.yaml" ]; then
+            STATUS=$(python3 -c "
+import yaml, sys
+d = yaml.safe_load(open('docs/gaps.yaml'))
+for g in d.get('gaps', []):
+    if g.get('id') == sys.argv[1]:
+        print(g.get('status', ''))
+        sys.exit(0)
+" "$GAP_ID" 2>/dev/null || true)
+          else
+            echo "Gap registry not found (neither per-file nor monolithic). Skipping."
+            exit 0
+          fi
+          if [ -z "$STATUS" ]; then
+            echo "Gap $GAP_ID not found in registry. This may be a new gap being filed."
+            exit 0
+          fi
+          if [ "$STATUS" != "done" ]; then
+            echo "ERROR: PR title implies gap $GAP_ID is closed, but status is '$STATUS'."
+            echo "Run: chump gap ship $GAP_ID --closed-pr <PR-NUMBER> --update-yaml"
+            exit 1
+          fi
+          echo "Gap $GAP_ID status: $STATUS — OK"
 
-  gaps-yaml-integrity:
+  gaps-integrity:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -50,5 +85,14 @@ jobs:
       - name: Install PyYAML
         run: python -m pip install --quiet pyyaml
 
-      - name: docs/gaps.yaml parses + has no duplicate ids
-        run: python scripts/coord/check-gaps-integrity.py docs/gaps.yaml
+      - name: docs/gaps/*.yaml parse + no duplicate ids (INFRA-188)
+        run: python scripts/coord/check-gaps-integrity.py --per-file docs/gaps/
+
+      - name: CI guard — docs/gaps.yaml must not exist after INFRA-188 cutover
+        run: |
+          if [ -f docs/gaps.yaml ]; then
+            echo "ERROR: docs/gaps.yaml found. After INFRA-188 cutover, the monolithic"
+            echo "file must not exist. Use docs/gaps/<ID>.yaml per-file layout."
+            echo "To add a gap: chump gap reserve --domain D --title T"
+            exit 1
+          fi

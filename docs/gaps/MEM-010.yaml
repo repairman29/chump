@@ -1,0 +1,15 @@
+- id: MEM-010
+  domain: memory
+  title: Entity resolution accuracy A/B — linked vs unlinked multi-hop QA
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    MEM-005 ships entity resolution and deduplication in memory_graph.rs (PersonRank + entity linking). But there is no validation that entity linking is accurate enough to support multi-hop reasoning. If the linker merges "Alice (Rust expert)" with "Alice (project manager)" as the same entity due to name collision, multi-hop QA that asks "who wrote the parser?" will return wrong results silently. A 70% accurate linker fails 30% of multi-hop queries.
+  depends_on: [MEM-008]
+  notes: |
+    ~1 day. Silent failure mode: wrong entity links produce wrong answers with no error signal. Catches this before EVAL-034 runs.
+  source_doc: docs/RESEARCH_INTEGRITY.md backlog audit 2026-04-19
+  closed_date: '2026-04-20'
+  closed_pr: 214
+

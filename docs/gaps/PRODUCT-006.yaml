@@ -1,0 +1,12 @@
+- id: PRODUCT-006
+  domain: product
+  title: harvest-synthesis-lessons.sh — mine synthesis operational rules into lessons layer
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    generate-sprint-synthesis.sh writes a narrative synthesis but the lessons it captures (section 3: Methodology lessons) stay in a markdown file — they don't feed back into Chump's prompt. This gap closes the loop: harvest-synthesis-lessons.sh reads the synthesis, extracts ### lesson subsections and operational rules bullets, and writes them into chump_improvement_targets (priority=high, scope=NULL) so prompt_assembler.rs surfaces them automatically via the existing lessons block. Capped at 3 per synthesis to stay within LESSONS_LIMIT=5. Idempotent: skips if already harvested (checks chump_reflections error_pattern='synthesis:<date>'). Disable with CHUMP_HARVEST_LESSONS=0.
+  depends_on: [PRODUCT-005]
+  source_doc: docs/syntheses/README.md
+  closed_date: '2026-04-19'
+

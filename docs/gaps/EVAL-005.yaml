@@ -1,0 +1,12 @@
+- id: EVAL-005
+  domain: eval
+  title: Seed cases with LlmJudge + battle-qa.sh per-category summary
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    EVAL-004 shipped the async adapter but left two small integration pieces: (a) at least 3 seed cases in eval_harness::seed_starter_cases gain an LlmJudge ExpectedProperty for the canonical "is the answer semantically correct?" check; (b) scripts/battle-qa.sh persists judge_score to chump_eval_runs.scores_json and prints the per-category summary that average_judge_score_per_category() already computes.
+  depends_on: [EVAL-004]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

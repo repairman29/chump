@@ -1,0 +1,22 @@
+- id: INFRA-AGENT-CODEREVIEW
+  domain: infra
+  title: code-reviewer agent in the loop for src/* PRs before auto-merge
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Today's atomic-PR pattern auto-merges docs PRs without review (fine). For src/* code PRs (e.g. when COG-023 ships next as actual code changes to src/reflection_db.rs), the chump code-reviewer agent should be in the loop — same atomic-PR pattern but with required code-reviewer ack before auto-merge fires. Pattern:
+      agent finishes work in worktree
+      bot-merge.sh opens PR + arms auto-merge
+      bot-merge.sh ALSO triggers code-reviewer agent (via gh comment
+        or NATS) to review the diff
+      code-reviewer agent posts approval comment OR raises concerns
+      approval triggers the GitHub merge queue to proceed
+      concerns block the merge until human resolves
+    Goal: zero human in the loop on routine code, automatic escalation on substantive concerns.
+  depends_on: [INFRA-MERGE-QUEUE, INFRA-AGENT-ESCALATION]
+  notes: |
+    ~1 week. Highest-leverage infra change after MERGE-QUEUE for "Jeff is no longer the bottleneck even on code PRs". Today docs PRs auto-ship cleanly; src/ PRs still require manual eyes. This closes the gap.
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-20'
+

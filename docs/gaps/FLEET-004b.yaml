@@ -1,0 +1,12 @@
+- id: FLEET-004b
+  domain: fleet
+  title: Passive emission — git post-commit hook appends to ambient stream
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Agents should radiate commits automatically. Currently no post-commit hook exists. Adding one means every git commit — from any session in any worktree — silently appends a commit event to the ambient stream. Other agents see the commit without the committing agent having to decide to announce it.
+  depends_on: [FLEET-004a]
+  source_doc: scripts/git-hooks/post-commit
+  closed_date: '2026-04-17'
+

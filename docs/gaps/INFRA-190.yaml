@@ -1,0 +1,46 @@
+- id: INFRA-190
+  domain: infra
+  title: "bot-merge.sh + pr-watch.sh: auto-rebase + auto-fix loop on DIRTY (kills 5-times-a-session manual rebase)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    The merge queue arms auto-merge optimistically. If main moves
+    between gh-pr-create and queue-entry, the PR goes DIRTY. Today the
+    operator/agent has to manually:
+      1. gh pr merge <N> --disable-auto
+      2. git fetch origin main && git rebase origin/main
+      3. (resolve trivial gaps.yaml conflicts)
+      4. CHUMP_GAP_CHECK=0 git push --force-with-lease
+      5. gh pr merge <N> --auto --squash
+    
+    I (this session) ran this 5+ times in 16 PRs. Pure ceremony.
+    
+    Fix: scripts/coord/pr-watch.sh (this PR) — polls a PR; when DIRTY,
+    disarms + fetches + rebases + force-pushes + re-arms. Handles the
+    80% case (main moved, no real conflicts). Real content conflicts
+    surface to the operator with exit 3.
+    
+    Optional bot-merge.sh hook: at end of arm flow, fire-and-forget
+    `nohup pr-watch.sh "$PR" &` so the agent that shipped the PR doesn't
+    have to babysit it.
+    
+    NOT in scope: auto-resolving content conflicts (those are meaningful
+    and need agent judgment); INFRA-188 (per-file gap registry) is the
+    structural fix that eliminates the conflicts altogether.
+    
+    Closes/subsumes:
+      - INFRA-052 (queue health monitor — pr-watch.sh IS the per-PR
+        health monitor)
+      - INFRA-119 (bot-merge hangs leak leases — pr-watch detaches so
+        bot-merge doesn't hang)
+      - INFRA-121 (merge-queue config drift — pr-watch surfaces silent
+        auto-merge disarm)
+  acceptance_criteria:
+    - scripts/coord/pr-watch.sh exists, executable, parses cleanly, has --once mode for one-shot recovery + polling mode
+    - bot-merge.sh has an opt-in hook (env var CHUMP_PR_WATCH_AFTER_ARM=1) that fires-and-forgets pr-watch.sh in background
+    - "Test: synthetic DIRTY PR (force-push main while queued in a sandbox) → pr-watch recovers automatically without operator action"
+    - "After 1 week of pr-watch in use: count manual rebases per session — should drop from ~5/session to ~0/session"
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+

@@ -1,0 +1,18 @@
+- id: REMOVAL-004
+  domain: eval
+  title: Haiku-specific neuromod bypass retest — resolve F1 U-curve concern under EVAL-060
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    REMOVAL-001 decision: KEEP neuromodulation with caveat + file this retest gap. EVAL-063 (Llama-70B) and EVAL-069 (qwen14B) both show NULL for neuromod bypass. But the F1 Scaffolding U-curve predicts mid-tier models (including claude-haiku-4-5) may be harmed. EVAL-076 confirmed lessons harm on haiku but tested the lessons block, not CHUMP_BYPASS_NEUROMD directly. This gap: run n=50/cell CHUMP_BYPASS_NEUROMD A/B on claude-haiku-4-5 under EVAL-060 LLM-judge instrument with cross-family judges. If H1 (haiku neuromod harm): file REMOVAL-005 to remove neuromod. If NULL: update CHUMP_FACULTY_MAP.md to reflect cleared concern.
+  acceptance_criteria:
+    - Run n=50/cell CHUMP_BYPASS_NEUROMOD A/B on claude-haiku-4-5 via run-binary-ablation.py or run-cloud-v2.py
+    - Cross-family judges (Sonnet + Llama-70B or equivalent)
+    - Per-cell acc + Wilson 95% CI + delta reported
+    - "If harm confirmed: file REMOVAL-005; if NULL: CHUMP_FACULTY_MAP.md Metacognition row caveat cleared"
+  depends_on: [REMOVAL-001, EVAL-076]
+  notes: |
+    Filed by REMOVAL-001 decision matrix 2026-04-21. Low priority because EVAL-063/069 are both NULL; only F1 U-curve concern motivates retest.
+  source_doc: docs/eval/REMOVAL-001-decision-matrix.md
+

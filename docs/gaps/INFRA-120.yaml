@@ -1,0 +1,24 @@
+- id: INFRA-120
+  domain: infra
+  title: Stale reapers (PR, worktree, branch) have no log aggregation or failure alerting
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    scripts/stale-pr-reaper.sh, scripts/stale-worktree-reaper.sh, and
+    (in flight) the stale-branch reaper from PR #568 / INFRA-089 all
+    emit logs to /tmp/*.log on the host machine. There is no aggregation,
+    no rotation, and no alert when any of them fail or stop running. The
+    macOS launchd plist (ai.openclaw.chump-stale-worktree-reaper) is
+    opt-in and may not be installed; if its hourly run silently fails,
+    worktrees accumulate and consume disk for days before anyone notices.
+    Pipe reaper output to ambient.jsonl (or NATS via FLEET-006) so all
+    agents see reaper activity in their peripheral vision; ALERT when a
+    reaper has not run in 4x its expected cadence.
+  acceptance_criteria:
+    - Each reaper emits one ambient event per run - kind=reaper_run with status=ok|fail and counts
+    - Heartbeat watchdog ALERTs when reaper has not emitted in 4h (worktree/branch) or 2h (PR)
+    - Reaper logs rotated and capped at a sensible size
+    - CLAUDE.md Worktree disk hygiene section documents the alert mechanism
+  opened_date: '2026-04-26'
+

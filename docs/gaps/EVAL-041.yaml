@@ -1,0 +1,14 @@
+- id: EVAL-041
+  domain: eval
+  title: Human grading baseline — complete EVAL-010 for all fixture pairs
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    EVAL-010 established a human-grading protocol for 12 tasks across 3 fixtures but was never completed for the full set. All headline eval deltas (+0.14 haiku lessons, −0.30 neuromod, +0.33 sonnet backfire) rest on a judge that EVAL-010 found had 38–63% inter-judge agreement — at or below chance. Without a human ground-truth baseline, "judge bias is documented but not fixed" is the accurate characterization. This gap closes EVAL-010 for the full fixture set (~40 tasks).
+  notes: |
+    ~40 hrs human time (Jeff). Prerequisite for publication-readiness. EVAL-010-labels-jeff.md exists and is partially filled; extend it.
+  source_doc: docs/RESEARCH_INTEGRITY.md
+  closed_date: '2026-04-20'
+  closed_pr: 244
+

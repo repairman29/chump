@@ -1,0 +1,12 @@
+- id: AGT-004
+  domain: agent
+  title: Wire MessagingAdapter events into agent input queue
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Platform adapters (Telegram, Discord shim) are constructed but not connected to the agent loop. An incoming Telegram message has no path to trigger a Chump turn. The orchestrator needs an mpsc input queue that adapters push IncomingMessage onto, and a dispatch loop that spawns a ChumpAgent::run() per message. This is the "wire" that makes multi-platform messaging live rather than scaffolding.
+  depends_on: [INFRA-MESSAGING-DEDUPE, AGT-002]
+  source_doc: src/agent_loop/orchestrator.rs
+  closed_date: '2026-04-18'
+

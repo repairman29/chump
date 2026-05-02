@@ -1,0 +1,22 @@
+- id: EVAL-086
+  domain: eval
+  title: opened_date backfill for open gaps + enforce non-null on future reserves
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    22 of 23 open gaps have opened_date null in the registry. Only INFRA-070
+    (2026-04-25) has a date. The coordination system cannot compute cycle time,
+    aging alerts, or stall detection for 96% of open work. Cold Water STILL_OPEN
+    classifications require manual cross-referencing across issue text rather than
+    a database query. Fix: (1) backfill opened_date for all 22 dateless open gaps
+    using git log --grep=ID --diff-filter=A to find the commit that first added
+    each gap; (2) add a non-null constraint to chump gap reserve so future
+    reservations always stamp opened_date.
+  acceptance_criteria:
+    - All open gaps have non-null opened_date in .chump/state.db
+    - docs/gaps.yaml mirror reflects backfilled dates
+    - chump gap reserve always stamps opened_date on new gaps
+    - Stall detection expressible as a registry query
+  opened_date: '2026-04-26'
+

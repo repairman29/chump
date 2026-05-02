@@ -1,0 +1,41 @@
+- id: SECURITY-004
+  domain: SECURITY
+  title: 6 open Dependabot alerts (1 HIGH rustls-webpki DoS, 2 medium, 3 low) — audit + upgrade
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    `gh api repos/repairman29/chump/dependabot/alerts` shows 6 open
+    advisories on origin/main as of 2026-04-28. Highest-severity item
+    is `rustls-webpki` (HIGH): Denial of service via panic on malformed
+    CRL BIT STRING — any code path that processes a server-supplied CRL
+    can be panicked by a remote attacker. chump's HTTPS provider stack
+    (Tauri webview + reqwest + rustls) transitively depends on this.
+    
+    Full list (severity, package, ecosystem, advisory):
+      - HIGH    rustls-webpki — DoS via panic on malformed CRL BIT STRING
+      - MEDIUM  rustls-webpki — CRLs not authoritative by Distribution Point (faulty matching)
+      - MEDIUM  glib          — Unsoundness in Iterator/DoubleEndedIterator for VariantStrIter
+      - LOW     rand          — Unsound with custom logger using rand::rng()
+      - LOW     rustls-webpki — Name constraints accepted for wildcard certs
+      - LOW     rustls-webpki — Name constraints for URI names incorrectly accepted
+    
+    SECURITY-002 (P? open) was filed earlier as the umbrella audit gap;
+    this is a concrete, auditable instance with a HIGH severity item that
+    has been open long enough to accumulate. Cargo-audit is presumably
+    already wired into CI but does not block PRs at the HIGH threshold.
+    
+    Fix path:
+      1. `cargo audit` to confirm transitive paths from chump's Cargo.lock
+         to each advisory.
+      2. For each direct dep: bump version. For each transitive: chase
+         upstream (likely tauri / reqwest / rustls).
+      3. Verify `cargo build --release --bin chump` clean.
+      4. Add to .github/workflows/ci.yml a `cargo deny advisories` step
+         that fails on HIGH if not already present.
+  acceptance_criteria:
+    - 0 open HIGH-severity Dependabot alerts after the upgrade lands
+    - cargo deny advisories step in CI fails on HIGH (regression guard)
+    - Cargo.lock diff documents every bump in the PR description
+  opened_date: '2026-04-28'
+

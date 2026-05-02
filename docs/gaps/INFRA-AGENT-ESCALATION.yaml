@@ -1,0 +1,14 @@
+- id: INFRA-AGENT-ESCALATION
+  domain: infra
+  title: Formal escalation pattern — when an agent is stuck, surface to human
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Today there is no formal escalation: when an agent gets stuck (test failure it can't diagnose, ambiguous gap acceptance, cargo build failure), it dies, times out, or pushes broken commits. Multi-agent dispatch needs an explicit escalation channel: agent emits ALERT into ambient.jsonl with kind=escalation plus structured payload (gap_id, stuck_at_step, last_error, attempted_fixes). Watch on ALERT events surfaces these to Jeff as actionable items rather than silent death. Connects to chump-coord NATS for real-time pings.
+  notes: |
+    ~1 week. Without this, agents that hit unexpected blockers leave stranded work that needs Jeff to manually triage by reading worktree state. Key "why is Jeff still the bottleneck" failure mode.
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-20'
+  closed_pr: 191
+

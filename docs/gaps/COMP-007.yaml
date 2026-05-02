@@ -1,0 +1,13 @@
+- id: COMP-007
+  domain: completeness
+  title: AGENTS.md interop standard adoption — supplement or replace CLAUDE.md
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    AGENTS.md was contributed by OpenAI to the Agentic AI Foundation (Linux Foundation) in Dec 2025 as one of three founding projects alongside MCP and Block's goose. It is positioned as the universal standard for project-specific AI agent guidance designed to work across "different repositories and toolchains" — i.e. cross-tool portable replacement for tool-specific files like CLAUDE.md, .cursorrules, etc. Chump currently uses CLAUDE.md (Claude-only). Migrating CLAUDE.md → AGENTS.md (or supporting both) aligns Chump with the emerging Linux-Foundation-blessed standard and makes Chump-managed repos legible to other compliant agent frameworks (goose, Aider, etc.).
+  notes: |
+    Reference: https://aaif.io/ — AGENTS.md is one of three founding projects. Spec: https://www.linuxfoundation.org/press/linux-foundation-announces-the-formation-of-the-agentic-ai-foundation Implementation likely ~1 day: add AGENTS.md reader to prompt_assembler, update install scripts, document precedence.
+  source_doc: external (AAIF, Linux Foundation, Dec 2025)
+  closed_date: '2026-04-18'
+

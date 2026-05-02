@@ -1,0 +1,18 @@
+- id: QUALITY-004
+  domain: quality
+  title: Module removal decision — Memory, Executive Function, Metacognition
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Memory, Executive Function, Metacognition modules all show NULL results (VALIDATED(NULL)). Unclear if dead code or under-tested. Review AGENTS.md + agent source (src/agents/) for each module. Check: is code actually used? any fallback paths? any tests? List call sites in production agent loop. Estimate removal cost + benefit. Decision: remove | re-measure with better instrument | keep as-is.
+  acceptance_criteria:
+    - Reviewed each module's source code and call sites
+    - Documented evidence (used vs unused, test coverage)
+    - Estimated removal effort (S/M/L)
+    - Decision recommendation with rationale
+  notes: |
+    Clarifies Q2 scope: adds 2–3 weeks if removals needed, or pivots to better instrument.
+  source_doc: docs/EVALUATION_PLAN_2026Q2.md
+  closed_date: '2026-04-25'
+

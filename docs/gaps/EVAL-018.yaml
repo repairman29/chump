@@ -1,0 +1,12 @@
+- id: EVAL-018
+  domain: eval
+  title: Memory recall A/B — does memory subsystem help on recall tasks
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Memory and reflection are conflated in the current framework messaging. They are separate systems. Need to test memory independently.
+  notes: TEST-CAT-I.
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

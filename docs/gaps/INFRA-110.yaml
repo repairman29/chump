@@ -1,0 +1,24 @@
+- id: INFRA-110
+  domain: infra
+  title: Reserve-time gap requires scoped-diff signature or 2-hour TTL - prevent name-squatting reservations
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    PR #565 on 2026-04-26 reserved INFRA-087..090 by title only and held
+    them while parallel implementation PRs #566/#568/#569 had to renumber.
+    INFRA-104 (drift detector) catches this RETROACTIVELY via ALERT.
+    INFRA-110 prevents it - at reserve time, require either (a) a draft
+    PR with the gap ID in scoped diff (i.e. files match acceptance-
+    criteria scope) or (b) a 2-hour TTL after which the reservation
+    auto-expires unless renewed via heartbeat. Pairs with but is not
+    duplicated by INFRA-100 (atomic next-ID picker) - 100 prevents
+    same-time collisions, 110 prevents long-lived squatting.
+  acceptance_criteria:
+    - chump gap reserve writes ttl_expires field to lease pending_new_gap
+    - Default TTL 7200 seconds (2h); configurable via --ttl
+    - Renewing requires either chump --heartbeat or PR linked to the gap ID
+    - Expired reservations auto-release - gap-preflight.sh stops blocking
+    - "Backtest - PR #565 reservation would expire before #566/#568/#569 needed renumber"
+  opened_date: '2026-04-26'
+

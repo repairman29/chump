@@ -1,0 +1,33 @@
+- id: INFRA-142
+  domain: infra
+  title: Audit chain verifier vs 200-row cap interaction - false-positive tamper warnings every time a row ages out
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    src/introspect_tool.rs ships two features that fight each other.
+    On insert it computes audit_hash = SHA256(prev_audit_hash || ts ||
+    tool || args || outcome) where prev = last row's audit_hash, then
+    deletes oldest rows beyond a 200-row cap. On startup
+    audit_chain_status walks rows id ASC starting from
+    "genesis_hash_..." and recomputes each hash. The moment the cap
+    deletes an old row, the new oldest survivor still has its stored
+    audit_hash chained to a now-deleted predecessor - so the verifier's
+    computed hash for that row never matches and every row after also
+    fails. Result - a SECURITY WARNING fires on every chump invocation
+    after the table fills, and the blackboard receives a high-salience
+    "TAMPER DETECTED" message that is actually just the cap working as
+    designed. Discovered 2026-04-26 when chump --help printed the
+    warning and an audit traced row 429 (the current min id) chained
+    against deleted row 428. Workaround on 2026-04-26 - rehashed all
+    surviving rows from genesis (DB backup at
+    sessions/chump_memory.db.pre-rehash.bak); will break again next
+    time a row ages out.
+  acceptance_criteria:
+    - Decide - either (a) verifier treats the oldest surviving row's stored hash as a new genesis (rolling-genesis pattern), or (b) cap retains a sentinel row pinning the chain origin, or (c) drop the chain hash entirely and rely on append-only rotation
+    - Implementation in src/introspect_tool.rs matches chosen design
+    - Test - insert 250 rows then verify chain still passes audit_chain_status
+    - Test - tamper with a non-cap-victim row and confirm verifier still detects it
+    - Document the rolling-genesis (or chosen) semantics in the function docstring
+  opened_date: '2026-04-26'
+

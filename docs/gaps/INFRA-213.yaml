@@ -1,0 +1,40 @@
+- id: INFRA-213
+  domain: infra
+  title: CI matrix parallelism — split fast-checks/clippy/tests/e2e to run in parallel (cut queue depth 2-3x)
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    GitHub merge queue throughput is the HARD ceiling for fleet
+    scaling. Today the required CI checks (test, clippy, audit,
+    fast-checks, ACP smoke) run mostly serially within a single
+    workflow job — each PR's merge takes 2-5 min of queue time. At
+    FLEET_SIZE=20 with 20 PRs queued, the last PR waits 40-100 min.
+    Beyond ~30 PRs/hour throughput the queue saturates.
+    
+    Fix: refactor required CI into a matrix that runs the heavy
+    checks in parallel:
+      - fast-checks    (10 s, gate to test)
+      - clippy         (parallel, ~3 min)
+      - test           (parallel, ~10 min)
+      - audit          (parallel, ~3 min)
+      - ACP smoke      (parallel, ~2 min)
+    
+    Each runs on its own GitHub-hosted runner. Total wall-clock per
+    PR drops from sum(checks) ~20 min to max(checks) ~10 min.
+    Throughput at fixed runner pool roughly doubles.
+    
+    Plus: split test by package (gap_store, agent_loop, web_server,
+    perception, etc.) to further parallelize the test step itself.
+    Cargo nextest already supports this; the workflow needs to
+    invoke it.
+    
+    Out of scope: self-hosted runners (separate gap if needed; cost
+    + ops overhead).
+  acceptance_criteria:
+    - .github/workflows/ci.yml uses matrix strategy for clippy + test + audit + ACP smoke
+    - test step uses cargo-nextest with --test-threads=4 OR parallel-by-package
+    - Median PR-to-merged time at queue depth 10 drops from ~30 min to ~15 min
+    - "Test: run the fleet at FLEET_SIZE=10 for 1 hour; measure PRs/hour throughput; expect 25-30 (vs 10-15 today)"
+  opened_date: '2026-05-02'
+

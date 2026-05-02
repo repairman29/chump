@@ -1,0 +1,20 @@
+- id: EVAL-056
+  domain: eval
+  title: Memory ablation — ship CHUMP_BYPASS_SPAWN_LESSONS flag and run binary-mode sweep
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Ship CHUMP_BYPASS_SPAWN_LESSONS env flag (src/env_flags.rs + src/reflection_db.rs::load_spawn_lessons early-return) and add --module spawn_lessons to scripts/ab-harness/run-binary-ablation.py. Run binary-mode n=30/cell sweep: Cell A (bypass OFF) acc=0.033 CI [0.006, 0.167], Cell B (bypass ON) acc=0.133 CI [0.053, 0.297], delta=+0.100, CIs overlap — NO SIGNAL. Same binary-mode noise floor as EVAL-053 Metacognition sweep. Memory faculty row updated from COVERED+UNTESTED to COVERED+VALIDATED(NULL). Results in docs/eval/EVAL-056-memory-ablation.md.
+  acceptance_criteria:
+    - CHUMP_BYPASS_SPAWN_LESSONS flag in src/env_flags.rs
+    - load_spawn_lessons returns empty Vec when flag is set
+    - run-binary-ablation.py supports --module spawn_lessons
+    - docs/eval/EVAL-056-memory-ablation.md with n=30/cell results and Wilson CIs
+    - CHUMP_FACULTY_MAP.md Memory row updated with measured verdict
+  notes: |
+    Flag shipped and wired. n=30/cell binary-mode sweep complete. Delta=+0.100 with overlapping CIs — NO SIGNAL. Binary-mode noise floor (~90% exit-code-1 failures) limits interpretability per RESEARCH_INTEGRITY.md. Verdict: COVERED+VALIDATED(NULL).
+  source_doc: docs/CHUMP_FACULTY_MAP.md
+  closed_date: '2026-04-20'
+  closed_pr: 268
+

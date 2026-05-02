@@ -1,0 +1,27 @@
+- id: INFRA-143
+  domain: infra
+  title: "gap_store::reserve silently swallows import_from_yaml errors → ID collisions"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    src/gap_store.rs:305 (post-INFRA-070) called
+    `let _ = self.import_from_yaml(...)` on every reserve() to backfill
+    YAML drift before seeding the per-domain counter. If import failed
+    (stale binary missing yaml_value_to_loose_string, malformed YAML,
+    sequence-typed source_doc, etc.) the error was discarded; the
+    counter stayed at the older DB max; reserve() handed out an ID
+    that already existed in YAML but not in the DB. Exact mechanism
+    behind the EVAL-089 collision (PR #558 ↔ #601). Fix - propagate
+    import_from_yaml errors with context so reserve aborts loudly,
+    while making missing-file a no-op so fresh tempdirs/bootstrap
+    paths still work.
+  acceptance_criteria:
+    - reserve() returns Err with explanatory context when docs/gaps.yaml exists but is unreadable / malformed
+    - import_from_yaml treats NotFound as Ok((0,0)) so bootstrap and tempdir tests pass
+    - Regression test test_reserve_aborts_on_unreadable_yaml asserts the loud-failure message
+    - All existing gap_store tests still pass
+  opened_date: '2026-04-27'
+  closed_date: '2026-04-27'
+  closed_pr: 603
+

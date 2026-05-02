@@ -1,0 +1,4 @@
+- id: INFRA-202
+  domain: infra
+  title: "docs-delta guard `Net-new-docs:` trailer escape hatch is unreachable at pre-commit time"
+

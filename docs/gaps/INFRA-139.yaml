@@ -1,0 +1,36 @@
+- id: INFRA-139
+  domain: infra
+  title: Move gaps-yaml-integrity check into merge-queue rebase phase to prevent parallel-PR ID collisions
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    On 2026-04-26 two PRs (#590 agent-prompts, #591 Phase-3 follow-up) both
+    reserved INFRA-136 from concurrent worktrees within the same hour. Both
+    landed on main, leaving a duplicate ID that broke `gaps-yaml-integrity`
+    on every subsequent PR (#593, #594, #595). The collision required a
+    manual fix (renaming one to INFRA-138 + flipping the other to done in
+    a separate PR).
+    
+    Why the existing guards failed:
+      - `gap-reserve.sh` is atomic *within one worktree* but reads only
+        local main + open PRs; it cannot see another worktree's lease that
+        was filed after gap-reserve scanned but before the PR opened.
+      - The pre-commit duplicate-ID guard (INFRA-GAPS-DEDUP) only sees the
+        current branch's gaps.yaml — by definition cannot detect duplicates
+        introduced by a sibling branch.
+      - CI's `gaps-yaml-integrity` check runs on each PR's branch tip but
+        NOT on the merge-queue's rebased temp branch. So PR #590 passes
+        integrity (uses INFRA-136), PR #591 passes integrity (uses
+        INFRA-136), the queue rebases #591 onto #590's main without
+        re-running the integrity check, and the duplicate lands.
+    
+    Fix: require `gaps-yaml-integrity` to run in the merge-queue rebase
+    phase, OR add a server-side branch-protection gate that re-runs the
+    check against the merge-base. Either prevents the collision class.
+  acceptance_criteria:
+    - Merge-queue rebased temp branch runs `gaps-yaml-integrity` before squash
+    - "Test: simulate two PRs reserving the same gap ID; second one is blocked at merge time"
+    - Document the new gate in docs/process/MERGE_QUEUE_SETUP.md
+  opened_date: '2026-04-26'
+

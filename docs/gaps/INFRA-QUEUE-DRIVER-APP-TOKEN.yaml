@@ -1,0 +1,20 @@
+- id: INFRA-QUEUE-DRIVER-APP-TOKEN
+  domain: infra
+  title: queue-driver must push via GitHub App token, not GITHUB_TOKEN (anti-loop rule)
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    INFRA-048 (#497) + INFRA-QUEUE-DRIVER-PERMS (#502) got the queue-driver workflow rebasing PRs successfully, but nothing ever merged. Root cause: GitHub does not trigger new workflow runs for pushes made with GITHUB_TOKEN (the anti-loop rule — see Actions docs, "Triggering a workflow from a workflow"). So `updatePullRequestBranch` succeeded, the PR head advanced, but no `test`/`audit`/`dry-run` CI ran on the new head and auto-merge never fired. 2026-04-24: observed 10+ PRs stranded BLOCKED indefinitely despite queue-driver running every 5 minutes. Manual drain via local PAT worked (user tokens aren't subject to the anti-loop rule) but requires a human-in-the-loop for every main-advance, defeating the purpose of the driver.
+  acceptance_criteria:
+    - queue-driver.yml mints a GitHub App installation token via actions/create-github-app-token@v1
+    - GH_TOKEN env uses the App token (not GITHUB_TOKEN)
+    - actions/checkout uses the App token (so the rebase push is signed by the App)
+    - App-origin push triggers a fresh CI run on the target PR's new head
+    - workflow_dispatch run successfully rebases a BEHIND PR AND new CI starts on the new head
+  depends_on: [INFRA-048, INFRA-QUEUE-DRIVER-PERMS]
+  notes: |
+    Secrets QUEUE_DRIVER_APP_ID and QUEUE_DRIVER_APP_PRIVATE_KEY hold the App credentials; App has Contents:write + Pull-requests:write on repairman29/chump only. The App token is minted per workflow run with a 1-hour TTL so no long-lived PAT exposure. If the App is ever uninstalled or the key rotated, the workflow fails loud at the create-github-app-token step — no silent degradation.
+  opened_date: '2026-04-24'
+  closed_date: '2026-04-24'
+

@@ -1,0 +1,14 @@
+- id: COG-024
+  domain: cognition
+  title: Default lessons-OFF — opt-in per-model only after measurement
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    Full Anthropic-family hallucination picture from EVAL-026b/027b/027c shows the safest-by-default behavior is NO lessons block at all. Every Anthropic model except haiku-3 shows hallucination harm with v1 lessons; cog016 fixes some (haiku-4-5) and worsens others (sonnet-4-5). COG-023 (sonnet carve-out) is a defensive patch but doesn't address: should lessons be default-ON anywhere? COG-024 proposes the inverse default: lessons OFF unless explicitly opted-in per-model after A/B measurement validates the lessons help. Each opt-in is documented with source EVAL-XXX gap.
+  depends_on: [COG-023, EVAL-027, EVAL-030]
+  notes: |
+    ~1 week including migration path + per-model re-validation sweeps. Paired with COG-023 = full production story for "Anthropic-family lessons-block policy in 2026-Q3."
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md (EVAL-027c synthesis)
+  closed_date: '2026-04-19'
+

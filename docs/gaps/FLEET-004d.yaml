@@ -1,0 +1,12 @@
+- id: FLEET-004d
+  domain: fleet
+  title: Context injection — CLAUDE.md reads ambient stream at session start
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    The ambient stream is only useful if agents actually read it. Adding a mandatory step to the session startup block in CLAUDE.md ensures every new agent session reads the last 30 lines of ambient.jsonl before picking a gap. This is the "glance around the room" step — cheap, fast, and gives immediate situational awareness of what other agents have been doing.
+  depends_on: [FLEET-004a]
+  source_doc: CLAUDE.md
+  closed_date: '2026-04-17'
+

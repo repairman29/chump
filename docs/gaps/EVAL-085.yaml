@@ -1,0 +1,18 @@
+- id: EVAL-085
+  domain: eval
+  title: Verify EVAL-064 published aggregate excluded transient exit-code rows
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    EVAL-083 audit (2026-04-25) found two short transient files in EVAL-064's archived run that used the broken `exit_code_fallback` scorer (4 + 6 = 12 rows total) alongside the main 398-row llm_judge sweep. Likely partial-run artifacts. Verify the EVAL-064 published FINDINGS row did not pick up the 12 transient rows. If it did, recompute the aggregate; if not, document which files fed the aggregate so future audits don't re-flag the same evidence.
+  acceptance_criteria:
+    - Confirmation in EVAL-064 doc of which JSONL file(s) fed the aggregate
+    - If transient rows were included, recomputed aggregate published with Wilson 95% CI
+    - If not, brief audit note in EVAL-064 doc saying so
+  depends_on: [EVAL-083]
+  notes: |
+    XS effort — likely a 30-minute doc check. Low priority because the transient rows are 12 of 410, ~3% — unlikely to swing a verdict but deserves the trail.
+  source_doc: docs/eval/EVAL-064-aggregate-audit.md
+  closed_date: '2026-04-25'
+

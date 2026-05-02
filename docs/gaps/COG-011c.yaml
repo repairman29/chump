@@ -1,0 +1,12 @@
+- id: COG-011c
+  domain: eval
+  title: Reverse-order sanity A/B for COG-011
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    run.sh always runs mode A (flag=1) before mode B (flag=0) for each task. If within-session state (DB writes from A's run, ollama kv-cache, surprise EMA, etc.) leaks into B, the +0.15 result is partly an order artifact rather than a pure prompt effect.
+  depends_on: [COG-011]
+  source_doc: scripts/ab-harness/run.sh
+  closed_date: '2026-04-17'
+

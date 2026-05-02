@@ -61,10 +61,48 @@ git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     GAPS_YAML=""
 }
 
-GAPS_YAML_REMOTE="${GAPS_YAML:-$(git show "$REMOTE/$BASE:docs/gaps.yaml" 2>/dev/null || echo "")}"
+# INFRA-188: load gap YAML from per-file directory or monolithic file.
+# Returns concatenated YAML text in the monolithic format (gaps:\n- id: ...\n).
+_load_gaps_yaml_from_ref() {
+    local ref="$1"  # e.g. "origin/main"
+    # Try per-file layout first (post-INFRA-188 canonical)
+    local per_file_list
+    per_file_list=$(git ls-tree --name-only -r "$ref" "docs/gaps/" 2>/dev/null \
+        | grep '\.yaml$' | sort || true)
+    if [[ -n "$per_file_list" ]]; then
+        echo "gaps:"
+        while IFS= read -r f; do
+            git show "${ref}:${f}" 2>/dev/null | sed 's/^$//' | grep -v '^$' || true
+            echo ""
+        done <<< "$per_file_list"
+        return
+    fi
+    # Fall back to monolithic
+    git show "${ref}:docs/gaps.yaml" 2>/dev/null || true
+}
+
+_load_gaps_yaml_local() {
+    local root="$1"
+    # Try per-file layout first
+    local gaps_dir="$root/docs/gaps"
+    if [[ -d "$gaps_dir" ]]; then
+        echo "gaps:"
+        for f in "$gaps_dir"/*.yaml; do
+            [[ -f "$f" ]] || continue
+            # Strip blank lines at end of each file
+            grep -v '^$' "$f" 2>/dev/null || true
+            echo ""
+        done
+        return
+    fi
+    # Fall back to monolithic
+    cat "$root/docs/gaps.yaml" 2>/dev/null || true
+}
+
+GAPS_YAML_REMOTE="${GAPS_YAML:-$(_load_gaps_yaml_from_ref "$REMOTE/$BASE" 2>/dev/null || true)}"
 LOCAL_GAPS_YAML=""
-if [[ -n "$REPO_ROOT" && -f "$REPO_ROOT/docs/gaps.yaml" ]]; then
-    LOCAL_GAPS_YAML="$(cat "$REPO_ROOT/docs/gaps.yaml" 2>/dev/null || true)"
+if [[ -n "$REPO_ROOT" ]]; then
+    LOCAL_GAPS_YAML="$(_load_gaps_yaml_local "$REPO_ROOT" 2>/dev/null || true)"
 fi
 
 # Prefer origin/main for "done" truth. If fetch/git-show failed (offline, shallow
@@ -73,7 +111,7 @@ fi
 GAPS_YAML="$GAPS_YAML_REMOTE"
 if [[ -z "$GAPS_YAML" && -n "$LOCAL_GAPS_YAML" ]]; then
     GAPS_YAML="$LOCAL_GAPS_YAML"
-    info "WARN: using working-tree docs/gaps.yaml for gap ID lookup (could not read $REMOTE/$BASE:docs/gaps.yaml)."
+    info "WARN: using working-tree gap registry for gap ID lookup (could not read $REMOTE/$BASE)."
 fi
 
 # True when this session's lease already reserves gap_id via pending_new_gap (INFRA-021).
@@ -247,7 +285,7 @@ for GAP_ID in "$@"; do
             elif [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
                 info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
             else
-                red "SKIP $GAP_ID — not found in docs/gaps.yaml."
+                red "SKIP $GAP_ID — not found in gap registry (docs/gaps/ or docs/gaps.yaml)."
                 red "  Reserve an ID first: scripts/coord/gap-reserve.sh <DOMAIN> \"title\""
                 red "  (atomic; writes pending_new_gap to your lease). Two agents inventing"
                 red "  the same ID was the INFRA-016/017/018 collision chain (2026-04-20)."
@@ -306,7 +344,7 @@ for GAP_ID in "$@"; do
 done
 
 if [[ $FAILED -eq 1 ]]; then
-    red "Pre-flight failed: one or more gaps unavailable (already done on $REMOTE/$BASE, live-claimed by another session, or not registered in docs/gaps.yaml)."
+    red "Pre-flight failed: one or more gaps unavailable (already done on $REMOTE/$BASE, live-claimed by another session, or not registered in gap registry)."
     exit 1
 fi
 

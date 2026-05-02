@@ -1,0 +1,33 @@
+- id: PRODUCT-021
+  domain: product
+  title: PRODUCT-017 P0 non-compliance escalation — freeze new PRODUCT gap work until clean-machine verification completes
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    PRODUCT-017 (P0 — stopwatch clean-machine install → PWA responsive
+    today) has 1 commit across 3 Cold Water cycles (Issues #6, #7, #8):
+    the filing commit d448c4e. PRODUCT-015 (src/activation.rs:171-194)
+    is live emitting activation_install, activation_first_task, and
+    activation_d2_return metrics on an unverified FTUE path. PRODUCT-020
+    (MCP marketplace MVP design, P1) is designing the product's North
+    Star experience on an unverified foundation.
+    
+    The project is expanding the product surface (PRODUCT-015, -020) and
+    measuring user behavior (D2-return events) on a path that has not
+    been tested against an actual clean machine. P0 gap policy means
+    all other PRODUCT work is blocked. That policy is not being enforced.
+    
+    Cold Water Issue #8. Acceptance: this gap closes when PRODUCT-017
+    closes (clean-machine artifact committed to
+    docs/FTUE-VERIFICATION-YYYY-MM-DD.md), OR when an explicit CPO
+    decision document records that PRODUCT-017 is intentionally deferred
+    with a named date and owner.
+  acceptance_criteria:
+    - "PRODUCT-017 acceptance criterion met: clean-machine stopwatch run committed to docs/FTUE-VERIFICATION-YYYY-MM-DD.md"
+    - "OR: explicit CPO decision document in docs/ records intentional deferral of PRODUCT-017 with named owner and target date"
+    - PRODUCT-020 work does not advance past design-doc phase until one of the above is true
+  opened_date: '2026-04-27'
+  closed_date: '2026-04-29'
+  closed_pr: 662
+

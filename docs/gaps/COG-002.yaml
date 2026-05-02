@@ -1,0 +1,11 @@
+- id: COG-002
+  domain: consciousness
+  title: Memory graph recall benchmark — recall@5 on multi-hop QA
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    No benchmark compares regex triple extraction vs LLM extraction, or BFS vs Personalized PageRank recall quality. Cannot justify PPR complexity without data.
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-16'
+

@@ -1,0 +1,11 @@
+- id: ACP-001
+  domain: acp
+  title: MCP server lifecycle — spawn, scope, and reap per ACP session
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    NewSessionRequest.mcpServers is recorded and persisted but servers are never spawned. Tools from MCP servers are unavailable during ACP sessions. On session end, child processes are not reaped (potential leak).
+  source_doc: docs/ACP_V3_BACKLOG.md
+  closed_date: '2026-04-17'
+

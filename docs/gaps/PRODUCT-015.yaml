@@ -1,0 +1,19 @@
+- id: PRODUCT-015
+  domain: product
+  title: Activation funnel telemetry — install → first-task completion → day-2 return
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    CPO-framing gap, Tier 1 of the audit slate. Red Letter flagged zero product velocity for two cycles. Before paying a research/consciousness panel for credibility review, prove users activate and retain. Scope: (1) instrument three events into ambient.jsonl — kind=activation_install (first `chump init`), kind=activation_first_task (first non-empty task completion), kind=activation_return_d2 (any session > 24h after install); (2) `chump funnel` CLI subcommand reads ambient.jsonl and prints a three-row funnel (install → first-task → d2-return) with counts + percentages; (3) opt-in local-only anonymous aggregator (remote endpoint deferred); (4) docs/ACTIVATION.md explaining events, counts, privacy posture. This funnel is the activation metric the CPO gate keys off — it tells us whether research reviews are warranted yet.
+  acceptance_criteria:
+    - Three kind=activation_* events land in ambient.jsonl on install, first task, and d2 return
+    - "`chump funnel` prints three-row funnel from ambient.jsonl"
+    - docs/ACTIVATION.md explains events, counts, privacy posture (opt-in, anonymized)
+    - Works on a clean machine with no prior Chump state
+    - Gate defined — numeric activation threshold below which research reviews stay deferred
+  notes: |
+    Gate for Tier 2/3 audit work and the research-credibility panel in docs/EXPERT_REVIEW_PANEL.md. Activation threshold set by CPO once the funnel is live.
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
+

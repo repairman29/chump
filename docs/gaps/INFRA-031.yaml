@@ -1,0 +1,17 @@
+- id: INFRA-031
+  domain: infra
+  title: Document Cursor headless loop parity vs scripts/agent-loop.sh (Claude)
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    scripts/agent-loop.sh is validated for Claude Code re-invocation. Cursor headless `agent` sessions can approximate the same loop but differ in auth, tool allowlists, and resume semantics. Add an explicit subsection to docs/AGENT_LOOP.md + docs/CHUMP_CURSOR_FLEET.md describing what is supported today, what is experimental, and the required prompt wrapper for safe gap iteration (including CHUMP_SESSION_ID guidance for parallel Cursor tabs).
+  acceptance_criteria:
+    - docs/AGENT_LOOP.md subsection compares Claude agent-loop.sh vs Cursor headless path
+    - docs/CHUMP_CURSOR_FLEET.md lists required env vars + anti-patterns (no hook bypass)
+    - scripts/cursor-cli-status-and-test.sh cross-links from AGENT_LOOP for smoke
+  notes: |
+    Queued 2026-04-23. XS effort — documentation only unless Cursor CLI gaps force a helper script.
+  source_doc: docs/CHUMP_CURSOR_FLEET.md + docs/AGENT_LOOP.md
+  closed_date: '2026-04-21'
+

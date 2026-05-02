@@ -1,0 +1,21 @@
+- id: INFRA-102
+  domain: infra
+  title: session_start ambient events absent - audit emitter and restore advertised behavior
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    CLAUDE.md advertises session_start as one of the ambient.jsonl event
+    kinds an agent peripheral vision should pick up. A 50-row tail of
+    ambient.jsonl on 2026-04-26 contains only bash_call, file_edit, commit,
+    INTENT, and ALERT - no session_start in the entire window. Either the
+    emitter was removed (regression), the docs are aspirational, or the
+    event is filtered. Track down the discrepancy and either restore the
+    emitter or strike the line from CLAUDE.md.
+  acceptance_criteria:
+    - Identify whether session_start is emitted anywhere in the codebase
+    - If missing - restore emit at session-init points (gap-claim.sh, bot-merge.sh entry)
+    - If intentionally removed - delete the line from CLAUDE.md ambient-event list
+    - Add a test that asserts session_start lands in ambient.jsonl during dispatcher startup
+  opened_date: '2026-04-26'
+

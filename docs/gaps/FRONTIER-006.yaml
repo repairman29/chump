@@ -1,0 +1,14 @@
+- id: FRONTIER-006
+  domain: frontier
+  title: JEPA / world-models watchpoint — track LeCun AMI Labs as alternate path
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Yann LeCun's AMI Labs raised $1.03B at $3.5B pre-money in Mar 2026 (largest European seed ever) to commercialize the JEPA (Joint Embedding Predictive Architecture) world-model thesis: that LLMs cannot reach AGI because they lack causal grounding in physical reality, and that latent-space prediction of action consequences is the alternative path. Chump's bet is on text + tools + memory + cognitive layer — explicitly the LLM scaffolding path. AMI's bet is the antithesis. Both can't be right. We don't need to PIVOT, but we should track AMI's progress quarterly: if their first product ships and works, the architecture conversation shifts and Chump's positioning needs revision. If their first product under-delivers, the LLM-scaffolding thesis is vindicated and Chump sits in a stronger position. Watchpoint, not action item.
+  notes: |
+    References: https://techcrunch.com/2026/03/09/yann-lecuns-ami-labs-raises-1-03-billion-to-build-world-models/ https://www.latent.space/p/ainews-yann-lecuns-ami-labs-launches Per the 2026-04-19 strategic memo: COMP-005 (multimodal) remains DO-NOT-START. JEPA tracking is intelligence not implementation.
+  source_doc: external (AMI Labs $1.03B seed Mar 2026)
+  closed_date: '2026-04-20'
+  closed_pr: 222
+

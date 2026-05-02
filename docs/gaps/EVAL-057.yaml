@@ -1,0 +1,20 @@
+- id: EVAL-057
+  domain: eval
+  title: Social Cognition LLM-judge sweep — upgrade heuristic scorer to resolve ambiguous/static CIs
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    EVAL-055 ambiguous/static H1 inconclusive with heuristic scorer (CIs overlap: A=0.320 [0.208,0.458] vs B=0.120 [0.056,0.238]). Add --use-llm-judge flag to run-social-cognition-ab.py; judge calls claude-haiku-4-5 with CLARIFIED: 1/0 verdict. Run n=50/cell/category (300 agent + 300 judge calls). Append results to docs/eval/EVAL-050-social-cognition.md and update CHUMP_FACULTY_MAP.md row #10.
+  acceptance_criteria:
+    - "--use-llm-judge flag implemented in run-social-cognition-ab.py"
+    - n=50/cell/category sweep completes with LLM judge
+    - docs/eval/EVAL-050-social-cognition.md updated with LLM-judge sweep section
+    - CHUMP_FACULTY_MAP.md Social Cognition row updated with LLM-judge verdict
+  depends_on: [EVAL-055]
+  notes: |
+    LLM-judge sweep complete (300 agent + 300 judge calls, 2026-04-20). Near-ceiling effect: both ambiguous cells 1.000 (A) vs 0.940 (B); CIs overlap due to ceiling compression (A=[0.929,1.000] vs B=[0.838,0.979]). Judge too liberal on clear/dynamic (A=0.860 vs B=0.680) — H2 fails under judge. Verdict: COVERED+VALIDATED(PRELIMINARY) unchanged. --use-llm-judge flag shipped. Definitive verdict requires stricter judge rubric or n>=200/cell.
+  source_doc: docs/eval/EVAL-050-social-cognition.md
+  closed_date: '2026-04-20'
+  closed_pr: 269
+

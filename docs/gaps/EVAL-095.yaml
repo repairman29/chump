@@ -1,0 +1,31 @@
+- id: EVAL-095
+  domain: eval
+  title: "EVAL-090 P0 seventh cycle — escalate to human decision: execute or downgrade priority"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    EVAL-090 (re-run EVAL-069 under verified python3.12, P0) has now been flagged
+    in Cold Water Issues #9 (2026-05-02) and #10 (2026-05-02) with zero
+    implementation commits across both cycles. Issue #9 was filed on 2026-05-01,
+    meaning EVAL-090 has been P0 for 6+ days with exactly one commit referencing it:
+    e0ab7e7 (the Issue #9 Cold Water filing itself).
+    
+    git log origin/main --grep=EVAL-090 --oneline (verified 2026-05-02):
+      e0ab7e7 chore(cold-water): Red Letter issue #9 — 2026-05-02 (#714)
+    
+    A P0 gap that has zero implementation commits after two consecutive cycles
+    is either: (a) correctly P0 and not being staffed, which is a process failure,
+    or (b) incorrectly P0 and should be downgraded to P1, which is a classification
+    failure. This gap forces a human decision.
+    
+    Consequence of continued inaction: the foundational claim that F3 ("neuromod harm
+    is cross-architecture") is based on valid data remains unverified. PRODUCT-009
+    (external publication) is explicitly gated on EVAL-090. The project cannot
+    publish until this resolves.
+  acceptance_criteria:
+    - "EITHER: EVAL-090 has at least one implementation commit (harness invocation, not filing) within 7 days of this gap being filed"
+    - "OR: EVAL-090 priority downgraded to P1 in .chump/state.db with a resolution_notes entry explaining why it can wait"
+    - "Either way: the current two-cycle P0-inactive pattern is broken"
+  opened_date: '2026-05-02'
+

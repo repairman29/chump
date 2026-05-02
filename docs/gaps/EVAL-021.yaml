@@ -1,0 +1,14 @@
+- id: EVAL-021
+  domain: eval
+  title: Longitudinal accumulation — does agent get better over 100 sessions
+  status: done
+  priority: P3
+  effort: l
+  description: |
+    The framework's actual longitudinal claim is that the agent gets better over time as it accumulates lessons + memory. Single-shot A/Bs cannot measure this. This gap operationalizes the claim.
+  depends_on: [EVAL-013, EVAL-018]
+  notes: |
+    TEST-CAT-L. The capstone gap. If this passes with a meaningful delta, the framework is empirically validated. If it doesn't, the framework needs deeper redesign.
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-18'
+

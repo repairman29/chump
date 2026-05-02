@@ -1,0 +1,23 @@
+- id: INFRA-070
+  domain: infra
+  title: "chump gap reserve: silent ID collision when DB and gaps.yaml have drifted"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    `chump gap reserve --domain D` can return an ID that already exists in `docs/gaps.yaml` when the local `.chump/state.db` is out of sync with the YAML mirror. Observed during DOC-005 Phase 0 (2026-04-25): `chump gap reserve --domain DOC` returned DOC-005 (an existing open gap), and the subsequent INSERT either succeeded (because the DB row was missing) or silently mutated the existing row's title.
+    Root cause (suspected): `GapStore::reserve` (src/gap_store.rs:287) seeds the per-domain counter from `MAX(existing IDs in gaps table)` on first reserve for that domain. If the DB is missing rows that exist in the YAML — which happens after any hand-edit to gaps.yaml without a follow-up `chump gap import` — the counter starts low and reserve returns IDs that collide with the YAML.
+    `import_from_yaml` uses `INSERT OR IGNORE`, so it doesn't backfill after the fact unless re-run. The reserve path does not auto-import.
+  acceptance_criteria:
+    - reserve cannot return an ID that exists in either gaps.yaml OR state.db
+    - "regression test: hand-add a gap to YAML, do not import, then reserve; assert returned ID is strictly greater than the YAML max"
+    - clear error message (or auto-import) when drift detected
+    - reserve cannot return an ID that exists in either gaps.yaml OR state.db
+    - regression test — hand-add a gap to YAML, do not import, then reserve; assert returned ID is strictly greater than the YAML max
+    - clear error message (or auto-import) when drift detected
+  notes: |
+    Suggested fix: have `reserve` consult both the YAML max and the counter row max, taking the maximum of both. Alternative: have `reserve` call `import_from_yaml` first (cheap — INSERT OR IGNORE). Filed by INFRA-042 author after DOC-005 Phase 0 subagent (PR #537) flagged it. Patched locally via direct sqlite UPDATE; no upstream fix yet.
+  source_doc: src/gap_store.rs
+  opened_date: '2026-04-25'
+  closed_date: '2026-04-26'
+

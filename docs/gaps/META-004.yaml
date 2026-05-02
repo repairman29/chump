@@ -1,0 +1,68 @@
+- id: META-004
+  domain: META
+  title: "structural-fixes-over-symptom-patches: track 50-coordination-patch backlog vs handful of root-cause fixes"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    As of 2026-05-01 the gap registry has **50 open coordination-related
+    gaps** (lease, rebase, dispatcher, drift, queue, fleet, etc.). Each
+    is a real symptom flagged by an agent in the moment. None of them
+    is wrong. But the team is filing 1-3 of these per cycle and closing
+    1-2, so the backlog grows.
+    
+    Meanwhile only ~5 STRUCTURAL fixes would close most of them by
+    eliminating root causes:
+    
+      A. **Per-file gap registry** (INFRA-188) — kills N×N YAML conflicts
+         by giving each gap its own file. Subsumes INFRA-100, INFRA-105,
+         INFRA-115, INFRA-160, INFRA-176, INFRA-144, INFRA-148.
+    
+      B. **Property-based agent contracts** (INFRA-189) — declared file
+         scope per session; pre-commit rejects out-of-scope writes. Kills
+         INFRA-076 leak class, INFRA-081 semantic-collision class,
+         INFRA-085 manual-ship-invisibility, INFRA-110 reserve-time
+         scoped-diff requirement, INFRA-118 chump-commit-reset claim.
+    
+      C. **Auto-rebase on DIRTY** (INFRA-190) — bot-merge.sh / pr-watch.sh
+         auto-recover the 80% case where main moved while queued. Kills
+         the 5-times-a-session manual rebase tax. Subsumes INFRA-052,
+         INFRA-119, INFRA-121.
+    
+      D. **chump dispatch canonical workflow** (INFRA-191) — single
+         command pulls main, claims, ships, releases. Subsumes the
+         un-shipped half of INFRA-100, INFRA-168.
+    
+      E. **Forward-chain notifier** (INFRA-192) — when a PR closes a
+         depends_on link, post gap_unblocked event so downstream agents
+         pick up immediately. Eliminates manual queue-scan.
+    
+    Plus three Tier-3 novel ideas worth filing for the future:
+    
+      F. **Speculative execution** (INFRA-193) — two agents on same
+         gap; first-to-land wins; loser auto-superseded.
+    
+      G. **Closer-PR auto-batcher** (INFRA-194) — coordinator ships one
+         PR with N closures every M hours; reduces queue churn 5-10×.
+    
+      H. **Skills feedback loop** (INFRA-195) — shipped PRs distill
+         into chump_skills the next dispatcher reads. Subsumes META-001,
+         META-002, META-003.
+    
+    Recommendation: dispatcher (or musher / on-call agent) picks ONE
+    structural fix per cycle and ships it before pulling more
+    symptom-patches. Track here in resolution_notes the PRs that
+    actually closed sub-gaps and which symptom-patches were transitively
+    closed by them.
+    
+    Stop filing yet-another-coordination-patch unless it can't be
+    deferred behind one of A-H. The 50→5 collapse is worth more than
+    any single new patch.
+  acceptance_criteria:
+    - INFRA-188..195 + META-004 (this) all filed with full design notes (this PR)
+    - "After INFRA-190 ships: count manual rebases per agent-session — should drop from ~5/session to ~0/session"
+    - "After INFRA-188 ships: count gaps.yaml merge-conflicts per week — should drop from ~10/wk to ~0/wk"
+    - "After INFRA-189 ships: count cross-worktree commit leaks (e.g. Test <test@test.com>, INFRA-076-class) — should drop to 0"
+    - "After 3 of A-H ship: re-survey open coordination gaps; expect drop from 50 toward ~15-20 (the residual not yet covered)"
+  opened_date: '2026-05-01'
+

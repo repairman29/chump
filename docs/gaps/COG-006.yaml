@@ -1,0 +1,12 @@
+- id: COG-006
+  domain: consciousness
+  title: Neuromodulation gate — measure modulator adaptation vs fixed-threshold
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Neuromodulation (src/neuromodulation.rs) shifts regime thresholds but its effect on task outcomes has not been measured on a 50-turn diverse task set.
+  depends_on: [COG-001]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-18'
+

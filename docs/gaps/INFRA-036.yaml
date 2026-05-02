@@ -1,0 +1,15 @@
+- id: INFRA-036
+  domain: infra
+  title: Rename mis-pathed eval-runs archive directories
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Seven eval-run archive directories were created with absolute-path-as-name (e.g. `_Users_jeffadkins_Projects_Chump_docs_archive_eval-runs_claude_eval-063-2026-04-22/`) instead of the canonical `eval-NNN-YYYY-MM-DD/` form used by sibling `eval-025-cog016-validation/`. Likely cause: an eval driver was passed an absolute archive root as the run-name argument and slugified the slashes. Data inside is intact (~3.3 MB of binary-judge / cross-judge jsonl logs). Rename to canonical form and commit so the archive index stays consistent.
+  acceptance_criteria:
+    - No directory under docs/archive/eval-runs/ has a leading underscore prefix or absolute-path slug
+    - All seven dirs renamed to eval-NNN-YYYY-MM-DD or infra-NNN-name-YYYY-MM-DD pattern
+    - jsonl payload counts match what was in the mis-named dirs (no data lost)
+  source_doc: CLAUDE.md audit, 2026-04-23 — 7 untracked dirs whose absolute path got doubled into the directory name
+  closed_date: '2026-04-24'
+

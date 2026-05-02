@@ -1,0 +1,90 @@
+- id: INFRA-183
+  domain: infra
+  title: PWA latency umbrella — measured root cause is reasoning-CoT eaten by chunk processor (not the originally-suspected paths)
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    Umbrella for the PWA latency-budget work. Two parallel diagnoses on
+    2026-05-01 produced an INITIAL list of 6 suspects; a follow-up
+    measurement narrowed it to a SINGLE root cause not in the original
+    list. Filing this umbrella with the corrected ground-truth so the
+    sub-tasks don't duplicate already-shipped work.
+    
+    ## What we MEASURED (ground truth)
+    
+    Probe: `Say pong, nothing else.` →
+      - 56.985 s total
+      - TTFB 47 ms (server response is fast)
+      - 1 user-visible text_delta = "pong"
+      - 114 keepalive `Thinking` pings (every 500 ms)
+      - 0 user-visible reasoning text
+    
+    Direct probe of `/v1/chat/completions` confirmed the served MLX
+    model is a REASONING model that emits ~57 s of plain-prose
+    Chain-of-Thought (`"Thinking Process:\n\n1.  **..."`) WITHOUT
+    `<think>` tags. The chunk processor at src/local_openai.rs:81-185
+    only routes content wrapped in `<think>...</think>` to
+    `thinking_delta`. Plain-prose CoT gets eaten — the user sees the
+    keepalive cursor for the full duration, then "pong" appears at the
+    end.
+    
+    ## What was originally suspected and CORRECTED OUT
+    
+    Partner-agent diagnosis at ~/.claude/plans/why-is-the-pwa-chump-s-radiant-minsky.md
+    listed 6 findings; verification against the live code corrected 3 of them:
+    
+      - ❌ "HTTP doesn't stream deltas" — ALREADY IMPLEMENTED at
+        src/local_openai.rs:884-1134. STREAM_EVENT_TX task-local
+        detection, `"stream": true`, SSE chunk parsing, TextDelta
+        emission, `<think>`-tag chunk processor at lines 81-185,
+        `CHUMP_STREAM_HTTP=0` kill switch. Re-implementing would be
+        duplicate work.
+      - ❌ "No per-query phase timing" — PARTIALLY ALREADY THERE. See
+        `[timing] stream_request_ms=...` log lines at
+        src/local_openai.rs:1021, :1124, :1133. Plus orchestrator's
+        `agent_turn started`/`turn complete` with request_id +
+        prompt_len. Missing piece is PHASE breakdown
+        (compaction vs provider vs tools), not timing per se.
+      - ❌ "mistral.rs cold-start" — NOT THE ACTIVE BACKEND. run-web.sh
+        chose vLLM-MLX on :8000.
+    
+    The two remaining originals (sync compaction, sync tool exec) are
+    real but unlikely to dominate against a 57 s reasoning chain —
+    defer until after the model swap shows what's left.
+    
+    ## Sub-tasks (corrected, ranked by impact)
+    
+    1. **Switch chat default to a non-reasoning model** (qwen2.5:14b /
+       llama3.1) — biggest immediate UX win, near-zero code. Config
+       change in run-web.sh / .env. Sub-gap to be filed.
+    
+    2. **Extend chunk processor to recognize plain-prose reasoning
+       patterns** ("Thinking Process:" / "Step 1:" / numbered
+       enumerations before a final answer) and route to
+       `thinking_delta`, OR force the model to emit `<think>` via
+       prompt/grammar — fixes ALL future reasoning models, not just
+       this one. Lives in src/local_openai.rs lines 81-185.
+       Sub-gap to be filed.
+    
+    3. **Phase-level timing breakdown** on top of existing `[timing]`
+       logs (compaction ms / provider ms / tools ms per turn). Smaller
+       scope than originally framed — most timing infra exists.
+       Sub-gap to be filed.
+    
+    4. **INFRA-180 (capability-Q skip-tools) + INFRA-182 (route_tools)** —
+       payload-size work, complementary, both shipped/in-flight today.
+    
+    Drop from scope (until post-model-swap):
+      - Async compaction (defer; unlikely to dominate vs CoT)
+      - Parallel tool execution (defer; same reason)
+  acceptance_criteria:
+    - "Sub-gap filed for #1 (model swap)"
+    - "Sub-gap filed for #2 (plain-prose CoT chunk-processor extension)"
+    - "Sub-gap filed for #3 (phase-level timing breakdown)"
+    - "After #1 lands: re-probe `Say pong, nothing else.` — total time drops below 5 s OR plain-prose CoT now streams to the user as thinking_delta"
+    - Phase breakdown logs appear per turn so we can attribute future regressions
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-02'
+  closed_pr: 704
+

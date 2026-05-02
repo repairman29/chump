@@ -1,0 +1,20 @@
+- id: UX-001
+  domain: ux
+  title: One-command install flow — brew install chump → working PWA in < 60s
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    COMP-010 (brew formula) is marked done, but the end-to-end "install → running PWA" path has no measured acceptance criterion. North Star: "someone runs one command, a PWA opens." This gap owns the ≤60-second promise. Scope: (1) `chump init` subcommand that, on first run, (a) detects available local models, (b) writes a minimal config, (c) starts the server, (d) opens the PWA at localhost:<port>/v2 in the default browser; (2) OOTB wizard (already exists at web/ootb-wizard.js — audit for reuse vs rewrite once PRODUCT-012 lands); (3) stopwatch script scripts/measure-ftue.sh that times `brew install chump && chump init && <until PWA is responsive>` and fails CI if > 90s on a GitHub runner; (4) docs/ONBOARDING.md with screenshots of each step. If REL-002 (Ollama upstream blocker) is unresolved, ship a bundled-model fallback with a quantized default so no external dependency is needed for the first-run success.
+  acceptance_criteria:
+    - "`chump init` subcommand exists and chains detect → config → serve → open-browser"
+    - FTUE stopwatch ≤ 60s on M4 Mac, ≤ 90s CI budget
+    - PWA opens automatically on first-run success
+    - Missing-model path guides user to a default download (no silent hangs)
+    - docs/ONBOARDING.md with real screenshots
+  depends_on: [PRODUCT-012, REL-002]
+  notes: |
+    COMP-010 shipped the formula; this gap closes the UX promise the formula implies. REL-002 dep is soft — ship a bundled-default fallback if Ollama still blocked.
+  source_doc: docs/NORTH_STAR.md
+  closed_date: '2026-04-21'
+

@@ -1,0 +1,14 @@
+- id: EVAL-024
+  domain: eval
+  title: "Multi-turn A/B re-run with v2 multi-axis scoring (compose with PR #73)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    PR #73 (EVAL-012) ships a multi-turn conversation A/B harness with v1 single-axis scoring. The single-shot v2 result (PR #80) showed the hallucination effect (+0.14) is invisible to binary pass/fail; the multi-turn harness has the same blind spot. Per the methodology critique in CONSCIOUSNESS_AB_RESULTS.md, multi-axis is required to catch the actual harm channel. This gap composes: extend PR #73's output schema to capture per-turn final_text (already does), then pipe through scripts/ab-harness/rescore-with-v2.py per turn or per conversation. Report whether the lessons-block hallucination effect compounds, washes out, or reverses across turns.
+  depends_on: [EVAL-012]
+  notes: |
+    Likely a small Python wrapper that walks the multi-turn jsonl per-turn and applies rescore-with-v2.py logic. ~50 LOC. Cheap to run since the multi-turn fixture is only 10 tasks and the conversations are already executed (just re-scoring existing logs). Cost: \$0 (re-scoring only).
+  source_doc: docs/eval/TEST_BACKLOG.md
+  closed_date: '2026-04-19'
+

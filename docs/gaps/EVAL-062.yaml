@@ -1,0 +1,17 @@
+- id: EVAL-062
+  domain: eval
+  title: Social Cognition graduation — stricter LLM-judge rubric or n≥200/cell to resolve PRELIMINARY
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    EVAL-050, EVAL-055, and EVAL-057 all concluded PRELIMINARY for Social Cognition (#10). The two documented root causes are: (a) ceiling compression at n=50 — ambiguous/procedural cell saturates at 1.000 under LLM judge, compressing CI; (b) judge liberality — the current prompt scores hedging as clarification, inflating Cell B. Red Letter #3 explicitly calls out "Three gap-slots spent without addressing the stated blocking issue." Two acceptable paths: (1) Stricter judge rubric — revise the LLM judge prompt in run-social-cognition-ab.py to require EXPLICIT clarification (not implicit hedging); re-run n=50/cell with revised judge. (2) Scale up — run n=200/cell on the current LLM-judge path to get CIs narrow enough to separate. Either path must produce non-overlapping CIs for at least the procedural category to graduate Social Cognition from PRELIMINARY to COVERED+VALIDATED or COVERED+VALIDATED(NEGATIVE).
+  acceptance_criteria:
+    - At least one category (ambiguous/procedural or ambiguous/static) achieves non-overlapping CIs
+    - docs/eval/EVAL-050-social-cognition.md updated with new sweep results
+    - docs/CHUMP_FACULTY_MAP.md Social Cognition row updated with verdict beyond PRELIMINARY
+  notes: |
+    Path (1) strict-judge sweep (n=10/cell) run 2026-04-20: ceiling compression confirmed as root cause, NOT judge liberality. Cell B stays near 1.000 on ambiguous prompts even under strict rubric. Non-overlapping CIs not achieved. Social Cognition stays PRELIMINARY. Graduation path: n>=200/cell or lower-baseline model.
+  source_doc: docs/RED_LETTER.md
+  closed_date: '2026-04-20'
+

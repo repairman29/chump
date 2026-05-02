@@ -1,0 +1,36 @@
+- id: INFRA-095
+  domain: infra
+  title: audit and deprecate legacy gaps.yaml-first scripts
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Several scripts under scripts/ still treat docs/gaps.yaml as the
+    source of truth and bypass .chump/state.db entirely. As of 2026-04-26
+    confirmed offenders (grep "docs/gaps.yaml" scripts/*.sh):
+      - scripts/gap-reserve.sh — reads YAML for ID allocation
+      - scripts/gap-preflight.sh — reads YAML for status check
+      - scripts/gap-claim.sh — writes lease but doesn't update state.db
+      - scripts/check-gap-status-flip.sh — YAML-only
+      - scripts/bot-merge.sh — YAML-only gap pre-flight + status updates
+      - scripts/gap-store-prototype.sh — predates INFRA-059, likely dead
+      - scripts/code-reviewer-agent.sh, scripts/extract-best-practices.sh,
+        scripts/fleet-status.sh, scripts/generate-sprint-synthesis.sh —
+        consumers; may need migration too
+    
+    Action: produce a one-shot inventory PR that classifies each
+    script as one of:
+      a) port to chump gap (read-only consumers — should query state.db)
+      b) keep as legacy fallback (gap-reserve.sh, gap-preflight.sh —
+         already documented as fallbacks per INFRA-068)
+      c) delete (gap-store-prototype.sh and any dead code)
+    For (a), open follow-up gaps to do the port.
+    For (b), add explicit "this is a fallback" header comment + ensure
+    chump gap is documented as the canonical path in CLAUDE.md.
+    Goal: no script silently treats YAML as source of truth without
+    documenting the fallback status.
+  acceptance_criteria:
+    - Inventory file under docs/ classifying every script that mentions docs/gaps.yaml
+    - Dead scripts deleted or marked deprecated with removal date
+  depends_on: [INFRA-068, INFRA-094]
+

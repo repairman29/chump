@@ -1,0 +1,13 @@
+- id: PRODUCT-002
+  domain: product
+  title: Single-command fleet deploy — scripts/deploy-fleet.sh for Mac + Pixel
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Horizon 1 goal: one command to build and deploy Mac + Pixel on the same commit and config. scripts/deploy-fleet.sh referenced but status unknown.
+  notes: |
+    scripts/deploy-fleet.sh is fully implemented: parallel Mac+Android builds, hot-swap Discord+Web bots, deploy-all-to-pixel.sh for Pixel, fleet-health.sh final check. Flags: --mac, --pixel, --no-build, --health.
+  source_doc: docs/ECOSYSTEM_VISION.md
+  closed_date: '2026-04-16'
+

@@ -1,0 +1,55 @@
+- id: INFRA-186
+  domain: infra
+  title: "naming convention reset: branch + worktree are chump-first (project owns namespace, not the tool)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Observed friction (relayed from operator 2026-05-01): a sibling
+    agent had to RENAME its branch from `worktree-fleet-matrix-wiring`
+    to `claude/...` because CLAUDE.md said branches must start with
+    `claude/`. That's a tool-tax on a project-wide artifact — the repo
+    is `chump`, not Claude.
+    
+    Current state of the drift:
+      - 82 origin/claude/* branches, 1 origin/chump/* branch
+      - CLAUDE.md:139 hardcoded `claude/<codename>` as the branch rule
+      - .claude/worktrees/ as the worktree path
+      - AGENTS.md hedged with "or your tool's analogue" — still defaults
+        to claude/<codename>
+      - Bot identities ARE chump-first (cold-water@chump.bot, chump-ftue-bot)
+      - Lease dir IS chump-first (.chump-locks/)
+      - State store IS chump-first (.chump/state.db)
+    
+    Fix: AGENTS.md is the project-wide cross-tool entry point (LinuxFoundation
+    convention). It owns naming. CLAUDE.md / GEMINI.md / .cursorrules are
+    tool-specific overlays that defer to AGENTS.md for shared conventions.
+    
+    Canonical naming (this PR):
+      - Feature branch:    chump/<short-codename>     (was claude/<…>)
+      - Linked worktree:   .chump/worktrees/<name>/   (was .claude/worktrees/<…>)
+      - Lease file:        .chump-locks/<session>.json  (already canonical)
+      - State / SQLite:    .chump/state.db, .chump/state.sql  (already canonical)
+      - Bot identity:      <role>@chump.bot             (already canonical)
+      - Ambient stream:    .chump-locks/ambient.jsonl, NATS chump.events.>  (already canonical)
+    
+    Migration: existing claude/* branches and .claude/worktrees/ paths
+    stay as history — no rename. New work uses chump/<codename> and
+    .chump/worktrees/<name>. Tooling (bot-merge.sh, gap-claim.sh,
+    gap-preflight.sh) accepts either prefix during transition;
+    INFRA-187 tightens the default to chump/.
+    
+    Tool-specific overlays (skills, hooks, harness behavior) still live
+    in CLAUDE.md / GEMINI.md / etc. but ONLY for tool-specific rules.
+    Shared conventions defer to AGENTS.md. If a rule appears in both,
+    AGENTS.md wins.
+  acceptance_criteria:
+    - AGENTS.md has a 'Naming conventions' section listing the canonical chump-first prefixes for branches, worktrees, lease files, state, bot identities, ambient stream
+    - AGENTS.md PR-guidelines uses chump/<codename> as the canonical example (not claude/<codename>)
+    - CLAUDE.md hard-rules section defers to AGENTS.md for naming and notes both paths are accepted
+    - scripts/coord/archive-superseded-branch.sh example uses chump/<…>
+    - No code change required for backward compat — tooling already accepts any branch name; the chump/ vs claude/ choice is convention-only
+    - INFRA-187 filed for tooling enforcement (bot-merge.sh defaults chump/, gap-claim accepts any prefix)
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+

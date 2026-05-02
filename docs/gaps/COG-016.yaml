@@ -1,0 +1,13 @@
+- id: COG-016
+  domain: consciousness
+  title: Model-tier-aware lessons block injection
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    The n=100 sweep landed by PR #80 + #82 established (p<0.05 across 3 fixtures) that injecting the lessons block as a system-role prefix reliably increases fake-tool-call emission by +0.13 to +0.16 percentage points (mean +0.14, A/A noise floor 0.00). Effect replicated on opus at n=20 with non-overlapping CIs (+0.40 on reflection). Production currently injects unconditionally via reflection_db::reflection_injection_enabled. Should be model-tier-gated so weaker models do not pay the hallucination cost while frontier models can opt in.
+  notes: |
+    Direct production consequence of the headline finding from this session. Single-file Rust change in reflection_db.rs (model tier map + injection predicate update). Unit test count: 2 (tier mapping + gated predicate). Coordination caveat: prompt_assembler.rs has active edits in PR #66 (COG-015 entity blackboard); land COG-016 after #66 to avoid rebase.
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-19'
+

@@ -1,0 +1,19 @@
+- id: PRODUCT-016
+  domain: product
+  title: 3-minute demo video + scripted walkthrough against current main
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    CPO-framing gap, Tier 1. If you can't record a 3-minute end- to-end demo of Chump delivering user value, the product isn't shippable and research reviews are premature. Scope: (1) docs/DEMO_SCRIPT.md scripts the golden path (brew install → chump init → PWA opens → user issues a prompt → result visible); (2) record against current main as an unedited screen capture at docs/assets/demo-YYYY-MM-DD.mp4 (or unlisted YouTube link); (3) the recording must NOT be edited to hide failures — failures surface as new P0 regression gaps; (4) re-record monthly or on any UX-001 regression. The recording itself is the acceptance criterion — no recording, no P0 satisfaction.
+  acceptance_criteria:
+    - docs/DEMO_SCRIPT.md exists with scripted golden path
+    - Recording exists, ≤ 3 minutes, against current main, unedited for failures
+    - Script + recording match step-for-step
+    - Any failure during recording files a P0 regression gap before this one ships
+  depends_on: [PRODUCT-017]
+  notes: Forcing function, not theater. Failed recording attempts are the signal.
+  source_doc: docs/EXPERT_REVIEW_PANEL.md
+  closed_date: '2026-04-24'
+  closed_pr: 485
+

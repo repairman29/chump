@@ -1,0 +1,11 @@
+- id: INFRA-CLIPPY-RUST195
+  domain: infra
+  title: Clippy sweep for Rust 1.95.0 lints
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    CI runner upgraded to Rust 1.95.0 / clippy 1.95, adding many new lints (manual_clamp, manual_range_contains, useless_vec, await_holding_lock, let_unit_value, doc_lazy_continuation, useless_format, bool_assert_comparison). 32 errors blocked the entire pipeline. cargo clippy --fix handled most; mechanical edits cleared the rest.
+  source_doc: .github/workflows/ci.yml
+  closed_date: '2026-04-17'
+

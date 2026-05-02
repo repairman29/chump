@@ -1,0 +1,19 @@
+- id: EVAL-071
+  domain: eval
+  title: Extend F2 halluc-inflation finding to non-Anthropic frontier models
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    F2 (lessons-block fake-tool-call inflation +0.14 pp at 10.7x A/A noise floor, n>2,600 trial pairs) is currently measured on two Anthropic frontier models only (claude-haiku-4-5, claude-opus-4-5). The finding is internally cross-architecture on the Anthropic side but has not been tested on non-Anthropic frontier. A single additional architecture family tested would substantially strengthen the claim; a null result on non-Anthropic would narrow the finding to Anthropic-specific and still be informative. Target models: DeepSeek-V3.1 (via Together, cheap), Qwen3-235B-Instruct (via Together), and ideally Gemini-2.x (via Google API) or GPT-4o (via OpenAI API) if budget permits. Same run-cloud-v2.py harness, same multi-axis scoring (correctness + hallucinated_tools + did_attempt), same A/A baseline calibration, cross-family judge panel.
+  acceptance_criteria:
+    - F2 sweep re-run on at least 2 additional non-Anthropic frontier models at n>=500 per cell
+    - A/A baseline calibrated for each new model on the same fixture
+    - hallucinated_tools delta reported with A/A floor multiplier (as F2 does, 10.7x for Anthropic)
+    - Per-model docs/eval/EVAL-071-halluc-inflation-<model>.md with full methodology and result
+    - "docs/FINDINGS.md F2 entry updated: either generalization confirmed (broader claim) or narrowed to Anthropic-specific (more precise claim)"
+  notes: |
+    ~2-3 days + $10-20 Together and $20-40 OpenAI/Google spend. Candidate content for PRODUCT-009 if the finding generalizes. Depends on judge calibration (EVAL-046) being trustworthy on non-Anthropic agent output.
+  source_doc: docs/FINDINGS.md F2 caveat
+  closed_date: '2026-04-20'
+

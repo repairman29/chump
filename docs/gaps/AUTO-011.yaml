@@ -1,0 +1,11 @@
+- id: AUTO-011
+  domain: autonomy
+  title: Epistemic stress metric — frustration-triggered strategy pivot
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    tool_middleware.rs circuit breaker tracks only failure_count + cooldown (line 25: (u32, Instant) per tool). Diminishing epistemic returns — repeated attempts on the same tool with decreasing confidence gain — are invisible. Agent cools down then retries identically rather than pivoting strategy.
+  depends_on: [AUTO-006]
+  closed_date: '2026-04-16'
+

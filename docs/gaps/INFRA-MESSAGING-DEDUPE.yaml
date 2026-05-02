@@ -1,0 +1,18 @@
+- id: INFRA-MESSAGING-DEDUPE
+  domain: infra
+  title: Reconcile MessagingAdapter (mine) vs PlatformAdapter (older) traits
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Two parallel platform-adapter traits exist:
+      crate::messaging::MessagingAdapter (3e79d77, COMP-004a) — newer,
+        richer (request_approval enum, MessagingHub for routing, IncomingMessage
+        with platform_metadata + is_dm + attachments).
+      crate::adapters::PlatformAdapter (older) — send-only scaffold,
+        simpler InboundMessage / OutboundMessage.
+    Both telegram impls coexist: src/telegram.rs (mine, full long-poll + MessagingAdapter) and src/adapters/telegram.rs (older, send-only + PlatformAdapter). They don't conflict at runtime (different module paths) but both being "the telegram adapter" is confusing for whoever adds Slack / Matrix next.
+  depends_on: [COMP-004a, COMP-004b]
+  source_doc: src/messaging/mod.rs
+  closed_date: '2026-04-18'
+

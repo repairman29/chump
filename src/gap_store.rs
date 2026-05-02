@@ -931,24 +931,67 @@ struct YamlGapsFile {
 }
 
 impl GapStore {
-    /// Import from docs/gaps.yaml into the DB. Idempotent — existing rows are skipped.
+    /// Import from the gap registry into the DB. Idempotent — existing rows are skipped.
     ///
-    /// Missing-file is treated as a no-op (returns `Ok((0, 0))`) so fresh tempdir
-    /// callers and bootstrap paths don't have to special-case it. A YAML file
-    /// that *exists* but is unreadable / malformed propagates the error so callers
-    /// like `reserve()` can fail loud (INFRA-143).
+    /// INFRA-188: reads from per-file `docs/gaps/*.yaml` directory if it exists,
+    /// otherwise falls back to monolithic `docs/gaps.yaml`. Both layouts are
+    /// accepted for backward compatibility during the transition period.
+    ///
+    /// Missing-file/directory is treated as a no-op (returns `Ok((0, 0))`) so
+    /// fresh tempdir callers and bootstrap paths don't have to special-case it.
+    /// A YAML file that *exists* but is unreadable / malformed propagates the
+    /// error so callers like `reserve()` can fail loud (INFRA-143).
     pub fn import_from_yaml(&self, repo_root: &Path) -> Result<(usize, usize)> {
-        let yaml_path = repo_root.join("docs").join("gaps.yaml");
-        let text = match std::fs::read_to_string(&yaml_path) {
-            Ok(t) => t,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0)),
-            Err(e) => {
-                return Err(anyhow::Error::from(e))
-                    .with_context(|| format!("reading {}", yaml_path.display()));
+        // INFRA-188: prefer per-file directory if it exists and is non-empty.
+        let per_file_dir = repo_root.join("docs").join("gaps");
+        let text = if per_file_dir.is_dir() {
+            // Aggregate all per-file YAML into one monolithic string.
+            let mut parts = Vec::new();
+            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
+                .with_context(|| format!("reading {}", per_file_dir.display()))?
+                .flatten()
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s == "yaml")
+                        .unwrap_or(false)
+                })
+                .collect();
+            dir_entries.sort_by_key(|e| e.file_name());
+            for entry in &dir_entries {
+                let content = std::fs::read_to_string(entry.path())
+                    .with_context(|| format!("reading {}", entry.path().display()))?;
+                parts.push(content);
+            }
+            if parts.is_empty() {
+                // Empty directory — fall through to monolithic check
+                let yaml_path = repo_root.join("docs").join("gaps.yaml");
+                match std::fs::read_to_string(&yaml_path) {
+                    Ok(t) => t,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0)),
+                    Err(e) => {
+                        return Err(anyhow::Error::from(e))
+                            .with_context(|| format!("reading {}", yaml_path.display()));
+                    }
+                }
+            } else {
+                // Wrap entries as a monolithic `gaps:` list for uniform parsing.
+                format!("gaps:\n{}", parts.join(""))
+            }
+        } else {
+            let yaml_path = repo_root.join("docs").join("gaps.yaml");
+            match std::fs::read_to_string(&yaml_path) {
+                Ok(t) => t,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0)),
+                Err(e) => {
+                    return Err(anyhow::Error::from(e))
+                        .with_context(|| format!("reading {}", yaml_path.display()));
+                }
             }
         };
         let file: YamlGapsFile = serde_yaml::from_str(&text)
-            .with_context(|| format!("parsing {}", yaml_path.display()))?;
+            .with_context(|| "parsing gap registry (per-file or monolithic)")?;
 
         let mut inserted = 0usize;
         let mut skipped = 0usize;

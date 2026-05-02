@@ -1,0 +1,12 @@
+- id: COG-005
+  domain: consciousness
+  title: Perception gate — measure whether perception layer improves tool selection
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Perception layer (src/perception.rs) runs before every LLM call but its effect on tool selection accuracy has never been measured. Need 50-turn diverse task set comparing perception-informed vs raw-text baseline.
+  depends_on: [COG-001]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

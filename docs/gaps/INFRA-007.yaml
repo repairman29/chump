@@ -1,0 +1,18 @@
+- id: INFRA-007
+  domain: infra
+  title: Ambient stream firing audit — why FLEET-004 hooks emit nothing despite status=done
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    FLEET-004a / FLEET-004c / FLEET-005 are all marked status=done but .chump-locks/ambient.jsonl contains only session_start and occasional bash_call events. Expected file_edit, commit, ALERT kind=*, and edit_burst events are NEVER written. 50+ PRs landed today; zero of them appear as commit events in ambient. The orchestrator's monitor loop relies on ambient to distinguish a stalled subagent from an active one; without it, stalls look identical to work. Until this is fixed unattended operation is unsafe because we cannot detect silent agents (ALERT kind=silent_agent never fires either). Diagnose step 1: which git hook / Rust module is SUPPOSED to write commit / file_edit events? Step 2: trace why it is not actually writing (permission? path? feature flag?). Step 3: fix + verify 50 real events in ambient within 10 minutes of normal activity.
+  acceptance_criteria:
+    - Audit doc docs/eval/INFRA-007-ambient-firing.md identifies the intended emitter path for each event kind (commit, file_edit, bash_call, ALERT kind=*, edit_burst) plus the actual code path
+    - At least 3 event kinds (commit, file_edit, ALERT) observed in .chump-locks/ambient.jsonl within 10 minutes of triggering activity
+    - FLEET-004a / FLEET-004c / FLEET-005 either re-verified done or reopened with the remaining work identified
+    - docs/AGENT_COORDINATION.md ambient-kind table updated to match what actually fires
+  notes: |
+    Blocker #4 on the 2026-04-20 5-blocker list. Hard prerequisite for any unattended run longer than ~30 minutes. The monitor loop exists, the hooks exist, but end-to-end emission is broken. Expected ~1 day of investigation + fix.
+  source_doc: 2026-04-20 strategic review blocker
+  closed_date: '2026-04-20'
+

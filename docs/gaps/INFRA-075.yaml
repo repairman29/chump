@@ -1,0 +1,29 @@
+- id: INFRA-075
+  domain: infra
+  title: Duplicate-ID guard missed same-day INFRA-073 collision — audit and fix guard scope
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Cold Water Issue #7 (2026-04-26): docs/gaps.yaml contains two entries with
+    id: INFRA-073 — one filed by Cold Water Issue #6 commit d448c4e ("Gap-closure
+    hygiene audit — close 8 OPEN-BUT-LANDED gaps") and one filed by PR #544 commit
+    6844154 ("pre-commit YAML-validity guard for docs/gaps.yaml"). Both were inserted
+    on 2026-04-26. The duplicate-ID pre-commit guard (INFRA-GAPS-DEDUP, 2026-04-19)
+    did not catch the collision. This is the 8th known duplicate-ID collision pair
+    (original 7 from Issue #2: COG-007 through COG-011, MEM-003, EVAL-003). The guard
+    system now includes: gap-ID hijack, duplicate-ID check, recycled-ID check,
+    preregistration check, YAML validity check. None prevented this. Investigate the
+    exact failure mode (concurrent branch race, guard scope gap, or gap-reserve.sh
+    returning the same ID to two sessions). Fix the guard so same-day concurrent
+    insertions are caught. Acceptance: INFRA-073 duplicate resolved, regression test
+    `scripts/test-duplicate-id-guard.sh` covers same-day concurrent-insert scenario.
+  acceptance_criteria:
+    - The INFRA-073 duplicate is resolved (one entry closed/removed with audit trail)
+    - Root cause of guard bypass is documented
+    - scripts/test-duplicate-id-guard.sh has a test covering concurrent-branch insertion of the same ID
+    - Guard fix ships to pre-commit hook
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-26'
+  closed_pr: 556
+

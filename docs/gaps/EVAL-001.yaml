@@ -1,0 +1,13 @@
+- id: EVAL-001
+  domain: eval
+  title: Expand eval suite from 5 to 30+ cases with golden trajectory tests
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Current seed suite has 5 eval cases. Cannot detect regressions across the full behavioral surface. Target 30+ cases covering all EvalCategory variants plus golden conversation trajectories and replay against saved conversations.
+  notes: |
+    37 single-turn seed cases across 6 EvalCategory variants; 5 golden trajectory cases (gt- prefix) with conversation_history. EvalCase.is_multiturn() added. Guard tests: seed_starter_cases_has_at_least_30, seed_covers_all_categories (min 3 per category), seed_has_at_least_5_golden_trajectory_cases.
+  source_doc: docs/CHUMP_TO_COMPLEX.md, docs/AUTONOMY_ROADMAP.md
+  closed_date: '2026-04-16'
+

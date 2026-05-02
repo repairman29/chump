@@ -1,0 +1,13 @@
+- id: FRONTIER-003
+  domain: frontier
+  title: Adaptive regime transitions via learned bandit/logistic regression
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    See COG-003. Listed as frontier because it requires labeled task success data and the online learning component is speculative in quality gain.
+  depends_on: [COG-001]
+  notes: Duplicate of COG-003 for frontier tracking. One closure closes both.
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

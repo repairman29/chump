@@ -1,0 +1,14 @@
+- id: INFRA-MCP-DISCOVERY
+  domain: infra
+  title: Dynamic MCP server discovery — auto-detect + register at session start
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Goose's Extensions Manager auto-discovers MCP servers on the machine and lets users enable them on demand. Chump currently requires manual config of each MCP server. Auto-discovery would: scan PATH for binaries matching chump-mcp-* pattern, scan ~/.config/chump/mcp-servers/, scan well-known MCP server install locations (e.g. /usr/local/lib/mcp-servers/), register each discovered server, expose via `chump mcp list` command.
+  notes: |
+    Quality-of-life feature, not a blocker. ~2-3 days. Reference goose's Extensions Manager for UX patterns. The dev.to post on dynamic MCP discovery with goose is a useful design reference: https://dev.to/amandamartindev/dynamic-mcp-server-discovery-with-goose-3m41
+  source_doc: external (goose Extensions Manager, dynamic discovery)
+  closed_date: '2026-04-20'
+  closed_pr: 225
+

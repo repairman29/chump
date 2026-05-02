@@ -1,0 +1,19 @@
+- id: RESEARCH-018
+  domain: research
+  title: Length-matched scaffolding-as-noise control — rule out prompt-length confound in every lessons A/B
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    Every published lessons-block A/B compares "lessons block" vs "no lessons block" with no length-matched control. The lessons block adds ~2,000 characters of structured text to the system prompt. If a 2,000-character control of length-matched random prose produces a delta of similar magnitude, the effect is prompt-length not lessons-content — which would reframe the entire tier-dependent finding. This gap ships a third cell in every future lessons A/B (A = lessons on, B = lessons off, C = length-matched null-content prose) and re-runs the core tier-dependent finding at n=100 on haiku-4-5 and sonnet-4-5 to establish whether the content or the ceremony drives the effect. Acceptance: publish a verdict in docs/FINDINGS.md distinguishing the two alternative explanations. Paper-1 blocker.
+  acceptance_criteria:
+    - Harness gains a --null-prose-match flag that generates a length-matched placebo at the same char count as the live lessons block
+    - Cell C run at n=100 on haiku-4-5 and n=100 on sonnet-4-5 alongside A and B cells
+    - "docs/FINDINGS.md gains a \"length-matched control\" row per tier with Cell A, B, C deltas and verdict"
+    - "If Cell C delta ≥ 50% of Cell A delta, the tier-dependent finding is reframed from \"lessons content helps/harms\" to \"prompt ceremony length helps/harms\""
+    - Preregistered per RESEARCH-019 before first live trial
+  depends_on: [RESEARCH-019]
+  notes: |
+    Paper-1 prerequisite. Low compute (~$3 cloud) and ~3 days of harness work. This is the single most important missing control in the current methodology. Operational split: Lane A (harness + smoke + result-doc shell) vs Lane B (preregistered n=100 sweeps) — docs/RESEARCH_EXECUTION_LANES.md §3. Result template: docs/eval/RESEARCH-018-length-matched.md.
+  closed_date: '2026-04-22'
+

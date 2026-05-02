@@ -1,0 +1,32 @@
+- id: INFRA-097
+  domain: infra
+  title: process-adoption enforcement check - new system shipped, who actually uses it?
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Meta-gap. INFRA-068 was the canonical example: shipped 2026-04-25, on
+    2026-04-26 zero PRs used the new path. The doc-flip + canonical-store
+    plan was complete on paper, but agents (myself included) kept using
+    the legacy path because it required no new behavior and no hook
+    blocked it. The cycle-review process didn't catch this because we
+    don't measure adoption — only delivery.
+    
+    Proposed: add a recurring "adoption audit" task to the cycle review
+    cadence. For each "we are switching to X" decision in the last 30
+    days (sourced from RED_LETTER.md, weekly synthesis docs, recent
+    cycle-summary docs), produce a one-line status:
+      INFRA-068 (state.db canonical) — adoption: 0 / 12 PRs since flip
+      EVAL-030 (task-class lessons gating) — adoption: <CHUMP_LESSONS_TASK_AWARE env in 4/12 PRs>
+    For each row with poor adoption: file a follow-up gap to add
+    enforcement (hook, lint, deletion of legacy path).
+    
+    This is the "did the new process actually replace the old one?" check
+    that the project lacks. Without it, every doc-flip risks being
+    cosmetic. Implementation can be a script or a manual cycle-review
+    rubric — start manual, automate if it stays useful.
+  acceptance_criteria:
+    - Adoption audit added to cycle-review checklist
+    - "One-shot 30-day audit produced (lists last N \"switching to X\" decisions and their adoption rate)"
+    - Follow-up gaps filed for poor-adoption flips
+

@@ -1,0 +1,11 @@
+- id: COG-034
+  domain: consciousness
+  title: Counterfactual simulation — Pearl's Ladder rung 3
+  status: done
+  priority: P2
+  effort: l
+  description: |
+    counterfactual.rs stores causal graphs and traverses them (rung 1 association) but does not simulate alternative action paths. build_causal_graph_heuristic() creates sequential edges with hardcoded strength 0.7 — graph scaffolding, not causal inference. On task failure, the reflection engine should compute 'If I had run cargo check before git commit, would this error have occurred?'
+  depends_on: [COG-004, MEM-003]
+  closed_date: '2026-04-16'
+

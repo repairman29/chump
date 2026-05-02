@@ -1,0 +1,19 @@
+- id: INFRA-130
+  domain: infra
+  title: adversary.rs has no integration tests - rule engine unverified end to end
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    src/adversary.rs (COMP-011a) has #[cfg(test)] unit tests for parsing
+    but no integration test that exercises the full path - a tool call
+    matches a rule, the action (warn/block) is taken, and an
+    adversary_alert event is emitted to ambient.jsonl AND (post-FLEET-006)
+    to NATS. With FLEET-006 just landing, this is a good moment to add
+    the round-trip test before the dual-emit pattern bit-rots.
+  acceptance_criteria:
+    - Integration test - load a synthetic chump-adversary.yaml with one block rule, run a matching tool input, assert the call is blocked
+    - Test verifies ambient.jsonl line is appended with kind=adversary_alert
+    - If NATS available - test verifies chump.events.adversary_alert receives the event (skip if NATS unreachable, mirroring distributed_mutex.rs)
+  opened_date: '2026-04-26'
+

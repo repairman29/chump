@@ -1,0 +1,12 @@
+- id: FLEET-005
+  domain: fleet
+  title: Anomaly detector — fswatch daemon emits ALERT events to ambient stream
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Passive emission + ambient stream give agents a chronicle of events, but no agent notices when patterns break. Humans have preattentive anomaly detection — you notice someone running, sudden silence, an abrupt crash. A lightweight background daemon (scripts/ambient-watch.sh) watches .chump-locks/ and src/ with fswatch/inotifywait and emits ALERT events for three anomaly classes: (1) lease overlap — two sessions claim the same file path; (2) silent agent — a live lease's heartbeat stops for >15m; (3) edit burst — >20 file mutations in <60s (possible rebase stomp or runaway agent).
+  depends_on: [FLEET-004a]
+  source_doc: scripts/ambient-watch.sh
+  closed_date: '2026-04-17'
+

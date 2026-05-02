@@ -1,0 +1,17 @@
+- id: INFRA-005
+  domain: infra
+  title: Fix pre-push auto-merge guard for recreated branches
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    The pre-push Guard 2 (auto-merge armed check) calls `gh pr view --json autoMergeRequest` without checking PR state. When a PR has been squash-merged and the branch is recreated (e.g. claude/COMP-008 hygiene pattern), `gh pr view` returns the old merged PR which still has `autoMergeRequest != null == true`, blocking all new pushes to that branch. Fix: add `state` to the JSON fields and gate the true result on `.state == "OPEN"` so already-merged PRs are treated as no-PR.
+  acceptance_criteria:
+    - "jq query checks .state == \"OPEN\" before returning true for autoMergeRequest"
+    - Recreated branch with old merged PR does not get blocked by Guard 2
+    - PR still open with auto-merge armed continues to be blocked
+  notes: One-line jq fix in scripts/git-hooks/pre-push line ~42. No Rust changes.
+  source_doc: scripts/git-hooks/pre-push
+  closed_date: '2026-04-20'
+  closed_pr: 272
+

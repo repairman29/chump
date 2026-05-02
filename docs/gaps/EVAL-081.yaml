@@ -1,0 +1,14 @@
+- id: EVAL-081
+  domain: eval
+  title: Fix binary-mode ablation harness — replace exit-code-0 scorer with LLM-judge scorer
+  status: done
+  priority: P0
+  description: |
+    The binary-mode ablation harness (scripts/ab-harness/run-binary-ablation.py) scored trials as "correct" if exit code 0 and output length > 10 characters. This produces baseline accuracy of 0.033-0.100 below chance with CIs of +-0.14 that span the entire decision space. This gap replaces the exit-code-0 scorer with an LLM-judge scorer that calls the judge API on every trial output, adds an A/A calibration mode to confirm noise floor <= +-0.05 before any treatment sweep, and gates all future ablation sweeps on passing the A/A check.
+  acceptance_criteria:
+    - run-binary-ablation.py --scorer llm-judge implemented (default); --scorer exit-code still available for debugging but marks results validated=false
+    - "--aa-calibrate flag runs n=50 A/A sweep before treatment; aborts if noise floor > +-0.05"
+    - At least one non-Anthropic judge family supported via --judge-family flag
+    - RESEARCH_INTEGRITY.md updated to explicitly prohibit exit-code-0 as primary scorer
+  closed_date: '2026-04-21'
+

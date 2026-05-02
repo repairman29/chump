@@ -1,0 +1,23 @@
+- id: INFRA-101
+  domain: infra
+  title: JSON-schema-validate every line emitted to ambient.jsonl (pre-commit + emit-time)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Audit of ambient.jsonl on 2026-04-26 showed schema drift: standard rows
+    are {ts, session, event, ...} but INFRA-082 INTENT emitter writes
+    {event, session, ts, gap, files} with reordered keys and a nonstandard
+    shape. Today this is harmless (consumers parse JSON regardless of order)
+    but it makes the stream unparseable by strict tooling and hides bugs
+    where required fields are missing. Define a JSON schema for each event
+    kind (session_start, file_edit, commit, bash_call, INTENT, ALERT),
+    validate at emit time inside scripts/ambient-emit.sh, and add a
+    pre-commit guard that re-validates any new lines staged into the stream.
+  acceptance_criteria:
+    - docs/ambient-schema.json defines event kinds and required fields
+    - scripts/ambient-emit.sh validates payloads before append (rejects with diagnostic)
+    - Pre-commit guard fails when staged ambient.jsonl lines fail schema check
+    - Test fixture covers each event kind plus one schema-violation case
+  opened_date: '2026-04-26'
+

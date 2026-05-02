@@ -1,0 +1,15 @@
+- id: COG-022
+  domain: cognition
+  title: MCP server enterprise-readiness — Sampling + Elicitation patterns
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    Per 2026 MCP roadmap (Gemini letter): two new patterns are emerging — "Sampling" (servers can request reasoning from the AI model) and "Elicitation" (servers can pause for user input mid-process). Chump's 3 shipped MCP servers (chump-mcp-{adb,github,tavily}) and the 3 coming via COMP-009 currently implement only the basic tool- call pattern. To stay current with the MCP spec evolution and remain interoperable with goose / Claude Code / Aider as those tools adopt sampling+elicitation, Chump's MCP servers should grow these patterns as the SDK supports them.
+  depends_on: [COMP-009]
+  notes: |
+    Confirm MCP Rust SDK supports Sampling/Elicitation before committing. ~1 week effort. Reference: AAIF roadmap docs.
+  source_doc: external (Gemini AGI letter — MCP 2026 roadmap)
+  closed_date: '2026-04-20'
+  closed_pr: 234
+

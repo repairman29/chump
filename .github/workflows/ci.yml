@@ -208,6 +208,18 @@ jobs:
       - name: gap-preflight unregistered-ID guard (INFRA-020)
         run: bash scripts/ci/test-gap-preflight-unregistered.sh
 
+      - name: docs/gaps.yaml must not exist after INFRA-188 cutover
+        run: |
+          if [ -f docs/gaps.yaml ]; then
+            echo "ERROR: docs/gaps.yaml was re-added after INFRA-188 cutover."
+            echo "The monolithic file was removed in INFRA-188. Use the per-file layout:"
+            echo "  docs/gaps/<ID>.yaml  — one file per gap"
+            echo "To add a new gap: chump gap reserve --domain D --title T"
+            echo "To close a gap:   chump gap ship <ID> --closed-pr N --update-yaml"
+            exit 1
+          fi
+          echo "OK: docs/gaps.yaml absent (INFRA-188 cutover confirmed)"
+
       - name: preregistration content guard (INFRA-113)
         run: bash scripts/ci/test-prereg-content-guard.sh
 

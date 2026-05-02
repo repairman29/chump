@@ -1,0 +1,13 @@
+- id: EVAL-007
+  domain: eval
+  title: Wire CHUMP_EVAL_WITH_JUDGE into the main agent loop
+  status: done
+  priority: P3
+  effort: m
+  description: |
+    EVAL-006 shipped the bash flag and per-category summary reader. Remaining piece: the main agent loop needs to detect CHUMP_EVAL_WITH_JUDGE=1, and when a running EvalCase has an LlmJudge property, call check_all_properties_with_judge_async with the session provider and persist judge_score into chump_eval_runs.scores_json (as the `judge_score` field).
+    BLOCKER (2026-04-17 re-scope): the eval_harness is currently a library — nothing in production calls load_eval_cases() or save_eval_run(). battle-qa.sh shells out to the regular agent loop and reads chump_eval_runs for its summary, but nothing writes there outside tests. Closing this gap requires FIRST building an eval runner entry point (CLI subcommand `chump eval run` or similar) that loads cases, runs the agent, scores, and persists. Effort re-classed from s → m to reflect this.
+  depends_on: [EVAL-004, EVAL-006, EVAL-009]
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

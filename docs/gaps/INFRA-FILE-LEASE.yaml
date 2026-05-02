@@ -1,0 +1,14 @@
+- id: INFRA-FILE-LEASE
+  domain: infra
+  title: File-level path leases on top of gap-level mutex
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Current lease files (.chump-locks/<session>.json) have an empty `paths: []` field reserved for file-level leases that was never wired up. Wire it. Extend gap-claim.sh with --paths flag that populates the array. Extend chump-commit.sh to read all live leases and reject commits where staged files overlap a different session's path-lease. Lets two agents working on different files in the same gap (or in different gaps) commit in parallel without collision; agents on the same file wait their turn (lease blocks with timeout + clear error).
+  notes: |
+    ~1 day implementation. Most of the lease infrastructure exists; this is wiring + check + docs. Reference: scripts/gap-claim.sh, scripts/chump-commit.sh, scripts/gap-preflight.sh.
+  source_doc: session 2026-04-19 multi-agent dispatch design
+  closed_date: '2026-04-20'
+  closed_pr: 192
+

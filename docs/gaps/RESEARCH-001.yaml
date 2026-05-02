@@ -1,0 +1,14 @@
+- id: RESEARCH-001
+  domain: research
+  title: Public research narrative — '2000+ A/B trials' blog post / paper
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    The EVAL-023 → EVAL-025 → EVAL-026 → EVAL-026b → EVAL-027b experimental trilogy has produced multiple novel findings that no other published source has. Headline findings worth a public writeup: (1) lessons-block hallucination harm scales monotonically UP with Anthropic model capability (haiku-3 0% → haiku-4-5 12% → sonnet-4-5 18% → opus-4-5 40%); (2) the harm is Anthropic- pretrain-specific (Qwen 7B/235B + Llama 70B all show 0% across 300 trials); (3) the COG-016 anti-hallucination directive eliminates the harm at haiku-4-5 (validated EVAL-025); (4) cross-architecture neuromod-fixture harm signal of -0.10 to -0.16 across 4 independent models (1200 trials). These findings contradict the industry default of "use the biggest model" for some failure modes — publishable as a blog post on Chump's site or arxiv preprint.
+  depends_on: [EVAL-027b, EVAL-029]
+  notes: |
+    ~1 week effort: outline, draft, charts, peer review by Jeff + external reviewer, edit, publish. Highest-leverage Chump positioning artifact we can produce in 2026-Q2. Differentiates Chump from goose/Aider/Claude Code which have shipped no comparable published findings on their own architectures.
+  source_doc: docs/CONSCIOUSNESS_AB_RESULTS.md
+  closed_date: '2026-04-19'
+

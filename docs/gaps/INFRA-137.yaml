@@ -1,0 +1,29 @@
+- id: INFRA-137
+  domain: infra
+  title: Phase 3 follow-up — Python parents[1] + cross-subdir SCRIPT_DIR refs
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    PR #591 (INFRA-135 Phase 3 reorg) landed but two patterns were not covered
+    by the 153-file relative-path bump in INFRA-136:
+    
+    1. Python scripts using `Path(__file__).resolve().parents[1]` to reach repo
+       root — now resolves to scripts/ instead. Bumped to parents[2] in 5 files
+       (mdbook-linkcheck.py is the build-and-linkcheck root cause).
+    
+    2. Bash scripts using `$SCRIPT_DIR/sibling.sh` where the sibling moved to a
+       different subdir. Inserted REPO_ROOT and rewrote refs to absolute paths.
+       Plus 13 files using `$SCRIPT_DIR/..` as repo root → `$SCRIPT_DIR/../..`.
+    
+    Re-filed under INFRA-137 because INFRA-136 was claimed concurrently by PR
+    #592 (agents/META-001 work) and merged before this fix could ship.
+  acceptance_criteria:
+    - build-and-linkcheck CI passes on this PR
+    - All 5 Python scripts with parents[1] bug are fixed
+    - All 13 bash scripts with $SCRIPT_DIR/.. bug are fixed
+    - Cross-subdir bash sibling refs use $REPO_ROOT/scripts/<dir>/<name>
+  opened_date: '2026-04-26'
+  closed_date: '2026-04-28'
+  closed_pr: 594
+

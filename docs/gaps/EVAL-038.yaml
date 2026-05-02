@@ -1,0 +1,15 @@
+- id: EVAL-038
+  domain: eval
+  title: Ambiguous-prompt A/B — Social Cognition validation of ASK_JEFF policy
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Social Cognition faculty: ~30 deliberately underspecified prompts ("fix the bug", "make it faster"). Cell A asks clarifying question first, cell B guesses and acts. Judge rubric scores: did the eventual action match user intent (ground truth in fixture)? Connects to EVAL-029 finding — if "ask first" is broadly harmful but specifically helpful on truly ambiguous prompts, the production policy should be scoped.
+  depends_on: [EVAL-029]
+  notes: |
+    Fixture authoring ~2 days. Cost ~$3.
+  source_doc: docs/RESEARCH_PLAN_2026Q3.md
+  closed_date: '2026-04-20'
+  closed_pr: 205
+

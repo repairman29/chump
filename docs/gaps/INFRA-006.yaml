@@ -1,0 +1,17 @@
+- id: INFRA-006
+  domain: infra
+  title: Fix vllm-mlx Metal crash on client disconnect mid-inference
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    When a client disconnects during active non-streaming inference, vllm-mlx triggers a Metal GPU assertion crash ("A command encoder is already encoding to this command buffer" / "Completed handler provided after commit call") that kills the entire server process. Root cause: the disconnect_guard detects the disconnected client and returns, but the active Metal command buffer is still encoding; the assertion fires on the completion handler path after commit. Triggered in practice by ablation sweep --timeout values shorter than actual inference time (~56s for 9B 4-bit model with 20K char system prompt at 3.7 tok/s). Emergency workaround: use --timeout 300+ for all sweeps and clear sessions/cli/cli/messages.json when it exceeds 50 messages. Real fix: catch disconnect in the inference loop before committing the command buffer, or drain/abort the Metal pipeline before returning the disconnect response.
+  acceptance_criteria:
+    - Client disconnect during inference does not crash the vllm-mlx server process
+    - Server remains healthy and serves the next request after a mid-inference disconnect
+    - Ablation sweeps with --timeout 60 no longer crash the server
+  notes: |
+    Crash pattern confirmed 2026-04-20. Workaround: kill all sweep procs, clear sessions/cli/cli/messages.json (was 251 messages / 32KB causing 120s+ inference), restart server, use --timeout 300 for sweeps. Also update doc examples in docs/eval/EVAL-054-perception-ablation.md and docs/CHUMP_AUTONOMY_TESTS.md to use --timeout 300.
+  source_doc: logs/vllm-mlx-8000.log
+  closed_date: '2026-04-21'
+

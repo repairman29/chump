@@ -1,0 +1,13 @@
+- id: INFRA-199
+  domain: infra
+  title: PWA renders thinking_delta as muted live indicator (closes INFRA-184 loop end-to-end)
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Server-side INFRA-184 (PR #701) routes plain-prose CoT to AgentEvent::ThinkingDelta. Today the PWA at web/v2/chat.js does not subscribe to thinking_delta SSE events at all (grep -c thinking_delta web/v2/chat.js == 0), so reasoning models still show the user only keepalive pings while the model thinks. This closes the loop: render thinking_delta as a compact muted indicator inside the active assistant bubble while the model reasons; clear it when text_delta arrives.
+  depends_on: [INFRA-184]
+  opened_date: '2026-05-01'
+  closed_date: '2026-05-01'
+  closed_pr: 710
+

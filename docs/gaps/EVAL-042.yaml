@@ -1,0 +1,14 @@
+- id: EVAL-042
+  domain: eval
+  title: Cross-family judge re-run — non-Anthropic judge on all main findings
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Every main result (haiku lessons +0.14, sonnet backfire +0.33, neuromod harm −0.10 to −0.16) was judged by Anthropic models only. EVAL-010 confirmed the judge rewards hallucinated tool calls — exactly the failure mode measured in lessons-injection evals. This means lessons-on cells are systematically over-scored. Fix: re-run the three primary fixtures (reflection, neuromod, perception) at n=50 each with a Llama-3.3-70B judge via Together free tier. Cost: ~$0 (free tier) + existing Anthropic spend for subject models (~$3 total).
+  notes: |
+    ~$3 cloud + 1 day setup. Highest-leverage unblocking action for publication readiness. Together free tier provides Llama-3.3-70B at no cost. Already supported by run-cloud-v2.py --judges flag.
+  source_doc: docs/RESEARCH_INTEGRITY.md
+  closed_date: '2026-04-20'
+  closed_pr: 215
+

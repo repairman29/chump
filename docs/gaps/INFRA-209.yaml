@@ -1,0 +1,33 @@
+- id: INFRA-209
+  domain: infra
+  title: "pre-commit hooks not auto-installed in remote dispatch — closed_pr:TBD guard bypassed on 8 recent commits"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Cold Water Issue #10 audit found 8 commits on origin/main since 2026-05-01
+    that introduced `status: done` + `closed_pr: TBD` rows, bypassing the
+    INFRA-107 closed_pr integrity guard. Affected commits (verified by
+    git log scan): 4fc1d56 (INFRA-194), 51342f9 (INFRA-189), 916d85a (INFRA-195),
+    47251c4 (INFRA-186), cee75e3 (INFRA-192), 20a168e (META-004/INFRA-190),
+    b80c435 (INFRA-182), b783418 (INFRA-180).
+    
+    Root cause: `scripts/setup/install-hooks.sh` is NOT called by bot-merge.sh
+    or any part of the standard dispatch pipeline. When the remote dispatch agent
+    commits directly from a fresh worktree (sandbox or ephemeral checkout), the
+    .git/hooks/ directory is empty. The pre-commit guard for INFRA-107 never runs.
+    AGENTS.md does not list hook installation as a required bootstrap step.
+    CLAUDE.md mentions install-hooks.sh only in the commit-time guards table prose,
+    not in the MANDATORY pre-flight block.
+    
+    Impact: 9 done gaps in origin/main carry closed_pr: TBD (EVAL-062, INFRA-180,
+    INFRA-182, INFRA-189, INFRA-190, INFRA-192, INFRA-194, INFRA-195, INFRA-186).
+    The INFRA-107 guard exists specifically to prevent this; it is being silently
+    bypassed on every remote dispatch commit.
+  acceptance_criteria:
+    - scripts/coord/bot-merge.sh calls scripts/setup/install-hooks.sh (or equivalent) at start if .git/hooks/pre-commit is absent or stale
+    - AGENTS.md bootstrap section includes install-hooks.sh as step 1 (not buried in overlay prose)
+    - "After ship: zero new done+TBD commits land on main (verify with weekly spot-check)"
+    - All 9 existing done+TBD gaps updated with correct closed_pr numbers
+  opened_date: '2026-05-02'
+

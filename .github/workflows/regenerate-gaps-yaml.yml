@@ -1,28 +1,22 @@
-name: Regenerate gaps.yaml on merge
+name: Regenerate per-file gap registry on merge
 
-# INFRA-084 — make the merge queue the canonical regenerator of
-# docs/gaps.yaml so PRs no longer have to hand-append YAML blocks at
-# the bottom (the source of every concurrent-PR rebase conflict on
-# 2026-04-26..28: 4-way INFRA-087..090, repeated DIRTY merges, repeated
-# CHUMP_AUTOMERGE_OVERRIDE=1 + CHUMP_GAP_CHECK=0 force-pushes).
+# INFRA-188 — post-cutover replacement for the monolithic gaps.yaml regenerator.
+# Each gap now lives in docs/gaps/<ID>.yaml (per-file layout). The merge queue
+# canonicalises the per-file directory on the temp branch so the squashed commit
+# on main is always in sync with .chump/state.db.
+#
+# Previous workflow (INFRA-084) regenerated a monolithic docs/gaps.yaml from
+# state.db. This workflow regenerates the per-file directory instead.
 #
 # Flow:
 #   1. merge_group fires on the queue's temp branch right before squash.
-#   2. We rebuild .chump/state.db by importing docs/gaps.yaml via the
-#      chump CLI (state.db is gitignored, so the temp branch has no DB —
-#      import gives us a fresh one that exactly matches the YAML).
-#   3. We regenerate docs/gaps.yaml + .chump/state.sql from the rebuilt
-#      DB. If round-trip is clean (the typical case once everyone uses
-#      the chump gap CLI), the diff is empty and we exit.
-#   4. If round-trip drifted (a hand-edit didn't conform to the canonical
-#      format, or a new gap entry has a non-canonical ordering), commit
-#      the regenerated artifacts back to the merge_group temp ref so the
-#      squashed commit on main is the canonical version.
-#
-# Pre-INFRA-084 mitigation: bot-merge.sh's INFRA-154 auto-close path also
-# regenerates YAML at ship time. This workflow is the safety net for the
-# legitimate "PR added a brand-new gap entry by hand" case until INFRA-094
-# blocks raw YAML edits in pre-commit.
+#   2. We rebuild .chump/state.db by importing all per-file docs/gaps/*.yaml
+#      (state.db is gitignored, so the temp branch has no DB — import gives
+#      us a fresh one that exactly matches the per-file files).
+#   3. We regenerate docs/gaps/*.yaml + .chump/state.sql from the rebuilt DB.
+#      If round-trip is clean (the typical case), the diff is empty and we exit.
+#   4. If round-trip drifted, commit the regenerated artifacts back to the
+#      merge_group temp ref so the squashed commit on main is canonical.
 
 on:
   merge_group:
@@ -30,9 +24,8 @@ on:
 permissions:
   contents: write
 
-# Concurrency: drop redundant runs on the same merge group ref.
 concurrency:
-  group: regen-gaps-yaml-${{ github.ref }}
+  group: regen-gaps-per-file-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,15 +35,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          # Need full history + write token so the optional `git push`
-          # can land back on the merge_group temp ref.
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure git identity
         run: |
           git config user.email "actions+regenerate-gaps-yaml@github-actions.bot"
-          git config user.name "regenerate-gaps-yaml-bot"
+          git config user.name "regenerate-gaps-bot"
 
       - name: Cache cargo registry
         uses: actions/cache@v5
@@ -59,42 +50,54 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: regen-gaps-yaml-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          key: regen-gaps-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            regen-gaps-yaml-${{ runner.os }}-
+            regen-gaps-${{ runner.os }}-
 
       - name: Build chump CLI (release)
         run: cargo build --release --bin chump
 
-      - name: Import docs/gaps.yaml -> state.db (idempotent)
-        run: ./target/release/chump gap import
-
-      - name: Regenerate docs/gaps.yaml + state.sql from state.db
+      - name: Import docs/gaps/*.yaml -> state.db (idempotent)
         run: |
-          ./target/release/chump gap dump --out docs/gaps.yaml
+          # Post-INFRA-188: import from per-file directory.
+          # The import subcommand already reads both layouts.
+          ./target/release/chump gap import
+
+      - name: Regenerate docs/gaps/*.yaml + state.sql from state.db
+        run: |
+          ./target/release/chump gap dump --per-file --out-dir docs/gaps
           ./target/release/chump gap dump --out .chump/state.sql
+
+      - name: CI guard — docs/gaps.yaml must not exist (INFRA-188 cutover)
+        run: |
+          if [ -f docs/gaps.yaml ]; then
+            echo "ERROR: docs/gaps.yaml found after INFRA-188 cutover."
+            echo "The monolithic file was removed. Use docs/gaps/<ID>.yaml per-file layout."
+            echo "To re-add a gap: chump gap reserve --domain D --title T"
+            exit 1
+          fi
 
       - name: Detect drift
         id: drift
         run: |
-          if git diff --quiet docs/gaps.yaml .chump/state.sql; then
+          if git diff --quiet docs/gaps/ .chump/state.sql; then
             echo "drift=none" >> "$GITHUB_OUTPUT"
             echo "[regen] No drift — round-trip is clean."
           else
             echo "drift=present" >> "$GITHUB_OUTPUT"
             echo "[regen] Drift detected. Diff summary:"
-            git diff --stat docs/gaps.yaml .chump/state.sql
+            git diff --stat docs/gaps/ .chump/state.sql
           fi
 
       - name: Commit + push regenerated artifacts
         if: steps.drift.outputs.drift == 'present'
         run: |
-          git add docs/gaps.yaml .chump/state.sql
-          git commit -m "[skip ci] regenerate docs/gaps.yaml from .chump/state.db (INFRA-084)
+          git add docs/gaps/ .chump/state.sql
+          git commit -m "[skip ci] regenerate docs/gaps/ from .chump/state.db (INFRA-188)
 
           Auto-generated by .github/workflows/regenerate-gaps-yaml.yml on merge_group
-          to keep the YAML mirror byte-stable with the canonical SQLite store.
+          to keep the per-file gap directory byte-stable with the canonical SQLite store.
           Triggered by drift between PR's hand-edited YAML and the round-tripped
-          canonical form. See INFRA-084 in docs/gaps.yaml for the design.
+          canonical form. See INFRA-188 in docs/gaps/INFRA-188.yaml for the design.
           "
           git push origin "HEAD:${GITHUB_REF#refs/heads/}"

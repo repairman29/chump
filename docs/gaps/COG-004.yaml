@@ -1,0 +1,13 @@
+- id: COG-004
+  domain: consciousness
+  title: Lesson upgrade — replace heuristic lesson extraction with causal graph output
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    extract_lesson_heuristic() uses text pattern matching (timeout → retry). The causal graph (CausalGraph, build_causal_graph_heuristic) already exists. Lessons should carry confidence derived from DAG path analysis, not patterns.
+  notes: |
+    lesson_from_graph_paths(graph, action) traverses paths_from() action node, multiplies edge strengths along each path, returns strongest path lesson + confidence. analyze_episode() builds graph first, uses graph lesson when available, falls back to heuristic. causal_confidence column added to chump_causal_lessons via ALTER TABLE migration. CausalLesson.causal_confidence: Option<f64>. persist_causal_graph_as_lessons passes Some(edge.strength). 4 new unit tests in counterfactual::tests. Section 2.5 checkbox marked.
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-16'
+

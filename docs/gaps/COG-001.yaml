@@ -1,0 +1,12 @@
+- id: COG-001
+  domain: consciousness
+  title: A/B study round 2 — LLM-as-judge + multi-model scaling curves
+  status: done
+  priority: P1
+  effort: l
+  description: |
+    Round 1 A/B compares structural metrics (surprisal, lesson count) with/without CHUMP_CONSCIOUSNESS_ENABLED. Round 2 adds semantic quality: an LLM judge scores response accuracy on each prompt, and the study runs across 3+ model sizes (3B / 9B / 14B) to plot the latency-vs-capability tradeoff curve. Without this, the research paper (docs/research/consciousness-framework-paper.md) cannot claim empirical support for the consciousness framework.
+  notes: Gate for COG-003 and COG-006.
+  source_doc: docs/CHUMP_TO_COMPLEX.md
+  closed_date: '2026-04-17'
+

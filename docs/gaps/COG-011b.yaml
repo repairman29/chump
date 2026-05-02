@@ -1,0 +1,12 @@
+- id: COG-011b
+  domain: eval
+  title: LLM-judge scoring for the reflection A/B
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    COG-011 used structural-only property checks (text patterns + tool presence). Easy to fool. Need an LLM judge that scores each trial's final text against a per-task rubric (does the answer actually satisfy the prompt's intent?). eval_harness already has ExpectedProperty::LlmJudge variant + check_all_properties_with_judge — wire score.py to call it.
+  depends_on: [COG-011]
+  source_doc: scripts/ab-harness/score.py
+  closed_date: '2026-04-17'
+

@@ -1,0 +1,24 @@
+- id: INFRA-215
+  domain: infra
+  title: spawn-respawn fleet lifecycle — agents exit after 1 gap; dispatcher respawns (load new lessons)
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Long-running Claude sessions hit context limits. Fresh spawns
+    pick up the latest chump_improvement_targets rows (INFRA-195) so
+    new lessons propagate each cycle.
+    
+    Fix: in INFRA-211's worker.sh, structure the loop so each `claude
+    -p` invocation handles ONE gap then EXITS. The bash loop respawns
+    a fresh `claude -p` for the next gap.
+    
+    (Originally filed as INFRA-207 but main's INFRA-207 was a docs-delta
+    guard work item — renumbered to INFRA-215 to avoid collision.)
+  acceptance_criteria:
+    - INFRA-211 worker.sh documents the spawn-respawn pattern
+    - Each `claude -p` invocation works ONE gap then exits
+    - CHUMP_LESSONS_AT_SPAWN_N=5 set in worker env so INFRA-195 distillation flows to next spawn
+  depends_on: [INFRA-211, INFRA-195]
+  opened_date: '2026-05-02'
+

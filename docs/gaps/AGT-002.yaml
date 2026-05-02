@@ -1,0 +1,12 @@
+- id: AGT-002
+  domain: agent
+  title: "Cancellation token + tokio::select! interrupt loop"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    The agent loop runs to max_iterations or natural completion with no cancellation capability. A new message arriving while the agent is mid-LLM-call is silently queued at best; there is no way for the web UI's "Stop" button or an incoming platform event to preempt the running turn. This is the key enabler for ambient / interrupt-driven behaviour described in the hot/cold path architecture. Mechanism: tokio_util::CancellationToken threaded through the loop. Each LLM await becomes tokio::select! { result = provider.complete() => ..., _ = cancel.cancelled() => transition to Interrupted }.
+  depends_on: [AGT-001]
+  source_doc: src/agent_loop/iteration_controller.rs
+  closed_date: '2026-04-18'
+
