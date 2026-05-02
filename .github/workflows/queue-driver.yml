@@ -45,7 +45,7 @@ jobs:
   drive:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/create-github-app-token@v1
+      - uses: actions/create-github-app-token@v3
         id: app-token
         with:
           app-id: ${{ secrets.QUEUE_DRIVER_APP_ID }}
