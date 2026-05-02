@@ -78,7 +78,6 @@ mod genai_conv;
 mod git_tools;
 mod health_server;
 mod hitl_escalation;
-mod holographic_workspace;
 mod hooks;
 mod interrupt_notify;
 mod introspect_tool;

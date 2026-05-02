@@ -310,31 +310,12 @@ impl Neuromodulator for DefaultNeuromodulator {
 }
 
 // ---------- 9. Holographic Workspace ----------
-
-/// Distributed HRR-encoded workspace.
-pub trait HolographicStore: Send + Sync {
-    fn encode(&self, source: &str, id: u64, content: &str);
-    fn query(&self, probe: &str) -> (f64, bool);
-    fn capacity(&self) -> (usize, usize);
-    fn sync_from_blackboard(&self);
-}
-
-pub struct DefaultHolographicStore;
-
-impl HolographicStore for DefaultHolographicStore {
-    fn encode(&self, source: &str, id: u64, content: &str) {
-        crate::holographic_workspace::encode_entry(source, id, content);
-    }
-    fn query(&self, probe: &str) -> (f64, bool) {
-        crate::holographic_workspace::query_similarity(probe)
-    }
-    fn capacity(&self) -> (usize, usize) {
-        crate::holographic_workspace::capacity()
-    }
-    fn sync_from_blackboard(&self) {
-        crate::holographic_workspace::sync_from_blackboard();
-    }
-}
+// REMOVED 2026-05-02 (REMOVAL-009). The HRR encode-side fired on every
+// tool dispatch but the read side (`query_similarity`) had zero production
+// callers — confirmed by REMOVAL-007 audit. Write-only research scaffold.
+// REMOVAL-002 surprisal_ema precedent. To revive: re-add the module +
+// trait + a real RAG-on-tool-history consumer that calls query_similarity
+// from context_assembly.
 
 // ---------- Composite: the full consciousness substrate ----------
 
@@ -349,7 +330,6 @@ pub struct ConsciousnessSubstrate {
     pub causal: Box<dyn CausalReasoner>,
     pub memory: Box<dyn AssociativeMemory>,
     pub neuromod: Box<dyn Neuromodulator>,
-    pub holographic: Box<dyn HolographicStore>,
 }
 
 impl ConsciousnessSubstrate {
@@ -364,17 +344,18 @@ impl ConsciousnessSubstrate {
             causal: Box::new(DefaultCausalReasoner),
             memory: Box::new(DefaultAssociativeMemory),
             neuromod: Box::new(DefaultNeuromodulator),
-            holographic: Box::new(DefaultHolographicStore),
         }
     }
 
     /// Number of trait-backed modules.
     pub fn module_count(&self) -> usize {
-        9
+        8
     }
 
     /// List all module names (for diagnostics).
     pub fn module_names() -> &'static [&'static str] {
+        // REMOVAL-009 (2026-05-02): "holographic_workspace" removed —
+        // write-only research scaffold with no production read consumer.
         &[
             "surprise_tracker",
             "belief_state",
@@ -384,7 +365,6 @@ impl ConsciousnessSubstrate {
             "counterfactual",
             "memory_graph",
             "neuromodulation",
-            "holographic_workspace",
         ]
     }
 }
@@ -413,10 +393,10 @@ mod tests {
     #[test]
     fn test_module_names_complete() {
         let names = ConsciousnessSubstrate::module_names();
-        assert_eq!(names.len(), 9, "should have 9 consciousness modules");
+        // REMOVAL-009 (2026-05-02): was 9, now 8 after holographic_workspace removal.
+        assert_eq!(names.len(), 8, "should have 8 consciousness modules");
         assert!(names.contains(&"surprise_tracker"));
         assert!(names.contains(&"neuromodulation"));
-        assert!(names.contains(&"holographic_workspace"));
     }
 
     #[test]
@@ -449,14 +429,6 @@ mod tests {
         assert!((nm.dopamine() - 1.0).abs() < 0.2);
         assert!((nm.noradrenaline() - 1.0).abs() < 0.2);
         assert!((nm.serotonin() - 1.0).abs() < 0.2);
-    }
-
-    #[test]
-    fn test_holographic_store_trait() {
-        let hs = DefaultHolographicStore;
-        let (items, cap) = hs.capacity();
-        assert!(cap >= 40);
-        assert!(items <= cap);
     }
 
     #[test]
