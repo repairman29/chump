@@ -730,6 +730,51 @@ impl GapStore {
             Ok(body)
         }
     }
+
+    /// INFRA-188 v0 (2026-05-02): dump every gap as a SEPARATE YAML file at
+    /// `<out_dir>/<ID>.yaml`. Each file contains a single block-list entry
+    /// in the same format as `dump_yaml` produces — i.e.
+    /// `- id: INFRA-180\n  domain: ...\n` — so reaggregating into the
+    /// legacy monolithic `docs/gaps.yaml` is just
+    /// `(echo "gaps:"; cat <out_dir>/*.yaml) > docs/gaps.yaml`.
+    ///
+    /// Returns `(written, skipped)`. Skipped means the existing file's
+    /// content was byte-identical, so no write happened (file mtime
+    /// stable for INFRA-148 staleness checks). Creates `out_dir` if
+    /// missing.
+    ///
+    /// This v0 ONLY writes files. The full INFRA-188 cutover (remove
+    /// monolithic gaps.yaml, update 5 pre-commit guards to read directory,
+    /// update 3 coord scripts, update 2 GitHub workflows, add the CI guard
+    /// against re-adding monolithic) is the follow-up work tracked in
+    /// INFRA-188 itself. Both layouts coexist until cutover.
+    pub fn dump_per_file(&self, out_dir: &std::path::Path) -> Result<(usize, usize)> {
+        let gaps = self.list(None)?;
+        std::fs::create_dir_all(out_dir)
+            .with_context(|| format!("creating {}", out_dir.display()))?;
+
+        let mut written = 0usize;
+        let mut skipped = 0usize;
+        for g in &gaps {
+            if g.id.trim().is_empty() {
+                continue; // defense against any INFRA-112-class empty-id rows
+            }
+            let path = out_dir.join(format!("{}.yaml", g.id));
+            let content = format_gap_yaml(g);
+            let needs_write = match std::fs::read_to_string(&path) {
+                Ok(existing) => existing != content,
+                Err(_) => true,
+            };
+            if needs_write {
+                std::fs::write(&path, &content)
+                    .with_context(|| format!("writing {}", path.display()))?;
+                written += 1;
+            } else {
+                skipped += 1;
+            }
+        }
+        Ok((written, skipped))
+    }
 }
 
 /// Mutable-field bundle for `chump gap set`. None means "leave unchanged".
@@ -2012,6 +2057,75 @@ meta:
         let _id = store.reserve("INFRA", "x", "P1", "s").unwrap();
         let regenerated = store.dump_yaml_with_meta("").unwrap();
         assert!(regenerated.starts_with("gaps:\n"));
+    }
+
+    /// INFRA-188 v0: dump_per_file emits one file per gap; reaggregating
+    /// with `cat` produces the same content as the monolithic dump_yaml
+    /// (modulo the leading `gaps:\n`).
+    #[test]
+    fn test_dump_per_file_writes_one_file_per_gap() {
+        let (store, dir) = test_store();
+        let id1 = store.reserve("INFRA", "first", "P1", "s").unwrap();
+        let id2 = store.reserve("EVAL", "second", "P0", "m").unwrap();
+        let _id3 = store.reserve("META", "third", "P2", "xs").unwrap();
+
+        let out_dir = dir.path().join("docs/gaps");
+        let (written, skipped) = store.dump_per_file(&out_dir).unwrap();
+
+        assert_eq!(written, 3, "expected 3 files written");
+        assert_eq!(skipped, 0, "no files should be skipped on first run");
+
+        // Each file exists at <ID>.yaml and contains the gap's id
+        for id in &[&id1, &id2] {
+            let path = out_dir.join(format!("{}.yaml", id));
+            assert!(path.exists(), "file {} missing", path.display());
+            let content = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                content.contains(&format!("- id: {}", id)),
+                "file should contain id line; got: {content}"
+            );
+        }
+
+        // Idempotency: a second dump with no DB changes should write 0 files
+        // (all skipped because byte-identical).
+        let (written2, skipped2) = store.dump_per_file(&out_dir).unwrap();
+        assert_eq!(written2, 0, "second dump should write 0 files");
+        assert_eq!(skipped2, 3, "second dump should skip all 3");
+    }
+
+    /// INFRA-188 v0: per-file dump's content is byte-equal to what the
+    /// monolithic dump produces for the same gap. Roundtrip: dump_yaml
+    /// with all gaps  ==  "gaps:\n" + cat(per-file files).
+    #[test]
+    fn test_dump_per_file_reaggregates_to_monolithic() {
+        let (store, dir) = test_store();
+        let _id1 = store.reserve("INFRA", "alpha", "P1", "s").unwrap();
+        let _id2 = store
+            .reserve("EVAL", "beta with: a colon", "P0", "m")
+            .unwrap();
+
+        let out_dir = dir.path().join("docs/gaps");
+        store.dump_per_file(&out_dir).unwrap();
+
+        // Reaggregate
+        let mut entries: Vec<_> = std::fs::read_dir(&out_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .collect();
+        entries.sort();
+        let mut reagg = String::from("gaps:\n");
+        for p in &entries {
+            reagg.push_str(&std::fs::read_to_string(p).unwrap());
+        }
+
+        // Compare against monolithic dump
+        let mono = store.dump_yaml().unwrap();
+        assert_eq!(
+            reagg.trim_end(),
+            mono.trim_end(),
+            "reaggregated per-file output should byte-equal monolithic dump"
+        );
     }
 
     #[test]
