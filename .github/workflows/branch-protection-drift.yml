@@ -1,0 +1,48 @@
+name: Branch protection drift
+
+# INFRA-121: detect drift between live `main` branch-protection rule and the
+# checked-in baseline at docs/baselines/branch-protection-main.json. Fails
+# loudly so a job-failure notification reaches the operator. Pairs with the
+# macOS launchd installer (scripts/setup/install-branch-protection-drift-launchd.sh)
+# for local-machine ALERT emission to ambient.jsonl.
+#
+# Why: auto-merge ("auto-merge IS the default", CLAUDE.md) silently disarms
+# when required-check names change or contexts are added/removed in the
+# branch-protection UI. Documented as a recovery scenario in
+# docs/process/MERGE_QUEUE_SETUP.md but not previously prevented.
+
+on:
+  schedule:
+    - cron: "23 7 * * *"  # daily 07:23 UTC
+  workflow_dispatch: {}
+  push:
+    paths:
+      - "docs/baselines/branch-protection-main.json"
+      - "scripts/ops/branch-protection-drift.sh"
+      - ".github/workflows/branch-protection-drift.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: branch-protection-drift
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run drift detector
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_PROTECTION_REPO: ${{ github.repository }}
+        run: |
+          set -e
+          # Skip emitting to local ambient.jsonl in CI; the job-failure itself
+          # is the alert channel here.
+          ./scripts/ops/branch-protection-drift.sh

@@ -33,6 +33,37 @@ tradeoff for a single-maintainer fast-moving repo.
 and the `pr-<N>-checkpoint` tag `bot-merge.sh` writes — see CLAUDE.md
 "Auto-merge IS the default" note.
 
+## Branch-protection drift detector (INFRA-121, 2026-05-01)
+
+The single-PR auto-merge path described above is load-bearing — and silently
+breaks if the branch-protection rule on `main` drifts (a required check is
+renamed, a context is added/removed, the rule is altered or disabled in
+Settings). Symptom seen previously: `bot-merge.sh --auto-merge` arms a PR,
+CI passes, but the PR sits OPEN forever because GitHub no longer recognises
+the green checks as "all required". The CLAUDE.md "If the merge queue is
+stuck" recovery section documents how to dig out — INFRA-121 prevents the
+state from happening unnoticed in the first place.
+
+- **Baseline:** [`docs/baselines/branch-protection-main.json`](../baselines/branch-protection-main.json) —
+  normalized snapshot of the live `main` protection rule (URLs stripped, keys
+  sorted) so a git diff is purely semantic. Refresh after any *intentional*
+  change with `scripts/ops/branch-protection-drift.sh --update-baseline` and
+  commit the new baseline.
+- **Detector:** [`scripts/ops/branch-protection-drift.sh`](../../scripts/ops/branch-protection-drift.sh) —
+  fetches live config via `gh api`, normalizes, diffs against the baseline.
+  Quiet on match (single `ok` row in `.chump/health.jsonl`); on drift writes
+  ALERT `kind=queue_config_drift` to `ambient.jsonl` + `.chump/alerts.log`
+  with the field-level diff. Sibling agents see the alert in their
+  FLEET-019 `SessionStart` digest.
+- **CI job:** [`.github/workflows/branch-protection-drift.yml`](../../.github/workflows/branch-protection-drift.yml)
+  runs daily (07:23 UTC) and on every push to the baseline / detector / workflow
+  itself. A non-zero diff fails the job — the failure notification is the
+  remote alert channel.
+- **Local hourly run (macOS):** `scripts/setup/install-branch-protection-drift-launchd.sh`
+  installs a daily LaunchAgent so an operator's machine ALERTs to ambient.jsonl
+  without waiting on CI cadence. Verify with `launchctl list | grep
+  ai.openclaw.chump-branch-protection-drift`.
+
 ---
 
 ## Original 2026-04-19 framing (kept for context)

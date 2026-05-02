@@ -85,6 +85,7 @@ Event kinds to know:
 - `ALERT kind=lease_overlap` — **stop and read**: two sessions claim the same file
 - `ALERT kind=silent_agent` — a live session stopped heartbeating; its work may be lost
 - `ALERT kind=edit_burst` — rapid file mutations in progress; possible rebase stomp
+- `ALERT kind=queue_config_drift` — branch-protection rule on `main` no longer matches `docs/baselines/branch-protection-main.json`; auto-merge may be silently disarmed (INFRA-121, run `scripts/ops/branch-protection-drift.sh --dry-run` to inspect)
 
 Then claim the gap before writing any code:
 ```bash
