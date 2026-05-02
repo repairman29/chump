@@ -872,8 +872,18 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
             if chump gap ship "$_gid" \
                     --closed-pr "$_autoclose_target_pr" \
                     --update-yaml >/dev/null 2>&1; then
-                # Regenerate the readable SQL dump so the diff is reviewable.
-                chump gap dump --out .chump/state.sql >/dev/null 2>&1 || true
+                # INFRA-262: do NOT regenerate / stage .chump/state.sql here.
+                # Every parallel auto-close used to write .chump/state.sql, and
+                # that single hot file caused 6+ rebase-conflict cascades in
+                # the 2026-05-02 fleet session (every sibling PR's auto-close
+                # commit conflicted with this one's). state.sql is a fully
+                # regenerable artifact from .chump/state.db (canonical SQLite
+                # store), and .github/workflows/regenerate-gaps-yaml.yml keeps
+                # it in sync on main via merge_group anyway. Reviewers see
+                # gap deltas in the per-file docs/gaps/<ID>.yaml diff, not
+                # state.sql. Removing it from the auto-close commit kills the
+                # cascade entirely.
+                #
                 # Stage only the files we expect this command to have touched.
                 # If nothing changed (e.g. gap already done), skip the commit.
                 # INFRA-226: post-INFRA-188-cutover the monolithic docs/gaps.yaml
@@ -883,11 +893,10 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
                 # `git add` calls avoid the `pathspec did not match any files`
                 # fatal that previously aborted bot-merge BEFORE auto-merge
                 # arming, leaving every post-cutover PR un-armed (PR #759 etc).
-                _autoclose_changed=$(git status --porcelain docs/gaps.yaml docs/gaps/ .chump/state.sql 2>/dev/null || echo "")
+                _autoclose_changed=$(git status --porcelain docs/gaps.yaml docs/gaps/ 2>/dev/null || echo "")
                 if [[ -n "$_autoclose_changed" ]]; then
                     [[ -f docs/gaps.yaml ]] && git add docs/gaps.yaml
                     [[ -d docs/gaps ]]      && git add docs/gaps/
-                    [[ -f .chump/state.sql ]] && git add .chump/state.sql
                     git commit -m "chore(close): auto-close $_gid via PR #$_autoclose_target_pr (INFRA-154)" \
                                --no-verify >/dev/null 2>&1 || {
                         yellow "Auto-close commit failed for $_gid — leaving the PR as-is"
