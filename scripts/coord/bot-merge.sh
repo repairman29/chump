@@ -165,7 +165,13 @@ for gid in "${GAP_IDS[@]}"; do
     [[ "$gid" == "none" || "$gid" == "NONE" ]] && continue
     _filtered+=("$gid")
 done
-GAP_IDS=("${_filtered[@]}")
+# INFRA-237: ${_filtered[@]} expansion under `set -u` would error when the
+# array is empty (e.g. caller passed --gap none). Reset GAP_IDS to an empty
+# array first, then append only if there's anything to keep.
+GAP_IDS=()
+if [[ ${#_filtered[@]} -gt 0 ]]; then
+    GAP_IDS=("${_filtered[@]}")
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
