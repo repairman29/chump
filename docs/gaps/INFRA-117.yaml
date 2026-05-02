@@ -1,7 +1,7 @@
 - id: INFRA-117
   domain: infra
   title: Verify chump --briefing is implemented - CLAUDE.md cites it but src/ unchecked
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -17,5 +17,9 @@
     - Audit src/, crates/, scripts/ for any --briefing entrypoint
     - If implemented - link the source, smoke-test with one gap ID
     - If not implemented - either remove the references from CLAUDE.md or file MEM-007 follow-up to land it
+  notes: |
+    Verified present in INFRA-117/118 audit batch. chump --briefing IS implemented: src/main.rs:30 declares mod briefing; src/main.rs:268-281 parses --briefing arg and calls briefing::build_briefing(); src/briefing.rs is the MEM-007 implementation. Live smoke test (chump --briefing INFRA-117) executed successfully and returned a structured briefing template — minor caveat that the briefing command reads from docs/gaps.yaml (not state.db), so gaps that exist only in DB return 'gap not found' until the YAML mirror is regenerated; that quirk is overtaken by INFRA-188 cutover and not separately filed. CLAUDE.md is correct as written.
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 758
 

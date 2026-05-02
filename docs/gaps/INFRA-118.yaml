@@ -1,7 +1,7 @@
 - id: INFRA-118
   domain: infra
   title: Verify chump-commit.sh actually resets unrelated staged files - doc claim unverified
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -19,5 +19,9 @@
     - Read scripts/chump-commit.sh and document the actual reset behavior
     - If absent - either implement the reset (git reset HEAD on files not in $@) or correct CLAUDE.md
     - Add a test - stage two files in two different worktrees, run chump-commit.sh in one, verify the other's staged file is not in the resulting commit
+  notes: |
+    Verified present in INFRA-117/118 audit batch. chump-commit.sh DOES reset unrelated staged files: lines 192-212 implement the behavior — collects files in the current index that aren't in the user's named arg list, then runs 'git reset HEAD -- ${EXTRA[@]}' to unstage them while preserving working-tree changes (matching CLAUDE.md's documented behavior). Comment block at line 7-8 confirms intent. The 2026-04-26 audit that filed this gap missed the implementation — likely searched for 'git reset' bare and missed the conditional block. CLAUDE.md is correct as written.
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 758
 
