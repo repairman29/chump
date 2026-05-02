@@ -20,6 +20,8 @@ ChumpMenu/ChumpMenu.app/
 # Use .claude/* (not .claude/) so we can re-include settings.json below
 .claude/*
 !.claude/settings.json
+# INFRA-188: chump-native worktree directory (canonical post-INFRA-186)
+.chump/worktrees/
 
 # Agent path-lease files (runtime only; never commit)
 .chump-locks/
