@@ -1,7 +1,9 @@
 - id: INFRA-102
   domain: infra
   title: session_start ambient events absent - audit emitter and restore advertised behavior
-  status: open
+  status: done
+  closed_pr: 821
+  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |
