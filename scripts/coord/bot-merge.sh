@@ -22,6 +22,13 @@
 #                  with required CI status checks configured).
 #   --skip-tests   Skip `cargo test` (for pure-doc or non-Rust changes). fmt and
 #                  clippy still run.
+#   --fast         Skip BOTH cargo clippy AND cargo test locally. CI clippy/test
+#                  is the gate (auto-merge won't land a red PR). Reduces total
+#                  bot-merge wall time from ~5-10 min cold → ~30-60 sec, so
+#                  agent-driven shipping fits inside the ~10-15 min subagent
+#                  task budget. Implies --skip-tests. Default OFF; pass
+#                  explicitly when running from chump dispatch / Agent tool /
+#                  any context with a tight task budget. (INFRA-252)
 #   --dry-run      Print every step without executing git push or gh commands.
 #
 # Requirements: gh CLI authenticated, GITHUB_TOKEN in env or gh keyring, cargo.
@@ -69,6 +76,7 @@ fi
 # ── Flags ────────────────────────────────────────────────────────────────────
 AUTO_MERGE=0
 SKIP_TESTS=0
+FAST=0
 DRY_RUN=0
 GAP_IDS=()
 NEXT_IS_GAP=0
@@ -96,6 +104,7 @@ for arg in "$@"; do
         --stack-on)    NEXT_IS_STACK_ON=1 ;;
         --auto-merge)  AUTO_MERGE=1 ;;
         --skip-tests)  SKIP_TESTS=1 ;;
+        --fast)        FAST=1; SKIP_TESTS=1 ;;
         --dry-run)     DRY_RUN=1 ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
@@ -543,7 +552,20 @@ info "cargo parallelism: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (override via env)
 
 # ── 3. cargo clippy ───────────────────────────────────────────────────────────
 # Timeout 900s: cold workspace clippy is ~8 min on chump as of 2026-04-28.
-if command -v cargo &>/dev/null; then
+#
+# INFRA-252: --fast skips the local clippy step entirely. Rationale: cold
+# workspace clippy is the long pole (5-8 min), busts the agent task budget
+# (~10-15 min on Anthropic's general-purpose subagent) and forces the parent
+# session to rescue commit-but-don't-push orphans. The GitHub Actions CI
+# clippy job runs the same checks anyway and is the actual gate (auto-merge
+# refuses to land a PR with red checks). With --fast, bot-merge.sh ships in
+# ~30-60 sec total, comfortably inside any agent budget. Cost: a clippy-broken
+# PR may briefly exist on the open-PR list before CI grades it red. Default
+# OFF (preserves human-developer fail-fast ergonomics); agents pass --fast
+# explicitly.
+if [[ $FAST -eq 1 ]]; then
+    info "Skipping local clippy (--fast). CI clippy is the gate."
+elif command -v cargo &>/dev/null; then
     stage_start "cargo clippy --workspace --all-targets"
     if ! run_timed_hb "cargo clippy" 900 cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
         red "clippy found errors — fix them before merging."
