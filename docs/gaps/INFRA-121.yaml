@@ -1,7 +1,9 @@
 - id: INFRA-121
   domain: infra
   title: Merge queue config drift undetected - silent auto-merge disarm when branch protection changes
-  status: open
+  status: done
+  closed_pr: 829
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |
