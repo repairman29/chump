@@ -3068,7 +3068,7 @@ gaps:
 - id: FLEET-008
   domain: fleet
   title: Work board / task queue — post subtasks for other agents to claim
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -3083,6 +3083,8 @@ gaps:
   notes: |
     Unblocks work decomposition (FLEET-011). Initial version: manual posting by agents. Later: automatic decomposition heuristics.
   source_doc: docs/FLEET_VISION_2026Q2.md
+  closed_date: '2026-05-02'
+  closed_pr: 754
 
 - id: FLEET-009
   domain: fleet
@@ -5897,6 +5899,8 @@ gaps:
     - scripts/ambient-rotate.sh runs on a schedule (cron/launchd) and is verified to fire
     - Rotated archives are accessible to scripts/ambient-query.sh for historical lookups
     - Ambient ALERT when ambient.jsonl exceeds size threshold without rotation
+  notes: |
+    Implementation: scripts/setup/install-ambient-rotate-launchd.sh (daily 03:00 launchd), ambient-rotate.sh emits ALERT kind=ambient_oversize when live log exceeds AMBIENT_SIZE_ALERT_MB (default 50MB), ambient-query.sh now reads live log + all .gz archives in chronological order. CLAUDE.md updated under new 'ambient.jsonl rotation' section.
   opened_date: '2026-04-26'
 
 - id: INFRA-123
@@ -7683,6 +7687,59 @@ gaps:
     - honors --skip-tests
     - honors CHUMP_SKIP_CI_SHELL=1 bypass
     - "verified: PR #729's test-raw-yaml-guard.sh fails (Passed: 3 Failed: 4) when run in isolation"
+
+- id: INFRA-223
+  domain: INFRA
+  title: wire distill-pr-skills.sh into post-merge hook or launchd timer (auto-feed chump_improvement_targets)
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    distill-pr-skills.sh shipped in PR #712 but has never run in production. 0 rows in chump_improvement_targets from distill (all 18 are COG-025 dispatcher telemetry). Dry-run on last 5 PRs would insert 3 rows — script works, just not wired to a scheduler.
+    
+    Fix:
+    - Option A (simple): launchd entry firing every 30 min OR after every git fetch
+    - Option B (better): GitHub Actions step in the merge-queue post-merge workflow (.github/workflows/post-merge.yml) that calls distill-pr-skills.sh --pr <merged-pr>
+    
+    Option B closes the loop tighter but requires a CI secret to write to the host's chump_memory.db. Option A is safer for v1.
+    
+    Acceptance:
+    - chump_improvement_targets grows by ≥1 row per merged PR matching a whitelisted pattern
+    - Verifiable via: sqlite3 sessions/chump_memory.db "SELECT COUNT(*) FROM chump_improvement_targets WHERE actioned_as LIKE 'PR#%';"
+    
+    Related: INFRA-195 (the script itself), Red Letter #10 (the audit that surfaced this)
+  acceptance_criteria:
+    - distill-pr-skills.sh fires automatically (launchd or post-merge hook)
+    - chump_improvement_targets grows on merged PRs matching whitelist
+    - "verifiable: actioned_as LIKE 'PR#%' rows present"
+
+- id: INFRA-224
+  domain: INFRA
+  title: "bot-merge.sh: install pre-commit hooks via install-hooks.sh if missing (closes Cold Water #10 closed_pr=TBD leak)"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Cold Water Red Letter #10 (2026-05-02) flagged: 9 gaps shipped to origin/main since 2026-05-01 with closed_pr: TBD, bypassing the INFRA-107 closed_pr integrity guard. Affected: INFRA-186, INFRA-180, INFRA-182, INFRA-189, INFRA-190, INFRA-192, INFRA-194, INFRA-195, EVAL-062.
+    
+    Root cause: scripts/coord/bot-merge.sh does NOT call scripts/setup/install-hooks.sh. Remote dispatch agents committing from a fresh CCR sandbox have NO pre-commit hook installed. The INFRA-107 guard never runs.
+    
+    Fix (3 lines): add to bot-merge.sh near the top, after REPO_ROOT is set:
+      if [[ ! -x .git/hooks/pre-commit ]]; then
+        bash scripts/setup/install-hooks.sh >/dev/null 2>&1 || true
+      fi
+    
+    Or: do this in scripts/coord/chump-commit.sh which is the wrapper most agents use anyway.
+    
+    Acceptance:
+    - Fresh sandbox + bot-merge.sh invocation results in .git/hooks/pre-commit being installed
+    - Subsequent commit goes through INFRA-107 guard (verifiable: try to commit a gaps.yaml diff with status: done + closed_pr: TBD; should be rejected)
+    
+    Related: INFRA-107 (the guard), Cold Water Red Letter #10 (the audit)
+  acceptance_criteria:
+    - bot-merge.sh installs pre-commit hooks if missing
+    - fresh sandbox commit through bot-merge picks up INFRA-107 guard
+    - "verifiable test: status:done + closed_pr:TBD commit rejected"
 
 - id: INFRA-41
   domain: infra
@@ -9752,6 +9809,8 @@ gaps:
     - 0 open HIGH-severity Dependabot alerts after the upgrade lands
     - cargo deny advisories step in CI fails on HIGH (regression guard)
     - Cargo.lock diff documents every bump in the PR description
+  notes: |
+    Fixed: wasmtime 44.0.0 → 44.0.1 family (RUSTSEC-2026-0114, MEDIUM). Blocked: 4 rustls-webpki + 1 rsa Marvin (no upstream fix path; pinned via cargo-audit --ignore with documented reachability analysis). CI gains a blocking cargo-audit step (in addition to existing non-blocking one) that fails on any NEW vulnerability not in the ignore list — the regression guard the gap asked for. Re-audit when serenity 0.13 lands (will unlock all 4 rustls-webpki bumps including the HIGH).
   opened_date: '2026-04-28'
 
 - id: SECURITY-005

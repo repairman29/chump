@@ -11,6 +11,7 @@
 //!   status                     — show all active claims + recent events
 //!   emit <type> [key=value …]  — publish a structured event
 //!   watch                      — stream live events (ctrl-c to stop)
+//!   work-board <sub> [args …]  — FLEET-008 shared subtask queue (post|list|claim|complete|fail|show)
 //!
 //! Environment:
 //!   CHUMP_NATS_URL             — default nats://127.0.0.1:4222
@@ -18,8 +19,35 @@
 //!   CHUMP_COORD_FILES          — comma-separated file hints for claim command
 
 use anyhow::Result;
+use chump_coord::work_board::{Requirement, Subtask, SubtaskStatus, TransitionMiss};
 use chump_coord::{CoordClient, CoordEvent};
 use std::env;
+
+fn print_transition_miss(verb: &str, id: &str, miss: &TransitionMiss) {
+    match miss {
+        TransitionMiss::NotFound => {
+            eprintln!("[chump-coord] cannot {} {}: not found", verb, id);
+        }
+        TransitionMiss::StaleRevision => {
+            eprintln!(
+                "[chump-coord] cannot {} {}: another agent updated it first (stale revision)",
+                verb, id
+            );
+        }
+        TransitionMiss::WrongState(s) => {
+            eprintln!(
+                "[chump-coord] cannot {} {}: subtask is in state {:?}, not the expected state",
+                verb, id, s
+            );
+        }
+        TransitionMiss::NotClaimHolder { holder, caller } => {
+            eprintln!(
+                "[chump-coord] cannot {} {}: claim is held by {} but caller is {}",
+                verb, id, holder, caller
+            );
+        }
+    }
+}
 
 fn session_id() -> String {
     // Priority mirrors gap-claim.sh: explicit > CLAUDE_SESSION_ID > UUID
@@ -275,6 +303,235 @@ async fn main() -> Result<()> {
             }
         }
 
+        // ── work-board ────────────────────────────────────────────────────────
+        // Usage:
+        //   chump-coord work-board post <parent-gap> <task-class> "<title>" [--decomposable] [--description "..."] [--est-secs N]
+        //   chump-coord work-board list [--status open|claimed|completed|failed|all]
+        //   chump-coord work-board claim <subtask-id>
+        //   chump-coord work-board complete <subtask-id> [--commit <sha-or-pr>]
+        //   chump-coord work-board fail <subtask-id> --reason "..."
+        //   chump-coord work-board show <subtask-id>
+        "work-board" => {
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or("");
+            let client = match CoordClient::connect_or_skip().await {
+                Some(c) => c,
+                None => {
+                    eprintln!(
+                        "[chump-coord] NATS unavailable — work-board requires a reachable broker"
+                    );
+                    std::process::exit(1);
+                }
+            };
+            match sub {
+                "post" => {
+                    let parent_gap = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord work-board post <parent-gap> <task-class> \"<title>\" [flags…]");
+                        std::process::exit(2);
+                    });
+                    let task_class = args.get(4).cloned().unwrap_or_else(|| {
+                        eprintln!("Missing <task-class>");
+                        std::process::exit(2);
+                    });
+                    let title = args.get(5).cloned().unwrap_or_else(|| {
+                        eprintln!("Missing \"<title>\"");
+                        std::process::exit(2);
+                    });
+                    // Optional flags after the positionals.
+                    let mut description = String::new();
+                    let mut decomposable = false;
+                    let mut est_secs: Option<u32> = None;
+                    let mut required_model: Option<String> = None;
+                    let mut min_vram: Option<u32> = None;
+                    let mut i = 6;
+                    while i < args.len() {
+                        match args[i].as_str() {
+                            "--decomposable" => decomposable = true,
+                            "--description" => {
+                                i += 1;
+                                description = args.get(i).cloned().unwrap_or_default();
+                            }
+                            "--est-secs" => {
+                                i += 1;
+                                est_secs = args.get(i).and_then(|s| s.parse().ok());
+                            }
+                            "--model" => {
+                                i += 1;
+                                required_model = args.get(i).cloned();
+                            }
+                            "--min-vram-gb" => {
+                                i += 1;
+                                min_vram = args.get(i).and_then(|s| s.parse().ok());
+                            }
+                            other => {
+                                eprintln!("Unknown flag: {}", other);
+                                std::process::exit(2);
+                            }
+                        }
+                        i += 1;
+                    }
+                    let req = Requirement {
+                        task_class,
+                        required_model_family: required_model,
+                        min_vram_gb: min_vram,
+                        min_inference_speed_tok_per_sec: None,
+                        estimated_duration_sec: est_secs,
+                        decomposable,
+                    };
+                    let mut subtask = Subtask::new(&parent_gap, &title, &session_id(), req);
+                    subtask.description = description;
+                    client.post_subtask(&subtask).await?;
+                    println!("{}", subtask.subtask_id);
+                }
+                "list" => {
+                    let mut filter: Option<SubtaskStatus> = Some(SubtaskStatus::Open);
+                    let mut i = 3;
+                    while i < args.len() {
+                        match args[i].as_str() {
+                            "--status" => {
+                                i += 1;
+                                filter = match args.get(i).map(|s| s.as_str()) {
+                                    Some("open") => Some(SubtaskStatus::Open),
+                                    Some("claimed") => Some(SubtaskStatus::Claimed),
+                                    Some("completed") => Some(SubtaskStatus::Completed),
+                                    Some("failed") => Some(SubtaskStatus::Failed),
+                                    Some("all") => None,
+                                    Some(other) => {
+                                        eprintln!("Unknown status: {}", other);
+                                        std::process::exit(2);
+                                    }
+                                    None => Some(SubtaskStatus::Open),
+                                };
+                            }
+                            other => {
+                                eprintln!("Unknown flag: {}", other);
+                                std::process::exit(2);
+                            }
+                        }
+                        i += 1;
+                    }
+                    let subtasks = client.list_subtasks(filter).await?;
+                    if subtasks.is_empty() {
+                        println!("[chump-coord] No subtasks match.");
+                    } else {
+                        println!(
+                            "{:<22} {:<14} {:<10} {:<22} title",
+                            "subtask_id", "parent_gap", "status", "task_class"
+                        );
+                        for s in subtasks {
+                            println!(
+                                "{:<22} {:<14} {:<10} {:<22} {}",
+                                s.subtask_id,
+                                s.parent_gap,
+                                format!("{:?}", s.status).to_lowercase(),
+                                s.requirement.task_class,
+                                s.title
+                            );
+                        }
+                    }
+                }
+                "claim" => {
+                    let id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord work-board claim <subtask-id>");
+                        std::process::exit(2);
+                    });
+                    let sess = session_id();
+                    match client.claim_subtask(&id, &sess).await? {
+                        Ok(s) => {
+                            println!(
+                                "[chump-coord] CLAIMED {} (parent={}, task_class={})",
+                                s.subtask_id, s.parent_gap, s.requirement.task_class
+                            );
+                        }
+                        Err(miss) => {
+                            print_transition_miss("claim", &id, &miss);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                "complete" => {
+                    let id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!(
+                            "Usage: chump-coord work-board complete <subtask-id> [--commit <sha>]"
+                        );
+                        std::process::exit(2);
+                    });
+                    let mut commit: Option<String> = None;
+                    let mut i = 4;
+                    while i < args.len() {
+                        if args[i] == "--commit" {
+                            i += 1;
+                            commit = args.get(i).cloned();
+                        }
+                        i += 1;
+                    }
+                    let sess = session_id();
+                    match client
+                        .complete_subtask(&id, &sess, commit.as_deref())
+                        .await?
+                    {
+                        Ok(s) => println!(
+                            "[chump-coord] COMPLETED {} (parent={})",
+                            s.subtask_id, s.parent_gap
+                        ),
+                        Err(miss) => {
+                            print_transition_miss("complete", &id, &miss);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                "fail" => {
+                    let id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!(
+                            "Usage: chump-coord work-board fail <subtask-id> --reason \"...\""
+                        );
+                        std::process::exit(2);
+                    });
+                    let mut reason = String::new();
+                    let mut i = 4;
+                    while i < args.len() {
+                        if args[i] == "--reason" {
+                            i += 1;
+                            reason = args.get(i).cloned().unwrap_or_default();
+                        }
+                        i += 1;
+                    }
+                    if reason.is_empty() {
+                        eprintln!("--reason is required");
+                        std::process::exit(2);
+                    }
+                    let sess = session_id();
+                    match client.fail_subtask(&id, &sess, &reason).await? {
+                        Ok(s) => {
+                            println!("[chump-coord] FAILED {} (reason={})", s.subtask_id, reason)
+                        }
+                        Err(miss) => {
+                            print_transition_miss("fail", &id, &miss);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                "show" => {
+                    let id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord work-board show <subtask-id>");
+                        std::process::exit(2);
+                    });
+                    match client.get_subtask(&id).await? {
+                        Some(s) => println!("{}", serde_json::to_string_pretty(&s)?),
+                        None => {
+                            eprintln!("[chump-coord] not found: {}", id);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                _ => {
+                    eprintln!(
+                        "Usage: chump-coord work-board {{post|list|claim|complete|fail|show}} …"
+                    );
+                    std::process::exit(2);
+                }
+            }
+        }
+
         // ── help / default ────────────────────────────────────────────────────
         _ => {
             eprintln!(
@@ -287,6 +544,13 @@ COMMANDS
   status                     Show all active NATS KV claims
   emit <TYPE> [key=value …]  Publish event (TYPE: INTENT DONE STUCK WARN ALERT)
   watch                      Stream live events from chump.events.>
+  work-board <sub> [args …]  FLEET-008 shared subtask queue
+                             post <parent-gap> <task-class> "<title>" [--decomposable] [--description "..."] [--est-secs N] [--model <fam>] [--min-vram-gb N]
+                             list   [--status open|claimed|completed|failed|all]
+                             claim    <subtask-id>
+                             complete <subtask-id> [--commit <sha-or-pr>]
+                             fail     <subtask-id> --reason "..."
+                             show     <subtask-id>
 
 ENVIRONMENT
   CHUMP_NATS_URL             NATS server URL (default: nats://127.0.0.1:4222)
