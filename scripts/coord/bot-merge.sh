@@ -514,13 +514,15 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     green "Gap pre-flight passed."
 
     # Write gap claim to lease file (replaces YAML in_progress edit — no merge conflicts).
-    _claim_args=()
-    [[ "$SPECULATIVE" == "1" ]] && _claim_args+=(--speculative)
+    # INFRA-193: under `set -u`, an empty bash array can't be safely expanded with
+    # "${arr[@]}". Build the optional flag as a string, then word-split via $arr.
+    _claim_extra=""
+    [[ "$SPECULATIVE" == "1" ]] && _claim_extra="--speculative"
     for gid in "${GAP_IDS[@]}"; do
         if [[ $DRY_RUN -eq 0 ]]; then
-            "$SCRIPT_DIR/gap-claim.sh" "$gid" "${_claim_args[@]}"
+            "$SCRIPT_DIR/gap-claim.sh" "$gid" $_claim_extra
         else
-            info "[dry-run] gap-claim.sh $gid ${_claim_args[*]}"
+            info "[dry-run] gap-claim.sh $gid $_claim_extra"
         fi
     done
 fi
