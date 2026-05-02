@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/repairman29/chump/blob/main/docs/ambient-schema.json",
+  "title": "Chump ambient.jsonl event schema",
+  "description": "Schema for every line written to .chump-locks/ambient.jsonl. Validated at emit time by scripts/dev/ambient-emit.sh (INFRA-101). The 2026-04-26 audit found INTENT rows had reordered keys + a nonstandard shape — this schema is the canonical contract going forward. The four base fields (ts, session, worktree, event) are required for every event; per-event-kind extensions are listed below in oneOf.",
+  "type": "object",
+  "required": ["ts", "session", "worktree", "event"],
+  "properties": {
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+      "description": "UTC timestamp in ISO 8601 with trailing Z. Produced by `date -u +%Y-%m-%dT%H:%M:%SZ`."
+    },
+    "session": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Session ID. Resolution priority: $CHUMP_SESSION_ID, $CLAUDE_SESSION_ID, .chump-locks/.wt-session-id cache, or a derived chump-<worktree>-<unix> default."
+    },
+    "worktree": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Basename of the writing worktree. Same as $(basename $(git rev-parse --show-toplevel)) for the writer."
+    },
+    "event": {
+      "type": "string",
+      "enum": [
+        "session_start",
+        "session_end",
+        "file_edit",
+        "commit",
+        "bash_call",
+        "INTENT",
+        "ALERT"
+      ],
+      "description": "One of the well-known event kinds. Adding a new kind requires a new entry here AND a new branch in the oneOf below."
+    }
+  },
+  "oneOf": [
+    {
+      "title": "session_start / session_end",
+      "properties": {
+        "event": { "enum": ["session_start", "session_end"] }
+      },
+      "additionalProperties": true
+    },
+    {
+      "title": "file_edit",
+      "properties": {
+        "event": { "const": "file_edit" },
+        "path": { "type": "string", "minLength": 1 }
+      },
+      "required": ["path"]
+    },
+    {
+      "title": "commit",
+      "properties": {
+        "event": { "const": "commit" },
+        "sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "msg": { "type": "string" },
+        "gap": { "type": "string" }
+      },
+      "required": ["sha", "msg"]
+    },
+    {
+      "title": "bash_call",
+      "properties": {
+        "event": { "const": "bash_call" },
+        "cmd": { "type": "string", "minLength": 1 }
+      },
+      "required": ["cmd"]
+    },
+    {
+      "title": "INTENT",
+      "description": "Pre-INFRA-101 INTENT writers used a different key order; this schema accepts that legacy shape but requires the same base fields.",
+      "properties": {
+        "event": { "const": "INTENT" },
+        "gap": { "type": "string", "minLength": 1 },
+        "files": { "type": "string" }
+      },
+      "required": ["gap"]
+    },
+    {
+      "title": "ALERT",
+      "properties": {
+        "event": { "const": "ALERT" },
+        "kind": { "type": "string", "minLength": 1 },
+        "note": { "type": "string" },
+        "subkind": { "type": "string" },
+        "sessions": { "type": "string" },
+        "path": { "type": "string" },
+        "msg": { "type": "string" }
+      },
+      "required": ["kind"]
+    }
+  ]
+}
