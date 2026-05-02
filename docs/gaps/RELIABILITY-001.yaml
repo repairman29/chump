@@ -1,0 +1,36 @@
+- id: RELIABILITY-001
+  domain: RELIABILITY
+  title: serenity 0.12.5 → 0.13 (next branch) API migration — 16 compile errors in src/discord.rs block the SECURITY-004 git-dep override
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    SECURITY-004 spike on 2026-05-02 attempted the 'serenity = git/next branch' override (verified by 5 LLMs as the canonical fix, validated against crates.io that next has tokio-tungstenite 0.28 → tokio-rustls 0.26 → rustls 0.23 → rustls-webpki 0.103, all CVE-free). Cargo.lock confirmed: vulnerable rustls-webpki 0.102.8, rustls 0.22, tokio-rustls 0.25, tokio-tungstenite 0.21 all DROPPED. 
+    
+    The 1-line Cargo.toml change does not compile. serenity's 'next' branch is essentially v0.13-in-progress with breaking API changes. cargo check --bin chump produces 16 errors in src/discord.rs (1453 lines):
+    
+      - 3× E0407: EventHandler trait methods (ready, message, interaction_create) are no longer trait members — likely renamed/restructured or moved to a different trait
+      - 5× E0599: Method removals (start_typing, send_message, say) on ChannelId / PrivateChannel
+      - 5× E0308: Type mismatches — ChannelId vs GenericChannelId split (new sealed/typed channel hierarchy)
+      - 2× E0615: User.bot field is now a method (User.bot())
+      - 1× E0277: CreateActionRow/CreateComponent wrapper API change
+    
+    This is real serenity 0.12 → 0.13 API migration work, not a 1-line dependency bump. Realistic effort: 1-3 hours of focused refactoring in src/discord.rs, possibly more if runtime semantics changed.
+    
+    Three paths to evaluate:
+      (A) Spike the discord.rs migration to serenity 0.13 API (1-3 hrs). Closes SECURITY-004 cleanly, no functional loss.
+      (B) Make 'discord' a feature-gate, default OFF. Wraps src/discord.rs + serenity dep + 4 main.rs call sites in #[cfg(feature = "discord")]. ~1 hour. Default builds become CVE-free; users actively running Discord opt in by building --features discord (still vulnerable until path A or v0.13 ships).
+      (C) Wait for serenity v0.13 release. Last release was 2025-12-20 (v0.12.5), 5 months stale. next branch active (last commit 2026-04-26). ETA unknown — could be days, could be months. SECURITY-004 stays P0.
+    
+    Recommendation: (B) for fast security mitigation, (A) when bandwidth permits to restore Discord functionality on the secure dep chain. Discord is currently always-on in default chump builds (src/main.rs:56-58 declare modules, line 1875 invokes discord::run unconditionally) — feature-gating it is a meaningful UX change for current users.
+    
+    Cleanup of 2026-05-02 spike: Cargo.toml + Cargo.lock reverted to origin/main; worktree /tmp/chump-security-004 removed; no commits or PRs landed.
+  acceptance_criteria:
+    - "Either: (A) serenity dep on Cargo.toml points at a v0.13 chain (released or git tag) AND src/discord.rs compiles AND existing discord integration tests pass"
+    - "OR: (B) discord becomes optional feature, default OFF, src/discord.rs gated on #[cfg(feature = 'discord')], main.rs call sites gated, default cargo build/check passes without serenity in tree"
+    - Verify Cargo.lock has zero references to rustls-webpki 0.102.x, rustls 0.22, tokio-rustls 0.25, tokio-tungstenite 0.21
+    - Dependabot alerts SECURITY-004 (4 of 6 rustls-webpki chain) auto-close on next scan
+    - "RELIABILITY-001 closure references the actual closing PR# and notes which path (A or B) was chosen and why"
+  notes: |
+    Filed by Claude during 2026-05-02 SECURITY-004 spike. The verified-by-5-LLMs '1-line fix' diagnosis was wrong — none of them caught the breaking-change cost. Useful negative datum for AI-COLLABORATION-DUE-DILIGENCE.md: 'consensus across providers does not equal correctness; verify against the actual repo state, but ALSO try to compile.'
+
