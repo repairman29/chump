@@ -405,6 +405,38 @@ jobs:
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
 
-      - name: Run cargo audit
+      - name: Run cargo audit (advisory list — non-blocking)
         continue-on-error: true
         run: cargo audit
+
+      # SECURITY-004 (2026-05-02): blocking pass that fails CI on any new
+      # vulnerability. Existing-but-unfixable advisories are explicitly
+      # ignored with --ignore + a pointer to the upstream block. To add a
+      # new ignore: confirm the upstream chain is the blocker (cargo audit
+      # tree shows the path), then add the RUSTSEC ID + a one-line comment.
+      # Do NOT add ignores for advisories that have a fix available — bump
+      # the dep instead.
+      - name: Run cargo audit (blocking on new vulns)
+        run: |
+          cargo audit \
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2026-0049 \
+            --ignore RUSTSEC-2026-0098 \
+            --ignore RUSTSEC-2026-0099 \
+            --ignore RUSTSEC-2026-0104 \
+            --ignore RUSTSEC-2024-0436 \
+            --ignore RUSTSEC-2026-0097
+          # Ignored RUSTSEC IDs (each blocked on upstream — re-audit when
+          # the ecosystem moves):
+          #   2023-0071  rsa Marvin attack          — no fixed version published
+          #   2026-0049  rustls-webpki CRL DP       — blocked on serenity 0.12 → newer rustls
+          #   2026-0098  rustls-webpki URI names    — blocked on serenity 0.12 → newer rustls
+          #   2026-0099  rustls-webpki wildcard     — blocked on serenity 0.12 → newer rustls
+          #   2026-0104  rustls-webpki HIGH panic   — blocked on serenity 0.12 → newer rustls
+          #     Reachability note: the panic requires server-supplied malformed
+          #     CRL BIT STRINGs. chump's serenity path is Discord WS only;
+          #     Discord does not send CRLs over its WebSocket gateway, so
+          #     the path appears non-reachable in practice. Still want the
+          #     fix once serenity 0.13 lands.
+          #   2024-0436  paste unmaintained          — transitive (tauri/wasmtime), benign
+          #   2026-0097  rand 0.7 unsound logger     — transitive (tauri/phf), no fix path
