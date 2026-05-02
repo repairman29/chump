@@ -2493,6 +2493,86 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     }
     eprintln!("[web] Chump Web listening on http://0.0.0.0:{}", bound_port);
     eprintln!("[web] serving Chump PWA from {:?}", &static_dir);
+
+    // INFRA-167: pre-warm the configured Ollama model on startup so the
+    // first user turn doesn't pay 5-15 s cold-load. Best-effort, async,
+    // ~one HTTP call. Disable with CHUMP_PREWARM=0 (e.g. for benchmarks
+    // measuring pure cold-start). Non-Ollama backends (vLLM-MLX, mistral.rs,
+    // hosted OpenAI) are skipped — pre-warm with `keep_alive` is an
+    // Ollama-specific feature.
+    let prewarm_disabled = std::env::var("CHUMP_PREWARM")
+        .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
+        .unwrap_or(false);
+    if !prewarm_disabled {
+        tokio::spawn(async move {
+            let base = std::env::var("OPENAI_API_BASE")
+                .unwrap_or_else(|_| "http://localhost:11434/v1".to_string());
+            let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "qwen2.5:7b".to_string());
+            let keep_alive =
+                std::env::var("CHUMP_OLLAMA_KEEP_ALIVE").unwrap_or_else(|_| "30m".to_string());
+
+            // Heuristic: Ollama runs on :11434 by default. The pre-warm
+            // payload below uses /api/generate which is Ollama-specific.
+            let is_ollama = base.contains(":11434") || base.to_lowercase().contains("ollama");
+            if !is_ollama {
+                eprintln!(
+                    "[web] pre-warm skipped: OPENAI_API_BASE={} doesn't look like Ollama",
+                    base
+                );
+                return;
+            }
+
+            let ollama_base = base
+                .trim_end_matches("/v1")
+                .trim_end_matches('/')
+                .to_string();
+            let url = format!("{}/api/generate", ollama_base);
+
+            let body = serde_json::json!({
+                "model": model,
+                "prompt": ".",
+                "keep_alive": keep_alive,
+                "stream": false,
+                "options": { "num_predict": 1 },
+            });
+
+            let client = match reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+            {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("[web] pre-warm: client build failed: {}", e);
+                    return;
+                }
+            };
+            let start = std::time::Instant::now();
+            match client.post(&url).json(&body).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    eprintln!(
+                        "[web] pre-warm: {} ready in {} ms (keep_alive={})",
+                        model,
+                        start.elapsed().as_millis(),
+                        keep_alive
+                    );
+                }
+                Ok(resp) => {
+                    eprintln!(
+                        "[web] pre-warm: {} returned {} (Ollama may be down — first user turn will pay cold-load)",
+                        model,
+                        resp.status()
+                    );
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[web] pre-warm: {} unreachable at {} ({}) — first user turn will pay cold-load",
+                        model, url, e
+                    );
+                }
+            }
+        });
+    }
+
     eprintln!("[web] autopilot: scheduling boot + periodic reconcile (3m interval)");
 
     tokio::spawn(async move {

@@ -151,6 +151,10 @@ The following operations run in the agent loop hot path after each tool executio
 
 `keep_alive` is sent with every Ollama request (default `"30m"`, configurable via `CHUMP_OLLAMA_KEEP_ALIVE`). This keeps the model and its KV cache resident in memory between requests, eliminating the ~5s cold-start penalty on follow-up messages within the keep-alive window.
 
+**INFRA-167 startup pre-warm.** `chump --web` now fires one `POST /api/generate` request with `{model, prompt: ".", num_predict: 1, keep_alive: "30m"}` immediately after binding to its port (only when `OPENAI_API_BASE` looks like Ollama — `:11434` or contains "ollama"). This pulls the model into RAM **before** the first user turn so the first PWA chat doesn't pay 5-15 s cold-load (typical for 7B-Q4 on M-series). Disable with `CHUMP_PREWARM=0` (e.g. when measuring pure cold-start in a benchmark). Non-Ollama backends (vLLM-MLX, mistral.rs, hosted OpenAI) skip pre-warm — `keep_alive` is an Ollama feature; for those backends model residency is governed by the inference server's own settings.
+
+**Trade.** `keep_alive=30m` (the canonical default in `.env.example`) holds ~5 GB resident for `qwen2.5:7b` between turns. On a 24 GB Mac that's room to spare alongside rust-analyzer + a browser. Raise to `1h` or `-1` (forever) only if you have headroom. Lower to `5m` or `0` on RAM-constrained boxes (forces cold-load every turn).
+
 **Measured impact** (qwen2.5:7b on Ollama, `num_ctx=2048`):
 
 | Configuration | Prompt tokens | Wall time |
