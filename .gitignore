@@ -132,3 +132,10 @@ acp_sessions/
 .chump/activation/
 .chump/alerts.log
 .chump/health.jsonl
+
+# INFRA-188 + INFRA-208: docs/gaps.yaml was deleted in the per-file cutover
+# but stale chump binaries (or any code path that calls dump_yaml() against
+# the legacy path) keep recreating it locally as a side-effect. Ignore so
+# that those accidental re-creations don't pollute `git status` or end up
+# in commits. The canonical layout is docs/gaps/<ID>.yaml.
+docs/gaps.yaml
