@@ -1,0 +1,34 @@
+- id: INFRA-229
+  domain: infra
+  title: chump gap ship --update-yaml writes deleted docs/gaps.yaml; should write per-file
+  status: done
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-02'
+  source_doc: src/main.rs
+  description: |
+    Post-INFRA-188 the monolithic docs/gaps.yaml is gone, but
+    `chump gap ship --update-yaml` still writes to it (src/main.rs:582
+    pre-fix). On a fresh build of the binary post-INFRA-188 this
+    silently re-creates the deleted monolithic file on every successful
+    ship, resurrecting the very file INFRA-188 deleted. On older builds
+    the write succeeds because gaps.yaml is unwrap_or_default'd and the
+    binary creates a fresh monolithic from the SQLite state — same
+    regression in slower motion.
+
+    bot-merge.sh stopped invoking --update-yaml in INFRA-227 / INFRA-226
+    so the regression is masked for ship-pipeline callers, but anyone
+    passing the flag manually would still hit it.
+
+    Fix: the --update-yaml path now writes the per-file mirror via
+    `dump_per_file_single` instead of regenerating the monolithic.
+    Behavior change: the flag now means "update one per-file YAML",
+    not "regenerate the entire registry". Help text + comments updated.
+    Pairs with INFRA-228 which fixes `chump gap reserve` parity.
+  acceptance_criteria:
+    - "`chump gap ship <ID> --update-yaml` writes docs/gaps/<ID>.yaml; never resurrects docs/gaps.yaml"
+    - "no monolithic docs/gaps.yaml is ever created post-INFRA-188 by the chump binary"
+    - "test in src/gap_store.rs covers post-ship per-file rewrite (status: done propagates)"
+  depends_on: [INFRA-188]
+  closed_date: '2026-05-02'
+  closed_pr: 777

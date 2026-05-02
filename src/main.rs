@@ -497,6 +497,30 @@ async fn main() -> Result<()> {
                                 "[gap reserve] stack hint — ship with: scripts/coord/bot-merge.sh --gap {id} --stack-on {prev} --auto-merge"
                             );
                         }
+                        // INFRA-228 (post-INFRA-188 cutover, 2026-05-02):
+                        // also write the per-file YAML mirror at
+                        // docs/gaps/<ID>.yaml. Without this, every
+                        // `chump gap reserve` call required a follow-up
+                        // hand-edit (or CHUMP_ALLOW_UNREGISTERED_GAP=1
+                        // bypass) before bot-merge.sh's gap-preflight.sh
+                        // would let the work ship — observed mid-flight on
+                        // INFRA-227 itself. Best-effort: SQLite (state.db)
+                        // is canonical, so a write failure is logged but
+                        // doesn't fail the reserve.
+                        let per_file_dir = repo_root.join("docs").join("gaps");
+                        match store.dump_per_file_single(&id, &per_file_dir) {
+                            Ok(true) => {
+                                eprintln!(
+                                    "wrote {}",
+                                    per_file_dir.join(format!("{id}.yaml")).display()
+                                );
+                                write_yaml_op_marker(&repo_root, "reserve");
+                            }
+                            Ok(false) => {} // no-op write
+                            Err(e) => {
+                                eprintln!("warning: dump-per-file write failed for {id}: {e}")
+                            }
+                        }
                         println!("{}", id);
                         return Ok(());
                     }
@@ -592,25 +616,34 @@ async fn main() -> Result<()> {
                         if update_yaml {
                             // INFRA-148: warn if this binary predates the most recent
                             // gap_store-affecting commit on the repo's HEAD before mutating
-                            // gaps.yaml. Pre-INFRA-147 binaries silently stripped the meta:
-                            // preamble (~20k-line corruption observed 2026-04-27); a fresh
-                            // build catches that and similar future serialization changes.
+                            // the YAML mirror. Pre-INFRA-147 binaries silently stripped the
+                            // meta: preamble (~20k-line corruption observed 2026-04-27); a
+                            // fresh build catches that and similar future serialization
+                            // changes.
                             let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
-                            let path = repo_root.join("docs").join("gaps.yaml");
-                            // INFRA-147: preserve the hand-curated meta: preamble (priorities,
-                            // update_instructions) by reusing the existing file's bytes before
-                            // the `gaps:` line. Bare dump_yaml() drops this block entirely.
-                            let source = std::fs::read_to_string(&path).unwrap_or_default();
-                            match store.dump_yaml_with_meta(&source) {
-                                Ok(body) => {
-                                    if let Err(e) = std::fs::write(&path, &body) {
-                                        eprintln!("warning: dump-yaml write failed: {e}");
-                                    } else {
-                                        eprintln!("regenerated {}", path.display());
-                                        write_yaml_op_marker(&repo_root, "ship");
-                                    }
+                            // INFRA-229 (post-INFRA-188 cutover, 2026-05-02):
+                            // write the per-file YAML mirror at
+                            // docs/gaps/<ID>.yaml instead of the deleted
+                            // monolithic docs/gaps.yaml. The pre-INFRA-188
+                            // path here would have silently re-created the
+                            // monolithic file on every successful ship,
+                            // resurrecting the very file INFRA-188 deleted.
+                            // Behavior change: callers that pass
+                            // `--update-yaml` now get a single per-file
+                            // write, not a full-registry regen.
+                            let per_file_dir = repo_root.join("docs").join("gaps");
+                            match store.dump_per_file_single(&gap_id, &per_file_dir) {
+                                Ok(true) => {
+                                    eprintln!(
+                                        "wrote {}",
+                                        per_file_dir.join(format!("{gap_id}.yaml")).display()
+                                    );
+                                    write_yaml_op_marker(&repo_root, "ship");
                                 }
-                                Err(e) => eprintln!("warning: dump-yaml failed: {e}"),
+                                Ok(false) => {} // no-op write — content unchanged
+                                Err(e) => {
+                                    eprintln!("warning: dump-per-file write failed: {e}")
+                                }
                             }
                         }
                         return Ok(());
