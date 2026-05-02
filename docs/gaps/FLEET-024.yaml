@@ -2,8 +2,6 @@
   domain: fleet
   title: FLEET L2 umbrella — Work Decomposition & Claiming (work board, help-seeking, decomposition heuristics)
   status: done
-  closed_pr: 747
-  closed_date: '2026-05-02'
   priority: P1
   effort: l
   opened_date: '2026-05-02'
@@ -54,3 +52,5 @@
         FLEET-026 v1 heeded/ignored learning loop (#782), FLEET-027 v2 task-class-
         aware decomposition CLI (#784).
       - Single-sprint demo: scripts/demo/fleet-l2-demo.sh added in this PR.
+  closed_date: '2026-05-02'
+  closed_pr: 799
