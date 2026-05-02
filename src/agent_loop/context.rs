@@ -7,6 +7,57 @@ pub struct AgentLoopContext {
     pub session: AgentSession,
     pub event_tx: Option<EventSender>,
     pub light: bool,
+    /// INFRA-185: per-phase wall-clock accumulators for the current turn.
+    /// Updated by orchestrator (compaction) and iteration_controller (LLM,
+    /// tools); summed and emitted as a structured `tracing::info` event at
+    /// turn end. Always present; populated only when [`phase_timing_enabled`]
+    /// is true, so the cost when disabled is just `Instant::now()` deltas
+    /// being thrown away.
+    pub phase_timings: PhaseTimings,
+}
+
+/// INFRA-185: phase-level wall-clock counters for one agent turn.
+///
+/// We record total ms spent in the three coarse phases that dominate
+/// real-world latency on local-model setups:
+///
+/// - `compaction_ms` — `session_compact::maybe_compact` pre-LLM call (can
+///   itself be an LLM call summarizing old turns; was identified as a
+///   silent stall in the INFRA-183 PWA-latency probe).
+/// - `provider_ms` — accumulated time inside `provider.complete()`. Sum
+///   across all rounds in the turn (each tool round = one more LLM call).
+/// - `tools_ms` — accumulated time inside tool execution (`tool_runner`).
+///   Sum across all batches in the turn.
+///
+/// `rounds` counts how many LLM round-trips the controller made, so the
+/// emitted event lets you compute average per-round provider latency.
+///
+/// At end of turn, the orchestrator emits one structured `tracing::info`
+/// event with all four fields plus the total turn ms, so you can attribute
+/// where the time went without trawling per-span enter/exit logs.
+#[derive(Default, Debug, Clone)]
+pub struct PhaseTimings {
+    pub compaction_ms: u128,
+    pub provider_ms: u128,
+    pub tools_ms: u128,
+    pub rounds: u32,
+}
+
+impl PhaseTimings {
+    /// Sum of all measured phases. Excludes "other" (event dispatch,
+    /// session save, perception, etc.) — the un-attributed remainder is
+    /// implicit in `total_ms - phases_total_ms` at log time.
+    pub fn phases_total_ms(&self) -> u128 {
+        self.compaction_ms + self.provider_ms + self.tools_ms
+    }
+}
+
+/// INFRA-185: returns true unless `CHUMP_PHASE_TIMING=0` / `false`.
+/// Default-on so phase numbers show up in logs out of the box.
+pub fn phase_timing_enabled() -> bool {
+    !std::env::var("CHUMP_PHASE_TIMING")
+        .map(|v| v == "0" || v.eq_ignore_ascii_case("false"))
+        .unwrap_or(false)
 }
 
 impl AgentLoopContext {
@@ -14,6 +65,23 @@ impl AgentLoopContext {
         if let Some(ref tx) = self.event_tx {
             let _ = tx.send(event);
         }
+    }
+
+    /// INFRA-185: time a phase if [`phase_timing_enabled`], otherwise just
+    /// run the body. Returns whatever the closure returns. Adds the
+    /// elapsed ms to the phase counter via `accum`.
+    pub async fn time_phase<T, F, Fut>(&mut self, accum: fn(&mut PhaseTimings, u128), body: F) -> T
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = T>,
+    {
+        if !phase_timing_enabled() {
+            return body().await;
+        }
+        let start = Instant::now();
+        let out = body().await;
+        accum(&mut self.phase_timings, start.elapsed().as_millis());
+        out
     }
 }
 
@@ -39,6 +107,81 @@ mod tests {
             session: AgentSession::new("test-session".to_string()),
             event_tx: tx,
             light: false,
+            phase_timings: PhaseTimings::default(),
+        }
+    }
+
+    // ── INFRA-185: PhaseTimings tests ─────────────────────────────────
+
+    #[test]
+    fn phase_timings_default_is_zero() {
+        let t = PhaseTimings::default();
+        assert_eq!(t.compaction_ms, 0);
+        assert_eq!(t.provider_ms, 0);
+        assert_eq!(t.tools_ms, 0);
+        assert_eq!(t.rounds, 0);
+        assert_eq!(t.phases_total_ms(), 0);
+    }
+
+    #[test]
+    fn phase_timings_total_sums_three_phases() {
+        let t = PhaseTimings {
+            compaction_ms: 150,
+            provider_ms: 2500,
+            tools_ms: 700,
+            rounds: 3,
+        };
+        assert_eq!(t.phases_total_ms(), 3350);
+    }
+
+    // ENV-coupled tests are racy under cargo's default test parallelism
+    // (env vars are process-global). Use #[serial] so the enabled and
+    // disabled cases never overlap.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn time_phase_accumulates_into_provider_when_enabled() {
+        // Make sure no leftover CHUMP_PHASE_TIMING=0 from a previous test.
+        std::env::remove_var("CHUMP_PHASE_TIMING");
+        let mut ctx = ctx_with(None);
+        let result = ctx
+            .time_phase(
+                |t, ms| t.provider_ms += ms,
+                || async {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    "ok"
+                },
+            )
+            .await;
+        assert_eq!(result, "ok");
+        // At least the 10 ms we slept; allow up to 500 ms for CI scheduler noise.
+        assert!(
+            (8..=500).contains(&(ctx.phase_timings.provider_ms as u64)),
+            "expected ~10 ms provider time, got {}",
+            ctx.phase_timings.provider_ms
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn time_phase_skips_accumulation_when_disabled() {
+        let prev = std::env::var("CHUMP_PHASE_TIMING").ok();
+        std::env::set_var("CHUMP_PHASE_TIMING", "0");
+        let mut ctx = ctx_with(None);
+        let _ = ctx
+            .time_phase(
+                |t, ms| t.compaction_ms += ms,
+                || async {
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                },
+            )
+            .await;
+        assert_eq!(
+            ctx.phase_timings.compaction_ms, 0,
+            "phase timing was disabled but compaction_ms accumulated anyway"
+        );
+        match prev {
+            Some(v) => std::env::set_var("CHUMP_PHASE_TIMING", v),
+            None => std::env::remove_var("CHUMP_PHASE_TIMING"),
         }
     }
 

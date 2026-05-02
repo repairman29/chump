@@ -15966,7 +15966,9 @@ gaps:
 - id: INFRA-185
   domain: INFRA
   title: 'Phase-level timing breakdown — compaction / provider / tools ms on existing [timing] logs (INFRA-183 sub)'
-  status: open
+  status: done
+  closed_pr: 704
+  closed_date: '2026-05-01'
   priority: P2
   effort: s
   opened_date: '2026-05-01'
