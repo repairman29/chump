@@ -698,8 +698,6 @@ pub fn assemble_context() -> String {
             }
         }
 
-        substrate.holographic.sync_from_blackboard();
-
         let neuro_summary = substrate.neuromod.context_summary();
         if !neuro_summary.is_empty() {
             let _ = writeln!(out, "{}.", neuro_summary);

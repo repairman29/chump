@@ -185,7 +185,6 @@ async fn handle(stream: tokio::net::TcpStream) {
         },
         "belief_state": crate::belief_state::metrics_json(),
         "neuromodulation": crate::neuromodulation::metrics_json(),
-        "holographic_workspace": crate::holographic_workspace::metrics_json(),
         "speculative_batch": crate::speculative_execution::last_speculative_metrics_json(),
     });
     let recent_tool_calls = crate::introspect_tool::recent_tool_calls_json(15);
