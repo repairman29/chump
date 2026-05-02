@@ -219,6 +219,53 @@ COG-024 lessons-injection pipeline both depend on this feeder system.
 Filings → reflections → distilled directives → next-session prompt
 context. The loop is only as strong as the upstream filing rate.
 
+## Filing meta-patterns — when individual filings aren't enough (2026-05-02)
+
+Reactive filing (file the symptom you just observed) is necessary but
+**not sufficient.** Sessions in flow miss recurring patterns because each
+incident looks unique in the moment. Three behaviours close that gap:
+
+**1. Periodic RCA pass.** At cycle end (and at any natural pause —
+between PRs, after a multi-step task lands, when the operator says
+"review"), run a 5-minute scan: of the gaps you filed this session,
+which share root causes? Which describe the same class of
+failure? File a META-* gap covering the class.
+
+The 2026-05-02 ghost-elimination session is the cautionary example:
+14 individual gaps filed (INFRA-208, 216, 217, 219, 220, 232, 233,
+234, 236, 237, 238, 241, 243; META-006/012). Two recurring patterns
+(per-file YAML mid-flight collisions; agents conflating local
+working tree with origin/main state) only got filed (INFRA-246,
+META-014) **because the operator asked**. Without that prompt, both
+would have slipped — both will keep biting at fleet-size 8+.
+
+**2. Verify-against-origin/main before filing RCA gaps.** This
+guardrail goes in [META-014](docs/gaps/META-014.yaml) — adding a
+"Diagnosing divergence" subsection above. Briefly: when a gap
+description claims "X reverted my change / X overwrote my edit /
+origin has unexpected state," verify with `git fetch origin main &&
+git show origin/main:<path>` BEFORE filing. INFRA-238 was a 100%
+misdiagnosis (~30 min wasted + closure-by-supersession PR) caused by
+reading system-reminder file content as origin/main state.
+
+**3. Pattern-counter automation.** [INFRA-249](docs/gaps/INFRA-249.yaml)
+ships `scripts/coord/recurring-gap-pattern-detector.sh` — runs against
+recently-filed gap titles, surfaces clusters with N≥3 gaps in 7 days
+sharing significant keywords. ALERT lines emit to `ambient.jsonl` so
+agents see "the team has filed 4 'guard misfire' gaps in the last
+week — consider a META-* gap covering the class" without having to do
+a periodic-RCA pass manually. Defense in depth, not replacement for
+behaviour 1.
+
+**Why these three matter together:** behaviour 1 is the human-in-the-
+loop catch (what the operator just did with the "Did we do any RCA
+work?" question). Behaviour 2 prevents one specific failure mode
+(stale-tree misdiagnosis). Behaviour 3 automates the cluster-detection
+half of behaviour 1, so cycle-end RCA becomes "review the pattern-
+detector's ALERT list" instead of "scan all session filings from
+memory." None alone is enough; together they make pattern-blindness
+a recoverable error rather than a silent one.
+
 ## Naming conventions (INFRA-186, 2026-05-01)
 
 **The project owns the namespace, not the tool.** Branches, worktree

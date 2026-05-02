@@ -1,0 +1,58 @@
+- id: INFRA-249
+  domain: INFRA
+  title: Recurring-gap-pattern detector + AGENTS.md 'Filing meta-patterns' section — automate cycle-end RCA cluster detection
+  status: done
+  closed_pr: 821
+  closed_date: '2026-05-02'
+  priority: P2
+  effort: s
+  opened_date: '2026-05-02'
+  description: |
+    Operator-requested automation for cycle-end RCA cluster detection.
+    The 2026-05-02 ghost-elimination session demonstrated the
+    pattern-blindness problem: 14 gaps filed, 2 recurring patterns
+    (INFRA-246 per-file YAML collisions; META-014 stale-tree
+    misdiagnosis) only got filed because the operator ran a manual
+    "did we do any RCA work?" pass.
+
+    This gap ships the automation half: scripts/coord/recurring-gap-
+    pattern-detector.sh walks recently-opened gaps, tokenizes titles,
+    and surfaces clusters with N≥3 gaps in a 7-day window sharing a
+    significant non-stopword keyword. ALERT lines emit to ambient.jsonl
+    so the next agent's session-start tail picks them up.
+
+    Bundle (single PR):
+      - scripts/coord/recurring-gap-pattern-detector.sh: pure-bash,
+        no python deps. ~140 lines. --days, --threshold, --quiet flags.
+      - scripts/ci/test-recurring-gap-pattern-detector.sh: 9-test
+        fixture covering cluster detection, window-filter, stopwords,
+        threshold respect, ambient JSON shape, --quiet behaviour, and
+        legacy-gap (no opened_date) skip. All 9 pass.
+      - scripts/overnight/30-recurring-gap-pattern-detector.sh: nightly
+        cron entry per scripts/overnight/README.md convention. Default
+        7-day window, threshold 3.
+      - AGENTS.md "Filing meta-patterns" section (sibling to "Filing
+        follow-up gaps — the feeder system"). Documents the three
+        behaviours (periodic RCA pass; verify-against-origin; pattern-
+        counter automation) and how they compose.
+
+    Smoke test on real repo (183 gaps in last 14 days, threshold 5):
+    surfaced 14 real signals — yaml (21), commit (20), docs (17),
+    audit (17), ambient (17), guard (13), auto (12), agent (12), queue
+    (11), fleet (11), agents (11), merge (10), file (10), reserve (9).
+    Every cluster except "infra"/"chump"/"only" (added to stopwords)
+    represents a real cohesive theme.
+
+    Defense in depth: this is the AUTOMATION half. The HUMAN half
+    (periodic RCA pass at cycle end) and the BEHAVIOURAL half (verify-
+    against-origin before filing reverts) live in AGENTS.md and
+    META-014 respectively. Together they make pattern-blindness a
+    recoverable error rather than a silent one.
+  acceptance_criteria:
+    - "scripts/coord/recurring-gap-pattern-detector.sh implemented with --days/--threshold/--quiet flags"
+    - "9-test CI fixture passes (cluster detection, window-filter, stopwords, threshold, ambient JSON shape, --quiet, legacy-skip)"
+    - "Wired into scripts/overnight/ for nightly run"
+    - "AGENTS.md 'Filing meta-patterns' section added"
+    - "Smoke test on real repo surfaces ≥10 meaningful clusters with no obvious noise"
+  raised_by: claude
+  raised_in: '2026-05-02 — operator asked to automate the cycle-end RCA pass after manual review found 2 missed recurring patterns (INFRA-246, META-014)'
