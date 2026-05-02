@@ -8525,9 +8525,11 @@ gaps:
 - id: INFRA-247
   domain: INFRA
   title: redirect / -> /v2/ in PWA (browser users land on the modern shell)
-  status: open
+  status: done
   priority: P3
   effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 842
 
 - id: INFRA-248
   domain: INFRA
