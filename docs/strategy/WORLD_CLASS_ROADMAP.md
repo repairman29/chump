@@ -1,14 +1,26 @@
 ---
 doc_tag: canonical
-owner_gap:
-last_audited: 2026-04-25
+owner_gap: INFRA-058
+last_audited: 2026-05-02
 ---
 
 # World-Class Dev Workflow Roadmap
 
-**Status:** active (filed 2026-04-25, signed off by Jeff)
+**Status:** ✅ M1-M5 all done as of 2026-05-02 (filed 2026-04-25, signed off by Jeff)
 **Tracking gap:** INFRA-058
-**Milestones:** INFRA-059 (M1) → INFRA-063 (M5)
+**Milestones:** INFRA-059 (M1) → INFRA-063 (M5) — all closed
+
+## 2026-05-02 status snapshot
+
+| Milestone | Gap | Status |
+|---|---|---|
+| **M1 — SQLite-authoritative gap store** | INFRA-059 | ✅ done |
+| **M2 — Plan-mode gate in dispatcher** | INFRA-060 | ✅ done |
+| **M3 — Stacked PRs / dependency-aware queue** | INFRA-061 | ✅ done |
+| **M4 — Flag-gated cognitive experiments** | INFRA-062 | ✅ done |
+| **M5 — Cycle-time + ship-rate dashboard** | INFRA-063 | ✅ done |
+
+**What's next:** the L2 layer of the FLEET vision (work decomposition, help-seeking, decomposition heuristics) — see `docs/strategy/FLEET_VISION_2026Q2.md`. Tracked under FLEET-024 as the L2 umbrella. Post-M5 hardening (Cold Water Issues #6-#9 follow-ups) runs in parallel and is tracked under INFRA-101..216 + TEST-002, not under this roadmap.
 
 ## Why this exists
 
