@@ -538,6 +538,43 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
                         yellow "Auto-close push failed for $_gid — the close commit is local only"
                     else
                         green "Auto-closed $_gid (closed_pr=$_autoclose_target_pr) — squashed atomically by merge queue"
+                        # INFRA-192: forward-chain notifier. When a gap closes,
+                        # scan open gaps for `depends_on` entries containing
+                        # this ID; emit a `gap_unblocked` ambient event for
+                        # each downstream so sibling agents can pick them up
+                        # immediately (instead of via manual queue-scan or
+                        # cycle-by-cycle Cold Water sweep).
+                        # Best-effort: never blocks the close path.
+                        if command -v chump >/dev/null 2>&1 \
+                            && [[ -x scripts/coord/broadcast.sh ]]; then
+                            _unblocked=$(chump gap list --status open --json 2>/dev/null \
+                                | python3 -c "
+import json, sys
+gid = '$_gid'
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for g in data:
+    deps = g.get('depends_on') or []
+    if isinstance(deps, str):
+        deps = [d.strip() for d in deps.split(',') if d.strip()]
+    if gid in deps:
+        print(g['id'])
+" 2>/dev/null || true)
+                            if [[ -n "$_unblocked" ]]; then
+                                _unblocked_count=0
+                                while IFS= read -r _down; do
+                                    [[ -z "$_down" ]] && continue
+                                    scripts/coord/broadcast.sh ALERT \
+                                        kind=gap_unblocked \
+                                        "INFRA-192: $_gid closed (PR #$_autoclose_target_pr) — $_down newly actionable (depends_on link satisfied)" \
+                                        >/dev/null 2>&1 || true
+                                    _unblocked_count=$((_unblocked_count + 1))
+                                done <<< "$_unblocked"
+                                green "Forward-chain (INFRA-192): $_gid unblocked ${_unblocked_count} downstream gap(s); broadcast to siblings"
+                            fi
+                        fi
                     fi
                 else
                     info "Auto-close: $_gid produced no diff (likely already status=done)"

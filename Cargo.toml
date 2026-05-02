@@ -60,9 +60,6 @@ telegram = []
 # docs/operations/BROWSER_AUTOMATION.md). V2 will pull in chromiumoxide / thirtyfour and
 # enable the real `browser` tool backend.
 browser-automation = []
-# Voice mode: STT (whisper-rs) + TTS (system/ElevenLabs/Cartesia).
-# Scaffold only — needs whisper model download + macOS mic permissions for real use.
-voice = ["thiserror"]
 # Sprint A1 (Defense Trinity): encrypted-at-rest SQLite via sqlcipher.
 # Disabled by default — requires a passphrase strategy (CHUMP_DB_PASSPHRASE env var
 # or Keychain) and a migration path from existing plain DBs. When enabled, db_pool

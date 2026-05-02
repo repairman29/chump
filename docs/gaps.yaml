@@ -15945,7 +15945,9 @@ gaps:
 - id: INFRA-184
   domain: INFRA
   title: 'Plain-prose CoT routing to thinking_delta for reasoning models without <think> tags (INFRA-183 sub)'
-  status: open
+  status: done
+  closed_pr: 701
+  closed_date: '2026-05-01'
   priority: P1
   effort: m
   opened_date: '2026-05-01'
@@ -16277,9 +16279,11 @@ gaps:
 - id: INFRA-192
   domain: INFRA
   title: 'forward-chain notifier: post gap_unblocked event when a PR closes a depends_on link'
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_pr: TBD
+  closed_date: '2026-05-01'
   opened_date: '2026-05-01'
   description: |
     Today when a PR merges that closes a gap, downstream gaps with
