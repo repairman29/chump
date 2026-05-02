@@ -56,7 +56,7 @@ log "=== deploy-fleet: mac=$DEPLOY_MAC pixel=$DEPLOY_PIXEL build=$BUILD ==="
 
 # --- Health only ---
 if [[ "$HEALTH_ONLY" -eq 1 ]]; then
-  bash "$REPO_ROOT/scripts/dev/fleet-health.sh"
+  bash "$ROOT/scripts/dev/fleet-health.sh"
   exit $?
 fi
 
@@ -166,7 +166,7 @@ HEALTH_FLAGS=""
 [[ "$DEPLOY_MAC"   -eq 0 ]] && HEALTH_FLAGS="--pixel"
 [[ "$DEPLOY_PIXEL" -eq 0 ]] && HEALTH_FLAGS="--mac"
 
-bash "$REPO_ROOT/scripts/dev/fleet-health.sh" ${HEALTH_FLAGS:-} || true
+bash "$ROOT/scripts/dev/fleet-health.sh" ${HEALTH_FLAGS:-} || true
 
 log "=== deploy-fleet: done ==="
 echo ""
