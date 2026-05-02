@@ -99,6 +99,19 @@ per-file mirror (post-INFRA-188) that gets regenerated, not edited by hand.
 Each gap is an atomic unit of work with a stable ID (e.g. `COMP-007`,
 `MEM-007`). Before starting work:
 
+0. **Install pre-commit hooks** — run `scripts/setup/install-hooks.sh`
+   once after cloning OR after `git worktree add` (idempotent; safe to
+   re-run any time). This wires the guards described in CLAUDE.md
+   ("Commit-time guards") into `.git/hooks/` for this worktree. Without
+   it, commits silently bypass the `closed_pr` integrity check, the
+   `gaps.yaml` discipline check, the duplicate-id guard, etc. — which is
+   exactly what shipped 9 false `closed_pr: TBD` closures during
+   2026-05-01..02 (Cold Water Issue #10; INFRA-209 / INFRA-224).
+   `scripts/coord/bot-merge.sh` and `scripts/coord/gap-claim.sh` now also
+   invoke this installer at startup as a backstop, but running it once
+   yourself avoids depending on the wrappers (and post-checkout hook
+   already auto-installs after `git worktree add` once the hooks are
+   wired into the main worktree).
 1. **Pick an open gap** — `chump gap list --status open` (canonical) or
    `grep -lE 'status:[[:space:]]*open' docs/gaps/*.yaml` (per-file mirror fallback).
 2. **Preflight** — `chump gap preflight <GAP-ID>` (or
