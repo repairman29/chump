@@ -269,6 +269,21 @@ PYEOF
     fi
 fi
 
+# ── INFRA-102: session_start emit (fallback for non-Claude-Code dispatch) ────
+# The SessionStart Claude Code hook (ambient-context-inject.sh) is the primary
+# emitter, but agents reaching gap-claim.sh through chump-local dispatch,
+# Cursor, or direct shell invocation never fire that hook. Emit here too so
+# every gap claim is paired with a session_start event in the stream. The
+# emit is idempotent for the Claude Code path: a session may now produce two
+# session_start events (one on hook fire, one on gap-claim), which is fine —
+# the cost is one extra row, the benefit is a guaranteed signal for siblings.
+# Bypass with CHUMP_AMBIENT_SESSION_START_EMIT=0.
+if [[ "${CHUMP_AMBIENT_SESSION_START_EMIT:-1}" != "0" ]] \
+        && [[ -x "$REPO_ROOT/scripts/dev/ambient-emit.sh" ]]; then
+    CHUMP_SESSION_ID="$SESSION_ID" \
+        "$REPO_ROOT/scripts/dev/ambient-emit.sh" session_start "gap=$GAP_ID" 2>/dev/null || true
+fi
+
 # ── Intent broadcast (COORD-MUSHER) ──────────────────────────────────────────
 # Announce this session's intention to work on the gap BEFORE writing the
 # lease. Other sessions running gap-preflight.sh will see the INTENT event
