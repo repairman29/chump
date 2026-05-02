@@ -244,6 +244,9 @@ jobs:
       - name: raw-YAML-edit guard (INFRA-200, blocking since 2026-05-02)
         run: bash scripts/ci/test-raw-yaml-guard.sh
 
+      - name: ambient-jsonl emit-time schema validation (INFRA-101)
+        run: bash scripts/ci/test-ambient-schema.sh
+
       - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
           # INFRA-100: gap-reserve.sh now invokes `chump gap reserve`
