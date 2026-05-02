@@ -1,9 +1,19 @@
 - id: META-005
   domain: META
   title: P0 open-but-landed pattern — three P0 gaps shipped but never closed
-  status: open
+  status: done
+  closed_pr: 808
+  closed_date: '2026-05-02'
   priority: P2
   effort: xs
+  closed_interpretation: |
+    Resolved by supersession. The 3 specific P0 gaps cited (PRODUCT-024,
+    INFRA-183, SECURITY-004) are all now status:done with closed_pr
+    (697, 704, 749 respectively). The PATTERN itself — P0 OPEN-BUT-
+    LANDED ghosts — is fully addressed by INFRA-236 (commit-subject
+    closer in regenerate-gaps-yaml.yml workflow, prevents NEW ghosts)
+    + INFRA-241 (one-shot backfill, cleared 71 historical ghosts).
+    Further pattern work tracked under INFRA-236 / 237 / 241 / 243.
   description: |
     Three P0 gaps shipped implementation commits this cycle but remain status:open:
       - PRODUCT-024: PR #697 commit body says "PRODUCT-024: close as done (closed_pr=697)"
