@@ -2,8 +2,6 @@
   domain: infra
   title: Stale reapers (PR, worktree, branch) have no log aggregation or failure alerting
   status: done
-  closed_pr: 835
-  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |
@@ -23,4 +21,6 @@
     - Reaper logs rotated and capped at a sensible size
     - CLAUDE.md Worktree disk hygiene section documents the alert mechanism
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 835
 

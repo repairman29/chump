@@ -2,8 +2,6 @@
   domain: infra
   title: session_start ambient events absent - audit emitter and restore advertised behavior
   status: done
-  closed_pr: 821
-  closed_date: '2026-05-02'
   priority: P1
   effort: xs
   description: |
@@ -20,4 +18,6 @@
     - If intentionally removed - delete the line from CLAUDE.md ambient-event list
     - Add a test that asserts session_start lands in ambient.jsonl during dispatcher startup
   opened_date: '2026-04-26'
+  closed_date: '2026-05-02'
+  closed_pr: 821
 
