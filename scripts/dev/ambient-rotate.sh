@@ -35,6 +35,22 @@ if [[ ! -f "$AMBIENT_LOG" ]]; then
     exit 0
 fi
 
+# ── Size threshold ALERT (INFRA-122) ─────────────────────────────────────────
+# If the live log has grown unexpectedly large, emit an ambient ALERT so
+# operators see it during their next pre-flight tail. Default 50MB; tune
+# with AMBIENT_SIZE_ALERT_MB. This catches the case where rotation isn't
+# scheduled (or the schedule broke) — even one missed week can push the
+# log past the threshold under fleet-load.
+SIZE_ALERT_MB="${AMBIENT_SIZE_ALERT_MB:-50}"
+SIZE_BYTES="$(stat -f%z "$AMBIENT_LOG" 2>/dev/null || stat -c%s "$AMBIENT_LOG" 2>/dev/null || echo 0)"
+SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
+if [[ "$SIZE_MB" -ge "$SIZE_ALERT_MB" ]]; then
+    ALERT_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    ALERT_LINE="{\"event\":\"ALERT\",\"kind\":\"ambient_oversize\",\"size_mb\":${SIZE_MB},\"threshold_mb\":${SIZE_ALERT_MB},\"note\":\"ambient.jsonl exceeds threshold; rotation may be missing or schedule broken — check launchctl list | grep ambient-rotate\",\"ts\":\"${ALERT_TS}\"}"
+    printf '%s\n' "$ALERT_LINE" >> "$AMBIENT_LOG"
+    echo "[ambient-rotate] ALERT: ambient.jsonl is ${SIZE_MB}MB (threshold ${SIZE_ALERT_MB}MB) — emitted ambient_oversize event" >&2
+fi
+
 # ── Compute cutoff timestamp (YYYY-MM-DDTHH:MM:SSZ, RETAIN_DAYS ago) ─────────
 CUTOFF_TS="$(python3 -c "
 import datetime

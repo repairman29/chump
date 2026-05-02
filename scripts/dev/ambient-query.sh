@@ -83,20 +83,36 @@ fi
 # that field at a fixed position in the JSON line.
 GREP_PATTERN="\"event\":\"${EVENT_KIND}\""
 
+# INFRA-122 (2026-05-02): also include rotated archives so historical lookups
+# survive the daily rotation. ambient-rotate.sh writes ambient.jsonl.YYYY-MM-DD.gz
+# next to the live log; collect them in chronological order so live log
+# results appear after archive results.
+ARCHIVE_LIST="$(ls "${AMBIENT_LOG}".*.gz 2>/dev/null | sort || true)"
+
 if [[ -z "$SINCE_HOURS" ]]; then
-    # No time filter — grep directly, cap at LIMIT
-    grep -m"${LIMIT}" -- "$GREP_PATTERN" "$AMBIENT_LOG" || true
+    # No time filter — grep directly across archives + live log, cap at LIMIT
+    {
+        if [[ -n "$ARCHIVE_LIST" ]]; then
+            while IFS= read -r archive; do
+                [[ -z "$archive" ]] && continue
+                zgrep -- "$GREP_PATTERN" "$archive" 2>/dev/null || true
+            done <<<"$ARCHIVE_LIST"
+        fi
+        grep -- "$GREP_PATTERN" "$AMBIENT_LOG" || true
+    } | head -n "${LIMIT}"
 else
     # Time-filtered path: compute cutoff, pipe through python for ISO-8601
-    # comparison, still cap at LIMIT.
+    # comparison, still cap at LIMIT. Python reads gzipped archives + live
+    # log in chronological order.
     SINCE_HOURS_VAL="$SINCE_HOURS"
-    python3 - "$AMBIENT_LOG" "$GREP_PATTERN" "$SINCE_HOURS_VAL" "$LIMIT" <<'PYEOF'
-import sys, json, datetime
+    python3 - "$AMBIENT_LOG" "$GREP_PATTERN" "$SINCE_HOURS_VAL" "$LIMIT" "$ARCHIVE_LIST" <<'PYEOF'
+import sys, json, datetime, gzip
 
-log_path    = sys.argv[1]
-pattern     = sys.argv[2]
-since_hours = int(sys.argv[3])
-limit       = int(sys.argv[4])
+log_path     = sys.argv[1]
+pattern      = sys.argv[2]
+since_hours  = int(sys.argv[3])
+limit        = int(sys.argv[4])
+archive_list = [a for a in sys.argv[5].splitlines() if a]
 
 cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=since_hours)
 
@@ -106,25 +122,35 @@ def parse_ts(s):
     except Exception:
         return None
 
+def open_log(path):
+    if path.endswith(".gz"):
+        return gzip.open(path, "rt", errors="replace")
+    return open(path, errors="replace")
+
 count = 0
-with open(log_path) as f:
-    for line in f:
-        stripped = line.rstrip("\n")
-        if not stripped:
-            continue
-        # Quick substring check before full JSON parse (performance guard)
-        if pattern not in stripped:
-            continue
-        try:
-            ev = json.loads(stripped)
-        except Exception:
-            continue
-        ts = parse_ts(ev.get("ts", ""))
-        if ts is not None and ts < cutoff:
-            continue
-        print(stripped)
-        count += 1
-        if count >= limit:
-            break
+# Archives first (older), then live log
+for source in archive_list + [log_path]:
+    try:
+        f = open_log(source)
+    except FileNotFoundError:
+        continue
+    with f:
+        for line in f:
+            stripped = line.rstrip("\n")
+            if not stripped:
+                continue
+            if pattern not in stripped:
+                continue
+            try:
+                ev = json.loads(stripped)
+            except Exception:
+                continue
+            ts = parse_ts(ev.get("ts", ""))
+            if ts is not None and ts < cutoff:
+                continue
+            print(stripped)
+            count += 1
+            if count >= limit:
+                sys.exit(0)
 PYEOF
 fi
