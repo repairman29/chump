@@ -29,6 +29,15 @@ set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO"
 
+# launchd's PATH (set in the plist's EnvironmentVariables) doesn't include
+# $HOME/.local/bin even after `bash -lc` profile sourcing — macOS path_helper
+# rewrites PATH at login and drops it. `cargo install --path .` symlinks chump
+# there by default, so without this prepend the auditor's `command -v chump`
+# fails, falls back to a python+yaml branch which (a) needs PyYAML in
+# /usr/bin/python3 (it isn't there) and (b) post-INFRA-188 reads docs/gaps.yaml
+# which no longer exists. Fix: extend PATH so chump is always reachable.
+[[ -d "$HOME/.local/bin" ]] && export PATH="$HOME/.local/bin:$PATH"
+
 OVERNIGHT_DIR="$REPO/scripts/overnight"
 LOG_DIR="$REPO/.chump/overnight"
 LOCK="$REPO/.chump/overnight.lock"
