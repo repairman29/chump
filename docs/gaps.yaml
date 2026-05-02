@@ -15259,7 +15259,10 @@ gaps:
 - id: INFRA-173
   domain: INFRA
   title: Replace monolithic docs/gaps.yaml with per-file docs/gaps/<DOMAIN>-<NNN>.yaml directory
-  status: open
+  status: done
+  closed_pr: 731
+  closed_date: '2026-05-02'
+  resolution_notes: 'Superseded by INFRA-188. INFRA-188 absorbed this idea on 2026-05-01 (refile after the original 2026-04-29 filing sat dormant), shipped v0 in PR #731 (chump gap dump --per-file CLI subcommand), and has 3 downstream gaps (INFRA-100, INFRA-189, INFRA-210) declaring depends_on. Closed during gap-dedup pass on 2026-05-02 — the INFRA-188 line is the live work; this row was the duplicate.'
   priority: P1
   effort: m
   opened_date: '2026-04-29'
@@ -17069,7 +17072,10 @@ gaps:
 - id: INFRA-207
   domain: INFRA
   title: 'spawn-respawn lifecycle — agents exit after 1 gap; dispatcher respawns (avoids context exhaustion + lets new lessons load)'
-  status: open
+  status: done
+  closed_pr: 738
+  closed_date: '2026-05-02'
+  resolution_notes: 'Closed as duplicate of INFRA-222 (Cold Water Issue #10, PR #738). The TITLE on this row is a leftover from the 2026-05-02 INFRA-202..207 YAML race (cba27f0 hotfix renumbered the original INFRA-202..207 fleet-scaling rows to INFRA-210..215 but left INFRA-207''s title hijacked). The DESCRIPTION is the docs-delta trailer-guard issue — same content as INFRA-222 (cleanly captured in Cold Water''s rebased filing). The actual spawn-respawn gap lives at INFRA-215. Closed during gap-dedup pass.'
   priority: P2
   effort: xs
   opened_date: '2026-05-02'
