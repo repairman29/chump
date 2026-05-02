@@ -247,6 +247,9 @@ jobs:
       - name: ambient-jsonl emit-time schema validation (INFRA-101)
         run: bash scripts/ci/test-ambient-schema.sh
 
+      - name: install-ambient-hooks idempotence + bypass (FLEET-023)
+        run: bash scripts/ci/test-install-ambient-hooks.sh
+
       - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
           # INFRA-100: gap-reserve.sh now invokes `chump gap reserve`

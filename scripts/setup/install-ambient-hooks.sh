@@ -34,6 +34,15 @@
 
 set -euo pipefail
 
+# FLEET-023 bypass: CLAUDE.md MANDATORY pre-flight invokes this script on
+# every session start. CHUMP_AMBIENT_INSTALL_SKIP=1 lets environments where
+# settings.json must not be touched (read-only homes, locked-down CI
+# images, etc.) opt out cleanly with exit 0 + a one-line notice.
+if [[ "${CHUMP_AMBIENT_INSTALL_SKIP:-0}" == "1" ]]; then
+    printf '\033[1;36m[install-ambient-hooks]\033[0m skipped via CHUMP_AMBIENT_INSTALL_SKIP=1\n' >&2
+    exit 0
+fi
+
 DRY_RUN=0
 UNINSTALL=0
 TARGET="${HOME}/.claude/settings.json"
