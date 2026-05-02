@@ -203,6 +203,130 @@ EOF_STAGED
 fi
 
 # ------------------------------------------------------------------
+# 1b. Out-of-scope guard (INFRA-189, 2026-05-01)
+# ------------------------------------------------------------------
+#
+# When MY OWN session's lease declares `paths`, warn (or block) on
+# staged files OUTSIDE that declared scope. Section 1 protects OTHER
+# agents from my commits; this section protects ME from accidentally
+# touching files outside my declared scope (the wrong-worktree-commit
+# class observed twice on 2026-04-17, and the cross-fixture-leak class
+# that produced INFRA-076's Test <test@test.com> co-author).
+#
+# Default: WARN mode (non-blocking) when the lease has paths declared.
+#   CHUMP_SCOPE_CHECK=0       → disable entirely
+#   CHUMP_SCOPE_CHECK=1       → warn (default)
+#   CHUMP_SCOPE_CHECK=enforce → block
+#
+# Starting in warn mode for a week so we observe false-positive rate
+# on real commits before flipping the default to enforce.
+
+if [ "${CHUMP_SCOPE_CHECK:-1}" != "0" ]; then
+    LOCKS_DIR="$REPO_ROOT/.chump-locks"
+    if [ -d "$LOCKS_DIR" ]; then
+        MY_SESSION_ID="${CHUMP_SESSION_ID:-}"
+        if [ -z "$MY_SESSION_ID" ] && [ -f "$HOME/.chump/session_id" ]; then
+            MY_SESSION_ID=$(head -n1 "$HOME/.chump/session_id" 2>/dev/null | tr -d '[:space:]')
+        fi
+        STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR || true)
+
+        if [ -n "$MY_SESSION_ID" ] && [ -n "$STAGED_FILES" ]; then
+            my_lease=""
+            for lease_file in "$LOCKS_DIR"/*.json; do
+                [ -f "$lease_file" ] || continue
+                holder=$(sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$lease_file" | head -n1)
+                if [ "$holder" = "$MY_SESSION_ID" ]; then
+                    my_lease="$lease_file"
+                    break
+                fi
+            done
+
+            if [ -n "$my_lease" ]; then
+                # Same parser as section 1 lease-collision.
+                my_paths=$(awk '
+                    /"paths"[[:space:]]*:/ { flag=1 }
+                    flag            { print }
+                    flag && /\]/    { flag=0 }
+                ' "$my_lease" \
+                    | grep -oE '"[^"]+"' \
+                    | sed 's/^"//;s/"$//' \
+                    | grep -vx 'paths' || true)
+
+                # No paths declared → no-op (consistent with today's behavior;
+                # agents that don't declare scope work as before).
+                if [ -n "$my_paths" ]; then
+                    # Always-allowed: canonical "every gap touches" paths +
+                    # the lease file itself. Normal close/commit flows never
+                    # trip this guard.
+                    canonical_allowed="docs/gaps.yaml .chump/state.sql .chump/state.db .chump-locks/$(basename "$my_lease")"
+
+                    out_of_scope=""
+                    while IFS= read -r staged; do
+                        [ -n "$staged" ] || continue
+                        case " $canonical_allowed " in
+                            *" $staged "*) continue ;;
+                        esac
+                        # Per-gap row file (post-INFRA-188): docs/gaps/INFRA-NNN.yaml
+                        case "$staged" in
+                            docs/gaps/*.yaml) continue ;;
+                        esac
+
+                        matched=0
+                        for pattern in $my_paths; do
+                            [ -n "$pattern" ] || continue
+                            if [ "$pattern" = "**" ]; then
+                                matched=1; break
+                            fi
+                            if [ "${pattern%/\*\*}" != "$pattern" ]; then
+                                prefix="${pattern%/\*\*}/"
+                                case "$staged/" in
+                                    "$prefix"*) matched=1; break ;;
+                                esac
+                            elif [ "${pattern%/}" != "$pattern" ]; then
+                                case "$staged/" in
+                                    "$pattern"*) matched=1; break ;;
+                                esac
+                            else
+                                if [ "$staged" = "$pattern" ]; then
+                                    matched=1; break
+                                fi
+                            fi
+                        done
+
+                        if [ "$matched" -eq 0 ]; then
+                            out_of_scope="${out_of_scope}${staged}\n"
+                        fi
+                    done <<EOF_STAGED
+$STAGED_FILES
+EOF_STAGED
+
+                    if [ -n "$out_of_scope" ]; then
+                        if [ "${CHUMP_SCOPE_CHECK:-1}" = "enforce" ]; then
+                            echo "[pre-commit] OUT-OF-SCOPE COMMIT BLOCKED (INFRA-189):" >&2
+                            echo "[pre-commit]   Your lease declares paths: $my_paths" >&2
+                            echo "[pre-commit]   But you're committing files outside that scope:" >&2
+                            printf '%b' "$out_of_scope" | sed 's/^/[pre-commit]     /' >&2
+                            echo "[pre-commit]" >&2
+                            echo "[pre-commit] Options:" >&2
+                            echo "[pre-commit]   - update your lease scope: edit $my_lease and add the path to paths[]" >&2
+                            echo "[pre-commit]   - commit only in-scope: git restore --staged <file>" >&2
+                            echo "[pre-commit]   - bypass: CHUMP_SCOPE_CHECK=0 git commit ..." >&2
+                            exit 1
+                        else
+                            echo "[pre-commit] WARN: out-of-scope commit (INFRA-189 advisory mode):" >&2
+                            echo "[pre-commit]   Your lease declares paths: $my_paths" >&2
+                            echo "[pre-commit]   But you're committing files outside:" >&2
+                            printf '%b' "$out_of_scope" | sed 's/^/[pre-commit]     /' >&2
+                            echo "[pre-commit] (warning only — set CHUMP_SCOPE_CHECK=enforce to block)" >&2
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 2. Stomp-warning — non-blocking flag for stale staged files
 # ------------------------------------------------------------------
 #
