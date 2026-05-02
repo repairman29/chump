@@ -1,0 +1,7 @@
+- id: INFRA-254
+  domain: INFRA
+  title: "redirect / -> /v2/ in PWA (browser users land on the modern shell) [renumbered from INFRA-247 due to cross-host reserve race with PR #842]"
+  status: open
+  priority: P3
+  effort: xs
+

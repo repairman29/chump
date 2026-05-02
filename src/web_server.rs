@@ -7,7 +7,7 @@ use axum::{
     http::{header, HeaderMap, Method, StatusCode},
     response::{
         sse::{Event, Sse},
-        IntoResponse, Response,
+        IntoResponse, Redirect, Response,
     },
     routing::{delete, get, post, put},
     Json, Router,
@@ -2452,8 +2452,16 @@ pub async fn start_web_server(port: u16) -> Result<()> {
             Method::HEAD,
         ])
         .allow_headers(Any);
+    // INFRA-254: route browser users at / to the modern v2 PWA shell.
+    // The legacy v1 PWA at web/index.html is still served (the Tauri desktop
+    // shell loads it via its bundled frontendDist + a Tauri-only OOTB wizard
+    // that browser users never see) — we just stop landing browsers on it.
+    // Tauri does NOT hit axum's `/` (it serves frontend from tauri.localhost
+    // and only calls /api/* on the sidecar — see CORS comment above), so the
+    // redirect is desktop-safe.
     let app = Router::new()
         .merge(api)
+        .route("/", get(|| async { Redirect::permanent("/v2/") }))
         .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true))
         .layer(cors);
 

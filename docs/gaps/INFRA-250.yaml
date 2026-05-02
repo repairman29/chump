@@ -1,0 +1,7 @@
+- id: INFRA-250
+  domain: INFRA
+  title: "retire PWA v1: port OOTB wizard to v2, flip Tauri frontendDist, delete web/*.html|js"
+  status: open
+  priority: P3
+  effort: m
+
