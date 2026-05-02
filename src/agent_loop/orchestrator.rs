@@ -126,12 +126,23 @@ impl ChumpAgent {
         } else {
             "stateless".to_string()
         };
+        // INFRA-185: time the compaction phase (it can itself be an LLM call
+        // summarizing old turns, so it's worth attributing — was a silent
+        // stall in the INFRA-183 PWA-latency probe).
+        let compaction_start = if crate::agent_loop::phase_timing_enabled() {
+            Some(Instant::now())
+        } else {
+            None
+        };
         crate::session_compact::maybe_compact(
             &mut session,
             self.provider.as_ref(),
             &compact_session_id,
         )
         .await;
+        let compaction_ms = compaction_start
+            .map(|t| t.elapsed().as_millis())
+            .unwrap_or(0);
 
         if let Some(ref sm) = self.file_session_manager {
             agent_session::set_active_session_id(Some(sm.get_session()));
@@ -157,6 +168,10 @@ impl ChumpAgent {
             session,
             event_tx: self.event_tx.clone(),
             light,
+            phase_timings: crate::agent_loop::PhaseTimings {
+                compaction_ms,
+                ..Default::default()
+            },
         };
 
         let perception_layer = PerceptionLayer;
@@ -283,6 +298,26 @@ impl ChumpAgent {
 
         if let Some(ref sm) = self.file_session_manager {
             sm.save(&ctx.session).map_err(anyhow::Error::from)?;
+        }
+
+        // INFRA-185: emit one structured end-of-turn event with all phase ms
+        // summed. The "other_ms" field is the un-attributed remainder
+        // (perception, prompt assembly, event dispatch, session save) — useful
+        // when total_ms drifts from phases_total_ms unexpectedly.
+        if crate::agent_loop::phase_timing_enabled() {
+            let total_ms = ctx.turn_start.elapsed().as_millis();
+            let phases = ctx.phase_timings.phases_total_ms();
+            let other_ms = total_ms.saturating_sub(phases);
+            tracing::info!(
+                request_id = %request_id,
+                compaction_ms = ctx.phase_timings.compaction_ms,
+                provider_ms = ctx.phase_timings.provider_ms,
+                tools_ms = ctx.phase_timings.tools_ms,
+                other_ms = other_ms,
+                rounds = ctx.phase_timings.rounds,
+                total_ms = total_ms,
+                "phase timings (INFRA-185)"
+            );
         }
 
         maybe_suggest_skill(&outcome);
