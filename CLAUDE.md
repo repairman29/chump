@@ -136,8 +136,8 @@ when no `--gap` was given, or when the chump binary doesn't support
 
 ## Hard rules
 
-- **Never push directly to `main`.** Branch is `claude/<codename>`, worktree under `.claude/worktrees/<codename>/`.
-- **Always work in a linked worktree, never in the main repo root.** `gap-claim.sh` now refuses to run from `/Users/jeffadkins/Projects/Chump` directly — use `.claude/worktrees/<name>/`. Override with `CHUMP_ALLOW_MAIN_WORKTREE=1` only for bootstrapping.
+- **Never push directly to `main`.** Branch + worktree naming follow [AGENTS.md → Naming conventions](./AGENTS.md#naming-conventions-infra-186-2026-05-01) (canonical: `chump/<codename>` branch, `.chump/worktrees/<name>` worktree). Existing `claude/*` branches and `.claude/worktrees/` paths are accepted by tooling for backward compat — new work uses the `chump/` prefix so the project owns the namespace, not whichever tool is running this session.
+- **Always work in a linked worktree, never in the main repo root.** `gap-claim.sh` refuses to run from `/Users/jeffadkins/Projects/Chump` directly — use a linked worktree under `.chump/worktrees/<name>/` (canonical) or `.claude/worktrees/<name>/` (legacy, accepted). Override with `CHUMP_ALLOW_MAIN_WORKTREE=1` only for bootstrapping.
 - **Never start work on a gap without running `gap-preflight.sh` first.** It takes 3 seconds and prevents hours of wasted work.
 - **Never leave a lease file behind.** Delete `.chump-locks/<session_id>.json` or call `chump --release` when done.
 - **Commit often.** Uncommitted edits are at risk of being overwritten by `git pull`. Stage-commit every 30 minutes of work.
