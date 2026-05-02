@@ -5301,6 +5301,8 @@ gaps:
     - Picker reads state.db + gaps.yaml + gh pr list --state open + lease pending_new_gap
     - flock-protected so two concurrent reservations cannot pick the same ID
     - Test reproduces the INFRA-087..090 4-way collision and shows it now picks 4 distinct IDs
+  notes: |
+    Implementation: src/gap_store.rs external_pending_ids() open-PR scan flipped from opt-in (CHUMP_RESERVE_SCAN_OPEN_PRS=1) to default-ON (opt-out via =0). Network failure now non-fatal — prints warning and continues with lease+DB+YAML coverage. Tests opt out via test_store() to avoid hitting live gh.
   opened_date: '2026-04-26'
 
 - id: INFRA-101
@@ -8515,6 +8517,37 @@ gaps:
     - audit checklist documented in docs/audits/AUDIT_PROTOCOL.md
     - past audits cite EVAL-090 as the originating example
     - future EVAL/RESEARCH credibility audits inspect JSONL before drawing mechanism conclusions
+
+- id: META-008
+  domain: META
+  title: "audit prefix-vs-domain mismatches: 110 rows + out-of-schema prefixes (DOC/COG/COMP/SECURITY/REMOVAL/META/TEST)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    After the 2026-05-02 dedup pass (PR #740) and canonical-domain lowercase normalization (PR #741), 110 prefix-vs-domain mismatches remain in docs/gaps.yaml and additional out-of-schema prefixes need a policy decision. Three buckets:
+    
+    (1) Out-of-schema prefixes whose lowercase form is not in the docs/gaps.yaml `domains:` preamble: DOC-* (mixed INFRA/DOC/doc), SECURITY-*, REMOVAL-*, META-*, TEST-*. Decide: extend schema, remap to existing schema entry, or rename prefix.
+    
+    (2) Semantically split prefixes — one prefix used for two unrelated domains: COMP-* (competitive=14 vs completeness=9), COG-* (consciousness=26 vs cognition=9 vs eval=3). Decide: add a second prefix per concept, or pick one canonical mapping.
+    
+    (3) Other prefix-vs-domain mismatches with clear intent but non-canonical declared domain: AUTO-/MEM-/AGT-/REL-/QUALITY- → autonomy/memory/agent/reliability. Mostly mechanical once policy lands.
+    
+    Surfaced during PR #741 (chore: normalize domain casing) where 172 rows were lowercased mechanically but these 110 + out-of-schema cases were intentionally left untouched because they need a schema-extension or prefix-rename decision, not a mechanical pass.
+  acceptance_criteria:
+    - Schema extension OR prefix-rename policy committed in docs/process/AGENT_COORDINATION.md (or AGENTS.md) with rationale
+    - "All open gap rows have `domain:` matching either a `domains:` preamble entry OR a documented out-of-schema exception list"
+    - Pre-commit guard added to scripts/git-hooks/pre-commit that blocks new gap rows whose domain field is not in the canonical list (or in the documented exception list)
+    - Test added to scripts/ci/ that simulates an off-schema filing and confirms the guard fires
+  notes: |
+    Filed by gap-cleanup pass on 2026-05-02 after PR #740 (semantic dedup) and PR #741 (canonical lowercasing). Numbers from a 2026-05-02 grep of docs/gaps.yaml at commit 53c61f7.
+
+- id: META-009
+  domain: META
+  title: Dedupe 7 collision-pair rows in INFRA-202..215 cluster
+  status: open
+  priority: P2
+  effort: m
 
 - id: PRODUCT-001
   domain: product
