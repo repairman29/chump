@@ -92,24 +92,44 @@ emit_alert() {
     fi
 }
 
-# ── Check 1: stuck PRs ────────────────────────────────────────────────────────
+# ── Check 1: stuck PRs (with INFRA-230 resolution tracking) ──────────────────
+# Maintain a small state file at .chump/pr-stuck-state.json mapping PR# →
+# first-alert-ts. On each run:
+#   - Currently-stuck PR not in state  → emit pr_stuck + add to state
+#   - Currently-stuck PR already in state → silent (don't re-alert)
+#   - PR in state that is no longer stuck (landed or unblocked) → emit
+#     pr_resolved + remove from state
+# This closes the audit loop so operators can correlate "stuck X min ago"
+# with "resolved Y min later" instead of seeing immortal pr_stuck history.
+PR_STATE_FILE="$CHUMP_DIR/pr-stuck-state.json"
+[[ -f "$PR_STATE_FILE" ]] || echo '{}' > "$PR_STATE_FILE"
+
 if command -v gh >/dev/null; then
     say "checking PR queue (stuck > ${PR_STUCK_MIN} min, BLOCKED/DIRTY)..."
-    # gh pr list --json gives us createdAt + mergeStateStatus; we just need
-    # OPEN ones that are not MERGEABLE/CLEAN and have been around long enough.
     PR_JSON="$(gh pr list --state open --limit 50 --json number,title,createdAt,updatedAt,mergeStateStatus,autoMergeRequest 2>/dev/null || echo '[]')"
-    while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        emit_alert "pr_stuck" "$line"
-    done < <(printf '%s' "$PR_JSON" | NOW_EPOCH="$NOW_EPOCH" STUCK_MIN="$PR_STUCK_MIN" python3 -c '
+
+    # Compute new + resolved transitions in python; emit shell-readable lines
+    # like "STUCK <line>" or "RESOLVED <line>". Then dispatch in shell so the
+    # ALERT path stays in one place.
+    TRANSITIONS="$(printf '%s' "$PR_JSON" | NOW_EPOCH="$NOW_EPOCH" STUCK_MIN="$PR_STUCK_MIN" PR_STATE_FILE="$PR_STATE_FILE" DRY_RUN="$DRY_RUN" python3 -c '
 import json, os, sys
-from datetime import datetime
+from datetime import datetime, timezone
+
 data = json.loads(sys.stdin.read() or "[]")
 now = int(os.environ["NOW_EPOCH"])
 stuck_min = int(os.environ["STUCK_MIN"])
+state_path = os.environ["PR_STATE_FILE"]
+dry_run = os.environ["DRY_RUN"] == "1"
+
+try:
+    state = json.load(open(state_path))
+except Exception:
+    state = {}
+
+currently_stuck = {}  # pr# -> formatted line
 for pr in data:
-    state = pr.get("mergeStateStatus") or "UNKNOWN"
-    if state in ("CLEAN", "MERGEABLE", "UNKNOWN"):
+    s = pr.get("mergeStateStatus") or "UNKNOWN"
+    if s in ("CLEAN", "MERGEABLE", "UNKNOWN"):
         continue
     updated = pr.get("updatedAt") or pr.get("createdAt") or ""
     try:
@@ -121,9 +141,36 @@ for pr in data:
         continue
     auto = (pr.get("autoMergeRequest") or {}).get("mergeMethod") or "off"
     title = (pr.get("title", "") or "")[:80]
-    num = pr.get("number", "?")
-    print("#{} {} auto={} age={}m {}".format(num, state, auto, age_min, title))
-')
+    num = str(pr.get("number", "?"))
+    currently_stuck[num] = "#{} {} auto={} age={}m {}".format(num, s, auto, age_min, title)
+
+# Emit STUCK for newly-stuck (not in state)
+for num, line in currently_stuck.items():
+    if num not in state:
+        state[num] = {"first_alert_ts": now, "line": line}
+        print("STUCK " + line)
+
+# Emit RESOLVED for previously-stuck no longer in currently_stuck
+resolved_nums = [n for n in list(state.keys()) if n not in currently_stuck]
+for num in resolved_nums:
+    entry = state.pop(num)
+    duration_min = int((now - entry["first_alert_ts"]) / 60)
+    line = entry.get("line", "#{}".format(num))
+    print("RESOLVED #{} after {}m: {}".format(num, duration_min, line))
+
+# Persist updated state (skip in dry-run so observers can re-run safely)
+if not dry_run:
+    with open(state_path, "w") as f:
+        json.dump(state, f, indent=2)
+')"
+
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        case "$line" in
+            "STUCK "*)    emit_alert "pr_stuck"    "${line#STUCK }" ;;
+            "RESOLVED "*) emit_alert "pr_resolved" "${line#RESOLVED }" ;;
+        esac
+    done <<<"$TRANSITIONS"
 fi
 
 # ── Check 2: silent agents (lease present, no recent commits) ────────────────
