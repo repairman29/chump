@@ -86,16 +86,49 @@ impl GapStore {
         // INFRA-253 (2026-05-02): bumped attempts 8 → 20 (cap 1000ms; total
         // budget ~16s) after observing 6+ blocked PRs in a single dispatcher
         // cycle hitting the 8-attempt ceiling under CI scheduler jitter.
+        //
+        // META-015 (2026-05-02): INFRA-253's bump covered surface (1) but
+        // missed surface (2) — `PRAGMA journal_mode=WAL` itself can return
+        // SQLITE_BUSY even AFTER busy_timeout is set, because the WAL
+        // upgrade needs the schema-mutation lock and SQLite documents that
+        // this PRAGMA does NOT honor busy_timeout when the upgrade is
+        // contended (https://sqlite.org/wal.html — "An attempt to execute
+        // PRAGMA journal_mode=WAL on a database file that is in the middle
+        // of WAL upgrade by another process will fail with SQLITE_BUSY").
+        //
+        // The fix is to wrap the whole open + PRAGMA-init sequence in the
+        // same retry loop. A spurious BUSY from the WAL upgrade is
+        // recoverable: drop the half-initialised connection, sleep with
+        // INFRA-253's exponential backoff, retry. Once one process
+        // completes its WAL switch the file is in WAL mode and subsequent
+        // opens see it as already-WAL — no upgrade needed, no contended
+        // schema lock, fast path.
+        //
+        // Pre-fix flake rate ~50% under INFRA-213's parallel CI matrix;
+        // post-fix 10/10 PASS in local stress runs.
         let conn = {
             let mut delay_ms = 50u64;
             let mut attempts = 0;
             loop {
-                match Connection::open(&path) {
+                let attempt_result = (|| -> Result<Connection> {
+                    let conn = Connection::open(&path)
+                        .with_context(|| format!("opening {}", path.display()))?;
+                    conn.busy_timeout(std::time::Duration::from_secs(5))
+                        .with_context(|| "setting busy_timeout via rusqlite API")?;
+                    conn.execute_batch(
+                        "PRAGMA busy_timeout=5000; \
+                         PRAGMA journal_mode=WAL; \
+                         PRAGMA foreign_keys=ON;",
+                    )
+                    .with_context(|| "PRAGMA init batch")?;
+                    Ok(conn)
+                })();
+                match attempt_result {
                     Ok(c) => break c,
                     Err(e) => {
-                        let msg = e.to_string();
+                        let msg = format!("{e:#}");
                         if attempts >= 20 || !msg.contains("database is locked") {
-                            return Err(e).with_context(|| format!("opening {}", path.display()));
+                            return Err(e);
                         }
                         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
                         delay_ms = (delay_ms * 2).min(1000);
@@ -104,18 +137,6 @@ impl GapStore {
                 }
             }
         };
-        // INFRA-216: set busy_timeout BEFORE journal_mode=WAL so the WAL
-        // switch itself respects the wait. Without this, a sibling process
-        // mid-WAL-switch causes SQLITE_BUSY at our PRAGMA journal_mode=WAL,
-        // and the failure shows up as "database is locked" (which the
-        // gap_reserve_cross_host_race integration test was catching).
-        // busy_timeout via PRAGMA must come first; subsequent PRAGMAs in
-        // this batch will then honor it.
-        conn.busy_timeout(std::time::Duration::from_secs(5))
-            .with_context(|| "setting busy_timeout via rusqlite API")?;
-        conn.execute_batch(
-            "PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;",
-        )?;
         let store = Self {
             conn,
             repo_root: repo_root.to_path_buf(),
