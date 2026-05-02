@@ -43,15 +43,38 @@ emit_empty() {
     exit 0
 }
 
-# Kill switch
-[[ "${CHUMP_AMBIENT_INJECT:-1}" == "0" ]] && emit_empty
-[[ ! -f "$AMBIENT_LOG" ]] && emit_empty
-
 # Resolve our session ID so we can hide our own events from the digest
+# (also used by the session_start emit below — must be set before the
+# kill switch / missing-log short-circuits so first-ever invocations
+# still produce the event).
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 if [[ -z "$SESSION_ID" ]] && [[ -f "$REPO_ROOT/.chump-locks/.wt-session-id" ]]; then
     SESSION_ID="$(cat "$REPO_ROOT/.chump-locks/.wt-session-id" 2>/dev/null || true)"
 fi
+
+# ── INFRA-102: emit session_start on the SessionStart hook ───────────────────
+# CLAUDE.md advertises session_start as one of the ambient.jsonl event kinds
+# agents pick up via peripheral vision. The 2026-04-26 audit found a 50-row
+# tail with zero session_start events: FLEET-019/022 wired session_end on the
+# Stop hook (ambient-session-end.sh) but never wired the symmetric
+# session_start emit on the SessionStart hook. This block restores the
+# emitter (best-effort, mirrors ambient-session-end.sh).
+#
+# Runs *before* the CHUMP_AMBIENT_INJECT=0 kill switch and the
+# missing-log short-circuit so the event still lands when (a) context
+# injection is disabled but agents still want session-start visibility, and
+# (b) ambient.jsonl doesn't yet exist (ambient-emit.sh creates it on append).
+# Bypass with CHUMP_AMBIENT_SESSION_START_EMIT=0.
+if [[ "$HOOK_EVENT" == "SessionStart" ]] \
+        && [[ "${CHUMP_AMBIENT_SESSION_START_EMIT:-1}" != "0" ]] \
+        && [[ -x "$REPO_ROOT/scripts/dev/ambient-emit.sh" ]]; then
+    CHUMP_SESSION_ID="$SESSION_ID" \
+        "$REPO_ROOT/scripts/dev/ambient-emit.sh" session_start 2>/dev/null || true
+fi
+
+# Kill switch
+[[ "${CHUMP_AMBIENT_INJECT:-1}" == "0" ]] && emit_empty
+[[ ! -f "$AMBIENT_LOG" ]] && emit_empty
 
 # ── Build the digest in Python (proper JSON parsing + escaping) ───────────────
 CONTEXT="$(
