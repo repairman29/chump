@@ -46,3 +46,12 @@ targets = [
 # run every YAML file in workflows/ as a standalone workflow — and a bare `steps:`
 # snippet fails validation.
 github-build-setup = "../build-setup.yml"
+
+# Tolerate hand-edits to release.yml so dependabot bumps to GHA pinned actions
+# (e.g. PR #673: actions/download-artifact@v7 → @v8) don't fail `cargo dist plan`.
+# Without this, every PR's plan job fails when release.yml drifts from
+# cargo-dist 0.31's templates — blocking the merge queue for all open PRs.
+# Removing this once we bump cargo-dist to a version whose templates emit @v8
+# would be cleaner; until then this matches the dependabot-vs-template race
+# that hits the queue every time GHA pins move.
+allow-dirty = ["ci"]
