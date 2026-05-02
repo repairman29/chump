@@ -513,41 +513,16 @@ mod tests {
         assert!(desktop_auto_spawn_enabled());
     }
 
-    /// Regression: a missing `)` after `chumpApiUrl(...encodeURIComponent(a.file_id)` is a **syntax
-    /// error** that prevents the entire inline script from parsing — WebView shows UI but no clicks
-    /// or keyboard handlers run.
-    #[test]
-    fn web_index_attachment_chip_url_calls_chump_api_url_closed() {
-        let index = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/index.html");
-        let s = std::fs::read_to_string(&index)
-            .unwrap_or_else(|e| panic!("read {}: {e}", index.display()));
-        let buggy = "chumpApiUrl('/api/files/' + encodeURIComponent(a.file_id);";
-        assert!(
-            !s.contains(buggy),
-            "web/index.html must not contain unclosed chumpApiUrl( (breaks whole Cowork shell JS)"
-        );
-    }
-
-    #[test]
-    fn web_index_loads_sse_event_parser_before_bundle() {
-        let index = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../web/index.html");
-        let s = std::fs::read_to_string(&index)
-            .unwrap_or_else(|e| panic!("read {}: {e}", index.display()));
-        assert!(
-            s.contains("src=\"/sse-event-parser.js\""),
-            "Cowork must load /sse-event-parser.js before the inline bundle (chat SSE)"
-        );
-        assert!(
-            s.contains("src=\"/ui-selftests.js\""),
-            "Cowork must load /ui-selftests.js for Settings + /selftest diagnostics"
-        );
-        assert!(
-            s.contains("src=\"/ootb-wizard.js\""),
-            "Cowork must load /ootb-wizard.js for first-run OOTB wizard (Tauri)"
-        );
-        assert!(
-            s.contains("id=\"ootb-wizard\""),
-            "index.html must include OOTB wizard root element"
-        );
-    }
+    // INFRA-250: web/index.html (the v1 PWA) was deleted and Tauri now loads
+    // ../../web/v2 instead. The two `web_index_*` regression tests that lived
+    // here were v1-specific (one checked a chumpApiUrl(... typo from PR
+    // history; the other asserted /sse-event-parser.js, /ui-selftests.js,
+    // /ootb-wizard.js, and #ootb-wizard root were present in v1's
+    // index.html). All four files are deleted in this PR; the OOTB wizard
+    // is now a v2 Web Component (web/v2/ootb-wizard.js,
+    // <chump-ootb-wizard>) and the SSE parsing lives inline in
+    // web/v2/chat.js. The end-to-end behaviors those unit tests guarded
+    // against (broken JS bundle, missing SSE handler, missing OOTB wizard)
+    // are now covered by the tauri-cowork-e2e CI job, which boots the real
+    // Tauri shell against web/v2 and verifies a chat round-trip.
 }

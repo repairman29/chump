@@ -233,12 +233,6 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
-      - name: Verify web/index.html inline JS parses
-        run: node scripts/ci/verify-web-index-inline-scripts.cjs
-
-      - name: Web UI self-tests (SSE parser)
-        run: node scripts/ci/run-web-ui-selftests.cjs
-
       - name: RESEARCH-026 observer-effect harness preflight (no API)
         run: bash scripts/ci/test-research-026-preflight.sh
 
@@ -300,6 +294,9 @@ jobs:
 
       - name: PWA root redirect / -> /v2/ (INFRA-254)
         run: bash scripts/ci/test-infra-254-pwa-root-redirect.sh
+
+      - name: PWA v1 retirement — assets deleted, tauri.conf.json, v2 wizard (INFRA-250)
+        run: bash scripts/ci/test-infra-250-v1-retirement.sh
 
       - name: install-ambient-hooks idempotence + bypass (FLEET-023)
         run: bash scripts/ci/test-install-ambient-hooks.sh

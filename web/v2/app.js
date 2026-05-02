@@ -216,7 +216,11 @@ document.addEventListener('chump:navigate', (e) => {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/v2/sw.js', { scope: '/v2/' }).catch(() => {});
+  // INFRA-250: relative URL + relative scope so the SW registers correctly
+  // in both axum-sidecar context (resolves to /v2/sw.js with /v2/ scope)
+  // and Tauri context (where frontendDist = web/v2, so root-relative paths
+  // would 404).
+  navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
 }
 
 // Initial view.

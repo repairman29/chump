@@ -82,10 +82,10 @@ fi
 # request the bundled file by path even though it usually loads from the
 # embedded webview, and we don't want to 404 the legacy shell yet.
 V1_STATUS="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BOUND_PORT}/index.html")"
-if [[ "$V1_STATUS" == "200" ]]; then
-    pass "GET /index.html still 200s (legacy v1 reachable for now)"
+if [[ "$V1_STATUS" == "404" ]]; then
+    pass "GET /index.html returns 404 (v1 retired in INFRA-250)"
 else
-    fail "GET /index.html returned $V1_STATUS, expected 200 (we did not delete v1)"
+    fail "GET /index.html returned $V1_STATUS, expected 404 (v1 should be gone post-INFRA-250)"
 fi
 
 echo ""
