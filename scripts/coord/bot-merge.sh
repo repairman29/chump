@@ -387,6 +387,54 @@ else
     info "Skipping tests (--skip-tests)."
 fi
 
+# ── 4a. CI shell-test gate for THIS PR's new/modified tests (INFRA-222) ──────
+# `cargo test` covers Rust unit/integration tests but NOT the shell-script
+# guard tests under `scripts/ci/test-*.sh`. PR #729 (INFRA-200) shipped with
+# its own guard's test suite failing because bot-merge never ran the new
+# `scripts/ci/test-raw-yaml-guard.sh` — CI caught it but the PR sat stuck.
+#
+# Strategy: run only the shell tests this PR adds or modifies. These are tests
+# the PR author owns and should be passing locally before push. We skip the
+# 38-test full sweep because many tests have implicit env dependencies (chump
+# binary, ACP server, cursor CLI) that CI sets up but local worktrees don't.
+#
+# Bypass: CHUMP_SKIP_CI_SHELL=1 scripts/coord/bot-merge.sh ...
+# Skipped automatically with --skip-tests.
+if [[ $SKIP_TESTS -eq 0 ]] && [[ "${CHUMP_SKIP_CI_SHELL:-0}" != "1" ]]; then
+    # Find shell tests added or modified relative to base branch
+    BASE_REF="${CHUMP_BASE_REF:-origin/main}"
+    CHANGED_TESTS=()
+    while IFS= read -r f; do
+        [[ -n "$f" && -f "$REPO_ROOT/$f" ]] && CHANGED_TESTS+=("$REPO_ROOT/$f")
+    done < <(git diff --name-only --diff-filter=AM "$BASE_REF...HEAD" 2>/dev/null \
+             | grep -E '^scripts/ci/test-.*\.sh$' || true)
+
+    if [[ ${#CHANGED_TESTS[@]} -gt 0 ]]; then
+        stage_start "PR-modified scripts/ci/test-*.sh (${#CHANGED_TESTS[@]} suites)"
+        FAILED_TESTS=()
+        for t in "${CHANGED_TESTS[@]}"; do
+            tname="$(basename "$t")"
+            if ! timeout 60 bash "$t" >/tmp/bot-merge-citest.log 2>&1; then
+                FAILED_TESTS+=("$tname")
+                red "  ✗ $tname"
+                tail -10 /tmp/bot-merge-citest.log | sed 's/^/    /'
+            fi
+        done
+        if [[ ${#FAILED_TESTS[@]} -gt 0 ]]; then
+            red "${#FAILED_TESTS[@]} CI shell test(s) failed: ${FAILED_TESTS[*]}"
+            info "These are tests THIS PR adds/modifies. Fix locally before pushing —"
+            info "they will block the PR's CI 'test' job otherwise (PR #729 was the"
+            info "originating example — it sat stuck for 2+ hours waiting on a test"
+            info "the author could have run in 5 seconds locally)."
+            info "Bypass (only if you've already verified the failure is environmental):"
+            info "  CHUMP_SKIP_CI_SHELL=1 scripts/coord/bot-merge.sh ..."
+            exit 1
+        fi
+        stage_done
+        green "All ${#CHANGED_TESTS[@]} PR-modified CI shell tests passed."
+    fi
+fi
+
 # ── 4b. Ambient glance (INFRA-083) ───────────────────────────────────────────
 # Final peripheral-vision check before push: surface any sibling that already
 # committed or pushed against the same gap (race window between gap-claim and
