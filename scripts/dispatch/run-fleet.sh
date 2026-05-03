@@ -42,6 +42,22 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SCRIPT_DIR="$REPO_ROOT/scripts/dispatch"
 
+# INFRA-351: source $REPO_ROOT/.env (if present) so spawned worker panes
+# inherit ANTHROPIC_API_KEY / OPENAI_API_KEY / TOGETHER_API_KEY etc. and
+# `claude -p` consumes workspace API credit instead of falling back to
+# the launcher's claude.ai subscription cap. Caught 2026-05-02 22:27:
+# Jeff had $92.71 unused workspace credit while the squad burned the
+# $20 monthly subscription cap. Bypass: CHUMP_FLEET_NOENV=1.
+if [[ -f "$REPO_ROOT/.env" && "${CHUMP_FLEET_NOENV:-0}" != "1" ]]; then
+    # set -a auto-exports every assignment; matches the standard "source .env"
+    # idiom used in tools like docker-compose. set +a restores prior behavior.
+    set -a
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/.env"
+    set +a
+    echo "[run-fleet] sourced $REPO_ROOT/.env (INFRA-351) — set CHUMP_FLEET_NOENV=1 to skip"
+fi
+
 FLEET_SIZE="${FLEET_SIZE:-8}"
 FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
