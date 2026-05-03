@@ -1,0 +1,13 @@
+- id: INFRA-332
+  domain: INFRA
+  title: Standard 'shipping epilogue' template for every Agent-tool subagent prompt — close 25%→80% self-ship gap
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/dispatch/subagent-shipping-epilogue.md exists with the template (~10-15 lines)
+    - "All future Agent-tool prompts in this repo include the epilogue (verify by grep: rg 'subagent-shipping-epilogue' across scripts/ and docs/)"
+    - CLAUDE.md gets a 'Spawning subagents' subsection that points at the epilogue
+    - N=5 fresh subagent dispatches measured post-landing show self-ship rate ≥80% (vs 25% baseline this session)
+  depends_on: [META-025]
+
