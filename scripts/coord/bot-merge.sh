@@ -1011,7 +1011,7 @@ fi
 #   - GAP_IDS array is empty (--gap was not given)
 #   - TARGET_PR couldn't be determined from gh pr view
 #   - chump binary missing or `chump gap ship` fails (often: gap already done)
-if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP:-1}" != "0" ]] && [[ ${#GAP_IDS[@]} -gt 0 ]]; then
+if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP:-1}" != "0" ]] && [[ ${#GAP_IDS[@]} -gt 0 ]] && [[ "${CHUMP_BENCH_MODE:-0}" != "1" ]]; then
     _autoclose_target_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
     # META-022: resolve the canonical (main) repo's .chump/state.db path so
     # `chump gap ship` finds the gap even when bot-merge.sh runs inside a
@@ -1253,13 +1253,54 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             fi
         fi
 
-        stage_start "gh pr merge #$TARGET_PR --auto --squash"
-        if ! run_timed_hb "gh pr merge" 120 gh pr merge "$TARGET_PR" --auto --squash; then
-            red "gh pr merge failed or timed out."
-            exit 2
+        # INFRA-390: bench mode skips auto-merge + gap-closure so each trial
+        # is non-destructive. The PR is opened (so CI grades it) but does NOT
+        # land on main. Per COG-032 prereg §4 the success criterion is "PR
+        # opened + required CI checks pass" — merging is not required for
+        # the trial to count as success.
+        #
+        # Set CHUMP_BENCH_MODE=1 + CHUMP_BENCH_CELL + CHUMP_BENCH_TASK_ID
+        # (+ optional CHUMP_BENCH_TRIAL_N) to emit a JSONL trial line to
+        # logs/ab/COG-032/run.jsonl. Production callers leave CHUMP_BENCH_MODE
+        # unset (default 0) and behavior is unchanged.
+        if [[ "${CHUMP_BENCH_MODE:-0}" == "1" ]]; then
+            yellow "[bench-mode] CHUMP_BENCH_MODE=1 — skipping auto-merge arming + gap-closure"
+            yellow "[bench-mode] PR #$TARGET_PR remains OPEN for CI grading"
+
+            # Emit the trial outcome line. Best-effort I/O — never blocks.
+            _bench_log_dir="$REPO_ROOT/logs/ab/COG-032"
+            mkdir -p "$_bench_log_dir" 2>/dev/null || true
+            _bench_log="${CHUMP_BENCH_LOG:-$_bench_log_dir/run.jsonl}"
+            _bench_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            _bench_session="${CLAUDE_SESSION_ID:-${CHUMP_SESSION_ID:-bench-$$}}"
+            _bench_cell="${CHUMP_BENCH_CELL:-?}"
+            _bench_task="${CHUMP_BENCH_TASK_ID:-?}"
+            _bench_trial="${CHUMP_BENCH_TRIAL_N:-1}"
+            _bench_dur_s="${SECONDS:-0}"
+            # PR state at record-time (stage where bot-merge has just opened it
+            # but not yet armed auto-merge). State will be polled separately
+            # by the harness for the final pass/fail call.
+            _bench_pr_state="$(gh pr view "$TARGET_PR" --json state --jq .state 2>/dev/null || echo unknown)"
+            # Record success by the prereg's criterion — PR exists + this run
+            # got past the CI-pre-flight gate (see line ~1224 above). The
+            # harness re-checks CI green async via gh pr view.
+            _bench_success_at_arm=true
+            printf '{"ts":"%s","cell":"%s","task_id":"%s","trial_n":%s,"agent_session":"%s","pr_number":%s,"pr_state_at_record":"%s","duration_s":%s,"success_criteria_met_at_arm_stage":%s,"branch":"%s"}\n' \
+                "$_bench_ts" "$_bench_cell" "$_bench_task" "$_bench_trial" \
+                "$_bench_session" "$TARGET_PR" "$_bench_pr_state" \
+                "$_bench_dur_s" "$_bench_success_at_arm" "$BRANCH" \
+                >> "$_bench_log" 2>/dev/null || true
+
+            green "[bench-mode] trial recorded → $_bench_log"
+        else
+            stage_start "gh pr merge #$TARGET_PR --auto --squash"
+            if ! run_timed_hb "gh pr merge" 120 gh pr merge "$TARGET_PR" --auto --squash; then
+                red "gh pr merge failed or timed out."
+                exit 2
+            fi
+            stage_done
+            green "Auto-merge enabled — PR will land when CI passes."
         fi
-        stage_done
-        green "Auto-merge enabled — PR will land when CI passes."
 
         # ── INFRA-193: speculative-execution loser sweep ─────────────────────
         # When --speculative was set, scan open PRs that cite the same gap
