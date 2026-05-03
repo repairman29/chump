@@ -174,11 +174,27 @@ for fname in os.listdir(lock_dir):
     if d.get("gap_id") == gap_id:
         held = True
     p = d.get("pending_new_gap")
+    pending_only = False
     if isinstance(p, dict) and p.get("id") == gap_id:
         held = True
+        # INFRA-322: distinguish "real claim" from "reserve-transaction artifact".
+        # A real claim sets gap_id (via gap-claim.sh); a chump-anon-* lease
+        # with ONLY pending_new_gap is the transient artifact that
+        # `chump gap reserve` leaves behind for ~1 hour. Those should not
+        # block a real session from claiming the same gap (the reserve
+        # transaction is already complete; the lease is dead weight).
+        sid = d.get("session_id", "")
+        if d.get("gap_id") in (None, "", gap_id) and sid.startswith("chump-anon-"):
+            pending_only = True
     if not held:
         continue
     if mine:
+        continue
+    if pending_only:
+        sys.stderr.write(
+            f"[gap-preflight] INFRA-322: ignoring chump-anon reserve-artifact lease "
+            f"'{d.get('session_id', '?')}' on {gap_id} (no real claim).\n"
+        )
         continue
 
     # Check liveness: expires_at and heartbeat_at must not be stale.
