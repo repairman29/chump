@@ -1,7 +1,9 @@
 - id: INFRA-240
   domain: INFRA
   title: audit + repair gaps in SQLite missing per-file docs/gaps/<ID>.yaml mirror (38 found 2026-05-02)
-  status: open
+  status: done
+  closed_pr: 842
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
 

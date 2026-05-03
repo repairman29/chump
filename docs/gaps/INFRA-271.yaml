@@ -1,7 +1,9 @@
 - id: INFRA-271
   domain: INFRA
   title: "scripts/dispatch/worker.sh: use chump dispatch + INFRA-193 speculative execution (kill gap-pick race)"
-  status: open
+  status: done
+  closed_pr: 879
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
   description: |
