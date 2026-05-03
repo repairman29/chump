@@ -331,20 +331,69 @@ When done, reply with the PR number only (e.g. \"#1234\")."
         log "WARN: $FLEET_BACKEND timed out (${FLEET_TIMEOUT_S}s) on $GAP_ID"
     else
         log "WARN: $FLEET_BACKEND exited rc=$rc on $GAP_ID"
+
+        # ── INFRA-267: P0 fallback to Anthropic ─────────────────────────────
+        # When the chump-local backend (free-tier cascade) fails on a P0 gap,
+        # fall through to the Anthropic claude path so high-priority work
+        # doesn't silently fail just because the cascade is exhausted /
+        # unsupported / hung. Only applies to:
+        #   - FLEET_BACKEND=chump-local (the fallback target is `claude`)
+        #   - rc != 0 AND rc != 124 (genuine failure, not timeout)
+        #   - gap priority == P0 (read from the per-file YAML mirror)
+        #   - CHUMP_P0_FALLBACK=1 (default on; set to 0 to disable for
+        #     budget-strict environments where ANY Anthropic spend is
+        #     unwelcome)
+        #
+        # The claude branch above already holds the inline-briefing logic;
+        # we re-invoke claude here with a minimal prompt rather than
+        # duplicating that whole block.
+        if [[ "$FLEET_BACKEND" == "chump-local" ]] \
+           && [[ "${CHUMP_P0_FALLBACK:-1}" != "0" ]] \
+           && command -v claude >/dev/null 2>&1; then
+            _gap_yaml_path="$wt_path/docs/gaps/${GAP_ID}.yaml"
+            _gap_priority=""
+            if [[ -f "$_gap_yaml_path" ]]; then
+                _gap_priority=$(grep -E '^\s*priority:' "$_gap_yaml_path" 2>/dev/null \
+                    | head -1 | sed -E 's/.*priority:\s*//;s/["'\''"]//g' | tr -d ' ')
+            fi
+            if [[ "$_gap_priority" == "P0" ]]; then
+                log "INFRA-267: P0 gap $GAP_ID failed on chump-local rc=$rc — falling back to claude"
+                _fallback_prompt="Ship gap ${GAP_ID} (P0 fallback from chump-local rc=$rc). The gap is already claimed for this session; lease in .chump-locks/. Worktree: ${wt_path}. Pre-flight has already run. Read docs/gaps/${GAP_ID}.yaml for the gap spec. Implement, commit via scripts/coord/chump-commit.sh, ship via scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge."
+                FLEET_MODEL="${FLEET_MODEL-haiku}"
+                _model_arg=()
+                [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
+                (
+                    cd "$wt_path" || exit 99
+                    # shellcheck disable=SC2086
+                    $TO claude -p "$_fallback_prompt" --dangerously-skip-permissions "${_model_arg[@]}"
+                ) >>"$cycle_log" 2>&1
+                rc=$?
+                if [ $rc -eq 0 ]; then
+                    log "INFRA-267: P0 fallback succeeded for $GAP_ID via claude"
+                else
+                    log "INFRA-267: P0 fallback ALSO failed for $GAP_ID (claude rc=$rc) — proceeding to cooldown"
+                fi
+            fi
+        fi
+
         # INFRA-361: write cooldown record so siblings + future cycles
         # don't immediately re-pick this gap. Worker 4 was observed
         # re-picking INFRA-340 6 times in 5 minutes pre-fix. Default 30
         # min; override via FLEET_RC1_COOLDOWN_S. Only fires for genuine
         # rc!=0/124 — clean exits and timeouts skip cooldown.
-        cooldown_s="${FLEET_RC1_COOLDOWN_S:-1800}"
-        cooldown_dir="$REPO_ROOT/.chump-locks/cooldown"
-        mkdir -p "$cooldown_dir" 2>/dev/null || true
-        cooldown_until=$(( $(date +%s) + cooldown_s ))
-        printf '{"gap_id":"%s","rc":%d,"until":%d,"agent":"%s","ts":"%s"}\n' \
-            "$GAP_ID" "$rc" "$cooldown_until" "$AGENT_ID" \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            > "$cooldown_dir/${GAP_ID}.json" 2>/dev/null || true
-        log "cooldown: $GAP_ID skipped for ${cooldown_s}s after rc=$rc"
+        # INFRA-267: also skip cooldown if the P0 fallback above flipped
+        # rc back to 0 — the gap actually shipped, no cooldown needed.
+        if [ $rc -ne 0 ]; then
+            cooldown_s="${FLEET_RC1_COOLDOWN_S:-1800}"
+            cooldown_dir="$REPO_ROOT/.chump-locks/cooldown"
+            mkdir -p "$cooldown_dir" 2>/dev/null || true
+            cooldown_until=$(( $(date +%s) + cooldown_s ))
+            printf '{"gap_id":"%s","rc":%d,"until":%d,"agent":"%s","ts":"%s"}\n' \
+                "$GAP_ID" "$rc" "$cooldown_until" "$AGENT_ID" \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                > "$cooldown_dir/${GAP_ID}.json" 2>/dev/null || true
+            log "cooldown: $GAP_ID skipped for ${cooldown_s}s after rc=$rc"
+        fi
     fi
 
     # ── Release lease + prune worktree ────────────────────────────────────
