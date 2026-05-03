@@ -187,14 +187,26 @@ impl DispatchBackend {
 
 /// COG-035 — derive the optional `task_class` for a gap from its id prefix.
 ///
-/// Today only `EVAL-*` and `RESEARCH-*` ids surface as `Some("research")`;
-/// every other id returns `None`. Future task classes (`infra`, `feature`,
-/// `cog`) are reserved namespace expansions — the routing table already
-/// accepts them as match keys.
+/// `EVAL-*` and `RESEARCH-*` ids surface as `Some("research")`; `COG-*`
+/// ids surface as `Some("cognition")` — both task classes the routing
+/// table can match against to force frontier-only candidates (free-tier
+/// cascade is too risky for cognitive-architecture experiments where
+/// false positives are dressed up as real findings, see EVAL-074
+/// retraction in docs/RESEARCH_INTEGRITY.md). Other id prefixes return
+/// `None` and fall through to priority/effort matching. Future task
+/// classes (`infra`, `feature`) are reserved namespace expansions — the
+/// routing table already accepts them as match keys (INFRA-265).
 pub fn task_class_for_gap_id(gap_id: &str) -> Option<&'static str> {
     let upper = gap_id.trim().to_ascii_uppercase();
     if upper.starts_with("EVAL-") || upper.starts_with("RESEARCH-") {
         Some("research")
+    } else if upper.starts_with("COG-") {
+        // INFRA-265: cognitive-architecture work routes to claude only.
+        // The free-tier cascade can produce confident-sounding wrong
+        // answers on belief-state / Active Inference / synthetic
+        // neuromodulation code where the operator has no quick way to
+        // detect failures from the agent's output alone.
+        Some("cognition")
     } else {
         None
     }
@@ -1590,8 +1602,19 @@ default_candidates:
         assert_eq!(task_class_for_gap_id("RESEARCH-014"), Some("research"));
         assert_eq!(task_class_for_gap_id("eval-031"), Some("research"));
         assert_eq!(task_class_for_gap_id("INFRA-080"), None);
-        assert_eq!(task_class_for_gap_id("COG-035"), None);
         assert_eq!(task_class_for_gap_id(""), None);
+    }
+
+    #[test]
+    fn task_class_for_gap_id_recognises_cognition_prefix() {
+        // INFRA-265: COG-* surfaces as Some("cognition") so routing.yaml
+        // can pin cognitive-architecture work to claude only.
+        assert_eq!(task_class_for_gap_id("COG-035"), Some("cognition"));
+        assert_eq!(task_class_for_gap_id("COG-001"), Some("cognition"));
+        assert_eq!(task_class_for_gap_id("cog-035"), Some("cognition"));
+        // Adjacent prefixes don't false-match.
+        assert_eq!(task_class_for_gap_id("COGNITION-1"), None);
+        assert_eq!(task_class_for_gap_id("COGS-1"), None);
     }
 
     #[test]
