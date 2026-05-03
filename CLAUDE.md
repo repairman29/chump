@@ -50,6 +50,32 @@ Stale binary symptoms hit at least 4× this cycle — `chump gap import`
 rejecting valid YAML, `--closed-pr` flag missing, dump dropping rows,
 silent ID collisions. **Rebuild is cheaper than the friction it prevents.**
 
+**Hung-binary alarm (INFRA-275, observed 2026-05-02).** Distinct symptom
+from staleness: `chump gap …` returns no output, no errors, never exits.
+`ps` shows accumulating chump processes in state `UE` (uninterruptible
+exit). Direct `sqlite3 .chump/state.db 'SELECT COUNT(*) FROM gaps'` works
+instantly — so the DB is fine; the *binary itself* is wedged at
+`_dyld_start` (the dynamic linker, before `main()`). Root cause: macOS
+Sequoia's `syspolicyd` (Gatekeeper / code-signing arbiter) gets the
+binary's *inode* into a pending-decision wedge, and every subsequent
+launch of the same inode queues behind it. **DO NOT** fall back to
+direct `docs/gaps/<ID>.yaml` writes — concurrent siblings each scanning
+the filesystem will pick the same "next free" ID and collide. Heal
+instead with:
+
+```bash
+scripts/dev/chump-doctor.sh           # probes + replaces wedged inode
+CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-doctor.sh   # skip probe, just heal
+```
+
+The doctor moves the wedged binary aside as
+`~/.cargo/bin/chump.wedged-inode-<n>` and copies the same content back
+through a fresh inode (which `syspolicyd` treats as a new file with no
+prior decision). `kill -9` on the UE-state zombies is best-effort; they
+fully clear only on reboot but are otherwise harmless. `sudo kill
+syspolicyd` (operator-only — needs sudo) is the nuclear option if even
+the fresh inode hangs.
+
 **Lesson injection — two paths (post-MEM-006):**
 - *Spawn-time, systemic.* Set `CHUMP_LESSONS_AT_SPAWN_N=5` (max 20) to have the
   prompt assembler prepend the top-N recency×frequency-ranked lessons from
