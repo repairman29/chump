@@ -610,7 +610,13 @@ impl GapStore {
                     "domain": &domain_upper,
                 },
                 "heartbeat_at": unix_to_iso_full(now),
-                "expires_at": unix_to_iso_full(now + 3600),
+                // INFRA-110: 2h TTL on reserve-time pending_new_gap leases
+                // (was 1h). Unifies with shell gap-reserve.sh GAP_CLAIM_TTL_HOURS
+                // default of 2h so concurrent shell + Rust reservers honor the
+                // same squat window. Bound by INFRA-322 auto-cleanup at the end
+                // of reserve_verified() — this TTL only matters if the
+                // process dies before that cleanup runs.
+                "expires_at": unix_to_iso_full(now + 7200),
             });
             if let Ok(txt) = serde_json::to_string(&lease_json) {
                 let _ = std::fs::write(&lease_path, txt);

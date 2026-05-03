@@ -159,7 +159,9 @@ from datetime import datetime, timedelta, timezone
 lease_path, session_id, new_id, domain, title = sys.argv[1:6]
 now = datetime.now(timezone.utc)
 now_s = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-ttl_h = int(os.environ.get("GAP_CLAIM_TTL_HOURS", "4"))
+# INFRA-110: default 2h (was 4h). Bound the squat window so an unattended
+# reserve auto-releases. Override per-call: GAP_CLAIM_TTL_HOURS=4 ...
+ttl_h = int(os.environ.get("GAP_CLAIM_TTL_HOURS", "2"))
 exp_s = (now + timedelta(hours=ttl_h)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 if os.path.isfile(lease_path):
