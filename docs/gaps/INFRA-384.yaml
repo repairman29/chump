@@ -1,0 +1,7 @@
+- id: INFRA-384
+  domain: INFRA
+  title: "INFRA-379 followup: yellow() called before defined in bot-merge.sh chump-doctor preflight (line 565); aborts whole script when doctor exits non-zero"
+  status: open
+  priority: P2
+  effort: xs
+

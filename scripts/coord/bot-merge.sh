@@ -251,9 +251,10 @@ BOT_MERGE_HOT_FILES=(
 # Long stages use `stage_start <label>` → `stage_done` which prints the
 # elapsed seconds. Silent intervals >30s are the symptom INFRA-026 was
 # filed about; banners make them attributable.
-green() { printf '\033[0;32m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
-red()   { printf '\033[0;31m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
-info()  { printf '[bot-merge %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
+green()  { printf '\033[0;32m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
+red()    { printf '\033[0;31m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
+yellow() { printf '\033[0;33m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
+info()   { printf '[bot-merge %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
 # ── INFRA-305: hot-file rebase-loop pre-emit warning ─────────────────────────
 # Inspect the diff vs origin/main and emit a stderr note + ambient event for
