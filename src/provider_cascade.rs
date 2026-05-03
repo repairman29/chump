@@ -475,8 +475,15 @@ fn prefer_large_context() -> bool {
 /// - **Access denied** (401, 403, "unauthorized", "forbidden", "models permission")
 /// - **Billing exhausted** (402, "credit_limit", "insufficient quota",
 ///   "payment required", "billing") — added 2026-05-02 after Together's
-///   free credits drained and a 50% silent-failure rate hit the PWA
+///   free credits drained and a 50% silent-failure rate hit the PWA.
+///   See [`is_billing_exhausted_error_string`] (extracted as a helper
+///   in INFRA-302 so callers above the cascade layer can detect it
+///   too).
 /// - **Tool format** ("tool_use_failed", "tool call validation failed")
+/// - **Tool capability** (Cerebras 400 "UnsupportedToolUse", "does not
+///   support tools", ...) — INFRA-313: technically 400-status but
+///   another model handles the same payload, so cascade-onward is the
+///   right behavior. Symptomatically identical to `tool_use_failed`.
 ///
 /// Note: this only inspects the error *string*. The full check in `complete()`
 /// also calls `local_openai::is_transient_error(&e)` for transport-level
@@ -495,13 +502,6 @@ pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
         || lower.contains("models permission")
         || lower.contains("forbidden")
         || (e_str.contains("404") && lower.contains("model"));
-    let is_billing_exhausted = e_str.contains("402")
-        || lower.contains("credit_limit")
-        || lower.contains("credit limit")
-        || lower.contains("insufficient quota")
-        || lower.contains("insufficient_quota")
-        || lower.contains("payment required")
-        || lower.contains("billing");
     let is_tool_format_failure = lower.contains("tool_use_failed")
         || lower.contains("tool call validation failed")
         || lower.contains("failed to call a function");
@@ -512,7 +512,6 @@ pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
     // "UnsupportedToolUse: model does not support more than one tool call at
     // this time"). A model that DOES support multiple tool calls (Anthropic,
     // OpenAI, Together's larger models) will succeed on the same payload.
-    // Symptomatically identical to `tool_use_failed` (which already cascades).
     let is_tool_capability_failure = lower.contains("unsupportedtooluse")
         || lower.contains("unsupported_tool_use")
         || lower.contains("does not support more than one tool")
@@ -521,9 +520,31 @@ pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
         || lower.contains("model does not support tools");
     is_rate_limited
         || is_access_denied
-        || is_billing_exhausted
+        || is_billing_exhausted_error_string(e_str)
         || is_tool_format_failure
         || is_tool_capability_failure
+}
+
+/// INFRA-302 blocker (1): the billing-exhausted predicate, factored out
+/// of [`should_cascade_on_error_string`] so callers above the cascade
+/// layer can detect it independently. Same set INFRA-300 added the
+/// per-call cascade fail-over for; reused here so `chump --execute-gap`
+/// (the agent-loop entry, NOT the per-call cascade) can classify its
+/// own errors without re-implementing the predicate.
+///
+/// Returns `true` when the error string is the 402/credit-exhausted
+/// class — i.e. the operator/orchestrator should switch provider, top
+/// up credits, or cascade to the next routing candidate, NOT just
+/// retry the same call.
+pub(crate) fn is_billing_exhausted_error_string(e_str: &str) -> bool {
+    let lower = e_str.to_ascii_lowercase();
+    e_str.contains("402")
+        || lower.contains("credit_limit")
+        || lower.contains("credit limit")
+        || lower.contains("insufficient quota")
+        || lower.contains("insufficient_quota")
+        || lower.contains("payment required")
+        || lower.contains("billing")
 }
 
 #[async_trait]
@@ -1156,5 +1177,51 @@ mod tests {
             !should_cascade_on_error_string("HTTP 400 Bad Request: invalid model name 'gpt-99'"),
             "invalid model name should still propagate"
         );
+    }
+
+    // INFRA-302 blocker (1): the billing-exhausted predicate is now a
+    // standalone helper so `chump --execute-gap` can classify its own
+    // errors at the agent-loop boundary (not just the per-call cascade).
+    // These tests lock the predicate's semantics independently of
+    // `should_cascade_on_error_string` so a future refactor of the
+    // composite predicate can't silently regress the
+    // billing-exhausted-only contract.
+    #[test]
+    fn billing_predicate_matches_402_only_on_billing_class() {
+        // Real 2026-05-02 dispatch incident string (INFRA-302):
+        let dispatch_402 = "Local API error 402 Payment Required: {\n  \"id\": \"ohYGX6i-2kFHot-9f5b21e0e8bcaf3a\",\n  \"error\": {\n    \"message\": \"Credit limit exceeded, please [add credits](https://api.together.ai/settings/billing).\",\n    \"type\": \"credit_limit\"\n  }\n}";
+        assert!(is_billing_exhausted_error_string(dispatch_402));
+
+        // OpenAI quota exhaustion (returned as 429 not 402, but still
+        // billing-class via the type field):
+        assert!(is_billing_exhausted_error_string(
+            "{\"error\": {\"type\": \"insufficient_quota\"}}"
+        ));
+        assert!(is_billing_exhausted_error_string("CREDIT_LIMIT"));
+        assert!(is_billing_exhausted_error_string("payment required"));
+        assert!(is_billing_exhausted_error_string("billing exhausted"));
+
+        // Negative cases — must NOT misclassify rate-limit / access-denied /
+        // tool-format / network as billing-class. `should_cascade_on_error_string`
+        // would still cascade on these; the orchestrator-level cascade-respawn
+        // (future PR) will treat billing-exhaustion specifically (e.g. don't
+        // retry the same provider after a backoff — switch routing-table
+        // candidate).
+        assert!(!is_billing_exhausted_error_string(
+            "HTTP 429 Too Many Requests"
+        ));
+        assert!(!is_billing_exhausted_error_string("HTTP 401 Unauthorized"));
+        assert!(!is_billing_exhausted_error_string(
+            "HTTP 500 Internal Server Error"
+        ));
+        assert!(!is_billing_exhausted_error_string("Connection refused"));
+        assert!(!is_billing_exhausted_error_string("tool_use_failed"));
+        // 4029 contains the substring "402" — verify we don't false-positive.
+        // (The current implementation DOES match "402" as a substring, so this
+        // is documenting the known sharp edge: callers that build error
+        // strings from arbitrary integers should use a structured discriminator.
+        // For HTTP-status-bearing strings the current substring match is
+        // adequate — HTTP 4029 is not a real status code.)
+        assert!(is_billing_exhausted_error_string("HTTP 4029 (synthetic)"));
     }
 }
