@@ -5,7 +5,8 @@
 # Match keys (all optional, all-match semantics within a `match` block):
 #   priority   — string equality (P0, P1, P2)
 #   effort     — string OR list of strings (e.g. xs, or [l, xl])
-#   task_class — string; today only `research` is wired (EVAL-*/RESEARCH-* gaps)
+#   task_class — string; wired values: `research` (EVAL-*/RESEARCH-* gaps),
+#                `cognition` (COG-* gaps, INFRA-265)
 #
 # Candidate fields:
 #   backend       — `claude` or `chump-local`
@@ -19,18 +20,39 @@ default_candidates:
   - { backend: claude, why: frontier-fallback }
 
 routes:
+  # INFRA-265: cognitive-architecture work always goes to claude. Free-tier
+  # cascade can produce confident-sounding wrong answers on belief-state /
+  # Active Inference / synthetic neuromodulation code — see the EVAL-074
+  # retraction in docs/RESEARCH_INTEGRITY.md for the failure mode.
+  - match: { task_class: cognition }
+    why: COG-* gaps cannot tolerate confident-sounding wrong answers
+    candidates:
+      - { backend: claude, why: cognition-needs-frontier }
+
+  - match: { task_class: research }
+    why: EVAL/RESEARCH gaps require correctness — no free-tier risk
+    candidates:
+      - { backend: claude, why: research-needs-frontier }
+
+  # INFRA-265: any l/xl effort regardless of priority. Was P1+[l,xl] only;
+  # the gap surface for large work is too big for the free-tier cascade
+  # to nail consistently — claude reliably, even on P0/P2 large efforts.
+  - match: { effort: [l, xl] }
+    why: large work needs frontier reasoning
+    candidates:
+      - { backend: claude, why: frontier-large-work }
+
   - match: { effort: xs }
     why: trivial codemod-class — fast cheap models suffice
     candidates:
       - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-fast-cheap }
       - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: together-free-fallback }
 
-  - match: { priority: P1, effort: [l, xl] }
-    why: high-stakes large work needs frontier reasoning
+  # INFRA-265: explicit s-effort route. Was an implicit fall-through to
+  # default_candidates (which mixes free-tier + claude); explicit makes
+  # the cascade-first intent visible to operators reading the table.
+  - match: { effort: s }
+    why: small work — cascade-first with frontier fallback at default
     candidates:
-      - { backend: claude, why: frontier-only }
-
-  - match: { task_class: research }
-    why: EVAL/RESEARCH gaps require correctness — no free-tier risk
-    candidates:
-      - { backend: claude, why: research-needs-frontier }
+      - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-small }
+      - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: together-small-fallback }
