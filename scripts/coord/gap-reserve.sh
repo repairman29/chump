@@ -91,9 +91,61 @@ exec 9>"$FLOCK_PATH"
 flock -x 9
 
 # Drain any stale fd inheritance: chump must not see flock fd as a tty stdin.
-NEW_ID="$(chump gap reserve --domain "$DOMAIN" --title "$TITLE" </dev/null)"
-if [[ -z "$NEW_ID" ]]; then
-    echo "[gap-reserve] ERROR: chump gap reserve returned empty output" >&2
+#
+# INFRA-301 (2026-05-02): wrap with timeout. The chump binary can wedge at
+# _dyld_start if macOS Sequoia's syspolicyd gets the binary inode into a
+# pending-decision state (INFRA-275). Without this timeout, gap-reserve
+# hangs forever and the caller silently falls back to direct YAML writes,
+# which produces silent ID collisions when N siblings each scan
+# docs/gaps/*.yaml for the "next free" ID. The trace log captured a
+# real-world instance of this exact pattern from a sibling Claude session
+# (see scripts/dev/find-stash-creator.sh).
+#
+# Timeout default 30s; long enough for legitimate SQLite contention
+# (INFRA-253 retry budget is 20 attempts) but short enough to fail loudly
+# when the binary itself is stuck before main(). Override with
+# CHUMP_GAP_RESERVE_TIMEOUT_S.
+RESERVE_TIMEOUT_S="${CHUMP_GAP_RESERVE_TIMEOUT_S:-30}"
+NEW_ID=""
+RESERVE_RC=0
+if command -v gtimeout >/dev/null 2>&1; then
+    _TIMEOUT_BIN=gtimeout
+elif command -v timeout >/dev/null 2>&1; then
+    _TIMEOUT_BIN=timeout
+else
+    _TIMEOUT_BIN=""
+fi
+
+if [[ -n "$_TIMEOUT_BIN" ]]; then
+    NEW_ID="$($_TIMEOUT_BIN "$RESERVE_TIMEOUT_S" chump gap reserve --domain "$DOMAIN" --title "$TITLE" </dev/null)" || RESERVE_RC=$?
+else
+    # No timeout binary available — fall back to plain invocation. The
+    # caller still gets the better banner on non-zero exit at least.
+    NEW_ID="$(chump gap reserve --domain "$DOMAIN" --title "$TITLE" </dev/null)" || RESERVE_RC=$?
+fi
+
+if [[ "$RESERVE_RC" -ne 0 ]] || [[ -z "$NEW_ID" ]]; then
+    {
+        echo
+        echo "════════════════════════════════════════════════════════════════════"
+        if [[ "$RESERVE_RC" -eq 124 ]]; then
+            echo "[gap-reserve] ERROR: \`chump gap reserve\` timed out after ${RESERVE_TIMEOUT_S}s"
+            echo "  This usually means the chump binary is wedged at _dyld_start"
+            echo "  (macOS Sequoia syspolicyd inode-pending-decision state, INFRA-275)."
+        elif [[ "$RESERVE_RC" -ne 0 ]]; then
+            echo "[gap-reserve] ERROR: \`chump gap reserve\` exited with code $RESERVE_RC"
+        else
+            echo "[gap-reserve] ERROR: \`chump gap reserve\` returned empty output"
+        fi
+        echo
+        echo "  HEAL: scripts/dev/chump-doctor.sh"
+        echo "        (probes the binary, replaces wedged inode with fresh copy)"
+        echo
+        echo "  DO NOT fall back to writing docs/gaps/<ID>.yaml directly."
+        echo "  Concurrent siblings each picking 'next free ID' from filesystem"
+        echo "  scans produce silent collisions. INFRA-301 tracks this pattern."
+        echo "════════════════════════════════════════════════════════════════════"
+    } >&2
     exit 1
 fi
 
