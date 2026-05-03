@@ -346,6 +346,42 @@ ONLY with the PR number. The orchestrator records which backend ran on the
 reflection row (`notes` field, prefix `backend=<label>`) so PRODUCT-006 and
 the COG-026 A/B aggregator can split outcomes by backend.
 
+## Spawning subagents (META-025 / INFRA-332, 2026-05-02)
+
+**Self-ship rate baseline: 25-33%.** Across this session and historical
+`chump_improvement_targets` telemetry, subagents that produce work
+self-ship the resulting PR only 25-33% of the time. Work-quality of
+output (when produced) is high — the failure is at the ship-stage
+hand-off, not at cognition. Most stalls are `bot-merge.sh` hanging on
+the INFRA-275 syspolicyd binary wedge.
+
+**Two disciplines fix this:**
+
+1. **Every Agent-tool prompt MUST include the standard shipping
+   epilogue.** Verbatim copy from
+   [`docs/process/SUBAGENT_DISPATCH.md`](docs/process/SUBAGENT_DISPATCH.md).
+   The epilogue covers: bot-merge canonical path, `chump-doctor.sh`
+   heal, manual `git push + gh pr create + gh pr merge` fall-back path,
+   forbidden anti-patterns (silent YAML fallback, `--no-verify`),
+   and the final-report format. The single subagent in this session
+   that did self-ship was the one whose briefing included these
+   explicit fall-back instructions.
+
+2. **`Agent` vs `SendMessage` discipline.** `Agent` spawns a fresh
+   subagent with no memory of prior runs — use it for new work.
+   `SendMessage` resumes an existing subagent by `agentId` — use it to
+   continue, ask for status, or unblock a stuck agent. **Never use
+   `Agent` to check on an existing subagent** — you waste a slot and
+   get a "fresh session, no context" response. (Mistake observed
+   2026-05-02 in the very session that produced this rule.) See
+   [`docs/gaps/DOC-015.yaml`](docs/gaps/DOC-015.yaml).
+
+When you write a subagent prompt: think of it as briefing a smart
+colleague who just walked into the room — they haven't seen the
+conversation, don't know what you've tried. Self-contained briefing,
+explicit file paths to read, explicit success criteria from the gap,
+explicit shipping epilogue.
+
 ## Fleet launcher (INFRA-203, canonical entry point)
 
 `scripts/dispatch/run-fleet.sh` is the canonical way to spawn N parallel
