@@ -1497,6 +1497,65 @@ gaps:
     - "Falsifying claim: if next session's measurement run shows post-META-028 self-ship rate REGRESSES below 70%, the Tier-3 leverage thesis is wrong and this doc retracts"
   depends_on: [META-025, META-028, META-031]
 
+- id: DOC-017
+  domain: DOC
+  title: docs/process/FLEET_OPERATIONS.md operator runbook — raise/scale/teardown/troubleshoot + today's learned cliffs
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    No single operator runbook for fleet operations exists. Today's
+    session had to derive the workflow by reading run-fleet.sh + CLAUDE.md
+    + trial-and-error. New operators need:
+    
+      Section 1 — Raise / scale / teardown:
+        chump fleet up --size 4 --model haiku-4-5  (when FLEET-037 lands)
+        OR the env-var incantation today
+        tmux attach -t chump-fleet  (watch)
+        chump fleet down
+    
+      Section 2 — Today's learned cliffs:
+        a. Local Ollama is fragile under concurrent cargo load (INFRA-349).
+           Don't run cargo build/test while a chump-local fleet is active
+           on the same machine, OR use a smaller Ollama model
+           (qwen3:8b not 14b) and OLLAMA_MAX_LOADED_MODELS=1.
+        b. Cascade transport-error blind spot (INFRA-348, shipped):
+           transient connection-refused from Ollama doesn't fall over
+           to cloud unless the predicate is updated.
+        c. Partial-ship hazard (INFRA-404): if dispatched agent leaves
+           untracked files, bot-merge silently exits 1 and the agent
+           reports a PR # that's actually missing files.
+        d. CHUMP_ALLOW_UNREGISTERED_GAP=1 footgun (FLEET-036): use only
+           when you know what you're doing.
+    
+      Section 3 — Cost model:
+        Per-PR baseline: $0.075 for an INFRA-xs gap on Haiku 4.5
+        (INFRA-187 reference). Multiply by fleet size + cycle rate.
+        Cascade free-tier slots (Cerebras / Groq / Together) are unreliable
+        for multi-turn tool use today (5-run dogfood matrix all hit
+        different cliffs). Default to Haiku for "cheap and works".
+    
+      Section 4 — Triage when fleet is stuck:
+        - Stuck PRs (DIRTY): pr-watch-shepherd should rebase automatically
+          (INFRA-354 shipped); manual recovery in CLAUDE.md.
+        - Stuck workers (silent): wait for INFRA-406 hang detector OR
+          kill manually (ps aux | grep claude -p).
+        - All workers idle: check FLEET_*_FILTER env vars; INFRA-391
+          auto-relax (P1 open) or manual loosen.
+    
+      Section 5 — Where to look:
+        .chump-locks/ambient.jsonl (peripheral vision)
+        /tmp/chump-fleet-*/agent-*.log (per-worker logs)
+        chump dispatch route <ID> (what cascade would do)
+        sqlite3 .chump/state.db (gap registry + chump_improvement_targets)
+    
+    Effort: xs — this is pure docs sweep, ~200 lines.
+  acceptance_criteria:
+    - docs/process/FLEET_OPERATIONS.md exists with sections 1-5 above
+    - CLAUDE.md adds a one-line pointer to it under 'Fleet launcher' heading
+    - README mentions it (or a docs index)
+    - book/ mirror updated if applicable
+
 - id: EVAL-001
   domain: EVAL
   title: Expand eval suite from 5 to 30+ cases with golden trajectory tests
@@ -3862,7 +3921,7 @@ gaps:
 - id: FLEET-029
   domain: FLEET
   title: Tier 1 — forced ambient re-glance + open-PR scan at chump gap reserve and gh pr create
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -3926,6 +3985,8 @@ gaps:
     flagged the overlap.
   source_doc: docs/gaps/FLEET-028.yaml
   opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 1040
 
 - id: FLEET-030
   domain: FLEET
@@ -4092,6 +4153,8 @@ gaps:
     - "Cross-machine integration test: claim from machine A is visible to preflight on machine B within 1s"
     - Stale lock recovery uses NATS KV native expiry, not the file path's TTL reaper
     - FLEET-006 / FLEET-023 dependency wired
+  notes: |
+    ARCH DECISION (2026-05-03): Event-sourced lease store via NATS JetStream. Lease claims become events in chump.leases.> stream. Per-host read view for preflight. Eliminates NATS KV dual-write complexity, aligns with FLEET-033 pattern. Phase 1: spike + design. Phase 2: implementation with JetStream integration.
 
 - id: FLEET-033
   domain: FLEET
@@ -4129,6 +4192,8 @@ gaps:
     - All chump gap subcommands work against new backend
     - gap-doctor + gap-preflight + gap-claim + bot-merge auto-close all migrated
     - "Cross-machine integration test: reserve on host A, list shows it on host B within 1s"
+  notes: |
+    ARCH DECISION (2026-05-03): Event-sourced gap store via NATS JetStream (Option C selected). Gap state changes become events in chump.gaps.> stream. Per-host materialized read views (local cache). Scales O(1), full audit trail, offline-capable. Spike: measure contention, prototype C, decision doc. Implementation: coordinated with FLEET-032.
 
 - id: FLEET-034
   domain: FLEET
@@ -4192,6 +4257,99 @@ gaps:
     - "Empirical evidence: 2026-05-03 morning cleanup pass closed PRs #947, #950, #959 as superseded — 3 race-loss instances in one operator pass, plus #966 (speculative pickup beat by 30 min). Each represents 5-15 min cargo build + 5-10 min CI wall-time on the loser side"
   notes: |
     Filed 2026-05-03 after observing 4+ speculative-race losers in a single 6h window. Today's mitigations (INFRA-340 stagger, INFRA-361 pre-pick preflight, INFRA-206 domain affinity, INFRA-193 speculative-mode loser-sweep) all reduce race likelihood, but none MEASURE the cost. Without measurement we can't know if a future change makes it worse. Visibility-first; cost optimization downstream.
+
+- id: FLEET-036
+  domain: FLEET
+  title: chump dispatch auto-fetches gap YAML from sibling branches before preflight reject
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Observed 2026-05-03: dispatching INFRA-332 required CHUMP_ALLOW_UNREGISTERED_GAP=1
+    because its YAML was on a sibling chore branch (PR #1019) but not yet on
+    origin/main. The dispatch worktree was created off origin/main, where
+    docs/gaps/INFRA-332.yaml didn't exist, so gap-preflight.sh rejected.
+    
+    This forces the operator to either (a) use the bypass (which defeats the
+    preflight guard's purpose), (b) wait for the chore PR to land before
+    dispatching (adds round-trip latency), or (c) hand-copy the YAML.
+    
+    Fix: chump dispatch should, before rejecting at preflight:
+      1. git fetch origin (cheap, already configured)
+      2. Check open PRs for any branch containing docs/gaps/<ID>.yaml:
+         gh search prs --json headRefName --search "in:title 'file <ID>' OR
+         'reserve <ID>'" — or scan recent fetched refs
+      3. If found, git show <branch>:docs/gaps/<ID>.yaml > docs/gaps/<ID>.yaml
+         in the dispatch worktree (uncommitted; the work commit will include it)
+      4. Only reject preflight if the gap exists nowhere
+    
+    Closes the chore-PR-then-dispatch sequence we did today (filed YAML in
+    #1019, then dispatched, hit reject, used bypass) — single dispatch
+    should just work.
+  acceptance_criteria:
+    - chump dispatch <ID> succeeds without CHUMP_ALLOW_UNREGISTERED_GAP=1 when the gap YAML exists on any open sibling PR branch
+    - Falls back to bypass behavior with clear log when gap genuinely doesn't exist anywhere
+    - "Test: scripts/ci/test-dispatch-fetches-sibling-yaml.sh covers the happy + miss paths"
+
+- id: FLEET-037
+  domain: FLEET
+  title: chump fleet subcommand — up/status/down/scale CLI ergonomics over run-fleet.sh env-var incantation
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    The current "raise the fleet" UX is an env-var incantation:
+      FLEET_SIZE=4 FLEET_BACKEND=chump-local FLEET_MODEL=haiku-4-5 \
+        scripts/dispatch/run-fleet.sh
+    
+    Hard to remember, hard to discover, no autocomplete, easy to typo a
+    var name and silently get a default. The PWA fleet controller
+    (PRODUCT-025) is l-effort and not built; this gap is the CLI
+    ergonomics layer that the PWA can later call via shell-out.
+    
+    Implementation: chump fleet subcommand with these verbs:
+    
+      chump fleet up [--size N] [--backend B] [--model M]
+                  [--domain D,D] [--effort E,E]
+                  [--priority P,P]
+        Wraps run-fleet.sh with named flags. Defaults from .env or
+        .chump/fleet-config.toml if present. Idempotent — refuses to
+        spawn if chump-fleet tmux session already exists (use 'scale'
+        to resize instead).
+    
+      chump fleet status
+        Reads chump-fleet tmux pane PIDs, .chump-locks/, ambient.jsonl
+        last-N. Prints: N workers, current claims, last-N events,
+        avg cycle time. Same data run-fleet.sh's control pane shows but
+        one-shot.
+    
+      chump fleet down
+        FLEET_SIZE=0 scripts/dispatch/run-fleet.sh equivalent.
+    
+      chump fleet scale N
+        Resize without teardown — adjust pane count via tmux split/kill.
+    
+    Pairs naturally with PRODUCT-025 (PWA can shell-out to these).
+  acceptance_criteria:
+    - chump fleet up/status/down/scale commands implemented in src/main.rs
+    - "Idempotent up: refuses spawn when chump-fleet session exists, suggests 'scale'"
+    - chump fleet status produces actionable output without requiring tmux attach
+    - "Test: scripts/ci/test-chump-fleet-cli.sh — covers happy path + idempotency"
+    - run-fleet.sh stays as the underlying impl; chump fleet is a thin wrapper
+
+- id: FLEET-038
+  domain: FLEET
+  title: "FLEET-032-impl: lease store migration to NATS KV — event-sourced + dual-write"
+  status: open
+  priority: P1
+  effort: l
+
+- id: FLEET-039
+  domain: FLEET
+  title: "FLEET-033-impl: event-sourced gap store (JetStream + per-host read view)"
+  status: open
+  priority: P1
+  effort: xl
 
 - id: FLEET-14
   domain: FLEET
@@ -14476,6 +14634,176 @@ gaps:
     - "Empirical evidence: INFRA-339 closed via this path 2026-05-03 (status:done, closed_date set, closed_pr absent). Surfaced by gap-doctor.py drift detector but only catches it AFTER the fact"
   notes: |
     Filed 2026-05-03. The INFRA-107 closed_pr integrity guard pattern works at the YAML diff layer (which is what the pre-commit hook sees). But since INFRA-059 flipped canonical to .chump/state.db, the in-Rust write paths bypass that diff entirely. Either lift the integrity check into gap_store, or auto-emit a YAML diff on every status flip so the existing guard catches it. Pairs with META-032 (acceptance-criteria lag) — both are 'guards exist but writes can dodge them' patterns.
+
+- id: INFRA-403
+  domain: INFRA
+  title: "INFRA-273 followup: pre-PR race window — two sessions on same claimed gap both reach gh pr create within seconds; gap-preflight check 1.5 only fires when the OTHER PR already exists. Need claim-time exclusivity check or speculative-mode default."
+  status: open
+  priority: P2
+  effort: s
+
+- id: INFRA-404
+  domain: INFRA
+  title: bot-merge.sh handles agent-left untracked files (auto-add or explicit warn-with-list)
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Observed 2026-05-03: dispatched Haiku run on INFRA-332 created files
+    in the worktree (scripts/ci/test-subagent-epilogue-ref.sh,
+    docs/gaps/INFRA-332.yaml) but didn't 'git add' them all before invoking
+    bot-merge.sh. bot-merge.sh correctly refused with:
+    
+      ERROR: untracked files present — these won't be in your PR diff:
+        docs/gaps/INFRA-332.yaml
+        scripts/ci/test-subagent-epilogue-ref.sh
+      Stage them first (git add <file>), or bypass with
+      CHUMP_BOT_MERGE_ALLOW_UNTRACKED=1
+    
+    Result: PR #1029 shipped with PARTIAL implementation (epilogue.md +
+    some src/ tweaks, but missing the smoke test that's in the gap's
+    acceptance criteria). The agent thought it shipped successfully and
+    reported the PR number; bot-merge actually exited 1 on the second pass.
+    
+    Two paths:
+      (a) Auto-stage: bot-merge.sh git-adds untracked files in the diff
+          domain when CHUMP_BOT_MERGE_AUTO_ADD=1 (default off; opt-in for
+          dispatched agents).
+      (b) Better signal: bot-merge.sh emits the untracked-files block as
+          its EXIT MESSAGE (currently it's mid-output before health init),
+          so the dispatched-agent loop sees it as the final line and can
+          decide whether to add + retry.
+    
+    Recommend (a) gated to dispatched-agent context (detect via
+    $CHUMP_DISPATCH_DEPTH=1 or similar). Operator-driven runs keep the
+    current refuse-loud behavior.
+  acceptance_criteria:
+    - When CHUMP_DISPATCH_DEPTH=1 (dispatched child) AND CHUMP_BOT_MERGE_AUTO_ADD=1 (default 0), bot-merge.sh git-adds untracked files in the worktree before commit
+    - Without that flag, current refuse-loud behavior preserved (regression guard)
+    - "Test: scripts/ci/test-bot-merge-auto-add-untracked.sh — covers both paths with sandbox repo"
+    - "INFRA-332 PR #1029 retroactively gets its missing smoke test (manual amend OR follow-up dispatch)"
+
+- id: INFRA-405
+  domain: INFRA
+  title: "per-PR cost telemetry — tokens_in/out/USD/model into chump_improvement_targets keyed by PR#"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    We have crates/chump-cost-tracker that records per-call provider
+    spend, but the data isn't aggregated per-PR. Without per-PR cost
+    telemetry:
+    
+      1. We can't answer "what does an INFRA-xs PR actually cost?"
+         empirically — only anecdotally ($0.075 for INFRA-187 from one run).
+      2. The COG-037 Thompson router has no cost-aware reward signal —
+         it optimizes on success rate and latency but not $ spent.
+      3. "Haiku is cheaper" is operator gut feel rather than data when
+         comparing against headless-claude-sonnet or against cheaper free
+         tiers (Cerebras llama3.1-8b, Groq llama-3.3-70b).
+      4. No after-the-fact "this fleet day cost $X total" report.
+    
+    Implementation:
+      - Add pr_cost_summary table to chump_improvement_targets store (or
+        new sibling table chump_pr_costs):
+          pr_number INTEGER PRIMARY KEY
+          gap_id TEXT
+          model TEXT (claude-haiku-4-5, claude-sonnet-4-6, llama-3.3-70b, etc)
+          tokens_in INTEGER
+          tokens_out INTEGER
+          usd_cost REAL
+          duration_secs INTEGER
+          shipped_at INTEGER (unix ts)
+          backend TEXT (headless | chump-local)
+      - bot-merge.sh writes the row at PR creation time (it knows the gap_id,
+        model, and can pull cumulative tokens from cost_tracker since the
+        dispatched-child PID started)
+      - chump dispatch cost-report [--since 24h] prints aggregations:
+        per-model avg/p50/p95, per-domain, per-effort
+      - COG-037 reward computation gets a cost penalty term
+    
+    Pairs with INFRA-265 (per-task-class backend routing) — gives the
+    routing decisions empirical cost data to optimize against.
+  acceptance_criteria:
+    - chump_pr_costs table exists, populated on every shipped PR via bot-merge.sh
+    - chump dispatch cost-report [--since 24h] [--per-model] [--per-domain] command produces aggregated CSV/JSON
+    - At least N=20 PRs of cost data captured before declaring done
+    - COG-037 reward function consumes usd_cost as a penalty term (gated behind a flag for safe rollout)
+
+- id: INFRA-406
+  domain: INFRA
+  title: claude -p / chump --execute-gap hang detector — SIGTERM + ambient ALERT on no-tool-call timeout
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    INFRA-119 (bot-merge.sh health monitor + budget watchdog) catches
+    bot-merge.sh stalls. Nothing catches the LLM-call layer hanging:
+      - claude -p with no tool calls for N minutes
+      - chump --execute-gap stuck on a slow provider that hasn't returned
+    
+    Today's INFRA-310 dispatch had its claude -p still alive after I'd
+    already killed the parent — orphan claude process, no cost signal,
+    silent token-burn.
+    
+    Implementation:
+      - Inside the agent loop iteration_controller (src/agent_loop/), track
+        last_progress_at (updated on each tool call, message, or state
+        transition).
+      - If now - last_progress_at > CHUMP_AGENT_HANG_SECS (default 300s),
+        log ALERT kind=agent_hung gap=<ID> session=<sid>
+        last_progress_at=<ts> to ambient.jsonl, then SIGTERM self.
+      - For claude -p (Anthropic CLI we don't control directly), wrap in
+        a watchdog shell script: scripts/dispatch/claude-with-watchdog.sh
+        that monitors child stdout for tool-call markers and SIGTERMs the
+        child if quiet > N seconds.
+      - chump dispatch --backend headless invokes the wrapper instead of
+        bare claude -p.
+    
+    This complements (not replaces) INFRA-119's bot-merge.sh layer.
+  acceptance_criteria:
+    - chump --execute-gap self-terminates with ALERT kind=agent_hung when no tool call/state transition for CHUMP_AGENT_HANG_SECS
+    - claude -p wrapped in scripts/dispatch/claude-with-watchdog.sh — same hang-detection contract
+    - "Test: scripts/ci/test-agent-hang-detector.sh — synthetic hang triggers SIGTERM + ambient ALERT"
+    - Default 300s; per-gap override via CHUMP_AGENT_HANG_SECS env
+
+- id: INFRA-407
+  domain: INFRA
+  title: "PR #1031 stuck [BEHIND] — 23 commits behind main"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/1031
+    
+    Detected by stuck-pr-filer (2026-05-03T20:02:48Z).
+    
+    Trigger: 23 commits behind main
+    Branch is 23 commits behind main (threshold 20). The CLAUDE.md hard rule says rebase at 15.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 1031 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: COG-039
+    INFRA-392
+    Branch: chump/cog-039-bench-harness
+    Stuck class: BEHIND — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+
+- id: INFRA-408
+  domain: INFRA
+  title: "REGRESSION: Fleet worker staggering not spreading picks across gaps (INFRA-340 broken)"
+  status: open
+  priority: P1
+  effort: m
+
+- id: INFRA-409
+  domain: INFRA
+  title: "Regression: fleet worker staggering broken - all workers pick same gap despite WORKER_INDEX"
+  status: open
+  priority: P2
+  effort: m
 
 - id: INFRA-41
   domain: INFRA

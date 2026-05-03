@@ -4,4 +4,20 @@
   status: open
   priority: P1
   effort: m
+  description: |
+    Bench harness for the cog_037 Thompson router (M4 step 2 of WORLD_CLASS_ROADMAP). Per CLAUDE.md M4 protocol: (1) flag lands default-off (done — cog_037 in dispatch.rs), (2) bench harness compares flag-off baseline vs flag-on candidate (THIS GAP), (3) cycle review flips default, (4) cleanup PR removes the dead flag entry.
+    
+    Delivers scripts/eval/bench-cog-037-thompson.sh: simulation-only bench (no fleet spawn, no API spend) that runs 'chump dispatch simulate <class> <n>' under CHUMP_FLAGS= and CHUMP_FLAGS=cog_037, computes per-cell pick concentration + top-arm signature, snapshots the current scoreboard, and prints a verdict matrix to help the operator decide whether to flip cog_037 default ON.
+    
+    Produces a JSON summary at scripts/ab-harness/results/cog-037-bench-<ts>.json so successive runs can be diffed for convergence tracking.
+    
+    Required INFRA-392 (CLI fix) to land first: 'chump dispatch scoreboard' and 'dispatch simulate' were shadowed by the generic gap-id handler. Both ship in the same PR.
+  acceptance_criteria:
+    - scripts/eval/bench-cog-037-thompson.sh exists and is executable
+    - runs 'chump dispatch simulate' twice (flag-off + flag-on) per task_class
+    - computes pick concentration + top-arm signature per cell
+    - snapshots 'chump dispatch scoreboard' for context
+    - writes JSON summary to scripts/ab-harness/results/cog-037-bench-<ts>.json
+    - prints operator verdict matrix (insufficient data / safe to flip / don't flip / strong signal)
+    - works on a fresh repo with no routing outcomes (graceful degradation to 'INSUFFICIENT DATA')
 

@@ -1,0 +1,16 @@
+- id: INFRA-392
+  domain: INFRA
+  title: chump dispatch <subcommand> shadowed by generic gap-id handler — scoreboard/simulate/route trigger gap-preflight + bot-merge
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    chump dispatch <gap-id> handler at src/main.rs line 439 fires for ANY second-positional-arg, including the diagnostic subcommands 'scoreboard', 'simulate', 'route' that have their own handlers later in the file. Result: 'chump dispatch scoreboard' is parsed as 'dispatch the gap with ID scoreboard' → triggers gap-preflight which rejects 'scoreboard' as not in the registry → tries to run bot-merge.sh anyway → confusing failure with no relation to the user's actual command. Observed during COG-039 bench-harness work 2026-05-03. Fix: const DISPATCH_SUBCOMMANDS = &[scoreboard, simulate, route]; gate the gap-id branch on args[2] not being one of these. Also adds the diagnostic subcommands to the usage hint.
+  acceptance_criteria:
+    - src/main.rs gates 'dispatch <gap-id>' on args[2] not in {scoreboard,simulate,route}
+    - chump dispatch scoreboard returns the routing-outcomes table (or 'No routing outcomes recorded yet')
+    - chump dispatch simulate <task_class> <count> runs the Thompson sampler diagnostic
+    - chump dispatch with no arg or unknown subcommand prints usage hint listing all 4 paths
+  closed_date: '2026-05-03'
+  closed_pr: 1025
+
