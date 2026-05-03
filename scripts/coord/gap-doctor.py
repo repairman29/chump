@@ -297,40 +297,40 @@ def cmd_sync_from_yaml(args, root: Path) -> int:
 
 
 def cmd_sync_from_db(args, root: Path) -> int:
-    """Regenerate docs/gaps.yaml from state.db, preserving the meta: preamble.
+    """Regenerate the per-file docs/gaps/<ID>.yaml mirrors from state.db.
     Closes Bucket 1 (DB done / YAML open) by overwriting YAML rows with DB
-    truth. Uses `chump gap dump --out` which calls dump_yaml_with_meta when
-    the destination already exists (INFRA-147)."""
-    yaml_path = root / "docs" / "gaps.yaml"
+    truth.
+
+    INFRA-389: post-INFRA-188 the monolithic docs/gaps.yaml is gone — the
+    canonical mirror is the per-file directory. Pre-fix this command wrote
+    to the deleted path and either failed or recreated a stale monolithic
+    file (chump dump's monolithic-by-default footgun before --per-file).
+    """
+    out_dir = root / "docs" / "gaps"
+    yaml_view = load_yaml_status(root)
+    db_view = load_db_status(root)
+    plan = [
+        gid for gid, d in db_view.items()
+        if d["status"] == "done"
+        and yaml_view.get(gid, {}).get("status") != "done"
+    ]
+
     if not args.apply:
-        # Show what would change.
-        result = subprocess.run(
-            ["chump", "gap", "dump", "--out", "/dev/null"],
-            capture_output=True, text=True,
-        )
-        # Can't easily diff /dev/null; just emit the plan.
-        yaml_view = load_yaml_status(root)
-        db_view = load_db_status(root)
-        plan = [
-            gid for gid, d in db_view.items()
-            if d["status"] == "done"
-            and yaml_view.get(gid, {}).get("status") != "done"
-        ]
         print(f"== sync-from-db: {len(plan)} rows would flip in YAML ==")
         for gid in plan:
             print(f"  {gid}")
         print()
-        print("(dry-run — pass --apply to regenerate docs/gaps.yaml)")
+        print(f"(dry-run — pass --apply to regenerate per-file YAMLs in {out_dir}/)")
         return 0
 
     r = subprocess.run(
-        ["chump", "gap", "dump", "--out", str(yaml_path)],
+        ["chump", "gap", "dump", "--per-file", "--out-dir", str(out_dir)],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
-        print(f"chump gap dump failed: {r.stderr}", file=sys.stderr)
+        print(f"chump gap dump --per-file failed: {r.stderr}", file=sys.stderr)
         return 1
-    print(f"regenerated {yaml_path}")
+    print(f"regenerated per-file YAMLs in {out_dir}/ ({len(plan)} flipped)")
     return 0
 
 
@@ -438,8 +438,8 @@ def main() -> int:
     p1 = sub.add_parser("sync-from-yaml", help="UPDATE DB rows where YAML says done")
     p1.add_argument("--apply", action="store_true", help="actually mutate state.db")
 
-    p2 = sub.add_parser("sync-from-db", help="regenerate YAML from DB (preserves meta:)")
-    p2.add_argument("--apply", action="store_true", help="actually rewrite docs/gaps.yaml")
+    p2 = sub.add_parser("sync-from-db", help="regenerate per-file YAML mirrors from DB (post-INFRA-188)")
+    p2.add_argument("--apply", action="store_true", help="actually rewrite docs/gaps/<ID>.yaml files")
 
     # INFRA-308: cron-friendly safe sweep (auto-fix safe buckets, ALERT on unsafe).
     p3 = sub.add_parser("safe-sweep", help="cron-friendly: auto-fix safe drift, ALERT unsafe")
