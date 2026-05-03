@@ -1,0 +1,7 @@
+- id: META-032
+  domain: META
+  title: Acceptance-criteria-as-test consistently lags implementation by N PRs — runtime ships, regression test never lands
+  status: open
+  priority: P1
+  effort: s
+

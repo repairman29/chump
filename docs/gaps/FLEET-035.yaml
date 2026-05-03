@@ -1,0 +1,7 @@
+- id: FLEET-035
+  domain: FLEET
+  title: speculative-race losses are uncounted compute waste — 4+ losers/day cargo-build then closed-as-superseded with no cost tracking
+  status: open
+  priority: P2
+  effort: s
+
