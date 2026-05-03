@@ -1,0 +1,183 @@
+{
+  "_comment": "Workflow fixtures for RESEARCH-032 — local-LLM capability-ceiling study (qwen3:14b vs claude-opus-4.7 across 5 representative Chump end-to-end workflows). Each entry maps 1:1 to a row of the prereg §3 Workflows table; the success_criteria.primary text is the verbatim binary success criterion from that row. Workflows are workflow-level (not task-level): they exercise the full agent loop (claim → implement → ship → cleanup), the ambient-stream coordination layer, gap-doctor drift repair, the eval harness wrapper, and multi-turn debugging. The prereg locks the offline-mission claim as falsifiable (H1: ≥4 of 5 workflows pass at success_rate ≥ 0.60 with Wilson 95% lower bound ≥ 0.40 on qwen3:14b). This file is the contract that drives substrate-A vs substrate-B trials in the harness; it locks at sweep launch (not preregistration commit time, since v0.1 ships with all 5 workflows authored but the harness wiring is INFRA-330+ work).",
+  "_version": "0.1",
+  "_status": "DRAFT — schema established; 5 workflows authored from prereg §3 verbatim; bench requires harness wiring (INFRA-330+) before sweep launch. Subsequent versions: edit prompts only with prereg Deviations entry; do NOT renumber W1..W5; paired analysis depends on stable IDs.",
+  "_target_size": 5,
+  "_locked_at_sha": "TBD — populated at sweep launch by run-research032-sweep.py (analogue of run-binary-ablation.py)",
+  "_authored_by": "INFRA-329 / chump session 1776471708 (2026-05-02)",
+  "_prereg": "docs/eval/preregistered/RESEARCH-032.md",
+  "_substrates": {
+    "qwen3-14b-local": {
+      "model": "qwen3:14b",
+      "quantization": "q4_K_M",
+      "hardware": "Apple M-series, 24 GB unified memory",
+      "provider": "Ollama, OPENAI_API_BASE=http://localhost:11434/v1"
+    },
+    "frontier-baseline": {
+      "model": "claude-opus-4.7",
+      "quantization": "N/A",
+      "hardware": "N/A (hosted)",
+      "provider": "Anthropic API"
+    }
+  },
+  "_per_task_schema": {
+    "id": "string, format W<N>-<short-slug>; W1..W5 in order; locked at v0.1",
+    "name": "string — short human-readable workflow name (matches prereg §3 table 'Workflow' column)",
+    "starting_state": {
+      "branch": "string — the git ref the harness checks out before invoking the agent (typically 'origin/main' or a fixture branch)",
+      "preconditions": "string — what must be true in the worktree/registry/lockdir before the agent starts; the harness must satisfy these before recording the trial"
+    },
+    "instruction": "string — the prompt the agent under test receives, written as a natural operator request per prereg §3 fixture-protocol (no 'Task:', 'Judge rubric:', or 'evaluation context:' markers; W1..W5 IDs never appear in the prompt)",
+    "success_criteria": {
+      "primary": "string — verbatim from prereg §3 Workflows table 'Success criterion (binary)' column; whitespace-tolerant match required by validator",
+      "all_must_hold": "array of strings — the conjunction of binary checks the judges grade against; derived from the primary text + judge rubric in the deliverable docs/eval/RESEARCH-032-workflows.md"
+    },
+    "expected_frontier_behavior": "string — what claude-opus-4.7 should do; used by the harness to detect ceiling effects (per prereg §11: any workflow where frontier success rate < 0.80 is excluded from the offline-mission conclusion and flagged as a harness gap)",
+    "expected_local_failure_modes": "string — what qwen3:14b might trip on; informational, used by the exclusion taxonomy and post-hoc diagnosis (NOT used by the per-trial judge)",
+    "exclusion_reasons": {
+      "infrastructure_failure": "string — what would mean the harness broke (and the trial is excluded per prereg §3 'Stopping consequence': empty completion or HTTP error on >5 of 10 trials)",
+      "substrate_ceiling": "string — what would be a real qwen3:14b capability shortfall (counted as a non-success in the H1 test)",
+      "agent_error": "string — task-level error not attributable to substrate (counted as a non-success but flagged for substrate-attribution review)"
+    },
+    "scope_estimate_minutes": "int — operator estimate for an agent of equivalent skill; ≤ 90 per RESEARCH-032 prereg's per-trial wall-clock budget",
+    "rationale": "string — why this workflow is in the bench; references which Chump capability dimension it exercises and why it discriminates qwen3:14b from frontier"
+  },
+  "workflows": [
+    {
+      "id": "W1-gap-pipeline",
+      "name": "gap reserve → implement → ship pipeline",
+      "starting_state": {
+        "branch": "origin/main",
+        "preconditions": "A clean fixture clone of the Chump repo at origin/main HEAD with no live leases in .chump-locks/. The chump binary is on PATH and rebuilt against current main (INFRA-148 stale-binary alarm). No ANTHROPIC_API_KEY or OPENAI_API_KEY is exported in the env (the prompt names a deterministic refactor that must not require API access). A scratch directory is writable under .chump/worktrees/."
+      },
+      "instruction": "Rename the function `foo` to `bar` in `src/baz.rs` in this repo. Preserve every existing test (no test renames, no behavior changes — only the symbol). Reserve a gap, claim it, work in a linked worktree, and ship a PR through the standard pipeline so the change can land on main.",
+      "success_criteria": {
+        "primary": "A PR is opened on a fixture repo, CI is green, the diff matches the request semantically, lease cleanup happened (no orphaned `.chump-locks/<sid>.json`). All four conditions binary-ANDed.",
+        "all_must_hold": [
+          "A PR is opened on the fixture repo (gh pr list --search 'head:<branch>' returns one row)",
+          "CI is green on that PR (gh pr checks <N> shows all required checks passing)",
+          "The diff matches the request semantically (renames foo→bar in src/baz.rs and updates call sites; no unrelated edits)",
+          "Lease cleanup happened (no orphaned .chump-locks/<session_id>.json after the agent exits)"
+        ]
+      },
+      "expected_frontier_behavior": "Frontier reserves an INFRA-* gap via `chump gap reserve`, runs `gap-claim.sh` in a fresh worktree under .chump/worktrees/, edits src/baz.rs (rename + updated call sites), commits via `chump-commit.sh`, ships via `bot-merge.sh --gap <id> --auto-merge`, and the script auto-releases the lease on exit. End-to-end ≤ 30 min wall-clock.",
+      "expected_local_failure_modes": "qwen3:14b plausibly: (a) skips `chump gap reserve` and edits in main worktree (METADATA-011 stomp), (b) hand-edits docs/gaps/<ID>.yaml (raw-YAML guard fires), (c) uses `git push` + `gh pr create` instead of bot-merge.sh and the lease never releases, (d) loses the thread mid-multi-step and ships a partial diff. The gap-pipeline workflow has the most steps and the highest tool-call discipline requirement of the five.",
+      "exclusion_reasons": {
+        "infrastructure_failure": "The Ollama endpoint returns HTTP 5xx, the model produces empty completions on >5 of 10 trials, or the harness cannot create a fixture worktree (disk full, git lock contention).",
+        "substrate_ceiling": "The agent produces syntactically valid plans but cannot drive the multi-step tool sequence to completion within 90 min — e.g. it loops on `gap-claim.sh` errors, or it ships a PR but with the wrong diff because it lost track of what `bar` was supposed to do.",
+        "agent_error": "The agent picks the wrong function to rename (e.g. renames a `foo` in a different file that happens to compile), or ships with a CI failure it could have detected by running `cargo check` locally first."
+      },
+      "scope_estimate_minutes": 60,
+      "rationale": "Exercises the full agent-loop discipline: gap reservation, lease coordination, worktree hygiene, commit-time guards (raw-YAML, scope, lease-collision), and the ship pipeline (bot-merge.sh, auto-merge). This is Chump's canonical 'happy path' — if qwen3:14b cannot execute it, the offline mission's load-bearing claim ('Chump is usable on local LLMs only') is empirically too thin and NORTH_STAR.md must narrow."
+    },
+    {
+      "id": "W2-ambient-coordination",
+      "name": "ambient-stream coordination",
+      "starting_state": {
+        "branch": "origin/main",
+        "preconditions": "A clean fixture worktree with `.chump-locks/ambient.jsonl` pre-seeded with 30 recent events including TWO simulated parallel sessions whose lease files (also pre-seeded under .chump-locks/) declare overlapping file scope: session-A claims src/foo/widget.rs and session-B claims the same path 90 seconds earlier. The agent's own lease (written when it starts) names a third session ID. The pre-seeded sessions are alive (heartbeat timestamps within 5 min)."
+      },
+      "instruction": "Two other agents are about to edit `src/foo/widget.rs` at the same time. Before you do anything else in this repo, take a look at what's going on with concurrent work and decide whether it's safe for you to start editing that file. If it isn't, do the right thing.",
+      "success_criteria": {
+        "primary": "Agent (a) detects the overlap by reading `ambient.jsonl`, (b) emits `ALERT kind=lease_overlap` OR voluntarily backs off its own lease before editing. Either action counts as success.",
+        "all_must_hold": [
+          "Agent reads .chump-locks/ambient.jsonl (verifiable in tool-call log: a Read or tail/cat invocation on that path) AND/OR reads the pre-seeded sibling lease files under .chump-locks/",
+          "Agent identifies the overlap (verifiable in agent transcript: names both colliding sessions or names src/foo/widget.rs as the contested path)",
+          "Agent EITHER emits an ALERT line with kind=lease_overlap into ambient.jsonl OR releases/narrows its own lease before any edit to src/foo/widget.rs (one of the two suffices per the prereg)"
+        ]
+      },
+      "expected_frontier_behavior": "Frontier tails `.chump-locks/ambient.jsonl` per the CLAUDE.md mandatory pre-flight, sees the two pre-seeded session_start + file_edit events, names the overlap explicitly, and either appends a JSON ALERT line (`{\"kind\":\"lease_overlap\",...}`) to ambient.jsonl OR rewrites its own lease to drop src/foo/widget.rs from `paths`. Does not begin any edit on the contested file.",
+      "expected_local_failure_modes": "qwen3:14b plausibly: (a) skips the ambient.jsonl read (the pre-flight checklist is long; weak instruction-following models often discard mandatory-but-tedious steps), (b) reads ambient.jsonl but cannot parse the JSONL structure under context pressure, (c) detects the overlap verbally but proceeds to edit anyway because the instruction explicitly names the file, (d) emits a free-text 'I notice an overlap' message instead of a structured ALERT JSON line.",
+      "exclusion_reasons": {
+        "infrastructure_failure": "The pre-seeded ambient.jsonl is missing or unreadable, or the harness fails to write the pre-seeded sibling leases. Also: the agent's own session-ID resolution fails (CLAUDE.md priority chain) and it cannot write a lease at all.",
+        "substrate_ceiling": "Agent reads ambient.jsonl but does not act on the overlap signal — proceeds to edit src/foo/widget.rs without an ALERT or lease narrowing. This is a weak-instruction-following + theory-of-mind shortfall and counts as a real qwen3:14b failure.",
+        "agent_error": "Agent emits an ALERT but with a typo'd `kind` field (e.g. `lease-overlap` instead of `lease_overlap`), or releases the wrong lease (its own + the sibling's). These are task-level errors, not substrate-class shortfalls; flag for review but count as non-success."
+      },
+      "scope_estimate_minutes": 30,
+      "rationale": "Exercises the peripheral-vision discipline that makes Chump's bespoke coordination layer load-bearing for the offline-fleet vision. Without ambient-stream awareness, multi-agent fleets stomp each other (the fleet-vision motivation). If qwen3:14b cannot execute this discipline, the offline-fleet path needs frontier-only or a coordination-agent specialization (a real strategic outcome, falsifiably preregistered)."
+    },
+    {
+      "id": "W3-gap-doctor-drift",
+      "name": "gap-doctor drift repair",
+      "starting_state": {
+        "branch": "origin/main",
+        "preconditions": "A clean fixture worktree where `.chump/state.db` has been pre-mutated to set FIXTURE-001 to status=done with closed_pr=999 and closed_date=2026-05-02, while `docs/gaps/FIXTURE-001.yaml` on disk still has status=open. This is exactly the Bucket-1 drift gap-doctor.py reports. The fixture commits both the DB mutation and the stale YAML on a `fixture/research-032-w3` branch. No active leases in .chump-locks/."
+      },
+      "instruction": "Some of the gap files in `docs/gaps/` may have drifted out of sync with the canonical state.db. Take a look, find what's drifted, run the appropriate repair, and commit the result so main is consistent again.",
+      "success_criteria": {
+        "primary": "Agent runs `gap-doctor.py`, identifies the drift, runs the correct repair (`sync-from-db --apply` for this bucket), commits the regenerated YAML, and the post-state has zero Bucket-1 drift on `gap-doctor.py doctor`.",
+        "all_must_hold": [
+          "Agent invokes `python3 scripts/coord/gap-doctor.py doctor` (or equivalent CLI invocation) and the output is captured in the trial log",
+          "Agent identifies FIXTURE-001 specifically as the drifted gap (named in the agent transcript)",
+          "Agent runs `gap-doctor.py sync-from-db --apply` (the correct repair for Bucket-1: DB done / YAML open) — NOT sync-from-yaml, NOT a hand-edit",
+          "Agent commits the regenerated docs/gaps/FIXTURE-001.yaml (commit lands; pre-commit raw-YAML-edit guard does NOT fire because the chump-gap CLI marker was written by the sync command)",
+          "Re-running `gap-doctor.py doctor` after the commit reports zero entries in Bucket 1 (DB done / YAML open)"
+        ]
+      },
+      "expected_frontier_behavior": "Frontier reads the gap-doctor doctor output, recognizes the four-bucket taxonomy from CLAUDE.md, identifies FIXTURE-001 as Bucket 1, runs `python3 scripts/coord/gap-doctor.py sync-from-db --apply`, commits the regenerated YAML via `chump-commit.sh`, re-runs doctor to verify zero drift, and ships.",
+      "expected_local_failure_modes": "qwen3:14b plausibly: (a) hand-edits docs/gaps/FIXTURE-001.yaml to set status=done (raw-YAML guard fires; `--no-verify` would auto-fail per success_criteria), (b) runs `sync-from-yaml --apply` (wrong direction — would overwrite the correct DB state with the stale YAML), (c) runs the doctor command but does not parse the bucket structure and asks the user which command to run next, (d) commits without re-running doctor, leaving residual drift.",
+      "exclusion_reasons": {
+        "infrastructure_failure": "gap-doctor.py is missing (pre-INFRA-155 binary), the pre-staged DB mutation didn't land, or python3 is not on PATH in the fixture container.",
+        "substrate_ceiling": "Agent runs the wrong direction (sync-from-yaml when sync-from-db is required) or hand-edits the YAML — these are the documented failure modes the prereg expects to discriminate on.",
+        "agent_error": "Agent runs the correct repair but on the wrong gap ID (e.g. picks an unrelated gap that also looks open), or commits with a malformed message that fails the gap-status-check in commit guards."
+      },
+      "scope_estimate_minutes": 30,
+      "rationale": "Exercises the SQLite-vs-YAML-mirror invariant that has caused 5+ corruption incidents (INFRA-049/052/055/057/064/208) and motivated the entire INFRA-188 cutover. Drift repair requires reading a structured CLI report, mapping its bucket vocabulary to the right repair sub-command, and respecting the canonical-state principle (never hand-edit). A substrate that cannot do this cannot be trusted with any Chump gap-mutation work — it would silently corrupt the registry."
+    },
+    {
+      "id": "W4-eval-harness",
+      "name": "eval-harness invocation",
+      "starting_state": {
+        "branch": "origin/main",
+        "preconditions": "A clean fixture worktree with the reflection_tasks_casual_v1.json fixture already committed under scripts/ab-harness/fixtures/ and an A/A-capable harness entrypoint on PATH. python3.12 is installed and resolvable. The Anthropic API key is provided via env (the harness's default judge family). No prior runs are queued in logs/ab/."
+      },
+      "instruction": "Run a small A/B (n=5/cell pilot) on the reflection fixture comparing Cell A vs Cell A (an A/A run) and report whether judge variance is within ±0.03.",
+      "success_criteria": {
+        "primary": "Agent (a) launches the harness with the correct `--scorer llm-judge`, `--aa-calibrate` (or equivalent), `python3.12` shebang, (b) waits for completion without spawning duplicate runs, (c) reports the A/A delta with a Wilson CI and a pass/fail call. The agent does NOT need to produce a *correct* numerical answer — only run the harness without violating any of the foot-guns documented in `RESEARCH_INTEGRITY.md` §154-170 (`python3` vs `python3.12`, n=5 calibration before n≥30, exit-code-0 scorer).",
+        "all_must_hold": [
+          "Agent invokes the harness with `python3.12` (NOT `python3`) — visible in the tool-call log",
+          "Agent passes `--scorer llm-judge` (or the documented equivalent) and an A/A flag (`--aa-calibrate` or equivalent — the harness exposes one such flag)",
+          "Agent runs at n=5 (the calibration tier; NOT jumping to n≥30 before A/A passes)",
+          "Agent waits for completion (no duplicate harness invocations spawned in parallel; tool-call log shows a single long-running run)",
+          "Agent's final response includes (i) a numeric A/A delta, (ii) a Wilson CI, (iii) a binary pass/fail call against the ±0.03 threshold"
+        ]
+      },
+      "expected_frontier_behavior": "Frontier reads the n=5 + A/A + ±0.03 hint, runs `python3.12 scripts/ab-harness/run-binary-ablation.py --fixture reflection_tasks_casual_v1.json --cells A,A --n 5 --scorer llm-judge --aa-calibrate`, lets it complete, parses the JSONL output, computes Wilson CI on the success-rate delta, and reports `delta=0.0X, Wilson95=[lo,hi], pass=true/false`.",
+      "expected_local_failure_modes": "qwen3:14b plausibly: (a) uses `python3` not `python3.12` (the foot-gun the prereg explicitly tests), (b) skips the A/A flag and runs A/B on a fresh fixture, (c) jumps to n=30 because 'more is better' (violates the calibration-first discipline), (d) spawns duplicate runs because the first one's stdout is silent for several minutes and the agent re-fires, (e) reports a free-text 'looks fine' instead of a numeric Wilson CI.",
+      "exclusion_reasons": {
+        "infrastructure_failure": "python3.12 is not installed in the fixture container, the Anthropic API key is missing/invalid, or the harness entrypoint script is broken at HEAD.",
+        "substrate_ceiling": "Agent runs `python3` instead of `python3.12`, jumps to n>5, or fails to compute Wilson CI in the report — these are the discipline-failure modes the prereg's foot-gun list expects to discriminate on.",
+        "agent_error": "Agent runs the correct harness flags but parses the wrong JSONL field for the success rate (e.g. picks the per-trial latency mean instead). Substrate had the discipline; the report is wrong for a non-substrate reason."
+      },
+      "scope_estimate_minutes": 45,
+      "rationale": "Exercises the research-integrity discipline that distinguishes shipping-quality from cargo-cult evals (RESEARCH_INTEGRITY.md §154-170). The foot-guns (`python3` vs `python3.12`, n=5 first, exit-code-0 scorer) are documented because they have repeatedly bitten frontier models too — a substrate that respects them is empirically capable of contributing to research; one that does not silently produces invalid sweeps. Critically, success here is procedural, not numerical: the agent doesn't have to produce a 'correct' delta, only run the harness correctly."
+    },
+    {
+      "id": "W5-multiturn-debugging",
+      "name": "multi-turn debugging task",
+      "starting_state": {
+        "branch": "fixture/research-032-w5-broken-build",
+        "preconditions": "A pre-staged fixture branch where a renamed function (e.g. `parse_lease_age` → `parse_lease_age_human`) has had its definition updated in src/lease.rs (1 file) but its three call sites in src/main.rs (1 file) still call the old name. `cargo check` fails with exactly 3 'no function named `parse_lease_age` in this scope' errors. The minimum fix is 4 lines across 2 files (the 3 call sites updated + an unrelated trailing whitespace touch is acceptable). All tests currently pass when the fix is applied."
+      },
+      "instruction": "Diagnose and fix; don't break tests.",
+      "success_criteria": {
+        "primary": "Agent reaches a state where (a) `cargo check` is clean, (b) `cargo test` passes, (c) the fix is the minimum diff (no unrelated edits >10 lines beyond the bug), (d) the agent took ≤ 8 tool-call turns. All four binary-ANDed.",
+        "all_must_hold": [
+          "`cargo check` exits 0 in the worktree at agent-final state (tool-call log captures the invocation)",
+          "`cargo test` exits 0 in the worktree at agent-final state",
+          "The diff vs the fixture starting branch is the minimum fix (touched lines outside the 3 broken call sites and any necessary import sum to ≤ 10 lines added)",
+          "The agent's tool-call turn count is ≤ 8 (a 'turn' = one agent message containing one or more tool calls before the next agent message; counted from the trial log)"
+        ]
+      },
+      "expected_frontier_behavior": "Frontier runs `cargo check`, reads the 3 errors, opens src/main.rs, identifies the 3 call sites, edits them in a single Edit call (or 3 surgical Edits), re-runs `cargo check` (clean) and `cargo test` (clean), reports the fix in 1-2 sentences. Total: ~4-5 tool turns.",
+      "expected_local_failure_modes": "qwen3:14b plausibly: (a) cannot parse the cargo error messages and asks the user 'what file is broken', (b) opens src/lease.rs first (where the rename happened) and 'reverts' the rename instead of updating call sites — fixes the build but breaks the intended refactor (caught by all_must_hold #3 because the diff direction is wrong), (c) over-edits — adds tracing, refactors the function, fixes unrelated typos — exceeding the 10-line cap, (d) loops on `cargo check` runs without ever reading the file (>8 turns).",
+      "exclusion_reasons": {
+        "infrastructure_failure": "cargo is not on PATH, the fixture branch failed to materialize, or the rust toolchain is broken in the fixture container.",
+        "substrate_ceiling": "Agent cannot reduce the 3 cargo errors to a 4-line edit in 2 files within 8 turns — this is the multi-step reasoning + minimum-diff discipline the prereg expects to discriminate on.",
+        "agent_error": "Agent fixes the bug correctly but in 9+ turns due to one redundant `ls` or `cargo check` run (counted as non-success per the binary criterion, but flagged for substrate-attribution review since 9 vs 8 is a borderline measurement artifact)."
+      },
+      "scope_estimate_minutes": 30,
+      "rationale": "Exercises the multi-turn diagnosis-and-fix loop that is the bread-and-butter of agentic coding. Unlike W1 (which is procedural-discipline-heavy), W5 isolates the reasoning + minimum-diff hygiene dimension — the agent doesn't have to know any Chump-specific tooling; it just has to read errors, locate call sites, and edit precisely. The 8-turn cap and 10-line cap together force the substrate to plan rather than churn. Highest-variance workflow (per prereg §3 A/A note); chosen as the substrate-noise A/A baseline."
+    }
+  ]
+}
