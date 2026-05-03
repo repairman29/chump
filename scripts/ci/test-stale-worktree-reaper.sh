@@ -100,6 +100,47 @@ fi
     || { echo "FAIL: new flags did not parse"; exit 1; }
 echo "PASS: --force-skip-process-check + --log-fresh-min parse OK"
 
+# ---------- Layer 3: INFRA-325 — lease-shape tolerance ----------
+# Simulate both lease shapes that the reaper's grep fallback must handle:
+#   E: lease WITHOUT "worktree" field → grep exits 1 (no match); must not abort
+#   F: lease WITH "worktree" field → grep + sed must extract the path correctly
+#
+# We test the grep snippet inline (not the full reaper) because spinning up a
+# real git repo for a one-liner's correctness is overkill. The live dry-run in
+# Layer 1 already confirms the reaper exits 0 against real leases, and the
+# majority of real leases lack the "worktree" field (the common case fixed in
+# INFRA-325).
+
+# --- Test E: lease WITHOUT "worktree" field — grep exits 1, || true keeps going ---
+lease_no_wt="$TMP/lease_no_worktree.json"
+cat >"$lease_no_wt" <<'EOF'
+{"session_id":"test-sess-1","gap_id":"INFRA-001","taken_at":"2026-05-02T22:00:00Z","paths":[]}
+EOF
+
+# Run the exact grep pipeline from the reaper; it should produce empty output and exit 0.
+wt_e=$(grep -oE '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease_no_wt" \
+    | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)
+if [[ -z "$wt_e" ]]; then
+    echo "PASS: lease without worktree field → grep pipeline exits 0, wt=''"
+else
+    echo "FAIL: lease without worktree field → unexpected wt='$wt_e'"; exit 1
+fi
+
+# --- Test F: lease WITH "worktree" field — grep + sed extracts path correctly ---
+lease_with_wt="$TMP/lease_with_worktree.json"
+EXPECT_WT="/Users/jeffadkins/Projects/Chump/.claude/worktrees/infra-325-test"
+cat >"$lease_with_wt" <<EOF
+{"session_id":"test-sess-2","gap_id":"INFRA-002","taken_at":"2026-05-02T22:00:00Z","worktree":"${EXPECT_WT}"}
+EOF
+
+wt_f=$(grep -oE '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease_with_wt" \
+    | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)
+if [[ "$wt_f" == "$EXPECT_WT" ]]; then
+    echo "PASS: lease with worktree field → grep pipeline extracts '$wt_f'"
+else
+    echo "FAIL: lease with worktree field → expected '$EXPECT_WT', got '$wt_f'"; exit 1
+fi
+
 echo ""
 echo "PASS: all reaper safety-check tests"
 echo "----"
