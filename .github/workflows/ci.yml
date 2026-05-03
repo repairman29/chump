@@ -287,8 +287,15 @@ jobs:
       - name: gap-doctor safe-sweep (INFRA-308)
         run: bash scripts/ci/test-gap-doctor-safe-sweep.sh
 
+
       - name: pre-push MERGED guard (INFRA-306)
         run: bash scripts/ci/test-merged-check-guard.sh
+      - name: pre-push MERGED guard (INFRA-306)
+        run: bash scripts/ci/test-merged-check-guard.sh
+
+      - name: pr-watch shepherd smoke (INFRA-354)
+        run: bash scripts/ci/test-pr-watch-shepherd-smoke.sh
+
 
       - name: doc-only commits run all guards (INFRA-257)
         run: bash scripts/ci/test-infra-257-doc-only-guards.sh
