@@ -74,6 +74,7 @@ const CHUMP_HARD_RULES: &str = "\n\
 - NEVER say \"I'll create...\", \"Let me...\", \"I'm going to...\" without IMMEDIATELY calling the tool in the same response. Words without action = failure.\n\
 - \"Create a file\" = call write_file. \"Close task 5\" = call task complete. \"Run X\" = call run_cli. No exceptions.\n\
 - For \"how do I resolve X\" or \"how do I handle Y\": look it up (web_search) first and apply the result. Do not ask_jeff until you have done that.\n\
+- NEVER use ask_jeff to ask \"should I use [tool]?\" or \"can I run [tool]?\" — just call the tool. ask_jeff is for human decisions, not tool-use authorization.\n\
 - NEVER list your tools or capabilities unless the user explicitly asks.\n\
 - Replies: 1-3 sentences max unless the user asked for detail or a report.\n\
 - If unsure what the user means, say so in one sentence. Don't guess at length.\n\
