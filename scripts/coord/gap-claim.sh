@@ -191,20 +191,29 @@ if [[ -x "$REPO_ROOT/scripts/dev/chump-ambient-glance.sh" ]] && [[ "${CHUMP_AMBI
     fi
 fi
 
-# ── Phase 1: NATS atomic claim (COORD-NATS) ───────────────────────────────────
-# Before writing the file-based lease, attempt an atomic CAS claim via the
-# chump-coord binary. This is the FLEET-007 distributed mutex — the property
-# the file-based primitive lacks (per INFRA-042: every concurrent agent
-# "wins" because there's no atomic CAS).
+# ── Phase 1: NATS KV dual-write (FLEET-032) ──────────────────────────────────
+# Dual-write pattern: before writing the file-based lease, attempt an atomic
+# CAS claim via NATS KV (via chump-coord binary). This enables cross-machine
+# visibility in multi-machine fleets (Pi mesh, cloud overflow, ephemeral
+# runners). The NATS KV write is NATS-conditional (CHUMP_NATS_URL set or
+# chump-coord available); if NATS is unreachable, file-based lease proceeds.
 #
 # chump-coord claim exits:
-#   0 — claim won (or NATS unavailable — file-based fallback proceeds)
-#   1 — CONFLICT: another session holds the atomic claim — abort immediately
+#   0 — claim succeeded (atomic CAS won in NATS KV, or NATS unavailable)
+#   1 — CONFLICT: another session holds the atomic claim in NATS KV — abort
 #
-# If chump-coord is not in PATH, we fall through to the file-based system
-# unchanged. No coordination regression is possible.
+# NATS KV behavior:
+#   - Bucket: chump_gaps (one key per gap, indexed by `gap.<gap-id>`)
+#   - TTL: native NATS KV max_age (CHUMP_GAP_CLAIM_TTL_SECS, default 4h)
+#   - Visibility: cross-machine (siblings on other hosts see this claim)
+#
+# File-based lease behavior (INFRA-109):
+#   - Location: .chump-locks/<session>.json in main repo
+#   - TTL: stale-lease reaper + manual cleanup (.chump-locks cleanup runs hourly)
+#   - Visibility: same-machine only (FLEET-032 Phase 2+ will deprecate this)
 _COORD_BIN="$(command -v chump-coord 2>/dev/null || true)"
-if [[ -n "$_COORD_BIN" ]]; then
+_NATS_ENABLED="${CHUMP_NATS_URL:+1}"
+if [[ -n "$_COORD_BIN" ]] && [[ "${_NATS_ENABLED}" == "1" ]]; then
     # Derive file hints from gap domain (same heuristic as musher.sh)
     _COORD_FILES="$(python3 -c "
 gap='$GAP_ID'
@@ -213,11 +222,14 @@ prefix=gap.split('-')[0]
 print(m.get(prefix,''))
 " 2>/dev/null || true)"
     export CHUMP_COORD_FILES="$_COORD_FILES"
+    printf '[gap-claim] FLEET-032 Phase 1: attempting NATS KV atomic claim for %s (CHUMP_NATS_URL set)...\n' "$GAP_ID" >&2
     if ! CHUMP_SESSION_ID="$SESSION_ID" "$_COORD_BIN" claim "$GAP_ID" 2>&1; then
-        # Exit code 1 = atomic conflict — another agent won the CAS race.
-        printf '[gap-claim] NATS atomic conflict on %s — aborting. Run musher.sh --pick for next available gap.\n' "$GAP_ID" >&2
+        # Exit code 1 = atomic conflict — another agent won the CAS race in NATS KV.
+        printf '[gap-claim] NATS KV conflict on %s — another session holds the atomic claim. Aborting.\n' "$GAP_ID" >&2
+        printf '[gap-claim] Run musher.sh --pick for next available gap.\n' >&2
         exit 1
     fi
+    printf '[gap-claim] NATS KV claim succeeded for %s (cross-machine visible).\n' "$GAP_ID" >&2
 fi
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
@@ -295,6 +307,14 @@ PYEOF
     else
         printf '[gap-claim] Claimed %s for session %s (expires %s)%s\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES" "$([[ "$SPECULATIVE" == "1" ]] && echo ' [SPECULATIVE]' || true)"
     fi
+fi
+
+# ── FLEET-032 Phase 1: log dual-write completion ──────────────────────────────
+# At this point, the claim is now present in:
+#   1. NATS KV (if CHUMP_NATS_URL set) — cross-machine visible, TTL via KV expiry
+#   2. .chump-locks/<session>.json — same-machine visible, TTL via reaper
+if [[ "${_NATS_ENABLED}" == "1" ]] && [[ -n "$_COORD_BIN" ]]; then
+    printf '[gap-claim] FLEET-032 Phase 1: dual-write complete — claim visible in NATS KV + .chump-locks/.\n' >&2
 fi
 
 # ── INFRA-168: sync claim to SQLite leases table ─────────────────────────────

@@ -418,16 +418,23 @@ for GAP_ID in "$@"; do
         fi
     fi
 
-    # ── Check 1.6: NATS-side cross-host lease (INFRA-274) ─────────────────
-    # The local .chump-locks/ check below only sees same-host claims. With
-    # multi-host fleets (chump-orchestrator routing across machines), a
-    # sibling on another host is invisible. INFRA-274 fix: query the
-    # NATS-backed atomic lease store before falling through to the local
-    # check. If chump-coord isn't on PATH or NATS isn't reachable, this
-    # check is a no-op (output empty, caller proceeds with local-only).
+    # ── Check 1.6: NATS KV cross-machine lease (FLEET-032 Phase 1) ───────────
+    # FLEET-032 Phase 1: dual-write pattern for cross-machine visibility.
+    # gap-claim.sh writes to BOTH:
+    #   1. .chump-locks/<session>.json (same-machine, file-based)
+    #   2. NATS KV (cross-machine, atomic via chump-coord)
+    #
+    # gap-preflight.sh reads from BOTH stores and unions claim sets:
+    #   - Check 1.6 (NATS): whois query for NATS KV claims (cross-host visible)
+    #   - Check 2 (file): check_lease_claim() for .chump-locks/ (same-host visible)
+    #   - Union: either source blocking means the gap is unavailable
+    #
+    # If chump-coord is unavailable or NATS unreachable, NATS check returns
+    # empty (no-op); file-based check still runs. Coordination is sound even
+    # when NATS is down — fleet simply falls back to same-machine only.
     #
     # Bypass:
-    #   CHUMP_PREFLIGHT_NATS_CHECK=0 (skip entirely)
+    #   CHUMP_PREFLIGHT_NATS_CHECK=0 (skip NATS union, local-only)
     #   CHUMP_SPECULATIVE=1          (INFRA-193 race wanted)
     if [[ "${CHUMP_PREFLIGHT_NATS_CHECK:-1}" != "0" ]] \
             && [[ "${CHUMP_SPECULATIVE:-0}" != "1" ]] \
@@ -436,10 +443,10 @@ for GAP_ID in "$@"; do
         # Strip whitespace; empty means no claim (or NATS unreachable).
         NATS_HOLDER="${NATS_HOLDER//[[:space:]]/}"
         if [[ -n "$NATS_HOLDER" && "$NATS_HOLDER" != "$SESSION_ID" ]]; then
-            red "SKIP $GAP_ID — NATS-side lease held by session '$NATS_HOLDER' (cross-host visible)."
-            red "  This is a DIFFERENT host's claim — the local .chump-locks/ wouldn't see it."
-            red "  Coordinate with that session or wait for the claim to expire."
-            red "  Bypass: CHUMP_PREFLIGHT_NATS_CHECK=0 (skip cross-host check)"
+            red "SKIP $GAP_ID — NATS KV claim held by session '$NATS_HOLDER' (cross-machine visible)."
+            red "  This is another machine's claim — union of NATS KV + .chump-locks/ blocks this gap."
+            red "  Coordinate with that session or wait for the claim to expire (NATS KV TTL)."
+            red "  Bypass: CHUMP_PREFLIGHT_NATS_CHECK=0 (skip cross-machine check)"
             red "  Or: CHUMP_SPECULATIVE=1 (race per INFRA-193)"
             FAILED=1
             continue
