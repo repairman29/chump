@@ -484,6 +484,15 @@ fn prefer_large_context() -> bool {
 ///   support tools", ...) — INFRA-313: technically 400-status but
 ///   another model handles the same payload, so cascade-onward is the
 ///   right behavior. Symptomatically identical to `tool_use_failed`.
+/// - **Transport-level errors** ("error sending request", "model HTTP
+///   unreachable", "connection refused", "operation timed out", "no route
+///   to host", "name resolution failed") — INFRA-348: `LocalOpenAIProvider`
+///   wraps the underlying reqwest transport error with an educational hint
+///   string. The wrapped error loses the typed chain so
+///   `local_openai::is_transient_error` (which calls `format!("{:?}", err)`)
+///   can no longer classify it. The string predicate is the correct fix
+///   layer: recognise the wrapped patterns so the cascade falls over to a
+///   cloud slot when the local daemon is down/unreachable.
 ///
 /// Note: this only inspects the error *string*. The full check in `complete()`
 /// also calls `local_openai::is_transient_error(&e)` for transport-level
@@ -518,11 +527,30 @@ pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
         || lower.contains("does not support tool")
         || lower.contains("tools are not supported")
         || lower.contains("model does not support tools");
+    // INFRA-348: transport-level errors wrapped by LocalOpenAIProvider.
+    // `LocalOpenAIProvider::complete` appends an educational hint string
+    // (e.g. "— model HTTP unreachable (daemon down, crashed, or still
+    // starting). Ollama: brew services start ollama …") via
+    // `Err(anyhow!("{}{}", err, hint))`. This re-wraps into a plain-string
+    // anyhow error and loses the typed chain, so `is_transient_error`'s
+    // `format!("{:?}", err)` chain inspection no longer fires. Match the
+    // wrapped patterns here so the cascade falls over to a cloud slot when
+    // the local daemon is down.
+    let is_transport_error = lower.contains("error sending request")
+        || lower.contains("model http unreachable")
+        || lower.contains("connection refused")
+        || lower.contains("operation timed out")
+        || lower.contains("no route to host")
+        || lower.contains("name resolution failed")
+        || lower.contains("dns resolution failed")
+        || lower.contains("tcp connect error")
+        || lower.contains("model temporarily unavailable");
     is_rate_limited
         || is_access_denied
         || is_billing_exhausted_error_string(e_str)
         || is_tool_format_failure
         || is_tool_capability_failure
+        || is_transport_error
 }
 
 /// INFRA-302 blocker (1): the billing-exhausted predicate, factored out
@@ -1128,9 +1156,67 @@ mod tests {
             !should_cascade_on_error_string("HTTP 500 Internal Server Error"),
             "500 (provider crash) should propagate"
         );
+    }
+
+    // INFRA-348: transport-level errors wrapped by LocalOpenAIProvider must cascade.
+    // Root cause: LocalOpenAIProvider::complete re-wraps the reqwest transport error
+    // with an educational hint string via `anyhow!("{}{}", err, hint)`. This loses the
+    // typed chain so `is_transient_error`'s `format!("{:?}", err)` inspection no longer
+    // fires. The string predicate must cover these wrapped patterns.
+    #[test]
+    fn cascades_on_wrapped_transport_error_error_sending_request() {
+        // Real 2026-05-02 dogfood error string from the INFRA-348 repro:
+        let wrapped = "error sending request for url (http://127.0.0.1:11434/v1/chat/completions) \
+            — model HTTP unreachable (daemon down, crashed, or still starting). \
+            Ollama: brew services start ollama (or restart); probe: curl -s \
+            http://127.0.0.1:11434/api/tags. Prefer OPENAI_API_BASE=\
+            http://127.0.0.1:11434/v1 if localhost misbehaves. Backup URL: \
+            CHUMP_FALLBACK_API_BASE. vLLM: :8000/:8001.";
         assert!(
-            !should_cascade_on_error_string("Connection refused"),
-            "transport-level errors handled by is_transient_error, not the string predicate"
+            should_cascade_on_error_string(wrapped),
+            "wrapped 'error sending request' must cascade — local daemon was down, \
+             CHUMP_CASCADE_ENABLED=1 with 8 cloud slots did NOT fall over (INFRA-348 repro)"
+        );
+    }
+
+    #[test]
+    fn cascades_on_model_http_unreachable() {
+        assert!(
+            should_cascade_on_error_string(
+                "model HTTP unreachable (daemon down, crashed, or still starting)"
+            ),
+            "model HTTP unreachable must cascade"
+        );
+    }
+
+    #[test]
+    fn cascades_on_connection_refused() {
+        // Previously the comment said "handled by is_transient_error, not the string predicate"
+        // but the typed-chain inspection fails for wrapped anyhow errors (INFRA-348). The string
+        // predicate is now the canonical handler for transport errors at the cascade boundary.
+        assert!(
+            should_cascade_on_error_string("Connection refused"),
+            "connection refused must cascade via string predicate (INFRA-348)"
+        );
+    }
+
+    #[test]
+    fn cascades_on_transport_error_variants() {
+        assert!(
+            should_cascade_on_error_string("operation timed out connecting to model"),
+            "operation timed out"
+        );
+        assert!(
+            should_cascade_on_error_string("no route to host (http://127.0.0.1:8000)"),
+            "no route to host"
+        );
+        assert!(
+            should_cascade_on_error_string("name resolution failed for localhost"),
+            "name resolution failed"
+        );
+        assert!(
+            should_cascade_on_error_string("model temporarily unavailable"),
+            "model temporarily unavailable"
         );
     }
 
