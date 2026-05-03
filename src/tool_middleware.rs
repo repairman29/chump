@@ -967,7 +967,10 @@ fn detect_ssrf(input: &Value) -> Result<()> {
 }
 
 /// Default timeout for a single tool execution (seconds).
-pub const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 30;
+/// INFRA-321: reduced from 30s → 8s so a wedged tool (e.g. memory_brain
+/// trying a missing path) fails fast instead of blocking a turn for 60s.
+/// Override via CHUMP_TOOL_TIMEOUT_SECS env var.
+pub const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 8;
 
 /// Wraps a `Tool` so that every `execute()` call is bounded by a timeout.
 /// Delegates `name()`, `description()`, and `input_schema()` to the inner tool.
@@ -977,7 +980,7 @@ pub struct ToolTimeoutWrapper {
 }
 
 impl ToolTimeoutWrapper {
-    /// Wrap `inner` with the default timeout (30s, or CHUMP_TOOL_TIMEOUT_SECS).
+    /// Wrap `inner` with the default timeout (8s, or CHUMP_TOOL_TIMEOUT_SECS).
     pub fn new(inner: Box<dyn Tool + Send + Sync>) -> Self {
         let secs = std::env::var("CHUMP_TOOL_TIMEOUT_SECS")
             .ok()
