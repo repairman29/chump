@@ -155,10 +155,72 @@ for r in rows:
   git worktree list 2>/dev/null | sed 's/^/  /' | head -n 20 || echo "  (git worktree list failed)"
 }
 
+render_starvation() {
+  # INFRA-315: aggregate kind=fleet_starved events from ambient.jsonl so
+  # the operator can see at a glance whether workers are quiet because
+  # the fleet really has no work, or because filters are too tight, or
+  # because gap-doctor is blocked. Per-agent count + per-filter signature
+  # so a tight FLEET_DOMAIN_FILTER showing all the events is itself the
+  # diagnosis.
+  echo "========== fleet starvation ($(date -u +%H:%M:%SZ)) =========="
+  if [[ ! -f "$AMBIENT" ]]; then
+    echo "(no ambient stream at $AMBIENT)"
+    return 0
+  fi
+  # Aggregate the last 24h of fleet_starved events. python3 is already
+  # a fleet-status.sh dep below; keep parity.
+  python3 - "$AMBIENT" <<'PY'
+import json, sys, time, collections
+path = sys.argv[1]
+cutoff = time.time() - 24 * 3600
+total = 0
+per_agent = collections.Counter()
+per_filter = collections.Counter()
+try:
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("event") != "fleet_starved":
+                continue
+            ts = rec.get("ts", "")
+            try:
+                t = time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+                if time.mktime(t) < cutoff:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            total += 1
+            per_agent[rec.get("agent_id", "?")] += 1
+            per_filter[rec.get("filters", "?")] += 1
+except FileNotFoundError:
+    print("(ambient stream missing)")
+    raise SystemExit(0)
+print(f"total kind=fleet_starved events (last 24h): {total}")
+if total == 0:
+    raise SystemExit(0)
+print()
+print("per agent:")
+for a, n in per_agent.most_common(10):
+    print(f"  agent {a}: {n}")
+print()
+print("per filter combination (most-starved first):")
+for f, n in per_filter.most_common(5):
+    print(f"  {n:>3}× {f}")
+PY
+}
+
 render_all() {
   render_agents
   echo
   render_queue
+  echo
+  render_starvation
   echo
   render_ambient
 }
@@ -178,10 +240,11 @@ done
 
 if [[ -n "$pane" ]]; then
   case "$pane" in
-    ambient) render_ambient ;;
-    queue)   render_queue ;;
-    agents)  render_agents ;;
-    *)       echo "[fleet-status] unknown --pane: $pane (want ambient|queue|agents)" >&2; exit 2 ;;
+    ambient)    render_ambient ;;
+    queue)      render_queue ;;
+    agents)     render_agents ;;
+    starvation) render_starvation ;;
+    *)          echo "[fleet-status] unknown --pane: $pane (want ambient|queue|agents|starvation)" >&2; exit 2 ;;
   esac
   exit 0
 fi
