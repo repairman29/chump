@@ -104,19 +104,21 @@ else
     fail "bypass env didn't allow doc-add"
 fi
 
-# ── case 4: docs-only commit (no .rs staged) → cargo-fmt early-exit skips ────
-# Documents the limitation: the cargo-fmt early-exit at pre-commit:947
-# means docs-only commits never reach the docs-delta check. This case
-# verifies that limitation rather than testing the guard itself, so
-# future fixes to the early-exit can flip this assertion.
+# ── case 4: docs-only commit (no .rs staged) → guard now fires (INFRA-257) ───
+# Pre-INFRA-257 the cargo-fmt early-exit at pre-commit:947 short-circuited
+# the entire pre-commit pipeline when no .rs files were staged, so
+# docs-only commits never reached the docs-delta check. INFRA-257 removed
+# that short-circuit, so docs-only commits MUST now satisfy the guard
+# (either delete a doc or set CHUMP_DOCS_DELTA_CHECK=0). This case
+# verifies the guard now fires on a docs-only add with no offsetting delete.
 reset_sandbox
 echo "# new4" > "$SANDBOX/docs/new4.md"
 git -C "$SANDBOX" add docs/new4.md
 if env $SANDBOX_ENV \
     git -C "$SANDBOX" -c user.email=t@t -c user.name=t commit -q -m "docs-only add" >/dev/null 2>&1; then
-    pass "docs-only commit bypasses guard via cargo-fmt early-exit (limitation acknowledged)"
+    fail "docs-only commit unexpectedly allowed — early-exit not fully removed?"
 else
-    fail "docs-only commit was unexpectedly blocked — early-exit fixed?"
+    pass "docs-only commit blocked by guard (INFRA-257: early-exit removed)"
 fi
 
 echo ""
