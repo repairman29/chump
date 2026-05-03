@@ -103,6 +103,10 @@ def main() -> int:
             continue
         if exclude_re.search(gid):
             continue
+        # INFRA-397: skip gaps that are not open — the gap list includes done
+        # gaps which should never be picked up by fleet workers.
+        if g.get("status") != "open":
+            continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
         # been superseded by a more general gap and should never be picked up by
         # fleet workers.  The canonical form is "SUPERSEDED YYYY-MM-DD by ..."
