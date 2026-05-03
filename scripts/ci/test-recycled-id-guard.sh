@@ -8,6 +8,14 @@
 #   (2) Hook allows legitimate done->done diffs (e.g. adding resolution_notes).
 #   (3) Hook allows a new open gap with a genuinely new id.
 #   (4) CHUMP_GAPS_LOCK=0 bypasses the check.
+#   (5) (INFRA-234) Hook allows additive enrichment of a status:done row
+#       — adding closed_pr / closed_date / notes — without flagging it
+#       as a reopen.
+#   (6) (INFRA-234) Hook does not false-fire when a status:done gap's
+#       description block contains the literal text "status: open" —
+#       the parser must pin to exact gap-row indentation, not loose
+#       `\s*` (which matched description content as a real status
+#       field). Same fix shape as INFRA-220 for the closed_pr guard.
 #
 # Run:
 #   ./scripts/ci/test-recycled-id-guard.sh
@@ -53,6 +61,7 @@ export CHUMP_CHECK_BUILD=0
 export CHUMP_DOCS_DELTA_CHECK=0
 export CHUMP_SUBMODULE_CHECK=0
 export CHUMP_PREREG_CHECK=0
+export CHUMP_RAW_YAML_LOCK=0  # tests legacy docs/gaps.yaml path; raw-YAML guard is a different concern
 
 # Seed an origin/main history that has TEST-A closed as done.
 cat >"$FAKE_REPO/docs/gaps.yaml" <<'YAML'
@@ -155,6 +164,107 @@ if CHUMP_GAPS_LOCK=0 git -C "$FAKE_REPO" commit -q -m "force-reopen with bypass"
     ok "CHUMP_GAPS_LOCK=0 bypass honored"
 else
     fail "bypass env var did not work"
+fi
+git -C "$FAKE_REPO" checkout -q docs/gaps.yaml 2>/dev/null || true
+
+# ── Test 5 (INFRA-234): additive enrichment of a status:done row is allowed ──
+# Reproducer: origin/main has TEST-A status:done, no closed_pr. Local edit
+# adds closed_pr + closed_date. Status stays done. Guard MUST allow this.
+echo "--- Test 5 (INFRA-234): adding closed_pr/closed_date to status:done is allowed ---"
+cat >"$FAKE_REPO/docs/gaps.yaml" <<'YAML'
+gaps:
+- id: TEST-A
+  title: closed gap A
+  status: done
+  closed_date: '2026-04-20'
+  closed_pr: 999
+- id: TEST-B
+  title: open gap B
+  status: open
+YAML
+git -C "$FAKE_REPO" add docs/gaps.yaml
+if git -C "$FAKE_REPO" commit -q -m "add closed_pr to TEST-A" 2>/dev/null; then
+    ok "additive closed_pr/closed_date enrichment allowed"
+    git -C "$FAKE_REPO" reset -q --hard HEAD~1
+else
+    fail "hook FALSE-FIRED on additive closed_pr enrichment of done gap"
+fi
+
+# ── Test 6 (INFRA-234): status:done with 'status: open' inside description ──
+# A done gap whose description contains the literal text 'status: open' (e.g.
+# describing a reproducer scenario) must NOT be parsed as having status:open.
+# This is the bug seeded into the live registry by INFRA-245's description.
+# Setup: seed TEST-D done with the false-positive description, then make any
+# unrelated edit that re-stages the file. The parser used to mis-classify
+# TEST-D as status='open' from the description body, then complain TEST-D
+# was being reopened.
+echo "--- Test 6 (INFRA-234): description content does NOT trip the guard ---"
+# Add TEST-D as status:done on main with a CLEAN description (no false-positive
+# trigger). Include closed_pr to satisfy the INFRA-107 closed_pr-integrity guard.
+# We then edit TEST-D to ADD a description body containing 'status: open' text —
+# the buggy loose-regex parser then reads NEW[TEST-D]='open,' from the
+# description body while OLD[TEST-D]='done' from origin/main, triggering a
+# false-positive recycled-ID error.
+cat >"$FAKE_REPO/docs/gaps.yaml" <<'YAML'
+gaps:
+- id: TEST-A
+  title: closed gap A
+  status: done
+  closed_date: '2026-04-20'
+- id: TEST-B
+  title: open gap B
+  status: open
+- id: TEST-D
+  title: gap that will get a tricky description added
+  status: done
+  closed_date: '2026-05-01'
+  closed_pr: 700
+YAML
+git -C "$FAKE_REPO" add docs/gaps.yaml
+if ! git -C "$FAKE_REPO" commit -q -m "seed TEST-D done (clean)" 2>&1; then
+    fail "Test 6 seed commit failed (could not seed TEST-D); skipping"
+    git -C "$FAKE_REPO" reset -q HEAD docs/gaps.yaml
+    git -C "$FAKE_REPO" checkout -q docs/gaps.yaml
+fi
+git -C "$FAKE_REPO" update-ref refs/remotes/origin/main HEAD
+
+# Now ADD a description block to TEST-D that contains the literal text
+# 'status: open' on a line by itself (mimics INFRA-245's real description
+# pattern that seeded the live false-positive). origin/main had TEST-D
+# with no description, so the gap-ID hijack guard's old_desc=="" branch
+# means the description ADD passes the hijack guard. The recycled-ID
+# guard, however, used to read NEW[TEST-D]='open,' (or 'open') from the
+# description body — which combined with OLD[TEST-D]='done' tripped the
+# false RECYCLE error. Status field stays done; closed_pr stays 700.
+cat >"$FAKE_REPO/docs/gaps.yaml" <<'YAML'
+gaps:
+- id: TEST-A
+  title: closed gap A
+  status: done
+  closed_date: '2026-04-20'
+- id: TEST-B
+  title: open gap B
+  status: open
+- id: TEST-D
+  title: gap that will get a tricky description added
+  status: done
+  closed_date: '2026-05-01'
+  closed_pr: 700
+  description: |
+    Adding a postmortem note. The drift summary read
+    status: open, docs/gaps/INFRA-097.yaml says status:done.
+YAML
+git -C "$FAKE_REPO" add docs/gaps.yaml
+if out=$(git -C "$FAKE_REPO" commit -m "add description with 'status: open' text to TEST-D" 2>&1); then
+    ok "guard does not false-fire on description-body 'status: open' text"
+    git -C "$FAKE_REPO" reset -q --hard HEAD~1
+else
+    if echo "$out" | grep -q "RECYCLE"; then
+        fail "guard FALSE-FIRED on description-body 'status: open' (the INFRA-234 bug)"
+        echo "      output: $out"
+    else
+        fail "hook blocked for unrelated reason; output: $out"
+    fi
 fi
 
 echo

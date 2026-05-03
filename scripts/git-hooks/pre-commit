@@ -676,16 +676,28 @@ def _gaps_text(ref=None):
     except Exception:
         return ""
 def gap_statuses(text):
+    """Returns {gap_id: status} for all gaps in text.
+
+    INFRA-234: pin regexes to exact gap-row indentation (top-level
+    '- id:' at column 1, sibling 'status:' at exactly 2-space indent).
+    The prior loose '\\s*' indentation matched 'status: open' lines
+    INSIDE 'description: |' blocks too — e.g. INFRA-245's description
+    contains the literal text 'status:open, docs/gaps/INFRA-097.yaml
+    says status:done', which the loose parser saw as the gap's status
+    flipping to 'open,'. That triggered a false-positive recycled-ID
+    error on every commit touching any gap YAML. Same indentation-pin
+    pattern that fixed the closed_pr guard in INFRA-220.
+    """
     out = {}
     cur_id = None
     for line in text.splitlines():
-        m = re.match(r'^\s*-\s*id:\s*(\S+)', line)
+        m = re.match(r'^- id:\s*(\S+)', line)
         if m:
             cur_id = m.group(1)
-            out.setdefault(cur_id, None)
+            out[cur_id] = None
             continue
         if cur_id:
-            s = re.match(r'^\s*status:\s*(\S+)', line)
+            s = re.match(r'^  status:\s*(\S+)', line)
             if s:
                 out[cur_id] = s.group(1)
     return out
