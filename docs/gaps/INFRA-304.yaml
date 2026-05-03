@@ -1,6 +1,6 @@
 - id: INFRA-304
   domain: INFRA
-  title: bot-merge.sh flake-budget — refuse 3rd rerun of same failing test, suggest filing a gap
+  title: bot-merge.sh flake-budget refuse 3rd rerun of same failing test
   status: open
   priority: P2
   effort: s
@@ -11,10 +11,10 @@
     needed to recognize the pattern and stop re-running CI; the third
     re-run on each PR was wasted work. The actual fix (INFRA-253, +12
     retries in gap_store.rs) was 1 line and unblocked the entire queue.
-
+    
     Procedure should make the "stop after N reruns of the SAME failing
     test, look at the source" decision explicit:
-
+    
     1. bot-merge.sh tracks per-PR per-test rerun counts in
        `.chump-locks/flake-counts.json`. Schema:
          { "<pr_num>": { "<test_name>": <count> }, ... }
@@ -27,7 +27,7 @@
          want to keep retrying."
     3. Optional Phase 2: emit `ALERT kind=flake_budget_exceeded` to
        ambient.jsonl so siblings see it immediately.
-
+    
     The point isn't to forbid retries — it's to surface the pattern at
     the right cognitive moment (between rerun #2 and #3, when the
     operator has data but no procedural prompt to switch gears).
@@ -43,3 +43,4 @@
     + the missing cognitive prompt to switch from retry to fix) is a
     documented session lesson but not encoded in any guard. P2 because
     it's a process improvement, not a correctness bug.
+

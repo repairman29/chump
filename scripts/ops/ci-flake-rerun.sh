@@ -113,6 +113,55 @@ while IFS=$'\t' read -r PR_NUM RUN_ID TITLE; do
         continue
     fi
 
+    # ── INFRA-304: per-PR flake-budget ──────────────────────────────────────
+    # The per-run-id cooldown above stops one specific run from being rerun
+    # twice. But the same PR can produce a fresh run-id every time the
+    # author pushes (or every time something else reruns it). If a PR
+    # accumulates N flake-class reruns across distinct run-ids, the test
+    # is likely a real bug masquerading as a flake — observed 2026-05-02
+    # when 6 PRs blocked simultaneously on the same flaky test
+    # `two_concurrent_reserves_return_distinct_ids` until INFRA-253's
+    # 1-line source fix unblocked the queue.
+    #
+    # Tracks per-PR rerun count in $COOLDOWN_DIR/pr-<N>.count. After
+    # CHUMP_FLAKE_BUDGET (default 3) flake-class reruns, refuses further
+    # auto-reruns and posts a one-time diagnostic comment to the PR
+    # suggesting the operator file a gap.
+    #
+    # Bypass: CHUMP_FLAKE_BUDGET=0 → unlimited reruns (current behavior).
+    flake_budget="${CHUMP_FLAKE_BUDGET:-3}"
+    pr_count_file="$COOLDOWN_DIR/pr-${PR_NUM}.count"
+    pr_count=0
+    [[ -f "$pr_count_file" ]] && pr_count=$(cat "$pr_count_file" 2>/dev/null || echo 0)
+    if (( flake_budget > 0 )) && (( pr_count >= flake_budget )); then
+        warn "PR #$PR_NUM: flake-budget exceeded ($pr_count >= $flake_budget) — refusing auto-rerun"
+        # Post a one-time diagnostic comment so the operator gets the
+        # cognitive prompt to switch from "retry" to "look at the test".
+        # Marker file prevents duplicate comments on subsequent skipped
+        # rerun attempts.
+        comment_marker="$COOLDOWN_DIR/pr-${PR_NUM}.commented"
+        if [[ ! -f "$comment_marker" ]] && [[ $DRY_RUN -eq 0 ]]; then
+            if gh pr comment "$PR_NUM" --body "⚠️ **Flake budget exceeded** (${pr_count}/${flake_budget} auto-reruns matched a known flake pattern). The same PR has now seen ${pr_count} flake-class reruns across distinct run-ids. The third rerun usually means it's a real bug, not transient noise — see INFRA-304 / the 2026-05-02 \`two_concurrent_reserves_return_distinct_ids\` incident.
+
+Suggested action:
+\`\`\`bash
+chump gap reserve --domain INFRA --title 'flaky <test_name> — investigate after PR #${PR_NUM}'
+\`\`\`
+
+Bypass: \`CHUMP_FLAKE_BUDGET=0 scripts/ops/ci-flake-rerun.sh\` to keep retrying." >/dev/null 2>&1; then
+                touch "$comment_marker"
+                info "PR #$PR_NUM: posted flake-budget diagnostic comment"
+            fi
+        fi
+        # Emit ambient ALERT so siblings see the budget hit live.
+        ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        printf '{"event":"alert","kind":"flake_budget_exceeded","ts":"%s","pr":%s,"count":%s,"budget":%s}\n' \
+            "$ts" "$PR_NUM" "$pr_count" "$flake_budget" \
+            >> "$REAPER_LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+        SKIPPED=$((SKIPPED+1))
+        continue
+    fi
+
     # Pull the failed-log payload and grep for known flakes.
     log=$(gh run view "$RUN_ID" --log-failed 2>/dev/null | head -c 200000)
     matched=""
@@ -137,7 +186,10 @@ while IFS=$'\t' read -r PR_NUM RUN_ID TITLE; do
 
     if gh run rerun "$RUN_ID" --failed >/dev/null 2>&1; then
         date +%s > "$cd_file"
-        green "  reran PR #$PR_NUM run $RUN_ID (matched flake: '$matched')"
+        # INFRA-304: increment the per-PR flake-class rerun counter so
+        # the budget check above eventually trips on persistent flakes.
+        echo $((pr_count + 1)) > "$pr_count_file"
+        green "  reran PR #$PR_NUM run $RUN_ID (matched flake: '$matched', PR-budget=$((pr_count + 1))/$flake_budget)"
         RERAN=$((RERAN+1))
         ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
         printf '{"event":"alert","kind":"ci_flake_rerun","ts":"%s","pr":%s,"run":"%s","pattern":%s}\n' \
