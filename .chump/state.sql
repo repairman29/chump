@@ -9860,11 +9860,13 @@ gaps:
 - id: INFRA-206
   domain: INFRA
   title: per-agent gap-domain affinity — agent-1 INFRA only, agent-2 EVAL only, etc (kills hot-spot bias at 10+ agents)
-  status: open
+  status: done
   priority: P1
   effort: s
   notes: |
     SUPERSEDED 2026-05-02 by INFRA-314 (gap affinity tags + worker preference matching). INFRA-314 generalizes 'per-domain affinity' to skills_required + preferred_backend + preferred_machine — the domain case is a strict subset. Auto-skip from fleet pickup via SUPERSEDED prefix.
+  closed_date: '2026-05-03'
+  closed_pr: 951
 
 - id: INFRA-207
   domain: INFRA
@@ -11966,7 +11968,7 @@ gaps:
 - id: INFRA-273
   domain: INFRA
   title: "gap-preflight: cross-check open PRs by gap-ID — block claim when an in-flight PR already implements the gap"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -12020,6 +12022,7 @@ gaps:
     - gap-preflight.sh Check 5 blocks claim when open PR with gap-ID in title exists
     - CHUMP_PREFLIGHT_PR_CHECK=0 bypass for speculative work
     - test scripts/ci/test-preflight-pr-check.sh asserts both branches
+  closed_date: '2026-05-03'
 
 - id: INFRA-274
   domain: INFRA
@@ -12910,7 +12913,7 @@ gaps:
 - id: INFRA-325
   domain: INFRA
   title: stale-worktree-reaper exits 1 on every cron tick — grep no-match in lease JSON parse trips set -e (silent fail across all dogfood machines)
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -12934,6 +12937,8 @@ gaps:
     - Verify reaper still works on lease files WITH worktree field (jq + grep both paths)
     - Sweep other scripts/coord/*.sh + scripts/ops/*.sh for same grep-no-match-under-set-e pattern in lease parsing
     - Test in scripts/ci/ that simulates both lease shapes
+  closed_date: '2026-05-03'
+  closed_pr: 956
 
 - id: INFRA-326
   domain: INFRA
@@ -13290,6 +13295,7 @@ gaps:
     - smoke test exercises a fresh-gap-ship flow end-to-end without manual intervention
     - filing-style PRs (reserve + implement same change) work through canonical bot-merge path again
   closed_date: '2026-05-03'
+  closed_pr: 955
 
 - id: INFRA-345
   domain: INFRA
@@ -13425,7 +13431,7 @@ gaps:
 - id: INFRA-350
   domain: INFRA
   title: start the 72h daily-driver soak (last unchecked Architecture-vs-proof gate item)
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -13437,11 +13443,13 @@ gaps:
     - " grep dev.chump.soak-checkpoint)"
     - 72h run completes with verdict appended
     - ROADMAP.md 'Overnight / 72h soak' line gets checked
+  closed_date: '2026-05-03'
+  closed_pr: 949
 
 - id: INFRA-351
   domain: INFRA
   title: run-fleet.sh should auto-source .env so ANTHROPIC_API_KEY (and friends) reach worker panes
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -13467,21 +13475,29 @@ gaps:
     - worker.sh also sources .env when invoked directly (covers debug-without-launcher path)
     - smoke test verifies ANTHROPIC_API_KEY reaches a worker pane env when set in .env
     - launcher does NOT overwrite explicit env-var args (FLEET_SIZE=4 scripts/dispatch/run-fleet.sh still uses 4)
+  closed_date: '2026-05-03'
+  closed_pr: 948
 
 - id: INFRA-352
   domain: INFRA
-  title: chump --execute-gap fails on first HTTP error from OPENAI_API_BASE instead of falling over to cloud cascade slots — invalidates offline-mission failover claim
+  title: chump --execute-gap rc=1 when all 9 cascade slots (8 cloud + local) exhausted under concurrent load — no graceful degradation, no queuing, no operator visibility
   status: open
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Reproduce: stop OR overload Ollama (e.g. fire 4 concurrent execute-gap calls); without this fix, all 4 chump --execute-gap procs exit rc=1 in ~70s with 'agent loop failed: error sending request for url (http://127.0.0.1:11434/v1/chat/completions)' and never touch any cloud slot. With this fix, at least one of the 4 succeeds via a cascade slot."
-    - "chump --execute-gap (src/execute_gap.rs and the agent loop it builds) routes provider calls through provider_cascade.rs instead of bypassing it on first HTTP error. Verify: trace logs from a cascade-only run show fallback to slot 2/3/etc when slot 1 errors, NOT immediate rc=1."
-    - Cascade slot ordering respects CHUMP_PROVIDER_<N>_PRIORITY. Local Ollama (OPENAI_API_BASE) is treated as a slot like any other — its failure does not short-circuit the cascade.
-    - "Test: scripts/ci/test-execute-gap-cascade-failover.sh — 5xx-mocked OPENAI_API_BASE + working mock CHUMP_PROVIDER_2; assert chump --execute-gap completes via slot 2 and emits a structured 'cascade fallover' event to ambient.jsonl"
-    - "Live evidence (cascade fleet run 2026-05-02 04:15Z): 4 workers, 8 slots enabled, 0 reached cloud after Ollama returned errors under concurrent load. Cycle log: tmp/chump-fleet-20260502-221346-89849/agent-4-cycle3-INFRA-306.log line ~5."
-    - "Falsifying condition: if the existing cascade ALREADY handles HTTP errors from slot 1 and we measured incorrectly, this gap is wrong — verify via grep on src/provider_cascade.rs for next-slot-on-error logic before fixing."
+    - "FALSIFIED 2026-05-02: original hypothesis (cascade doesn't fall over on HTTP error) is WRONG. CHUMP_LOG_TIMING=1 trace shows cerebras → gemini → \"all cloud exhausted, falling back to local\" → Ollama failure → rc=1. Cascade IS calling next slot per provider_cascade.rs is_transient_error + should_cascade_on_error_string predicates."
+    - "CORRECTED: under fleet load (4 concurrent execute-gap calls), free-tier RPD limits exhaust faster than the bandit can route around them, and the local Ollama fallback also fails when serializing concurrent requests. End state: agent exits rc=1 with no useful diagnostic."
+    - "FIX SCOPE: (a) emit kind=cascade_all_exhausted ambient event with per-slot counters when this happens, (b) wait/retry once with backoff before exiting (default 30s) — covers transient RPD-window resets, (c) chump-doctor.sh adds a --probe-cascade subcommand that calls each enabled slot with a 1-token request and reports which are alive, dead, or rate-limited. Operator can run BEFORE launching a fleet to know if cascade is healthy."
+    - "Test: scripts/ci/test-cascade-all-exhausted.sh — start chump --execute-gap with all CHUMP_PROVIDER_*_BASE pointing at mocked 429-returning servers, plus OPENAI_API_BASE pointing at a refusing port; assert ambient.jsonl gets a cascade_all_exhausted event with per-slot tally, and rc=1 with a structured error."
+    - "Falsifying condition for the corrected diagnosis: if the cascade has a built-in retry-with-backoff that I missed (search src/provider_cascade.rs for sleep/retry/backoff), and the rc=1 was a SHORTER deadline than the cascade tried to honor, then graceful-degradation may already exist and we just need better operator visibility (just (a) of the FIX SCOPE)."
   depends_on: [META-025, INFRA-315]
+
+- id: INFRA-353
+  domain: INFRA
+  title: gap-doctor.py uses Python 3.10+ union syntax (int | None) — cron stderr emits TypeError on every fallthrough, breaks on Python <3.10
+  status: open
+  priority: P3
+  effort: xs
 
 - id: INFRA-41
   domain: INFRA
@@ -15024,10 +15040,11 @@ gaps:
 - id: META-024
   domain: META
   title: refresh ROADMAP_INDEX.md current state — 2-week stale gap counts
-  status: open
+  status: done
   priority: P3
   effort: xs
   opened_date: '2026-05-03'
+  closed_date: '2026-05-03'
 
 - id: META-025
   domain: META
