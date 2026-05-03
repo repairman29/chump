@@ -296,6 +296,9 @@ jobs:
       - name: fleet starve auto-action (INFRA-391)
         run: bash scripts/ci/test-fleet-starve-auto-action.sh
 
+      - name: pr-watch auto-resolve recipe (INFRA-387)
+        run: bash scripts/ci/test-pr-watch-auto-resolve.sh
+
       - name: pre-push MERGED guard (INFRA-306)
         run: bash scripts/ci/test-merged-check-guard.sh
 

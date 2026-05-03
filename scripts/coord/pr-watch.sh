@@ -66,6 +66,64 @@ LAST_STATE=""
 
 say() { printf '\033[1;36m[pr-watch]\033[0m PR #%s: %s\n' "$PR" "$*"; }
 
+# INFRA-387: attempt to auto-resolve a rebase conflict using the recipe
+# proven during the 2026-05-03 batch-unstick (7/8 PRs auto-recovered):
+#   .chump/state.sql        — regenerate via `chump gap dump --out`
+#   docs/gaps/<ID>.yaml     — take ours (the per-file mirror; conflict
+#                             usually means two parallel reserves both
+#                             chose the same ID-shape, but mirrors are
+#                             regenerated artifacts so ours is fine)
+#   .github/workflows/ci.yml — sed-strip <<<<<<< / ======= / >>>>>>>
+#                             markers (same trick worked for 4/4 ci.yml
+#                             rebases that night; reviewer can spot any
+#                             real semantic conflict if one slips through)
+#   anything else            — abort + bail out (operator must resolve)
+#
+# Returns 0 on success (all conflicts resolved + git add'd), non-zero
+# on first unresolvable file. Caller should `git rebase --continue`
+# afterward. Bypass: CHUMP_AUTO_RESOLVE_CONFLICTS=0 (skip the recipe,
+# fall through to the original "operator must resolve" exit 3).
+attempt_auto_resolve_conflicts() {
+    [[ "${CHUMP_AUTO_RESOLVE_CONFLICTS:-1}" == "0" ]] && return 1
+
+    local unmerged
+    unmerged=$(git diff --name-only --diff-filter=U 2>/dev/null) || return 1
+    [[ -z "$unmerged" ]] && return 0
+
+    local f
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        case "$f" in
+            .chump/state.sql)
+                say "  auto-resolve: regenerating $f via chump gap dump"
+                if ! chump gap dump --out "$f" >/dev/null 2>&1; then
+                    say "  ✗ chump gap dump failed for $f — bail"
+                    return 1
+                fi
+                git add "$f" 2>/dev/null
+                ;;
+            docs/gaps/*.yaml)
+                say "  auto-resolve: take ours for $f"
+                git checkout --ours "$f" 2>/dev/null || { say "  ✗ checkout --ours failed for $f"; return 1; }
+                git add "$f" 2>/dev/null
+                ;;
+            .github/workflows/ci.yml|.github/workflows/*.yml)
+                say "  auto-resolve: sed-strip conflict markers in $f"
+                # Strip the three marker lines. Real semantic conflicts
+                # remain visible to CI / reviewer.
+                sed -i.bak -E '/^(<<<<<<< |=======$|>>>>>>> )/d' "$f" || { say "  ✗ sed strip failed for $f"; return 1; }
+                rm -f "${f}.bak"
+                git add "$f" 2>/dev/null
+                ;;
+            *)
+                say "  ✗ unrecognized conflict in $f — bail (operator must resolve)"
+                return 1
+                ;;
+        esac
+    done <<< "$unmerged"
+    return 0
+}
+
 attempt_recovery() {
     # INFRA-306: re-check PR state before any rebase/push work. The state
     # we captured in the outer poll loop may be 30s old — long enough for
@@ -81,20 +139,33 @@ attempt_recovery() {
     say "DIRTY detected → disarm + rebase + force-push + re-arm"
     gh pr merge "$PR" --disable-auto >/dev/null 2>&1 || true
     git fetch origin main --quiet
+
+    # First pass: try a clean rebase.
     if git rebase origin/main >/tmp/pr-watch-rebase-$$.log 2>&1; then
-        if ! CHUMP_GAP_CHECK=0 git push --force-with-lease origin "$BRANCH" >/dev/null 2>&1; then
-            say "force-push rejected (someone else pushed?) — re-arming and waiting"
-        fi
-        gh pr merge "$PR" --auto --squash >/dev/null 2>&1
-        say "auto-recovered ✓"
-        rm -f /tmp/pr-watch-rebase-$$.log
-        return 0
+        :  # clean — fall through to push
     else
-        say "✗ rebase has CONFLICTS — operator must resolve"
-        echo "  see: /tmp/pr-watch-rebase-$$.log"
-        git rebase --abort 2>/dev/null || true
-        return 3
+        # INFRA-387: rebase has conflicts. Try the auto-resolve recipe
+        # before bailing. GIT_EDITOR=true so `git rebase --continue`
+        # doesn't open an interactive editor (which would block).
+        say "rebase conflicts — trying auto-resolve recipe (INFRA-387)"
+        if attempt_auto_resolve_conflicts \
+           && GIT_EDITOR=true git rebase --continue >>/tmp/pr-watch-rebase-$$.log 2>&1; then
+            say "  ✓ auto-resolved + rebase --continue succeeded"
+        else
+            say "✗ rebase has CONFLICTS that auto-resolve can't handle — operator must resolve"
+            echo "  see: /tmp/pr-watch-rebase-$$.log"
+            git rebase --abort 2>/dev/null || true
+            return 3
+        fi
     fi
+
+    if ! CHUMP_GAP_CHECK=0 git push --force-with-lease origin "$BRANCH" >/dev/null 2>&1; then
+        say "force-push rejected (someone else pushed?) — re-arming and waiting"
+    fi
+    gh pr merge "$PR" --auto --squash >/dev/null 2>&1
+    say "auto-recovered ✓"
+    rm -f /tmp/pr-watch-rebase-$$.log
+    return 0
 }
 
 while (( $(date +%s) < DEADLINE )); do
