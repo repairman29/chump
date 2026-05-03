@@ -12,6 +12,15 @@ Inputs (all env vars):
   FLEET_EFFORT_FILTER   comma-separated, e.g. "xs,s,m" (empty = any)
   EXCLUDE_RE            regex; gap IDs matching this are skipped
   ACTIVE_GAPS           whitespace-separated gap IDs already claimed by siblings
+  WORKER_INDEX          INFRA-340: 1-based worker index. When N workers boot in
+                        the same second and no leases exist yet, every worker
+                        sees the same candidate list and pre-fix all returned
+                        candidates[0] — N workers all picking the same gap.
+                        With WORKER_INDEX set, worker K returns
+                        candidates[(K-1) % len(candidates)] so they spread
+                        across the top-N gaps. Once leases form ACTIVE_GAPS
+                        shrinks the list and the offset still maps each
+                        worker to a unique remaining candidate.
 """
 
 from __future__ import annotations
@@ -77,7 +86,14 @@ def main() -> int:
 
     candidates.sort()
     if candidates:
-        print(candidates[0][3])
+        # INFRA-340: stagger by worker index so simultaneously-booting siblings
+        # pick different gaps instead of all colliding on candidates[0].
+        try:
+            worker_idx = int(os.environ.get("WORKER_INDEX", "1"))
+        except ValueError:
+            worker_idx = 1
+        offset = (max(worker_idx, 1) - 1) % len(candidates)
+        print(candidates[offset][3])
     return 0
 
 

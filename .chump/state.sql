@@ -10766,7 +10766,7 @@ gaps:
 - id: INFRA-234
   domain: INFRA
   title: "Recycled-ID pre-commit guard misreads 'any change to status:done gap' as reopen — false-positive on closed_pr enrichment"
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -10793,6 +10793,8 @@ gaps:
     - Flipping status from done → open still fails with the recycled-ID error
     - test-recycled-id-guard.sh extended to cover the false-positive case
   opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 945
 
 - id: INFRA-235
   domain: INFRA
@@ -12020,7 +12022,7 @@ gaps:
 - id: INFRA-274
   domain: INFRA
   title: Lease coordination invisible across hosts — .chump-locks is local FS, NATS dual-emit conditional, no shared store
-  status: open
+  status: done
   priority: P0
   effort: m
   description: |
@@ -12100,6 +12102,8 @@ gaps:
   notes: |
     SUPERSEDED 2026-05-02 by FLEET-032 (lease store migration to NATS KV bucket). FLEET-032 has the same scope (cross-host lease invisibility) but with a concrete NATS KV migration plan + 3-phase rollout + dependency edges to FLEET-006/INFRA-109. Keeping INFRA-274 open as historical-context anchor (the 'PR #874/#880 collision proof' artifact) but operators should pick up FLEET-032 instead. Auto-skip from fleet pickup via the SUPERSEDED prefix in this notes field.
   opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 942
 
 - id: INFRA-275
   domain: INFRA
@@ -13215,9 +13219,33 @@ gaps:
 - id: INFRA-342
   domain: INFRA
   title: "test-gap-doctor-safe-sweep.sh Test 2 fails on ubuntu-latest (works on macOS dogfood) — re-arm PR #910 once green"
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_date: '2026-05-03'
+  closed_pr: 910
+
+- id: INFRA-343
+  domain: INFRA
+  title: "PR #910 stuck — 26 commits behind main"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/910
+    
+    Detected by stuck-pr-filer (2026-05-03T04:00:33Z).
+    
+    Trigger: 26 commits behind main
+    Branch is 26 commits behind main (threshold 20). The CLAUDE.md hard rule says rebase at 15.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 910 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-308
+    Branch: chump/infra-308-doctor-cron
 
 - id: INFRA-41
   domain: INFRA
@@ -14442,7 +14470,7 @@ gaps:
 - id: META-014
   domain: META
   title: Verify-against-origin/main before filing RCA gaps — stale working tree caused INFRA-238 P0 misdiagnosis (codify in AGENTS.md)
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -14503,6 +14531,8 @@ gaps:
     - "Subsection includes the canonical verify-against-origin commands (git fetch + git show origin/main:<path>)"
     - Subsection cites INFRA-238 as the cautionary example (~30min wasted on phantom revert)
   opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 940
 
 - id: META-015
   domain: META
