@@ -94,5 +94,43 @@ else
     exit 1
 fi
 
+# ── Test 5: SUPERSEDED gaps are never picked (INFRA-206) ────────────────────
+echo "Test 5: gap with notes starting with SUPERSEDED is skipped"
+cat >"$TMP/gaps_with_superseded.json" <<'EOF'
+[
+  {"id":"INFRA-200","domain":"INFRA","priority":"P0","effort":"xs","created_at":900,"depends_on":"","notes":"SUPERSEDED 2026-05-02 by INFRA-314 — auto-skip"},
+  {"id":"INFRA-201","domain":"INFRA","priority":"P1","effort":"xs","created_at":901,"depends_on":"","notes":""},
+  {"id":"INFRA-202","domain":"INFRA","priority":"P1","effort":"s", "created_at":902,"depends_on":"","notes":"SUPERSEDED by INFRA-999 do not pick"}
+]
+EOF
+P_SKIP=$(GAP_JSON_FILE="$TMP/gaps_with_superseded.json" FLEET_PRIORITY_FILTER="P0,P1" \
+    FLEET_DOMAIN_FILTER="INFRA" FLEET_EFFORT_FILTER="xs,s,m" EXCLUDE_RE="^$" \
+    ACTIVE_GAPS="" WORKER_INDEX="1" python3 "$PICKER")
+# INFRA-200 (P0) would win on priority alone but is SUPERSEDED; expect INFRA-201.
+if [[ "$P_SKIP" == "INFRA-201" ]]; then
+    echo "  PASS (SUPERSEDED P0 gap skipped; picked INFRA-201)"
+else
+    echo "  FAIL (expected INFRA-201, got $P_SKIP)"
+    exit 1
+fi
+
+# ── Test 6: SUPERSEDED prefix is case-insensitive ────────────────────────────
+echo "Test 6: SUPERSEDED filter is case-insensitive"
+cat >"$TMP/gaps_superseded_lower.json" <<'EOF'
+[
+  {"id":"INFRA-300","domain":"INFRA","priority":"P0","effort":"xs","created_at":900,"depends_on":"","notes":"superseded by INFRA-400"},
+  {"id":"INFRA-301","domain":"INFRA","priority":"P1","effort":"xs","created_at":901,"depends_on":"","notes":""}
+]
+EOF
+P_LOWER=$(GAP_JSON_FILE="$TMP/gaps_superseded_lower.json" FLEET_PRIORITY_FILTER="P0,P1" \
+    FLEET_DOMAIN_FILTER="INFRA" FLEET_EFFORT_FILTER="xs,s,m" EXCLUDE_RE="^$" \
+    ACTIVE_GAPS="" WORKER_INDEX="1" python3 "$PICKER")
+if [[ "$P_LOWER" == "INFRA-301" ]]; then
+    echo "  PASS (lowercase 'superseded' also skipped)"
+else
+    echo "  FAIL (expected INFRA-301, got $P_LOWER)"
+    exit 1
+fi
+
 echo ""
 echo "All pick-gap stagger tests passed."

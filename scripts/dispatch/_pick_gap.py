@@ -61,6 +61,13 @@ def main() -> int:
             continue
         if exclude_re.search(gid):
             continue
+        # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
+        # been superseded by a more general gap and should never be picked up by
+        # fleet workers.  The canonical form is "SUPERSEDED YYYY-MM-DD by ..."
+        # as written by convention in docs/gaps/<ID>.yaml notes fields.
+        notes = (g.get("notes") or "").lstrip()
+        if notes.upper().startswith("SUPERSEDED"):
+            continue
         p = (g.get("priority") or "").upper()
         if prio_filter and p not in prio_filter:
             continue
