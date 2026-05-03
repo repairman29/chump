@@ -866,12 +866,28 @@ fi
 #   - chump binary missing or `chump gap ship` fails (often: gap already done)
 if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP:-1}" != "0" ]] && [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     _autoclose_target_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
+    # META-022: resolve the canonical (main) repo's .chump/state.db path so
+    # `chump gap ship` finds the gap even when bot-merge.sh runs inside a
+    # linked worktree (the typical case — gap reservations live in the main
+    # repo's state.db, but each linked worktree has its own empty state.db
+    # under .git/worktrees/<name>/.chump/). Without this, every bot-merge
+    # auto-close on a /tmp worktree silently no-op'd and stamped "✓ done"
+    # while the YAML mirror stayed at status=open. Caused META-017 drift
+    # for #870 / #875 / #876 on 2026-05-02.
+    _autoclose_main_repo=$(git rev-parse --git-common-dir 2>/dev/null \
+        | xargs -I{} realpath "{}/.." 2>/dev/null \
+        || pwd)
     if [[ -n "$_autoclose_target_pr" ]] && command -v chump >/dev/null 2>&1; then
         for _gid in "${GAP_IDS[@]}"; do
             stage_start "auto-close gap $_gid via PR #$_autoclose_target_pr (INFRA-154)"
-            if chump gap ship "$_gid" \
-                    --closed-pr "$_autoclose_target_pr" \
-                    --update-yaml >/dev/null 2>&1; then
+            # Capture stderr so we can surface the actual error if ship fails
+            # (was '>/dev/null 2>&1' which swallowed everything — see META-017).
+            _autoclose_err=$(CHUMP_REPO="$_autoclose_main_repo" \
+                             chump gap ship "$_gid" \
+                                --closed-pr "$_autoclose_target_pr" \
+                                --update-yaml 2>&1 >/dev/null)
+            _autoclose_rc=$?
+            if [[ $_autoclose_rc -eq 0 ]]; then
                 # INFRA-262: do NOT regenerate / stage .chump/state.sql here.
                 # Every parallel auto-close used to write .chump/state.sql, and
                 # that single hot file caused 6+ rebase-conflict cascades in
@@ -949,7 +965,20 @@ for g in data:
                     info "Auto-close: $_gid produced no diff (likely already status=done)"
                 fi
             else
-                info "Auto-close skipped for $_gid (chump gap ship failed; gap may already be done or have no entry)"
+                # META-022: print the actual chump gap ship stderr instead of
+                # the misleading "may already be done" line. Common causes:
+                # gap not in main repo's state.db (use chump gap reserve), or
+                # state.db locked by a hung sibling process.
+                yellow "Auto-close FAILED for $_gid (chump gap ship rc=$_autoclose_rc):"
+                if [[ -n "$_autoclose_err" ]]; then
+                    while IFS= read -r _line; do
+                        [[ -z "$_line" ]] && continue
+                        yellow "  | $_line"
+                    done <<< "$_autoclose_err"
+                fi
+                yellow "  YAML mirror NOT updated; gap status NOT flipped."
+                yellow "  Recover: chump gap ship $_gid --closed-pr $_autoclose_target_pr --update-yaml"
+                yellow "           (run from main repo: $_autoclose_main_repo)"
             fi
             stage_done
         done
