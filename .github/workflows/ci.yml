@@ -278,6 +278,9 @@ jobs:
       - name: docs-delta trailer validation (INFRA-124)
         run: bash scripts/ci/test-infra-124-docs-delta-trailer.sh
 
+      - name: pre-push --force-with-lease race guard (INFRA-345)
+        run: bash scripts/ci/test-pre-push-force-lease-guard.sh
+
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
 
