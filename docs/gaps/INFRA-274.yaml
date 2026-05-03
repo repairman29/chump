@@ -1,0 +1,87 @@
+- id: INFRA-274
+  domain: INFRA
+  title: "Lease coordination invisible across hosts — .chump-locks is local FS, NATS dual-emit conditional, no shared store"
+  status: open
+  priority: P0
+  effort: m
+  opened_date: '2026-05-02'
+  description: |
+    Today's `.chump-locks/<session>.json` lease files live on the local
+    host's filesystem only. `gap-preflight.sh` and `gap-claim.sh` read +
+    write the LOCAL `.chump-locks/` dir. Siblings on the SAME host see
+    each other's leases instantly; siblings on DIFFERENT hosts see
+    nothing.
+
+    FLEET-006 dual-emits ambient events to NATS as a workaround, but it's
+    conditional: requires `chump-coord` on PATH AND a reachable NATS
+    broker. Most dispatch sandboxes / ephemeral runners have neither.
+    Per CLAUDE.md: "the file tail will only show *this* session's own
+    events — typically just two `session_start` lines from this session
+    itself."
+
+    Net: the lease coordination model assumes a single-host fleet. As
+    soon as agents dispatch to multiple machines (current state with
+    chump-orchestrator routing across machines, future fleet-of-N with
+    Pi-mesh per project_fleet_vision.md), claims become invisible to
+    cross-host siblings, and same-gap collisions become guaranteed.
+
+    Concrete proof from 2026-05-02:
+      - 17:32 UTC: I started shipping INFRA-261 (regenerate-gaps-yaml
+        trigger fix). Wrote .chump-locks/<my-session>.json with gap_id=
+        INFRA-261, pushed PR #874.
+      - 17:35 UTC: Sibling agent on a different host independently
+        shipped the SAME workflow fix as PR #880, bundled with their
+        own gap filings. Their gap-preflight on INFRA-261 returned OK
+        because my .chump-locks/ was on a different filesystem they
+        couldn't see.
+      - PR #874 closed as superseded; ~30 min of my work duplicated.
+
+    Same failure mode is the root cause of:
+      - INFRA-216 (cross-host chump gap reserve race)
+      - INFRA-246 (per-file YAML mid-flight collision)
+      - All the "two agents shipping the same gap" incidents this cycle
+
+    Fix paths (in order of architectural soundness):
+
+    (a) Move leases to a SHARED store. Three candidates:
+        - SQLite over network FS — simple, but file-locking semantics
+          on NFS are notoriously unreliable
+        - GitHub Issues with sentinel labels — durable, network-
+          accessible, free; latency ~1-3s per claim
+        - NATS KV with TTL — already required for FLEET-006; second
+          load-bearing reason to make NATS non-conditional
+
+    (b) Make NATS non-conditional. Document setup as a hard requirement
+        for multi-host dispatch; refuse to start chump-orchestrator if
+        NATS isn't reachable. Side effect: every fleet-of-N deploy now
+        needs a NATS broker.
+
+    (c) Pre-claim PR-list check (INFRA-273's scope). Before claiming a
+        gap, query `gh pr list --search "in:title <gap-id>" --state open`.
+        If a sibling has an open PR with that ID in the title, abort.
+        Imperfect (only catches collisions where both sibling agents
+        title their PRs with the same gap ID, and the second agent
+        runs the check AFTER the first one's PR is created), but
+        zero new infrastructure.
+
+    (d) Hybrid: keep .chump-locks/ for fast within-host coordination,
+        ALSO emit a "claim_intent" ambient event over NATS, AND do
+        the (c) PR-list check on every reserve. Three layers of
+        defense at the cost of three layers of complexity.
+
+    Recommend (a) via NATS KV (option a3) bundled with (b). It pairs
+    cleanly with FLEET-006 — same broker, same connection, lease
+    becomes a NATS KV key with the session's TTL. (c) as a belt-and-
+    suspenders fallback per INFRA-273.
+  acceptance_criteria:
+    - "Two agents on different hosts cannot independently claim the same gap (one of them gets a clear refusal, not a silent success)"
+    - "Lease visibility is documented in CLAUDE.md as cross-host (not just within-host)"
+    - "Regression test: simulate 2-host concurrent claim of same gap; expect 1 success + 1 refusal"
+    - "PR #874/#880 collision pattern does not recur in the next 4 weeks"
+  depends_on:
+    - INFRA-216
+    - INFRA-246
+    - INFRA-273
+    - FLEET-006
+  raised_by: claude
+  raised_in: '2026-05-02 — operator asked "have we sorted siblings doing the same work" after PR #874/#880 collision; I had to admit no, leases are local-FS only'
