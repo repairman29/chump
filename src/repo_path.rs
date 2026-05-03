@@ -192,6 +192,53 @@ pub fn repo_root() -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
+/// Worktree root for per-worktree write paths (per-file `docs/gaps/<ID>.yaml`,
+/// `.chump/.last-yaml-op` freshness marker).
+///
+/// INFRA-247: `repo_root()` resolves to `CHUMP_REPO` / `CHUMP_HOME` (typically the
+/// **main checkout** because the .env in the main checkout sets those) — fine for
+/// shared state like `.chump/state.db`, but wrong for per-file YAMLs which must
+/// land in the operator's branch (i.e. the *linked worktree* they're cd'd into).
+///
+/// Resolution order (first non-empty wins):
+///   1. `CHUMP_WORKTREE_ROOT` — explicit override (tests, scripts that cd around).
+///   2. `git rev-parse --show-toplevel` from CWD — resolves a linked worktree to
+///      itself, not to the main checkout (unlike walking up looking for `.git`).
+///   3. Falls back to `repo_root()` when CWD isn't a git repo (legitimate
+///      non-worktree caller, e.g. unit test in `/tmp`).
+///
+/// Always falls back gracefully — never panics. The git invocation is a single
+/// fork+exec on each call; called O(1) times per `chump gap` command, so the
+/// cost is negligible.
+pub fn worktree_root() -> PathBuf {
+    if let Ok(p) = std::env::var("CHUMP_WORKTREE_ROOT") {
+        let p = p.trim();
+        if !p.is_empty() {
+            let pb = PathBuf::from(p);
+            if pb.is_dir() {
+                return pb;
+            }
+        }
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if let Ok(out) = std::process::Command::new("git")
+        .args(["rev-parse", "--show-toplevel"])
+        .current_dir(&cwd)
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.is_empty() {
+                let pb = PathBuf::from(s);
+                if pb.is_dir() {
+                    return pb;
+                }
+            }
+        }
+    }
+    repo_root()
+}
+
 /// Normalize path: remove . and .. components so we can check it stays under root.
 fn normalize_relative(path: &str) -> Result<PathBuf, String> {
     let p = Path::new(path.trim());
