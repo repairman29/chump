@@ -116,6 +116,7 @@ PY
             ACTIVE_GAPS="$active_gaps" \
             GAP_JSON_FILE="$gap_json_file" \
             WORKER_INDEX="$AGENT_ID" \
+            COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
             python3 "$REPO_ROOT/scripts/dispatch/_pick_gap.py" 2>/dev/null || true)"
     rm -f "$gap_json_file"
 
@@ -127,6 +128,18 @@ PY
 
     GAP_ID="$pick"
     log "picked gap $GAP_ID"
+
+    # ── INFRA-361: pre-pick preflight ─────────────────────────────────────
+    # Cheap check (~50ms) before paying the worktree-create + cold-cargo
+    # cost (5–15min). If the gap is no longer available (claimed by a
+    # sibling, done on main, ID missing from registry), skip and pick
+    # again next cycle. Pre-fix worker.sh order was pick → worktree →
+    # claim/preflight, which ate the build cost on every dead pick.
+    if ! ( cd "$REPO_ROOT" && CHUMP_AMBIENT_GLANCE=0 CHUMP_SPECULATIVE=1 \
+           scripts/coord/gap-preflight.sh "$GAP_ID" >/dev/null 2>&1 ); then
+        log "skipping $GAP_ID: failed pre-pick preflight (claimed/done/missing); next cycle"
+        continue
+    fi
 
     # ── Worktree ──────────────────────────────────────────────────────────
     sid="$(date +%Y%m%d-%H%M%S)"
@@ -217,6 +230,20 @@ PY
         log "WARN: $FLEET_BACKEND timed out (${FLEET_TIMEOUT_S}s) on $GAP_ID"
     else
         log "WARN: $FLEET_BACKEND exited rc=$rc on $GAP_ID"
+        # INFRA-361: write cooldown record so siblings + future cycles
+        # don't immediately re-pick this gap. Worker 4 was observed
+        # re-picking INFRA-340 6 times in 5 minutes pre-fix. Default 30
+        # min; override via FLEET_RC1_COOLDOWN_S. Only fires for genuine
+        # rc!=0/124 — clean exits and timeouts skip cooldown.
+        cooldown_s="${FLEET_RC1_COOLDOWN_S:-1800}"
+        cooldown_dir="$REPO_ROOT/.chump-locks/cooldown"
+        mkdir -p "$cooldown_dir" 2>/dev/null || true
+        cooldown_until=$(( $(date +%s) + cooldown_s ))
+        printf '{"gap_id":"%s","rc":%d,"until":%d,"agent":"%s","ts":"%s"}\n' \
+            "$GAP_ID" "$rc" "$cooldown_until" "$AGENT_ID" \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            > "$cooldown_dir/${GAP_ID}.json" 2>/dev/null || true
+        log "cooldown: $GAP_ID skipped for ${cooldown_s}s after rc=$rc"
     fi
 
     # ── Release lease + prune worktree ────────────────────────────────────
