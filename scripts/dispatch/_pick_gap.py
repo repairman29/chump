@@ -103,8 +103,12 @@ def main() -> int:
             continue
         if exclude_re.search(gid):
             continue
-        # INFRA-397: skip gaps that are not open — the gap list includes done
-        # gaps which should never be picked up by fleet workers.
+        # INFRA-397: skip gaps that are not open. `chump gap list --json`
+        # without --status open returns done/in_progress gaps too; without
+        # this guard a fleet worker would happily "pick" a long-closed gap,
+        # blow through preflight (already-done = bail), and waste a cycle.
+        # Observed in 2026-05-02 fleet logs: 6 workers each picking the
+        # same closed INFRA-340 within 90s.
         if g.get("status") != "open":
             continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
@@ -123,24 +127,36 @@ def main() -> int:
         e = (g.get("effort") or "").lower()
         if effort_filter and e not in effort_filter:
             continue
-        # INFRA-398: check if dependencies are satisfied before skipping.
-        # A gap is pickable if all its dependencies are already done or active.
-        deps = g.get("depends_on") or "[]"
-        try:
-            dep_list = json.loads(deps) if isinstance(deps, str) else deps
-            if dep_list:  # non-empty array
-                # Check if all dependencies are satisfied (done or active)
-                unresolved = [d for d in dep_list if d not in active]
-                # Find which unresolved deps are actually done in the gap list
-                for gap in gaps:
-                    if gap.get("id") in unresolved and gap.get("status") == "done":
-                        unresolved.remove(gap.get("id"))
-                # Skip only if there are unresolved dependencies
-                if unresolved:
-                    continue
-        except (json.JSONDecodeError, TypeError):
-            # If depends_on is malformed, skip it to be safe
-            continue
+        # Conservative: skip gaps with non-empty depends_on.
+        # INFRA-397: depends_on arrives as a JSON-encoded string from
+        # `chump gap list --json` (e.g. "[]" or '["INFRA-100"]'), not a
+        # Python list. The pre-fix `if deps.strip(): continue` matched
+        # "[]" too (non-empty string), so every gap with the canonical
+        # empty-deps shape was silently filtered out and the picker
+        # returned nothing — making it look like the queue was empty
+        # while open gaps sat unpicked.
+        deps_raw = g.get("depends_on")
+        if isinstance(deps_raw, str):
+            try:
+                dep_list = json.loads(deps_raw) if deps_raw.strip() else []
+            except json.JSONDecodeError:
+                # Malformed depends_on — skip to be safe.
+                continue
+        elif isinstance(deps_raw, list):
+            dep_list = deps_raw
+        else:
+            dep_list = []
+        if dep_list:  # any non-empty dep array
+            # INFRA-398: check if all dependencies are satisfied
+            # (done or active) before skipping the gap.
+            unresolved = [d for d in dep_list if d not in active]
+            # Find which unresolved deps are actually done in the gap list
+            for gap in gaps:
+                if gap.get("id") in unresolved and gap.get("status") == "done":
+                    unresolved.remove(gap.get("id"))
+            # Skip only if there are unresolved dependencies
+            if unresolved:
+                continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
         # been superseded by another gap and should not be auto-picked.
         notes = (g.get("notes") or "").strip()
