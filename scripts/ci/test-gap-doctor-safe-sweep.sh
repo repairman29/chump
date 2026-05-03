@@ -101,7 +101,15 @@ echo "[PASS] --dry-run is read-only"
 # ── Test 2: real safe-sweep auto-fixes Bucket 1 + 2 ──────────────────────────
 echo ""
 echo "Test 2: real safe-sweep auto-fixes Bucket 1 and Bucket 2"
-python3 scripts/coord/gap-doctor.py safe-sweep >/tmp/sweep-real.out 2>&1
+# Capture but surface the script's stderr/stdout if the script itself exits
+# non-zero — otherwise CI failures look like silent exit-1 with no clue why
+# (spent ~2h diagnosing this before catching the FileNotFoundError on the
+# `chump` binary subprocess invocation in cmd_sync_from_yaml — INFRA-308 fix).
+if ! python3 scripts/coord/gap-doctor.py safe-sweep >/tmp/sweep-real.out 2>&1; then
+    echo "[FAIL] safe-sweep exited non-zero — output below:"
+    cat /tmp/sweep-real.out
+    exit 1
+fi
 
 # Bucket 1: YAML should now say done (regenerated from DB)
 B1_YAML=$(grep "^  status:" docs/gaps/INFRA-B1.yaml | awk '{print $2}')

@@ -276,10 +276,17 @@ def cmd_sync_from_yaml(args, root: Path) -> int:
     print(f"applied: {len(plan)} rows")
 
     # Regenerate the human-readable SQL dump so the diff is reviewable.
-    subprocess.run(
-        ["chump", "gap", "dump", "--out", str(root / ".chump" / "state.sql")],
-        check=False, capture_output=True,
-    )
+    # Best-effort: in CI fast-checks the `chump` binary isn't installed
+    # (no cargo install step in .github/workflows/ci.yml fast-checks job).
+    # FileNotFoundError must be caught — `check=False` does NOT suppress it
+    # (it only suppresses CalledProcessError on non-zero exit).
+    try:
+        subprocess.run(
+            ["chump", "gap", "dump", "--out", str(root / ".chump" / "state.sql")],
+            check=False, capture_output=True,
+        )
+    except FileNotFoundError:
+        pass  # chump binary not on PATH (e.g. CI runner) — state.sql regen is a nicety
     return 0
 
 
