@@ -34,6 +34,11 @@
 
 set -euo pipefail
 
+# INFRA-379: heal a wedged chump binary before any CLI call (see
+# scripts/lib/chump-preflight.sh). Silent no-op on healthy binaries.
+# shellcheck source=../lib/chump-preflight.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chump-preflight.sh"
+
 usage() {
     echo "Usage: $0 <DOMAIN> [title words...]" >&2
     echo "  DOMAIN: uppercase prefix, e.g. INFRA, EVAL, COG (no trailing hyphen)" >&2

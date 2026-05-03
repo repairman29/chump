@@ -25,6 +25,11 @@
 
 set -euo pipefail
 
+# INFRA-379: heal a wedged chump binary before any CLI call (see
+# scripts/lib/chump-preflight.sh). Silent no-op on healthy binaries.
+# shellcheck source=../lib/chump-preflight.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chump-preflight.sh"
+
 # ── Escalation mode (INFRA-AGENT-ESCALATION) ─────────────────────────────────
 # When called with --escalate "reason", emit an ALERT kind=escalation event to
 # .chump-locks/ambient.jsonl and exit 0. This path skips all commit logic and
