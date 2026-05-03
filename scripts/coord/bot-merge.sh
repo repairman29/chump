@@ -519,6 +519,27 @@ if [[ "$BRANCH" == "main" || "$BRANCH" == "master" ]]; then
     exit 2
 fi
 
+# INFRA-187: derive default branch name from worktree directory if current branch
+# doesn't already follow the tool-prefix naming convention (chump/, claude/, etc).
+# This lets agents create a worktree without specifying -b, and bot-merge derives
+# the branch name from the worktree dir (e.g., .chump/worktrees/infra-127 → chump/infra-127).
+_wt_dir="$(basename "$REPO_ROOT" 2>/dev/null || echo "")"
+if [[ -n "$_wt_dir" ]] && ! echo "$BRANCH" | grep -qE '^(chump|claude|chore|cursor|goose|aider)/'; then
+    # Current branch doesn't have a tool prefix. If the worktree basename doesn't
+    # start with a tool prefix either, derive chump/<basename> as a suggestion.
+    if ! echo "$_wt_dir" | grep -qE '^(chump|claude|chore|cursor|goose|aider)-'; then
+        _default_branch="chump/${_wt_dir}"
+        info "INFRA-187: current branch '$BRANCH' lacks tool prefix (chump/, claude/, etc.)."
+        info "Renaming to match worktree: $BRANCH → $_default_branch"
+        if ! run git branch -m "$BRANCH" "$_default_branch"; then
+            red "Failed to rename branch — proceeding with current branch '$BRANCH'."
+        else
+            BRANCH="$_default_branch"
+            green "Branch renamed to $BRANCH"
+        fi
+    fi
+fi
+
 BASE_BRANCH="${BASE_BRANCH:-main}"
 REMOTE="${REMOTE:-origin}"
 
