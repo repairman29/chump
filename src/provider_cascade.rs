@@ -1308,8 +1308,7 @@ mod tests {
 
         let contents = std::fs::read_to_string(&log_path).unwrap();
         let line = contents.lines().next().expect("emitted at least one line");
-        let v: serde_json::Value =
-            serde_json::from_str(line).expect("must be valid JSON");
+        let v: serde_json::Value = serde_json::from_str(line).expect("must be valid JSON");
         assert_eq!(v["slot_count"], 0);
         assert_eq!(v["event"], "cascade_all_exhausted");
         std::env::remove_var("CHUMP_AMBIENT_LOG");
