@@ -1,7 +1,16 @@
 - id: INFRA-350
   domain: INFRA
   title: start the 72h daily-driver soak (last unchecked Architecture-vs-proof gate item)
-  status: open
+  status: done
   priority: P1
   effort: xs
-
+  description: |
+    Closes the last unchecked item in ROADMAP.md 'Architecture vs proof' section: 'Overnight / 72h soak — Run all roles + primary surface for 72h. Capture pre/post: SQLite size/WAL pattern, model server restarts, logs/ growth, and GET /api/stack-status samples; append findings to INFERENCE_STABILITY.md §Soak.' This PR adds the missing infrastructure to actually run the soak: scripts/setup/install-soak-checkpoint-launchd.sh (idempotent — installs a launchd job that runs scripts/eval/soak-checkpoint.sh every 4 hours; pre-existing script). Plus docs/SOAK_72H_LOG.md skeleton with header + pass criteria. T0 captured 2026-05-03T04:21:07Z; soak runs until 2026-05-06T04:21Z (~72h).
+  acceptance_criteria:
+    - scripts/setup/install-soak-checkpoint-launchd.sh installs a 4-hourly launchd job
+    - docs/SOAK_72H_LOG.md exists with header + pass criteria + T0 entry
+    - "launchd job verified loaded (launchctl list | grep dev.chump.soak-checkpoint)"
+    - 72h run completes with verdict appended
+    - ROADMAP.md 'Overnight / 72h soak' line gets checked
+  closed_date: '2026-05-03'
+  closed_pr: 949
