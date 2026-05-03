@@ -1,0 +1,14 @@
+- id: INFRA-333
+  domain: INFRA
+  title: scripts/dispatch/worker.sh runs chump-doctor.sh at session start (pre-empts INFRA-275 wedged-inode hang)
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/dispatch/worker.sh runs scripts/dev/chump-doctor.sh as first action of session-start phase (idempotent — fast no-op when binary is healthy)
+    - Probe timeout 5s; total worker.sh start-up overhead < 6s in healthy state
+    - "Test: scripts/ci/test-worker-doctor-preflight.sh asserts the call happens before any chump gap invocation"
+  depends_on: [META-025, INFRA-275]
+  closed_date: '2026-05-03'
+  closed_pr: 938
+
