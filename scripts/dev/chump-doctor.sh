@@ -40,6 +40,12 @@ set -euo pipefail
 TIMEOUT="${CHUMP_DOCTOR_TIMEOUT:-5}"
 QUIET="${CHUMP_DOCTOR_QUIET:-0}"
 FORCE="${CHUMP_DOCTOR_FORCE:-0}"
+PROBE_CASCADE=0
+for arg in "$@"; do
+  case "$arg" in
+    --probe-cascade) PROBE_CASCADE=1 ;;
+  esac
+done
 
 log() {
   [ "$QUIET" = "1" ] || printf 'chump-doctor: %s\n' "$*" >&2
@@ -117,7 +123,91 @@ reap_zombies() {
   printf '%s\n' "$zombies" | xargs -r kill -9 2>/dev/null || true
 }
 
+probe_cascade() {
+  # INFRA-352 (c): probe each enabled cascade slot with a 1-token request.
+  # Reports per-slot: alive | rate-limited | auth-fail | unreachable |
+  # billing-exhausted | unknown. Fast (~1s/slot, ~10s total for full stack).
+  # Reads .env from repo root for CHUMP_PROVIDER_<N>_* env. Operator runs
+  # this BEFORE launching a fleet to know if cascade is healthy.
+  local repo_root
+  repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  local env_file="$repo_root/.env"
+
+  if [ ! -f "$env_file" ]; then
+    err "no .env at $env_file; cascade slots come from there"
+    return 1
+  fi
+
+  log "probing cascade slots (1-token request per slot)…"
+
+  # Source .env into a subshell so we don't leak vars; emit one line per slot.
+  ( set -a; source "$env_file"; set +a
+    local n status_table=""
+    for n in $(seq 1 10); do
+      local enabled_var="CHUMP_PROVIDER_${n}_ENABLED"
+      local enabled="${!enabled_var:-0}"
+      [ "$enabled" = "1" ] || continue
+
+      local base_var="CHUMP_PROVIDER_${n}_BASE"
+      local key_var="CHUMP_PROVIDER_${n}_KEY"
+      local model_var="CHUMP_PROVIDER_${n}_MODEL"
+      local name_var="CHUMP_PROVIDER_${n}_NAME"
+      local base="${!base_var}"
+      local key="${!key_var}"
+      local model="${!model_var:-llama3-8b}"
+      local name="${!name_var:-slot-${n}}"
+
+      [ -z "$base" ] && continue
+
+      # Send a 1-token completion request, capture HTTP status only.
+      local payload
+      payload=$(printf '{"model":"%s","messages":[{"role":"user","content":"hi"}],"max_tokens":1}' "$model")
+      local code
+      code=$(curl -s -o /dev/null -w '%{http_code}' \
+        --max-time 5 \
+        -H "Authorization: Bearer ${key}" \
+        -H 'Content-Type: application/json' \
+        -X POST "${base%/}/chat/completions" \
+        -d "$payload" 2>/dev/null || echo "000")
+
+      local status
+      case "$code" in
+        200|201) status="✅ alive" ;;
+        401|403) status="🔒 auth-fail" ;;
+        402)     status="💸 billing-exhausted" ;;
+        429|413) status="⏱️  rate-limited" ;;
+        404)     status="❓ model-not-found" ;;
+        000)     status="🚫 unreachable (timeout/connection)" ;;
+        5*)      status="⚠️  server-error (${code})" ;;
+        *)       status="❔ unknown (${code})" ;;
+      esac
+      printf '  slot %d %s [%s] %s → %s\n' "$n" "$name" "$model" "$base" "$status"
+    done
+  )
+
+  # Also probe the local OPENAI_API_BASE if set.
+  ( set -a; source "$env_file"; set +a
+    if [ -n "${OPENAI_API_BASE:-}" ]; then
+      local code
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+        "${OPENAI_API_BASE%/}/models" 2>/dev/null || echo "000")
+      local status
+      case "$code" in
+        200) status="✅ alive" ;;
+        000) status="🚫 unreachable (timeout/connection)" ;;
+        *)   status="❔ ${code}" ;;
+      esac
+      printf '  local OPENAI_API_BASE [%s] %s → %s\n' "${OPENAI_MODEL:-?}" "$OPENAI_API_BASE" "$status"
+    fi
+  )
+}
+
 main() {
+  if [ "$PROBE_CASCADE" = "1" ]; then
+    probe_cascade
+    exit $?
+  fi
+
   local bin
   if ! bin=$(locate_binary); then
     err "chump binary not on PATH; install it first (cargo build --release --bin chump && cp target/release/chump ~/.cargo/bin/)"
