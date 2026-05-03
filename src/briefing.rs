@@ -57,16 +57,39 @@ pub struct GapBriefing {
 }
 
 /// Build a briefing for the given gap ID. Returns `gap_not_found = true` when
-/// the gap is missing from `docs/gaps.yaml` (no error — agents may pass typos).
+/// the gap is missing from both per-file and legacy locations (no error —
+/// agents may pass typos).
+///
+/// **INFRA-331 (2026-05-02):** prefers per-file `docs/gaps/<ID>.yaml` (the
+/// canonical layout post-INFRA-188), then falls back to the legacy monolithic
+/// `docs/gaps.yaml` for any caller still on the old layout. Pre-INFRA-331
+/// this only read the monolithic file, which silently broke every briefing
+/// on this repo because INFRA-188 deleted it. The lessons pool
+/// (`chump_improvement_targets`) was queried only AFTER the gap parse
+/// succeeded, so the broken parse silently disabled lessons-injection too.
 pub fn build_briefing(gap_id: &str) -> GapBriefing {
-    let gap_id = gap_id.trim().to_string();
-    let root = repo_path::repo_root();
-    let gaps_path = root.join("docs/gaps.yaml");
+    build_briefing_at(gap_id, &repo_path::repo_root())
+}
 
-    let parsed = match fs::read_to_string(&gaps_path) {
-        Ok(s) => parse_gap(&s, &gap_id),
-        Err(_) => None,
-    };
+/// Test-friendly variant of [`build_briefing`] that accepts an explicit
+/// repo root. Production code calls [`build_briefing`]; tests call this
+/// directly with a tempdir to avoid CHUMP_REPO env-var racing under
+/// parallel test execution.
+pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
+    let gap_id = gap_id.trim().to_string();
+
+    // Prefer per-file (canonical post-INFRA-188).
+    let per_file_path = root.join("docs/gaps").join(format!("{gap_id}.yaml"));
+    let parsed = fs::read_to_string(&per_file_path)
+        .ok()
+        .and_then(|s| parse_gap(&s, &gap_id))
+        .or_else(|| {
+            // Fallback: legacy monolithic gaps.yaml (pre-INFRA-188 layout).
+            let gaps_path = root.join("docs/gaps.yaml");
+            fs::read_to_string(&gaps_path)
+                .ok()
+                .and_then(|s| parse_gap(&s, &gap_id))
+        });
 
     let Some(parsed) = parsed else {
         return GapBriefing {
@@ -91,7 +114,7 @@ pub fn build_briefing(gap_id: &str) -> GapBriefing {
     let ambient_path = root.join(".chump-locks/ambient.jsonl");
     let recent_ambient_events = filter_ambient(&ambient_path, &parsed.domain, 20);
 
-    let strategic_doc_refs = scan_strategic_docs(&root, &gap_id);
+    let strategic_doc_refs = scan_strategic_docs(root, &gap_id);
 
     let similar_closed_prs = find_similar_prs(&gap_id);
 
@@ -905,6 +928,73 @@ gaps:
         let b = build_briefing("DEFINITELY-NOT-A-REAL-GAP-9999");
         assert!(b.gap_not_found);
         assert!(b.gap_title.is_empty());
+    }
+
+    /// INFRA-331: post-INFRA-188 the canonical gap layout is per-file
+    /// `docs/gaps/<ID>.yaml`, not the deleted monolithic `docs/gaps.yaml`.
+    /// build_briefing was reading only the monolith, so every briefing
+    /// silently returned "Gap not found" on this repo. This test pins the
+    /// per-file lookup so the regression can't quietly come back.
+    #[test]
+    fn build_briefing_at_finds_per_file_yaml_post_infra_188() {
+        let dir = tempfile::tempdir().unwrap();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        fs::create_dir_all(&gaps_dir).unwrap();
+        fs::write(
+            gaps_dir.join("INFRA-331.yaml"),
+            "- id: INFRA-331\n  domain: infra\n  title: per-file briefing fix\n  status: open\n  priority: P1\n  effort: s\n",
+        )
+        .unwrap();
+
+        let b = build_briefing_at("INFRA-331", dir.path());
+        assert!(!b.gap_not_found, "expected per-file YAML to be found");
+        assert_eq!(b.gap_title, "per-file briefing fix");
+        assert_eq!(b.gap_priority, "P1");
+        assert_eq!(b.gap_domain, "infra");
+    }
+
+    /// INFRA-331: the legacy monolithic `docs/gaps.yaml` path must keep
+    /// working for any pre-INFRA-188 caller (e.g. external repos still on
+    /// the old layout). Per-file is preferred but legacy is the fallback.
+    #[test]
+    fn build_briefing_at_falls_back_to_monolithic_gaps_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+        let docs = dir.path().join("docs");
+        fs::create_dir_all(&docs).unwrap();
+        fs::write(
+            docs.join("gaps.yaml"),
+            "- id: LEGACY-1\n  domain: infra\n  title: legacy monolith works\n  status: open\n  priority: P2\n  effort: xs\n",
+        )
+        .unwrap();
+        // No docs/gaps/ dir — exercises the fallback path.
+
+        let b = build_briefing_at("LEGACY-1", dir.path());
+        assert!(!b.gap_not_found, "expected legacy monolith fallback");
+        assert_eq!(b.gap_title, "legacy monolith works");
+    }
+
+    /// INFRA-331: when both per-file AND legacy exist, per-file wins.
+    /// Defends against an old monolith laying around with stale data
+    /// shadowing the canonical per-file mirror.
+    #[test]
+    fn build_briefing_at_prefers_per_file_over_monolith() {
+        let dir = tempfile::tempdir().unwrap();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        fs::create_dir_all(&gaps_dir).unwrap();
+        fs::write(
+            gaps_dir.join("DUP-1.yaml"),
+            "- id: DUP-1\n  domain: infra\n  title: per-file wins\n  status: open\n  priority: P1\n  effort: s\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("docs").join("gaps.yaml"),
+            "- id: DUP-1\n  domain: infra\n  title: stale monolith\n  status: open\n  priority: P3\n  effort: xs\n",
+        )
+        .unwrap();
+
+        let b = build_briefing_at("DUP-1", dir.path());
+        assert_eq!(b.gap_title, "per-file wins");
+        assert_eq!(b.gap_priority, "P1");
     }
 
     #[test]
