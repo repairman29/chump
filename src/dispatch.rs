@@ -33,6 +33,12 @@ use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+// INFRA-302 blocker (3): reuse the orchestrator's worktree-path convention
+// so the stale-worktree-reaper (`scripts/ops/stale-worktree-reaper.sh`) +
+// the `.claude/worktrees/<gap-slug>/` tree the operator already knows
+// about all stay consistent. See [`create_dispatch_worktree`].
+use chump_orchestrator::dispatch::dispatch_paths;
+
 /// How the actual work between claim and ship gets done.
 #[derive(Debug, Clone)]
 pub enum WorkBackend {
@@ -99,22 +105,46 @@ pub struct DispatchOutcome {
 /// Always calls [`release`] at the end, even on error, so a process kill
 /// mid-cycle leaves no stale lease. (The lease layer also has a TTL —
 /// double belt-and-suspenders.)
+///
+/// ## INFRA-302 blocker (3) — worktree resolution
+///
+/// For [`WorkBackend::Headless`] and [`WorkBackend::ExecGap`], `run()`
+/// creates a **fresh linked worktree** at `<repo_root>/.claude/worktrees/<gap-slug>`
+/// off `origin/main` (matching `chump-orchestrator`'s convention via
+/// [`chump_orchestrator::dispatch::dispatch_paths`]) and runs every
+/// subsequent step (preflight, claim, work, ship, release) inside it.
+/// Without this, the dispatched child runs in `opts.repo_root` (the
+/// main checkout) on whatever branch `git rev-parse --abbrev-ref HEAD`
+/// returns — which is exactly the 2026-05-02 dogfood failure mode where
+/// `chump dispatch INFRA-247` reported `branch=chump/close-ghosts-batch-3`
+/// (the operator's leftover branch) and the dispatched work would have
+/// committed there if the run hadn't 402'd first.
+///
+/// For [`WorkBackend::Interactive`] the caller is already in their own
+/// worktree (per the CLAUDE.md "always work in a linked worktree" rule
+/// plus `gap-claim.sh`'s main-checkout refusal), so `run()` keeps using
+/// `opts.repo_root` as the working directory unchanged.
 pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
     let started = std::time::Instant::now();
-    let branch = current_branch(&opts.repo_root)?;
+
+    // Build the workspace: working_dir is either a fresh worktree (Headless
+    // / ExecGap) or the caller's repo_root (Interactive). See [`Workspace`].
+    let workspace = Workspace::new(&opts)
+        .context("resolving workspace (worktree creation for ExecGap/Headless)")?;
+    let branch = current_branch(workspace.working_dir())?;
 
     // Step 1: preflight (read-only check).
-    preflight(&opts).context("preflight")?;
+    preflight(&workspace).context("preflight")?;
 
     // Step 2: claim (writes .chump-locks/<session>.json).
-    claim(&opts).context("claim")?;
+    claim(&workspace).context("claim")?;
 
     // Step 3: caller's work happens here. Interactive = caller already did
     // it; Headless / ExecGap = spawn the work-doing process and wait.
-    if let Err(e) = do_work(&opts) {
+    if let Err(e) = do_work(&workspace) {
         // Always release before propagating the error so a failed work
         // step doesn't leave a stale lease.
-        let _ = release(&opts);
+        let _ = release(&workspace);
         return Ok(DispatchOutcome {
             gap_id: opts.gap_id.to_string(),
             branch,
@@ -127,7 +157,7 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
 
     // Step 4: ship (calls bot-merge.sh in Phase 1; native in Phase 3).
     // Capture errors instead of `?`-ing so we always reach release.
-    let ship_result = match ship(&opts) {
+    let ship_result = match ship(&workspace) {
         Ok(r) => r,
         Err(e) => ShipResult::Aborted {
             error: format!("{e:#}"),
@@ -135,7 +165,7 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
     };
 
     // Step 5: always release the lease.
-    let _ = release(&opts);
+    let _ = release(&workspace);
 
     Ok(DispatchOutcome {
         gap_id: opts.gap_id.to_string(),
@@ -145,25 +175,134 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
     })
 }
 
+/// Internal bundle of `(DispatchOptions, working_dir)` so step functions
+/// don't have to repeat the resolution. INFRA-302 blocker (3) introduced
+/// this so working_dir can differ from `opts.repo_root` (fresh worktree
+/// for ExecGap/Headless).
+///
+/// Owned `working_dir: PathBuf` so the worktree path stays valid for the
+/// whole dispatch lifetime (the worktree is created in [`Self::new`] and
+/// outlives any borrows of `opts`).
+struct Workspace<'a> {
+    opts: &'a DispatchOptions<'a>,
+    working_dir: PathBuf,
+}
+
+impl<'a> Workspace<'a> {
+    fn new(opts: &'a DispatchOptions) -> Result<Self> {
+        let working_dir = match opts.work {
+            WorkBackend::Interactive => {
+                // Caller is already in their worktree (per CLAUDE.md +
+                // gap-claim.sh enforcement). No worktree creation needed;
+                // matches the pre-INFRA-302 behavior so the Interactive
+                // ledger-flip flow doesn't regress.
+                opts.repo_root.clone()
+            }
+            WorkBackend::Headless { .. } | WorkBackend::ExecGap => {
+                // Fresh linked worktree off origin/main. INFRA-302 blocker
+                // (3): without this, the dispatched child runs in the main
+                // checkout on the operator's stale branch. The worktree is
+                // intentionally NOT torn down on success — bot-merge.sh
+                // writes `.bot-merge-shipped` and the
+                // stale-worktree-reaper sweeps it up later (see CLAUDE.md
+                // "Worktree disk hygiene"). On hard failure we also leave
+                // it in place so the operator can inspect.
+                create_dispatch_worktree(&opts.repo_root, opts.gap_id)
+                    .with_context(|| format!("creating worktree for {}", opts.gap_id))?
+            }
+        };
+        Ok(Self { opts, working_dir })
+    }
+
+    fn working_dir(&self) -> &Path {
+        &self.working_dir
+    }
+
+    fn opts(&self) -> &DispatchOptions<'a> {
+        self.opts
+    }
+}
+
+/// INFRA-302 blocker (3): create a fresh linked worktree for a dispatched
+/// agent. Path + branch follow [`chump_orchestrator::dispatch::dispatch_paths`]
+/// (`<repo_root>/.claude/worktrees/<gap-slug>` + `claude/<gap-slug>`)
+/// so the stale-worktree-reaper, the orchestrator's spawn path, and
+/// `chump dispatch` all point at the same conventions.
+///
+/// Idempotent: if a leftover worktree from a prior killed dispatch
+/// exists at the same path, it is force-removed first (along with the
+/// orphan branch). The lease system already prevents two live sessions
+/// from claiming the same gap in parallel (assuming single-host lease
+/// visibility — INFRA-274 covers cross-host), so the only legitimate
+/// pre-existing worktree at that path is detritus.
+fn create_dispatch_worktree(repo_root: &Path, gap_id: &str) -> Result<PathBuf> {
+    let (worktree_path, branch_name) = dispatch_paths(repo_root, gap_id);
+
+    // Idempotent cleanup of any leftover worktree at the target path.
+    // Failure is non-fatal — the subsequent `worktree add` will report a
+    // clearer error if the path is genuinely contended (e.g. a live
+    // sibling has it open).
+    if worktree_path.exists() {
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(repo_root)
+            .args(["worktree", "remove", "--force"])
+            .arg(&worktree_path)
+            .status();
+    }
+    // Same for any leftover branch from a prior dispatch that was
+    // worktree-removed without `git branch -D`. Without this, the next
+    // `git worktree add -b <branch>` fails with "branch already exists".
+    let _ = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["branch", "-D", &branch_name])
+        .status();
+
+    let status = Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["worktree", "add"])
+        .arg(&worktree_path)
+        .args(["-b", &branch_name, "origin/main"])
+        .status()
+        .with_context(|| {
+            format!(
+                "spawning git worktree add {} -b {} origin/main",
+                worktree_path.display(),
+                branch_name
+            )
+        })?;
+    if !status.success() {
+        bail!(
+            "git worktree add failed for {} (branch {}, base origin/main)",
+            worktree_path.display(),
+            branch_name
+        );
+    }
+    Ok(worktree_path)
+}
+
 // ── Internals (each one independently portable in Phase 3) ───────────────────
 
 /// Execute the user-provided work for a dispatch cycle. Variant-dispatched
 /// per [`WorkBackend`].
-fn do_work(opts: &DispatchOptions) -> Result<()> {
-    match &opts.work {
+fn do_work(ws: &Workspace) -> Result<()> {
+    match &ws.opts().work {
         WorkBackend::Interactive => {
             // Caller already did the work; nothing to spawn.
             Ok(())
         }
-        WorkBackend::Headless { model, prompt } => spawn_headless(opts, model, prompt),
-        WorkBackend::ExecGap => spawn_exec_gap(opts),
+        WorkBackend::Headless { model, prompt } => spawn_headless(ws, model, prompt),
+        WorkBackend::ExecGap => spawn_exec_gap(ws),
     }
 }
 
 /// Phase 2 — `WorkBackend::Headless`. Spawns
 /// `claude -p <prompt> --dangerously-skip-permissions [--model <model>]`,
 /// inherits stdio so the operator sees progress inline, and waits for exit.
-fn spawn_headless(opts: &DispatchOptions, model: &str, prompt: &str) -> Result<()> {
+fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
+    let opts = ws.opts();
     if prompt.trim().is_empty() {
         bail!(
             "WorkBackend::Headless: prompt is empty (gap={})",
@@ -179,7 +318,9 @@ fn spawn_headless(opts: &DispatchOptions, model: &str, prompt: &str) -> Result<(
     }
     // Inherit env so spawned process sees CLAUDE_SESSION_ID / CHUMP_SESSION_ID
     // / lease metadata. Inherit stdio so the operator can see progress.
-    cmd.current_dir(&opts.repo_root);
+    // INFRA-302 blocker (3): cwd is the FRESH WORKTREE, NOT opts.repo_root —
+    // see Workspace::new for the resolution.
+    cmd.current_dir(ws.working_dir());
     let status = cmd
         .status()
         .context("spawn `claude -p` (is the claude CLI on PATH?)")?;
@@ -198,11 +339,18 @@ fn spawn_headless(opts: &DispatchOptions, model: &str, prompt: &str) -> Result<(
 /// as headless. Resolves the chump binary by trying common install paths
 /// before falling back to PATH lookup; this avoids needing $HOME/.local/bin
 /// in PATH at every callsite (parallel to INFRA-231's overnight wrapper fix).
-fn spawn_exec_gap(opts: &DispatchOptions) -> Result<()> {
+fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
+    let opts = ws.opts();
+    // Resolve binary against repo_root (binary lives under
+    // `<repo_root>/target/...`, NOT under the worktree's target/).
     let chump_bin = resolve_chump_binary(&opts.repo_root);
     let mut cmd = Command::new(chump_bin);
     cmd.args(["--execute-gap", opts.gap_id])
-        .current_dir(&opts.repo_root);
+        // INFRA-302 blocker (3): cwd is the FRESH WORKTREE so the
+        // dispatched child commits + ships from the gap's own branch,
+        // not from whatever was checked out in the main repo when the
+        // operator typed `chump dispatch …`.
+        .current_dir(ws.working_dir());
     let status = cmd
         .status()
         .with_context(|| format!("spawn `chump --execute-gap {}`", opts.gap_id))?;
@@ -254,7 +402,11 @@ fn current_branch(repo_root: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
 
-fn preflight(opts: &DispatchOptions) -> Result<()> {
+fn preflight(ws: &Workspace) -> Result<()> {
+    let opts = ws.opts();
+    // Scripts live in the main repo (worktrees share them via the
+    // shared .git/, but path resolution is rooted at repo_root for
+    // clarity).
     let script = opts.repo_root.join("scripts/coord/gap-preflight.sh");
     if !script.exists() {
         bail!(
@@ -265,7 +417,10 @@ fn preflight(opts: &DispatchOptions) -> Result<()> {
     let status = Command::new("bash")
         .arg(&script)
         .arg(opts.gap_id)
-        .current_dir(&opts.repo_root)
+        // INFRA-302 blocker (3): run from the worktree so any
+        // worktree-scoped state (lease files at `<wt>/.chump-locks/`)
+        // is visible to the script.
+        .current_dir(ws.working_dir())
         .status()
         .context("invoke gap-preflight.sh")?;
     if !status.success() {
@@ -278,7 +433,8 @@ fn preflight(opts: &DispatchOptions) -> Result<()> {
     Ok(())
 }
 
-fn claim(opts: &DispatchOptions) -> Result<()> {
+fn claim(ws: &Workspace) -> Result<()> {
+    let opts = ws.opts();
     let script = opts.repo_root.join("scripts/coord/gap-claim.sh");
     if !script.exists() {
         bail!("gap-claim.sh missing at {}", script.display());
@@ -288,8 +444,13 @@ fn claim(opts: &DispatchOptions) -> Result<()> {
     if let Some(paths) = opts.paths {
         cmd.arg("--paths").arg(paths);
     }
+    // INFRA-302 blocker (3): run from the worktree. gap-claim.sh's
+    // worktree-scoped session-ID resolution
+    // (`.chump-locks/.wt-session-id`, see CLAUDE.md "Session ID
+    // resolution") needs the worktree as cwd to get a stable per-worktree
+    // session ID.
     let status = cmd
-        .current_dir(&opts.repo_root)
+        .current_dir(ws.working_dir())
         .status()
         .context("invoke gap-claim.sh")?;
     if !status.success() {
@@ -302,7 +463,8 @@ fn claim(opts: &DispatchOptions) -> Result<()> {
     Ok(())
 }
 
-fn ship(opts: &DispatchOptions) -> Result<ShipResult> {
+fn ship(ws: &Workspace) -> Result<ShipResult> {
+    let opts = ws.opts();
     let script = opts.repo_root.join("scripts/coord/bot-merge.sh");
     if !script.exists() {
         bail!("bot-merge.sh missing at {}", script.display());
@@ -315,8 +477,12 @@ fn ship(opts: &DispatchOptions) -> Result<ShipResult> {
     if opts.skip_tests {
         cmd.arg("--skip-tests");
     }
+    // INFRA-302 blocker (3): bot-merge.sh derives the branch via
+    // `git rev-parse --abbrev-ref HEAD` — it MUST run inside the
+    // dispatch's fresh worktree, not the main checkout, or it pushes
+    // (and force-arms auto-merge on) the wrong branch.
     let status = cmd
-        .current_dir(&opts.repo_root)
+        .current_dir(ws.working_dir())
         .status()
         .context("invoke bot-merge.sh")?;
     if !status.success() {
@@ -326,8 +492,10 @@ fn ship(opts: &DispatchOptions) -> Result<ShipResult> {
     }
 
     // bot-merge.sh has already opened/updated the PR. Read the PR number off
-    // the current branch via gh.
-    match current_pr_number(&opts.repo_root) {
+    // the current branch via gh — also from the worktree, since we want the
+    // PR that bot-merge.sh just opened (which corresponds to the worktree's
+    // branch, not main).
+    match current_pr_number(ws.working_dir()) {
         Ok(pr) => Ok(ShipResult::Shipped { pr_number: pr }),
         Err(e) => Ok(ShipResult::Blocked {
             reason: format!("ship succeeded but PR# unresolvable: {e:#}"),
@@ -354,13 +522,17 @@ fn current_pr_number(repo_root: &Path) -> Result<u64> {
 
 /// Best-effort lease cleanup. Lease files have a TTL so a missed release
 /// auto-recovers; we never bail on failure here.
-fn release(opts: &DispatchOptions) -> Result<()> {
+fn release(ws: &Workspace) -> Result<()> {
+    let opts = ws.opts();
     // Re-use [`resolve_chump_binary`] so we honor the same precedence as
     // Phase 2's exec-gap path (in-tree target/ → $HOME/.local/bin → PATH).
     let chump = resolve_chump_binary(&opts.repo_root);
+    // INFRA-302 blocker (3): release from the worktree so the same
+    // session-ID resolution that wrote the lease (under
+    // `<worktree>/.chump-locks/`) sees it for cleanup.
     let _ = Command::new(&chump)
         .arg("--release")
-        .current_dir(&opts.repo_root)
+        .current_dir(ws.working_dir())
         .status();
     Ok(())
 }
@@ -411,6 +583,17 @@ mod tests {
         }
     }
 
+    /// Test helper: build a Workspace with a fixed working_dir, skipping
+    /// the [`Workspace::new`] worktree-creation path (which needs a real
+    /// git repo). Tests that exercise step fns just need a `(opts,
+    /// working_dir)` bundle.
+    fn ws_with_dir<'a>(opts: &'a DispatchOptions<'a>, dir: PathBuf) -> Workspace<'a> {
+        Workspace {
+            opts,
+            working_dir: dir,
+        }
+    }
+
     #[test]
     fn preflight_bails_when_script_missing() {
         let opts = DispatchOptions {
@@ -423,7 +606,8 @@ mod tests {
             // tree so the missing-file branch fires.
             repo_root: PathBuf::from("/tmp"),
         };
-        let err = preflight(&opts).unwrap_err();
+        let ws = ws_with_dir(&opts, PathBuf::from("/tmp"));
+        let err = preflight(&ws).unwrap_err();
         let msg = format!("{err:#}");
         assert!(
             msg.contains("gap-preflight.sh missing"),
@@ -441,7 +625,8 @@ mod tests {
             paths: None,
             repo_root: PathBuf::from("/tmp"),
         };
-        let err = ship(&opts).unwrap_err();
+        let ws = ws_with_dir(&opts, PathBuf::from("/tmp"));
+        let err = ship(&ws).unwrap_err();
         let msg = format!("{err:#}");
         assert!(
             msg.contains("bot-merge.sh missing"),
@@ -503,7 +688,8 @@ mod tests {
             paths: None,
             repo_root: PathBuf::from("/tmp"),
         };
-        let err = spawn_headless(&opts, "claude-sonnet-4-6", "   ").unwrap_err();
+        let ws = ws_with_dir(&opts, PathBuf::from("/tmp"));
+        let err = spawn_headless(&ws, "claude-sonnet-4-6", "   ").unwrap_err();
         let msg = format!("{err:#}");
         assert!(
             msg.contains("prompt is empty"),
@@ -537,7 +723,118 @@ mod tests {
             paths: None,
             repo_root: PathBuf::from("/tmp"),
         };
+        let ws = ws_with_dir(&opts, PathBuf::from("/tmp"));
         // Interactive should just return Ok(()) without spawning anything.
-        do_work(&opts).expect("Interactive backend must always succeed");
+        do_work(&ws).expect("Interactive backend must always succeed");
+    }
+
+    // ── INFRA-302 blocker (3) — stale-branch / no-worktree fix ──────────────
+
+    /// Workspace::new for Interactive must NOT touch the worktree
+    /// machinery — the caller is already in their own worktree per
+    /// CLAUDE.md. Regression guard: don't accidentally spawn a worktree
+    /// for the ledger-flip flow.
+    #[test]
+    fn workspace_interactive_uses_repo_root_unchanged() {
+        let opts = DispatchOptions {
+            gap_id: "INFRA-302",
+            work: WorkBackend::Interactive,
+            auto_merge: false,
+            skip_tests: true,
+            paths: None,
+            repo_root: PathBuf::from("/tmp/some-existing-worktree"),
+        };
+        let ws = Workspace::new(&opts).expect("Interactive must not touch git");
+        assert_eq!(
+            ws.working_dir(),
+            opts.repo_root.as_path(),
+            "Interactive backend must use opts.repo_root verbatim — caller is \
+             already in their worktree (CLAUDE.md \"always work in a linked worktree\")"
+        );
+    }
+
+    /// The dispatched-worktree path must follow the
+    /// chump_orchestrator::dispatch_paths convention so the
+    /// stale-worktree-reaper sweeps both orchestrator-spawned AND
+    /// `chump dispatch`-spawned trees uniformly. Regression guard for
+    /// path/branch drift between the two entry points.
+    #[test]
+    fn dispatch_paths_match_orchestrator_convention() {
+        // Direct call into the orchestrator helper — confirms the import
+        // resolves AND the path shape we depend on hasn't drifted. If
+        // this changes, the stale-worktree-reaper's glob needs updating
+        // in lockstep.
+        let (wt, branch) =
+            chump_orchestrator::dispatch::dispatch_paths(Path::new("/repo"), "INFRA-302");
+        assert_eq!(
+            wt,
+            PathBuf::from("/repo/.claude/worktrees/infra-302"),
+            "worktree path drifted — stale-worktree-reaper glob may need updating"
+        );
+        assert_eq!(
+            branch, "claude/infra-302",
+            "branch convention drifted — bot-merge.sh's gap-from-branch \
+             auto-derive (INFRA-237) parses this prefix"
+        );
+    }
+
+    /// The pre-INFRA-302 bug was that `chump dispatch INFRA-247` ran in
+    /// the main checkout and reported `branch=chump/close-ghosts-batch-3`
+    /// (operator's stale leftover branch). After the fix, the
+    /// dispatched-worktree branch derives from `gap_id`, NOT from the
+    /// caller's `git rev-parse --abbrev-ref HEAD`. This test pins the
+    /// derivation contract.
+    #[test]
+    fn dispatched_worktree_branch_derives_from_gap_id_not_head() {
+        // Two calls with the same repo_root but different gap_ids must
+        // produce different branches — proving the branch is a function
+        // of gap_id, not of the repo's current HEAD (which is the same
+        // for both calls).
+        let (_w1, b1) =
+            chump_orchestrator::dispatch::dispatch_paths(Path::new("/repo"), "INFRA-247");
+        let (_w2, b2) =
+            chump_orchestrator::dispatch::dispatch_paths(Path::new("/repo"), "INFRA-302");
+        assert_ne!(
+            b1, b2,
+            "branches must differ when gap_ids differ — otherwise the \
+             pre-INFRA-302 stale-branch-pickup bug regresses"
+        );
+        assert!(
+            b1.contains("infra-247"),
+            "branch must encode gap_id, got: {b1}"
+        );
+        assert!(
+            b2.contains("infra-302"),
+            "branch must encode gap_id, got: {b2}"
+        );
+        // Critically: neither branch matches a typical operator-leftover
+        // branch name (the 2026-05-02 incident leftover was
+        // `chump/close-ghosts-batch-3`).
+        assert!(
+            !b1.contains("close-ghosts"),
+            "regression: branch derived from operator's stale HEAD"
+        );
+    }
+
+    /// `create_dispatch_worktree` is best-effort idempotent on a
+    /// pre-existing target path (force-removes a leftover worktree
+    /// before re-adding). Without a real git repo we can't run the
+    /// happy path, but we CAN verify that the function doesn't panic
+    /// when handed a nonexistent repo_root — the underlying git
+    /// commands fail gracefully with a clear `Result<Err>` instead of
+    /// blowing up the dispatch.
+    #[test]
+    fn create_dispatch_worktree_returns_err_on_invalid_repo_root() {
+        let res = create_dispatch_worktree(
+            Path::new("/tmp/definitely-not-a-git-repo-infra-302"),
+            "INFRA-302",
+        );
+        // We expect Err — but the important thing is it does NOT panic.
+        // If git is unavailable in the test environment we'd also Err.
+        assert!(
+            res.is_err(),
+            "expected Err from invalid repo_root; got: {:?}",
+            res.map(|p| p.display().to_string())
+        );
     }
 }
