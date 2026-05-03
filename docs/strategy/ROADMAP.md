@@ -170,7 +170,9 @@ See [ROADMAP_MABEL_DRIVER.md](https://github.com/repairman29/chump/blob/main/doc
 **Context:** the 2026-05-02 session ran ~10 dispatcher agents in parallel and surfaced concrete scaling-breakers: 28 stale `chump gap reserve` procs hung in uninterruptible sleep (sqlite contention + INFRA-275 syspolicyd binary wedge), thundering herd on new gaps, ID collisions when CLI was wedged, no skill-affinity for routing, no idle backpressure. This is the prioritized backlog for taking the dispatcher from "works for ~10 agents on one machine" to "works for 100+ agents across a fleet." Filed via PRs #886 (3 lessons), #898 (10 scaling gaps), #900 (3 dispatcher-routing gaps).
 
 **Tier 1 — Operational hardening (next 1–2 weeks):**
-- [ ] [`INFRA-275`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-275.yaml) (P1 s) — root-cause syspolicyd wedge that produces stale `chump` procs (real cause of today's CLI hang)
+- [x] ~~[`INFRA-275`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-275.yaml) — syspolicyd binary wedge~~ shipped via PR #889 + chump-doctor.sh (closed #906, 2026-05-03)
+- [x] ~~[`INFRA-301`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-301.yaml) — gap-reserve.sh timeout + chump-doctor banner~~ shipped via PR #897 (ghost-closed)
+- [ ] **IN PROGRESS** [`INFRA-307`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-307.yaml) (P1 s) — auto-file cleanup gap when PR stuck (current session)
 - [ ] [`INFRA-308`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-308.yaml) (P2 s) — continuous gap-doctor reconciliation cron (auto-fix safe DB↔YAML drifts every 15min)
 - [ ] [`INFRA-309`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-309.yaml) (P2 m) — append-only ID reservation log (collisions recoverable, not just preventable)
 - [ ] [`INFRA-304`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-304.yaml) (P2 s) — bot-merge.sh flake-budget (refuse 3rd rerun of same failing test)
@@ -201,7 +203,7 @@ See [ROADMAP_MABEL_DRIVER.md](https://github.com/repairman29/chump/blob/main/doc
 | Agent | Class filter | Pick up | Why first |
 |---|---|---|---|
 | 1 | INFRA P1 m+ | [`FLEET-032`](https://github.com/repairman29/chump/blob/main/docs/gaps/FLEET-032.yaml) | Cross-host lease invisibility (P0/P1, supersedes INFRA-274) |
-| 2 | INFRA P1 s | [`INFRA-275`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-275.yaml) | syspolicyd binary wedge — the cause of today's CLI hangs |
+| 2 | INFRA P1 m | [`INFRA-110`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-110.yaml) | Reserve-time scoped-diff signature / 2-hour TTL — prevents name-only races. ⚠ Original agent-2 pickup INFRA-275 shipped via PR #889 (ghost-closed via #906); INFRA-301 also shipped via #897. INFRA-307 is in progress this session — DO NOT pick up. |
 | 3 | INFRA P1 xs | [`INFRA-300`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-300.yaml) → [`INFRA-302`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-302.yaml) → [`INFRA-272`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-272.yaml) | 3 cascade/CI quickies, all xs effort |
 | 4 | INFRA P1 m | [`INFRA-208`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-208.yaml) | `chump gap dump` lossy fix — needed for clean state.db audit |
 | 5 | INFRA P1 m | [`INFRA-165`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-165.yaml) | Singleton Provider + global Semaphore — unblocks INFRA-166 |

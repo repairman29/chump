@@ -1,12 +1,15 @@
 - id: INFRA-301
   domain: INFRA
   title: Direct-YAML-write fallback in sibling agents produces silent ID collisions when chump gap reserve hangs (concurrent next-free-ID picks)
-  status: open
+  status: done
   priority: P1
   effort: s
-  depends_on: ["INFRA-275"]
   acceptance_criteria:
-    - "Pre-commit raw-YAML-edit guard already blocks raw edits to docs/gaps/<ID>.yaml without a fresh .chump/.last-yaml-op marker (INFRA-200) — verify it actually fires on the duplicate-ID write path produced by sibling next-free-ID scans"
+    - Pre-commit raw-YAML-edit guard already blocks raw edits to docs/gaps/<ID>.yaml without a fresh .chump/.last-yaml-op marker (INFRA-200) — verify it actually fires on the duplicate-ID write path produced by sibling next-free-ID scans
     - "Document the heal-don't-fallback rule in CLAUDE.md (already done by INFRA-275 PR #889) and AGENTS.md"
     - "Optional: add a tripwire in scripts/coord/gap-reserve.sh that detects `chump gap reserve` timeouts and prints a banner pointing at scripts/dev/chump-doctor.sh instead of letting the caller invent a YAML-write fallback"
     - "Regression test: simulate the syspolicyd hang (e.g. by holding a flock on the chump binary's directory) and assert any reserve attempt fails with the chump-doctor banner rather than silently returning success after a YAML write"
+  depends_on: [INFRA-275]
+  closed_date: '2026-05-03'
+  closed_pr: 897
+
