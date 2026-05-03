@@ -1,0 +1,38 @@
+- id: INFRA-310
+  domain: INFRA
+  title: custom git merge driver for hot-file textual conflicts (ci.yml-add-row, gap-yaml-add-line, pre-commit-add-guard)
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Hot files (.github/workflows/ci.yml, scripts/git-hooks/pre-commit, scripts/coord/bot-merge.sh, etc.) collect append-only edits from every parallel agent. Today PRs #858 and #869 each rebased TWICE because their CI test entry / pre-commit guard entry conflicted with siblings.
+    
+    Conflicts are 100% trivial textual additions to a list — no semantic disagreement. A custom git merge driver per file class can resolve them automatically:
+    
+      ci.yml-add-row driver:
+        - both branches added a 'name: ... | run: bash ...' YAML step entry
+        - merge: union both entries, preserve order by grep'ing the test name alphabetically OR by the first added timestamp
+    
+      gap-yaml-add-line driver:
+        - both branches added a per-file gap YAML
+        - merge: keep both files (they're separate paths post-INFRA-188 anyway — should never conflict)
+    
+      pre-commit-add-guard driver:
+        - both branches added a new 'if [ ... ]; then ... fi' block to scripts/git-hooks/pre-commit
+        - merge: append both blocks; preserve order
+    
+    Wire via .gitattributes:
+      .github/workflows/ci.yml merge=ci-yml-add-row
+      scripts/git-hooks/pre-commit merge=pre-commit-add-guard
+    
+    Mergetool definition in .git/config OR via scripts/setup/install-merge-drivers.sh.
+    
+    Caveat: drivers should refuse to auto-merge if one side EDITS an existing entry (not just appends). Auto-merge is safe ONLY for pure-add cases; anything else falls through to manual conflict.
+  acceptance_criteria:
+    - scripts/lib/merge-driver-ci-yml-add-row.sh implements the union-add semantics
+    - scripts/lib/merge-driver-pre-commit-add-guard.sh same
+    - scripts/setup/install-merge-drivers.sh registers the drivers + .gitattributes hooks
+    - "Test: rebase a fixture branch with a known-trivial conflict, verify auto-resolution"
+    - "Test: drivers REFUSE non-trivial cases (both sides edited same line)"
+    - "Manual escape: --no-merge-driver flag"
+

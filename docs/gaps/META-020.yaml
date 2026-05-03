@@ -1,0 +1,43 @@
+- id: META-020
+  domain: META
+  title: automated end-of-session synthesis — generate what-broke report from PR titles + closures + ambient ALERTs
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Each session today produced ~5 real failure modes worth filing. Currently I (the operator's agent) notice them and surface them at end-of-session via lessons synthesis. At fleet scale (100+ sessions/day across multiple agents), no human is going to do this manually.
+    
+    Automated synthesis runs at session-end (or every N hours for long-running sessions):
+    
+    Inputs:
+      - Session's PR titles + commit messages from .chump-locks/ambient.jsonl (event=commit since session_start)
+      - PR closures + supersession comments (gh pr list --state closed --search 'closed:> author:@me')
+      - ALERT events from ambient.jsonl during the session window
+      - Reflection rows from .chump/reflections.jsonl (if MEM-007 wired) tagged with session_id
+      - bot-merge.sh outcome stats (CLOSED, WARNED counts, retry counts per PR)
+    
+    Output (markdown report):
+      ## Session synthesis YYYY-MM-DD HH:MM
+      
+      ### Ships
+        - PR #N (INFRA-X): <title> — landed | rebased Mx | superseded by #M
+        
+      ### Failures (with hypothesis)
+        - INFRA-X: 'cargo-test' failed 3 times across 6 PRs → likely flake, file as gap?
+        - PR #M went DIRTY 4x in 2 hours → hot-file thrash, INFRA-305 candidate
+        
+      ### New gaps filed
+        - INFRA-Y, FLEET-Z, ...
+      
+      ### Recommended follow-ups
+        - <auto-clustered patterns>
+    
+    Posts to docs/sessions/YYYY-MM-DD-HHMM-synthesis.md (auto-pruned after 30 days unless promoted to red-letter).
+  acceptance_criteria:
+    - scripts/dev/session-synthesize.sh produces the markdown report from current session's ambient + PR data
+    - Triggered automatically on session_end event in ambient.jsonl
+    - Output committed to docs/sessions/ via separate doc-only PR
+    - Auto-prune after 30d unless --promote-to-red-letter flag was set
+    - Daily fleet-wide synthesis aggregates all sessions
+  depends_on: [MEM-007]
+
