@@ -685,9 +685,28 @@ if command -v cargo &>/dev/null && ls src/**/*.rs &>/dev/null 2>&1; then
         exit 1
     fi
     if [[ $DRY_RUN -eq 0 ]] && ! git diff --quiet; then
-        info "cargo fmt changed files — staging and amending …"
-        git add -u
-        git commit --amend --no-edit --no-verify
+        # INFRA-370 (2026-05-03): only `git commit --amend` when this branch
+        # has at least one commit OF ITS OWN above $REMOTE/$BASE_BRANCH.
+        # Without this guard, when the agent forgot to commit before calling
+        # bot-merge.sh (uncommitted work in tree, HEAD = a foreign main
+        # commit), the amend path silently grafted the agent's uncommitted
+        # changes ONTO the foreign commit, mutating its tree. META-014's
+        # subagent confirmed this live via `git reflog` showing
+        # `commit (amend)` against an INFRA-335 SHA. PR #52-class silent
+        # squash-loss. Fix: when there are 0 own-commits, create a NEW
+        # commit instead of amending.
+        commits_on_branch=$(git rev-list --count "${REMOTE}/${BASE_BRANCH}..HEAD" 2>/dev/null || echo 0)
+        if [[ "$commits_on_branch" -lt 1 ]] && [[ "${CHUMP_BOT_MERGE_FORCE_AMEND:-0}" != "1" ]]; then
+            yellow "INFRA-370: HEAD has no commits above $REMOTE/$BASE_BRANCH — refusing to --amend foreign commit"
+            yellow "  (override with CHUMP_BOT_MERGE_FORCE_AMEND=1 for genuine recovery)"
+            info "cargo fmt changed files — creating fresh commit on top instead of amending …"
+            git add -u
+            git commit --no-verify -m "chore: cargo fmt --all (auto from bot-merge.sh, INFRA-370 fresh-commit path)"
+        else
+            info "cargo fmt changed files — staging and amending …"
+            git add -u
+            git commit --amend --no-edit --no-verify
+        fi
         green "fmt fixes committed."
     fi
     stage_done
