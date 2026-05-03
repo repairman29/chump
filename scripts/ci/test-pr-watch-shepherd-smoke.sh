@@ -66,12 +66,16 @@ mkdir -p "$MAIN_REPO/.chump-locks"
 touch "$AMBIENT"
 rm -f "$HB"
 ambient_lines_before=$(wc -l < "$AMBIENT" 2>/dev/null || echo 0)
-# CHUMP_PR_WATCH_MAX_PRS=0 doesn't actually skip the gh call, but if there
-# are real DIRTY PRs the test machine will exercise them — that's OK, the
-# script is idempotent and cooldown protects against thrash. Just verify
-# heartbeat + ambient event appear regardless.
+# INFRA-385: PR_WATCH_MAX_PRS=0 short-circuits the per-PR loop AFTER
+# the shepherd has scanned + emitted heartbeat + ambient event but
+# BEFORE it tries to create ephemeral worktrees and invoke pr-watch on
+# real DIRTY PRs. Pre-fix, dev machines with real DIRTY PRs in flight
+# had the smoke test do live recovery work — flaky on git-auth corner
+# cases and semantically wrong (a smoke test should not mutate real
+# PRs). The cap is honored by the "(( PROCESSED >= MAX_PRS )) && break"
+# guard at the top of the per-PR loop in pr-watch-shepherd.sh.
 set +e
-out=$(bash "$SHEPHERD" 2>&1)
+out=$(PR_WATCH_MAX_PRS=0 bash "$SHEPHERD" 2>&1)
 rc=$?
 set -e
 [[ $rc -eq 0 ]] || { echo "[FAIL] clean run exited $rc"; echo "$out"; exit 1; }
