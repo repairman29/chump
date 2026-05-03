@@ -221,8 +221,107 @@ Your verdict (one line, one of APPROVE/CONCERN/ESCALATE):
 EOF
 )
 
+# ── 5b. Tier 1: cascade pre-check (INFRA-264) ────────────────────────────────
+# For trivially small / clean PRs, ask one cascade slot (free-tier Llama by
+# default) for a verdict before paying for Anthropic. Short-circuit ONLY on
+# confident APPROVE for small diffs — any CONCERN, ESCALATE, parse failure,
+# or larger diff falls through to the Anthropic Tier-2 call below.
+#
+# This is a cost optimization, not a quality gate: Anthropic Tier-2 still
+# runs on every PR that's not obviously trivial. The Tier-1 model never
+# blocks a merge; it only short-circuits the APPROVE path.
+#
+# Tunables:
+#   CHUMP_TWO_TIER_REVIEW=0      disable Tier 1 entirely (always use Anthropic)
+#   CHUMP_TWO_TIER_LOC_LIMIT=N   max LOC for Tier-1 short-circuit (default 50)
+#   CHUMP_TWO_TIER_SLOT=name     cascade slot to use (default: groq)
+TIER1_RESPONSE=""
+TIER1_VERDICT=""
+TIER1_RAN=0
+TIER1_LOC_LIMIT="${CHUMP_TWO_TIER_LOC_LIMIT:-50}"
+TIER1_SLOT="${CHUMP_TWO_TIER_SLOT:-groq}"
+if [[ $DRY_RUN -eq 0 ]] \
+   && [[ "${CHUMP_TWO_TIER_REVIEW:-1}" != "0" ]] \
+   && (( LOC <= TIER1_LOC_LIMIT )); then
+
+    # Locate cascade slot config from .env. Walk worktree root then main
+    # repo root for .env discovery (linked-worktree safe).
+    if [[ -z "${CHUMP_PROVIDER_1_NAME:-}" ]]; then
+        for _root in "$(git rev-parse --show-toplevel)" "$(git rev-parse --git-common-dir | xargs dirname 2>/dev/null)"; do
+            if [[ -n "$_root" && -f "$_root/.env" ]]; then
+                set -a; source "$_root/.env"; set +a
+                [[ -n "${CHUMP_PROVIDER_1_NAME:-}" ]] && break
+            fi
+        done
+    fi
+
+    # Resolve TIER1_SLOT to (base, key, model). Walk CHUMP_PROVIDER_1..10.
+    _t1_base=""; _t1_key=""; _t1_model=""
+    for _i in $(seq 1 10); do
+        _name_var="CHUMP_PROVIDER_${_i}_NAME"
+        _enabled_var="CHUMP_PROVIDER_${_i}_ENABLED"
+        if [[ "${!_enabled_var:-}" == "1" ]] && [[ "${!_name_var:-}" == "$TIER1_SLOT" ]]; then
+            _t1_base_var="CHUMP_PROVIDER_${_i}_BASE"
+            _t1_key_var="CHUMP_PROVIDER_${_i}_KEY"
+            _t1_model_var="CHUMP_PROVIDER_${_i}_MODEL"
+            _t1_base="${!_t1_base_var}"
+            _t1_key="${!_t1_key_var}"
+            _t1_model="${!_t1_model_var}"
+            break
+        fi
+    done
+
+    if [[ -n "$_t1_base" && -n "$_t1_key" && -n "$_t1_model" ]]; then
+        info "Tier 1: cascade pre-check via $TIER1_SLOT ($_t1_model, LOC=$LOC ≤ $TIER1_LOC_LIMIT) …"
+        _t1_request=$(python3 -c "
+import json, sys
+p = sys.stdin.read()
+print(json.dumps({
+    'model': '$_t1_model',
+    'messages': [{'role': 'user', 'content': p}],
+    'max_tokens': 256,
+}))" <<< "$PROMPT")
+        _t1_raw=$(curl -sS --max-time 30 -X POST "$_t1_base/chat/completions" \
+            -H "Authorization: Bearer $_t1_key" \
+            -H "Content-Type: application/json" \
+            -d "$_t1_request" 2>&1 || true)
+        TIER1_RESPONSE=$(echo "$_t1_raw" | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+    if 'choices' in d and d['choices']:
+        print(d['choices'][0].get('message', {}).get('content', '').strip())
+    else:
+        print('')
+except Exception:
+    print('')
+" 2>/dev/null || echo "")
+        TIER1_RAN=1
+        # Extract first APPROVE/CONCERN/ESCALATE line
+        _t1_verdict_line=$(echo "$TIER1_RESPONSE" | grep -E '^(APPROVE|CONCERN|ESCALATE):' | head -1)
+        if [[ -n "$_t1_verdict_line" ]]; then
+            TIER1_VERDICT=$(echo "$_t1_verdict_line" | cut -d: -f1)
+            info "Tier 1 verdict: $TIER1_VERDICT"
+        else
+            info "Tier 1 verdict: <unparseable> (will fall through to Tier 2)"
+        fi
+    else
+        info "Tier 1: slot '$TIER1_SLOT' not configured in .env — falling through to Tier 2"
+    fi
+fi
+
+# Decide whether to short-circuit Tier 2.
+SKIP_TIER2=0
+if [[ "$TIER1_VERDICT" == "APPROVE" ]]; then
+    info "Tier 1 short-circuit: APPROVE on small diff (LOC=$LOC) — skipping Anthropic Tier 2"
+    RESPONSE="$TIER1_RESPONSE"
+    SKIP_TIER2=1
+fi
+
 # ── 6. Call Anthropic API (or stub for --dry-run) ────────────────────────────
-if [[ $DRY_RUN -eq 1 ]]; then
+if [[ $SKIP_TIER2 -eq 1 ]]; then
+    info "(Tier 2 Anthropic call skipped — Tier 1 cascade short-circuit on APPROVE)"
+elif [[ $DRY_RUN -eq 1 ]]; then
     info "[dry-run] skipping API call — using stub response."
     RESPONSE="APPROVE: dry-run stub response (LOC=$LOC, files=$(echo "$CHANGED_FILES" | wc -l | tr -d ' '))"
 else
