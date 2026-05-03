@@ -271,6 +271,9 @@ jobs:
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
 
+      - name: doc-only commits run all guards (INFRA-257)
+        run: bash scripts/ci/test-infra-257-doc-only-guards.sh
+
       - name: submodule-sanity guard (INFRA-158)
         run: bash scripts/ci/test-submodule-guard.sh
 
