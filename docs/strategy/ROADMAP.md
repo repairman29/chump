@@ -165,6 +165,39 @@ See [ROADMAP_MABEL_DRIVER.md](https://github.com/repairman29/chump/blob/main/doc
 - [x] **Mabel self-heal (Pixel):** **`scripts/dev/mabel-farmer.sh`** runs **`start-companion.sh`** when local model/bot is down if **`MABEL_FARMER_FIX_LOCAL=1`** (default). See script header and OPERATIONS **Keeping the stack running**.
 - [x] **On-demand status:** Discord **`!status`** / **`status report`** — **Chump** and **Mabel** reply with latest **`logs/mabel-report-*.md`** when present; otherwise Chump points to Mabel/Pixel and the retire script ([`src/discord.rs`](https://github.com/repairman29/chump/blob/main/src/discord.rs) `on_demand_fleet_status_markdown`).
 
+### Dispatcher and fleet scaling (Tiers 1–4, filed 2026-05-02)
+
+**Context:** the 2026-05-02 session ran ~10 dispatcher agents in parallel and surfaced concrete scaling-breakers: 28 stale `chump gap reserve` procs hung in uninterruptible sleep (sqlite contention + INFRA-275 syspolicyd binary wedge), thundering herd on new gaps, ID collisions when CLI was wedged, no skill-affinity for routing, no idle backpressure. This is the prioritized backlog for taking the dispatcher from "works for ~10 agents on one machine" to "works for 100+ agents across a fleet." Filed via PRs #886 (3 lessons), #898 (10 scaling gaps), #900 (3 dispatcher-routing gaps).
+
+**Tier 1 — Operational hardening (next 1–2 weeks):**
+- [ ] [`INFRA-275`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-275.yaml) (P1 s) — root-cause syspolicyd wedge that produces stale `chump` procs (real cause of today's CLI hang)
+- [ ] [`INFRA-308`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-308.yaml) (P2 s) — continuous gap-doctor reconciliation cron (auto-fix safe DB↔YAML drifts every 15min)
+- [ ] [`INFRA-309`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-309.yaml) (P2 m) — append-only ID reservation log (collisions recoverable, not just preventable)
+- [ ] [`INFRA-304`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-304.yaml) (P2 s) — bot-merge.sh flake-budget (refuse 3rd rerun of same failing test)
+- [ ] [`INFRA-305`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-305.yaml) (P3 xs) — hot-file rebase-loop expectation note
+- [ ] [`INFRA-306`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-306.yaml) (P2 xs) — pre-rebase MERGED check (refuse force-push on already-MERGED PR)
+- [ ] [`INFRA-314`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-314.yaml) (P2 s) — gap affinity tags (`skills_required`, `preferred_backend`, `preferred_machine`) + worker preference matching
+- [ ] [`INFRA-315`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-315.yaml) (P2 s) — worker poll-jitter + idle-backpressure `fleet_starved` ALERT
+
+**Tier 2 — Multi-machine fleet (next month):**
+- [ ] [`FLEET-032`](https://github.com/repairman29/chump/blob/main/docs/gaps/FLEET-032.yaml) (P1 l) — lease store migration to NATS KV bucket (kills filesystem-local lease invisibility class)
+- [ ] [`FLEET-033`](https://github.com/repairman29/chump/blob/main/docs/gaps/FLEET-033.yaml) (P1 xl) — `state.db` migration to shared store (Postgres or NATS event-sourced; recommended Option C: append-only event log + per-host materialized read view)
+- [ ] [`FLEET-034`](https://github.com/repairman29/chump/blob/main/docs/gaps/FLEET-034.yaml) (P1 l) — `chump-coord assign` daemon: NATS push routing for new gaps when broker available, pull fallback when not. **Architectural shift from pure-PULL to HYBRID.** Depends on FLEET-006 + FLEET-032/033 + INFRA-314.
+
+**Tier 3 — Agent-population scaling (next quarter):**
+- [ ] [`META-019`](https://github.com/repairman29/chump/blob/main/docs/gaps/META-019.yaml) (P2 l) — CLAUDE.md → structured queryable `docs/process/agent-rules.yaml` (vs reading 30KB every session)
+- [ ] [`INFRA-310`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-310.yaml) (P2 m) — custom git merge drivers for hot-file textual conflicts (`ci.yml`-add-row, `pre-commit`-add-guard)
+- [ ] [`INFRA-311`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-311.yaml) (P3 s) — speculative-by-default policy in dispatcher for known-parallelizable gap classes
+- [ ] [`INFRA-312`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-312.yaml) (P2 m) — per-domain CI shard isolation (a `chump-coord` flake doesn't block `chump-perception` PRs)
+
+**Tier 4 — Dogfood-as-research automation:**
+- [ ] [`META-020`](https://github.com/repairman29/chump/blob/main/docs/gaps/META-020.yaml) (P2 m) — automated end-of-session synthesis (what-broke report from PR titles + ALERTs)
+- [ ] [`META-021`](https://github.com/repairman29/chump/blob/main/docs/gaps/META-021.yaml) (P3 s) — daily Red Letter automation (append-only, recurrence-driven auto-gap-filing)
+
+**Cognitive-model fix:** today's CLAUDE.md says "the dispatcher dispatches work" but the current code is pull-by-default (every worker polls state.db). FLEET-034 makes the dispatcher *actually* dispatch when a broker is available; until then expect operators to be confused by the gap. Phase 1 (INFRA-314 + INFRA-315) is single-machine pure-additive — ships independently of NATS work.
+
+**Recently shipped (2026-05-02 session):** INFRA-273 (gap-preflight Check 1.5), INFRA-253 (sqlite retry budget), INFRA-258 (file-parity reaper check), INFRA-257 (pre-commit short-circuit fix), INFRA-109 (worktree-boundary lease invisibility), INFRA-124 (docs-delta trailer validation), INFRA-116 (KNOWN_FLAGS), INFRA-193 (speculative execution), INFRA-203 (run-fleet.sh canonical launcher), INFRA-204 (fleet-status.sh).
+
 ### PWA / brain workflows (Phase D — pragmatic)
 
 - [x] **Quick capture hardening:** `POST /api/ingest` and **`/api/shortcut/capture`** enforce **512 KiB** max payload, optional **`source`** provenance comment, `RequestBodyLimitLayer` on JSON routes; PWA sends `source: pwa`. See [WEB_API_REFERENCE.md](https://github.com/repairman29/chump/blob/main/docs/api/WEB_API_REFERENCE.md), [CHUMP_BRAIN.md](https://github.com/repairman29/chump/blob/main/docs/architecture/CHUMP_BRAIN.md) Capture size.
