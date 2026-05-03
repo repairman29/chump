@@ -52,6 +52,17 @@ EXCLUDE_PREFIXES_REGEX='^(EVAL-|RESEARCH-|META-)'
 
 cd "$REPO_ROOT"
 
+# INFRA-333: heal any wedged-inode chump binary before we touch chump gap.
+# Idempotent — fast no-op (probe < 5s) when binary is healthy. When the
+# inode is wedged (INFRA-275 syspolicyd hang), the doctor moves it aside
+# and replaces it with a fresh-inode copy, so the worker loop's `chump
+# gap list` invocation below doesn't hang at _dyld_start. Failure is
+# logged but non-fatal: the loop will surface the real problem on the
+# first `chump gap` call if the heal didn't work.
+"$REPO_ROOT/scripts/dev/chump-doctor.sh" >&2 || {
+    log "WARN: chump-doctor failed; chump gap calls may hang"
+}
+
 cycle=0
 while :; do
     cycle=$((cycle + 1))
