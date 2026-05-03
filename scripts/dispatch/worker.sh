@@ -141,10 +141,42 @@ PY
         # the fleet has been quiet for STARVE_THRESHOLD consecutive cycles.
         _starve_count=$((_starve_count + 1))
         if [ "$_starve_count" = "$CHUMP_STARVE_THRESHOLD" ]; then
+            # ── INFRA-391: compute a suggested filter relaxation ─────────
+            # The ALERT becomes more useful when it suggests the *next*
+            # broadest filter to try. Order: drop domain filter first
+            # (cheapest — most likely operator-set artifact), then bump
+            # effort tier (xs→s→m→l→xl), then bump priority tier (P0→P1→P2→P3).
+            _starve_suggestion=""
+            _starve_suggested_domain="$FLEET_DOMAIN_FILTER"
+            _starve_suggested_effort="$FLEET_EFFORT_FILTER"
+            _starve_suggested_priority="$FLEET_PRIORITY_FILTER"
+            if [ -n "$FLEET_DOMAIN_FILTER" ]; then
+                _starve_suggested_domain=""
+                _starve_suggestion="drop FLEET_DOMAIN_FILTER (try any domain)"
+            elif [ "$FLEET_EFFORT_FILTER" != "xs,s,m,l,xl" ]; then
+                case "$FLEET_EFFORT_FILTER" in
+                    xs)            _starve_suggested_effort="xs,s" ;;
+                    xs,s)          _starve_suggested_effort="xs,s,m" ;;
+                    xs,s,m)        _starve_suggested_effort="xs,s,m,l" ;;
+                    *)             _starve_suggested_effort="xs,s,m,l,xl" ;;
+                esac
+                _starve_suggestion="bump FLEET_EFFORT_FILTER → '$_starve_suggested_effort'"
+            elif [ "$FLEET_PRIORITY_FILTER" != "P0,P1,P2,P3" ]; then
+                case "$FLEET_PRIORITY_FILTER" in
+                    P0)            _starve_suggested_priority="P0,P1" ;;
+                    P0,P1)         _starve_suggested_priority="P0,P1,P2" ;;
+                    P0,P1,P2)      _starve_suggested_priority="P0,P1,P2,P3" ;;
+                    *)             _starve_suggested_priority="P0,P1,P2,P3" ;;
+                esac
+                _starve_suggestion="bump FLEET_PRIORITY_FILTER → '$_starve_suggested_priority'"
+            else
+                _starve_suggestion="filters already at maximum breadth — queue genuinely empty"
+            fi
+
             _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             _amb_path="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
             mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
-            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"fleet_starved","agent_id":"%s","consecutive_empty":%d,"filters":"prio=%s domain=%s effort=%s"}\n' \
+            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"fleet_starved","agent_id":"%s","consecutive_empty":%d,"filters":"prio=%s domain=%s effort=%s","suggestion":"%s"}\n' \
                 "$_ts" \
                 "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
                 "$AGENT_ID" \
@@ -153,8 +185,34 @@ PY
                 "$FLEET_PRIORITY_FILTER" \
                 "${FLEET_DOMAIN_FILTER:-any}" \
                 "$FLEET_EFFORT_FILTER" \
+                "$_starve_suggestion" \
                 >> "$_amb_path" 2>/dev/null || true
-            log "ALERT kind=fleet_starved (consecutive_empty=$_starve_count; filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER)"
+            log "ALERT kind=fleet_starved (consecutive_empty=$_starve_count; filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER); suggest: $_starve_suggestion"
+
+            # ── INFRA-391: auto-shutdown mode ────────────────────────────
+            # CHUMP_STARVE_AUTO_SHUTDOWN=1 causes the worker to exit cleanly
+            # when starvation threshold is hit. Useful for scheduled cron-
+            # style fleets where idle workers cost claude tokens on every
+            # spawn-to-empty-pick cycle. Default off — preserves current
+            # always-on behavior.
+            if [ "${CHUMP_STARVE_AUTO_SHUTDOWN:-0}" = "1" ]; then
+                log "INFRA-391: CHUMP_STARVE_AUTO_SHUTDOWN=1 — exiting cleanly (rc=0) after $_starve_count empty cycles"
+                exit 0
+            fi
+
+            # ── INFRA-391: auto-relax mode ───────────────────────────────
+            # CHUMP_STARVE_AUTO_RELAX=1 applies the suggestion above
+            # automatically, then resets the starvation counter so the
+            # next cycle picks against the broader filter. Stops once
+            # filters reach maximum breadth.
+            if [ "${CHUMP_STARVE_AUTO_RELAX:-0}" = "1" ] \
+               && [ "$_starve_suggestion" != "filters already at maximum breadth — queue genuinely empty" ]; then
+                FLEET_DOMAIN_FILTER="$_starve_suggested_domain"
+                FLEET_EFFORT_FILTER="$_starve_suggested_effort"
+                FLEET_PRIORITY_FILTER="$_starve_suggested_priority"
+                log "INFRA-391: auto-relaxed — now: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER"
+                _starve_count=0
+            fi
         fi
         # INFRA-315: jittered sleep — randomize ±CHUMP_POLL_JITTER% around
         # IDLE_SLEEP_S. e.g. with default 60s + 30%: window 42-78s. Breaks

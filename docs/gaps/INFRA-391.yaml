@@ -4,4 +4,11 @@
   status: open
   priority: P1
   effort: s
+  acceptance_criteria:
+    - "Worker that hits CHUMP_STARVE_THRESHOLD consecutive empty picks (default 3) takes one of: (a) auto-relaxes its own filter (drop FLEET_DOMAIN_FILTER first, then bump effort tier, then bump priority tier); (b) self-terminates with rc=0 if CHUMP_STARVE_AUTO_SHUTDOWN=1; (c) emits a fleet-relax suggestion to ambient with the suggested next filter"
+    - Default behavior is (c) emit suggestion + continue (preserves current visibility). (a) is opt-in via CHUMP_STARVE_AUTO_RELAX=1, (b) via CHUMP_STARVE_AUTO_SHUTDOWN=1
+    - "Test: scripts/ci/test-fleet-starve-auto-action.sh covers all three modes against a stub gap-store"
+    - "Cost rationale: on chump-local backend starvation is free (sleep loop, no API). On claude backend each cycle's gh+git fetch is free but the spawn-claude on a wrong-pick costs Anthropic tokens. Auto-relax/shutdown bounds the worst case at N*spawn cost where N=CHUMP_STARVE_THRESHOLD"
+  notes: |
+    Filed 2026-05-03 after observing local dogfood fleet idle for 6+ hours under FLEET_DOMAIN_FILTER=FLEET (no matching open gaps). The current INFRA-315 fleet_starved ALERT requires operator intervention; auto-relax keeps the fleet productive without operator.
 
