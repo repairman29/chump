@@ -142,12 +142,13 @@ impl TaskExecutor for SwarmExecutor {
 }
 
 /// Read `CHUMP_TOOL_TIMEOUT_SEC` once from the environment.
-/// Defaults to 30 seconds if the variable is absent or unparseable.
+/// INFRA-321: default reduced from 30s → 8s (outer guard; inner ToolTimeoutWrapper
+/// in tool_middleware.rs uses DEFAULT_TOOL_TIMEOUT_SECS, also 8s).
 fn tool_timeout_secs() -> u64 {
     std::env::var("CHUMP_TOOL_TIMEOUT_SEC")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(30u64)
+        .unwrap_or(8u64)
 }
 
 /// Core implementation shared by local and swarm strategies (approval + one tool at a time).
@@ -304,6 +305,16 @@ pub async fn execute_tool_calls_sequential<'a>(
             }
             Ok(Err(e)) => {
                 let result = crate::repo_tools::enrich_file_tool_error(&tc.name, &tc.input, &e);
+                // INFRA-321: surface inner ToolTimeoutWrapper timeouts as SSE TextDelta
+                // so the user sees feedback instead of a silent hang.
+                if e.to_string().contains("timed out") {
+                    send_event(
+                        event_tx,
+                        AgentEvent::TextDelta {
+                            delta: format!("\n[Tool `{}` timed out — skipping]\n", tc.name),
+                        },
+                    );
+                }
                 let tr = ToolResult {
                     tool_call_id: tc.id.clone(),
                     tool_name: tc.name.clone(),
@@ -315,6 +326,17 @@ pub async fn execute_tool_calls_sequential<'a>(
             Err(_elapsed) => {
                 let secs = tool_timeout.as_secs();
                 tracing::warn!(tool = %tc.name, timeout_secs = secs, "tool timed out");
+                // INFRA-321: emit TextDelta so the user sees a clear message instead
+                // of a silent hang while the outer timeout guard fires.
+                send_event(
+                    event_tx,
+                    AgentEvent::TextDelta {
+                        delta: format!(
+                            "\n[Tool `{}` timed out after {}s — skipping]\n",
+                            tc.name, secs
+                        ),
+                    },
+                );
                 let tr = ToolResult {
                     tool_call_id: tc.id.clone(),
                     tool_name: tc.name.clone(),

@@ -600,7 +600,9 @@ impl BatchOutcome {
 /// Tool error prefixes considered "this tool actually failed." Kept centrally
 /// so `BatchOutcome` accounting matches the existing user-facing error format.
 pub fn is_failed_tool_result(result: &str) -> bool {
-    result.starts_with("DENIED:") || result.starts_with("Tool error:")
+    result.starts_with("DENIED:")
+        || result.starts_with("Tool error:")
+        || result.starts_with("tool timed out")
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
