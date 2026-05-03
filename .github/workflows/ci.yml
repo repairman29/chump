@@ -278,6 +278,9 @@ jobs:
       - name: docs-delta trailer validation (INFRA-124)
         run: bash scripts/ci/test-infra-124-docs-delta-trailer.sh
 
+      - name: state.sql merge driver smoke (INFRA-310)
+        run: bash scripts/ci/test-merge-driver-state-sql.sh
+
       - name: pre-push --force-with-lease race guard (INFRA-345)
         run: bash scripts/ci/test-pre-push-force-lease-guard.sh
 
