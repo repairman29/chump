@@ -23,6 +23,18 @@ ChumpMenu/ChumpMenu.app/
 # INFRA-188: chump-native worktree directory (canonical post-INFRA-186)
 .chump/worktrees/
 
+# META-016 (2026-05-02): ephemeral session notes / handoff scratchpads.
+# A background process — `git stash push -u` named claude-other-stash /
+# claude-watch-stash — captures untracked-but-not-ignored content under
+# .chump/notes/ and never pops it back. Recovery via `git stash list`
+# + `git ls-tree stash@{N}^3 -- .chump/notes/` works, but gitignoring
+# the dir defangs the mechanism: stash -u + clean -fd both skip ignored
+# files (verified empirically). The durable canonical location for
+# session-handoff notes is
+# ~/.claude/projects/-Users-jeffadkins-Projects-Chump/notes/ (outside
+# any git tree, immune to all git ops).
+.chump/notes/
+
 # Agent path-lease files (runtime only; never commit)
 .chump-locks/
 
