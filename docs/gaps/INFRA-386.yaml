@@ -1,0 +1,7 @@
+- id: INFRA-386
+  domain: INFRA
+  title: stuck-pr-filer.sh auto-closes its own filed gap when underlying PR resolves (closed/merged)
+  status: open
+  priority: P1
+  effort: xs
+

@@ -1,0 +1,7 @@
+- id: INFRA-387
+  domain: INFRA
+  title: extend pr-watch.sh / pr-watch-shepherd with batch-rebase recipe (state.sql regen, gap-YAML ours, ci.yml strip markers)
+  status: open
+  priority: P2
+  effort: s
+
