@@ -93,18 +93,29 @@ emit_ambient() {
 #    Avoiding `mapfile` because launchd's `/bin/bash -lc` runs bash 3.2 on macOS
 #    (mapfile is bash 4+). Read into a newline-delimited string + word-split.
 TARGETS_RAW="$(
-    gh pr list --state open --limit 100 --json number,headRefName,mergeStateStatus,autoMergeRequest,headRefOid \
-        2>/dev/null \
-    | python3 -c '
+    # NOTE: backticks-in-comments break $(...) parsing. Plain prose only here.
+    # The "or echo []" fallthrough below feeds valid empty JSON to python when
+    # an unauthenticated/failed gh (e.g. CI fast-checks without GH_TOKEN)
+    # would otherwise leave python with empty stdin → json.load raises → pipe
+    # fails → set -o pipefail → set -e → script exit 1 with no diagnostic
+    # (PR #976 CI failure mode). Defense in depth: python also try/excepts to []
+    # and the outer command-substitution has its own "or TARGETS_RAW=" tail.
+    {
+        gh pr list --state open --limit 100 --json number,headRefName,mergeStateStatus,autoMergeRequest,headRefOid 2>/dev/null \
+        || echo '[]'
+    } | python3 -c '
 import json, sys
-prs = json.load(sys.stdin)
+try:
+    prs = json.load(sys.stdin)
+except Exception:
+    prs = []
 for p in prs:
     if p.get("mergeStateStatus") != "DIRTY": continue
     if not p.get("autoMergeRequest"): continue
     n, br, sha = p["number"], p["headRefName"], p["headRefOid"][:12]
     print(f"{n}|{br}|{sha}")
 ' 2>/dev/null
-)"
+)" || TARGETS_RAW=""
 
 # Count non-empty lines (avoids treating empty TARGETS_RAW as one entry)
 SCANNED=0
