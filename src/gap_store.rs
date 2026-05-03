@@ -1494,7 +1494,85 @@ impl GapStore {
     /// fresh tempdir callers and bootstrap paths don't have to special-case it.
     /// A YAML file that *exists* but is unreadable / malformed propagates the
     /// error so callers like `reserve()` can fail loud (INFRA-143).
-    pub fn import_from_yaml(&self, repo_root: &Path) -> Result<(usize, usize)> {
+    /// Backfill `closed_pr` for rows that already exist in the DB but have
+    /// `closed_pr IS NULL`, using the YAML file(s) at `repo_root` as the
+    /// authoritative source.  Only rows where the YAML carries a numeric
+    /// `closed_pr` AND the DB row currently has NULL are updated — rows that
+    /// already have a value are never overwritten (idempotent).
+    ///
+    /// Returns the number of rows updated (0 on a clean tree).
+    ///
+    /// INFRA-233: root cause of ~200 NULL closed_pr rows was that
+    /// `import_from_yaml` used INSERT OR IGNORE, which skips existing rows
+    /// entirely — so the `closed_pr` column added by INFRA-156 was never
+    /// backfilled for rows imported before the column existed.  This method
+    /// is now called automatically by `import_from_yaml` so re-running
+    /// `chump gap import` heals the tree.
+    pub fn backfill_closed_pr_from_yaml(&self, repo_root: &Path) -> Result<usize> {
+        // Re-use the same YAML aggregation logic as import_from_yaml.
+        let per_file_dir = repo_root.join("docs").join("gaps");
+        let text = if per_file_dir.is_dir() {
+            let mut parts = Vec::new();
+            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
+                .with_context(|| format!("reading {}", per_file_dir.display()))?
+                .flatten()
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s == "yaml")
+                        .unwrap_or(false)
+                })
+                .collect();
+            dir_entries.sort_by_key(|e| e.file_name());
+            for entry in &dir_entries {
+                let content = std::fs::read_to_string(entry.path())
+                    .with_context(|| format!("reading {}", entry.path().display()))?;
+                parts.push(content);
+            }
+            if parts.is_empty() {
+                let yaml_path = repo_root.join("docs").join("gaps.yaml");
+                match std::fs::read_to_string(&yaml_path) {
+                    Ok(t) => t,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+                    Err(e) => {
+                        return Err(anyhow::Error::from(e))
+                            .with_context(|| format!("reading {}", yaml_path.display()));
+                    }
+                }
+            } else {
+                format!("gaps:\n{}", parts.join(""))
+            }
+        } else {
+            let yaml_path = repo_root.join("docs").join("gaps.yaml");
+            match std::fs::read_to_string(&yaml_path) {
+                Ok(t) => t,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+                Err(e) => {
+                    return Err(anyhow::Error::from(e))
+                        .with_context(|| format!("reading {}", yaml_path.display()));
+                }
+            }
+        };
+        let file: YamlGapsFile = serde_yaml::from_str(&text)
+            .with_context(|| "parsing gap registry for closed_pr backfill")?;
+
+        let mut backfilled = 0usize;
+        for g in &file.gaps {
+            let Some(pr) = g.closed_pr.as_ref().and_then(yaml_value_to_i64) else {
+                continue;
+            };
+            // Only update rows that exist AND currently have NULL closed_pr.
+            let changed = self.conn.execute(
+                "UPDATE gaps SET closed_pr=?1 WHERE id=?2 AND closed_pr IS NULL",
+                params![pr, g.id],
+            )?;
+            backfilled += changed;
+        }
+        Ok(backfilled)
+    }
+
+    pub fn import_from_yaml(&self, repo_root: &Path) -> Result<(usize, usize, usize)> {
         // INFRA-188: prefer per-file directory if it exists and is non-empty.
         let per_file_dir = repo_root.join("docs").join("gaps");
         let text = if per_file_dir.is_dir() {
@@ -1522,7 +1600,7 @@ impl GapStore {
                 let yaml_path = repo_root.join("docs").join("gaps.yaml");
                 match std::fs::read_to_string(&yaml_path) {
                     Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0)),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0, 0)),
                     Err(e) => {
                         return Err(anyhow::Error::from(e))
                             .with_context(|| format!("reading {}", yaml_path.display()));
@@ -1536,7 +1614,7 @@ impl GapStore {
             let yaml_path = repo_root.join("docs").join("gaps.yaml");
             match std::fs::read_to_string(&yaml_path) {
                 Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0)),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0, 0)),
                 Err(e) => {
                     return Err(anyhow::Error::from(e))
                         .with_context(|| format!("reading {}", yaml_path.display()));
@@ -1620,7 +1698,11 @@ impl GapStore {
                 skipped += 1;
             }
         }
-        Ok((inserted, skipped))
+        // INFRA-233: backfill closed_pr for rows that existed before the
+        // column was added (INFRA-156) — INSERT OR IGNORE skips them, so
+        // the backfill must be a separate UPDATE pass.
+        let backfilled = self.backfill_closed_pr_from_yaml(repo_root)?;
+        Ok((inserted, skipped, backfilled))
     }
 }
 
@@ -2928,10 +3010,98 @@ meta:
             .conn
             .execute("DELETE FROM gaps WHERE id=?1", params![id])
             .unwrap();
-        let (ins, _skip) = store2.import_from_yaml(dir.path()).unwrap();
+        let (ins, _skip, _backfilled) = store2.import_from_yaml(dir.path()).unwrap();
         assert!(ins >= 1, "expected at least one inserted row, got {}", ins);
         let reimported = store2.get(&id).unwrap().expect("row reimported");
         assert_eq!(reimported.closed_pr, Some(598));
+    }
+
+    /// INFRA-233: `import_from_yaml` must backfill `closed_pr` for rows that
+    /// already exist in the DB with `closed_pr IS NULL` but the YAML carries a
+    /// value.  This covers the ~200 historical gaps whose `closed_pr` was NULL
+    /// because they were imported before the INFRA-156 column migration added
+    /// the `closed_pr` backfill (INSERT OR IGNORE skips existing rows entirely).
+    #[test]
+    fn test_import_backfills_null_closed_pr() {
+        let (store, dir) = test_store();
+        // Simulate a gap that was imported before INFRA-156: status=done,
+        // closed_pr=NULL in the DB, but the YAML on disk has closed_pr=232.
+        let id = store
+            .reserve("COG", "legacy closed gap", "P1", "s")
+            .unwrap();
+        store.claim(&id, "s", "/wt", 3600).unwrap();
+        // ship without closed_pr — simulates a pre-INFRA-156 closure.
+        store.ship(&id, "s", None).unwrap();
+        let row = store.get(&id).unwrap().expect("row");
+        assert_eq!(row.closed_pr, None, "pre-condition: closed_pr must be NULL");
+
+        // Write a YAML file that carries closed_pr for this gap.
+        let yaml_dir = dir.path().join("docs");
+        std::fs::create_dir_all(&yaml_dir).unwrap();
+        let yaml = format!(
+            "gaps:\n- id: {}\n  domain: COG\n  title: legacy closed gap\n  status: done\n  closed_pr: 232\n",
+            id
+        );
+        std::fs::write(yaml_dir.join("gaps.yaml"), &yaml).unwrap();
+
+        // Re-run import — the existing row should have its closed_pr backfilled.
+        let (_ins, _skip, backfilled) = store.import_from_yaml(dir.path()).unwrap();
+        assert_eq!(
+            backfilled, 1,
+            "expected exactly 1 row backfilled, got {}",
+            backfilled
+        );
+        let row = store.get(&id).unwrap().expect("row still present");
+        assert_eq!(
+            row.closed_pr,
+            Some(232),
+            "closed_pr must be backfilled from YAML"
+        );
+
+        // Idempotency: re-run import again — no additional backfill should happen.
+        let (_ins2, _skip2, backfilled2) = store.import_from_yaml(dir.path()).unwrap();
+        assert_eq!(
+            backfilled2, 0,
+            "second import must be idempotent; got {} backfilled",
+            backfilled2
+        );
+        // Value must be unchanged.
+        let row = store.get(&id).unwrap().expect("row still present");
+        assert_eq!(
+            row.closed_pr,
+            Some(232),
+            "closed_pr must remain 232 after idempotent backfill"
+        );
+    }
+
+    /// INFRA-233: `backfill_closed_pr_from_yaml` must NOT overwrite a
+    /// `closed_pr` value that is already set in the DB (even if the YAML
+    /// carries a different number — the DB wins for existing non-NULL values).
+    #[test]
+    fn test_backfill_skips_existing_closed_pr() {
+        let (store, dir) = test_store();
+        let id = store.reserve("INFRA", "shipped gap", "P1", "s").unwrap();
+        store.claim(&id, "s", "/wt", 3600).unwrap();
+        store.ship(&id, "s", Some(999)).unwrap();
+        let row = store.get(&id).unwrap().expect("row");
+        assert_eq!(row.closed_pr, Some(999));
+
+        // Write YAML with a *different* closed_pr.
+        let yaml_dir = dir.path().join("docs");
+        std::fs::create_dir_all(&yaml_dir).unwrap();
+        let yaml = format!(
+            "gaps:\n- id: {}\n  domain: INFRA\n  title: shipped gap\n  status: done\n  closed_pr: 111\n",
+            id
+        );
+        std::fs::write(yaml_dir.join("gaps.yaml"), &yaml).unwrap();
+
+        let backfilled = store.backfill_closed_pr_from_yaml(dir.path()).unwrap();
+        assert_eq!(
+            backfilled, 0,
+            "must not overwrite existing non-NULL closed_pr"
+        );
+        let row = store.get(&id).unwrap().expect("row");
+        assert_eq!(row.closed_pr, Some(999), "existing value must be preserved");
     }
 
     // ── COG-036: routing-outcome scoreboard ─────────────────────────────
