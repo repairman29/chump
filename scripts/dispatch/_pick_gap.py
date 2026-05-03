@@ -147,7 +147,16 @@ def main() -> int:
         else:
             dep_list = []
         if dep_list:  # any non-empty dep array
-            continue
+            # INFRA-398: check if all dependencies are satisfied
+            # (done or active) before skipping the gap.
+            unresolved = [d for d in dep_list if d not in active]
+            # Find which unresolved deps are actually done in the gap list
+            for gap in gaps:
+                if gap.get("id") in unresolved and gap.get("status") == "done":
+                    unresolved.remove(gap.get("id"))
+            # Skip only if there are unresolved dependencies
+            if unresolved:
+                continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
         # been superseded by another gap and should not be auto-picked.
         notes = (g.get("notes") or "").strip()

@@ -6,7 +6,7 @@ last_audited: 2026-05-02
 
 # Fleet Vision: Distributed Agent Orchestration (2026 Q2+)
 
-**Status:** Layer 1 complete; Layer 2 building blocks landed, end-to-end demo pending (umbrella: FLEET-024)
+**Status:** Layer 1 complete; Layer 2 building blocks landed, end-to-end demo pending (umbrella: FLEET-024); Layer 2.5 (pre-action coordination) specified (umbrella: FLEET-028), implementation pending
 **Scope:** Multi-gap initiative spanning 6+ quarters
 **Motivation:** Move from single-machine multi-agent to networked heterogeneous fleet with task decomposition and capability-aware work allocation
 
@@ -76,6 +76,29 @@ last_audited: 2026-05-02
 - **FLEET-009: Capability declaration & matching** — Agent publishes `{model, vram, inference_speed, supported_task_classes}`. Task declares requirements. Scoring function for fit.
 - **FLEET-010: Help-seeking protocol** — Agent hits a blocker → posts help request → another agent claims it
 
+### Layer 2.5: Pre-Action Coordination & Collision Detection (Q2, emerging from post-INFRA-188)
+
+**Problem:** On 2026-05-02, the post-INFRA-188 cleanup wave produced three independent collisions where two agents started the same work minutes apart, neither saw the other. Agents have coordination signals (ambient.jsonl, open PRs, leases) but only AFTER they claim a gap or push code. The `observe-bug → form-intent → reserve-gap` phases are agent-local and invisible.
+
+**Solution:** Three-tier visibility system:
+
+1. **Tier 1 — Forced Re-Glance** — At the moments where collisions happen (`chump gap reserve` and `gh pr create`), force a synchronous check of ambient events (last 300s) and open PRs. Catch exact ID races and substring overlaps. Cost: ~1 day shell work.
+
+2. **Tier 2 — Ambient Event Vocabulary** — New event kinds `OBSERVED` (agent noticed a problem) and `INVESTIGATING` (agent claimed a gap and is scoping). These fire at pre-action moments so siblings see intent before they reserve. Cost: ~2 days, requires Claude SDK skill changes.
+
+3. **Tier 3 — Semantic Similarity** — When `chump gap reserve` flags overlap, use TF-IDF or embedding-based similarity scoring on titles to catch paraphrased duplicates ("fix bot-merge auto-close" vs "patch docs/gaps.yaml ref in bot-merge"). Cost: ~3 days, makes the system state-of-the-art for multi-agent coordination.
+
+**Acceptance:** Two agents independently typing "fix bot-merge post-188" get a heads-up flag from each other before either reserves a gap.
+
+**Gaps:**
+- **FLEET-029: Tier 1** — Forced ambient re-glance at reserve + PR-create
+- **FLEET-030: Tier 2** — OBSERVED + INVESTIGATING event kinds and emission hooks
+- **FLEET-031: Tier 3** — Semantic title-similarity scoring in reserve
+
+**Tier 4 (live presence feed)** deferred until 1-3 land and telemetry shows what's still missing.
+
+**Umbrella:** **FLEET-028** — Pre-action coordination specification and integration testing.
+
 ### Layer 3: Intelligent Decomposition (Q4+)
 
 **Problem:** Agents today ship entire PRs as monoliths. They don't learn when to break work.
@@ -123,7 +146,9 @@ FLEET-006 (distributed ambient)
 FLEET-007 (distributed leases) ──┐
                                   ├─→ FLEET-008 (work board)
                                   │
-                                  └─→ FLEET-009 (capability matching)
+                                  ├─→ FLEET-009 (capability matching)
+                                  │
+                                  └─→ FLEET-028/029/030/031 (pre-action coordination)
                                         │
                                         └─→ FLEET-010 (help-seeking)
                                               │
@@ -138,10 +163,14 @@ FLEET-007 (distributed leases) ──┐
 
 **Critical path to first distributed demo (2026 Q4):**
 1. FLEET-006 + FLEET-007 (distributed coordination)
-2. FLEET-009 (capability matching — agent can assess task fit)
-3. FLEET-008 (work board — subtasks can be posted)
+2. FLEET-028/029/030/031 (pre-action coordination — prevent agent collisions)
+3. FLEET-009 (capability matching — agent can assess task fit)
+4. FLEET-008 (work board — subtasks can be posted)
 
-**Achievable in one sprint:** FLEET-006 (1–2 weeks, depends on NATS stability + API design)
+**Achievable in parallel:**
+- FLEET-029 (Tier 1): 1 day, shell work, no blocking dependencies
+- FLEET-030 (Tier 2): 2 days, depends on FLEET-029
+- FLEET-031 (Tier 3): 3 days, depends on FLEET-029+030
 
 ---
 
