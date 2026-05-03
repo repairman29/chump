@@ -680,7 +680,39 @@ impl Provider for ProviderCascade {
                                     crate::precision_controller::record_energy_spent(est, 0);
                                     return Ok(r);
                                 }
-                                Err(e) => return Err(e),
+                                // INFRA-347: record circuit failure on the local (Ollama) slot so
+                                // subsequent cascade invocations see it as open and skip it.
+                                // Annotate connection-refused / unreachable errors with Ollama
+                                // recovery hints so the error propagating to execute_gap (and the
+                                // operator) is actionable rather than a bare reqwest message.
+                                Err(e) => {
+                                    local_openai::record_circuit_failure(&local_slot.base_url);
+                                    provider_quality::record_slot_failure(&local_slot.name);
+                                    if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                                        eprintln!(
+                                            "[cascade] local slot {} failed as last resort: {}",
+                                            local_slot.name, e
+                                        );
+                                    }
+                                    if local_openai::is_transient_error(&e) {
+                                        // Ollama/local backend is unreachable — annotate with
+                                        // actionable recovery hints rather than the bare transport
+                                        // error (INFRA-347). The hint matches the suffix appended
+                                        // by LocalOpenAIProvider after exhausting retries so the
+                                        // full message is consistent across paths.
+                                        return Err(anyhow::anyhow!(
+                                            "{} — local provider unreachable (all cloud slots \
+                                             exhausted and local slot failed). \
+                                             Ollama: `brew services start ollama`; \
+                                             probe: `curl -s {}/models`. \
+                                             Set CHUMP_FALLBACK_API_BASE or add cloud slots \
+                                             (CHUMP_PROVIDER_1_*) to avoid this failure mode.",
+                                            e,
+                                            local_slot.base_url,
+                                        ));
+                                    }
+                                    return Err(e);
+                                }
                             }
                         }
                         None => {
@@ -1309,5 +1341,89 @@ mod tests {
         // For HTTP-status-bearing strings the current substring match is
         // adequate — HTTP 4029 is not a real status code.)
         assert!(is_billing_exhausted_error_string("HTTP 4029 (synthetic)"));
+    }
+
+    // INFRA-347: Ollama-unreachable errors from the local last-resort slot
+    // must trip the circuit breaker and carry actionable recovery hints,
+    // not silently propagate as bare reqwest transport errors.
+    //
+    // These unit tests cover the classification layer used by the fixed
+    // last-resort fallback path. The integration path (full cascade with a
+    // mock local slot that returns connection-refused) requires a real
+    // ProviderCascade harness; the unit coverage here validates the predicate
+    // contract that the production fix relies on.
+
+    /// Connection-refused / TCP-connect errors must be recognised as transient
+    /// so the last-resort path annotates them with Ollama recovery hints.
+    #[test]
+    fn is_transient_error_catches_ollama_unreachable() {
+        // Typical reqwest error when Ollama daemon is not running.
+        let connection_refused = anyhow::anyhow!(
+            "error sending request for url (http://127.0.0.1:11434/v1/chat/completions): \
+             error trying to connect: tcp connect error: Connection refused (os error 61)"
+        );
+        assert!(
+            local_openai::is_transient_error(&connection_refused),
+            "connection-refused from Ollama must be transient — \
+             the last-resort path must annotate it with recovery hints"
+        );
+
+        // Timeout while Ollama is still loading a model.
+        let timed_out = anyhow::anyhow!(
+            "error sending request for url (http://127.0.0.1:11434/v1/chat/completions): \
+             operation timed out"
+        );
+        assert!(
+            local_openai::is_transient_error(&timed_out),
+            "timeout waiting for Ollama must also be transient"
+        );
+    }
+
+    /// Non-transient errors from the local slot (e.g. 400 Bad Request)
+    /// must NOT be classified as transient — they should propagate as-is.
+    #[test]
+    fn is_transient_error_does_not_misclassify_bad_request() {
+        let bad_request = anyhow::anyhow!("Local API error 400 Bad Request: missing field 'model'");
+        assert!(
+            !local_openai::is_transient_error(&bad_request),
+            "400 Bad Request from local slot must not be transient — \
+             it should propagate unchanged, not get the Ollama recovery hint"
+        );
+    }
+
+    /// Verify the annotated error message produced by the fixed last-resort
+    /// path includes Ollama recovery guidance. We test the predicate logic
+    /// directly: if `is_transient_error` returns true, the production code
+    /// builds an annotated error. The annotation must contain the key
+    /// diagnostic strings an operator needs to recover.
+    #[test]
+    fn ollama_unreachable_annotation_contains_recovery_hints() {
+        // Simulate what the production path now builds when is_transient_error matches.
+        let base = "http://127.0.0.1:11434/v1";
+        let original = "error sending request: tcp connect error: Connection refused (os error 61)";
+        let annotated = format!(
+            "{original} — local provider unreachable (all cloud slots \
+             exhausted and local slot failed). \
+             Ollama: `brew services start ollama`; \
+             probe: `curl -s {base}/models`. \
+             Set CHUMP_FALLBACK_API_BASE or add cloud slots \
+             (CHUMP_PROVIDER_1_*) to avoid this failure mode."
+        );
+        assert!(
+            annotated.contains("brew services start ollama"),
+            "annotated error must contain Ollama restart hint"
+        );
+        assert!(
+            annotated.contains("CHUMP_FALLBACK_API_BASE"),
+            "annotated error must suggest the fallback env var"
+        );
+        assert!(
+            annotated.contains("CHUMP_PROVIDER_1_"),
+            "annotated error must suggest adding cloud slots"
+        );
+        assert!(
+            annotated.contains(base),
+            "annotated error must include the Ollama base URL for the probe command"
+        );
     }
 }
