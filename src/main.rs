@@ -420,7 +420,18 @@ async fn main() -> Result<()> {
     //   chump dispatch INFRA-191 --backend headless \
     //       --prompt "ship the gap" --model claude-sonnet-4-6 # spawn `claude -p`
     //   chump dispatch INFRA-191 --backend exec-gap           # spawn `chump --execute-gap`
-    if args.get(1).map(String::as_str) == Some("dispatch") {
+    // INFRA-392: subcommands route/scoreboard/simulate are handled later in
+    // this file. Without this guard, args[2]="route" (etc.) was treated as a
+    // gap-id and routed through gap-preflight + bot-merge — making
+    // `chump dispatch route INFRA-191` claim a phantom gap named "route"
+    // instead of printing a routing cascade.
+    const DISPATCH_SUBCOMMANDS: &[&str] = &["route", "scoreboard", "simulate"];
+    if args.get(1).map(String::as_str) == Some("dispatch")
+        && !args
+            .get(2)
+            .map(|s| DISPATCH_SUBCOMMANDS.contains(&s.as_str()))
+            .unwrap_or(false)
+    {
         let gap_id = match args.get(2) {
             Some(g) if !g.starts_with('-') => g.clone(),
             _ => {
