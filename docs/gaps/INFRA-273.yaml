@@ -1,0 +1,59 @@
+- id: INFRA-273
+  domain: INFRA
+  title: "gap-preflight: cross-check open PRs by gap-ID — block claim when an in-flight PR already implements the gap"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Caught during the dogfood fleet run on 2026-05-02 (FLEET_SIZE=2, fleet-20260502-173243):
+    
+    Both fleet workers picked INFRA-261 (the highest-priority unclaimed gap in
+    state.db). chump gap preflight passed for both because:
+      - status:open on origin/main ✓
+      - no live lease ✓
+    
+    What it MISSED: PR #874 (head=chump/infra-261-fix-trigger-on-main, OPEN+armed,
+    created 2026-05-02T23:08Z by a sibling agent) was already implementing the
+    exact gap. Both workers spent claude -p quota on a gap that already had an
+    in-flight PR — pure wasted work.
+    
+    gap-preflight.sh has Check 4 (open PR file-scope overlap) but it only WARNS
+    on file-domain overlap; it doesn't block when an open PR's title matches the
+    gap-ID directly.
+    
+    ## Fix
+    
+    Add Check 5 to scripts/coord/gap-preflight.sh:
+    
+        check_pr_implements_gap() {
+            local gap_id="$1"
+            # Match gap-ID at start of PR title (canonical "INFRA-X: ..." format)
+            # OR in the title body. Conservative: any PR whose title contains the
+            # exact gap-ID gets flagged.
+            gh pr list --state open --search "${gap_id} in:title" \
+                --json number,title -q '.[0]' 2>/dev/null
+        }
+    
+    If a match exists (and it's not OUR own PR), block the claim:
+        SKIP $GAP_ID — open PR #N is already implementing this gap.
+        Pick a different gap or wait for #N to land/close.
+    
+    Bypass: CHUMP_PREFLIGHT_PR_CHECK=0 — for genuine concurrent races where
+    INFRA-193 speculative-execution is wanted (operator opts in).
+    
+    ## Acceptance
+    - gap-preflight.sh blocks claim when an open PR with the gap-ID in title exists
+    - Bypass env exists for legit speculative work
+    - Test: scripts/ci/test-preflight-pr-check.sh covers both branches
+    
+    ## Related
+    - INFRA-104 (PR title-vs-impl drift detector) — different scope; this is
+      preventive (blocks claim), INFRA-104 is detective (flags drift after-the-fact)
+    - INFRA-193 (speculative execution) — this is the OPT-OUT default;
+      speculative requires CHUMP_SPECULATIVE=1 explicitly
+  acceptance_criteria:
+    - gap-preflight.sh Check 5 blocks claim when open PR with gap-ID in title exists
+    - CHUMP_PREFLIGHT_PR_CHECK=0 bypass for speculative work
+    - test scripts/ci/test-preflight-pr-check.sh asserts both branches
+  closed_date: '2026-05-03'
+
