@@ -123,13 +123,21 @@ def main() -> int:
         e = (g.get("effort") or "").lower()
         if effort_filter and e not in effort_filter:
             continue
-        # Conservative: skip gaps with non-empty depends_on.
-        # First cut — we don't recursively check whether deps are done.
+        # INFRA-398: check if dependencies are satisfied before skipping.
+        # A gap is pickable if all its dependencies are already done or active.
         deps = g.get("depends_on") or "[]"
         try:
             dep_list = json.loads(deps) if isinstance(deps, str) else deps
             if dep_list:  # non-empty array
-                continue
+                # Check if all dependencies are satisfied (done or active)
+                unresolved = [d for d in dep_list if d not in active]
+                # Find which unresolved deps are actually done in the gap list
+                for gap in gaps:
+                    if gap.get("id") in unresolved and gap.get("status") == "done":
+                        unresolved.remove(gap.get("id"))
+                # Skip only if there are unresolved dependencies
+                if unresolved:
+                    continue
         except (json.JSONDecodeError, TypeError):
             # If depends_on is malformed, skip it to be safe
             continue
