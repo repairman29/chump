@@ -527,30 +527,22 @@ pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
         || lower.contains("does not support tool")
         || lower.contains("tools are not supported")
         || lower.contains("model does not support tools");
-    // INFRA-348: transport-level errors wrapped by LocalOpenAIProvider.
+    // INFRA-348 / INFRA-347: transport-level errors wrapped by LocalOpenAIProvider.
     // `LocalOpenAIProvider::complete` appends an educational hint string
     // (e.g. "— model HTTP unreachable (daemon down, crashed, or still
     // starting). Ollama: brew services start ollama …") via
     // `Err(anyhow!("{}{}", err, hint))`. This re-wraps into a plain-string
     // anyhow error and loses the typed chain, so `is_transient_error`'s
-    // `format!("{:?}", err)` chain inspection no longer fires. Match the
-    // wrapped patterns here so the cascade falls over to a cloud slot when
-    // the local daemon is down.
-    let is_transport_error = lower.contains("error sending request")
-        || lower.contains("model http unreachable")
-        || lower.contains("connection refused")
-        || lower.contains("operation timed out")
-        || lower.contains("no route to host")
-        || lower.contains("name resolution failed")
-        || lower.contains("dns resolution failed")
-        || lower.contains("tcp connect error")
-        || lower.contains("model temporarily unavailable");
+    // `format!("{:?}", err)` chain inspection no longer fires. Delegate to
+    // [`is_transport_unreachable_error_string`] so the same set of patterns
+    // is also used by `execute_gap::classify_execute_gap_error` at the
+    // agent-loop boundary (INFRA-347).
     is_rate_limited
         || is_access_denied
         || is_billing_exhausted_error_string(e_str)
         || is_tool_format_failure
         || is_tool_capability_failure
-        || is_transport_error
+        || is_transport_unreachable_error_string(e_str)
 }
 
 /// INFRA-302 blocker (1): the billing-exhausted predicate, factored out
@@ -573,6 +565,37 @@ pub(crate) fn is_billing_exhausted_error_string(e_str: &str) -> bool {
         || lower.contains("insufficient_quota")
         || lower.contains("payment required")
         || lower.contains("billing")
+}
+
+/// INFRA-347: the transport-unreachable predicate, factored out of
+/// [`should_cascade_on_error_string`] so callers above the cascade layer
+/// can detect it independently (analogous to
+/// [`is_billing_exhausted_error_string`] for INFRA-302).
+///
+/// INFRA-348 added these patterns to the per-call cascade predicate so
+/// `ProviderCascade::complete` falls over to a cloud slot when the local
+/// daemon is down. This helper surfaces the same classification at the
+/// *agent-loop boundary* (`execute_gap::classify_execute_gap_error`) so
+/// the orchestrator-level cascade-respawn can act on it too — without
+/// it, a "Ollama unreachable" failure from a single-provider setup
+/// exits with code 1 (generic), indistinguishable from a tool storm or
+/// a programming bug.
+///
+/// Returns `true` when the error string indicates the local daemon
+/// (Ollama / vLLM / LM Studio) is unreachable or the network path to the
+/// configured `OPENAI_API_BASE` is broken — i.e. a *different* provider
+/// URL or a respawned daemon would succeed.
+pub(crate) fn is_transport_unreachable_error_string(e_str: &str) -> bool {
+    let lower = e_str.to_ascii_lowercase();
+    lower.contains("error sending request")
+        || lower.contains("model http unreachable")
+        || lower.contains("connection refused")
+        || lower.contains("operation timed out")
+        || lower.contains("no route to host")
+        || lower.contains("name resolution failed")
+        || lower.contains("dns resolution failed")
+        || lower.contains("tcp connect error")
+        || lower.contains("model temporarily unavailable")
 }
 
 #[async_trait]
@@ -1295,6 +1318,63 @@ mod tests {
             !should_cascade_on_error_string("HTTP 400 Bad Request: invalid model name 'gpt-99'"),
             "invalid model name should still propagate"
         );
+    }
+
+    // INFRA-347: the transport-unreachable predicate is now a standalone
+    // helper (analogous to is_billing_exhausted_error_string) so
+    // `chump --execute-gap` can classify transport errors at the
+    // agent-loop boundary with exit code 76 (distinct from 75 for
+    // billing and 1 for generic). These tests lock the predicate's
+    // semantics independently of should_cascade_on_error_string.
+    #[test]
+    fn transport_predicate_matches_daemon_down_patterns() {
+        assert!(is_transport_unreachable_error_string(
+            "error sending request for url (http://127.0.0.1:11434/v1/chat/completions)"
+        ));
+        assert!(is_transport_unreachable_error_string(
+            "model HTTP unreachable (daemon down, crashed, or still starting)"
+        ));
+        assert!(is_transport_unreachable_error_string(
+            "Connection refused (os error 61)"
+        ));
+        assert!(is_transport_unreachable_error_string(
+            "operation timed out connecting to 127.0.0.1:11434"
+        ));
+        assert!(is_transport_unreachable_error_string(
+            "no route to host (http://127.0.0.1:8000)"
+        ));
+        assert!(is_transport_unreachable_error_string(
+            "name resolution failed for localhost"
+        ));
+        assert!(is_transport_unreachable_error_string(
+            "dns resolution failed"
+        ));
+        assert!(is_transport_unreachable_error_string(
+            "tcp connect error (os error 61)"
+        ));
+        assert!(is_transport_unreachable_error_string(
+            "model temporarily unavailable"
+        ));
+    }
+
+    #[test]
+    fn transport_predicate_does_not_match_billing_or_rate_limit() {
+        // Billing class: should NOT be transport-unreachable.
+        assert!(!is_transport_unreachable_error_string(
+            "Local API error 402 Payment Required: credit_limit"
+        ));
+        assert!(!is_transport_unreachable_error_string(
+            "HTTP 429 Too Many Requests"
+        ));
+        assert!(!is_transport_unreachable_error_string(
+            "HTTP 401 Unauthorized"
+        ));
+        assert!(!is_transport_unreachable_error_string(
+            "tool_use_failed: model could not format call"
+        ));
+        assert!(!is_transport_unreachable_error_string(
+            "HTTP 500 Internal Server Error"
+        ));
     }
 
     // INFRA-302 blocker (1): the billing-exhausted predicate is now a
