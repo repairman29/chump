@@ -985,10 +985,44 @@ impl GapStore {
     /// (everything before the first `gaps:` line) so a file regen preserves
     /// the human-curated meta block. Falls back to bare `dump_yaml()` if no
     /// `gaps:` line is found.
+    ///
+    /// INFRA-208: ALSO does per-gap unknown-field preservation, mirroring
+    /// `dump_per_file`'s `merge_preserve_unknown_fields` behavior. Without
+    /// this, a monolithic dump silently strips `acceptance:`, `closed_commit:`,
+    /// `runnable_now:`, and any other hand-curated fields the DB schema
+    /// doesn't own. The merge is per-gap: parse `source_yaml` into per-id
+    /// blocks, and for each gap formatted from the DB, splice in the
+    /// matching block's unknown fields.
     pub fn dump_yaml_with_meta(&self, source_yaml: &str) -> Result<String> {
-        let body = self.dump_yaml()?;
+        // Parse source YAML into {gap_id: full_block_text} for per-gap merge.
+        let source_by_id = parse_monolithic_into_blocks(source_yaml);
+
+        let gaps = self.list(None)?;
+        let mut body = String::from("gaps:\n");
+        for g in &gaps {
+            let generated = format_gap_yaml(g);
+            let merged = if let Some(existing) = source_by_id.get(&g.id) {
+                merge_preserve_unknown_fields(&generated, existing)
+            } else {
+                generated
+            };
+            body.push_str(&merged);
+        }
+
+        // INFRA-112 self-validation (mirrors dump_yaml).
+        let parsed: YamlGapsFile = serde_yaml::from_str(&body)
+            .with_context(|| "dump_yaml_with_meta emitted YAML that fails to parse")?;
+        if parsed.gaps.len() != gaps.len() {
+            bail!(
+                "dump_yaml_with_meta is lossy: DB has {} gaps, YAML round-trip has {} \
+                 (delta={})",
+                gaps.len(),
+                parsed.gaps.len(),
+                gaps.len() as i64 - parsed.gaps.len() as i64,
+            );
+        }
+
         if let Some(gaps_idx) = source_yaml.find("\ngaps:\n") {
-            // include leading newline
             let preamble = &source_yaml[..gaps_idx + 1];
             Ok(format!("{}{}", preamble, body))
         } else {
@@ -1255,6 +1289,59 @@ fn merge_preserve_unknown_fields(generated: &str, existing: &str) -> String {
 /// other 2-space-indent `<key>:` lines are field starts; 4+ space lines
 /// are continuation. Comment lines (`#…`) attached to an unknown field
 /// are preserved with that field.
+/// INFRA-208: split a monolithic gaps.yaml file into per-gap blocks keyed
+/// by gap-ID, so `dump_yaml_with_meta` can splice unknown fields per-gap.
+///
+/// Each block is the text from `- id: <ID>` (inclusive) up to the start of
+/// the next `- id:` line (exclusive) or end-of-file. Trailing blank lines
+/// are kept attached to the preceding block (matches what `format_gap_yaml`
+/// produces and what `merge_preserve_unknown_fields` expects).
+///
+/// The meta preamble (everything before the first `- id:` after the
+/// `gaps:` line) is silently dropped — `dump_yaml_with_meta`'s caller is
+/// responsible for re-emitting it via the existing `gaps_idx` slice.
+fn parse_monolithic_into_blocks(source: &str) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    // Find all `- id: ` line starts. These delimit per-gap blocks.
+    let lines: Vec<&str> = source.lines().collect();
+    let mut starts: Vec<usize> = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        if let Some(rest) = line.strip_prefix("- id:") {
+            // Match `- id: <ID>` (with or without trailing whitespace).
+            let id_str = rest
+                .trim()
+                .trim_matches(|c| c == '"' || c == '\'')
+                .to_string();
+            if !id_str.is_empty() {
+                starts.push(i);
+                // Defer ID extraction until block-end resolution below.
+                let _ = id_str;
+            }
+        }
+    }
+    // For each start, the block runs to the next start (or EOF).
+    for (idx, &start) in starts.iter().enumerate() {
+        let end = starts.get(idx + 1).copied().unwrap_or(lines.len());
+        // Reconstruct the block (preserving newlines).
+        let mut block = String::new();
+        for line in &lines[start..end] {
+            block.push_str(line);
+            block.push('\n');
+        }
+        // Re-extract the id from line[start] for the map key.
+        if let Some(rest) = lines[start].strip_prefix("- id:") {
+            let id_str = rest
+                .trim()
+                .trim_matches(|c| c == '"' || c == '\'')
+                .to_string();
+            if !id_str.is_empty() {
+                out.insert(id_str, block);
+            }
+        }
+    }
+    out
+}
+
 fn extract_unknown_field_blocks(existing: &str) -> Vec<String> {
     let lines: Vec<&str> = existing.lines().collect();
     let mut blocks: Vec<String> = Vec::new();
