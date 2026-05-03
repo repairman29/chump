@@ -1,0 +1,22 @@
+- id: INFRA-315
+  domain: INFRA
+  title: worker poll-jitter + idle-backpressure fleet_starved ALERT — break thundering herd, surface starvation
+  description: "Two related fixes for the pure-pull dispatcher's coordination failure modes:\n\n(1) Thundering herd on new\
+    \ gaps:\n  When a high-priority gap appears (or the system unwedges and a backlog drains), every idle worker hits chump\
+    \ gap list within the same loop interval. N-1 workers waste sqlite reads + lose the lease race.\n  \n  Fix: poll-jitter\
+    \ — randomize worker poll interval ± 30% (default 30s, jitter 21-39s). Workers naturally desynchronize. Add CHUMP_POLL_BASE\
+    \ + CHUMP_POLL_JITTER env knobs.\n\n(2) Idle-backpressure invisibility:\n  Workers idle when no eligible gap exists. They\
+    \ spin-wait silently. Operator doesn't know fleet is starved (or starved on a specific filter — e.g. INFRA-only fleet\
+    \ starved when only EVAL gaps remain).\n  \n  Fix: each worker tracks consecutive empty-pick counts. After 3 consecutive\
+    \ misses (~90s), emit:\n    {\"kind\":\"fleet_starved\",\"worker\":\"...\",\"filter\":\"P0,P1\",\"empty_picks\":3}\n \
+    \ \n  Operator sees in standard pre-flight ambient tail. fleet-status.sh aggregates: 'N/M workers starved on filter X'\
+    \ surfaces patterns.\n\nBoth fixes are localized to scripts/dispatch/worker.sh. ~30 LOC. No behavior change beyond observability\
+    \ + jitter timing."
+  priority: P2
+  effort: s
+  status: open
+  acceptance_criteria: '["worker.sh applies ± CHUMP_POLL_JITTER% randomization to poll interval (default ±30%)","After CHUMP_STARVE_THRESHOLD
+    consecutive empty picks (default 3), worker emits kind=fleet_starved ambient event","fleet-status.sh shows aggregate starvation
+    count + filter breakdown","Documented in CLAUDE.md Fleet launcher section","Test: 3 workers with same filter + empty queue
+    → all 3 emit fleet_starved within N seconds with no thundering herd on next gap arrival"]'
+
