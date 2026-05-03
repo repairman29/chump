@@ -213,21 +213,65 @@ fi
 # class observed twice on 2026-04-17, and the cross-fixture-leak class
 # that produced INFRA-076's Test <test@test.com> co-author).
 #
-# Default: WARN mode (non-blocking) when the lease has paths declared.
-#   CHUMP_SCOPE_CHECK=0       → disable entirely
-#   CHUMP_SCOPE_CHECK=1       → warn (default)
-#   CHUMP_SCOPE_CHECK=enforce → block
+# Default mode depends on session origin:
+#   - Subagent sessions (Agent-tool spawns) → ENFORCE (block) by default.
+#     Detected by session_id prefix `chump-anon-` or `subagent-`. Subagents
+#     are dispatched with a narrow gap and a declared `paths` scope; an
+#     out-of-scope edit is almost always a hallucination/scope-creep that
+#     should never reach `main`. Hard-blocking matches the cost profile:
+#     subagent runs are cheap to retry, but a wrong-scope ship is hours
+#     of cleanup (INFRA-076 / META-025 dispatch-quality findings).
+#   - Operator-driven sessions (everything else) → WARN (non-blocking).
+#     Humans/parent agents accept higher false-positive risk for
+#     ergonomics; warn-mode is still the default we observed during the
+#     INFRA-189 advisory window.
 #
-# Starting in warn mode for a week so we observe false-positive rate
-# on real commits before flipping the default to enforce.
+# Operator overrides (highest precedence — same env var either way):
+#   CHUMP_SCOPE_CHECK=0       → disable entirely
+#   CHUMP_SCOPE_CHECK=1       → warn (force warn even for subagents)
+#   CHUMP_SCOPE_CHECK=warn    → warn (alias of 1)
+#   CHUMP_SCOPE_CHECK=enforce → block (force enforce even for parents)
+#
+# INFRA-337 (2026-05-02): default-enforce for subagent commits. INFRA-189
+# stays warn-mode for parent commits to preserve ergonomics during the
+# false-positive observation window.
 
-if [ "${CHUMP_SCOPE_CHECK:-1}" != "0" ]; then
+# Detect whether the active session_id matches a known subagent prefix.
+# Subagent prefixes are documented inline so future spawn patterns can
+# be added in one place. Keep in sync with docs/process/SUBAGENT_DISPATCH.md.
+_chump_is_subagent_session() {
+    case "$1" in
+        chump-anon-*|subagent-*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Resolve session id once for the default-mode decision below.
+_SCOPE_SESSION_ID="${CHUMP_SESSION_ID:-}"
+if [ -z "$_SCOPE_SESSION_ID" ] && [ -f "$HOME/.chump/session_id" ]; then
+    _SCOPE_SESSION_ID=$(head -n1 "$HOME/.chump/session_id" 2>/dev/null | tr -d '[:space:]')
+fi
+
+# Compute the effective mode.
+#   - explicit env wins
+#   - else: subagent → enforce, parent → warn (1)
+if [ -n "${CHUMP_SCOPE_CHECK+set}" ]; then
+    _SCOPE_MODE="$CHUMP_SCOPE_CHECK"
+elif _chump_is_subagent_session "$_SCOPE_SESSION_ID"; then
+    _SCOPE_MODE="enforce"
+else
+    _SCOPE_MODE="1"
+fi
+
+# Normalize "warn" alias to "1" so the comparison below stays stable.
+if [ "$_SCOPE_MODE" = "warn" ]; then
+    _SCOPE_MODE="1"
+fi
+
+if [ "$_SCOPE_MODE" != "0" ]; then
     LOCKS_DIR="$REPO_ROOT/.chump-locks"
     if [ -d "$LOCKS_DIR" ]; then
-        MY_SESSION_ID="${CHUMP_SESSION_ID:-}"
-        if [ -z "$MY_SESSION_ID" ] && [ -f "$HOME/.chump/session_id" ]; then
-            MY_SESSION_ID=$(head -n1 "$HOME/.chump/session_id" 2>/dev/null | tr -d '[:space:]')
-        fi
+        MY_SESSION_ID="$_SCOPE_SESSION_ID"
         STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR || true)
 
         if [ -n "$MY_SESSION_ID" ] && [ -n "$STAGED_FILES" ]; then
@@ -301,8 +345,12 @@ $STAGED_FILES
 EOF_STAGED
 
                     if [ -n "$out_of_scope" ]; then
-                        if [ "${CHUMP_SCOPE_CHECK:-1}" = "enforce" ]; then
-                            echo "[pre-commit] OUT-OF-SCOPE COMMIT BLOCKED (INFRA-189):" >&2
+                        if [ "$_SCOPE_MODE" = "enforce" ]; then
+                            echo "[pre-commit] OUT-OF-SCOPE COMMIT BLOCKED (INFRA-189/INFRA-337):" >&2
+                            echo "[pre-commit]   session_id: $MY_SESSION_ID" >&2
+                            if _chump_is_subagent_session "$MY_SESSION_ID"; then
+                                echo "[pre-commit]   (subagent session — INFRA-337 default-enforce)" >&2
+                            fi
                             echo "[pre-commit]   Your lease declares paths: $my_paths" >&2
                             echo "[pre-commit]   But you're committing files outside that scope:" >&2
                             printf '%b' "$out_of_scope" | sed 's/^/[pre-commit]     /' >&2
@@ -310,7 +358,8 @@ EOF_STAGED
                             echo "[pre-commit] Options:" >&2
                             echo "[pre-commit]   - update your lease scope: edit $my_lease and add the path to paths[]" >&2
                             echo "[pre-commit]   - commit only in-scope: git restore --staged <file>" >&2
-                            echo "[pre-commit]   - bypass: CHUMP_SCOPE_CHECK=0 git commit ..." >&2
+                            echo "[pre-commit]   - operator override (warn instead of block): CHUMP_SCOPE_CHECK=warn git commit ..." >&2
+                            echo "[pre-commit]   - bypass entirely: CHUMP_SCOPE_CHECK=0 git commit ..." >&2
                             exit 1
                         else
                             echo "[pre-commit] WARN: out-of-scope commit (INFRA-189 advisory mode):" >&2
