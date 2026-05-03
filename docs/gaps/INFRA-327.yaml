@@ -1,0 +1,43 @@
+- id: INFRA-327
+  domain: INFRA
+  title: event-driven stuck-PR resolver — rebase first, cluster by root cause, rate-limit
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    v2 of the stuck-PR resolver. INFRA-307 (PR #914) shipped the hourly safety-net version; this gap replaces it as the primary mechanism once the fleet's throughput outgrows hourly polling.
+    
+    WHY v2 is needed (observed during INFRA-307 design discussion 2026-05-02):
+      - Hourly cadence is too slow at current fleet load (~6+ concurrent agents, multi-PR/min commit rate). A PR can go DIRTY → CI red → 30 commits behind in <10 min; cascade blockers form before the next hour mark.
+      - One stuck PR ≠ one cleanup gap. When shared infra fails (release.yml, chump binary wedge, branch-protection drift), 10–20 PRs go red simultaneously. The v1 filer would reserve 10–20 gaps for ONE root cause and the fleet would dispatch 10–20 agents that each fail the same way — fleet-wide footgun.
+      - v1 doesn't classify. 'PR #472 stuck — DIRTY for 8h' could be (a) author exited, just needs rebase, (b) gap landed elsewhere → close as superseded, (c) CI infrastructure broken → fix infra first, (d) genuine merge conflict → human judgment. Sending all four to 'next free fleet agent' is wrong for (c) and (d).
+      - No backpressure or rate-limit. If the filer files faster than the fleet drains, you get gap-list pollution + fleet thrash.
+    
+    DESIGN:
+      1. Event-driven, not polled. Subscribe to GitHub PR webhook events (or tail ambient.jsonl for commit / pr_* / queue events) and react in seconds. The hourly cron from INFRA-307 becomes a fallback safety net.
+      2. Rebase-first triage. Most 'stuck' PRs are 30s of git rebase (per pr-watch.sh data: ~80% conflict-free). Run the rebase locally before filing anything; only file a gap if the rebase fails or if classification (3) needs human judgment.
+      3. Cluster by root-cause signature. When N PRs share a failure (same failed check name, same error fingerprint, same head_sha base), file ONE root-cause gap and link the affected PRs to it. The fleet agent fixes the root cause; cleanup of the N PRs follows for free.
+      4. Classify before dispatching. Tag gaps with stuck_class=author_exited|superseded|infra_broken|conflict_human. Fleet dispatch routes by class — infra_broken gets P0, conflict_human gets human-review label and skips fleet pickup.
+      5. Rate-limit with a budget. Cap at K (default 5) stuck-pr gaps filed per hour; anything above K is a structural problem and should ALERT the fleet via ambient (kind=stuck_pr_burst) instead of filing more individual gaps.
+      6. Close the loop. When a cleanup gap ships, auto-close any duplicate stuck-pr gaps clustered under the same root-cause signature.
+    
+    MIGRATION FROM v1:
+      - Phase A: ship v2 alongside v1, both running. v2 handles the event-driven path; v1 hourly continues as safety net.
+      - Phase B: after 1 week of v2 stability, demote v1 to once-per-day 'did we miss anything?' sweep.
+      - Phase C: retire v1 entirely if v2 catches everything.
+    
+    OUT OF SCOPE for this gap (file separately if needed):
+      - GitHub webhook receiver infrastructure (may already exist via existing CI hooks; investigate first).
+      - Per-PR auto-close on superseded (some of this lives in stale-pr-reaper.sh already).
+      - Cross-machine NATS event delivery (FLEET-006 territory).
+  acceptance_criteria:
+    - event-driven trigger replaces hourly polling as primary path
+    - rebase-first triage runs locally before filing any gap
+    - cluster-by-root-cause-signature reduces 10-PR-burst into 1 root-cause gap
+    - classification tags (author_exited, superseded, infra_broken, conflict_human) drive fleet routing
+    - rate-limit caps filings at K/hour and ALERTs on burst
+    - smoke test covers each classification path + the cluster-collapse case
+    - INFRA-307 v1 filer demoted to safety-net cadence (once-per-day) once v2 ships
+    - migration plan documented in CLAUDE.md alongside v1
+  depends_on: [INFRA-307]
+
