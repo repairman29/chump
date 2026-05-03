@@ -613,8 +613,40 @@ if [[ "$BEHIND" -gt 0 ]]; then
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"
+
+        # INFRA-344 (option b, defense-in-depth): before running gap-preflight,
+        # detect if ANY of our gap IDs are introduced as NEW files by this PR
+        # (docs/gaps/<ID>.yaml added, not modified). For filing PRs (reserve +
+        # implement in the same branch), the YAML hasn't landed on origin/main
+        # yet — that's exactly what this PR is going to do. gap-preflight.sh
+        # handles this via the local_gap_status fallback (INFRA-344 option a),
+        # but we also skip the confusing "Gap was completed on main" error
+        # message here at bot-merge level when the new-file pattern is detected.
+        _new_gap_yamls=""
+        for _gid in "${GAP_IDS[@]}"; do
+            _yaml_path="docs/gaps/${_gid}.yaml"
+            if git diff --name-only --diff-filter=A "${REMOTE}/${BASE_BRANCH}..HEAD" 2>/dev/null \
+                    | grep -qxF "$_yaml_path"; then
+                _new_gap_yamls="${_new_gap_yamls} ${_gid}"
+            fi
+        done
+
         if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
-            red "Gap was completed on main while we rebased — nothing left to push."
+            if [[ -n "$_new_gap_yamls" ]]; then
+                # This PR introduces the gap YAML as a new file — the "not on
+                # main" result from gap-preflight is expected, not an error.
+                # gap-preflight.sh should already handle this via INFRA-344
+                # local_gap_status check, but if it still fails (e.g. stale
+                # binary without the fix), emit a clear diagnostic instead of
+                # the misleading "completed on main" message.
+                red "Post-rebase gap-preflight failed for gaps introduced by this PR:${_new_gap_yamls}"
+                red "These gaps don't exist on $REMOTE/$BASE_BRANCH yet — that's what this PR does."
+                red "If gap-preflight is detecting them as missing (not done), this may be a"
+                red "gap-preflight binary stale issue (INFRA-344). Try: scripts/dev/chump-doctor.sh"
+                red "Or ship manually via the INFRA-028 path (see CLAUDE.md)."
+            else
+                red "Gap was completed on main while we rebased — nothing left to push."
+            fi
             exit 1
         fi
     fi

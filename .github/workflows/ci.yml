@@ -254,6 +254,9 @@ jobs:
       - name: gap-preflight unregistered-ID guard (INFRA-020)
         run: bash scripts/ci/test-gap-preflight-unregistered.sh
 
+      - name: gap-preflight filing-PR local-fallback (INFRA-344)
+        run: bash scripts/ci/test-filing-pr-preflight.sh
+
       - name: docs/gaps.yaml must not exist after INFRA-188 cutover
         run: |
           if [ -f docs/gaps.yaml ]; then

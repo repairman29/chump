@@ -135,6 +135,34 @@ gap_status() {
         sed 's/^  status: *//' | tr -d "'\"" || true
 }
 
+# INFRA-344: read a gap's status from the LOCAL working-tree copy (docs/gaps/<ID>.yaml
+# or the local SQLite store via chump gap list). Returns empty if not found locally.
+# Used to distinguish "gap reserved locally but not yet on main" from "gap never registered".
+local_gap_status() {
+    local gid="$1"
+    # Fast path: per-file YAML in the working tree (post-INFRA-188 canonical).
+    local yaml_file="$REPO_ROOT/docs/gaps/${gid}.yaml"
+    if [[ -f "$yaml_file" ]]; then
+        grep -m1 "^  status:" "$yaml_file" | sed 's/^  status: *//' | tr -d "'\"" 2>/dev/null || true
+        return
+    fi
+    # Fall back: query .chump/state.db via chump CLI (SQLite canonical source).
+    if command -v chump >/dev/null 2>&1 && [[ -n "$REPO_ROOT" ]]; then
+        chump gap list --json 2>/dev/null \
+            | python3 -c "
+import json, sys
+try:
+    gaps = json.load(sys.stdin)
+    for g in gaps:
+        if g.get('id') == sys.argv[1]:
+            print(g.get('status', ''))
+            break
+except Exception:
+    pass
+" "$gid" 2>/dev/null || true
+    fi
+}
+
 # ── 2. Check active lease files for gap_id conflicts ─────────────────────────
 # Parse .chump-locks/*.json with python3 (always available; no jq dependency).
 # Returns "session_id:expires_at" for any live lease with matching gap_id that
@@ -320,13 +348,27 @@ for GAP_ID in "$@"; do
             elif [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
                 info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
             else
-                red "SKIP $GAP_ID — not found in gap registry (docs/gaps/ or docs/gaps.yaml)."
-                red "  Reserve an ID first: scripts/coord/gap-reserve.sh <DOMAIN> \"title\""
-                red "  (atomic; writes pending_new_gap to your lease). Two agents inventing"
-                red "  the same ID was the INFRA-016/017/018 collision chain (2026-04-20)."
-                red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1"
-                FAILED=1
-                continue
+                # INFRA-344: gap not on origin/main — before failing, check if it
+                # exists locally (docs/gaps/<ID>.yaml or .chump/state.db). A gap
+                # that is reserved locally but hasn't been pushed yet (filing PRs
+                # that reserve + implement in the same change) should not be blocked
+                # here. Only truly unregistered IDs (not in local state either)
+                # should fail. This distinguishes 'reserved locally, not yet on main'
+                # from 'never registered' — the two cases bot-merge previously
+                # conflated, killing every filing-style PR at post-rebase preflight
+                # (observed INFRA-307 PR #914 and INFRA-340 PR #943 on 2026-05-02).
+                LOCAL_STATUS="$(local_gap_status "$GAP_ID")"
+                if [[ -n "$LOCAL_STATUS" && "$LOCAL_STATUS" != "done" ]]; then
+                    info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but exists locally (status=$LOCAL_STATUS) — this is a filing PR introducing the gap. OK (INFRA-344)."
+                else
+                    red "SKIP $GAP_ID — not found in gap registry (docs/gaps/ or docs/gaps.yaml)."
+                    red "  Reserve an ID first: scripts/coord/gap-reserve.sh <DOMAIN> \"title\""
+                    red "  (atomic; writes pending_new_gap to your lease). Two agents inventing"
+                    red "  the same ID was the INFRA-016/017/018 collision chain (2026-04-20)."
+                    red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1"
+                    FAILED=1
+                    continue
+                fi
             fi
         elif [[ "$STATUS" == "done" ]]; then
             red "SKIP $GAP_ID — already status:done on $REMOTE/$BASE."
