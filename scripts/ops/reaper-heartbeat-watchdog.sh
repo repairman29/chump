@@ -98,7 +98,7 @@ for name in "${TARGETS[@]}"; do
     threshold_h=$(( threshold / 3600 ))
 
     if [[ $age -gt $threshold ]]; then
-        msg="reaper ${name} has not run in ${age_h}h (threshold ${threshold_h}h). Last heartbeat at ${ts_line:-unknown}. Check launchctl list | grep ai.openclaw.chump-stale-${name}-reaper and /tmp/chump-stale-${name}-reaper.err.log."
+        msg="reaper ${name} has not run in ${age_h}h (threshold ${threshold_h}h). Last heartbeat at ${ts_line:-unknown}. Check launchctl list | grep dev.chump.stale-${name}-reaper and /tmp/chump-stale-${name}-reaper.err.log."
         printf 'ALERT [reaper_silent] %s\n' "$msg" >&2
         ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
         printf '{"event":"ALERT","kind":"reaper_silent","reaper":"%s","ts":"%s","age_hours":%d,"threshold_hours":%d,"reason":%s}\n' \

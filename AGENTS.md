@@ -132,7 +132,7 @@ Each gap is an atomic unit of work with a stable ID (e.g. `COMP-007`,
    `scripts/ops/stale-worktree-reaper.sh` (starts in **dry-run**; use `--execute` to
    remove) or on macOS install the hourly LaunchAgent once:
    `scripts/setup/install-stale-worktree-reaper-launchd.sh`, then verify
-   `launchctl list | grep ai.openclaw.chump-stale-worktree-reaper`. Per-tree
+   `launchctl list | grep dev.chump.stale-worktree-reaper`. Per-tree
    opt-out: `touch <worktree>/.chump-no-reap`. Details: `CLAUDE.md` section
    **Worktree disk hygiene**.
 

@@ -9,7 +9,7 @@
 # up. ~85 GB of stale worktrees accumulated.
 #
 # Behavior:
-#   1. Lists every ~/Library/LaunchAgents/{ai.openclaw.chump-*,ai.chump.*,com.chump.*}.plist
+#   1. Lists every ~/Library/LaunchAgents/{dev.chump.*,ai.chump.*,com.chump.*}.plist
 #   2. For each, extracts every <string>/path/to/script.sh</string>.
 #   3. If the script doesn't exist at the cited path, searches the repo by
 #      basename (excluding target/ and .claude/worktrees/) for the new home.
@@ -55,10 +55,10 @@ UNFIXED=0
 
 shopt -s nullglob
 PLISTS=()
-# All ai.openclaw.* plists (chump-prefixed AND siblings like farmer-brown that
+# All dev.chump.* plists (chump-prefixed AND siblings like farmer-brown that
 # coexist on the same machine and share the same broken-path failure mode),
 # plus ai.chump.* / com.chump.* legacy labels.
-for p in "$LAUNCHAGENTS"/ai.openclaw.*.plist \
+for p in "$LAUNCHAGENTS"/dev.chump.*.plist \
          "$LAUNCHAGENTS"/ai.chump.*.plist \
          "$LAUNCHAGENTS"/com.chump.*.plist; do
     PLISTS+=("$p")

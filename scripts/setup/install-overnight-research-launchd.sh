@@ -4,17 +4,17 @@
 # 02:00 local time. Idempotent: safe to re-run.
 #
 # After install:
-#   launchctl list | grep ai.openclaw.chump-overnight-research
+#   launchctl list | grep dev.chump.overnight-research
 #
 # To run on demand (smoke test):
-#   launchctl start ai.openclaw.chump-overnight-research
+#   launchctl start dev.chump.overnight-research
 #
 # To disable:
-#   launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-overnight-research.plist
+#   launchctl unload ~/Library/LaunchAgents/dev.chump.overnight-research.plist
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PLIST_NAME="ai.openclaw.chump-overnight-research.plist"
+PLIST_NAME="dev.chump.overnight-research.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
 # Hour/minute can be overridden for testing (CHUMP_OVERNIGHT_HOUR=22 ./install...)
@@ -29,7 +29,7 @@ cat >"$DEST" <<EOF
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-overnight-research</string>
+  <string>dev.chump.overnight-research</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -70,4 +70,4 @@ launchctl load "$DEST"
 
 echo "Installed and loaded: $DEST"
 echo "Schedule: ${HOUR}:$(printf '%02d' "$MINUTE") local, daily"
-launchctl list | grep -F "ai.openclaw.chump-overnight-research" || true
+launchctl list | grep -F "dev.chump.overnight-research" || true

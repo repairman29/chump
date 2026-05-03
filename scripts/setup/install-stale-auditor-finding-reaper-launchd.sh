@@ -3,11 +3,11 @@
 # agent that runs scripts/ops/stale-auditor-finding-reaper.sh --execute.
 #
 # Idempotent: safe to re-run.
-# Disable: launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-auditor-reaper.plist
+# Disable: launchctl unload ~/Library/LaunchAgents/dev.chump.auditor-reaper.plist
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PLIST_NAME="ai.openclaw.chump-auditor-reaper.plist"
+PLIST_NAME="dev.chump.auditor-reaper.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -18,7 +18,7 @@ cat >"$DEST" <<EOF
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-auditor-reaper</string>
+  <string>dev.chump.auditor-reaper</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -53,4 +53,4 @@ launchctl unload "$DEST" 2>/dev/null || true
 launchctl load "$DEST"
 
 echo "Installed and loaded: $DEST"
-launchctl list | grep -F "ai.openclaw.chump-auditor-reaper" || true
+launchctl list | grep -F "dev.chump.auditor-reaper" || true

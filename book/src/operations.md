@@ -366,7 +366,7 @@ Farmer Brown and the other roles (Heartbeat Shepherd, Memory Keeper, Sentinel, O
 - **Diagnose only:** `FARMER_BROWN_DIAGNOSE_ONLY=1 ./scripts/dev/farmer-brown.sh` — prints and logs status for each component (up/down/stale); no starts or kills.
 - **Diagnose + fix once:** `./scripts/dev/farmer-brown.sh`
 - **Loop (e.g. every 2 min):** `FARMER_BROWN_INTERVAL=120 ./scripts/dev/farmer-brown.sh`
-- **launchd:** Copy `scripts/plists/farmer-brown.plist.example` to `~/Library/LaunchAgents/ai.openclaw.farmer-brown.plist`, replace the path placeholder with your repo path (e.g. ~/Projects/Chump), then `launchctl load ~/Library/LaunchAgents/ai.openclaw.farmer-brown.plist`. Runs every 120s by default.
+- **launchd:** Copy `scripts/plists/farmer-brown.plist.example` to `~/Library/LaunchAgents/dev.chump.farmer-brown.plist`, replace the path placeholder with your repo path (e.g. ~/Projects/Chump), then `launchctl load ~/Library/LaunchAgents/dev.chump.farmer-brown.plist`. Runs every 120s by default.
 
 Uses the same env as keep-chump-online (`CHUMP_KEEPALIVE_EMBED`, `CHUMP_KEEPALIVE_DISCORD`, `CHUMP_KEEPALIVE_WORKER`, `WARM_PORT_2`, `.env`). Logs: `logs/farmer-brown.log`. If `CHUMP_HEALTH_PORT` is set, diagnosis includes Chump health JSON.
 

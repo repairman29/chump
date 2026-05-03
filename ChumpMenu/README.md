@@ -42,7 +42,7 @@ Goal: **one habit** — menu bar shows green, browser chat is one click away.
 
 Default: **`~/Projects/Chump`**. The app runs `run-web.sh` for **Chump web** (PWA + API) and looks for logs under that path. Discord is optional; use `./run-discord.sh` from a terminal if you still want the bot.
 
-To use a different path: use **Set Chump repo path…** in the menu (or `defaults write ai.openclaw.chump-menu ChumpRepoPath /full/path/to/Chump` then restart the app).
+To use a different path: use **Set Chump repo path…** in the menu (or `defaults write dev.chump.menu ChumpRepoPath /full/path/to/Chump` then restart the app).
 
 ## Start / Stop
 

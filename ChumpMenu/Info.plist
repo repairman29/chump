@@ -5,7 +5,7 @@
     <key>CFBundleExecutable</key>
     <string>ChumpMenu</string>
     <key>CFBundleIdentifier</key>
-    <string>ai.openclaw.chump-menu</string>
+    <string>dev.chump.menu</string>
     <key>CFBundleName</key>
     <string>Chump Menu</string>
     <key>CFBundlePackageType</key>

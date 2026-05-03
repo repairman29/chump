@@ -7,12 +7,12 @@
 # overnight ship pipeline has a chance to surface fix-up PRs first.
 #
 # Idempotent: safe to re-run.
-# Disable: launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-decomposition-tracker.plist
-# Manually fire: launchctl start ai.openclaw.chump-decomposition-tracker
+# Disable: launchctl unload ~/Library/LaunchAgents/dev.chump.decomposition-tracker.plist
+# Manually fire: launchctl start dev.chump.decomposition-tracker
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PLIST_NAME="ai.openclaw.chump-decomposition-tracker.plist"
+PLIST_NAME="dev.chump.decomposition-tracker.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 mkdir -p "$HOME/Library/LaunchAgents"
 
@@ -22,7 +22,7 @@ cat >"$DEST" <<EOF
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-decomposition-tracker</string>
+  <string>dev.chump.decomposition-tracker</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -58,8 +58,8 @@ EOF
 launchctl unload "$DEST" 2>/dev/null || true
 launchctl load "$DEST"
 echo "Installed and loaded: $DEST"
-launchctl list | grep -F "ai.openclaw.chump-decomposition-tracker" || true
+launchctl list | grep -F "dev.chump.decomposition-tracker" || true
 echo
 echo "Outcomes file: $REPO/.chump/decomposition-outcomes.jsonl"
-echo "Manual fire  : launchctl start ai.openclaw.chump-decomposition-tracker"
+echo "Manual fire  : launchctl start dev.chump.decomposition-tracker"
 echo "Tail logs    : tail -f /tmp/chump-decomposition-tracker.{out,err}.log"

@@ -18,7 +18,7 @@ mkdir -p "$LAUNCH_AGENTS"
 
 get_label() {
   case "$1" in
-    farmer-brown.plist.example) echo "ai.openclaw.farmer-brown" ;;
+    farmer-brown.plist.example) echo "dev.chump.farmer-brown" ;;
     heartbeat-shepherd.plist.example) echo "ai.chump.heartbeat-shepherd" ;;
     memory-keeper.plist.example) echo "ai.chump.memory-keeper" ;;
     doc-keeper.plist.example) echo "ai.chump.doc-keeper" ;;

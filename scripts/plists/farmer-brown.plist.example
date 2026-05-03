@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.farmer-brown</string>
+  <string>dev.chump.farmer-brown</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>

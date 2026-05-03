@@ -308,10 +308,10 @@ scripts/ops/stale-pr-reaper.sh --dry-run
 scripts/ops/stale-pr-reaper.sh
 ```
 
-The launchd plist `ai.openclaw.chump-stale-pr-reaper.plist` runs this hourly. Load it once:
+The launchd plist `dev.chump.stale-pr-reaper.plist` runs this hourly. Load it once:
 ```bash
-cp scripts/plists/ai.openclaw.chump-stale-pr-reaper.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/ai.openclaw.chump-stale-pr-reaper.plist
+cp scripts/plists/dev.chump.stale-pr-reaper.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/dev.chump.stale-pr-reaper.plist
 ```
 
 ### Squash-merge loss (commits pushed after CI passes)

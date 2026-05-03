@@ -3,14 +3,14 @@
 # for scripts/ops/stuck-pr-filer.sh. Idempotent: safe to re-run.
 #
 # After install:
-#   launchctl list | grep ai.openclaw.chump-stuck-pr-filer
+#   launchctl list | grep dev.chump.stuck-pr-filer
 #
 # To disable:
-#   launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-stuck-pr-filer.plist
+#   launchctl unload ~/Library/LaunchAgents/dev.chump.stuck-pr-filer.plist
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PLIST_NAME="ai.openclaw.chump-stuck-pr-filer.plist"
+PLIST_NAME="dev.chump.stuck-pr-filer.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -21,7 +21,7 @@ cat >"$DEST" <<EOF
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-stuck-pr-filer</string>
+  <string>dev.chump.stuck-pr-filer</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -56,4 +56,4 @@ launchctl unload "$DEST" 2>/dev/null || true
 launchctl load "$DEST"
 
 echo "Installed and loaded: $DEST"
-launchctl list | grep -F "ai.openclaw.chump-stuck-pr-filer" || true
+launchctl list | grep -F "dev.chump.stuck-pr-filer" || true

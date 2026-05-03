@@ -6,16 +6,16 @@
 # (StartInterval 86400) — target/ purges aren't urgent, just hygiene.
 #
 # Verify:
-#   launchctl list | grep ai.openclaw.chump-active-target-reaper
+#   launchctl list | grep dev.chump.active-target-reaper
 # Logs:
 #   /tmp/chump-active-target-reaper.out.log
 #   /tmp/chump-active-target-reaper.err.log
 # Disable:
-#   launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-active-target-reaper.plist
+#   launchctl unload ~/Library/LaunchAgents/dev.chump.active-target-reaper.plist
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PLIST_NAME="ai.openclaw.chump-active-target-reaper.plist"
+PLIST_NAME="dev.chump.active-target-reaper.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -26,7 +26,7 @@ cat >"$DEST" <<EOF
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-active-target-reaper</string>
+  <string>dev.chump.active-target-reaper</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -60,4 +60,4 @@ launchctl unload "$DEST" 2>/dev/null || true
 launchctl load "$DEST"
 
 echo "Installed and loaded: $DEST"
-launchctl list | grep -F "ai.openclaw.chump-active-target-reaper" || true
+launchctl list | grep -F "dev.chump.active-target-reaper" || true
