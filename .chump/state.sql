@@ -14011,7 +14011,7 @@ gaps:
 - id: INFRA-377
   domain: INFRA
   title: Add cargo-fmt + git-hooks-bypass discipline to lessons-seed-infra-v1.json (caught self tripping 2x in one PR push session)
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -14020,6 +14020,8 @@ gaps:
     - chump --seed-ab-lessons clear && chump --seed-ab-lessons <updated file> populates with the 2 new directives (15 total)
     - "Falsifying condition: if the existing 13 directives ALREADY cover this case (e.g. directive #12 INFRA-200 raw-yaml-edit covers this implicitly), this gap closes as duplicate. Verify before adding by grep on lessons-seed for 'cargo fmt'."
   depends_on: [INFRA-330, COG-032]
+  closed_date: '2026-05-03'
+  closed_pr: 998
 
 - id: INFRA-378
   domain: INFRA
@@ -14081,6 +14083,15 @@ gaps:
 - id: INFRA-383
   domain: INFRA
   title: extend INFRA-379 chump-doctor preflight to remaining coord scripts (gap-reserve/claim/preflight + chump-commit) via shared scripts/lib/chump-preflight.sh helper
+  status: done
+  priority: P2
+  effort: xs
+  closed_date: '2026-05-03'
+  closed_pr: 999
+
+- id: INFRA-384
+  domain: INFRA
+  title: "INFRA-379 followup: yellow() called before defined in bot-merge.sh chump-doctor preflight (line 565); aborts whole script when doctor exits non-zero"
   status: open
   priority: P2
   effort: xs
@@ -15643,7 +15654,7 @@ gaps:
 - id: META-025
   domain: META
   title: Subagent self-ship rate is 25-33% — work quality is high but ship-stage hand-off is brittle (dispatch-quality findings 2026-05-02)
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -15652,6 +15663,32 @@ gaps:
     - At least 3 of the 7 children landed on main within 7 days
     - "Re-measurement: post-shipping-epilogue, sample N=5 fresh subagent dispatches; self-ship rate measured >= 70%"
     - "Dispatch-quality stats included in next Cold Water audit (Issue #11+)"
+  notes: |
+    Closed 2026-05-03. Re-measurement target met: 75% self-ship rate vs 70% target (vs 25% baseline). Run details:
+    
+    5 subagents dispatched in parallel via Agent tool (claude-opus-4-7) on independent gaps with the INFRA-332 shipping-epilogue baked into each prompt. Today's dispatch-quality infrastructure (PR #975 cascade visibility + #977 poll-jitter + #981 stall taxonomy) was live during the run.
+    
+    Outcomes:
+    - INFRA-306 (a7752): race-abandoned — sibling shipped PR #988 first; subagent correctly stood down (canonical right move, not a measurement data point)
+    - INFRA-337 (a5df0): STALLED — committed locally, gave up at 'waiting on bot-merge'; required operator manual recovery (PR #995). Failure mode: subagent's final summary said 'I have nothing to poll' rather than executing the documented INFRA-028 manual fall-back from the epilogue.
+    - INFRA-248→380 (a1dd0): self-shipped via INFRA-028 manual recovery after bot-merge.sh hit 300s cargo-test timeout. PR #994. Subagent ALSO caught a real gap-ID confusion bug and reserved fresh INFRA-380.
+    - INFRA-196 (afacf): self-shipped end-to-end via bot-merge.sh, no recovery. PR #997, MERGED.
+    - INFRA-377 (a2c59): self-shipped via bootstrap-YAML recovery after gap-preflight stalled. PR #998, MERGED.
+    
+    Measurable rate: 3 self-shipped / 4 measurable (excluding race-abandoned) = 75%.
+    
+    Children status:
+    - INFRA-332 (shipping epilogue) DONE via #933
+    - INFRA-333 (worker.sh chump-doctor pre-flight) DONE via #938
+    - INFRA-334 (subagent heartbeat) OPEN — defer
+    - DOC-015 (Agent vs SendMessage) DONE via #933
+    - INFRA-335 (dispatch-quality report) DONE via #934
+    - INFRA-336 (stall-cause taxonomy) DONE via #981
+    - INFRA-337 (CHUMP_SCOPE_CHECK enforce) DONE via #995
+    
+    6 of 7 children shipped (above the 'at least 3' acceptance criterion). The one open (INFRA-334 heartbeat) is now lower priority — the existing surface (stall-taxonomy + cascade-exhausted ambient + dispatch-quality report) provides post-hoc visibility. Heartbeat would add real-time visibility, but the acute failure mode is mitigated.
+    
+    Important follow-up signal not yet filed: the INFRA-337 stall reveals that the epilogue's manual-recovery section is not strong enough — at least one of 4 subagents chose to wait passively rather than execute it. Worth a META-NNN follow-up: 'subagent epilogue must include a wall-clock budget for bot-merge wait, after which manual recovery is mandatory rather than optional.'
 
 - id: META-026
   domain: META
@@ -15659,6 +15696,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+
+- id: META-027
+  domain: META
+  title: Subagent epilogue manual-recovery is opt-in, but should be mandatory after a wall-clock budget — INFRA-337 stalled because subagent waited passively for bot-merge instead of fall-back
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "docs/process/SUBAGENT_DISPATCH.md shipping-epilogue strengthened: manual-recovery section gains a 'STOP: if bot-merge.sh has been running >900s with no progress markers, do not wait — execute manual recovery NOW' instruction. Pre-META-027 the epilogue presented manual-recovery as a fall-back option, not a deadline-bounded mandate."
+    - CLAUDE.md 'Spawning subagents' subsection updated to reference the new wall-clock budget (default 900s = 15 min, override CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S).
+    - "Test: scripts/ci/test-subagent-epilogue-budget-language.sh greps the doc for 'STOP' + 'wall-clock' + budget number; fails if those tokens drift."
+    - "Falsifying condition: if 0 of N=5 subagents in a fresh measurement run stall passively post-fix, the strengthened language was load-bearing. If 1+ still stall waiting, the issue is structural (subagents can't measure their own wait time accurately) and a separate gap files for a heartbeat-driven kill (INFRA-334)."
+  depends_on: [META-025, INFRA-332]
 
 - id: PRODUCT-001
   domain: PRODUCT

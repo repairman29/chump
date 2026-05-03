@@ -541,6 +541,16 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("gap") {
         let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
         let repo_root = repo_path::repo_root();
+        // INFRA-247: per-file YAML mirrors and the .chump/.last-yaml-op
+        // freshness marker are *worktree-local* artifacts — they must land
+        // in the operator's branch, not the main checkout's. `repo_root`
+        // resolves via CHUMP_REPO/CHUMP_HOME (set by the main checkout's
+        // .env, which dotenvy walks up to find from any linked worktree),
+        // so it points at the main checkout. `worktree_root` uses
+        // `git rev-parse --show-toplevel` from CWD, which correctly
+        // resolves to the linked worktree the operator is actually in.
+        // state.db remains under repo_root (shared canonical state).
+        let worktree_root = repo_path::worktree_root();
         let store = match gap_store::GapStore::open(&repo_root) {
             Ok(s) => s,
             Err(e) => {
@@ -638,14 +648,15 @@ async fn main() -> Result<()> {
                         // INFRA-227 itself. Best-effort: SQLite (state.db)
                         // is canonical, so a write failure is logged but
                         // doesn't fail the reserve.
-                        let per_file_dir = repo_root.join("docs").join("gaps");
+                        // INFRA-247: write to the linked worktree, not the main checkout.
+                        let per_file_dir = worktree_root.join("docs").join("gaps");
                         match store.dump_per_file_single(&id, &per_file_dir) {
                             Ok(true) => {
                                 eprintln!(
                                     "wrote {}",
                                     per_file_dir.join(format!("{id}.yaml")).display()
                                 );
-                                write_yaml_op_marker(&repo_root, "reserve");
+                                write_yaml_op_marker(&worktree_root, "reserve");
                             }
                             Ok(false) => {} // no-op write
                             Err(e) => {
@@ -762,14 +773,15 @@ async fn main() -> Result<()> {
                             // Behavior change: callers that pass
                             // `--update-yaml` now get a single per-file
                             // write, not a full-registry regen.
-                            let per_file_dir = repo_root.join("docs").join("gaps");
+                            // INFRA-247: write to the linked worktree, not the main checkout.
+                            let per_file_dir = worktree_root.join("docs").join("gaps");
                             match store.dump_per_file_single(&gap_id, &per_file_dir) {
                                 Ok(true) => {
                                     eprintln!(
                                         "wrote {}",
                                         per_file_dir.join(format!("{gap_id}.yaml")).display()
                                     );
-                                    write_yaml_op_marker(&repo_root, "ship");
+                                    write_yaml_op_marker(&worktree_root, "ship");
                                 }
                                 Ok(false) => {} // no-op write — content unchanged
                                 Err(e) => {
@@ -871,10 +883,12 @@ async fn main() -> Result<()> {
                 if per_file {
                     let dir_str = out_dir_flag.unwrap_or_else(|| "docs/gaps".to_string());
                     let dir = std::path::PathBuf::from(&dir_str);
+                    // INFRA-247: relative path resolves under the linked worktree,
+                    // not the main checkout. Absolute path is honored verbatim.
                     let dir_abs = if dir.is_absolute() {
                         dir
                     } else {
-                        repo_root.join(dir)
+                        worktree_root.join(dir)
                     };
                     match store.dump_per_file(&dir_abs) {
                         Ok((written, skipped)) => {
@@ -886,7 +900,7 @@ async fn main() -> Result<()> {
                             );
                             // INFRA-094 marker: this dir is also a canonical
                             // chump-CLI yaml op surface.
-                            write_yaml_op_marker(&repo_root, "dump --per-file");
+                            write_yaml_op_marker(&worktree_root, "dump --per-file");
                             return Ok(());
                         }
                         Err(e) => {
@@ -916,8 +930,10 @@ async fn main() -> Result<()> {
                             eprintln!("wrote {}", path);
                             // INFRA-094: mark this as a chump-CLI yaml op so the
                             // pre-commit hook recognizes the gaps.yaml diff as
-                            // canonical (not a raw hand-edit).
-                            write_yaml_op_marker(&repo_root, "dump");
+                            // canonical (not a raw hand-edit). INFRA-247: marker
+                            // goes to the linked worktree's .chump/.last-yaml-op,
+                            // matching where the staged YAML edits sit.
+                            write_yaml_op_marker(&worktree_root, "dump");
                         } else {
                             print!("{}", yaml);
                         }
