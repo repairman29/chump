@@ -637,14 +637,16 @@ async fn main() -> Result<()> {
                 // FLEET-029: ambient glance before allocating ID
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
                     use std::process::Command;
+                    let script_path = std::path::PathBuf::from(repo_path::repo_root())
+                        .join("scripts/coord/chump-ambient-glance.sh");
                     let glance_result = Command::new("bash")
-                        .arg("scripts/coord/chump-ambient-glance.sh")
+                        .arg(script_path)
                         .arg("--domain")
                         .arg(&domain)
                         .arg("--title")
                         .arg(&title)
                         .arg("--check-prs")
-                        .current_dir(&worktree_root)
+                        .current_dir(repo_path::repo_root())
                         .status();
 
                     if let Ok(status) = glance_result {
@@ -718,14 +720,16 @@ async fn main() -> Result<()> {
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
                     use std::process::Command;
                     if let Ok(Some(gap_row)) = store.get(&gap_id) {
+                        let script_path = std::path::PathBuf::from(repo_path::repo_root())
+                            .join("scripts/coord/chump-ambient-glance.sh");
                         let glance_result = Command::new("bash")
-                            .arg("scripts/coord/chump-ambient-glance.sh")
+                            .arg(script_path)
                             .arg("--domain")
                             .arg(&gap_row.domain)
                             .arg("--title")
                             .arg(&gap_row.title)
                             .arg("--check-prs")
-                            .current_dir(&worktree_root)
+                            .current_dir(repo_path::repo_root())
                             .status();
 
                         if let Ok(status) = glance_result {

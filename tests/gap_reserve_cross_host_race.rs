@@ -51,6 +51,7 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_RESERVE_VERIFY_SLEEP_MS", "50"),
                 ("CHUMP_SESSION_ID", "session-a"),
                 ("CHUMP_RAW_YAML_LOCK", "0"),
+                ("FLEET_029_AMBIENT_GLANCE_SKIP", "1"),
             ])
             .args(["gap", "reserve", "--domain", "INFRA", "--title", "race-a"])
             .current_dir(&root_a)
@@ -66,6 +67,7 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_RESERVE_VERIFY_SLEEP_MS", "50"),
                 ("CHUMP_SESSION_ID", "session-z"),
                 ("CHUMP_RAW_YAML_LOCK", "0"),
+                ("FLEET_029_AMBIENT_GLANCE_SKIP", "1"),
             ])
             .args(["gap", "reserve", "--domain", "INFRA", "--title", "race-z"])
             .current_dir(&root_b)
