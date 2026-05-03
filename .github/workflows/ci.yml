@@ -293,6 +293,8 @@ jobs:
       - name: gap-doctor safe-sweep (INFRA-308)
         run: bash scripts/ci/test-gap-doctor-safe-sweep.sh
 
+      - name: fleet starve auto-action (INFRA-391)
+        run: bash scripts/ci/test-fleet-starve-auto-action.sh
 
       - name: pre-push MERGED guard (INFRA-306)
         run: bash scripts/ci/test-merged-check-guard.sh
