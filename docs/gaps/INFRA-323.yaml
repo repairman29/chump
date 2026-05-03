@@ -1,0 +1,24 @@
+- id: INFRA-323
+  domain: INFRA
+  title: rename launchd Label prefix from invented ai.openclaw to project-owned chump.coord (32 file refs + migration script)
+  description: "All launchd plist Label keys + their installer scripts use 'ai.openclaw' as the reverse-DNS namespace prefix\
+    \ (e.g. 'ai.openclaw.chump-gap-doctor-cron'). The 'openclaw' domain is invented — not owned by the project, not a real\
+    \ domain — and predates the chump rename (earliest reference: commit 97800454, 'rust-agent: Farmer Brown and keeper roles').\
+    \ 32 file references across scripts/setup/install-*-launchd.sh + scripts/setup/unload-roles-launchd.sh + scripts/plists/*.plist\
+    \ + scripts/setup/repair-launchd-plists.sh + a few related setup scripts.\n\nApple's launchd convention is reverse-DNS-style\
+    \ for the Label key. Recommended new prefix: chump.coord.<job> (project-owned, no domain pretense). Alternatives the operator\
+    \ could choose:\n  - dev.chump.<job>          (short, no fake domain)\n  - ai.repairman29.<job>     (real github-namespace;\
+    \ matches the GH org)\n  - chump.coord.<job>        (recommended; no DNS pretense, project-owned)\n\nMigration is non-trivial\
+    \ because old plists installed on existing dogfood machines stay loaded under the old Label until explicitly unloaded.\
+    \ Need a one-time migration script that:\n  1. Lists all currently-loaded ai.openclaw.* labels\n  2. For each, computes\
+    \ the equivalent new label\n  3. launchctl unload <old> + launchctl load <new>\n  4. Removes the old plist file from ~/Library/LaunchAgents/\n\
+    \nThis is brand hygiene, zero correctness impact. P3 because it's cosmetic."
+  priority: P3
+  effort: m
+  status: open
+  acceptance_criteria: '["All scripts/setup/install-*-launchd.sh use new chump.coord.<job> prefix in plist Label + filename","All
+    scripts/plists/*.plist files renamed + relabeled","scripts/setup/repair-launchd-plists.sh updated for new prefix","scripts/setup/unload-roles-launchd.sh
+    covers both old + new for transition window","scripts/setup/migrate-openclaw-launchd.sh script lists + relabels existing
+    loaded jobs on a dogfood machine","CLAUDE.md / docs that reference the old prefix updated","Test that runs all installers
+    + verifies new labels load correctly"]'
+
