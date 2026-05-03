@@ -13676,7 +13676,7 @@ gaps:
 - id: INFRA-359
   domain: INFRA
   title: ghost-open-gaps reaper — close gaps whose PR is merged on main but status=open in DB (manual-ship bypass)
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -13702,6 +13702,8 @@ gaps:
     - graded by reaper-heartbeat-watchdog with 1h threshold
     - smoke test verifies a manually-shipped gap gets auto-closed within 1 reaper cycle
     - run-fleet workers no longer waste cycles re-picking already-shipped gaps
+  closed_date: '2026-05-03'
+  closed_pr: 974
 
 - id: INFRA-360
   domain: INFRA
@@ -13791,6 +13793,159 @@ gaps:
   priority: P1
   effort: s
   notes: Misclick — meant to claim existing INFRA-354 not reserve a new one. Closing.
+
+- id: INFRA-367
+  domain: INFRA
+  title: state.sql merge conflicts on multi-day rebases — auto-regenerate or untrack
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Multi-day rebase no longer hits .chump/state.sql conflict (chosen mechanism: pre-rebase auto-regen via git rebase hook OR untrack from git + add to .gitignore + emit on every gap mutation as a build artifact)"
+    - "If state.sql stays tracked: include in INFRA-310's merge-driver coverage (custom 'state-sql-regen' driver that calls chump gap dump on conflict)"
+    - Document the resolution in CLAUDE.md alongside INFRA-310 and the bot-merge.sh recovery section
+  notes: |
+    Hit during 2026-05-03 cleanup pass on PR #972 (INFRA-361): state.sql had 1400 deletions / 2392 insertions of conflict markers from N parallel agents each calling 'chump gap dump'. The fix during the cleanup was 'git checkout --theirs .chump/state.sql && chump gap dump --out .chump/state.sql' to regenerate from current DB. INFRA-262 already removed bot-merge.sh from touching state.sql, but parallel reservers still write it. INFRA-310 covers append-only hot files but state.sql is a regenerated artifact — different fix shape (regen vs union-merge).
+
+- id: INFRA-368
+  domain: INFRA
+  title: pre-push hook — auto-detect legitimate rebase force-push (skip auto-merge-armed + gap-status guards together)
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - pre-push hook detects rebase force-push (e.g. via reflog 'rebase' entry within last N seconds, OR via the branch-on-remote sharing >0 commits with the local pushed branch's pre-rebase state) and silently allows it without env-var bypasses
+    - Auto-merge-armed check (CHUMP_AUTOMERGE_OVERRIDE=1) and gap-status check (CHUMP_GAP_CHECK=0) both auto-skip on detected rebases
+    - Manual force-push (e.g. squash-rewrite, history-edit) still triggers the guards
+    - "Test scripts/ci/test-pre-push-rebase-allow.sh covers: (1) rebase + push allowed silently, (2) amend + push triggers guards, (3) force-push of unrelated commits triggers guards"
+  notes: |
+    Hit during 2026-05-03 cleanup pass — needed both CHUMP_AUTOMERGE_OVERRIDE=1 AND CHUMP_GAP_CHECK=0 to push two legitimately-rebased PRs (#966, #972). Three-step bypass dance for normal rebase workflow is friction tax; INFRA-243 covers the consolidation angle generically but this is the specific high-frequency case. Detection heuristic: 'git reflog | head -5' shows 'rebase' as recent op.
+
+- id: INFRA-369
+  domain: INFRA
+  title: "Claude Code app default model: opus-4.7 high is expensive — push to haiku/sonnet for routine work"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Token-burn audit 2026-05-03 ~10:30 MDT: 8 active Claude Code UI sessions
+    each running '--model claude-opus-4-7 --effort high' continuously since
+    ~13:17 UTC. Each session is the most expensive Anthropic config:
+    ~5x sonnet, ~50x haiku per token. Even idle sessions consume tokens
+    on ambient processing + every interaction.
+    
+    Active session UUIDs at audit time:
+      aab20555 b214d112 930a8f49 c803a37d 0d7a3126 8a5aa096 042bdeaf 48801840
+    
+    Operator stance (this session): "haiku should be used" — the fleet
+    work landed via INFRA-364 (workers default to haiku) but local Claude
+    Code app sessions still default to opus-high.
+    
+    Three options:
+      (a) Document in CLAUDE.md / AGENTS.md: "for routine project work,
+          switch Claude Code model selector to claude-haiku-4-5 (or
+          claude-sonnet-4-6 for harder tasks). Reserve opus-4-7-high for
+          cases where the cheaper models genuinely fail."
+      (b) Add a settings.json template (.claude/settings.json) that pins
+          "model": "claude-haiku-4-5" at the project level. Operators can
+          override per-session via /model.
+      (c) Both — doc AND project-default.
+    
+    Recommend (c).
+    
+    Cost framing for doc: tonight's 6h session burned ~$92 of operator's
+    workspace credit AND maxed the $20/mo subscription cap (109% extra
+    usage off). With haiku default, same workload would have cost ~$2-5.
+    
+    ## Acceptance
+      - .claude/settings.json (or settings.local.json template) sets
+        "model": "claude-haiku-4-5" by default
+      - CLAUDE.md "Operator hygiene" section documents the cost framing
+        + override pattern (/model in app, FLEET_MODEL=sonnet for fleet)
+      - INFRA-364 (fleet → haiku) is referenced as the matching fleet-side fix
+  acceptance_criteria:
+    - .claude/settings.json sets haiku as project default
+    - CLAUDE.md documents model-cost guidance
+    - operators can /model override per-session
+  closed_date: '2026-05-03'
+  closed_pr: 979
+
+- id: INFRA-370
+  domain: INFRA
+  title: "bot-merge.sh on cargo-clippy timeout amends user changes onto previous (foreign) commit — squash-loss-class silent corruption per PR #52 territory"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Reproduce: trigger bot-merge.sh during cargo-clippy >500s timeout window. Live-observed 2026-05-02 by META-014 subagent (a0f5d4baeb3ea6613): confirmed via git reflog showing 'commit (amend)' that AGENTS.md changes were attached to the PREVIOUS branch commit (a foreign INFRA-335 SHA), not a new commit."
+    - "Root cause hypothesis: bot-merge.sh's auto-fmt-and-restage path runs git commit --amend after a clippy/fmt fix, but doesn't verify the previous commit's authorship/SHA matches THIS run's commits. Fix: amend ONLY if the previous commit's SHA is in the set of commits this bot-merge run created (track via pr-<N>-checkpoint tag at arm time, or stash a marker file)."
+    - "Operator override: CHUMP_BOT_MERGE_FORCE_AMEND=1 retains current behavior for genuine recovery scenarios"
+    - "Test: scripts/ci/test-bot-merge-no-amend-foreign.sh — sandbox repo with two commits A (foreign) + B (this run); inject a clippy failure mid-flight; assert that auto-fix produces commit C (new, parent=B), NOT amend-onto-A"
+    - "Falsifying condition: if reflog 'commit (amend)' was actually showing a DIFFERENT amend (the close-commit's --update-yaml regen), the corruption isn't real and this gap closes as no-bug. Confirm by reproducing the META-014 path with CHUMP_LOG_TIMING=1 and cross-referencing git reflog timestamps with the bot-merge.sh stage log."
+  depends_on: [META-014]
+
+- id: INFRA-371
+  domain: INFRA
+  title: "fleet workers: cut token burn — inline gap briefing + tight timeout + skip cached pre-flight steps"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Cut per-spawn token cost on fleet workers via 4 bash-only changes:
+    
+    1. **Inline gap briefing** (worker.sh): pre-fix prompt was 'Ship gap X. Read CLAUDE.md and AGENTS.md first…' which forced ~30K tokens of mandatory reads on every spawn before any productive work. Post-fix: pre-assemble the gap YAML + a tight HARD RULES summary inline. Claude can still read CLAUDE.md for unusual cases. Saves ~20-25K tokens/spawn. Bypass: FLEET_INLINE_BRIEFING=0.
+    
+    2. **Tighter timeout default** (run-fleet.sh): FLEET_TIMEOUT_S 1800→600. Most INFRA gaps that ship do so in 5-10min on hot cargo cache; the rest are usually wedged claude churning. Caps worst-case burn at ~⅓. Override per-spawn via env.
+    
+    3. **Skip ambient-hooks reinstall** (run-fleet.sh exports CHUMP_AMBIENT_INSTALL_SKIP=1): the installer is idempotent and already honors this env, but pre-fix it ran on every claude session start and emitted ~500 tokens of bash output to context. With this default, fleet workers skip the re-install (already wired by the human's interactive sessions).
+    
+    4. **Disable spawn-time lessons injection** (run-fleet.sh exports CHUMP_LESSONS_AT_SPAWN_N=0): defaults to 0 in COG-024 baseline, but defensive in case operator's env sets it. Each lesson is ~500-1000 tokens prepended to every assembly.
+    
+    ESTIMATED IMPACT (4 workers × 100 cycles/day):
+      Pre-fix:  ~30K tokens/spawn × 400 = 12M tokens/day
+      Post-fix: ~5K tokens/spawn × 400  = 2M tokens/day
+      Savings:  ~10M tokens/day = $30-150/day at sonnet, less at haiku (current default per INFRA-364)
+    
+    Test scripts/ci/test-fleet-inline-briefing.sh: 5 cases (default-inline, back-compat, missing-yaml fallback, worker.sh has block, run-fleet.sh has defaults). All PASS.
+    
+    Companion (separate gap, INFRA-372): Anthropic prompt caching via cache_control on the chump-local Rust dispatch path. Up to 90% cost reduction on cached prefix once implemented.
+  acceptance_criteria:
+    - worker.sh inlines docs/gaps/<ID>.yaml + hard-rules summary in claude prompt
+    - FLEET_INLINE_BRIEFING=0 reverts to legacy prompt for back-compat
+    - missing gap YAML produces graceful fallback message, no crash
+    - run-fleet.sh defaults FLEET_TIMEOUT_S=600 (was 1800)
+    - run-fleet.sh exports CHUMP_AMBIENT_INSTALL_SKIP=1 + CHUMP_LESSONS_AT_SPAWN_N=0 to all worker panes
+    - smoke test scripts/ci/test-fleet-inline-briefing.sh covers default, back-compat, missing-yaml, worker.sh content, run-fleet.sh defaults
+
+- id: INFRA-372
+  domain: INFRA
+  title: anthropic prompt caching for chump-local backend — add cache_control on CLAUDE.md+lessons+briefing prefix
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Anthropic prompt caching for the chump-local backend (src/dispatch.rs path). When fleet workers run via FLEET_BACKEND=chump-local → chump --execute-gap → src/provider_cascade.rs, the calls hit the Anthropic API directly (Together / Cerebras / Groq cascade) — these support cache_control headers per the Anthropic docs.
+    
+    Add cache_control: {type: 'ephemeral'} on the static prefix:
+      - CLAUDE.md content (if loaded)
+      - The lessons block (if CHUMP_LESSONS_AT_SPAWN_N > 0)
+      - The MEM-007 briefing's strategic-doc refs section (rarely changes per gap)
+    
+    The dynamic suffix (gap-specific YAML, recent ambient, blackboard) stays uncached.
+    
+    Anthropic doc: cached prefix billed at 10% the cost on cache hits, 25% above per-token cost on first write. Break-even at 2 reads. Fleet workers do 100+ spawns/day → effectively 90% cost reduction on the cached portion.
+    
+    NOTE: This does NOT help the FLEET_BACKEND=claude path (which uses 'claude -p'). Claude Code may already cache internally; out of our control. INFRA-371's bash-only fixes (inline briefing, tight timeout) handle the claude-code path; this gap handles the chump-local path.
+    
+    Implementation: thread cache_control through src/provider_cascade.rs's request builder; add a CHUMP_PROMPT_CACHE=0 bypass for A/B comparison. Smoke test exercises a 2-call session and verifies the second call shows cache_read_input_tokens > 0.
+  acceptance_criteria:
+    - src/provider_cascade.rs sends cache_control on static prefix sections
+    - CLAUDE.md + lessons + briefing strategic-docs are marked cacheable
+    - gap-specific YAML + ambient + blackboard remain uncached
+    - CHUMP_PROMPT_CACHE=0 disables for A/B
+    - telemetry logs cache_read_input_tokens per call
+    - smoke test verifies 2-call cache hit rate > 0
+    - provider must support Anthropic cache_control header (skip Together/Groq if not)
 
 - id: INFRA-41
   domain: INFRA

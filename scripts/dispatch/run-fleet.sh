@@ -65,7 +65,11 @@ if [[ -f "$REPO_ROOT/.env" && "${CHUMP_FLEET_NOENV:-0}" != "1" ]]; then
 fi
 
 FLEET_SIZE="${FLEET_SIZE:-8}"
-FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
+# INFRA-371: timeout default lowered 1800→600. Most INFRA gaps that ship
+# do so in 5–10min on hot cargo cache; the rest are usually wedged
+# (claude churning) and just burn tokens until the kill. Raise via
+# FLEET_TIMEOUT_S=1800 for substantive work or harder gaps.
+FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-600}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
@@ -73,6 +77,20 @@ FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 FLEET_SESSION="${FLEET_SESSION:-chump-fleet}"
 FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
 FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+# INFRA-371: token-burn defaults applied to every fleet worker unless
+# the caller overrides. These cut per-spawn token cost without losing
+# capability — workers can still re-enable for harder workloads.
+#   FLEET_INLINE_BRIEFING=1   inline gap YAML in prompt instead of
+#                              forcing claude to read CLAUDE.md/AGENTS.md
+#   CHUMP_LESSONS_AT_SPAWN_N=0 disable lessons block prepend at every
+#                              prompt assembly (default OFF in COG-024
+#                              but defensive here for any inherited env)
+#   CHUMP_AMBIENT_INSTALL_SKIP=1 skip the install-ambient-hooks idempotent
+#                              re-run on every session start (~500 tokens
+#                              of bash output saved per cycle)
+export FLEET_INLINE_BRIEFING="${FLEET_INLINE_BRIEFING:-1}"
+export CHUMP_LESSONS_AT_SPAWN_N="${CHUMP_LESSONS_AT_SPAWN_N:-0}"
+export CHUMP_AMBIENT_INSTALL_SKIP="${CHUMP_AMBIENT_INSTALL_SKIP:-1}"
 
 case "$FLEET_BACKEND" in
     claude|chump-local) ;;
@@ -154,6 +172,10 @@ worker_env=(
     "FLEET_EFFORT_FILTER=$FLEET_EFFORT_FILTER"
     "FLEET_BACKEND=$FLEET_BACKEND"
     "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+    # INFRA-371 token-burn defaults
+    "FLEET_INLINE_BRIEFING=$FLEET_INLINE_BRIEFING"
+    "CHUMP_LESSONS_AT_SPAWN_N=$CHUMP_LESSONS_AT_SPAWN_N"
+    "CHUMP_AMBIENT_INSTALL_SKIP=$CHUMP_AMBIENT_INSTALL_SKIP"
 )
 env_prefix="$(printf '%s ' "${worker_env[@]}")"
 
