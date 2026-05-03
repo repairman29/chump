@@ -104,10 +104,12 @@ EOF
 chmod +x "$TMP/bin/gh"
 
 out=$(REMOTE=origin DIRTY_THRESHOLD_HOURS=4 "$SCRIPT" --dry-run 2>&1 || true)
-if [[ "$out" == *"would file"*"PR #472 stuck"* ]]; then
+# INFRA-376: title must include the [REBASE] stuck-class tag so the fleet
+# picker / human triager can route DIRTY-class cleanups to pr-watch-shepherd.
+if [[ "$out" == *"would file"*"PR #472 stuck [REBASE]"* ]]; then
     echo "  PASS"
 else
-    echo "  FAIL: expected 'would file ... PR #472 stuck', got:"
+    echo "  FAIL: expected 'would file ... PR #472 stuck [REBASE]', got:"
     echo "$out" | sed 's/^/    /'
     exit 1
 fi
@@ -246,6 +248,86 @@ if { [[ ! -f "$SHIP_LOG" ]] || [[ ! -s "$SHIP_LOG" ]]; } && [[ "$out" != *"auto-
 else
     echo "  FAIL: bypass should suppress gap ship + auto-closed message"
     echo "  ship log: $(cat "$SHIP_LOG" 2>/dev/null || echo "(empty)")"
+    exit 1
+fi
+
+# ── Test 9 (INFRA-376): CI-RED stuck class gets [CI-RED] title tag ──────────
+echo "Test 9: CI-RED stuck PR gets [CI-RED] title tag"
+# Build a fresh BLOCKED PR (not DIRTY) but with a long-failing required check.
+# Reset chump stub so dedup doesn't fire.
+cat > "$TMP/bin/chump" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    "gap list --status open --json") echo "[]" ;;
+    "gap reserve "*) echo "INFRA-9999" ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$TMP/bin/chump"
+
+# CI failure 5h ago — over the 2h CI_FAIL_THRESHOLD_HOURS default.
+CI_OLD_TS=$(python3 -c "
+from datetime import datetime, timezone, timedelta
+print((datetime.now(timezone.utc) - timedelta(hours=5)).strftime('%Y-%m-%dT%H:%M:%SZ'))
+")
+RECENT_TS=$(python3 -c "
+from datetime import datetime, timezone, timedelta
+print((datetime.now(timezone.utc) - timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%SZ'))
+")
+cat > "$TMP/bin/gh" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+    "pr list "*)
+        cat <<JSON
+[{"number":888,"title":"INFRA-200: green branch with red CI","headRefName":"chump/infra-200","isDraft":false,"author":{"login":"alice"},"mergeStateStatus":"BLOCKED","autoMergeRequest":{"enabledAt":"$RECENT_TS"},"updatedAt":"$RECENT_TS"}]
+JSON
+        ;;
+    "pr checks 888 --json state,completedAt")
+        cat <<JSON
+[{"state":"FAILURE","completedAt":"$CI_OLD_TS"}]
+JSON
+        ;;
+    "pr checks "*) echo "[]" ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+
+out=$(REMOTE=origin "$SCRIPT" --dry-run 2>&1 || true)
+if [[ "$out" == *"would file"*"PR #888 stuck [CI-RED]"* ]]; then
+    echo "  PASS"
+else
+    echo "  FAIL: expected 'would file ... PR #888 stuck [CI-RED]', got:"
+    echo "$out" | sed 's/^/    /'
+    exit 1
+fi
+
+# ── Test 10 (INFRA-376): ORPHAN stuck class gets [ORPHAN] title tag ─────────
+echo "Test 10: ORPHAN (auto-merge disarmed, no live lease) gets [ORPHAN] title tag"
+# auto-merge null + cited gap with no live lease + recent updatedAt.
+# We need REBASE/CI-RED/BEHIND to NOT trigger so the script falls through to
+# the ORPHAN branch. updatedAt fresh (no DIRTY-age), CI checks empty (no
+# CI-RED). gh pr list returns mss=BLOCKED. PR title cites a gap so GAP_IDS is
+# non-empty, then has_live_lease checks .chump-locks/ — which is fresh (no
+# leases) — so ORPHAN=1.
+cat > "$TMP/bin/gh" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+    "pr list "*)
+        cat <<JSON
+[{"number":901,"title":"INFRA-300: orphan no auto-merge","headRefName":"chump/infra-300","isDraft":false,"author":{"login":"alice"},"mergeStateStatus":"BLOCKED","autoMergeRequest":null,"updatedAt":"$RECENT_TS"}]
+JSON
+        ;;
+    "pr checks "*) echo "[]" ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+
+out=$(REMOTE=origin "$SCRIPT" --dry-run 2>&1 || true)
+if [[ "$out" == *"would file"*"PR #901 stuck [ORPHAN]"* ]]; then
+    echo "  PASS"
+else
+    echo "  FAIL: expected 'would file ... PR #901 stuck [ORPHAN]', got:"
+    echo "$out" | sed 's/^/    /'
     exit 1
 fi
 
