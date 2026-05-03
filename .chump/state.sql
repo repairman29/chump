@@ -2876,6 +2876,13 @@ gaps:
     - F3 aggregate-magnitude verdict reinstated or confirmed-retired based on threshold rule
     - FINDINGS.md F3 caveat updated with the result
 
+- id: EVAL-097
+  domain: EVAL
+  title: cross-judge audit (INFRA-079 compliance) via cascade slots — free-tier multi-family judges
+  status: open
+  priority: P2
+  effort: s
+
 - id: EVAL-82
   domain: eval
   title: Re-verify EVAL-069 scorer credibility under python3.12
@@ -9027,9 +9034,11 @@ gaps:
 - id: INFRA-256
   domain: INFRA
   title: "fix misleading cascade per-call log: strategy label hardcoded to 'priority'"
-  status: open
+  status: done
   priority: P2
   effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 870
 
 - id: INFRA-257
   domain: INFRA
@@ -9049,7 +9058,7 @@ gaps:
 - id: INFRA-258
   domain: INFRA
   title: closer-pr-batcher / stale-pr-reaper false-close on partial-delivery PRs — gap-status alone is insufficient signal
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -9106,6 +9115,289 @@ gaps:
   depends_on: [INFRA-219]
   notes: |
     Filed during 2026-05-02 PR-watching pass after recovering #833's lost AGENTS.md doc as PR #863. The recovery cost was tiny but the failure mode (silent partial-delivery loss) is corrosive at fleet scale — every dispatched agent risks losing some of its work this way if it shares a gap-ID with parallel agents.
+  closed_date: '2026-05-02'
+  closed_pr: 878
+
+- id: INFRA-259
+  domain: INFRA
+  title: default fleet workers to chump-local backend (consume free-tier cascade)
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 876
+
+- id: INFRA-260
+  domain: INFRA
+  title: "daily cascade consumption report (overnight): per-slot RPD utilization to ambient.jsonl"
+  status: done
+  priority: P2
+  effort: s
+  closed_date: '2026-05-02'
+  closed_pr: 875
+
+- id: INFRA-261
+  domain: INFRA
+  title: "INFRA-236 trigger still broken on main: regenerate-gaps-yaml.yml uses merge_group (never fires) — re-ship #803 fix"
+  status: done
+  priority: P0
+  effort: xs
+  closed_date: '2026-05-02'
+  closed_pr: 880
+
+- id: INFRA-262
+  domain: INFRA
+  title: "bot-merge.sh INFRA-154: stop touching .chump/state.sql — kills the conflict cascade hot-spot"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    This session (2026-05-02) hit `.chump/state.sql` merge conflicts on EVERY rebase
+    of an OPEN PR — 6+ times across 23 PRs. Root cause:
+    
+    bot-merge.sh's INFRA-154 auto-close step does:
+      chump gap dump --out .chump/state.sql
+      git add .chump/state.sql
+      git commit ...
+    
+    With N PRs in flight (parallel agents), each one's auto-close commit edits the
+    SAME state.sql file. Sibling auto-close commits land on main → my PR goes DIRTY
+    on state.sql → I rebase → regenerate state.sql from canonical state.db →
+    git add → continue. Repeat for each in-flight PR. Cascading rebase pain.
+    
+    The state.sql file is a regenerated artifact from .chump/state.db (the canonical
+    SQLite store). It's tracked so reviewers can see human-readable diffs of state.db
+    changes. But post-INFRA-188 (per-file gaps), the human-readable diff is in
+    `docs/gaps/<ID>.yaml` — state.sql is now redundant for PR review.
+    
+    The .github/workflows/regenerate-gaps-yaml.yml workflow already keeps state.sql
+    in sync on main via merge_group. We don't need bot-merge.sh to do it too.
+    
+    ## Fix
+    bot-merge.sh INFRA-154 step:
+      - REMOVE: `chump gap dump --out .chump/state.sql`
+      - REMOVE: `git add .chump/state.sql`
+      - KEEP: docs/gaps.yaml + docs/gaps/ git-add (still relevant for PR review)
+    
+    The regenerate-gaps-yaml workflow handles state.sql on main (unchanged).
+    
+    ## Acceptance
+    - bot-merge.sh INFRA-154 step does NOT touch .chump/state.sql
+    - Documented in CLAUDE.md (state.sql is regen-only, not part of PR diff)
+    - state.sql still exists in tree (other tools depend on it; this just changes
+      who's responsible for updating it in PR contexts)
+  acceptance_criteria:
+    - bot-merge.sh INFRA-154 step skips state.sql
+    - state.sql still tracked, just regen-only
+    - CLAUDE.md notes state.sql is post-merge artifact
+  closed_date: '2026-05-02'
+  closed_pr: 877
+
+- id: INFRA-263
+  domain: INFRA
+  title: "tauri-cowork-e2e: restore /task round-trip on v2 chump-chat (deferred from INFRA-250)"
+  status: open
+  priority: P3
+  effort: xs
+
+- id: INFRA-264
+  domain: INFRA
+  title: "two-tier code review: cascade-judge gates trivial PRs; Anthropic only on contentious diffs"
+  status: open
+  priority: P2
+  effort: s
+
+- id: INFRA-265
+  domain: INFRA
+  title: "per-task-class backend routing: populate routing.yaml so xs/s gaps go to cheapest cascade slot, l/xl + COG to Anthropic"
+  status: open
+  priority: P2
+  effort: m
+
+- id: INFRA-266
+  domain: INFRA
+  title: "workload auto-promotion: when cascade RPD utilization < 40% three days running, bump FLEET_SIZE by 2 from overnight report"
+  status: open
+  priority: P2
+  effort: m
+
+- id: INFRA-267
+  domain: INFRA
+  title: cascade-aware fallback to Anthropic for P0 gaps when every cascade slot fails (avoid silent P0 failure)
+  status: open
+  priority: P2
+  effort: s
+
+- id: INFRA-268
+  domain: INFRA
+  title: "privacy-tier auto-selection: prompts touching src/ default safe-only; only public-doc prompts allow Trains slots"
+  status: open
+  priority: P2
+  effort: s
+
+- id: INFRA-269
+  domain: INFRA
+  title: "chump cascade stats subcommand: summarize last-N-days backend ship rate per provider from reflection rows"
+  status: open
+  priority: P3
+  effort: s
+
+- id: INFRA-270
+  domain: INFRA
+  title: "speculative parallel inference for high-confidence prompts: fan-out to N cascade slots, take first sane response"
+  status: open
+  priority: P3
+  effort: m
+
+- id: INFRA-271
+  domain: INFRA
+  title: "scripts/dispatch/worker.sh: use chump dispatch + INFRA-193 speculative execution (kill gap-pick race)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Caught during the first dogfood run of scripts/dispatch/run-fleet.sh
+    (2026-05-02T23:32, FLEET_SIZE=2):
+    
+      [worker:1] picked gap INFRA-261
+      [worker:2] picked gap INFRA-261
+      [worker:2] WARN: worktree create failed for INFRA-261; sleeping 30s
+    
+    Both workers ran `chump gap list --status open --json` at the same instant;
+    neither saw the other's claim because gap-claim.sh hadn't fired yet. Worker 2
+    hit the worktree-already-exists collision when it tried to create chump/infra-261-fleet-2-...
+    because Worker 1 had already created chump/infra-261-fleet-1-...
+    
+    The fix already exists upstream:
+      - INFRA-193 (PR #866, OPEN+armed): opt-in speculative execution where
+        racing claims both proceed; first-to-land wins, loser auto-closes
+        superseded.
+      - INFRA-191 (PR #783 + #798, MERGED): chump dispatch with
+        WorkBackend::Headless that wraps the claim → claude-p → ship → release
+        cycle as a single command.
+    
+    worker.sh predates both. It directly calls gap-claim.sh + claude -p +
+    bot-merge.sh in sequence, missing the speculative-execution race-resolution
+    that INFRA-193 introduces.
+    
+    ## Fix
+    Refactor worker.sh's pick→claim→work→ship loop to call:
+    
+        chump dispatch --backend headless \
+            --prompt "$WORKER_PROMPT" \
+            --model "${FLEET_MODEL:-claude-sonnet-4-6}" \
+            --auto-merge \
+            --fast \
+            --paths "$(chump gap files <gap-id>)"
+    
+    — and let chump dispatch handle preflight (which post-INFRA-193 will
+    allow speculative claims with race-resolution). Removes ~80 lines of
+    shell glue from worker.sh, gives workers the same surface as the Rust
+    test suite already covers.
+    
+    Secondary (smaller): the cycle-1 git-fetch races between siblings
+    ("error: cannot lock ref 'refs/remotes/origin/main'"). git itself
+    serializes via .git/HEAD.lock so it's mostly self-recovering, but worker.sh
+    should retry on this specific error rather than treating it as fatal-warn.
+    
+    ## Acceptance
+    - N>=2 fleet workers picking the same gap → exactly one PR ships, the
+      loser is auto-closed superseded
+    - worker.sh shrinks (less shell glue duplicated from chump dispatch)
+    - Test: scripts/ci/test-worker-race.sh spawns 2 workers, asserts both
+      exit non-zero only if no PR was created (not 1 succeeds + 1 errors)
+  acceptance_criteria:
+    - worker.sh uses chump dispatch instead of inline gap-claim+claude-p+bot-merge
+    - race between 2 workers on same gap → exactly one PR ships
+    - loser auto-closes superseded (INFRA-193 path)
+    - test scripts/ci/test-worker-race.sh covers it
+  closed_date: '2026-05-02'
+  closed_pr: 879
+
+- id: INFRA-272
+  domain: INFRA
+  title: "Workflow-only PRs hit required-CI path-filter skip trap — killed #803, almost killed #874"
+  status: open
+  priority: P1
+  effort: xs
+
+- id: INFRA-273
+  domain: INFRA
+  title: "gap-preflight: cross-check open PRs by gap-ID — block claim when an in-flight PR already implements the gap"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Caught during the dogfood fleet run on 2026-05-02 (FLEET_SIZE=2, fleet-20260502-173243):
+    
+    Both fleet workers picked INFRA-261 (the highest-priority unclaimed gap in
+    state.db). chump gap preflight passed for both because:
+      - status:open on origin/main ✓
+      - no live lease ✓
+    
+    What it MISSED: PR #874 (head=chump/infra-261-fix-trigger-on-main, OPEN+armed,
+    created 2026-05-02T23:08Z by a sibling agent) was already implementing the
+    exact gap. Both workers spent claude -p quota on a gap that already had an
+    in-flight PR — pure wasted work.
+    
+    gap-preflight.sh has Check 4 (open PR file-scope overlap) but it only WARNS
+    on file-domain overlap; it doesn't block when an open PR's title matches the
+    gap-ID directly.
+    
+    ## Fix
+    
+    Add Check 5 to scripts/coord/gap-preflight.sh:
+    
+        check_pr_implements_gap() {
+            local gap_id="$1"
+            # Match gap-ID at start of PR title (canonical "INFRA-X: ..." format)
+            # OR in the title body. Conservative: any PR whose title contains the
+            # exact gap-ID gets flagged.
+            gh pr list --state open --search "${gap_id} in:title" \
+                --json number,title -q '.[0]' 2>/dev/null
+        }
+    
+    If a match exists (and it's not OUR own PR), block the claim:
+        SKIP $GAP_ID — open PR #N is already implementing this gap.
+        Pick a different gap or wait for #N to land/close.
+    
+    Bypass: CHUMP_PREFLIGHT_PR_CHECK=0 — for genuine concurrent races where
+    INFRA-193 speculative-execution is wanted (operator opts in).
+    
+    ## Acceptance
+    - gap-preflight.sh blocks claim when an open PR with the gap-ID in title exists
+    - Bypass env exists for legit speculative work
+    - Test: scripts/ci/test-preflight-pr-check.sh covers both branches
+    
+    ## Related
+    - INFRA-104 (PR title-vs-impl drift detector) — different scope; this is
+      preventive (blocks claim), INFRA-104 is detective (flags drift after-the-fact)
+    - INFRA-193 (speculative execution) — this is the OPT-OUT default;
+      speculative requires CHUMP_SPECULATIVE=1 explicitly
+  acceptance_criteria:
+    - gap-preflight.sh Check 5 blocks claim when open PR with gap-ID in title exists
+    - CHUMP_PREFLIGHT_PR_CHECK=0 bypass for speculative work
+    - test scripts/ci/test-preflight-pr-check.sh asserts both branches
+
+- id: INFRA-275
+  domain: INFRA
+  title: syspolicyd wedges chump binary inode — sibling gap-reserve hammers stuck at _dyld_start, fallback to direct YAML write produces ID collisions
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-301
+  domain: INFRA
+  title: Direct-YAML-write fallback in sibling agents produces silent ID collisions when chump gap reserve hangs (concurrent next-free-ID picks)
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Pre-commit raw-YAML-edit guard already blocks raw edits to docs/gaps/<ID>.yaml without a fresh .chump/.last-yaml-op marker (INFRA-200) — verify it actually fires on the duplicate-ID write path produced by sibling next-free-ID scans
+    - "Document the heal-don't-fallback rule in CLAUDE.md (already done by INFRA-275 PR #889) and AGENTS.md"
+    - "Optional: add a tripwire in scripts/coord/gap-reserve.sh that detects `chump gap reserve` timeouts and prints a banner pointing at scripts/dev/chump-doctor.sh instead of letting the caller invent a YAML-write fallback"
+    - "Regression test: simulate the syspolicyd hang (e.g. by holding a flock on the chump binary's directory) and assert any reserve attempt fails with the chump-doctor banner rather than silently returning success after a YAML write"
+  depends_on: [INFRA-275]
 
 - id: INFRA-41
   domain: infra
@@ -10183,6 +10475,68 @@ gaps:
     Coupled finding: INFRA-213 (CI matrix split, PR #814) is the proximate cause — the increased parallelism exposed a pre-existing race in INFRA-216 (PR #800)s test. INFRA-216 wrote the test serially-safe; INFRA-213 increased contention. Neither is wrong individually; the coupling is. Filed during 2026-05-02 PR re-work pass when 2/11 same-session PRs hit the same flake. Side-effect surfaced via the new test job split.
   closed_date: '2026-05-02'
   closed_pr: 860
+
+- id: META-016
+  domain: META
+  title: Untracked-file loss in main worktree — git stash push -u (claude-other-stash) absorbs .chump/notes/* and never pops back
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Live incident 2026-05-02 ~22:30: 3 untracked files in /Users/jeffadkins/Projects/Chump/.chump/notes/ disappeared during the session. Files were created via the Write tool with absolute path under main repo .chump/notes/:
+    
+      - AI-COLLABORATION-DUE-DILIGENCE.md (354 lines — multi-AI vetting framework + offline-mission strategic anchor)
+      - ask-llm.sh (multi-provider LLM critique helper)
+      - external-feedback-2026-05-02.md (3 hours of captured LLM responses across 6 providers)
+    
+    When checked at end of session, only the SESSION-2026-05-02-HANDOFF.md (just-written, ~1 minute earlier) was present. The 3 earlier files were gone.
+    
+    Verified investigation:
+      - find / -name "<filename>" returns nothing (not in /tmp, not in worktrees, not in main repo)
+      - .gitignore excludes specific files under .chump/ but NOT .chump/notes/ — files SHOULD have persisted
+      - git stash list shows 8 stashes; none reference these files
+      - git fsck --lost-found shows 5 dangling commits but no dangling blobs that look like the lost content
+      - main worktree was on chump/infra-123-reflection-field-consistency at investigation time (NOT main; an agent switched it)
+      - stale-worktree-reaper log shows 0 reaped this run
+    
+    Most plausible cause: a `git clean -fd` (or equivalent destructive cleanup) somewhere in the dispatched-agent flow. Untracked files survive `git switch` normally; they only get removed by explicit clean commands. Suspects:
+      - bot-merge.sh: search for `git clean` calls
+      - scripts/coord/gap-claim.sh
+      - scripts/setup/install-hooks.sh post-install hook
+      - The agent-dispatcher harness itself doing pre-commit cleanup
+    
+    This extends META-011 — that gap covered uncommitted edits being stomped via branch switches; META-016 is uncommitted UNTRACKED files being deleted entirely. Same root cause class (background mutation of main worktree state), different failure surface (file deletion vs. branch swap).
+    
+    Fix paths:
+      (a) Find and remove `git clean -fd` from any session-flow script. Aggressive cleanup belongs in worktree-tear-down (when the worktree is being deleted), not in session-active flow.
+      (b) Move `.chump/notes/` to operate ONLY under `~/.claude/...` or another out-of-repo path, so cleanup commands cant touch it. (Loss of locality is the cost.)
+      (c) Add a hard guard: if any session script is about to run `git clean`, refuse unless `CHUMP_ALLOW_GIT_CLEAN=1` is set. Force operators to opt in to destructive cleanup.
+    
+    Recommend (a) — find the offending call site. Most-likely offenders: any script that calls `git clean` during normal flow rather than only during worktree teardown.
+  acceptance_criteria:
+    - Identify which script issues the destructive git clean (or equivalent) that ate the 3 .chump/notes/ files
+    - Either remove the call OR put it behind explicit CHUMP_ALLOW_GIT_CLEAN=1 opt-in
+    - Add a regression test in scripts/ci/ that creates an untracked file in .chump/notes/, runs through a full bot-merge.sh / gap-claim.sh cycle, and asserts the file persists
+    - "CLAUDE.md Hard Rules section adds: \"Anything you write to the main repo without committing is at risk — write under ~/.claude/... or commit immediately\""
+  depends_on: [META-011]
+  notes: |
+    Filed during 2026-05-02 session wrap when SESSION-HANDOFF doc referenced files that no longer existed on disk. The file-loss happened mid-session, silently. This is the silent-data-loss failure mode META-011 warned about, surfacing as the wrapping session was actively writing the very document that referenced the lost files. Recursive irony.
+
+- id: META-017
+  domain: META
+  title: "reconcile cascade-activation drift: flip INFRA-256/259/260 closures + write 11 missing YAML mirrors"
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-03'
+
+- id: META-018
+  domain: META
+  title: reconcile pre-existing gap registry drift via gap-doctor sync-from-yaml + sync-from-db (13+7 gaps)
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-03'
 
 - id: PRODUCT-001
   domain: product
