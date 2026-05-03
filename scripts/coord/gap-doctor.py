@@ -321,6 +321,101 @@ def cmd_sync_from_db(args, root: Path) -> int:
     return 0
 
 
+def cmd_safe_sweep(args, root: Path) -> int:
+    """INFRA-308: cron-friendly safe drift sweep.
+
+    Auto-applies BOTH sync-from-yaml AND sync-from-db (the two safe buckets).
+    Bucket 3 (DB-only orphans) and Bucket 4 (YAML-only) are NOT auto-fixed —
+    they emit ALERT events to ambient.jsonl so an operator can review.
+
+    Designed to run as a launchd cron every 15 min. Idempotent. Exits 0
+    on clean / safe-fixed; non-zero only on errors.
+    """
+    import subprocess
+    import os
+
+    # Pre-state: capture buckets before any sync
+    yaml_view = load_yaml_status(root)
+    db_view = load_db_status(root)
+    common = set(yaml_view) & set(db_view)
+    bucket1 = sorted(g for g in common if db_view[g]["status"] == "done" and yaml_view[g].get("status") != "done")
+    bucket2 = sorted(g for g in common if db_view[g]["status"] == "open" and yaml_view[g].get("status") == "done")
+    bucket3 = sorted(set(db_view) - set(yaml_view))
+    bucket4 = sorted(set(yaml_view) - set(db_view))
+
+    print(f"== gap-doctor safe-sweep (INFRA-308) ==")
+    print(f"  Bucket 1 (DB done / YAML open) : {len(bucket1)} → auto sync-from-db")
+    print(f"  Bucket 2 (DB open / YAML done) : {len(bucket2)} → auto sync-from-yaml")
+    print(f"  Bucket 3 (DB-only orphans)     : {len(bucket3)} → ALERT (manual review)")
+    print(f"  Bucket 4 (YAML-only / missing) : {len(bucket4)} → ALERT (manual review)")
+
+    # Apply safe buckets (these are no-ops if --dry-run)
+    if not args.dry_run:
+        if bucket1:
+            # Per-file YAML rewrite (post-INFRA-188 canonical path).
+            # cmd_sync_from_db delegates to `chump gap dump --out` which
+            # writes the legacy monolithic docs/gaps.yaml; that's wrong
+            # for our post-INFRA-188 layout. Rewrite per-file YAMLs in
+            # place instead.
+            print(f"\n-- syncing {len(bucket1)} per-file YAMLs from DB --")
+            for gid in bucket1:
+                yaml_path = root / "docs" / "gaps" / f"{gid}.yaml"
+                row = db_view[gid]
+                # Read existing YAML to preserve any operator-added fields.
+                existing = yaml_view.get(gid, {})
+                existing["status"] = "done"
+                if row.get("closed_date"):
+                    existing["closed_date"] = row["closed_date"]
+                if row.get("closed_pr") is not None:
+                    existing["closed_pr"] = row["closed_pr"]
+                yaml_path.write_text(
+                    yaml.safe_dump([existing], default_flow_style=False, sort_keys=False, allow_unicode=True, width=120),
+                    encoding="utf-8",
+                )
+                print(f"  {gid} → status=done")
+        if bucket2:
+            print("\n-- applying sync-from-yaml --")
+            sub_args = argparse.Namespace(apply=True)
+            cmd_sync_from_yaml(sub_args, root)
+
+    # Emit ambient ALERTs for unsafe buckets (non-blocking; skipped in dry-run).
+    if (bucket3 or bucket4) and not args.dry_run:
+        # Resolve main-repo .chump-locks via git-common-dir (INFRA-109).
+        try:
+            common_dir = subprocess.run(
+                ["git", "rev-parse", "--git-common-dir"],
+                cwd=root, capture_output=True, text=True, check=True
+            ).stdout.strip()
+            if common_dir == ".git":
+                main_repo = root
+            else:
+                main_repo = Path(common_dir).parent.resolve()
+        except subprocess.CalledProcessError:
+            main_repo = root
+        ambient = main_repo / ".chump-locks" / "ambient.jsonl"
+        if not ambient.parent.exists():
+            ambient.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        from datetime import datetime, timezone
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if bucket3:
+            evt = {"ts": ts, "event": "ALERT", "kind": "gap_drift_orphan",
+                   "source": "gap-doctor-safe-sweep", "ids": bucket3,
+                   "note": f"{len(bucket3)} gaps in state.db with no YAML mirror"}
+            with ambient.open("a") as f:
+                f.write(_json.dumps(evt, separators=(",", ":")) + "\n")
+        if bucket4:
+            evt = {"ts": ts, "event": "ALERT", "kind": "gap_drift_yaml_only",
+                   "source": "gap-doctor-safe-sweep", "ids": bucket4,
+                   "note": f"{len(bucket4)} gaps in YAML with no DB row (likely YAML-direct fallback collision)"}
+            with ambient.open("a") as f:
+                f.write(_json.dumps(evt, separators=(",", ":")) + "\n")
+        print(f"\n[safe-sweep] emitted {(1 if bucket3 else 0) + (1 if bucket4 else 0)} ALERT event(s) to {ambient}")
+
+    print(f"\n[safe-sweep] complete (auto-fixed: {len(bucket1) + len(bucket2)}, alerted: {len(bucket3) + len(bucket4)})")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="gap-store drift detector + repair (INFRA-155)")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -333,12 +428,17 @@ def main() -> int:
     p2 = sub.add_parser("sync-from-db", help="regenerate YAML from DB (preserves meta:)")
     p2.add_argument("--apply", action="store_true", help="actually rewrite docs/gaps.yaml")
 
+    # INFRA-308: cron-friendly safe sweep (auto-fix safe buckets, ALERT on unsafe).
+    p3 = sub.add_parser("safe-sweep", help="cron-friendly: auto-fix safe drift, ALERT unsafe")
+    p3.add_argument("--dry-run", action="store_true", help="show what would happen without mutating")
+
     args = ap.parse_args()
     root = repo_root()
     handlers = {
         "doctor": cmd_doctor,
         "sync-from-yaml": cmd_sync_from_yaml,
         "sync-from-db": cmd_sync_from_db,
+        "safe-sweep": cmd_safe_sweep,
     }
     return handlers[args.cmd](args, root)
 
