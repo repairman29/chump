@@ -136,6 +136,33 @@ Each gap is an atomic unit of work with a stable ID (e.g. `COMP-007`,
    opt-out: `touch <worktree>/.chump-no-reap`. Details: `CLAUDE.md` section
    **Worktree disk hygiene**.
 
+### Diagnosing divergence (added 2026-05-02 / META-014)
+
+Before filing an RCA / regression gap that claims "X reverted my change /
+X overwrote my edit / origin has unexpected state," **verify against
+origin/main directly.** Agents routinely conflate local working-tree
+state (and system-reminder file content, which mirrors the local checkout)
+with what's actually on the trunk. INFRA-238 is the cautionary example:
+~30 minutes wasted writing a P0 root-cause analysis for a phantom revert
+that turned out to be a stale local working tree 8 commits behind
+origin/main. The closures had **always** been `status: done` upstream;
+only the local checkout still showed `status: open`. The gap had to be
+closed as misdiagnosis (PR #804) with a long `closed_interpretation`.
+
+```bash
+# Before filing an RCA / regression gap, verify against origin/main:
+git fetch origin main --quiet
+git show origin/main:<file> | head -50          # what's actually on main
+git diff HEAD origin/main -- <file>             # how your tree differs
+git log origin/main --oneline --since='2 days ago' -- <file>
+```
+
+Apply this any time you're about to file a "this used to work,"
+"X reverted my Y," or "origin has unexpected state" gap. **Always.**
+If the verify-against-origin output shows the expected state, the
+"divergence" was a stale local working tree, not a real revert — don't
+file the gap.
+
 When the gap ships, run `chump gap ship <GAP-ID> --update-yaml` to flip
 `status: done` + stamp `closed_date` in `.chump/state.db` AND regenerate
 `docs/gaps/<GAP-ID>.yaml` so the human-readable diff lands **atomically with
