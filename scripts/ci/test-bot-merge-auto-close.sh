@@ -130,7 +130,10 @@ fi
 mkdir -p "$SANDBOX2/docs/gaps"
 (
     cd "$SANDBOX2"
-    CHUMP_REPO_ROOT="$SANDBOX2" "$CHUMP_BIN" gap reserve \
+    # Initialize the database (empty import) so gap reserve has a store to write to
+    CHUMP_REPO_ROOT="$SANDBOX2" "$CHUMP_BIN" gap import >/dev/null 2>&1 || true
+    # Skip ambient glance in test context (sandbox doesn't have scripts/coord/)
+    CHUMP_REPO_ROOT="$SANDBOX2" FLEET_029_AMBIENT_GLANCE_SKIP=1 "$CHUMP_BIN" gap reserve \
         --domain INFRA --title "reserve-mirror-smoke" \
         --priority P3 --effort xs >/dev/null 2>&1 || true
 )
