@@ -141,10 +141,37 @@ PY
         # the fleet has been quiet for STARVE_THRESHOLD consecutive cycles.
         _starve_count=$((_starve_count + 1))
         if [ "$_starve_count" = "$CHUMP_STARVE_THRESHOLD" ]; then
+            # INFRA-391: compute the suggested next filter set so the
+            # operator (or the auto-relax path below) knows what to widen.
+            # Order: drop FLEET_DOMAIN_FILTER first → bump effort tier →
+            # bump priority tier. Each step is the smallest increase in
+            # blast radius that's still meaningful.
+            _suggest_domain="$FLEET_DOMAIN_FILTER"
+            _suggest_effort="$FLEET_EFFORT_FILTER"
+            _suggest_prio="$FLEET_PRIORITY_FILTER"
+            if [ -n "$_suggest_domain" ]; then
+                _suggest_domain=""
+                _suggest_action="drop FLEET_DOMAIN_FILTER (was: $FLEET_DOMAIN_FILTER)"
+            elif [ "$_suggest_effort" = "xs,s" ] || [ "$_suggest_effort" = "xs" ]; then
+                _suggest_effort="xs,s,m"
+                _suggest_action="bump FLEET_EFFORT_FILTER → $_suggest_effort"
+            elif [ "$_suggest_effort" = "xs,s,m" ]; then
+                _suggest_effort="xs,s,m,l"
+                _suggest_action="bump FLEET_EFFORT_FILTER → $_suggest_effort"
+            elif [ "$_suggest_prio" = "P0,P1" ] || [ "$_suggest_prio" = "P0" ] || [ "$_suggest_prio" = "P1" ]; then
+                _suggest_prio="P0,P1,P2"
+                _suggest_action="bump FLEET_PRIORITY_FILTER → $_suggest_prio"
+            elif [ "$_suggest_prio" = "P0,P1,P2" ]; then
+                _suggest_prio="P0,P1,P2,P3"
+                _suggest_action="bump FLEET_PRIORITY_FILTER → $_suggest_prio (everything left)"
+            else
+                _suggest_action="filters already maximally relaxed — backlog truly empty for this agent"
+            fi
+
             _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             _amb_path="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
             mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
-            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"fleet_starved","agent_id":"%s","consecutive_empty":%d,"filters":"prio=%s domain=%s effort=%s"}\n' \
+            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"fleet_starved","agent_id":"%s","consecutive_empty":%d,"filters":"prio=%s domain=%s effort=%s","suggest":"%s"}\n' \
                 "$_ts" \
                 "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
                 "$AGENT_ID" \
@@ -153,8 +180,27 @@ PY
                 "$FLEET_PRIORITY_FILTER" \
                 "${FLEET_DOMAIN_FILTER:-any}" \
                 "$FLEET_EFFORT_FILTER" \
+                "$_suggest_action" \
                 >> "$_amb_path" 2>/dev/null || true
-            log "ALERT kind=fleet_starved (consecutive_empty=$_starve_count; filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER)"
+            log "ALERT kind=fleet_starved (consecutive_empty=$_starve_count; filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER); suggest: $_suggest_action"
+
+            # INFRA-391 mode (a): opt-in auto-relax — apply the suggestion
+            # in-place and reset the starve counter so we get another
+            # STARVE_THRESHOLD cycles to find work under the new filter.
+            if [ "${CHUMP_STARVE_AUTO_RELAX:-0}" = "1" ]; then
+                FLEET_DOMAIN_FILTER="$_suggest_domain"
+                FLEET_EFFORT_FILTER="$_suggest_effort"
+                FLEET_PRIORITY_FILTER="$_suggest_prio"
+                _starve_count=0
+                log "INFRA-391: auto-relaxed filter (CHUMP_STARVE_AUTO_RELAX=1) — now: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER"
+            fi
+
+            # INFRA-391 mode (b): opt-in auto-shutdown — exit clean so the
+            # tmux pane / launchd job stops consuming wakeups + tokens.
+            if [ "${CHUMP_STARVE_AUTO_SHUTDOWN:-0}" = "1" ]; then
+                log "INFRA-391: auto-shutdown (CHUMP_STARVE_AUTO_SHUTDOWN=1) — exiting cleanly"
+                exit 0
+            fi
         fi
         # INFRA-315: jittered sleep — randomize ±CHUMP_POLL_JITTER% around
         # IDLE_SLEEP_S. e.g. with default 60s + 30%: window 42-78s. Breaks
