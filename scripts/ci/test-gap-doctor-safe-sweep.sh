@@ -101,13 +101,27 @@ echo "[PASS] --dry-run is read-only"
 # ── Test 2: real safe-sweep auto-fixes Bucket 1 + 2 ──────────────────────────
 echo ""
 echo "Test 2: real safe-sweep auto-fixes Bucket 1 and Bucket 2"
-# Capture but surface the script's stderr/stdout if the script itself exits
-# non-zero — otherwise CI failures look like silent exit-1 with no clue why
-# (spent ~2h diagnosing this before catching the FileNotFoundError on the
-# `chump` binary subprocess invocation in cmd_sync_from_yaml — INFRA-308 fix).
-if ! python3 scripts/coord/gap-doctor.py safe-sweep >/tmp/sweep-real.out 2>&1; then
-    echo "[FAIL] safe-sweep exited non-zero — output below:"
+# INFRA-343 diagnostic: previous version silently dropped stderr on
+# python failure (set -e killed script before assertions printed).
+# Now we capture rc + always cat output if non-zero so CI failures
+# are diagnosable from the workflow log. (Diagnostic was independently
+# arrived at by another agent; merged here together with the actual
+# bug fix in scripts/coord/gap-doctor.py — INFRA-308 chump-binary
+# FileNotFoundError on CI runners.)
+set +e
+python3 scripts/coord/gap-doctor.py safe-sweep >/tmp/sweep-real.out 2>&1
+SWEEP_RC=$?
+set -e
+if [[ $SWEEP_RC -ne 0 ]]; then
+    echo "[FAIL] safe-sweep returned non-zero ($SWEEP_RC); python output follows:"
+    echo "--- stdout/stderr ---"
     cat /tmp/sweep-real.out
+    echo "--- env diagnostics ---"
+    python3 --version
+    python3 -c "import yaml; print(f'PyYAML: {yaml.__version__}')" 2>&1 || echo "yaml import failed"
+    python3 -c "import sqlite3; print(f'sqlite: {sqlite3.sqlite_version}')" 2>&1 || true
+    sqlite3 .chump/state.db "SELECT id, status FROM gaps;" 2>&1 || true
+    ls -la docs/gaps/ 2>&1 || true
     exit 1
 fi
 
