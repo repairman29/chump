@@ -22,9 +22,12 @@ sandbox_setup() {
     local sandbox="$1"
     local fixture_yaml="$2"
     git init -q -b main "$sandbox"
-    mkdir -p "$sandbox/docs" "$sandbox/.chump-locks" "$sandbox/scripts/coord"
+    mkdir -p "$sandbox/docs" "$sandbox/.chump-locks" "$sandbox/scripts/coord" "$sandbox/scripts/lib"
     cp "$REPO_ROOT/scripts/coord/gap-reserve.sh" "$sandbox/scripts/coord/gap-reserve.sh"
     chmod +x "$sandbox/scripts/coord/gap-reserve.sh"
+    # INFRA-109: gap-reserve.sh now sources scripts/lib/repo-paths.sh for
+    # main-repo-vs-linked-worktree resolution. Sandbox needs the same lib.
+    cp "$REPO_ROOT/scripts/lib/repo-paths.sh" "$sandbox/scripts/lib/repo-paths.sh"
     printf '%s' "$fixture_yaml" > "$sandbox/docs/gaps.yaml"
     git -C "$sandbox" -c user.email=t@t -c user.name=t add -A >/dev/null
     git -C "$sandbox" -c user.email=t@t -c user.name=t commit -q -m "seed"
