@@ -58,6 +58,12 @@ else
     MAIN_REPO="$(cd "$COMMON_DIR/.." && pwd)"
 fi
 AMBIENT="$MAIN_REPO/.chump-locks/ambient.jsonl"
+# CI fresh-checkout fix: ensure the lock dir + ambient file exist so the
+# shepherd can append to it. The dir is gitignored so a fresh runner has
+# neither. Touching guarantees both exist; idempotent on developer
+# machines where they already do.
+mkdir -p "$MAIN_REPO/.chump-locks"
+touch "$AMBIENT"
 rm -f "$HB"
 ambient_lines_before=$(wc -l < "$AMBIENT" 2>/dev/null || echo 0)
 # CHUMP_PR_WATCH_MAX_PRS=0 doesn't actually skip the gh call, but if there

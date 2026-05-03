@@ -290,8 +290,6 @@ jobs:
 
       - name: pre-push MERGED guard (INFRA-306)
         run: bash scripts/ci/test-merged-check-guard.sh
-      - name: pre-push MERGED guard (INFRA-306)
-        run: bash scripts/ci/test-merged-check-guard.sh
 
       - name: pr-watch shepherd smoke (INFRA-354)
         run: bash scripts/ci/test-pr-watch-shepherd-smoke.sh
