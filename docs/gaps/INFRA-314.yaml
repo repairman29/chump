@@ -1,0 +1,28 @@
+- id: INFRA-314
+  domain: INFRA
+  title: gap affinity tags (skills_required, preferred_backend) + worker preference matching — Phase 1 dispatcher routing
+  description: "Phase 1 of dispatcher routing redesign (filed during 2026-05-02 lessons-learned synthesis after long session\
+    \ of pure-pull dispatcher friction).\n\nCurrently every worker reads chump gap list, filters by FLEET_PRIORITY/DOMAIN/EFFORT,\
+    \ picks first match. No skill-affinity, no backend-affinity, no work-locality. Result:\n\n  - macOS-deep gaps (INFRA-275\
+    \ syspolicyd) get picked by random worker who lacks context, then either bounces or produces shallow fix\n  - Coord-script\
+    \ gaps go to whichever worker grabs first; their target/ may be cold for that area (INFRA-202 sccache mitigates not eliminates)\n\
+    \  - Dispatcher can't route to capability — all gaps look identical\n\nAffinity tags are pure additive metadata in gap\
+    \ YAML. No coordinator needed; workers prefer matches.\n\nSchema additions (per-gap YAML):\n\n  skills_required: [rust,\
+    \ git-internals, macos, sqlite, nats, ...]\n  preferred_backend: claude | local-llm | cascade | any        (default any)\n\
+    \  preferred_machine: macbook | pi-mesh | cloud-overflow | any  (default any)\n  estimated_minutes: 5..240           \
+    \                          (refines effort xs/s/m/l/xl)\n\nWorker preference matching (in scripts/dispatch/worker.sh pick-gap):\n\
+    \n  1. Filter by hard-required skills (worker has all skills_required tags)\n  2. Sort by:\n       a. preferred_backend\
+    \ match (3 points)\n       b. preferred_machine match (2 points)\n       c. each skill match (1 point each)\n       d.\
+    \ priority (P0=8, P1=4, P2=2, P3=1)\n  3. Pick highest-scored\n  4. If no eligible: fall back to current any-match logic\
+    \ + emit kind=affinity_starved ambient event\n\nWorker capability declared via WORKER_SKILLS env var:\n  WORKER_SKILLS='rust,sqlite,macos'\
+    \ scripts/dispatch/worker.sh\n\nCHUMP_AFFINITY=0 disables (treats all gaps as eligible, current behavior)."
+  priority: P2
+  effort: s
+  status: open
+  acceptance_criteria: '["Gap YAML schema accepts skills_required, preferred_backend, preferred_machine, estimated_minutes
+    (all optional)","chump gap set --skills-required X,Y,Z + --preferred-backend B + --preferred-machine M flags work","worker.sh
+    pick-gap implements scored selection","WORKER_SKILLS env var declares worker capabilities","kind=affinity_starved ambient
+    event when no skill-match found","CHUMP_AFFINITY=0 bypass restores any-match","Test: fixture fleet of 2 workers (different
+    skills) + 2 gaps (different requirements) routes correctly"]'
+  notes: regen-trigger
+
