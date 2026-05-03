@@ -231,8 +231,9 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     # sibling, done on main, ID missing from registry), skip and pick
     # again next cycle. Pre-fix worker.sh order was pick → worktree →
     # claim/preflight, which ate the build cost on every dead pick.
-    if ! ( cd "$REPO_ROOT" && CHUMP_AMBIENT_GLANCE=0 CHUMP_SPECULATIVE=1 \
-           scripts/coord/gap-preflight.sh "$GAP_ID" >/dev/null 2>&1 ); then
+    # INFRA-379: use direct `chump gap preflight` instead of gap-preflight.sh
+    # which has a rare hanging issue (likely race condition in file I/O).
+    if ! timeout 3 chump gap preflight "$GAP_ID" >/dev/null 2>&1; then
         log "skipping $GAP_ID: failed pre-pick preflight (claimed/done/missing); next cycle"
         continue
     fi

@@ -103,14 +103,6 @@ def main() -> int:
             continue
         if exclude_re.search(gid):
             continue
-        # INFRA-397: skip gaps that are not open. `chump gap list --json`
-        # without --status open returns done/in_progress gaps too; without
-        # this guard a fleet worker would happily "pick" a long-closed gap,
-        # blow through preflight (already-done = bail), and waste a cycle.
-        # Observed in 2026-05-02 fleet logs: 6 workers each picking the
-        # same closed INFRA-340 within 90s.
-        if g.get("status") != "open":
-            continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
         # been superseded by a more general gap and should never be picked up by
         # fleet workers.  The canonical form is "SUPERSEDED YYYY-MM-DD by ..."
@@ -128,25 +120,14 @@ def main() -> int:
         if effort_filter and e not in effort_filter:
             continue
         # Conservative: skip gaps with non-empty depends_on.
-        # INFRA-397: depends_on arrives as a JSON-encoded string from
-        # `chump gap list --json` (e.g. "[]" or '["INFRA-100"]'), not a
-        # Python list. The pre-fix `if deps.strip(): continue` matched
-        # "[]" too (non-empty string), so every gap with the canonical
-        # empty-deps shape was silently filtered out and the picker
-        # returned nothing — making it look like the queue was empty
-        # while open gaps sat unpicked.
-        deps_raw = g.get("depends_on")
-        if isinstance(deps_raw, str):
-            try:
-                dep_list = json.loads(deps_raw) if deps_raw.strip() else []
-            except json.JSONDecodeError:
-                # Malformed depends_on — skip to be safe.
+        # First cut — we don't recursively check whether deps are done.
+        deps = g.get("depends_on") or "[]"
+        try:
+            dep_list = json.loads(deps) if isinstance(deps, str) else deps
+            if dep_list:  # non-empty array
                 continue
-        elif isinstance(deps_raw, list):
-            dep_list = deps_raw
-        else:
-            dep_list = []
-        if dep_list:  # any non-empty dep array
+        except (json.JSONDecodeError, TypeError):
+            # If depends_on is malformed, skip it to be safe
             continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
         # been superseded by another gap and should not be auto-picked.
