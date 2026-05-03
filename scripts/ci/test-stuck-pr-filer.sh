@@ -196,5 +196,58 @@ else
     exit 1
 fi
 
+# ── Test 7: INFRA-386 — auto-close filed gap when underlying PR resolves ─────
+echo "Test 7: filed gap auto-closes when its PR is MERGED"
+SHIP_LOG="$TMP/ship.log"
+rm -f "$SHIP_LOG"
+cat > "$TMP/bin/chump" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+    "gap list --status open --json")
+        echo '[{"id":"INFRA-9777","title":"PR #777 stuck — DIRTY for 6h","status":"open"}]'
+        ;;
+    "gap ship INFRA-9777 --closed-pr 777 --update-yaml")
+        echo "INFRA-9777 ship --closed-pr 777" >> "$SHIP_LOG"
+        ;;
+    "gap reserve "*) echo "INFRA-9999" ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$TMP/bin/chump"
+
+cat > "$TMP/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    "pr view 777 --json state -q .state") echo "MERGED" ;;
+    "pr list "*) echo "[]" ;;
+    "pr checks "*) echo "[]" ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+
+out=$(REMOTE=origin "$SCRIPT" 2>&1 || true)
+if [[ -f "$SHIP_LOG" ]] && grep -q "INFRA-9777 ship --closed-pr 777" "$SHIP_LOG" \
+   && [[ "$out" == *"auto-closed INFRA-9777"* ]]; then
+    echo "  PASS"
+else
+    echo "  FAIL: expected gap ship + auto-closed message"
+    echo "  ship log: $(cat "$SHIP_LOG" 2>/dev/null || echo "(empty)")"
+    echo "  output:"
+    echo "$out" | sed 's/^/    /'
+    exit 1
+fi
+
+# ── Test 8: INFRA_386_AUTOCLOSE=0 bypass leaves the gap alone ────────────────
+echo "Test 8: INFRA_386_AUTOCLOSE=0 bypass"
+rm -f "$SHIP_LOG"
+out=$(INFRA_386_AUTOCLOSE=0 REMOTE=origin "$SCRIPT" 2>&1 || true)
+if { [[ ! -f "$SHIP_LOG" ]] || [[ ! -s "$SHIP_LOG" ]]; } && [[ "$out" != *"auto-closed"* ]]; then
+    echo "  PASS"
+else
+    echo "  FAIL: bypass should suppress gap ship + auto-closed message"
+    echo "  ship log: $(cat "$SHIP_LOG" 2>/dev/null || echo "(empty)")"
+    exit 1
+fi
+
 echo ""
 echo "All stuck-pr-filer tests passed."
