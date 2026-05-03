@@ -633,7 +633,14 @@ impl GapStore {
             let colliders = self.colliding_sessions(&domain_upper, id_num, session_id)?;
 
             if colliders.is_empty() {
-                // No collision — verification passed.
+                // No collision — verification passed. INFRA-322: drop the
+                // pending_new_gap lease now that the reserve transaction
+                // is complete. Without this, the lease lingers for ~1h
+                // and blocks subsequent gap-claim.sh on the same ID from
+                // real sessions (gap-preflight reads it as a live claim
+                // by a chump-anon-* session). Belt-and-suspenders with
+                // the gap-preflight workaround in INFRA-322's PR #919.
+                let _ = std::fs::remove_file(&lease_path);
                 return Ok(id);
             }
 
@@ -643,6 +650,8 @@ impl GapStore {
             let winner_candidate = colliders.iter().min().map(String::as_str).unwrap_or("");
             if session_id < winner_candidate {
                 // We hold the lexicographically smallest ID — we win.
+                // INFRA-322: drop the lease (same rationale as above).
+                let _ = std::fs::remove_file(&lease_path);
                 return Ok(id);
             }
 
