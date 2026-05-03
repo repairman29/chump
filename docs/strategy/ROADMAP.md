@@ -172,14 +172,14 @@ See [ROADMAP_MABEL_DRIVER.md](https://github.com/repairman29/chump/blob/main/doc
 **Tier 1 — Operational hardening (next 1–2 weeks):**
 - [x] ~~[`INFRA-275`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-275.yaml) — syspolicyd binary wedge~~ shipped via PR #889 + chump-doctor.sh (closed #906, 2026-05-03)
 - [x] ~~[`INFRA-301`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-301.yaml) — gap-reserve.sh timeout + chump-doctor banner~~ shipped via PR #897 (ghost-closed)
-- [ ] **IN PROGRESS** [`INFRA-307`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-307.yaml) (P1 s) — auto-file cleanup gap when PR stuck (current session)
-- [ ] [`INFRA-308`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-308.yaml) (P2 s) — continuous gap-doctor reconciliation cron (auto-fix safe DB↔YAML drifts every 15min)
+- [x] [`INFRA-307`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-307.yaml) (P1 s) — auto-file cleanup gap when PR stuck (current session) — landed #914
+- [x] [`INFRA-308`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-308.yaml) (P2 s) — continuous gap-doctor reconciliation cron (auto-fix safe DB↔YAML drifts every 15min) — landed #910
 - [ ] [`INFRA-309`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-309.yaml) (P2 m) — append-only ID reservation log (collisions recoverable, not just preventable)
 - [ ] [`INFRA-304`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-304.yaml) (P2 s) — bot-merge.sh flake-budget (refuse 3rd rerun of same failing test)
 - [ ] [`INFRA-305`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-305.yaml) (P3 xs) — hot-file rebase-loop expectation note
-- [ ] [`INFRA-306`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-306.yaml) (P2 xs) — pre-rebase MERGED check (refuse force-push on already-MERGED PR)
+- [x] [`INFRA-306`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-306.yaml) (P2 xs) — pre-rebase MERGED check (refuse force-push on already-MERGED PR) — landed #988
 - [ ] [`INFRA-314`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-314.yaml) (P2 s) — gap affinity tags (`skills_required`, `preferred_backend`, `preferred_machine`) + worker preference matching
-- [ ] [`INFRA-315`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-315.yaml) (P2 s) — worker poll-jitter + idle-backpressure `fleet_starved` ALERT
+- [x] [`INFRA-315`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-315.yaml) (P2 s) — worker poll-jitter + idle-backpressure `fleet_starved` ALERT — landed #977
 
 **Tier 2 — Multi-machine fleet (next month):**
 - [ ] [`FLEET-032`](https://github.com/repairman29/chump/blob/main/docs/gaps/FLEET-032.yaml) (P1 l) — lease store migration to NATS KV bucket (kills filesystem-local lease invisibility class)
