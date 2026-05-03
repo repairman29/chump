@@ -1434,6 +1434,19 @@ gaps:
   closed_date: '2026-04-30'
   closed_pr: 676
 
+- id: DOC-015
+  domain: DOC
+  title: "CLAUDE.md note: 'Use SendMessage to resume an existing subagent; Agent spawns fresh; never use Agent to check status'"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CLAUDE.md gains a 'Subagent dispatch (Agent vs SendMessage)' subsection
+    - "Subsection covers: Agent = fresh spawn / SendMessage = resume; canonical agentId capture pattern; what NOT to do (Agent for status check)"
+    - This author observed making the mistake mid-session (2026-05-02) — the doc must call this out explicitly so next-agent-me sees the cost
+    - "Verified by grep: 'SendMessage' appears in CLAUDE.md after merge"
+  depends_on: [META-025]
+
 - id: EVAL-001
   domain: EVAL
   title: Expand eval suite from 5 to 30+ cases with golden trajectory tests
@@ -6740,7 +6753,7 @@ gaps:
 - id: INFRA-110
   domain: INFRA
   title: Reserve-time gap requires scoped-diff signature or 2-hour TTL - prevent name-squatting reservations
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -6760,6 +6773,8 @@ gaps:
     - Expired reservations auto-release - gap-preflight.sh stops blocking
     - "Backtest - PR #565 reservation would expire before #566/#568/#569 needed renumber"
   opened_date: '2026-04-26'
+  closed_date: '2026-05-03'
+  closed_pr: 939
 
 - id: INFRA-111
   domain: INFRA
@@ -8897,9 +8912,11 @@ gaps:
 - id: INFRA-179
   domain: INFRA
   title: scripts/dev/restart-chump-web.sh — one-command kill + rebuild + relaunch local PWA server
-  status: open
+  status: done
   priority: P2
   effort: xs
+  closed_date: '2026-05-03'
+  closed_pr: 689
 
 - id: INFRA-180
   domain: INFRA
@@ -9923,7 +9940,7 @@ gaps:
 - id: INFRA-208
   domain: INFRA
   title: chump gap dump is lossy — strips acceptance/closed_commit/runnable_now fields
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -9946,6 +9963,8 @@ gaps:
     - "acceptance: closed_commit: runnable_now: fields preserved through dump roundtrip"
     - gap-doctor sync-from-db --apply does not destroy data
   opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 935
 
 - id: INFRA-209
   domain: INFRA
@@ -10624,7 +10643,7 @@ gaps:
 - id: INFRA-230
   domain: INFRA
   title: "queue-health-monitor: emit pr_resolved when previously-stuck PR lands (close pr_stuck audit loop)"
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -10634,6 +10653,8 @@ gaps:
     - emits pr_resolved when a previously-stuck PR is no longer in gh pr list --state open OR has flipped to MERGEABLE/CLEAN
     - state file at .chump/pr-stuck-state.json
     - "--dry-run does not mutate state file"
+  closed_date: '2026-05-03'
+  closed_pr: 772
 
 - id: INFRA-231
   domain: INFRA
@@ -11882,7 +11903,7 @@ gaps:
 - id: INFRA-272
   domain: INFRA
   title: "Workflow-only PRs hit required-CI path-filter skip trap — killed #803, almost killed #874"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -11935,6 +11956,8 @@ gaps:
     - Decision documented in CLAUDE.md or .github/workflows/README — which of (a)/(b)/(c)/(d) was chosen and why
     - "PR #803 or #874 retroactively used as the regression test fixture"
   opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 929
 
 - id: INFRA-273
   domain: INFRA
@@ -12090,7 +12113,7 @@ gaps:
 - id: INFRA-300
   domain: INFRA
   title: cascade fails over on HTTP 402 / credit_limit (Together exhausted no longer hangs the agent)
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -12122,6 +12145,8 @@ gaps:
     - bandit reward of 0.0 is recorded for the failed slot (so it gets down-weighted)
     - existing rate-limit / access-denied / tool-format failover paths unchanged
     - unit test simulates Together-style 402 and asserts cascade reaches a working sibling slot
+  closed_date: '2026-05-03'
+  closed_pr: 890
 
 - id: INFRA-301
   domain: INFRA
@@ -12141,7 +12166,7 @@ gaps:
 - id: INFRA-302
   domain: INFRA
   title: cascade fails over on 400 UnsupportedToolUse / model-capability errors (Cerebras multi-tool-call)
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -12233,6 +12258,8 @@ gaps:
     - 6 unit tests including the real Cerebras error string from the dogfood incident
   depends_on: [INFRA-300, INFRA-274]
   opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 916
 
 - id: INFRA-303
   domain: INFRA
@@ -12341,7 +12368,7 @@ gaps:
 - id: INFRA-305
   domain: INFRA
   title: bot-merge.sh hot-file rebase-loop expectation pre-emit ambient note for ci.yml pre-commit scripts/coord/
-  status: open
+  status: done
   priority: P3
   effort: xs
   description: |
@@ -12388,6 +12415,8 @@ gaps:
     P3 because it's pure UX/expectation-setting, no correctness impact.
     Hot-file glob will need updates as the repo evolves but the cost is
     small. Filed during 2026-05-02 session lesson-learned pass.
+  closed_date: '2026-05-03'
+  closed_pr: 936
 
 - id: INFRA-306
   domain: INFRA
@@ -12830,7 +12859,7 @@ gaps:
   domain: INFRA
   title: rename launchd Label prefix from invented ai.openclaw to project-owned chump.coord (32 file refs + migration script)
   status: open
-  priority: P3
+  priority: P1
   effort: m
   description: |
     All launchd plist Label keys + their installer scripts use 'ai.openclaw' as the reverse-DNS namespace prefix (e.g. 'ai.openclaw.chump-gap-doctor-cron'). The 'openclaw' domain is invented — not owned by the project, not a real domain — and predates the chump rename (earliest reference: commit 97800454, 'rust-agent: Farmer Brown and keeper roles'). 32 file references across scripts/setup/install-*-launchd.sh + scripts/setup/unload-roles-launchd.sh + scripts/plists/*.plist + scripts/setup/repair-launchd-plists.sh + a few related setup scripts.
@@ -12855,6 +12884,8 @@ gaps:
     - scripts/setup/migrate-openclaw-launchd.sh script lists + relabels existing loaded jobs on a dogfood machine
     - CLAUDE.md / docs that reference the old prefix updated
     - Test that runs all installers + verifies new labels load correctly
+  notes: |
+    PREFIX LOCKED 2026-05-03 by operator: dev.chump.<job>. Examples: dev.chump.gap-doctor-cron, dev.chump.stale-pr-reaper. Rationale: short, no fake-DNS pretense, project-owned. Implementing now this session.
 
 - id: INFRA-324
   domain: INFRA
@@ -12901,7 +12932,7 @@ gaps:
 - id: INFRA-326
   domain: INFRA
   title: "agent over-tools trivial chat: tighten message_likely_needs_tools_neuromod with chat-greeting bypass"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -12911,6 +12942,8 @@ gaps:
     - action keywords mixed with greeting prefix ('hi can you check') still return true
     - cargo test heuristic_tests passes 8/8 (was 6/6, +2 new)
     - "empirically: PWA probe with 'hi there N' input completes in <2s with no tools called"
+  closed_date: '2026-05-03'
+  closed_pr: 924
 
 - id: INFRA-327
   domain: INFRA
@@ -12953,7 +12986,238 @@ gaps:
     - smoke test covers each classification path + the cluster-collapse case
     - INFRA-307 v1 filer demoted to safety-net cadence (once-per-day) once v2 ships
     - migration plan documented in CLAUDE.md alongside v1
-  depends_on: [INFRA-307]
+
+- id: INFRA-328
+  domain: INFRA
+  title: install-stale-pr-reaper-launchd.sh — installer script for the hand-installed plist
+  status: open
+  priority: P3
+  effort: xs
+
+- id: INFRA-329
+  domain: INFRA
+  title: RESEARCH-032 W1..W5 workflow fixtures + schema validator
+  status: done
+  priority: P2
+  effort: s
+  closed_date: '2026-05-03'
+  closed_pr: 928
+
+- id: INFRA-330
+  domain: INFRA
+  title: Seed actionable lessons into chump_improvement_targets — bridge from empty pool to COG-032 study readiness
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/ab-harness/fixtures/lessons-seed-infra-v1.json exists with 12+ actionable directives drawn from real session-history failure modes (META-011/META-016/INFRA-275/INFRA-301/INFRA-148/INFRA-200/INFRA-202/META-013/atomic-PR/INFRA-188/CHUMP_GAP_CHECK/chump-commit)
+    - "chump --seed-ab-lessons <file> populates chump_improvement_targets with 12+ rows tagged ab_seed:infra"
+    - chump --briefing META-016 (or any infra-scoped gap) shows the seeded lessons in its 'Top relevant reflections' block when CHUMP_LESSONS_AT_SPAWN_N=5
+    - cog032_gap_bench_v1.json T01-T05 expected_lessons_fire arrays reference seeded lesson directives that actually exist in the table (not just gap IDs from project history)
+    - test-cog032-bench-schema.sh extended to verify referenced lessons exist (closes the contract gap between bench tasks and lesson pool)
+  depends_on: [COG-032, COG-024]
+
+- id: INFRA-331
+  domain: INFRA
+  title: chump --briefing reads deleted docs/gaps.yaml — every briefing returns 'Gap not found'; silently breaks lessons-injection path (post-INFRA-188 regression)
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-332
+  domain: INFRA
+  title: Standard 'shipping epilogue' template for every Agent-tool subagent prompt — close 25%→80% self-ship gap
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/dispatch/subagent-shipping-epilogue.md exists with the template (~10-15 lines)
+    - "All future Agent-tool prompts in this repo include the epilogue (verify by grep: rg 'subagent-shipping-epilogue' across scripts/ and docs/)"
+    - CLAUDE.md gets a 'Spawning subagents' subsection that points at the epilogue
+    - N=5 fresh subagent dispatches measured post-landing show self-ship rate ≥80% (vs 25% baseline this session)
+  depends_on: [META-025]
+
+- id: INFRA-333
+  domain: INFRA
+  title: scripts/dispatch/worker.sh runs chump-doctor.sh at session start (pre-empts INFRA-275 wedged-inode hang)
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/dispatch/worker.sh runs scripts/dev/chump-doctor.sh as first action of session-start phase (idempotent — fast no-op when binary is healthy)
+    - Probe timeout 5s; total worker.sh start-up overhead < 6s in healthy state
+    - "Test: scripts/ci/test-worker-doctor-preflight.sh asserts the call happens before any chump gap invocation"
+  depends_on: [META-025, INFRA-275]
+  closed_date: '2026-05-03'
+  closed_pr: 938
+
+- id: INFRA-334
+  domain: INFRA
+  title: Subagents emit heartbeat to ambient.jsonl every 5 min; watchdog ALERTs after 15-min silence (catches stalls real-time vs post-hoc)
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Subagents (when running under Agent tool) emit ambient.jsonl line {kind: subagent_heartbeat, agent_id, gap_id, ts} every 300s"
+    - scripts/ops/subagent-watchdog.sh emits ambient ALERT kind=subagent_silent after 900s without heartbeat
+    - Watchdog runs as launchd job alongside reaper-watchdog (5-min cadence)
+    - "Test: scripts/ci/test-subagent-heartbeat.sh asserts heartbeat lines validate JSON + appear at least once during a 6-min sandbox run"
+  depends_on: [META-025]
+
+- id: INFRA-335
+  domain: INFRA
+  title: scripts/audit/dispatch-quality-report.sh — weekly auto-generated dashboard of shipped/killed/stalled split, stall-cause breakdown, duration distribution
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/audit/dispatch-quality-report.sh exists; produces a markdown summary from chump_improvement_targets dispatched-* rows
+    - "Report covers: shipped/killed/stalled split, avg duration per outcome, stall-cause breakdown (after INFRA-336), top-5 most-stalled gap IDs"
+    - "launchd cron weekly (Sunday 06:00); writes to docs/audits/DISPATCH_QUALITY_<DATE>.md"
+    - "Test: smoke-test against a fixture chump_memory.db with synthetic rows"
+  depends_on: [META-025]
+
+- id: INFRA-336
+  domain: INFRA
+  title: worker.sh classifies stalls into bot-merge-hung / cargo-build-timeout / API-credit-exhausted / unknown (chump_improvement_targets notes= field populated)
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "scripts/dispatch/worker.sh writes notes= field on stall: bot-merge-hung / cargo-build-timeout / API-credit-exhausted / chump-binary-wedge / unknown"
+    - "Classification is best-effort: probe last 60s of subagent stdout for known signatures"
+    - "Test: scripts/ci/test-stall-cause-taxonomy.sh asserts each classification fires for the corresponding fixture stdout pattern"
+  depends_on: [META-025]
+
+- id: INFRA-337
+  domain: INFRA
+  title: Flip CHUMP_SCOPE_CHECK from warn to enforce for subagent-issued commits (INFRA-189 hardening)
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/git-hooks/pre-commit flips out-of-scope (INFRA-189) from default-warn to default-enforce when the lease has session_id matching a known subagent prefix (Agent-tool spawn pattern)
+    - Operator override CHUMP_SCOPE_CHECK=warn still works
+    - "Test: scripts/ci/test-scope-check-subagent-enforce.sh asserts subagent commits with out-of-scope edits are blocked, while parent-session commits emit warn"
+  depends_on: [META-025, INFRA-189]
+
+- id: INFRA-338
+  domain: INFRA
+  title: "every parallel-fleet session risks ENOSPC: per-worktree target/ uncapped + no preemptive disk-watch"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Caught 2026-05-03 ~03:00 UTC: parallel fleet + Task subagent batches +
+    my own back-to-back ship commands left .claude/worktrees/ at >100GB
+    of cargo target/ accumulation. Disk hit ENOSPC. /private/tmp/claude-501/
+    could no longer write Bash tool output files → every command failed
+    silently for ~10 minutes until manual cleanup.
+    
+    Recovery tonight: `rm -rf .claude/worktrees/*/target` + stale-worktree
+    reaper recovered ~110GB and 33 stale worktrees.
+    
+    Root causes:
+      - bot-merge.sh's per-worktree target/ purge fires on .bot-merge-shipped
+        (i.e. ONLY for worktrees that successfully shipped). Worktrees that
+        fail mid-ship retain their target/.
+      - Task subagent worktrees that timeout don't trigger the purge.
+      - INFRA-202 (sccache + shared CARGO_TARGET_DIR) shipped a doc but
+        didn't enforce sccache adoption; new worktrees still build their
+        own target.
+      - No preemptive disk watchdog. By the time ENOSPC hits, recovery
+        requires shell access, defeating any in-process automation.
+    
+    Fix sketch (any of, ranked by leverage):
+      (a) Make CARGO_TARGET_DIR shared by default in run-fleet.sh / worker.sh
+          (extend INFRA-202's doc into actual env-export). The fleet already
+          writes CARGO_TARGET_DIR=$REPO_ROOT/target to its env table — make
+          sure ALL parallel-agent paths pick this up.
+      (b) Add a disk-space pre-check to bot-merge.sh: refuse to start if
+          free space is < 5GB on the target/ filesystem.
+      (c) Stale-worktree reaper: change cron from hourly to every 15 min;
+          lower the age threshold for target-only purge (don't need full
+          worktree removal — just the cargo cache).
+      (d) launchd disk-watchdog: when free < 10%, emit ALERT kind=disk_low
+          to ambient.jsonl and trigger the reaper unconditionally.
+    
+    Acceptance:
+      - 30-PR fleet session does NOT exhaust disk
+      - When disk does fill, ENOSPC is detected pre-shell-paralysis
+      - Test: scripts/ci/test-fleet-disk-pressure.sh simulates worktree
+        accumulation and asserts cleanup fires
+  acceptance_criteria:
+    - fleet sessions don't exhaust disk via target/ accumulation
+    - preemptive disk-watch ALERT before ENOSPC
+    - sccache or shared CARGO_TARGET_DIR enforced in fleet workers
+  closed_date: '2026-05-03'
+  closed_pr: 937
+
+- id: INFRA-339
+  domain: INFRA
+  title: chump-local backend hits 8192-token context limit on every real gap prompt — fleet workers can't ship
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    Fleet workers spawned via run-fleet.sh with FLEET_BACKEND=chump-local cannot ship ANY non-trivial gap because the local provider's context window (8192 tokens) is smaller than the assembled gap-prompt (observed: 11028 tokens for INFRA-206).
+    
+    Symptom (every worker, every cycle, immediately on chump --execute-gap):
+      Local API error 400 Bad Request: {"message":"Please reduce the length of the messages or completion. Current length is 11028 while limit is 8192","type":"invalid_request_error","param":"messages","code":"context_length_exceeded"}
+    
+    Observed 2026-05-02 21:41 MDT during chump-squad spawn (FLEET_SIZE=4, FLEET_DOMAIN_FILTER=INFRA): all 4 workers crash on cycle 1 with this error, immediately recycle into cycle 2, crash again — burning worktree-create cost with zero progress.
+    
+    Root cause: COG-025 doc says chump-local backend uses whatever $OPENAI_API_BASE + $OPENAI_MODEL resolve to (Together free tier, mistral.rs, Ollama, hosted OpenAI). The default Together free model has 8K context. The prompt assembler doesn't budget for the model's actual context window — it assembles the full briefing (gap acceptance + reflections + ambient + strategic doc refs + closed PRs per MEM-007) regardless.
+    
+    Options (pick one or stack):
+      (a) Default FLEET_BACKEND to 'claude' in run-fleet.sh — Anthropic Claude has 200K context, no overflow. Lose the 'cost-routing path' but gain working fleet. Requires API key.
+      (b) Auto-trim prompt to fit the resolved model's context window (query model metadata, drop optional sections in priority order: ambient → closed-PR refs → reflections → strategic docs).
+      (c) Switch chump-local default model to one with a larger window (Together has 32K and 128K options).
+      (d) Add CHUMP_LESSONS_AT_SPAWN_N=0 + similar minimization knobs to slim default prompt — workaround, not fix.
+    
+    This is P0 because the squad-dogfood loop is broken without it: spawn → context overflow → infinite worktree-recreate loop.
+  acceptance_criteria:
+    - fleet workers complete at least one ship cycle on chump-local backend without context_length_exceeded
+    - prompt assembler queries the resolved model's context window and trims to fit
+    - run-fleet.sh prints chosen model + context budget at startup so the failure mode is visible
+    - smoke test exercises a small gap end-to-end on the chump-local default
+
+- id: INFRA-340
+  domain: INFRA
+  title: fleet startup race — all N workers pick same gap before any claim is written; gap-claim collision check happens too late
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Fleet startup race: when run-fleet.sh spawns N workers in the same second, every worker independently calls _pick_gap.py before any has written a lease. They all see the same candidate list, all return candidates[0], and all race for the same gap. Cycle 2 has the same problem if they all complete at the same time.
+    
+    Observed 2026-05-02 21:41 MDT during a chump-squad spawn (FLEET_SIZE=4, FLEET_DOMAIN_FILTER=INFRA): all 4 workers picked INFRA-206 simultaneously, all created worktrees, all spawned chump --execute-gap (which crashed on INFRA-339's separate context-window issue), recycled, and all picked INFRA-206 AGAIN on cycle 2.
+    
+    The pre-fix code path expected the collision and routed around it via INFRA-193 speculative execution: gap-claim --speculative allows multiple claimants, and bot-merge's loser sweep closes the duplicates after the winner ships. That works but pays 2× compute per collision and burns worktree-create cost. The user's framing was right: 'queue the workers to take what's available' — they should pick distinct gaps, not race.
+    
+    Fix: pass WORKER_INDEX (1..N) to _pick_gap.py; pick candidates[(WORKER_INDEX-1) % len(candidates)] instead of always candidates[0]. At boot when no leases exist, N workers pick the top-N distinct gaps. Once leases form, ACTIVE_GAPS shrinks the candidate list and the offset still maps each worker to a unique remaining candidate. Back-compat: missing/invalid WORKER_INDEX falls through to candidate[0] (pre-fix behavior).
+    
+    Test scripts/ci/test-pick-gap-worker-stagger.sh covers: 4 workers boot → 4 distinct picks; wrap behavior past candidate count; missing WORKER_INDEX fallback; ACTIVE_GAPS interaction.
+  acceptance_criteria:
+    - _pick_gap.py reads WORKER_INDEX env var and offsets into the sorted candidate list
+    - worker.sh passes WORKER_INDEX=$AGENT_ID
+    - simultaneously-booting siblings pick distinct gaps when len(candidates) >= N
+    - missing WORKER_INDEX defaults to candidate[0] for back-compat
+    - smoke test scripts/ci/test-pick-gap-worker-stagger.sh covers boot-race, wrap, fallback, and active-gap interaction
+
+- id: INFRA-341
+  domain: INFRA
+  title: "scripts/dev/ship-audit.sh — end-to-end pipeline visibility (5 gates: pushed, PR open, auto-merge armed, CI green, landed)"
+  status: open
+  priority: P2
+  effort: xs
+
+- id: INFRA-342
+  domain: INFRA
+  title: "test-gap-doctor-safe-sweep.sh Test 2 fails on ubuntu-latest (works on macOS dogfood) — re-arm PR #910 once green"
+  status: open
+  priority: P2
+  effort: s
 
 - id: INFRA-41
   domain: INFRA
@@ -14490,6 +14754,34 @@ gaps:
   opened_date: '2026-05-03'
   closed_date: '2026-05-03'
   closed_pr: 901
+
+- id: META-024
+  domain: META
+  title: refresh ROADMAP_INDEX.md current state — 2-week stale gap counts
+  status: open
+  priority: P3
+  effort: xs
+  opened_date: '2026-05-03'
+
+- id: META-025
+  domain: META
+  title: Subagent self-ship rate is 25-33% — work quality is high but ship-stage hand-off is brittle (dispatch-quality findings 2026-05-02)
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Document the dispatch-quality findings (this session: 1/4 subagents self-shipped; historical chump_improvement_targets: 33% shipped / 33% killed / 33% stalled)"
+    - All 7 child gaps (shipping-epilogue, worker.sh-pre-flight, subagent-heartbeat, Agent-vs-SendMessage doc, telemetry-report, stall-cause-taxonomy, path-scoped-leases) filed with concrete acceptance criteria
+    - At least 3 of the 7 children landed on main within 7 days
+    - "Re-measurement: post-shipping-epilogue, sample N=5 fresh subagent dispatches; self-ship rate measured >= 70%"
+    - "Dispatch-quality stats included in next Cold Water audit (Issue #11+)"
+
+- id: META-026
+  domain: META
+  title: "tmp-worktree volatility: detect uncommitted edits in /tmp/<name> + auto-stash or warn before the worktree can be cleared"
+  status: open
+  priority: P2
+  effort: s
 
 - id: PRODUCT-001
   domain: PRODUCT
