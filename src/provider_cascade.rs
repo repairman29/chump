@@ -505,7 +505,25 @@ pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
     let is_tool_format_failure = lower.contains("tool_use_failed")
         || lower.contains("tool call validation failed")
         || lower.contains("failed to call a function");
-    is_rate_limited || is_access_denied || is_billing_exhausted || is_tool_format_failure
+    // INFRA-313: model-capability-class 400 errors. Default cascade-on-400 is
+    // OFF (the request is wrong → another provider won't help) but for these
+    // *capability* errors the request is fine; it's just THIS model that
+    // can't handle the tool-call shape (e.g. Cerebras returns 400
+    // "UnsupportedToolUse: model does not support more than one tool call at
+    // this time"). A model that DOES support multiple tool calls (Anthropic,
+    // OpenAI, Together's larger models) will succeed on the same payload.
+    // Symptomatically identical to `tool_use_failed` (which already cascades).
+    let is_tool_capability_failure = lower.contains("unsupportedtooluse")
+        || lower.contains("unsupported_tool_use")
+        || lower.contains("does not support more than one tool")
+        || lower.contains("does not support tool")
+        || lower.contains("tools are not supported")
+        || lower.contains("model does not support tools");
+    is_rate_limited
+        || is_access_denied
+        || is_billing_exhausted
+        || is_tool_format_failure
+        || is_tool_capability_failure
 }
 
 #[async_trait]
@@ -1100,5 +1118,43 @@ mod tests {
         assert!(should_cascade_on_error_string("CREDIT_LIMIT"));
         assert!(should_cascade_on_error_string("Credit Limit Exceeded"));
         assert!(should_cascade_on_error_string("PAYMENT REQUIRED"));
+    }
+
+    // INFRA-313: model-capability tool-use failures (400-status but cascading
+    // makes sense because another model handles the same payload).
+    #[test]
+    fn cascades_on_cerebras_unsupported_tool_use() {
+        let cerebras_400 = "Local API error 400 Bad Request: {\"error\":{\"code\":\"UnsupportedToolUse\",\"message\":\"Request included unsupported tool use. This model does not support more than one tool call at this time.\"}}";
+        assert!(
+            should_cascade_on_error_string(cerebras_400),
+            "Cerebras UnsupportedToolUse must cascade — another model handles the same payload"
+        );
+    }
+
+    #[test]
+    fn cascades_on_does_not_support_tool_variants() {
+        assert!(should_cascade_on_error_string(
+            "Error: model does not support tools"
+        ));
+        assert!(should_cascade_on_error_string(
+            "tools are not supported by this endpoint"
+        ));
+        assert!(should_cascade_on_error_string(
+            "{\"code\":\"unsupported_tool_use\"}"
+        ));
+    }
+
+    #[test]
+    fn does_not_cascade_on_400_unrelated_to_tools() {
+        assert!(
+            !should_cascade_on_error_string(
+                "HTTP 400 Bad Request: required field 'messages' missing"
+            ),
+            "generic 400 should still propagate (not cascade)"
+        );
+        assert!(
+            !should_cascade_on_error_string("HTTP 400 Bad Request: invalid model name 'gpt-99'"),
+            "invalid model name should still propagate"
+        );
     }
 }
