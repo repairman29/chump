@@ -19,6 +19,12 @@
 #   FLEET_TIMEOUT_S         (default 1800) per-agent claude -p timeout
 #   FLEET_PRIORITY_FILTER   (default "P0,P1") comma-separated priorities
 #   FLEET_DOMAIN_FILTER     (default "")  e.g. "INFRA" or "INFRA,DOC"; "" = all
+#   FLEET_AGENT_DOMAINS     (default "")  comma-separated domain list; agent K
+#                           is assigned domains[(K-1) % N]. E.g. "INFRA,EVAL,DOC"
+#                           makes agent-1=INFRA, agent-2=EVAL, agent-3=DOC (wraps
+#                           round-robin). Overrides FLEET_DOMAIN_FILTER per-agent.
+#                           "" = all agents use the fleet-wide FLEET_DOMAIN_FILTER.
+#                           (INFRA-206)
 #   FLEET_EFFORT_FILTER     (default "xs,s,m") comma-separated efforts
 #   FLEET_SESSION           (default "chump-fleet") tmux session name
 #   FLEET_LOG_DIR           (default /tmp/chump-fleet-<sid>) per-agent logs
@@ -62,6 +68,7 @@ FLEET_SIZE="${FLEET_SIZE:-8}"
 FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
+FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 FLEET_SESSION="${FLEET_SESSION:-chump-fleet}"
 FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
@@ -124,6 +131,7 @@ cat <<EOF
   timeout/agent : ${FLEET_TIMEOUT_S}s
   priority      : $FLEET_PRIORITY_FILTER
   domain        : ${FLEET_DOMAIN_FILTER:-<any>}
+  agent-domains : ${FLEET_AGENT_DOMAINS:-<uniform>}
   effort        : $FLEET_EFFORT_FILTER
   log dir       : $FLEET_LOG_DIR
   backend       : $FLEET_BACKEND
@@ -142,6 +150,7 @@ worker_env=(
     "FLEET_TIMEOUT_S=$FLEET_TIMEOUT_S"
     "FLEET_PRIORITY_FILTER=$FLEET_PRIORITY_FILTER"
     "FLEET_DOMAIN_FILTER=$FLEET_DOMAIN_FILTER"
+    "FLEET_AGENT_DOMAINS=$FLEET_AGENT_DOMAINS"
     "FLEET_EFFORT_FILTER=$FLEET_EFFORT_FILTER"
     "FLEET_BACKEND=$FLEET_BACKEND"
     "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"

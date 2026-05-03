@@ -37,6 +37,7 @@ FLEET_LOG_DIR="${FLEET_LOG_DIR:-/tmp/chump-fleet-default}"
 FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
+FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
 IDLE_SLEEP_S="${IDLE_SLEEP_S:-60}"
@@ -44,6 +45,19 @@ IDLE_SLEEP_S="${IDLE_SLEEP_S:-60}"
 mkdir -p "$FLEET_LOG_DIR"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
+
+# INFRA-206: per-agent domain affinity. If FLEET_AGENT_DOMAINS is set (comma-
+# separated, e.g. "INFRA,EVAL,DOC"), agent K is assigned domains[(K-1) % N],
+# overriding the fleet-wide FLEET_DOMAIN_FILTER for this worker only.
+if [ -n "$FLEET_AGENT_DOMAINS" ] && [ "${AGENT_ID:-?}" != "?" ]; then
+    _aff="$(DOMAINS="$FLEET_AGENT_DOMAINS" IDX="$AGENT_ID" python3 -c \
+        "import os; d=[x.strip() for x in os.environ['DOMAINS'].split(',') if x.strip()]; \
+print(d[(int(os.environ['IDX'])-1)%len(d)] if d else '')" 2>/dev/null || true)"
+    if [ -n "$_aff" ]; then
+        log "domain affinity: agent $AGENT_ID → $_aff (INFRA-206)"
+        FLEET_DOMAIN_FILTER="$_aff"
+    fi
+fi
 
 trap 'log "interrupted; exiting loop"; exit 0' INT TERM
 
