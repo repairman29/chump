@@ -34,6 +34,15 @@ jobs:
         with:
           filters: |
             code:
+              # INFRA-272: This is an ALLOWLIST. Required status checks
+              # (test rollup, audit, ACP) are gated by this filter — if a
+              # PR's diff matches NONE of these patterns, the gated jobs
+              # mark "skipped" and branch protection blocks the merge
+              # forever (skipped != passing). Killed PR #803 (workflow-
+              # only diff) and almost killed PR #874 on 2026-05-02. Any
+              # path that can be the SOLE diff of a real PR must be
+              # listed here. When in doubt, add it — the cost of a
+              # spurious build is far lower than a stuck PR.
               - 'src/**'
               - 'crates/**'
               - 'desktop/**'
@@ -42,6 +51,7 @@ jobs:
               - '.github/workflows/**'
               - '.release-plz.toml'
               - 'scripts/**'
+              - 'docs/gaps/**'
             e2e:
               - 'src/**'
               - 'web/**'
