@@ -141,14 +141,18 @@ has_live_lease() {
         "$lock_dir"/*.json 2>/dev/null | head -1 >/dev/null
 }
 
-# file_stuck_gap PR_NUM REASON SUMMARY DETAILS
+# file_stuck_gap PR_NUM REASON SUMMARY DETAILS [STUCK_CLASS]
+# INFRA-376: STUCK_CLASS is one of REBASE, CI-RED, BEHIND, ORPHAN.
+# Tag goes into the gap title in [brackets] (so the fleet picker can
+# route by class) and the description carries a routing hint.
 file_stuck_gap() {
     local pr_num="$1"
     local reason="$2"
     local summary="$3"
     local details="$4"
+    local stuck_class="${5:-UNKNOWN}"
 
-    local title="PR #${pr_num} stuck — ${reason}"
+    local title="PR #${pr_num} stuck [${stuck_class}] — ${reason}"
     local pr_url="https://github.com/repairman29/chump/pull/${pr_num}"
 
     if [[ $DRY_RUN -eq 1 ]]; then
@@ -309,26 +313,32 @@ print(worst)
 
     REASON=""
     SUMMARY=""
+    STUCK_CLASS=""   # INFRA-376: tag the cleanup gap with stuck mode
     if [[ "$MSS" == "DIRTY" && "$AGE_HOURS" -ge "$DIRTY_THRESHOLD_HOURS" ]]; then
         REASON="DIRTY for ${AGE_HOURS}h"
         SUMMARY="Branch needs rebase. mergeStateStatus=DIRTY for ${AGE_HOURS}h (threshold ${DIRTY_THRESHOLD_HOURS}h)."
+        STUCK_CLASS="REBASE"
     elif [[ "$CI_RED" == "1" && "$CI_RED_HOURS" -ge "$CI_FAIL_THRESHOLD_HOURS" ]]; then
         REASON="CI red for ${CI_RED_HOURS}h"
         SUMMARY="At least one required check has been failing for ${CI_RED_HOURS}h (threshold ${CI_FAIL_THRESHOLD_HOURS}h)."
+        STUCK_CLASS="CI-RED"
     elif [[ "$BEHIND" -ge "$BEHIND_COMMITS_THRESHOLD" ]]; then
         REASON="${BEHIND} commits behind ${BASE}"
         SUMMARY="Branch is ${BEHIND} commits behind ${BASE} (threshold ${BEHIND_COMMITS_THRESHOLD}). The CLAUDE.md hard rule says rebase at 15."
+        STUCK_CLASS="BEHIND"
     elif [[ "$ORPHAN" == "1" ]]; then
         REASON="auto-merge disarmed, no live owner"
         SUMMARY="Auto-merge is disarmed and the original gap(s) [${GAP_IDS}] have no live lease — the opening agent likely exited without re-arming."
+        STUCK_CLASS="ORPHAN"
     else
         info "  → not stuck"; SKIPPED=$((SKIPPED+1)); continue
     fi
 
     DETAILS="Original gap(s) cited in PR title/commits: ${GAP_IDS:-none}
-Branch: ${PR_BRANCH}"
+Branch: ${PR_BRANCH}
+Stuck class: ${STUCK_CLASS} — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper"
 
-    file_stuck_gap "$PR_NUM" "$REASON" "$SUMMARY" "$DETAILS"
+    file_stuck_gap "$PR_NUM" "$REASON" "$SUMMARY" "$DETAILS" "$STUCK_CLASS"
 done <<<"$PR_TSV"
 
 echo ""

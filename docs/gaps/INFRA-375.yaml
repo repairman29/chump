@@ -1,0 +1,16 @@
+- id: INFRA-375
+  domain: INFRA
+  title: CI-flake auto-rerun — pattern-match known flakes (network setup, runner cancelled) and gh run rerun --failed once
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    CI-flake auto-rerun: walk open PRs, identify run IDs of failing required checks, fetch failed-log payload, grep against allowlist of known flake fingerprints (operation canceled, getaddrinfo, ETIMEDOUT, network unreachable, OOM exit 137, etc). On match: gh run rerun --failed once. Per-run-id cooldown prevents 2nd rerun on persistent failures. Real test failures don't match → no rerun → no waste. Wired into reaper-heartbeat-watchdog (2h threshold, hourly cadence). Bypass: CHUMP_CI_FLAKE_RERUN=0. Emits kind=ci_flake_rerun events. Extra patterns via CI_FLAKE_PATTERNS_FILE.
+  acceptance_criteria:
+    - scripts/ops/ci-flake-rerun.sh scans open PRs for failing required checks
+    - matches against tight allowlist of known flake fingerprints
+    - gh run rerun --failed once per run-id (cooldown record)
+    - hourly LaunchAgent installer at scripts/setup/install-ci-flake-rerun-launchd.sh
+    - wired into reaper-heartbeat-watchdog (2h threshold)
+    - smoke test covers bypass + empty paths
+
