@@ -1,7 +1,7 @@
 ---
 doc_tag: canonical
 owner_gap:
-last_audited: 2026-04-25
+last_audited: 2026-05-03
 ---
 
 # Roadmap index
@@ -18,7 +18,7 @@ self-contained. Source files kept in place (index-only merge — sources not del
 | "What should I work on right now?" | [ROADMAP.md](ROADMAP.md) — operational backlog, checked/unchecked items |
 | "What's shipping this sprint?" | [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) — two-week sprint slices (S1 current) |
 | "What's the Q2 2026 cut?" | [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) — unblocked P1/P2 items only |
-| "Show me all 186 gaps (open + done)" | [ROADMAP_FULL.md](ROADMAP_FULL.md) — complete multi-horizon view |
+| "Show me all gaps (open + done)" | [ROADMAP_FULL.md](ROADMAP_FULL.md) — complete multi-horizon view |
 | "What is the north-star architecture?" | [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) — long-horizon capability bets |
 | "What's the product vision / user stories?" | [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md) — Chief of Staff vision |
 | "How does Mabel evolve?" | [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) — fleet-monitor → Sentinel path |
@@ -29,9 +29,10 @@ self-contained. Source files kept in place (index-only merge — sources not del
 ## Canonical hierarchy
 
 ```
-docs/gaps.yaml                     ← authoritative gap registry (ground truth)
-    ↓ populates
-ROADMAP_FULL.md                    ← all 186 gaps
+.chump/state.db (canonical) +      ← authoritative gap registry (ground truth)
+docs/gaps/<ID>.yaml mirrors          since INFRA-188 (per-file replaces monolithic
+    ↓ populates                      docs/gaps.yaml; INFRA-059 made SQLite canonical)
+ROADMAP_FULL.md                    ← all gaps view
     ↓ filtered to
 ROADMAP_PRAGMATIC.md               ← Q2 2026 unblocked items
     ↓ sliced into
@@ -47,18 +48,32 @@ ROADMAP.md                         ← checked/unchecked operational backlog
 
 ---
 
-## Current state (2026-04-20)
+## Current state (2026-05-03)
 
-- **Sprint:** S1 (2026-04-14 → 2026-04-27) — see [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md)
-- **Open gaps:** ~8 on `main` (from `docs/gaps.yaml` — source of truth)
-- **Total:** 186 gaps (50 open, 136 done as of 2026-04-19)
+- **Sprint:** see [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md)
+- **Total gaps:** 685 (594 done, 86 open, 2 blocked, 3 deferred) as of 2026-05-03
+- **Open by domain:** INFRA 48, FLEET 10, META 9, RESEARCH 5, EVAL 4, COG 2, others 8
+- **Recent merge cadence:** ~200 gaps closed in the 2026-05-02 → 2026-05-03 fleet session
+  (cascade activation via free-tier providers — Cerebras / Groq / Together / NVIDIA /
+  Hyperbolic / OpenRouter / GitHub Models / Gemini — landed
+  [INFRA-256](../gaps/INFRA-256.yaml) / [INFRA-259](../gaps/INFRA-259.yaml) /
+  [INFRA-260](../gaps/INFRA-260.yaml); coordination tooling hardening landed
+  [META-017](../gaps/META-017.yaml) / [META-022](../gaps/META-022.yaml);
+  dispatcher / fleet-scaling architecture filed in [INFRA-314](../gaps/INFRA-314.yaml) /
+  [FLEET-032..034](../gaps/FLEET-032.yaml)). Detail in
+  [INFRA-317 session synthesis](../gaps/INFRA-317.yaml).
 
-For up-to-date gap counts: `grep "status: open" docs/gaps.yaml | wc -l`
+For up-to-date gap counts:
+
+```sh
+sqlite3 .chump/state.db "SELECT status, COUNT(*) FROM gaps GROUP BY status"
+chump gap list --status open --json | jq length
+```
 
 ---
 
 ## Related
 
-- [docs/gaps.yaml](gaps.yaml) — master gap registry
+- [.chump/state.db + docs/gaps/](../gaps/) — master gap registry (SQLite canonical, per-file YAML mirrors)
 - [CHUMP_TO_CHAMP.md](CHUMP_TO_CHAMP.md) — cognitive architecture research direction (gate for 10+ gaps)
 - [RED_LETTER.md](RED_LETTER.md) — weekly issue log; drives reactive gap filing

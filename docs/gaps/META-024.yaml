@@ -1,0 +1,8 @@
+- id: META-024
+  domain: META
+  title: "refresh ROADMAP_INDEX.md current state — 2-week stale gap counts"
+  status: done
+  priority: P3
+  effort: xs
+  opened_date: '2026-05-03'
+  closed_date: '2026-05-03'
