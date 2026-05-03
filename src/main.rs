@@ -937,11 +937,21 @@ async fn main() -> Result<()> {
                     repo_root.clone()
                 };
                 match store.import_from_yaml(&root) {
-                    Ok((ins, skip)) => {
-                        eprintln!(
-                            "import complete: {} inserted, {} skipped (already present).",
-                            ins, skip
-                        );
+                    Ok((ins, skip, backfilled)) => {
+                        // INFRA-233: report backfill count so operators can see
+                        // how many NULL closed_pr rows were healed.
+                        if backfilled > 0 {
+                            eprintln!(
+                                "import complete: {} inserted, {} skipped (already present), \
+                                 {} closed_pr values backfilled from YAML.",
+                                ins, skip, backfilled
+                            );
+                        } else {
+                            eprintln!(
+                                "import complete: {} inserted, {} skipped (already present).",
+                                ins, skip
+                            );
+                        }
                         return Ok(());
                     }
                     Err(e) => {
