@@ -18,6 +18,76 @@ use crate::provider_quality;
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
 const MAX_SLOTS: u32 = 10;
 
+/// INFRA-352: emit a structured ambient.jsonl event when the cascade has
+/// exhausted every slot it could try and is about to return Err to the caller.
+/// Best-effort: never breaks the call. Pattern mirrors `adversary::emit_ambient_alert`.
+///
+/// Per-slot tally format: `<name>=<calls_today>/<rpd_limit>/<circuit>` so the
+/// operator can immediately see which slot is exhausted vs which is wedged.
+fn emit_cascade_exhausted_event(slots: &[ProviderSlot], reason: &str) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+
+    let session = std::env::var("CHUMP_SESSION_ID")
+        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    let worktree = repo_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    // Per-slot tally as a JSON-safe comma-separated string.
+    let tally: Vec<String> = slots
+        .iter()
+        .map(|s| {
+            let circuit = if local_openai::is_circuit_open(&s.base_url) {
+                "open"
+            } else {
+                "closed"
+            };
+            format!(
+                "{}={}/{}/{}",
+                s.name,
+                s.calls_today.load(Ordering::Relaxed),
+                s.rpd_limit,
+                circuit
+            )
+        })
+        .collect();
+    let per_slot = tally.join(",");
+
+    // Trim reason to keep the JSON line short; full diagnosis is in cycle log.
+    let reason_trim: String = reason.chars().take(200).collect();
+    let reason_esc = reason_trim
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', " ");
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"worktree\":\"{worktree}\",\
+         \"event\":\"cascade_all_exhausted\",\"slot_count\":{slot_count},\
+         \"per_slot\":\"{per_slot}\",\"reason\":\"{reason_esc}\"}}",
+        slot_count = slots.len()
+    );
+
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// Default OpenAI-compatible base for local Ollama when `OPENAI_API_BASE` is unset (matches OOTB wizard).
 pub const DEFAULT_OLLAMA_API_BASE: &str = "http://127.0.0.1:11434/v1";
 
@@ -723,25 +793,31 @@ impl Provider for ProviderCascade {
                                         // error (INFRA-347). The hint matches the suffix appended
                                         // by LocalOpenAIProvider after exhausting retries so the
                                         // full message is consistent across paths.
-                                        return Err(anyhow::anyhow!(
+                                        let msg = format!(
                                             "{} — local provider unreachable (all cloud slots \
                                              exhausted and local slot failed). \
                                              Ollama: `brew services start ollama`; \
                                              probe: `curl -s {}/models`. \
                                              Set CHUMP_FALLBACK_API_BASE or add cloud slots \
                                              (CHUMP_PROVIDER_1_*) to avoid this failure mode.",
-                                            e,
-                                            local_slot.base_url,
-                                        ));
+                                            e, local_slot.base_url,
+                                        );
+                                        emit_cascade_exhausted_event(&self.slots, &msg);
+                                        return Err(anyhow::anyhow!("{msg}"));
                                     }
+                                    emit_cascade_exhausted_event(
+                                        &self.slots,
+                                        &format!("local slot failed: {e}"),
+                                    );
                                     return Err(e);
                                 }
                             }
                         }
                         None => {
-                            return Err(anyhow::anyhow!(
-                                "no providers available (circuit open or rate limited; set OPENAI_API_BASE for local fallback)"
-                            ));
+                            let msg = "no providers available (circuit open or rate limited; \
+                                       set OPENAI_API_BASE for local fallback)";
+                            emit_cascade_exhausted_event(&self.slots, msg);
+                            return Err(anyhow::anyhow!("{msg}"));
                         }
                     }
                 }
@@ -1132,6 +1208,111 @@ fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// INFRA-352: verify `emit_cascade_exhausted_event` writes a structured
+    /// `cascade_all_exhausted` JSONL line to the path set by `CHUMP_AMBIENT_LOG`.
+    /// Pin the schema fields so future writers can grep / parse reliably.
+    #[test]
+    #[serial_test::serial(cascade_ambient_env)]
+    fn cascade_exhausted_emits_ambient_event_with_per_slot_tally() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", log_path.to_string_lossy().to_string());
+
+        // Two synthetic slots — names + tallies must round-trip into the line.
+        let slots = vec![
+            ProviderSlot {
+                name: "test_slot_a".to_string(),
+                base_url: "https://example.invalid/a".to_string(),
+                provider: LocalOpenAIProvider::with_fallback(
+                    "https://example.invalid/a".to_string(),
+                    None,
+                    "k".to_string(),
+                    "m".to_string(),
+                ),
+                priority: 1,
+                tier: ProviderTier::Cloud,
+                privacy: PrivacyTier::Safe,
+                context_k: None,
+                rpm_limit: 10,
+                calls_this_minute: AtomicU32::new(0),
+                minute_start: Mutex::new(Instant::now()),
+                rpd_limit: 100,
+                calls_today: AtomicU32::new(7),
+                day_start: Mutex::new(Instant::now()),
+            },
+            ProviderSlot {
+                name: "test_slot_b".to_string(),
+                base_url: "https://example.invalid/b".to_string(),
+                provider: LocalOpenAIProvider::with_fallback(
+                    "https://example.invalid/b".to_string(),
+                    None,
+                    "k".to_string(),
+                    "m".to_string(),
+                ),
+                priority: 2,
+                tier: ProviderTier::Cloud,
+                privacy: PrivacyTier::Safe,
+                context_k: None,
+                rpm_limit: 10,
+                calls_this_minute: AtomicU32::new(0),
+                minute_start: Mutex::new(Instant::now()),
+                rpd_limit: 50,
+                calls_today: AtomicU32::new(50),
+                day_start: Mutex::new(Instant::now()),
+            },
+        ];
+
+        emit_cascade_exhausted_event(&slots, "all 2 cloud slots exhausted");
+
+        let contents = std::fs::read_to_string(&log_path).unwrap();
+        assert!(
+            contents.contains("\"event\":\"cascade_all_exhausted\""),
+            "expected event tag in line: {contents}"
+        );
+        assert!(
+            contents.contains("\"slot_count\":2"),
+            "expected slot_count in line: {contents}"
+        );
+        assert!(
+            contents.contains("test_slot_a=7/100"),
+            "expected per-slot tally for slot a: {contents}"
+        );
+        assert!(
+            contents.contains("test_slot_b=50/50"),
+            "expected per-slot tally for slot b: {contents}"
+        );
+        assert!(
+            contents.contains("all 2 cloud slots exhausted"),
+            "expected reason in line: {contents}"
+        );
+        // JSON shape: one record per line, valid JSON.
+        let line = contents.lines().next().expect("at least one line");
+        let _: serde_json::Value =
+            serde_json::from_str(line).expect("emitted line must be valid JSON");
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+    }
+
+    /// INFRA-352: empty slots list must still emit a parseable line — not panic
+    /// or produce malformed JSON. Defensive against the "no providers
+    /// available" terminal path.
+    #[test]
+    #[serial_test::serial(cascade_ambient_env)]
+    fn cascade_exhausted_with_zero_slots_emits_valid_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", log_path.to_string_lossy().to_string());
+
+        emit_cascade_exhausted_event(&[], "no providers available");
+
+        let contents = std::fs::read_to_string(&log_path).unwrap();
+        let line = contents.lines().next().expect("emitted at least one line");
+        let v: serde_json::Value = serde_json::from_str(line).expect("must be valid JSON");
+        assert_eq!(v["slot_count"], 0);
+        assert_eq!(v["event"], "cascade_all_exhausted");
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+    }
 
     #[test]
     fn from_env_without_cascade_vars_yields_only_slot_zero_if_openai_base_set() {
