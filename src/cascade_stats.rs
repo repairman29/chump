@@ -135,8 +135,8 @@ fn print_table(rows: &[QualityRow]) {
     println!("# cascade stats (per-slot)");
     println!();
     println!(
-        "  {:<12} {:>8} {:>6} {:>7} {:>8} {:>8}  {}",
-        "slot", "success", "fails", "rate%", "p50ms", "p95ms", "last_updated"
+        "  {:<12} {:>8} {:>6} {:>7} {:>8} {:>8}  last_updated",
+        "slot", "success", "fails", "rate%", "p50ms", "p95ms"
     );
     println!("  {}", "-".repeat(72));
 
