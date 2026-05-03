@@ -70,6 +70,16 @@
       "directive": "When working in src/reflection_db.rs, src/system_prompt.rs, or any file under the lessons/reflection injection path, do NOT change the CHUMP_LESSONS_AT_SPAWN_N default value. COG-024 (2026-04-30) explicitly defaulted spawn-time lessons OFF until COG-032's A/B harness measures whether lessons help or add noise. The COG-032 prereg (#918, 2026-05-02) is the contract that locks the conditions for flipping that default. Premature flips invalidate the study.",
       "priority": "medium",
       "scope": "cog"
+    },
+    {
+      "directive": "Always run `cargo fmt --all` before pushing any src/*.rs change. CI fast-checks runs `cargo fmt --all -- --check`; missing fmt fails the run, blocks auto-merge, and forces a disable-auto + push-fix + re-arm cycle (~10-15 min recovery per occurrence). Observed 2026-05-03 in PRs #975 and #981 within minutes of each other.",
+      "priority": "high",
+      "scope": "infra"
+    },
+    {
+      "directive": "When using `git -c core.hooksPath=/dev/null` (e.g. to bypass the chump-binary-mtime CHUMP_CHECK_BUILD guard), you ALSO bypass the cargo-fmt pre-commit guard. Run `cargo fmt --all` manually before commit when using this bypass.",
+      "priority": "high",
+      "scope": "infra"
     }
   ]
 }
