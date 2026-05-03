@@ -493,16 +493,24 @@ PYEOF_YAMLLINT
         fi
 
         # NEW (INFRA-GAPS-DEDUP 2026-04-19): duplicate-ID guard.
-        # Reject any commit that introduces a NEW gap entry whose id: value
-        # already exists in gaps.yaml (either in HEAD or in the staged version).
-        # This is the root cause of the 7 collision pairs fixed in INFRA-GAPS-DEDUP.
-        # A new id is detected by scanning the added (+) lines for `- id: XXX`
-        # and cross-checking against the full staged file (or HEAD).
+        # Refined (INFRA-380, 2026-05-03 — superseding the filing-only INFRA-078/PR#557):
+        # Only fail when the STAGED content introduces a NEW duplicate id, or
+        # when the staged diff touches an id that's part of a pre-existing
+        # duplicate group on origin/main (or HEAD as fallback). Pre-existing
+        # duplicates that the current commit doesn't touch get a one-line
+        # warning and are otherwise allowed. This eliminates the reflex
+        # CHUMP_GAPS_LOCK=0 bypass habit that the original always-fail
+        # behavior trained — INFRA-078 was filed for that exact failure
+        # mode but its closing PR (#557) only filed the gap and never
+        # implemented the refinement.
         # Bypass: CHUMP_GAPS_LOCK=0
         if command -v python3 >/dev/null 2>&1; then
             dup_ids=$(python3 - <<'PYEOF_DUP'
 import subprocess, sys, re
+
 def _gaps_text(ref=None):
+    """Return concatenated gaps content. ref=None reads the index (staged);
+    otherwise reads from the given git ref."""
     prefix = f"{ref}:" if ref else ":"
     try:
         cmd = ["git","ls-files","--cached","docs/gaps/"] if ref is None else \
@@ -521,27 +529,147 @@ def _gaps_text(ref=None):
                                        text=True,stderr=subprocess.DEVNULL)
     except Exception:
         return ""
-# Get the staged gaps content (per-file or monolithic)
+
+def _dup_ids(text):
+    """Return the set of ids that appear more than once in text."""
+    ids = re.findall(r'^\s*-\s*id:\s*(\S+)', text, re.MULTILINE)
+    seen = {}
+    dups = set()
+    for gid in ids:
+        if gid in seen:
+            dups.add(gid)
+        else:
+            seen[gid] = 1
+    return dups
+
+def _staged_gap_files():
+    """Return the list of docs/gaps/*.yaml files in the staged diff
+    (Added/Modified/Renamed against HEAD)."""
+    try:
+        out = subprocess.check_output(
+            ["git","diff","--cached","--name-only","--diff-filter=AMR","HEAD","--","docs/gaps/","docs/gaps.yaml"],
+            text=True, stderr=subprocess.DEVNULL,
+        )
+        return [l.strip() for l in out.splitlines() if l.strip()]
+    except Exception:
+        return []
+
+def _ids_in_staged_diff():
+    """Return the set of gap ids that the staged diff *touches* — either
+    because a `- id: X` line was added/removed, or because some other
+    field within the same gap row block changed. Used to decide whether
+    the staged commit touches a pre-existing dup group.
+
+    Implementation: walk the staged diff with default unified context and
+    track the most-recent `- id: X` line above each +/- hunk-line; any
+    +/- inside that block flags the id as touched. For per-file
+    docs/gaps/<ID>.yaml mirrors there's only one id per file, so this
+    is equivalent to "the staged file contains id X and the diff is
+    non-empty" — derived directly from the file path."""
+    try:
+        files = subprocess.check_output(
+            ["git","diff","--cached","--name-only","HEAD","--","docs/gaps/","docs/gaps.yaml"],
+            text=True, stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        files = ""
+    touched = set()
+    # Per-file mirror path: docs/gaps/<file>.yaml. The filename usually
+    # matches the id but isn't guaranteed (synthetic test fixtures, manual
+    # mirror copies). Read the staged blob and grab every `- id: X` line.
+    for path in files.splitlines():
+        path = path.strip()
+        if not path or not path.startswith("docs/gaps/") or not path.endswith(".yaml"):
+            continue
+        if path == "docs/gaps.yaml":
+            continue  # handled by the monolithic walker below
+        try:
+            blob = subprocess.check_output(
+                ["git","show",f":{path}"], text=True, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            blob = ""
+        for m in re.finditer(r'^\s*-\s*id:\s*(\S+)', blob, re.MULTILINE):
+            touched.add(m.group(1))
+    # Monolithic legacy docs/gaps.yaml: walk +/- lines and attribute each
+    # to the nearest preceding `- id: X` line within the same hunk.
+    try:
+        diff_out = subprocess.check_output(
+            ["git","diff","--cached","--unified=3","HEAD","--","docs/gaps.yaml"],
+            text=True, stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        diff_out = ""
+    cur_id = None
+    for line in diff_out.splitlines():
+        if line.startswith("@@") or line.startswith("+++") or line.startswith("---"):
+            cur_id = None
+            continue
+        if not line:
+            continue
+        # Strip leading +/-/space marker
+        marker, content = line[0], line[1:]
+        m = re.match(r'^\s*-\s*id:\s*(\S+)', content)
+        if m:
+            cur_id = m.group(1)
+            if marker in ("+","-"):
+                touched.add(cur_id)
+            continue
+        if marker in ("+","-") and cur_id:
+            touched.add(cur_id)
+    return touched
+
+# Total dups in the staged file state.
 staged = _gaps_text()
 if not staged:
     sys.exit(0)
-# Collect all ids in the staged content
-all_ids = re.findall(r'^\s*-\s*id:\s*(\S+)', staged, re.MULTILINE)
-# Find duplicates
-seen = {}
-dups = []
-for gid in all_ids:
-    if gid in seen:
-        if gid not in dups:
-            dups.append(gid)
-    else:
-        seen[gid] = 1
-if dups:
-    print("\n".join(dups))
+staged_dups = _dup_ids(staged)
+if not staged_dups:
+    sys.exit(0)
+
+# Compute baseline dups from origin/main (preferred) or HEAD.
+base_ref = None
+for cand in ("origin/main", "HEAD"):
+    try:
+        subprocess.check_call(["git","rev-parse","--quiet","--verify",cand],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        base_ref = cand
+        break
+    except Exception:
+        continue
+base_dups = set()
+if base_ref:
+    base_text = _gaps_text(base_ref)
+    if base_text:
+        base_dups = _dup_ids(base_text)
+
+# Newly-introduced dups: in staged but not in baseline.
+new_dups = staged_dups - base_dups
+
+# Pre-existing dups the current commit *touches* — diff added/removed an
+# `- id: X` line for an id that's part of a pre-existing dup group.
+touched_ids = _ids_in_staged_diff()
+touched_preexisting = (staged_dups & base_dups) & touched_ids
+
+# Only fail on (a) newly-introduced dups, or (b) edits to a row in a
+# pre-existing dup group. Pre-existing untouched dups warn but don't block.
+fail_dups = new_dups | touched_preexisting
+warn_only_dups = staged_dups - fail_dups
+
+if warn_only_dups:
+    sys.stderr.write(
+        "[pre-commit] note: pre-existing duplicate gap id(s) on "
+        f"{base_ref or 'HEAD'} — not blocking this commit:\n"
+    )
+    for gid in sorted(warn_only_dups):
+        sys.stderr.write(f"  - {gid}\n")
+
+if fail_dups:
+    print("\n".join(sorted(fail_dups)))
 PYEOF_DUP
 )
             if [ -n "$dup_ids" ]; then
-                echo "[pre-commit] DUPLICATE GAP ID — gap registry now contains duplicate id(s):" >&2
+                echo "[pre-commit] DUPLICATE GAP ID — this commit introduces or edits duplicate id(s):" >&2
                 echo "$dup_ids" | sed 's/^/  - /' >&2
                 echo "" >&2
                 echo "[pre-commit] Each gap must have a unique id. Use the next available ID in its series." >&2
