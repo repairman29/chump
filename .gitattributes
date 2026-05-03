@@ -1,0 +1,12 @@
+# Custom git merge drivers — INFRA-310
+#
+# Drivers are registered in .git/config by scripts/setup/install-merge-drivers.sh.
+# That installer is auto-run by scripts/setup/install-hooks.sh, so a fresh
+# checkout / linked worktree gets them after the first hook installation.
+
+# .chump/state.sql is a regenerated artifact of .chump/state.db — chronic
+# textual conflicts after parallel `chump gap reserve` calls (observed
+# 1400/2400-line diffs on PRs #972 #990 on 2026-05-03). On conflict, the
+# driver runs `chump gap dump --out` to produce the canonical dump from
+# the local SQLite store. INFRA-367.
+.chump/state.sql merge=chump-state-sql-regen

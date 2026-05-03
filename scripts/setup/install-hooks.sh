@@ -69,3 +69,12 @@ log ""
 log "Installed $hook_count hook(s) into $worktree_count worktree(s)."
 log "Re-run after every \`git worktree add\` to cover the new worktree."
 log "Skip a hook for one commit: git commit --no-verify"
+
+# INFRA-310: also install custom git merge drivers (state.sql regen, etc.)
+# Drivers live in .git/config (not committed), so each fresh checkout / linked
+# worktree needs the install. Cheap and idempotent.
+if [ -x "$REPO_ROOT/scripts/setup/install-merge-drivers.sh" ]; then
+    log ""
+    log "Installing INFRA-310 merge drivers ..."
+    bash "$REPO_ROOT/scripts/setup/install-merge-drivers.sh" 2>&1 | sed 's/^/  /'
+fi
