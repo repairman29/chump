@@ -190,6 +190,70 @@ pub fn message_likely_needs_tools_neuromod(msg: &str) -> bool {
         return true;
     }
 
+    // INFRA-321: chat-greeting / chitchat patterns short-circuit BEFORE the
+    // 2+-word fallthrough. Without this, "hi there 3" / "hello chump" /
+    // "good morning" all triggered tools — observed 2026-05-02 dogfood
+    // probe: model decided "hi there 3" needed `memory.store`, `notify`,
+    // and `run_cli echo 'Hello'`. Causes 60-120s wall-clock per turn (one
+    // tool wedges) and ~$0 of value (the user said hi).
+    //
+    // Pattern matched at the START of the trimmed message, lowercased, so
+    // "hi there foo bar baz" still bypasses but "hi can you check the file
+    // please" trips the action-keyword check above first.
+    let chat_greeting_starts = [
+        "hi",
+        "hi ",
+        "hi.",
+        "hi!",
+        "hi,",
+        "hello",
+        "hello ",
+        "hello.",
+        "hello!",
+        "hello,",
+        "hey",
+        "hey ",
+        "hey.",
+        "hey!",
+        "hey,",
+        "yo",
+        "yo ",
+        "yo.",
+        "yo!",
+        "sup",
+        "sup ",
+        "good morning",
+        "good afternoon",
+        "good evening",
+        "good night",
+        "ping",
+        "ping ",
+        "thanks",
+        "thank you",
+        "thx",
+        "ty ",
+        "ok",
+        "ok.",
+        "ok!",
+        "okay",
+        "k.",
+        "cool",
+        "nice",
+        "awesome",
+        "great",
+        "bye",
+        "later",
+        "cya",
+        "see ya",
+        "see you",
+    ];
+    if chat_greeting_starts
+        .iter()
+        .any(|p| lower == p.trim_end_matches(' ') || lower.starts_with(p))
+    {
+        return false;
+    }
+
     // Any message with more than 2 words gets tools.
     let word_count = trimmed.split_whitespace().count();
     if word_count > 2 {
@@ -874,6 +938,45 @@ mod heuristic_tests {
         assert!(message_likely_needs_tools_neuromod("close 5"));
         assert!(message_likely_needs_tools_neuromod("what's up"));
         assert!(message_likely_needs_tools_neuromod("are you online"));
+    }
+
+    // INFRA-321: chat-greeting bypass should kick in BEFORE the word-count
+    // fallthrough, so multi-word greetings don't trigger tool-armed turns.
+    // Empirical from 2026-05-02 dogfood: "hi there 3" caused the model to
+    // pick `memory.store`, `notify`, AND `run_cli echo 'Hello'` — 60-120s
+    // wall-clock for a greeting.
+    #[test]
+    fn multi_word_greetings_skip_tools_infra_321() {
+        assert!(!message_likely_needs_tools_neuromod("hi there"));
+        assert!(!message_likely_needs_tools_neuromod("hi there 3"));
+        assert!(!message_likely_needs_tools_neuromod("hello chump"));
+        assert!(!message_likely_needs_tools_neuromod("hey there friend"));
+        assert!(!message_likely_needs_tools_neuromod("good morning"));
+        assert!(!message_likely_needs_tools_neuromod("good morning chump"));
+        assert!(!message_likely_needs_tools_neuromod("ping 1"));
+        assert!(!message_likely_needs_tools_neuromod("thanks chump"));
+        assert!(!message_likely_needs_tools_neuromod("thank you very much"));
+        assert!(!message_likely_needs_tools_neuromod("cool stuff"));
+        assert!(!message_likely_needs_tools_neuromod("see you later"));
+    }
+
+    // Action keywords still win when mixed with greeting prefix — chat bypass
+    // runs AFTER the action_words check, so "hi can you check the file" gets
+    // tools (action_words: "can you", "check ").
+    #[test]
+    fn greeting_plus_action_still_gets_tools_infra_321() {
+        assert!(message_likely_needs_tools_neuromod(
+            "hi can you check the file"
+        ));
+        assert!(message_likely_needs_tools_neuromod(
+            "hello, please list the tasks"
+        ));
+        assert!(message_likely_needs_tools_neuromod(
+            "thanks, now close task 5"
+        ));
+        assert!(message_likely_needs_tools_neuromod(
+            "good morning, what time is it"
+        ));
     }
 
     #[test]
