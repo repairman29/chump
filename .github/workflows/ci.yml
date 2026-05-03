@@ -323,6 +323,9 @@ jobs:
       - name: PWA root redirect / -> /v2/ (INFRA-254)
         run: bash scripts/ci/test-infra-254-pwa-root-redirect.sh
 
+      - name: auto-arm sweeper smoke + bypass (INFRA-382 / INFRA-374)
+        run: bash scripts/ci/test-auto-arm-sweeper.sh
+
       - name: PWA v1 retirement — assets deleted, tauri.conf.json, v2 wizard (INFRA-250)
         run: bash scripts/ci/test-infra-250-v1-retirement.sh
 

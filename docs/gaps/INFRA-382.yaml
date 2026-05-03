@@ -1,0 +1,7 @@
+- id: INFRA-382
+  domain: INFRA
+  title: INFRA-374 follow-up — install launchd cron for auto-arm-sweeper.sh + CI smoke test
+  status: open
+  priority: P1
+  effort: xs
+
