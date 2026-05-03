@@ -1,0 +1,22 @@
+- id: INFRA-410
+  domain: INFRA
+  title: "fleet gap-picker: make gap-claim atomic to prevent worker collisions at scale"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Fleet dispatcher spawns N concurrent workers. Each worker polls a Python gap-picker (_pick_gap.py), which returns an available gap ID without claiming it. Multiple workers can receive the same gap before any claim succeeds, wasting worktrees and agent spawns.
+
+    Observed 2026-05-03: N=4 workers all picked FLEET-033 then FLEET-038 due to simultaneous polling. ~25% collision rate. At N=10+, >60% collisions. At N=100, fleet is unusable.
+
+    Root cause: gap-picker returns a gap without acquiring the claim lock. Check-and-claim is not atomic.
+
+    Solution: Move gap selection into chump binary (Rust) with atomic SQLite operations. One-transaction check (is gap claimed?) + write new lease, so only one worker can claim each gap.
+
+  acceptance_criteria:
+    - "No worker creates a worktree for a gap it will not claim"
+    - "Collision rates: N=4 < 5%, N=10 < 2%, N=100 < 1%"
+    - "Collision handling is silent but logged ('skipped FLEET-XXX (claimed by sibling)')"
+    - "FLEET_SIZE=10 smoke test on real queue shows zero wasted worktrees"
+    - "gap-picker is Rust-native (not Python subprocess)"
+    - "Integration test verifies staggered workers each pick different gaps"
