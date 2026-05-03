@@ -224,6 +224,27 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ── INFRA-305: hot-file rebase-loop expectation list ─────────────────────────
+# Files that every parallel agent appends to (CI test list, pre-commit guard
+# list, coordination scripts, top-level docs). PRs touching these almost
+# always hit ≥1 DIRTY rebase before landing because main moves under them
+# while CI runs. The arm-time hot-file scan below emits a stdout note +
+# ambient.jsonl event so the agent KNOWS to expect the rebase loop instead
+# of treating it as a surprise. See docs/gaps/INFRA-305.yaml.
+#
+# Hand-curated, intentionally small. Update when a new shared append-only
+# file becomes a steady contention point.
+BOT_MERGE_HOT_FILES=(
+    ".github/workflows/ci.yml"
+    "scripts/git-hooks/pre-commit"
+    "scripts/coord/bot-merge.sh"
+    "scripts/coord/gap-claim.sh"
+    "scripts/coord/gap-preflight.sh"
+    "scripts/coord/gap-reserve.sh"
+    "CLAUDE.md"
+    "AGENTS.md"
+)
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 # INFRA-026 — timestamped banners let the fleet distinguish "stuck" from
 # "working hard." Every green/red/info output carries `[bot-merge HH:MM:SS]`.
@@ -233,6 +254,37 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 green() { printf '\033[0;32m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
 red()   { printf '\033[0;31m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
 info()  { printf '[bot-merge %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
+
+# ── INFRA-305: hot-file rebase-loop pre-emit warning ─────────────────────────
+# Inspect the diff vs origin/main and emit a stderr note + ambient event for
+# any file matching BOT_MERGE_HOT_FILES. Idempotent (keyed by gap+path on the
+# stdout side; ambient is append-only). No behavior change — purely an
+# expectation-setting note that a DIRTY rebase is likely while parallel
+# agents touch the same shared append-only configs.
+emit_hot_file_warnings() {
+    local target_pr="${1:-}"   # may be empty if PR not yet open
+    local gap_label="${2:-none}"
+    local diff_files
+    diff_files="$(git diff "$REMOTE/$BASE_BRANCH"..HEAD --name-only 2>/dev/null || true)"
+    [[ -z "$diff_files" ]] && return 0
+
+    local ambient="${LOCK_DIR:-/tmp}/ambient.jsonl"
+    local now path hot
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    while IFS= read -r path; do
+        [[ -z "$path" ]] && continue
+        for hot in "${BOT_MERGE_HOT_FILES[@]}"; do
+            if [[ "$path" == "$hot" ]]; then
+                printf '\033[0;33m[bot-merge] HOT FILE: %s — expect rebase loop, OK to wait\033[0m\n' "$path" >&2
+                printf '{"ts":"%s","session":"bot-merge-%d","event":"bot_merge_hot_file","kind":"bot_merge_hot_file","path":"%s","gap_id":"%s","pr":"%s","note":"PR touches hot file — expect ≥1 DIRTY rebase before landing if other agents are active. The 4-step disarm-push-rearm loop in CLAUDE.md is the recovery."}\n' \
+                    "$now" "$_BM_PID" "$path" "$gap_label" "$target_pr" \
+                    >> "$ambient" 2>/dev/null || true
+                break
+            fi
+        done
+    done <<< "$diff_files"
+}
 
 __STAGE_LABEL=""
 __STAGE_T0=0
@@ -1080,6 +1132,12 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         fi
         green "All required CI checks passing — proceeding with auto-merge."
         stage_done
+
+        # INFRA-305: hot-file rebase-loop expectation. Pre-emit a note for any
+        # file in BOT_MERGE_HOT_FILES so the agent knows to expect ≥1 DIRTY
+        # rebase before landing if other agents are active. No behavior change.
+        _hot_gap_label="${GAP_IDS[0]:-none}"
+        emit_hot_file_warnings "$TARGET_PR" "$_hot_gap_label"
 
         # Pre-merge checkpoint tag (2026-04-18 PR #52 retrospective).
         # GitHub squash-merge captures branch state at the moment CI
