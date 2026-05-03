@@ -408,6 +408,22 @@ default `chump-fleet`), `FLEET_LOG_DIR` (default `/tmp/chump-fleet-<sid>`),
 `CARGO_TARGET_DIR` (auto-set to a shared `target/` per INFRA-210 to avoid
 per-worktree multi-GB rebuilds).
 
+**Poll-jitter + idle-backpressure (INFRA-315, 2026-05-03).** Without
+randomization, sibling workers' poll loops phase-lock and stampede the
+same gap. Observed live in the 2026-05-02 cascade fleet run: 4 workers
+all picked `INFRA-187` because they polled at the same instant, and 3 of
+4 hit "worktree create failed" before chump-local even spawned. Default
+±30% randomization breaks the synchronization. After
+`CHUMP_STARVE_THRESHOLD` consecutive empty picks (default 3), each worker
+emits `kind=fleet_starved` to `ambient.jsonl` so the operator sees the
+quiet fleet is starved (filters too tight, queue empty) instead of
+guessing. Knobs: `CHUMP_POLL_JITTER` (% randomization, default 30),
+`CHUMP_STARVE_THRESHOLD` (consecutive empties before ALERT, default 3).
+Aggregate view: `scripts/dispatch/fleet-status.sh --pane starvation` —
+shows last-24h `fleet_starved` count per agent + per filter combination,
+so a tight `FLEET_DOMAIN_FILTER` accumulating all the events IS the
+diagnosis.
+
 Auto-pickup excludes `EVAL-*`, `RESEARCH-*`, `META-*` (those need human
 judgment) and any gap with non-empty `depends_on`. Smoke test:
 `scripts/ci/test-run-fleet-smoke.sh`.

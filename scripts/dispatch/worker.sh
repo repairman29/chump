@@ -42,6 +42,22 @@ FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
 IDLE_SLEEP_S="${IDLE_SLEEP_S:-60}"
 
+# INFRA-315: poll-jitter + idle-backpressure. Without jitter, N workers
+# wake up at the same instant and stampede the same gap (observed live
+# 2026-05-02 cascade fleet run: 4 workers all picked INFRA-187 because
+# their poll loops were phase-locked). Default ±30% randomization breaks
+# the synchronization without adding much wall-clock overhead.
+CHUMP_POLL_JITTER="${CHUMP_POLL_JITTER:-30}"
+# After this many consecutive empty picks, the worker emits a
+# kind=fleet_starved ambient event so the operator sees that the fleet
+# is idle (filters too tight, queue actually empty, etc.) instead of
+# guessing why workers are quiet.
+CHUMP_STARVE_THRESHOLD="${CHUMP_STARVE_THRESHOLD:-3}"
+
+# Per-worker counter of consecutive empty picks. Reset on every
+# successful pick.
+_starve_count=0
+
 mkdir -p "$FLEET_LOG_DIR"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
@@ -121,12 +137,46 @@ PY
     rm -f "$gap_json_file"
 
     if [ -z "$pick" ]; then
-        log "no pickable gap (filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER); sleeping ${IDLE_SLEEP_S}s"
-        sleep "$IDLE_SLEEP_S"
+        # INFRA-315: increment starvation counter; emit ambient ALERT once
+        # the fleet has been quiet for STARVE_THRESHOLD consecutive cycles.
+        _starve_count=$((_starve_count + 1))
+        if [ "$_starve_count" = "$CHUMP_STARVE_THRESHOLD" ]; then
+            _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            _amb_path="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+            mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"fleet_starved","agent_id":"%s","consecutive_empty":%d,"filters":"prio=%s domain=%s effort=%s"}\n' \
+                "$_ts" \
+                "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
+                "$AGENT_ID" \
+                "$AGENT_ID" \
+                "$_starve_count" \
+                "$FLEET_PRIORITY_FILTER" \
+                "${FLEET_DOMAIN_FILTER:-any}" \
+                "$FLEET_EFFORT_FILTER" \
+                >> "$_amb_path" 2>/dev/null || true
+            log "ALERT kind=fleet_starved (consecutive_empty=$_starve_count; filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER)"
+        fi
+        # INFRA-315: jittered sleep — randomize ±CHUMP_POLL_JITTER% around
+        # IDLE_SLEEP_S. e.g. with default 60s + 30%: window 42-78s. Breaks
+        # phase-lock between sibling workers so they don't all wake up at
+        # the same instant to race the same gap. python3 (already a
+        # dependency above) for the random arithmetic; awk fallback if not.
+        _sleep_s="$(IDLE="$IDLE_SLEEP_S" JIT="$CHUMP_POLL_JITTER" python3 -c '
+import os, random
+idle = float(os.environ.get("IDLE", "60"))
+jit  = float(os.environ.get("JIT",  "30")) / 100.0
+delta = idle * jit
+print(max(1.0, idle + random.uniform(-delta, +delta)))
+' 2>/dev/null || echo "$IDLE_SLEEP_S")"
+        log "no pickable gap (filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER); sleeping ${_sleep_s}s (starve=$_starve_count)"
+        sleep "$_sleep_s"
         continue
     fi
 
     GAP_ID="$pick"
+    # INFRA-315: clear starvation counter on a successful pick. The next
+    # empty cycle starts the threshold over from zero.
+    _starve_count=0
     log "picked gap $GAP_ID"
 
     # ── INFRA-361: pre-pick preflight ─────────────────────────────────────
