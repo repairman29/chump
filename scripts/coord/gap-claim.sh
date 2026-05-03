@@ -287,6 +287,19 @@ PYEOF
     fi
 fi
 
+# ── INFRA-168: sync claim to SQLite leases table ─────────────────────────────
+# Keep state.db in sync so `chump gap preflight` sees this session's claim
+# and gap-preflight.sh can delegate to the Rust binary instead of sqlite3 CLI.
+# Best effort — soft failure if chump is unavailable or the gap is not yet
+# imported into local state.db (e.g. gaps on origin/main but never imported).
+if command -v chump >/dev/null 2>&1; then
+    _CLAIM_TTL_SECS=$(( ${GAP_CLAIM_TTL_HOURS:-4} * 3600 ))
+    chump gap claim "$GAP_ID" \
+        --session "$SESSION_ID" \
+        --worktree "${REPO_ROOT:-}" \
+        --ttl "$_CLAIM_TTL_SECS" 2>/dev/null || true
+fi
+
 # ── INFRA-193: speculative-mode advisory banner ──────────────────────────────
 # When the operator opts in to speculative execution, surface the racing
 # siblings explicitly so the human/agent knows they are not the only one
