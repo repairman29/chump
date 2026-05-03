@@ -107,6 +107,98 @@ pub fn pr_number_of(outcome: &DispatchOutcome) -> Option<u32> {
     }
 }
 
+/// INFRA-336: classify a failure-class outcome's stderr-tail signature into
+/// one of the canonical cause buckets the dispatch-quality report (INFRA-335)
+/// surfaces. Returns `None` for success outcomes (Shipped / CiFailed) — the
+/// "cause" only makes sense for failure modes.
+///
+/// Returned cause strings are stable across releases — new variants must
+/// be added, never renamed; existing match arms must be additive only.
+/// The dispatch-quality report (`scripts/audit/dispatch-quality-report.sh`)
+/// matches on `notes=cause:<class>` substrings, so any rename here cascades
+/// into the report's SQL.
+///
+/// Buckets:
+/// - `bot-merge-hung`: bot-merge.sh stage timed out (cargo clippy/build wall
+///   clock or merge-queue check stuck). Identified by `[bot-merge]` markers
+///   plus `timed out` / `timeout` / signal kill.
+/// - `cargo-build-timeout`: pure cargo timeout, no bot-merge framing.
+///   Distinct so INFRA-202 (sccache) impact can be measured separately.
+/// - `chump-binary-wedge`: INFRA-275 syspolicyd inode wedge — `chump gap`
+///   commands hang at `_dyld_start`. Stderr typically empty; surfaced via
+///   `UE` process state or `chump gap` hang signature in the tail.
+/// - `API-credit-exhausted`: cascade slot returned 402 / `credit_limit` /
+///   `insufficient_quota` and the next slot also failed. Together / OpenAI
+///   quota class.
+/// - `unknown`: outcome is a failure but no signature matched. Operator
+///   should inspect the per-cycle log; if a recurring pattern emerges,
+///   add a new bucket.
+pub fn classify_failure_cause(
+    outcome: &DispatchOutcome,
+    stderr_tail: &str,
+) -> Option<&'static str> {
+    // Only failure outcomes carry a cause.
+    let is_failure = matches!(
+        outcome,
+        DispatchOutcome::Stalled | DispatchOutcome::Killed(_) | DispatchOutcome::CiFailed(_)
+    );
+    if !is_failure {
+        return None;
+    }
+    // Lowercase once for substring matching; keep the original for
+    // readability when displaying.
+    let lower = stderr_tail.to_ascii_lowercase();
+
+    // Order matters: more-specific signatures first.
+
+    // chump-binary-wedge — INFRA-275 / INFRA-301. Most specific.
+    if lower.contains("_dyld_start")
+        || lower.contains("chump gap commands hang")
+        || (lower.contains("chump gap reserve") && lower.contains("hang"))
+    {
+        return Some("chump-binary-wedge");
+    }
+
+    // bot-merge-hung — bot-merge.sh stage timed out. Distinct from raw cargo
+    // because bot-merge wraps the cargo invocations with its own timeout.
+    if lower.contains("[bot-merge]")
+        && (lower.contains("timed out")
+            || lower.contains("timeout")
+            || lower.contains("signal:")
+            || lower.contains("killed"))
+    {
+        return Some("bot-merge-hung");
+    }
+
+    // cargo-build-timeout — cargo without the bot-merge framing.
+    let cargo_signal = lower.contains("clippy")
+        || lower.contains("cargo build")
+        || lower.contains("cargo check")
+        || lower.contains("compiling");
+    if cargo_signal
+        && (lower.contains("timed out")
+            || lower.contains("timeout")
+            || lower.contains("signal:")
+            || lower.contains("killed"))
+    {
+        return Some("cargo-build-timeout");
+    }
+
+    // API-credit-exhausted — quota / billing class. Same set INFRA-300
+    // taught the cascade to fall over on; reused for terminal-state tagging.
+    if stderr_tail.contains("402")
+        || lower.contains("credit_limit")
+        || lower.contains("insufficient_quota")
+        || lower.contains("credit limit exceeded")
+        || lower.contains("billing exhausted")
+        || lower.contains("quota exceeded")
+    {
+        return Some("API-credit-exhausted");
+    }
+
+    Some("unknown")
+}
+
 /// Coarse domain bucket from a gap id like `"AUTO-013"` → `"auto"`. Lowercases
 /// the prefix; falls back to `"unknown"` when the id has no `-`.
 pub fn gap_domain(gap_id: &str) -> String {
@@ -322,6 +414,94 @@ mod tests {
         assert_eq!(pr_number_of(&DispatchOutcome::CiFailed(8)), Some(8));
         assert_eq!(pr_number_of(&DispatchOutcome::Stalled), None);
         assert_eq!(pr_number_of(&DispatchOutcome::Killed("x".into())), None);
+    }
+
+    /// INFRA-336: Shipped outcomes do not carry a cause tag — `cause:` is
+    /// only meaningful for failure modes. Pinning this so future drift
+    /// (e.g. someone tagging successes with `cause:none`) breaks loudly.
+    #[test]
+    fn classify_failure_cause_is_none_for_shipped() {
+        assert_eq!(
+            classify_failure_cause(&DispatchOutcome::Shipped(1), "anything goes here"),
+            None
+        );
+    }
+
+    /// INFRA-336: chump-binary-wedge is the most-specific bucket — match it
+    /// even when other words appear (the order in classify_failure_cause is
+    /// load-bearing).
+    #[test]
+    fn classify_failure_cause_chump_binary_wedge() {
+        let stderr = "chump gap reserve hangs at _dyld_start; ps shows UE";
+        assert_eq!(
+            classify_failure_cause(&DispatchOutcome::Stalled, stderr),
+            Some("chump-binary-wedge")
+        );
+    }
+
+    /// INFRA-336: bot-merge-hung wraps cargo so the `[bot-merge]` framing
+    /// must take precedence over the cargo signal. Real stderr from the
+    /// 2026-05-02 META-014 subagent: cargo-clippy >500s killed under
+    /// bot-merge.sh.
+    #[test]
+    fn classify_failure_cause_bot_merge_hung_takes_precedence() {
+        let stderr = "[bot-merge] arming auto-merge\n[bot-merge] cargo clippy timed out";
+        assert_eq!(
+            classify_failure_cause(&DispatchOutcome::Stalled, stderr),
+            Some("bot-merge-hung")
+        );
+    }
+
+    /// INFRA-336: cargo-build-timeout when the cargo signal is present
+    /// but no bot-merge framing — distinct because INFRA-202 (sccache)
+    /// directly addresses this and the dispatch-quality report wants to
+    /// measure its impact independently.
+    #[test]
+    fn classify_failure_cause_cargo_build_timeout() {
+        let stderr = "Compiling chump v0.1.1\nClippy: error: process timed out";
+        assert_eq!(
+            classify_failure_cause(&DispatchOutcome::Killed("timeout".into()), stderr),
+            Some("cargo-build-timeout")
+        );
+    }
+
+    /// INFRA-336: API-credit-exhausted matches the same set INFRA-300
+    /// taught the cascade to fall over on. Real stderr from the 2026-05-02
+    /// PWA empty-bubble incident.
+    #[test]
+    fn classify_failure_cause_api_credit_exhausted() {
+        let stderr =
+            "Local API error 402 Payment Required: Credit limit exceeded, please add credits.";
+        assert_eq!(
+            classify_failure_cause(&DispatchOutcome::Stalled, stderr),
+            Some("API-credit-exhausted")
+        );
+    }
+
+    /// INFRA-336: unrecognized failure stderr falls into `unknown`, NOT
+    /// `Some("")` or `None`. Operator pre-INFRA-336 saw 100% unknown; that
+    /// number SHOULD drop as buckets are added. If it doesn't drop after
+    /// shipping this fix, the buckets are wrong and the operator gets a
+    /// signal to add new ones.
+    #[test]
+    fn classify_failure_cause_unknown_when_no_signature_matches() {
+        let stderr = "agent loop completed with no useful output";
+        assert_eq!(
+            classify_failure_cause(&DispatchOutcome::Stalled, stderr),
+            Some("unknown")
+        );
+    }
+
+    /// INFRA-336: empty stderr_tail is the common case for `chump-binary-wedge`
+    /// (the binary never reaches main(), so it never writes any stderr).
+    /// Falls into `unknown` since no signature can match an empty string —
+    /// operator inspects `ps` for UE state. Defensive against panic.
+    #[test]
+    fn classify_failure_cause_empty_stderr_is_unknown_not_panic() {
+        assert_eq!(
+            classify_failure_cause(&DispatchOutcome::Stalled, ""),
+            Some("unknown")
+        );
     }
 
     #[test]

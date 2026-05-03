@@ -341,12 +341,24 @@ impl<'p, P: PrProvider> MonitorLoop<'p, P> {
         // backend without a schema migration. The first line of notes is
         // still the most-recent stderr signal; the backend tag just sits in
         // front so a 1-second grep can split shipped/stalled by backend.
+        //
+        // INFRA-336: ALSO emit `cause:<class>` (bot-merge-hung /
+        // cargo-build-timeout / chump-binary-wedge / API-credit-exhausted /
+        // unknown) for failure outcomes. The dispatch-quality report
+        // (INFRA-335 / PR #934) matches on these substrings; pre-INFRA-336
+        // every failure showed as "unknown × N" because notes lacked the
+        // class tag. Putting cause= after backend= preserves the existing
+        // grep ordering for COG-026 and just adds new signal.
         let backend_label = entry.handle.backend.label();
         let stderr_tail = entry.handle.stderr_tail_snapshot();
+        let cause_tag = match crate::reflect::classify_failure_cause(outcome, &stderr_tail) {
+            Some(c) => format!(" cause:{c}"),
+            None => String::new(),
+        };
         let notes = if stderr_tail.is_empty() {
-            format!("backend={backend_label}")
+            format!("backend={backend_label}{cause_tag}")
         } else {
-            format!("backend={backend_label} {stderr_tail}")
+            format!("backend={backend_label}{cause_tag} {stderr_tail}")
         };
         let reflection = DispatchReflection {
             gap_id: entry.handle.gap_id.clone(),
