@@ -1,0 +1,7 @@
+- id: INFRA-405
+  domain: INFRA
+  title: "per-PR cost telemetry — tokens_in/out/USD/model into chump_improvement_targets keyed by PR#"
+  status: open
+  priority: P1
+  effort: s
+

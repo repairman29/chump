@@ -1,0 +1,7 @@
+- id: DOC-017
+  domain: DOC
+  title: docs/process/FLEET_OPERATIONS.md operator runbook — raise/scale/teardown/troubleshoot + today's learned cliffs
+  status: open
+  priority: P2
+  effort: xs
+

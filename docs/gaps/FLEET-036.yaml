@@ -1,0 +1,7 @@
+- id: FLEET-036
+  domain: FLEET
+  title: chump dispatch auto-fetches gap YAML from sibling branches before preflight reject
+  status: open
+  priority: P1
+  effort: m
+
