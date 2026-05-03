@@ -1,0 +1,23 @@
+- id: INFRA-340
+  domain: INFRA
+  title: fleet startup race — all N workers pick same gap before any claim is written; gap-claim collision check happens too late
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Fleet startup race: when run-fleet.sh spawns N workers in the same second, every worker independently calls _pick_gap.py before any has written a lease. They all see the same candidate list, all return candidates[0], and all race for the same gap. Cycle 2 has the same problem if they all complete at the same time.
+    
+    Observed 2026-05-02 21:41 MDT during a chump-squad spawn (FLEET_SIZE=4, FLEET_DOMAIN_FILTER=INFRA): all 4 workers picked INFRA-206 simultaneously, all created worktrees, all spawned chump --execute-gap (which crashed on INFRA-339's separate context-window issue), recycled, and all picked INFRA-206 AGAIN on cycle 2.
+    
+    The pre-fix code path expected the collision and routed around it via INFRA-193 speculative execution: gap-claim --speculative allows multiple claimants, and bot-merge's loser sweep closes the duplicates after the winner ships. That works but pays 2× compute per collision and burns worktree-create cost. The user's framing was right: 'queue the workers to take what's available' — they should pick distinct gaps, not race.
+    
+    Fix: pass WORKER_INDEX (1..N) to _pick_gap.py; pick candidates[(WORKER_INDEX-1) % len(candidates)] instead of always candidates[0]. At boot when no leases exist, N workers pick the top-N distinct gaps. Once leases form, ACTIVE_GAPS shrinks the candidate list and the offset still maps each worker to a unique remaining candidate. Back-compat: missing/invalid WORKER_INDEX falls through to candidate[0] (pre-fix behavior).
+    
+    Test scripts/ci/test-pick-gap-worker-stagger.sh covers: 4 workers boot → 4 distinct picks; wrap behavior past candidate count; missing WORKER_INDEX fallback; ACTIVE_GAPS interaction.
+  acceptance_criteria:
+    - _pick_gap.py reads WORKER_INDEX env var and offsets into the sorted candidate list
+    - worker.sh passes WORKER_INDEX=$AGENT_ID
+    - simultaneously-booting siblings pick distinct gaps when len(candidates) >= N
+    - missing WORKER_INDEX defaults to candidate[0] for back-compat
+    - smoke test scripts/ci/test-pick-gap-worker-stagger.sh covers boot-race, wrap, fallback, and active-gap interaction
+

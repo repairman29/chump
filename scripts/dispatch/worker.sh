@@ -101,6 +101,7 @@ PY
             EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
             ACTIVE_GAPS="$active_gaps" \
             GAP_JSON_FILE="$gap_json_file" \
+            WORKER_INDEX="$AGENT_ID" \
             python3 "$REPO_ROOT/scripts/dispatch/_pick_gap.py" 2>/dev/null || true)"
     rm -f "$gap_json_file"
 
