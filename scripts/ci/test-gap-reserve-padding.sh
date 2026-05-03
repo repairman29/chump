@@ -28,6 +28,10 @@ sandbox_setup() {
     # INFRA-109: gap-reserve.sh now sources scripts/lib/repo-paths.sh for
     # main-repo-vs-linked-worktree resolution. Sandbox needs the same lib.
     cp "$REPO_ROOT/scripts/lib/repo-paths.sh" "$sandbox/scripts/lib/repo-paths.sh"
+    # INFRA-383: gap-reserve.sh now also sources scripts/lib/chump-preflight.sh
+    # (chump-doctor preflight). Sandbox needs this lib too or the source line
+    # at the top of gap-reserve.sh aborts under set -euo pipefail.
+    cp "$REPO_ROOT/scripts/lib/chump-preflight.sh" "$sandbox/scripts/lib/chump-preflight.sh"
     printf '%s' "$fixture_yaml" > "$sandbox/docs/gaps.yaml"
     git -C "$sandbox" -c user.email=t@t -c user.name=t add -A >/dev/null
     git -C "$sandbox" -c user.email=t@t -c user.name=t commit -q -m "seed"
