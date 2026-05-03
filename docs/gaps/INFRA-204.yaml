@@ -1,7 +1,9 @@
 - id: INFRA-204
   domain: infra
   title: fleet status dashboard — tmux control pane shows ambient.jsonl tail + PR queue depth + per-agent throughput
-  status: open
+  status: done
+  closed_pr: 841
+  closed_date: '2026-05-02'
   priority: P1
   effort: s
 
