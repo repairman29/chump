@@ -11834,9 +11834,11 @@ gaps:
 - id: INFRA-265
   domain: INFRA
   title: "per-task-class backend routing: populate routing.yaml so xs/s gaps go to cheapest cascade slot, l/xl + COG to Anthropic"
-  status: open
+  status: done
   priority: P2
   effort: m
+  closed_date: '2026-05-03'
+  closed_pr: 1016
 
 - id: INFRA-266
   domain: INFRA
@@ -14227,6 +14229,20 @@ gaps:
     - "Test: scripts/ci/test-bot-merge-bench-mode.sh — run bot-merge against a sandbox repo with CHUMP_BENCH_MODE=1; assert (a) auto-merge not armed (no autoMergeRequest in gh pr view), (b) JSONL line appended with all required fields, (c) state.db gap row UNCHANGED"
     - "Falsifying condition: if the prereg's 'replayable trials' requirement can be satisfied by re-checking out the bench task fixture each trial (bench is JSON-defined, not depend on main state), this gap is overengineering. Verify before implementing: re-read COG-032 prereg §3 (Cells) for whether the issue is bench-state mutation vs PR-state mutation."
   depends_on: [COG-032, INFRA-324]
+
+- id: INFRA-391
+  domain: INFRA
+  title: fleet workers — auto-relax filter or auto-shutdown on prolonged starvation (3+ consecutive empties)
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Worker that hits CHUMP_STARVE_THRESHOLD consecutive empty picks (default 3) takes one of: (a) auto-relaxes its own filter (drop FLEET_DOMAIN_FILTER first, then bump effort tier, then bump priority tier); (b) self-terminates with rc=0 if CHUMP_STARVE_AUTO_SHUTDOWN=1; (c) emits a fleet-relax suggestion to ambient with the suggested next filter"
+    - Default behavior is (c) emit suggestion + continue (preserves current visibility). (a) is opt-in via CHUMP_STARVE_AUTO_RELAX=1, (b) via CHUMP_STARVE_AUTO_SHUTDOWN=1
+    - "Test: scripts/ci/test-fleet-starve-auto-action.sh covers all three modes against a stub gap-store"
+    - "Cost rationale: on chump-local backend starvation is free (sleep loop, no API). On claude backend each cycle's gh+git fetch is free but the spawn-claude on a wrong-pick costs Anthropic tokens. Auto-relax/shutdown bounds the worst case at N*spawn cost where N=CHUMP_STARVE_THRESHOLD"
+  notes: |
+    Filed 2026-05-03 after observing local dogfood fleet idle for 6+ hours under FLEET_DOMAIN_FILTER=FLEET (no matching open gaps). The current INFRA-315 fleet_starved ALERT requires operator intervention; auto-relax keeps the fleet productive without operator.
 
 - id: INFRA-41
   domain: INFRA
