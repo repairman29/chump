@@ -1,7 +1,7 @@
 - id: INFRA-300
   domain: INFRA
-  title: "cascade fails over on HTTP 402 / credit_limit (Together exhausted no longer hangs the agent)"
-  status: open
+  title: cascade fails over on HTTP 402 / credit_limit (Together exhausted no longer hangs the agent)
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -11,7 +11,7 @@
     fails over on 401/403 (access denied), 429/413 (rate limit),
     `tool_use_failed` (tool format), and various transient errors — but
     NOT on 402.
-
+    
     Result: when Thompson sampling picked Together (~50% of probes), the
     request returned 402 in ~1s, the cascade gave up immediately, and
     the PWA showed an empty bubble (chat.js's "No response received"
@@ -19,7 +19,7 @@
     4 succeeded (Cerebras / Groq), 4 returned `turn_error` SSE events
     with "Local API error 402 Payment Required". User experience:
     silent random failures.
-
+    
     Fix: add `is_billing_exhausted` predicate that matches 402 + the
     common message strings ("credit_limit", "credit limit",
     "insufficient quota", "insufficient_quota", "payment required",
@@ -29,7 +29,10 @@
     naturally down-weight the exhausted arm too.
   acceptance_criteria:
     - cascade tries the next slot when a slot returns HTTP 402
-    - cascade tries the next slot when the error message contains "credit_limit"
+    - "cascade tries the next slot when the error message contains \"credit_limit\""
     - bandit reward of 0.0 is recorded for the failed slot (so it gets down-weighted)
     - existing rate-limit / access-denied / tool-format failover paths unchanged
     - unit test simulates Together-style 402 and asserts cascade reaches a working sibling slot
+  closed_date: '2026-05-03'
+  closed_pr: 890
+

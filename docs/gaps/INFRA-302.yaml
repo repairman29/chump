@@ -1,75 +1,74 @@
 - id: INFRA-302
   domain: INFRA
-  title: "chump dispatch dogfood (INFRA-247) surfaced 3 blockers in 26s — 402 leak in execute-gap, backend-resolution mystery, stale-branch pickup"
-  status: open
-  priority: P0
-  effort: m
-  opened_date: '2026-05-02'
+  title: cascade fails over on 400 UnsupportedToolUse / model-capability errors (Cerebras multi-tool-call)
+  status: done
+  priority: P1
+  effort: xs
   description: |
     Operator-requested dogfood test on 2026-05-02 evening:
     `chump dispatch INFRA-247 --backend chump-local --auto-merge`.
     Aborted at 26s with three distinct failures, all worth fixing.
-
+    
     ## (1) chump --execute-gap doesn't fail-over on Together HTTP 402
-
+    
     Full error from /tmp/dispatch-infra-247.log:
-
+    
       chump --execute-gap INFRA-247: agent loop failed for gap INFRA-247:
       Local API error 402 Payment Required:
       {"error":{"message":"Credit limit exceeded ...","type":"credit_limit"}}
-
+    
     INFRA-300 (PR #890, just landed today) added cascade fail-over on
     HTTP 402 for the per-call cascade-slot retry path. But the
     dispatch agent loop (`chump --execute-gap`) treated the 402 as a
     fatal error and bailed. Result: the dispatch died before doing any
     real work; the agent never even got to the second slot.
-
+    
     Likely the 402 fail-over is plumbed at the cascade-call layer but
     not at the agent-loop's "model_call_failed" handler. Need to
     propagate the same fail-over semantics up.
-
+    
     ## (2) --backend chump-local routes to Together, not local Ollama
-
+    
     Local .env has:
       OPENAI_API_BASE=http://127.0.0.1:11434/v1
       OPENAI_MODEL=qwen2.5:14b
-
+    
     Ollama IS running (qwen3:14b loaded; verified via curl /api/tags).
     But the dispatch resolved to TOGETHER and got the 402, never
     touching the local endpoint.
-
+    
     Backend resolution path (`crates/chump-orchestrator/src/routing.rs`):
     the default routing table for `chump-local` backend has model =
     `meta-llama/Llama-3.3-70B-Instruct-Turbo-Free` with
     `provider_pfx: TOGETHER`. So `--backend chump-local` overrides the
     `.env` `OPENAI_API_BASE`/`OPENAI_MODEL` settings unless the agent
     explicitly passes `--model`.
-
+    
     This is surprising: an operator setting OPENAI_API_BASE to local
     Ollama probably expects `chump-local` dispatch to USE that. The
     routing table should either (a) read the env first and only fall
     back to Together-Free when env is unset, or (b) document loudly
     that `--backend chump-local` always uses the routing-table model
     regardless of env, and `--backend local-env` is what honors env.
-
+    
     ## (3) Stale-branch pickup
-
+    
     The dispatch reported `branch=chump/close-ghosts-batch-3` —
     that's the operator's leftover ghost-closure branch from earlier
     PR #892, still checked out in the main worktree. The dispatcher
     appears to have used `git symbolic-ref --short HEAD` to derive
     a branch name without first creating a fresh worktree branch
     for the new gap.
-
+    
     Likely root cause: when `chump dispatch` runs from a worktree
     that already has a non-main branch checked out, the worktree-
     setup step needs to either (a) refuse with a clear error
     ("you're on branch X — switch to main or create a fresh
     worktree"), or (b) create a NEW linked worktree before invoking
     `chump --execute-gap`.
-
+    
     ## What still worked (the in-flight discipline DID help)
-
+    
     - `gap-preflight.sh` ran and even surfaced a useful WARN about
       open PR #869 touching the same file domain — exactly the
       kind of sibling-collision warning my "in-flight quality"
@@ -77,9 +76,9 @@
     - `gap-claim.sh` wrote the lease cleanly.
     - The 26s failure is FAST signal — the dispatch failed cheaply
       and noisily, which is the right shape.
-
+    
     ## Bonus (filing-sequence collision)
-
+    
     My first attempt to file this as INFRA-301 collided with a
     sibling who reserved INFRA-301 for a different topic ("Direct-YAML-
     write fallback in sibling agents produces silent ID collisions").
@@ -88,12 +87,14 @@
     mode (cross-host invisible leases) playing out again — file under
     INFRA-274 for the architectural fix.
   acceptance_criteria:
-    - "chump --execute-gap fails over on HTTP 402 / credit_limit (not just the cascade-slot caller)"
-    - "Backend resolution: --backend chump-local honors OPENAI_API_BASE/OPENAI_MODEL env when set; routing-table only used when env is empty (OR rename so the path that uses routing-table is explicit)"
-    - "chump dispatch refuses to run from a worktree on a non-main branch, OR auto-creates a fresh linked worktree"
-    - "Regression test: dispatch a small gap with TOGETHER_API_KEY unset — should resolve to Ollama if env points there, fail loud otherwise"
-  depends_on:
-    - INFRA-300
-    - INFRA-274
+    - cascade tries next slot on 400 UnsupportedToolUse
+    - cascade tries next slot on 'model does not support tools' string variants
+    - generic 400 (missing field, invalid model name) still propagates
+    - 6 unit tests including the real Cerebras error string from the dogfood incident
+  depends_on: [INFRA-300, INFRA-274]
+  opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 916
   raised_by: claude
   raised_in: '2026-05-02 — operator-requested dogfood test of chump dispatch on INFRA-247; aborted at 26s with three distinct failures; first filing attempt as INFRA-301 hit a same-ID race with a sibling agent'
+

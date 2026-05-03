@@ -1,7 +1,9 @@
 - id: INFRA-179
-  domain: infra
+  domain: INFRA
   title: scripts/dev/restart-chump-web.sh — one-command kill + rebuild + relaunch local PWA server
-  status: open
+  status: done
   priority: P2
   effort: xs
+  closed_date: '2026-05-03'
+  closed_pr: 689
 
