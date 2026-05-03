@@ -116,13 +116,45 @@ if [[ -z "$GAPS_YAML" && -n "$LOCAL_GAPS_YAML" ]]; then
 fi
 
 # True when this session's lease already reserves gap_id via pending_new_gap (INFRA-021).
+# INFRA-344: also accepts when gap_id is set directly in the lease (post-claim, after
+# gap-claim.sh removes pending_new_gap and writes gap_id instead).
 my_pending_reserves_gap() {
     local gap_id="$1"
     [[ -n "$SESSION_ID" ]] || return 1
     local safe="${SESSION_ID//[^a-zA-Z0-9_-]/_}"
     local lf="$LOCK_DIR/${safe}.json"
     [[ -f "$lf" ]] || return 1
-    python3 -c "import json,sys; d=json.load(open(sys.argv[1])); p=d.get('pending_new_gap') or {}; sys.exit(0 if p.get('id')==sys.argv[2] else 1)" "$lf" "$gap_id" 2>/dev/null
+    python3 - "$lf" "$gap_id" <<'PYEOF' 2>/dev/null
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+    p = d.get("pending_new_gap") or {}
+    # pre-claim: pending_new_gap.id matches; post-claim: gap_id matches (gap-claim.sh
+    # moves pending_new_gap → gap_id, so the session still owns this gap — INFRA-344)
+    if p.get("id") == sys.argv[2] or d.get("gap_id") == sys.argv[2]:
+        sys.exit(0)
+    sys.exit(1)
+except Exception:
+    sys.exit(1)
+PYEOF
+}
+
+# INFRA-344: True when the gap exists in the local state.db with status=open/in_progress.
+# Used as a defense-in-depth check for filing-style PRs: the gap is reserved locally
+# (chump gap reserve wrote it to state.db) but not yet on origin/main.  This catches
+# the case where the session-ID path doesn't line up (e.g. a different chump-anon-*
+# lease owns the pending_new_gap but the current session already ran gap-claim.sh
+# under its own ID).
+gap_locally_open() {
+    local gap_id="$1"
+    # CHUMP_STATE_DB overrides the default path (used by tests to avoid reading prod DB).
+    local db="${CHUMP_STATE_DB:-${REPO_ROOT:+$REPO_ROOT/.chump/state.db}}"
+    [[ -n "$db" && -f "$db" ]] || return 1
+    command -v sqlite3 >/dev/null 2>&1 || return 1
+    local status
+    # Single-quote the ID; gap IDs are ASCII-only so no escaping risk here.
+    status=$(sqlite3 "$db" "SELECT status FROM gaps WHERE id='${gap_id}' LIMIT 1;" 2>/dev/null || true)
+    [[ "$status" == "open" || "$status" == "in_progress" ]]
 }
 
 gap_status() {
@@ -316,7 +348,9 @@ for GAP_ID in "$@"; do
         STATUS="$(gap_status "$GAP_ID")"
         if [[ -z "$STATUS" ]]; then
             if my_pending_reserves_gap "$GAP_ID"; then
-                info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but matches pending_new_gap in this session's lease — OK (INFRA-021)."
+                info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but matches session lease (pending_new_gap or gap_id) — OK (INFRA-021/INFRA-344)."
+            elif gap_locally_open "$GAP_ID"; then
+                info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but exists in local state.db with status=open — OK (INFRA-344: filing-style PR)."
             elif [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
                 info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
             else

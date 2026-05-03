@@ -613,9 +613,23 @@ if [[ "$BEHIND" -gt 0 ]]; then
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"
-        if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
-            red "Gap was completed on main while we rebased — nothing left to push."
-            exit 1
+        # INFRA-344: skip the post-rebase preflight for filing-style PRs that introduce
+        # the gap YAML as a new file. For such PRs the gap is by definition not yet on
+        # origin/main (this PR ships it). Preflight would misread "not found on main" as
+        # "completed on main" and abort — root cause of INFRA-307 and INFRA-340.
+        _new_gap_yaml_in_pr=0
+        for _gid in "${GAP_IDS[@]}"; do
+            if git diff --name-only --diff-filter=A "${REMOTE}/${BASE_BRANCH}..HEAD" 2>/dev/null \
+                    | grep -qx "docs/gaps/${_gid}.yaml"; then
+                info "INFRA-344: docs/gaps/${_gid}.yaml is new in this PR (filing-style) — skipping post-rebase preflight."
+                _new_gap_yaml_in_pr=1
+            fi
+        done
+        if [[ "$_new_gap_yaml_in_pr" == "0" ]]; then
+            if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
+                red "Gap was completed on main while we rebased — nothing left to push."
+                exit 1
+            fi
         fi
     fi
 else
