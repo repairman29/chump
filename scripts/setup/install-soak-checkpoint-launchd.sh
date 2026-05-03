@@ -20,7 +20,12 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PORT="${CHUMP_WEB_PORT:-3000}"
 HOST="${CHUMP_WEB_HOST:-127.0.0.1}"
 TOKEN="${CHUMP_WEB_TOKEN:-}"
-INTERVAL_H="${SOAK_INTERVAL_HOURS:-4}"
+# Default cadence is 1 hour. Was 4h initially — bumped 2026-05-03 because
+# macOS power-coalesces launchd jobs that fire while the laptop sleeps.
+# Empirical: ZERO checkpoints over a 12h overnight window with 4h
+# StartInterval (machine slept ~8h). 1h cadence still drops sleep windows
+# but gives much better data density during work sessions.
+INTERVAL_H="${SOAK_INTERVAL_HOURS:-1}"
 INTERVAL_S=$((INTERVAL_H * 3600))
 
 LABEL="dev.chump.soak-checkpoint"
@@ -59,8 +64,12 @@ cat > "$PLIST" <<PLISTEOF
     <string>${ROOT}</string>
     <key>StartInterval</key>
     <integer>${INTERVAL_S}</integer>
+    <!-- RunAtLoad=true so reload immediately captures a checkpoint;
+         without this, you have to wait one full StartInterval after
+         (re)load before any data appears, which during a soak makes the
+         "did the install work?" check painful. -->
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
     <key>StandardOutPath</key>
     <string>${LOG_OUT}</string>
     <key>StandardErrorPath</key>
