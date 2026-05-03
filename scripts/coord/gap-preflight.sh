@@ -349,6 +349,12 @@ for GAP_ID in "$@"; do
         if [[ -z "$STATUS" ]]; then
             if my_pending_reserves_gap "$GAP_ID"; then
                 info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but matches session lease (pending_new_gap or gap_id) — OK (INFRA-021/INFRA-344)."
+            elif _pf_out="$(chump gap preflight "$GAP_ID" 2>&1)" \
+                    && echo "$_pf_out" | grep -q '\[preflight\] OK'; then
+                # INFRA-168: gap exists in local state.db with status=open — no YAML needed.
+                # This is the canonical post-INFRA-059 path for gaps reserved via
+                # `chump gap reserve` but not yet pushed to origin/main.
+                info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but found open in local state.db (chump gap preflight) — OK (INFRA-168)."
             elif gap_locally_open "$GAP_ID"; then
                 info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but exists in local state.db with status=open — OK (INFRA-344: filing-style PR)."
             elif [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
