@@ -54,9 +54,26 @@ CHUMP_POLL_JITTER="${CHUMP_POLL_JITTER:-30}"
 # guessing why workers are quiet.
 CHUMP_STARVE_THRESHOLD="${CHUMP_STARVE_THRESHOLD:-3}"
 
+# INFRA-391: action when starvation threshold is crossed.
+#   default          : (c) emit fleet_relax_suggestion ambient event + continue
+#   AUTO_RELAX=1     : (a) drop FLEET_DOMAIN_FILTER first, then bump
+#                          FLEET_EFFORT_FILTER tier, then bump FLEET_PRIORITY_FILTER
+#                          tier; one relaxation step per re-trigger of threshold.
+#                          When all tiers are maxed out, falls back to (c).
+#   AUTO_SHUTDOWN=1  : (b) self-terminate with rc=0 — useful for ephemeral
+#                          fleets (CI runners, scheduled batch jobs) that
+#                          should free their slot when the queue is empty.
+# AUTO_RELAX takes priority over AUTO_SHUTDOWN when both are set, on the
+# theory that "try harder" beats "give up" if the operator opted into both.
+CHUMP_STARVE_AUTO_RELAX="${CHUMP_STARVE_AUTO_RELAX:-0}"
+CHUMP_STARVE_AUTO_SHUTDOWN="${CHUMP_STARVE_AUTO_SHUTDOWN:-0}"
+
 # Per-worker counter of consecutive empty picks. Reset on every
 # successful pick.
 _starve_count=0
+# INFRA-391: which relaxation step we're on. 0=initial, 1=domain dropped,
+# 2=effort tier bumped, 3=priority tier bumped, 4=fully relaxed (no more steps)
+_relax_step=0
 
 mkdir -p "$FLEET_LOG_DIR"
 
@@ -155,6 +172,86 @@ PY
                 "$FLEET_EFFORT_FILTER" \
                 >> "$_amb_path" 2>/dev/null || true
             log "ALERT kind=fleet_starved (consecutive_empty=$_starve_count; filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER)"
+
+            # INFRA-391: take action based on opt-in env vars.
+            if [ "$CHUMP_STARVE_AUTO_RELAX" = "1" ]; then
+                # Mode (a): step through relaxation tiers. One step per
+                # threshold trigger. The starve counter is reset below so
+                # next threshold trigger advances the next tier.
+                _relax_step=$((_relax_step + 1))
+                case "$_relax_step" in
+                    1)
+                        if [ -n "$FLEET_DOMAIN_FILTER" ]; then
+                            log "INFRA-391: auto-relax step 1 — drop FLEET_DOMAIN_FILTER (was: $FLEET_DOMAIN_FILTER)"
+                            FLEET_DOMAIN_FILTER=""
+                        else
+                            log "INFRA-391: auto-relax step 1 skipped (FLEET_DOMAIN_FILTER already empty)"
+                        fi
+                        ;;
+                    2)
+                        # Bump effort tier: xs,s,m → xs,s,m,l → xs,s,m,l,xl
+                        case "$FLEET_EFFORT_FILTER" in
+                            *xl*) log "INFRA-391: auto-relax step 2 skipped (FLEET_EFFORT_FILTER already includes xl)" ;;
+                            *l*)  FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER},xl"; log "INFRA-391: auto-relax step 2 — bump effort to include xl ($FLEET_EFFORT_FILTER)" ;;
+                            *)    FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER},l"; log "INFRA-391: auto-relax step 2 — bump effort to include l ($FLEET_EFFORT_FILTER)" ;;
+                        esac
+                        ;;
+                    3)
+                        # Bump priority tier: P0,P1 → P0,P1,P2 → P0,P1,P2,P3
+                        case "$FLEET_PRIORITY_FILTER" in
+                            *P3*) log "INFRA-391: auto-relax step 3 skipped (FLEET_PRIORITY_FILTER already includes P3)" ;;
+                            *P2*) FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER},P3"; log "INFRA-391: auto-relax step 3 — bump priority to include P3 ($FLEET_PRIORITY_FILTER)" ;;
+                            *)    FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER},P2"; log "INFRA-391: auto-relax step 3 — bump priority to include P2 ($FLEET_PRIORITY_FILTER)" ;;
+                        esac
+                        ;;
+                    *)
+                        log "INFRA-391: auto-relax exhausted (all tiers maxed); falling through to suggestion mode"
+                        ;;
+                esac
+                # Reset counter so the next threshold-cross advances the next step.
+                _starve_count=0
+            elif [ "$CHUMP_STARVE_AUTO_SHUTDOWN" = "1" ]; then
+                # Mode (b): self-terminate. Useful for ephemeral fleets.
+                log "INFRA-391: CHUMP_STARVE_AUTO_SHUTDOWN=1 — self-terminating worker $AGENT_ID with rc=0"
+                printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"fleet_worker_shutdown","agent_id":"%s","reason":"starvation","consecutive_empty":%d}\n' \
+                    "$_ts" \
+                    "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
+                    "$AGENT_ID" \
+                    "$AGENT_ID" \
+                    "$_starve_count" \
+                    >> "$_amb_path" 2>/dev/null || true
+                exit 0
+            else
+                # Mode (c) DEFAULT: emit a fleet_relax_suggestion ambient
+                # event so the operator sees the recommended next-step
+                # filter relaxation without auto-applying it. Suggests the
+                # same first step auto-relax would take (drop domain
+                # filter, then bump effort, then bump priority).
+                _suggest=""
+                if [ -n "$FLEET_DOMAIN_FILTER" ]; then
+                    _suggest="unset FLEET_DOMAIN_FILTER (currently: $FLEET_DOMAIN_FILTER)"
+                else
+                    case "$FLEET_EFFORT_FILTER" in
+                        *xl*)
+                            case "$FLEET_PRIORITY_FILTER" in
+                                *P3*) _suggest="all tiers maxed; queue may genuinely be empty" ;;
+                                *P2*) _suggest="add P3 to FLEET_PRIORITY_FILTER ($FLEET_PRIORITY_FILTER,P3)" ;;
+                                *)    _suggest="add P2 to FLEET_PRIORITY_FILTER ($FLEET_PRIORITY_FILTER,P2)" ;;
+                            esac
+                            ;;
+                        *l*) _suggest="add xl to FLEET_EFFORT_FILTER ($FLEET_EFFORT_FILTER,xl)" ;;
+                        *)   _suggest="add l to FLEET_EFFORT_FILTER ($FLEET_EFFORT_FILTER,l)" ;;
+                    esac
+                fi
+                printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"fleet_relax_suggestion","agent_id":"%s","suggestion":"%s"}\n' \
+                    "$_ts" \
+                    "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
+                    "$AGENT_ID" \
+                    "$AGENT_ID" \
+                    "$_suggest" \
+                    >> "$_amb_path" 2>/dev/null || true
+                log "INFRA-391: fleet_relax_suggestion → $_suggest"
+            fi
         fi
         # INFRA-315: jittered sleep — randomize ±CHUMP_POLL_JITTER% around
         # IDLE_SLEEP_S. e.g. with default 60s + 30%: window 42-78s. Breaks
