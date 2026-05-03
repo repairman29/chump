@@ -281,6 +281,9 @@ jobs:
       - name: state.sql merge driver smoke (INFRA-310)
         run: bash scripts/ci/test-merge-driver-state-sql.sh
 
+      - name: subagent-shipping-epilogue reference guard (INFRA-332)
+        run: bash scripts/ci/test-subagent-epilogue-ref.sh
+
       - name: pre-push --force-with-lease race guard (INFRA-345)
         run: bash scripts/ci/test-pre-push-force-lease-guard.sh
 
