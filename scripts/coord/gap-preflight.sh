@@ -10,6 +10,11 @@
 # live in lease files (.chump-locks/<session>.json) so there are zero merge
 # conflicts and stale claims auto-expire with the session TTL.
 #
+# INFRA-186/INFRA-187: Branch and worktree naming — both conventions accepted.
+# Canonical naming is chump/* (new standard per INFRA-186), but claude/* and
+# other tool prefixes remain supported for backward compatibility. This script
+# has no branch-name enforcement; git and bot-merge.sh handle that.
+#
 # Usage:
 #   scripts/coord/gap-preflight.sh GAP-ID [GAP-ID ...]
 #   scripts/coord/gap-preflight.sh AUTO-003 COMP-002

@@ -5,6 +5,11 @@
 # local JSON file is instant, causes no merge conflicts, and auto-expires when
 # the session ends or the TTL fires — no stale locks possible.
 #
+# INFRA-186/INFRA-187: Branch and worktree naming — both conventions accepted.
+# Canonical naming is chump/* (new standard per INFRA-186), but claude/* and
+# other tool prefixes remain supported for backward compatibility. This script
+# has no branch-name enforcement; git and bot-merge.sh handle that.
+#
 # Usage:
 #   scripts/coord/gap-claim.sh GAP-ID
 #   scripts/coord/gap-claim.sh REL-004
