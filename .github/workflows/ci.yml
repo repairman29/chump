@@ -108,7 +108,8 @@ jobs:
             pkg-config \
             libssl-dev \
             libgtk-3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            util-linux
 
       - name: Cache tauri-driver binary
         id: tauri-driver-cache
@@ -228,7 +229,8 @@ jobs:
             pkg-config \
             libssl-dev \
             libgtk-3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            util-linux
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -418,7 +420,8 @@ jobs:
             pkg-config \
             libssl-dev \
             libgtk-3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            util-linux
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -462,7 +465,8 @@ jobs:
             pkg-config \
             libssl-dev \
             libgtk-3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            util-linux
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

@@ -22,7 +22,7 @@ sandbox_setup() {
     local sandbox="$1"
     local fixture_yaml="$2"
     git init -q -b main "$sandbox"
-    mkdir -p "$sandbox/docs" "$sandbox/.chump-locks" "$sandbox/scripts/coord" "$sandbox/scripts/lib"
+    mkdir -p "$sandbox/docs" "$sandbox/.chump-locks" "$sandbox/scripts/coord" "$sandbox/scripts/lib" "$sandbox/bin"
     cp "$REPO_ROOT/scripts/coord/gap-reserve.sh" "$sandbox/scripts/coord/gap-reserve.sh"
     chmod +x "$sandbox/scripts/coord/gap-reserve.sh"
     # INFRA-109: gap-reserve.sh now sources scripts/lib/repo-paths.sh for
@@ -32,6 +32,20 @@ sandbox_setup() {
     # (chump-doctor preflight). Sandbox needs this lib too or the source line
     # at the top of gap-reserve.sh aborts under set -euo pipefail.
     cp "$REPO_ROOT/scripts/lib/chump-preflight.sh" "$sandbox/scripts/lib/chump-preflight.sh"
+    # Create mock flock for systems that don't have it (e.g., macOS)
+    cat > "$sandbox/bin/flock" <<'FLOCK_EOF'
+#!/bin/bash
+while getopts "xsu" opt; do
+    shift
+done
+fd=$1
+shift
+if [ $# -eq 0 ]; then
+    exit 0
+fi
+exec "$@"
+FLOCK_EOF
+    chmod +x "$sandbox/bin/flock"
     printf '%s' "$fixture_yaml" > "$sandbox/docs/gaps.yaml"
     git -C "$sandbox" -c user.email=t@t -c user.name=t add -A >/dev/null
     git -C "$sandbox" -c user.email=t@t -c user.name=t commit -q -m "seed"
@@ -50,10 +64,12 @@ reserve_in_sandbox() {
     local title="$3"
     (
         cd "$sandbox"
+        export PATH="$sandbox/bin:$PATH"
         CHUMP_GAP_RESERVE_SKIP_PR=1 \
         CHUMP_SESSION_ID="test-pad-$$" \
         CHUMP_ALLOW_MAIN_WORKTREE=1 \
         CHUMP_LOCK_DIR="$sandbox/.chump-locks" \
+        FLEET_029_AMBIENT_GLANCE_SKIP=1 \
         scripts/coord/gap-reserve.sh "$domain" "$title" 2>/dev/null
     )
 }
