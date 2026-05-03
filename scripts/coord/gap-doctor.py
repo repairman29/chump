@@ -36,6 +36,12 @@
 #   scripts/coord/gap-doctor.py sync-from-yaml [--apply]
 #   scripts/coord/gap-doctor.py sync-from-db [--apply]
 
+# INFRA-353: defer annotation evaluation so `int | None` (PEP 604) and
+# similar 3.10+ syntax doesn't error on Python 3.7-3.9. With this future
+# import, all annotations become strings and are not evaluated at runtime.
+# Cheap forward-compat: works back to 3.7 (PEP 563), no behavior change.
+from __future__ import annotations
+
 import argparse
 import datetime as dt
 import os
