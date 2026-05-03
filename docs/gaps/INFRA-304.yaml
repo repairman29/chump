@@ -1,0 +1,45 @@
+- id: INFRA-304
+  domain: INFRA
+  title: bot-merge.sh flake-budget — refuse 3rd rerun of same failing test, suggest filing a gap
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Live observation 2026-05-02: 6 PRs (#819, #826, #828, #829, #833, #839)
+    all blocked simultaneously on the same flaky test
+    `two_concurrent_reserves_return_distinct_ids`. Operator-judgment was
+    needed to recognize the pattern and stop re-running CI; the third
+    re-run on each PR was wasted work. The actual fix (INFRA-253, +12
+    retries in gap_store.rs) was 1 line and unblocked the entire queue.
+
+    Procedure should make the "stop after N reruns of the SAME failing
+    test, look at the source" decision explicit:
+
+    1. bot-merge.sh tracks per-PR per-test rerun counts in
+       `.chump-locks/flake-counts.json`. Schema:
+         { "<pr_num>": { "<test_name>": <count> }, ... }
+    2. On 3rd rerun of the same failing test, refuse the re-run and post
+       a comment to the PR:
+         "⚠ Same test (`<name>`) failed 3 reruns. Likely a real flake
+         or environment issue, not transient noise. File a gap (use
+         `chump gap reserve --domain INFRA --title 'flaky <name>'`)
+         and skip this gate with `CHUMP_FLAKE_BUDGET=0` if you really
+         want to keep retrying."
+    3. Optional Phase 2: emit `ALERT kind=flake_budget_exceeded` to
+       ambient.jsonl so siblings see it immediately.
+
+    The point isn't to forbid retries — it's to surface the pattern at
+    the right cognitive moment (between rerun #2 and #3, when the
+    operator has data but no procedural prompt to switch gears).
+  acceptance_criteria:
+    - bot-merge.sh maintains per-PR per-test rerun counter
+    - 3rd rerun of same test exits non-zero with diagnostic + suggested gap-reserve command
+    - CHUMP_FLAKE_BUDGET=0 bypass restores unlimited retries
+    - Test in scripts/ci/ verifies the budget logic on a fixture (mock gh pr checks)
+  notes: |
+    Discovered during 2026-05-02 dispatcher session — 6 parallel PRs
+    blocked on the same flake; INFRA-253 source-level fix (1 line) was
+    cheaper than 18+ rerun cycles. Same failure mode (the wasted compute
+    + the missing cognitive prompt to switch from retry to fix) is a
+    documented session lesson but not encoded in any guard. P2 because
+    it's a process improvement, not a correctness bug.
