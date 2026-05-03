@@ -14,6 +14,13 @@
 # auto-merge was armed and GitHub captured the branch at first-CI-green.
 # Bypass: CHUMP_AUTOMERGE_OVERRIDE=1 git push  (emergency use only)
 #
+# Auto-skip (INFRA-368): When `git reflog` shows a "rebase" entry within the
+# last REBASE_DETECT_WINDOW_S seconds (default 300), Guards 1+2 silently
+# auto-skip. The canonical DIRTY-after-arm recovery is "rebase + force-push" —
+# the auto-merge-armed guard would otherwise treat it as the PR #52 footgun.
+# Guard 3 still runs (race protection applies regardless). Disable detection
+# with CHUMP_REBASE_DETECT=0.
+#
 # Guard 3 (force-with-lease race protection — INFRA-345): On a force-push,
 # verifies the actual current remote tip matches what the local fetched view
 # expected. `git push --force-with-lease` only protects against the ref-tip
@@ -33,6 +40,46 @@ set -euo pipefail
 REMOTE="$1"
 # $2 is the remote URL; unused here.
 
+# INFRA-368: detect a legitimate rebase force-push so Guards 1+2 silently
+# auto-skip (Guard 3 still runs — race protection applies regardless).
+#
+# Heuristic: git's reflog records "rebase (start)/(finish)" for both
+# `git rebase` and `git pull --rebase`. If we see one within the last
+# REBASE_DETECT_WINDOW_S seconds, treat the push as a rebase finalization.
+# Bypass: CHUMP_REBASE_DETECT=0 to disable detection (force the guards on).
+#
+# Why skip Guard 2 (auto-merge armed) on rebase: the canonical recovery
+# pattern for a DIRTY-after-arm PR is exactly "rebase + force-push" — the
+# guard treats every push-after-arm as the PR #52 footgun, which it isn't
+# when the diff is unchanged and only the parent commit moved.
+# Why skip Guard 1 (gap-preflight) on rebase: same gap IDs in commits;
+# preflight already ran when the original push went out.
+# Why KEEP Guard 3 (force-with-lease race): a sibling can still push
+# between your fetch+rebase and your force-push — that's what Guard 3
+# catches, regardless of whether your push is a rebase or a rewrite.
+detect_recent_rebase() {
+    [[ "${CHUMP_REBASE_DETECT:-1}" == "0" ]] && return 1
+    local window_s="${REBASE_DETECT_WINDOW_S:-300}"  # 5 min default
+    # `git reflog show HEAD --since=...` doesn't filter by message; manually
+    # check the last 50 entries for a "rebase" message within the window.
+    # Format: "<sha> HEAD@{<idx>}: <message>" — use --date=unix on @{...}
+    # via a separate parse since reflog --date= prints the AUTHOR date,
+    # not the reflog-entry date. Use git reflog --date=iso-local instead.
+    local now last_ts
+    now=$(date +%s)
+    while IFS=$'\t' read -r ts_str msg; do
+        [[ "$msg" == *"rebase"* ]] || continue
+        # ts_str format: "Mon May  3 12:34:56 2026"; convert via date -j -f
+        last_ts=$(date -j -f '%a %b %e %H:%M:%S %Y' "$ts_str" '+%s' 2>/dev/null \
+                  || date -d "$ts_str" '+%s' 2>/dev/null)
+        [[ -z "$last_ts" ]] && continue
+        if (( now - last_ts < window_s )); then
+            return 0  # found a recent rebase
+        fi
+    done < <(git reflog show HEAD --date=local --format='%cd	%gs' -50 2>/dev/null)
+    return 1
+}
+
 # Read the list of refs being pushed from stdin (format: local_ref local_sha remote_ref remote_sha)
 while read -r local_ref local_sha remote_ref remote_sha; do
     branch="${remote_ref#refs/heads/}"
@@ -40,12 +87,24 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     # Skip if pushing to main/master (branch protection handles that).
     [[ "$branch" == "main" || "$branch" == "master" ]] && continue
 
+    # INFRA-368: capture rebase state once per pushed ref so the per-guard
+    # checks don't all re-grep the reflog.
+    REBASE_DETECTED=0
+    if detect_recent_rebase; then
+        REBASE_DETECTED=1
+        echo "[pre-push] INFRA-368: recent rebase detected (within ${REBASE_DETECT_WINDOW_S:-300}s) — auto-skip Guards 1+2 for $branch" >&2
+    fi
+
     # -----------------------------------------------------------------------
     # Guard 2: Auto-merge armed check (INFRA-PUSH-LOCK)
     # Check before gap-preflight so a fast fail doesn't require running the
     # slower preflight script when auto-merge is the real problem.
+    # INFRA-368: skip when REBASE_DETECTED — rebase + force-push is the
+    # canonical DIRTY-after-arm recovery, not the PR #52 footgun.
     # -----------------------------------------------------------------------
-    if [[ "${CHUMP_AUTOMERGE_OVERRIDE:-0}" == "1" ]]; then
+    if [[ "$REBASE_DETECTED" == "1" ]]; then
+        : # auto-skip; Guard 3 still runs
+    elif [[ "${CHUMP_AUTOMERGE_OVERRIDE:-0}" == "1" ]]; then
         echo "[pre-push] CHUMP_AUTOMERGE_OVERRIDE=1 — skipping auto-merge armed check for $branch" >&2
     elif command -v gh &>/dev/null; then
         # gh pr view exits non-zero when no PR exists — we catch that and allow.
@@ -114,9 +173,12 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
     # -----------------------------------------------------------------------
     # Guard 1: Gap-preflight check
+    # INFRA-368: skip when REBASE_DETECTED — the gap IDs in the rebased
+    # commits are unchanged from the original push; preflight already ran.
     # -----------------------------------------------------------------------
 
-    # Skip if bypassed.
+    # Skip if bypassed (or rebase auto-skip).
+    [[ "$REBASE_DETECTED" == "1" ]] && continue
     [[ "${CHUMP_GAP_CHECK:-1}" == "0" ]] && continue
 
     # Determine the range of new commits being pushed.

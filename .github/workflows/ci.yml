@@ -284,6 +284,9 @@ jobs:
       - name: pre-push --force-with-lease race guard (INFRA-345)
         run: bash scripts/ci/test-pre-push-force-lease-guard.sh
 
+      - name: pre-push rebase-detect auto-skip (INFRA-368)
+        run: bash scripts/ci/test-pre-push-rebase-allow.sh
+
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
 
