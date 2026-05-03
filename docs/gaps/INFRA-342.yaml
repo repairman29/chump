@@ -1,0 +1,7 @@
+- id: INFRA-342
+  domain: INFRA
+  title: "test-gap-doctor-safe-sweep.sh Test 2 fails on ubuntu-latest (works on macOS dogfood) — re-arm PR #910 once green"
+  status: open
+  priority: P2
+  effort: s
+

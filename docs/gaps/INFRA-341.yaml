@@ -1,0 +1,7 @@
+- id: INFRA-341
+  domain: INFRA
+  title: "scripts/dev/ship-audit.sh — end-to-end pipeline visibility (5 gates: pushed, PR open, auto-merge armed, CI green, landed)"
+  status: open
+  priority: P2
+  effort: xs
+
