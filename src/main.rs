@@ -637,10 +637,8 @@ async fn main() -> Result<()> {
                 // FLEET-029: ambient glance before allocating ID
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
                     use std::process::Command;
-                    let script_path = std::path::PathBuf::from(repo_path::repo_root())
-                        .join("scripts/coord/chump-ambient-glance.sh");
                     let glance_result = Command::new("bash")
-                        .arg(script_path)
+                        .arg("scripts/coord/chump-ambient-glance.sh")
                         .arg("--domain")
                         .arg(&domain)
                         .arg("--title")
@@ -720,10 +718,8 @@ async fn main() -> Result<()> {
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
                     use std::process::Command;
                     if let Ok(Some(gap_row)) = store.get(&gap_id) {
-                        let script_path = std::path::PathBuf::from(repo_path::repo_root())
-                            .join("scripts/coord/chump-ambient-glance.sh");
                         let glance_result = Command::new("bash")
-                            .arg(script_path)
+                            .arg("scripts/coord/chump-ambient-glance.sh")
                             .arg("--domain")
                             .arg(&gap_row.domain)
                             .arg("--title")
