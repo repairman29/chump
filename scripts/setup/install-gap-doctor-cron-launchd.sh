@@ -39,7 +39,7 @@ cat >"$DEST" <<EOF
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>cd "$REPO" && /usr/bin/python3 scripts/coord/gap-doctor.py safe-sweep</string>
+    <string>cd "$REPO" && (test -x /opt/homebrew/bin/python3 && /opt/homebrew/bin/python3 scripts/coord/gap-doctor.py safe-sweep) || (test -x /usr/local/bin/python3 && /usr/local/bin/python3 scripts/coord/gap-doctor.py safe-sweep) || python3 scripts/coord/gap-doctor.py safe-sweep</string>
   </array>
   <!-- Every 15 minutes (900s). Auto-fixes safe drift buckets in-place;
        emits ALERT kind=gap_drift_orphan / gap_drift_yaml_only into
