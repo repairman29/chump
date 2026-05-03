@@ -1,0 +1,122 @@
+{
+  "_comment": "Bench fixture for COG-032 — lessons-injection feedback-loop evaluation (the A/B harness comparing CHUMP_LESSONS_AT_SPAWN_N=0 vs =5). Each task is a self-contained, gap-shaped instruction the agent receives in a fresh worktree. The agent's job is to ship a PR via bot-merge.sh that satisfies the success_criteria. The bench is run identically across all cells so difficulty is held constant; the only varied input is the lessons-injection env var. Per the COG-032 prereg, this file is the contract — it locks at sweep launch (not at preregistration commit time, since v0.1 ships incomplete by design).",
+  "_version": "0.1",
+  "_status": "DRAFT — schema established; 5 seed tasks ship; bench requires ≥50 tasks before sweep launch per COG-032 prereg §3. Subsequent versions: append tasks (preserving existing IDs), bump _version, do NOT re-order or rewrite seed tasks (paired analysis depends on stable IDs).",
+  "_target_size": 50,
+  "_locked_at_sha": "TBD — populated at sweep launch by run-binary-ablation.py",
+  "_authored_by": "INFRA-324 / chump session 930a8f49 (2026-05-02)",
+  "_dimensions": {
+    "difficulty": ["easy", "medium", "hard"],
+    "lessons_relevant": "boolean — whether the task class triggers any lesson currently in chump_improvement_targets. Lessons-relevant tasks are the primary signal for the H1 hypothesis (lessons help when applicable); lessons-neutral tasks measure whether lessons cause harm by adding noise to unrelated work."
+  },
+  "_per_task_schema": {
+    "id": "string, format cog032-T<NN>-<short-slug>",
+    "category": "string — coarse task type (doc_edit | code_refactor | small_feature | test_addition | bugfix | doc_to_code_sync)",
+    "difficulty": "easy | medium | hard",
+    "lessons_relevant": "boolean",
+    "expected_lessons_fire": "array of lesson tag substrings (e.g. 'INFRA-188', 'META-011') — substring match against chump_improvement_targets.tags. Empty array iff lessons_relevant=false.",
+    "instruction": "string — the prompt the agent sees, written in the same shape as a real gap description. Self-contained (no this-conversation references). Names exact files, expected diff direction, and constraints.",
+    "success_criteria": {
+      "pr_must_ship": "boolean — must agent ship a PR via bot-merge.sh? Always true in v0.1.",
+      "ci_must_pass": "array of required check names, e.g. ['test', 'audit']",
+      "files_must_change": "array of substring matches against changed-file paths in the PR diff",
+      "files_must_not_change": "array of substring matches that, if present, fail the trial",
+      "max_lines_added": "int — soft ceiling; > 1.5x triggers manual review",
+      "must_not_use_no_verify": "boolean — always true; tripping a pre-commit guard with --no-verify is auto-fail"
+    },
+    "scope_estimate_minutes": "int — operator estimate for an agent of equivalent skill. Used to size the 90-min wall-clock budget per COG-032 prereg §4.",
+    "rationale": "string — why this task is in the bench. Must reference the difficulty + lessons-relevance dimension being exercised."
+  },
+  "tasks": [
+    {
+      "id": "cog032-T01-stale-gaps-yaml-redirect",
+      "category": "doc_edit",
+      "difficulty": "easy",
+      "lessons_relevant": true,
+      "expected_lessons_fire": ["INFRA-188", "INFRA-200"],
+      "instruction": "Add a one-line note to docs/gaps.yaml stating that the file is deprecated and that the canonical gap registry lives elsewhere. Ship a PR via scripts/coord/bot-merge.sh.",
+      "success_criteria": {
+        "pr_must_ship": true,
+        "ci_must_pass": ["test", "audit"],
+        "files_must_change": ["docs/"],
+        "files_must_not_change": ["docs/gaps.yaml"],
+        "max_lines_added": 30,
+        "must_not_use_no_verify": true
+      },
+      "scope_estimate_minutes": 15,
+      "rationale": "easy + lessons_relevant. Tests whether agent recognizes the INFRA-188 stale-path footgun (docs/gaps.yaml was deleted; canonical layout is per-file docs/gaps/<ID>.yaml). The instruction deliberately names the deprecated path; the agent must NOT edit it. Lesson INFRA-188 ('docs/gaps.yaml gitignored — use per-file mirrors') and INFRA-200 ('raw-YAML-edit guard is blocking') should both fire and steer the agent. Lessons-off agents that take the instruction literally fail the files_must_not_change clause."
+    },
+    {
+      "id": "cog032-T02-add-help-text-to-subcommand",
+      "category": "code_refactor",
+      "difficulty": "easy",
+      "lessons_relevant": false,
+      "expected_lessons_fire": [],
+      "instruction": "The `chump gap dump` subcommand exists in src/main.rs but has no `--help`-style description for its `--out-dir` flag. Add a clear one-line description to that argument so `chump gap dump --help` documents it. Ship via scripts/coord/bot-merge.sh.",
+      "success_criteria": {
+        "pr_must_ship": true,
+        "ci_must_pass": ["test", "audit"],
+        "files_must_change": ["src/main.rs"],
+        "files_must_not_change": [],
+        "max_lines_added": 5,
+        "must_not_use_no_verify": true
+      },
+      "scope_estimate_minutes": 20,
+      "rationale": "easy + lessons_neutral. Pure mechanical task in a region with no known footguns. Measures whether lessons-injection adds noise (false-positive lesson fires that cause unnecessary thrash). Expected: lessons-on agents should perform IDENTICALLY to lessons-off on this task; significant Δ here means lessons are noisy."
+    },
+    {
+      "id": "cog032-T03-gap-store-error-message-precision",
+      "category": "code_refactor",
+      "difficulty": "medium",
+      "lessons_relevant": true,
+      "expected_lessons_fire": ["INFRA-208", "META-013"],
+      "instruction": "In src/gap_store.rs, the error path that fires when a gap ID is not found currently returns a generic message. Update it to include the ID that was looked up, so failures are easier to diagnose. The change should add at most 3 lines and not touch any other function. Ship via scripts/coord/bot-merge.sh.",
+      "success_criteria": {
+        "pr_must_ship": true,
+        "ci_must_pass": ["test", "audit"],
+        "files_must_change": ["src/gap_store.rs"],
+        "files_must_not_change": ["src/main.rs"],
+        "max_lines_added": 8,
+        "must_not_use_no_verify": true
+      },
+      "scope_estimate_minutes": 30,
+      "rationale": "medium + lessons_relevant. src/gap_store.rs is one of Chump's god-module risk zones (META-013 split discord.rs; gap_store.rs is the next candidate). Lessons META-013 ('30%+ scope-expansion-on-contact') and INFRA-208 ('dump preserve-on-merge specifics') should warn the agent against scope creep. Lessons-off agents are likelier to expand the change ('while I'm in here, let me also...'); lessons-on should stay tightly scoped. Failure mode: agent touches src/main.rs error formatting too, tripping files_must_not_change."
+    },
+    {
+      "id": "cog032-T04-rename-internal-helper",
+      "category": "code_refactor",
+      "difficulty": "medium",
+      "lessons_relevant": false,
+      "expected_lessons_fire": [],
+      "instruction": "There is a private helper function `fmt_lease_age` in scripts/coord/gap-preflight.sh (or its Rust equivalent in src/gap_store.rs — check both) that's currently named ambiguously. Rename it to `format_lease_age_human` and update all call sites. Ship via scripts/coord/bot-merge.sh.",
+      "success_criteria": {
+        "pr_must_ship": true,
+        "ci_must_pass": ["test", "audit"],
+        "files_must_change": [],
+        "files_must_not_change": [],
+        "max_lines_added": 20,
+        "must_not_use_no_verify": true
+      },
+      "scope_estimate_minutes": 25,
+      "rationale": "medium + lessons_neutral. Mechanical rename across files; no known footguns in this area. The instruction is intentionally slightly ambiguous about WHICH file owns the helper — agent must explore. Tests whether lessons-injection biases the agent toward over-cautious exploration (false-positive 'this might be a god-module' lesson) on tasks where the lessons don't apply. If lessons-on agents take significantly longer here, lessons add noise."
+    },
+    {
+      "id": "cog032-T05-add-jsonl-rotation-cap",
+      "category": "small_feature",
+      "difficulty": "hard",
+      "lessons_relevant": true,
+      "expected_lessons_fire": ["META-011", "META-016", "INFRA-122"],
+      "instruction": "The .chump-locks/ambient.jsonl file rotates daily (INFRA-122) but has no in-process size cap, which means a runaway emitter can fill the disk between rotations. Add a soft size check: if the file exceeds 100MB, the next emitter writes an ALERT line to ambient.jsonl with kind='ambient_runaway' and skips its event. Implementation lives in whichever Rust path emits ambient events (likely src/ambient.rs or similar — agent must find it). Ship via scripts/coord/bot-merge.sh. The change must NOT use git stash, must NOT switch branches mid-edit, and must use scripts/coord/chump-commit.sh for the commit.",
+      "success_criteria": {
+        "pr_must_ship": true,
+        "ci_must_pass": ["test", "audit"],
+        "files_must_change": ["src/"],
+        "files_must_not_change": [".chump-locks/", ".chump/notes/"],
+        "max_lines_added": 80,
+        "must_not_use_no_verify": true
+      },
+      "scope_estimate_minutes": 60,
+      "rationale": "hard + lessons_relevant. Multi-file feature in a footgun-dense area: META-011 (worktree stomps via background mutators), META-016 (silent stash absorption), INFRA-122 (existing rotation logic the agent must respect). The instruction explicitly forbids `git stash` (META-016 lesson territory) and requires chump-commit.sh (the wrapper that protects against META-011 stomps). Lessons-on agents have direct guidance against these footguns; lessons-off agents must rediscover them or trip them. This is the bench's primary lessons-help signal: if H1 is supported anywhere, it should show up here. Failure modes: agent uses `git stash` (META-016 trip), agent edits in main worktree (META-011 trip), agent over-scopes the feature (META-013 trip)."
+    }
+  ]
+}
