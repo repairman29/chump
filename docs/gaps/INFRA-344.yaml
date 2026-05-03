@@ -1,7 +1,7 @@
 - id: INFRA-344
   domain: INFRA
   title: bot-merge conflates 'gap not yet on main' with 'gap done on main' — kills filing PRs at preflight
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -32,4 +32,6 @@
     - bot-merge.sh's post-rebase preflight does NOT bail when the PR introduces the gap YAML as new
     - smoke test exercises a fresh-gap-ship flow end-to-end without manual intervention
     - filing-style PRs (reserve + implement same change) work through canonical bot-merge path again
+  closed_date: '2026-05-03'
+  closed_pr: 955
 
