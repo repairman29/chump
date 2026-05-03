@@ -9253,7 +9253,7 @@ gaps:
 - id: INFRA-187
   domain: INFRA
   title: "tooling enforcement for chump-first naming: bot-merge.sh default chump/, gap-claim accepts any prefix"
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -9285,6 +9285,8 @@ gaps:
     - "gap-claim.sh + gap-preflight.sh: explicit comment + log line documenting both prefixes accepted"
     - Either INFRA-187 ships the optional migration helper (item 4) and pre-commit nudge (item 5), OR a follow-up gap is filed for them
   opened_date: '2026-05-01'
+  closed_date: '2026-05-03'
+  closed_pr: 987
 
 - id: INFRA-188
   domain: INFRA
@@ -11359,8 +11361,8 @@ gaps:
 
 - id: INFRA-247
   domain: INFRA
-  title: redirect / -> /v2/ in PWA (browser users land on the modern shell)
-  status: done
+  title: chump gap reserve writes per-file YAML to outer repo_root() instead of linked worktree's CWD
+  status: open
   priority: P3
   effort: xs
   description: |
@@ -13887,7 +13889,7 @@ gaps:
 - id: INFRA-371
   domain: INFRA
   title: "fleet workers: cut token burn — inline gap briefing + tight timeout + skip cached pre-flight steps"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -13916,6 +13918,8 @@ gaps:
     - run-fleet.sh defaults FLEET_TIMEOUT_S=600 (was 1800)
     - run-fleet.sh exports CHUMP_AMBIENT_INSTALL_SKIP=1 + CHUMP_LESSONS_AT_SPAWN_N=0 to all worker panes
     - smoke test scripts/ci/test-fleet-inline-briefing.sh covers default, back-compat, missing-yaml, worker.sh content, run-fleet.sh defaults
+  closed_date: '2026-05-03'
+  closed_pr: 982
 
 - id: INFRA-372
   domain: INFRA
@@ -13946,6 +13950,129 @@ gaps:
     - telemetry logs cache_read_input_tokens per call
     - smoke test verifies 2-call cache hit rate > 0
     - provider must support Anthropic cache_control header (skip Together/Groq if not)
+
+- id: INFRA-373
+  domain: INFRA
+  title: INFRA-247 repro test — DO NOT SHIP
+  status: superseded
+  priority: P3
+  effort: xs
+
+- id: INFRA-374
+  domain: INFRA
+  title: auto-arm sweeper — arm any ARMED-eligible OPEN PR that lost its auto-merge state
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Re-arms any OPEN PR that lost its auto-merge state. Auto-merge gets silently disarmed in several cases: bot-merge.sh recovery dance (disarm-push-rearm with rearm skipped), GitHub force-push detection dropping arming, branch-protection rule changes invalidating arming, squash-loss-footgun pre-push hook disarming + operator forgets to re-arm. Empirical: 4-5 lost-arm incidents per multi-PR session on 2026-05-02. Without re-arming, PRs sit OPEN forever even though CI is green. Conservative defaults: only re-arms PRs where (1) mergeable=MERGEABLE, (2) autoMergeRequest is null, (3) branch matches chump/* or claude/* (the bot-merge canonical patterns), (4) NOT draft, (5) NOT labeled human-review-wanted. Includes scripts/ops/auto-arm-sweeper.sh + scripts/setup/install-auto-arm-sweeper-launchd.sh + scripts/ci/test-auto-arm-sweeper.sh + ci.yml wire-up.
+  acceptance_criteria:
+    - scripts/ops/auto-arm-sweeper.sh exists + idempotent + emits reaper heartbeat
+    - "7-case eligibility filter test passes (1 fixture each: armed-eligible, already-armed, draft, non-bot-branch, conflicting, human-review-wanted, claude-branch)"
+    - launchd installer creates dev.chump.auto-arm-sweeper plist with 30min cadence + RunAtLoad=true
+    - live --dry-run on real repo doesn't crash + emits heartbeat
+  closed_date: '2026-05-03'
+  closed_pr: 985
+
+- id: INFRA-375
+  domain: INFRA
+  title: CI-flake auto-rerun — pattern-match known flakes (network setup, runner cancelled) and gh run rerun --failed once
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    CI-flake auto-rerun: walk open PRs, identify run IDs of failing required checks, fetch failed-log payload, grep against allowlist of known flake fingerprints (operation canceled, getaddrinfo, ETIMEDOUT, network unreachable, OOM exit 137, etc). On match: gh run rerun --failed once. Per-run-id cooldown prevents 2nd rerun on persistent failures. Real test failures don't match → no rerun → no waste. Wired into reaper-heartbeat-watchdog (2h threshold, hourly cadence). Bypass: CHUMP_CI_FLAKE_RERUN=0. Emits kind=ci_flake_rerun events. Extra patterns via CI_FLAKE_PATTERNS_FILE.
+  acceptance_criteria:
+    - scripts/ops/ci-flake-rerun.sh scans open PRs for failing required checks
+    - matches against tight allowlist of known flake fingerprints
+    - gh run rerun --failed once per run-id (cooldown record)
+    - hourly LaunchAgent installer at scripts/setup/install-ci-flake-rerun-launchd.sh
+    - wired into reaper-heartbeat-watchdog (2h threshold)
+    - smoke test covers bypass + empty paths
+
+- id: INFRA-376
+  domain: INFRA
+  title: stuck-PR classifier — extend INFRA-307 to tag stuck mode (REBASE/CI-FLAKE/REAL-CONFLICT/INFRA-BROKEN) so cleanup gaps route correctly
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Stuck-PR classifier: extend stuck-pr-filer.sh (INFRA-307) to tag each cleanup gap with stuck_class — REBASE / CI-RED / BEHIND / ORPHAN. Tag goes in title in [brackets] so it's grep-able, and in description with routing hint (REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun-or-human, etc). Lets the fleet picker / human reviewer sort by mode and route the cleanup work to the right repair tool.
+  acceptance_criteria:
+    - stuck-pr-filer.sh adds STUCK_CLASS variable in main loop with 4 values
+    - file_stuck_gap accepts STUCK_CLASS as 5th argument
+    - "gap title format becomes 'PR #N stuck [CLASS] — reason'"
+    - description mentions routing hint per class
+    - all 4 classes (REBASE, CI-RED, BEHIND, ORPHAN) wired to existing detection branches
+    - smoke test verifies title-tag presence
+
+- id: INFRA-377
+  domain: INFRA
+  title: Add cargo-fmt + git-hooks-bypass discipline to lessons-seed-infra-v1.json (caught self tripping 2x in one PR push session)
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "scripts/ab-harness/fixtures/lessons-seed-infra-v1.json gains a directive: 'Always run cargo fmt --all before pushing any src/*.rs change. CI fast-checks runs cargo fmt --all -- --check; missing fmt fails the run, blocks auto-merge, and forces a disable-auto + push-fix + re-arm cycle (~10-15 min recovery per occurrence). Observed 2026-05-03 in PRs #975 and #981 within minutes of each other.'"
+    - "Second new directive: 'When using git -c core.hooksPath=/dev/null (e.g. to bypass the chump-binary-mtime CHUMP_CHECK_BUILD guard), you ALSO bypass the cargo-fmt pre-commit guard. Run cargo fmt --all manually before commit when using this bypass.'"
+    - chump --seed-ab-lessons clear && chump --seed-ab-lessons <updated file> populates with the 2 new directives (15 total)
+    - "Falsifying condition: if the existing 13 directives ALREADY cover this case (e.g. directive #12 INFRA-200 raw-yaml-edit covers this implicitly), this gap closes as duplicate. Verify before adding by grep on lessons-seed for 'cargo fmt'."
+  depends_on: [INFRA-330, COG-032]
+
+- id: INFRA-378
+  domain: INFRA
+  title: INFRA-247 fix repro test — DO NOT SHIP
+  status: superseded
+  priority: P3
+  effort: xs
+
+- id: INFRA-379
+  domain: INFRA
+  title: "bot-merge.sh + scripts/coord/* preflight: invoke chump-doctor.sh before any chump CLI call to avoid 30+ min wedge stalls"
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-03'
+  closed_pr: 991
+
+- id: INFRA-380
+  domain: INFRA
+  title: "Duplicate-ID guard: skip pre-existing dups, only fail on newly-introduced ones (refinement of INFRA-078)"
+  status: open
+  priority: P2
+  effort: s
+
+- id: INFRA-381
+  domain: INFRA
+  title: operator doc — PR pipeline self-healing reapers (consolidate INFRA-307/354/374/375/376 into one reference)
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Single operator-facing reference doc consolidating the PR-pipeline self-healing reapers shipped in this session: INFRA-307 stuck-pr-filer, INFRA-354 pr-watch-shepherd, INFRA-374 auto-arm-sweeper, INFRA-375 ci-flake-rerun, INFRA-376 stuck-pr classifier. Covers the four stuck modes, install commands, verification commands, per-reaper behavior, common invariants (heartbeat + ambient + bypass env + idempotent + log rotation), token-burn defaults (INFRA-371/364/372), and the three failure modes that still need human handoff. Intended to be read once per machine at dogfood setup; after that the reapers run autonomously and the heartbeat-watchdog ALERTs ambient.jsonl on any silence.
+  acceptance_criteria:
+    - docs/process/PR_PIPELINE_SELF_HEALING.md exists
+    - covers all 4 stuck modes (REBASE/CI-RED/BEHIND/ORPHAN) and which reaper handles each
+    - lists all 6 install commands for the new + supporting reapers
+    - provides verify commands for launchctl + heartbeat freshness + ambient signal
+    - documents bypass env per reaper
+    - notes the 3 failure modes still needing human handoff
+    - Net-new-docs trailer present in commit so docs-delta guard accepts
+
+- id: INFRA-382
+  domain: INFRA
+  title: INFRA-374 follow-up — install launchd cron for auto-arm-sweeper.sh + CI smoke test
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Follow-up to INFRA-374 (PR #985 — sibling shipped scripts/ops/auto-arm-sweeper.sh). The script lands on main but has no scheduled run, so it never executes. Adds the missing infrastructure: scripts/setup/install-auto-arm-sweeper-launchd.sh (idempotent installer for a 30-min launchd cadence with RunAtLoad=true per the INFRA-351 sleep-coalescing lesson) + scripts/ci/test-auto-arm-sweeper.sh (8-assertion smoke that verifies script exists/executable, --dry-run flag intact, WIP/skip/hold safety patterns present, CHUMP_AUTOARM_SKIP bypass works) + ci.yml wire-up.
+  acceptance_criteria:
+    - scripts/setup/install-auto-arm-sweeper-launchd.sh creates a 30-min launchd job with RunAtLoad=true
+    - scripts/ci/test-auto-arm-sweeper.sh has 8 passing assertions covering presence/executability/safety-knobs
+    - ci.yml runs the test in fast-checks shard
+    - "launchctl list "
+    - " grep dev.chump.auto-arm-sweeper succeeds after install"
 
 - id: INFRA-41
   domain: INFRA
