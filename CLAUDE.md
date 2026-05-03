@@ -361,13 +361,14 @@ the INFRA-275 syspolicyd binary wedge.
 
 1. **Every Agent-tool prompt MUST include the standard shipping
    epilogue.** Verbatim copy from
-   [`docs/process/SUBAGENT_DISPATCH.md`](docs/process/SUBAGENT_DISPATCH.md).
+   [`scripts/dispatch/subagent-shipping-epilogue.md`](scripts/dispatch/subagent-shipping-epilogue.md).
    The epilogue covers: bot-merge canonical path, `chump-doctor.sh`
    heal, manual `git push + gh pr create + gh pr merge` fall-back path,
    forbidden anti-patterns (silent YAML fallback, `--no-verify`),
-   and the final-report format. The single subagent in this session
-   that did self-ship was the one whose briefing included these
-   explicit fall-back instructions.
+   and the final-report format. Full context and anti-patterns are in
+   [`docs/process/SUBAGENT_DISPATCH.md`](docs/process/SUBAGENT_DISPATCH.md).
+   The single subagent in this session that did self-ship was the one
+   whose briefing included these explicit fall-back instructions.
 
 2. **`Agent` vs `SendMessage` discipline.** `Agent` spawns a fresh
    subagent with no memory of prior runs — use it for new work.
