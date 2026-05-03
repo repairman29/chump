@@ -96,6 +96,80 @@ for r in rows:
 " 2>/dev/null || true)
 fi
 
+# INFRA-386: auto-close filed gaps whose underlying PR has resolved.
+# Runs once per filer cycle, before the dedup-driven filing loop. Walks
+# every open INFRA gap titled "PR #N stuck — ..." and checks PR N's
+# state — if MERGED or CLOSED, runs `chump gap ship --closed-pr N` to
+# flip the gap to done. Pre-fix, INFRA-356/357/358 stayed open hours
+# after their referenced PRs were closed via batch-unstick, with the
+# hourly filer hitting EXISTING_FILINGS dedup but never resolving.
+# Bypass: INFRA_386_AUTOCLOSE=0 for testing.
+auto_close_resolved_filings() {
+    [[ "${INFRA_386_AUTOCLOSE:-1}" == "0" ]] && return 0
+    command -v chump >/dev/null 2>&1 || return 0
+
+    local mapping
+    mapping=$(chump gap list --status open --json 2>/dev/null \
+        | python3 -c "
+import json, sys, re
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for r in rows:
+    title = r.get('title') or ''
+    m = re.search(r'PR #(\d+) stuck', title)
+    if m:
+        gid = r.get('id') or ''
+        if gid: print(f\"{gid}|{m.group(1)}\")
+" 2>/dev/null || true)
+
+    [[ -z "$mapping" ]] && return 0
+
+    local closed=0
+    while IFS='|' read -r gap_id pr_num; do
+        [[ -z "$gap_id" || -z "$pr_num" ]] && continue
+        local state
+        state=$(gh pr view "$pr_num" --json state -q .state 2>/dev/null || echo "")
+        case "$state" in
+            MERGED|CLOSED)
+                if [[ $DRY_RUN -eq 1 ]]; then
+                    dry "would auto-close $gap_id (PR #$pr_num is $state)"
+                else
+                    if chump gap ship "$gap_id" --closed-pr "$pr_num" --update-yaml >/dev/null 2>&1; then
+                        info "auto-closed $gap_id — referenced PR #$pr_num resolved ($state)"
+                        closed=$((closed + 1))
+                    else
+                        warn "chump gap ship $gap_id failed (PR #$pr_num $state)"
+                    fi
+                fi
+                ;;
+        esac
+    done <<< "$mapping"
+
+    [[ $closed -gt 0 ]] && green "  auto-closed $closed resolved filing(s)"
+    return 0
+}
+
+# Run before the filing loop so EXISTING_FILINGS reflects the freshly-closed gaps.
+auto_close_resolved_filings
+# Refresh EXISTING_FILINGS after auto-close so dedup is current.
+if command -v chump >/dev/null 2>&1; then
+    EXISTING_FILINGS=$(chump gap list --status open --json 2>/dev/null \
+        | python3 -c "
+import json, sys, re
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for r in rows:
+    title = r.get('title') or ''
+    m = re.search(r'PR #(\d+) stuck', title)
+    if m:
+        print(m.group(1))
+" 2>/dev/null || true)
+fi
+
 already_filed() {
     local pr="$1"
     [[ -n "$EXISTING_FILINGS" ]] || return 1
