@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch)
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr)
 
 # Per-reaper alert thresholds (seconds since last heartbeat).
 threshold_secs() {
@@ -53,6 +53,7 @@ threshold_secs() {
         pr)       echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x)
         worktree) echo $((4 * 3600)) ;;   # 4h (cadence 1h × 4x)
         branch)   echo $((48 * 3600)) ;;  # 48h (cadence 24h × 2x)
+        stuck-pr) echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-307)
         *)        echo $((4 * 3600)) ;;
     esac
 }
