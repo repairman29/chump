@@ -1,7 +1,7 @@
 - id: INFRA-110
-  domain: infra
+  domain: INFRA
   title: Reserve-time gap requires scoped-diff signature or 2-hour TTL - prevent name-squatting reservations
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -21,4 +21,6 @@
     - Expired reservations auto-release - gap-preflight.sh stops blocking
     - "Backtest - PR #565 reservation would expire before #566/#568/#569 needed renumber"
   opened_date: '2026-04-26'
+  closed_date: '2026-05-03'
+  closed_pr: 939
 
