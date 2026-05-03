@@ -1,0 +1,16 @@
+- id: INFRA-376
+  domain: INFRA
+  title: stuck-PR classifier — extend INFRA-307 to tag stuck mode (REBASE/CI-FLAKE/REAL-CONFLICT/INFRA-BROKEN) so cleanup gaps route correctly
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Stuck-PR classifier: extend stuck-pr-filer.sh (INFRA-307) to tag each cleanup gap with stuck_class — REBASE / CI-RED / BEHIND / ORPHAN. Tag goes in title in [brackets] so it's grep-able, and in description with routing hint (REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun-or-human, etc). Lets the fleet picker / human reviewer sort by mode and route the cleanup work to the right repair tool.
+  acceptance_criteria:
+    - stuck-pr-filer.sh adds STUCK_CLASS variable in main loop with 4 values
+    - file_stuck_gap accepts STUCK_CLASS as 5th argument
+    - "gap title format becomes 'PR #N stuck [CLASS] — reason'"
+    - description mentions routing hint per class
+    - all 4 classes (REBASE, CI-RED, BEHIND, ORPHAN) wired to existing detection branches
+    - smoke test verifies title-tag presence
+
