@@ -236,7 +236,58 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
 
     case "$FLEET_BACKEND" in
         claude)
-            prompt="Ship gap $GAP_ID in this repository. Read CLAUDE.md and AGENTS.md first. The gap is already claimed for this session; the lease is in .chump-locks/. Implement the gap per its description, commit via scripts/coord/chump-commit.sh, and ship via scripts/coord/bot-merge.sh --gap $GAP_ID --auto-merge. Reply with the PR number only."
+            # ── INFRA-371: inline gap briefing (cut token burn) ──────────
+            # Pre-fix: prompt was "Ship gap X. Read CLAUDE.md and AGENTS.md
+            # first..." which forced ~30K tokens of mandatory reads on every
+            # spawn before any productive work. Squad on cycle 100+ wastes
+            # this on every cycle.
+            #
+            # Post-fix: pre-assemble a tight briefing inline so claude has
+            # everything it needs to ship without exploring the repo for
+            # discipline rules. CLAUDE.md is still on disk and claude is
+            # told it CAN read it for unusual cases — so back-compat for
+            # genuinely tricky gaps.
+            #
+            # Estimated savings: ~20-25K tokens per spawn × 4 workers ×
+            # 100+ cycles/day = $50-150/day at sonnet rates, even more
+            # at haiku scale.
+            #
+            # Bypass: FLEET_INLINE_BRIEFING=0 reverts to the old terse-prompt
+            # behavior (forces claude to discover everything itself).
+            if [[ "${FLEET_INLINE_BRIEFING:-1}" == "1" ]]; then
+                gap_yaml_path="$wt_path/docs/gaps/${GAP_ID}.yaml"
+                gap_yaml="(gap YAML not found — read docs/gaps/${GAP_ID}.yaml)"
+                [[ -f "$gap_yaml_path" ]] && gap_yaml=$(cat "$gap_yaml_path")
+                prompt="Ship gap ${GAP_ID}.
+
+The gap is already claimed for this session; lease is in .chump-locks/.
+You are in worktree ${wt_path}. Pre-flight has already run — do NOT re-run
+'chump gap list', 'gap-doctor', 'install-ambient-hooks', or 'chump-coord
+watch'. Spend tokens on the implementation, not on discovery.
+
+══ GAP YAML (canonical) ══
+${gap_yaml}
+
+══ HARD RULES (full text in CLAUDE.md if you need it) ══
+- Work ONLY in this worktree: ${wt_path}
+- Commit via: scripts/coord/chump-commit.sh <files…> -m \"msg\"
+- Ship via:   scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge
+  (this rebases, runs tests, pushes, opens PR, arms auto-merge,
+  auto-closes the gap with --update-yaml)
+- If bot-merge.sh hangs/dies: fall back to manual ship —
+    git push -u origin <branch>
+    gh pr create --base main --title \"...\" --body \"...\"
+    chump gap ship ${GAP_ID} --closed-pr <PR#> --update-yaml
+    git push (commit the close)
+    gh pr merge <PR#> --auto --squash
+- Never push directly to main. Never use git commit --no-verify.
+- Never hand-edit docs/gaps/*.yaml — use 'chump gap set' / 'chump gap ship'.
+- If you spot a real bug along the way, file it: 'chump gap reserve --domain INFRA --title \"...\"'
+
+When done, reply with the PR number only (e.g. \"#1234\")."
+            else
+                prompt="Ship gap $GAP_ID in this repository. Read CLAUDE.md and AGENTS.md first. The gap is already claimed for this session; the lease is in .chump-locks/. Implement the gap per its description, commit via scripts/coord/chump-commit.sh, and ship via scripts/coord/bot-merge.sh --gap $GAP_ID --auto-merge. Reply with the PR number only."
+            fi
             # INFRA-364: default to haiku for cost. Operator had \$92 of unused
             # workspace API credit while the squad burned the \$20/mo subscription
             # cap. Sonnet is ~10× haiku per token; for fleet's "ship a small
