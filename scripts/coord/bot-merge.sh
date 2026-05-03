@@ -822,6 +822,22 @@ if [[ -n "${GAP_ID:-}" ]] && [[ -x "$REPO_ROOT/scripts/dev/chump-ambient-glance.
     fi
 fi
 
+# ── 5a. INFRA-306: pre-push MERGED check ─────────────────────────────────────
+# Bail BEFORE the force-push if a PR for this branch already MERGED. The
+# 30s window between the start of bot-merge and reaching here is enough for
+# auto-merge to fire on green CI — and force-pushing to a merged-and-deleted
+# branch wastes 5-15min of cargo + can lose work in stack-of-PRs scenarios.
+# Cheap one-shot query (~200ms). Bypass: CHUMP_SKIP_MERGED_CHECK=1.
+if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
+    _existing_state=$(gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null || echo "")
+    if [[ "$_existing_state" == "MERGED" ]]; then
+        green "PR for $BRANCH already MERGED — skipping force-push (INFRA-306)."
+        info "Saved you the cargo cost on a race that's already settled."
+        info "Bypass for genuine recovery: CHUMP_SKIP_MERGED_CHECK=1 scripts/coord/bot-merge.sh ..."
+        exit 0
+    fi
+fi
+
 # ── 5. Push ───────────────────────────────────────────────────────────────────
 stage_start "git push $BRANCH → $REMOTE"
 if ! run_timed_hb "git push" 120 git push "$REMOTE" "$BRANCH" --force-with-lease; then

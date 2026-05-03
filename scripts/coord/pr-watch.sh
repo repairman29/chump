@@ -67,6 +67,17 @@ LAST_STATE=""
 say() { printf '\033[1;36m[pr-watch]\033[0m PR #%s: %s\n' "$PR" "$*"; }
 
 attempt_recovery() {
+    # INFRA-306: re-check PR state before any rebase/push work. The state
+    # we captured in the outer poll loop may be 30s old — long enough for
+    # auto-merge to fire on green CI. Force-pushing to a deleted branch
+    # wastes 5-15min and the queue is already settled.
+    if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
+        _live_state=$(gh pr view "$PR" --json state --jq '.state' 2>/dev/null || echo "")
+        if [[ "$_live_state" == "MERGED" ]]; then
+            say "already MERGED — skipping recovery (INFRA-306)"
+            return 0
+        fi
+    fi
     say "DIRTY detected → disarm + rebase + force-push + re-arm"
     gh pr merge "$PR" --disable-auto >/dev/null 2>&1 || true
     git fetch origin main --quiet
