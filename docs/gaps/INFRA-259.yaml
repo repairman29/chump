@@ -2,7 +2,8 @@
   domain: INFRA
   title: "default fleet workers to chump-local backend (consume free-tier cascade)"
   status: done
-  closed_pr: 876
-  closed_date: '2026-05-02'
   priority: P1
   effort: xs
+  opened_date: '2026-05-02'
+  closed_date: '2026-05-02'
+  closed_pr: 876
