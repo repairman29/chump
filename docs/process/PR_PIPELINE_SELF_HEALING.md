@@ -29,7 +29,7 @@ The PR pipeline is now self-healing for the first three. The fourth is converted
 |---|---|---|
 | `stale-pr-reaper.sh` | Closes PRs whose gaps already landed on main via another PR | hourly |
 | `stale-worktree-reaper.sh` | Removes merged / orphaned linked worktrees under `.claude/worktrees/` | hourly |
-| `stale-branch-reaper.sh` | Prunes orphan branches | daily |
+| `stale-branch-reaper.sh` | Prunes orphan branches (installer landed in INFRA-388 — was previously missing, causing 5 `reaper_silent` ALERTs/day) | daily |
 | `gap-doctor.py doctor` | Detects DB↔YAML drift in the gap registry | every 15min |
 | `ambient-rotate.sh` | Daily rotation of `.chump-locks/ambient.jsonl` to keep it small | daily |
 | `reaper-heartbeat-watchdog.sh` | Grades all of the above; ALERTs ambient when anything goes silent | every 30min |
@@ -87,6 +87,8 @@ Walks open PRs hourly. For each, scores against four conditions:
 If any condition matches, files an INFRA P1 cleanup gap titled `PR #<N> stuck [<CLASS>] — <reason>` with description containing the PR URL, suggested action, and routing hint per class. The fleet picker auto-claims P1 INFRA gaps under default filters, so the cleanup work flows to whichever agent is next free.
 
 De-dups by title (`PR #N stuck` substring match in open INFRA gap titles), so re-running is idempotent.
+
+Auto-closes resolved filings (**INFRA-386**): at the top of every cycle, walks open `PR #N stuck` filings and checks each PR's `gh pr view --json state`. If `MERGED` or `CLOSED`, runs `chump gap ship <ID> --closed-pr <N> --update-yaml` to close the cleanup gap automatically. Pre-fix, INFRA-356/357/358 stayed open hours after their referenced PRs resolved because the dedup check kept skipping them. Bypass: `INFRA_386_AUTOCLOSE=0`.
 
 Skips: drafts, dependabot PRs, `chore(gaps): file/reserve …` filing PRs.
 
