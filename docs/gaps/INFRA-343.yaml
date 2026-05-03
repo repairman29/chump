@@ -1,0 +1,24 @@
+- id: INFRA-343
+  domain: INFRA
+  title: "PR #910 stuck — 26 commits behind main"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/910
+    
+    Detected by stuck-pr-filer (2026-05-03T04:00:33Z).
+    
+    Trigger: 26 commits behind main
+    Branch is 26 commits behind main (threshold 20). The CLAUDE.md hard rule says rebase at 15.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 910 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-308
+    Branch: chump/infra-308-doctor-cron
+  closed_date: '2026-05-03'
+  closed_pr: 910
+

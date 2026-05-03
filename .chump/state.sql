@@ -11826,9 +11826,11 @@ gaps:
 - id: INFRA-269
   domain: INFRA
   title: "chump cascade stats subcommand: summarize last-N-days backend ship rate per provider from reflection rows"
-  status: open
+  status: done
   priority: P3
   effort: s
+  closed_date: '2026-05-03'
+  closed_pr: 946
 
 - id: INFRA-270
   domain: INFRA
@@ -13010,7 +13012,7 @@ gaps:
 - id: INFRA-330
   domain: INFRA
   title: Seed actionable lessons into chump_improvement_targets — bridge from empty pool to COG-032 study readiness
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -13020,13 +13022,17 @@ gaps:
     - cog032_gap_bench_v1.json T01-T05 expected_lessons_fire arrays reference seeded lesson directives that actually exist in the table (not just gap IDs from project history)
     - test-cog032-bench-schema.sh extended to verify referenced lessons exist (closes the contract gap between bench tasks and lesson pool)
   depends_on: [COG-032, COG-024]
+  closed_date: '2026-05-03'
+  closed_pr: 927
 
 - id: INFRA-331
   domain: INFRA
   title: chump --briefing reads deleted docs/gaps.yaml — every briefing returns 'Gap not found'; silently breaks lessons-injection path (post-INFRA-188 regression)
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-03'
+  closed_pr: 931
 
 - id: INFRA-332
   domain: INFRA
@@ -13228,7 +13234,7 @@ gaps:
 - id: INFRA-343
   domain: INFRA
   title: "PR #910 stuck — 26 commits behind main"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -13246,6 +13252,236 @@ gaps:
     
     Original gap(s) cited in PR title/commits: INFRA-308
     Branch: chump/infra-308-doctor-cron
+  closed_date: '2026-05-03'
+  closed_pr: 910
+
+- id: INFRA-344
+  domain: INFRA
+  title: bot-merge conflates 'gap not yet on main' with 'gap done on main' — kills filing PRs at preflight
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    When a fresh gap is reserved via 'chump gap reserve' (writes to local .chump/state.db + docs/gaps/<ID>.yaml) and bot-merge.sh ships the implementation in the same PR, bot-merge's post-rebase preflight check fails with:
+    
+      [gap-preflight] SKIP INFRA-NNN — not found in gap registry (docs/gaps/ or docs/gaps.yaml).
+      ...
+      [bot-merge 21:55:57] Gap was completed on main while we rebased — nothing left to push.
+    
+    Root cause: gap-preflight.sh queries 'git show origin/main:docs/gaps/<ID>.yaml'. For a brand-new gap that's about to ship, that returns empty (the YAML hasn't been pushed yet — that's exactly what this PR is going to do). bot-merge then interprets 'not on main' as 'done on main' and bails before pushing.
+    
+    The 'completed on main' message is misleading — the gap was never on main. The PR's whole purpose is to put it there.
+    
+    Observed twice 2026-05-02:
+      - INFRA-307 PR #914 (worked around with manual ship per CLAUDE.md INFRA-028 path)
+      - INFRA-340 PR #943 (worked around with manual ship)
+    
+    Both were filing-style PRs reserving + implementing in the same change.
+    
+    Fix options:
+      (a) gap-preflight.sh: distinguish 'not on main but reserved locally' (read .chump/state.db, accept if local row exists with status=open) from 'done on main' (only flag as done if origin/main YAML has status=done).
+      (b) bot-merge.sh: skip the post-rebase preflight when the same PR introduces the gap's YAML file (detect via 'git diff --name-only origin/main HEAD' includes 'docs/gaps/<ID>.yaml' as a new file).
+      (c) Both — defense in depth.
+    
+    Workaround until fixed: CLAUDE.md INFRA-028 manual ship path (push, gh pr create, gh pr merge --auto).
+  acceptance_criteria:
+    - gap-preflight.sh distinguishes 'reserved locally, not yet on main' from 'done on main'
+    - bot-merge.sh's post-rebase preflight does NOT bail when the PR introduces the gap YAML as new
+    - smoke test exercises a fresh-gap-ship flow end-to-end without manual intervention
+    - filing-style PRs (reserve + implement same change) work through canonical bot-merge path again
+  closed_date: '2026-05-03'
+
+- id: INFRA-345
+  domain: INFRA
+  title: "make --force-with-lease safer: re-fetch + diff against current remote tip in pre-push hook so sibling commits aren't clobbered (PR #910 incident)"
+  status: open
+  priority: P3
+  effort: s
+
+- id: INFRA-346
+  domain: INFRA
+  title: agent over-uses ask_jeff (interactive approval tool) on trivial tool-using queries
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-347
+  domain: INFRA
+  title: Ollama-unreachable error from agent_loop should cascade, doesn't propagate properly to provider_cascade fail-over
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-348
+  domain: INFRA
+  title: cascade should_cascade predicate misses transport-level errors (connection refused, model HTTP unreachable) — only matches HTTP status codes
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    The provider cascade in src/provider_cascade.rs has TWO predicates for
+    deciding when to fall over to the next slot:
+    
+      1. local_openai::is_transient_error(&e)         — typed Error inspector
+      2. provider_cascade::should_cascade_on_error_string(&e_str)  — string match
+    
+    INFRA-300 (PR #890) extended (2) to cover HTTP 402 / credit_limit / billing
+    class errors. But neither predicate handles **transport-level errors when
+    they're wrapped with educational text by LocalOpenAIProvider**.
+    
+    Repro (observed 2026-05-02 dogfood, dispatch attempt #2 on INFRA-234, 154s):
+    
+      chump --execute-gap INFRA-234: agent loop failed for gap INFRA-234:
+      error sending request for url (http://127.0.0.1:11434/v1/chat/completions)
+      — model HTTP unreachable (daemon down, crashed, or still starting).
+      Ollama: brew services start ollama (or restart); probe: curl -s
+      http://127.0.0.1:11434/api/tags. Prefer OPENAI_API_BASE=
+      http://127.0.0.1:11434/v1 if localhost misbehaves. Backup URL:
+      CHUMP_FALLBACK_API_BASE. vLLM: :8000/:8001.
+    
+    CHUMP_CASCADE_ENABLED=1 was set. .env had 8 cloud provider slots configured
+    (Cerebras / Groq / Together / NVIDIA / Hyperbolic / OpenRouter / GitHub
+    Models). The cascade did NOT fall over to slot 1 — the agent loop bubbled
+    the error directly.
+    
+    Likely root cause: LocalOpenAIProvider wraps the underlying reqwest
+    transport error with a custom message ("model HTTP unreachable ...
+    Ollama: brew services start ..."). The wrapped error type doesn't match
+    is_transient_error's typed inspection, AND the wrapped string doesn't
+    contain any of should_cascade_on_error_string's matched tokens (no HTTP
+    status code, no "credit_limit", no "rate limit", no "tool_use_failed").
+    
+    Fix: extend the cascade predicate to recognize transport-level wrapped
+    errors. Pattern matches: "error sending request", "model HTTP
+    unreachable", "connection refused", "operation timed out", "no route to
+    host", "name resolution failed". OR: ensure LocalOpenAIProvider preserves
+    the underlying transport-error type so is_transient_error can classify
+    it directly.
+  acceptance_criteria:
+    - Cascade falls over on 'error sending request for url' / 'model HTTP unreachable' (transport-level errors)
+    - "Regression test in src/provider_cascade.rs::tests covers the wrapped-transport-error string"
+    - Existing INFRA-300 402 tests still pass
+
+- id: INFRA-349
+  domain: INFRA
+  title: local Ollama fragility under concurrent cargo load — model OOM-killed by macOS during dispatched-agent runs (24GB M4)
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Two consecutive 'chump dispatch INFRA-234 --backend chump-local
+    --auto-merge' attempts on 2026-05-02 evening failed with Ollama becoming
+    unreachable mid-conversation:
+    
+      Attempt #1: 269s, dispatch worktree created + agent loop started + tool
+                  inventory loaded, then "model HTTP unreachable". Pure-local
+                  (CHUMP_CASCADE_ENABLED=0).
+      Attempt #2: 154s, agent made one tool call (read_file), then same
+                  "model HTTP unreachable" error. CHUMP_CASCADE_ENABLED=1.
+    
+    Direct ollama runner PIDs disappeared between probes — same shape as a
+    process getting OOM-killed by macOS under memory pressure. Concurrent
+    sibling activity at the time:
+      - 2-3 sibling agents running cargo build/test/clippy in their own
+        worktrees (each pulling multi-GB cargo cache + rustc memory)
+      - qwen3:14b loaded in Ollama (~9GB resident)
+      - This claude session active (~1.5GB)
+      - Total exceeded 24GB system RAM, triggering jetsam
+      
+    Sibling ALERT in ambient.jsonl at the same window confirms system
+    volatility:
+      "/tmp/chump-* worktrees can be cleared by macOS or sibling agent
+      rm-rf-target sweeps; commit immediately after edits — branch refs
+      survive /tmp clearing but uncommitted files don't (lost INFRA-269
+      cascade_stats.rs at 2026-05-03 ~21:30 UTC, recovered from transcript)"
+    
+    This makes local Ollama UNRELIABLE as the chump-local backend's primary
+    provider when the operator has a fleet running. Operator's stated mission
+    is "consume free tier inference" — that should include local Ollama as a
+    viable arm, but only if it survives concurrent agent load.
+    
+    Mitigations to evaluate:
+      (a) Default chump-local backend to a CLOUD free-tier slot (Cerebras
+          llama3.1-8b is fast + free) when system memory pressure is high
+          OR when concurrent cargo processes are detected.
+      (b) Pin Ollama's memory budget via OLLAMA_MAX_LOADED_MODELS=1 +
+          OLLAMA_KV_CACHE_TYPE=q4_0 (smaller KV cache).
+      (c) Use a smaller local model (qwen3:8b @ 5GB instead of qwen3:14b @
+          9GB) so Ollama is less of an OOM target.
+      (d) Add a memory-pressure sentinel that pauses cargo workloads in
+          sibling worktrees while a chump-local dispatch is in flight.
+      (e) Document the "do not run cargo and chump dispatch on the same
+          machine simultaneously" constraint in CLAUDE.md (operator
+          discipline; lower-effort than infrastructure fixes).
+    
+    Depends on INFRA-348 — until cascade falls over on transport errors,
+    Ollama crashing means the dispatch dies, not that it gracefully moves
+    to a cloud slot.
+  acceptance_criteria:
+    - Document Ollama+cargo concurrency constraint OR ship a memory-pressure-aware backend selection
+    - Regression test or runbook entry covering the failure mode
+  depends_on: [INFRA-348]
+
+- id: INFRA-350
+  domain: INFRA
+  title: start the 72h daily-driver soak (last unchecked Architecture-vs-proof gate item)
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Closes the last unchecked item in ROADMAP.md 'Architecture vs proof' section: 'Overnight / 72h soak — Run all roles + primary surface for 72h. Capture pre/post: SQLite size/WAL pattern, model server restarts, logs/ growth, and GET /api/stack-status samples; append findings to INFERENCE_STABILITY.md §Soak.' This PR adds the missing infrastructure to actually run the soak: scripts/setup/install-soak-checkpoint-launchd.sh (idempotent — installs a launchd job that runs scripts/eval/soak-checkpoint.sh every 4 hours; pre-existing script). Plus docs/SOAK_72H_LOG.md skeleton with header + pass criteria. T0 captured 2026-05-03T04:21:07Z; soak runs until 2026-05-06T04:21Z (~72h). Closing the gap requires the actual run to complete cleanly + a verdict appended to SOAK_72H_LOG.md.
+  acceptance_criteria:
+    - scripts/setup/install-soak-checkpoint-launchd.sh installs a 4-hourly launchd job
+    - docs/SOAK_72H_LOG.md exists with header + pass criteria + T0 entry
+    - "launchd job verified loaded (launchctl list "
+    - " grep dev.chump.soak-checkpoint)"
+    - 72h run completes with verdict appended
+    - ROADMAP.md 'Overnight / 72h soak' line gets checked
+
+- id: INFRA-351
+  domain: INFRA
+  title: run-fleet.sh should auto-source .env so ANTHROPIC_API_KEY (and friends) reach worker panes
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    run-fleet.sh launches tmux panes that run 'claude -p <prompt> --dangerously-skip-permissions'. Each pane inherits the launcher's env. ANTHROPIC_API_KEY lives in ./.env (the project's standard secret store, alongside OPENAI_API_KEY, TOGETHER_API_KEY, etc.) but run-fleet.sh does NOT source it before spawning, so panes fall back to Claude.ai subscription auth instead of consuming workspace API credits.
+    
+    Observed 2026-05-02 22:27 MDT: Jeff had $92.71 of unused Anthropic workspace credit while the squad was burning his $20 monthly subscription cap (109% used, 'extra usage' toggle off so the squad would silently stop, not overspend). Worked around by 'set -a; source .env; set +a; scripts/dispatch/run-fleet.sh ...' before relaunch.
+    
+    Fix: have run-fleet.sh check for ./.env at REPO_ROOT and source it before the worker.sh tmux spawns. Pattern (idempotent, safe if .env missing):
+    
+      if [[ -f "$REPO_ROOT/.env" ]]; then
+        set -a
+        # shellcheck source=/dev/null
+        source "$REPO_ROOT/.env"
+        set +a
+      fi
+    
+    Place this BEFORE the env_prefix construction so AGENT_ID, FLEET_BACKEND, etc. don't get clobbered. Print the fact that .env was loaded in the launcher banner so it's visible.
+    
+    Same fix probably wanted for scripts/dispatch/worker.sh in case it's invoked directly without going through run-fleet.sh (single-worker debug mode).
+  acceptance_criteria:
+    - run-fleet.sh sources ./.env at REPO_ROOT before spawning panes (idempotent if file missing)
+    - launcher banner prints whether .env was loaded so the auth source is visible
+    - worker.sh also sources .env when invoked directly (covers debug-without-launcher path)
+    - smoke test verifies ANTHROPIC_API_KEY reaches a worker pane env when set in .env
+    - launcher does NOT overwrite explicit env-var args (FLEET_SIZE=4 scripts/dispatch/run-fleet.sh still uses 4)
+
+- id: INFRA-352
+  domain: INFRA
+  title: chump --execute-gap fails on first HTTP error from OPENAI_API_BASE instead of falling over to cloud cascade slots — invalidates offline-mission failover claim
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Reproduce: stop OR overload Ollama (e.g. fire 4 concurrent execute-gap calls); without this fix, all 4 chump --execute-gap procs exit rc=1 in ~70s with 'agent loop failed: error sending request for url (http://127.0.0.1:11434/v1/chat/completions)' and never touch any cloud slot. With this fix, at least one of the 4 succeeds via a cascade slot."
+    - "chump --execute-gap (src/execute_gap.rs and the agent loop it builds) routes provider calls through provider_cascade.rs instead of bypassing it on first HTTP error. Verify: trace logs from a cascade-only run show fallback to slot 2/3/etc when slot 1 errors, NOT immediate rc=1."
+    - Cascade slot ordering respects CHUMP_PROVIDER_<N>_PRIORITY. Local Ollama (OPENAI_API_BASE) is treated as a slot like any other — its failure does not short-circuit the cascade.
+    - "Test: scripts/ci/test-execute-gap-cascade-failover.sh — 5xx-mocked OPENAI_API_BASE + working mock CHUMP_PROVIDER_2; assert chump --execute-gap completes via slot 2 and emits a structured 'cascade fallover' event to ambient.jsonl"
+    - "Live evidence (cascade fleet run 2026-05-02 04:15Z): 4 workers, 8 slots enabled, 0 reached cloud after Ollama returned errors under concurrent load. Cycle log: tmp/chump-fleet-20260502-221346-89849/agent-4-cycle3-INFRA-306.log line ~5."
+    - "Falsifying condition: if the existing cascade ALREADY handles HTTP errors from slot 1 and we measured incorrectly, this gap is wrong — verify via grep on src/provider_cascade.rs for next-slot-on-error logic before fixing."
+  depends_on: [META-025, INFRA-315]
 
 - id: INFRA-41
   domain: INFRA
