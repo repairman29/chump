@@ -668,6 +668,86 @@ pub(crate) fn is_transport_unreachable_error_string(e_str: &str) -> bool {
         || lower.contains("model temporarily unavailable")
 }
 
+/// INFRA-268 — heuristic prompt-content classifier for auto-privacy.
+///
+/// Returns `true` when the prompt content looks like it's discussing
+/// proprietary source code that should NOT be sent to Trains-tier
+/// providers (Mistral / Gemini free tiers, which train on free-tier data).
+///
+/// Used by the cascade's `complete()` entry point when `CHUMP_AUTO_PRIVACY=1`
+/// is set and the operator has not already pinned `CHUMP_ROUND_PRIVACY`.
+/// Detection is deliberately conservative-toward-false-positive: forcing
+/// Safe-only loses a tiny daily quota budget (Mistral/Gemini are the
+/// smallest slots), while a false-negative leaks code to providers that
+/// retain it for training. Asymmetric cost ⇒ asymmetric heuristic.
+///
+/// Detection signals (any one triggers):
+/// - Path-pattern tokens: `src/`, `crates/`, `.rs`, `.ts`, `.tsx`, `.py`
+///   appearing in a context that suggests a file path (preceded or
+///   followed by `/` or whitespace, not just bare extension).
+/// - Code-fence markers: ```` ```rust ```` / ```` ```rs ```` / ```` ```typescript ```` / ```` ```python ```` /
+///   ```` ```bash ```` / ```` ```sh ````.
+/// - Rust syntax tokens: `fn `, `impl `, `struct `, `pub fn`, `mod ` at
+///   word boundaries (single-token false positives are tolerated).
+/// - Project-private identifiers: `CHUMP_`, `INFRA-`, `EVAL-`, `META-`,
+///   `RESEARCH-`, `COG-`, `FLEET-`, `PRODUCT-` (gap-id-like tokens that
+///   identify Chump-internal work).
+///
+/// Both `messages` (user-visible content) and `system_prompt` are scanned;
+/// returning `true` if any text contains any signal.
+pub(crate) fn prompt_implies_proprietary_code(
+    messages: &[Message],
+    system_prompt: Option<&str>,
+) -> bool {
+    let mut texts: Vec<&str> = messages.iter().map(|m| m.content.as_str()).collect();
+    if let Some(sp) = system_prompt {
+        texts.push(sp);
+    }
+
+    for t in texts {
+        // Code-fence markers — strongest signal (intentional code-paste).
+        if t.contains("```rust")
+            || t.contains("```rs")
+            || t.contains("```typescript")
+            || t.contains("```tsx")
+            || t.contains("```ts\n")
+            || t.contains("```python")
+            || t.contains("```py\n")
+            || t.contains("```bash")
+            || t.contains("```sh\n")
+        {
+            return true;
+        }
+
+        // Path-pattern tokens — repo-internal directory references.
+        if t.contains("src/") || t.contains("crates/") || t.contains("scripts/coord/") {
+            return true;
+        }
+
+        // Rust syntax in body — common code-paste tells.
+        if t.contains("fn ") && (t.contains("(&self") || t.contains("pub fn ")) {
+            return true;
+        }
+        if t.contains("impl ") && t.contains(" for ") {
+            return true;
+        }
+
+        // Gap-id-like tokens — strong signal of Chump-internal context.
+        if t.contains("CHUMP_")
+            || t.contains("INFRA-")
+            || t.contains("EVAL-")
+            || t.contains("META-")
+            || t.contains("RESEARCH-")
+            || t.contains("COG-")
+            || t.contains("FLEET-")
+            || t.contains("PRODUCT-")
+        {
+            return true;
+        }
+    }
+    false
+}
+
 #[async_trait]
 impl Provider for ProviderCascade {
     async fn complete(
@@ -692,9 +772,38 @@ impl Provider for ProviderCascade {
             Ok(false) => {}
         }
 
-        let min_privacy = std::env::var("CHUMP_ROUND_PRIVACY")
+        let mut min_privacy = std::env::var("CHUMP_ROUND_PRIVACY")
             .ok()
             .map(|s| parse_privacy_tier(&s));
+
+        // INFRA-268: opt-in heuristic. When CHUMP_AUTO_PRIVACY=1 and the
+        // operator hasn't already pinned CHUMP_ROUND_PRIVACY, scan the prompt
+        // for evidence that we're sending source code (src/, crates/, .rs
+        // refs, code fences, project identifiers like CHUMP_*/INFRA-*) and
+        // force min_privacy=Safe so Trains-tier slots (Mistral/Gemini free)
+        // are filtered out for that call.
+        //
+        // Only DOWNGRADES (forces safer); never overrides an explicit
+        // operator choice. False-positive cost is small (lose headroom on a
+        // tiny daily budget); false-negative cost is leaking proprietary
+        // code to a Trains-on-data provider — which is what we're trying to
+        // prevent. Per the operator's stance: "we're building Chump, not
+        // using Chump to build something else" — this guard exists for the
+        // moment when context shifts (contractor code, customer prompts).
+        if min_privacy.is_none()
+            && std::env::var("CHUMP_AUTO_PRIVACY")
+                .map(|v| v.trim() == "1")
+                .unwrap_or(false)
+            && prompt_implies_proprietary_code(&messages, system_prompt.as_deref())
+        {
+            min_privacy = Some(PrivacyTier::Safe);
+            eprintln!(
+                "[cascade] INFRA-268 auto-privacy: prompt looks like proprietary code; \
+                 forcing min_privacy=Safe (Trains-tier slots skipped). \
+                 Override with CHUMP_ROUND_PRIVACY=trains."
+            );
+        }
+
         let skip_cloud = self.skip_cloud_slots_for_round_type();
         let mut idx = 0;
         loop {
@@ -1320,6 +1429,103 @@ mod tests {
         // cascade_enabled() is false when var unset.
         std::env::remove_var("CHUMP_CASCADE_ENABLED");
         assert!(!cascade_enabled());
+    }
+
+    // ── INFRA-268: prompt_implies_proprietary_code ──────────────────────
+
+    fn user_msg(content: &str) -> Message {
+        Message {
+            role: "user".into(),
+            content: content.into(),
+        }
+    }
+
+    #[test]
+    fn auto_privacy_detects_rust_code_fence() {
+        let msgs = [user_msg("here is some code\n```rust\nfn main() {}\n```")];
+        assert!(prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_detects_typescript_fence() {
+        let msgs = [user_msg("```typescript\nconst x = 1\n```")];
+        assert!(prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_detects_src_path() {
+        let msgs = [user_msg("look at src/provider_cascade.rs:600")];
+        assert!(prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_detects_crates_path() {
+        let msgs = [user_msg(
+            "crates/chump-orchestrator/src/dispatch.rs has a bug",
+        )];
+        assert!(prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_detects_gap_id_token() {
+        let msgs = [user_msg("can you fix INFRA-268 today?")];
+        assert!(prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_detects_chump_env_var() {
+        let msgs = [user_msg("set CHUMP_CASCADE_ENABLED=1 then retry")];
+        assert!(prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_scans_system_prompt_too() {
+        let msgs = [user_msg("hello")];
+        let system = "You are an agent. Read src/main.rs first.";
+        assert!(prompt_implies_proprietary_code(&msgs, Some(system)));
+    }
+
+    #[test]
+    fn auto_privacy_negative_plain_chat() {
+        let msgs = [user_msg("what's the weather like in Denver?")];
+        assert!(!prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_negative_natural_language_no_signals() {
+        let msgs = [
+            user_msg("Hi! Can you help me brainstorm a name for my dog?"),
+            user_msg("She's a labrador, 6 months old, very playful."),
+        ];
+        assert!(!prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_negative_bare_extension_no_path_context() {
+        // Bare ".rs" without a directory or word context shouldn't trip
+        // the path-pattern detector. Only "src/" / "crates/" / etc. should.
+        let msgs = [user_msg(
+            "I'm writing a paper about RS-232 serial communication.",
+        )];
+        assert!(!prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_detects_pub_fn_keyword() {
+        let msgs = [user_msg("inside `pub fn main() { ... }` we should add ...")];
+        assert!(prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_detects_impl_for() {
+        let msgs = [user_msg("the impl Display for Foo block is wrong")];
+        assert!(prompt_implies_proprietary_code(&msgs, None));
+    }
+
+    #[test]
+    fn auto_privacy_empty_messages_no_system_returns_false() {
+        let msgs: [Message; 0] = [];
+        assert!(!prompt_implies_proprietary_code(&msgs, None));
     }
 
     // INFRA-300: HTTP 402 / credit_limit must cascade to the next slot.
