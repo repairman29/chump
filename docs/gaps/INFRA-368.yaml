@@ -1,0 +1,7 @@
+- id: INFRA-368
+  domain: INFRA
+  title: pre-push hook — auto-detect legitimate rebase force-push (skip auto-merge-armed + gap-status guards together)
+  status: open
+  priority: P2
+  effort: s
+
