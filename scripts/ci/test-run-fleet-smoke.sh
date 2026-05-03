@@ -111,8 +111,56 @@ fi
 echo "    OK (double mask → INFRA-103)"
 rm -f "$TMP"
 
+echo "[smoke] 3b) _pick_gap.py: SUPERSEDED notes skip"
+TMP2=$(mktemp -t fleet-test-sup.XXXXXX)
+cat > "$TMP2" <<'JSON'
+[
+    {"id": "INFRA-999", "domain": "infra", "priority": "P0", "effort": "xs", "depends_on": "", "notes": "SUPERSEDED 2026-05-02 by INFRA-314", "created_at": 50},
+    {"id": "INFRA-104", "domain": "infra", "priority": "P0", "effort": "m",  "depends_on": "", "created_at": 200}
+]
+JSON
+got="$(GAP_JSON_FILE="$TMP2" \
+       FLEET_PRIORITY_FILTER="P0,P1" \
+       FLEET_DOMAIN_FILTER="" \
+       FLEET_EFFORT_FILTER="xs,s,m,l" \
+       EXCLUDE_RE="^(EVAL-|RESEARCH-|META-)" \
+       ACTIVE_GAPS="" \
+       python3 "$DISPATCH_DIR/_pick_gap.py")"
+if [ "$got" != "INFRA-104" ]; then
+    echo "    FAIL: SUPERSEDED gap INFRA-999 not skipped; got '$got'" >&2
+    rm -f "$TMP2"
+    exit 1
+fi
+echo "    OK (SUPERSEDED gap skipped → INFRA-104)"
+rm -f "$TMP2"
+
+echo "[smoke] 3c) _pick_gap.py: WORKER_INDEX stagger with FLEET_AGENT_DOMAINS honoured by worker.sh env"
+# Verify _pick_gap.py: worker-index 2 on two candidates picks index 1 (candidates[1])
+TMP3=$(mktemp -t fleet-test-aff.XXXXXX)
+cat > "$TMP3" <<'JSON'
+[
+    {"id": "INFRA-A", "domain": "infra", "priority": "P1", "effort": "s", "depends_on": "", "created_at": 1},
+    {"id": "DOC-A",   "domain": "doc",   "priority": "P1", "effort": "s", "depends_on": "", "created_at": 2}
+]
+JSON
+got="$(GAP_JSON_FILE="$TMP3" \
+       FLEET_PRIORITY_FILTER="P0,P1" \
+       FLEET_DOMAIN_FILTER="doc" \
+       FLEET_EFFORT_FILTER="xs,s,m" \
+       EXCLUDE_RE="^(EVAL-|RESEARCH-|META-)" \
+       ACTIVE_GAPS="" \
+       WORKER_INDEX="1" \
+       python3 "$DISPATCH_DIR/_pick_gap.py")"
+if [ "$got" != "DOC-A" ]; then
+    echo "    FAIL: domain=doc expected DOC-A, got '$got'" >&2
+    rm -f "$TMP3"
+    exit 1
+fi
+echo "    OK (domain affinity domain=doc → DOC-A)"
+rm -f "$TMP3"
+
 echo "[smoke] 4) run-fleet.sh FLEET_DRY_RUN=1 path"
-out="$(FLEET_DRY_RUN=1 FLEET_SIZE=3 "$DISPATCH_DIR/run-fleet.sh" 2>&1)"
+out="$(FLEET_DRY_RUN=1 FLEET_SIZE=3 FLEET_SESSION="ci-dryrun-$$" "$DISPATCH_DIR/run-fleet.sh" 2>&1)"
 echo "$out" | grep -q "FLEET_DRY_RUN=1 — exiting before tmux" || {
     echo "    FAIL: dry-run did not bail out" >&2
     echo "$out" >&2

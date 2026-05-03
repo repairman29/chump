@@ -75,6 +75,11 @@ def main() -> int:
         deps = g.get("depends_on") or ""
         if deps.strip():
             continue
+        # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
+        # been superseded by another gap and should not be auto-picked.
+        notes = (g.get("notes") or "").strip()
+        if notes.upper().startswith("SUPERSEDED"):
+            continue
         candidates.append(
             (
                 PRIO_RANK.get(p, 9),
