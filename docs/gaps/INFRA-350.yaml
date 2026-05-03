@@ -1,0 +1,7 @@
+- id: INFRA-350
+  domain: INFRA
+  title: start the 72h daily-driver soak (last unchecked Architecture-vs-proof gate item)
+  status: open
+  priority: P1
+  effort: xs
+
