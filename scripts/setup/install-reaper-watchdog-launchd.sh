@@ -5,15 +5,15 @@
 # cadence by more than the per-reaper threshold.
 #
 # Idempotent. After install:
-#   launchctl list | grep ai.openclaw.chump-reaper-watchdog
+#   launchctl list | grep dev.chump.reaper-watchdog
 #
 # To disable:
-#   launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-reaper-watchdog.plist
+#   launchctl unload ~/Library/LaunchAgents/dev.chump.reaper-watchdog.plist
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PLIST_NAME="ai.openclaw.chump-reaper-watchdog.plist"
+PLIST_NAME="dev.chump.reaper-watchdog.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -24,7 +24,7 @@ cat >"$DEST" <<EOF
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-reaper-watchdog</string>
+  <string>dev.chump.reaper-watchdog</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -58,4 +58,4 @@ launchctl unload "$DEST" 2>/dev/null || true
 launchctl load "$DEST"
 
 echo "Installed and loaded: $DEST"
-launchctl list | grep -F "ai.openclaw.chump-reaper-watchdog" || true
+launchctl list | grep -F "dev.chump.reaper-watchdog" || true

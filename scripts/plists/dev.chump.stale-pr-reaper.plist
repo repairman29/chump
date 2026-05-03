@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-stale-pr-reaper</string>
+  <string>dev.chump.stale-pr-reaper</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>

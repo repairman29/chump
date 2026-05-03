@@ -62,7 +62,7 @@ state from happening unnoticed in the first place.
 - **Local hourly run (macOS):** `scripts/setup/install-branch-protection-drift-launchd.sh`
   installs a daily LaunchAgent so an operator's machine ALERTs to ambient.jsonl
   without waiting on CI cadence. Verify with `launchctl list | grep
-  ai.openclaw.chump-branch-protection-drift`.
+  dev.chump.branch-protection-drift`.
 
 ---
 

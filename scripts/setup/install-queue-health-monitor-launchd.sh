@@ -5,19 +5,19 @@
 # Idempotent: safe to re-run.
 #
 # After install:
-#   launchctl list | grep ai.openclaw.chump-queue-health-monitor
+#   launchctl list | grep dev.chump.queue-health-monitor
 #
 # To run immediately (verify it works):
-#   launchctl start ai.openclaw.chump-queue-health-monitor
+#   launchctl start dev.chump.queue-health-monitor
 #   tail -f /tmp/chump-queue-health-monitor.out.log
 #
 # To disable:
-#   launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-queue-health-monitor.plist
+#   launchctl unload ~/Library/LaunchAgents/dev.chump.queue-health-monitor.plist
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PLIST_NAME="ai.openclaw.chump-queue-health-monitor.plist"
+PLIST_NAME="dev.chump.queue-health-monitor.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -28,7 +28,7 @@ cat >"$DEST" <<EOF
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-queue-health-monitor</string>
+  <string>dev.chump.queue-health-monitor</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -68,8 +68,8 @@ launchctl unload "$DEST" 2>/dev/null || true
 launchctl load "$DEST"
 
 echo "Installed and loaded: $DEST"
-launchctl list | grep -F "ai.openclaw.chump-queue-health-monitor" || true
+launchctl list | grep -F "dev.chump.queue-health-monitor" || true
 echo
 echo "First run is in 1 hour. To run immediately:"
-echo "  launchctl start ai.openclaw.chump-queue-health-monitor"
+echo "  launchctl start dev.chump.queue-health-monitor"
 echo "  tail -f /tmp/chump-queue-health-monitor.out.log"

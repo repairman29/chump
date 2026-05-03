@@ -40,12 +40,12 @@
 #   ./scripts/ops/stale-worktree-reaper.sh --force-skip-process-check  # EMERGENCY override
 #
 # Cron (launchd):
-#   ~/Library/LaunchAgents/ai.openclaw.chump-stale-worktree-reaper.plist
+#   ~/Library/LaunchAgents/dev.chump.stale-worktree-reaper.plist
 #   wraps `bash -lc "$REPO/scripts/ops/stale-worktree-reaper.sh --execute"` with
 #   StartInterval 3600. See scripts/setup/install-stale-worktree-reaper-launchd.sh.
 #
 # Disable temporarily:
-#   launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-stale-worktree-reaper.plist
+#   launchctl unload ~/Library/LaunchAgents/dev.chump.stale-worktree-reaper.plist
 #
 # Bypass per-worktree:
 #   touch <worktree-path>/.chump-no-reap   # respected by this script

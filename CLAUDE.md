@@ -255,7 +255,7 @@ Linked worktrees under `.claude/worktrees/` are the main **disk** risk on agent-
 **Stale trees (merged PR or deleted remote branch):** prefer automation over hand-tuning `git worktree list`.
 
 1. **`scripts/ops/stale-worktree-reaper.sh`** — default is **dry-run** (safe to run anytime). With **`--execute`**, it archives selected eval logs then `git worktree remove --force` under `.claude/worktrees/` only when the script’s guards pass (cooldown, no conflicting lease, process / log freshness — see the script header).
-2. **macOS — expected setup for dogfooding:** run **`scripts/setup/install-stale-worktree-reaper-launchd.sh`** once per machine so the reaper runs **hourly**. **Verify:** `launchctl list | grep ai.openclaw.chump-stale-worktree-reaper`. **Logs:** `/tmp/chump-stale-worktree-reaper.out.log` and `/tmp/chump-stale-worktree-reaper.err.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-stale-worktree-reaper.plist`.
+2. **macOS — expected setup for dogfooding:** run **`scripts/setup/install-stale-worktree-reaper-launchd.sh`** once per machine so the reaper runs **hourly**. **Verify:** `launchctl list | grep dev.chump.stale-worktree-reaper`. **Logs:** `/tmp/chump-stale-worktree-reaper.out.log` and `/tmp/chump-stale-worktree-reaper.err.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/dev.chump.stale-worktree-reaper.plist`.
 3. **Opt out** for one worktree the reaper should never remove: **`touch <worktree-path>/.chump-no-reap`**.
 
 Manual escape hatch from the **main** checkout: `git worktree remove .claude/worktrees/<name>` when you are sure nothing has that directory as its cwd.
@@ -266,7 +266,7 @@ Manual escape hatch from the **main** checkout: `git worktree remove .claude/wor
 
 A separate watchdog grades the heartbeats and ALERTs the fleet when a reaper goes silent:
 - **Watchdog:** `scripts/ops/reaper-heartbeat-watchdog.sh` — emits `ALERT kind=reaper_silent` into `ambient.jsonl` when a reaper hasn't heartbeated in 2h (pr), 4h (worktree), or 48h (branch) — i.e. ~2-4× the launchd cadence per the gap acceptance criteria. Visible in the standard pre-flight `tail -30 .chump-locks/ambient.jsonl`.
-- **macOS install (do this once per dogfood machine):** `scripts/setup/install-reaper-watchdog-launchd.sh` — runs every 30 min. **Verify:** `launchctl list | grep ai.openclaw.chump-reaper-watchdog`. **Disable:** `launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-reaper-watchdog.plist`.
+- **macOS install (do this once per dogfood machine):** `scripts/setup/install-reaper-watchdog-launchd.sh` — runs every 30 min. **Verify:** `launchctl list | grep dev.chump.reaper-watchdog`. **Disable:** `launchctl unload ~/Library/LaunchAgents/dev.chump.reaper-watchdog.plist`.
 - **Manual check:** `scripts/ops/reaper-heartbeat-watchdog.sh` (no flags) prints per-reaper status and exits 0 even with ALERTs (so launchd doesn't loop on it).
 - **Quickly grep the stream:** `tail -200 .chump-locks/ambient.jsonl | grep -E '"kind":"reaper_(run|silent)"'`.
 
@@ -275,7 +275,7 @@ A separate watchdog grades the heartbeats and ALERTs the fleet when a reaper goe
 `.chump-locks/ambient.jsonl` is the file-side of the peripheral-vision stream and is appended-to by every agent on every event. Without rotation it grows ~4MB/day under fleet load and reaches multi-GB over a few weeks.
 
 - **Rotation script:** `scripts/dev/ambient-rotate.sh` — keeps `AMBIENT_RETAIN_DAYS` (default 7) of events in-place, archives older events to `.chump-locks/ambient.jsonl.YYYY-MM-DD.gz`, and writes a `{"event":"rotated",...}` summary line.
-- **macOS install (do this once per dogfood machine):** `scripts/setup/install-ambient-rotate-launchd.sh` — runs the rotate script daily at 03:00 local. **Verify:** `launchctl list | grep ai.openclaw.chump-ambient-rotate`. **Logs:** `/tmp/chump-ambient-rotate.{out,err}.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-ambient-rotate.plist`.
+- **macOS install (do this once per dogfood machine):** `scripts/setup/install-ambient-rotate-launchd.sh` — runs the rotate script daily at 03:00 local. **Verify:** `launchctl list | grep dev.chump.ambient-rotate`. **Logs:** `/tmp/chump-ambient-rotate.{out,err}.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/dev.chump.ambient-rotate.plist`.
 - **Self-monitoring:** if `ambient.jsonl` exceeds `AMBIENT_SIZE_ALERT_MB` (default 50MB), the rotate script emits an `ALERT kind=ambient_oversize` event into the stream itself — visible during the standard pre-flight `tail -30 .chump-locks/ambient.jsonl`. Catches the case where rotation isn't installed or the schedule broke.
 - **Querying historical data:** `scripts/dev/ambient-query.sh` transparently reads from the live log + all rotated `.gz` archives in chronological order. Use `--since 24h` to bound the search.
 
@@ -286,7 +286,7 @@ Research churn (eval sweeps, A/B studies, ablations) runs overnight, not during 
 - **Drop-in directory:** `scripts/overnight/` — every executable `*.sh` runs in lex order. Rename to `*.disabled` to skip.
 - **Wrapper:** `scripts/eval/run-overnight-research.sh` — 1h per-job timeout, lockfile guard, per-run logs in `.chump/overnight/<run-id>.log`, emits `overnight_start` / `overnight_done` / `overnight_job_fail` to `ambient.jsonl`.
 - **macOS install:** `scripts/setup/install-overnight-research-launchd.sh` (default 02:00 daily; override with `CHUMP_OVERNIGHT_HOUR`/`CHUMP_OVERNIGHT_MINUTE`).
-- **On-demand smoke test:** `launchctl start ai.openclaw.chump-overnight-research` after install, then `tail /tmp/chump-overnight-research.out.log`.
+- **On-demand smoke test:** `launchctl start dev.chump.overnight-research` after install, then `tail /tmp/chump-overnight-research.out.log`.
 - **Conventions:** see `scripts/overnight/README.md`.
 
 When you migrate an existing eval/A/B sweep, drop it as `scripts/overnight/<NN>-<short>.sh`, smoke-test it directly, and verify the next run picks it up.

@@ -39,7 +39,7 @@ coding agents. Move it overnight.
 1. Drop `scripts/overnight/<NN>-<short-name>.sh` (NN prefix controls order)
 2. `chmod +x` it
 3. Smoke-test by running it directly first
-4. Verify the launchd job runs it: `launchctl start ai.openclaw.chump-overnight-research`
+4. Verify the launchd job runs it: `launchctl start dev.chump.overnight-research`
 5. Check `/tmp/chump-overnight-research.out.log` and `.chump/overnight/<RUN_ID>.log`
 
 ## Disabling temporarily

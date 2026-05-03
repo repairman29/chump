@@ -5,19 +5,19 @@
 # (scripts/ops/branch-protection-drift.sh). Idempotent: safe to re-run.
 #
 # After install:
-#   launchctl list | grep ai.openclaw.chump-branch-protection-drift
+#   launchctl list | grep dev.chump.branch-protection-drift
 #
 # To run immediately (verify):
-#   launchctl start ai.openclaw.chump-branch-protection-drift
+#   launchctl start dev.chump.branch-protection-drift
 #   tail -f /tmp/chump-branch-protection-drift.out.log
 #
 # To disable:
-#   launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-branch-protection-drift.plist
+#   launchctl unload ~/Library/LaunchAgents/dev.chump.branch-protection-drift.plist
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PLIST_NAME="ai.openclaw.chump-branch-protection-drift.plist"
+PLIST_NAME="dev.chump.branch-protection-drift.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -28,7 +28,7 @@ cat >"$DEST" <<EOF
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-branch-protection-drift</string>
+  <string>dev.chump.branch-protection-drift</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -68,8 +68,8 @@ launchctl unload "$DEST" 2>/dev/null || true
 launchctl load "$DEST"
 
 echo "Installed and loaded: $DEST"
-launchctl list | grep -F "ai.openclaw.chump-branch-protection-drift" || true
+launchctl list | grep -F "dev.chump.branch-protection-drift" || true
 echo
 echo "First run is in 24 hours. To run immediately:"
-echo "  launchctl start ai.openclaw.chump-branch-protection-drift"
+echo "  launchctl start dev.chump.branch-protection-drift"
 echo "  tail -f /tmp/chump-branch-protection-drift.out.log"

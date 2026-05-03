@@ -9,12 +9,12 @@
 # transparently reads from both live + archives.
 #
 # Idempotent: safe to re-run.
-# Disable: launchctl unload ~/Library/LaunchAgents/ai.openclaw.chump-ambient-rotate.plist
-# Manually fire: launchctl start ai.openclaw.chump-ambient-rotate
+# Disable: launchctl unload ~/Library/LaunchAgents/dev.chump.ambient-rotate.plist
+# Manually fire: launchctl start dev.chump.ambient-rotate
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-PLIST_NAME="ai.openclaw.chump-ambient-rotate.plist"
+PLIST_NAME="dev.chump.ambient-rotate.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
 mkdir -p "$HOME/Library/LaunchAgents"
@@ -25,7 +25,7 @@ cat >"$DEST" <<EOF
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>ai.openclaw.chump-ambient-rotate</string>
+  <string>dev.chump.ambient-rotate</string>
   <key>ProgramArguments</key>
   <array>
     <string>/bin/bash</string>
@@ -67,8 +67,8 @@ launchctl unload "$DEST" 2>/dev/null || true
 launchctl load "$DEST"
 
 echo "Installed and loaded: $DEST"
-launchctl list | grep -F "ai.openclaw.chump-ambient-rotate" || true
+launchctl list | grep -F "dev.chump.ambient-rotate" || true
 echo
 echo "Smoke test (dry-run): $REPO/scripts/dev/ambient-rotate.sh --dry-run"
-echo "Manually fire        : launchctl start ai.openclaw.chump-ambient-rotate"
+echo "Manually fire        : launchctl start dev.chump.ambient-rotate"
 echo "Tail logs            : tail -f /tmp/chump-ambient-rotate.{out,err}.log"
