@@ -184,6 +184,46 @@ async fn main() -> Result<()> {
             }
         }
 
+        // ── whois ─────────────────────────────────────────────────────────────
+        // INFRA-274: per-gap NATS-side claim lookup. Returns the holding
+        // session_id on stdout (so shell can capture it), or empty string
+        // when no claim exists or NATS is unreachable.
+        //
+        // Exit codes:
+        //   0  — printed (either a session_id or empty); caller treats as info
+        //   2  — usage error (no gap-id arg)
+        //
+        // Used by gap-preflight.sh to detect cross-host claims that local
+        // .chump-locks/ can't see.
+        "whois" => {
+            let gap_id = args.get(2).map(|s| s.as_str()).unwrap_or_else(|| {
+                eprintln!("Usage: chump-coord whois <gap-id>");
+                std::process::exit(2);
+            });
+            match CoordClient::connect_or_skip().await {
+                None => {
+                    // NATS unavailable — print empty so caller falls through
+                    // to local-file check. Use stderr for the diagnostic so
+                    // stdout stays parseable.
+                    eprintln!("[chump-coord] NATS unavailable — whois inconclusive");
+                    println!();
+                }
+                Some(c) => match c.gap_claim(gap_id).await {
+                    Ok(Some(claim)) => {
+                        // Print session_id on stdout (newline-terminated).
+                        println!("{}", claim.session_id);
+                    }
+                    Ok(None) => {
+                        println!();
+                    }
+                    Err(e) => {
+                        eprintln!("[chump-coord] whois error: {}", e);
+                        println!();
+                    }
+                },
+            }
+        }
+
         // ── status ────────────────────────────────────────────────────────────
         "status" => match CoordClient::connect_or_skip().await {
             None => {

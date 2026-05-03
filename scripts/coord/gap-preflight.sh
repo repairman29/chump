@@ -368,6 +368,34 @@ for GAP_ID in "$@"; do
         fi
     fi
 
+    # ── Check 1.6: NATS-side cross-host lease (INFRA-274) ─────────────────
+    # The local .chump-locks/ check below only sees same-host claims. With
+    # multi-host fleets (chump-orchestrator routing across machines), a
+    # sibling on another host is invisible. INFRA-274 fix: query the
+    # NATS-backed atomic lease store before falling through to the local
+    # check. If chump-coord isn't on PATH or NATS isn't reachable, this
+    # check is a no-op (output empty, caller proceeds with local-only).
+    #
+    # Bypass:
+    #   CHUMP_PREFLIGHT_NATS_CHECK=0 (skip entirely)
+    #   CHUMP_SPECULATIVE=1          (INFRA-193 race wanted)
+    if [[ "${CHUMP_PREFLIGHT_NATS_CHECK:-1}" != "0" ]] \
+            && [[ "${CHUMP_SPECULATIVE:-0}" != "1" ]] \
+            && command -v chump-coord >/dev/null 2>&1; then
+        NATS_HOLDER="$(chump-coord whois "$GAP_ID" 2>/dev/null || true)"
+        # Strip whitespace; empty means no claim (or NATS unreachable).
+        NATS_HOLDER="${NATS_HOLDER//[[:space:]]/}"
+        if [[ -n "$NATS_HOLDER" && "$NATS_HOLDER" != "$SESSION_ID" ]]; then
+            red "SKIP $GAP_ID — NATS-side lease held by session '$NATS_HOLDER' (cross-host visible)."
+            red "  This is a DIFFERENT host's claim — the local .chump-locks/ wouldn't see it."
+            red "  Coordinate with that session or wait for the claim to expire."
+            red "  Bypass: CHUMP_PREFLIGHT_NATS_CHECK=0 (skip cross-host check)"
+            red "  Or: CHUMP_SPECULATIVE=1 (race per INFRA-193)"
+            FAILED=1
+            continue
+        fi
+    fi
+
     # ── Check 2: live lease claim by another session ───────────────────────
     CLAIM="$(check_lease_claim "$GAP_ID" "$SESSION_ID")"
     if [[ -n "$CLAIM" ]]; then
