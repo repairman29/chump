@@ -55,6 +55,20 @@ export CHUMP_STOMP_WARN=0
 export CHUMP_CHECK_BUILD=0
 export CHUMP_DOCS_DELTA_CHECK=0
 export CHUMP_SUBMODULE_CHECK=0
+# INFRA-200 raw-YAML-edit guard: this synthetic test edits docs/gaps/*.yaml
+# directly and has no chump CLI marker. Disable so we exercise ONLY the
+# duplicate-ID guard.
+export CHUMP_RAW_YAML_LOCK=0
+# INFRA-014 recycled-ID guard / hijack guard / closed_pr guard / scope guard
+# all key off origin/main. The synthetic repos may or may not have it.
+# Disable here so a single fail point is exercised.
+export CHUMP_GAPS_LOCK=${CHUMP_GAPS_LOCK:-1}
+export CHUMP_SCOPE_CHECK=0
+export CHUMP_PREREG_CHECK=0
+export CHUMP_PREREG_CONTENT_CHECK=0
+export CHUMP_CROSS_JUDGE_CHECK=0
+export CHUMP_CREDENTIAL_CHECK=0
+export CHUMP_BOOK_SYNC_CHECK=0
 
 # Seed initial gaps.yaml with two legitimate entries.
 cat >"$FAKE_REPO/docs/gaps.yaml" <<'YAML'
@@ -142,6 +156,93 @@ if CHUMP_GAPS_LOCK=0 git -C "$FAKE_REPO" commit -q -m "bypass dedup check" >"$TM
 else
     fail "bypass env var did not bypass; log: $(cat $TMPDIR_BASE/t3.log)"
 fi
+
+# ── 3b. Pre-existing duplicate on baseline + UNRELATED edit passes (INFRA-380) ──
+echo "--- Test 3b: pre-existing dup on baseline, unrelated edit allowed ---"
+#
+# Concrete failure mode (INFRA-078, refined by INFRA-380): a duplicate id
+# already lives on origin/main (e.g. INFRA-073 collision tracked by INFRA-075).
+# Every doc-only PR that touches gaps.yaml had to bypass with CHUMP_GAPS_LOCK=0
+# even when introducing no new duplicate. The refinement: only fail when the
+# staged commit (a) introduces a NEW dup, or (b) edits a row in an existing
+# dup group. Unrelated edits in a repo with a pre-existing dup must pass.
+
+FAKE_REPO_3B="$TMPDIR_BASE/repo3b"
+mkdir -p "$FAKE_REPO_3B/docs/gaps" "$FAKE_REPO_3B/.git/hooks"
+git -C "$FAKE_REPO_3B" init -q
+git -C "$FAKE_REPO_3B" config user.email "test@test.com"
+git -C "$FAKE_REPO_3B" config user.name "Test"
+cp "$HOOK" "$FAKE_REPO_3B/.git/hooks/pre-commit"
+chmod +x "$FAKE_REPO_3B/.git/hooks/pre-commit"
+
+# Two per-file YAMLs that BOTH declare id: TEST-DUP — pre-existing dup on baseline.
+cat >"$FAKE_REPO_3B/docs/gaps/TEST-DUP.yaml" <<'YAML'
+- id: TEST-DUP
+  title: original entry
+  status: open
+YAML
+cat >"$FAKE_REPO_3B/docs/gaps/TEST-DUP-COPY.yaml" <<'YAML'
+- id: TEST-DUP
+  title: pre-existing dup
+  status: open
+YAML
+cat >"$FAKE_REPO_3B/docs/gaps/TEST-A.yaml" <<'YAML'
+- id: TEST-A
+  title: unrelated gap
+  status: open
+YAML
+git -C "$FAKE_REPO_3B" add docs/gaps/
+# Use --no-verify on the seeding commit since we're intentionally seeding
+# a state the OLD guard would have rejected.
+git -C "$FAKE_REPO_3B" commit --no-verify -q -m "init with pre-existing dup"
+# Make HEAD reachable as origin/main so the guard's baseline lookup works.
+git -C "$FAKE_REPO_3B" update-ref refs/remotes/origin/main HEAD
+
+# Make an UNRELATED edit (touching TEST-A only). Should be allowed —
+# the dup is pre-existing on baseline and this commit doesn't touch it.
+# Keep title/description verbatim so the gap-ID hijack guard doesn't fire.
+cat >"$FAKE_REPO_3B/docs/gaps/TEST-A.yaml" <<'YAML'
+- id: TEST-A
+  title: unrelated gap
+  status: open
+  notes: harmless tweak
+YAML
+git -C "$FAKE_REPO_3B" add docs/gaps/TEST-A.yaml
+
+if out=$(git -C "$FAKE_REPO_3B" commit -m "unrelated edit while dup exists" 2>&1); then
+    if echo "$out" | grep -q "pre-existing duplicate gap id"; then
+        ok "pre-existing dup warning printed; unrelated edit allowed"
+    else
+        ok "unrelated edit allowed (warning optional)"
+    fi
+else
+    fail "hook blocked an unrelated edit when dup is pre-existing on baseline; output: $out"
+fi
+
+# ── 3c. Pre-existing duplicate + EDIT to dup row IS blocked (INFRA-380) ──
+echo "--- Test 3c: pre-existing dup, edit TO the dup row, blocks ---"
+
+# Edit one of the dup rows — should still block because the staged diff
+# touches an id that's part of a pre-existing dup group.
+cat >"$FAKE_REPO_3B/docs/gaps/TEST-DUP-COPY.yaml" <<'YAML'
+- id: TEST-DUP
+  title: pre-existing dup — touched
+  status: open
+YAML
+git -C "$FAKE_REPO_3B" add docs/gaps/TEST-DUP-COPY.yaml
+
+if out=$(git -C "$FAKE_REPO_3B" commit -m "edit TO dup row" 2>&1); then
+    fail "hook allowed an edit TO a pre-existing dup row; output: $out"
+else
+    if echo "$out" | grep -q "DUPLICATE GAP ID" && echo "$out" | grep -q "TEST-DUP"; then
+        ok "edit TO pre-existing dup row blocked with TEST-DUP named"
+    else
+        fail "hook blocked but with unexpected message; output: $out"
+    fi
+fi
+
+# Reset state.
+git -C "$FAKE_REPO_3B" reset --hard -q HEAD
 
 # ── 4. CI integrity check catches concurrent-branch duplicate (INFRA-075) ──
 echo "--- Test 4: scripts/coord/check-gaps-integrity.py catches a concurrent-branch dup ---"
