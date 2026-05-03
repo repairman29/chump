@@ -158,8 +158,12 @@ if [[ -d "$LOCKS_DIR" ]]; then
         if command -v jq >/dev/null 2>&1; then
             wt=$(jq -r '.worktree // empty' "$lease" 2>/dev/null || true)
         fi
+        # INFRA-325: tolerate grep no-match (most leases have no "worktree"
+        # field). Without `|| true` the grep exits 1, set -o pipefail
+        # propagates to the outer assignment, set -e aborts the whole
+        # reaper. Symptom was every cron tick exiting 1 silently.
         [[ -z "$wt" ]] && wt=$(grep -oE '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" \
-            | head -1 | sed -E 's/.*"([^"]+)"$/\1/')
+            | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)
         [[ -n "$wt" ]] && ACTIVE_WORKTREES="$ACTIVE_WORKTREES $wt"
     done
 fi
