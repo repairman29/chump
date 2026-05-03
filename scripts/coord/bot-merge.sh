@@ -546,6 +546,26 @@ REMOTE="${REMOTE:-origin}"
 # ── INFRA-119: start health monitoring now that REPO_ROOT is set ──────────────
 _bm_health_init "$REPO_ROOT/.chump-locks"
 
+# ── INFRA-379: chump-doctor preflight ─────────────────────────────────────────
+# macOS Sequoia syspolicyd occasionally wedges a chump binary's inode at
+# `_dyld_start`, hanging every subsequent `chump …` invocation indefinitely.
+# bot-merge.sh makes ~5 chump calls (preflight, claim, ship, release, etc.) —
+# any one of them hanging stalls the whole pipeline for 30+ minutes before
+# the operator notices.
+#
+# chump-doctor.sh probes (5s timeout) and self-heals by replacing the wedged
+# inode. Idempotent — exit 0 if healthy, exit 0 after heal, exit 1 only on
+# hard failure (rebuild needed). Run BEFORE any chump call so wedge is
+# caught upfront, not midstream.
+#
+# Bypass: CHUMP_DOCTOR_SKIP=1 (cron-side, or for the chump-doctor PR itself).
+if [[ "${CHUMP_DOCTOR_SKIP:-0}" != "1" ]] \
+        && [[ -x "$REPO_ROOT/scripts/dev/chump-doctor.sh" ]]; then
+    if ! bash "$REPO_ROOT/scripts/dev/chump-doctor.sh" >/dev/null 2>&1; then
+        yellow "chump-doctor.sh reported binary issue — rebuild may be needed; continuing best-effort"
+    fi
+fi
+
 # INFRA-061 (M3): if --stack-on <PREV-GAP> was passed, look up the open PR for
 # that gap and use its head branch as our base. Falls back to main with a
 # warning if the prev gap has no open PR (already landed → just stack on main).
