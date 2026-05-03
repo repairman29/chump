@@ -11366,7 +11366,7 @@ gaps:
 - id: INFRA-247
   domain: INFRA
   title: chump gap reserve writes per-file YAML to outer repo_root() instead of linked worktree's CWD
-  status: open
+  status: done
   priority: P3
   effort: xs
   description: |
@@ -11825,9 +11825,11 @@ gaps:
 - id: INFRA-264
   domain: INFRA
   title: "two-tier code review: cascade-judge gates trivial PRs; Anthropic only on contentious diffs"
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_date: '2026-05-03'
+  closed_pr: 1006
 
 - id: INFRA-265
   domain: INFRA
@@ -11846,9 +11848,11 @@ gaps:
 - id: INFRA-267
   domain: INFRA
   title: cascade-aware fallback to Anthropic for P0 gaps when every cascade slot fails (avoid silent P0 failure)
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_date: '2026-05-03'
+  closed_pr: 1010
 
 - id: INFRA-268
   domain: INFRA
@@ -12463,7 +12467,7 @@ gaps:
 - id: INFRA-306
   domain: INFRA
   title: pre-rebase MERGED check refuse force-push when gh pr view shows MERGED DIRTY-MERGED race
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -12507,6 +12511,8 @@ gaps:
     learned pass; complements INFRA-273 (gap-preflight Check 1.5) and
     INFRA-274 (flake-budget) as the third arm of the "pre-emptive
     cognitive prompt before wasted work" pattern.
+  closed_date: '2026-05-03'
+  closed_pr: 988
 
 - id: INFRA-307
   domain: INFRA
@@ -12575,32 +12581,39 @@ gaps:
   domain: INFRA
   title: custom git merge driver for hot-file textual conflicts (ci.yml-add-row, gap-yaml-add-line, pre-commit-add-guard)
   status: open
-  priority: P2
+  priority: P1
   effort: m
   description: |
-    Hot files (.github/workflows/ci.yml, scripts/git-hooks/pre-commit, scripts/coord/bot-merge.sh, etc.) collect append-only edits from every parallel agent. Today PRs #858 and #869 each rebased TWICE because their CI test entry / pre-commit guard entry conflicted with siblings.
+    Hot files (.github/workflows/ci.yml, scripts/git-hooks/pre-commit, scripts/coord/bot-merge.sh, .chump/state.sql) collect append-only edits from every parallel agent. Today PRs #858, #869 each rebased TWICE; tonight (2026-05-03) batch-unstick of 8 DIRTY PRs hit ci.yml, state.sql, and gap-YAML conflicts repeatedly across all 8.
     
     Conflicts are 100% trivial textual additions to a list — no semantic disagreement. A custom git merge driver per file class can resolve them automatically:
     
       ci.yml-add-row driver:
         - both branches added a 'name: ... | run: bash ...' YAML step entry
-        - merge: union both entries, preserve order by grep'ing the test name alphabetically OR by the first added timestamp
-    
-      gap-yaml-add-line driver:
-        - both branches added a per-file gap YAML
-        - merge: keep both files (they're separate paths post-INFRA-188 anyway — should never conflict)
+        - merge: union both entries
     
       pre-commit-add-guard driver:
-        - both branches added a new 'if [ ... ]; then ... fi' block to scripts/git-hooks/pre-commit
+        - both branches added a new 'if [ ... ]; then ... fi' block
         - merge: append both blocks; preserve order
+    
+      state-sql-regenerate driver (NEW 2026-05-03):
+        - both branches changed .chump/state.sql (the human-readable SQL dump)
+        - merge: drop both, run 'chump gap dump --out .chump/state.sql' to regenerate from canonical state.db
+        - PRECONDITION: state.db itself must be up-to-date (no in-flight CLI ops)
+    
+      gap-yaml-add-line driver:
+        - per-file YAMLs (post-INFRA-188) shouldn't normally conflict (separate paths)
+        - exception: bot-merge auto-close + manual close racing on same gap → take 'ours' (newest closed_pr wins)
     
     Wire via .gitattributes:
       .github/workflows/ci.yml merge=ci-yml-add-row
       scripts/git-hooks/pre-commit merge=pre-commit-add-guard
+      .chump/state.sql merge=state-sql-regenerate
+      docs/gaps/*.yaml merge=gap-yaml-add-line
     
-    Mergetool definition in .git/config OR via scripts/setup/install-merge-drivers.sh.
+    PRIORITY BUMP P2→P1 (2026-05-03): empirical from batch-unstick session showed 6+ hot-file conflicts in one rebase pass across 8 PRs. Auto-resolution would have saved ~15-30s per conflict and prevented 1-2 of the 'cannot auto-resolve' aborts.
     
-    Caveat: drivers should refuse to auto-merge if one side EDITS an existing entry (not just appends). Auto-merge is safe ONLY for pure-add cases; anything else falls through to manual conflict.
+    Caveat: drivers refuse to auto-merge if one side EDITS an existing entry (not just appends). Auto-merge safe ONLY for pure-add cases; anything else falls through to manual conflict.
   acceptance_criteria:
     - scripts/lib/merge-driver-ci-yml-add-row.sh implements the union-add semantics
     - scripts/lib/merge-driver-pre-commit-add-guard.sh same
@@ -12734,7 +12747,7 @@ gaps:
 - id: INFRA-315
   domain: INFRA
   title: worker poll-jitter + idle-backpressure fleet_starved ALERT — break thundering herd, surface starvation
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -12760,6 +12773,8 @@ gaps:
     - fleet-status.sh shows aggregate starvation count + filter breakdown
     - Documented in CLAUDE.md Fleet launcher section
     - "Test: 3 workers with same filter + empty queue → all 3 emit fleet_starved within N seconds with no thundering herd on next gap arrival"
+  closed_date: '2026-05-03'
+  closed_pr: 977
 
 - id: INFRA-316
   domain: INFRA
@@ -13241,6 +13256,8 @@ gaps:
     - prompt assembler queries the resolved model's context window and trims to fit
     - run-fleet.sh prints chosen model + context budget at startup so the failure mode is visible
     - smoke test exercises a small gap end-to-end on the chump-local default
+  notes: |
+    SUPERSEDED 2026-05-03 by INFRA-364 + INFRA-369: fleet workers default to haiku, dodging the 8192-token-context bug entirely. PR #966 (clippy fix on top) was closed without merge. Original problem no longer reachable on the default fleet config.
   closed_date: '2026-05-03'
 
 - id: INFRA-340
@@ -13564,7 +13581,7 @@ gaps:
 - id: INFRA-354
   domain: INFRA
   title: pr-watch.sh as launchd job — auto-rebase ALL DIRTY-after-arm PRs, not tied to author's worktree
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -13588,6 +13605,8 @@ gaps:
     - launchd installer scripts/setup/install-pr-watch-shepherd-launchd.sh runs every 10min
     - smoke test verifies a fresh DIRTY-after-arm PR gets rebased + re-armed automatically without human intervention
     - cooldown record prevents thrashing on PRs with persistent real-code conflicts
+  closed_date: '2026-05-03'
+  closed_pr: 976
 
 - id: INFRA-355
   domain: INFRA
@@ -13727,7 +13746,7 @@ gaps:
 - id: INFRA-361
   domain: INFRA
   title: "fleet workers: pre-pick preflight + rc=1 cooldown — kill the two main wasted-cycle paths"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -13758,6 +13777,8 @@ gaps:
     - expired cooldown records auto-cleaned by next pick
     - missing COOLDOWN_DIR / malformed records → graceful no-op (back-compat)
     - smoke test scripts/ci/test-pick-gap-cooldown.sh covers 6 cases all PASS
+  closed_date: '2026-05-03'
+  closed_pr: 972
 
 - id: INFRA-362
   domain: INFRA
@@ -13987,7 +14008,7 @@ gaps:
 - id: INFRA-375
   domain: INFRA
   title: CI-flake auto-rerun — pattern-match known flakes (network setup, runner cancelled) and gh run rerun --failed once
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -13999,6 +14020,8 @@ gaps:
     - hourly LaunchAgent installer at scripts/setup/install-ci-flake-rerun-launchd.sh
     - wired into reaper-heartbeat-watchdog (2h threshold)
     - smoke test covers bypass + empty paths
+  closed_date: '2026-05-03'
+  closed_pr: 1004
 
 - id: INFRA-376
   domain: INFRA
@@ -14114,6 +14137,96 @@ gaps:
   status: open
   priority: P2
   effort: xs
+
+- id: INFRA-386
+  domain: INFRA
+  title: stuck-pr-filer.sh auto-closes its own filed gap when underlying PR resolves (closed/merged)
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    stuck-pr-filer.sh (INFRA-307, runs hourly) files INFRA cleanup gaps when a PR is DIRTY > 4h, CI red > 2h, BEHIND > 20 commits, or auto-merge orphaned. Files de-dup by title ('PR #N stuck — ...').
+    
+    Missing: when the underlying PR moves to CLOSED or MERGED, the filed gap stays open. Tonight (2026-05-03) I had to manually close INFRA-356/357/358 because their referenced PRs (#959/#950/#947) had been CLOSED via batch-unstick or sibling rebases hours earlier. The filer ran hourly and kept seeing those gaps as filed (de-dup hit) but never resolved them.
+    
+    Two-line fix in scripts/ops/stuck-pr-filer.sh: at the top of the loop, scan all OPEN gaps with title prefix 'PR #' and check the referenced PR's state. If CLOSED or MERGED, run 'chump gap ship <ID> --closed-pr <PR_NUM> --update-yaml' to close the gap.
+    
+    Same idempotency story as the original filer — runs hourly, no-op when nothing changed, fast-fails on individual PR check errors.
+  acceptance_criteria:
+    - stuck-pr-filer.sh closes its own filed gap when the referenced PR is CLOSED or MERGED
+    - de-dup behavior unchanged for still-stuck PRs
+    - "test: file fixture stale gap, mark referenced PR closed, assert next stuck-pr-filer run closes it"
+    - drift back to 0 on next gap-doctor run after stuck PR resolves
+
+- id: INFRA-387
+  domain: INFRA
+  title: extend pr-watch.sh / pr-watch-shepherd with batch-rebase recipe (state.sql regen, gap-YAML ours, ci.yml strip markers)
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Tonight (2026-05-03) batch-unstick of 8 DIRTY PRs used a tight bash loop with these auto-resolution rules and shipped 7/7 cleanly:
+    
+      for  in unmerged:
+        case $f in
+          .chump/state.sql)        chump gap dump --out .chump/state.sql ; git add ;;
+          docs/gaps/*.yaml)        git checkout --ours $f ; git add ;;
+          .github/workflows/ci.yml) sed strip <<<<<<< / ======= / >>>>>>> markers ; git add ;;
+          *)                       abort + skip ;;
+        esac
+        git rebase --continue (with GIT_EDITOR=true)
+    
+    Recipe extension to existing pr-watch.sh / pr-watch-shepherd (INFRA-354 #976):
+      - Loop over all DIRTY PRs (or single PR via flag)
+      - Per-PR: fetch branch into /tmp worktree, rebase main, apply auto-resolution recipe, force-push with CHUMP_AUTOMERGE_OVERRIDE=1
+      - Skip PRs marked 'human-review-wanted' or with author=dependabot
+      - Heartbeat + ambient event per the reaper-instrumentation pattern
+      - Idempotent (already-clean PRs are no-ops)
+    
+    Companion to INFRA-310 (custom merge drivers): merge drivers handle conflict-time auto-resolution; this recipe handles after-the-fact rebase auto-resolution. Both shrink the manual-rebase tax.
+  acceptance_criteria:
+    - scripts/ops/batch-rebase-dirty.sh (or extension to pr-watch-shepherd.sh) implements the recipe
+    - "--dry-run flag"
+    - skip-list for human-review-wanted / dependabot
+    - reaper heartbeat + ambient kind=batch_rebase event
+    - "smoke test: synthetic 3-DIRTY-PR fixture, asserts all 3 auto-rebased + force-pushed"
+
+- id: INFRA-388
+  domain: INFRA
+  title: stale-branch-reaper launchd installer (5 reaper_silent ALERTs/day from missing install)
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Adds the missing launchd installer for scripts/ops/stale-branch-reaper.sh. The reaper script itself shipped long ago; only the launchd plumbing was missing. Without this, the heartbeat-watchdog ALERTs kind=reaper_silent for 'branch' every 30min cycle (5+ ALERTs/day observed 2026-05-03 verification sweep). Daily cadence (matches watchdog 48h threshold).
+  acceptance_criteria:
+    - scripts/setup/install-stale-branch-reaper-launchd.sh exists and is executable
+    - installer is idempotent (safe to re-run)
+    - loads dev.chump.stale-branch-reaper LaunchAgent on macOS
+    - cadence 86400s (daily) matches stale-branch-reaper's design and the watchdog's 48h threshold
+    - "verify with: launchctl list "
+    - " grep dev.chump.stale-branch-reaper"
+
+- id: INFRA-389
+  domain: INFRA
+  title: gap-doctor.py reads legacy docs/gaps.yaml + sync-from-db writes to it (post-INFRA-188 stale path)
+  status: open
+  priority: P2
+  effort: xs
+
+- id: INFRA-390
+  domain: INFRA
+  title: COG-032 bench harness needs CHUMP_BENCH_MODE — bot-merge.sh disposes of PR (no merge to main) so trials are replayable per prereg requirement
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/coord/bot-merge.sh gates the gh-pr-merge --auto + chump-gap-ship steps on CHUMP_BENCH_MODE=1 — under bench mode, the PR is opened (so CI grades it) but auto-merge is NOT armed and the gap is NOT closed in state.db
+    - "Under CHUMP_BENCH_MODE=1, bot-merge.sh appends a JSONL line to logs/ab/COG-032/run.jsonl with: ts, cell (from CHUMP_BENCH_CELL), task_id (from CHUMP_BENCH_TASK_ID), trial_n (from CHUMP_BENCH_TRIAL_N), agent_session (CLAUDE_SESSION_ID or generated), pr_number, pr_state_at_record (open/closed), duration_s, success_criteria_met"
+    - "Operator override: unset CHUMP_BENCH_MODE preserves current production behavior unchanged"
+    - "Test: scripts/ci/test-bot-merge-bench-mode.sh — run bot-merge against a sandbox repo with CHUMP_BENCH_MODE=1; assert (a) auto-merge not armed (no autoMergeRequest in gh pr view), (b) JSONL line appended with all required fields, (c) state.db gap row UNCHANGED"
+    - "Falsifying condition: if the prereg's 'replayable trials' requirement can be satisfied by re-checking out the bench task fixture each trial (bench is JSON-defined, not depend on main state), this gap is overengineering. Verify before implementing: re-read COG-032 prereg §3 (Cells) for whether the issue is bench-state mutation vs PR-state mutation."
+  depends_on: [COG-032, INFRA-324]
 
 - id: INFRA-41
   domain: INFRA
@@ -16892,6 +17005,8 @@ gaps:
     either: (a) an experiment ruling out simple internalization, or (b) a strategic
     decision that Chump's lesson injection is a transition mechanism, with implications
     for PRODUCT-009 publication framing.
+    
+    DELIVERED 2026-05-03 — see docs/research/RESEARCH-029-skill0-positioning.md. Conclusion: chooses path (b) from acceptance criteria — strategic decision that Chump's lesson injection is a transition mechanism. Adds disallowed-framing constraints for PRODUCT-009 publication.
   acceptance_criteria:
     - Written position statement filed in docs/ on whether Chump's lesson injection effect is compatible with the SKILL0 internalization hypothesis
   depends_on: [RESEARCH-021]
