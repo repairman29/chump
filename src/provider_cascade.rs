@@ -805,6 +805,17 @@ impl Provider for ProviderCascade {
         }
 
         let skip_cloud = self.skip_cloud_slots_for_round_type();
+        // INFRA-352(b): wait + retry-once on cascade exhaustion.
+        // Reasoning: under fleet load, free-tier RPD windows reset on a
+        // 1-min boundary. A short sleep + retry covers transient exhaustion
+        // (multi-agent saturation that recovers within 30s) without waking
+        // the operator. Set CHUMP_CASCADE_RETRY_AFTER_EXHAUSTED_S=0 to
+        // disable (e.g. for tests that want fast-fail).
+        let retry_after_s: u64 = std::env::var("CHUMP_CASCADE_RETRY_AFTER_EXHAUSTED_S")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(30);
+        let mut retried = false;
         let mut idx = 0;
         loop {
             let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
@@ -912,12 +923,39 @@ impl Provider for ProviderCascade {
                                             e, local_slot.base_url,
                                         );
                                         emit_cascade_exhausted_event(&self.slots, &msg);
+                                        // INFRA-352(b): sleep + retry-once before final error.
+                                        if !retried && retry_after_s > 0 {
+                                            tracing::warn!(
+                                                "INFRA-352: cascade exhausted (local unreachable); sleeping {}s before retry-once",
+                                                retry_after_s
+                                            );
+                                            tokio::time::sleep(std::time::Duration::from_secs(
+                                                retry_after_s,
+                                            ))
+                                            .await;
+                                            retried = true;
+                                            idx = 0;
+                                            continue;
+                                        }
                                         return Err(anyhow::anyhow!("{msg}"));
                                     }
                                     emit_cascade_exhausted_event(
                                         &self.slots,
                                         &format!("local slot failed: {e}"),
                                     );
+                                    if !retried && retry_after_s > 0 {
+                                        tracing::warn!(
+                                            "INFRA-352: cascade exhausted (local slot failed); sleeping {}s before retry-once",
+                                            retry_after_s
+                                        );
+                                        tokio::time::sleep(std::time::Duration::from_secs(
+                                            retry_after_s,
+                                        ))
+                                        .await;
+                                        retried = true;
+                                        idx = 0;
+                                        continue;
+                                    }
                                     return Err(e);
                                 }
                             }
@@ -926,6 +964,18 @@ impl Provider for ProviderCascade {
                             let msg = "no providers available (circuit open or rate limited; \
                                        set OPENAI_API_BASE for local fallback)";
                             emit_cascade_exhausted_event(&self.slots, msg);
+                            // INFRA-352(b): sleep + retry-once before final error.
+                            if !retried && retry_after_s > 0 {
+                                tracing::warn!(
+                                    "INFRA-352: cascade exhausted (no providers available); sleeping {}s before retry-once",
+                                    retry_after_s
+                                );
+                                tokio::time::sleep(std::time::Duration::from_secs(retry_after_s))
+                                    .await;
+                                retried = true;
+                                idx = 0;
+                                continue;
+                            }
                             return Err(anyhow::anyhow!("{msg}"));
                         }
                     }
