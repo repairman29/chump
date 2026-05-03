@@ -1,7 +1,7 @@
 - id: INFRA-308
   domain: INFRA
   title: continuous gap-doctor reconciliation cron — auto-fix safe DB↔YAML drifts every 15min
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -11,4 +11,6 @@
     - gap-doctor gains --safe-only flag that only fixes Bucket 1 + Bucket 2 (status sync), never deletes
     - Bucket 3 + Bucket 4 surface as ambient ALERT events
     - Test verifies a fixture drift is auto-fixed within one cron tick
+  closed_date: '2026-05-03'
+  closed_pr: 910
 
