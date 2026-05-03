@@ -929,7 +929,10 @@ impl Provider for ProviderCascade {
                                                 "INFRA-352: cascade exhausted (local unreachable); sleeping {}s before retry-once",
                                                 retry_after_s
                                             );
-                                            tokio::time::sleep(std::time::Duration::from_secs(retry_after_s)).await;
+                                            tokio::time::sleep(std::time::Duration::from_secs(
+                                                retry_after_s,
+                                            ))
+                                            .await;
                                             retried = true;
                                             idx = 0;
                                             continue;
@@ -945,7 +948,10 @@ impl Provider for ProviderCascade {
                                             "INFRA-352: cascade exhausted (local slot failed); sleeping {}s before retry-once",
                                             retry_after_s
                                         );
-                                        tokio::time::sleep(std::time::Duration::from_secs(retry_after_s)).await;
+                                        tokio::time::sleep(std::time::Duration::from_secs(
+                                            retry_after_s,
+                                        ))
+                                        .await;
                                         retried = true;
                                         idx = 0;
                                         continue;
@@ -964,7 +970,8 @@ impl Provider for ProviderCascade {
                                     "INFRA-352: cascade exhausted (no providers available); sleeping {}s before retry-once",
                                     retry_after_s
                                 );
-                                tokio::time::sleep(std::time::Duration::from_secs(retry_after_s)).await;
+                                tokio::time::sleep(std::time::Duration::from_secs(retry_after_s))
+                                    .await;
                                 retried = true;
                                 idx = 0;
                                 continue;
