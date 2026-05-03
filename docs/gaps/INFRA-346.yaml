@@ -1,0 +1,9 @@
+- id: INFRA-346
+  domain: INFRA
+  title: agent over-uses ask_jeff (interactive approval tool) on trivial tool-using queries
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-05-03'
+  closed_pr: 963
+
