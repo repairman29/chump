@@ -1,7 +1,7 @@
 - id: EVAL-094
-  domain: eval
+  domain: EVAL
   title: ICLR 2026 covert sandbagging confirms 16-36% monitor bypass — run RESEARCH-026 swept experiment
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -34,4 +34,6 @@
     - Validated findings table in RESEARCH_INTEGRITY.md updated with result (or null)
   depends_on: [EVAL-087, RESEARCH-026]
   opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 909
 
