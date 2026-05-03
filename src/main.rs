@@ -33,6 +33,7 @@ mod browser;
 mod browser_tool;
 mod calc_tool;
 mod cancel_registry;
+mod cascade_stats;
 mod checkpoint_db;
 mod checkpoint_tool;
 mod chump_init;
@@ -334,6 +335,21 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("dashboard") {
         if let Err(e) = dashboard::print_dashboard() {
             eprintln!("chump dashboard: {e:#}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    // `chump cascade stats [--json]` (INFRA-269) — per-slot cascade traffic
+    // table from chump_provider_quality. Companion to the
+    // 40-cascade-consumption-report.sh overnight script: this is the
+    // on-demand human-facing equivalent. Pure read; safe to run anytime.
+    if args.get(1).map(String::as_str) == Some("cascade")
+        && args.get(2).map(String::as_str) == Some("stats")
+    {
+        let json_out = args.iter().any(|a| a == "--json");
+        if let Err(e) = cascade_stats::print_stats(json_out) {
+            eprintln!("chump cascade stats: {e:#}");
             std::process::exit(1);
         }
         return Ok(());
