@@ -80,15 +80,28 @@ pub fn build_execute_gap_prompt(gap_id: &str, repo_root: &std::path::Path) -> St
         format!("{rules}\n\n---\n\n")
     };
     let overlay_block = maybe_overlay_from_env().unwrap_or_default();
+    // INFRA-332: subagent-shipping-epilogue (canonical token). Same
+    // injection as crates/chump-orchestrator/src/dispatch.rs::build_prompt
+    // so both backends present an identical recovery / final-report
+    // contract. Closes the META-025 25-33% self-ship gap.
+    let epilogue =
+        std::fs::read_to_string(repo_root.join("scripts/dispatch/subagent-shipping-epilogue.md"))
+            .unwrap_or_default();
+    let epilogue_block = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n---\n\n{epilogue}")
+    };
     format!(
         "{overlay}{rules}You are a Chump dispatched agent working on gap {gap}. \
 The gap is already claimed in this worktree. \
-Read the gap entry in docs/gaps.yaml for full acceptance criteria. \
+Read the gap entry in docs/gaps/<ID>.yaml for full acceptance criteria. \
 Do the work, then ship via:\n  scripts/coord/bot-merge.sh --gap {gap} --auto-merge\n\
-After ship, exit. Reply ONLY with the PR number.",
+After ship, exit. Reply ONLY with the PR number.{epilogue}",
         overlay = overlay_block,
         rules = rules_block,
-        gap = gap_id
+        gap = gap_id,
+        epilogue = epilogue_block,
     )
 }
 

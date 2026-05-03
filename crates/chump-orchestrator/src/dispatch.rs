@@ -851,9 +851,23 @@ fn parse_gap_id_from_prompt(prompt: &str) -> Option<String> {
 /// Build the prompt handed to the dispatched subagent. See
 /// `docs/architecture/TEAM_OF_AGENTS.md` — the contract every dispatched subagent follows.
 ///
-/// `repo_root` is used to read `docs/process/CHUMP_DISPATCH_RULES.md` — the distilled
-/// coordination rules injected inline so both `claude` and `chump-local`
-/// backends receive them regardless of whether they read files unprompted.
+/// `repo_root` is used to read two files injected inline:
+///
+///   1. `docs/process/CHUMP_DISPATCH_RULES.md` — distilled coordination rules
+///      (header of the prompt).
+///   2. `scripts/dispatch/subagent-shipping-epilogue.md` — the
+///      `subagent-shipping-epilogue` canonical token (footer). INFRA-332
+///      injects this verbatim so every dispatched subagent gets the same
+///      bot-merge / chump-doctor / manual-recovery / final-report contract
+///      that the single self-shipping subagent in the META-025 trial had.
+///      Both backends — `claude -p` and `chump --execute-gap` — receive
+///      the same epilogue. CI guard
+///      `scripts/ci/test-subagent-epilogue-ref.sh` enforces both prompt
+///      builders include the canonical token.
+///
+/// Order is rules → task → epilogue: coordination context first, per-gap
+/// task in the middle, recovery / final-report contract last (closest to
+/// where the agent does the ship).
 pub fn build_prompt(gap_id: &str, repo_root: &Path) -> String {
     let rules = std::fs::read_to_string(repo_root.join("docs/process/CHUMP_DISPATCH_RULES.md"))
         .unwrap_or_default();
@@ -862,14 +876,24 @@ pub fn build_prompt(gap_id: &str, repo_root: &Path) -> String {
     } else {
         format!("{rules}\n\n---\n\n")
     };
+    // INFRA-332: subagent-shipping-epilogue (canonical token).
+    let epilogue =
+        std::fs::read_to_string(repo_root.join("scripts/dispatch/subagent-shipping-epilogue.md"))
+            .unwrap_or_default();
+    let epilogue_block = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n---\n\n{epilogue}")
+    };
     format!(
         "{rules}You are a Chump dispatched agent working on gap {gap}. \
 The gap is already claimed in this worktree. \
-Read the gap entry in docs/gaps.yaml for full acceptance criteria. \
+Read the gap entry in docs/gaps/<ID>.yaml for full acceptance criteria. \
 Do the work, then ship via:\n  scripts/coord/bot-merge.sh --gap {gap} --auto-merge\n\
-After ship, exit. Reply ONLY with the PR number.",
+After ship, exit. Reply ONLY with the PR number.{epilogue}",
         rules = rules_block,
-        gap = gap_id
+        gap = gap_id,
+        epilogue = epilogue_block,
     )
 }
 
