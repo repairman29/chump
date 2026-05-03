@@ -54,4 +54,14 @@ github-build-setup = "../build-setup.yml"
 # Removing this once we bump cargo-dist to a version whose templates emit @v8
 # would be cleaner; until then this matches the dependabot-vs-template race
 # that hits the queue every time GHA pins move.
+#
+# INFRA-196 (2026-05-02): the *primary* fix for that race is the
+# `ignore: [actions/upload-artifact, actions/download-artifact]` entry in
+# .github/dependabot.yml — it stops dependabot from opening drift-inducing
+# PRs in the first place. `allow-dirty = ["ci"]` here is the belt-and-braces
+# fallback for any other source of release.yml drift (manual edit, future
+# action bumps that slip past dependabot, etc.). When cargo-dist is upgraded
+# to a version whose templates emit the action versions dependabot sees as
+# current, BOTH this `allow-dirty` line AND the dependabot `ignore` block
+# can be reconsidered.
 allow-dirty = ["ci"]
