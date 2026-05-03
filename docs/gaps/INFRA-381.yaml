@@ -1,0 +1,17 @@
+- id: INFRA-381
+  domain: INFRA
+  title: operator doc — PR pipeline self-healing reapers (consolidate INFRA-307/354/374/375/376 into one reference)
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Single operator-facing reference doc consolidating the PR-pipeline self-healing reapers shipped in this session: INFRA-307 stuck-pr-filer, INFRA-354 pr-watch-shepherd, INFRA-374 auto-arm-sweeper, INFRA-375 ci-flake-rerun, INFRA-376 stuck-pr classifier. Covers the four stuck modes, install commands, verification commands, per-reaper behavior, common invariants (heartbeat + ambient + bypass env + idempotent + log rotation), token-burn defaults (INFRA-371/364/372), and the three failure modes that still need human handoff. Intended to be read once per machine at dogfood setup; after that the reapers run autonomously and the heartbeat-watchdog ALERTs ambient.jsonl on any silence.
+  acceptance_criteria:
+    - docs/process/PR_PIPELINE_SELF_HEALING.md exists
+    - covers all 4 stuck modes (REBASE/CI-RED/BEHIND/ORPHAN) and which reaper handles each
+    - lists all 6 install commands for the new + supporting reapers
+    - provides verify commands for launchctl + heartbeat freshness + ambient signal
+    - documents bypass env per reaper
+    - notes the 3 failure modes still needing human handoff
+    - Net-new-docs trailer present in commit so docs-delta guard accepts
+

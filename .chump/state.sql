@@ -9672,7 +9672,7 @@ gaps:
 - id: INFRA-196
   domain: INFRA
   title: Dependabot must ignore cargo-dist-generated action versions in release.yml
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -9681,6 +9681,8 @@ gaps:
     - .github/dependabot.yml has an ignore entry that prevents bumps to upload-artifact/download-artifact in release.yml
     - next dependabot run does not modify cargo-dist-generated content
     - document the rule in dist-workspace.toml comment so the next maintainer knows why
+  closed_date: '2026-05-03'
+  closed_pr: 997
 
 - id: INFRA-197
   domain: INFRA
@@ -14038,9 +14040,11 @@ gaps:
 - id: INFRA-380
   domain: INFRA
   title: "Duplicate-ID guard: skip pre-existing dups, only fail on newly-introduced ones (refinement of INFRA-078)"
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_date: '2026-05-03'
+  closed_pr: 994
 
 - id: INFRA-381
   domain: INFRA
@@ -14073,6 +14077,13 @@ gaps:
     - ci.yml runs the test in fast-checks shard
     - "launchctl list "
     - " grep dev.chump.auto-arm-sweeper succeeds after install"
+
+- id: INFRA-383
+  domain: INFRA
+  title: extend INFRA-379 chump-doctor preflight to remaining coord scripts (gap-reserve/claim/preflight + chump-commit) via shared scripts/lib/chump-preflight.sh helper
+  status: open
+  priority: P2
+  effort: xs
 
 - id: INFRA-41
   domain: INFRA
