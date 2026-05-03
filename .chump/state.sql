@@ -800,6 +800,36 @@ gaps:
   status: open
   priority: P1
   effort: m
+  description: |
+    Bench harness for the cog_037 Thompson router (M4 step 2 of WORLD_CLASS_ROADMAP). Per CLAUDE.md M4 protocol: (1) flag lands default-off (done — cog_037 in dispatch.rs), (2) bench harness compares flag-off baseline vs flag-on candidate (THIS GAP), (3) cycle review flips default, (4) cleanup PR removes the dead flag entry.
+    
+    Delivers scripts/eval/bench-cog-037-thompson.sh: simulation-only bench (no fleet spawn, no API spend) that runs 'chump dispatch simulate <class> <n>' under CHUMP_FLAGS= and CHUMP_FLAGS=cog_037, computes per-cell pick concentration + top-arm signature, snapshots the current scoreboard, and prints a verdict matrix to help the operator decide whether to flip cog_037 default ON.
+    
+    Produces a JSON summary at scripts/ab-harness/results/cog-037-bench-<ts>.json so successive runs can be diffed for convergence tracking.
+    
+    Required INFRA-392 (CLI fix) to land first: 'chump dispatch scoreboard' and 'dispatch simulate' were shadowed by the generic gap-id handler. Both ship in the same PR.
+  acceptance_criteria:
+    - scripts/eval/bench-cog-037-thompson.sh exists and is executable
+    - runs 'chump dispatch simulate' twice (flag-off + flag-on) per task_class
+    - computes pick concentration + top-arm signature per cell
+    - snapshots 'chump dispatch scoreboard' for context
+    - writes JSON summary to scripts/ab-harness/results/cog-037-bench-<ts>.json
+    - prints operator verdict matrix (insufficient data / safe to flip / don't flip / strong signal)
+    - works on a fresh repo with no routing outcomes (graceful degradation to 'INSUFFICIENT DATA')
+
+- id: COG-040
+  domain: COG
+  title: Reflexive telemetry — chump --briefing surfaces 'your last N dispatch outcomes on similar gaps' from chump_improvement_targets so agents adjust mid-task strategy from their own history
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "chump --briefing <GAP-ID> output includes a new section '## Your recent dispatch history' that pulls last N=5 outcomes from chump_improvement_targets where directive matches the same domain or task class"
+    - "Schema: section shows {ts, gap_id, effort, outcome, duration_s, notes_first_80_chars} — operator-readable"
+    - "If the agent's last 3 outcomes are stalled+killed+stalled, briefing prepends 'WARN: your recent track record on this domain is poor; consider INFRA-028 manual recovery from the start'"
+    - "Falsifying condition: if pattern is too noisy at N=5 (false-positive WARN on flaky CI), bump to N=20 OR file a separate gap for outcome-class filtering. Calibrate at N=5 first per RESEARCH_INTEGRITY rule."
+    - "Empirical context: today's INFRA-337 subagent had no awareness that bot-merge.sh had been timing out for siblings — so it waited 600s before giving up. With reflexive telemetry, the briefing would have shown 'your last 2 INFRA-* dispatches stalled at bot-merge' and the agent could have skipped the wait and gone straight to manual recovery."
+  depends_on: [MEM-007]
 
 - id: COMP-001
   domain: COMP
@@ -1450,6 +1480,22 @@ gaps:
   depends_on: [META-025]
   closed_date: '2026-05-03'
   closed_pr: 933
+
+- id: DOC-016
+  domain: DOC
+  title: docs/strategy/AGENT_MEMORY_TIERS.md — Tier 1 (code) / Tier 2 (docs) / Tier 3 (runtime-injected) memory model + Tier-2→Tier-3 migration discipline + scaling doctrine
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - docs/strategy/AGENT_MEMORY_TIERS.md exists; ~200-300 lines
+    - Names + defines all 3 memory tiers with concrete examples from current Chump
+    - Documents the empirical leverage finding (25% → 75% self-ship rate from Tier 3 alone, META-025)
+    - Tier-2 → Tier-3 migration discipline section with concrete criteria for what migrates vs stays
+    - "Scaling doctrine section with vectors: N agents, N machines, N operators, N projects, N substrates — each with the load-bearing gaps that compose"
+    - Cross-references META-028 (per-spawn defaults) + META-031 (CLAUDE.md governance) + INFRA-396 (silent-failure smokes) as the operational mechanisms
+    - "Falsifying claim: if next session's measurement run shows post-META-028 self-ship rate REGRESSES below 70%, the Tier-3 leverage thesis is wrong and this doc retracts"
+  depends_on: [META-025, META-028, META-031]
 
 - id: EVAL-001
   domain: EVAL
@@ -3724,7 +3770,7 @@ gaps:
 - id: FLEET-028
   domain: FLEET
   title: Pre-action coordination umbrella — agents see each other's intent before reserving / coding / PR-creating, not after
-  status: open
+  status: done
   priority: P1
   effort: l
   description: |
@@ -3802,7 +3848,6 @@ gaps:
     - "FLEET-031 semantic similarity lands: chump gap reserve flags ≥0.7 title-similarity matches against open + recently-merged PRs"
     - "End-to-end smoke: two agents independently typing 'fix bot-merge.sh post-188' get a heads-up flag from each other before either reserves a gap"
     - "Out-of-scope: live presence feed (deferred to Tier 4 / FLEET-NNN follow-up)"
-  depends_on: [FLEET-029, FLEET-030, FLEET-031]
   notes: |
     Filed in response to user feedback 2026-05-02 evening: "we should fix
     this but not in a halfass or sloppy way. It should be state of the
@@ -3811,6 +3856,8 @@ gaps:
     presence) is icing once 1-3 are in.
   source_doc: docs/strategy/FLEET_VISION_2026Q2.md
   opened_date: '2026-05-02'
+  closed_date: '2026-05-03'
+  closed_pr: 837
 
 - id: FLEET-029
   domain: FLEET
@@ -4045,7 +4092,6 @@ gaps:
     - "Cross-machine integration test: claim from machine A is visible to preflight on machine B within 1s"
     - Stale lock recovery uses NATS KV native expiry, not the file path's TTL reaper
     - FLEET-006 / FLEET-023 dependency wired
-  depends_on: [FLEET-006, INFRA-109]
 
 - id: FLEET-033
   domain: FLEET
@@ -4083,7 +4129,6 @@ gaps:
     - All chump gap subcommands work against new backend
     - gap-doctor + gap-preflight + gap-claim + bot-merge auto-close all migrated
     - "Cross-machine integration test: reserve on host A, list shows it on host B within 1s"
-  depends_on: [FLEET-006, INFRA-253]
 
 - id: FLEET-034
   domain: FLEET
@@ -4131,7 +4176,22 @@ gaps:
     - "Cross-machine integration test: gap reserved on host A is published, claimed by best-fit worker on host B"
     - Documented in CLAUDE.md as opt-in scaling tier
     - Replaces 'dispatcher dispatches' cognitive model gap (current docs implied push, code did pull)
-  depends_on: [FLEET-006, FLEET-032, FLEET-033, INFRA-314, INFRA-311]
+  depends_on: [FLEET-032, FLEET-033]
+
+- id: FLEET-035
+  domain: FLEET
+  title: speculative-race losses are uncounted compute waste — 4+ losers/day cargo-build then closed-as-superseded with no cost tracking
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Add 'speculative_race_loss' event to ambient.jsonl emitted whenever a PR is closed with body matching /superseded by #\\d+/ (the canonical loser-sweep marker from INFRA-193 + manual close patterns). Capture: pr_number, gap_id, branch_age_minutes, ci_minutes_burned (from gh run list duration sum), winner_pr, closed_at"
+    - Wire into stale-pr-reaper.sh and bot-merge.sh --speculative loser-sweep — both emit on close
+    - "Aggregate report: scripts/dispatch/fleet-status.sh --pane race-loss prints last-24h count + per-day-cost-estimate. Per-day-cost = sum(branch_age_minutes) (proxy for cargo-build wall-time wasted)"
+    - "Acceptance threshold: dashboard shows the metric. No threshold for closing this gap — visibility is the deliverable, the cost optimization is downstream"
+    - "Empirical evidence: 2026-05-03 morning cleanup pass closed PRs #947, #950, #959 as superseded — 3 race-loss instances in one operator pass, plus #966 (speculative pickup beat by 30 min). Each represents 5-15 min cargo build + 5-10 min CI wall-time on the loser side"
+  notes: |
+    Filed 2026-05-03 after observing 4+ speculative-race losers in a single 6h window. Today's mitigations (INFRA-340 stagger, INFRA-361 pre-pick preflight, INFRA-206 domain affinity, INFRA-193 speculative-mode loser-sweep) all reduce race likelihood, but none MEASURE the cost. Without measurement we can't know if a future change makes it worse. Visibility-first; cost optimization downstream.
 
 - id: FLEET-14
   domain: FLEET
@@ -12370,7 +12430,7 @@ gaps:
 - id: INFRA-304
   domain: INFRA
   title: bot-merge.sh flake-budget refuse 3rd rerun of same failing test
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -12412,6 +12472,8 @@ gaps:
     + the missing cognitive prompt to switch from retry to fix) is a
     documented session lesson but not encoded in any guard. P2 because
     it's a process improvement, not a correctness bug.
+  closed_date: '2026-05-03'
+  closed_pr: 1027
 
 - id: INFRA-305
   domain: INFRA
@@ -13102,7 +13164,7 @@ gaps:
 - id: INFRA-332
   domain: INFRA
   title: Standard 'shipping epilogue' template for every Agent-tool subagent prompt — close 25%→80% self-ship gap
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -13111,6 +13173,8 @@ gaps:
     - CLAUDE.md gets a 'Spawning subagents' subsection that points at the epilogue
     - N=5 fresh subagent dispatches measured post-landing show self-ship rate ≥80% (vs 25% baseline this session)
   depends_on: [META-025]
+  closed_date: '2026-05-03'
+  closed_pr: 1029
 
 - id: INFRA-333
   domain: INFRA
@@ -13741,9 +13805,11 @@ gaps:
 - id: INFRA-360
   domain: INFRA
   title: "optional: worktree migration + branch-naming pre-commit nudge"
-  status: open
+  status: done
   priority: P2
   effort: xs
+  notes: |
+    SUPERSEDED 2026-05-03 by INFRA-187 (which lists this gap's content as items 4+5 of its acceptance criteria). Close as dupe; track migration helper + branch-naming nudge under INFRA-187.
 
 - id: INFRA-361
   domain: INFRA
@@ -13832,7 +13898,7 @@ gaps:
 - id: INFRA-367
   domain: INFRA
   title: state.sql merge conflicts on multi-day rebases — auto-regenerate or untrack
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -13840,7 +13906,7 @@ gaps:
     - "If state.sql stays tracked: include in INFRA-310's merge-driver coverage (custom 'state-sql-regen' driver that calls chump gap dump on conflict)"
     - Document the resolution in CLAUDE.md alongside INFRA-310 and the bot-merge.sh recovery section
   notes: |
-    Hit during 2026-05-03 cleanup pass on PR #972 (INFRA-361): state.sql had 1400 deletions / 2392 insertions of conflict markers from N parallel agents each calling 'chump gap dump'. The fix during the cleanup was 'git checkout --theirs .chump/state.sql && chump gap dump --out .chump/state.sql' to regenerate from current DB. INFRA-262 already removed bot-merge.sh from touching state.sql, but parallel reservers still write it. INFRA-310 covers append-only hot files but state.sql is a regenerated artifact — different fix shape (regen vs union-merge).
+    SUPERSEDED 2026-05-03 by INFRA-310's custom merge driver for .chump/state.sql. The driver auto-regenerates state.sql via 'chump gap dump --out' on conflict. Installer at scripts/setup/install-merge-drivers.sh + .gitattributes registration both landed. State.sql still tracked but conflicts resolve themselves.
 
 - id: INFRA-368
   domain: INFRA
@@ -13908,7 +13974,7 @@ gaps:
 - id: INFRA-370
   domain: INFRA
   title: "bot-merge.sh on cargo-clippy timeout amends user changes onto previous (foreign) commit — squash-loss-class silent corruption per PR #52 territory"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -13918,6 +13984,8 @@ gaps:
     - "Test: scripts/ci/test-bot-merge-no-amend-foreign.sh — sandbox repo with two commits A (foreign) + B (this run); inject a clippy failure mid-flight; assert that auto-fix produces commit C (new, parent=B), NOT amend-onto-A"
     - "Falsifying condition: if reflog 'commit (amend)' was actually showing a DIFFERENT amend (the close-commit's --update-yaml regen), the corruption isn't real and this gap closes as no-bug. Confirm by reproducing the META-014 path with CHUMP_LOG_TIMING=1 and cross-referencing git reflog timestamps with the bot-merge.sh stage log."
   depends_on: [META-014]
+  closed_date: '2026-05-03'
+  closed_pr: 1000
 
 - id: INFRA-371
   domain: INFRA
@@ -14028,7 +14096,7 @@ gaps:
 - id: INFRA-376
   domain: INFRA
   title: stuck-PR classifier — extend INFRA-307 to tag stuck mode (REBASE/CI-FLAKE/REAL-CONFLICT/INFRA-BROKEN) so cleanup gaps route correctly
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -14040,6 +14108,8 @@ gaps:
     - description mentions routing hint per class
     - all 4 classes (REBASE, CI-RED, BEHIND, ORPHAN) wired to existing detection branches
     - smoke test verifies title-tag presence
+  closed_date: '2026-05-03'
+  closed_pr: 1004
 
 - id: INFRA-377
   domain: INFRA
@@ -14143,7 +14213,7 @@ gaps:
 - id: INFRA-386
   domain: INFRA
   title: stuck-pr-filer.sh auto-closes its own filed gap when underlying PR resolves (closed/merged)
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -14159,6 +14229,8 @@ gaps:
     - de-dup behavior unchanged for still-stuck PRs
     - "test: file fixture stale gap, mark referenced PR closed, assert next stuck-pr-filer run closes it"
     - drift back to 0 on next gap-doctor run after stuck PR resolves
+  closed_date: '2026-05-03'
+  closed_pr: 1012
 
 - id: INFRA-387
   domain: INFRA
@@ -14233,7 +14305,7 @@ gaps:
 - id: INFRA-391
   domain: INFRA
   title: fleet workers — auto-relax filter or auto-shutdown on prolonged starvation (3+ consecutive empties)
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -14243,6 +14315,167 @@ gaps:
     - "Cost rationale: on chump-local backend starvation is free (sleep loop, no API). On claude backend each cycle's gh+git fetch is free but the spawn-claude on a wrong-pick costs Anthropic tokens. Auto-relax/shutdown bounds the worst case at N*spawn cost where N=CHUMP_STARVE_THRESHOLD"
   notes: |
     Filed 2026-05-03 after observing local dogfood fleet idle for 6+ hours under FLEET_DOMAIN_FILTER=FLEET (no matching open gaps). The current INFRA-315 fleet_starved ALERT requires operator intervention; auto-relax keeps the fleet productive without operator.
+  closed_date: '2026-05-03'
+  closed_pr: 1034
+
+- id: INFRA-392
+  domain: INFRA
+  title: chump dispatch <subcommand> shadowed by generic gap-id handler — scoreboard/simulate/route trigger gap-preflight + bot-merge
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    chump dispatch <gap-id> handler at src/main.rs line 439 fires for ANY second-positional-arg, including the diagnostic subcommands 'scoreboard', 'simulate', 'route' that have their own handlers later in the file. Result: 'chump dispatch scoreboard' is parsed as 'dispatch the gap with ID scoreboard' → triggers gap-preflight which rejects 'scoreboard' as not in the registry → tries to run bot-merge.sh anyway → confusing failure with no relation to the user's actual command. Observed during COG-039 bench-harness work 2026-05-03. Fix: const DISPATCH_SUBCOMMANDS = &[scoreboard, simulate, route]; gate the gap-id branch on args[2] not being one of these. Also adds the diagnostic subcommands to the usage hint.
+  acceptance_criteria:
+    - src/main.rs gates 'dispatch <gap-id>' on args[2] not in {scoreboard,simulate,route}
+    - chump dispatch scoreboard returns the routing-outcomes table (or 'No routing outcomes recorded yet')
+    - chump dispatch simulate <task_class> <count> runs the Thompson sampler diagnostic
+    - chump dispatch with no arg or unknown subcommand prints usage hint listing all 4 paths
+  closed_date: '2026-05-03'
+  closed_pr: 1025
+
+- id: INFRA-393
+  domain: INFRA
+  title: COG-032 pilot harness — minimal serial trial runner (n=5 single-cell, naive; defers async/interleave to follow-up)
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - scripts/ab-harness/run-cog032-pilot.sh runs n trials in a single cell (A=lessons-off, B=lessons-on, C=lessons-on for A/A noise) — naive serial implementation acceptable for v0.1
+    - "Per-trial: create fresh .chump/worktrees/cog032-<cell>-<task>-<trial>/, set CHUMP_BENCH_MODE=1 + CHUMP_BENCH_CELL/TASK_ID/TRIAL_N + CHUMP_LESSONS_AT_SPAWN_N (=0 for A, =5 for B/C) + CHUMP_LESSONS_DOMAIN=infra, spawn 'claude -p --dangerously-skip-permissions' with task instruction (90-min wall-clock timeout per prereg)"
+    - Reads task definitions from scripts/ab-harness/fixtures/cog032_gap_bench_v1.json (round-robin if n > task_count)
+    - Trial outcome telemetry comes from bot-merge.sh's CHUMP_BENCH_MODE JSONL emit (logs/ab/COG-032/run.jsonl) — wrapper does NOT duplicate the recording
+    - Dry-run mode (--dry-run) prints the plan + env vars per trial without executing
+    - "Test: scripts/ci/test-cog032-pilot-harness.sh runs --dry-run with stub bench file + asserts the plan output enumerates n trials with correct env-var matrix"
+    - "Deferred to follow-up gap: interleaved A/B/C-per-task ordering, async parallelism, resilience to API errors mid-trial, lessons-snapshot capture per prereg §8"
+  depends_on: [COG-032, INFRA-324, INFRA-390]
+
+- id: INFRA-394
+  domain: INFRA
+  title: Race-abandoned as first-class dispatch outcome — DispatchOutcome enum + report category for 'sibling won the gap, I ceded gracefully' (META-025 surfaced this category mid-measurement)
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "DispatchOutcome enum (crates/chump-orchestrator/src/monitor.rs) gains RaceAbandoned(sibling_pr: Option<u32>) variant"
+    - outcome_str() maps it to 'race_abandoned' (additive — existing matchers continue to work)
+    - reflect.rs classify_failure_cause() returns None for RaceAbandoned (it's not a failure, it's a successful coordination)
+    - scripts/audit/dispatch-quality-report.sh splits race-abandoned out of the 'shipped' bucket; explicit row in TL;DR table
+    - "subagent-shipping-epilogue.md (INFRA-332) gains a section: 'if gap-preflight or first chump-gap-list shows your gap is in flight via someone else's lease/PR, exit cleanly with race-abandoned status — do NOT ship a duplicate'"
+    - "Test: 5 unit tests in reflect.rs covering RaceAbandoned outcome_str + None cause + report rendering"
+    - "Falsifying condition: if the existing 'killed' outcome with notes='race_abandoned' substring is sufficient (no enum change), this gap closes as 'tag in notes, not a new variant'. Verify by checking how the dispatch-quality report would render the distinction."
+  depends_on: [META-025, INFRA-336]
+
+- id: INFRA-395
+  domain: INFRA
+  title: scripts/dev/chump-doctor.sh --probe-resources — substrate-level pressure check (disk free in /tmp, target/ aggregate, sccache cache size, free RAM) before fleet launch
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "scripts/dev/chump-doctor.sh --probe-resources subcommand checks: (a) /tmp free space (warn if <5GB), (b) sum of *.claude/worktrees/*/target/ (warn if >50GB aggregate), (c) sccache cache hit rate via 'sccache --show-stats', (d) free RAM (warn if <8GB), (e) /private/tmp/claude-501/* size (Claude Code task-output dir; warn if >2GB)"
+    - Reports per-resource status with 🚨 / ⚠️ / ✅ tags consistent with --probe-cascade output
+    - "Operator runs BEFORE launching a fleet: chump-doctor.sh --probe-resources && run-fleet.sh"
+    - "Test: scripts/ci/test-chump-doctor-probe-resources.sh runs subcommand against synthetic /tmp + asserts WARN fires when below threshold"
+    - "Empirical context: today's mid-session disk-full at /private/tmp blocked EVERY Bash invocation for ~10 min until manual rm -rf cleared it. Pre-flight resource probe would have surfaced the pressure before fleet launch."
+  depends_on: [INFRA-275, INFRA-352, INFRA-202]
+
+- id: INFRA-396
+  domain: INFRA
+  title: Cascading silent-failure self-tests — every load-bearing feature has a smoke that asserts 'this feature still produces non-trivial output for a known input' (chump --briefing was silently broken for ~weeks before today)
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Each load-bearing feature path gets a smoke that asserts 'non-trivial output for a known input': (a) chump --briefing <known-gap-ID> emits relevant_reflections.len() > 0 when chump_improvement_targets has rows, (b) chump --execute-gap <task> with a non-empty bench fixture emits a non-empty agent-loop trace, (c) cascade with all slots enabled returns a non-error response within 30s, (d) bot-merge.sh dry-run produces all 12 stage_start lines"
+    - Smoke runs as part of pre-flight or as a launchd cron daily; failures emit ALERT kind=feature_silent_failure to ambient.jsonl
+    - "Test: scripts/ci/test-feature-smoke-detects-silent-failure.sh injects a known-broken state (e.g. drops all chump_improvement_targets rows) and asserts the smoke fires"
+    - "Empirical context: chump --briefing was silently broken post-INFRA-188 (read deleted docs/gaps.yaml); discovered today only because we were validating lessons-injection. The CHUMP_LESSONS_AT_SPAWN_N feature was effectively disabled for ~all agents using --briefing for some weeks. This is the cascading-silent-failure class — one early-exit silently disables features 3 layers downstream."
+    - "Falsifying condition: if the existing CI suite already smokes these paths (check scripts/ci/test-* enumeration), this gap is duplicate. Today's INFRA-331 fix had a regression test, but only for the per-file vs monolithic lookup — not for the cascading-disable behavior on lessons-injection."
+  depends_on: [INFRA-331, INFRA-330]
+
+- id: INFRA-397
+  domain: INFRA
+  title: gap-picker filters out all open gaps, returns done gaps instead
+  status: done
+  priority: P1
+  effort: s
+  notes: |
+    2026-05-03 cannot reproduce on this machine — picker correctly returned INFRA-386 (status:open). Possible transient cause: chump binary stale cache during gap-doctor cron mid-run, OR the bash pipeline 'echo $gap_json | python3' losing data via printf trailing-newline strip. Worker.sh uses GAP_JSON_FILE=<file> so the file-based path is unaffected. Re-open with a captured chump gap list --json output if it recurs.
+  closed_date: '2026-05-03'
+  closed_pr: 1028
+
+- id: INFRA-398
+  domain: INFRA
+  title: scripts/setup/install-all.sh first-run idempotent preflight — runs every install-*.sh on a new dogfood machine (sccache, launchd plists, hooks). Right now they're shipped but nobody runs them
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/setup/install-all.sh exists; runs every install-*.sh under scripts/setup/ in defined order, skipping already-installed (idempotent)
+    - "Order: install-sccache → install-hooks (pre-commit symlinks) → install-ambient-hooks (FLEET-023) → install-stale-pr-reaper-launchd → install-stale-worktree-reaper-launchd → install-reaper-watchdog-launchd → install-ambient-rotate-launchd"
+    - Each script must already be idempotent (some are; some need fixes); install-all.sh fails loud if any sub-installer fails
+    - "Test: scripts/ci/test-install-all-idempotent.sh runs install-all.sh twice, asserts second run is no-op (no diffs, no plist re-loads)"
+    - "Empirical context: today the operator manually invoked install-sccache.sh mid-session when cargo cold-builds were saturating the fleet; pre-INFRA-398 a new dogfood machine has all of these installer scripts but no entry point telling them to run."
+  depends_on: [INFRA-202, FLEET-023, INFRA-209]
+
+- id: INFRA-399
+  domain: INFRA
+  title: Subagent transcript archival — copy /private/tmp/claude-501/.../tasks/<agent-id>.output to ~/.claude/projects/.../subagent-archive/ for post-hoc analysis when a subagent stalls or makes a coordination mistake
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/dispatch/run-fleet.sh + Agent-tool integration (or a separate post-spawn hook) copies /private/tmp/claude-501/<project>/<session>/tasks/<agent-id>.output to ~/.claude/projects/<project>/notes/subagent-archive/<agent-id>.jsonl when the subagent terminates
+    - Archive directory has a 30-day retention policy; older files compressed via tar.gz
+    - scripts/dev/inspect-subagent.sh <agent-id> — utility that shows the archived transcript with grep-friendly filters (tool calls, errors, decisions)
+    - "Test: scripts/ci/test-subagent-archive.sh — synthetic JSONL output, archive it, assert inspect-subagent.sh surfaces the expected lines"
+    - "Empirical context: today's INFRA-337 stalled subagent left a transcript at /private/tmp/.../tasks/a5df003d2f1aa5097.output. We never read it — it expires when /private/tmp clears. The transcript is the post-mortem evidence for why the agent waited passively instead of executing manual recovery. Lost forever, like META-016 files were before the recovery."
+  depends_on: [META-025, META-016]
+
+- id: INFRA-400
+  domain: INFRA
+  title: /private/tmp/claude-501 daily cleanup launchd job — automatic prune of stale task-output files older than 24h (today's mid-session disk-full would never have happened)
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/dev/cleanup-claude-tmp.sh — finds /private/tmp/claude-*/ directories with no recent (>24h) modifications and removes them; preserves currently-active session paths
+    - "launchd plist scripts/setup/install-claude-tmp-cleanup-launchd.sh — daily 04:00 cron"
+    - Reports each cleanup pass to ambient.jsonl as kind=tmp_cleanup with bytes_freed, files_removed
+    - "Operator can opt out: CHUMP_TMP_CLEANUP_DISABLE=1"
+    - "Test: scripts/ci/test-claude-tmp-cleanup.sh — synthetic /tmp dirs with various ages, assert only stale ones are pruned"
+    - "Empirical context: today's mid-session disk-full at /private/tmp blocked all Bash tool calls for ~10 min until manual rm. Daily auto-cleanup would have prevented it."
+  depends_on: [INFRA-395, INFRA-122]
+
+- id: INFRA-401
+  domain: INFRA
+  title: Trace-log digest — periodic find-stash-creator.sh run included in dispatch-quality-report; today's META-016 trace tooling is silently capturing data nobody reads
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - scripts/audit/dispatch-quality-report.sh gains a 'recent stash creators' section that runs scripts/dev/find-stash-creator.sh against the trace log and surfaces top-5 stash-creating processes
+    - "Output format: '<process-cmd> emitted N stashes in last 7d, M of which were never popped'"
+    - "Test: scripts/ci/test-stash-creator-digest.sh — synthetic trace log with known patterns, assert digest renders"
+    - "Empirical context: today's META-016 trace tooling at scripts/dev/git-stash-trace-wrapper.sh has been silently capturing data. Nobody runs find-stash-creator.sh. The data is collecting but not analyzed. A periodic digest (~weekly) would have caught any new claude-*-stash sources."
+  depends_on: [META-016, INFRA-335]
+
+- id: INFRA-402
+  domain: INFRA
+  title: chump gap set --status done bypasses INFRA-107 closed_pr integrity guard (DB-direct write path skips pre-commit)
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Reproduce: CHUMP_GAPS_LOCK=1 chump gap set <ID> --status done — verify it succeeds without --closed-pr. Then verify origin/main has the gap with status:done + no closed_pr (the INFRA-107 violation the pre-commit guard is supposed to prevent at the YAML diff stage)"
+    - "Root cause hypothesis: chump gap set writes directly to .chump/state.db via gap_store::set_fields, bypassing the per-file YAML write entirely. The INFRA-107 closed_pr-integrity guard (scripts/git-hooks/pre-commit) only fires when the COMMIT diff includes status:done — if no commit happens (DB-only write), no guard"
+    - "Fix A: add the same closed_pr integrity check inside gap_store::set_fields when status is being flipped to 'done'. Returns Err if closed_pr is None or 0"
+    - "Fix B (defense-in-depth): chump gap dump --update-yaml at end of every gap set --status done so the docs/gaps/<ID>.yaml diff goes through the pre-commit guard the next commit. Today this is opt-in via --update-yaml flag"
+    - "Test: scripts/ci/test-status-done-requires-closed-pr.sh — fixture seeds a gap, runs chump gap set --status done (no --closed-pr), asserts non-zero exit + status unchanged in DB"
+    - "Empirical evidence: INFRA-339 closed via this path 2026-05-03 (status:done, closed_date set, closed_pr absent). Surfaced by gap-doctor.py drift detector but only catches it AFTER the fact"
+  notes: |
+    Filed 2026-05-03. The INFRA-107 closed_pr integrity guard pattern works at the YAML diff layer (which is what the pre-commit hook sees). But since INFRA-059 flipped canonical to .chump/state.db, the in-Rust write paths bypass that diff entirely. Either lift the integrity check into gap_store, or auto-emit a YAML diff on every status flip so the existing guard catches it. Pairs with META-032 (acceptance-criteria lag) — both are 'guards exist but writes can dodge them' patterns.
 
 - id: INFRA-41
   domain: INFRA
@@ -15857,6 +16090,78 @@ gaps:
     - "Test: scripts/ci/test-subagent-epilogue-budget-language.sh greps the doc for 'STOP' + 'wall-clock' + budget number; fails if those tokens drift."
     - "Falsifying condition: if 0 of N=5 subagents in a fresh measurement run stall passively post-fix, the strengthened language was load-bearing. If 1+ still stall waiting, the issue is structural (subagents can't measure their own wait time accurately) and a separate gap files for a heartbeat-driven kill (INFRA-334)."
   depends_on: [META-025, INFRA-332]
+
+- id: META-028
+  domain: META
+  title: Per-spawn defaults for Agent-tool subagents — repo provides a default briefing prefix (shipping epilogue + Agent/SendMessage discipline) injected before operator prompt
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Mechanism: a project-owned 'subagent default prefix' file (e.g. docs/process/SUBAGENT_DEFAULT_BRIEFING.md) that any Agent-tool spawn pulls + concatenates BEFORE the operator's task-specific prompt"
+    - "Default prefix includes: shipping epilogue (verbatim from SUBAGENT_DISPATCH.md), Agent-vs-SendMessage rule, chump-doctor heal pattern, falsifying-condition discipline, manual-recovery wall-clock budget"
+    - "Per-spawn override env: CHUMP_AGENT_DEFAULT_PREFIX=<path> for project-specific overrides"
+    - "Test: scripts/ci/test-agent-default-prefix.sh asserts the prefix file is found AND a synthesized prompt includes the shipping-epilogue substring"
+    - "Falsifying condition: if Anthropic's Agent SDK exposes a per-project system-prompt override that does this natively, this gap closes as 'use the SDK feature' instead of building our own. Verify before implementing by checking Agent SDK docs for system_prompt or default_prefix knobs."
+    - "Empirical context: today's session pasted the same 30-line shipping epilogue into 9 separate Agent-tool prompts; 1 of 9 had a typo in the manual-recovery section and stalled (INFRA-337 measurement run). Per-spawn defaults eliminate that copy-paste failure mode."
+  depends_on: [META-025, INFRA-332, DOC-015]
+
+- id: META-029
+  domain: META
+  title: "Re-measurement as default closure path for gaps with measurable AC — gap-doctor.py flags gaps that ship a fix but never run the closing measurement (today's META-025 was the canonical example: shipped 4 PRs and only closed when re-measured)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "scripts/coord/gap-doctor.py gains a 'measurement-debt' bucket: gaps with status=done where AC includes a measurable verb (measure, validate, target, threshold, %, rate, n=) but no companion 'measurement run' artifact in docs/audits/ or logs/ab/"
+    - Bucket reports the gap ID, the measurable AC clause, and a suggestion (re-run the prereg or run a fresh measurement)
+    - "Test: scripts/ci/test-gap-doctor-measurement-debt.sh — fixture DB with 3 gaps (one with measurable AC + measurement, one without, one with measurable AC but no measurement) — assert exactly 1 surfaces in the bucket"
+    - "Falsifying condition: if 80%+ of done gaps have measurable language but no measurement (bench too aggressive), tighten the keyword match. Calibrate against today's gap registry (~700 gaps) before shipping the report."
+    - "Empirical context: META-025 had measurable AC ('self-ship rate ≥70%') and only closed today after a fresh measurement, NOT when the 4 fix PRs landed. Most agent-quality gaps that ship a fix never close because no one runs the measurement. This bucket surfaces them."
+  depends_on: [META-025, INFRA-335]
+
+- id: META-030
+  domain: META
+  title: Orchestrator → subagent backchannel for abort signals — 'gap is taken' or 'preempt this work' (today the only abort path was self-detect via gap-preflight)
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Mechanism: orchestrator writes a 'cancel signal' file (e.g. .chump-locks/<subagent-id>.cancel) that subagents poll periodically OR the Anthropic Agent SDK exposes a per-agent SendMessage('abort') primitive"
+    - "Subagent epilogue gains a 'cancel-check' clause: 'every N tool calls, check for ; if present, exit cleanly with race-abandoned status'"
+    - "Orchestrator-side helper: when a sibling lands a PR for a gap a sibling subagent is also working on, fire cancel signals to all but the winner"
+    - "Test: scripts/ci/test-subagent-cancel-signal.sh — spawn 2 subagents on same gap; orchestrator detects collision via lease + writes cancel files; assert losers exit cleanly"
+    - "Falsifying condition: if the Anthropic Agent SDK's TaskStop primitive already does this cleanly, this gap reduces to 'document the pattern, no new code'. Verify before implementing."
+    - "Empirical context: today's INFRA-306 race only resolved because the LOSER's prompt told it to recheck preflight before pushing. If both prompts had been written without that check, both would have shipped duplicate PRs and one would be auto-closed by INFRA-219 closer-batcher hours later."
+  depends_on: [META-025, INFRA-394]
+
+- id: META-031
+  domain: META
+  title: CLAUDE.md size + structure governance — 800+ lines and growing; topic-indexed sections so agents can query 'commit-time guards' without loading 'fleet launcher'. Prune discipline for landed-and-stable items
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - CLAUDE.md gains a top-level table of contents at line ~10, with anchor links to each major section. Agents can navigate by topic without full-text load.
+    - Sections older than 6 months that have not been edited graduate to docs/process/<topic>.md and CLAUDE.md retains only a one-line pointer + the bypass envs (the load-bearing operational data).
+    - "Smoke: scripts/ci/test-claude-md-size.sh fails when CLAUDE.md > 1500 lines, suggesting prune candidates"
+    - "Falsifying condition: if topic-indexed retrieval is moot because Anthropic Agent SDK already does sub-doc context selection (verify via SDK docs), this gap reduces to 'no action; the SDK handles it'."
+    - "Empirical context: today's CLAUDE.md is 800+ lines; specific sections (chump-doctor heal pattern, ambient.jsonl rotation, reaper watchdogs) are operationally critical but a subagent loading the full doc may run out of context budget before reaching them."
+  depends_on: [META-025]
+
+- id: META-032
+  domain: META
+  title: Acceptance-criteria-as-test consistently lags implementation by N PRs — runtime ships, regression test never lands
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Define 'acceptance-criteria-coverage' metric: for each gap closed in the last 30 days, parse acceptance_criteria array, classify each criterion as test-checkable (mentions 'test', 'verify', 'regression', 'asserts') and check whether matching test exists in scripts/ci/ or src/ with the gap ID in the file path/header"
+    - "Report current baseline: today's audit shows 3+ instances (INFRA-370, INFRA-376, INFRA-332) where runtime shipped but the test-checkable acceptance criterion was satisfied only in a follow-up PR hours later"
+    - "Mitigation A (lightweight): add pre-commit guard that rejects 'chump gap ship' / 'chump gap set --status done' when an acceptance_criterion contains the literal 'test' / 'asserts' / 'verifies' AND no matching scripts/ci/test-* file references the gap ID. Bypass via CHUMP_TEST_LAG_CHECK=0 with justification"
+    - "Mitigation B (heavier): add nightly cron 'test-lag-auditor' that scans last-30-days closed gaps and files cleanup gaps for the lag PRs, like INFRA-307 stuck-pr-filer pattern but for test-lag"
+  notes: |
+    Observed 2026-05-03 in three consecutive pickups: INFRA-370 (PR #1000 shipped runtime + INFRA-028 test 156 lines), INFRA-376 (PR #1004 shipped runtime, my PR #1024 added Test 9/10 hours later), INFRA-332 (PR #933 shipped doc, my PR #1035 added the runtime injection + CI guard hours later). The system has the auto-close machinery (INFRA-154) and the gap-doctor cron (INFRA-308) but neither catches 'acceptance criterion not yet satisfied'. The result: agents pick up 'open' gaps to discover them already implemented and just lacking enforcement coverage. 3-of-3 hit rate today is symptomatic, not anecdotal.
 
 - id: PRODUCT-001
   domain: PRODUCT
