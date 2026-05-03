@@ -208,14 +208,23 @@ pub async fn execute_gap_with_agent(agent: &ChumpAgent, gap_id: &str) -> Result<
 // retry logic can work, because every dispatched-child failure looks
 // the same.
 
-/// INFRA-302 blocker (1): classification of errors returned by
+/// INFRA-302 blocker (1) / INFRA-347: classification of errors returned by
 /// [`execute_gap`].
 ///
-/// Today only two variants — billing-exhausted vs everything-else —
-/// because that's the discriminator the orchestrator-level
-/// cascade-respawn (filed separately) needs. Keep narrow until the
-/// orchestrator side actually reads more variants; a wider taxonomy
-/// without consumers is dead carrying capacity.
+/// Three variants — billing-exhausted, transport-unreachable, and
+/// everything-else — because those are the discriminators the
+/// orchestrator-level cascade-respawn needs:
+///
+/// * [`BillingExhausted`]: provider returned 402 / credit_limit → switch
+///   provider or top up credits.
+/// * [`TransportUnreachable`]: local daemon is down or the network path to
+///   `OPENAI_API_BASE` is broken → restart the daemon, or cascade to a
+///   cloud slot via `CHUMP_CASCADE_ENABLED=1`. INFRA-347: this was
+///   previously classified as `Other` (exit 1), making it
+///   indistinguishable from a tool storm. Now distinct (exit 76) so the
+///   orchestrator can respawn against a reachable provider.
+/// * [`Other`]: generic failure (max iterations, tool storm, bad request,
+///   model crash). Legacy exit code 1 so existing tooling is unaffected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecuteGapErrorKind {
     /// HTTP 402 / credit_limit / insufficient_quota / payment required /
@@ -227,6 +236,15 @@ pub enum ExecuteGapErrorKind {
     /// cascade fail-over for, factored out so it can be reused above
     /// the cascade layer.
     BillingExhausted,
+    /// Local daemon unreachable / transport-level failure — "connection
+    /// refused", "error sending request", "model HTTP unreachable",
+    /// "operation timed out", "no route to host", etc. INFRA-347:
+    /// factored out of the per-call cascade predicate so the
+    /// orchestrator-level cascade-respawn (exit code 76) can distinguish
+    /// "Ollama down" from "billing exhausted" (exit 75) and from generic
+    /// failures (exit 1). Detected via
+    /// [`crate::provider_cascade::is_transport_unreachable_error_string`].
+    TransportUnreachable,
     /// Anything else — generic agent-loop failure (network blip,
     /// max-iterations cap, tool storm, model crash, etc.). Maps to
     /// the legacy exit code 1 so existing operator tooling that
@@ -236,17 +254,20 @@ pub enum ExecuteGapErrorKind {
 
 impl ExecuteGapErrorKind {
     /// Per-class exit code for `chump --execute-gap`'s main-process
-    /// exit. `75` follows BSD `EX_TEMPFAIL` from `sysexits.h` — chosen
-    /// because it's outside the 0–2 range existing tooling uses for
-    /// usage / generic-failure, distinct enough that the orchestrator
-    /// can pattern-match on it, and semantically correct (the failure
-    /// IS temporary at the dispatched-child level — different provider
-    /// or topped-up credits would succeed). Stays `1` for the generic
-    /// case so `bot-merge.sh` and other shell-level callers see no
-    /// behavioral change.
+    /// exit. `75` follows BSD `EX_TEMPFAIL` from `sysexits.h` for
+    /// billing-exhausted. `76` (`EX_PROTOCOL` — "remote error in
+    /// protocol") is the analogous code for transport-unreachable:
+    /// the local daemon or the network path is broken, not the
+    /// orchestrator's logic. Both are outside the 0–2 range existing
+    /// tooling uses for usage / generic-failure, distinct enough that
+    /// the orchestrator can pattern-match on each. Stays `1` for the
+    /// generic case so `bot-merge.sh` and other shell-level callers
+    /// see no behavioral change. INFRA-347 adds the
+    /// `TransportUnreachable → 76` mapping.
     pub fn exit_code(self) -> i32 {
         match self {
             Self::BillingExhausted => 75,
+            Self::TransportUnreachable => 76,
             Self::Other => 1,
         }
     }
@@ -268,30 +289,42 @@ impl ExecuteGapErrorKind {
                  orchestrator should respawn against next routing-table candidate \
                  (TOGETHER → GROQ → Claude). INFRA-302 blocker (1).",
             ),
+            Self::TransportUnreachable => Some(
+                "TRANSPORT_UNREACHABLE: local daemon is down or network path to \
+                 OPENAI_API_BASE is broken (connection refused, error sending request, \
+                 model HTTP unreachable, operation timed out, etc.); orchestrator \
+                 should restart the daemon or respawn against a reachable provider \
+                 slot. INFRA-347.",
+            ),
             Self::Other => None,
         }
     }
 }
 
-/// INFRA-302 blocker (1): inspect an [`anyhow::Error`] from
+/// INFRA-302 blocker (1) / INFRA-347: inspect an [`anyhow::Error`] from
 /// [`execute_gap`] and classify it for exit-code mapping.
 ///
 /// Walks the formatted error chain (using `format!("{err:#}")` so the
 /// full Context-wrapped chain is visible) and matches against
-/// [`crate::provider_cascade::is_billing_exhausted_error_string`].
-/// Returns [`ExecuteGapErrorKind::BillingExhausted`] on match,
-/// [`ExecuteGapErrorKind::Other`] otherwise.
+/// [`crate::provider_cascade::is_billing_exhausted_error_string`] and
+/// [`crate::provider_cascade::is_transport_unreachable_error_string`].
+///
+/// Priority: billing-exhausted is checked first (more specific signal for
+/// the orchestrator); transport-unreachable second; everything else
+/// falls through to `Other`.
 ///
 /// Centralizing this on the formatted chain (not the typed `&Error`)
 /// matches the existing INFRA-300 cascade predicate's contract —
 /// HTTP-error-bearing strings carry the discriminator (`402`,
-/// `credit_limit`, ...) regardless of which transport layer wrapped
-/// them, so a string-based check is correct AND robust to the
-/// provider library swapping its concrete error type.
+/// `credit_limit`, `connection refused`, ...) regardless of which
+/// transport layer wrapped them, so a string-based check is correct AND
+/// robust to the provider library swapping its concrete error type.
 pub fn classify_execute_gap_error(err: &anyhow::Error) -> ExecuteGapErrorKind {
     let chain_str = format!("{err:#}");
     if crate::provider_cascade::is_billing_exhausted_error_string(&chain_str) {
         ExecuteGapErrorKind::BillingExhausted
+    } else if crate::provider_cascade::is_transport_unreachable_error_string(&chain_str) {
+        ExecuteGapErrorKind::TransportUnreachable
     } else {
         ExecuteGapErrorKind::Other
     }
@@ -475,10 +508,10 @@ mod tests {
 
     #[test]
     fn classify_negative_cases_route_to_other() {
+        // These must NOT be classified as BillingExhausted or TransportUnreachable.
         for s in [
             "agent loop failed for gap INFRA-247: max iterations (50) reached without an answer",
             "agent loop failed for gap INFRA-247: HTTP 500 Internal Server Error",
-            "agent loop failed for gap INFRA-247: Connection refused (os error 61)",
             "agent loop failed for gap INFRA-247: tool storm: 5 consecutive failed batches",
             "agent loop failed for gap INFRA-247: HTTP 400 Bad Request: missing field 'tools'",
         ] {
@@ -486,7 +519,7 @@ mod tests {
             assert_eq!(
                 classify_execute_gap_error(&e),
                 ExecuteGapErrorKind::Other,
-                "{s:?} must route to Other (not billing-exhausted)"
+                "{s:?} must route to Other (not billing-exhausted or transport-unreachable)"
             );
         }
     }
@@ -532,6 +565,140 @@ mod tests {
             classify_execute_gap_error(&wrapped),
             ExecuteGapErrorKind::BillingExhausted,
             "classifier must walk the full anyhow context chain, not just the top message"
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // INFRA-347 — TransportUnreachable classification at the
+    // execute-gap exit boundary.
+    // ──────────────────────────────────────────────────────────────────
+
+    #[test]
+    fn classify_transport_real_dogfood_incident_string() {
+        // Verbatim error from the 2026-05-02 dogfood repro (INFRA-347 /
+        // INFRA-348). The agent loop wraps the provider error with
+        // `with_context("agent loop failed for gap {gap_id}")`, so
+        // the formatted chain is:
+        let raw = anyhow::anyhow!(
+            "error sending request for url (http://127.0.0.1:11434/v1/chat/completions) \
+             — model HTTP unreachable (daemon down, crashed, or still starting). \
+             Ollama: brew services start ollama (or restart); probe: curl -s \
+             http://127.0.0.1:11434/api/tags."
+        );
+        let wrapped = raw.context("agent loop failed for gap INFRA-234");
+        assert_eq!(
+            classify_execute_gap_error(&wrapped),
+            ExecuteGapErrorKind::TransportUnreachable,
+            "exact 2026-05-02 dogfood repro string (Ollama down, INFRA-347) MUST classify \
+             as TransportUnreachable — this is the regression test for INFRA-347"
+        );
+    }
+
+    #[test]
+    fn classify_transport_exit_code_is_76_ex_protocol() {
+        assert_eq!(
+            ExecuteGapErrorKind::TransportUnreachable.exit_code(),
+            76,
+            "76 = EX_PROTOCOL per BSD sysexits.h; orchestrator pattern-matches on this \
+             to distinguish transport-unreachable (daemon down) from billing-exhausted (75) \
+             and generic failures (1). INFRA-347."
+        );
+    }
+
+    #[test]
+    fn classify_transport_emits_structured_stderr_marker() {
+        let m = ExecuteGapErrorKind::TransportUnreachable
+            .stderr_marker()
+            .expect("transport-unreachable must emit a marker");
+        assert!(
+            m.starts_with("TRANSPORT_UNREACHABLE:"),
+            "marker must start with the stable column-1 token; got: {m:?}"
+        );
+        assert!(
+            m.contains("INFRA-347"),
+            "marker must cite INFRA-347 for traceability; got: {m:?}"
+        );
+    }
+
+    #[test]
+    fn classify_transport_positive_cases() {
+        for (s, label) in [
+            (
+                "agent loop failed for gap INFRA-234: connection refused (os error 61)",
+                "connection refused",
+            ),
+            (
+                "agent loop failed for gap INFRA-234: error sending request for url (http://127.0.0.1:11434/v1/chat/completions)",
+                "error sending request",
+            ),
+            (
+                "agent loop failed for gap INFRA-234: model HTTP unreachable",
+                "model HTTP unreachable",
+            ),
+            (
+                "agent loop failed for gap INFRA-234: operation timed out connecting to 127.0.0.1:11434",
+                "operation timed out",
+            ),
+            (
+                "agent loop failed for gap INFRA-234: no route to host",
+                "no route to host",
+            ),
+            (
+                "agent loop failed for gap INFRA-234: name resolution failed for localhost",
+                "name resolution failed",
+            ),
+            (
+                "agent loop failed for gap INFRA-234: tcp connect error (os error 61)",
+                "tcp connect error",
+            ),
+            (
+                "agent loop failed for gap INFRA-234: model temporarily unavailable",
+                "model temporarily unavailable",
+            ),
+        ] {
+            let e = anyhow::anyhow!("{s}");
+            assert_eq!(
+                classify_execute_gap_error(&e),
+                ExecuteGapErrorKind::TransportUnreachable,
+                "{label:?} ({s:?}) must classify as TransportUnreachable — \
+                 INFRA-347: before this fix these exited 1 (Other), \
+                 indistinguishable from a tool storm"
+            );
+        }
+    }
+
+    #[test]
+    fn classify_transport_does_not_overlap_billing() {
+        // Billing-exhausted takes priority over transport in the classifier.
+        // A string that matches BOTH (pathological but possible if a provider
+        // embeds "connection refused" in a 402 body) classifies as billing
+        // because that's the more actionable signal.
+        let s = "Local API error 402 Payment Required: connection refused";
+        let e = anyhow::anyhow!("{s}");
+        assert_eq!(
+            classify_execute_gap_error(&e),
+            ExecuteGapErrorKind::BillingExhausted,
+            "billing-exhausted should take priority over transport-unreachable \
+             when both patterns match"
+        );
+    }
+
+    #[test]
+    fn classify_transport_context_chain_visible() {
+        // Same as classify_walks_full_anyhow_context_chain but for transport.
+        // The "connection refused" discriminator is inside the provider error;
+        // the top-level is the with_context wrapper.
+        let inner = anyhow::anyhow!("connection refused (os error 61)");
+        let wrapped = inner.context("agent loop failed for gap INFRA-234");
+        assert!(
+            !wrapped.to_string().contains("connection refused"),
+            "precondition: top-level Display must hide the inner message"
+        );
+        assert_eq!(
+            classify_execute_gap_error(&wrapped),
+            ExecuteGapErrorKind::TransportUnreachable,
+            "classifier must walk the full chain to find 'connection refused' \
+             even when it is wrapped by with_context"
         );
     }
 }
