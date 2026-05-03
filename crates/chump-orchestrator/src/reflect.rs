@@ -133,7 +133,10 @@ pub fn pr_number_of(outcome: &DispatchOutcome) -> Option<u32> {
 /// - `unknown`: outcome is a failure but no signature matched. Operator
 ///   should inspect the per-cycle log; if a recurring pattern emerges,
 ///   add a new bucket.
-pub fn classify_failure_cause(outcome: &DispatchOutcome, stderr_tail: &str) -> Option<&'static str> {
+pub fn classify_failure_cause(
+    outcome: &DispatchOutcome,
+    stderr_tail: &str,
+) -> Option<&'static str> {
     // Only failure outcomes carry a cause.
     let is_failure = matches!(
         outcome,
@@ -467,7 +470,8 @@ mod tests {
     /// PWA empty-bubble incident.
     #[test]
     fn classify_failure_cause_api_credit_exhausted() {
-        let stderr = "Local API error 402 Payment Required: Credit limit exceeded, please add credits.";
+        let stderr =
+            "Local API error 402 Payment Required: Credit limit exceeded, please add credits.";
         assert_eq!(
             classify_failure_cause(&DispatchOutcome::Stalled, stderr),
             Some("API-credit-exhausted")
