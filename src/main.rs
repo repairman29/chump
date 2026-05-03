@@ -1281,7 +1281,18 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 eprintln!("chump --execute-gap {gap_id}: {e:#}");
-                std::process::exit(1);
+                // INFRA-302 blocker (1): classify the error so the
+                // orchestrator's stderr-tailer can distinguish
+                // billing-exhausted (402 / credit_limit class) from
+                // generic failures and decide whether to respawn the
+                // dispatched child against the next routing-table
+                // candidate. See the `Exit codes` section in the
+                // execute_gap.rs module docs for the full contract.
+                let kind = execute_gap::classify_execute_gap_error(&e);
+                if let Some(marker) = kind.stderr_marker() {
+                    eprintln!("{marker}");
+                }
+                std::process::exit(kind.exit_code());
             }
         }
     }
