@@ -463,6 +463,51 @@ fn prefer_large_context() -> bool {
         .unwrap_or(false)
 }
 
+/// INFRA-300: classify a provider error string for cascade failover.
+///
+/// Returns `true` if the error indicates the *current* slot can't serve
+/// THIS request but a *sibling* slot probably can — i.e. cascade onward.
+/// Returns `false` for errors that should propagate (bad request, model
+/// crash, etc.).
+///
+/// Categories that cascade:
+/// - **Rate limit** (429, 413 for Groq TPM, "rate limit", "tokens per minute")
+/// - **Access denied** (401, 403, "unauthorized", "forbidden", "models permission")
+/// - **Billing exhausted** (402, "credit_limit", "insufficient quota",
+///   "payment required", "billing") — added 2026-05-02 after Together's
+///   free credits drained and a 50% silent-failure rate hit the PWA
+/// - **Tool format** ("tool_use_failed", "tool call validation failed")
+///
+/// Note: this only inspects the error *string*. The full check in `complete()`
+/// also calls `local_openai::is_transient_error(&e)` for transport-level
+/// errors (timeouts, connection resets) which require the typed `&Error`.
+pub(crate) fn should_cascade_on_error_string(e_str: &str) -> bool {
+    let lower = e_str.to_ascii_lowercase();
+    let is_rate_limited = e_str.contains("429")
+        || e_str.contains("413") // Groq uses 413 for TPM exceeded
+        || lower.contains("too many requests")
+        || lower.contains("rate limit")
+        || lower.contains("tokens per minute")
+        || lower.contains("request too large for model");
+    let is_access_denied = e_str.contains("401")
+        || e_str.contains("403")
+        || lower.contains("unauthorized")
+        || lower.contains("models permission")
+        || lower.contains("forbidden")
+        || (e_str.contains("404") && lower.contains("model"));
+    let is_billing_exhausted = e_str.contains("402")
+        || lower.contains("credit_limit")
+        || lower.contains("credit limit")
+        || lower.contains("insufficient quota")
+        || lower.contains("insufficient_quota")
+        || lower.contains("payment required")
+        || lower.contains("billing");
+    let is_tool_format_failure = lower.contains("tool_use_failed")
+        || lower.contains("tool call validation failed")
+        || lower.contains("failed to call a function");
+    is_rate_limited || is_access_denied || is_billing_exhausted || is_tool_format_failure
+}
+
 #[async_trait]
 impl Provider for ProviderCascade {
     async fn complete(
@@ -679,30 +724,15 @@ impl Provider for ProviderCascade {
                     // EXCEPTION: tool_use_failed / tool call validation failed are model-capability
                     // errors (e.g. Llama generating hermes-format calls); another provider may work.
                     let e_str = format!("{} {:?}", e, e);
-                    let is_rate_limited = e_str.contains("429")
-                        || e_str.contains("413") // Groq uses 413 for TPM exceeded
-                        || e_str.to_ascii_lowercase().contains("too many requests")
-                        || e_str.to_ascii_lowercase().contains("rate limit")
-                        || e_str.to_ascii_lowercase().contains("tokens per minute")
-                        || e_str.to_ascii_lowercase().contains("request too large for model");
-                    let is_access_denied = e_str.contains("401")
-                        || e_str.contains("403")
-                        || e_str.to_ascii_lowercase().contains("unauthorized")
-                        || e_str.to_ascii_lowercase().contains("models permission")
-                        || e_str.to_ascii_lowercase().contains("forbidden")
-                        || (e_str.contains("404") && e_str.to_ascii_lowercase().contains("model"));
-                    let is_tool_format_failure =
-                        e_str.to_ascii_lowercase().contains("tool_use_failed")
-                            || e_str
-                                .to_ascii_lowercase()
-                                .contains("tool call validation failed")
-                            || e_str
-                                .to_ascii_lowercase()
-                                .contains("failed to call a function");
+                    // INFRA-300: classify via shared predicate. Cascades on
+                    // 429/413 (rate), 401/403 (access), 402/credit_limit
+                    // (billing — added when Together's free credits drained
+                    // and the PWA started returning empty bubbles), and
+                    // tool_use_failed (model capability). Transport-level
+                    // transient errors (timeout/reset) need the typed &Error,
+                    // so they're checked separately.
                     if local_openai::is_transient_error(&e)
-                        || is_rate_limited
-                        || is_access_denied
-                        || is_tool_format_failure
+                        || should_cascade_on_error_string(&e_str)
                     {
                         local_openai::record_circuit_failure(&slot.base_url);
                         if let Some(b) = self.bandit() {
@@ -987,5 +1017,88 @@ mod tests {
         // cascade_enabled() is false when var unset.
         std::env::remove_var("CHUMP_CASCADE_ENABLED");
         assert!(!cascade_enabled());
+    }
+
+    // INFRA-300: HTTP 402 / credit_limit must cascade to the next slot.
+    // Regression for the 2026-05-02 PWA empty-bubble incident.
+    #[test]
+    fn cascades_on_together_402_credit_limit() {
+        // Real Together error string from the 2026-05-02 incident.
+        let together_402 = "Local API error 402 Payment Required: {\n  \"id\": \"ohY6Cew-2kFHot-9f5af0bb2e16193a\",\n  \"error\": {\n    \"message\": \"Credit limit exceeded, please add credits.\",\n    \"type\": \"credit_limit\"\n  }\n}";
+        assert!(
+            should_cascade_on_error_string(together_402),
+            "Together 402 credit_limit must cascade — was hanging the PWA"
+        );
+    }
+
+    #[test]
+    fn cascades_on_openai_insufficient_quota() {
+        // OpenAI's variant of the same scenario.
+        let openai_quota = "Local API error 429 {\"error\": {\"type\": \"insufficient_quota\", \"message\": \"You exceeded your current quota\"}}";
+        assert!(should_cascade_on_error_string(openai_quota));
+    }
+
+    #[test]
+    fn cascades_on_anthropic_billing() {
+        let anthropic_billing = "Provider error: billing required";
+        assert!(should_cascade_on_error_string(anthropic_billing));
+    }
+
+    #[test]
+    fn cascades_on_existing_categories_still_work() {
+        // Make sure the refactor didn't regress the pre-INFRA-300 categories.
+        assert!(
+            should_cascade_on_error_string("HTTP 429 Too Many Requests"),
+            "rate limit"
+        );
+        assert!(
+            should_cascade_on_error_string("HTTP 401 Unauthorized"),
+            "access denied"
+        );
+        assert!(
+            should_cascade_on_error_string("HTTP 403 Forbidden"),
+            "forbidden"
+        );
+        assert!(
+            should_cascade_on_error_string("HTTP 413 Request too large for model"),
+            "Groq TPM via 413"
+        );
+        assert!(
+            should_cascade_on_error_string("Error: tool_use_failed"),
+            "tool format"
+        );
+        assert!(
+            should_cascade_on_error_string("tool call validation failed: missing field"),
+            "tool validation"
+        );
+    }
+
+    #[test]
+    fn does_not_cascade_on_bad_request_or_model_crash() {
+        // 400 / 422 / 500 are NOT cascade-worthy — the request is wrong or
+        // the provider crashed; another provider won't help.
+        assert!(
+            !should_cascade_on_error_string("HTTP 400 Bad Request: missing field"),
+            "400 should propagate, not cascade"
+        );
+        assert!(
+            !should_cascade_on_error_string("HTTP 422 Unprocessable Entity"),
+            "422 should propagate, not cascade"
+        );
+        assert!(
+            !should_cascade_on_error_string("HTTP 500 Internal Server Error"),
+            "500 (provider crash) should propagate"
+        );
+        assert!(
+            !should_cascade_on_error_string("Connection refused"),
+            "transport-level errors handled by is_transient_error, not the string predicate"
+        );
+    }
+
+    #[test]
+    fn case_insensitive_billing_match() {
+        assert!(should_cascade_on_error_string("CREDIT_LIMIT"));
+        assert!(should_cascade_on_error_string("Credit Limit Exceeded"));
+        assert!(should_cascade_on_error_string("PAYMENT REQUIRED"));
     }
 }
