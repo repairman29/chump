@@ -54,9 +54,16 @@ if [[ "${1:-}" == "--escalate" ]]; then
         shift || true
     done
 
-    # Resolve repo root and ambient path.
+    # INFRA-109: resolve LOCK_DIR via main-repo path so the escalation
+    # event lands in the SHARED ambient.jsonl, not the worktree-local one.
     _ESC_REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    _ESC_LOCK_DIR="$_ESC_REPO_ROOT/.chump-locks"
+    _ESC_GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+    if [[ "$_ESC_GIT_COMMON" == ".git" ]]; then
+        _ESC_MAIN_REPO="$_ESC_REPO_ROOT"
+    else
+        _ESC_MAIN_REPO="$(cd "$_ESC_GIT_COMMON/.." 2>/dev/null && pwd || echo "$_ESC_REPO_ROOT")"
+    fi
+    _ESC_LOCK_DIR="$_ESC_MAIN_REPO/.chump-locks"
     _ESC_AMBIENT="$_ESC_LOCK_DIR/ambient.jsonl"
     mkdir -p "$_ESC_LOCK_DIR"
 
@@ -166,7 +173,13 @@ if [[ ${#FILES[@]} -eq 0 ]]; then
   exit 2
 fi
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+# INFRA-109: resolve REPO_ROOT + LOCK_DIR via main-repo path (linked worktree safe).
+# Note: cd "$REPO_ROOT" below is intentional — chump-commit.sh stages files
+# in the CURRENT worktree (whatever the caller's checkout is), not the main
+# repo. REPO_ROOT here is the local worktree; LOCK_DIR (set by repo-paths.sh)
+# is the main-repo .chump-locks/.
+# shellcheck source=../lib/repo-paths.sh
+source "$(dirname "$0")/../lib/repo-paths.sh"
 cd "$REPO_ROOT"
 
 # Warn (non-blocking) when operating in the main checkout. Separate

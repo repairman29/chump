@@ -34,8 +34,9 @@ fi
 
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
+# INFRA-109: resolve REPO_ROOT + LOCK_DIR via main-repo path (linked worktree safe).
+# shellcheck source=../lib/repo-paths.sh
+source "$(dirname "$0")/../lib/repo-paths.sh"
 
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 if [[ -z "$SESSION_ID" ]]; then

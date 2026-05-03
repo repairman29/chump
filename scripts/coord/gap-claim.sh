@@ -71,8 +71,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Paths (needed before session ID so we can detect main worktree) ───────────
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
+# INFRA-109: REPO_ROOT + LOCK_DIR resolved via main-repo path so leases
+# from linked worktrees land in the shared .chump-locks/ where siblings see them.
+# shellcheck source=../lib/repo-paths.sh
+source "$(dirname "$0")/../lib/repo-paths.sh"
 
 # ── Path-case guard (INFRA-WORKTREE-PATH-CASE) ───────────────────────────────
 # macOS is case-insensitive, so /Users/jeffadkins/projects/Chump and

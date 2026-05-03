@@ -376,7 +376,11 @@ _bm_health_init() {
 }
 
 # ── Repo context ──────────────────────────────────────────────────────────────
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+# INFRA-109: REPO_ROOT is the worktree (we cd into it for git ops). LOCK_DIR
+# resolves to the MAIN repo's .chump-locks/ so health files + leases are
+# visible to siblings. queue-health-monitor.sh reads from the main repo path.
+# shellcheck source=../lib/repo-paths.sh
+source "$(dirname "$0")/../lib/repo-paths.sh"
 cd "$REPO_ROOT"
 
 # ── INFRA-224: ensure pre-commit hooks are installed before any commit ────────
@@ -427,7 +431,7 @@ export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-chump-dispatch@chump.bot}"
 # and failed with "not found in docs/gaps.yaml" — forcing the INFRA-028
 # manual path. Surfaced by PR #476 (PRODUCT-015).
 if [[ -z "${CHUMP_SESSION_ID:-}" && ${#GAP_IDS[@]} -gt 0 ]]; then
-    LOCK_DIR="$REPO_ROOT/.chump-locks"
+    # LOCK_DIR is set by repo-paths.sh (sourced above) — main-repo path.
     for _gid in "${GAP_IDS[@]}"; do
         for _lf in "$LOCK_DIR"/*.json; do
             [[ -f "$_lf" ]] || continue
