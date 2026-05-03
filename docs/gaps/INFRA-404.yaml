@@ -1,0 +1,7 @@
+- id: INFRA-404
+  domain: INFRA
+  title: bot-merge.sh handles agent-left untracked files (auto-add or explicit warn-with-list)
+  status: open
+  priority: P1
+  effort: s
+

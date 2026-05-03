@@ -1,0 +1,7 @@
+- id: INFRA-406
+  domain: INFRA
+  title: claude -p / chump --execute-gap hang detector — SIGTERM + ambient ALERT on no-tool-call timeout
+  status: open
+  priority: P1
+  effort: s
+
