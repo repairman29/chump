@@ -116,6 +116,30 @@ def normalize(v) -> str:
     return str(v) if v is not None else ""
 
 
+def is_yaml_richer(yaml_v, db_v) -> bool:
+    """INFRA-316: heuristic for "YAML has materially more content than DB."
+
+    Returns True when YAML's value is significantly longer than DB's (>= 3x
+    length OR has multi-line content while DB is single-line). This catches
+    the SECURITY-005 / META-011 class of drift where state.db has a
+    truncated one-line summary but YAML has the full multi-paragraph
+    description.
+
+    Conservative: simple length compare only on stringy fields. Lists and
+    None are caller-handled before this gets called.
+    """
+    if yaml_v is None or db_v is None:
+        return False
+    ys, ds = str(yaml_v), str(db_v)
+    if not ys.strip() or not ds.strip():
+        return False
+    # Multi-line YAML over single-line DB is an automatic win.
+    if "\n" in ys and "\n" not in ds:
+        return True
+    # Length-based: 3x is the conservative threshold.
+    return len(ys) >= 3 * len(ds) and len(ys) - len(ds) >= 100
+
+
 def reconcile_one(gid: str, yaml_data: dict, db_row: dict, dry_run: bool) -> list:
     """Return a list of (field, action, value) for each reconciliation."""
     actions = []
@@ -123,9 +147,16 @@ def reconcile_one(gid: str, yaml_data: dict, db_row: dict, dry_run: bool) -> lis
     for field, flag in RECONCILABLE_FIELDS.items():
         yaml_v = yaml_data.get(field)
         db_v = db_row.get(field)
-        if not is_empty(yaml_v) and is_empty(db_v):
+        # Two reasons to write YAML→DB:
+        #   1. DB is empty and YAML has a value (original INFRA-303 case)
+        #   2. INFRA-316: YAML is materially richer (DB has a truncated stub)
+        should_write = (not is_empty(yaml_v) and is_empty(db_v)) or is_yaml_richer(
+            yaml_v, db_v
+        )
+        if should_write:
             value = str(yaml_v).strip()
-            actions.append((field, "set", value))
+            tag = "set" if is_empty(db_v) else "overwrite-richer"
+            actions.append((field, tag, value))
             if not dry_run:
                 cmd = ["chump", "gap", "set", gid, flag, value]
                 r = subprocess.run(cmd, capture_output=True, text=True)
