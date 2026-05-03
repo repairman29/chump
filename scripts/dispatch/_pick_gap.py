@@ -21,6 +21,14 @@ Inputs (all env vars):
                         across the top-N gaps. Once leases form ACTIVE_GAPS
                         shrinks the list and the offset still maps each
                         worker to a unique remaining candidate.
+  COOLDOWN_DIR          INFRA-361: directory holding rc=1 cooldown records
+                        (default $REPO_ROOT/.chump-locks/cooldown). Each
+                        record is one JSON file named <GAP-ID>.json with
+                        keys gap_id / rc / until / agent / ts. Worker.sh
+                        writes them on rc!=0 exits to prevent every
+                        worker re-picking the same impossible gap on next
+                        cycle (worker 4 hit INFRA-340 6× in 5min pre-fix).
+                        Expired records are auto-cleaned each pick.
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ import json
 import os
 import re
 import sys
+import time
 
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
@@ -36,6 +45,36 @@ EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 
 def csv(env_key: str) -> list[str]:
     return [s.strip() for s in os.environ.get(env_key, "").split(",") if s.strip()]
+
+
+def cooled_down_gaps(cooldown_dir: str) -> set[str]:
+    """INFRA-361: gap IDs whose cooldown record is still in the future."""
+    if not cooldown_dir or not os.path.isdir(cooldown_dir):
+        return set()
+    now = int(time.time())
+    cooled: set[str] = set()
+    for entry in os.listdir(cooldown_dir):
+        if not entry.endswith(".json"):
+            continue
+        path = os.path.join(cooldown_dir, entry)
+        try:
+            with open(path) as f:
+                rec = json.load(f)
+        except Exception:
+            continue
+        gid = rec.get("gap_id") or ""
+        until = rec.get("until", 0)
+        if not gid:
+            continue
+        if until > now:
+            cooled.add(gid)
+        else:
+            # Expired — clean up the record so the directory doesn't grow.
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    return cooled
 
 
 def main() -> int:
@@ -53,11 +92,14 @@ def main() -> int:
     effort_filter = [e.lower() for e in csv("FLEET_EFFORT_FILTER")]
     exclude_re = re.compile(os.environ.get("EXCLUDE_RE", "^$"))
     active = set(os.environ.get("ACTIVE_GAPS", "").split())
+    cooled = cooled_down_gaps(os.environ.get("COOLDOWN_DIR", ""))
 
     candidates = []
     for g in gaps:
         gid = g.get("id", "")
         if not gid or gid in active:
+            continue
+        if gid in cooled:
             continue
         if exclude_re.search(gid):
             continue
