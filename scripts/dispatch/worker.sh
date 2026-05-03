@@ -174,12 +174,21 @@ PY
     case "$FLEET_BACKEND" in
         claude)
             prompt="Ship gap $GAP_ID in this repository. Read CLAUDE.md and AGENTS.md first. The gap is already claimed for this session; the lease is in .chump-locks/. Implement the gap per its description, commit via scripts/coord/chump-commit.sh, and ship via scripts/coord/bot-merge.sh --gap $GAP_ID --auto-merge. Reply with the PR number only."
-            log "spawning claude -p (timeout ${FLEET_TIMEOUT_S}s, backend=claude) → $cycle_log"
+            # INFRA-364: default to haiku for cost. Operator had \$92 of unused
+            # workspace API credit while the squad burned the \$20/mo subscription
+            # cap. Sonnet is ~10× haiku per token; for fleet's "ship a small
+            # gap" workload haiku is plenty. Override via FLEET_MODEL=sonnet
+            # for harder gaps. Empty string = let claude config default win
+            # (back-compat).
+            FLEET_MODEL="${FLEET_MODEL-haiku}"
+            _model_arg=()
+            [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
+            log "spawning claude -p (timeout ${FLEET_TIMEOUT_S}s, backend=claude, model=${FLEET_MODEL:-default}) → $cycle_log"
             (
                 cd "$wt_path" || exit 99
                 # Same surface as src/dispatch.rs WorkBackend::Headless.
                 # shellcheck disable=SC2086
-                $TO claude -p "$prompt" --dangerously-skip-permissions
+                $TO claude -p "$prompt" --dangerously-skip-permissions "${_model_arg[@]}"
             ) >"$cycle_log" 2>&1
             rc=$?
             ;;
