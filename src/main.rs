@@ -632,6 +632,30 @@ async fn main() -> Result<()> {
                 let priority = flag("--priority").unwrap_or_else(|| "P2".into());
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
                 let stack_on = flag("--stack-on");
+                let force = args.iter().any(|a| a == "--force");
+
+                // FLEET-029: ambient glance before allocating ID
+                if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
+                    use std::process::Command;
+                    let glance_result = Command::new("bash")
+                        .arg("scripts/coord/chump-ambient-glance.sh")
+                        .arg("--domain")
+                        .arg(&domain)
+                        .arg("--title")
+                        .arg(&title)
+                        .arg("--check-prs")
+                        .current_dir(&worktree_root)
+                        .status();
+
+                    if let Ok(status) = glance_result {
+                        if !status.success() {
+                            eprintln!();
+                            eprintln!("[reserve] Potential overlap detected. Pass --force to proceed anyway, or review the matches above.");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
@@ -688,6 +712,32 @@ async fn main() -> Result<()> {
                     eprintln!("Usage: chump gap claim <GAP-ID>");
                     std::process::exit(2);
                 });
+                let force = args.iter().any(|a| a == "--force");
+
+                // FLEET-029: ambient glance before claiming
+                if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
+                    use std::process::Command;
+                    if let Ok(Some(gap_row)) = store.get(&gap_id) {
+                        let glance_result = Command::new("bash")
+                            .arg("scripts/coord/chump-ambient-glance.sh")
+                            .arg("--domain")
+                            .arg(&gap_row.domain)
+                            .arg("--title")
+                            .arg(&gap_row.title)
+                            .arg("--check-prs")
+                            .current_dir(&worktree_root)
+                            .status();
+
+                        if let Ok(status) = glance_result {
+                            if !status.success() {
+                                eprintln!();
+                                eprintln!("[claim] Potential overlap detected for {gap_id}. Pass --force to proceed anyway.");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                }
+
                 let session_id = flag("--session")
                     .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
                     .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())

@@ -989,6 +989,13 @@ EOF
         fi
         stage_done
         green "PR #$_new_pr created and verified."
+
+        # ── FLEET-029: post-PR-create overlap scan ──
+        if [[ -z "${FLEET_029_PR_SCAN_SKIP:-}" ]]; then
+            # Scan for overlapping open PRs with similar titles or gap IDs
+            info "FLEET-029: scanning for overlapping open PRs…"
+            bash scripts/coord/chump-ambient-glance.sh --title "$PR_TITLE" --check-prs || true
+        fi
     fi
 else
     green "PR #$EXISTING_PR already exists — updated by push."
