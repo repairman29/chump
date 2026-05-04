@@ -1,0 +1,35 @@
+- id: META-034
+  domain: META
+  title: DOC-018 open P0 despite AC-verified closure — close DOC-018 and enforce post-ship registry check
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-04'
+  raised_by: cold-water
+  raised_in: RED_LETTER#11
+  description: |
+    DOC-018 (P0, "split CLAUDE.md into hot 2K overlay + cold gotchas") has been
+    implemented and all acceptance criteria are verifiably met, but state.db and
+    docs/gaps/DOC-018.yaml both show status:open.
+
+    AC verification (run 2026-05-04 in Cold Water sandbox):
+      1. CLAUDE.md token count: 1880 tokens (≤2500 target: PASS)
+      2. docs/process/CLAUDE_GOTCHAS.md exists: 501 lines (PASS)
+      3. Implementation commits: `git log origin/main --grep=DOC-018 --oneline`
+         returns 3 commits (#3e5269d filing, #1def0c2 PR #1058 ship,
+         #955fa11 PR #1073 CI fix)
+
+    Root cause: INFRA-457 (chump gap import does not propagate status from
+    per-file YAML to state.db). The INFRA-236 closer correctly closed
+    DOC-018.yaml when PR #1073 merged, but the subsequent import+dump cycle
+    reverted it to status:open. This is a symptom, not the cause. Fix INFRA-457
+    first; DOC-018 will self-close in the next CI cycle after that.
+
+    Interim fix: close DOC-018 directly via `chump gap ship DOC-018 --closed-pr 1073`.
+
+    Falsifying condition: docs/gaps/DOC-018.yaml shows status:done with
+    numeric closed_pr in state.db.
+  acceptance_criteria:
+    - "docs/gaps/DOC-018.yaml shows status:done, closed_pr:1073 (or 1058)"
+    - "state.db shows same"
+    - "INFRA-457 fix ships and DOC-018 does not reappear as open"

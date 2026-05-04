@@ -1,0 +1,42 @@
+- id: META-036
+  domain: META
+  title: '"SUPERSEDED" and "subsumed" used as informal status proxy — P0 INFRA-274 and P1 INFRA-402 never formally closed despite documented supersession'
+  status: open
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-04'
+  raised_by: cold-water
+  raised_in: RED_LETTER#11
+  description: |
+    Two gaps are marked superseded/subsumed in their text fields but remain
+    P0/P1 open in the canonical registry:
+
+    INFRA-274 (P0): notes field reads "SUPERSEDED 2026-05-02 by FLEET-032.
+    Keeping INFRA-274 open as historical-context anchor (the PR #874/#880
+    collision proof artifact) but operators should pick up FLEET-032 instead.
+    Auto-skip from fleet pickup via the SUPERSEDED prefix in this notes field."
+    Status: open, priority: P0.
+
+    INFRA-402 (P1): commit 9755bc5 body reads "INFRA-456 enforces at the write
+    boundary; pre-commit becomes defense-in-depth. Subsumes INFRA-402."
+    Status: open, priority: P1.
+
+    Problems:
+      1. Any canonical P0 census returns INFRA-274 as an actionable P0.
+      2. "Auto-skip from fleet pickup via the SUPERSEDED prefix in this notes
+         field" is undocumented and non-functional. Verified: `grep -rn "SUPERSEDED"
+         scripts/` returns zero results — no picker logic reads this field.
+      3. The correct pattern for supersession is status:done with
+         closed_interpretation (per META-005 precedent in this repo).
+
+    Fix: close both via `chump gap ship` with closed_interpretation noting the
+    superseding gap. This removes INFRA-274 from the P0 census and removes
+    INFRA-402 from the P1 list.
+
+    Falsifying condition: INFRA-274 shows status:done with closed_interpretation
+    referencing FLEET-032; INFRA-402 shows status:done referencing INFRA-456.
+  acceptance_criteria:
+    - "INFRA-274 shows status:done with closed_interpretation in state.db"
+    - "INFRA-402 shows status:done with closed_interpretation in state.db"
+    - "P0 canonical census excludes INFRA-274"
+    - "gap-preflight.sh has documented behavior for superseded gaps (or they are simply closed)"

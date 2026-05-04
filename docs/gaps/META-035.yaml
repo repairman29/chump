@@ -1,0 +1,39 @@
+- id: META-035
+  domain: META
+  title: chump gap list requires LLM backend — silent empty-array output on inference-unavailable blocks canonical census in remote sandboxes
+  status: open
+  priority: P2
+  effort: xs
+  opened_date: '2026-05-04'
+  raised_by: cold-water
+  raised_in: RED_LETTER#11
+  description: |
+    In the Cold Water remote sandbox (2026-05-04), `chump gap list --json`
+    returned an empty array `[]` despite state.db containing 125 open gaps
+    and 735 total. The CLI attempted to connect to a local Ollama instance
+    (http://127.0.0.1:11434) on startup, failed with a stack trace, and
+    returned empty results without a non-zero exit code.
+
+    The Cold Water audit protocol (docs/agents/cold-water.md) requires
+    `chump gap list --json > /tmp/open-gaps.json` as the canonical gap census
+    source. When the LLM backend is unavailable (all cold-start sandboxes,
+    CI runners, remote dispatch agents without Ollama), this step silently
+    produces an empty census. The audit then proceeds with fabricated or
+    inferred gap counts that don't match the actual registry.
+
+    Cold Water Issue #11 worked around this by querying state.db directly
+    via Python sqlite3. Future Cold Water cycles without the workaround will
+    produce incorrect prior-issue reconciliation (finding gaps that were
+    actually closed, missing actual open gaps).
+
+    Fix: `chump gap list` must not require LLM connectivity for read-only
+    registry queries. Either: (a) skip LLM initialization for the `gap list`
+    subcommand; (b) add a `--no-llm` flag; or (c) return exit code 1 with
+    clear error when LLM is unavailable instead of empty array.
+
+    Falsifying condition: `chump gap list --json` in a sandbox with Ollama
+    down returns non-empty results or exits non-zero with a clear error.
+  acceptance_criteria:
+    - "`chump gap list --json` succeeds without a running Ollama instance"
+    - "Returns all gaps from state.db regardless of LLM connectivity"
+    - "OR exits non-zero with 'LLM unavailable — use --no-llm for read-only ops' message"

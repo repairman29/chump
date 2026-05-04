@@ -1,12 +1,186 @@
 ---
 doc_tag: canonical
 owner_gap:
-last_audited: 2026-05-02
+last_audited: 2026-05-04
 ---
 
 # Red Letter
 
 > Cold Water — adversarial weekly review. No praise.
+
+---
+
+## Issue #11 — 2026-05-04
+
+> Audit window: commits since 2026-05-02 (Issue #10 date). 44 commits on origin/main since Issue #10 (HEAD: 9755bc5).
+
+### Status of Prior Issues
+
+**From Issue #10 (2026-05-02):**
+
+- **FIXED:** EVAL-090 (P0, STILL_OPEN_INACTIVE 2 cycles) — `docs/gaps/EVAL-090.yaml` shows `status: done, closed_pr: 726, closed_date: 2026-05-02`. THE ONE BIG THING from Issue #10 is resolved.
+- **FIXED:** RESEARCH-021 (P1, STILL_OPEN_INACTIVE 7 cycles) — `docs/gaps/RESEARCH-021.yaml` shows `status: done, closed_pr: 429, closed_date: 2026-05-02`. Seven-cycle inactivity ended.
+- **FIXED:** EVAL-094 (P1) — `docs/gaps/EVAL-094.yaml` shows `status: done, closed_pr: 909, closed_date: 2026-05-03`.
+- **FIXED:** FLEET-023 (P1, Cold Water ambient stream empty) — `docs/gaps/FLEET-023.yaml` shows `status: done, closed_pr: 768, closed_date: 2026-05-02`.
+- **FIXED:** META-007 (P0, malformed YAML on origin/main) — superseded by INFRA-188 per-file migration; `docs/gaps.yaml` no longer exists; `docs/gaps/META-007.yaml` shows `closed_interpretation` explaining the supersession.
+- **STILL_OPEN_INACTIVE (5 cycles — #7 through #11):** EVAL-087 (P1, evaluation-awareness literature reframe) — `git log origin/main --grep=EVAL-087 --oneline` returns zero results. Unchanged from Issues #7–#10.
+- **WORSE:** INFRA-233 (P1, NULL closed_pr in state.db) — estimated ~200 gaps in the gap description; direct SQLite query shows 302 done gaps with NULL/0 closed_pr as of 2026-05-04. 51% worse than estimated.
+- **WORSE → ROOT CAUSE FOUND:** OPEN-BUT-LANDED improved from 43/114 (38%) in Issue #10 to 34/125 (27%) this cycle, but the root cause of ALL remaining OPEN-BUT-LANDED gaps is now identified and proven: `chump gap import` does not propagate status changes from per-file YAML to state.db, making the INFRA-236 commit-subject closer a dead letter. Filed INFRA-457 (P0).
+- **NO_GAP filed this cycle:** INFRA-457, META-034, META-035, META-036, EVAL-098.
+
+---
+
+### The Looming Ghost
+
+**[P0/High] We are failing to propagate gap status through the import+dump cycle: the INFRA-236 commit-subject closer is silently neutralized every time it runs.**
+
+Evidence (three independent verification paths, 2026-05-04, Cold Water sandbox):
+
+```
+# Path 1 — Closer writes status:done correctly:
+$ bash scripts/coord/close-gaps-from-commit-subjects.sh <BEFORE>..HEAD 1074
+[close-gaps] closed INFRA-402 (PR #1074, 2026-05-04)
+[close-gaps] closed DOC-018 (PR #1074, 2026-05-04)
+... (18 additional gaps)
+[close-gaps] summary: closed=20 ...
+
+# After closer — docs/gaps/INFRA-402.yaml:
+  status: done
+  closed_pr: 1074
+  closed_date: '2026-05-04'
+
+# Path 2 — Import backfills closed_pr but NOT status:
+$ chump gap import
+import complete: 0 inserted, 739 skipped (already present), 20 closed_pr values backfilled from YAML.
+
+$ python3 -c "import sqlite3; c=sqlite3.connect('.chump/state.db').cursor(); c.execute(\"SELECT status, closed_pr FROM gaps WHERE id='INFRA-402'\"); print(c.fetchone())"
+('open', 1074)  ← status is STILL 'open' despite YAML saying 'done'
+
+# Path 3 — Dump regenerates from stale state.db, reverting the close:
+$ chump gap dump --per-file --out-dir docs/gaps
+wrote 149 file(s) ...
+
+# After dump — docs/gaps/INFRA-402.yaml:
+  status: open        ← reverted
+  closed_pr: 1074
+```
+
+- `git log origin/main --all --oneline | grep -i "skip ci"` returns zero results — no "[skip ci] regenerate" commits exist in the entire project history. The CI regenerate workflow runs on every push to main but never finds drift. This is consistent with the closer's changes always being undone by the import+dump cycle (the pre-dump and post-dump per-file YAMLs match HEAD because status was reverted), so no drift is ever detected.
+- `docs/gaps/DOC-018.yaml` on `origin/main` shows `status: open` with 3 implementation commits landed (PRs #1058, #1073, and filing commit #3e5269d) and all acceptance criteria met: CLAUDE.md = 1880 tokens (≤2500 target), `docs/process/CLAUDE_GOTCHAS.md` exists at 501 lines.
+
+*This finding is wrong if `chump gap import` run after the INFRA-236 closer shows `status='done'` in state.db for any closer-closed gap.*
+
+---
+
+### The Opportunity Cost
+
+**[P1/High] We are failing to act on EVAL-087 for the fifth consecutive Cold Water cycle.**
+
+```
+$ git log origin/main --grep=EVAL-087 --oneline
+(no output)
+```
+
+- `docs/gaps/EVAL-087.yaml`: `status: open`, `priority: P1`, `opened_date: '2026-04-26'`. Age: 8 days.
+- Flagged in Issues #7 (2026-04-26), #8 (2026-04-27), #9 (2026-05-01), #10 (2026-05-02), #11 (2026-05-04) — zero implementation commits across all five cycles.
+- EVAL-094 (ICLR 2026 sandbagging experiment) was filed and closed (closed_pr: 909) to execute the related experiment. But EVAL-094's acceptance criteria required "RESEARCH-026 priority updated to P1 in state.db" — this update is gated on EVAL-087. EVAL-094's closure is incomplete without EVAL-087 moving.
+
+Filed EVAL-098 (P1/xs) as a formal escalation: execute or formally defer within 14 days.
+
+*This finding is wrong if `git log origin/main --grep=EVAL-087` returns a commit with experiment data or a priority-change commit.*
+
+---
+
+### The Complexity Trap
+
+**[P1/Medium] We are failing to close the OPEN-BUT-LANDED gap despite four structural fixes; the count improved 38%→27% but the root cause (INFRA-457) is now proven to defeat ALL closure automation.**
+
+```
+# OPEN-BUT-LANDED count from canonical state.db (2026-05-04):
+Total open gaps: 125
+Open-but-landed: 34 (27%)
+
+# Prior cycle (Issue #10): 43/114 (38%)
+# Net: -9 absolute, -11pp — improvement, but 34 remain
+```
+
+Selected P0/P1 OPEN-BUT-LANDED ghosts still active on origin/main:
+
+| Gap | Priority | Commits | Latest commit |
+|---|---|---|---|
+| DOC-018 | P0 | 3 | 955fa11 fix(ci): DOC-018 split (#1073) |
+| DOC-019 | P1 | 2 | 798d3cf DOC-019 + DOC-020 (#1050) |
+| INFRA-402 | P1 | 2 | f7418f4 INFRA-402: lift guard (#1074) |
+| INFRA-404 | P1 | 2 | 5c33267 INFRA-404 (#1046) |
+| FLEET-032 | P1 | 2 | 7ad121e FLEET-032 Phase 1 (#1042) |
+| FLEET-033 | P1 | 2 | efdfd39 FLEET-033 spike (#1044) |
+| INFRA-419 | P1 | 2 | 7fdb083 INFRA-419 (#1057) |
+| INFRA-420 | P1 | 2 | f3df96a INFRA-420 (#1052) |
+| INFRA-421 | P1 | 3 | a3689c0 INFRA-421 followup (#1060) |
+| INFRA-422 | P1 | 2 | 798d3cf INFRA-422 (#1051) |
+
+Additional finding: `SELECT COUNT(*) FROM gaps WHERE status='done' AND (closed_pr IS NULL OR closed_pr=0)` = **302** (INFRA-233 estimated ~200; 51% worse than estimated).
+
+*This finding is wrong if the OPEN-BUT-LANDED count drops below 20 after INFRA-457 ships and the next CI cycle runs.*
+
+---
+
+### The Reality Check
+
+**[P1/Medium] We are failing to maintain a valid P0 registry: INFRA-274 (P0) uses an informal "SUPERSEDED" notes-field proxy that no tooling reads, and INFRA-402 (P1) is documented as "subsumed" in a commit body but never formally closed.**
+
+Evidence:
+
+- `docs/gaps/INFRA-274.yaml` on `origin/main`: `status: open`, `priority: P0`. The `notes` field reads: "SUPERSEDED 2026-05-02 by FLEET-032. Keeping INFRA-274 open as historical-context anchor. Auto-skip from fleet pickup via the SUPERSEDED prefix in this notes field."
+- `grep -rn "SUPERSEDED" scripts/` returns zero results — no picker, preflight, or fleet script reads the notes field for skip logic. The "Auto-skip" mechanism is undocumented and does not exist.
+- `docs/gaps/INFRA-402.yaml` on `origin/main`: `status: open`, `priority: P1`. Commit 9755bc5 body: "Subsumes INFRA-402" — but INFRA-402 was never formally closed.
+- Canonical P0 census: `SELECT id FROM gaps WHERE status='open' AND priority='P0'` returns `DOC-018` and `INFRA-274`. One of these two P0s is a deliberate "historical anchor" that no agent should pick up, but no tooling enforces this. Fleet workers encounter a deceptive P0 list.
+
+Filed META-036 (P1/xs) to close both gaps with `closed_interpretation` per the META-005 precedent.
+
+*This finding is wrong if INFRA-274 shows `status: done` with `closed_interpretation` referencing FLEET-032 in state.db.*
+
+---
+
+### The Innovation Lag
+
+**[P1/Medium] We are failing to respond to the growing evaluation-awareness literature for five consecutive cycles while EVAL-087 sits inactive.**
+
+External evidence (past 30 days): Meta Muse Spark April 2026 safety report (synthesis: https://kili-technology.com/blog/llm-benchmarks-evaluation-awareness-muse-spark-report) found that Meta Muse Spark flagged public LLM benchmarks as likely evaluations **19.8% of the time vs 2.0% for internal benchmarks** — a 10x detection gap. Chump's A/B harness uses structured task IDs, explicit rubrics, and "the user asks..." syntax consistent with the public-benchmark evaluation-context signature.
+
+```
+$ git log origin/main --grep=EVAL-087 --oneline
+(no output — zero commits in 8 days)
+
+$ git log origin/main --grep=RESEARCH-026 --oneline
+(no output — zero commits)
+```
+
+- `docs/gaps/EVAL-087.yaml`: `status: open`, `priority: P1`, 8 days old, 5 cycles inactive.
+- `docs/gaps/RESEARCH-026.yaml` (if it exists): zero implementation commits.
+- EVAL-094 (ICLR sandbagging experiment) closed with closed_pr: 909, but its AC requiring RESEARCH-026 priority upgrade to P1 is unmet because EVAL-087 was never executed.
+
+The strategic memo `docs/strategy/STRATEGIC_MEMO_2026Q2.md` and `docs/process/RESEARCH_INTEGRITY.md` both acknowledge evaluation-awareness as a known risk. The project has acknowledged the risk across five Cold Water cycles and filed three gaps (EVAL-087, RESEARCH-026, EVAL-094) without any executed countermeasure.
+
+*This finding is wrong if `git log origin/main --grep=EVAL-087` returns a commit with naturalized-framing comparison data.*
+
+---
+
+**THE ONE BIG THING: [P0] INFRA-457 — The INFRA-236 commit-subject gap closer, shipped specifically to eliminate the OPEN-BUT-LANDED ghost class, is a dead letter. `chump gap import` backfills `closed_pr` from per-file YAML but does NOT propagate `status` changes to state.db. `chump gap dump --per-file` then regenerates all per-file YAMLs from the stale state.db, reverting every close the INFRA-236 closer writes. The net effect is that NO gap has ever been durably closed by the INFRA-236 automation since the INFRA-188 per-file cutover. The proof is three commands: (1) closer output shows 20 gaps closed; (2) `SELECT status FROM gaps WHERE id='INFRA-402'` returns 'open'; (3) dump regenerates INFRA-402.yaml as status:open. All 34 OPEN-BUT-LANDED gaps and DOC-018's continued P0/open status are symptoms of this single import bug. Until INFRA-457 ships, every structural fix to the gap registry (INFRA-236, INFRA-241, the regenerate workflow) is fighting state.db with one hand tied behind its back.**
+
+---
+
+### Follow-up Gaps Filed
+
+- **INFRA-457**: `chump gap import` does not propagate status changes from per-file YAML — closer-closed gaps revert to open on every import+dump cycle (P0/s)
+- **META-034**: DOC-018 open P0 despite AC-verified closure — close DOC-018 and enforce post-ship registry check (P1/xs)
+- **META-035**: `chump gap list` requires LLM backend — silent empty-array output on inference-unavailable blocks canonical census in remote sandboxes (P2/xs)
+- **META-036**: "SUPERSEDED" and "subsumed" used as informal status proxy — P0 INFRA-274 and P1 INFRA-402 never formally closed (P1/xs)
+- **EVAL-098**: EVAL-087 five-cycle escalation — execute or formally defer evaluation-awareness comparison (P1/xs)
+
+Verification: all 5 gap IDs confirmed in both `docs/gaps/<ID>.yaml` and state.db (sqlite3 `.chump/state.db` `SELECT id FROM gaps WHERE id IN ('INFRA-457','META-034','META-035','META-036','EVAL-098')`).
+
+---
 
 ---
 
