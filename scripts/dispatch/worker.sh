@@ -239,6 +239,30 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         continue
     fi
 
+    # ── FLEET-040: also check origin/main for status:done ────────────────
+    # The pre-pick preflight above reads .chump/state.db (per-worktree).
+    # state.db lags origin/main until the next `chump gap import` runs,
+    # so a gap that landed on main since fleet start can still appear
+    # "open" to the worker. Without this check, worker 6 picked
+    # INFRA-310 in cycle 1, timed out 600s, picked it AGAIN in cycle 2 —
+    # even though it had already shipped as PR #1021 between cycles.
+    # `git fetch origin main` is cheap; `git show` per candidate is ~50ms.
+    ( cd "$REPO_ROOT" && git fetch origin main --quiet 2>/dev/null ) || true
+    _origin_status=$( cd "$REPO_ROOT" && \
+        git show "origin/main:docs/gaps/${GAP_ID}.yaml" 2>/dev/null \
+        | awk '/^[[:space:]]*status:[[:space:]]*/{print $2; exit}' )
+    if [ "$_origin_status" = "done" ]; then
+        log "skipping $GAP_ID: already done on origin/main (state.db stale); rotating"
+        # Cooldown so siblings + future cycles don't re-pick.
+        if [ -d "$REPO_ROOT/.chump-locks/cooldown" ]; then
+            _cd_until=$(( $(date +%s) + 1800 ))
+            printf '{"gap_id":"%s","rc":0,"until":%d,"agent":"%s","ts":"%s","reason":"shipped_on_main"}\n' \
+                "$GAP_ID" "$_cd_until" "$AGENT_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                > "$REPO_ROOT/.chump-locks/cooldown/${GAP_ID}.json"
+        fi
+        continue
+    fi
+
     # ── Worktree ──────────────────────────────────────────────────────────
     sid="$(date +%Y%m%d-%H%M%S)"
     gap_lower="$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')"
