@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # FLEET-033 spike: measure SQLite contention at N=10/30/100 concurrent agents
 # Run from repo root: bash scripts/spike/measure-sqlite-contention.sh
+#
+# INFRA-430: BUG (now fixed) — original script set CHUMP_REPO_ROOT, but the
+# chump binary only honors CHUMP_REPO (or CHUMP_HOME). Net effect: every
+# `chump gap reserve` call below wrote to the production registry, leaking
+# 302 SPIKE-* fixture rows on 2026-05-03 (cleanup: INFRA-428). Two-part
+# fix: (1) use the right env var; (2) hard-guard refusing to run if chump's
+# effective repo_root resolves anywhere under the host repo.
 
 set -e
 REPO_ROOT=$(git rev-parse --show-toplevel)
@@ -19,7 +26,26 @@ RESULTS="$SPIKE_DIR/results.json"
 trap 'rm -rf "$SPIKE_DIR"' EXIT
 
 mkdir -p "$SPIKE_DIR/.chump"
-export CHUMP_REPO_ROOT="$SPIKE_DIR"
+# INFRA-430: chump honors CHUMP_REPO + CHUMP_HOME (see src/repo_path.rs).
+# CHUMP_REPO_ROOT is NOT honored — keeping it set helps human readers
+# spot the historical bug, but real isolation comes from CHUMP_REPO.
+export CHUMP_REPO="$SPIKE_DIR"
+export CHUMP_HOME="$SPIKE_DIR"
+export CHUMP_REPO_ROOT="$SPIKE_DIR"  # cosmetic; not honored by chump
+
+# INFRA-430 hard-guard: refuse to run if chump's effective repo_root still
+# resolves under $REPO_ROOT (the production checkout). Catches future
+# env-var renames or override-bypass scenarios that would otherwise
+# silently re-leak fixtures into production state.db.
+EFFECTIVE_REPO=$("$CHUMP_BIN" config 2>/dev/null | grep -oE 'repo_root=[^ ,]+' | head -1 | cut -d= -f2)
+if [ -n "$EFFECTIVE_REPO" ] && [ "${EFFECTIVE_REPO#$REPO_ROOT}" != "$EFFECTIVE_REPO" ]; then
+    echo "ERROR (INFRA-430): chump still resolves repo_root to '$EFFECTIVE_REPO'" >&2
+    echo "  which is under the production checkout '$REPO_ROOT'." >&2
+    echo "  The CHUMP_REPO env var didn't take effect — refusing to run." >&2
+    echo "  Without isolation this would leak fixture rows into production state.db" >&2
+    echo "  (see INFRA-428 cleanup for the previous incident)." >&2
+    exit 1
+fi
 
 # Initialize the database
 "$CHUMP_BIN" gap import >/dev/null 2>&1 || true
@@ -44,12 +70,12 @@ measure_contention() {
                 local op_start=$(date +%s.%N)
 
                 # Reserve a gap
-                CHUMP_REPO_ROOT="$SPIKE_DIR" "$CHUMP_BIN" gap reserve \
+                CHUMP_REPO="$SPIKE_DIR" CHUMP_HOME="$SPIKE_DIR" "$CHUMP_BIN" gap reserve \
                     --domain "$DOMAIN" --title "spike-test-$i" --effort xs \
                     >/dev/null 2>&1 || true
 
                 # List gaps (read operation)
-                CHUMP_REPO_ROOT="$SPIKE_DIR" "$CHUMP_BIN" gap list \
+                CHUMP_REPO="$SPIKE_DIR" CHUMP_HOME="$SPIKE_DIR" "$CHUMP_BIN" gap list \
                     >/dev/null 2>&1 || true
 
                 local op_end=$(date +%s.%N)
