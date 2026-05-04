@@ -585,17 +585,17 @@ fi
 
 green "=== bot-merge: $BRANCH → $BASE_BRANCH ==="
 
-# ── 0a. Untracked-files guard ─────────────────────────────────────────────────
-# Abort early if untracked files exist in source dirs — these won't appear in
-# the PR diff and represent files the agent created but forgot to `git add`.
-# Bypass: CHUMP_BOT_MERGE_ALLOW_UNTRACKED=1
-if [[ "${CHUMP_BOT_MERGE_ALLOW_UNTRACKED:-0}" != "1" ]]; then
+# ── 0a. Untracked-files handler (INFRA-404) ──────────────────────────────────
+# Instead of aborting when untracked files exist, auto-add them with an
+# explicit warning. This closes the "partial-ship hazard" where bot-merge
+# aborts before pushing, leaving the PR incomplete. Bypass: CHUMP_BOT_MERGE_ALLOW_UNTRACKED=0
+if [[ "${CHUMP_BOT_MERGE_ALLOW_UNTRACKED:-1}" != "0" ]]; then
     untracked=$(git ls-files --others --exclude-standard src/ crates/ scripts/ docs/ 2>/dev/null)
     if [[ -n "$untracked" ]]; then
-        red "ERROR: untracked files present — these won't be in your PR diff:"
-        echo "$untracked"
-        red "Stage them first (git add <file>), or bypass with CHUMP_BOT_MERGE_ALLOW_UNTRACKED=1"
-        exit 1
+        yellow "INFRA-404: Untracked files found — auto-adding with explicit warning:"
+        echo "$untracked" | sed 's/^/  + /'
+        git add $untracked
+        green "Auto-added $(echo "$untracked" | wc -l) untracked file(s)"
     fi
 fi
 
