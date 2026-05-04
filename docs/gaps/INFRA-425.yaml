@@ -1,0 +1,11 @@
+- id: INFRA-425
+  domain: INFRA
+  title: pre-commit cargo-check guard — verify it skips when no .rs files staged (waste check on doc-only commits)
+  status: open
+  priority: P2
+  effort: xs
+  description: Pre-commit cargo-check guard (CHUMP_CHECK_BUILD) runs cargo check --bin chump --tests on every commit. For doc-only / yaml-only commits this is wasted 30-90s + the agent watching it burns
+    idle output. Verify the guard already short-circuits when no .rs files are staged; add the guard if missing.
+  acceptance_criteria:
+  - scripts/git-hooks/pre-commit cargo-check block exits 0 immediately when no staged .rs files
+  - 'Test: scripts/ci/test-precommit-cargo-check-skip.sh covers (a) .rs staged → runs, (b) doc-only staged → skips'

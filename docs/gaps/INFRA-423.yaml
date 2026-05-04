@@ -1,0 +1,13 @@
+- id: INFRA-423
+  domain: INFRA
+  title: ambient.jsonl rotation install audit — verify launchd job present on dogfood machines + size-alert wired
+  status: open
+  priority: P2
+  effort: xs
+  description: INFRA-122 added scripts/dev/ambient-rotate.sh + scripts/setup/install-ambient-rotate-launchd.sh. Without rotation, ambient.jsonl grows ~4MB/day under fleet load. Audit dogfood machines for
+    the launchd job + verify the AMBIENT_SIZE_ALERT_MB self-monitoring path is active.
+  acceptance_criteria:
+  - scripts/audit/check-ambient-rotation-health.sh exists
+  - Verifies launchctl list shows dev.chump.ambient-rotate
+  - Verifies ambient.jsonl size < 50MB
+  - Verifies self-monitor ALERT path by injecting fake oversize event

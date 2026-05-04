@@ -1,0 +1,16 @@
+- id: INFRA-419
+  domain: INFRA
+  title: subagent budget — parent kills subagent if no bot-merge.sh call within N minutes (default 30) — cap runaway loops
+  status: open
+  priority: P1
+  effort: s
+  description: 'META-025 measured 25-33% subagent self-ship rate. Many failures are runaway loops (4-hour timeout). Add a parent-side budget: if dispatched subagent has not invoked bot-merge.sh within CHUMP_SUBAGENT_BUDGET_MIN
+    (default 30), parent kills it via TaskStop and emits ALERT kind=subagent_budget_exceeded.
+
+
+    Pairs with the standard shipping epilogue from docs/process/SUBAGENT_DISPATCH.md: agent that follows the epilogue ships within budget; agent that wanders gets reaped.'
+  acceptance_criteria:
+  - Subagent that exceeds CHUMP_SUBAGENT_BUDGET_MIN without bot-merge.sh invocation is reaped
+  - ambient ALERT kind=subagent_budget_exceeded emitted with agent_id + last_action
+  - Default 30min; override per-task via CHUMP_SUBAGENT_BUDGET_MIN
+  - 'Test: scripts/ci/test-subagent-budget.sh — fixture subagent that loops, assert reaped within budget+1min'

@@ -1,0 +1,16 @@
+- id: DOC-019
+  domain: DOC
+  title: agent-side guidance — prefer grep+Read offset/limit over full Read on files >500 lines (codify in AGENTS.md)
+  status: open
+  priority: P1
+  effort: xs
+  description: 'Observed 2x this session: agents (incl me) re-Read large files (provider_cascade.rs ~1500 lines, chump-doctor.sh, etc.) when they only need a 30-line region. After context compaction, full
+    re-read happens again. ~5K tokens per re-read × N times per long session = real waste.
+
+
+    Codify in AGENTS.md → Code style: for files >500 lines, default to grep -n + Read offset/limit; only read full file when the change touches structure. Add a one-line reminder near the existing Read/Edit
+    guidance.'
+  acceptance_criteria:
+  - AGENTS.md updated with grep+offset/limit guidance for files >500 lines
+  - CLAUDE.md mandatory pre-flight cross-references the new section
+  - No tooling change required (advisory)
