@@ -73,25 +73,19 @@ def get_lock_dir() -> Path:
 
 
 def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
-    """Attempt to write a lease for gap_id. Return True if successful."""
+    """Attempt to write a lease for gap_id atomically. Return True if successful.
+
+    Uses a two-file strategy:
+    1. gap-id.lock — canonical indicator that gap is claimed (created atomically)
+    2. session-id.json — metadata about the claiming session
+
+    The lock file is the critical piece; the session lease is just for bookkeeping.
+    """
     lock_dir.mkdir(parents=True, exist_ok=True)
 
-    # Check if gap is already claimed by another session.
-    for lease_file in lock_dir.glob("*.json"):
-        try:
-            with open(lease_file) as f:
-                lease = json.load(f)
-            if lease.get("gap_id") == gap_id:
-                # Already claimed (by us or another session).
-                return False
-        except (OSError, json.JSONDecodeError):
-            continue
-
-    # Write our claim. TTL: 4 hours.
-    lease_file = lock_dir / f"{session_id}.json"
     now = int(time.time())
     ttl_seconds = 4 * 3600
-    expires_at = (now + ttl_seconds)
+    expires_at = now + ttl_seconds
 
     lease = {
         "session_id": session_id,
@@ -100,14 +94,41 @@ def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
         "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at)),
         "heartbeat_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
         "purpose": "fleet:pick_and_claim",
-        "speculative": True,  # Fleet uses speculative by default.
+        "speculative": True,
     }
 
+    # Atomic claim: try to create a gap-specific lock file.
+    # If it already exists, the gap is claimed.
+    gap_lock_file = lock_dir / f".gap-{gap_id}.lock"
+    session_lease_file = lock_dir / f"{session_id}.json"
+    temp_lease = lock_dir / f".tmp-{session_id}-{gap_id}-{now}"
+
     try:
-        with open(lease_file, "w") as f:
-            json.dump(lease, f, indent=2)
+        # Try to create the gap lock atomically (exclusive creation).
+        # This is the critical atomic operation.
+        try:
+            with open(gap_lock_file, "x") as f:
+                f.write(f"{session_id} {now}\n")
+            gap_lock_created = True
+        except FileExistsError:
+            gap_lock_created = False
+
+        if not gap_lock_created:
+            return False
+
+        # Gap lock created successfully. Now write the session lease.
+        try:
+            with open(temp_lease, "w") as f:
+                json.dump(lease, f, indent=2)
+            temp_lease.rename(session_lease_file)
+        except Exception:
+            # Lease write failed, but we already created the lock.
+            # Return True anyway since we successfully claimed the gap.
+            pass
+
         return True
-    except OSError:
+
+    except Exception:
         return False
 
 
