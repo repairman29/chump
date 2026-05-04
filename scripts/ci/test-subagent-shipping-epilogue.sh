@@ -55,9 +55,13 @@ if ! grep -q "PR number:" "$EPILOGUE_FILE"; then
   exit 1
 fi
 
-# Verify CLAUDE.md references the new file
-if ! grep -q "scripts/dispatch/subagent-shipping-epilogue.md" CLAUDE.md; then
-  echo "FAIL: CLAUDE.md does not reference scripts/dispatch/subagent-shipping-epilogue.md"
+# Verify CLAUDE.md or docs/process/CLAUDE_GOTCHAS.md references the file.
+# DOC-018 (2026-05-04) split CLAUDE.md into a hot overlay (~1.7K tokens)
+# + cold gotchas; the subagent-shipping-epilogue reference moved to the
+# cold layer. Either location satisfies the contract.
+if ! { grep -q "scripts/dispatch/subagent-shipping-epilogue.md" CLAUDE.md \
+       || grep -q "scripts/dispatch/subagent-shipping-epilogue.md" docs/process/CLAUDE_GOTCHAS.md 2>/dev/null; }; then
+  echo "FAIL: neither CLAUDE.md nor docs/process/CLAUDE_GOTCHAS.md references scripts/dispatch/subagent-shipping-epilogue.md"
   exit 1
 fi
 

@@ -867,7 +867,7 @@ async fn main() -> Result<()> {
                     eprintln!("                          [--source-doc S] [--opened-date D] [--closed-date D]");
                     eprintln!("                          [--closed-pr N] [--acceptance-criteria \"a|b|c\"] [--depends-on \"X,Y\"]");
                     eprintln!("                          [--skills-required SKS] [--preferred-backend BE]");
-                    eprintln!("                          [--preferred-machine MACH] [--estimated-minutes MIN]");
+                    eprintln!("                          [--preferred-machine MACH] [--estimated-minutes MIN] [--required-model MODEL]");
                     std::process::exit(2);
                 });
                 let acceptance_criteria = flag("--acceptance-criteria").map(|raw| {
@@ -918,6 +918,7 @@ async fn main() -> Result<()> {
                     preferred_backend: flag("--preferred-backend"),
                     preferred_machine: flag("--preferred-machine"),
                     estimated_minutes: flag("--estimated-minutes"),
+                    required_model: flag("--required-model"),
                 };
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {
