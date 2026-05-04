@@ -31,7 +31,8 @@
 
 use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Child, Command};
+use std::time::Duration;
 
 // INFRA-302 blocker (3): reuse the orchestrator's worktree-path convention
 // so the stale-worktree-reaper (`scripts/ops/stale-worktree-reaper.sh`) +
@@ -321,9 +322,11 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     // INFRA-302 blocker (3): cwd is the FRESH WORKTREE, NOT opts.repo_root —
     // see Workspace::new for the resolution.
     cmd.current_dir(ws.working_dir());
-    let status = cmd
-        .status()
+    let child = cmd
+        .spawn()
         .context("spawn `claude -p` (is the claude CLI on PATH?)")?;
+    let status = wait_with_hang_detection(child, "claude -p", opts.gap_id)
+        .context("waiting for claude -p to complete")?;
     if !status.success() {
         bail!(
             "claude -p exited {} for gap {}",
@@ -351,9 +354,11 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
         // not from whatever was checked out in the main repo when the
         // operator typed `chump dispatch …`.
         .current_dir(ws.working_dir());
-    let status = cmd
-        .status()
+    let child = cmd
+        .spawn()
         .with_context(|| format!("spawn `chump --execute-gap {}`", opts.gap_id))?;
+    let status = wait_with_hang_detection(child, "chump --execute-gap", opts.gap_id)
+        .context("waiting for chump --execute-gap to complete")?;
     if !status.success() {
         bail!(
             "chump --execute-gap exited {} for gap {}",
@@ -362,6 +367,101 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Wait for a child process with hang detection (INFRA-406).
+/// If the process doesn't complete within the timeout period, send SIGTERM
+/// and emit an ALERT to ambient.jsonl.
+///
+/// The timeout is configurable via CHUMP_DISPATCH_HANG_TIMEOUT_SECS env var
+/// (default 3600 = 1 hour). Set to 0 to disable hang detection.
+fn wait_with_hang_detection(
+    mut child: Child,
+    process_name: &str,
+    gap_id: &str,
+) -> Result<std::process::ExitStatus> {
+    let timeout_secs: u64 = std::env::var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3600);
+
+    if timeout_secs == 0 {
+        return child.wait().context("waiting for child process");
+    }
+
+    let timeout = Duration::from_secs(timeout_secs);
+    let start = std::time::Instant::now();
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    emit_hang_alert(process_name, gap_id, timeout_secs);
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    bail!(
+                        "{} exceeded no-tool-call timeout ({} secs) for gap {}; sent SIGTERM",
+                        process_name,
+                        timeout_secs,
+                        gap_id
+                    );
+                }
+                std::thread::sleep(Duration::from_secs(1));
+            }
+            Err(e) => return Err(e).context("checking child process status"),
+        }
+    }
+}
+
+/// Emit a hang-detection alert to ambient.jsonl (INFRA-406).
+fn emit_hang_alert(process_name: &str, gap_id: &str, timeout_secs: u64) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+
+    let session = std::env::var("CHUMP_SESSION_ID")
+        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+        .unwrap_or_else(|_| "unknown".to_string());
+
+    let worktree = repo_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"worktree\":\"{worktree}\",\
+         \"event\":\"hang_detected\",\"kind\":\"hang_detector\",\"process\":\"{process_name}\",\
+         \"gap\":\"{gap_id}\",\"timeout_secs\":{timeout_secs}}}"
+    );
+
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{}", line);
+    }
+
+    if std::env::var("CHUMP_AMBIENT_NATS").as_deref() != Ok("0") {
+        let _ = std::process::Command::new("chump-coord")
+            .arg("emit")
+            .arg("hang_detected")
+            .arg(format!("process={}", process_name))
+            .arg(format!("gap={}", gap_id))
+            .arg(format!("timeout_secs={}", timeout_secs))
+            .env("CHUMP_SESSION_ID", &session)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
 }
 
 /// Find the `chump` binary. Tries the in-tree `target/release` and
