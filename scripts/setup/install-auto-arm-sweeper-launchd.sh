@@ -15,7 +15,12 @@
 #   AUTO_ARM_INTERVAL_MIN — default 30 (min 5 — macOS coalesces under that)
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# INFRA-451: resolve to the *main* worktree (not a linked worktree this
+# install script may be running from), so the plist absolute path survives
+# worktree reaping.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/resolve-main-worktree.sh"
+ROOT="$(resolve_main_worktree "$0")"
 
 INTERVAL_MIN="${AUTO_ARM_INTERVAL_MIN:-30}"
 if [[ "$INTERVAL_MIN" -lt 5 ]]; then

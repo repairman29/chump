@@ -14,7 +14,12 @@
 # Manual fire: launchctl start dev.chump.pr-watch-shepherd
 set -euo pipefail
 
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+# INFRA-451: resolve to the *main* worktree (not the linked worktree this
+# install script may be running from), so the plist absolute path survives
+# worktree reaping.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/resolve-main-worktree.sh"
+REPO="$(resolve_main_worktree "$0")"
 PLIST_NAME="dev.chump.pr-watch-shepherd.plist"
 DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 

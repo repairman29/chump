@@ -15,7 +15,12 @@
 #   SOAK_INTERVAL_HOURS — default 4 (must be a divisor of 24 for clean alignment)
 
 set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# INFRA-451: resolve to the *main* worktree (not a linked worktree this
+# install script may be running from), so the plist absolute path survives
+# worktree reaping.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/resolve-main-worktree.sh"
+ROOT="$(resolve_main_worktree "$0")"
 
 PORT="${CHUMP_WEB_PORT:-3000}"
 HOST="${CHUMP_WEB_HOST:-127.0.0.1}"

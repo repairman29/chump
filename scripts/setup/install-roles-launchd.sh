@@ -10,7 +10,11 @@
 # Unload (stop auto-start): run unload-roles-launchd.sh or launchctl unload ~/Library/LaunchAgents/ai.chump.* ...
 
 set -e
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
+# INFRA-451: default to main worktree (not the linked worktree this
+# install script may be running from); CHUMP_HOME still overrides if set.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source "$SCRIPT_DIR/../lib/resolve-main-worktree.sh"
+ROOT="${CHUMP_HOME:-$(resolve_main_worktree "$0")}"
 ROOT="$(cd "$ROOT" && pwd)"
 LAUNCH_AGENTS="${HOME}/Library/LaunchAgents"
 mkdir -p "$ROOT/logs"
