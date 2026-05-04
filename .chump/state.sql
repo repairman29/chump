@@ -15449,6 +15449,21 @@ gaps:
   notes: |
     2026-05-04 minor — surfaced during the disk-full audit. Cosmetic but confuses the diagnostic 'which reapers are healthy' grep.
 
+- id: INFRA-456
+  domain: INFRA
+  title: "lift gap-integrity guards into gap_store::set_fields — DB write path can't bypass closed_pr/recycled-ID/hijack guards (today these only inspect YAML diffs)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Move 4 integrity guards from pre-commit hook (YAML-diff inspection) into gap_store::set_fields and gap_store::reserve_verified (DB-write boundary):\n  - INFRA-107 closed_pr integrity: status='done' requires closed_pr to be Some(n) where n > 0\n  - INFRA-014 recycled-ID: status='done' -> 'open' transition rejected (closed gaps are immutable)\n  - INFRA-018-class hijack: title/description mutation on a status='done' row rejected (must be a new gap ID)\n  - duplicate-ID: gap_store insert path already has UNIQUE constraint at the schema level — verify it; if missing, add and migrate"
+    - "Each guard returns Err(GapStoreError::IntegrityViolation { invariant, detail }) so callers can pattern-match. CLI prints a clear actionable error"
+    - Pre-commit hooks remain as defense-in-depth (YAML-diff inspection still fires for legacy paths and human edits) but are no longer the single point of enforcement
+    - "Tests: extend src/gap_store.rs unit tests with a 'integrity violations' module (one #[test] per invariant) verifying both Err type AND that the DB row is unchanged after the rejected write. Existing pre-commit hook tests stay as-is (they exercise the same invariants from the YAML-diff angle)"
+    - "Migration: existing scripts that call set_fields with status:done absent closed_pr (today silently succeed, surfaced via gap-doctor.py) will start returning Err. Audit + fix call sites BEFORE landing this gap; otherwise it'll break gap-doctor's auto-fix paths"
+  notes: |
+    Filed 2026-05-04 from the upstream-pattern audit. INFRA-402 covers closed_pr alone; this is the architectural lift — every integrity invariant guarded today by pre-commit YAML-diff inspection should also be enforced at the SQLite write path so DB-direct writes can't silently bypass. Sets the pattern: any future write path inherits the guards by being a gap_store caller, not by being a pre-commit observer. Subsumes INFRA-402.
+
 - id: INFRA-AB-TOOL-CALL-COUNTER
   domain: INFRA
   title: ab-harness tool_calls counter greps wrong stream (always 0)
@@ -17119,6 +17134,23 @@ gaps:
     - "Mitigation B (heavier): add nightly cron 'test-lag-auditor' that scans last-30-days closed gaps and files cleanup gaps for the lag PRs, like INFRA-307 stuck-pr-filer pattern but for test-lag"
   notes: |
     Observed 2026-05-03 in three consecutive pickups: INFRA-370 (PR #1000 shipped runtime + INFRA-028 test 156 lines), INFRA-376 (PR #1004 shipped runtime, my PR #1024 added Test 9/10 hours later), INFRA-332 (PR #933 shipped doc, my PR #1035 added the runtime injection + CI guard hours later). The system has the auto-close machinery (INFRA-154) and the gap-doctor cron (INFRA-308) but neither catches 'acceptance criterion not yet satisfied'. The result: agents pick up 'open' gaps to discover them already implemented and just lacking enforcement coverage. 3-of-3 hit rate today is symptomatic, not anecdotal.
+
+- id: META-033
+  domain: META
+  title: system-invariants cron — single layer that asserts cross-cutting health properties (PR pile-up, domain leak, reaper liveness, disk headroom, install-path uniqueness) and ALERT+auto-file on violation
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - scripts/ops/system-invariants-monitor.sh — single launchd job (10 min cadence) that runs each invariant as an independent function returning {ok
+    - violation, details}
+    - "Initial invariant set:\n  - INV-1: count of open PRs failing on the same CI step <= 2 (groups by step name + script path; queries gh pr checks)\n  - INV-2: no domain in chump gap list has > 100 open gaps OR > 50% of total (subsumes INFRA-431 ALERT)\n  - INV-3: every reaper heartbeat fresher than 4h (subsumes reaper-watchdog grading)\n  - INV-4: disk free >= 10% on /, /System/Volumes/Data, ~/Projects (warn at 10%, critical at 5%, blocking at 2% — subsumes INFRA-453)\n  - INV-5: no two launchd plists baked under the same .claude/worktrees/ or .chump/worktrees/ subpath (subsumes INFRA-451 detection)\n  - INV-6: every required-CI shard has been green on origin/main in the last 4h (catches broken-main early)\n  - INV-7: no main-shipped commit reduces the green-test count (added 2026-05-04 after PR #1074 INFRA-402 implementation broke its own pre-existing test_dump_yaml_byte_stable_round_trip — implementation correctness vs existing-fixture compatibility is an invariant). Implementation: nightly cron runs cargo test on origin/main HEAD vs HEAD~10 and ALERTs if green count dropped"
+    - "On violation: emit ambient ALERT kind=invariant_violation with the inv id + details. If 2+ consecutive ticks fail the same invariant, auto-file an INFRA cleanup gap titled 'invariant INV-N broken: <one-line details>' so the next fleet pickup routes the cleanup work"
+    - "Test: scripts/ci/test-system-invariants-fixtures.sh seeds a synthetic environment for each invariant, runs the script, asserts the right ALERTs/gaps fire — one fixture per invariant"
+    - "Install via scripts/setup/install-system-invariants-launchd.sh. CRITICAL: bake path via git rev-parse --git-common-dir (not CWD) per INFRA-451 so monitor can't break the same way"
+    - "Independence requirement (INFRA-452 partial): primary monitor's heartbeat graded by reaper-watchdog AND a secondary check (e.g. gh pr comment cron 'is monitor alive') so single-launchd-instance failure is detected"
+  notes: |
+    Filed 2026-05-04 from the upstream-pattern audit. Today every individual failure was technically visible in some pre-existing surface (chump gap list count, gh pr checks, df, ls heartbeats) but no layer was asserting cross-cutting invariants. The fix is the seam, not new monitors. Subsumes / coordinates: INFRA-431, INFRA-451, INFRA-452, INFRA-453, INFRA-454.
 
 - id: PRODUCT-001
   domain: PRODUCT

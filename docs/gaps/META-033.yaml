@@ -1,0 +1,7 @@
+- id: META-033
+  domain: META
+  title: system-invariants cron — single layer that asserts cross-cutting health properties (PR pile-up, domain leak, reaper liveness, disk headroom, install-path uniqueness) and ALERT+auto-file on violation
+  status: open
+  priority: P1
+  effort: m
+
