@@ -12,6 +12,7 @@ claimed, or nothing if all candidates are already claimed/unavailable.
 Environment (same as _pick_gap.py plus):
   SESSION_ID       session identifier for lease (e.g. from CLAUDE_SESSION_ID)
   CHUMP_LOCK_DIR   override .chump-locks path (default: repo_root/.chump-locks)
+  FLEET_MODEL      worker's model tier (haiku, sonnet, opus) for filtering by required_model
 """
 
 from __future__ import annotations
@@ -156,6 +157,7 @@ def main() -> int:
     prio_filter = [p.upper() for p in csv("FLEET_PRIORITY_FILTER")]
     domain_filter = [d.lower() for d in csv("FLEET_DOMAIN_FILTER")]
     effort_filter = [e.lower() for e in csv("FLEET_EFFORT_FILTER")]
+    worker_model = os.environ.get("FLEET_MODEL", "haiku").lower()
     exclude_re = re.compile(os.environ.get("EXCLUDE_RE", "^$"))
     active = set(os.environ.get("ACTIVE_GAPS", "").split())
     cooled = cooled_down_gaps(os.environ.get("COOLDOWN_DIR", ""))
@@ -190,6 +192,11 @@ def main() -> int:
             continue
         e = (g.get("effort") or "").lower()
         if effort_filter and e not in effort_filter:
+            continue
+        # INFRA-418: skip gaps that require a different model tier.
+        # If gap.required_model is not set (empty string), it's compatible with any model.
+        required_model = (g.get("required_model") or "").lower()
+        if required_model and required_model != worker_model:
             continue
         deps_raw = g.get("depends_on")
         if isinstance(deps_raw, str):
