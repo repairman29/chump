@@ -1,7 +1,21 @@
 - id: INFRA-428
   domain: INFRA
   title: test fixtures (SPIKE-* / TEST-* / TEST168-*) leak into production .chump/state.db — 306 leaked gaps in registry as of 2026-05-03
-  status: open
+  status: done
   priority: P1
   effort: s
+  acceptance_criteria:
+    - Find the test that's writing SPIKE-* / TEST-* / TEST168-* gap rows to the production .chump/state.db (likely a test forgetting to use a tempdir-scoped GapStore, or a tempdir test that's leaking on cleanup-failure)
+    - "Fix: every test that opens a GapStore must use std::env::temp_dir() / tempfile::tempdir() AND never share the .chump/ path with the host repo. Verify via grep on tests for 'GapStore::open(.*Path::new(' patterns"
+    - Add CI guard scripts/ci/test-no-prod-state-db-writes.sh that runs the full test suite against an isolated CHUMP_REPO=/tmp/x and asserts the host's .chump/state.db is byte-identical before vs after
+    - "Cleanup: bulk-superseded the 306 leaked gaps in this filing PR. Forensic: SPIKE-001..302 (302 of them, all titled 'spike-test-N') are the smoking gun — pattern matches a parameterized test loop"
+    - "Audit historical commits: git log --all --grep='SPIKE-' to find when the leak first hit main and which test was responsible"
+  notes: |
+    DONE 2026-05-03: 302 SPIKE-* + 4 TEST/TEST168 fixture gaps bulk-superseded in state.db (no per-file YAMLs existed for them; nothing to delete). Open count dropped 404 -> 88.
 
+    Forensic finding: NOT a test isolation leak (as the original AC assumed). Root cause was a manual FLEET-033 spike experiment that ran 'chump gap reserve --domain SPIKE --title spike-test-N' against the LIVE production registry to measure SQLite contention. The 51-second creation window (16:55:12-16:56:03) matches a parameterized shell loop, not a unit test. CHUMP_REPO_ROOT was not set to a tempdir for the experiment.
+
+    Prevention follow-ups (filed separately if not already): (a) honor CHUMP_REPO_ROOT in chump gap reserve so manual experiments can target /tmp; (b) optional 'chump gap reserve' guard refusing reserves with empty description AND no source_doc when the title matches a sentinel pattern (e.g., spike-test-N, test-N).
+
+    CI guard from original AC#3 not needed — this wasn't a test.
+  closed_pr: 1063
