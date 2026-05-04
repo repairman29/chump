@@ -10,3 +10,16 @@
 # driver runs `chump gap dump --out` to produce the canonical dump from
 # the local SQLite store. INFRA-367.
 .chump/state.sql merge=chump-state-sql-regen
+
+# .github/workflows/ci.yml collects append-only step additions. The ci-yml-add-row driver
+# merges concurrent additions by unioning the new steps without requiring manual resolution.
+.github/workflows/ci.yml merge=ci-yml-add-row
+
+# scripts/git-hooks/pre-commit collects append-only guard blocks. The pre-commit-add-guard
+# driver merges new guards by safely combining them without manual resolution.
+scripts/git-hooks/pre-commit merge=pre-commit-add-guard
+
+# Per-file gap YAMLs (docs/gaps/*.yaml) typically don't conflict (separate files per gap).
+# When they do (concurrent closes on the same gap), use a last-write-wins strategy:
+# the newer closed_pr value takes precedence. For now, let default merge handle this.
+# docs/gaps/*.yaml merge=gap-yaml-add-line

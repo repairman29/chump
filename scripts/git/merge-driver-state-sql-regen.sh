@@ -1,81 +1,66 @@
 #!/usr/bin/env bash
-# merge-driver-state-sql-regen.sh — INFRA-310 / INFRA-367
+# merge-driver-state-sql-regen.sh — INFRA-310
 #
-# Custom git merge driver for `.chump/state.sql`. Wired in via
-# `.gitattributes`:
+# Custom merge driver for .chump/state.sql conflicts.
+# When both branches modify the SQL dump (typically from parallel `chump gap reserve`
+# calls), this driver regenerates the dump from the canonical .chump/state.db
+# instead of attempting a textual merge.
 #
-#   .chump/state.sql merge=chump-state-sql-regen
+# Usage (called by git): <driver> %O %A %B %L
+#   %O = original (ancestor) file path
+#   %A = ours (current branch) file path
+#   %B = theirs (branch being merged) file path
+#   %L = conflict marker length (number)
 #
-# And registered in `.git/config` by scripts/setup/install-merge-drivers.sh:
+# The driver modifies $2 (the "ours" file) in place with the merged result.
 #
-#   [merge "chump-state-sql-regen"]
-#       name = Regenerate .chump/state.sql from .chump/state.db on conflict
-#       driver = scripts/git/merge-driver-state-sql-regen.sh %O %A %B %P
-#
-# Why: `.chump/state.sql` is a *regenerated artifact* of `.chump/state.db`
-# (the canonical SQLite gap registry). Every parallel `chump gap reserve`
-# bumps the dump, so any multi-day rebase hits chronic textual conflicts —
-# observed 1400-line / 2400-line diffs on PRs #972 and #990 (2026-05-03).
-#
-# The conflicts are *trivially resolvable* — the canonical fix is to
-# regenerate from the local state.db. This driver does exactly that, then
-# returns success so the rebase / merge proceeds without operator
-# intervention.
-#
-# git invokes us with: %O = ancestor blob, %A = current blob, %B = other blob,
-# %P = pathname. We only need %A (the file we'll write back) and %P (the
-# target pathname relative to repo root).
-#
-# Contract:
-#   - Exit 0 if we successfully wrote a clean state.sql to %A
-#   - Exit 1 if regeneration failed — git falls back to manual conflict
-#     markers, which is the pre-INFRA-310 behavior (no regression risk)
+# Exit codes:
+#   0 = merge succeeded, conflict resolved, file modified in-place
+#   1 = merge failed, fallback to manual conflict markers
+#   2+ = error (invalid inputs, missing db)
 
 set -euo pipefail
 
-ANCESTOR="${1:?ancestor blob path}"
-CURRENT="${2:?current blob path}"
-OTHER="${3:?other blob path}"
-PATHNAME="${4:?pathname}"
-
-# We're called from the repo root by git's merge machinery. Resolve chump
-# binary preferring the explicit override, then PATH lookup.
 CHUMP_BIN="${CHUMP_BIN:-chump}"
+ANCESTOR="$1"
+OURS="$2"
+THEIRS="$3"
+# CONFLICT_MARKER_LEN="$4"  # not used
+MERGE_FILE="$OURS"  # Write result to the "ours" file
+
+# Sanity checks
+if [[ ! -f "$ANCESTOR" ]] || [[ ! -f "$OURS" ]] || [[ ! -f "$THEIRS" ]]; then
+  echo "merge-driver-state-sql-regen: missing input file(s)" >&2
+  exit 1
+fi
+
+# The canonical source is .chump/state.db, not the textual dump.
+# Verify it exists in the repo root (reached via git rev-parse).
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+  echo "merge-driver-state-sql-regen: not in a git repo" >&2
+  exit 1
+}
+
+STATE_DB="$REPO_ROOT/.chump/state.db"
+if [[ ! -f "$STATE_DB" ]]; then
+  echo "merge-driver-state-sql-regen: canonical state.db missing at $STATE_DB" >&2
+  echo "  → falling back to manual conflict resolution" >&2
+  exit 1
+fi
+
+# Regenerate the SQL dump from the canonical database.
+# The chump binary is expected to be in $PATH; override with CHUMP_BIN env.
 if ! command -v "$CHUMP_BIN" >/dev/null 2>&1; then
-    echo "[merge-state-sql] chump binary not found (\$CHUMP_BIN=$CHUMP_BIN); falling back to manual conflict" >&2
-    exit 1
+  echo "merge-driver-state-sql-regen: $CHUMP_BIN not found" >&2
+  echo "  → falling back to manual conflict resolution" >&2
+  exit 1
 fi
 
-# Sanity check: only act on the file we expect to be wired for.
-if [[ "$PATHNAME" != ".chump/state.sql" ]]; then
-    echo "[merge-state-sql] WARNING: invoked on unexpected path $PATHNAME — falling back to manual conflict" >&2
-    exit 1
+if ! "$CHUMP_BIN" gap dump --out "$MERGE_FILE" 2>/dev/null; then
+  echo "merge-driver-state-sql-regen: chump gap dump failed" >&2
+  echo "  → falling back to manual conflict resolution" >&2
+  exit 1
 fi
 
-# Sanity check: state.db must exist locally — without it `chump gap dump`
-# can't produce a meaningful state.sql. (Fresh worktree case where state.db
-# wasn't seeded — fall through to manual.)
-if [[ ! -f .chump/state.db ]]; then
-    echo "[merge-state-sql] .chump/state.db not present locally — falling back to manual conflict" >&2
-    exit 1
-fi
-
-# Regenerate state.sql from the local DB. We deliberately use --out pointing
-# at the temp blob path %A that git gave us (not at .chump/state.sql) so
-# git's merge driver contract is honored.
-TMP_OUT="$(mktemp -t chump-state-sql-regen.XXXXXX)"
-trap 'rm -f "$TMP_OUT"' EXIT
-
-if ! CHUMP_BINARY_STALENESS_CHECK=0 "$CHUMP_BIN" gap dump --out "$TMP_OUT" >/dev/null 2>&1; then
-    echo "[merge-state-sql] chump gap dump failed — falling back to manual conflict" >&2
-    exit 1
-fi
-
-# Replace %A with the regenerated dump.
-if ! cp "$TMP_OUT" "$CURRENT"; then
-    echo "[merge-state-sql] failed to write regenerated dump to $CURRENT — falling back" >&2
-    exit 1
-fi
-
-echo "[merge-state-sql] regenerated $PATHNAME from local .chump/state.db (INFRA-310)"
+# Success: MERGE_FILE now contains the canonical dump.
 exit 0
