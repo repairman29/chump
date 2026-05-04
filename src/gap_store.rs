@@ -420,6 +420,38 @@ impl GapStore {
     /// field unchanged. Used by `chump gap set` so agents can author
     /// description / acceptance / notes without hand-editing YAML.
     pub fn set_fields(&self, gap_id: &str, fields: GapFieldUpdate) -> Result<()> {
+        // INFRA-402: lift the INFRA-107 closed_pr-integrity guard out of
+        // the pre-commit YAML-diff layer and into the canonical write
+        // path. The pre-commit guard catches `status: done` without a
+        // numeric `closed_pr` in the YAML diff — but `chump gap set
+        // --status done` writes directly to .chump/state.db without
+        // necessarily emitting a YAML diff (only `--update-yaml`
+        // regenerates), so the guard never sees it. INFRA-339 closed
+        // via this path on 2026-05-03 (status=done, closed_pr absent).
+        // Bypass: CHUMP_BYPASS_CLOSED_PR_GUARD=1 — for the legitimate
+        // import / migration cases where closed_pr is genuinely unknown.
+        if let Some(s) = fields.status.as_deref() {
+            if s == "done" && std::env::var("CHUMP_BYPASS_CLOSED_PR_GUARD").as_deref() != Ok("1") {
+                // closed_pr must either be in this update OR already on the row.
+                let supplied_pr = fields.closed_pr.unwrap_or(0);
+                if supplied_pr == 0 {
+                    let existing_pr: Option<i64> = self
+                        .conn
+                        .query_row("SELECT closed_pr FROM gaps WHERE id=?", [gap_id], |row| {
+                            row.get(0)
+                        })
+                        .ok()
+                        .flatten();
+                    if existing_pr.unwrap_or(0) == 0 {
+                        bail!(
+                            "INFRA-402: refusing to flip {gap_id} to status=done without a numeric closed_pr. \
+                             Pass --closed-pr <N>, or set CHUMP_BYPASS_CLOSED_PR_GUARD=1 for genuine migration cases."
+                        );
+                    }
+                }
+            }
+        }
+
         let mut sets: Vec<&str> = Vec::new();
         let mut vals: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         if let Some(v) = fields.title {
@@ -2761,6 +2793,110 @@ mod tests {
         );
     }
 
+    // ── INFRA-402: closed_pr integrity guard at the DB write layer ──────
+
+    #[test]
+    fn set_fields_status_done_requires_closed_pr() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "guard test", "P1", "s").unwrap();
+
+        // Attempt to flip status=done WITHOUT --closed-pr → must error.
+        let err = store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("INFRA-402"),
+            "error must reference INFRA-402, got: {err}"
+        );
+
+        // DB row should still be 'open' — write was rejected.
+        let status: String = store
+            .conn
+            .query_row("SELECT status FROM gaps WHERE id=?", [&id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(status, "open", "DB must not have been mutated");
+    }
+
+    #[test]
+    fn set_fields_status_done_with_closed_pr_succeeds() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "happy path", "P1", "s").unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(1234),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let (status, closed_pr): (String, Option<i64>) = store
+            .conn
+            .query_row(
+                "SELECT status, closed_pr FROM gaps WHERE id=?",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "done");
+        assert_eq!(closed_pr, Some(1234));
+    }
+
+    #[test]
+    fn set_fields_status_done_with_existing_closed_pr_succeeds() {
+        // If a prior set already wrote closed_pr, a later --status done
+        // (without re-passing --closed-pr) must succeed.
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "two-step close", "P1", "s").unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    closed_pr: Some(5678),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    ..Default::default()
+                },
+            )
+            .expect("status=done with already-set closed_pr should succeed");
+    }
+
+    #[test]
+    fn set_fields_bypass_env_honored() {
+        // CHUMP_BYPASS_CLOSED_PR_GUARD=1 — for genuine migration cases
+        // where closed_pr is unknown.
+        unsafe {
+            std::env::set_var("CHUMP_BYPASS_CLOSED_PR_GUARD", "1");
+        }
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "bypass test", "P1", "s").unwrap();
+        let result = store.set_fields(
+            &id,
+            GapFieldUpdate {
+                status: Some("done".into()),
+                ..Default::default()
+            },
+        );
+        unsafe {
+            std::env::remove_var("CHUMP_BYPASS_CLOSED_PR_GUARD");
+        }
+        result.expect("bypass env should allow status=done without closed_pr");
+    }
+
     #[test]
     fn test_dump_yaml_round_trip() {
         let (store, _dir) = test_store();
@@ -2851,6 +2987,11 @@ mod tests {
                     description: Some("Plain description".to_string()),
                     status: Some("done".to_string()),
                     closed_date: Some("2026-04-26".to_string()),
+                    // INFRA-402: status=done write path now requires a numeric
+                    // closed_pr (or CHUMP_BYPASS_CLOSED_PR_GUARD=1). The test
+                    // fixture pre-dates this guard; passing closed_pr keeps
+                    // the byte-stable round-trip semantics intact.
+                    closed_pr: Some(42),
                     ..Default::default()
                 },
             )
