@@ -1,0 +1,7 @@
+- id: INFRA-452
+  domain: INFRA
+  title: reaper-watchdog has same blind spot as the reapers it watches — when watchdog's own launchd plist breaks, nobody alerts (canary died with canaries today)
+  status: open
+  priority: P1
+  effort: s
+

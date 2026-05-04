@@ -1502,7 +1502,7 @@ gaps:
 - id: DOC-017
   domain: DOC
   title: docs/process/FLEET_OPERATIONS.md operator runbook — raise/scale/teardown/troubleshoot + today's learned cliffs
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -1557,6 +1557,8 @@ gaps:
     - CLAUDE.md adds a one-line pointer to it under 'Fleet launcher' heading
     - README mentions it (or a docs index)
     - book/ mirror updated if applicable
+  closed_date: '2026-05-04'
+  closed_pr: 1070
 
 - id: DOC-018
   domain: DOC
@@ -4320,7 +4322,7 @@ gaps:
 - id: FLEET-036
   domain: FLEET
   title: chump dispatch auto-fetches gap YAML from sibling branches before preflight reject
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -4349,6 +4351,8 @@ gaps:
     - chump dispatch <ID> succeeds without CHUMP_ALLOW_UNREGISTERED_GAP=1 when the gap YAML exists on any open sibling PR branch
     - Falls back to bypass behavior with clear log when gap genuinely doesn't exist anywhere
     - "Test: scripts/ci/test-dispatch-fetches-sibling-yaml.sh covers the happy + miss paths"
+  closed_date: '2026-05-04'
+  closed_pr: 1078
 
 - id: FLEET-037
   domain: FLEET
@@ -4413,7 +4417,7 @@ gaps:
 - id: FLEET-040
   domain: FLEET
   title: run-fleet.sh worker — pre-pick filter must skip gaps that landed on origin/main since fleet start (INFRA-310 retry regression)
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -4439,6 +4443,8 @@ gaps:
     - Fleet worker that picks a gap which has landed on origin/main since fleet start refuses the pick and rotates to next candidate
     - "Test: scripts/ci/test-pick-gap-skips-shipped.sh — synthetic 'gap done on main but still in state.db' fixture"
     - Pairs with INFRA-307 stuck-PR filer + INFRA-389 gap-doctor sync (they're complementary)
+  closed_date: '2026-05-04'
+  closed_pr: 1066
 
 - id: FLEET-14
   domain: FLEET
@@ -12166,9 +12172,11 @@ gaps:
 - id: INFRA-268
   domain: INFRA
   title: "privacy-tier auto-selection: prompts touching src/ default safe-only; only public-doc prompts allow Trains slots"
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_date: '2026-05-04'
+  closed_pr: 986
 
 - id: INFRA-269
   domain: INFRA
@@ -12891,7 +12899,7 @@ gaps:
 - id: INFRA-310
   domain: INFRA
   title: custom git merge driver for hot-file textual conflicts (ci.yml-add-row, gap-yaml-add-line, pre-commit-add-guard)
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -12932,6 +12940,8 @@ gaps:
     - "Test: rebase a fixture branch with a known-trivial conflict, verify auto-resolution"
     - "Test: drivers REFUSE non-trivial cases (both sides edited same line)"
     - "Manual escape: --no-merge-driver flag"
+  closed_date: '2026-05-04'
+  closed_pr: 1079
 
 - id: INFRA-311
   domain: INFRA
@@ -13009,7 +13019,7 @@ gaps:
 - id: INFRA-314
   domain: INFRA
   title: gap affinity tags (skills_required, preferred_backend) + worker preference matching — Phase 1 dispatcher routing
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -13054,6 +13064,8 @@ gaps:
     - CHUMP_AFFINITY=0 bypass restores any-match
     - "Test: fixture fleet of 2 workers (different skills) + 2 gaps (different requirements) routes correctly"
   notes: regen-trigger
+  closed_date: '2026-05-04'
+  closed_pr: 1090
 
 - id: INFRA-315
   domain: INFRA
@@ -13871,7 +13883,7 @@ gaps:
 - id: INFRA-352
   domain: INFRA
   title: chump --execute-gap rc=1 when all 9 cascade slots (8 cloud + local) exhausted under concurrent load — no graceful degradation, no queuing, no operator visibility
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -13881,6 +13893,8 @@ gaps:
     - "Test: scripts/ci/test-cascade-all-exhausted.sh — start chump --execute-gap with all CHUMP_PROVIDER_*_BASE pointing at mocked 429-returning servers, plus OPENAI_API_BASE pointing at a refusing port; assert ambient.jsonl gets a cascade_all_exhausted event with per-slot tally, and rc=1 with a structured error."
     - "Falsifying condition for the corrected diagnosis: if the cascade has a built-in retry-with-backoff that I missed (search src/provider_cascade.rs for sleep/retry/backoff), and the rc=1 was a SHORTER deadline than the cascade tried to honor, then graceful-degradation may already exist and we just need better operator visibility (just (a) of the FIX SCOPE)."
   depends_on: [META-025, INFRA-315]
+  closed_date: '2026-05-04'
+  closed_pr: 1013
 
 - id: INFRA-353
   domain: INFRA
@@ -14158,7 +14172,7 @@ gaps:
 - id: INFRA-368
   domain: INFRA
   title: pre-push hook — auto-detect legitimate rebase force-push (skip auto-merge-armed + gap-status guards together)
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -14168,6 +14182,8 @@ gaps:
     - "Test scripts/ci/test-pre-push-rebase-allow.sh covers: (1) rebase + push allowed silently, (2) amend + push triggers guards, (3) force-push of unrelated commits triggers guards"
   notes: |
     Hit during 2026-05-03 cleanup pass — needed both CHUMP_AUTOMERGE_OVERRIDE=1 AND CHUMP_GAP_CHECK=0 to push two legitimately-rebased PRs (#966, #972). Three-step bypass dance for normal rebase workflow is friction tax; INFRA-243 covers the consolidation angle generically but this is the specific high-frequency case. Detection heuristic: 'git reflog | head -5' shows 'rebase' as recent op.
+  closed_date: '2026-05-04'
+  closed_pr: 1026
 
 - id: INFRA-369
   domain: INFRA
@@ -14401,7 +14417,7 @@ gaps:
 - id: INFRA-381
   domain: INFRA
   title: operator doc — PR pipeline self-healing reapers (consolidate INFRA-307/354/374/375/376 into one reference)
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -14414,6 +14430,8 @@ gaps:
     - documents bypass env per reaper
     - notes the 3 failure modes still needing human handoff
     - Net-new-docs trailer present in commit so docs-delta guard accepts
+  closed_date: '2026-05-04'
+  closed_pr: 1064
 
 - id: INFRA-382
   domain: INFRA
@@ -14453,9 +14471,11 @@ gaps:
 - id: INFRA-385
   domain: INFRA
   title: "INFRA-354 followup: pr-watch-shepherd smoke test fails when real DIRTY PRs exist; CI processes them and fails per-PR (need MAX_PRS=0 in test OR per-PR errors should not abort)"
-  status: open
+  status: done
   priority: P2
   effort: xs
+  closed_date: '2026-05-04'
+  closed_pr: 1014
 
 - id: INFRA-386
   domain: INFRA
@@ -14482,7 +14502,7 @@ gaps:
 - id: INFRA-387
   domain: INFRA
   title: extend pr-watch.sh / pr-watch-shepherd with batch-rebase recipe (state.sql regen, gap-YAML ours, ci.yml strip markers)
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -14511,11 +14531,13 @@ gaps:
     - skip-list for human-review-wanted / dependabot
     - reaper heartbeat + ambient kind=batch_rebase event
     - "smoke test: synthetic 3-DIRTY-PR fixture, asserts all 3 auto-rebased + force-pushed"
+  closed_date: '2026-05-04'
+  closed_pr: 1037
 
 - id: INFRA-388
   domain: INFRA
   title: stale-branch-reaper launchd installer (5 reaper_silent ALERTs/day from missing install)
-  status: open
+  status: done
   priority: P2
   effort: xs
   description: |
@@ -14527,13 +14549,17 @@ gaps:
     - cadence 86400s (daily) matches stale-branch-reaper's design and the watchdog's 48h threshold
     - "verify with: launchctl list "
     - " grep dev.chump.stale-branch-reaper"
+  closed_date: '2026-05-04'
+  closed_pr: 1009
 
 - id: INFRA-389
   domain: INFRA
   title: gap-doctor.py reads legacy docs/gaps.yaml + sync-from-db writes to it (post-INFRA-188 stale path)
-  status: open
+  status: done
   priority: P2
   effort: xs
+  closed_date: '2026-05-04'
+  closed_pr: 1065
 
 - id: INFRA-390
   domain: INFRA
@@ -14711,7 +14737,7 @@ gaps:
 - id: INFRA-402
   domain: INFRA
   title: chump gap set --status done bypasses INFRA-107 closed_pr integrity guard (DB-direct write path skips pre-commit)
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -14723,6 +14749,8 @@ gaps:
     - "Empirical evidence: INFRA-339 closed via this path 2026-05-03 (status:done, closed_date set, closed_pr absent). Surfaced by gap-doctor.py drift detector but only catches it AFTER the fact"
   notes: |
     Filed 2026-05-03. The INFRA-107 closed_pr integrity guard pattern works at the YAML diff layer (which is what the pre-commit hook sees). But since INFRA-059 flipped canonical to .chump/state.db, the in-Rust write paths bypass that diff entirely. Either lift the integrity check into gap_store, or auto-emit a YAML diff on every status flip so the existing guard catches it. Pairs with META-032 (acceptance-criteria lag) — both are 'guards exist but writes can dodge them' patterns.
+  closed_date: '2026-05-04'
+  closed_pr: 1074
 
 - id: INFRA-403
   domain: INFRA
@@ -14734,7 +14762,7 @@ gaps:
 - id: INFRA-404
   domain: INFRA
   title: bot-merge.sh handles agent-left untracked files (auto-add or explicit warn-with-list)
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -14771,11 +14799,13 @@ gaps:
     - Without that flag, current refuse-loud behavior preserved (regression guard)
     - "Test: scripts/ci/test-bot-merge-auto-add-untracked.sh — covers both paths with sandbox repo"
     - "INFRA-332 PR #1029 retroactively gets its missing smoke test (manual amend OR follow-up dispatch)"
+  closed_date: '2026-05-04'
+  closed_pr: 1046
 
 - id: INFRA-405
   domain: INFRA
   title: "per-PR cost telemetry — tokens_in/out/USD/model into chump_improvement_targets keyed by PR#"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -14818,11 +14848,13 @@ gaps:
     - chump dispatch cost-report [--since 24h] [--per-model] [--per-domain] command produces aggregated CSV/JSON
     - At least N=20 PRs of cost data captured before declaring done
     - COG-037 reward function consumes usd_cost as a penalty term (gated behind a flag for safe rollout)
+  closed_date: '2026-05-04'
+  closed_pr: 1059
 
 - id: INFRA-406
   domain: INFRA
   title: claude -p / chump --execute-gap hang detector — SIGTERM + ambient ALERT on no-tool-call timeout
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -14855,6 +14887,8 @@ gaps:
     - claude -p wrapped in scripts/dispatch/claude-with-watchdog.sh — same hang-detection contract
     - "Test: scripts/ci/test-agent-hang-detector.sh — synthetic hang triggers SIGTERM + ambient ALERT"
     - Default 300s; per-gap override via CHUMP_AGENT_HANG_SECS env
+  closed_date: '2026-05-04'
+  closed_pr: 1047
 
 - id: INFRA-407
   domain: INFRA
@@ -14885,9 +14919,11 @@ gaps:
 - id: INFRA-408
   domain: INFRA
   title: "REGRESSION: Fleet worker staggering not spreading picks across gaps (INFRA-340 broken)"
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_date: '2026-05-04'
+  closed_pr: 1084
 
 - id: INFRA-409
   domain: INFRA
@@ -14965,16 +15001,20 @@ gaps:
 - id: INFRA-414
   domain: INFRA
   title: cargo audit reports 5 vulnerabilities in dependencies
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_date: '2026-05-04'
+  closed_pr: 1082
 
 - id: INFRA-415
   domain: INFRA
   title: gap-picker atomicity — fleet workers collide on concurrent picks
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_date: '2026-05-04'
+  closed_pr: 1086
 
 - id: INFRA-416
   domain: INFRA
@@ -14986,16 +15026,20 @@ gaps:
 - id: INFRA-417
   domain: INFRA
   title: "fleet startup: pass ANTHROPIC_API_KEY to worker panes"
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_date: '2026-05-04'
+  closed_pr: 1069
 
 - id: INFRA-418
   domain: INFRA
   title: "gap store: add required_model metadata for task routing"
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_date: '2026-05-04'
+  closed_pr: 1085
 
 - id: INFRA-419
   domain: INFRA
@@ -15131,7 +15175,7 @@ gaps:
 - id: INFRA-428
   domain: INFRA
   title: test fixtures (SPIKE-* / TEST-* / TEST168-*) leak into production .chump/state.db — 306 leaked gaps in registry as of 2026-05-03
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -15141,16 +15185,269 @@ gaps:
     - "Cleanup: bulk-superseded the 306 leaked gaps in this filing PR. Forensic: SPIKE-001..302 (302 of them, all titled 'spike-test-N') are the smoking gun — pattern matches a parameterized test loop"
     - "Audit historical commits: git log --all --grep='SPIKE-' to find when the leak first hit main and which test was responsible"
   notes: |
-    Filed 2026-05-03. The 302 SPIKE-001..302 entries all title 'spike-test-N' — clearly a parameterized test that ran against the production state.db. Same pattern for TEST-001/003 (likely test-stuck-pr-filer.sh fixtures that leaked) and TEST168-001/002 (INFRA-168 sqlite preflight regression test). They didn't surface in agent workflows because gap-doctor / chump gap list don't filter by domain — they just count everything. Bulk-superseded as part of this filing pass; the actual fix is preventing future leaks.
+    DONE 2026-05-03: 302 SPIKE-* + 4 TEST/TEST168 fixture gaps bulk-superseded in state.db (no per-file YAMLs existed for them; nothing to delete). Open count dropped 404 -> 88.
+    
+    Forensic finding: NOT a test isolation leak (as the original AC assumed). Root cause was a manual FLEET-033 spike experiment that ran 'chump gap reserve --domain SPIKE --title spike-test-N' against the LIVE production registry to measure SQLite contention. The 51-second creation window (16:55:12-16:56:03) matches a parameterized shell loop, not a unit test. CHUMP_REPO_ROOT was not set to a tempdir for the experiment.
+    
+    Prevention follow-ups (filed separately if not already): (a) honor CHUMP_REPO_ROOT in chump gap reserve so manual experiments can target /tmp; (b) optional 'chump gap reserve' guard refusing reserves with empty description AND no source_doc when the title matches a sentinel pattern (e.g., spike-test-N, test-N).
+    
+    CI guard from original AC#3 not needed — this wasn't a test.
+  closed_pr: 1063
 
-- id: INFRA-429
+- id: INFRA-430
   domain: INFRA
-  title: "bulk-close 302 SPIKE-* fixture gaps from FLEET-033 spike (registry pollution: no description, no opened_date, no per-file YAML)"
+  title: scripts/spike/* must use a temp .chump/state.db (or revert their inserts) — FLEET-033 spike left 302 SPIKE-* orphans in production today
   status: done
   priority: P2
   effort: xs
+  closed_date: '2026-05-04'
+  closed_pr: 1075
+
+- id: INFRA-431
+  domain: INFRA
+  title: chump gap list — domain breakdown + filter test domains by default + warn when domain population is anomalous
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "chump gap list (no flags) prints a one-line domain summary at the bottom: 'Total: N open across M domains (top: INFRA=52 META=11 FLEET=9)'"
+    - chump gap list excludes pure-test domains (SPIKE, TEST, TEST168, anything matching pattern '^[A-Z]+TEST$' or '^TEST') by default. Override via --include-test-domains. Surfaces by name in the summary so the operator KNOWS they're being filtered
+    - "If a single domain has > 100 open gaps OR > 50% of total open, emit stderr ALERT 'domain X has N gaps (M%% of total) — likely a test-fixture leak (see INFRA-428)'. The 2026-05-03 SPIKE leak (302 of 404, 75%) would have triggered this and saved the audit. Threshold: hardcoded 100 or 50%, no env knob (would defeat the purpose)"
+    - "Test: scripts/ci/test-gap-list-domain-summary.sh — fixture seeds 5 domains including SPIKE-001..120; asserts (a) SPIKE excluded by default, (b) summary line present, (c) ALERT fires with the right text"
+    - "Backward compat: --json output unchanged (no summary, no filtering — JSON is for tooling). Filtering only applies to human-readable output"
   notes: |
-    DUPE of INFRA-428 (filed earlier today, same scope: SPIKE-* + TEST-* + TEST168-* fixture leak cleanup). Closing.
+    Filed 2026-05-03 after the INFRA-428 audit. The 306-row test-fixture leak hid in plain sight for an unknown duration because the default chump gap list output flattens by ID alphabetically without flagging anomalous domain populations. The alert is the load-bearing piece — without it the next leak goes undetected just as long.
+
+- id: INFRA-438
+  domain: INFRA
+  title: "PR #1085 stuck [ORPHAN] — auto-merge disarmed, no live owner"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/1085
+    
+    Detected by stuck-pr-filer (2026-05-04T03:40:43Z).
+    
+    Trigger: auto-merge disarmed, no live owner
+    Auto-merge is disarmed and the original gap(s) [INFRA-418] have no live lease — the opening agent likely exited without re-arming.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 1085 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-418
+    Branch: chump/infra-418-fleet-3-20260503-211028
+    Stuck class: ORPHAN — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  closed_date: '2026-05-04'
+  closed_pr: 1085
+
+- id: INFRA-445
+  domain: INFRA
+  title: "PR #1080 stuck [CI-RED] — CI red for 9h"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/1080
+    
+    Detected by stuck-pr-filer (2026-05-04T12:58:29Z).
+    
+    Trigger: CI red for 9h
+    At least one required check has been failing for 9h (threshold 2h).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 1080 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-310
+    Branch: chump/infra-310-fleet-2-20260503-204219
+    Stuck class: CI-RED — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+
+- id: INFRA-446
+  domain: INFRA
+  title: "PR #1076 stuck [CI-RED] — CI red for 9h"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/1076
+    
+    Detected by stuck-pr-filer (2026-05-04T12:58:32Z).
+    
+    Trigger: CI red for 9h
+    At least one required check has been failing for 9h (threshold 2h).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 1076 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-431
+    Branch: chump/infra-431-gap-list-summary
+    Stuck class: CI-RED — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+
+- id: INFRA-447
+  domain: INFRA
+  title: "PR #1074 stuck [CI-RED] — CI red for 9h"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/1074
+    
+    Detected by stuck-pr-filer (2026-05-04T12:58:36Z).
+    
+    Trigger: CI red for 9h
+    At least one required check has been failing for 9h (threshold 2h).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 1074 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-107
+    INFRA-402
+    Branch: chump/infra-402-set-fields-guard
+    Stuck class: CI-RED — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+
+- id: INFRA-448
+  domain: INFRA
+  title: "PR #1072 stuck [REBASE] — DIRTY for 9h"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/1072
+    
+    Detected by stuck-pr-filer (2026-05-04T12:58:40Z).
+    
+    Trigger: DIRTY for 9h
+    Branch needs rebase. mergeStateStatus=DIRTY for 9h (threshold 4h).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 1072 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: FLEET-040
+    Branch: chump/fleet-040-fleet-1-20260503-202546
+    Stuck class: REBASE — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+
+- id: INFRA-449
+  domain: INFRA
+  title: "PR #1068 stuck [REBASE] — DIRTY for 9h"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/1068
+    
+    Detected by stuck-pr-filer (2026-05-04T12:58:43Z).
+    
+    Trigger: DIRTY for 9h
+    Branch needs rebase. mergeStateStatus=DIRTY for 9h (threshold 4h).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 1068 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: FLEET-040
+    Branch: chump/fleet-040-skip-shipped
+    Stuck class: REBASE — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+
+- id: INFRA-450
+  domain: INFRA
+  title: "PR #1063 stuck [REBASE] — DIRTY for 9h"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/1063
+    
+    Detected by stuck-pr-filer (2026-05-04T12:58:46Z).
+    
+    Trigger: DIRTY for 9h
+    Branch needs rebase. mergeStateStatus=DIRTY for 9h (threshold 4h).
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 1063 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-428
+    Branch: chump/infra-428-spike-cleanup
+    Stuck class: REBASE — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+
+- id: INFRA-451
+  domain: INFRA
+  title: "launchd installer scripts bake CWD-relative absolute path — plists break when install-time worktree is reaped (root cause: 4 of 5 reapers silent 24h+, watchdog included)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/setup/install-*-launchd.sh resolve the script path via 'git rev-parse --show-toplevel --git-common-dir' BEFORE writing the plist, so the baked path always points at the main checkout regardless of which worktree the install ran from
+    - "Add scripts/ci/test-launchd-installer-paths.sh: for each install-*-launchd.sh, run it from a tempdir-scoped fixture, verify the resulting plist's ProgramArguments + WorkingDirectory point at the main checkout (NOT under .claude/worktrees or .chump/worktrees)"
+    - "Repair existing installs: scripts/dev/heal-launchd-paths.sh that reads every dev.chump.* plist, detects worktree-baked paths, and rewrites them to main-checkout paths. Run as a one-shot during this PR's land + emit reaper_paths_healed event to ambient"
+    - "Same INFRA-247 root cause class: CWD-relative path captured at write time, breaks when CWD goes away. Pairs with that fix"
+  notes: |
+    Observed 2026-05-04: 4 of 5 reapers silent 24h+ (auto-arm, branch, ci-flake-rerun, ci-flake) plus reaper-watchdog itself. All baked /Users/jeffadkins/Projects/Chump/.claude/worktrees/infra-323-rename/scripts/... — that worktree was reaped this morning by the (still-working) stale-worktree-reaper. Snowballed into disk-full because no cleanup happened for ~24h. Re-ran the install-*-launchd.sh scripts from the main checkout to fix immediate state, but the underlying installer behavior repeats this every time the install-source worktree dies.
+
+- id: INFRA-452
+  domain: INFRA
+  title: reaper-watchdog has same blind spot as the reapers it watches — when watchdog's own launchd plist breaks, nobody alerts (canary died with canaries today)
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Move reaper-watchdog out of the same launchd-managed pool it watches — options: (a) host on a separate machine that pings via NATS (FLEET-006), (b) install as a system-launchd job under /Library/LaunchDaemons (different scope, more privileged), (c) add a SECOND independent watchdog under a different label/path so single-installer-failure can't take both down"
+    - "Add scripts/ci/test-watchdog-survives-installer-breakage.sh: simulate a broken installer plist for the primary watchdog, verify the secondary watchdog ALERTs to ambient"
+    - "Until then: reaper-watchdog should ALSO check its own heartbeat freshness and panic-loud (write to ambient.jsonl + stderr) if its OWN heartbeat is missing — self-aware liveness check"
+  notes: |
+    Today's outage was invisible for 24h+ specifically because the watchdog had the same broken-path bug as the reapers it watches. The whole point of the watchdog is to alert on reaper failures; it needs a higher-confidence redundancy story than 'same launchd, same install path, same blast radius'.
+
+- id: INFRA-453
+  domain: INFRA
+  title: disk-full silently kills heartbeat writes → reaper exit 78 → 24h snowball before detection (need disk-headroom circuit breaker + ALERT)
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Every reaper script checks df -h on its log dir + heartbeat dir before doing work. If <5% free, emit ALERT kind=disk_critical with df output and exit 0 (don't fail the launchd job, don't swallow the symptom)
+    - Add a top-level scripts/ops/disk-health-monitor.sh launchd job (5 min cadence) that monitors free space across /, /System/Volumes/Data, /tmp, ~/Projects/Chump and ALERTs when any goes <10%, escalates to <5% (CRITICAL) and <2% (BLOCKING — pauses fleet via touch ~/.chump-fleet-pause-disk-critical)
+    - "Test: scripts/ci/test-disk-health-fixture.sh seeds a fake df-output and asserts each tier emits the expected ALERT"
+  notes: |
+    Today's snowball: disk filled (302 worktrees, ~115GB project size) → reapers tried to write heartbeat → ENOSPC → exit 78 → no cleanup → more disk fill → no signal until manual audit. Fleet pause-on-disk-critical is the load-bearing piece — without it, even with the other fixes, a fast-fill scenario would still race ahead of the reapers.
+
+- id: INFRA-454
+  domain: INFRA
+  title: stuck-pr-filer should detect 'N+ open PRs failing on same CI step' as broken-main signal, file one cleanup gap not N
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "stuck-pr-filer.sh adds a 'shared-CI-blocker' detection pass: group open PRs by their failing CI step name + script, count by group. When N>=3 PRs share the same failing step on the same file, file ONE INFRA cleanup gap (titled 'CI blocker: scripts/ci/test-X.sh failing on N+ open PRs') instead of N separate stuck-PR gaps"
+    - "The grouping gap should include: the failing step name, the failing test script path, the count of affected PRs, the diff between origin/main HEAD and the test script's last-modified version (catches the broken-test-not-yet-rebased case)"
+    - "Test: scripts/ci/test-stuck-pr-filer-shared-blocker.sh — fixture seeds 5 PRs all with the same fast-checks failure on test-X.sh; asserts ONE cleanup gap is filed (not 5), with the right grouping metadata in the description"
+  notes: |
+    2026-05-04: 16 of my open PRs were red on 'pre-push MERGED guard (INFRA-306)' Test 3 because PR #1073 fixed the test (DOC-018 split moved INFRA-306 ref to CLAUDE_GOTCHAS.md) but the 16 PRs were rebased before #1073 landed. Manual fix took ~30s per PR via gh pr update-branch, but the SIGNAL of 'shared blocker' was invisible until I drilled into one PR's logs. With auto-detection, stuck-pr-filer would have filed one cleanup gap pointing at the broken test, the next fleet pickup would have shipped the fix (or in this case noticed it already shipped and just bulk-rebased the affected PRs).
+
+- id: INFRA-455
+  domain: INFRA
+  title: auto-arm-sweeper exits 1 when 'nothing to arm' — cosmetic, but launchctl reads it as failure
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - scripts/ops/auto-arm-sweeper.sh exits 0 (not 1) when 'nothing to arm' — distinguish 'normal idle scan' from 'real error'. Today launchd reports last_exit=1 even when the script printed a clean summary, so the operator's diagnostic instinct (grep launchctl list for non-zero exits) flags it as broken
+    - "Wire: explicit 'exit 0' at end of normal-completion path; current implicit exit picks up the last command's RC which happens to be 1"
+    - "Verify: launchctl list "
+    - " grep auto-arm-sweeper should show last_exit=0 after a clean run that armed 0 PRs"
+  notes: |
+    2026-05-04 minor — surfaced during the disk-full audit. Cosmetic but confuses the diagnostic 'which reapers are healthy' grep.
 
 - id: INFRA-AB-TOOL-CALL-COUNTER
   domain: INFRA

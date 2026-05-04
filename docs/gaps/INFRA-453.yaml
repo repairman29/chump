@@ -1,0 +1,7 @@
+- id: INFRA-453
+  domain: INFRA
+  title: disk-full silently kills heartbeat writes → reaper exit 78 → 24h snowball before detection (need disk-headroom circuit breaker + ALERT)
+  status: open
+  priority: P2
+  effort: s
+

@@ -1,0 +1,7 @@
+- id: INFRA-455
+  domain: INFRA
+  title: auto-arm-sweeper exits 1 when 'nothing to arm' — cosmetic, but launchctl reads it as failure
+  status: open
+  priority: P3
+  effort: xs
+

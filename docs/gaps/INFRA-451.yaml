@@ -1,0 +1,7 @@
+- id: INFRA-451
+  domain: INFRA
+  title: "launchd installer scripts bake CWD-relative absolute path — plists break when install-time worktree is reaped (root cause: 4 of 5 reapers silent 24h+, watchdog included)"
+  status: open
+  priority: P1
+  effort: s
+

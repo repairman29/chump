@@ -1,0 +1,7 @@
+- id: INFRA-454
+  domain: INFRA
+  title: stuck-pr-filer should detect 'N+ open PRs failing on same CI step' as broken-main signal, file one cleanup gap not N
+  status: open
+  priority: P2
+  effort: s
+
