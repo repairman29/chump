@@ -74,6 +74,41 @@ the result, so manual `cargo fmt` is rarely required before committing.
 - **Modules:** keep public surface narrow — re-export from `lib.rs` /
   `mod.rs` rather than letting callers reach into submodules.
 
+## Reading code economically (DOC-019, 2026-05-03)
+
+Token cost discipline. Every full file read of `provider_cascade.rs`
+(~1500 lines) or similar costs ~5-8K input tokens. After context
+compaction the same agent often re-reads the same file — observed 2× in
+a single session 2026-05-03. At fleet scale this is real budget.
+
+- **Files >500 lines: default to `grep -n <symbol>` + `Read offset/limit`.**
+  Read the full file only when the change touches structure (cross-cutting
+  refactor, file-level rename). For point fixes — even ones that read
+  several disjoint regions — `grep -n` then 2-3 narrow `Read`s wins by
+  large margins.
+- **`Read` supports `offset` + `limit`.** Use them. The line-number
+  output from `grep -n` is the offset.
+- **`cat` is forbidden via the Bash tool.** Use `Read` instead — same
+  reason: tighter scoping and a reviewable transcript.
+
+When in doubt: grep first, ask what region is relevant, then read it.
+
+## PR check polling discipline (DOC-020, 2026-05-03)
+
+`gh pr checks <N>` polling burns output tokens fast (~200/poll for the
+diff + your reasoning). Cap at **3 attempts** per session, then back off:
+
+1. **Hand off to `pr-watch-shepherd`** — already running on launchd, will
+   auto-rebase + re-arm DIRTY/BEHIND PRs. Don't do its job.
+2. **Use `ScheduleWakeup` (~1200s) or `Bash run_in_background`** for
+   "check back later" — the runtime notifies you when something
+   completes, so you don't poll.
+3. **Move on to the next gap.** PRs are async; treat them that way.
+
+Never poll a check loop in a tight `while`. If you find yourself doing
+"let me just check one more time," stop — you're rate-limiting your own
+session, and someone else's PR is starving for review.
+
 ## Where to find docs
 
 | Doc | Purpose |
