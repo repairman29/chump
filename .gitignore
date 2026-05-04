@@ -151,3 +151,8 @@ acp_sessions/
 # that those accidental re-creations don't pollute `git status` or end up
 # in commits. The canonical layout is docs/gaps/<ID>.yaml.
 docs/gaps.yaml
+
+# Private swarm-autonomy work — must NEVER be committed to the public repo.
+# Lives as a sibling Cargo workspace under proprietary/. Canonical home:
+# https://github.com/repairman29/chump-proprietary (PRIVATE).
+proprietary/
