@@ -77,6 +77,44 @@ def cooled_down_gaps(cooldown_dir: str) -> set[str]:
     return cooled
 
 
+def shipped_on_main(gap_id: str, repo_root: str) -> bool:
+    """FLEET-040: return True if origin/main's docs/gaps/<gap_id>.yaml says
+    status:done.
+
+    Worker state.db lags origin/main until the next `chump gap import`
+    runs. Pre-fix, worker 6 picked INFRA-310 in cycle 1, timed out at
+    600s, then on cycle 2 picked it AGAIN even though INFRA-310 had
+    landed on main as PR #1021 in between. Burns FLEET_TIMEOUT_S worth
+    of Haiku tokens per retry on already-shipped work.
+
+    Implementation: `git show origin/main:docs/gaps/<id>.yaml` (~10ms).
+    Failure modes (file missing, git error, malformed YAML) → return
+    False (don't skip; let the picker proceed). Bypass the whole check
+    via FLEET_SKIP_SHIPPED_CHECK=0 env.
+    """
+    if os.environ.get("FLEET_SKIP_SHIPPED_CHECK", "1") == "0":
+        return False
+    import subprocess as _sp
+    try:
+        result = _sp.run(
+            ["git", "show", f"origin/main:docs/gaps/{gap_id}.yaml"],
+            cwd=repo_root, capture_output=True, text=True, timeout=5,
+        )
+    except (FileNotFoundError, _sp.TimeoutExpired):
+        return False
+    if result.returncode != 0:
+        # YAML doesn't exist on main (gap newly reserved) → not shipped
+        return False
+    # Cheap parse: look for "status: done" line. Avoids needing PyYAML in
+    # the picker hot path.
+    for line in result.stdout.splitlines():
+        s = line.strip()
+        if s.startswith("status:"):
+            return s.endswith(": done") or s.endswith(":done") \
+                or s == "status: done"
+    return False
+
+
 def main() -> int:
     gap_file = os.environ.get("GAP_JSON_FILE")
     if not gap_file or not os.path.exists(gap_file):
@@ -93,6 +131,11 @@ def main() -> int:
     exclude_re = re.compile(os.environ.get("EXCLUDE_RE", "^$"))
     active = set(os.environ.get("ACTIVE_GAPS", "").split())
     cooled = cooled_down_gaps(os.environ.get("COOLDOWN_DIR", ""))
+    # FLEET-040: cache repo_root once for the shipped-on-main check.
+    # The check is per-candidate; cwd resolves the local repo's
+    # origin/main. Empty repo_root means "use cwd" which is fine for
+    # worker.sh (it cd's to REPO_ROOT before invoking us).
+    repo_root = os.environ.get("REPO_ROOT", "")
 
     candidates = []
     for g in gaps:
@@ -102,6 +145,11 @@ def main() -> int:
         if gid in cooled:
             continue
         if exclude_re.search(gid):
+            continue
+        # FLEET-040: skip gaps whose origin/main YAML already says done.
+        # Catches the state.db-lag-vs-main race that wasted 1200+s of
+        # Haiku on INFRA-310 (PR #1021 landed mid-cycle-2).
+        if shipped_on_main(gid, repo_root):
             continue
         # INFRA-397: skip gaps that are not open. `chump gap list --json`
         # without --status open returns done/in_progress gaps too; without
