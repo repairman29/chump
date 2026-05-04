@@ -121,19 +121,20 @@ for f in glob.glob(os.path.join(base, '*.json')):
 PY
     )"
 
-    # Pick highest-priority candidate. Use a tempfile so we can send the gap
-    # JSON on stdin AND keep the python script as a heredoc.
+    # INFRA-415: atomic gap picker+claimer. This picker filters candidates
+    # AND claims the gap atomically before returning, preventing concurrent
+    # workers from picking the same gap. Uses the same session-ID resolution
+    # as gap-claim.sh so the lease is scoped to this worker's session.
     gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
     printf '%s' "$gap_json" > "$gap_json_file"
     pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
             FLEET_DOMAIN_FILTER="$FLEET_DOMAIN_FILTER" \
             FLEET_EFFORT_FILTER="$FLEET_EFFORT_FILTER" \
             EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
-            ACTIVE_GAPS="$active_gaps" \
             GAP_JSON_FILE="$gap_json_file" \
             WORKER_INDEX="$AGENT_ID" \
             COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
-            python3 "$REPO_ROOT/scripts/dispatch/_pick_gap.py" 2>/dev/null || true)"
+            python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>/dev/null || true)"
     rm -f "$gap_json_file"
 
     if [ -z "$pick" ]; then
@@ -254,19 +255,11 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         continue
     fi
 
-    # ── Claim ─────────────────────────────────────────────────────────────
-    # INFRA-271 + INFRA-193: enable speculative-execution claim. Two fleet
-    # workers picking the same gap in the same second is the common case at
-    # high FLEET_SIZE; with CHUMP_SPECULATIVE=1, gap-preflight allows both
-    # claims, both workers ship in parallel, and bot-merge / closer-batcher
-    # auto-closes the loser as superseded once the winner lands. Without this,
-    # one worker would silently lose a cycle (~30+ seconds) per collision.
-    if ! ( cd "$wt_path" && CHUMP_AMBIENT_GLANCE=0 CHUMP_SPECULATIVE=1 scripts/coord/gap-claim.sh "$GAP_ID" >/dev/null 2>&1 ); then
-        log "WARN: gap-claim failed for $GAP_ID even speculative; cleaning up"
-        git -C "$REPO_ROOT" worktree remove --force "$wt_path" 2>/dev/null || true
-        git -C "$REPO_ROOT" branch -D "$branch" 2>/dev/null || true
-        continue
-    fi
+    # ── Claim (already done by atomic picker) ─────────────────────────────
+    # INFRA-415: the atomic picker (_pick_and_claim_gap.py) already claimed
+    # the gap atomically before returning the gap ID. The lease file is
+    # already written in .chump-locks/<session>.json, so we skip the separate
+    # gap-claim.sh call and proceed directly to spawning the agent.
 
     # ── Spawn agent (claude or chump-local) ───────────────────────────────
     cycle_log="$FLEET_LOG_DIR/agent-${AGENT_ID}-cycle${cycle}-${GAP_ID}.log"
