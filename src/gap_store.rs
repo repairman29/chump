@@ -64,6 +64,10 @@ pub struct GapRow {
     /// INFRA-314: workers can use for capacity planning.
     #[serde(default)]
     pub estimated_minutes: String,
+    /// Required model tier: haiku | sonnet | opus | any (default: any).
+    /// INFRA-418: planner + task router use this to assign work to appropriate capability.
+    #[serde(default)]
+    pub required_model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -264,6 +268,11 @@ impl GapStore {
             "ALTER TABLE gaps ADD COLUMN estimated_minutes TEXT NOT NULL DEFAULT ''",
             [],
         );
+        // INFRA-418: required_model tier for task routing (haiku | sonnet | opus | any).
+        let _ = self.conn.execute(
+            "ALTER TABLE gaps ADD COLUMN required_model TEXT NOT NULL DEFAULT ''",
+            [],
+        );
         // Backfill closed_date for done rows that predate the column. Idempotent:
         // only touches rows where closed_date is empty AND closed_at is set, so
         // re-running is a no-op once the row is healed. UTC matches `unix_to_iso_date`.
@@ -342,6 +351,7 @@ impl GapStore {
                 preferred_backend: row.get(17)?,
                 preferred_machine: row.get(18)?,
                 estimated_minutes: row.get(19)?,
+                required_model: row.get(20)?,
             })
         };
         if let Some(s) = status_filter {
@@ -349,7 +359,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                         acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                        preferred_machine,estimated_minutes
+                        preferred_machine,estimated_minutes,required_model
                  FROM gaps WHERE status=?1 ORDER BY id",
             )?;
             let rows = stmt.query_map(params![s], make_row)?;
@@ -359,7 +369,7 @@ impl GapStore {
                 "SELECT id,domain,title,description,priority,effort,status,
                         acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                        preferred_machine,estimated_minutes
+                        preferred_machine,estimated_minutes,required_model
                  FROM gaps ORDER BY id",
             )?;
             let rows = stmt.query_map([], make_row)?;
@@ -373,7 +383,7 @@ impl GapStore {
             "SELECT id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes
+                    preferred_machine,estimated_minutes,required_model
              FROM gaps WHERE id=?1",
         )?;
         let row = stmt
@@ -399,6 +409,7 @@ impl GapStore {
                     preferred_backend: row.get(17)?,
                     preferred_machine: row.get(18)?,
                     estimated_minutes: row.get(19)?,
+                    required_model: row.get(20)?,
                 })
             })
             .optional()?;
@@ -473,6 +484,10 @@ impl GapStore {
         }
         if let Some(v) = fields.estimated_minutes {
             sets.push("estimated_minutes=?");
+            vals.push(Box::new(v));
+        }
+        if let Some(v) = fields.required_model {
+            sets.push("required_model=?");
             vals.push(Box::new(v));
         }
         if sets.is_empty() {
@@ -1218,6 +1233,8 @@ pub struct GapFieldUpdate {
     pub preferred_machine: Option<String>,
     /// INFRA-314: estimated minutes to complete.
     pub estimated_minutes: Option<String>,
+    /// INFRA-418: required model tier (haiku | sonnet | opus | any).
+    pub required_model: Option<String>,
 }
 
 /// Render one gap as a YAML block-list entry. Field order matches the
@@ -1309,6 +1326,9 @@ fn format_gap_yaml(g: &GapRow) -> String {
     if !g.estimated_minutes.is_empty() {
         s.push_str(&format!("  estimated_minutes: {}\n", g.estimated_minutes));
     }
+    if !g.required_model.is_empty() {
+        s.push_str(&format!("  required_model: {}\n", g.required_model));
+    }
     s.push('\n');
     s
 }
@@ -1344,6 +1364,7 @@ const DB_OWNED_GAP_FIELDS: &[&str] = &[
     "preferred_backend",
     "preferred_machine",
     "estimated_minutes",
+    "required_model",
 ];
 
 /// INFRA-208: take freshly-generated per-file YAML (one block-list entry as
@@ -1583,6 +1604,9 @@ struct YamlGap {
     /// INFRA-314: estimated minutes.
     #[serde(default)]
     estimated_minutes: Option<serde_yaml::Value>,
+    /// INFRA-418: required model tier (haiku | sonnet | opus | any).
+    #[serde(default)]
+    required_model: Option<serde_yaml::Value>,
 }
 
 #[derive(Deserialize)]
@@ -1796,14 +1820,19 @@ impl GapStore {
                 .as_ref()
                 .map(yaml_value_to_string)
                 .unwrap_or_default();
+            let required_model = g
+                .required_model
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
             let created_at = unix_now();
 
             let changed = self.conn.execute(
                 "INSERT OR IGNORE INTO gaps(id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,
                     opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+                    preferred_machine,estimated_minutes,required_model)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
                 params![
                     g.id,
                     g.domain,
@@ -1824,6 +1853,7 @@ impl GapStore {
                     preferred_backend,
                     preferred_machine,
                     estimated_minutes,
+                    required_model,
                 ],
             )?;
             if changed > 0 {

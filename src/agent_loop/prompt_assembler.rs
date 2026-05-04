@@ -1,6 +1,50 @@
 use crate::perception::PerceivedInput;
 use crate::reflection_db;
 use crate::task_db;
+use std::sync::Once;
+
+// INFRA-424: visibility for spawn-time lessons injection. Without this,
+// CHUMP_LESSONS_AT_SPAWN_N can sit in a shell profile or .env and silently
+// add N×~500 input tokens to every spawn. The first time per process we
+// see N>0, log to ambient.jsonl + (when N>5 without ack) warn to stderr.
+static LESSONS_VISIBILITY_ONCE: Once = Once::new();
+
+fn announce_lessons_injection_active(n: usize) {
+    LESSONS_VISIBILITY_ONCE.call_once(|| {
+        // Stderr warning if N>5 without explicit ack.
+        if n > 5 && std::env::var("CHUMP_LESSONS_AT_SPAWN_ACK").as_deref() != Ok("1") {
+            eprintln!(
+                "[chump] WARNING: CHUMP_LESSONS_AT_SPAWN_N={n} adds ~{}K input tokens per spawn. \
+                 Set CHUMP_LESSONS_AT_SPAWN_ACK=1 to silence; set CHUMP_LESSONS_AT_SPAWN_N=0 to disable.",
+                n / 2
+            );
+        }
+
+        // Best-effort ambient.jsonl append. Resolve repo root via env or cwd;
+        // skip silently on any io error so this never breaks a real spawn.
+        let repo_root = std::env::var("CHUMP_REPO_ROOT")
+            .ok()
+            .or_else(|| std::env::current_dir().ok().and_then(|p| p.to_str().map(String::from)))
+            .unwrap_or_else(|| ".".to_string());
+        let path = std::env::var("CHUMP_AMBIENT_LOG")
+            .unwrap_or_else(|_| format!("{repo_root}/.chump-locks/ambient.jsonl"));
+        let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let line = format!(
+            r#"{{"event":"alert","kind":"lessons_injection_active","ts":"{ts}","n":{n}}}"#,
+        );
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            use std::io::Write;
+            let _ = writeln!(f, "{line}");
+        }
+    });
+}
 
 // ---------------------------------------------------------------------------
 // COG-027: Task-class-aware perception clarification directive gate
@@ -95,6 +139,8 @@ impl PromptAssembler {
         // the agent reads after.
         let spawn_block: Option<String> = match reflection_db::spawn_lessons_n() {
             Some(n) if n > 0 && reflection_db::reflection_available() => {
+                // INFRA-424: surface this to the operator (once per process).
+                announce_lessons_injection_active(n);
                 // Domain hint: reuse the first detected entity, else explicit
                 // tool_hint, else "" (global).
                 let domain = tool_hint
