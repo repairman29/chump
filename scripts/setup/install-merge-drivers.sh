@@ -8,10 +8,10 @@
 #   - .gitattributes (committed) — declares which paths use which driver
 #   - .git/config (NOT committed) — registers the driver command
 #
-# Without the .git/config registration, .gitattributes references a driver
-# that git can't find, and the merge falls back to default 3-way (which
-# produces conflict markers — same as no driver at all). So this installer
-# is required once per checkout / per linked worktree.
+# Without the .git/config registration, .gitattributes references drivers
+# that git can't find, and merges fall back to default 3-way (which produces
+# conflict markers — same as no driver at all). So this installer is required
+# once per checkout / per linked worktree.
 #
 # Auto-installed by scripts/setup/install-hooks.sh (which agents run via
 # `bot-merge.sh` and `post-checkout` hook), so most operators never need to
@@ -19,8 +19,13 @@
 #
 #   bash scripts/setup/install-merge-drivers.sh
 #
-# Verify:
-#   git config --get merge.chump-state-sql-regen.driver
+# Verify all drivers:
+#   git config --get-regexp '^merge\.' | grep -E 'driver|name'
+#
+# Drivers registered (INFRA-310):
+#   chump-state-sql-regen: regenerates .chump/state.sql from .chump/state.db on conflict
+#   ci-yml-add-row: merges .github/workflows/ci.yml step additions
+#   pre-commit-add-guard: merges scripts/git-hooks/pre-commit guard additions
 
 set -euo pipefail
 
@@ -31,26 +36,50 @@ if [[ -z "$REPO_ROOT" ]]; then
 fi
 cd "$REPO_ROOT"
 
+# ── Register state.sql regeneration driver ────────────────────────────────────
 DRIVER_SCRIPT_REL="scripts/git/merge-driver-state-sql-regen.sh"
 DRIVER_NAME="chump-state-sql-regen"
 
-if [[ ! -x "$DRIVER_SCRIPT_REL" ]]; then
-    echo "[install-merge-drivers] driver script $DRIVER_SCRIPT_REL not found or not executable" >&2
-    exit 1
+if [[ -x "$DRIVER_SCRIPT_REL" ]]; then
+    git config "merge.${DRIVER_NAME}.name" "Regenerate .chump/state.sql from .chump/state.db on conflict (INFRA-310)"
+    git config "merge.${DRIVER_NAME}.driver" "${DRIVER_SCRIPT_REL} %O %A %B %L"
+    echo "[install-merge-drivers] OK: ${DRIVER_NAME} registered"
+else
+    echo "[install-merge-drivers] SKIP: ${DRIVER_SCRIPT_REL} not found" >&2
 fi
 
-# Register driver name + command. `git config` is idempotent: re-setting the
-# same value is a no-op.
-git config "merge.${DRIVER_NAME}.name" "Regenerate .chump/state.sql from .chump/state.db on conflict (INFRA-310)"
-git config "merge.${DRIVER_NAME}.driver" "${DRIVER_SCRIPT_REL} %O %A %B %P"
+# ── Register CI YAML add-row driver ──────────────────────────────────────────
+DRIVER_SCRIPT_REL="scripts/git/merge-driver-ci-yml-add-row.sh"
+DRIVER_NAME="ci-yml-add-row"
 
-# Verify .gitattributes contains the wiring. If not, warn — we don't write
-# the .gitattributes line ourselves (that's a committed file the PR
-# introduces). This is the "is the PR landed?" check.
-if [[ -f .gitattributes ]] && grep -qF ".chump/state.sql merge=${DRIVER_NAME}" .gitattributes 2>/dev/null; then
-    echo "[install-merge-drivers] OK: ${DRIVER_NAME} registered + .gitattributes wired"
+if [[ -x "$DRIVER_SCRIPT_REL" ]]; then
+    git config "merge.${DRIVER_NAME}.name" "Union .github/workflows/ci.yml step additions (INFRA-310)"
+    git config "merge.${DRIVER_NAME}.driver" "${DRIVER_SCRIPT_REL} %O %A %B %L"
+    echo "[install-merge-drivers] OK: ${DRIVER_NAME} registered"
 else
-    echo "[install-merge-drivers] WARNING: ${DRIVER_NAME} registered in .git/config but"
-    echo "[install-merge-drivers] .gitattributes does not contain '.chump/state.sql merge=${DRIVER_NAME}'."
-    echo "[install-merge-drivers] The driver will be invoked only after the .gitattributes change lands."
+    echo "[install-merge-drivers] SKIP: ${DRIVER_SCRIPT_REL} not found" >&2
+fi
+
+# ── Register pre-commit add-guard driver ─────────────────────────────────────
+DRIVER_SCRIPT_REL="scripts/git/merge-driver-pre-commit-add-guard.sh"
+DRIVER_NAME="pre-commit-add-guard"
+
+if [[ -x "$DRIVER_SCRIPT_REL" ]]; then
+    git config "merge.${DRIVER_NAME}.name" "Append scripts/git-hooks/pre-commit guard blocks (INFRA-310)"
+    git config "merge.${DRIVER_NAME}.driver" "${DRIVER_SCRIPT_REL} %O %A %B %L"
+    echo "[install-merge-drivers] OK: ${DRIVER_NAME} registered"
+else
+    echo "[install-merge-drivers] SKIP: ${DRIVER_SCRIPT_REL} not found" >&2
+fi
+
+# Verify .gitattributes wiring
+if [[ -f .gitattributes ]]; then
+    echo "[install-merge-drivers] .gitattributes wiring check:"
+    for pattern in ".chump/state.sql" ".github/workflows/ci.yml" "scripts/git-hooks/pre-commit"; do
+        if grep -qF "$pattern" .gitattributes 2>/dev/null; then
+            echo "[install-merge-drivers]   ✓ $pattern configured"
+        else
+            echo "[install-merge-drivers]   ⚠ $pattern not found in .gitattributes" >&2
+        fi
+    done
 fi
