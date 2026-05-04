@@ -292,6 +292,9 @@ jobs:
       - name: pre-push rebase-detect auto-skip (INFRA-368)
         run: bash scripts/ci/test-pre-push-rebase-allow.sh
 
+      - name: spike scripts isolated from production state.db (INFRA-430)
+        run: bash scripts/ci/test-spike-isolation.sh
+
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
 
