@@ -650,3 +650,8 @@ jobs:
           #     fix once serenity 0.13 lands.
           #   2024-0436  paste unmaintained          — transitive (tauri/wasmtime), benign
           #   2026-0097  rand 0.7 unsound logger     — transitive (tauri/phf), no fix path
+      - name: chump gap list domain summary + test-filter (INFRA-431)
+        run: |
+          cargo build --release --bin chump 2>&1 | tail -3
+          bash scripts/ci/test-gap-list-domain-summary.sh
+

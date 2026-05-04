@@ -219,6 +219,16 @@ fn unix_ts() -> u64 {
         .as_secs()
 }
 
+/// INFRA-431: domains whose rows are pure test fixtures and should be
+/// hidden from the default `chump gap list` output. The 2026-05-03 INFRA-428
+/// audit found 306 leaked SPIKE/TEST/TEST168 rows in production state.db.
+/// Users opt back in via `--include-test-domains`.
+fn is_test_domain(domain: &str) -> bool {
+    matches!(domain, "SPIKE" | "TEST" | "TEST168")
+        || domain.starts_with("TEST")
+        || domain.ends_with("TEST")
+}
+
 /// INFRA-094: write a marker recording that the chump CLI just modified
 /// docs/gaps.yaml via a canonical operation (`gap dump --out` /
 /// `gap ship --update-yaml`). The pre-commit hook reads this marker — if
@@ -580,20 +590,90 @@ async fn main() -> Result<()> {
         match subcmd {
             "list" => {
                 let status_filter = flag("--status");
+                // INFRA-431: include-test-domains opts back in to SPIKE/TEST*
+                // rows. Default is to filter them out of the human-readable
+                // output (kept in --json output unconditionally so tooling
+                // sees the true state). Surfaces by name in the summary
+                // line so the operator KNOWS the filter ran.
+                let include_test_domains = args.iter().any(|a| a == "--include-test-domains");
                 match store.list(status_filter.as_deref()) {
                     Ok(gaps) => {
                         if json_out {
+                            // INFRA-431: --json output unchanged — for
+                            // tooling. Filter and summary apply only to
+                            // the human-readable path.
                             println!(
                                 "{}",
                                 serde_json::to_string_pretty(&gaps).unwrap_or_default()
                             );
                         } else {
+                            // Build filtered view + per-domain counts on the
+                            // unfiltered set so the summary + ALERT see the
+                            // truth (the SPIKE leak hid because counts were
+                            // never inspected by domain).
+                            let mut by_domain: std::collections::BTreeMap<String, usize> =
+                                std::collections::BTreeMap::new();
                             for g in &gaps {
+                                let dom = g.id.split('-').next().unwrap_or("?").to_string();
+                                *by_domain.entry(dom).or_insert(0) += 1;
+                            }
+                            let mut filtered_count = 0usize;
+                            let mut filtered_domains: Vec<String> = Vec::new();
+                            for g in &gaps {
+                                let dom = g.id.split('-').next().unwrap_or("?");
+                                if !include_test_domains && is_test_domain(dom) {
+                                    if !filtered_domains.iter().any(|d| d == dom) {
+                                        filtered_domains.push(dom.to_string());
+                                    }
+                                    filtered_count += 1;
+                                    continue;
+                                }
                                 println!(
                                     "[{}] {} — {} ({}/{})",
                                     g.status, g.id, g.title, g.priority, g.effort
                                 );
                             }
+                            // Domain-population ALERT (stderr, unconditional).
+                            // The 2026-05-03 SPIKE leak (302 of 404 = 75%)
+                            // would have triggered this and saved the audit.
+                            // No env knob — the ALERT is the load-bearing
+                            // protection against future leaks.
+                            let total = gaps.len();
+                            for (dom, n) in &by_domain {
+                                // INFRA-431 rescue: clippy::manual_checked_ops
+                                // flags `if total > 0 { *n * 100 / total } else { 0 }`
+                                // because `checked_div` makes the divide-by-zero
+                                // intent explicit. Behaviour is identical.
+                                let pct = (*n * 100).checked_div(total).unwrap_or(0);
+                                if *n > 100 || pct > 50 {
+                                    eprintln!(
+                                        "ALERT: domain {} has {} gaps ({}% of total) — likely a test-fixture leak (see INFRA-428)",
+                                        dom, n, pct
+                                    );
+                                }
+                            }
+                            // Summary line (stdout). Top 5 domains by count.
+                            let mut domain_pairs: Vec<(&String, &usize)> =
+                                by_domain.iter().collect();
+                            domain_pairs.sort_by(|a, b| b.1.cmp(a.1));
+                            let top: Vec<String> = domain_pairs
+                                .iter()
+                                .take(5)
+                                .map(|(d, n)| format!("{d}={n}"))
+                                .collect();
+                            let shown = total - filtered_count;
+                            let mut summary =
+                                format!(
+                                "\n--- {} shown / {} total open across {} domains (top: {}) ---",
+                                shown, total, by_domain.len(), top.join(" ")
+                            );
+                            if !filtered_domains.is_empty() {
+                                summary.push_str(&format!(
+                                    "\n--- filtered out {} test-domain row(s): {} (use --include-test-domains to see) ---",
+                                    filtered_count, filtered_domains.join(" ")
+                                ));
+                            }
+                            println!("{summary}");
                         }
                         return Ok(());
                     }
