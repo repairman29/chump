@@ -11,4 +11,5 @@ categories = ["development-tools", "concurrency"]
 readme = "README.md"
 
 [dependencies]
-# Pure std — no dependencies on purpose. Keeps this crate cheap to depend on.
+rusqlite = { version = "0.32", features = ["bundled"] }
+anyhow = "1.0"

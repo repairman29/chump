@@ -417,3 +417,208 @@ mod tests {
         assert_eq!(session_cost_usd(), 0.0);
     }
 }
+
+// ── Per-PR cost telemetry (INFRA-405, 2026-05-03) ────────────────────────────
+//
+// Persistent record of cost metrics per PR so `chump dispatch cost-report` can
+// aggregate token spend, USD cost, and model distribution by domain.
+// Stored in `.chump/pr_costs.db` (separate from gap_store to avoid bloating
+// the main state.db with telemetry rows).
+
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone)]
+pub struct PrCostRecord {
+    pub pr_number: i64,
+    pub gap_id: String,
+    pub model: String,
+    pub tokens_in: i64,
+    pub tokens_out: i64,
+    pub usd_cost: f64,
+    pub duration_secs: i64,
+    pub shipped_at: i64,
+    pub backend: String,
+}
+
+pub fn pr_costs_db_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".chump").join("pr_costs.db")
+}
+
+pub fn record_pr_cost(repo_root: &Path, record: &PrCostRecord) -> anyhow::Result<()> {
+    let path = pr_costs_db_path(repo_root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let conn = rusqlite::Connection::open(&path)?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS chump_pr_costs (
+            pr_number INTEGER PRIMARY KEY,
+            gap_id TEXT NOT NULL,
+            model TEXT NOT NULL,
+            tokens_in INTEGER DEFAULT 0,
+            tokens_out INTEGER DEFAULT 0,
+            usd_cost REAL DEFAULT 0.0,
+            duration_secs INTEGER DEFAULT 0,
+            shipped_at INTEGER NOT NULL,
+            backend TEXT
+        )",
+    )?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO chump_pr_costs
+         (pr_number, gap_id, model, tokens_in, tokens_out, usd_cost, duration_secs, shipped_at, backend)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rusqlite::params![
+            record.pr_number,
+            &record.gap_id,
+            &record.model,
+            record.tokens_in,
+            record.tokens_out,
+            record.usd_cost,
+            record.duration_secs,
+            record.shipped_at,
+            &record.backend,
+        ],
+    )?;
+
+    Ok(())
+}
+
+pub fn query_pr_costs(repo_root: &Path) -> anyhow::Result<Vec<PrCostRecord>> {
+    let path = pr_costs_db_path(repo_root);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let conn = rusqlite::Connection::open(&path)?;
+    let mut stmt = conn.prepare(
+        "SELECT pr_number, gap_id, model, tokens_in, tokens_out, usd_cost, duration_secs, shipped_at, backend
+         FROM chump_pr_costs
+         ORDER BY shipped_at DESC"
+    )?;
+
+    let records = stmt
+        .query_map([], |row| {
+            Ok(PrCostRecord {
+                pr_number: row.get(0)?,
+                gap_id: row.get(1)?,
+                model: row.get(2)?,
+                tokens_in: row.get(3)?,
+                tokens_out: row.get(4)?,
+                usd_cost: row.get(5)?,
+                duration_secs: row.get(6)?,
+                shipped_at: row.get(7)?,
+                backend: row.get(8)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(records)
+}
+
+#[cfg(test)]
+mod pr_cost_tests {
+    use super::*;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn test_pr_cost_record_and_query() {
+        let tmpdir = std::env::temp_dir().join(format!(
+            "chump-pr-cost-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&tmpdir);
+        fs::create_dir_all(&tmpdir).unwrap();
+
+        let repo_root = &tmpdir;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let record = PrCostRecord {
+            pr_number: 12345,
+            gap_id: "INFRA-405".to_string(),
+            model: "claude-haiku".to_string(),
+            tokens_in: 1000,
+            tokens_out: 500,
+            usd_cost: 0.02,
+            duration_secs: 120,
+            shipped_at: now,
+            backend: "claude".to_string(),
+        };
+
+        record_pr_cost(repo_root, &record).unwrap();
+        let records = query_pr_costs(repo_root).unwrap();
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].pr_number, 12345);
+        assert_eq!(records[0].gap_id, "INFRA-405");
+        assert_eq!(records[0].tokens_in, 1000);
+        assert_eq!(records[0].usd_cost, 0.02);
+
+        let _ = fs::remove_dir_all(&tmpdir);
+    }
+
+    #[test]
+    fn test_pr_cost_upsert() {
+        let tmpdir = std::env::temp_dir().join(format!(
+            "chump-pr-cost-upsert-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&tmpdir);
+        fs::create_dir_all(&tmpdir).unwrap();
+
+        let repo_root = &tmpdir;
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let record1 = PrCostRecord {
+            pr_number: 999,
+            gap_id: "TEST-1".to_string(),
+            model: "claude-opus".to_string(),
+            tokens_in: 100,
+            tokens_out: 50,
+            usd_cost: 0.01,
+            duration_secs: 60,
+            shipped_at: now,
+            backend: "claude".to_string(),
+        };
+
+        record_pr_cost(repo_root, &record1).unwrap();
+        let records = query_pr_costs(repo_root).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].tokens_in, 100);
+
+        let record2 = PrCostRecord {
+            pr_number: 999,
+            gap_id: "TEST-1".to_string(),
+            model: "claude-opus".to_string(),
+            tokens_in: 200,
+            tokens_out: 100,
+            usd_cost: 0.02,
+            duration_secs: 120,
+            shipped_at: now,
+            backend: "claude".to_string(),
+        };
+
+        record_pr_cost(repo_root, &record2).unwrap();
+        let records = query_pr_costs(repo_root).unwrap();
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].tokens_in, 200);
+
+        let _ = fs::remove_dir_all(&tmpdir);
+    }
+}
