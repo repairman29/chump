@@ -52,8 +52,12 @@ cat > .cargo/config.toml <<'EOF'
 rustc-wrapper = "sccache"
 
 [env]
-# 10 GB cache, large enough for chump's full dep tree several times over.
-SCCACHE_CACHE_SIZE = "10G"
+# 20 GB cache. Bumped from 10G on 2026-05-04 — observed 57.88% Rust hit
+# rate at 9.3G/10G utilization on the dogfood machine (eviction churn
+# was capping the hit rate). 20G fits chump's dep tree across 8 fleet
+# worktrees with headroom. Tune via $SCCACHE_CACHE_SIZE in this file
+# if your machine is disk-constrained.
+SCCACHE_CACHE_SIZE = "20G"
 # Local disk cache (default ~/.cache/sccache). Override with
 # SCCACHE_DIR=/path if you want to put it on faster storage.
 EOF
