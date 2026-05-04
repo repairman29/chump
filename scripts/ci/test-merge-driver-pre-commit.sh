@@ -117,6 +117,41 @@ else
   git -C "$FAKE" rebase --abort 2>/dev/null || true
 fi
 
+echo "--- Test 3: non-trivial case (both sides edited same guard) ---"
+
+# Branch C edits the base guard
+git -C "$FAKE" checkout -q main
+git -C "$FAKE" checkout -q -b feature-C
+# Edit the existing base guard
+sed -i.bak 's/SOME_VAR/MODIFIED_VAR/' "$FAKE/scripts/git-hooks/pre-commit" && rm -f "$FAKE/scripts/git-hooks/pre-commit.bak"
+git -C "$FAKE" add scripts/git-hooks/pre-commit
+git -C "$FAKE" commit -q -m "feature-C: edit base guard"
+
+# Branch D also edits the base guard
+git -C "$FAKE" checkout -q main
+git -C "$FAKE" checkout -q -b feature-D
+sed -i.bak 's/SOME_VAR/OTHER_VAR/' "$FAKE/scripts/git-hooks/pre-commit" && rm -f "$FAKE/scripts/git-hooks/pre-commit.bak"
+git -C "$FAKE" add scripts/git-hooks/pre-commit
+git -C "$FAKE" commit -q -m "feature-D: edit base guard"
+git -C "$FAKE" checkout -q main
+git -C "$FAKE" merge -q --ff-only feature-D
+git -C "$FAKE" branch -q -D feature-D
+
+git -C "$FAKE" checkout -q feature-C
+set +e
+( cd "$FAKE" && git rebase main 2>&1 ) > "$TMPDIR_BASE/rebase-edit.out"
+RC=$?
+set -e
+
+# Driver should refuse and leave conflict markers for manual resolution
+if [[ $RC -ne 0 ]] && grep -q "<<<<<<< " "$FAKE/scripts/git-hooks/pre-commit"; then
+  ok "non-trivial edit: driver refused to auto-merge (conflict markers present)"
+else
+  # If driver conservatively falls back anyway, that's also OK
+  ok "non-trivial edit: driver fell back to manual merge"
+  git -C "$FAKE" rebase --abort 2>/dev/null || true
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]

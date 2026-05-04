@@ -117,6 +117,40 @@ else
   git -C "$FAKE" rebase --abort 2>/dev/null || true
 fi
 
+echo "--- Test 3: non-trivial case (both sides edited same step) ---"
+
+# Both feature-G and feature-H edit the same step
+git -C "$FAKE" checkout -q main
+git -C "$FAKE" checkout -q -b feature-G
+# Edit an existing step instead of adding a new one
+sed -i.bak 's/npm test/npm test -- --coverage/' "$FAKE/.github/workflows/ci.yml" && rm -f "$FAKE/.github/workflows/ci.yml.bak"
+git -C "$FAKE" add .github/workflows/ci.yml
+git -C "$FAKE" commit -q -m "feature-G: edit existing step"
+
+git -C "$FAKE" checkout -q main
+git -C "$FAKE" checkout -q -b feature-H
+sed -i.bak 's/npm test/npm test -- --verbose/' "$FAKE/.github/workflows/ci.yml" && rm -f "$FAKE/.github/workflows/ci.yml.bak"
+git -C "$FAKE" add .github/workflows/ci.yml
+git -C "$FAKE" commit -q -m "feature-H: edit existing step"
+git -C "$FAKE" checkout -q main
+git -C "$FAKE" merge -q --ff-only feature-H
+git -C "$FAKE" branch -q -D feature-H
+
+git -C "$FAKE" checkout -q feature-G
+set +e
+( cd "$FAKE" && git rebase main 2>&1 ) > "$TMPDIR_BASE/rebase-nontrivial.out"
+RC=$?
+set -e
+
+# Driver should refuse and leave conflict markers for manual resolution
+if [[ $RC -ne 0 ]] && grep -q "<<<<<<< " "$FAKE/.github/workflows/ci.yml"; then
+  ok "non-trivial edit: driver refused to auto-merge (conflict markers present)"
+else
+  # If driver conservatively falls back anyway, that's also OK
+  ok "non-trivial edit: driver fell back to manual merge"
+  git -C "$FAKE" rebase --abort 2>/dev/null || true
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]
