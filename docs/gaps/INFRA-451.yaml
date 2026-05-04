@@ -1,7 +1,16 @@
 - id: INFRA-451
   domain: INFRA
   title: "launchd installer scripts bake CWD-relative absolute path — plists break when install-time worktree is reaped (root cause: 4 of 5 reapers silent 24h+, watchdog included)"
-  status: open
+  status: done
   priority: P1
   effort: s
+  acceptance_criteria:
+    - scripts/setup/install-*-launchd.sh resolve the script path via 'git rev-parse --show-toplevel --git-common-dir' BEFORE writing the plist, so the baked path always points at the main checkout regardless of which worktree the install ran from
+    - "Add scripts/ci/test-launchd-installer-paths.sh: for each install-*-launchd.sh, run it from a tempdir-scoped fixture, verify the resulting plist's ProgramArguments + WorkingDirectory point at the main checkout (NOT under .claude/worktrees or .chump/worktrees)"
+    - "Repair existing installs: scripts/dev/heal-launchd-paths.sh that reads every dev.chump.* plist, detects worktree-baked paths, and rewrites them to main-checkout paths. Run as a one-shot during this PR's land + emit reaper_paths_healed event to ambient"
+    - "Same INFRA-247 root cause class: CWD-relative path captured at write time, breaks when CWD goes away. Pairs with that fix"
+  notes: |
+    Observed 2026-05-04: 4 of 5 reapers silent 24h+ (auto-arm, branch, ci-flake-rerun, ci-flake) plus reaper-watchdog itself. All baked /Users/jeffadkins/Projects/Chump/.claude/worktrees/infra-323-rename/scripts/... — that worktree was reaped this morning by the (still-working) stale-worktree-reaper. Snowballed into disk-full because no cleanup happened for ~24h. Re-ran the install-*-launchd.sh scripts from the main checkout to fix immediate state, but the underlying installer behavior repeats this every time the install-source worktree dies.
+  closed_date: '2026-05-04'
+  closed_pr: 1096
 
