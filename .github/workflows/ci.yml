@@ -292,6 +292,9 @@ jobs:
       - name: pre-push rebase-detect auto-skip (INFRA-368)
         run: bash scripts/ci/test-pre-push-rebase-allow.sh
 
+      - name: fleet picker skips shipped-on-main (FLEET-040)
+        run: bash scripts/ci/test-pick-gap-skips-shipped.sh
+
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
 
