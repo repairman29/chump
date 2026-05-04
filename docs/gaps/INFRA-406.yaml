@@ -1,7 +1,39 @@
 - id: INFRA-406
   domain: INFRA
   title: claude -p / chump --execute-gap hang detector — SIGTERM + ambient ALERT on no-tool-call timeout
-  status: open
+  status: done
   priority: P1
   effort: s
+  description: |
+    INFRA-119 (bot-merge.sh health monitor + budget watchdog) catches
+    bot-merge.sh stalls. Nothing catches the LLM-call layer hanging:
+      - claude -p with no tool calls for N minutes
+      - chump --execute-gap stuck on a slow provider that hasn't returned
+    
+    Today's INFRA-310 dispatch had its claude -p still alive after I'd
+    already killed the parent — orphan claude process, no cost signal,
+    silent token-burn.
+    
+    Implementation:
+      - Inside the agent loop iteration_controller (src/agent_loop/), track
+        last_progress_at (updated on each tool call, message, or state
+        transition).
+      - If now - last_progress_at > CHUMP_AGENT_HANG_SECS (default 300s),
+        log ALERT kind=agent_hung gap=<ID> session=<sid>
+        last_progress_at=<ts> to ambient.jsonl, then SIGTERM self.
+      - For claude -p (Anthropic CLI we don't control directly), wrap in
+        a watchdog shell script: scripts/dispatch/claude-with-watchdog.sh
+        that monitors child stdout for tool-call markers and SIGTERMs the
+        child if quiet > N seconds.
+      - chump dispatch --backend headless invokes the wrapper instead of
+        bare claude -p.
+    
+    This complements (not replaces) INFRA-119's bot-merge.sh layer.
+  acceptance_criteria:
+    - chump --execute-gap self-terminates with ALERT kind=agent_hung when no tool call/state transition for CHUMP_AGENT_HANG_SECS
+    - claude -p wrapped in scripts/dispatch/claude-with-watchdog.sh — same hang-detection contract
+    - "Test: scripts/ci/test-agent-hang-detector.sh — synthetic hang triggers SIGTERM + ambient ALERT"
+    - Default 300s; per-gap override via CHUMP_AGENT_HANG_SECS env
+  closed_date: '2026-05-04'
+  closed_pr: 1047
 
