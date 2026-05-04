@@ -117,12 +117,13 @@ mod tests {
             "Got it, I'll remember that Chump uses Rust and connects to Ollama.",
         );
         // Lower priority number = matched first in wiremock
+        let resp_count = responses.len();
         for (i, resp) in responses.into_iter().enumerate() {
             Mock::given(method("POST"))
                 .and(path("/chat/completions"))
                 .respond_with(resp)
                 .up_to_n_times(1)
-                .with_priority(i as u8 + 1)
+                .with_priority((resp_count - i) as u8)
                 .mount(&mock)
                 .await;
         }
@@ -169,12 +170,13 @@ mod tests {
             json!({"action": "store", "content": "Thinking-then-tool e2e fact"}),
             "Stored after thinking block.",
         );
+        let resp_count = responses.len();
         for (i, resp) in responses.into_iter().enumerate() {
             Mock::given(method("POST"))
                 .and(path("/chat/completions"))
                 .respond_with(resp)
                 .up_to_n_times(1)
-                .with_priority(i as u8 + 1)
+                .with_priority((resp_count - i) as u8)
                 .mount(&mock)
                 .await;
         }
