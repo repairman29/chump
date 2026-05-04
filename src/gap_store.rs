@@ -2987,6 +2987,11 @@ mod tests {
                     description: Some("Plain description".to_string()),
                     status: Some("done".to_string()),
                     closed_date: Some("2026-04-26".to_string()),
+                    // INFRA-402: status=done write path now requires a numeric
+                    // closed_pr (or CHUMP_BYPASS_CLOSED_PR_GUARD=1). The test
+                    // fixture pre-dates this guard; passing closed_pr keeps
+                    // the byte-stable round-trip semantics intact.
+                    closed_pr: Some(42),
                     ..Default::default()
                 },
             )
