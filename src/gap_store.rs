@@ -48,6 +48,22 @@ pub struct GapRow {
     /// INFRA-156 added the column + CLI `--closed-pr` flag plumbing.
     #[serde(default)]
     pub closed_pr: Option<i64>,
+    /// Comma-separated list of required skills (e.g., "rust,sqlite,macos").
+    /// INFRA-314: workers filter gaps by matching WORKER_SKILLS env var.
+    #[serde(default)]
+    pub skills_required: String,
+    /// Preferred backend: claude | local-llm | cascade | any (default: any).
+    /// INFRA-314: workers score gap affinity.
+    #[serde(default)]
+    pub preferred_backend: String,
+    /// Preferred machine: macbook | pi-mesh | cloud-overflow | any (default: any).
+    /// INFRA-314: workers score gap affinity.
+    #[serde(default)]
+    pub preferred_machine: String,
+    /// Estimated minutes to complete (5..240). Refines effort level.
+    /// INFRA-314: workers can use for capacity planning.
+    #[serde(default)]
+    pub estimated_minutes: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,6 +247,23 @@ impl GapStore {
         let _ = self
             .conn
             .execute("ALTER TABLE gaps ADD COLUMN closed_pr INTEGER", []);
+        // INFRA-314: affinity tags for worker preference matching.
+        let _ = self.conn.execute(
+            "ALTER TABLE gaps ADD COLUMN skills_required TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE gaps ADD COLUMN preferred_backend TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE gaps ADD COLUMN preferred_machine TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = self.conn.execute(
+            "ALTER TABLE gaps ADD COLUMN estimated_minutes TEXT NOT NULL DEFAULT ''",
+            [],
+        );
         // Backfill closed_date for done rows that predate the column. Idempotent:
         // only touches rows where closed_date is empty AND closed_at is set, so
         // re-running is a no-op once the row is healed. UTC matches `unix_to_iso_date`.
@@ -305,13 +338,18 @@ impl GapStore {
                 opened_date: row.get(13)?,
                 closed_date: row.get(14)?,
                 closed_pr: row.get(15)?,
+                skills_required: row.get(16)?,
+                preferred_backend: row.get(17)?,
+                preferred_machine: row.get(18)?,
+                estimated_minutes: row.get(19)?,
             })
         };
         if let Some(s) = status_filter {
             let mut stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
                         acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
-                        opened_date,closed_date,closed_pr
+                        opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                        preferred_machine,estimated_minutes
                  FROM gaps WHERE status=?1 ORDER BY id",
             )?;
             let rows = stmt.query_map(params![s], make_row)?;
@@ -320,7 +358,8 @@ impl GapStore {
             let mut stmt = self.conn.prepare(
                 "SELECT id,domain,title,description,priority,effort,status,
                         acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
-                        opened_date,closed_date,closed_pr
+                        opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                        preferred_machine,estimated_minutes
                  FROM gaps ORDER BY id",
             )?;
             let rows = stmt.query_map([], make_row)?;
@@ -333,7 +372,8 @@ impl GapStore {
         let mut stmt = self.conn.prepare(
             "SELECT id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
-                    opened_date,closed_date,closed_pr
+                    opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                    preferred_machine,estimated_minutes
              FROM gaps WHERE id=?1",
         )?;
         let row = stmt
@@ -355,6 +395,10 @@ impl GapStore {
                     opened_date: row.get(13)?,
                     closed_date: row.get(14)?,
                     closed_pr: row.get(15)?,
+                    skills_required: row.get(16)?,
+                    preferred_backend: row.get(17)?,
+                    preferred_machine: row.get(18)?,
+                    estimated_minutes: row.get(19)?,
                 })
             })
             .optional()?;
@@ -413,6 +457,22 @@ impl GapStore {
         }
         if let Some(v) = fields.closed_pr {
             sets.push("closed_pr=?");
+            vals.push(Box::new(v));
+        }
+        if let Some(v) = fields.skills_required {
+            sets.push("skills_required=?");
+            vals.push(Box::new(v));
+        }
+        if let Some(v) = fields.preferred_backend {
+            sets.push("preferred_backend=?");
+            vals.push(Box::new(v));
+        }
+        if let Some(v) = fields.preferred_machine {
+            sets.push("preferred_machine=?");
+            vals.push(Box::new(v));
+        }
+        if let Some(v) = fields.estimated_minutes {
+            sets.push("estimated_minutes=?");
             vals.push(Box::new(v));
         }
         if sets.is_empty() {
@@ -1150,6 +1210,14 @@ pub struct GapFieldUpdate {
     /// pass `Some(n)` to set or update. Pairs with `--closed-pr` on
     /// `chump gap set` and `chump gap ship`.
     pub closed_pr: Option<i64>,
+    /// INFRA-314: comma-separated required skills.
+    pub skills_required: Option<String>,
+    /// INFRA-314: preferred backend (claude | local-llm | cascade | any).
+    pub preferred_backend: Option<String>,
+    /// INFRA-314: preferred machine (macbook | pi-mesh | cloud-overflow | any).
+    pub preferred_machine: Option<String>,
+    /// INFRA-314: estimated minutes to complete.
+    pub estimated_minutes: Option<String>,
 }
 
 /// Render one gap as a YAML block-list entry. Field order matches the
@@ -1217,6 +1285,30 @@ fn format_gap_yaml(g: &GapRow) -> String {
     if let Some(pr) = g.closed_pr {
         s.push_str(&format!("  closed_pr: {}\n", pr));
     }
+    // INFRA-314: affinity tags for worker preference matching.
+    if !g.skills_required.is_empty() {
+        if let Some(items) = parse_json_string_list(&g.skills_required) {
+            if !items.is_empty() {
+                s.push_str("  skills_required: [");
+                s.push_str(&items.join(", "));
+                s.push_str("]\n");
+            }
+        } else {
+            s.push_str(&format!(
+                "  skills_required: {}\n",
+                yaml_scalar(&g.skills_required)
+            ));
+        }
+    }
+    if !g.preferred_backend.is_empty() {
+        s.push_str(&format!("  preferred_backend: {}\n", g.preferred_backend));
+    }
+    if !g.preferred_machine.is_empty() {
+        s.push_str(&format!("  preferred_machine: {}\n", g.preferred_machine));
+    }
+    if !g.estimated_minutes.is_empty() {
+        s.push_str(&format!("  estimated_minutes: {}\n", g.estimated_minutes));
+    }
     s.push('\n');
     s
 }
@@ -1248,6 +1340,10 @@ const DB_OWNED_GAP_FIELDS: &[&str] = &[
     "opened_date",
     "closed_date",
     "closed_pr",
+    "skills_required",
+    "preferred_backend",
+    "preferred_machine",
+    "estimated_minutes",
 ];
 
 /// INFRA-208: take freshly-generated per-file YAML (one block-list entry as
@@ -1475,6 +1571,18 @@ struct YamlGap {
     /// `import_from_yaml`.
     #[serde(default)]
     closed_pr: Option<serde_yaml::Value>,
+    /// INFRA-314: comma-separated required skills.
+    #[serde(default)]
+    skills_required: Option<serde_yaml::Value>,
+    /// INFRA-314: preferred backend.
+    #[serde(default)]
+    preferred_backend: Option<serde_yaml::Value>,
+    /// INFRA-314: preferred machine.
+    #[serde(default)]
+    preferred_machine: Option<serde_yaml::Value>,
+    /// INFRA-314: estimated minutes.
+    #[serde(default)]
+    estimated_minutes: Option<serde_yaml::Value>,
 }
 
 #[derive(Deserialize)]
@@ -1667,13 +1775,35 @@ impl GapStore {
             // blocked at commit by the INFRA-107 guard) are rejected as None
             // rather than fabricated to a number.
             let closed_pr = g.closed_pr.as_ref().and_then(yaml_value_to_i64);
+            // INFRA-314: affinity tags.
+            let skills_required = g
+                .skills_required
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let preferred_backend = g
+                .preferred_backend
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let preferred_machine = g
+                .preferred_machine
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let estimated_minutes = g
+                .estimated_minutes
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
             let created_at = unix_now();
 
             let changed = self.conn.execute(
                 "INSERT OR IGNORE INTO gaps(id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,
-                    opened_date,closed_date,closed_pr)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+                    opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                    preferred_machine,estimated_minutes)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
                 params![
                     g.id,
                     g.domain,
@@ -1690,6 +1820,10 @@ impl GapStore {
                     opened_date,
                     closed_date,
                     closed_pr,
+                    skills_required,
+                    preferred_backend,
+                    preferred_machine,
+                    estimated_minutes,
                 ],
             )?;
             if changed > 0 {

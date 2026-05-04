@@ -160,6 +160,14 @@ def main() -> int:
     active = set(os.environ.get("ACTIVE_GAPS", "").split())
     cooled = cooled_down_gaps(os.environ.get("COOLDOWN_DIR", ""))
 
+    # INFRA-314: Worker skill affinity scoring.
+    worker_skills = set(
+        s.lower().strip()
+        for s in os.environ.get("WORKER_SKILLS", "").split(",")
+        if s.strip()
+    )
+    PRIO_SCORE = {"P0": 8, "P1": 4, "P2": 2, "P3": 1}
+
     candidates = []
     for g in gaps:
         gid = g.get("id", "")
@@ -195,8 +203,48 @@ def main() -> int:
             dep_list = []
         if dep_list:
             continue
+
+        # INFRA-314: Extract affinity metadata.
+        skills_required_raw = g.get("skills_required", "")
+        if isinstance(skills_required_raw, str):
+            try:
+                skills_required = (
+                    json.loads(skills_required_raw)
+                    if skills_required_raw.strip()
+                    else []
+                )
+            except json.JSONDecodeError:
+                skills_required = []
+        elif isinstance(skills_required_raw, list):
+            skills_required = skills_required_raw
+        else:
+            skills_required = []
+
+        # Normalize to lowercase for comparison.
+        skills_required = {s.lower() for s in skills_required}
+
+        preferred_backend = (g.get("preferred_backend") or "").lower()
+        preferred_machine = (g.get("preferred_machine") or "").lower()
+
+        # Hard filter: if gap requires skills, worker must have all of them.
+        if skills_required and not skills_required.issubset(worker_skills):
+            continue
+
+        # Affinity scoring: backend match (3) + machine match (2) + skill matches (1 each) + priority.
+        affinity_score = 0
+        worker_backend = os.environ.get("WORKER_BACKEND", "").lower()
+        if worker_backend and preferred_backend and worker_backend == preferred_backend:
+            affinity_score += 3
+        worker_machine = os.environ.get("WORKER_MACHINE", "").lower()
+        if worker_machine and preferred_machine and worker_machine == preferred_machine:
+            affinity_score += 2
+        # Each matched skill adds 1 point (up to len(skills_required)).
+        affinity_score += len(skills_required & worker_skills)
+
+        # Primary sort: affinity score (desc), then priority, then effort, then created_at.
         candidates.append(
             (
+                -affinity_score,  # Negative for descending sort.
                 PRIO_RANK.get(p, 9),
                 EFFORT_RANK.get(e, 9),
                 g.get("created_at") or 0,
@@ -220,10 +268,30 @@ def main() -> int:
         # Try candidates in rotated order.
         for i in range(len(candidates)):
             idx = (offset + i) % len(candidates)
-            gap_id = candidates[idx][3]
+            gap_id = candidates[idx][4]  # Index changed from [3] to [4] due to affinity_score.
             if try_claim_gap(gap_id, session_id, lock_dir):
                 print(gap_id)
                 return 0
+    else:
+        # INFRA-314: Emit affinity_starved if no eligible gaps found and worker has skill constraints.
+        if worker_skills:
+            import time
+
+            now = int(time.time())
+            ambient_event = {
+                "event": "ALERT",
+                "kind": "affinity_starved",
+                "worker_skills": list(worker_skills),
+                "timestamp": time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)
+                ),
+            }
+            ambient_path = os.environ.get("AMBIENT_JSONL", ".chump-locks/ambient.jsonl")
+            try:
+                with open(ambient_path, "a") as f:
+                    f.write(json.dumps(ambient_event) + "\n")
+            except Exception:
+                pass
 
     return 0
 
