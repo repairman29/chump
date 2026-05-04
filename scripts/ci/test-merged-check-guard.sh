@@ -92,9 +92,16 @@ grep -q 'CHUMP_SKIP_MERGED_CHECK' "$BOT_MERGE" || {
     echo "[FAIL] bypass env missing from bot-merge.sh"; exit 1; }
 grep -q 'CHUMP_SKIP_MERGED_CHECK' "$PR_WATCH" || {
     echo "[FAIL] bypass env missing from pr-watch.sh"; exit 1; }
-grep -q 'INFRA-306' "$REPO_ROOT/CLAUDE.md" || {
-    echo "[FAIL] INFRA-306 not documented in CLAUDE.md recovery section"; exit 1; }
-echo "[PASS] bypass env documented in both scripts; CLAUDE.md references INFRA-306"
+# DOC-018 (2026-05-04) split CLAUDE.md into hot overlay + cold gotchas.
+# INFRA-306 recovery details moved to docs/process/CLAUDE_GOTCHAS.md.
+# Either location satisfies the doc-pin contract.
+if grep -q 'INFRA-306' "$REPO_ROOT/CLAUDE.md" \
+   || grep -q 'INFRA-306' "$REPO_ROOT/docs/process/CLAUDE_GOTCHAS.md" 2>/dev/null; then
+    echo "[PASS] bypass env documented; INFRA-306 referenced in CLAUDE.md or CLAUDE_GOTCHAS.md"
+else
+    echo "[FAIL] INFRA-306 not documented in CLAUDE.md or docs/process/CLAUDE_GOTCHAS.md"
+    exit 1
+fi
 
 echo ""
 echo "[OK] all 3 INFRA-306 MERGED-guard cases passed"
