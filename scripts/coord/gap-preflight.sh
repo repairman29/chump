@@ -352,7 +352,49 @@ check_pr_conflict() {
     done <<< "$PR_DATA"
 }
 
+# ── Check 5: fetch gap YAML from sibling branches ──────────────────────────
+# FLEET-036: auto-fetch gap YAML from sibling branches before preflight reject.
+# When a gap_id is not found on origin/main, search sibling branches for the
+# gap definition and return concatenated YAML if found.
+# Optimization: try per-file direct fetch first (fast), skip slower fallback for
+# efficiency. If a gap is on a branch, it should already use per-file layout
+# (post-INFRA-188).
+_fetch_gap_from_sibling_branches() {
+    local gap_id="$1"
+    local remote="${2:-origin}"
+
+    # Get list of remote branches, excluding the base branch itself.
+    # Limit to 50 branches to avoid excessive git operations for bogus IDs.
+    local branch_list
+    branch_list=$(git branch -r --list "${remote}/*" --format='%(refname:short)' 2>/dev/null | \
+        grep -v "^${remote}/${BASE}$" | head -50 || true)
+    [[ -n "$branch_list" ]] || return 0
+
+    # For each sibling branch, try to fetch the gap YAML directly from per-file layout.
+    # INFRA-188 means all branches post-cutover use per-file layout; this check should
+    # be fast (git cat-file is a near-instant inode check).
+    while IFS= read -r branch; do
+        if git cat-file -e "${branch}:docs/gaps/${gap_id}.yaml" 2>/dev/null; then
+            git show "${branch}:docs/gaps/${gap_id}.yaml" 2>/dev/null || true
+            return 0
+        fi
+    done <<< "$branch_list"
+}
+
 for GAP_ID in "$@"; do
+    # FLEET-036: Before checking status, try to fetch gap YAML from sibling branches
+    # if not found on origin/main. This allows dispatch to pick up gaps filed on
+    # feature branches before they land on main.
+    if [[ -z "$(gap_status "$GAP_ID")" ]]; then
+        SIBLING_GAP_YAML="$(_fetch_gap_from_sibling_branches "$GAP_ID" "$REMOTE")"
+        if [[ -n "$SIBLING_GAP_YAML" ]]; then
+            info "NOTE: $GAP_ID found on sibling branch (FLEET-036) — fetching gap definition."
+            # Append to GAPS_YAML so gap_status() can find it
+            GAPS_YAML="$GAPS_YAML
+$SIBLING_GAP_YAML"
+        fi
+    fi
+
     # ── Check 1: done on main ──────────────────────────────────────────────
     if [[ -n "$GAPS_YAML" ]]; then
         STATUS="$(gap_status "$GAP_ID")"
