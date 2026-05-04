@@ -10,6 +10,7 @@ Inputs (all env vars):
   FLEET_PRIORITY_FILTER comma-separated, e.g. "P0,P1" (empty = any)
   FLEET_DOMAIN_FILTER   comma-separated, e.g. "INFRA,DOC" (empty = any)
   FLEET_EFFORT_FILTER   comma-separated, e.g. "xs,s,m" (empty = any)
+  FLEET_MODEL           worker's model tier, e.g. "haiku", "sonnet", "opus"
   EXCLUDE_RE            regex; gap IDs matching this are skipped
   ACTIVE_GAPS           whitespace-separated gap IDs already claimed by siblings
   WORKER_INDEX          INFRA-340: 1-based worker index. When N workers boot in
@@ -90,6 +91,7 @@ def main() -> int:
     prio_filter = [p.upper() for p in csv("FLEET_PRIORITY_FILTER")]
     domain_filter = [d.lower() for d in csv("FLEET_DOMAIN_FILTER")]
     effort_filter = [e.lower() for e in csv("FLEET_EFFORT_FILTER")]
+    worker_model = os.environ.get("FLEET_MODEL", "haiku").lower()
     exclude_re = re.compile(os.environ.get("EXCLUDE_RE", "^$"))
     active = set(os.environ.get("ACTIVE_GAPS", "").split())
     cooled = cooled_down_gaps(os.environ.get("COOLDOWN_DIR", ""))
@@ -126,6 +128,11 @@ def main() -> int:
             continue
         e = (g.get("effort") or "").lower()
         if effort_filter and e not in effort_filter:
+            continue
+        # INFRA-418: skip gaps that require a different model tier.
+        # If gap.required_model is not set (empty string), it's compatible with any model.
+        required_model = (g.get("required_model") or "").lower()
+        if required_model and required_model != worker_model:
             continue
         # Conservative: skip gaps with non-empty depends_on.
         # INFRA-397: depends_on arrives as a JSON-encoded string from
