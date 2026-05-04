@@ -20,6 +20,6 @@
 scripts/git-hooks/pre-commit merge=pre-commit-add-guard
 
 # Per-file gap YAMLs (docs/gaps/*.yaml) typically don't conflict (separate files per gap).
-# When they do (concurrent closes on the same gap), use a last-write-wins strategy:
-# the newer closed_pr value takes precedence. For now, let default merge handle this.
-# docs/gaps/*.yaml merge=gap-yaml-add-line
+# When they do (concurrent closes on the same gap), use gap-yaml-add-line driver to
+# resolve by taking ours (the current/newer state).
+docs/gaps/*.yaml merge=gap-yaml-add-line
