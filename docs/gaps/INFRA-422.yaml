@@ -1,0 +1,16 @@
+- id: INFRA-422
+  domain: INFRA
+  title: bot-merge.sh — auto-run chump-doctor.sh --probe before invoking chump (INFRA-275 syspolicyd wedge avoidance)
+  status: open
+  priority: P1
+  effort: xs
+  description: 'INFRA-275 documented the syspolicyd inode-wedge that hangs every chump invocation. bot-merge.sh calls chump multiple times (gap claim, gap ship --update-yaml, gap preflight). When the binary
+    is wedged, every call hangs the watching agent for the full timeout.
+
+
+    Fix: bot-merge.sh runs scripts/dev/chump-doctor.sh as a 5s pre-probe; if probe times out, runs CHUMP_DOCTOR_FORCE=1 chump-doctor.sh to heal the inode, then proceeds. Idempotent — adds ~5s when binary
+    is healthy, saves minutes when wedged.'
+  acceptance_criteria:
+  - bot-merge.sh runs chump-doctor.sh probe before any chump invocation
+  - If probe times out, auto-heal via CHUMP_DOCTOR_FORCE=1
+  - 'Test: scripts/ci/test-bot-merge-doctor-preflight.sh — fixture wedged binary, assert auto-heal'

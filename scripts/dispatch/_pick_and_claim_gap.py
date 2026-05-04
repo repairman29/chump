@@ -1,0 +1,300 @@
+#!/usr/bin/env python3
+"""INFRA-415: atomic gap picker+claimer for fleet workers.
+
+Extends _pick_gap.py with claiming logic so gap-picker returns ONLY gaps
+that have already been claimed (atomically) by this invocation. Prevents
+concurrent workers from picking the same gap.
+
+Reads the open-gap JSON, applies fleet filters, attempts to claim each
+candidate in priority order. Returns the first gap that was successfully
+claimed, or nothing if all candidates are already claimed/unavailable.
+
+Environment (same as _pick_gap.py plus):
+  SESSION_ID       session identifier for lease (e.g. from CLAUDE_SESSION_ID)
+  CHUMP_LOCK_DIR   override .chump-locks path (default: repo_root/.chump-locks)
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
+EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
+
+
+def csv(env_key: str) -> list[str]:
+    return [s.strip() for s in os.environ.get(env_key, "").split(",") if s.strip()]
+
+
+def get_session_id() -> str:
+    """Resolve session ID in priority order (same as gap-claim.sh)."""
+    # Priority 1: explicit override
+    if os.environ.get("CHUMP_SESSION_ID"):
+        return os.environ["CHUMP_SESSION_ID"]
+
+    # Priority 2: Claude Code SDK injection
+    if os.environ.get("CLAUDE_SESSION_ID"):
+        return os.environ["CLAUDE_SESSION_ID"]
+
+    # Priority 3: worktree-scoped ID (read from .chump-locks/.wt-session-id if present)
+    wt_session_path = Path(".chump-locks/.wt-session-id")
+    if wt_session_path.exists():
+        try:
+            with open(wt_session_path) as f:
+                return f.read().strip()
+        except Exception:
+            pass
+
+    # Priority 4: machine-scoped fallback (read from ~/.chump/session_id)
+    home = os.environ.get("HOME", os.path.expanduser("~"))
+    fallback_path = Path(home) / ".chump" / "session_id"
+    if fallback_path.exists():
+        try:
+            with open(fallback_path) as f:
+                return f.read().strip()
+        except Exception:
+            pass
+
+    raise ValueError("No session ID found; set CHUMP_SESSION_ID or CLAUDE_SESSION_ID")
+
+
+def get_lock_dir() -> Path:
+    """Get the lease lock directory."""
+    repo_root = os.environ.get("REPO_ROOT", ".")
+    lock_dir = os.environ.get("CHUMP_LOCK_DIR")
+    if lock_dir:
+        return Path(lock_dir)
+    return Path(repo_root) / ".chump-locks"
+
+
+def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
+    """Attempt to write a lease for gap_id. Return True if successful."""
+    lock_dir.mkdir(parents=True, exist_ok=True)
+
+    # Check if gap is already claimed by another session.
+    for lease_file in lock_dir.glob("*.json"):
+        try:
+            with open(lease_file) as f:
+                lease = json.load(f)
+            if lease.get("gap_id") == gap_id:
+                # Already claimed (by us or another session).
+                return False
+        except (OSError, json.JSONDecodeError):
+            continue
+
+    # Write our claim. TTL: 4 hours.
+    lease_file = lock_dir / f"{session_id}.json"
+    now = int(time.time())
+    ttl_seconds = 4 * 3600
+    expires_at = (now + ttl_seconds)
+
+    lease = {
+        "session_id": session_id,
+        "gap_id": gap_id,
+        "taken_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+        "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at)),
+        "heartbeat_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+        "purpose": "fleet:pick_and_claim",
+        "speculative": True,  # Fleet uses speculative by default.
+    }
+
+    try:
+        with open(lease_file, "w") as f:
+            json.dump(lease, f, indent=2)
+        return True
+    except OSError:
+        return False
+
+
+def cooled_down_gaps(cooldown_dir: str) -> set[str]:
+    """INFRA-361: gap IDs whose cooldown record is still in the future."""
+    if not cooldown_dir or not os.path.isdir(cooldown_dir):
+        return set()
+    now = int(time.time())
+    cooled: set[str] = set()
+    for entry in os.listdir(cooldown_dir):
+        if not entry.endswith(".json"):
+            continue
+        path = os.path.join(cooldown_dir, entry)
+        try:
+            with open(path) as f:
+                rec = json.load(f)
+        except Exception:
+            continue
+        gid = rec.get("gap_id") or ""
+        until = rec.get("until", 0)
+        if not gid:
+            continue
+        if until > now:
+            cooled.add(gid)
+        else:
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+    return cooled
+
+
+def main() -> int:
+    gap_file = os.environ.get("GAP_JSON_FILE")
+    if not gap_file or not os.path.exists(gap_file):
+        return 0
+    try:
+        with open(gap_file) as f:
+            gaps = json.load(f)
+    except Exception:
+        return 0
+
+    session_id = get_session_id()
+    lock_dir = get_lock_dir()
+
+    prio_filter = [p.upper() for p in csv("FLEET_PRIORITY_FILTER")]
+    domain_filter = [d.lower() for d in csv("FLEET_DOMAIN_FILTER")]
+    effort_filter = [e.lower() for e in csv("FLEET_EFFORT_FILTER")]
+    exclude_re = re.compile(os.environ.get("EXCLUDE_RE", "^$"))
+    active = set(os.environ.get("ACTIVE_GAPS", "").split())
+    cooled = cooled_down_gaps(os.environ.get("COOLDOWN_DIR", ""))
+
+    # INFRA-314: Worker skill affinity scoring.
+    worker_skills = set(
+        s.lower().strip()
+        for s in os.environ.get("WORKER_SKILLS", "").split(",")
+        if s.strip()
+    )
+    PRIO_SCORE = {"P0": 8, "P1": 4, "P2": 2, "P3": 1}
+
+    candidates = []
+    for g in gaps:
+        gid = g.get("id", "")
+        if not gid or gid in active:
+            continue
+        if gid in cooled:
+            continue
+        if exclude_re.search(gid):
+            continue
+        if g.get("status") != "open":
+            continue
+        notes = (g.get("notes") or "").lstrip()
+        if notes.upper().startswith("SUPERSEDED"):
+            continue
+        p = (g.get("priority") or "").upper()
+        if prio_filter and p not in prio_filter:
+            continue
+        d = (g.get("domain") or "").lower()
+        if domain_filter and d not in domain_filter:
+            continue
+        e = (g.get("effort") or "").lower()
+        if effort_filter and e not in effort_filter:
+            continue
+        deps_raw = g.get("depends_on")
+        if isinstance(deps_raw, str):
+            try:
+                dep_list = json.loads(deps_raw) if deps_raw.strip() else []
+            except json.JSONDecodeError:
+                continue
+        elif isinstance(deps_raw, list):
+            dep_list = deps_raw
+        else:
+            dep_list = []
+        if dep_list:
+            continue
+
+        # INFRA-314: Extract affinity metadata.
+        skills_required_raw = g.get("skills_required", "")
+        if isinstance(skills_required_raw, str):
+            try:
+                skills_required = (
+                    json.loads(skills_required_raw)
+                    if skills_required_raw.strip()
+                    else []
+                )
+            except json.JSONDecodeError:
+                skills_required = []
+        elif isinstance(skills_required_raw, list):
+            skills_required = skills_required_raw
+        else:
+            skills_required = []
+
+        # Normalize to lowercase for comparison.
+        skills_required = {s.lower() for s in skills_required}
+
+        preferred_backend = (g.get("preferred_backend") or "").lower()
+        preferred_machine = (g.get("preferred_machine") or "").lower()
+
+        # Hard filter: if gap requires skills, worker must have all of them.
+        if skills_required and not skills_required.issubset(worker_skills):
+            continue
+
+        # Affinity scoring: backend match (3) + machine match (2) + skill matches (1 each) + priority.
+        affinity_score = 0
+        worker_backend = os.environ.get("WORKER_BACKEND", "").lower()
+        if worker_backend and preferred_backend and worker_backend == preferred_backend:
+            affinity_score += 3
+        worker_machine = os.environ.get("WORKER_MACHINE", "").lower()
+        if worker_machine and preferred_machine and worker_machine == preferred_machine:
+            affinity_score += 2
+        # Each matched skill adds 1 point (up to len(skills_required)).
+        affinity_score += len(skills_required & worker_skills)
+
+        # Primary sort: affinity score (desc), then priority, then effort, then created_at.
+        candidates.append(
+            (
+                -affinity_score,  # Negative for descending sort.
+                PRIO_RANK.get(p, 9),
+                EFFORT_RANK.get(e, 9),
+                g.get("created_at") or 0,
+                gid,
+            )
+        )
+
+    candidates.sort()
+
+    if candidates:
+        # Try to claim candidates in priority order. Return the first one we
+        # successfully claim. This ensures no two workers return the same gap.
+        try:
+            worker_idx = int(os.environ.get("WORKER_INDEX", "1"))
+        except ValueError:
+            worker_idx = 1
+
+        # Start from staggered offset (same logic as _pick_gap.py).
+        offset = (max(worker_idx, 1) - 1) % len(candidates)
+
+        # Try candidates in rotated order.
+        for i in range(len(candidates)):
+            idx = (offset + i) % len(candidates)
+            gap_id = candidates[idx][4]  # Index changed from [3] to [4] due to affinity_score.
+            if try_claim_gap(gap_id, session_id, lock_dir):
+                print(gap_id)
+                return 0
+    else:
+        # INFRA-314: Emit affinity_starved if no eligible gaps found and worker has skill constraints.
+        if worker_skills:
+            import time
+
+            now = int(time.time())
+            ambient_event = {
+                "event": "ALERT",
+                "kind": "affinity_starved",
+                "worker_skills": list(worker_skills),
+                "timestamp": time.strftime(
+                    "%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)
+                ),
+            }
+            ambient_path = os.environ.get("AMBIENT_JSONL", ".chump-locks/ambient.jsonl")
+            try:
+                with open(ambient_path, "a") as f:
+                    f.write(json.dumps(ambient_event) + "\n")
+            except Exception:
+                pass
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

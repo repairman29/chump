@@ -1,0 +1,20 @@
+- id: DOC-018
+  domain: DOC
+  title: split CLAUDE.md into hot 2K overlay + cold operational gotchas — kill ~10K-token per-spawn tax
+  status: open
+  priority: P0
+  effort: s
+  description: 'Every spawned agent (fleet worker, subagent, remote routine) loads CLAUDE.md before doing useful work. Current size is ~10-15K tokens. At fleet scale (100 agent-spawns/week) this is ~1.2M
+    tokens/week of pure prelude tax.
+
+
+    Plan: split into (a) hot CLAUDE.md (~2K) — mandatory pre-flight, hard rules, ship pipeline only; (b) cold docs/process/CLAUDE_GOTCHAS.md (~10K) — chump-doctor heal recipe, raw-YAML-edit guard, INFRA-272
+    path-filter trap, syspolicyd wedge, stacked-PR rebase footgun, etc. Cold doc is read on-demand when the agent hits a specific failure surface (chump binary hung → read syspolicyd section).
+
+
+    Measure: token count of CLAUDE.md before/after via tiktoken. Target: ≤2500 tokens.'
+  acceptance_criteria:
+  - CLAUDE.md drops to <=2500 tokens (measured via tiktoken)
+  - all moved content lives in docs/process/CLAUDE_GOTCHAS.md
+  - 'CLAUDE.md hot section retains: pre-flight commands, ship pipeline, hard rules, gap registry pointer'
+  - 'backward-compat: any rule referenced from another doc still resolves'
