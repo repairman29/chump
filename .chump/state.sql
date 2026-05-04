@@ -797,7 +797,7 @@ gaps:
 - id: COG-039
   domain: COG
   title: bench harness — flag-off baseline vs cog_037-on Thompson router (M4 step 2 prerequisite to flipping default)
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -816,6 +816,8 @@ gaps:
     - writes JSON summary to scripts/ab-harness/results/cog-037-bench-<ts>.json
     - prints operator verdict matrix (insufficient data / safe to flip / don't flip / strong signal)
     - works on a fresh repo with no routing outcomes (graceful degradation to 'INSUFFICIENT DATA')
+  closed_date: '2026-05-04'
+  closed_pr: 1031
 
 - id: COG-040
   domain: COG
@@ -1555,6 +1557,60 @@ gaps:
     - CLAUDE.md adds a one-line pointer to it under 'Fleet launcher' heading
     - README mentions it (or a docs index)
     - book/ mirror updated if applicable
+
+- id: DOC-018
+  domain: DOC
+  title: split CLAUDE.md into hot 2K overlay + cold operational gotchas — kill ~10K-token per-spawn tax
+  status: done
+  priority: P0
+  effort: s
+  description: |
+    Every spawned agent (fleet worker, subagent, remote routine) loads CLAUDE.md before doing useful work. Current size is ~10-15K tokens. At fleet scale (100 agent-spawns/week) this is ~1.2M tokens/week of pure prelude tax.
+    
+    Plan: split into (a) hot CLAUDE.md (~2K) — mandatory pre-flight, hard rules, ship pipeline only; (b) cold docs/process/CLAUDE_GOTCHAS.md (~10K) — chump-doctor heal recipe, raw-YAML-edit guard, INFRA-272 path-filter trap, syspolicyd wedge, stacked-PR rebase footgun, etc. Cold doc is read on-demand when the agent hits a specific failure surface (chump binary hung → read syspolicyd section).
+    
+    Measure: token count of CLAUDE.md before/after via tiktoken. Target: ≤2500 tokens.
+  acceptance_criteria:
+    - CLAUDE.md drops to <=2500 tokens (measured via tiktoken)
+    - all moved content lives in docs/process/CLAUDE_GOTCHAS.md
+    - "CLAUDE.md hot section retains: pre-flight commands, ship pipeline, hard rules, gap registry pointer"
+    - "backward-compat: any rule referenced from another doc still resolves"
+  closed_date: '2026-05-04'
+  closed_pr: 1058
+
+- id: DOC-019
+  domain: DOC
+  title: agent-side guidance — prefer grep+Read offset/limit over full Read on files >500 lines (codify in AGENTS.md)
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Observed 2x this session: agents (incl me) re-Read large files (provider_cascade.rs ~1500 lines, chump-doctor.sh, etc.) when they only need a 30-line region. After context compaction, full re-read happens again. ~5K tokens per re-read × N times per long session = real waste.
+    
+    Codify in AGENTS.md → Code style: for files >500 lines, default to grep -n + Read offset/limit; only read full file when the change touches structure. Add a one-line reminder near the existing Read/Edit guidance.
+  acceptance_criteria:
+    - AGENTS.md updated with grep+offset/limit guidance for files >500 lines
+    - CLAUDE.md mandatory pre-flight cross-references the new section
+    - No tooling change required (advisory)
+  closed_date: '2026-05-04'
+  closed_pr: 1050
+
+- id: DOC-020
+  domain: DOC
+  title: agent-side guidance — cap gh pr checks polling to 3 attempts/session before backing off (codify in AGENTS.md)
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Observed pattern: agent watching a PR polls gh pr checks every minute for 5+ minutes, then gives up. Each poll = ~200 output tokens for the diff + reasoning. Fleet of 8 agents × 5 polls/PR × 20 PRs/day = ~160K wasted output tokens/day.
+    
+    Codify in AGENTS.md: cap PR-check polling at 3 attempts (~3 min apart). After that, hand off to pr-watch-shepherd (already running on launchd) and proceed with other work. Use Bash run_in_background or ScheduleWakeup for 'check back later' pattern.
+  acceptance_criteria:
+    - AGENTS.md adds 'PR check polling discipline' subsection
+    - Mentions ScheduleWakeup + pr-watch-shepherd as the proper waiting mechanisms
+    - No tooling change required (advisory)
+  closed_date: '2026-05-04'
+  closed_pr: 1050
 
 - id: EVAL-001
   domain: EVAL
@@ -4132,7 +4188,7 @@ gaps:
 - id: FLEET-032
   domain: FLEET
   title: lease store migration to NATS KV bucket — kill filesystem-local lease invisibility class permanently
-  status: open
+  status: done
   priority: P1
   effort: l
   description: |
@@ -4155,11 +4211,13 @@ gaps:
     - FLEET-006 / FLEET-023 dependency wired
   notes: |
     ARCH DECISION (2026-05-03): Event-sourced lease store via NATS JetStream. Lease claims become events in chump.leases.> stream. Per-host read view for preflight. Eliminates NATS KV dual-write complexity, aligns with FLEET-033 pattern. Phase 1: spike + design. Phase 2: implementation with JetStream integration.
+  closed_date: '2026-05-03'
+  closed_pr: 1042
 
 - id: FLEET-033
   domain: FLEET
   title: state.db migration to shared store (Postgres or NATS object store) — kills sqlite-contention class
-  status: open
+  status: done
   priority: P1
   effort: xl
   description: |
@@ -4194,6 +4252,7 @@ gaps:
     - "Cross-machine integration test: reserve on host A, list shows it on host B within 1s"
   notes: |
     ARCH DECISION (2026-05-03): Event-sourced gap store via NATS JetStream (Option C selected). Gap state changes become events in chump.gaps.> stream. Per-host materialized read views (local cache). Scales O(1), full audit trail, offline-capable. Spike: measure contention, prototype C, decision doc. Implementation: coordinated with FLEET-032.
+  closed_date: '2026-05-03'
 
 - id: FLEET-034
   domain: FLEET
@@ -4350,6 +4409,36 @@ gaps:
   status: open
   priority: P1
   effort: xl
+
+- id: FLEET-040
+  domain: FLEET
+  title: run-fleet.sh worker — pre-pick filter must skip gaps that landed on origin/main since fleet start (INFRA-310 retry regression)
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Observed 2026-05-03: fleet worker 6 picked INFRA-310 in cycle 1, timed
+    out at 600s, then on cycle 2 PICKED THE SAME GAP AGAIN — even though
+    INFRA-310 had already shipped to main as PR #1021 in between cycles.
+    
+    Root cause: the gap picker reads chump gap list --status open which is
+    sourced from .chump/state.db (per-worktree-or-machine), not from
+    origin/main's docs/gaps/. State.db lags origin/main until the next
+    chump gap import runs. So a gap that landed on main since fleet start
+    still appears 'open' to the worker.
+    
+    Fix: scripts/dispatch/_pick_gap.py should additionally check 'is the
+    gap's status:done on the latest fetched origin/main?' before declaring
+    the candidate pickable. One-line addition: parse the YAML on
+    origin/main and skip if status:done.
+    
+    Cost of the bug: every retry burns a full FLEET_TIMEOUT_S worth of
+    Haiku tokens on work that's already on main. Worker 6 wasted 600+600s
+    of Haiku on INFRA-310 alone today.
+  acceptance_criteria:
+    - Fleet worker that picks a gap which has landed on origin/main since fleet start refuses the pick and rotates to next candidate
+    - "Test: scripts/ci/test-pick-gap-skips-shipped.sh — synthetic 'gap done on main but still in state.db' fixture"
+    - Pairs with INFRA-307 stuck-PR filer + INFRA-389 gap-doctor sync (they're complementary)
 
 - id: FLEET-14
   domain: FLEET
@@ -14770,7 +14859,7 @@ gaps:
 - id: INFRA-407
   domain: INFRA
   title: "PR #1031 stuck [BEHIND] — 23 commits behind main"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -14790,6 +14879,8 @@ gaps:
     INFRA-392
     Branch: chump/cog-039-bench-harness
     Stuck class: BEHIND — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  closed_date: '2026-05-03'
+  closed_pr: 1031
 
 - id: INFRA-408
   domain: INFRA
@@ -14819,6 +14910,247 @@ gaps:
   source_doc: PR
   closed_date: '2026-04-24'
   closed_pr: 466
+
+- id: INFRA-410
+  domain: INFRA
+  title: "fleet gap-picker: make gap-claim atomic to prevent worker collisions at scale"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Fleet dispatcher spawns N concurrent workers. Each worker polls a Python gap-picker (_pick_gap.py), which returns an available gap ID without claiming it. Multiple workers can receive the same gap before any claim succeeds, wasting worktrees and agent spawns.
+    
+    Observed 2026-05-03: N=4 workers all picked FLEET-033 then FLEET-038 due to simultaneous polling. ~25% collision rate. At N=10+, >60% collisions. At N=100, fleet is unusable.
+    
+    Root cause: gap-picker returns a gap without acquiring the claim lock. Check-and-claim is not atomic.
+    
+    Solution: Move gap selection into chump binary (Rust) with atomic SQLite operations. One-transaction check (is gap claimed?) + write new lease, so only one worker can claim each gap.
+  acceptance_criteria:
+    - No worker creates a worktree for a gap it will not claim
+    - "Collision rates: N=4 < 5%, N=10 < 2%, N=100 < 1%"
+    - Collision handling is silent but logged ('skipped FLEET-XXX (claimed by sibling)')
+    - FLEET_SIZE=10 smoke test on real queue shows zero wasted worktrees
+    - gap-picker is Rust-native (not Python subprocess)
+    - Integration test verifies staggered workers each pick different gaps
+  closed_date: '2026-05-03'
+  closed_pr: 1043
+
+- id: INFRA-411
+  domain: INFRA
+  title: "fleet gap-picker: make gap-claim atomic to prevent worker collisions at scale"
+  status: done
+  priority: P1
+  effort: m
+  notes: |
+    duplicate of INFRA-410 (same work, already closed with PR #1043); INFRA-415 is the actual implementation gap
+  closed_date: '2026-05-04'
+  closed_pr: 1043
+
+- id: INFRA-412
+  domain: INFRA
+  title: gap-reserve-padding test produces no output and exits with code 1
+  status: done
+  priority: P1
+  effort: m
+  closed_date: '2026-05-03'
+
+- id: INFRA-413
+  domain: INFRA
+  title: gap_reserve_cross_host_race test sandbox missing chump-ambient-glance.sh script
+  status: done
+  priority: P1
+  effort: m
+  closed_date: '2026-05-03'
+
+- id: INFRA-414
+  domain: INFRA
+  title: cargo audit reports 5 vulnerabilities in dependencies
+  status: open
+  priority: P1
+  effort: m
+
+- id: INFRA-415
+  domain: INFRA
+  title: gap-picker atomicity — fleet workers collide on concurrent picks
+  status: open
+  priority: P1
+  effort: m
+
+- id: INFRA-416
+  domain: INFRA
+  title: "cleanup: remove 387 orphaned gaps from DB (post-gap-doctor audit)"
+  status: open
+  priority: P2
+  effort: s
+
+- id: INFRA-417
+  domain: INFRA
+  title: "fleet startup: pass ANTHROPIC_API_KEY to worker panes"
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-418
+  domain: INFRA
+  title: "gap store: add required_model metadata for task routing"
+  status: open
+  priority: P1
+  effort: m
+
+- id: INFRA-419
+  domain: INFRA
+  title: subagent budget — parent kills subagent if no bot-merge.sh call within N minutes (default 30) — cap runaway loops
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    META-025 measured 25-33% subagent self-ship rate. Many failures are runaway loops (4-hour timeout). Add a parent-side budget: if dispatched subagent has not invoked bot-merge.sh within CHUMP_SUBAGENT_BUDGET_MIN (default 30), parent kills it via TaskStop and emits ALERT kind=subagent_budget_exceeded.
+    
+    Pairs with the standard shipping epilogue from docs/process/SUBAGENT_DISPATCH.md: agent that follows the epilogue ships within budget; agent that wanders gets reaped.
+  acceptance_criteria:
+    - Subagent that exceeds CHUMP_SUBAGENT_BUDGET_MIN without bot-merge.sh invocation is reaped
+    - ambient ALERT kind=subagent_budget_exceeded emitted with agent_id + last_action
+    - Default 30min; override per-task via CHUMP_SUBAGENT_BUDGET_MIN
+    - "Test: scripts/ci/test-subagent-budget.sh — fixture subagent that loops, assert reaped within budget+1min"
+  closed_date: '2026-05-04'
+  closed_pr: 1057
+
+- id: INFRA-420
+  domain: INFRA
+  title: audit CHUMP_DISPATCH_BACKEND default — assert chump-local for fleet (cost-route via cascade); fail-loud if claude is set
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Per CLAUDE.md INFRA-369: opus-4-7 is ~50× haiku per token. CHUMP_DISPATCH_BACKEND controls which backend the orchestrator spawns. Verify chump-local (cost-routed via cascade) is the fleet default; fail-loud at run-fleet.sh start if CHUMP_DISPATCH_BACKEND=claude is set without explicit operator override (CHUMP_FLEET_ALLOW_CLAUDE_BACKEND=1).
+    
+    Past data: one fleet session with claude backend burned $92 of workspace credit. The same workload on chump-local would have been ~$2.
+  acceptance_criteria:
+    - run-fleet.sh prints active backend at startup
+    - run-fleet.sh exits 2 if backend=claude without CHUMP_FLEET_ALLOW_CLAUDE_BACKEND=1
+    - "Test: scripts/ci/test-fleet-backend-guard.sh covers both paths"
+  closed_date: '2026-05-04'
+  closed_pr: 1052
+
+- id: INFRA-421
+  domain: INFRA
+  title: sccache install audit — verify ~/.cargo/config.toml present on dogfood machines + report cache hit rate via launchd
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    INFRA-202 added scripts/setup/install-sccache.sh (sccache as rustc wrapper, 10G cache). Without it, every fresh worktree pays a 5-15min cold cargo check, and the LLM watching the build burns idle output tokens.
+    
+    Audit script: check ~/.cargo/config.toml for rustc-wrapper=sccache, report sccache --show-stats cache hit rate, ALERT if cache hit < 70%. Run via launchd weekly.
+  acceptance_criteria:
+    - scripts/audit/check-sccache-health.sh exists + executable
+    - Reports cache hit rate from sccache --show-stats
+    - Emits ALERT kind=sccache_low_hit_rate when <70%
+    - launchd installer at scripts/setup/install-sccache-audit-launchd.sh
+  closed_date: '2026-05-04'
+  closed_pr: 1054
+
+- id: INFRA-422
+  domain: INFRA
+  title: bot-merge.sh — auto-run chump-doctor.sh --probe before invoking chump (INFRA-275 syspolicyd wedge avoidance)
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    INFRA-275 documented the syspolicyd inode-wedge that hangs every chump invocation. bot-merge.sh calls chump multiple times (gap claim, gap ship --update-yaml, gap preflight). When the binary is wedged, every call hangs the watching agent for the full timeout.
+    
+    Fix: bot-merge.sh runs scripts/dev/chump-doctor.sh as a 5s pre-probe; if probe times out, runs CHUMP_DOCTOR_FORCE=1 chump-doctor.sh to heal the inode, then proceeds. Idempotent — adds ~5s when binary is healthy, saves minutes when wedged.
+  acceptance_criteria:
+    - bot-merge.sh runs chump-doctor.sh probe before any chump invocation
+    - If probe times out, auto-heal via CHUMP_DOCTOR_FORCE=1
+    - "Test: scripts/ci/test-bot-merge-doctor-preflight.sh — fixture wedged binary, assert auto-heal"
+  closed_date: '2026-05-04'
+  closed_pr: 1051
+
+- id: INFRA-423
+  domain: INFRA
+  title: ambient.jsonl rotation install audit — verify launchd job present on dogfood machines + size-alert wired
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    INFRA-122 added scripts/dev/ambient-rotate.sh + scripts/setup/install-ambient-rotate-launchd.sh. Without rotation, ambient.jsonl grows ~4MB/day under fleet load. Audit dogfood machines for the launchd job + verify the AMBIENT_SIZE_ALERT_MB self-monitoring path is active.
+  acceptance_criteria:
+    - scripts/audit/check-ambient-rotation-health.sh exists
+    - Verifies launchctl list shows dev.chump.ambient-rotate
+    - Verifies ambient.jsonl size < 50MB
+    - Verifies self-monitor ALERT path by injecting fake oversize event
+  closed_date: '2026-05-04'
+  closed_pr: 1054
+
+- id: INFRA-424
+  domain: INFRA
+  title: CHUMP_LESSONS_AT_SPAWN_N audit — fail-loud if env set without explicit consent (silent token tax per spawn)
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    MEM-006 added CHUMP_LESSONS_AT_SPAWN_N to inject top-N lessons at every prompt assembly. Default OFF, but if accidentally set in a shell profile or .env, every spawn pays N×~500 tokens silently. With N=5 + fleet of 8 × 100 spawns/day = 2M extra input tokens/day of un-attributed cost.
+    
+    Fix: prompt assembler logs the active value to ambient.jsonl on spawn (kind=lessons_injection_active). Operator sees in pre-flight tail -30 ambient.jsonl that lessons are firing. Optional second guard: warn if value > 5 without CHUMP_LESSONS_AT_SPAWN_ACK=1.
+  acceptance_criteria:
+    - Prompt assembler emits ambient kind=lessons_injection_active on spawn when N>0
+    - If N>5 without CHUMP_LESSONS_AT_SPAWN_ACK=1, log warning to stderr
+    - "Test: scripts/ci/test-lessons-injection-visibility.sh covers both paths"
+  closed_date: '2026-05-04'
+  closed_pr: 1056
+
+- id: INFRA-425
+  domain: INFRA
+  title: pre-commit cargo-check guard — verify it skips when no .rs files staged (waste check on doc-only commits)
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Pre-commit cargo-check guard (CHUMP_CHECK_BUILD) runs cargo check --bin chump --tests on every commit. For doc-only / yaml-only commits this is wasted 30-90s + the agent watching it burns idle output. Verify the guard already short-circuits when no .rs files are staged; add the guard if missing.
+  acceptance_criteria:
+    - scripts/git-hooks/pre-commit cargo-check block exits 0 immediately when no staged .rs files
+    - "Test: scripts/ci/test-precommit-cargo-check-skip.sh covers (a) .rs staged → runs, (b) doc-only staged → skips"
+  closed_date: '2026-05-04'
+  closed_pr: 1053
+
+- id: INFRA-426
+  domain: INFRA
+  title: race-z
+  status: open
+  priority: P2
+  effort: m
+
+- id: INFRA-427
+  domain: INFRA
+  title: race-a
+  status: open
+  priority: P2
+  effort: m
+
+- id: INFRA-428
+  domain: INFRA
+  title: test fixtures (SPIKE-* / TEST-* / TEST168-*) leak into production .chump/state.db — 306 leaked gaps in registry as of 2026-05-03
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Find the test that's writing SPIKE-* / TEST-* / TEST168-* gap rows to the production .chump/state.db (likely a test forgetting to use a tempdir-scoped GapStore, or a tempdir test that's leaking on cleanup-failure)
+    - "Fix: every test that opens a GapStore must use std::env::temp_dir() / tempfile::tempdir() AND never share the .chump/ path with the host repo. Verify via grep on tests for 'GapStore::open(.*Path::new(' patterns"
+    - Add CI guard scripts/ci/test-no-prod-state-db-writes.sh that runs the full test suite against an isolated CHUMP_REPO=/tmp/x and asserts the host's .chump/state.db is byte-identical before vs after
+    - "Cleanup: bulk-superseded the 306 leaked gaps in this filing PR. Forensic: SPIKE-001..302 (302 of them, all titled 'spike-test-N') are the smoking gun — pattern matches a parameterized test loop"
+    - "Audit historical commits: git log --all --grep='SPIKE-' to find when the leak first hit main and which test was responsible"
+  notes: |
+    Filed 2026-05-03. The 302 SPIKE-001..302 entries all title 'spike-test-N' — clearly a parameterized test that ran against the production state.db. Same pattern for TEST-001/003 (likely test-stuck-pr-filer.sh fixtures that leaked) and TEST168-001/002 (INFRA-168 sqlite preflight regression test). They didn't surface in agent workflows because gap-doctor / chump gap list don't filter by domain — they just count everything. Bulk-superseded as part of this filing pass; the actual fix is preventing future leaks.
+
+- id: INFRA-429
+  domain: INFRA
+  title: "bulk-close 302 SPIKE-* fixture gaps from FLEET-033 spike (registry pollution: no description, no opened_date, no per-file YAML)"
+  status: done
+  priority: P2
+  effort: xs
+  notes: |
+    DUPE of INFRA-428 (filed earlier today, same scope: SPIKE-* + TEST-* + TEST168-* fixture leak cleanup). Closing.
 
 - id: INFRA-AB-TOOL-CALL-COUNTER
   domain: INFRA
@@ -17967,10 +18299,2124 @@ gaps:
   source_doc: src/agent_loop/orchestrator.rs
   closed_date: '2026-04-18'
 
+- id: SPIKE-001
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-002
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-003
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-004
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-005
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-006
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-007
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-008
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-009
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-010
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-011
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-012
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-013
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-014
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-015
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-016
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-017
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-018
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-019
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-020
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-021
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-022
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-023
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-024
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-025
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-026
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-027
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-028
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-029
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-030
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-031
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-032
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-033
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-034
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-035
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-036
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-037
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-038
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-039
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-040
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-041
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-042
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-043
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-044
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-045
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-046
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-047
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-048
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-049
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-050
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-051
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-052
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-053
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-054
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-055
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-056
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-057
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-058
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-059
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-060
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-061
+  domain: SPIKE
+  title: spike-test-30
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-062
+  domain: SPIKE
+  title: spike-test-14
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-063
+  domain: SPIKE
+  title: spike-test-17
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-064
+  domain: SPIKE
+  title: spike-test-11
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-065
+  domain: SPIKE
+  title: spike-test-28
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-066
+  domain: SPIKE
+  title: spike-test-24
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-067
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-068
+  domain: SPIKE
+  title: spike-test-21
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-069
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-070
+  domain: SPIKE
+  title: spike-test-29
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-071
+  domain: SPIKE
+  title: spike-test-16
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-072
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-073
+  domain: SPIKE
+  title: spike-test-15
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-074
+  domain: SPIKE
+  title: spike-test-22
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-075
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-076
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-077
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-078
+  domain: SPIKE
+  title: spike-test-12
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-079
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-080
+  domain: SPIKE
+  title: spike-test-27
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-081
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-082
+  domain: SPIKE
+  title: spike-test-13
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-083
+  domain: SPIKE
+  title: spike-test-20
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-084
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-085
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-086
+  domain: SPIKE
+  title: spike-test-18
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-087
+  domain: SPIKE
+  title: spike-test-25
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-088
+  domain: SPIKE
+  title: spike-test-26
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-089
+  domain: SPIKE
+  title: spike-test-19
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-090
+  domain: SPIKE
+  title: spike-test-23
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-091
+  domain: SPIKE
+  title: spike-test-24
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-092
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-093
+  domain: SPIKE
+  title: spike-test-30
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-094
+  domain: SPIKE
+  title: spike-test-17
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-095
+  domain: SPIKE
+  title: spike-test-28
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-096
+  domain: SPIKE
+  title: spike-test-11
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-097
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-098
+  domain: SPIKE
+  title: spike-test-21
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-099
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-100
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-101
+  domain: SPIKE
+  title: spike-test-14
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-102
+  domain: SPIKE
+  title: spike-test-16
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-103
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-104
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-105
+  domain: SPIKE
+  title: spike-test-27
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-106
+  domain: SPIKE
+  title: spike-test-22
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-107
+  domain: SPIKE
+  title: spike-test-13
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-108
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-109
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-110
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-111
+  domain: SPIKE
+  title: spike-test-29
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-112
+  domain: SPIKE
+  title: spike-test-15
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-113
+  domain: SPIKE
+  title: spike-test-20
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-114
+  domain: SPIKE
+  title: spike-test-12
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-115
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-116
+  domain: SPIKE
+  title: spike-test-26
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-117
+  domain: SPIKE
+  title: spike-test-18
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-118
+  domain: SPIKE
+  title: spike-test-25
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-119
+  domain: SPIKE
+  title: spike-test-19
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-120
+  domain: SPIKE
+  title: spike-test-23
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-121
+  domain: SPIKE
+  title: spike-test-24
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-122
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-123
+  domain: SPIKE
+  title: spike-test-30
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-124
+  domain: SPIKE
+  title: spike-test-17
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-125
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-126
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-127
+  domain: SPIKE
+  title: spike-test-22
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-128
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-129
+  domain: SPIKE
+  title: spike-test-13
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-130
+  domain: SPIKE
+  title: spike-test-28
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-131
+  domain: SPIKE
+  title: spike-test-11
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-132
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-133
+  domain: SPIKE
+  title: spike-test-27
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-134
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-135
+  domain: SPIKE
+  title: spike-test-14
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-136
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-137
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-138
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-139
+  domain: SPIKE
+  title: spike-test-16
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-140
+  domain: SPIKE
+  title: spike-test-29
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-141
+  domain: SPIKE
+  title: spike-test-21
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-142
+  domain: SPIKE
+  title: spike-test-15
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-143
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-144
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-145
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-146
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-147
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-148
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-149
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-150
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-151
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-152
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-153
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-154
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-155
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-156
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-157
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-158
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-159
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-160
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-161
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-162
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-163
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-164
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-165
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-166
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-167
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-168
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-169
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-170
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-171
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-172
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-173
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-174
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-175
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-176
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-177
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-178
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-179
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-180
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-181
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-182
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-183
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-184
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-185
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-186
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-187
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-188
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-189
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-190
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-191
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-192
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-193
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-194
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-195
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-196
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-197
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-198
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-199
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-200
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-201
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-202
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-203
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-204
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-205
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-206
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-207
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-208
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-209
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-210
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-211
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-212
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-213
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-214
+  domain: SPIKE
+  title: spike-test-30
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-215
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-216
+  domain: SPIKE
+  title: spike-test-27
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-217
+  domain: SPIKE
+  title: spike-test-29
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-218
+  domain: SPIKE
+  title: spike-test-16
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-219
+  domain: SPIKE
+  title: spike-test-22
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-220
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-221
+  domain: SPIKE
+  title: spike-test-18
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-222
+  domain: SPIKE
+  title: spike-test-17
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-223
+  domain: SPIKE
+  title: spike-test-23
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-224
+  domain: SPIKE
+  title: spike-test-19
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-225
+  domain: SPIKE
+  title: spike-test-14
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-226
+  domain: SPIKE
+  title: spike-test-12
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-227
+  domain: SPIKE
+  title: spike-test-11
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-228
+  domain: SPIKE
+  title: spike-test-15
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-229
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-230
+  domain: SPIKE
+  title: spike-test-13
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-231
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-232
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-233
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-234
+  domain: SPIKE
+  title: spike-test-26
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-235
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-236
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-237
+  domain: SPIKE
+  title: spike-test-25
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-238
+  domain: SPIKE
+  title: spike-test-20
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-239
+  domain: SPIKE
+  title: spike-test-21
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-240
+  domain: SPIKE
+  title: spike-test-24
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-241
+  domain: SPIKE
+  title: spike-test-28
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-242
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-243
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-244
+  domain: SPIKE
+  title: spike-test-30
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-245
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-246
+  domain: SPIKE
+  title: spike-test-19
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-247
+  domain: SPIKE
+  title: spike-test-25
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-248
+  domain: SPIKE
+  title: spike-test-22
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-249
+  domain: SPIKE
+  title: spike-test-18
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-250
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-251
+  domain: SPIKE
+  title: spike-test-17
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-252
+  domain: SPIKE
+  title: spike-test-23
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-253
+  domain: SPIKE
+  title: spike-test-16
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-254
+  domain: SPIKE
+  title: spike-test-27
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-255
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-256
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-257
+  domain: SPIKE
+  title: spike-test-12
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-258
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-259
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-260
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-261
+  domain: SPIKE
+  title: spike-test-21
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-262
+  domain: SPIKE
+  title: spike-test-29
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-263
+  domain: SPIKE
+  title: spike-test-20
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-264
+  domain: SPIKE
+  title: spike-test-14
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-265
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-266
+  domain: SPIKE
+  title: spike-test-13
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-267
+  domain: SPIKE
+  title: spike-test-26
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-268
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-269
+  domain: SPIKE
+  title: spike-test-24
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-270
+  domain: SPIKE
+  title: spike-test-11
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-271
+  domain: SPIKE
+  title: spike-test-15
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-272
+  domain: SPIKE
+  title: spike-test-28
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-273
+  domain: SPIKE
+  title: spike-test-9
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-274
+  domain: SPIKE
+  title: spike-test-20
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-275
+  domain: SPIKE
+  title: spike-test-4
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-276
+  domain: SPIKE
+  title: spike-test-19
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-277
+  domain: SPIKE
+  title: spike-test-25
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-278
+  domain: SPIKE
+  title: spike-test-17
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-279
+  domain: SPIKE
+  title: spike-test-21
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-280
+  domain: SPIKE
+  title: spike-test-23
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-281
+  domain: SPIKE
+  title: spike-test-30
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-282
+  domain: SPIKE
+  title: spike-test-5
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-283
+  domain: SPIKE
+  title: spike-test-7
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-284
+  domain: SPIKE
+  title: spike-test-1
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-285
+  domain: SPIKE
+  title: spike-test-10
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-286
+  domain: SPIKE
+  title: spike-test-29
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-287
+  domain: SPIKE
+  title: spike-test-18
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-288
+  domain: SPIKE
+  title: spike-test-2
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-289
+  domain: SPIKE
+  title: spike-test-8
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-290
+  domain: SPIKE
+  title: spike-test-6
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-291
+  domain: SPIKE
+  title: spike-test-27
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-292
+  domain: SPIKE
+  title: spike-test-16
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-293
+  domain: SPIKE
+  title: spike-test-13
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-294
+  domain: SPIKE
+  title: spike-test-11
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-295
+  domain: SPIKE
+  title: spike-test-12
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-296
+  domain: SPIKE
+  title: spike-test-26
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-297
+  domain: SPIKE
+  title: spike-test-14
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-298
+  domain: SPIKE
+  title: spike-test-3
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-299
+  domain: SPIKE
+  title: spike-test-28
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-300
+  domain: SPIKE
+  title: spike-test-22
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-301
+  domain: SPIKE
+  title: spike-test-15
+  status: superseded
+  priority: P2
+  effort: xs
+
+- id: SPIKE-302
+  domain: SPIKE
+  title: spike-test-24
+  status: superseded
+  priority: P2
+  effort: xs
+
 - id: TEST-001
   domain: TEST
   title: stacked test
-  status: open
+  status: superseded
   priority: P2
   effort: m
 
@@ -18003,17 +20449,24 @@ gaps:
   closed_date: '2026-05-02'
   closed_pr: 300
 
+- id: TEST-003
+  domain: TEST
+  title: Test Gap
+  status: superseded
+  priority: P2
+  effort: m
+
 - id: TEST168-001
   domain: TEST168
   title: INFRA-168 sqlite preflight regression
-  status: open
+  status: superseded
   priority: P2
   effort: m
 
 - id: TEST168-002
   domain: TEST168
   title: INFRA-168 sqlite preflight regression
-  status: open
+  status: superseded
   priority: P2
   effort: m
 

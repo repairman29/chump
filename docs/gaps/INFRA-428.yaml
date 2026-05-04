@@ -1,0 +1,7 @@
+- id: INFRA-428
+  domain: INFRA
+  title: test fixtures (SPIKE-* / TEST-* / TEST168-*) leak into production .chump/state.db — 306 leaked gaps in registry as of 2026-05-03
+  status: open
+  priority: P1
+  effort: s
+
