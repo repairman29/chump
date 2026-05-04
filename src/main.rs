@@ -640,7 +640,11 @@ async fn main() -> Result<()> {
                             // protection against future leaks.
                             let total = gaps.len();
                             for (dom, n) in &by_domain {
-                                let pct = if total > 0 { *n * 100 / total } else { 0 };
+                                // INFRA-431 rescue: clippy::manual_checked_ops
+                                // flags `if total > 0 { *n * 100 / total } else { 0 }`
+                                // because `checked_div` makes the divide-by-zero
+                                // intent explicit. Behaviour is identical.
+                                let pct = (*n * 100).checked_div(total).unwrap_or(0);
                                 if *n > 100 || pct > 50 {
                                     eprintln!(
                                         "ALERT: domain {} has {} gaps ({}% of total) — likely a test-fixture leak (see INFRA-428)",
