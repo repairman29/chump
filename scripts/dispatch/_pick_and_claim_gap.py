@@ -184,11 +184,13 @@ def main() -> int:
     cooled = cooled_down_gaps(os.environ.get("COOLDOWN_DIR", ""))
 
     # INFRA-314: Worker skill affinity scoring.
+    # CHUMP_AFFINITY=0 disables affinity matching (treats all gaps as eligible).
+    affinity_enabled = os.environ.get("CHUMP_AFFINITY", "1") != "0"
     worker_skills = set(
         s.lower().strip()
         for s in os.environ.get("WORKER_SKILLS", "").split(",")
         if s.strip()
-    )
+    ) if affinity_enabled else set()
     PRIO_SCORE = {"P0": 8, "P1": 4, "P2": 2, "P3": 1}
 
     candidates = []
@@ -232,44 +234,45 @@ def main() -> int:
         if dep_list:
             continue
 
-        # INFRA-314: Extract affinity metadata.
-        skills_required_raw = g.get("skills_required", "")
-        if isinstance(skills_required_raw, str):
-            try:
-                skills_required = (
-                    json.loads(skills_required_raw)
-                    if skills_required_raw.strip()
-                    else []
-                )
-            except json.JSONDecodeError:
-                skills_required = []
-        elif isinstance(skills_required_raw, list):
-            skills_required = skills_required_raw
-        else:
-            skills_required = []
-
-        # Normalize to lowercase for comparison.
-        skills_required = {s.lower() for s in skills_required}
-
-        preferred_backend = (g.get("preferred_backend") or "").lower()
-        preferred_machine = (g.get("preferred_machine") or "").lower()
-
-        # Hard filter: if gap requires skills, worker must have all of them.
-        if skills_required and not skills_required.issubset(worker_skills):
-            continue
-
-        # Affinity scoring: backend match (3) + machine match (2) + skill matches (1 each) + priority.
+        # INFRA-314: Extract affinity metadata (only when affinity is enabled).
         affinity_score = 0
-        worker_backend = os.environ.get("WORKER_BACKEND", "").lower()
-        if worker_backend and preferred_backend and worker_backend == preferred_backend:
-            affinity_score += 3
-        worker_machine = os.environ.get("WORKER_MACHINE", "").lower()
-        if worker_machine and preferred_machine and worker_machine == preferred_machine:
-            affinity_score += 2
-        # Each matched skill adds 1 point (up to len(skills_required)).
-        affinity_score += len(skills_required & worker_skills)
+        if affinity_enabled:
+            skills_required_raw = g.get("skills_required", "")
+            if isinstance(skills_required_raw, str):
+                try:
+                    skills_required = (
+                        json.loads(skills_required_raw)
+                        if skills_required_raw.strip()
+                        else []
+                    )
+                except json.JSONDecodeError:
+                    skills_required = []
+            elif isinstance(skills_required_raw, list):
+                skills_required = skills_required_raw
+            else:
+                skills_required = []
 
-        # Primary sort: affinity score (desc), then priority, then effort, then created_at.
+            # Normalize to lowercase for comparison.
+            skills_required = {s.lower() for s in skills_required}
+
+            preferred_backend = (g.get("preferred_backend") or "").lower()
+            preferred_machine = (g.get("preferred_machine") or "").lower()
+
+            # Hard filter: if gap requires skills, worker must have all of them.
+            if skills_required and not skills_required.issubset(worker_skills):
+                continue
+
+            # Affinity scoring: backend match (3) + machine match (2) + skill matches (1 each) + priority.
+            worker_backend = os.environ.get("WORKER_BACKEND", "").lower()
+            if worker_backend and preferred_backend and worker_backend == preferred_backend:
+                affinity_score += 3
+            worker_machine = os.environ.get("WORKER_MACHINE", "").lower()
+            if worker_machine and preferred_machine and worker_machine == preferred_machine:
+                affinity_score += 2
+            # Each matched skill adds 1 point (up to len(skills_required)).
+            affinity_score += len(skills_required & worker_skills)
+
+        # Primary sort: affinity score (desc) if enabled, then priority, then effort, then created_at.
         candidates.append(
             (
                 -affinity_score,  # Negative for descending sort.
@@ -301,8 +304,8 @@ def main() -> int:
                 print(gap_id)
                 return 0
     else:
-        # INFRA-314: Emit affinity_starved if no eligible gaps found and worker has skill constraints.
-        if worker_skills:
+        # INFRA-314: Emit affinity_starved if no eligible gaps found and affinity is enabled + worker has skill constraints.
+        if affinity_enabled and worker_skills:
             import time
 
             now = int(time.time())
