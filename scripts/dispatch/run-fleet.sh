@@ -176,6 +176,13 @@ if [ "$FLEET_DRY_RUN" = "1" ]; then
 fi
 
 # Build the worker env once; passed into every pane via the launch command.
+# INFRA-417: API keys must be in this list explicitly. INFRA-351 sources
+# .env into the launcher process, but `tmux split-window` runs the new
+# pane under the long-lived tmux server (not the launcher) — exported
+# vars in the launcher do NOT propagate. Without these lines, claude -p
+# in the worker pane falls back to the user's claude.ai subscription
+# cap instead of consuming workspace API credit, the exact failure mode
+# INFRA-351 set out to fix.
 worker_env=(
     "REPO_ROOT=$REPO_ROOT"
     "FLEET_LOG_DIR=$FLEET_LOG_DIR"
@@ -190,6 +197,15 @@ worker_env=(
     "FLEET_INLINE_BRIEFING=$FLEET_INLINE_BRIEFING"
     "CHUMP_LESSONS_AT_SPAWN_N=$CHUMP_LESSONS_AT_SPAWN_N"
     "CHUMP_AMBIENT_INSTALL_SKIP=$CHUMP_AMBIENT_INSTALL_SKIP"
+    # INFRA-417 API keys — only added when actually set in the launcher
+    # env (so we don't pollute panes with empty values that would mask a
+    # legitimately-set system-level key).
+    ${ANTHROPIC_API_KEY:+"ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"}
+    ${OPENAI_API_KEY:+"OPENAI_API_KEY=$OPENAI_API_KEY"}
+    ${TOGETHER_API_KEY:+"TOGETHER_API_KEY=$TOGETHER_API_KEY"}
+    ${GROQ_API_KEY:+"GROQ_API_KEY=$GROQ_API_KEY"}
+    ${MISTRAL_API_KEY:+"MISTRAL_API_KEY=$MISTRAL_API_KEY"}
+    ${FIREWORKS_API_KEY:+"FIREWORKS_API_KEY=$FIREWORKS_API_KEY"}
 )
 env_prefix="$(printf '%s ' "${worker_env[@]}")"
 
