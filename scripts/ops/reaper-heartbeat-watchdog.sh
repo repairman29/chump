@@ -45,7 +45,12 @@ while [[ $# -gt 0 ]]; do
     esac
     shift
 done
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch)
+# INFRA-452: include 'watchdog' in default TARGETS so the watchdog also
+# grades ITSELF. The for-loop reads the heartbeat BEFORE reaper_finish
+# stamps a fresh one at exit, so the read reflects the *previous* run —
+# which is exactly the gap we want to detect (the canary died with the
+# canaries it was supposed to grade).
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog)
 
 # Per-reaper alert thresholds (seconds since last heartbeat).
 threshold_secs() {
@@ -55,6 +60,7 @@ threshold_secs() {
         branch)   echo $((48 * 3600)) ;;  # 48h (cadence 24h × 2x)
         stuck-pr) echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-307)
         pr-watch) echo $((1 * 3600)) ;;   # 1h (cadence 10min × 6x — INFRA-354)
+        watchdog) echo $((90 * 60)) ;;    # 90min (cadence 30min × 3x — INFRA-452)
         *)        echo $((4 * 3600)) ;;
     esac
 }

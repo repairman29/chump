@@ -130,9 +130,76 @@ print(json.dumps({
     printf '%s\n' "$json" >> "$ambient" 2>/dev/null || true
 }
 
+# reaper_grade_watchdog — INFRA-452 cross-grade.
+#
+# The watchdog grades pr/worktree/branch/etc., but if the watchdog itself
+# stops running (broken plist, dead python3, crashed launchd), nothing
+# alerts. We can't rely on the watchdog to grade itself in that case.
+# Solution: every reaper, on its own run, does a cheap one-stat check on
+# the watchdog heartbeat. If it's stale (>WATCHDOG_THRESHOLD_SECS,
+# default 90min — twice the watchdog's expected 30min cadence × 1.5x
+# slop), the reaper emits a kind=watchdog_silent ALERT to ambient.jsonl
+# so the next session pre-flight sees it. Decentralized — even if the
+# watchdog is dead forever, the next reaper run picks it up.
+#
+# Skip-self-grade: the watchdog itself calls reaper_finish via its own
+# code path; suppressing the cross-grade when REAPER_NAME=watchdog
+# avoids a useless self-compare.
+#
+# Bypass: CHUMP_DISABLE_WATCHDOG_CROSSGRADE=1 (for tests / dev).
+reaper_grade_watchdog() {
+    [[ "${CHUMP_DISABLE_WATCHDOG_CROSSGRADE:-0}" == "1" ]] && return 0
+    [[ "${REAPER_NAME:-}" == "watchdog" ]] && return 0
+    local hb="/tmp/chump-reaper-watchdog.heartbeat"
+    local threshold="${WATCHDOG_THRESHOLD_SECS:-5400}"  # 90 min default
+    [[ -f "$hb" ]] || return 0  # Nothing yet — first install; the
+                                # watchdog itself will alert next run.
+    local last_ts last_epoch now age
+    last_ts="$(grep '^ts=' "$hb" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+    if [[ -n "$last_ts" ]]; then
+        last_epoch=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$last_ts" "+%s" 2>/dev/null \
+                  || date -u -d "$last_ts" "+%s" 2>/dev/null \
+                  || stat -f%m "$hb" 2>/dev/null \
+                  || stat -c%Y "$hb" 2>/dev/null \
+                  || echo 0)
+    else
+        last_epoch=$(stat -f%m "$hb" 2>/dev/null || stat -c%Y "$hb" 2>/dev/null || echo 0)
+    fi
+    now=$(date +%s)
+    age=$(( now - last_epoch ))
+    if (( age > threshold )); then
+        local lock_dir="${REAPER_LOCK_DIR:-$(_reaper_main_repo)/.chump-locks}"
+        local ambient="$lock_dir/ambient.jsonl"
+        local age_min=$(( age / 60 ))
+        local thr_min=$(( threshold / 60 ))
+        local ts
+        ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        local msg="reaper-heartbeat-watchdog itself has not run in ${age_min}min (threshold ${thr_min}min). Last heartbeat at ${last_ts:-unknown}. Detected by ${REAPER_NAME:-unknown} cross-grade. Check launchctl list | grep dev.chump.reaper-watchdog and /tmp/chump-reaper-watchdog.err.log."
+        printf 'ALERT [watchdog_silent] %s\n' "$msg" >&2
+        local json
+        if command -v python3 >/dev/null 2>&1; then
+            json=$(python3 -c '
+import json, sys
+print(json.dumps({
+    "event":"ALERT","kind":"watchdog_silent",
+    "reaper":"watchdog","detected_by":sys.argv[1],
+    "ts":sys.argv[2],"age_minutes":int(sys.argv[3]),
+    "threshold_minutes":int(sys.argv[4]),"reason":sys.argv[5],
+}))' "${REAPER_NAME:-unknown}" "$ts" "$age_min" "$thr_min" "$msg" 2>/dev/null || true)
+        fi
+        if [[ -z "$json" ]]; then
+            json="{\"event\":\"ALERT\",\"kind\":\"watchdog_silent\",\"reaper\":\"watchdog\",\"detected_by\":\"${REAPER_NAME:-unknown}\",\"ts\":\"$ts\",\"age_minutes\":$age_min,\"threshold_minutes\":$thr_min}"
+        fi
+        mkdir -p "$lock_dir" 2>/dev/null || true
+        printf '%s\n' "$json" >> "$ambient" 2>/dev/null || true
+    fi
+}
+
 # reaper_finish STATUS COUNTS_JSON
 # Convenience wrapper: computes elapsed time from REAPER_START_EPOCH and
-# emits the run event + heartbeat for REAPER_NAME.
+# emits the run event + heartbeat for REAPER_NAME. Also performs a cheap
+# cross-grade of the watchdog (INFRA-452): if the watchdog hasn't
+# heartbeated recently, this reaper emits a watchdog_silent ALERT.
 reaper_finish() {
     local status="${1:?reaper_finish needs status}"
     local counts="${2:-}"
@@ -141,4 +208,5 @@ reaper_finish() {
     now="$(date +%s)"
     elapsed=$(( now - ${REAPER_START_EPOCH:-$now} ))
     reaper_emit_run "${REAPER_NAME:-unknown}" "$status" "$counts" "$elapsed"
+    reaper_grade_watchdog
 }
