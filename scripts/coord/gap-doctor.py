@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # INFRA-155: gap-store drift detector + repair tool.
 #
-# State.db (canonical since INFRA-059) and docs/gaps.yaml (human-readable
-# mirror) routinely disagree because pre-INFRA-152 close PRs hand-edited
+# State.db (canonical since INFRA-059) and docs/gaps/<ID>.yaml (human-readable
+# per-file mirrors) routinely disagree because pre-INFRA-152 close PRs hand-edited
 # YAML without updating state.db. Cold Water reads state.db via
 # `chump gap list --status open`, so YAML closures invisible to the DB show
 # up as OPEN-BUT-LANDED in the audit. Issue #8 named this as 65/88 (74%) of
@@ -24,10 +24,9 @@
 #                   rows to match YAML's status='done', pulling closed_at,
 #                   closed_date, closed_pr from the YAML entry. Idempotent.
 #
-#   sync-from-db    For bucket 1 (DB done / YAML open): rewrite YAML rows
-#                   from the DB. Implemented by calling
-#                   `chump gap dump --out docs/gaps.yaml` (preserves the
-#                   meta: preamble per INFRA-147).
+#   sync-from-db    For bucket 1 (DB done / YAML open): rewrite per-file YAML
+#                   rows from the DB. Implemented by calling `chump gap dump
+#                   --per-file --out-dir docs/gaps` (post-INFRA-188).
 #
 # Read-only by default. Use --apply to actually mutate.
 #
@@ -84,42 +83,33 @@ def repo_root() -> Path:
 
 
 def load_yaml_status(root: Path) -> dict:
-    """Returns {gap_id: yaml_dict_for_that_gap}. Reads working-tree YAML.
+    """Returns {gap_id: yaml_dict_for_that_gap}. Reads per-file YAML only.
 
-    INFRA-245: post-INFRA-188 the canonical mirror is the per-file directory
-    docs/gaps/<ID>.yaml, not the monolithic docs/gaps.yaml (which was
-    retired in PR #753). Prefer the per-file directory when present; fall
-    back to the monolithic file only for backward-compat.
+    INFRA-389: post-INFRA-188 the canonical mirror is the per-file directory
+    docs/gaps/<ID>.yaml, not the monolithic docs/gaps.yaml (which is now
+    .gitignored as a side-effect of stale chump binaries). Only read from
+    the per-file directory.
     """
     out = {}
     per_file_dir = root / "docs" / "gaps"
-    monolithic = root / "docs" / "gaps.yaml"
 
-    if per_file_dir.is_dir():
-        # Each docs/gaps/<ID>.yaml is the chump-gap-dump-per-file shape:
-        # a one-element list whose first entry is the gap dict.
-        for path in sorted(per_file_dir.glob("*.yaml")):
-            try:
-                data = yaml.safe_load(path.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            entries = data if isinstance(data, list) else [data]
-            for g in entries:
-                if not isinstance(g, dict):
-                    continue
-                gid = g.get("id")
-                if gid:
-                    out[gid] = g
+    if not per_file_dir.is_dir():
         return out
 
-    # Legacy monolithic path (pre-INFRA-188 fallback).
-    text = monolithic.read_text(encoding="utf-8")
-    data = yaml.safe_load(text)
-    for g in data.get("gaps", []):
-        gid = g.get("id")
-        if not gid:
+    # Each docs/gaps/<ID>.yaml is the chump-gap-dump-per-file shape:
+    # a one-element list whose first entry is the gap dict.
+    for path in sorted(per_file_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except Exception:
             continue
-        out[gid] = g
+        entries = data if isinstance(data, list) else [data]
+        for g in entries:
+            if not isinstance(g, dict):
+                continue
+            gid = g.get("id")
+            if gid:
+                out[gid] = g
     return out
 
 
