@@ -441,7 +441,7 @@ async fn main() -> Result<()> {
     // gap-id and routed through gap-preflight + bot-merge — making
     // `chump dispatch route INFRA-191` claim a phantom gap named "route"
     // instead of printing a routing cascade.
-    const DISPATCH_SUBCOMMANDS: &[&str] = &["route", "scoreboard", "simulate"];
+    const DISPATCH_SUBCOMMANDS: &[&str] = &["route", "scoreboard", "simulate", "cost-report"];
     if args.get(1).map(String::as_str) == Some("dispatch")
         && !args
             .get(2)
@@ -1064,6 +1064,76 @@ async fn main() -> Result<()> {
         }
     }
 
+    // `chump cost record-pr` (INFRA-405) — record per-PR cost metrics (tokens, USD, duration).
+    // Called by bot-merge.sh at PR creation time to build a telemetry ledger.
+    if args.get(1).map(String::as_str) == Some("cost")
+        && args.get(2).map(String::as_str) == Some("record-pr")
+    {
+        let flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+
+        let pr_number = match flag("--pr").and_then(|s| s.parse::<i64>().ok()) {
+            Some(n) => n,
+            None => {
+                eprintln!("Usage: chump cost record-pr --pr N --gap GAP --model MODEL");
+                eprintln!("                             [--tokens-in I] [--tokens-out O]");
+                eprintln!(
+                    "                             [--usd U] [--duration-secs D] [--backend B]"
+                );
+                std::process::exit(2);
+            }
+        };
+
+        let gap_id = flag("--gap").unwrap_or_else(|| "unknown".to_string());
+        let model = flag("--model").unwrap_or_else(|| "unknown".to_string());
+        let tokens_in = flag("--tokens-in")
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0);
+        let tokens_out = flag("--tokens-out")
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0);
+        let usd_cost = flag("--usd")
+            .and_then(|s| s.parse::<f64>().ok())
+            .unwrap_or(0.0);
+        let duration_secs = flag("--duration-secs")
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0);
+        let backend = flag("--backend").unwrap_or_else(|| "unknown".to_string());
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let repo_root = repo_path::repo_root();
+        let record = cost_tracker::PrCostRecord {
+            pr_number,
+            gap_id,
+            model,
+            tokens_in,
+            tokens_out,
+            usd_cost,
+            duration_secs,
+            shipped_at: now,
+            backend,
+        };
+
+        match cost_tracker::record_pr_cost(&repo_root, &record) {
+            Ok(()) => {
+                println!("recorded PR {} cost metrics", pr_number);
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("chump cost record-pr: {e:#}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // `chump dispatch route <GAP-ID>` (COG-035) — print the candidate cascade
     // the dispatcher would walk for a given gap. Reads priority/effort from
     // .chump/state.db and the routing table from docs/dispatch/routing.yaml
@@ -1303,6 +1373,86 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump dispatch cost-report` (INFRA-405) — print per-PR cost telemetry.
+    // Reads from .chump/pr_costs.db and outputs TSV with optional per-model/per-domain aggregation.
+    if args.get(1).map(String::as_str) == Some("dispatch")
+        && args.get(2).map(String::as_str) == Some("cost-report")
+    {
+        let per_model = args.iter().any(|a| a == "--per-model");
+        let per_domain = args.iter().any(|a| a == "--per-domain");
+
+        let repo_root = repo_path::repo_root();
+        let records = match cost_tracker::query_pr_costs(&repo_root) {
+            Ok(r) => r,
+            Err(e) => {
+                eprintln!("chump dispatch cost-report: {e:#}");
+                std::process::exit(1);
+            }
+        };
+
+        if records.is_empty() {
+            println!("no PR cost records found");
+            return Ok(());
+        }
+
+        if per_domain {
+            use std::collections::HashMap;
+            let mut by_domain: HashMap<String, (i64, i64, f64, i64)> = HashMap::new();
+            for r in &records {
+                let domain = r.gap_id.split('-').next().unwrap_or("unknown").to_string();
+                let entry = by_domain.entry(domain).or_insert((0, 0, 0.0, 0));
+                entry.0 += r.tokens_in;
+                entry.1 += r.tokens_out;
+                entry.2 += r.usd_cost;
+                entry.3 += 1;
+            }
+            let mut items: Vec<_> = by_domain.into_iter().collect();
+            items.sort_by(|a, b| a.0.cmp(&b.0));
+            println!("domain\ttokens_in\ttokens_out\tusd_cost\tpr_count");
+            for (domain, (in_tokens, out_tokens, cost, count)) in items {
+                println!(
+                    "{}\t{}\t{}\t{:.4}\t{}",
+                    domain, in_tokens, out_tokens, cost, count
+                );
+            }
+        } else if per_model {
+            use std::collections::HashMap;
+            let mut by_model: HashMap<String, (i64, i64, f64, i64)> = HashMap::new();
+            for r in &records {
+                let entry = by_model.entry(r.model.clone()).or_insert((0, 0, 0.0, 0));
+                entry.0 += r.tokens_in;
+                entry.1 += r.tokens_out;
+                entry.2 += r.usd_cost;
+                entry.3 += 1;
+            }
+            let mut items: Vec<_> = by_model.into_iter().collect();
+            items.sort_by(|a, b| a.0.cmp(&b.0));
+            println!("model\ttokens_in\ttokens_out\tusd_cost\tpr_count");
+            for (model, (in_tokens, out_tokens, cost, count)) in items {
+                println!(
+                    "{}\t{}\t{}\t{:.4}\t{}",
+                    model, in_tokens, out_tokens, cost, count
+                );
+            }
+        } else {
+            println!("pr\tgap\tmodel\ttokens_in\ttokens_out\tusd_cost\tduration_secs\tbackend");
+            for r in &records {
+                println!(
+                    "{}\t{}\t{}\t{}\t{}\t{:.4}\t{}\t{}",
+                    r.pr_number,
+                    r.gap_id,
+                    r.model,
+                    r.tokens_in,
+                    r.tokens_out,
+                    r.usd_cost,
+                    r.duration_secs,
+                    r.backend
+                );
+            }
+        }
+        return Ok(());
+    }
+
     // `chump dispatch` with no/unknown subcommand — print help.
     if args.get(1).map(String::as_str) == Some("dispatch") {
         eprintln!("Usage: chump dispatch <subcommand>");
@@ -1314,6 +1464,7 @@ async fn main() -> Result<()> {
         eprintln!(
             "  simulate    <task_class> <N>    sample the Thompson cascade N times (COG-037)"
         );
+        eprintln!("  cost-report [--per-model|--per-domain]  per-PR cost telemetry (INFRA-405)");
         std::process::exit(2);
     }
 
