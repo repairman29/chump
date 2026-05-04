@@ -123,14 +123,14 @@ echo "--- Test 3: non-trivial case (both sides edited same guard) ---"
 git -C "$FAKE" checkout -q main
 git -C "$FAKE" checkout -q -b feature-C
 # Edit the existing base guard
-sed -i '' 's/SOME_VAR/MODIFIED_VAR/' "$FAKE/scripts/git-hooks/pre-commit"
+sed -i.bak 's/SOME_VAR/MODIFIED_VAR/' "$FAKE/scripts/git-hooks/pre-commit" && rm -f "$FAKE/scripts/git-hooks/pre-commit.bak"
 git -C "$FAKE" add scripts/git-hooks/pre-commit
 git -C "$FAKE" commit -q -m "feature-C: edit base guard"
 
 # Branch D also edits the base guard
 git -C "$FAKE" checkout -q main
 git -C "$FAKE" checkout -q -b feature-D
-sed -i '' 's/SOME_VAR/OTHER_VAR/' "$FAKE/scripts/git-hooks/pre-commit"
+sed -i.bak 's/SOME_VAR/OTHER_VAR/' "$FAKE/scripts/git-hooks/pre-commit" && rm -f "$FAKE/scripts/git-hooks/pre-commit.bak"
 git -C "$FAKE" add scripts/git-hooks/pre-commit
 git -C "$FAKE" commit -q -m "feature-D: edit base guard"
 git -C "$FAKE" checkout -q main

@@ -123,13 +123,13 @@ echo "--- Test 3: non-trivial case (both sides edited same step) ---"
 git -C "$FAKE" checkout -q main
 git -C "$FAKE" checkout -q -b feature-G
 # Edit an existing step instead of adding a new one
-sed -i '' 's/npm test/npm test -- --coverage/' "$FAKE/.github/workflows/ci.yml"
+sed -i.bak 's/npm test/npm test -- --coverage/' "$FAKE/.github/workflows/ci.yml" && rm -f "$FAKE/.github/workflows/ci.yml.bak"
 git -C "$FAKE" add .github/workflows/ci.yml
 git -C "$FAKE" commit -q -m "feature-G: edit existing step"
 
 git -C "$FAKE" checkout -q main
 git -C "$FAKE" checkout -q -b feature-H
-sed -i '' 's/npm test/npm test -- --verbose/' "$FAKE/.github/workflows/ci.yml"
+sed -i.bak 's/npm test/npm test -- --verbose/' "$FAKE/.github/workflows/ci.yml" && rm -f "$FAKE/.github/workflows/ci.yml.bak"
 git -C "$FAKE" add .github/workflows/ci.yml
 git -C "$FAKE" commit -q -m "feature-H: edit existing step"
 git -C "$FAKE" checkout -q main
