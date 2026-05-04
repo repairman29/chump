@@ -92,6 +92,20 @@ export FLEET_INLINE_BRIEFING="${FLEET_INLINE_BRIEFING:-1}"
 export CHUMP_LESSONS_AT_SPAWN_N="${CHUMP_LESSONS_AT_SPAWN_N:-0}"
 export CHUMP_AMBIENT_INSTALL_SKIP="${CHUMP_AMBIENT_INSTALL_SKIP:-1}"
 
+# INFRA-420: cost-guard. claude backend is ~50× chump-local per token
+# (opus-4-7 vs Together free tier; CLAUDE.md INFRA-369 documented one
+# fleet session burning $92). Refuse to start the fleet on claude
+# unless the operator opts in explicitly.
+if [[ "$FLEET_BACKEND" == "claude" \
+        && "${CHUMP_FLEET_ALLOW_CLAUDE_BACKEND:-0}" != "1" ]]; then
+    echo "[run-fleet] REFUSING to start fleet on backend=claude" >&2
+    echo "[run-fleet]   claude is ~50x chump-local per token; one fleet" >&2
+    echo "[run-fleet]   session burned \$92 of workspace credit (INFRA-369)." >&2
+    echo "[run-fleet]   To override:    CHUMP_FLEET_ALLOW_CLAUDE_BACKEND=1 $0" >&2
+    echo "[run-fleet]   Cheap default:  unset FLEET_BACKEND  (chump-local)" >&2
+    exit 2
+fi
+
 case "$FLEET_BACKEND" in
     claude|chump-local) ;;
     *)
