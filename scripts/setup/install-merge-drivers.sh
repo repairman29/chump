@@ -26,6 +26,7 @@
 #   chump-state-sql-regen: regenerates .chump/state.sql from .chump/state.db on conflict
 #   ci-yml-add-row: merges .github/workflows/ci.yml step additions
 #   pre-commit-add-guard: merges scripts/git-hooks/pre-commit guard additions
+#   gap-yaml-add-line: resolves docs/gaps/*.yaml conflicts by using ours (newest state)
 
 set -euo pipefail
 
@@ -66,6 +67,18 @@ DRIVER_NAME="pre-commit-add-guard"
 
 if [[ -x "$DRIVER_SCRIPT_REL" ]]; then
     git config "merge.${DRIVER_NAME}.name" "Append scripts/git-hooks/pre-commit guard blocks (INFRA-310)"
+    git config "merge.${DRIVER_NAME}.driver" "${DRIVER_SCRIPT_REL} %O %A %B %L"
+    echo "[install-merge-drivers] OK: ${DRIVER_NAME} registered"
+else
+    echo "[install-merge-drivers] SKIP: ${DRIVER_SCRIPT_REL} not found" >&2
+fi
+
+# ── Register gap-yaml add-line driver ────────────────────────────────────
+DRIVER_SCRIPT_REL="scripts/git/merge-driver-gap-yaml-add-line.sh"
+DRIVER_NAME="gap-yaml-add-line"
+
+if [[ -x "$DRIVER_SCRIPT_REL" ]]; then
+    git config "merge.${DRIVER_NAME}.name" "Resolve docs/gaps/*.yaml conflicts by using ours (INFRA-310)"
     git config "merge.${DRIVER_NAME}.driver" "${DRIVER_SCRIPT_REL} %O %A %B %L"
     echo "[install-merge-drivers] OK: ${DRIVER_NAME} registered"
 else
