@@ -6,7 +6,7 @@
 # full pre-merge checklist, pushes to origin, and opens (or updates) a GitHub PR.
 #
 # Usage:
-#   scripts/coord/bot-merge.sh [--gap GAP-ID ...] [--stack-on PREV-GAP-ID] [--auto-merge] [--skip-tests] [--dry-run]
+#   scripts/coord/bot-merge.sh [--gap GAP-ID ...] [--stack-on PREV-GAP-ID] [--auto-merge] [--skip-tests] [--dry-run] [--no-merge-driver]
 #
 #   --stack-on PREV-GAP-ID
 #                  Open this PR with base=<prev-PR-head> instead of main. When
@@ -30,6 +30,10 @@
 #                  explicitly when running from chump dispatch / Agent tool /
 #                  any context with a tight task budget. (INFRA-252)
 #   --dry-run      Print every step without executing git push or gh commands.
+#   --no-merge-driver
+#                  Disable custom git merge drivers (INFRA-310) during rebase.
+#                  Use when custom drivers are causing issues or you want to
+#                  force git's default 3-way merge strategy.
 #
 # Requirements: gh CLI authenticated, GITHUB_TOKEN in env or gh keyring, cargo.
 #
@@ -110,6 +114,7 @@ AUTO_MERGE=0
 SKIP_TESTS=0
 FAST=0
 DRY_RUN=0
+NO_MERGE_DRIVER=0
 # INFRA-193: speculative execution opt-in. With --speculative, gap-claim.sh
 # writes `"speculative": true` into the lease and gap-preflight.sh allows
 # concurrent claims by other speculative-mode sessions on the same gap.
@@ -146,6 +151,7 @@ for arg in "$@"; do
         --fast)        FAST=1; SKIP_TESTS=1 ;;
         --dry-run)     DRY_RUN=1 ;;
         --speculative) SPECULATIVE=1 ;;
+        --no-merge-driver) NO_MERGE_DRIVER=1 ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -646,7 +652,11 @@ fi
 
 if [[ "$BEHIND" -gt 0 ]]; then
     stage_start "rebase on $REMOTE/$BASE_BRANCH ($BEHIND commit(s) behind)"
-    if ! run_timed_hb "git rebase" 60 git rebase "${REMOTE}/${BASE_BRANCH}"; then
+    _rebase_args=("${REMOTE}/${BASE_BRANCH}")
+    if [[ "$NO_MERGE_DRIVER" == "1" ]]; then
+        _rebase_args+=(-c merge.ci-yml-add-row.driver= -c merge.pre-commit-add-guard.driver= -c merge.chump-state-sql-regen.driver=)
+    fi
+    if ! run_timed_hb "git rebase" 60 git rebase "${_rebase_args[@]}"; then
         red "git rebase failed or timed out — resolve conflicts or retry."
         exit 1
     fi
