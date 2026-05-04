@@ -1898,7 +1898,124 @@ impl GapStore {
         // column was added (INFRA-156) — INSERT OR IGNORE skips them, so
         // the backfill must be a separate UPDATE pass.
         let backfilled = self.backfill_closed_pr_from_yaml(repo_root)?;
-        Ok((inserted, skipped, backfilled))
+        // INFRA-460 (P0): same INSERT-OR-IGNORE blind spot for `status`.
+        // The INFRA-236 commit-subject closer writes `status: done` to the
+        // per-file YAML when a PR with `Closes <GAP-ID>` lands on main,
+        // but the next `chump gap import` skipped the update (INSERT OR
+        // IGNORE = no-op on PK conflict). Result: every closed-via-commit
+        // gap stayed `status: open` in state.db. Then `chump gap dump
+        // --update-yaml` regenerated the YAML from the stale DB and
+        // reverted the closer's flip. **Root cause of every OPEN-BUT-
+        // LANDED ghost on origin/main since the INFRA-188 per-file
+        // cutover (2026-05-02).** Diagnosed in PR #1094's Red Letter.
+        //
+        // Fix: monotonic status backfill. If YAML says `done` and DB says
+        // anything else, flip DB to `done` and propagate closed_date /
+        // closed_pr atomically. Status flips are monotonic in practice —
+        // the closer only ever writes `done`; superseded/blocked/deferred
+        // are explicit operator actions via `chump gap set`. Restricting
+        // the backfill to YAML-says-done means we never accidentally
+        // re-open a gap or erase a hand-set state.
+        let status_backfilled = self.backfill_status_done_from_yaml(repo_root)?;
+        Ok((inserted, skipped, backfilled + status_backfilled))
+    }
+
+    /// INFRA-460 — propagate `status: done` from per-file YAML mirrors to
+    /// state.db. Mirrors `backfill_closed_pr_from_yaml` (INFRA-233): a
+    /// post-import UPDATE pass that catches rows the `INSERT OR IGNORE`
+    /// in `import_from_yaml` would have skipped on PK conflict.
+    ///
+    /// Monotonic — only flips `status != 'done'` → `done` when YAML
+    /// asserts `done`. Never reverses a closure. Also propagates
+    /// `closed_date` and `closed_pr` atomically with the status flip if
+    /// the YAML provides them and the DB row is missing them, since the
+    /// closer writes all three together.
+    pub fn backfill_status_done_from_yaml(&self, repo_root: &Path) -> Result<usize> {
+        // Re-use the same YAML aggregation logic as import_from_yaml /
+        // backfill_closed_pr_from_yaml. Identical loader keeps drift
+        // between the three call sites impossible.
+        let per_file_dir = repo_root.join("docs").join("gaps");
+        let text = if per_file_dir.is_dir() {
+            let mut parts = Vec::new();
+            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
+                .with_context(|| format!("reading {}", per_file_dir.display()))?
+                .flatten()
+                .filter(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s == "yaml")
+                        .unwrap_or(false)
+                })
+                .collect();
+            dir_entries.sort_by_key(|e| e.file_name());
+            for entry in &dir_entries {
+                let content = std::fs::read_to_string(entry.path())
+                    .with_context(|| format!("reading {}", entry.path().display()))?;
+                parts.push(content);
+            }
+            if parts.is_empty() {
+                let yaml_path = repo_root.join("docs").join("gaps.yaml");
+                match std::fs::read_to_string(&yaml_path) {
+                    Ok(t) => t,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+                    Err(e) => {
+                        return Err(anyhow::Error::from(e))
+                            .with_context(|| format!("reading {}", yaml_path.display()));
+                    }
+                }
+            } else {
+                format!("gaps:\n{}", parts.join(""))
+            }
+        } else {
+            let yaml_path = repo_root.join("docs").join("gaps.yaml");
+            match std::fs::read_to_string(&yaml_path) {
+                Ok(t) => t,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+                Err(e) => {
+                    return Err(anyhow::Error::from(e))
+                        .with_context(|| format!("reading {}", yaml_path.display()));
+                }
+            }
+        };
+        let file: YamlGapsFile = serde_yaml::from_str(&text)
+            .with_context(|| "parsing gap registry for status backfill")?;
+
+        let mut backfilled = 0usize;
+        for g in &file.gaps {
+            // Only YAMLs that assert `done` get propagated. Anything else
+            // (open, superseded, blocked, deferred) we leave to explicit
+            // operator commands so we never accidentally erase a
+            // hand-set state. YamlGap.status is a String directly (not
+            // Option<Value>), so plain comparison.
+            if g.status != "done" {
+                continue;
+            }
+            let yaml_closed_date = g
+                .closed_date
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let yaml_closed_pr = g.closed_pr.as_ref().and_then(yaml_value_to_i64);
+
+            // UPDATE only flips when DB.status = 'open'. Any other DB
+            // state (done, superseded, blocked, deferred) is operator
+            // intent and stays as-is — we don't blindly trust YAML to
+            // overwrite hand-set states. closed_date and closed_pr
+            // piggyback if the YAML provides them; COALESCE keeps any DB
+            // value already populated so a divergent hand-set date is
+            // preserved.
+            let changed = self.conn.execute(
+                "UPDATE gaps
+                 SET status = 'done',
+                     closed_date = CASE WHEN ?1 = '' THEN closed_date ELSE ?1 END,
+                     closed_pr   = COALESCE(?2, closed_pr)
+                 WHERE id = ?3 AND status = 'open'",
+                params![yaml_closed_date, yaml_closed_pr, g.id],
+            )?;
+            backfilled += changed;
+        }
+        Ok(backfilled)
     }
 }
 
@@ -2794,8 +2911,15 @@ mod tests {
     }
 
     // ── INFRA-402: closed_pr integrity guard at the DB write layer ──────
+    // INFRA-460: these three tests share global env state
+    // (CHUMP_BYPASS_CLOSED_PR_GUARD) and must run serially. Without
+    // serial_test, set_fields_bypass_env_honored leaks the var to
+    // siblings during its window — observed flake in CI's
+    // cargo-test-workspace step on this PR. The dep is already used by
+    // src/reasoning_mode.rs for the same reason.
 
     #[test]
+    #[serial_test::serial(closed_pr_guard_env)]
     fn set_fields_status_done_requires_closed_pr() {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "guard test", "P1", "s").unwrap();
@@ -2824,6 +2948,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(closed_pr_guard_env)]
     fn set_fields_status_done_with_closed_pr_succeeds() {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "happy path", "P1", "s").unwrap();
@@ -2876,6 +3001,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(closed_pr_guard_env)]
     fn set_fields_bypass_env_honored() {
         // CHUMP_BYPASS_CLOSED_PR_GUARD=1 — for genuine migration cases
         // where closed_pr is unknown.
@@ -3376,6 +3502,117 @@ meta:
             row.closed_pr,
             Some(232),
             "closed_pr must remain 232 after idempotent backfill"
+        );
+    }
+
+    /// INFRA-460: `chump gap import` must propagate `status: done` from
+    /// the per-file YAML to state.db, even when the row already exists.
+    /// Pre-fix this was the silent-skip bug that produced every
+    /// OPEN-BUT-LANDED ghost on origin/main since INFRA-188 (2026-05-02):
+    /// the closer wrote `status: done` to YAML, INSERT OR IGNORE did
+    /// nothing on PK conflict, and the next dump regenerated the YAML
+    /// with the stale DB's `status: open`.
+    #[test]
+    fn test_import_propagates_status_done_from_yaml() {
+        let (store, dir) = test_store();
+        // Reserve a gap that lives in DB as `open`.
+        let id = store.reserve("INFRA", "ghost gap", "P1", "s").unwrap();
+        let row = store.get(&id).unwrap().expect("row");
+        assert_eq!(row.status, "open", "pre-condition: DB status is 'open'");
+
+        // Write a YAML that asserts `done` (mimics what INFRA-236's
+        // commit-subject closer would have written when a Closes <ID>
+        // commit landed on main).
+        let yaml_dir = dir.path().join("docs");
+        std::fs::create_dir_all(&yaml_dir).unwrap();
+        let yaml = format!(
+            "gaps:\n- id: {}\n  domain: INFRA\n  title: ghost gap\n  status: done\n  closed_pr: 999\n  closed_date: '2026-05-04'\n",
+            id
+        );
+        std::fs::write(yaml_dir.join("gaps.yaml"), &yaml).unwrap();
+
+        // Run import. The status backfill should flip the DB row.
+        let (_ins, _skip, backfilled) = store.import_from_yaml(dir.path()).unwrap();
+        assert!(
+            backfilled >= 1,
+            "expected at least 1 row backfilled (status + closed_pr); got {}",
+            backfilled
+        );
+        let row = store.get(&id).unwrap().expect("row");
+        assert_eq!(
+            row.status, "done",
+            "status must be propagated from YAML 'done' to DB"
+        );
+        assert_eq!(
+            row.closed_pr,
+            Some(999),
+            "closed_pr must propagate atomically with the status flip"
+        );
+        assert_eq!(
+            row.closed_date, "2026-05-04",
+            "closed_date must propagate atomically with the status flip"
+        );
+
+        // Idempotency: second import must not double-flip.
+        let (_ins2, _skip2, backfilled2) = store.import_from_yaml(dir.path()).unwrap();
+        assert_eq!(
+            backfilled2, 0,
+            "second import must be idempotent (row already done); got {} backfilled",
+            backfilled2
+        );
+    }
+
+    /// INFRA-460 must be MONOTONIC — never reverse a closure or overwrite
+    /// a non-`open` DB state. If YAML says `open` but DB says `done`,
+    /// the DB stays `done` (don't re-open by accident). If DB has been
+    /// hand-set to `superseded` / `blocked` / `deferred`, leave it alone
+    /// (the operator's intent overrides the YAML).
+    #[test]
+    fn test_import_status_backfill_is_monotonic() {
+        let (store, dir) = test_store();
+
+        // Case 1: DB done + YAML open → DB stays done (no reverse).
+        let id1 = store.reserve("INFRA", "shipped gap", "P1", "s").unwrap();
+        store.claim(&id1, "s", "/wt", 3600).unwrap();
+        store.ship(&id1, "s", Some(500)).unwrap();
+        let row = store.get(&id1).unwrap().expect("row");
+        assert_eq!(row.status, "done");
+
+        // Case 2: DB superseded + YAML done → DB stays superseded.
+        let id2 = store.reserve("INFRA", "superseded gap", "P1", "s").unwrap();
+        store
+            .conn
+            .execute(
+                "UPDATE gaps SET status='superseded' WHERE id=?1",
+                params![id2],
+            )
+            .unwrap();
+
+        // Write YAMLs: id1 with `open` (would-be-reverse), id2 with `done`
+        // (would-be-overwrite).
+        let yaml_dir = dir.path().join("docs");
+        std::fs::create_dir_all(&yaml_dir).unwrap();
+        let yaml = format!(
+            "gaps:\n\
+- id: {}\n  domain: INFRA\n  title: shipped gap\n  status: open\n\
+- id: {}\n  domain: INFRA\n  title: superseded gap\n  status: done\n  closed_pr: 700\n",
+            id1, id2
+        );
+        std::fs::write(yaml_dir.join("gaps.yaml"), &yaml).unwrap();
+
+        let _ = store.import_from_yaml(dir.path()).unwrap();
+
+        // id1 must still be done (not reversed).
+        assert_eq!(
+            store.get(&id1).unwrap().unwrap().status,
+            "done",
+            "INFRA-460: must not reverse a done status (YAML 'open' loses to DB 'done')"
+        );
+        // id2 must still be superseded (not overwritten).
+        assert_eq!(
+            store.get(&id2).unwrap().unwrap().status,
+            "superseded",
+            "INFRA-460: must not overwrite a non-open hand-set state (DB 'superseded' wins)"
         );
     }
 

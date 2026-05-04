@@ -1,0 +1,7 @@
+- id: INFRA-460
+  domain: INFRA
+  title: "P0: chump gap import does not propagate status changes from per-file YAML to state.db (root cause of all OPEN-BUT-LANDED ghost gaps; INSERT OR IGNORE skips updates)"
+  status: open
+  priority: P0
+  effort: s
+
