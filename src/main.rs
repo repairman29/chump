@@ -139,6 +139,7 @@ mod schedule_tool;
 mod screen_vision_tool;
 mod session;
 pub mod session_compact;
+mod session_ledger;
 mod session_search_tool;
 mod set_working_repo_tool;
 mod skill_db;
@@ -426,6 +427,56 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
         }
+    }
+
+    // `chump session-track --start <GAP-ID>` / `--end <GAP-ID> --outcome <s|a|t>`
+    // (INFRA-477) — per-session cost ledger MVP. Writes session_start +
+    // session_end events to ambient.jsonl. Briefing surfaces aggregate
+    // stats for past sessions in the same domain so the next session
+    // sees how long similar work has historically taken.
+    if args.get(1).map(String::as_str) == Some("session-track") {
+        let st_flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1).cloned())
+        };
+        let session_id = std::env::var("CHUMP_SESSION_ID")
+            .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+            .unwrap_or_else(|_| "unknown".to_string());
+        let repo_root = repo_path::repo_root();
+        if let Some(gap_id) = st_flag("--start") {
+            session_ledger::emit_session_start(&repo_root, &session_id, &gap_id);
+            println!(
+                "session_start logged: gap={} session={}",
+                gap_id, session_id
+            );
+            return Ok(());
+        }
+        if let Some(gap_id) = st_flag("--end") {
+            let outcome_str = st_flag("--outcome").unwrap_or_else(|| {
+                eprintln!(
+                    "chump session-track --end: missing --outcome <shipped|abandoned|starved>"
+                );
+                std::process::exit(2);
+            });
+            let outcome = session_ledger::Outcome::from_str(&outcome_str)
+                .unwrap_or_else(|| {
+                    eprintln!("chump session-track --end: unknown outcome '{}' (expected shipped|abandoned|starved)", outcome_str);
+                    std::process::exit(2);
+                });
+            session_ledger::emit_session_end(&repo_root, &session_id, &gap_id, outcome);
+            println!(
+                "session_end logged: gap={} outcome={}",
+                gap_id,
+                outcome.as_str()
+            );
+            return Ok(());
+        }
+        eprintln!("Usage: chump session-track --start <GAP-ID>");
+        eprintln!(
+            "       chump session-track --end <GAP-ID> --outcome <shipped|abandoned|starved>"
+        );
+        std::process::exit(2);
     }
 
     // `chump dashboard` (INFRA-063 / M5) — print the cycle-time dashboard:
