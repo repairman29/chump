@@ -178,6 +178,16 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         );
     }
 
+    // PathBuf-to-str: macOS/Linux paths are normally UTF-8, but
+    // CHUMP_WORKTREE_BASE could be set to a non-UTF-8 path. Fail loudly
+    // rather than panic with unwrap().
+    let worktree_path_str = worktree_path.to_str().ok_or_else(|| {
+        anyhow!(
+            "worktree path contains non-UTF-8 bytes (likely from CHUMP_WORKTREE_BASE): {}",
+            worktree_path.display()
+        )
+    })?;
+
     // 6. git worktree add -b <branch> <path> <remote>/<base>
     run_git(
         &args.repo_root,
@@ -186,7 +196,7 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             "add",
             "-b",
             &branch,
-            worktree_path.to_str().unwrap(),
+            worktree_path_str,
             &format!("{}/{}", args.remote, args.base_branch),
         ],
     )
@@ -212,15 +222,11 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         .output()
         .with_context(|| "spawning gap-claim.sh")?;
     if !claim_out.status.success() {
-        // Roll back the worktree to keep the world consistent.
+        // Roll back the worktree to keep the world consistent. Reuses
+        // worktree_path_str which is already validated as UTF-8 above.
         let _ = run_git(
             &args.repo_root,
-            &[
-                "worktree",
-                "remove",
-                "--force",
-                worktree_path.to_str().unwrap(),
-            ],
+            &["worktree", "remove", "--force", worktree_path_str],
         );
         let _ = run_git(&args.repo_root, &["branch", "-D", &branch]);
         let stderr = String::from_utf8_lossy(&claim_out.stderr);
