@@ -935,11 +935,40 @@ async fn main() -> Result<()> {
                         let per_file_dir = worktree_root.join("docs").join("gaps");
                         match store.dump_per_file_single(&id, &per_file_dir) {
                             Ok(true) => {
-                                eprintln!(
-                                    "wrote {}",
-                                    per_file_dir.join(format!("{id}.yaml")).display()
-                                );
+                                let yaml_path = per_file_dir.join(format!("{id}.yaml"));
+                                eprintln!("wrote {}", yaml_path.display());
                                 write_yaml_op_marker(&worktree_root, "reserve");
+
+                                // INFRA-484: auto-stage the YAML mirror so it
+                                // rides along on the next commit. Pre-fix:
+                                // chump gap reserve wrote the YAML untracked,
+                                // so linked worktrees (fleet workers) created
+                                // from origin/main never saw it. The 2026-05-05
+                                // sonnet fleet wedge is the canonical incident:
+                                // workers got "(gap YAML not found)" prompts,
+                                // had to discover from state.db (also not in
+                                // linked worktree), got stuck, and burned 600s
+                                // × N cycles to 0-byte output.
+                                //
+                                // Staging makes the YAML part of the next PR's
+                                // diff so origin/main and all linked worktrees
+                                // pick it up.
+                                //
+                                // Best-effort: silent if not in a git worktree
+                                // or if git is unavailable. Bypass with
+                                // CHUMP_RESERVE_NO_AUTOSTAGE=1 for genuine
+                                // detached / read-only operator workflows.
+                                if std::env::var("CHUMP_RESERVE_NO_AUTOSTAGE").as_deref() != Ok("1")
+                                {
+                                    let _ = std::process::Command::new("git")
+                                        .arg("-C")
+                                        .arg(&worktree_root)
+                                        .arg("add")
+                                        .arg(&yaml_path)
+                                        .stderr(std::process::Stdio::null())
+                                        .stdout(std::process::Stdio::null())
+                                        .status();
+                                }
                             }
                             Ok(false) => {} // no-op write
                             Err(e) => {
