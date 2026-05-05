@@ -914,10 +914,24 @@ if [[ $SKIP_TESTS -eq 0 ]] && [[ "${CHUMP_SKIP_CI_SHELL:-0}" != "1" ]]; then
         FAILED_TESTS=()
         for t in "${CHANGED_TESTS[@]}"; do
             tname="$(basename "$t")"
-            if ! timeout 60 bash "$t" >/tmp/bot-merge-citest.log 2>&1; then
+            # INFRA-473: write per-test log files (not a single shared one
+            # that gets clobbered between iterations) so the operator can
+            # read the FULL output of any failed test, not just tail -10.
+            ci_log="/tmp/bot-merge-citest-${tname%.sh}.log"
+            if ! timeout 60 bash "$t" >"$ci_log" 2>&1; then
                 FAILED_TESTS+=("$tname")
                 red "  ✗ $tname"
-                tail -10 /tmp/bot-merge-citest.log | sed 's/^/    /'
+                # Surface explicit FAIL lines first (cheap, high-signal).
+                fail_lines=$(grep -E '^\s*FAIL:' "$ci_log" 2>/dev/null || true)
+                if [[ -n "$fail_lines" ]]; then
+                    echo "$fail_lines" | sed 's/^/    /'
+                fi
+                # Plus the trailing 30 lines (Results: summary + immediate
+                # context). 30 not 10 — Cargo/test output is verbose enough
+                # that 10 lines often misses the failure detail.
+                echo "    --- last 30 lines of $ci_log ---"
+                tail -30 "$ci_log" | sed 's/^/    /'
+                echo "    --- end ($(wc -l <"$ci_log") total lines; full log: $ci_log) ---"
             fi
         done
         if [[ ${#FAILED_TESTS[@]} -gt 0 ]]; then
@@ -926,6 +940,7 @@ if [[ $SKIP_TESTS -eq 0 ]] && [[ "${CHUMP_SKIP_CI_SHELL:-0}" != "1" ]]; then
             info "they will block the PR's CI 'test' job otherwise (PR #729 was the"
             info "originating example — it sat stuck for 2+ hours waiting on a test"
             info "the author could have run in 5 seconds locally)."
+            info "Full per-test logs at /tmp/bot-merge-citest-<name>.log"
             info "Bypass (only if you've already verified the failure is environmental):"
             info "  CHUMP_SKIP_CI_SHELL=1 scripts/coord/bot-merge.sh ..."
             exit 1
