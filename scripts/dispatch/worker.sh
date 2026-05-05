@@ -33,6 +33,23 @@ set -uo pipefail   # NOT -e: we want the loop to recover from individual cycle f
 
 AGENT_ID="${AGENT_ID:-?}"
 REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+
+# INFRA-461: derive a unique per-worker session ID so leases written by this
+# worker (or any chump/coord subprocess it invokes) DO NOT stomp the
+# operator's interactive session via the .chump-locks/.wt-session-id
+# fallback in the gap-claim.sh resolution chain. Workers run with
+# cwd=$REPO_ROOT (the main worktree); without this export, gap-claim.sh
+# picks up `.wt-session-id` and every fleet worker writes the lease under
+# the operator's interactive session ID — observed live 2026-05-04 with
+# multiple SWARM-* claims overwriting an active interactive INFRA-458
+# lease.
+#
+# Session ID shape: fleet-<tmux-session>-agent<N>-<pid>-<epoch>. tmux
+# session name is unique per fleet spawn; PID + epoch make sibling
+# workers in the same fleet collision-free.
+if [[ -z "${CHUMP_SESSION_ID:-}" ]]; then
+    export CHUMP_SESSION_ID="fleet-${FLEET_SESSION:-fleet}-agent${AGENT_ID}-$$-$(date +%s)"
+fi
 FLEET_LOG_DIR="${FLEET_LOG_DIR:-/tmp/chump-fleet-default}"
 FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
