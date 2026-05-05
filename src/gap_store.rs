@@ -452,6 +452,89 @@ impl GapStore {
             }
         }
 
+        // INFRA-456: lift two additional integrity guards from the YAML
+        // pre-commit hook into the DB write path so they're unbypassable
+        // by any caller that goes through `chump gap set` directly:
+        //   (1) recycled-ID guard (INFRA-014 class) — done is terminal;
+        //       cannot move done → open/in_progress. New work needs a
+        //       new ID.
+        //   (2) gap-ID hijack guard — silently rewriting an existing
+        //       gap's title or description on an open gap (stealing the
+        //       slot for unrelated work) is forbidden. Caught PR #60 ↔
+        //       #65 EVAL-011 collision in 2026-04-18.
+        // Both guards read the current row once and compare to the
+        // proposed update.
+        let cur_meta: Option<(String, String, String)> = self
+            .conn
+            .query_row(
+                "SELECT status, title, description FROM gaps WHERE id=?",
+                [gap_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
+            )
+            .ok();
+
+        if let Some((cur_status, cur_title, cur_description)) = cur_meta.as_ref() {
+            // Guard (1) — recycled-ID
+            if cur_status == "done" {
+                if let Some(new_status) = fields.status.as_deref() {
+                    if new_status != "done"
+                        && std::env::var("CHUMP_ALLOW_RECYCLE").as_deref() != Ok("1")
+                    {
+                        bail!(
+                            "INFRA-456 recycled-ID guard: gap {} is already done; cannot move to status='{}'. \
+                             Done is terminal — reserve a new gap ID for follow-up work \
+                             (chump gap reserve --domain ... --title ...). \
+                             Bypass for genuine reopen cases (operator authorization required): \
+                             CHUMP_ALLOW_RECYCLE=1.",
+                            gap_id, new_status
+                        );
+                    }
+                }
+            }
+
+            // Guard (2) — hijack
+            // Allow rewrites if the operator opts in. The flag is intentionally
+            // verbose so it shows up in `git log` and `ambient.jsonl`.
+            let allow_rewrite = std::env::var("CHUMP_ALLOW_GAP_REWRITE").as_deref() == Ok("1");
+            if !allow_rewrite {
+                if let Some(new_title) = fields.title.as_deref() {
+                    if !cur_title.is_empty() && new_title != cur_title {
+                        bail!(
+                            "INFRA-456 hijack guard: gap {} already has a title and a different one was supplied. \
+                             Title was: '{}'. Proposed: '{}'. \
+                             Existing gaps cannot be silently repurposed — reserve a new gap ID instead. \
+                             Bypass for genuine title corrections: CHUMP_ALLOW_GAP_REWRITE=1.",
+                            gap_id, cur_title, new_title
+                        );
+                    }
+                }
+                if let Some(new_description) = fields.description.as_deref() {
+                    if !cur_description.is_empty()
+                        && new_description != cur_description
+                        // Allow growing the description (append-only is fine).
+                        && !new_description.contains(cur_description.as_str())
+                    {
+                        bail!(
+                            "INFRA-456 hijack guard: gap {} already has a description and an incompatible one was supplied. \
+                             Existing description: '{}'. Proposed: '{}'. \
+                             Existing gaps cannot be silently repurposed — reserve a new gap ID instead. \
+                             (Appending to an existing description is allowed.) \
+                             Bypass for genuine corrections: CHUMP_ALLOW_GAP_REWRITE=1.",
+                            gap_id,
+                            cur_description.chars().take(80).collect::<String>(),
+                            new_description.chars().take(80).collect::<String>()
+                        );
+                    }
+                }
+            }
+        }
+
         let mut sets: Vec<&str> = Vec::new();
         let mut vals: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
         if let Some(v) = fields.title {
@@ -3021,6 +3104,165 @@ mod tests {
             std::env::remove_var("CHUMP_BYPASS_CLOSED_PR_GUARD");
         }
         result.expect("bypass env should allow status=done without closed_pr");
+    }
+
+    // ── INFRA-456: recycled-ID + hijack guards at the DB write layer ──────
+
+    #[test]
+    fn infra456_recycled_id_guard_blocks_done_to_open() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "test gap", "P1", "s").unwrap();
+        // Ship it (status=done with closed_pr).
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(42),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // Attempt to recycle: done → open. Must error.
+        let err = store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("open".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("INFRA-456 recycled-ID"),
+            "error must reference INFRA-456 recycled-ID, got: {err}"
+        );
+        // DB still done.
+        let status: String = store
+            .conn
+            .query_row("SELECT status FROM gaps WHERE id=?", [&id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(status, "done");
+    }
+
+    #[test]
+    #[serial_test::serial(recycle_bypass_env)]
+    fn infra456_recycled_id_bypass_env_honored() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "test gap", "P1", "s").unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(42),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        std::env::set_var("CHUMP_ALLOW_RECYCLE", "1");
+        let result = store.set_fields(
+            &id,
+            GapFieldUpdate {
+                status: Some("open".into()),
+                ..Default::default()
+            },
+        );
+        std::env::remove_var("CHUMP_ALLOW_RECYCLE");
+        result.expect("CHUMP_ALLOW_RECYCLE=1 should bypass recycled-ID guard");
+    }
+
+    #[test]
+    fn infra456_hijack_guard_blocks_silent_title_rewrite() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "original title", "P1", "s").unwrap();
+        let err = store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    title: Some("totally different work".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("INFRA-456 hijack"),
+            "error must reference INFRA-456 hijack, got: {err}"
+        );
+        // Title unchanged.
+        let title: String = store
+            .conn
+            .query_row("SELECT title FROM gaps WHERE id=?", [&id], |r| r.get(0))
+            .unwrap();
+        assert_eq!(title, "original title");
+    }
+
+    #[test]
+    #[serial_test::serial(rewrite_bypass_env)]
+    fn infra456_hijack_bypass_env_honored() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "original title", "P1", "s").unwrap();
+        std::env::set_var("CHUMP_ALLOW_GAP_REWRITE", "1");
+        let result = store.set_fields(
+            &id,
+            GapFieldUpdate {
+                title: Some("corrected title".into()),
+                ..Default::default()
+            },
+        );
+        std::env::remove_var("CHUMP_ALLOW_GAP_REWRITE");
+        result.expect("CHUMP_ALLOW_GAP_REWRITE=1 should bypass hijack guard");
+    }
+
+    #[test]
+    fn infra456_hijack_guard_allows_description_append() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "title", "P1", "s").unwrap();
+        // Set initial description.
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    description: Some("Initial description.".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // Append to it — must be allowed.
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    description: Some("Initial description. Plus follow-up note.".into()),
+                    ..Default::default()
+                },
+            )
+            .expect("appending to description should be allowed");
+    }
+
+    #[test]
+    fn infra456_hijack_guard_blocks_incompatible_description_rewrite() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "title", "P1", "s").unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    description: Some("Original problem statement.".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let err = store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    description: Some("Totally different problem.".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("INFRA-456 hijack"));
     }
 
     #[test]
