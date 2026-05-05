@@ -367,6 +367,63 @@ run_timed_hb() {
     return "$_rc"
 }
 
+# ── INFRA-458: mid-flight chump-doctor wrap ──────────────────────────────────
+#
+# Every internal `chump <args>` call inside bot-merge.sh is at risk of hanging
+# on the macOS Sequoia syspolicyd `_dyld_start` wedge (INFRA-275). The
+# pre-flight chump-doctor probe (INFRA-379) only catches startup wedges; a
+# binary that wedges *between* successful invocations leaves bot-merge.sh
+# spinning forever — observed 5+ times daily during the 2026-05-02..04 window.
+#
+# `chump_with_doctor` wraps a chump invocation with:
+#   1. wall-clock timeout (CHUMP_INTERNAL_TIMEOUT, default 30s)
+#   2. on timeout, run chump-doctor.sh to heal the wedged inode (INFRA-275)
+#   3. retry once with the same timeout
+#
+# Stream separation is preserved (stdout → caller's stdout, stderr →
+# caller's stderr) so callers like `_x=$(chump_with_doctor gap list --json)`
+# work unchanged. Wrapper's own diagnostics go to stderr so they don't
+# pollute the captured stdout.
+#
+# Bypass: CHUMP_INTERNAL_DOCTOR=0 — disable the wrap entirely (raw chump).
+# Useful for tests that mock `chump` and don't want the heal path firing.
+chump_with_doctor() {
+    if [[ "${CHUMP_INTERNAL_DOCTOR:-1}" == "0" ]]; then
+        chump "$@"
+        return $?
+    fi
+    local timeout_secs="${CHUMP_INTERNAL_TIMEOUT:-30}"
+    local TO=()
+    if command -v gtimeout >/dev/null 2>&1; then
+        TO=(gtimeout "$timeout_secs")
+    elif command -v timeout >/dev/null 2>&1; then
+        TO=(timeout "$timeout_secs")
+    fi
+
+    "${TO[@]}" chump "$@"
+    local rc=$?
+
+    # rc 124 = GNU coreutils timeout. rc 137 = SIGKILL (sometimes seen on
+    # macOS / BSD timeout). Either means we hit the wall — heal and retry.
+    if [[ $rc -eq 124 || $rc -eq 137 ]]; then
+        info "chump $* timed out (${timeout_secs}s) — running chump-doctor heal (INFRA-458)" >&2
+        local doctor="${REPO_ROOT:-$(pwd)}/scripts/dev/chump-doctor.sh"
+        if [[ -x "$doctor" ]]; then
+            CHUMP_DOCTOR_FORCE=1 bash "$doctor" >/dev/null 2>&1 || true
+        else
+            yellow "chump-doctor.sh not found at $doctor — skipping heal, retrying anyway" >&2
+        fi
+        "${TO[@]}" chump "$@"
+        rc=$?
+        if [[ $rc -eq 0 ]]; then
+            green "chump $* recovered after doctor heal" >&2
+        elif [[ $rc -eq 124 || $rc -eq 137 ]]; then
+            yellow "chump $* timed out twice (heal did not unblock) — surfacing failure" >&2
+        fi
+    fi
+    return $rc
+}
+
 # ── INFRA-119: health-file writer + total-budget watchdog ────────────────────
 # Call _bm_health_init once after REPO_ROOT is known. It:
 #   1. Creates .chump-locks/bot-merge-<pid>.health — read by queue-health-monitor
@@ -1046,8 +1103,10 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
             stage_start "auto-close gap $_gid via PR #$_autoclose_target_pr (INFRA-154)"
             # Capture stderr so we can surface the actual error if ship fails
             # (was '>/dev/null 2>&1' which swallowed everything — see META-017).
+            # INFRA-458: chump_with_doctor wraps with timeout+heal+retry so a
+            # mid-flight syspolicyd wedge doesn't strand the auto-close step.
             _autoclose_err=$(CHUMP_REPO="$_autoclose_main_repo" \
-                             chump gap ship "$_gid" \
+                             chump_with_doctor gap ship "$_gid" \
                                 --closed-pr "$_autoclose_target_pr" \
                                 --update-yaml 2>&1 >/dev/null)
             _autoclose_rc=$?
@@ -1096,7 +1155,7 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
                         # Best-effort: never blocks the close path.
                         if command -v chump >/dev/null 2>&1 \
                             && [[ -x scripts/coord/broadcast.sh ]]; then
-                            _unblocked=$(chump gap list --status open --json 2>/dev/null \
+                            _unblocked=$(chump_with_doctor gap list --status open --json 2>/dev/null \
                                 | python3 -c "
 import json, sys
 gid = '$_gid'
