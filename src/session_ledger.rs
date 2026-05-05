@@ -379,7 +379,7 @@ mod tests {
         // different elapsed times, plus one COG-* (filtered out).
         let amb = tmp.join(".chump-locks/ambient.jsonl");
         std::fs::create_dir_all(amb.parent().unwrap()).unwrap();
-        let lines = vec![
+        let lines = [
             r#"{"event":"session_end","kind":"session_end","ts":"2026-05-05T10:00:00Z","session_id":"a","gap_id":"INFRA-1","outcome":"shipped","elapsed_seconds":600}"#,
             r#"{"event":"session_end","kind":"session_end","ts":"2026-05-05T10:00:00Z","session_id":"b","gap_id":"INFRA-2","outcome":"shipped","elapsed_seconds":1800}"#,
             r#"{"event":"session_end","kind":"session_end","ts":"2026-05-05T10:00:00Z","session_id":"c","gap_id":"INFRA-3","outcome":"abandoned","elapsed_seconds":300}"#,
