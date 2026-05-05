@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -65,11 +66,53 @@ def get_session_id() -> str:
 
 
 def get_lock_dir() -> Path:
-    """Get the lease lock directory."""
-    repo_root = os.environ.get("REPO_ROOT", ".")
+    """Get the lease lock directory.
+
+    INFRA-467: resolve to the *main* repo's .chump-locks/, never the
+    linked worktree's. Without this, a fleet spawned from
+    /tmp/chump-fleet-host (a `git worktree add` of the main repo) writes
+    leases into /tmp/chump-fleet-host/.chump-locks/ — invisible to siblings
+    on the main repo, so cross-worktree gap-preflight breaks (INFRA-466).
+
+    Resolution order (matches scripts/lib/repo-paths.sh):
+      1. CHUMP_LOCK_DIR env override (tests, explicit)
+      2. parent of `git rev-parse --git-common-dir` (main-repo root, even
+         from a linked worktree — git-common-dir returns the MAIN repo's
+         .git regardless of which worktree we're in)
+      3. REPO_ROOT env (worker.sh sets this) / .chump-locks (legacy fallback)
+      4. cwd / .chump-locks (last resort)
+    """
     lock_dir = os.environ.get("CHUMP_LOCK_DIR")
     if lock_dir:
         return Path(lock_dir)
+
+    # Try git-common-dir for main-repo resolution.
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if common.returncode == 0:
+            common_dir = common.stdout.strip()
+            # Linked worktree: returns absolute /path/to/main/.git
+            # Main checkout: returns relative ".git"
+            if common_dir == ".git":
+                # Main checkout — toplevel is the main repo
+                top = subprocess.run(
+                    ["git", "rev-parse", "--show-toplevel"],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if top.returncode == 0:
+                    return Path(top.stdout.strip()) / ".chump-locks"
+            else:
+                # Linked worktree — common_dir's parent is main repo root
+                return Path(common_dir).resolve().parent / ".chump-locks"
+    except Exception:
+        pass
+
+    # Legacy fallback: REPO_ROOT (set by worker.sh, may be the linked-worktree
+    # path — preserves backward-compat for tests that explicitly set it).
+    repo_root = os.environ.get("REPO_ROOT", ".")
     return Path(repo_root) / ".chump-locks"
 
 
