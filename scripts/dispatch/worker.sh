@@ -338,9 +338,24 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
             # Bypass: FLEET_INLINE_BRIEFING=0 reverts to the old terse-prompt
             # behavior (forces claude to discover everything itself).
             if [[ "${FLEET_INLINE_BRIEFING:-1}" == "1" ]]; then
+                # INFRA-484: gap YAML may exist only in the main worktree
+                # (chump gap reserve writes it untracked). Fall back to
+                # the main repo's path so workers get gap context even
+                # when origin/main hasn't seen the YAML yet. Without this
+                # fallback, claude -p gets a "gap YAML not found" prompt,
+                # has to discover from state.db (not present in linked
+                # worktree), and burns the full FLEET_TIMEOUT_S in
+                # discovery — the exact wedge pattern observed
+                # 2026-05-05 (INFRA-470/471).
                 gap_yaml_path="$wt_path/docs/gaps/${GAP_ID}.yaml"
+                gap_yaml_main_path="$REPO_ROOT/docs/gaps/${GAP_ID}.yaml"
                 gap_yaml="(gap YAML not found — read docs/gaps/${GAP_ID}.yaml)"
-                [[ -f "$gap_yaml_path" ]] && gap_yaml=$(cat "$gap_yaml_path")
+                if [[ -f "$gap_yaml_path" ]]; then
+                    gap_yaml=$(cat "$gap_yaml_path")
+                elif [[ -f "$gap_yaml_main_path" ]]; then
+                    gap_yaml=$(cat "$gap_yaml_main_path")
+                    log "INFRA-484: gap YAML missing in worktree; loaded from main repo"
+                fi
                 prompt="Ship gap ${GAP_ID}.
 
 The gap is already claimed for this session; lease is in .chump-locks/.
