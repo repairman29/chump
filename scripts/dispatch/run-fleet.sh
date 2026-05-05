@@ -29,12 +29,16 @@
 #   FLEET_SESSION           (default "chump-fleet") tmux session name
 #   FLEET_LOG_DIR           (default /tmp/chump-fleet-<sid>) per-agent logs
 #   FLEET_DRY_RUN           (default 0)   if 1, print plan and exit
-#   FLEET_BACKEND           (default chump-local) "chump-local" runs each
-#                           gap via `chump --execute-gap` so calls fan out
-#                           through src/provider_cascade.rs (free tiers).
-#                           "claude" preserves the original AUTO-013 path
-#                           (`claude -p` with Anthropic API). Use claude
-#                           for tasks the cascade can't carry yet.
+#   FLEET_BACKEND           (default claude) "claude" runs each gap via
+#                           `claude -p` with Anthropic API + Haiku/Sonnet
+#                           per FLEET_MODEL — the original AUTO-013 path.
+#                           "chump-local" routes through src/provider_cascade.rs
+#                           (free tier providers like Together / Ollama / mistral.rs).
+#                           Default flipped 2026-05-05 (INFRA-457): cascade bank
+#                           too small for dev workload — operator paid in claude
+#                           credits while cascade providers errored mid-pick.
+#                           Use chump-local opt-in for sustained background
+#                           sweeps where cost matters more than reliability.
 #   CARGO_TARGET_DIR        recommended: shared target across worktrees
 #                           (see INFRA-210 — exported below if unset)
 #
@@ -76,7 +80,7 @@ FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 FLEET_SESSION="${FLEET_SESSION:-chump-fleet}"
 FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
-FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+FLEET_BACKEND="${FLEET_BACKEND:-claude}"
 # INFRA-371: token-burn defaults applied to every fleet worker unless
 # the caller overrides. These cut per-spawn token cost without losing
 # capability — workers can still re-enable for harder workloads.
@@ -92,17 +96,26 @@ export FLEET_INLINE_BRIEFING="${FLEET_INLINE_BRIEFING:-1}"
 export CHUMP_LESSONS_AT_SPAWN_N="${CHUMP_LESSONS_AT_SPAWN_N:-0}"
 export CHUMP_AMBIENT_INSTALL_SKIP="${CHUMP_AMBIENT_INSTALL_SKIP:-1}"
 
-# INFRA-420: cost-guard. claude backend is ~50× chump-local per token
-# (opus-4-7 vs Together free tier; CLAUDE.md INFRA-369 documented one
-# fleet session burning $92). Refuse to start the fleet on claude
-# unless the operator opts in explicitly.
-if [[ "$FLEET_BACKEND" == "claude" \
-        && "${CHUMP_FLEET_ALLOW_CLAUDE_BACKEND:-0}" != "1" ]]; then
-    echo "[run-fleet] REFUSING to start fleet on backend=claude" >&2
-    echo "[run-fleet]   claude is ~50x chump-local per token; one fleet" >&2
-    echo "[run-fleet]   session burned \$92 of workspace credit (INFRA-369)." >&2
-    echo "[run-fleet]   To override:    CHUMP_FLEET_ALLOW_CLAUDE_BACKEND=1 $0" >&2
-    echo "[run-fleet]   Cheap default:  unset FLEET_BACKEND  (chump-local)" >&2
+# INFRA-457 (2026-05-05): cost-guard inverted from INFRA-420 form.
+# Operator feedback: cascade bank too small for sustained dev workload —
+# providers errored mid-pick while $92 of Anthropic workspace credit
+# sat unused. With FLEET_MODEL unset (or "haiku"), claude backend uses
+# the .claude/settings.json haiku pin (INFRA-369), which is roughly
+# the same per-token cost as cascade free tiers but with reliability.
+#
+# What the guard now refuses: claude+opus (the original $92 footgun).
+# What it allows: claude+haiku|sonnet (the new default), chump-local.
+#
+# Override paths:
+#   CHUMP_FLEET_ALLOW_OPUS=1     opus on a fleet, with eyes-open cost
+#   FLEET_BACKEND=chump-local    cascade-tier providers (legacy default)
+if [[ "$FLEET_BACKEND" == "claude" && "${FLEET_MODEL:-}" == *opus* \
+        && "${CHUMP_FLEET_ALLOW_OPUS:-0}" != "1" ]]; then
+    echo "[run-fleet] REFUSING to start fleet on backend=claude FLEET_MODEL=opus*" >&2
+    echo "[run-fleet]   opus is ~50x haiku per token; one fleet session burned" >&2
+    echo "[run-fleet]   \$92 of workspace credit (INFRA-369)." >&2
+    echo "[run-fleet]   To override:    CHUMP_FLEET_ALLOW_OPUS=1 $0" >&2
+    echo "[run-fleet]   Cheap default:  FLEET_MODEL=haiku $0  (or unset; haiku-pinned)" >&2
     exit 2
 fi
 
