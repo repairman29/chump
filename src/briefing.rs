@@ -56,6 +56,11 @@ pub struct GapBriefing {
     /// the human-readable text the past agent recorded as "what I did
     /// differently this time."
     pub recent_deltas: Vec<crate::reflect_delta::DeltaRecord>,
+    /// INFRA-477: aggregate stats for past sessions on the same domain
+    /// — n, median/min/max elapsed seconds, shipped/abandoned/starved
+    /// counts. Surfaced as a one-liner in the rendered briefing so the
+    /// next agent sees historical cost ("median 24m, range 8–67m").
+    pub session_stats: crate::session_ledger::SessionStats,
     /// `true` when the gap was not found in `docs/gaps.yaml`. Renderer prints
     /// a clear error in this case rather than a misleading half-empty briefing.
     pub gap_not_found: bool,
@@ -111,6 +116,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             similar_closed_prs: Vec::new(),
             escalation_events: Vec::new(),
             recent_deltas: Vec::new(),
+            session_stats: crate::session_ledger::SessionStats::default(),
             gap_not_found: true,
         };
     };
@@ -191,6 +197,10 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     // gaps so the next agent sees how past attempts on this class
     // differed from each other.
     let recent_deltas = crate::reflect_delta::recent_deltas_for_domain(root, &parsed.domain, 5);
+    // INFRA-477: surface aggregate session stats for the same domain
+    // so the next agent sees how long similar work has historically
+    // taken (and what fraction shipped).
+    let session_stats = crate::session_ledger::session_stats_for_domain(root, &parsed.domain);
 
     GapBriefing {
         gap_id,
@@ -206,6 +216,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         similar_closed_prs,
         escalation_events,
         recent_deltas,
+        session_stats,
         gap_not_found: false,
     }
 }
@@ -880,6 +891,7 @@ gaps:
             similar_closed_prs: Vec::new(),
             escalation_events: Vec::new(),
             recent_deltas: Vec::new(),
+            session_stats: crate::session_ledger::SessionStats::default(),
             gap_not_found: true,
         };
         let md = render_markdown(&b);
@@ -903,6 +915,7 @@ gaps:
             similar_closed_prs: vec![123, 145],
             escalation_events: Vec::new(),
             recent_deltas: Vec::new(),
+            session_stats: crate::session_ledger::SessionStats::default(),
             gap_not_found: false,
         };
         let md = render_markdown(&b);
@@ -935,6 +948,7 @@ gaps:
                 r#"{"ts":"2026-04-20T00:00:00Z","session":"s","event":"ALERT","kind":"escalation","gap_id":"FOO-001","stuck_at":"cargo check fails","last_error":"borrow checker","suggested_action":"human review needed"}"#.into(),
             ],
             recent_deltas: Vec::new(),
+            session_stats: crate::session_ledger::SessionStats::default(),
             gap_not_found: false,
         };
         let md = render_markdown(&b);
