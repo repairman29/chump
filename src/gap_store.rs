@@ -3109,7 +3109,11 @@ mod tests {
     // ── INFRA-456: recycled-ID + hijack guards at the DB write layer ──────
 
     #[test]
+    #[serial_test::serial(recycle_bypass_env)]
     fn infra456_recycled_id_guard_blocks_done_to_open() {
+        // Defensive: a parallel test in the same binary may have leaked
+        // CHUMP_ALLOW_RECYCLE=1 even when not on the same serial group.
+        std::env::remove_var("CHUMP_ALLOW_RECYCLE");
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "test gap", "P1", "s").unwrap();
         // Ship it (status=done with closed_pr).
@@ -3173,7 +3177,9 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(rewrite_bypass_env)]
     fn infra456_hijack_guard_blocks_silent_title_rewrite() {
+        std::env::remove_var("CHUMP_ALLOW_GAP_REWRITE");
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "original title", "P1", "s").unwrap();
         let err = store
@@ -3215,7 +3221,9 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(rewrite_bypass_env)]
     fn infra456_hijack_guard_allows_description_append() {
+        std::env::remove_var("CHUMP_ALLOW_GAP_REWRITE");
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "title", "P1", "s").unwrap();
         // Set initial description.
@@ -3241,7 +3249,9 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial(rewrite_bypass_env)]
     fn infra456_hijack_guard_blocks_incompatible_description_rewrite() {
+        std::env::remove_var("CHUMP_ALLOW_GAP_REWRITE");
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "title", "P1", "s").unwrap();
         store
