@@ -338,9 +338,24 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
             # Bypass: FLEET_INLINE_BRIEFING=0 reverts to the old terse-prompt
             # behavior (forces claude to discover everything itself).
             if [[ "${FLEET_INLINE_BRIEFING:-1}" == "1" ]]; then
+                # INFRA-484: gap YAML may exist only in the main worktree
+                # (chump gap reserve writes it untracked). Fall back to
+                # the main repo's path so workers get gap context even
+                # when origin/main hasn't seen the YAML yet. Without this
+                # fallback, claude -p gets a "gap YAML not found" prompt,
+                # has to discover from state.db (not present in linked
+                # worktree), and burns the full FLEET_TIMEOUT_S in
+                # discovery — the exact wedge pattern observed
+                # 2026-05-05 (INFRA-470/471).
                 gap_yaml_path="$wt_path/docs/gaps/${GAP_ID}.yaml"
+                gap_yaml_main_path="$REPO_ROOT/docs/gaps/${GAP_ID}.yaml"
                 gap_yaml="(gap YAML not found — read docs/gaps/${GAP_ID}.yaml)"
-                [[ -f "$gap_yaml_path" ]] && gap_yaml=$(cat "$gap_yaml_path")
+                if [[ -f "$gap_yaml_path" ]]; then
+                    gap_yaml=$(cat "$gap_yaml_path")
+                elif [[ -f "$gap_yaml_main_path" ]]; then
+                    gap_yaml=$(cat "$gap_yaml_main_path")
+                    log "INFRA-484: gap YAML missing in worktree; loaded from main repo"
+                fi
                 prompt="Ship gap ${GAP_ID}.
 
 The gap is already claimed for this session; lease is in .chump-locks/.
@@ -460,10 +475,31 @@ When done, reply with the PR number only (e.g. \"#1234\")."
         [ -f "$_auth_counter_file" ] && rm -f "$_auth_counter_file"
     fi
 
+    # INFRA-483: detect "0-byte cycle log" as a strong wedge signal —
+    # claude -p produced no stdout for the entire FLEET_TIMEOUT_S
+    # window. Distinct from "claude worked but timed out" (cycle_log
+    # has content) and "claude exited cleanly" (rc=0). Treat as wasted
+    # compute; apply EXTRA cooldown so workers don't infinitely retry
+    # the same wedged gap.
+    _cycle_log_size=0
+    if [ -f "$cycle_log" ]; then
+        _cycle_log_size=$(wc -c < "$cycle_log" 2>/dev/null | tr -d ' ' || echo 0)
+    fi
+    _is_wedge=0
+    if [ "$rc" -eq 124 ] && [ "$_cycle_log_size" -lt 100 ]; then
+        # 100-byte threshold — anything smaller is essentially "no work
+        # done"; legitimate work logs are always thousands of bytes.
+        _is_wedge=1
+    fi
+
     if [ $rc -eq 0 ]; then
         log "$FLEET_BACKEND exited cleanly for $GAP_ID"
     elif [ $rc -eq 124 ]; then
-        log "WARN: $FLEET_BACKEND timed out (${FLEET_TIMEOUT_S}s) on $GAP_ID"
+        if [ "$_is_wedge" -eq 1 ]; then
+            log "WARN: $FLEET_BACKEND WEDGED (rc=124, cycle_log=${_cycle_log_size}B) on $GAP_ID — applying extended cooldown"
+        else
+            log "WARN: $FLEET_BACKEND timed out (${FLEET_TIMEOUT_S}s, cycle_log=${_cycle_log_size}B) on $GAP_ID"
+        fi
     else
         log "WARN: $FLEET_BACKEND exited rc=$rc on $GAP_ID"
 
@@ -513,21 +549,52 @@ When done, reply with the PR number only (e.g. \"#1234\")."
 
         # INFRA-361: write cooldown record so siblings + future cycles
         # don't immediately re-pick this gap. Worker 4 was observed
-        # re-picking INFRA-340 6 times in 5 minutes pre-fix. Default 30
-        # min; override via FLEET_RC1_COOLDOWN_S. Only fires for genuine
-        # rc!=0/124 — clean exits and timeouts skip cooldown.
-        # INFRA-267: also skip cooldown if the P0 fallback above flipped
-        # rc back to 0 — the gap actually shipped, no cooldown needed.
+        # re-picking INFRA-340 6 times in 5 minutes pre-fix.
+        #
+        # INFRA-483 (2026-05-05): cooldown now also fires on rc=124
+        # (timeout). Pre-INFRA-483 timeouts skipped cooldown entirely,
+        # so a worker that hit a wedged claude -p call would re-pick
+        # the same gap and burn 600s × N cycles forever. Observed live
+        # 2026-05-05: sonnet fleet, 2 workers, 2-3 cycles each, all
+        # 0-byte cycle logs, ~40min total compute wasted.
+        #
+        # Two cooldown durations:
+        #   FLEET_RC1_COOLDOWN_S        rc!=0 ordinary failure (default 30min)
+        #   FLEET_TIMEOUT_COOLDOWN_S    rc=124 timeout (default 60min)
+        #   FLEET_WEDGE_COOLDOWN_S      rc=124 + cycle_log<100B (default 4h)
+        #     — wedge means claude -p produced no output AT ALL; the gap
+        #     is likely incompatible with the current backend or hit a
+        #     systemic issue (auth, API down, MCP startup hang).
         if [ $rc -ne 0 ]; then
-            cooldown_s="${FLEET_RC1_COOLDOWN_S:-1800}"
+            if [ "${_is_wedge:-0}" -eq 1 ]; then
+                cooldown_s="${FLEET_WEDGE_COOLDOWN_S:-14400}"  # 4h default
+                _cooldown_kind="wedge"
+            elif [ "$rc" -eq 124 ]; then
+                cooldown_s="${FLEET_TIMEOUT_COOLDOWN_S:-3600}"  # 1h default
+                _cooldown_kind="timeout"
+            else
+                cooldown_s="${FLEET_RC1_COOLDOWN_S:-1800}"
+                _cooldown_kind="rc=$rc"
+            fi
             cooldown_dir="$REPO_ROOT/.chump-locks/cooldown"
             mkdir -p "$cooldown_dir" 2>/dev/null || true
             cooldown_until=$(( $(date +%s) + cooldown_s ))
-            printf '{"gap_id":"%s","rc":%d,"until":%d,"agent":"%s","ts":"%s"}\n' \
-                "$GAP_ID" "$rc" "$cooldown_until" "$AGENT_ID" \
+            printf '{"gap_id":"%s","rc":%d,"kind":"%s","until":%d,"agent":"%s","ts":"%s"}\n' \
+                "$GAP_ID" "$rc" "$_cooldown_kind" "$cooldown_until" "$AGENT_ID" \
                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                 > "$cooldown_dir/${GAP_ID}.json" 2>/dev/null || true
-            log "cooldown: $GAP_ID skipped for ${cooldown_s}s after rc=$rc"
+            log "cooldown: $GAP_ID skipped for ${cooldown_s}s (kind=$_cooldown_kind, rc=$rc)"
+
+            # INFRA-483: emit ALERT to ambient.jsonl on wedge so the
+            # operator sees pure-waste cycles surface in the standard
+            # tail -30 .chump-locks/ambient.jsonl pre-flight glance.
+            if [ "${_is_wedge:-0}" -eq 1 ]; then
+                _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                printf '{"event":"ALERT","kind":"fleet_wedge","ts":"%s","agent":"%s","gap_id":"%s","cycle_log":"%s","cycle_log_bytes":%d,"backend":"%s","model":"%s","cooldown_secs":%d,"hint":"claude -p produced no stdout in %ds — likely API/MCP wedge; check ANTHROPIC_API_KEY + reduce timeout"}\n' \
+                    "$_ts" "$AGENT_ID" "$GAP_ID" "$cycle_log" "$_cycle_log_size" "$FLEET_BACKEND" "${FLEET_MODEL:-default}" "$cooldown_s" "$FLEET_TIMEOUT_S" \
+                    >> "$_amb" 2>/dev/null || true
+            fi
         fi
     fi
 
