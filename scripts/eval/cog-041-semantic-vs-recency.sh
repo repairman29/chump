@@ -33,9 +33,11 @@ ORDER BY
 LIMIT 40
 '
 ALL_IDS=$(sqlite3 "$REPO_ROOT/.chump/state.db" "$PICK_QUERY")
-INFRA_IDS=$(echo "$ALL_IDS" | grep -E '^INFRA-' | head -10)
-COG_IDS=$(echo "$ALL_IDS" | grep -E '^COG-'   | head -5)
-EVAL_IDS=$(echo "$ALL_IDS" | grep -E '^(EVAL-|RESEARCH-)' | head -5)
+# `|| true` so an empty stratum (e.g. no recent done COG-* gaps) doesn't
+# kill the harness under set -euo pipefail.
+INFRA_IDS=$(echo "$ALL_IDS" | { grep -E '^INFRA-' || true; } | head -10)
+COG_IDS=$(echo "$ALL_IDS" | { grep -E '^COG-' || true; } | head -5)
+EVAL_IDS=$(echo "$ALL_IDS" | { grep -E '^(EVAL-|RESEARCH-)' || true; } | head -5)
 PICKED=$(printf '%s\n%s\n%s\n' "$INFRA_IDS" "$COG_IDS" "$EVAL_IDS" | sed '/^$/d' | head -20)
 N=$(echo "$PICKED" | wc -l | tr -d ' ')
 
