@@ -154,9 +154,7 @@ fn extract_field(line: &str, field: &str) -> Option<String> {
                     // Skip the 4 hex digits — we don't decode unicode
                     // escapes in this minimal parser.
                     for _ in 0..4 {
-                        if chars.next().is_none() {
-                            return None;
-                        }
+                        chars.next()?;
                     }
                 }
                 other => out.push(other),
