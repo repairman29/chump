@@ -122,6 +122,7 @@ mod ratings;
 mod read_url_tool;
 mod reasoning_mode;
 mod recipe;
+mod reflect_delta;
 mod reflection;
 mod reflection_db;
 mod repo_allowlist;
@@ -428,6 +429,34 @@ async fn main() -> Result<()> {
     }
 
     // `chump dashboard` (INFRA-063 / M5) — print the cycle-time dashboard:
+    // `chump reflect-delta <GAP-ID> "<text>"` (COG-042) — record what
+    // this session did *differently* than past attempts on the gap's
+    // class. Pure additive: writes a `delta_recorded` event to
+    // ambient.jsonl. Briefing surfaces these for similar gaps so the
+    // next session sees how the previous attempt's approach differed.
+    if args.get(1).map(String::as_str) == Some("reflect-delta") {
+        let gap_id = args.get(2).cloned().unwrap_or_else(|| {
+            eprintln!("Usage: chump reflect-delta <GAP-ID> \"<what was different>\"");
+            std::process::exit(2);
+        });
+        if gap_id.starts_with("--") {
+            eprintln!("Usage: chump reflect-delta <GAP-ID> \"<what was different>\"");
+            std::process::exit(2);
+        }
+        let text = args.get(3).cloned().unwrap_or_else(|| {
+            eprintln!("chump reflect-delta: missing the delta text");
+            eprintln!("Usage: chump reflect-delta <GAP-ID> \"<what was different>\"");
+            std::process::exit(2);
+        });
+        let session_id = std::env::var("CHUMP_SESSION_ID")
+            .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+            .unwrap_or_else(|_| "unknown".to_string());
+        let repo_root = repo_path::repo_root();
+        reflect_delta::emit_delta_recorded(&repo_root, &session_id, &gap_id, &text);
+        println!("recorded delta for {} (session={})", gap_id, session_id);
+        return Ok(());
+    }
+
     // PRs landed today/week, median PR-open time, dispatcher backend split,
     // top 5 stale linked worktrees. Pure read aggregator over `gh` + `git`.
     if args.get(1).map(String::as_str) == Some("dashboard") {

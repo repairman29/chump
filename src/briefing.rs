@@ -51,6 +51,11 @@ pub struct GapBriefing {
     /// INFRA-AGENT-ESCALATION: escalation ALERT events from ambient.jsonl for
     /// this gap from the last 24 hours. Each entry is a raw JSON line.
     pub escalation_events: Vec<String>,
+    /// COG-042: differential reflections — recent `delta_recorded` events
+    /// from past sessions on similar (same-domain) gaps. Each entry is
+    /// the human-readable text the past agent recorded as "what I did
+    /// differently this time."
+    pub recent_deltas: Vec<crate::reflect_delta::DeltaRecord>,
     /// `true` when the gap was not found in `docs/gaps.yaml`. Renderer prints
     /// a clear error in this case rather than a misleading half-empty briefing.
     pub gap_not_found: bool,
@@ -105,6 +110,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             strategic_doc_refs: Vec::new(),
             similar_closed_prs: Vec::new(),
             escalation_events: Vec::new(),
+            recent_deltas: Vec::new(),
             gap_not_found: true,
         };
     };
@@ -181,6 +187,11 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
 
     let escalation_events = filter_escalation_events(&ambient_path, &gap_id, 24 * 3600);
 
+    // COG-042: surface recent `delta_recorded` events for same-domain
+    // gaps so the next agent sees how past attempts on this class
+    // differed from each other.
+    let recent_deltas = crate::reflect_delta::recent_deltas_for_domain(root, &parsed.domain, 5);
+
     GapBriefing {
         gap_id,
         gap_title: parsed.title,
@@ -194,6 +205,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         strategic_doc_refs,
         similar_closed_prs,
         escalation_events,
+        recent_deltas,
         gap_not_found: false,
     }
 }
@@ -867,6 +879,7 @@ gaps:
             strategic_doc_refs: Vec::new(),
             similar_closed_prs: Vec::new(),
             escalation_events: Vec::new(),
+            recent_deltas: Vec::new(),
             gap_not_found: true,
         };
         let md = render_markdown(&b);
@@ -889,6 +902,7 @@ gaps:
             strategic_doc_refs: vec!["docs/architecture/CHUMP_FACULTY_MAP.md:42 — MEM-007".into()],
             similar_closed_prs: vec![123, 145],
             escalation_events: Vec::new(),
+            recent_deltas: Vec::new(),
             gap_not_found: false,
         };
         let md = render_markdown(&b);
@@ -920,6 +934,7 @@ gaps:
             escalation_events: vec![
                 r#"{"ts":"2026-04-20T00:00:00Z","session":"s","event":"ALERT","kind":"escalation","gap_id":"FOO-001","stuck_at":"cargo check fails","last_error":"borrow checker","suggested_action":"human review needed"}"#.into(),
             ],
+            recent_deltas: Vec::new(),
             gap_not_found: false,
         };
         let md = render_markdown(&b);
