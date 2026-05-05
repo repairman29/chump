@@ -96,45 +96,9 @@ then `chump gap ship <ID> --update-yaml` and release the lease.
 - **`--no-verify` is the reason most regressions ship.** Use very
   sparingly.
 
-## Spawning subagents (META-025 / INFRA-332)
+## Subagents / fleet / coordination docs
 
-Subagent self-ship rate is 25-33%. Two disciplines fix it:
-
-1. **Every Agent-tool prompt MUST include the standard shipping
-   epilogue** — verbatim from
-   [`docs/process/SUBAGENT_DISPATCH.md`](./docs/process/SUBAGENT_DISPATCH.md).
-2. **`Agent` vs `SendMessage` discipline.** `Agent` spawns fresh (no
-   memory of prior runs); `SendMessage` resumes by `agentId`. Never
-   use `Agent` to check on an existing subagent.
-
-INFRA-419 reaper flags subagents that exceed
-`CHUMP_SUBAGENT_BUDGET_MIN` (default 30) without invoking `bot-merge.sh`.
-
-## Coordination docs (where to look when something breaks)
-
-- `docs/process/CLAUDE_GOTCHAS.md` — operational gotchas (read
-  on-demand): chump-doctor heal, syspolicyd wedge, raw-YAML guard,
-  speculative execution, worktree disk hygiene, ambient rotation,
-  overnight scheduler, session ID resolution, the full commit-time
-  guards table, dispatched-subagent backend, fleet launcher,
-  speculative execution, full coordination doc index, gap-registry
-  internals, "if auto-merge is stuck" recovery playbook.
-- [`docs/process/AGENT_COORDINATION.md`](./docs/process/AGENT_COORDINATION.md)
-  — full coordination system spec.
-- [`docs/process/POST_INFRA_188_GOTCHAS.md`](./docs/process/POST_INFRA_188_GOTCHAS.md)
-  — short-lived gotchas during the YAML-cutover ship wave.
-- [`docs/process/SUBAGENT_DISPATCH.md`](./docs/process/SUBAGENT_DISPATCH.md)
-  — required shipping epilogue for Agent-tool spawns.
-
-## Fleet launcher (one-line)
-
-```bash
-scripts/dispatch/run-fleet.sh                          # default FLEET_SIZE=8
-FLEET_SIZE=4 FLEET_DOMAIN_FILTER=INFRA scripts/dispatch/run-fleet.sh
-FLEET_SIZE=0 scripts/dispatch/run-fleet.sh             # tear down
-```
-
-Knobs + auto-pickup rules + starvation behavior: see
-[CLAUDE_GOTCHAS.md → Fleet launcher](./docs/process/CLAUDE_GOTCHAS.md).
-INFRA-420 refuses `FLEET_BACKEND=claude` without
-`CHUMP_FLEET_ALLOW_CLAUDE_BACKEND=1` (cost guard).
+Spawning subagents, fleet launcher knobs, and the full coordination doc
+index live in
+[`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md)
+— read on-demand when you hit a specific failure surface.

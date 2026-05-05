@@ -393,6 +393,9 @@ conversation, don't know what you've tried. Self-contained briefing,
 explicit file paths to read, explicit success criteria from the gap,
 explicit shipping epilogue.
 
+**INFRA-419 reaper:** flags subagents that exceed `CHUMP_SUBAGENT_BUDGET_MIN`
+(default 30 tool calls) without invoking `bot-merge.sh`.
+
 ## Fleet launcher (INFRA-203, canonical entry point)
 
 `scripts/dispatch/run-fleet.sh` is the canonical way to spawn N parallel
@@ -438,6 +441,10 @@ diagnosis.
 Auto-pickup excludes `EVAL-*`, `RESEARCH-*`, `META-*` (those need human
 judgment) and any gap with non-empty `depends_on`. Smoke test:
 `scripts/ci/test-run-fleet-smoke.sh`.
+
+**INFRA-420 cost guard:** `FLEET_BACKEND=claude` is refused without
+`CHUMP_FLEET_ALLOW_CLAUDE_BACKEND=1` — Opus is ~50× haiku per token and
+has burned workspace credit caps in prior sessions.
 
 ## Coordination docs
 
