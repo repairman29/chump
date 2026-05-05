@@ -1,0 +1,14 @@
+- id: COG-041
+  domain: COG
+  title: semantic lesson retrieval — vector-embed reflection rows; on gap claim, briefing pulls top-k semantically-similar past lessons (replaces recency×frequency heuristic that surfaces noise as often as signal)
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - reflection rows + lessons rows vector-embedded on insert (use sqlite-vec or hnswlib)
+    - chump --briefing <ID> queries top-k by cosine similarity to gap title+description, not by recency×frequency
+    - "test: 5 gaps with intentionally distinct domains return distinct lesson sets"
+    - "measure: lesson read-rate by next session > 30% (vs. ~5% baseline for current heuristic)"
+  closed_date: '2026-05-05'
+  closed_pr: 1112
+
