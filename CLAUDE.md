@@ -102,3 +102,37 @@ Spawning subagents, fleet launcher knobs, and the full coordination doc
 index live in
 [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md)
 — read on-demand when you hit a specific failure surface.
+
+## Worktree disk hygiene (INFRA-210)
+
+Each linked worktree historically compiled its own `target/` (2–8 GB after
+clippy + test). At FLEET_SIZE=10–50 that becomes a hard disk ceiling.
+
+**Shared target dir (default since INFRA-210):** `run-fleet.sh` auto-exports
+`CARGO_TARGET_DIR=$REPO_ROOT/target` when the caller has not set it, so all
+fleet worktrees share one target tree. Override to a location outside the repo
+(e.g. `~/.cache/chump-fleet-target/`) for even cleaner separation:
+
+```bash
+export CARGO_TARGET_DIR=~/.cache/chump-fleet-target
+scripts/dispatch/run-fleet.sh
+```
+
+Cargo handles concurrent reads safely; concurrent writes to the same crate on
+different branches are serialized by cargo's internal file locking.
+
+**sccache (optional, recommended for warm-cache build time):** Install once per
+machine with `scripts/setup/install-sccache.sh` (idempotent: `brew install
+sccache` + writes `.cargo/config.toml` with `rustc-wrapper = "sccache"` and a
+10 GB cache). First worktree to build a crate version populates the cache;
+subsequent worktrees compile it in <60 s. `.cargo/config.toml` is
+`.gitignore`d so CI runners without sccache are unaffected. Opt out: `rm
+.cargo/config.toml`.
+
+**bot-merge.sh target purge:** automatically skipped when `CARGO_TARGET_DIR`
+points outside the worktree — the shared cache should not be wiped at ship
+time. Set `CHUMP_KEEP_TARGET=1` to suppress the purge even for in-worktree
+targets.
+
+Full details (reaper, stale-worktree automation, disk alerts):
+[CLAUDE_GOTCHAS.md → Worktree disk hygiene](./docs/process/CLAUDE_GOTCHAS.md).
