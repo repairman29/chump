@@ -32,6 +32,17 @@ calls, ALERTs from concurrent sessions. Watch for `lease_overlap`,
 
 ## Claim before writing any code
 
+**Canonical (INFRA-468, atomic):**
+```bash
+chump claim <GAP-ID> [--paths CSV]   # one call: fetch + verify + doctor + worktree + lease
+                                      # prints `cd <worktree>` hint at the end
+```
+
+That replaces the 6-step shell dance and the `cd` mistakes that come
+with it. `--paths` is optional but recommended (declares lease scope so
+the INFRA-189 out-of-scope guard is meaningful).
+
+**Manual fallback** (use if `chump claim` is broken or unavailable):
 ```bash
 scripts/coord/gap-claim.sh <GAP-ID>                       # existing gap
 chump gap reserve --domain INFRA --title "short title"    # new gap (canonical, post-INFRA-059)

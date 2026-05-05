@@ -1,0 +1,14 @@
+- id: INFRA-468
+  domain: INFRA
+  title: "atomic 'chump claim <ID>' — single CLI call: pick + worktree + lease + state.db seed + binary health check. Replaces 6-step shell dance currently required"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "chump claim <ID> command does atomically: lease + worktree creation + state.db seed if drifted + binary health probe"
+    - exits non-zero with actionable error if any step fails
+    - replaces the 6-line shell dance documented in CLAUDE.md mandatory pre-flight
+    - "test: chump claim INFRA-XXX from any cwd produces a ready-to-edit worktree"
+  closed_date: '2026-05-05'
+  closed_pr: 1110
+

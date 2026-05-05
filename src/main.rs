@@ -21,6 +21,7 @@ mod approval_resolver;
 mod asi_telemetry;
 mod ask_jeff_db;
 mod ask_jeff_tool;
+mod atomic_claim;
 mod autonomy_fsm;
 mod autonomy_loop;
 mod autopilot;
@@ -337,6 +338,39 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("funnel") {
         activation::print_funnel();
         return Ok(());
+    }
+
+    // `chump claim <GAP-ID> [--paths X,Y,...]` (INFRA-468) — atomic
+    // replacement for the 6-step shell dance documented in CLAUDE.md's
+    // mandatory pre-flight: fetch + verify-gap + health-probe + worktree
+    // + lease-write + import-if-drifted, all in one call. Each step has
+    // its own bypass env for testing / unusual setups.
+    if args.get(1).map(String::as_str) == Some("claim") {
+        let repo_root = repo_path::repo_root();
+        let claim_args = match atomic_claim::ClaimArgs::from_argv(&args[1..], repo_root.clone()) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("chump claim: {e:#}");
+                eprintln!();
+                eprintln!("Usage: chump claim <GAP-ID> [--paths CSV] [--session ID]");
+                eprintln!("                          [--skip-doctor] [--skip-import]");
+                eprintln!();
+                eprintln!("Atomically: fetch origin/main, verify the gap, run chump-doctor,");
+                eprintln!("create a linked worktree, write the lease. Replaces the 6-step");
+                eprintln!("shell dance in CLAUDE.md mandatory pre-flight (INFRA-468).");
+                std::process::exit(2);
+            }
+        };
+        match atomic_claim::run_claim(claim_args) {
+            Ok(report) => {
+                atomic_claim::print_report(&report);
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("chump claim: {e:#}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump dashboard` (INFRA-063 / M5) — print the cycle-time dashboard:
