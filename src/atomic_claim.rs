@@ -152,10 +152,18 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         run_doctor_probe(&args.repo_root)?;
     }
 
-    // 4. Session ID — explicit override > env > derived.
-    let session_id = args.session_id.clone().unwrap_or_else(|| {
-        std::env::var("CHUMP_SESSION_ID").unwrap_or_else(|_| derive_session_id(&args.gap_id))
-    });
+    // 4. Session ID — explicit --session flag > derived.
+    //
+    // Deliberately do NOT honor CHUMP_SESSION_ID env: each `chump claim`
+    // is meant to be a fresh isolated session. Operators who want a
+    // specific session ID pass --session explicitly. This avoids the
+    // surprise where a parent shell's CHUMP_SESSION_ID (e.g. set by
+    // bot-merge.sh, or another claim earlier in the same shell) bleeds
+    // into the lease and breaks the "one claim = one session" model.
+    let session_id = args
+        .session_id
+        .clone()
+        .unwrap_or_else(|| derive_session_id(&args.gap_id));
 
     // 5. Worktree path + branch name.
     let gap_lower = args.gap_id.to_lowercase();
