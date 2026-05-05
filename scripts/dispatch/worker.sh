@@ -22,11 +22,11 @@
 #   FLEET_PRIORITY_FILTER   default P0,P1
 #   FLEET_DOMAIN_FILTER     default "" = any
 #   FLEET_EFFORT_FILTER     default xs,s,m
-#   FLEET_BACKEND           default chump-local — "claude" runs `claude -p`
-#                           (original AUTO-013 path, Anthropic API).
-#                           "chump-local" runs `chump --execute-gap` so
-#                           every inference call fans out through the
-#                           free-tier provider cascade (INFRA-259).
+#   FLEET_BACKEND           default claude — runs `claude -p` (AUTO-013 path,
+#                           Anthropic API, haiku by default). "chump-local"
+#                           fans calls through the free-tier cascade (INFRA-259)
+#                           but requires CHUMP_FLEET_ALLOW_CHUMP_LOCAL_BACKEND=1
+#                           (INFRA-459: cascade bank too small 2026-05-04).
 #   IDLE_SLEEP_S            default 60 — sleep when no pickable gap
 
 set -uo pipefail   # NOT -e: we want the loop to recover from individual cycle failures
@@ -56,7 +56,7 @@ FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
-FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+FLEET_BACKEND="${FLEET_BACKEND:-claude}"
 FLEET_MODEL="${FLEET_MODEL:-haiku}"
 IDLE_SLEEP_S="${IDLE_SLEEP_S:-60}"
 
