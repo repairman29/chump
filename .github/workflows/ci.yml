@@ -356,6 +356,9 @@ jobs:
       - name: auto-arm sweeper smoke + bypass (INFRA-382 / INFRA-374)
         run: bash scripts/ci/test-auto-arm-sweeper.sh
 
+      - name: CI-flake auto-rerun smoke — bypass + empty + flake match + cooldown (INFRA-375)
+        run: bash scripts/ci/test-ci-flake-rerun.sh
+
       - name: PWA v1 retirement — assets deleted, tauri.conf.json, v2 wizard (INFRA-250)
         run: bash scripts/ci/test-infra-250-v1-retirement.sh
 

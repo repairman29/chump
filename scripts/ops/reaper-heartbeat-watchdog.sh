@@ -50,7 +50,7 @@ done
 # stamps a fresh one at exit, so the read reflects the *previous* run —
 # which is exactly the gap we want to detect (the canary died with the
 # canaries it was supposed to grade).
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog)
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake)
 
 # Per-reaper alert thresholds (seconds since last heartbeat).
 threshold_secs() {
@@ -58,10 +58,11 @@ threshold_secs() {
         pr)       echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x)
         worktree) echo $((4 * 3600)) ;;   # 4h (cadence 1h × 4x)
         branch)   echo $((48 * 3600)) ;;  # 48h (cadence 24h × 2x)
-        stuck-pr) echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-307)
-        pr-watch) echo $((1 * 3600)) ;;   # 1h (cadence 10min × 6x — INFRA-354)
-        watchdog) echo $((90 * 60)) ;;    # 90min (cadence 30min × 3x — INFRA-452)
-        *)        echo $((4 * 3600)) ;;
+        stuck-pr)  echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-307)
+        pr-watch)  echo $((1 * 3600)) ;;   # 1h (cadence 10min × 6x — INFRA-354)
+        watchdog)  echo $((90 * 60)) ;;    # 90min (cadence 30min × 3x — INFRA-452)
+        ci-flake)  echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-375)
+        *)         echo $((4 * 3600)) ;;
     esac
 }
 
