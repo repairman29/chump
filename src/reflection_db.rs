@@ -744,6 +744,163 @@ fn tfidf_vector(
 /// recency-frequency path so the briefing's lesson block doesn't
 /// suddenly balloon when this is enabled).
 ///
+/// COG-046: embedding-backed retrieval. Same shape as
+/// `load_relevant_lessons_semantic` but uses Ollama embeddings (or any
+/// configured embedding endpoint) instead of TF-IDF. Catches synonyms
+/// TF-IDF can't ("auth" ≈ "credentials", "fleet" ≈ "dispatcher").
+///
+/// Falls back to `load_relevant_lessons_semantic` (TF-IDF) when:
+///   - CHUMP_LESSONS_EMBEDDING is not enabled
+///   - the embedding endpoint is unreachable
+///   - query embedding succeeds but ALL directive embeddings fail
+///   - resulting top-k all score 0.0 (no signal)
+///
+/// Caller (briefing.rs) chains: embedding → semantic → recency. Each
+/// step is best-effort and gives the next a chance.
+pub fn load_relevant_lessons_embedding(
+    query_text: &str,
+    max_n: usize,
+    domain: &str,
+) -> Vec<ImprovementTarget> {
+    if !crate::lesson_embeddings::embedding_enabled() {
+        return load_relevant_lessons_semantic(query_text, max_n, domain);
+    }
+    let max_n = max_n.min(SPAWN_LESSONS_MAX_N);
+    if max_n == 0 || query_text.trim().is_empty() {
+        return Vec::new();
+    }
+
+    // Embed the query first. If this fails, no point embedding any
+    // directives — fall back immediately.
+    let q_embed = match crate::lesson_embeddings::embed_text(query_text) {
+        Some(v) => v,
+        None => return load_relevant_lessons_semantic(query_text, max_n, domain),
+    };
+
+    // Pull eligible (directive, priority, scope) rows, same filter as
+    // the TF-IDF path so the cells are comparable.
+    let conn = match open_db() {
+        Ok(c) => c,
+        Err(_) => return load_relevant_lessons_semantic(query_text, max_n, domain),
+    };
+    let domain_norm = domain.trim().to_lowercase();
+    let use_domain_filter =
+        !domain_norm.is_empty() && domain_norm != "any" && domain_norm != "global";
+
+    let sql = if use_domain_filter {
+        "SELECT directive,
+                MIN(priority) AS priority,
+                MAX(scope) AS scope
+         FROM chump_improvement_targets
+         WHERE priority IN ('high', 'medium')
+           AND reflection_id NOT IN (
+               SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'
+           )
+           AND (scope IS NULL OR scope = '' OR LOWER(scope) = ?1)
+         GROUP BY directive"
+    } else {
+        "SELECT directive,
+                MIN(priority) AS priority,
+                MAX(scope) AS scope
+         FROM chump_improvement_targets
+         WHERE priority IN ('high', 'medium')
+           AND reflection_id NOT IN (
+               SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'
+           )
+         GROUP BY directive"
+    };
+
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(_) => return load_relevant_lessons_semantic(query_text, max_n, domain),
+    };
+
+    struct Row {
+        directive: String,
+        priority: Priority,
+        scope: Option<String>,
+    }
+    let row_mapper = |r: &rusqlite::Row| -> rusqlite::Result<Row> {
+        let priority_str: String = r.get(1)?;
+        Ok(Row {
+            directive: r.get(0)?,
+            priority: match priority_str.as_str() {
+                "high" => Priority::High,
+                "low" => Priority::Low,
+                _ => Priority::Medium,
+            },
+            scope: r.get::<_, Option<String>>(2)?.filter(|s| !s.is_empty()),
+        })
+    };
+    let rows: Vec<Row> = if use_domain_filter {
+        match stmt.query_map(rusqlite::params![domain_norm], row_mapper) {
+            Ok(it) => it.filter_map(|r| r.ok()).collect(),
+            Err(_) => return load_relevant_lessons_semantic(query_text, max_n, domain),
+        }
+    } else {
+        match stmt.query_map([], row_mapper) {
+            Ok(it) => it.filter_map(|r| r.ok()).collect(),
+            Err(_) => return load_relevant_lessons_semantic(query_text, max_n, domain),
+        }
+    };
+    if rows.is_empty() {
+        return Vec::new();
+    }
+
+    // Embed each directive. We embed serially (the Ollama instance is
+    // single-machine and benefits zero from parallelism). Failures are
+    // tolerated — directives that don't embed get score 0 and naturally
+    // fall to the bottom.
+    let mut scored: Vec<(f32, &Row)> = Vec::with_capacity(rows.len());
+    let mut any_embedded = false;
+    for row in &rows {
+        let dvec = crate::lesson_embeddings::embed_text(&row.directive);
+        let s = match dvec {
+            Some(v) => {
+                any_embedded = true;
+                crate::lesson_embeddings::cosine_similarity_f32(&q_embed, &v)
+            }
+            None => 0.0,
+        };
+        scored.push((s, row));
+    }
+    if !any_embedded {
+        return load_relevant_lessons_semantic(query_text, max_n, domain);
+    }
+
+    fn priority_rank(p: Priority) -> u8 {
+        match p {
+            Priority::High => 0,
+            Priority::Medium => 1,
+            Priority::Low => 2,
+        }
+    }
+    scored.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| priority_rank(a.1.priority).cmp(&priority_rank(b.1.priority)))
+    });
+
+    let picks: Vec<ImprovementTarget> = scored
+        .into_iter()
+        .filter(|(s, _)| *s > 0.0)
+        .take(max_n)
+        .map(|(_, r)| ImprovementTarget {
+            directive: r.directive.clone(),
+            priority: r.priority,
+            scope: r.scope.clone(),
+            actioned_as: None,
+        })
+        .collect();
+
+    if picks.is_empty() {
+        // Embeddings ran but zero positive cosines — degenerate. Fall through.
+        load_relevant_lessons_semantic(query_text, max_n, domain)
+    } else {
+        picks
+    }
+}
+
 /// Best-effort: returns empty Vec if the DB is unreachable or empty.
 pub fn load_relevant_lessons_semantic(
     query_text: &str,

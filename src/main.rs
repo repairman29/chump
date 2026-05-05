@@ -85,6 +85,7 @@ mod interrupt_notify;
 mod introspect_tool;
 mod job_log;
 mod lesson_action;
+mod lesson_embeddings;
 mod limits;
 mod llm_backend_metrics;
 mod local_openai;
