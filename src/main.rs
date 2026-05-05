@@ -1003,6 +1003,37 @@ async fn main() -> Result<()> {
                 match store.set_fields(&gap_id, update) {
                     Ok(()) => {
                         println!("updated {}", gap_id);
+                        // INFRA-470: state.db is canonical; the per-file YAML
+                        // at docs/gaps/<ID>.yaml is a render of the DB. Without
+                        // an auto-regen here, `chump gap set --notes "X"`
+                        // mutates only state.db and leaves docs/gaps/<ID>.yaml
+                        // stale — the same drift class INFRA-460 fixed for
+                        // status propagation on import. Mirror the `ship`
+                        // path: write the per-file YAML and stamp the
+                        // .last-yaml-op freshness marker so the pre-commit
+                        // raw-YAML guard recognizes the regenerated file as
+                        // canonical.
+                        let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
+                        let per_file_dir = worktree_root.join("docs").join("gaps");
+                        match store.dump_per_file_single(&gap_id, &per_file_dir) {
+                            Ok(true) => {
+                                eprintln!(
+                                    "wrote {}",
+                                    per_file_dir.join(format!("{gap_id}.yaml")).display()
+                                );
+                                write_yaml_op_marker(&worktree_root, "set");
+                            }
+                            Ok(false) => {
+                                // Content unchanged — still stamp the marker
+                                // so a follow-up `git add docs/gaps/<ID>.yaml`
+                                // within 5 min for an unrelated reason isn't
+                                // blocked by the raw-YAML guard.
+                                write_yaml_op_marker(&worktree_root, "set");
+                            }
+                            Err(e) => {
+                                eprintln!("warning: dump-per-file write failed: {e}")
+                            }
+                        }
                         return Ok(());
                     }
                     Err(e) => {
