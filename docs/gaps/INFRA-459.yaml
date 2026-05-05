@@ -1,0 +1,10 @@
+- id: INFRA-459
+  domain: INFRA
+  title: flip FLEET_BACKEND default back to claude+Haiku; invert INFRA-420 cost-guard (cascade bank too small for dev workload per operator 2026-05-04)
+  status: done
+  priority: P1
+  effort: xs
+  opened_date: '2026-05-04'
+  closed_date: '2026-05-05'
+  closed_pr: 1123
+
