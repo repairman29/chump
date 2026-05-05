@@ -1,7 +1,15 @@
 - id: INFRA-452
   domain: INFRA
   title: reaper-watchdog has same blind spot as the reapers it watches — when watchdog's own launchd plist breaks, nobody alerts (canary died with canaries today)
-  status: open
+  status: done
   priority: P1
   effort: s
+  acceptance_criteria:
+    - "Move reaper-watchdog out of the same launchd-managed pool it watches — options: (a) host on a separate machine that pings via NATS (FLEET-006), (b) install as a system-launchd job under /Library/LaunchDaemons (different scope, more privileged), (c) add a SECOND independent watchdog under a different label/path so single-installer-failure can't take both down"
+    - "Add scripts/ci/test-watchdog-survives-installer-breakage.sh: simulate a broken installer plist for the primary watchdog, verify the secondary watchdog ALERTs to ambient"
+    - "Until then: reaper-watchdog should ALSO check its own heartbeat freshness and panic-loud (write to ambient.jsonl + stderr) if its OWN heartbeat is missing — self-aware liveness check"
+  notes: |
+    Today's outage was invisible for 24h+ specifically because the watchdog had the same broken-path bug as the reapers it watches. The whole point of the watchdog is to alert on reaper failures; it needs a higher-confidence redundancy story than 'same launchd, same install path, same blast radius'.
+  closed_date: '2026-05-04'
+  closed_pr: 1097
 
