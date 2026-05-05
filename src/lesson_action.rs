@@ -178,6 +178,12 @@ pub fn emit_lessons_shown(
 
 /// Emit `lesson_applied` or `lesson_not_applied`.
 /// Called from `chump lesson-grade <GAP-ID> --pr <N>`.
+///
+/// 8 args is over clippy's default of 7, but each is a distinct
+/// primitive (session+gap+pr+directive+applied+matched+total) that
+/// doesn't naturally cluster into a struct without bloating the
+/// caller. Telemetry path stays flat.
+#[allow(clippy::too_many_arguments)]
 pub fn emit_lesson_grade(
     repo_root: &Path,
     session_id: &str,
