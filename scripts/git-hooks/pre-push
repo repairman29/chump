@@ -107,24 +107,38 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     elif [[ "${CHUMP_AUTOMERGE_OVERRIDE:-0}" == "1" ]]; then
         echo "[pre-push] CHUMP_AUTOMERGE_OVERRIDE=1 — skipping auto-merge armed check for $branch" >&2
     elif command -v gh &>/dev/null; then
-        # gh pr view exits non-zero when no PR exists — we catch that and allow.
-        automerge_armed=$(gh pr view "$branch" --json state,autoMergeRequest \
-            --jq 'if .state == "OPEN" then (.autoMergeRequest != null | tostring) else "false" end' 2>/dev/null || echo "no_pr")
+        # INFRA-485: also query mergeStateStatus. The PR #52 squash-loss
+        # footgun requires the PR to actually be MERGEABLE at first
+        # CI-green — mergeStateStatus=CLEAN. Any other state
+        # (BLOCKED on failing CI, DIRTY on conflicts, UNSTABLE on
+        # non-required checks, BEHIND on out-of-date branch) means
+        # GitHub can't merge yet, so pushing more commits is safe and
+        # is in fact the intended recovery path. Pre-INFRA-485 the
+        # guard fired on ANY auto-merge-armed PR regardless of merge
+        # state, blocking legitimate fixes to BLOCKED PRs (observed
+        # twice 2026-05-05: INFRA-477 clippy fix push, INFRA-456 test
+        # fix push). Operators worked around with CHUMP_AUTOMERGE_OVERRIDE=1
+        # which silenced the guard entirely — net safety regression.
+        pr_status=$(gh pr view "$branch" --json state,autoMergeRequest,mergeStateStatus \
+            --jq 'if .state == "OPEN" and .autoMergeRequest != null then .mergeStateStatus else "no_armed" end' 2>/dev/null || echo "no_pr")
 
-        if [[ "$automerge_armed" == "true" ]]; then
+        if [[ "$pr_status" == "CLEAN" ]]; then
             echo "" >&2
-            echo "[pre-push] BLOCKED: PR for branch '$branch' already has auto-merge armed." >&2
-            echo "[pre-push] Pushing more commits after auto-merge is armed can cause commit" >&2
-            echo "[pre-push] loss — GitHub captures the branch at first-CI-green and drops" >&2
-            echo "[pre-push] anything pushed afterward (PR #52 incident, 2026-04-18, lost 11 commits)." >&2
+            echo "[pre-push] BLOCKED: PR for branch '$branch' has auto-merge armed AND is CLEAN (ready to merge)." >&2
+            echo "[pre-push] Pushing now risks the PR #52 squash-loss footgun: GitHub captures the" >&2
+            echo "[pre-push] branch at first-CI-green and drops anything pushed afterward (2026-04-18, lost 11 commits)." >&2
             echo "" >&2
             echo "[pre-push] Options:" >&2
             echo "[pre-push]   • Open a NEW PR from a fresh worktree for additional work." >&2
             echo "[pre-push]   • Emergency bypass: CHUMP_AUTOMERGE_OVERRIDE=1 git push" >&2
             echo "" >&2
             exit 1
+        elif [[ "$pr_status" =~ ^(BLOCKED|DIRTY|UNSTABLE|BEHIND|UNKNOWN|HAS_HOOKS)$ ]]; then
+            # Auto-merge armed but PR can't merge yet — push is safe and
+            # is the canonical recovery path (fix CI, rebase, etc.).
+            echo "[pre-push] INFRA-485: PR auto-merge armed but mergeStateStatus=$pr_status — push allowed (recovery path)." >&2
         fi
-        # "false" → PR exists but no auto-merge → allow
+        # "no_armed" → no auto-merge armed → allow
         # "no_pr" → gh errored (no PR) → allow
     else
         # gh not installed or not authenticated — warn but do not block.
