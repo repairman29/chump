@@ -113,23 +113,43 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     // similarity to the gap text instead of recency × frequency. Falls
     // back to the recency-frequency path when the env is unset OR when
     // semantic ranking returns 0 hits (no overlap with corpus).
+    //
+    // COG-046: when CHUMP_LESSONS_EMBEDDING=1, prefer embedding-backed
+    // retrieval (Ollama). Cascade order is embedding → TF-IDF → recency.
+    // Each mode is best-effort; ranking_mode records the final tier so
+    // EVAL-099 / META-040 attribute outcomes correctly.
+    let embedding_enabled = crate::lesson_embeddings::embedding_enabled();
     let semantic_mode_used = reflection_db::lessons_semantic_enabled();
-    let mut ranking_mode = if semantic_mode_used {
+    let mut ranking_mode = if embedding_enabled {
+        "embedding"
+    } else if semantic_mode_used {
         "semantic"
     } else {
         "recency"
     };
-    let relevant_reflections = if semantic_mode_used {
-        let query_text = format!(
-            "{} {}",
-            parsed.title,
-            parsed.acceptance.as_deref().unwrap_or("")
-        );
+    let query_text = format!(
+        "{} {}",
+        parsed.title,
+        parsed.acceptance.as_deref().unwrap_or("")
+    );
+    let relevant_reflections = if embedding_enabled {
+        let picks = reflection_db::load_relevant_lessons_embedding(&query_text, 5, &parsed.domain);
+        if picks.is_empty() {
+            let sem = reflection_db::load_relevant_lessons_semantic(&query_text, 5, &parsed.domain);
+            if sem.is_empty() {
+                ranking_mode = "recency_fallback_from_embedding";
+                query_relevant_reflections(&parsed.domain, 5)
+            } else {
+                ranking_mode = "semantic_fallback_from_embedding";
+                sem
+            }
+        } else {
+            picks
+        }
+    } else if semantic_mode_used {
         let semantic =
             reflection_db::load_relevant_lessons_semantic(&query_text, 5, &parsed.domain);
         if semantic.is_empty() {
-            // Fell back to recency-frequency — record honestly so EVAL-099
-            // doesn't credit the semantic mode for this gap's outcome.
             ranking_mode = "recency_fallback_from_semantic";
             query_relevant_reflections(&parsed.domain, 5)
         } else {
