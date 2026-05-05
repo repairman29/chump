@@ -408,6 +408,58 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             ;;
     esac
 
+    # ── INFRA-464: 401-storm detector ─────────────────────────────────────
+    # Background: the 2026-05-03 Haiku fleet ran 875/911 cycles (96%) into
+    # `Failed to authenticate. API Error: 401` for hours undetected. The
+    # `claude` CLI's auth token had been revoked (likely $20/mo cap hit
+    # mid-fleet); every subsequent pane inherited the dead state and burned
+    # CPU on retry loops. Nothing alerted.
+    #
+    # Fix: scan the cycle log for auth-failure indicators after every
+    # invocation. Track consecutive failures per agent in a counter file.
+    # Two thresholds:
+    #   CHUMP_AUTH_STORM_PAUSE (default 3): ALERT + sleep
+    #     CHUMP_AUTH_STORM_PAUSE_SECS (default 1800 = 30min)
+    #   CHUMP_AUTH_STORM_EXIT  (default 5): ALERT + exit the worker loop
+    # Reset the counter on any cycle whose log has NO auth-failure marker.
+    _auth_counter_file="$FLEET_LOG_DIR/agent-${AGENT_ID}.auth-fails"
+    _auth_storm_pause_threshold="${CHUMP_AUTH_STORM_PAUSE:-3}"
+    _auth_storm_exit_threshold="${CHUMP_AUTH_STORM_EXIT:-5}"
+    _auth_storm_pause_secs="${CHUMP_AUTH_STORM_PAUSE_SECS:-1800}"
+    if [ -f "$cycle_log" ] \
+       && grep -qE 'Invalid authentication credentials|"type":"authentication_error"|API Error: 401' "$cycle_log" 2>/dev/null; then
+        _n=$(cat "$_auth_counter_file" 2>/dev/null || echo 0)
+        _n=$((_n + 1))
+        echo "$_n" > "$_auth_counter_file"
+        log "WARN: auth failure detected in cycle log (consecutive=$_n)"
+
+        _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        _amb_path="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+
+        if [ "$_n" -ge "$_auth_storm_exit_threshold" ]; then
+            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"ALERT","kind":"fleet_auth_storm","agent_id":"%s","consecutive_failures":%d,"action":"worker_exit"}\n' \
+                "$_ts" \
+                "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                "$AGENT_ID" "$AGENT_ID" "$_n" \
+                >> "$_amb_path" 2>/dev/null || true
+            log "ALERT kind=fleet_auth_storm consecutive=$_n — exiting worker loop (auth tokens appear dead; restart fleet after re-authenticating)"
+            exit 3
+        elif [ "$_n" -ge "$_auth_storm_pause_threshold" ]; then
+            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"ALERT","kind":"fleet_auth_storm","agent_id":"%s","consecutive_failures":%d,"action":"worker_pause","pause_secs":%d}\n' \
+                "$_ts" \
+                "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                "$AGENT_ID" "$AGENT_ID" "$_n" "$_auth_storm_pause_secs" \
+                >> "$_amb_path" 2>/dev/null || true
+            log "ALERT kind=fleet_auth_storm consecutive=$_n — pausing ${_auth_storm_pause_secs}s before next cycle"
+            sleep "$_auth_storm_pause_secs"
+        fi
+    else
+        # Cycle had no auth failure — reset the counter (transient blips
+        # don't accumulate forever).
+        [ -f "$_auth_counter_file" ] && rm -f "$_auth_counter_file"
+    fi
+
     if [ $rc -eq 0 ]; then
         log "$FLEET_BACKEND exited cleanly for $GAP_ID"
     elif [ $rc -eq 124 ]; then
