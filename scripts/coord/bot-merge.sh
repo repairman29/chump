@@ -1495,10 +1495,24 @@ EOF
     # ship runs fail at clippy with `No space left on device (os error 28)`.
     # The PR is already pushed — no further clippy/test runs need this cache.
     # Override with CHUMP_KEEP_TARGET=1 to poke around post-ship.
-    if [[ "${CHUMP_KEEP_TARGET:-0}" != "1" && -d "./target" ]]; then
+    # INFRA-210: when CARGO_TARGET_DIR points outside the worktree (shared
+    # fleet cache), skip the purge — ./target doesn't exist and wiping the
+    # shared dir would break all other active worktrees.
+    _wt_abs="$(pwd)"
+    _skip_target_purge=0
+    if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+        _ct_abs="$(cd "${CARGO_TARGET_DIR}" 2>/dev/null && pwd || echo "${CARGO_TARGET_DIR}")"
+        case "$_ct_abs" in
+            "${_wt_abs}"/*|"${_wt_abs}") ;;  # inside this worktree — purge as normal
+            *) _skip_target_purge=1 ;;         # outside — shared cache, skip
+        esac
+    fi
+    if [[ "${CHUMP_KEEP_TARGET:-0}" != "1" && "$_skip_target_purge" = "0" && -d "./target" ]]; then
         info "Purging ./target in frozen worktree (set CHUMP_KEEP_TARGET=1 to keep)…"
         run rm -rf ./target
         green "Removed ./target — disk reclaimed."
+    elif [[ "$_skip_target_purge" = "1" ]]; then
+        info "Skipping ./target purge — CARGO_TARGET_DIR is outside this worktree (INFRA-210)."
     fi
 fi
 
