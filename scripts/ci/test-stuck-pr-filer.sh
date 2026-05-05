@@ -331,5 +331,56 @@ else
     exit 1
 fi
 
+# ── Test 11 (INFRA-376): BEHIND stuck class gets [BEHIND] title tag ─────────
+echo "Test 11: BEHIND PR gets [BEHIND] title tag"
+cat > "$TMP/bin/chump" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+    "gap list --status open --json") echo "[]" ;;
+    "gap reserve "*) echo "INFRA-9999" ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$TMP/bin/chump"
+
+cat > "$TMP/bin/gh" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+    "pr list "*)
+        cat <<JSON
+[{"number":999,"title":"INFRA-400: far behind branch","headRefName":"chump/infra-400","isDraft":false,"author":{"login":"alice"},"mergeStateStatus":"BEHIND","autoMergeRequest":{"enabledAt":"$RECENT_TS"},"updatedAt":"$RECENT_TS"}]
+JSON
+        ;;
+    "pr checks "*) echo "[]" ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+
+# Fake the branch as 25 commits behind main in our temp git repo so the
+# `git rev-list` count reaches BEHIND_COMMITS_THRESHOLD (default 20).
+cd "$TMP/repo"
+# Push the branch at its current (old) position before advancing main.
+git checkout -q main
+git checkout -qb "chump/infra-400"
+git push -q origin "chump/infra-400"
+git checkout -q main
+# Now add 25 commits to main so chump/infra-400 is 25 behind.
+for i in $(seq 1 25); do
+    echo "commit $i" > "commit_$i.txt"
+    git add "commit_$i.txt"
+    git commit -qm "dummy $i"
+done
+git push -q origin main
+cd "$TMP/repo"
+
+out=$(REMOTE=origin BEHIND_COMMITS_THRESHOLD=20 "$SCRIPT" --dry-run 2>&1 || true)
+if [[ "$out" == *"would file"*"PR #999 stuck [BEHIND]"* ]]; then
+    echo "  PASS"
+else
+    echo "  FAIL: expected 'would file ... PR #999 stuck [BEHIND]', got:"
+    echo "$out" | sed 's/^/    /'
+    exit 1
+fi
+
 echo ""
 echo "All stuck-pr-filer tests passed."
