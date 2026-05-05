@@ -1,0 +1,13 @@
+- id: COG-042
+  domain: COG
+  title: differential reflection — every shipped PR's reflection row records 'what I did differently than last time on this gap class' explicitly; not just descriptive 'what I did'
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - reflection schema gains a delta_from_last field
+    - "tool: chump reflect --gap <ID> opens a 2-line prompt that asks what differed from prior similar gap; defaults populated by COG-041 retrieval"
+    - reflection rows missing delta_from_last fail a pre-commit guard on RESEARCH/EVAL gaps (require methodology delta) — advisory on others
+  closed_date: '2026-05-05'
+  closed_pr: 1120
+
