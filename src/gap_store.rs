@@ -3580,9 +3580,14 @@ meta:
     }
 
     #[test]
+    #[serial_test::serial(rewrite_bypass_env)]
     fn test_set_fields_clear_and_update() {
         let (store, _dir) = test_store();
         let id = store.reserve("MEM", "Old title", "P1", "s").unwrap();
+        // INFRA-456: this test pre-dates the hijack guard and intentionally
+        // exercises a title rewrite to test the field-clear semantic.
+        // Opt into the bypass for the duration so the guard doesn't fire.
+        std::env::set_var("CHUMP_ALLOW_GAP_REWRITE", "1");
         store
             .set_fields(
                 &id,
@@ -3593,6 +3598,7 @@ meta:
                 },
             )
             .unwrap();
+        std::env::remove_var("CHUMP_ALLOW_GAP_REWRITE");
         let row = store.get(&id).unwrap().expect("row");
         assert_eq!(row.title, "New title");
         assert_eq!(row.notes, "Important");
