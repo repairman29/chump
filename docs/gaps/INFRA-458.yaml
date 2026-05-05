@@ -1,0 +1,9 @@
+- id: INFRA-458
+  domain: INFRA
+  title: bot-merge.sh mid-flight chump-doctor — wrap every internal chump gap call with timeout+auto-heal+retry to kill the wedge-tax mid-pipeline (preflight INFRA-379 catches startup wedges only, not the 5+ daily mid-flight stalls)
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-05-05'
+  closed_pr: 1098
+
