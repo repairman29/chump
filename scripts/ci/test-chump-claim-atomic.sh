@@ -41,8 +41,15 @@ cp "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" "$FAKE/scripts/dispatch/
 
 # Seed a gap via chump gap reserve
 git -C "$FAKE" commit --allow-empty -q -m "seed"
-RESERVE_OUT=$(CHUMP_REPO="$FAKE" "$CHUMP" gap reserve --force --domain TEST --priority P2 \
-                  --effort xs --title "atomic claim test gap" 2>&1)
+# Reserve from inside $FAKE so chump's repo-root resolution lands there
+# (not in the test runner's parent worktree — without this, chump's
+# `repo_path::repo_root()` resolves to the calling dir's git toplevel and
+# we leak TEST-* into the parent worktree's docs/gaps/).
+RESERVE_OUT=$(
+    cd "$FAKE"
+    CHUMP_REPO="$FAKE" "$CHUMP" gap reserve --force --domain TEST --priority P2 \
+        --effort xs --title "atomic claim test gap" 2>&1
+)
 GAP_ID=$(echo "$RESERVE_OUT" | grep -oE 'TEST-[0-9]+' | head -1)
 [[ -n "$GAP_ID" ]] || { echo "FATAL: reserve produced no gap ID. Output: $RESERVE_OUT"; exit 2; }
 
