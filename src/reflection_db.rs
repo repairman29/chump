@@ -613,6 +613,297 @@ pub fn load_spawn_lessons_with_threshold(
     rows.unwrap_or_default()
 }
 
+// ---------------------------------------------------------------------------
+// COG-041: Semantic lesson retrieval
+// ---------------------------------------------------------------------------
+//
+// `load_spawn_lessons` ranks by recency × frequency: lessons that
+// recurred in the past week outrank one-off lessons from a month ago.
+// That heuristic surfaces NOISE as readily as SIGNAL — a lesson that
+// fires in 12 reflections about something completely unrelated to the
+// current gap still beats a once-seen but precisely-relevant lesson.
+//
+// `load_relevant_lessons_semantic` ranks by TF-IDF cosine similarity
+// between each directive and the query text (typically the gap's
+// title + acceptance criteria). No external embedding model required
+// — pure Rust, ~100 lines, zero new dependencies.
+//
+// Trade-off vs. real embeddings: TF-IDF can't match synonyms ("auth"
+// vs "credentials") or paraphrases. For a first cut over a corpus of
+// ~1k lessons that share a vocabulary anyway, TF-IDF is sufficient
+// signal. Swap to nomic-embed-text later — the public API
+// (load_relevant_lessons_semantic) stays stable.
+//
+// Gate: `CHUMP_LESSONS_SEMANTIC=1` env. Default OFF until validated.
+
+/// Return whether semantic retrieval is enabled. Default OFF.
+pub fn lessons_semantic_enabled() -> bool {
+    matches!(
+        std::env::var("CHUMP_LESSONS_SEMANTIC").as_deref(),
+        Ok("1") | Ok("true") | Ok("on")
+    )
+}
+
+/// English stop words to drop during tokenization. Kept minimal — too
+/// aggressive a stop list throws away lesson signal (e.g. "always",
+/// "never" are loaded with semantic content here).
+const STOPWORDS: &[&str] = &[
+    "a", "an", "the", "and", "or", "but", "is", "are", "was", "were", "be", "been", "being", "to",
+    "of", "in", "on", "at", "for", "with", "by", "from", "as", "this", "that", "these", "those",
+    "it", "its", "if", "then", "else", "do", "does", "did", "have", "has", "had", "i", "you", "we",
+    "they", "he", "she", "will", "would", "should", "could", "can", "may", "might", "not", "no",
+    "yes", "so", "up", "down", "out", "into", "than", "vs", "via", "per",
+];
+
+/// Tokenize free text into lowercase alphanumeric tokens, length>=3,
+/// not numeric-only, not in the stop list. Stable, allocation-aware.
+fn tokenize(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            cur.push(ch.to_ascii_lowercase());
+        } else if !cur.is_empty() {
+            push_token(&mut out, std::mem::take(&mut cur));
+        }
+    }
+    if !cur.is_empty() {
+        push_token(&mut out, cur);
+    }
+    out
+}
+
+fn push_token(out: &mut Vec<String>, t: String) {
+    if t.len() < 3 {
+        return;
+    }
+    if t.chars().all(|c| c.is_ascii_digit()) {
+        return;
+    }
+    if STOPWORDS.contains(&t.as_str()) {
+        return;
+    }
+    out.push(t);
+}
+
+/// Compute cosine similarity between two TF-IDF-weighted bags of words.
+/// Returns 0.0 when either input is empty (no overlap, no signal).
+fn cosine_similarity(
+    a: &std::collections::HashMap<String, f64>,
+    b: &std::collections::HashMap<String, f64>,
+) -> f64 {
+    if a.is_empty() || b.is_empty() {
+        return 0.0;
+    }
+    let mut dot = 0.0_f64;
+    for (k, va) in a.iter() {
+        if let Some(vb) = b.get(k) {
+            dot += va * vb;
+        }
+    }
+    let na: f64 = a.values().map(|v| v * v).sum::<f64>().sqrt();
+    let nb: f64 = b.values().map(|v| v * v).sum::<f64>().sqrt();
+    if na == 0.0 || nb == 0.0 {
+        return 0.0;
+    }
+    dot / (na * nb)
+}
+
+/// Build a TF-IDF vector for `tokens` given the precomputed IDF map.
+/// Tokens not in the IDF map (rare-in-corpus) contribute zero — they
+/// don't push the vector toward unrelated lessons.
+fn tfidf_vector(
+    tokens: &[String],
+    idf: &std::collections::HashMap<String, f64>,
+) -> std::collections::HashMap<String, f64> {
+    use std::collections::HashMap;
+    let mut tf: HashMap<String, f64> = HashMap::new();
+    for t in tokens {
+        *tf.entry(t.clone()).or_insert(0.0) += 1.0;
+    }
+    let mut out = HashMap::new();
+    for (term, count) in tf {
+        if let Some(idf_val) = idf.get(&term) {
+            out.insert(term, count * idf_val);
+        }
+    }
+    out
+}
+
+/// Load top-N lessons by semantic similarity to `query_text`.
+///
+/// `query_text`: typically `<gap_title> <acceptance criteria>`. Empty
+/// query falls back to `load_spawn_lessons(domain, max_n)` (recency x
+/// frequency) so callers get *something* useful rather than nothing.
+///
+/// `domain` filter behaves identically to `load_spawn_lessons`:
+/// empty/"any"/"global" returns global pool; non-empty returns
+/// scope-match OR universal scope.
+///
+/// `max_n` is clamped to [0, SPAWN_LESSONS_MAX_N] (same cap as the
+/// recency-frequency path so the briefing's lesson block doesn't
+/// suddenly balloon when this is enabled).
+///
+/// Best-effort: returns empty Vec if the DB is unreachable or empty.
+pub fn load_relevant_lessons_semantic(
+    query_text: &str,
+    max_n: usize,
+    domain: &str,
+) -> Vec<ImprovementTarget> {
+    use std::collections::HashMap;
+
+    let max_n = max_n.min(SPAWN_LESSONS_MAX_N);
+    if max_n == 0 {
+        return Vec::new();
+    }
+    let query_tokens = tokenize(query_text);
+    if query_tokens.is_empty() {
+        // Nothing to score against — fall back to recency-frequency.
+        return load_spawn_lessons(domain, max_n);
+    }
+
+    let conn = match open_db() {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let domain_norm = domain.trim().to_lowercase();
+    let use_domain_filter =
+        !domain_norm.is_empty() && domain_norm != "any" && domain_norm != "global";
+
+    // Pull all eligible (directive, priority, scope) rows. We reuse the
+    // load_spawn_lessons priority + ab_seed filters but skip the recency
+    // ranking — semantic ranking happens in Rust below.
+    let sql = if use_domain_filter {
+        "SELECT directive,
+                MIN(priority) AS priority,
+                MAX(scope) AS scope
+         FROM chump_improvement_targets
+         WHERE priority IN ('high', 'medium')
+           AND reflection_id NOT IN (
+               SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'
+           )
+           AND (scope IS NULL OR scope = '' OR LOWER(scope) = ?1)
+         GROUP BY directive"
+    } else {
+        "SELECT directive,
+                MIN(priority) AS priority,
+                MAX(scope) AS scope
+         FROM chump_improvement_targets
+         WHERE priority IN ('high', 'medium')
+           AND reflection_id NOT IN (
+               SELECT id FROM chump_reflections WHERE error_pattern LIKE 'ab_seed:%'
+           )
+         GROUP BY directive"
+    };
+
+    let mut stmt = match conn.prepare(sql) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    // Collect (directive, priority, scope) into a vec we'll re-tokenize.
+    struct Row {
+        directive: String,
+        priority: Priority,
+        scope: Option<String>,
+    }
+    let row_mapper = |r: &rusqlite::Row| -> rusqlite::Result<Row> {
+        let priority_str: String = r.get(1)?;
+        Ok(Row {
+            directive: r.get(0)?,
+            priority: match priority_str.as_str() {
+                "high" => Priority::High,
+                "low" => Priority::Low,
+                _ => Priority::Medium,
+            },
+            scope: r.get::<_, Option<String>>(2)?.filter(|s| !s.is_empty()),
+        })
+    };
+
+    let rows: Vec<Row> = if use_domain_filter {
+        match stmt.query_map(rusqlite::params![domain_norm], row_mapper) {
+            Ok(it) => it.filter_map(|r| r.ok()).collect(),
+            Err(_) => return Vec::new(),
+        }
+    } else {
+        match stmt.query_map([], row_mapper) {
+            Ok(it) => it.filter_map(|r| r.ok()).collect(),
+            Err(_) => return Vec::new(),
+        }
+    };
+
+    if rows.is_empty() {
+        return Vec::new();
+    }
+
+    // Build IDF over the corpus.
+    let total_docs = rows.len() as f64;
+    let mut df: HashMap<String, usize> = HashMap::new();
+    let docs_tokens: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| {
+            let toks = tokenize(&r.directive);
+            // Each unique term in this doc gets +1 to its document frequency.
+            let unique: std::collections::HashSet<&String> = toks.iter().collect();
+            for t in unique {
+                *df.entry(t.clone()).or_insert(0) += 1;
+            }
+            toks
+        })
+        .collect();
+
+    // IDF = ln(1 + N / (1 + df)). Smoothed to avoid division-by-zero
+    // and to keep terms that appear in every doc from going to 0.
+    let idf: HashMap<String, f64> = df
+        .into_iter()
+        .map(|(term, df_count)| {
+            let v: f64 = 1.0_f64 + total_docs / (1.0_f64 + df_count as f64);
+            (term, v.ln())
+        })
+        .collect();
+
+    // Build query vector + score each doc.
+    let q_vec = tfidf_vector(&query_tokens, &idf);
+    let mut scored: Vec<(f64, &Row)> = rows
+        .iter()
+        .zip(docs_tokens.iter())
+        .map(|(row, toks)| {
+            let v = tfidf_vector(toks, &idf);
+            (cosine_similarity(&q_vec, &v), row)
+        })
+        .collect();
+
+    // Sort desc by similarity; tiebreak by priority (high > medium > low).
+    fn priority_rank(p: Priority) -> u8 {
+        match p {
+            Priority::High => 0,
+            Priority::Medium => 1,
+            Priority::Low => 2,
+        }
+    }
+    scored.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| priority_rank(a.1.priority).cmp(&priority_rank(b.1.priority)))
+    });
+
+    // Drop zero-similarity rows so we don't fill the lesson slot with
+    // pure-noise picks. If everything scored 0, return empty (caller
+    // can fall back to load_spawn_lessons).
+    scored
+        .into_iter()
+        .filter(|(s, _)| *s > 0.0)
+        .take(max_n)
+        .map(|(_, r)| ImprovementTarget {
+            directive: r.directive.clone(),
+            priority: r.priority,
+            scope: r.scope.clone(),
+            actioned_as: None,
+        })
+        .collect()
+}
+
 /// COG-011d variant (b): when ON, only inject lessons whose `scope` exactly
 /// matches the current `tool_hint`. Excludes the universal (NULL-scope)
 /// lessons that get returned by default. Tests the hypothesis that
@@ -2772,5 +3063,85 @@ mod e2e_record_query_use {
         );
 
         std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
+    }
+
+    // -----------------------------------------------------------------
+    // COG-041: tokenizer + cosine_similarity unit coverage
+    // -----------------------------------------------------------------
+
+    #[test]
+    fn cog041_tokenize_drops_short_and_stopwords() {
+        let toks = tokenize("The fleet is auth-storming");
+        // "the" and "is" are stopwords; len-3 minimum drops nothing here.
+        // "auth" + "storming" survive; "fleet" survives.
+        assert!(toks.contains(&"fleet".to_string()));
+        assert!(toks.contains(&"auth".to_string()));
+        assert!(toks.contains(&"storming".to_string()));
+        assert!(!toks.contains(&"the".to_string()));
+        assert!(!toks.contains(&"is".to_string()));
+    }
+
+    #[test]
+    fn cog041_tokenize_drops_pure_numbers_and_short() {
+        let toks = tokenize("INFRA-468 fixes 7 bugs in 2026 ok");
+        assert!(toks.contains(&"infra".to_string()));
+        assert!(!toks.contains(&"468".to_string())); // pure-numeric dropped
+        assert!(!toks.contains(&"2026".to_string()));
+        assert!(toks.contains(&"fixes".to_string()));
+        assert!(toks.contains(&"bugs".to_string()));
+        assert!(!toks.contains(&"ok".to_string())); // len 2
+    }
+
+    #[test]
+    fn cog041_cosine_similarity_orthogonal() {
+        use std::collections::HashMap;
+        let mut a = HashMap::new();
+        a.insert("foo".to_string(), 1.0);
+        let mut b = HashMap::new();
+        b.insert("bar".to_string(), 1.0);
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn cog041_cosine_similarity_identical() {
+        use std::collections::HashMap;
+        let mut a = HashMap::new();
+        a.insert("auth".to_string(), 2.0);
+        a.insert("fleet".to_string(), 1.0);
+        let b = a.clone();
+        let s = cosine_similarity(&a, &b);
+        assert!(
+            (s - 1.0).abs() < 1e-9,
+            "identical vectors → similarity 1.0; got {}",
+            s
+        );
+    }
+
+    #[test]
+    fn cog041_cosine_similarity_partial_overlap() {
+        use std::collections::HashMap;
+        let mut a = HashMap::new();
+        a.insert("auth".to_string(), 1.0);
+        a.insert("fleet".to_string(), 1.0);
+        let mut b = HashMap::new();
+        b.insert("auth".to_string(), 1.0);
+        b.insert("storm".to_string(), 1.0);
+        // 1 shared term out of 2 each → cos = 1 / (sqrt(2) * sqrt(2)) = 0.5
+        let s = cosine_similarity(&a, &b);
+        assert!(
+            (s - 0.5).abs() < 1e-9,
+            "expected 0.5 for one-of-two overlap, got {}",
+            s
+        );
+    }
+
+    #[test]
+    fn cog041_semantic_empty_query_falls_back_or_empty() {
+        // Empty query should not panic and should return an empty Vec
+        // OR fall back to recency-frequency. Either is acceptable.
+        // We just want to confirm no crash on empty input.
+        fresh_test_root();
+        let v = load_relevant_lessons_semantic("", 5, "INFRA");
+        assert!(v.len() <= 5);
     }
 }

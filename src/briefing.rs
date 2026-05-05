@@ -109,7 +109,26 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         };
     };
 
-    let relevant_reflections = query_relevant_reflections(&parsed.domain, 5);
+    // COG-041: when CHUMP_LESSONS_SEMANTIC=1, rank lessons by semantic
+    // similarity to the gap text instead of recency × frequency. Falls
+    // back to the recency-frequency path when the env is unset OR when
+    // semantic ranking returns 0 hits (no overlap with corpus).
+    let relevant_reflections = if reflection_db::lessons_semantic_enabled() {
+        let query_text = format!(
+            "{} {}",
+            parsed.title,
+            parsed.acceptance.as_deref().unwrap_or("")
+        );
+        let semantic =
+            reflection_db::load_relevant_lessons_semantic(&query_text, 5, &parsed.domain);
+        if semantic.is_empty() {
+            query_relevant_reflections(&parsed.domain, 5)
+        } else {
+            semantic
+        }
+    } else {
+        query_relevant_reflections(&parsed.domain, 5)
+    };
 
     let ambient_path = root.join(".chump-locks/ambient.jsonl");
     let recent_ambient_events = filter_ambient(&ambient_path, &parsed.domain, 20);
