@@ -69,8 +69,10 @@ if ! grep -q 'export CHUMP_SESSION_ID' "$SNIPPET"; then
     fail "could not extract worker.sh prelude for live test (skipping)"
 else
     # Run it twice with different AGENT_IDs to verify session IDs differ.
-    ID_A=$(AGENT_ID=1 FLEET_SESSION=test-fleet bash -c "source '$SNIPPET'; echo \$CHUMP_SESSION_ID")
-    ID_B=$(AGENT_ID=2 FLEET_SESSION=test-fleet bash -c "source '$SNIPPET'; echo \$CHUMP_SESSION_ID")
+    # Unset CHUMP_SESSION_ID in the test subshell — the parent (e.g.
+    # bot-merge.sh) may have set it, and the export-if would short-circuit.
+    ID_A=$(env -u CHUMP_SESSION_ID AGENT_ID=1 FLEET_SESSION=test-fleet bash -c "source '$SNIPPET'; echo \$CHUMP_SESSION_ID")
+    ID_B=$(env -u CHUMP_SESSION_ID AGENT_ID=2 FLEET_SESSION=test-fleet bash -c "source '$SNIPPET'; echo \$CHUMP_SESSION_ID")
 
     if [[ -n "$ID_A" ]] && [[ -n "$ID_B" ]] && [[ "$ID_A" != "$ID_B" ]]; then
         ok "two workers in same fleet get distinct session IDs ($ID_A vs $ID_B)"
