@@ -27,3 +27,41 @@ if [[ -x "$INSTALL_SCRIPT" ]]; then
     # Run quietly so the user doesn't see noise on every checkout.
     "$INSTALL_SCRIPT" --quiet 2>/dev/null || true
 fi
+
+# INFRA-481: propagate .cargo/config.toml into linked worktrees and
+# point target-dir at the main repo's target/ so linked worktrees
+# don't each allocate their own multi-GB target tree.
+#
+# The main repo's .cargo/config.toml (INFRA-202: sccache wrapper) is
+# gitignored — per-machine config. Linked worktrees at /tmp/chump-*
+# are NOT under the main repo path, so cargo's parent-walk lookup
+# misses it: every /tmp worktree builds its own target/ from scratch
+# AND loses sccache wrapping. Observed disk-full at 100% mid-session
+# 2026-05-05 (5 worktrees × ~10GB each = 50GB).
+#
+# Idempotent: skips if .cargo/config.toml already exists in the
+# linked worktree, or if we ARE the main worktree (cargo's parent walk
+# finds the config naturally there).
+THIS_WT_ABS="$(cd "$REPO_ROOT" && pwd -P)" 2>/dev/null || exit 0
+MAIN_WT_RAW="$(git rev-parse --git-common-dir 2>/dev/null | xargs -I{} dirname {} 2>/dev/null)" || exit 0
+MAIN_WT_ABS="$(cd "$MAIN_WT_RAW" && pwd -P)" 2>/dev/null || exit 0
+
+if [[ -n "$MAIN_WT_ABS" && "$THIS_WT_ABS" != "$MAIN_WT_ABS" ]]; then
+    MAIN_CARGO_CONFIG="$MAIN_WT_ABS/.cargo/config.toml"
+    LOCAL_CARGO_CONFIG="$THIS_WT_ABS/.cargo/config.toml"
+    if [[ -f "$MAIN_CARGO_CONFIG" && ! -f "$LOCAL_CARGO_CONFIG" ]]; then
+        mkdir -p "$THIS_WT_ABS/.cargo"
+        cp "$MAIN_CARGO_CONFIG" "$LOCAL_CARGO_CONFIG"
+        # Append target-dir override pointing at main repo's target/
+        # so all linked worktrees share build cache.
+        if ! grep -q "^target-dir" "$LOCAL_CARGO_CONFIG"; then
+            cat >> "$LOCAL_CARGO_CONFIG" <<EOF
+
+# INFRA-481: shared target-dir so linked worktrees don't each build
+# multi-GB target/ trees. Auto-injected by scripts/git-hooks/post-checkout.
+[build]
+target-dir = "$MAIN_WT_ABS/target"
+EOF
+        fi
+    fi
+fi
