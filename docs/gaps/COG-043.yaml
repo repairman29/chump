@@ -1,0 +1,9 @@
+- id: COG-043
+  domain: COG
+  title: lesson action-telemetry — log when an agent's commit / PR actually applies a chump_improvement_targets directive (string-match against directive keywords + commit body, or LLM judge); the missing 'did it help' signal that unblocks COG-041 quality measurement
+  status: done
+  priority: P1
+  effort: m
+  closed_date: '2026-05-05'
+  closed_pr: 1115
+

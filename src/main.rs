@@ -84,6 +84,7 @@ mod hooks;
 mod interrupt_notify;
 mod introspect_tool;
 mod job_log;
+mod lesson_action;
 mod limits;
 mod llm_backend_metrics;
 mod local_openai;
@@ -369,6 +370,58 @@ async fn main() -> Result<()> {
             Err(e) => {
                 eprintln!("chump claim: {e:#}");
                 std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump lesson-grade <GAP-ID> --pr <N>` (COG-043) — for each
+    // `lessons_shown` event tied to this gap+session in ambient.jsonl,
+    // score the directive's keywords against the PR's diff + body and
+    // emit `lesson_applied` / `lesson_not_applied` events. Best-effort:
+    // missing PR or network errors degrade to no-op, never panic.
+    //
+    // Called from bot-merge.sh after auto-close. Operators can also
+    // run it manually post-hoc on any closed PR.
+    if args.get(1).map(String::as_str) == Some("lesson-grade") {
+        let gap_id = args.get(2).cloned().unwrap_or_else(|| {
+            eprintln!("Usage: chump lesson-grade <GAP-ID> --pr <N>");
+            std::process::exit(2);
+        });
+        if gap_id.starts_with("--") {
+            eprintln!("Usage: chump lesson-grade <GAP-ID> --pr <N>");
+            std::process::exit(2);
+        }
+        let lg_flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1).cloned())
+        };
+        let pr_number: u64 = match lg_flag("--pr") {
+            Some(s) => s.parse().unwrap_or_else(|_| {
+                eprintln!("chump lesson-grade: --pr expects an integer (got {s:?})");
+                std::process::exit(2);
+            }),
+            None => {
+                eprintln!("Usage: chump lesson-grade <GAP-ID> --pr <N>");
+                std::process::exit(2);
+            }
+        };
+        let session_filter = lg_flag("--session"); // optional — defaults to all sessions for the gap
+        let repo_root = repo_path::repo_root();
+        let graded = run_lesson_grade(&repo_root, &gap_id, pr_number, session_filter.as_deref());
+        match graded {
+            Ok(counts) => {
+                println!(
+                    "lesson-grade {}: applied={} not_applied={} skipped={}",
+                    gap_id, counts.0, counts.1, counts.2
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                // Best-effort — print the warning but exit 0 so we don't
+                // break bot-merge.sh's auto-close flow.
+                eprintln!("chump lesson-grade: warning: {e:#}");
+                return Ok(());
             }
         }
     }
@@ -3322,6 +3375,157 @@ async fn run_eval_reflection_mode() -> i32 {
 }
 
 /// "ToolMisuse" → "tool_misuse" — minimal converter for fixture string → enum.
+/// COG-043: read all `lessons_shown` events for `gap_id` from
+/// ambient.jsonl, fetch the PR diff + body via `gh`, and emit a
+/// `lesson_applied` / `lesson_not_applied` event for each unique
+/// directive. Returns (applied, not_applied, skipped) counts.
+///
+/// Caller (bot-merge.sh) treats errors here as best-effort — never
+/// gates the auto-close flow on telemetry.
+fn run_lesson_grade(
+    repo_root: &std::path::Path,
+    gap_id: &str,
+    pr_number: u64,
+    session_filter: Option<&str>,
+) -> anyhow::Result<(u64, u64, u64)> {
+    use std::process::Command;
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    // Find the most recent `lessons_shown` event matching gap_id (and
+    // session if provided). Walk lines from the end backward.
+    let mut latest_directives: Vec<String> = Vec::new();
+    let mut latest_session = String::new();
+    for line in contents.lines().rev() {
+        if !line.contains("\"kind\":\"lessons_shown\"")
+            && !line.contains("\"kind\": \"lessons_shown\"")
+        {
+            continue;
+        }
+        if !line.contains(gap_id) {
+            continue;
+        }
+        if let Some(filt) = session_filter {
+            if !line.contains(filt) {
+                continue;
+            }
+        }
+        // Parse the JSON line. Use python3 for robustness; fall back to
+        // a permissive substring extract if python is unavailable.
+        let parsed = parse_lessons_shown_line(line);
+        if let Some((session_id, directives)) = parsed {
+            if !directives.is_empty() {
+                latest_directives = directives;
+                latest_session = session_id;
+                break;
+            }
+        }
+    }
+    if latest_directives.is_empty() {
+        return Ok((0, 0, 0));
+    }
+
+    // Pull the PR body + diff via gh. Failures here just mean we can't
+    // grade — return zeros, don't error.
+    let body_out = Command::new("gh")
+        .args([
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "body,title,commits",
+            "-q",
+            ".title + \"\\n\" + (.body // \"\") + \"\\n\" + ([.commits[].messageHeadline + \"\\n\" + (.commits[].messageBody // \"\")] | join(\"\\n\"))",
+        ])
+        .current_dir(repo_root)
+        .output()
+        .ok();
+    let diff_out = Command::new("gh")
+        .args(["pr", "diff", &pr_number.to_string()])
+        .current_dir(repo_root)
+        .output()
+        .ok();
+
+    let mut pr_text = String::new();
+    if let Some(o) = body_out {
+        if o.status.success() {
+            pr_text.push_str(&String::from_utf8_lossy(&o.stdout));
+        }
+    }
+    if let Some(o) = diff_out {
+        if o.status.success() {
+            pr_text.push('\n');
+            pr_text.push_str(&String::from_utf8_lossy(&o.stdout));
+        }
+    }
+    if pr_text.is_empty() {
+        return Ok((0, 0, latest_directives.len() as u64));
+    }
+
+    let mut applied = 0u64;
+    let mut not_applied = 0u64;
+    for directive in &latest_directives {
+        let (matched, total) = lesson_action::score_directive_against_pr(directive, &pr_text);
+        let is_applied = lesson_action::directive_applied(directive, &pr_text);
+        lesson_action::emit_lesson_grade(
+            repo_root,
+            &latest_session,
+            gap_id,
+            pr_number,
+            directive,
+            is_applied,
+            matched,
+            total,
+        );
+        if is_applied {
+            applied += 1;
+        } else {
+            not_applied += 1;
+        }
+    }
+    Ok((applied, not_applied, 0))
+}
+
+/// Parse one `lessons_shown` JSON line. Returns (session_id, directives).
+/// Permissive — uses python3 if available, hand-rolls otherwise.
+fn parse_lessons_shown_line(line: &str) -> Option<(String, Vec<String>)> {
+    use std::process::Command;
+    if let Ok(out) = Command::new("python3")
+        .arg("-c")
+        .arg(
+            r#"
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+sid = d.get('session_id', '')
+dirs = d.get('directives', [])
+if not isinstance(dirs, list):
+    dirs = []
+print(sid)
+for x in dirs:
+    print(x)
+"#,
+        )
+        .arg(line)
+        .output()
+    {
+        if out.status.success() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            let mut iter = s.lines();
+            let sid = iter.next().unwrap_or("").to_string();
+            let dirs: Vec<String> = iter.map(|l| l.to_string()).collect();
+            if !dirs.is_empty() {
+                return Some((sid, dirs));
+            }
+        }
+    }
+    // Fallback: don't try to be clever. If python isn't available,
+    // grading just no-ops on this corpus. That's acceptable for v1.
+    None
+}
+
 fn camel_to_snake(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 4);
     for (i, c) in s.chars().enumerate() {
