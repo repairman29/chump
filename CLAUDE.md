@@ -118,7 +118,9 @@ INFRA-419 reaper flags subagents that exceed
   overnight scheduler, session ID resolution, the full commit-time
   guards table, dispatched-subagent backend, fleet launcher,
   speculative execution, full coordination doc index, gap-registry
-  internals, "if auto-merge is stuck" recovery playbook.
+  internals, "if auto-merge is stuck" recovery playbook, reapers
+  (stale-pr, stale-worktree, stale-branch, stuck-pr-filer, ghost-open-gaps,
+  subagent-budget, active-target, stale-auditor-finding).
 - [`docs/process/AGENT_COORDINATION.md`](./docs/process/AGENT_COORDINATION.md)
   — full coordination system spec.
 - [`docs/process/POST_INFRA_188_GOTCHAS.md`](./docs/process/POST_INFRA_188_GOTCHAS.md)
