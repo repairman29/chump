@@ -1,0 +1,17 @@
+- id: META-040
+  domain: META
+  title: lesson-effectiveness audit — nightly job grades each chump_improvement_targets row by 'did the next session that received this lesson actually behave differently'; prune the no-effect rows
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - nightly cron grades each lesson row by next-session adoption (did session A read lesson L AND change behavior in a way the lesson predicted?)
+    - prune rows with adoption=0 over 30 days
+    - emit ambient kind=lessons_pruned
+    - "ROI metric: "
+    - pruned/
+    - total
+    - " ratio"
+  closed_date: '2026-05-05'
+  closed_pr: 1119
+
