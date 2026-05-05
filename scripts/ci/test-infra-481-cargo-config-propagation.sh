@@ -62,6 +62,9 @@ cat > "$TMP_MAIN/.cargo/config.toml" <<EOF
 rustc-wrapper = "sccache"
 EOF
 # Source-extract just the propagation logic into a function and run.
+# Replicates the hook's behavior — must merge target-dir INTO existing
+# [build] table, not append a duplicate (TOML rejects duplicate section
+# headers).
 THIS_WT_ABS="$TMP_TEST_WT"
 MAIN_WT_ABS="$TMP_MAIN"
 if [[ -n "$MAIN_WT_ABS" && "$THIS_WT_ABS" != "$MAIN_WT_ABS" ]]; then
@@ -71,11 +74,19 @@ if [[ -n "$MAIN_WT_ABS" && "$THIS_WT_ABS" != "$MAIN_WT_ABS" ]]; then
         mkdir -p "$THIS_WT_ABS/.cargo"
         cp "$MAIN_CARGO_CONFIG" "$LOCAL_CARGO_CONFIG"
         if ! grep -q "^target-dir" "$LOCAL_CARGO_CONFIG"; then
-            cat >> "$LOCAL_CARGO_CONFIG" <<EOF2
+            if grep -q "^\[build\]" "$LOCAL_CARGO_CONFIG"; then
+                tmp_config="$(mktemp)"
+                awk -v target="$MAIN_WT_ABS/target" '
+                    /^\[build\]$/ { print; print "target-dir = \"" target "\""; next }
+                    { print }
+                ' "$LOCAL_CARGO_CONFIG" > "$tmp_config" && mv "$tmp_config" "$LOCAL_CARGO_CONFIG"
+            else
+                cat >> "$LOCAL_CARGO_CONFIG" <<EOF2
 
 [build]
 target-dir = "$MAIN_WT_ABS/target"
 EOF2
+            fi
         fi
     fi
 fi
@@ -94,6 +105,13 @@ if grep -q "target-dir.*$TMP_MAIN/target" "$TMP_TEST_WT/.cargo/config.toml" 2>/d
     ok "live: target-dir overridden to main repo's target"
 else
     fail "live: target-dir override missing"
+fi
+# Critical: must NOT have duplicate [build] sections — TOML rejects.
+build_count=$(grep -c "^\[build\]$" "$TMP_TEST_WT/.cargo/config.toml" 2>/dev/null || echo 0)
+if [[ "$build_count" == "1" ]]; then
+    ok "live: exactly one [build] section (no TOML duplicate-key error)"
+else
+    fail "live: [build] section count is $build_count (must be 1)"
 fi
 
 # Cleanup.

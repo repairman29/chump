@@ -52,16 +52,34 @@ if [[ -n "$MAIN_WT_ABS" && "$THIS_WT_ABS" != "$MAIN_WT_ABS" ]]; then
     if [[ -f "$MAIN_CARGO_CONFIG" && ! -f "$LOCAL_CARGO_CONFIG" ]]; then
         mkdir -p "$THIS_WT_ABS/.cargo"
         cp "$MAIN_CARGO_CONFIG" "$LOCAL_CARGO_CONFIG"
-        # Append target-dir override pointing at main repo's target/
-        # so all linked worktrees share build cache.
+        # Inject target-dir override pointing at main repo's target/
+        # so all linked worktrees share build cache. Must merge into
+        # the existing [build] table — TOML rejects duplicate section
+        # headers.
         if ! grep -q "^target-dir" "$LOCAL_CARGO_CONFIG"; then
-            cat >> "$LOCAL_CARGO_CONFIG" <<EOF
+            if grep -q "^\[build\]" "$LOCAL_CARGO_CONFIG"; then
+                # Insert target-dir as the first key under existing [build].
+                # Use a tempfile so the insert is atomic.
+                tmp_config="$(mktemp)" || tmp_config="${LOCAL_CARGO_CONFIG}.tmp"
+                awk -v target="$MAIN_WT_ABS/target" '
+                    /^\[build\]$/ {
+                        print
+                        print "# INFRA-481: shared target-dir so linked worktrees don'"'"'t each build multi-GB target/ trees."
+                        print "target-dir = \"" target "\""
+                        next
+                    }
+                    { print }
+                ' "$LOCAL_CARGO_CONFIG" > "$tmp_config" && mv "$tmp_config" "$LOCAL_CARGO_CONFIG"
+            else
+                # No [build] table yet — append a fresh one.
+                cat >> "$LOCAL_CARGO_CONFIG" <<EOF
 
 # INFRA-481: shared target-dir so linked worktrees don't each build
 # multi-GB target/ trees. Auto-injected by scripts/git-hooks/post-checkout.
 [build]
 target-dir = "$MAIN_WT_ABS/target"
 EOF
+            fi
         fi
     fi
 fi
