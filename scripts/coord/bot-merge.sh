@@ -662,6 +662,52 @@ if [[ "${CHUMP_BOT_MERGE_ALLOW_UNTRACKED:-1}" != "0" ]]; then
     fi
 fi
 
+# ── 0b. Modified-files handler (INFRA-472) ───────────────────────────────────
+# INFRA-404 stages untracked but doesn't commit. If the operator's worktree
+# has *modified* (M) tracked files OR *staged-but-uncommitted* changes from
+# 0a, the upcoming `git rebase` fails with "cannot rebase: You have unstaged
+# changes" — observed twice this session (INFRA-458 retry + INFRA-470 ship)
+# and three more times across the 2026-05-04 fleet. Each occurrence costs a
+# manual commit + bot-merge re-invocation cycle.
+#
+# Fix: after the INFRA-404 stage, also auto-stage modified files in the
+# scoped paths AND commit anything staged with a default message. Pre-commit
+# hooks still run (no --no-verify) so the discipline guards aren't bypassed.
+# If the hook rejects, exit cleanly with a clear message instead of letting
+# git rebase fail later with a cryptic error.
+#
+# Bypass: CHUMP_BOT_MERGE_AUTO_COMMIT_M=0 (operator wants to handle staging
+# manually — useful for partial-stage scenarios where M files are
+# intentionally not part of this PR).
+if [[ "${CHUMP_BOT_MERGE_AUTO_COMMIT_M:-1}" != "0" ]]; then
+    modified=$(git diff --name-only -- src/ crates/ scripts/ docs/ 2>/dev/null)
+    if [[ -n "$modified" ]]; then
+        yellow "INFRA-472: Modified files found — auto-staging:"
+        echo "$modified" | sed 's/^/  M /'
+        git add $modified
+    fi
+    # Whether files came from INFRA-404 (untracked) or INFRA-472 (modified),
+    # they're now staged. Commit them so rebase doesn't trip.
+    if ! git diff --cached --quiet 2>/dev/null; then
+        _autostage_msg="auto: bot-merge pre-rebase staging (INFRA-472)
+
+Auto-committed by bot-merge.sh before rebase to prevent the
+'cannot rebase: You have unstaged changes' error class. If this
+commit needs a different message, amend after ship lands or split
+the PR.
+
+Bypass: CHUMP_BOT_MERGE_AUTO_COMMIT_M=0 to opt out (handles staging manually)."
+        if git commit -m "$_autostage_msg"; then
+            green "INFRA-472: auto-committed pre-rebase changes"
+        else
+            red "INFRA-472: auto-commit failed — pre-commit hook rejected the changes."
+            red "  Fix the hook errors above, then re-run bot-merge.sh."
+            red "  (Or stage+commit manually with scripts/coord/chump-commit.sh and retry.)"
+            exit 4
+        fi
+    fi
+fi
+
 # ── 0. Gap pre-flight (abort if work is already done on main) ─────────────────
 if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     info "Running gap pre-flight for: ${GAP_IDS[*]} …"
