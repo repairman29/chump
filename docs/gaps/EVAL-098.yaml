@@ -1,40 +1,18 @@
 - id: EVAL-098
   domain: EVAL
-  title: EVAL-087 five-cycle escalation — execute or formally defer evaluation-awareness comparison
-  status: open
-  priority: P1
-  effort: xs
-  opened_date: '2026-05-04'
+  title: validate COG-041 semantic retrieval — for N closed gaps run briefing both ways, measure Jaccard overlap of returned lessons; baseline before flipping CHUMP_LESSONS_SEMANTIC=1 by default
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "scripts/eval/cog-041-semantic-vs-recency.sh: pick 20 closed gaps from chump gap list --status done --json"
+    - for each, run chump --briefing both modes, parse the lessons block
+    - compute Jaccard overlap (intersection / union) per gap
+    - "aggregate: mean overlap, median overlap, fraction of gaps with overlap < 0.3 (= meaningfully different rankings)"
+    - write report to docs/eval/COG-041-semantic-vs-recency-<date>.md
+    - "prereg: lock methodology BEFORE running"
+  closed_date: '2026-05-05'
+  closed_pr: 1114
   raised_by: cold-water
   raised_in: RED_LETTER#11
-  description: |
-    EVAL-087 ("Evaluation-awareness literature invalidates A/B trust — reframe
-    RESEARCH-026 to P1", opened 2026-04-26, P1) has been STILL_OPEN_INACTIVE
-    for five consecutive Cold Water cycles: Issues #7, #8, #9, #10, #11.
 
-    Verification: `git log origin/main --grep=EVAL-087 --oneline` returns
-    zero results (no commits reference EVAL-087 on origin/main).
-
-    EVAL-094 (ICLR 2026 sandbagging experiment) was filed and closed
-    (closed_pr: 909, 2026-05-03) to address the execution angle. However,
-    EVAL-094's AC included "RESEARCH-026 priority updated to P1 in state.db
-    (via chump gap set)." EVAL-087 is the gateway to that update and remains
-    open with zero movement.
-
-    External pressure (April 2026 Meta Muse Spark safety report): Meta Muse
-    Spark flagged public LLM benchmarks as likely evaluations 19.8% of the
-    time vs 2.0% for internal benchmarks. Chump's A/B harness uses structured
-    rubrics and task IDs consistent with the public-benchmark signature.
-    Source: https://kili-technology.com/blog/llm-benchmarks-evaluation-awareness-muse-spark-report
-
-    Decision required: (a) execute EVAL-087 comparison (naturalized vs standard
-    framing, n>=50), or (b) formally defer to P3 with rationale.
-
-    Falsifying condition: EVAL-087 shows status:done with numeric closed_pr, OR
-    EVAL-087 shows a git commit with experiment data, OR priority changed to P3
-    with a recorded defer rationale.
-  depends_on: [EVAL-087]
-  acceptance_criteria:
-    - "EVAL-087 is either executed (status:done, n>=50 result committed) OR formally deferred (priority:P3 with rationale)"
-    - "If executed: RESEARCH-026 priority updated to P1 in state.db"
-    - "Decision committed within 14 days of 2026-05-04"
