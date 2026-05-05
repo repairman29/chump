@@ -1207,6 +1207,18 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
                         yellow "Auto-close push failed for $_gid — the close commit is local only"
                     else
                         green "Auto-closed $_gid (closed_pr=$_autoclose_target_pr) — squashed atomically by merge queue"
+
+                        # COG-043: best-effort lesson action-telemetry.
+                        # Grade each lessons_shown directive against the
+                        # PR's diff + body; emit lesson_applied /
+                        # lesson_not_applied events to ambient.jsonl.
+                        # Never blocks: 5s timeout, all errors swallowed.
+                        # Bypass: CHUMP_LESSON_GRADE=0
+                        if [[ "${CHUMP_LESSON_GRADE:-1}" != "0" ]] \
+                           && command -v chump >/dev/null 2>&1; then
+                            (timeout 30 chump lesson-grade "$_gid" --pr "$_autoclose_target_pr" 2>&1 | sed 's/^/  [cog-043] /' || true) &
+                        fi
+
                         # INFRA-192: forward-chain notifier. When a gap closes,
                         # scan open gaps for `depends_on` entries containing
                         # this ID; emit a `gap_unblocked` ambient event for

@@ -113,7 +113,13 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     // similarity to the gap text instead of recency × frequency. Falls
     // back to the recency-frequency path when the env is unset OR when
     // semantic ranking returns 0 hits (no overlap with corpus).
-    let relevant_reflections = if reflection_db::lessons_semantic_enabled() {
+    let semantic_mode_used = reflection_db::lessons_semantic_enabled();
+    let mut ranking_mode = if semantic_mode_used {
+        "semantic"
+    } else {
+        "recency"
+    };
+    let relevant_reflections = if semantic_mode_used {
         let query_text = format!(
             "{} {}",
             parsed.title,
@@ -122,6 +128,9 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         let semantic =
             reflection_db::load_relevant_lessons_semantic(&query_text, 5, &parsed.domain);
         if semantic.is_empty() {
+            // Fell back to recency-frequency — record honestly so EVAL-099
+            // doesn't credit the semantic mode for this gap's outcome.
+            ranking_mode = "recency_fallback_from_semantic";
             query_relevant_reflections(&parsed.domain, 5)
         } else {
             semantic
@@ -129,6 +138,19 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     } else {
         query_relevant_reflections(&parsed.domain, 5)
     };
+
+    // COG-043: emit a `lessons_shown` event so downstream telemetry
+    // (lesson-grade subcommand, META-040 audit, EVAL-099 quality eval)
+    // knows which directives were surfaced for this gap+session+mode.
+    // Best-effort — never blocks the briefing render.
+    let session_id = std::env::var("CHUMP_SESSION_ID")
+        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+        .unwrap_or_else(|_| "unknown".to_string());
+    let directives: Vec<String> = relevant_reflections
+        .iter()
+        .map(|r| r.directive.clone())
+        .collect();
+    crate::lesson_action::emit_lessons_shown(root, &session_id, &gap_id, ranking_mode, &directives);
 
     let ambient_path = root.join(".chump-locks/ambient.jsonl");
     let recent_ambient_events = filter_ambient(&ambient_path, &parsed.domain, 20);
