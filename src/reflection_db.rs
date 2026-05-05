@@ -3070,7 +3070,7 @@ mod e2e_record_query_use {
     // -----------------------------------------------------------------
 
     #[test]
-    fn tokenize_drops_short_and_stopwords() {
+    fn cog041_tokenize_drops_short_and_stopwords() {
         let toks = tokenize("The fleet is auth-storming");
         // "the" and "is" are stopwords; len-3 minimum drops nothing here.
         // "auth" + "storming" survive; "fleet" survives.
@@ -3082,7 +3082,7 @@ mod e2e_record_query_use {
     }
 
     #[test]
-    fn tokenize_drops_pure_numbers_and_short() {
+    fn cog041_tokenize_drops_pure_numbers_and_short() {
         let toks = tokenize("INFRA-468 fixes 7 bugs in 2026 ok");
         assert!(toks.contains(&"infra".to_string()));
         assert!(!toks.contains(&"468".to_string())); // pure-numeric dropped
@@ -3093,7 +3093,7 @@ mod e2e_record_query_use {
     }
 
     #[test]
-    fn cosine_similarity_orthogonal() {
+    fn cog041_cosine_similarity_orthogonal() {
         use std::collections::HashMap;
         let mut a = HashMap::new();
         a.insert("foo".to_string(), 1.0);
@@ -3103,7 +3103,7 @@ mod e2e_record_query_use {
     }
 
     #[test]
-    fn cosine_similarity_identical() {
+    fn cog041_cosine_similarity_identical() {
         use std::collections::HashMap;
         let mut a = HashMap::new();
         a.insert("auth".to_string(), 2.0);
@@ -3118,7 +3118,7 @@ mod e2e_record_query_use {
     }
 
     #[test]
-    fn cosine_similarity_partial_overlap() {
+    fn cog041_cosine_similarity_partial_overlap() {
         use std::collections::HashMap;
         let mut a = HashMap::new();
         a.insert("auth".to_string(), 1.0);
@@ -3136,7 +3136,7 @@ mod e2e_record_query_use {
     }
 
     #[test]
-    fn semantic_empty_query_falls_back_or_empty() {
+    fn cog041_semantic_empty_query_falls_back_or_empty() {
         // Empty query should not panic and should return an empty Vec
         // OR fall back to recency-frequency. Either is acceptable.
         // We just want to confirm no crash on empty input.
