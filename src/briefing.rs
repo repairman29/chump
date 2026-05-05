@@ -35,7 +35,14 @@ const STRATEGIC_DOCS: &[&str] = &[
 ];
 
 /// One structured briefing for a gap.
-#[derive(Debug, Clone)]
+///
+/// **INFRA-482:** derives `Default` so test construction sites can use
+/// `GapBriefing { gap_id: "X".into(), ..Default::default() }`. This
+/// cuts the merge-conflict surface when two parallel PRs each add a
+/// new field — adding a field touches only the struct definition and
+/// the two real constructors (early-return + happy path), not five
+/// test sites.
+#[derive(Debug, Clone, Default)]
 pub struct GapBriefing {
     pub gap_id: String,
     pub gap_title: String,
@@ -879,20 +886,8 @@ gaps:
     fn render_markdown_for_not_found_is_clear() {
         let b = GapBriefing {
             gap_id: "BOGUS-1".into(),
-            gap_title: String::new(),
-            gap_acceptance: None,
-            gap_priority: String::new(),
-            gap_effort: String::new(),
-            gap_domain: String::new(),
-            depends_on: Vec::new(),
-            relevant_reflections: Vec::new(),
-            recent_ambient_events: Vec::new(),
-            strategic_doc_refs: Vec::new(),
-            similar_closed_prs: Vec::new(),
-            escalation_events: Vec::new(),
-            recent_deltas: Vec::new(),
-            session_stats: crate::session_ledger::SessionStats::default(),
             gap_not_found: true,
+            ..Default::default()
         };
         let md = render_markdown(&b);
         assert!(md.contains("BOGUS-1"));
@@ -909,14 +904,10 @@ gaps:
             gap_effort: "m".into(),
             gap_domain: "memory".into(),
             depends_on: vec!["MEM-006".into()],
-            relevant_reflections: Vec::new(),
             recent_ambient_events: vec!["{\"kind\":\"file_edit\"}".into()],
             strategic_doc_refs: vec!["docs/architecture/CHUMP_FACULTY_MAP.md:42 — MEM-007".into()],
             similar_closed_prs: vec![123, 145],
-            escalation_events: Vec::new(),
-            recent_deltas: Vec::new(),
-            session_stats: crate::session_ledger::SessionStats::default(),
-            gap_not_found: false,
+            ..Default::default()
         };
         let md = render_markdown(&b);
         assert!(md.contains("# Briefing: MEM-007"));
@@ -935,21 +926,13 @@ gaps:
         let b = GapBriefing {
             gap_id: "FOO-001".into(),
             gap_title: "Test gap".into(),
-            gap_acceptance: None,
             gap_priority: "P1".into(),
             gap_effort: "s".into(),
             gap_domain: "infra".into(),
-            depends_on: Vec::new(),
-            relevant_reflections: Vec::new(),
-            recent_ambient_events: Vec::new(),
-            strategic_doc_refs: Vec::new(),
-            similar_closed_prs: Vec::new(),
             escalation_events: vec![
                 r#"{"ts":"2026-04-20T00:00:00Z","session":"s","event":"ALERT","kind":"escalation","gap_id":"FOO-001","stuck_at":"cargo check fails","last_error":"borrow checker","suggested_action":"human review needed"}"#.into(),
             ],
-            recent_deltas: Vec::new(),
-            session_stats: crate::session_ledger::SessionStats::default(),
-            gap_not_found: false,
+            ..Default::default()
         };
         let md = render_markdown(&b);
         assert!(md.contains("## Escalation events (last 24h)"));
