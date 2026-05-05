@@ -192,6 +192,11 @@ worker_env=(
     "FLEET_AGENT_DOMAINS=$FLEET_AGENT_DOMAINS"
     "FLEET_EFFORT_FILTER=$FLEET_EFFORT_FILTER"
     "FLEET_BACKEND=$FLEET_BACKEND"
+    "FLEET_MODEL=${FLEET_MODEL:-}"
+    # INFRA-461: pass FLEET_SESSION so worker.sh can build a unique
+    # CHUMP_SESSION_ID per pane and not stomp the operator's interactive
+    # lease via the .wt-session-id fallback.
+    "FLEET_SESSION=$FLEET_SESSION"
     "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
     # INFRA-371 token-burn defaults
     "FLEET_INLINE_BRIEFING=$FLEET_INLINE_BRIEFING"
