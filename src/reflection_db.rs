@@ -3085,8 +3085,8 @@ mod e2e_record_query_use {
     fn tokenize_drops_pure_numbers_and_short() {
         let toks = tokenize("INFRA-468 fixes 7 bugs in 2026 ok");
         assert!(toks.contains(&"infra".to_string()));
-        assert!(toks.contains(&"468".to_string()) == false); // pure-numeric dropped
-        assert!(toks.contains(&"2026".to_string()) == false);
+        assert!(!toks.contains(&"468".to_string())); // pure-numeric dropped
+        assert!(!toks.contains(&"2026".to_string()));
         assert!(toks.contains(&"fixes".to_string()));
         assert!(toks.contains(&"bugs".to_string()));
         assert!(!toks.contains(&"ok".to_string())); // len 2
