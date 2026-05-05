@@ -24,9 +24,9 @@ trap 'rm -rf "$TMP"' EXIT
 
 cat >"$TMP/gaps.json" <<'EOF'
 [
-  {"id":"INFRA-100","domain":"INFRA","priority":"P1","effort":"xs","created_at":1000,"depends_on":""},
-  {"id":"INFRA-101","domain":"INFRA","priority":"P1","effort":"xs","created_at":1001,"depends_on":""},
-  {"id":"INFRA-102","domain":"INFRA","priority":"P1","effort":"s", "created_at":1002,"depends_on":""}
+  {"id":"INFRA-100","domain":"INFRA","priority":"P1","effort":"xs","created_at":1000,"depends_on":"","status":"open"},
+  {"id":"INFRA-101","domain":"INFRA","priority":"P1","effort":"xs","created_at":1001,"depends_on":"","status":"open"},
+  {"id":"INFRA-102","domain":"INFRA","priority":"P1","effort":"s", "created_at":1002,"depends_on":"","status":"open"}
 ]
 EOF
 mkdir -p "$TMP/cooldown"
