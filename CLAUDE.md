@@ -143,8 +143,11 @@ clippy + test). At FLEET_SIZE=10–50 that becomes a hard disk ceiling.
 
 **Shared target dir (default since INFRA-210):** `run-fleet.sh` auto-exports
 `CARGO_TARGET_DIR=$REPO_ROOT/target` when the caller has not set it, so all
-fleet worktrees share one target tree. Override to a location outside the repo
-(e.g. `~/.cache/chump-fleet-target/`) for even cleaner separation:
+fleet worktrees share one target tree. **INFRA-535:** when `REPO_ROOT` is
+under `/tmp/` (e.g. a standalone fleet clone at `/tmp/chump-fleet-launch/`),
+`run-fleet.sh` and the `post-checkout` hook automatically redirect to
+`~/.cache/chump-fleet-target/` — outside the ramdisk — so the 6–8 GB build
+cache doesn't fill `/tmp/`. Override explicitly to change:
 
 ```bash
 export CARGO_TARGET_DIR=~/.cache/chump-fleet-target

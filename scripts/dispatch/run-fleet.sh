@@ -124,8 +124,16 @@ FLEET_LOG_DIR="${FLEET_LOG_DIR:-/tmp/chump-fleet-${SID}}"
 
 # INFRA-210: every worktree compiling its own target/ is the #1 disk hog.
 # Default to a shared target dir unless the caller explicitly set their own.
+# INFRA-535: when the fleet is launched from a /tmp/ clone (common pattern
+# for fleet worktrees), $REPO_ROOT/target fills /tmp/ and causes disk-full.
+# Redirect to ~/.cache/chump-fleet-target/ instead — outside /tmp/ — so
+# the shared cache survives across sessions and doesn't blow the ramdisk.
 if [ -z "${CARGO_TARGET_DIR:-}" ]; then
-    export CARGO_TARGET_DIR="$REPO_ROOT/target"
+    if [[ "$REPO_ROOT" == /tmp/* || "$REPO_ROOT" == /private/tmp/* ]]; then
+        export CARGO_TARGET_DIR="$HOME/.cache/chump-fleet-target"
+    else
+        export CARGO_TARGET_DIR="$REPO_ROOT/target"
+    fi
 fi
 
 # Tear-down-only path: FLEET_SIZE=0 means "stop the fleet, don't spawn".
