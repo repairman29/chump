@@ -4,4 +4,13 @@
   status: open
   priority: P2
   effort: m
+  description: |
+    The docs-delta pre-commit guard at scripts/git-hooks/pre-commit:1596-1636 (INFRA-009) requires a 'Net-new-docs: +N' trailer when a commit adds docs/*.md files. The check reads the trailer from $REPO_ROOT/.git/COMMIT_EDITMSG, which is STALE during pre-commit invocation: when 'git commit -m "..."' is used, the message goes through git internals and is not written to COMMIT_EDITMSG until AFTER pre-commit runs. Result: the hook always sees the previous commit's message and never finds the trailer, even when the user includes it correctly. Today (post-2026-04-28) the hook is in 'block' mode, forcing the user to either delete a comparable doc, hand-edit COMMIT_EDITMSG before invoking commit, or use the CHUMP_DOCS_DELTA_CHECK=0 bypass. The bypass is documented but not the intended path. Fix: move the trailer check to a commit-msg hook (where $1 is the actual message file being committed), or in pre-commit read from .git/MERGE_MSG / staged-message-tempfile if available. Reference: hit during 2026-05-05 IP-protection sweep round 5 (PR #1144) when adding docs/agents/RESEARCH_PRIVACY.md required the bypass.
+  acceptance_criteria:
+    - "git commit -m 'subject\\n\\nbody\\n\\nNet-new-docs: +N' with N >= actual delta is accepted by the hook without bypass"
+    - bypass via CHUMP_DOCS_DELTA_CHECK=0 still works
+    - advisory mode behavior on commits without trailer is unchanged
+    - hook covers both git commit -m and git commit (editor) paths
+  notes: |
+    Discovered during PR #1144 (round 5 IP-protection sweep). The hook code at lines 1606-1610 sets MSG_FILE="${1:-$REPO_ROOT/.git/COMMIT_EDITMSG}" but pre-commit hooks don't receive a message-file arg from git, so the default branch (stale COMMIT_EDITMSG) is always taken. Likely candidate fix: split this guard into pre-commit (compute and announce delta) + commit-msg (validate trailer).
 
