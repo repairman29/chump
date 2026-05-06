@@ -31,7 +31,8 @@
         "commit",
         "bash_call",
         "INTENT",
-        "ALERT"
+        "ALERT",
+        "fleet_queue_depth"
       ],
       "description": "One of the well-known event kinds. Adding a new kind requires a new entry here AND a new branch in the oneOf below."
     }
@@ -92,6 +93,17 @@
         "msg": { "type": "string" }
       },
       "required": ["kind"]
+    },
+    {
+      "title": "fleet_queue_depth",
+      "description": "Emitted every 60s by control.sh (INFRA-558). pickable_count matches the active fleet filter set; p0_count and oldest_p0_age_days are fleet-wide P0 stats regardless of filter.",
+      "properties": {
+        "event": { "const": "fleet_queue_depth" },
+        "pickable_count": { "type": "string", "pattern": "^[0-9]+$" },
+        "p0_count": { "type": "string", "pattern": "^[0-9]+$" },
+        "oldest_p0_age_days": { "type": "string", "pattern": "^[0-9]+$" }
+      },
+      "required": ["pickable_count", "p0_count", "oldest_p0_age_days"]
     }
   ]
 }
