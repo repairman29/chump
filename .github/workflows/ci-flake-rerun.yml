@@ -1,0 +1,72 @@
+name: CI Flake Rerun
+
+# INFRA-557 — auto-rerun CI failures classified as flake or infra-broken by
+# the chump ci-summary classifier (src/ci_summary.rs). Saves operator and
+# agent time chasing known transient failures (adversary tests, OOM kills,
+# runner shutdowns, DNS hiccups).
+#
+# Two trigger paths:
+#   workflow_run  — immediate response when CI fails on any PR (low latency)
+#   schedule      — belt-and-suspenders sweep of all open PRs every 10 min
+#
+# Max 1 rerun per run-id (cooldown file in /tmp). Real bugs and
+# test-coupling failures are left alone — only flake + infra-broken rerun.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print decisions, no reruns)"
+        type: boolean
+        default: false
+      run_id:
+        description: "Specific run ID to classify (leave blank to scan all open PRs)"
+        type: string
+        default: ""
+
+# One rerun pass at a time — concurrent invocations would double-rerun.
+concurrency:
+  group: ci-flake-rerun
+  cancel-in-progress: false
+
+permissions:
+  actions: write        # gh run rerun
+  pull-requests: write  # post flake-budget comment
+  contents: read
+
+jobs:
+  rerun:
+    runs-on: ubuntu-latest
+
+    # For workflow_run triggers that didn't fail, skip immediately.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'failure'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Classify and rerun
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run == true && '--dry-run' || '' }}
+          # workflow_run fires with the failing run's ID; schedule/dispatch
+          # use the optional run_id input (or blank → PR scan mode).
+          TRIGGER_RUN_ID: >-
+            ${{
+              github.event_name == 'workflow_run'
+                && github.event.workflow_run.id
+                || inputs.run_id
+            }}
+        run: |
+          chmod +x scripts/ops/ci-summary-rerun.sh
+          if [[ -n "${TRIGGER_RUN_ID// /}" ]]; then
+            scripts/ops/ci-summary-rerun.sh --run-id "$TRIGGER_RUN_ID" $DRY_RUN
+          else
+            scripts/ops/ci-summary-rerun.sh $DRY_RUN
+          fi
