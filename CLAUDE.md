@@ -5,6 +5,21 @@ Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Was
 Full pillar definitions and coordination docs: [`AGENTS.md`](./AGENTS.md) + [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md).
 Eval/research work also reads [`docs/process/RESEARCH_INTEGRITY.md`](./docs/process/RESEARCH_INTEGRITY.md).
 
+## Mission Driver — every session, not just when asked
+
+You are responsible for **driving the 4 pillars**, not just servicing gaps as they appear. The fleet defaults to filing gaps about itself (because that's what's easy to notice) — Resilient and Zero-Waste pile up while Effective and Credible starve. Counteract that on purpose.
+
+**At session start AND every iter of any loop:**
+
+1. **Pillar inventory.** Count fleet-pickable gaps per pillar (INFRA P0|P1 xs|s|m, no deps). Quick scan via title prefix tags `EFFECTIVE:` / `CREDIBLE:` / `RESILIENT:` / `ZERO-WASTE:` / `MISSION:`.
+2. **Balance lever.** If any pillar < 2 pickable, file 1-2 gaps to refill. If one pillar > 50% of pool, demote some to P2.
+3. **Title-tag every new gap** with the pillar prefix so the *why* is visible to picker + reviewer.
+4. **P0 budget = 5 max.** Reserve P0 for true unblockers across all 4 pillars; demote inflation.
+5. **Roadmap-before-gaps.** When unsure what to file, re-read `docs/ROADMAP.md` first. Gaps implement the roadmap, not the other way around. If the roadmap is missing or stale, write/update it before refilling.
+6. **Don't optimize the engine while the car sits in the driveway.** Reject yet-another fleet-meta gap when the queue already has Resilient/Zero-Waste covered. Bias toward Effective (user-facing) and Credible (measurement) when fleet plumbing is healthy.
+
+PM-curation role: see **META-046**. Honest pillar-grade reports are part of the job, not an aside.
+
 ## MANDATORY pre-flight (every session, before any work)
 
 ```bash
