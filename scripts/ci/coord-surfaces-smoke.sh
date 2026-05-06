@@ -6,9 +6,11 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-# Default to a stable open gap. Pass another open GAP-ID if needed.
-# RESEARCH-018 closed 2026-04-23; switched to RESEARCH-020 (P1, ecological-fixture work, long-running).
-GAP_ID="${1:-RESEARCH-020}"
+# INFRA-499: post-INFRA-498 the per-file YAMLs are gone, so CI's
+# state.db starts empty (no docs/gaps/* to seed it). Pre-INFRA-499
+# this test used a hardcoded RESEARCH-020 fixture; that gap doesn't
+# exist in CI's empty state.db so preflight fails. Reserve a fresh
+# gap on-the-fly to make the test self-contained.
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -19,6 +21,17 @@ export CHUMP_SESSION_ID="coord-surfaces-smoke-$$"
 if [[ ! -x "$ROOT/target/debug/chump" ]]; then
   echo "coord-surfaces-smoke: building target/debug/chump …" >&2
   cargo build -q --bin chump
+fi
+
+# INFRA-499: caller may still pass an explicit ID for back-compat.
+# When none given, reserve one and use it (self-contained fixture).
+if [[ -n "${1:-}" ]]; then
+    GAP_ID="$1"
+else
+    echo "[coord-surfaces-smoke] reserving fresh gap for self-contained test …" >&2
+    GAP_ID=$("$ROOT/target/debug/chump" gap reserve --domain INFRA --priority P3 --effort xs \
+        --title "coord-surfaces-smoke fixture (auto-clean)" 2>&1 | tail -1)
+    echo "[coord-surfaces-smoke] reserved $GAP_ID" >&2
 fi
 
 echo "[coord-surfaces-smoke] gap-preflight $GAP_ID …" >&2

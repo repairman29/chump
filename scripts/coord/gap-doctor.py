@@ -437,6 +437,29 @@ def main() -> int:
 
     args = ap.parse_args()
     root = repo_root()
+
+    # INFRA-499: post-INFRA-498 the per-file docs/gaps/<ID>.yaml mirrors
+    # are deleted from origin/main entirely (state.db is canonical,
+    # state.sql is the tracked human-readable mirror). gap-doctor's
+    # drift checks compare state.db against those YAMLs — with no
+    # tracked YAMLs the entire purpose is moot.
+    #
+    # Short-circuit only when the working tree's docs/gaps/ has no
+    # YAMLs at all. Test fixtures (test-gap-doctor-safe-sweep.sh)
+    # create their own tempdir-scoped docs/gaps/ + state.db pair to
+    # exercise the drift detection — those still need to work.
+    gaps_dir = root / "docs" / "gaps"
+    has_yamls = gaps_dir.is_dir() and any(gaps_dir.glob("*.yaml"))
+    if not has_yamls:
+        print(
+            "[gap-doctor] post-INFRA-498: docs/gaps/*.yaml deleted — "
+            "no drift to detect. state.db is canonical, .chump/state.sql "
+            "is the tracked mirror. Use 'chump gap show <ID>' for "
+            "human-readable per-gap inspection.",
+            file=sys.stderr,
+        )
+        return 0
+
     handlers = {
         "doctor": cmd_doctor,
         "sync-from-yaml": cmd_sync_from_yaml,
