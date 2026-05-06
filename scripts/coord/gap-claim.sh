@@ -143,6 +143,23 @@ if [[ "$REPO_ROOT" == "$MAIN_WORKTREE_PATH" ]] && [[ "${CHUMP_ALLOW_MAIN_WORKTRE
     exit 1
 fi
 
+# ── INFRA-573: existing remote branch guard ──────────────────────────────────
+# If a branch for this gap already exists on origin (from a prior abandoned
+# session), git push will fail or silently overwrite work. Detect early.
+# Override: CHUMP_ALLOW_REUSE_BRANCH=1
+if [[ "${CHUMP_ALLOW_REUSE_BRANCH:-0}" != "1" ]]; then
+    _GAP_ID_LOWER="$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')"
+    _REMOTE_BRANCH_PATTERN="refs/heads/chump/${_GAP_ID_LOWER}-*"
+    _EXISTING_BRANCHES="$(git ls-remote --heads origin "${_REMOTE_BRANCH_PATTERN}" 2>/dev/null | awk '{print $2}' | sed 's|refs/heads/||' || true)"
+    if [[ -n "$_EXISTING_BRANCHES" ]]; then
+        printf '[gap-claim] ERROR: branch already exists on origin: %s\n' "$_EXISTING_BRANCHES" >&2
+        printf '[gap-claim] Either delete-remote: gh api repos/:owner/:repo/git/refs/heads/%s -X DELETE\n' "$(printf '%s' "$_EXISTING_BRANCHES" | head -1)" >&2
+        printf '[gap-claim] Or pick a fresh worktree suffix and use a new branch name.\n' >&2
+        printf '[gap-claim] Bypass: CHUMP_ALLOW_REUSE_BRANCH=1 scripts/coord/gap-claim.sh %s\n' "$GAP_ID" >&2
+        exit 1
+    fi
+fi
+
 # ── Resolve session ID (AUTO-HYGIENE-b) ──────────────────────────────────────
 # Priority:
 #   1. CHUMP_SESSION_ID      — explicit override (e.g. from bot-merge.sh)
