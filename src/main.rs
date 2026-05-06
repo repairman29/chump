@@ -144,6 +144,7 @@ pub mod session_compact;
 mod session_ledger;
 mod session_search_tool;
 mod set_working_repo_tool;
+mod ship_quality;
 mod skill_db;
 mod skill_hub;
 mod skill_hub_tool;
@@ -492,6 +493,36 @@ async fn main() -> Result<()> {
 
         let repo_root = repo_path::repo_root();
         let report = waste_tally::build_report(&repo_root, since_secs);
+        if want_json {
+            println!("{}", report.render_json());
+        } else {
+            print!("{}", report.render_text());
+        }
+        return Ok(());
+    }
+
+    // `chump ship-quality [--since 24h|7d|...] [--json]`
+    // (INFRA-537) — per-agent ship-quality grade. Aggregates ship_grade
+    // events emitted by bot-merge.sh into per-model and per-agent tables
+    // showing clippy_ok%, test_added%, and rebase_clean% pass rates.
+    // Empirical basis for FLEET_MODEL routing decisions (sonnet vs haiku).
+    if args.get(1).map(String::as_str) == Some("ship-quality") {
+        let since_arg = args
+            .iter()
+            .position(|a| a == "--since")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_else(|| "24h".to_string());
+        let want_json = args.iter().any(|a| a == "--json");
+        let since_secs = parse_duration_to_secs(&since_arg).unwrap_or_else(|| {
+            eprintln!(
+                "chump ship-quality: invalid --since '{}' (expected like 24h, 7d, 60m, or seconds)",
+                since_arg
+            );
+            std::process::exit(2);
+        });
+        let repo_root = repo_path::repo_root();
+        let report = ship_quality::build_report(&repo_root, since_secs);
         if want_json {
             println!("{}", report.render_json());
         } else {
