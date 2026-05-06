@@ -506,3 +506,89 @@ chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]   # flip status: done + 
 chump gap set <GAP-ID> [--title|--description|--priority|--effort|--status|--notes|--source-doc|--opened-date|--closed-date|--closed-pr N|--acceptance-criteria "a|b|c"|--depends-on "X,Y"]
 chump gap dump                            # full export to per-file docs/gaps/<ID>.yaml mirrors
 ```
+
+## Known error classes — self-help index (INFRA-590)
+
+Scripts append `See: docs/process/CLAUDE_GOTCHAS.md#<anchor>` to high-frequency
+errors so you can jump directly to the recovery steps. The four anchored classes:
+
+<a id="error-binary-wedge"></a>
+### error-binary-wedge — chump binary wedged by syspolicyd
+
+**Symptom:** `chump gap …` hangs indefinitely (no output, never exits). `ps` shows
+chump processes in state `UE` (uninterruptible exit). Direct `sqlite3 .chump/state.db`
+works — the DB is fine, the binary is wedged at `_dyld_start`.
+
+**Root cause:** macOS Sequoia's `syspolicyd` (Gatekeeper) gets the binary's inode into a
+pending-decision queue; every subsequent launch of the same inode blocks behind it.
+
+**Recovery:**
+```bash
+scripts/dev/chump-doctor.sh                     # probe + replace wedged inode (preferred)
+CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-doctor.sh  # skip probe, just heal
+# Nuclear (needs sudo): sudo kill syspolicyd
+```
+The doctor moves the wedged binary to `~/.cargo/bin/chump.wedged-inode-<n>` and copies
+content back through a fresh inode that syspolicyd treats as new. Zombie UE processes
+clear on reboot but are otherwise harmless. Rebuild if doctor fails:
+```bash
+cargo build --release --bin chump && cp target/release/chump ~/.local/bin/chump
+```
+
+<a id="error-gap-collision"></a>
+### error-gap-collision — gap already claimed or open PR exists
+
+**Symptom:** `gap-preflight.sh` or `bot-merge.sh` exits with "SKIP <GAP-ID> — open PR
+#N … is already implementing this gap" or "claimed by session …".
+
+**Root cause:** Another agent (or a prior session of yours) is actively working this
+gap. Picking the same gap produces wasted compute and a merge collision.
+
+**Recovery:**
+```bash
+chump gap list --status open              # find a different pickable gap
+# If the existing PR is abandoned and you own it:
+CHUMP_PREFLIGHT_PR_CHECK=0 scripts/coord/gap-preflight.sh <GAP-ID>
+# To race intentionally (INFRA-193):
+CHUMP_SPECULATIVE=1 scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge
+```
+
+<a id="error-missing-closed-pr"></a>
+### error-missing-closed-pr — status:done committed without a real PR number
+
+**Symptom:** pre-commit exits with "INCOMPLETE CLOSURE (INFRA-107) — gap(s) flipped to
+status:done with missing or non-numeric closed_pr".
+
+**Root cause:** A `docs/gaps/<ID>.yaml` file was hand-edited to `status: done` without
+setting `closed_pr` to a real PR number (or it was set to `TBD`). The guard requires an
+actual numeric PR number so the registry is auditable.
+
+**Recovery:**
+```bash
+# Use the canonical ship path instead of hand-editing:
+chump gap ship <GAP-ID> --closed-pr <PR-NUMBER> --update-yaml
+# If you must hand-edit, set the field explicitly:
+#   closed_pr: 404   ← real numeric PR number, not TBD
+# Bypass (escape hatch only):
+CHUMP_GAPS_LOCK=0 git commit ...
+```
+
+<a id="error-wrong-worktree"></a>
+### error-wrong-worktree — refusing to claim gap in the main worktree
+
+**Symptom:** `gap-claim.sh` exits with "ERROR: refusing to claim gap in the main
+worktree."
+
+**Root cause:** You ran `gap-claim.sh` (or `bot-merge.sh`, which calls it) from the
+primary repo checkout instead of a linked worktree. Concurrent agents share the same
+`.chump-locks/` dir in the main checkout, causing lease ID collisions.
+
+**Recovery:**
+```bash
+# Create a linked worktree and re-run from there:
+git worktree add .claude/worktrees/<name> -b chump/<name> origin/main
+cd .claude/worktrees/<name>
+scripts/coord/gap-claim.sh <GAP-ID>
+# Bootstrap escape hatch (short-lived solo work only):
+CHUMP_ALLOW_MAIN_WORKTREE=1 scripts/coord/gap-claim.sh <GAP-ID>
+```

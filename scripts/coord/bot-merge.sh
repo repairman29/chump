@@ -285,6 +285,14 @@ red()    { printf '\033[0;31m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*
 yellow() { printf '\033[0;33m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
 info()   { printf '[bot-merge %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
+# INFRA-590: print error + doc link, then exit 1.
+die_with_help() {
+    local msg="$1" anchor="$2"
+    red "ERROR: $msg"
+    red "See: docs/process/CLAUDE_GOTCHAS.md#${anchor}"
+    exit 1
+}
+
 # ── INFRA-305: hot-file rebase-loop pre-emit warning ─────────────────────────
 # Inspect the diff vs origin/main and emit a stderr note + ambient event for
 # any file matching BOT_MERGE_HOT_FILES. Idempotent (keyed by gap+path on the
@@ -689,7 +697,8 @@ _bm_health_init "$REPO_ROOT/.chump-locks"
 if [[ "${CHUMP_DOCTOR_SKIP:-0}" != "1" ]] \
         && [[ -x "$REPO_ROOT/scripts/dev/chump-doctor.sh" ]]; then
     if ! bash "$REPO_ROOT/scripts/dev/chump-doctor.sh" >/dev/null 2>&1; then
-        yellow "chump-doctor.sh reported binary issue — rebuild may be needed; continuing best-effort"
+        # See: docs/process/CLAUDE_GOTCHAS.md#error-binary-wedge
+        die_with_help "chump binary is wedged and could not self-heal — every subsequent chump call will hang. Run: CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-doctor.sh" "error-binary-wedge"
     fi
 fi
 
@@ -1391,6 +1400,7 @@ for g in data:
                 yellow "  YAML mirror NOT updated; gap status NOT flipped."
                 yellow "  Recover: chump gap ship $_gid --closed-pr $_autoclose_target_pr --update-yaml"
                 yellow "           (run from main repo: $_autoclose_main_repo)"
+                yellow "  See: docs/process/CLAUDE_GOTCHAS.md#error-missing-closed-pr"
             fi
             stage_done
         done

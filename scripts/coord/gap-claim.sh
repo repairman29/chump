@@ -48,6 +48,14 @@ set -euo pipefail
 # shellcheck source=../lib/chump-preflight.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chump-preflight.sh"
 
+# INFRA-590: print error + doc link, then exit 1.
+die_with_help() {
+    local msg="$1" anchor="$2"
+    printf '\033[0;31m[gap-claim] ERROR: %s\033[0m\n' "$msg" >&2
+    printf '\033[0;31m[gap-claim] See: docs/process/CLAUDE_GOTCHAS.md#%s\033[0m\n' "$anchor" >&2
+    exit 1
+}
+
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 GAP-ID [--paths file1,file2,...]" >&2
     exit 1
@@ -137,10 +145,10 @@ fi
 _WT_LIST="$(git worktree list --porcelain)"
 MAIN_WORKTREE_PATH="$(awk '/^worktree /{sub(/^worktree /,""); print; exit}' <<<"$_WT_LIST")"
 if [[ "$REPO_ROOT" == "$MAIN_WORKTREE_PATH" ]] && [[ "${CHUMP_ALLOW_MAIN_WORKTREE:-0}" != "1" ]]; then
-    printf '[gap-claim] ERROR: refusing to claim gap in the main worktree.\n' >&2
-    printf '[gap-claim] Run `git worktree add .claude/worktrees/<name> -b claude/<name> origin/main`\n' >&2
+    printf '[gap-claim] Run `git worktree add .claude/worktrees/<name> -b chump/<name> origin/main`\n' >&2
     printf '[gap-claim] then re-run gap-claim.sh from that worktree, or set CHUMP_ALLOW_MAIN_WORKTREE=1.\n' >&2
-    exit 1
+    # See: docs/process/CLAUDE_GOTCHAS.md#error-wrong-worktree
+    die_with_help "refusing to claim gap in the main worktree — concurrent sessions share the same .chump-locks/ dir and collide" "error-wrong-worktree"
 fi
 
 # ── INFRA-573: existing remote branch guard ──────────────────────────────────

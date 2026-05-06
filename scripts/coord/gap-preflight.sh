@@ -66,6 +66,13 @@ red()   { printf '\033[0;31m[gap-preflight] %s\033[0m\n' "$*" >&2; }
 green() { printf '\033[0;32m[gap-preflight] %s\033[0m\n' "$*" >&2; }
 info()  { printf '[gap-preflight] %s\n' "$*" >&2; }
 
+# INFRA-590: print error + doc link, then set FAILED=1 (caller decides exit).
+warn_with_help() {
+    local msg="$1" anchor="$2"
+    red "ERROR: $msg"
+    red "See: docs/process/CLAUDE_GOTCHAS.md#${anchor}"
+}
+
 # ── 1. Fetch origin/main (for done-check) ────────────────────────────────────
 git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     info "WARN: could not fetch $REMOTE/$BASE — skipping remote done-check (offline?)"
@@ -457,8 +464,8 @@ $SIBLING_GAP_YAML"
             # Skip if it's our OWN branch (we're re-running preflight on the same work).
             CURRENT_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
             if [[ -n "$PR_NUM" && "$PR_HEAD" != "$CURRENT_BRANCH" ]]; then
-                red "SKIP $GAP_ID — open PR #$PR_NUM ($PR_HEAD) is already implementing this gap."
-                red "  Pick a different gap, or wait for #$PR_NUM to land/close."
+                # See: docs/process/CLAUDE_GOTCHAS.md#error-gap-collision
+                warn_with_help "SKIP $GAP_ID — open PR #$PR_NUM ($PR_HEAD) is already implementing this gap. Pick a different gap, or wait for #$PR_NUM to land/close." "error-gap-collision"
                 red "  Bypass: CHUMP_PREFLIGHT_PR_CHECK=0 (skip this check)"
                 red "  Or: CHUMP_SPECULATIVE=1 (race against the existing PR per INFRA-193)"
                 FAILED=1
