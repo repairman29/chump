@@ -9,7 +9,7 @@ repo. Contact the project owner for access.
 
 The eval **methodology** (Wilson confidence intervals, A/A controls,
 preregistration discipline) remains public — see
-[`docs/process/RESEARCH_INTEGRITY.md`](../process/RESEARCH_INTEGRITY.md).
+[`docs/process/RESEARCH_INTEGRITY.md`](https://github.com/repairman29/chump/blob/main/docs/process/RESEARCH_INTEGRITY.md).
 
 If you arrived here from an inbound link, the link is preserved intentionally —
 the document is no longer public, but the reference does not need to be removed

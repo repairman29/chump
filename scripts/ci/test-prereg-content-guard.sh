@@ -128,13 +128,16 @@ else
     fail "fully-populated content unexpectedly failed"
 fi
 
-# ── case 5: real RESEARCH-018 prereg passes (regression guard) ───────────────
-REAL_PATH="docs/eval/preregistered/RESEARCH-018.md"
+# ── case 5: real prereg passes (regression guard) ─────────────────────────────
+# Originally pointed at RESEARCH-018; PR #1142 redacted that file to a stub
+# for IP protection, so the checker now legitimately fails on it. Switched
+# to EVAL-096 — same purpose (catch over-strict checker), different fixture.
+REAL_PATH="docs/eval/preregistered/EVAL-096.md"
 if [ -f "$REAL_PATH" ]; then
-    if python3 "$CHECKER" RESEARCH-018 "$REAL_PATH" 2>/dev/null; then
-        pass "real RESEARCH-018 prereg passes"
+    if python3 "$CHECKER" EVAL-096 "$REAL_PATH" 2>/dev/null; then
+        pass "real EVAL-096 prereg passes"
     else
-        fail "real RESEARCH-018 prereg now fails — checker is too strict"
+        fail "real EVAL-096 prereg now fails — checker is too strict"
     fi
 fi
 
