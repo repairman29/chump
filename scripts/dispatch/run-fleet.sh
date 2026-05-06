@@ -57,6 +57,8 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 SCRIPT_DIR="$REPO_ROOT/scripts/dispatch"
+# INFRA-469: route every `chump` invocation through the wedge-heal shim.
+export PATH="$REPO_ROOT/bin:$PATH"
 
 # INFRA-351: source $REPO_ROOT/.env (if present) so spawned worker panes
 # inherit ANTHROPIC_API_KEY / OPENAI_API_KEY / TOGETHER_API_KEY etc. and
