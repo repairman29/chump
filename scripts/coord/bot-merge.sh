@@ -728,6 +728,9 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     for gid in "${GAP_IDS[@]}"; do
         if [[ $DRY_RUN -eq 0 ]]; then
             "$SCRIPT_DIR/gap-claim.sh" "$gid" $_claim_extra
+            # INFRA-492: emit session_start so INFRA-477's cost ledger
+            # gets data. Best-effort — silent on chump fail.
+            chump session-track --start "$gid" >/dev/null 2>&1 || true
         else
             info "[dry-run] gap-claim.sh $gid $_claim_extra"
         fi
@@ -1575,6 +1578,19 @@ EOF
     elif [[ "$_skip_target_purge" = "1" ]]; then
         info "Skipping ./target purge — CARGO_TARGET_DIR is outside this worktree (INFRA-210)."
     fi
+fi
+
+# INFRA-492: emit session_end with outcome=shipped on the success path.
+# Failure paths (exit 1 above) emit nothing — INFRA-477's outcome:abandoned
+# is computed by absence of session_end pairing, but the session-track
+# CLI doesn't auto-emit on shell exit. For now, success-path-only is
+# the simpler implementation; failure-path emission can come as a
+# follow-up if the abandoned-session signal becomes critical.
+if [[ $DRY_RUN -eq 0 ]]; then
+    for gid in "${GAP_IDS[@]:-}"; do
+        [[ -z "$gid" ]] && continue
+        chump session-track --end "$gid" --outcome shipped >/dev/null 2>&1 || true
+    done
 fi
 
 green "=== bot-merge done. ==="

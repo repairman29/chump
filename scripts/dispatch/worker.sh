@@ -396,6 +396,12 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             _model_arg=()
             [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
             log "spawning claude -p (timeout ${FLEET_TIMEOUT_S}s, backend=claude, model=${FLEET_MODEL:-default}) → $cycle_log"
+            # INFRA-492: wire INFRA-477 session-track. Pre-fix the cost
+            # ledger CLI existed but nothing emitted session_start /
+            # session_end, so briefing's "historical median elapsed"
+            # was always "no data." Best-effort — silent if chump
+            # binary is missing.
+            chump session-track --start "$GAP_ID" >/dev/null 2>&1 || true
             (
                 cd "$wt_path" || exit 99
                 # Same surface as src/dispatch.rs WorkBackend::Headless.
@@ -597,6 +603,18 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             fi
         fi
     fi
+
+    # INFRA-492: emit session_end with outcome BEFORE the lease release.
+    # Outcome derivation: branch-gone (= PR landed) is shipped; rc==124
+    # is starved-as-timeout (close enough for the existing taxonomy);
+    # everything else is abandoned. Best-effort — silent on chump fail.
+    _outcome="abandoned"
+    if git -C "$REPO_ROOT" branch -vv 2>/dev/null | grep -E "$branch" | grep -q ': gone\]'; then
+        _outcome="shipped"
+    elif [ "$rc" -eq 124 ]; then
+        _outcome="starved"
+    fi
+    chump session-track --end "$GAP_ID" --outcome "$_outcome" >/dev/null 2>&1 || true
 
     # ── Release lease + prune worktree ────────────────────────────────────
     # The lease will TTL-expire on its own; we also try to remove it cleanly.
