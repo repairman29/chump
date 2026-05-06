@@ -352,6 +352,9 @@ jobs:
       - name: worktree-boundary path resolution (INFRA-109)
         run: bash scripts/ci/test-infra-109-worktree-boundary.sh
 
+      - name: pick-and-claim lock-dir resolves to main repo from linked worktree (INFRA-466/467)
+        run: bash scripts/ci/test-pick-and-claim-lockdir.sh
+
       - name: submodule-sanity guard (INFRA-158)
         run: bash scripts/ci/test-submodule-guard.sh
 
