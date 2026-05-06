@@ -1114,6 +1114,7 @@ async fn main() -> Result<()> {
                 // INFRA-592: --quiet suppresses progress; default emits one-line
                 // per phase to stderr so --json piping of stdout is unaffected.
                 let quiet = args.iter().any(|a| a == "--quiet");
+                let why = args.iter().any(|a| a == "--why");
 
                 // FLEET-029: ambient glance before allocating ID
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
@@ -1183,6 +1184,11 @@ async fn main() -> Result<()> {
                         // existence — if the operator re-creates docs/gaps/
                         // (e.g. for offline browsing), the write resumes.
                         // Default: directory doesn't exist, write is a no-op.
+                        if why {
+                            eprintln!(
+                                "reserved {id} — why: collision-free atomic ID pick from domain {domain} pool (INFRA-216 verification window)"
+                            );
+                        }
                         let per_file_dir = worktree_root.join("docs").join("gaps");
                         if !per_file_dir.exists() {
                             // No-op path. state.db is canonical, state.sql is
@@ -1251,6 +1257,7 @@ async fn main() -> Result<()> {
                     std::process::exit(2);
                 });
                 let force = args.iter().any(|a| a == "--force");
+                let why = args.iter().any(|a| a == "--why");
 
                 // FLEET-029: ambient glance before claiming
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
@@ -1285,6 +1292,11 @@ async fn main() -> Result<()> {
                 match store.claim(&gap_id, &session_id, &worktree, ttl) {
                     Ok(()) => {
                         println!("claimed {} for session {}", gap_id, session_id);
+                        if why {
+                            eprintln!(
+                                "claimed {gap_id} — why: gap open and unclaimed, session={session_id}, TTL={ttl}s"
+                            );
+                        }
                         return Ok(());
                     }
                     Err(e) => {
@@ -1334,6 +1346,7 @@ async fn main() -> Result<()> {
                     .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
                 let update_yaml = args.iter().any(|a| a == "--update-yaml");
+                let why = args.iter().any(|a| a == "--why");
                 // INFRA-156: --closed-pr N stamps the closure PR number on the
                 // row at ship time. Required by the INFRA-107 closed_pr
                 // integrity guard for any status:done flip in YAML; passing
@@ -1354,6 +1367,14 @@ async fn main() -> Result<()> {
                 match store.ship(&gap_id, &session_id, closed_pr) {
                     Ok(()) => {
                         println!("shipped {}", gap_id);
+                        if why {
+                            let pr_note = closed_pr
+                                .map(|n| format!(", closed-pr=#{n}"))
+                                .unwrap_or_default();
+                            eprintln!(
+                                "shipped {gap_id} — why: status flipped to done{pr_note}, session={session_id}"
+                            );
+                        }
                         if update_yaml {
                             // INFRA-148: warn if this binary predates the most recent
                             // gap_store-affecting commit on the repo's HEAD before mutating
@@ -2744,9 +2765,13 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    let autonomy_once = args.iter().any(|a| a == "--autonomy-once");
+    let autonomy_once = args.iter().any(|a| a == "--autonomy-once" || a == "--once");
     if autonomy_once {
         config_validation::validate_config();
+        let why = args.iter().any(|a| a == "--why");
+        if why {
+            eprintln!("{}", provider_cascade::cascade_why());
+        }
         let assignee_from_env = std::env::var("CHUMP_AUTONOMY_ASSIGNEE").ok();
         let assignee = args
             .windows(2)
