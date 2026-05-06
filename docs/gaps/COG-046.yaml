@@ -1,9 +1,0 @@
-- id: COG-046
-  domain: COG
-  title: real embedding-backed lesson retrieval (Ollama nomic-embed-text) — replaces TF-IDF, catches synonyms TF-IDF can't (auth vs credentials, fleet vs dispatcher); local, no API cost
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-05'
-  closed_pr: 1118
-

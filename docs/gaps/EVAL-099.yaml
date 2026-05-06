@@ -1,9 +1,0 @@
-- id: EVAL-099
-  domain: EVAL
-  title: COG-041 downstream quality eval — using COG-043 action-telemetry, compare semantic vs recency-frequency by 'lesson-applied rate' over next N sessions; the BETTER measurement that EVAL-098's divergence-only check explicitly cannot make
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-05'
-  closed_pr: 1117
-

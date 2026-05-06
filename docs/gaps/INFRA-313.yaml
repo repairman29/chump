@@ -1,7 +1,0 @@
-- id: INFRA-313
-  domain: INFRA
-  title: cascade fails over on 400 UnsupportedToolUse / tool-capability errors (renumbered from INFRA-302 — sibling reserved same ID for broader dispatch-blockers gap)
-  status: open
-  priority: P1
-  effort: xs
-

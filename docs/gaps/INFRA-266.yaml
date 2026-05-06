@@ -1,7 +1,0 @@
-- id: INFRA-266
-  domain: INFRA
-  title: "workload auto-promotion: when cascade RPD utilization < 40% three days running, bump FLEET_SIZE by 2 from overnight report"
-  status: open
-  priority: P2
-  effort: m
-

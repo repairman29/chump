@@ -1,9 +1,0 @@
-- id: INFRA-430
-  domain: INFRA
-  title: scripts/spike/* must use a temp .chump/state.db (or revert their inserts) — FLEET-033 spike left 302 SPIKE-* orphans in production today
-  status: done
-  priority: P2
-  effort: xs
-  closed_date: '2026-05-04'
-  closed_pr: 1075
-

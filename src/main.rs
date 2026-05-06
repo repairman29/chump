@@ -826,6 +826,69 @@ async fn main() -> Result<()> {
         let json_out = args.iter().any(|a| a == "--json");
 
         match subcmd {
+            // INFRA-498: 'chump gap show <ID>' — human-readable per-gap
+            // rendering. Replaces `cat docs/gaps/<ID>.yaml` now that those
+            // files are deleted.
+            "show" => {
+                let id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap show <GAP-ID>");
+                    std::process::exit(2);
+                });
+                if id.starts_with("--") {
+                    eprintln!("Usage: chump gap show <GAP-ID>");
+                    std::process::exit(2);
+                }
+                match store.get(&id) {
+                    Ok(Some(g)) => {
+                        if json_out {
+                            println!("{}", serde_json::to_string_pretty(&g).unwrap_or_default());
+                        } else {
+                            println!("- id: {}", g.id);
+                            println!("  domain: {}", g.domain);
+                            println!("  title: {}", g.title);
+                            println!("  status: {}", g.status);
+                            println!("  priority: {}", g.priority);
+                            println!("  effort: {}", g.effort);
+                            if !g.description.is_empty() {
+                                println!("  description: |");
+                                for line in g.description.lines() {
+                                    println!("    {}", line);
+                                }
+                            }
+                            if !g.acceptance_criteria.is_empty() {
+                                println!("  acceptance_criteria:");
+                                for c in g.acceptance_criteria.split('|') {
+                                    println!("    - {}", c.trim());
+                                }
+                            }
+                            if !g.depends_on.is_empty() {
+                                println!("  depends_on: [{}]", g.depends_on);
+                            }
+                            if let Some(pr) = g.closed_pr {
+                                println!("  closed_pr: {}", pr);
+                            }
+                            if !g.closed_date.is_empty() {
+                                println!("  closed_date: '{}'", g.closed_date);
+                            }
+                            if !g.notes.is_empty() {
+                                println!("  notes: |");
+                                for line in g.notes.lines() {
+                                    println!("    {}", line);
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
+                    Ok(None) => {
+                        eprintln!("chump gap show: gap {} not found", id);
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap show: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "list" => {
                 let status_filter = flag("--status");
                 // INFRA-431: include-test-domains opts back in to SPIKE/TEST*
@@ -1002,7 +1065,20 @@ async fn main() -> Result<()> {
                         // is canonical, so a write failure is logged but
                         // doesn't fail the reserve.
                         // INFRA-247: write to the linked worktree, not the main checkout.
+                        // INFRA-498: per-file YAML mirrors deleted from the
+                        // repo as redundant with .chump/state.sql. We keep
+                        // the dump_per_file_single call gated on directory
+                        // existence — if the operator re-creates docs/gaps/
+                        // (e.g. for offline browsing), the write resumes.
+                        // Default: directory doesn't exist, write is a no-op.
                         let per_file_dir = worktree_root.join("docs").join("gaps");
+                        if !per_file_dir.exists() {
+                            // No-op path. state.db is canonical, state.sql is
+                            // the tracked mirror. Use 'chump gap show <ID>'
+                            // for per-gap human-readable rendering.
+                            println!("{}", id);
+                            return Ok(());
+                        }
                         match store.dump_per_file_single(&id, &per_file_dir) {
                             Ok(true) => {
                                 let yaml_path = per_file_dir.join(format!("{id}.yaml"));
@@ -1182,7 +1258,13 @@ async fn main() -> Result<()> {
                             // `--update-yaml` now get a single per-file
                             // write, not a full-registry regen.
                             // INFRA-247: write to the linked worktree, not the main checkout.
+                            // INFRA-498: gated on directory existence — when
+                            // docs/gaps/ is absent (the post-deletion state),
+                            // this becomes a no-op. state.db is canonical.
                             let per_file_dir = worktree_root.join("docs").join("gaps");
+                            if !per_file_dir.exists() {
+                                return Ok(());
+                            }
                             match store.dump_per_file_single(&gap_id, &per_file_dir) {
                                 Ok(true) => {
                                     let yaml_path = per_file_dir.join(format!("{gap_id}.yaml"));
@@ -1303,7 +1385,12 @@ async fn main() -> Result<()> {
                         // raw-YAML guard recognizes the regenerated file as
                         // canonical.
                         let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
+                        // INFRA-498: gated on directory existence — no-op
+                        // when docs/gaps/ is absent (post-deletion state).
                         let per_file_dir = worktree_root.join("docs").join("gaps");
+                        if !per_file_dir.exists() {
+                            return Ok(());
+                        }
                         match store.dump_per_file_single(&gap_id, &per_file_dir) {
                             Ok(true) => {
                                 eprintln!(

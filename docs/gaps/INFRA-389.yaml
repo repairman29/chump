@@ -1,7 +1,0 @@
-- id: INFRA-389
-  domain: INFRA
-  title: gap-doctor.py reads legacy docs/gaps.yaml + sync-from-db writes to it (post-INFRA-188 stale path)
-  status: open
-  priority: P2
-  effort: xs
-

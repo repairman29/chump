@@ -1,7 +1,0 @@
-- id: INFRA-265
-  domain: INFRA
-  title: "per-task-class backend routing: populate routing.yaml so xs/s gaps go to cheapest cascade slot, l/xl + COG to Anthropic"
-  status: open
-  priority: P2
-  effort: m
-

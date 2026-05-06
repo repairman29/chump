@@ -1,7 +1,0 @@
-- id: INFRA-402
-  domain: INFRA
-  title: chump gap set --status done bypasses INFRA-107 closed_pr integrity guard (DB-direct write path skips pre-commit)
-  status: open
-  priority: P1
-  effort: s
-
