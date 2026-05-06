@@ -73,6 +73,7 @@ mod file_watch;
 mod fleet;
 mod fleet_capability;
 mod fleet_db;
+mod fleet_status;
 mod fleet_tool;
 mod ftue_tool;
 mod gap_store;
@@ -451,6 +452,16 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
         }
+    }
+
+    // `chump fleet-status` (INFRA-494) — single-command operator
+    // dashboard combining active leases, last-24h shipped/abandoned,
+    // last-24h waste tally summary, and recent fleet wedges.
+    if args.get(1).map(String::as_str) == Some("fleet-status") {
+        let repo_root = repo_path::repo_root();
+        let status = fleet_status::snapshot(&repo_root);
+        print!("{}", status.render_text());
+        return Ok(());
     }
 
     // `chump waste-tally [--since 24h|7d|...] [--json]`
