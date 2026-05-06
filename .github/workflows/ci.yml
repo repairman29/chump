@@ -319,6 +319,8 @@ jobs:
       - name: pr-watch shepherd smoke (INFRA-354)
         run: bash scripts/ci/test-pr-watch-shepherd-smoke.sh
 
+      - name: pr-blocked-watch smoke (INFRA-550)
+        run: bash scripts/ci/test-pr-blocked-watch.sh
 
       - name: doc-only commits run all guards (INFRA-257)
         run: bash scripts/ci/test-infra-257-doc-only-guards.sh
