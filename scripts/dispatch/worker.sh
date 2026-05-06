@@ -174,6 +174,7 @@ PY
             FLEET_EFFORT_FILTER="$FLEET_EFFORT_FILTER" \
             FLEET_MODEL="$FLEET_MODEL" \
             EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
+            ACTIVE_GAPS="$active_gaps" \
             GAP_JSON_FILE="$gap_json_file" \
             WORKER_INDEX="$AGENT_ID" \
             COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
