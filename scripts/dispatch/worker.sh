@@ -245,6 +245,9 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     # INFRA-315: clear starvation counter on a successful pick. The next
     # empty cycle starts the threshold over from zero.
     _starve_count=0
+    # INFRA-536: cycle timing — record wall-clock start so we can emit
+    # elapsed_s in the cycle_end ambient event for p90 measurement.
+    _cycle_start_s=$(date +%s)
     log "picked gap $GAP_ID"
 
     # ── INFRA-361: pre-pick preflight ─────────────────────────────────────
@@ -411,9 +414,10 @@ ${gap_yaml}
 ══ HARD RULES (full text in CLAUDE.md if you need it) ══
 - Work ONLY in this worktree: ${wt_path}
 - Commit via: scripts/coord/chump-commit.sh <files…> -m \"msg\"
-- Ship via:   scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge
-  (this rebases, runs tests, pushes, opens PR, arms auto-merge,
-  auto-closes the gap with --update-yaml)
+- Ship via:   scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge --fast
+  (--fast skips local cargo clippy/test — CI is the gate; saves 5-10 min
+  per cycle so you finish well inside the ${FLEET_TIMEOUT_S}s budget.
+  This rebases, pushes, opens PR, arms auto-merge, auto-closes the gap.)
 - If bot-merge.sh hangs/dies: fall back to manual ship —
     git push -u origin <branch>
     gh pr create --base main --title \"...\" --body \"...\"
@@ -645,7 +649,7 @@ Operator or sibling worker can rescue this branch via:
             fi
             if [[ "$_gap_priority" == "P0" ]]; then
                 log "INFRA-267: P0 gap $GAP_ID failed on chump-local rc=$rc — falling back to claude"
-                _fallback_prompt="Ship gap ${GAP_ID} (P0 fallback from chump-local rc=$rc). The gap is already claimed for this session; lease in .chump-locks/. Worktree: ${wt_path}. Pre-flight has already run. Run 'chump gap show ${GAP_ID}' for the gap spec (post-INFRA-498). Implement, commit via scripts/coord/chump-commit.sh, ship via scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge."
+                _fallback_prompt="Ship gap ${GAP_ID} (P0 fallback from chump-local rc=$rc). The gap is already claimed for this session; lease in .chump-locks/. Worktree: ${wt_path}. Pre-flight has already run. Run 'chump gap show ${GAP_ID}' for the gap spec (post-INFRA-498). Implement, commit via scripts/coord/chump-commit.sh, ship via scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge --fast."
                 FLEET_MODEL="${FLEET_MODEL-sonnet}"
                 _model_arg=()
                 [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
@@ -725,6 +729,27 @@ Operator or sibling worker can rescue this branch via:
         _outcome="starved"
     fi
     chump session-track --end "$GAP_ID" --outcome "$_outcome" >/dev/null 2>&1 || true
+
+    # INFRA-536: emit cycle_end timing event so p90 can be computed from
+    # ambient.jsonl (e.g. jq 'select(.event=="cycle_end")|.elapsed_s').
+    # Classifies: shipped / timeout / wedge / failed.
+    _cycle_end_s=$(date +%s)
+    _cycle_elapsed=$(( _cycle_end_s - ${_cycle_start_s:-_cycle_end_s} ))
+    _cycle_kind="failed"
+    if [ "$rc" -eq 0 ]; then
+        _cycle_kind="shipped"
+    elif [ "${_is_wedge:-0}" -eq 1 ]; then
+        _cycle_kind="wedge"
+    elif [ "$rc" -eq 124 ]; then
+        _cycle_kind="timeout"
+    fi
+    _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    printf '{"event":"cycle_end","ts":"%s","agent":"%s","gap_id":"%s","elapsed_s":%d,"rc":%d,"kind":"%s","model":"%s","cycle_log_bytes":%d}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        "$AGENT_ID" "$GAP_ID" "$_cycle_elapsed" "$rc" \
+        "$_cycle_kind" "${FLEET_MODEL:-default}" "${_cycle_log_size:-0}" \
+        >> "$_amb" 2>/dev/null || true
+    log "cycle_end: elapsed=${_cycle_elapsed}s rc=$rc kind=$_cycle_kind"
 
     # ── Release lease + prune worktree ────────────────────────────────────
     # INFRA-490: pre-fix this used the glob `*${GAP_ID}*.json` which was
