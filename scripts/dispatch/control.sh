@@ -28,6 +28,9 @@ _last_queue_emit=0
 # INFRA-565: periodic fleet lease reaper (every 30 min)
 _last_reap=0
 
+# INFRA-556: ghost-gap reaper (every 5 min)
+_last_ghost_reap=0
+
 while :; do
     clear
     printf '\033[1mchump fleet — session=%s  size=%s  refresh=%ss\033[0m\n' \
@@ -192,6 +195,14 @@ except Exception:
             echo "[control] reaped $_reaped stale fleet lease(s)"
         fi
         _last_reap=$SECONDS
+    fi
+
+    # INFRA-556: roll back ghost gaps every 5 min (status=done but PR closed without merge)
+    if (( SECONDS - _last_ghost_reap >= 300 )); then
+        if [[ -x "$REPO_ROOT/scripts/coord/ghost-gap-reaper.sh" ]] && command -v gh >/dev/null 2>&1; then
+            "$REPO_ROOT/scripts/coord/ghost-gap-reaper.sh" 2>&1 | grep -v '^$' || true
+        fi
+        _last_ghost_reap=$SECONDS
     fi
 
     sleep "$REFRESH_S"
