@@ -1,0 +1,70 @@
+name: cargo audit (nightly)
+# INFRA-503 (2026-05-06): split out from ci.yml's per-PR audit job.
+# Reasoning: cargo audit's RustSec database updates daily, not per-commit.
+# Running it on every PR cost ~12min × every PR — the dominant cycle-time tax.
+# Nightly + on-push-to-main covers the same surface with negligible per-PR cost.
+#
+# When this workflow detects an advisory:
+#   1. Job fails (exit 1).
+#   2. The job's failure is visible in the Actions tab + dispatched to Slack/etc
+#      via existing on-failure hooks (none currently — TODO if alert volume warrants).
+#   3. Operator files an INFRA gap (priority depends on advisory severity).
+#
+# Manual trigger: gh workflow run cargo-audit-nightly.yml
+
+on:
+  schedule:
+    # 03:00 UTC daily (~22:00 PT, 23:00 MT) — quiet hours, after most activity
+    - cron: '0 3 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - 'crates/**/Cargo.toml'
+      - '.github/workflows/cargo-audit-nightly.yml'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit (advisory list — non-blocking)
+        continue-on-error: true
+        run: cargo audit
+
+      # SECURITY-004: blocking pass that fails on any new vulnerability.
+      # Existing-but-unfixable advisories are explicitly ignored with --ignore
+      # + a pointer to the upstream block. To add a new ignore: confirm the
+      # upstream chain is the blocker (cargo audit tree shows the path), then
+      # add the RUSTSEC ID + a one-line comment. Do NOT add ignores for
+      # advisories that have a fix available — bump the dep instead.
+      - name: Run cargo audit (blocking on new vulns)
+        run: |
+          cargo audit \
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2026-0049 \
+            --ignore RUSTSEC-2026-0098 \
+            --ignore RUSTSEC-2026-0099 \
+            --ignore RUSTSEC-2026-0104 \
+            --ignore RUSTSEC-2024-0436 \
+            --ignore RUSTSEC-2026-0097
+          # Ignored RUSTSEC IDs (each blocked on upstream — re-audit when
+          # the ecosystem moves):
+          #   2023-0071  rsa Marvin attack          — no fixed version published
+          #   2026-0049  rustls-webpki CRL DP       — blocked on serenity 0.12 → newer rustls
+          #   2026-0098  rustls-webpki URI names    — blocked on serenity 0.12 → newer rustls
+          #   2026-0099  rustls-webpki wildcard     — blocked on serenity 0.12 → newer rustls
+          #   2026-0104  rustls-webpki HIGH panic   — blocked on serenity 0.12 → newer rustls
+          #     Reachability note: the panic requires server-supplied malformed
+          #     CRL BIT STRINGs. chump's serenity path is Discord WS only;
+          #     Discord does not send CRLs over its WebSocket gateway, so
+          #     the path appears non-reachable in practice. Still want the
+          #     fix once serenity 0.13 lands.
+          #   2024-0436  paste unmaintained          — transitive (tauri/wasmtime), benign
+          #   2026-0097  rand 0.7 unsound logger     — transitive (tauri/phf), no fix path
