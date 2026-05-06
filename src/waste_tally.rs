@@ -94,6 +94,245 @@ pub const WASTE_KINDS: &[&str] = &[
     "worker_exit_oom",   // INFRA-572 synthetic — from worker_exit exit_class=OOM_KILL
 ];
 
+/// INFRA-574: per-domain aggregate for `--by-domain` output.
+#[derive(Debug, Clone, Default)]
+pub struct DomainEntry {
+    pub domain: String,
+    pub incidents: u64,
+    pub estimated_cost_secs: u64,
+    pub cost_usd: f64,
+}
+
+/// INFRA-574: report bucketed by gap_id domain prefix (INFRA/COG/EVAL/META…).
+#[derive(Debug, Clone, Default)]
+pub struct WasteByDomainReport {
+    pub since_seconds: u64,
+    pub total_events: u64,
+    pub total_incidents: u64,
+    pub total_cost_usd: f64,
+    /// Domains sorted alphabetically; "UNKNOWN" last.
+    pub domains: Vec<DomainEntry>,
+}
+
+impl WasteByDomainReport {
+    pub fn render_text(&self) -> String {
+        let mut out = String::new();
+        let hours = self.since_seconds / 3600;
+        out.push_str(&format!(
+            "═══ Zero Waste by Domain ═══ (last {} h, {} incidents)\n",
+            hours.max(1),
+            self.total_incidents,
+        ));
+        if self.domains.is_empty() {
+            out.push_str("  (no waste events in window — fleet healthy 🎉)\n");
+            return out;
+        }
+        let mut sorted = self.domains.clone();
+        sorted.sort_by(|a, b| {
+            if a.domain == "UNKNOWN" {
+                std::cmp::Ordering::Greater
+            } else if b.domain == "UNKNOWN" {
+                std::cmp::Ordering::Less
+            } else {
+                b.incidents.cmp(&a.incidents).then(a.domain.cmp(&b.domain))
+            }
+        });
+        for d in &sorted {
+            if d.estimated_cost_secs > 0 {
+                let mins = d.estimated_cost_secs / 60;
+                out.push_str(&format!(
+                    "  {:>4} incidents  {:10}  ~{}m est. cost\n",
+                    d.incidents, d.domain, mins
+                ));
+            } else {
+                out.push_str(&format!("  {:>4} incidents  {}\n", d.incidents, d.domain));
+            }
+        }
+        let total_mins: u64 = self
+            .domains
+            .iter()
+            .map(|d| d.estimated_cost_secs)
+            .sum::<u64>()
+            / 60;
+        if total_mins > 0 {
+            out.push_str(&format!(
+                "  ─────────────────────────────\n  Estimated wasted compute: ~{}m\n",
+                total_mins
+            ));
+        }
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let domains_json: Vec<String> = self
+            .domains
+            .iter()
+            .map(|d| {
+                format!(
+                    r#"{{"domain":"{}","incidents":{},"estimated_cost_secs":{},"cost_usd":{:.6}}}"#,
+                    json_escape(&d.domain),
+                    d.incidents,
+                    d.estimated_cost_secs,
+                    d.cost_usd
+                )
+            })
+            .collect();
+        format!(
+            r#"{{"since_seconds":{},"total_events":{},"total_incidents":{},"total_cost_usd":{:.6},"domains":[{}]}}"#,
+            self.since_seconds,
+            self.total_events,
+            self.total_incidents,
+            self.total_cost_usd,
+            domains_json.join(",")
+        )
+    }
+}
+
+/// INFRA-574: extract the domain prefix from a gap_id ("INFRA-574" → "INFRA").
+/// Returns "UNKNOWN" when no gap_id is present or the prefix is non-alphabetic.
+fn domain_from_gap_id(gap_id: Option<&str>) -> String {
+    let id = match gap_id {
+        Some(s) if !s.is_empty() => s,
+        _ => return "UNKNOWN".to_string(),
+    };
+    let prefix: String = id.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    if prefix.is_empty() {
+        "UNKNOWN".to_string()
+    } else {
+        prefix
+    }
+}
+
+/// INFRA-574: build a waste report grouped by gap_id domain prefix.
+pub fn build_report_by_domain(repo_root: &Path, since_secs: u64) -> WasteByDomainReport {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+    let now = current_unix();
+    let cutoff = now.saturating_sub(since_secs);
+
+    use std::collections::HashSet;
+    // domain → (DomainEntry, set of incident entities)
+    let mut by_domain: BTreeMap<String, (DomainEntry, HashSet<String>)> = BTreeMap::new();
+    let mut total_in_window = 0u64;
+    let mut anon_seq: u64 = 0;
+
+    for line in contents.lines() {
+        let is_alert = line.contains(r#""event":"ALERT""#) || line.contains(r#""kind":""#);
+        let is_session_end = line.contains(r#""kind":"session_end""#);
+        if !is_alert && !is_session_end {
+            continue;
+        }
+
+        let raw_kind = extract_field(line, "kind").unwrap_or_default();
+        let is_session_end_event = raw_kind == "session_end";
+        let kind = if is_session_end_event {
+            match extract_field(line, "outcome").as_deref() {
+                Some("abandoned") => "session_abandoned".to_string(),
+                Some("starved") => "session_starved".to_string(),
+                _ => continue,
+            }
+        } else {
+            raw_kind
+        };
+        if !WASTE_KINDS.iter().any(|&k| k == kind) {
+            continue;
+        }
+        if let Some(ts) = extract_field(line, "ts") {
+            if let Some(unix) = parse_iso8601_to_unix(&ts) {
+                if unix < cutoff {
+                    continue;
+                }
+            }
+        }
+        total_in_window += 1;
+
+        let cost = extract_int_field(line, "cooldown_secs")
+            .or_else(|| extract_int_field(line, "elapsed_seconds"))
+            .unwrap_or(0);
+        let event_cost_usd = if is_session_end_event {
+            let input = extract_int_field(line, "input_tokens").unwrap_or(0);
+            let output = extract_int_field(line, "output_tokens").unwrap_or(0);
+            let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
+            crate::session_ledger::cost_usd_from_tokens(input, output, cache)
+        } else {
+            0.0
+        };
+
+        let gap_id_val = extract_field(line, "gap_id");
+        let domain = domain_from_gap_id(gap_id_val.as_deref());
+
+        // Entity for dedup (same logic as build_report).
+        let entity = match kind.as_str() {
+            "silent_agent" | "lease_expired_server" | "lease_overlap" | "edit_burst" => {
+                extract_session_from_note(line).or_else(|| extract_field(line, "gap_id"))
+            }
+            "reaper_silent" => extract_field(line, "reaper"),
+            "pr_stuck" => extract_int_field(line, "pr")
+                .map(|n| n.to_string())
+                .or_else(|| {
+                    let note = extract_field(line, "note").unwrap_or_default();
+                    if note.starts_with('#') {
+                        let end = note.find(' ').unwrap_or(note.len());
+                        Some(note[..end].to_string())
+                    } else {
+                        None
+                    }
+                }),
+            "fleet_wedge" | "fleet_starved" => {
+                extract_field(line, "gap_id").or_else(|| extract_field(line, "agent"))
+            }
+            "session_abandoned" | "session_starved" => extract_field(line, "session_id")
+                .or_else(|| extract_field(line, "session"))
+                .or_else(|| extract_field(line, "gap_id")),
+            _ => extract_field(line, "session")
+                .or_else(|| extract_field(line, "reaper"))
+                .or_else(|| extract_int_field(line, "pr").map(|n| n.to_string()))
+                .or_else(|| extract_field(line, "gap_id"))
+                .or_else(|| extract_field(line, "agent"))
+                .or_else(|| extract_session_from_note(line)),
+        }
+        .unwrap_or_else(|| {
+            anon_seq += 1;
+            format!("__anon_{}", anon_seq)
+        });
+
+        let bucket = by_domain.entry(domain.clone()).or_insert_with(|| {
+            (
+                DomainEntry {
+                    domain: domain.clone(),
+                    incidents: 0,
+                    estimated_cost_secs: 0,
+                    cost_usd: 0.0,
+                },
+                HashSet::new(),
+            )
+        });
+        bucket.0.estimated_cost_secs = bucket.0.estimated_cost_secs.saturating_add(cost);
+        bucket.0.cost_usd += event_cost_usd;
+        bucket.1.insert(entity);
+    }
+
+    let mut total_incidents = 0u64;
+    let domains: Vec<DomainEntry> = by_domain
+        .into_values()
+        .map(|(mut d, set)| {
+            d.incidents = set.len() as u64;
+            total_incidents += d.incidents;
+            d
+        })
+        .collect();
+
+    let total_cost_usd: f64 = domains.iter().map(|d| d.cost_usd).sum();
+
+    WasteByDomainReport {
+        since_seconds: since_secs,
+        total_events: total_in_window,
+        total_incidents,
+        total_cost_usd,
+        domains,
+    }
+}
+
 /// Build a waste report for the given time window. `since_secs` is the
 /// lookback window; events older than `now - since_secs` are excluded.
 ///
@@ -771,6 +1010,120 @@ mod tests {
         assert!(kinds.contains(&"worker_exit_oom"));
         assert!(!kinds.contains(&"worker_exit_clean"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── INFRA-574: by-domain tests ──────────────────────────────────────────
+
+    #[test]
+    fn infra574_domain_from_gap_id_extracts_prefix() {
+        assert_eq!(domain_from_gap_id(Some("INFRA-574")), "INFRA");
+        assert_eq!(domain_from_gap_id(Some("COG-12")), "COG");
+        assert_eq!(domain_from_gap_id(Some("EVAL-3")), "EVAL");
+        assert_eq!(domain_from_gap_id(Some("META-99")), "META");
+        assert_eq!(domain_from_gap_id(None), "UNKNOWN");
+        assert_eq!(domain_from_gap_id(Some("")), "UNKNOWN");
+        assert_eq!(domain_from_gap_id(Some("123")), "UNKNOWN");
+    }
+
+    #[test]
+    fn infra574_by_domain_groups_incidents() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        let lines = vec![
+            format!(
+                r#"{{"event":"ALERT","kind":"fleet_wedge","ts":"{}","gap_id":"INFRA-100","cooldown_secs":600}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"event":"ALERT","kind":"fleet_wedge","ts":"{}","gap_id":"INFRA-101","cooldown_secs":300}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"event":"ALERT","kind":"fleet_starved","ts":"{}","gap_id":"COG-5"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"event":"ALERT","kind":"silent_agent","ts":"{}","note":"session=cog-session gap=COG-5"}}"#,
+                now_iso
+            ),
+        ];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report_by_domain(&tmp, 86400);
+        assert_eq!(report.total_events, 4);
+
+        let infra = report.domains.iter().find(|d| d.domain == "INFRA").unwrap();
+        assert_eq!(infra.incidents, 2, "2 unique gap_ids under INFRA");
+        assert_eq!(infra.estimated_cost_secs, 900, "600+300");
+
+        let cog = report.domains.iter().find(|d| d.domain == "COG").unwrap();
+        assert_eq!(cog.incidents, 2, "COG-5 wedge + cog-session silent_agent");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra574_by_domain_unknown_bucket_for_missing_gap_id() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        let lines = vec![format!(
+            r#"{{"event":"ALERT","kind":"reaper_silent","ts":"{}","reaper":"pr"}}"#,
+            now_iso
+        )];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report_by_domain(&tmp, 86400);
+        let unk = report
+            .domains
+            .iter()
+            .find(|d| d.domain == "UNKNOWN")
+            .unwrap();
+        assert_eq!(unk.incidents, 1);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra574_by_domain_json_is_well_formed() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        let lines = vec![format!(
+            r#"{{"event":"ALERT","kind":"fleet_starved","ts":"{}","gap_id":"EVAL-7"}}"#,
+            now_iso
+        )];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report_by_domain(&tmp, 86400);
+        let json = report.render_json();
+        assert!(json.starts_with('{'));
+        assert!(json.contains(r#""domains":"#));
+        assert!(json.contains(r#""domain":"EVAL""#));
+        assert!(json.contains(r#""incidents":1"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra574_by_domain_render_text_includes_domain_names() {
+        let report = WasteByDomainReport {
+            since_seconds: 86400,
+            total_events: 3,
+            total_incidents: 3,
+            total_cost_usd: 0.0,
+            domains: vec![
+                DomainEntry {
+                    domain: "INFRA".into(),
+                    incidents: 2,
+                    estimated_cost_secs: 3600,
+                    cost_usd: 0.0,
+                },
+                DomainEntry {
+                    domain: "COG".into(),
+                    incidents: 1,
+                    estimated_cost_secs: 0,
+                    cost_usd: 0.0,
+                },
+            ],
+        };
+        let text = report.render_text();
+        assert!(text.contains("Zero Waste by Domain"));
+        assert!(text.contains("INFRA"));
+        assert!(text.contains("COG"));
+        assert!(text.contains("~60m est. cost"));
     }
 
     fn chrono_now_iso() -> String {
