@@ -495,15 +495,20 @@ jobs:
       - name: cargo test
         run: cargo test --workspace
 
-  # ── Heavy E2E / integration job (gated by paths) ──────────────────────────
-  # Runs when src/, web/, e2e/, or CI-adjacent scripts change.
-  # Skipped on docs-only, crate-only, gaps.yaml, scripts/ab-harness changes.
-  # On push-to-main always runs (catches regressions on the trunk).
-  #
-  # Contains: Ollama + qwen2.5:7b, PWA Playwright, battle-sim, dogfood
-  # matrix, golden path timing.  ~15 min when it runs; 0 min when skipped.
-  test-e2e:
-    needs: [test, changes]
+  # ── E2E shards (INFRA-549) ────────────────────────────────────────────────
+  # The old monolithic test-e2e (>1h26m, serialized behind unit-test rollup)
+  # is replaced by three parallel shards + a thin rollup.  All shards start
+  # immediately after `changes` — they no longer wait for the `test` rollup,
+  # so e2e runs in parallel with unit tests.  Wall-clock = max(shards) not sum.
+  # Dogfood matrix (cargo --release + ~6 min LLM smoke) moved to nightly cron
+  # (e2e-dogfood-nightly.yml) — it was the dominant tail and continue-on-error
+  # anyway.
+
+  # ── E2E Shard A: PWA Playwright ──────────────────────────────────────────
+  # Ollama + qwen2.5:7b, cargo build (debug), chump --web, Playwright.
+  # Skipped when no e2e-relevant files change.  Target wall-clock: ~10-12 min.
+  e2e-pwa:
+    needs: changes
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
@@ -535,8 +540,10 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-e2e-pwa
 
-      - name: Cache Ollama models (PWA E2E)
+      - name: Cache Ollama models
         uses: actions/cache@v5
         with:
           path: ~/.ollama/models
@@ -572,31 +579,60 @@ jobs:
           kill "${CHUMP_WEB_PID}" || true
           wait "${CHUMP_WEB_PID}" 2>/dev/null || true
 
+  # ── E2E Shard B: Battle sim ───────────────────────────────────────────────
+  # No Ollama, no cargo build (SKIP_CARGO=1), no LLM (SKIP_IF_NO_LLM=1).
+  # Lightweight — runs on bare ubuntu-latest in ~1-2 min.
+  e2e-battle-sim:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
       - name: Battle sim suite (no web / no LLM)
         env:
           BATTLE_SIM_SKIP_CARGO: 1
           BATTLE_SIM_SKIP_IF_NO_LLM: 1
         run: bash scripts/ci/run-battle-sim-suite.sh
 
-      # Dogfood matrix quick smoke. Catches tool-chain regressions that unit
-      # tests miss — e.g. the task #58 Metal crash that shipped while
-      # `cargo test` was green. ~6 min on CI runners.
-      - name: Dogfood matrix (quick)
-        continue-on-error: true
-        env:
-          OPENAI_API_BASE: http://127.0.0.1:11434/v1
-          OPENAI_API_KEY: ollama
-          OPENAI_MODEL: qwen2.5:7b
-          CHUMP_HOME: ${{ github.workspace }}
-          CHUMP_REPO: ${{ github.workspace }}
-          CHUMP_READ_FILE_MAX_CHARS: 12000
+  # ── E2E Shard C: Golden path ──────────────────────────────────────────────
+  # cargo build (debug) + file-presence checks + timing log.
+  # No Ollama.  Target wall-clock: ~5 min.
+  e2e-golden-path:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
         run: |
-          if ! curl -fsS --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null; then
-            echo "::warning::Ollama not reachable; skipping dogfood matrix (non-fatal)"
-            exit 0
-          fi
-          cargo build --release --bin chump
-          ./scripts/eval/dogfood-matrix.sh --quick
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Linux packages for chump-desktop (workspace member)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libgtk-3-dev \
+            librsvg2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-e2e-golden
 
       - name: External golden path smoke
         run: bash scripts/ci/verify-external-golden-path.sh
@@ -613,6 +649,33 @@ jobs:
           name: golden-path-timing
           path: logs/golden-path-timing-*.jsonl
           if-no-files-found: ignore
+
+  # ── E2E rollup (keeps the required-check name) ────────────────────────────
+  # Same pattern as the `test` rollup (INFRA-213): thin job that succeeds iff
+  # all three e2e shards succeed (or are skipped on non-e2e PRs).
+  test-e2e:
+    needs: [e2e-pwa, e2e-battle-sim, e2e-golden-path]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all e2e shards passed
+        run: |
+          pwa="${{ needs.e2e-pwa.result }}"
+          sim="${{ needs.e2e-battle-sim.result }}"
+          golden="${{ needs.e2e-golden-path.result }}"
+          echo "e2e-pwa=$pwa  e2e-battle-sim=$sim  e2e-golden-path=$golden"
+          fail=0
+          for r in "$pwa" "$sim" "$golden"; do
+            case "$r" in
+              success|skipped) ;;
+              *) fail=1 ;;
+            esac
+          done
+          if [ "$fail" = "1" ]; then
+            echo "::error::One or more e2e shards failed (see results above)"
+            exit 1
+          fi
+          echo "All e2e shards green (or appropriately skipped)."
 
   # INFRA-503 (2026-05-06): cargo audit was the dominant per-PR cycle-time
   # tax (~12min × every PR). Moved to .github/workflows/cargo-audit-nightly.yml
