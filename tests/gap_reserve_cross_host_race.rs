@@ -43,6 +43,9 @@ fn two_concurrent_reserves_return_distinct_ids() {
     let bin_a = bin.clone();
     let bin_b = bin.clone();
 
+    let root_a_str = root_a.to_string_lossy().into_owned();
+    let root_b_str = root_b.to_string_lossy().into_owned();
+
     let t1 = std::thread::spawn(move || {
         Command::new(&bin_a)
             .envs([
@@ -52,6 +55,10 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_SESSION_ID", "session-a"),
                 ("CHUMP_RAW_YAML_LOCK", "0"),
                 ("FLEET_029_AMBIENT_GLANCE_SKIP", "1"),
+                // Ensure repo_root() resolves to the tempdir, not the caller's
+                // CHUMP_REPO/CHUMP_HOME, so test gaps don't pollute the real registry.
+                ("CHUMP_REPO", &root_a_str),
+                ("CHUMP_HOME", &root_a_str),
             ])
             .args(["gap", "reserve", "--domain", "INFRA", "--title", "race-a"])
             .current_dir(&root_a)
@@ -68,6 +75,10 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_SESSION_ID", "session-z"),
                 ("CHUMP_RAW_YAML_LOCK", "0"),
                 ("FLEET_029_AMBIENT_GLANCE_SKIP", "1"),
+                // Ensure repo_root() resolves to the tempdir, not the caller's
+                // CHUMP_REPO/CHUMP_HOME, so test gaps don't pollute the real registry.
+                ("CHUMP_REPO", &root_b_str),
+                ("CHUMP_HOME", &root_b_str),
             ])
             .args(["gap", "reserve", "--domain", "INFRA", "--title", "race-z"])
             .current_dir(&root_b)
