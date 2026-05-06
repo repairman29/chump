@@ -765,7 +765,12 @@ if [[ "$BEHIND" -gt 40 ]]; then
     exit 3
 fi
 
-if [[ "$BEHIND" -gt 0 ]]; then
+_skip_rebase=0
+if [[ "$BEHIND" -le 5 && "${CHUMP_FORCE_REBASE:-0}" != "1" ]]; then
+    _skip_rebase=1
+fi
+
+if [[ "$BEHIND" -gt 0 && "$_skip_rebase" == "0" ]]; then
     stage_start "rebase on $REMOTE/$BASE_BRANCH ($BEHIND commit(s) behind)"
     _rebase_args=("${REMOTE}/${BASE_BRANCH}")
     if [[ "$NO_MERGE_DRIVER" == "1" ]]; then
@@ -802,7 +807,11 @@ if [[ "$BEHIND" -gt 0 ]]; then
         fi
     fi
 else
-    info "Branch is up to date with $REMOTE/$BASE_BRANCH."
+    if [[ "$_skip_rebase" == "1" && "$BEHIND" -gt 0 ]]; then
+        info "[bot-merge] skip rebase: $BEHIND commits behind main (≤5 threshold; set CHUMP_FORCE_REBASE=1 to override)"
+    else
+        info "Branch is up to date with $REMOTE/$BASE_BRANCH."
+    fi
 fi
 
 # ── 2. cargo fmt ──────────────────────────────────────────────────────────────
