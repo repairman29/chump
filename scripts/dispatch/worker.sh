@@ -747,6 +747,9 @@ Operator or sibling worker can rescue this branch via:
     # Legacy fallback (also catches any non-session-named leases this
     # gap may have under older code paths).
     rm -f "$REPO_ROOT/.chump-locks/"*"${GAP_ID}"*.json 2>/dev/null || true
+    # INFRA-527: remove the gap-preflight lock so sibling workers aren't
+    # blocked by a stale lock from a cycle that timed out or failed mid-run.
+    rm -f "$REPO_ROOT/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
 
     # Worktree cleanup — keep it on disk if claude actually shipped a PR
     # (operator may want to inspect), otherwise remove. Simple proxy: if the
