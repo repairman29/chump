@@ -39,6 +39,7 @@ mod checkpoint_db;
 mod checkpoint_tool;
 mod chump_init;
 mod chump_log;
+mod ci_summary;
 mod cli_tool;
 mod cluster_mesh;
 mod codebase_digest_tool;
@@ -491,6 +492,37 @@ async fn main() -> Result<()> {
 
         let repo_root = repo_path::repo_root();
         let report = waste_tally::build_report(&repo_root, since_secs);
+        if want_json {
+            println!("{}", report.render_json());
+        } else {
+            print!("{}", report.render_text());
+        }
+        return Ok(());
+    }
+
+    // `chump ci-summary [--since 24h|7d|...] [--json]`
+    // (INFRA-506) — CI observability primitive. Reads gh run list + failed
+    // job logs for the window and classifies failures as flake /
+    // test-coupling / real-bug / infra-broken. Output mirrors waste-tally:
+    // per-class count + sample diagnostic lines.
+    if args.get(1).map(String::as_str) == Some("ci-summary") {
+        let since_arg = args
+            .iter()
+            .position(|a| a == "--since")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_else(|| "24h".to_string());
+        let want_json = args.iter().any(|a| a == "--json");
+
+        let since_secs = parse_duration_to_secs(&since_arg).unwrap_or_else(|| {
+            eprintln!(
+                "chump ci-summary: invalid --since '{}' (expected like 24h, 7d, 60m, or seconds)",
+                since_arg
+            );
+            std::process::exit(2);
+        });
+
+        let report = ci_summary::build_report(since_secs);
         if want_json {
             println!("{}", report.render_json());
         } else {
