@@ -31,6 +31,17 @@
 
 set -uo pipefail   # NOT -e: we want the loop to recover from individual cycle failures
 
+# INFRA-569: --dry-run flag. When set, pick a gap, print the would-be claim,
+# and exit 0 without writing a lease, creating a worktree, or spawning claude.
+# Activated by --dry-run CLI flag or CHUMP_FLEET_DRY_RUN=1 env var.
+DRY_RUN="${CHUMP_FLEET_DRY_RUN:-0}"
+for _arg in "$@"; do
+    case "$_arg" in
+        --dry-run) DRY_RUN=1 ;;
+    esac
+done
+export CHUMP_FLEET_DRY_RUN="$DRY_RUN"
+
 AGENT_ID="${AGENT_ID:-?}"
 REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
@@ -260,6 +271,19 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     # elapsed_s in the cycle_end ambient event for p90 measurement.
     _cycle_start_s=$(date +%s)
     log "picked gap $GAP_ID"
+
+    # INFRA-569: dry-run mode — preview without committing resources.
+    if [ "$DRY_RUN" = "1" ]; then
+        sid="$(date +%Y%m%d-%H%M%S)"
+        gap_lower="$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')"
+        wt_name="${gap_lower}-fleet-${AGENT_ID}-${sid}"
+        wt_path="$REPO_ROOT/.claude/worktrees/$wt_name"
+        branch="chump/${wt_name}"
+        printf 'WOULD claim %s and spawn claude in %s\n' "$GAP_ID" "$wt_path"
+        printf 'branch: %s\n' "$branch"
+        printf 'worktree: %s\n' "$wt_path"
+        exit 0
+    fi
 
     # ── INFRA-361: pre-pick preflight ─────────────────────────────────────
     # Cheap check (~50ms) before paying the worktree-create + cold-cargo
