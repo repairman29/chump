@@ -447,6 +447,49 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             # was always "no data." Best-effort — silent if chump
             # binary is missing.
             chump session-track --start "$GAP_ID" >/dev/null 2>&1 || true
+
+            # INFRA-525: checkpoint-on-timeout watchdog. Sonnet workers
+            # routinely write the fix + tests + run cargo build, then
+            # timeout at 600s before getting to 'gh pr create + bot-merge'.
+            # Result: 9-10min of completed work is silently discarded.
+            #
+            # Watchdog: at T - CHUMP_TIMEOUT_CHECKPOINT_SECS (default 30s)
+            # before claude -p hits FLEET_TIMEOUT_S, force a WIP commit +
+            # push the worktree's branch. Operator OR a sibling worker can
+            # rescue from origin/<branch>. Default ON; set
+            # CHUMP_TIMEOUT_CHECKPOINT_SECS=0 to disable.
+            _checkpoint_secs="${CHUMP_TIMEOUT_CHECKPOINT_SECS:-30}"
+            _checkpoint_at=$(( FLEET_TIMEOUT_S - _checkpoint_secs ))
+            _checkpoint_pid=""
+            if (( _checkpoint_at > 0 )); then
+                # Background watchdog: sleeps to T-30s, then commits+pushes.
+                (
+                    sleep "$_checkpoint_at"
+                    cd "$wt_path" 2>/dev/null || exit 0
+                    # Stage everything (tracked + untracked). Skip if no diff.
+                    git add -A 2>/dev/null || true
+                    if ! git diff --cached --quiet 2>/dev/null; then
+                        git -c user.name='chump-fleet-checkpoint' \
+                            -c user.email='chump-fleet@noreply.bot' \
+                            commit -m "WIP-${GAP_ID}: timeout-rescue checkpoint (INFRA-525)
+
+Auto-saved by worker.sh checkpoint-on-timeout watchdog at
+T-${_checkpoint_secs}s before FLEET_TIMEOUT_S=${FLEET_TIMEOUT_S}s.
+Operator or sibling worker can rescue this branch via:
+  gh pr create --base main --head ${branch} --title '${GAP_ID}: <title>' --body '...'
+" 2>/dev/null || true
+                        git push -u origin "$branch" 2>/dev/null || true
+                        # Emit ALERT so operator sees the rescue point.
+                        _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                        _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                        printf '{"event":"ALERT","kind":"fleet_timeout_checkpoint","ts":"%s","agent":"%s","gap_id":"%s","branch":"%s","note":"WIP commit pushed; rescue via gh pr create"}\n' \
+                            "$_ts" "$AGENT_ID" "$GAP_ID" "$branch" \
+                            >> "$_amb" 2>/dev/null || true
+                    fi
+                ) &
+                _checkpoint_pid=$!
+            fi
+
             (
                 cd "$wt_path" || exit 99
                 # Same surface as src/dispatch.rs WorkBackend::Headless.
@@ -454,6 +497,13 @@ When done, reply with the PR number only (e.g. \"#1234\")."
                 $TO claude -p "$prompt" --dangerously-skip-permissions "${_model_arg[@]}"
             ) >"$cycle_log" 2>&1
             rc=$?
+
+            # INFRA-525: kill the checkpoint watchdog if claude exited
+            # cleanly before T-30s — no rescue needed.
+            if [[ -n "$_checkpoint_pid" ]]; then
+                kill "$_checkpoint_pid" 2>/dev/null || true
+                wait "$_checkpoint_pid" 2>/dev/null || true
+            fi
             ;;
         chump-local)
             log "spawning chump --execute-gap $GAP_ID (timeout ${FLEET_TIMEOUT_S}s, backend=chump-local) → $cycle_log"
