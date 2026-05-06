@@ -59,6 +59,8 @@ FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 FLEET_BACKEND="${FLEET_BACKEND:-claude}"
 FLEET_MODEL="${FLEET_MODEL:-sonnet}"
 IDLE_SLEEP_S="${IDLE_SLEEP_S:-60}"
+# INFRA-525: how many seconds before FLEET_TIMEOUT_S to fire the WIP checkpoint.
+CHUMP_TIMEOUT_CHECKPOINT_SECS="${CHUMP_TIMEOUT_CHECKPOINT_SECS:-30}"
 
 # INFRA-315: poll-jitter + idle-backpressure. Without jitter, N workers
 # wake up at the same instant and stampede the same gap (observed live
@@ -317,6 +319,44 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         TO=""
     fi
 
+    # ── INFRA-525: timeout-checkpoint watchdog ───────────────────────────────
+    # Fires at T - CHUMP_TIMEOUT_CHECKPOINT_SECS (default 30s before fleet
+    # timeout). Commits any WIP edits and pushes the branch to origin so work
+    # survives when the outer `timeout` kills the agent before it can ship.
+    # The watchdog is killed immediately if the agent exits cleanly first.
+    _ckpt_delay=$(( FLEET_TIMEOUT_S - CHUMP_TIMEOUT_CHECKPOINT_SECS ))
+    _watchdog_pid=0
+    if [ "$_ckpt_delay" -gt 0 ]; then
+        (
+            sleep "$_ckpt_delay"
+            # Nothing to save if the tree is clean.
+            _wip_untracked="$(git -C "$wt_path" ls-files --others --exclude-standard 2>/dev/null)"
+            if git -C "$wt_path" diff --quiet HEAD 2>/dev/null \
+               && git -C "$wt_path" diff --cached --quiet 2>/dev/null \
+               && [ -z "$_wip_untracked" ]; then
+                exit 0
+            fi
+            git -C "$wt_path" add -A 2>/dev/null || true
+            if git -C "$wt_path" commit -m "WIP-${GAP_ID}: timeout-rescue" 2>/dev/null; then
+                if git -C "$wt_path" push -u origin "$branch" 2>/dev/null; then
+                    printf '[worker:%s %s] INFRA-525: WIP checkpoint pushed for %s → origin/%s\n' \
+                        "$AGENT_ID" "$(date -u +%H:%M:%S)" "$GAP_ID" "$branch" >&2
+                    _amb_path="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                    mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+                    printf '{"ts":"%s","session":"%s","worktree":"%s","event":"wip_checkpoint","kind":"timeout_rescue","agent_id":"%s","gap_id":"%s","branch":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                        "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                        "$wt_name" "$AGENT_ID" "$GAP_ID" "$branch" \
+                        >> "$_amb_path" 2>/dev/null || true
+                else
+                    printf '[worker:%s %s] INFRA-525: WIP commit created but push failed for %s\n' \
+                        "$AGENT_ID" "$(date -u +%H:%M:%S)" "$GAP_ID" >&2
+                fi
+            fi
+        ) &
+        _watchdog_pid=$!
+    fi
+
     case "$FLEET_BACKEND" in
         claude)
             # ── INFRA-371: inline gap briefing (cut token burn) ──────────
@@ -433,6 +473,12 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             rc=2
             ;;
     esac
+
+    # ── INFRA-525: reap watchdog if agent exited before checkpoint fired ─────
+    if [ "$_watchdog_pid" -ne 0 ] && kill -0 "$_watchdog_pid" 2>/dev/null; then
+        kill "$_watchdog_pid" 2>/dev/null || true
+        wait "$_watchdog_pid" 2>/dev/null || true
+    fi
 
     # ── INFRA-464: 401-storm detector ─────────────────────────────────────
     # Background: the 2026-05-03 Haiku fleet ran 875/911 cycles (96%) into
