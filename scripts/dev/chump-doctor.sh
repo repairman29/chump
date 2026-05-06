@@ -110,10 +110,11 @@ heal() {
 
 reap_zombies() {
   local zombies
+  # grep exits 1 when no matches; || true prevents set -e from aborting (INFRA-585)
   zombies=$(ps -eo pid,state,command 2>/dev/null \
     | awk '$2 == "UE" || $2 == "UE+" { for (i = 3; i <= NF; i++) printf "%s ", $i; print $1 }' \
     | grep -E ' chump (gap|reserve|ship|set|preflight|import|dump)' \
-    | awk '{print $NF}')
+    | awk '{print $NF}') || true
   if [ -z "$zombies" ]; then
     return 0
   fi
