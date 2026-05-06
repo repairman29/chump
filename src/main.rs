@@ -79,6 +79,7 @@ mod fleet_tool;
 mod fleet_velocity;
 mod ftue_tool;
 mod gap_store;
+mod gen;
 mod genai_conv;
 mod git_tools;
 mod health_server;
@@ -3106,6 +3107,47 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         } // end #[cfg(feature = "discord")] block
+    }
+
+    // `chump gen <task>` (INFRA-593 / COG-054) — user-facing single-shot coding task.
+    //
+    // Uses the provider cascade to apply a natural-language change to the current
+    // working directory, runs `cargo check`, and commits the result. This is the
+    // front-door command for the offline-LLM mission: `chump gen "add a /health
+    // endpoint to my axum server"`.
+    //
+    // Stub mode for CI: set CHUMP_GEN_STUB_FILE=<rel-path> to skip the LLM call
+    // and prepend a comment line to the named file instead.
+    if args.get(1).map(String::as_str) == Some("gen") {
+        let task = match args.get(2) {
+            Some(t) if !t.starts_with('-') => t.clone(),
+            _ => {
+                eprintln!("Usage: chump gen <task> [--work-dir PATH]");
+                eprintln!();
+                eprintln!("  chump gen \"add a /health endpoint to my axum server\"");
+                eprintln!();
+                eprintln!("Uses the provider cascade to make the change, runs cargo check,");
+                eprintln!("and commits the result.");
+                std::process::exit(2);
+            }
+        };
+        let work_dir = if let Some(d) = args
+            .iter()
+            .position(|a| a == "--work-dir")
+            .and_then(|i| args.get(i + 1))
+        {
+            std::path::PathBuf::from(d)
+        } else {
+            std::env::current_dir().unwrap_or_else(|_| repo_path::repo_root())
+        };
+        let opts = gen::GenOptions { task, work_dir };
+        match gen::run(opts).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("chump gen: {e:#}");
+                std::process::exit(1);
+            }
+        }
     }
 
     if chump_mode {
