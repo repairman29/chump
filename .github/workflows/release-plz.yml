@@ -1,5 +1,10 @@
 name: release-plz
 
+# Runs on main after changes to publishable crates; opens release PRs and
+# publishes to crates.io when a release PR is merged.
+# Why: automates the tedious version-bump + publish dance for chump-coord,
+# chump-perception, and chump-tool-macro.
+
 on:
   push:
     branches:
