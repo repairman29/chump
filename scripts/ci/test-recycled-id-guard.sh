@@ -228,6 +228,12 @@ if ! git -C "$FAKE_REPO" commit -q -m "seed TEST-D done (clean)" 2>&1; then
 fi
 git -C "$FAKE_REPO" update-ref refs/remotes/origin/main HEAD
 
+# why this is OK (INFRA-097 reference below): INFRA-097 appears only as a
+# literal string inside a fake gap description body written to
+# $FAKE_REPO/docs/gaps.yaml. No real docs/gaps/INFRA-097.yaml file is read.
+# This exercises the guard's false-positive suppression for description text
+# that contains "docs/gaps/<ID>.yaml says status:…" phrasing (INFRA-234).
+#
 # Now ADD a description block to TEST-D that contains the literal text
 # 'status: open' on a line by itself (mimics INFRA-245's real description
 # pattern that seeded the live false-positive). origin/main had TEST-D
@@ -254,6 +260,11 @@ gaps:
     Adding a postmortem note. The drift summary read
     status: open, docs/gaps/INFRA-097.yaml says status:done.
 YAML
+# why this is OK: INFRA-097 above is a literal string inside the fake gap
+# description written to $FAKE_REPO/docs/gaps.yaml (an isolated mktemp
+# git repo). No real docs/gaps/INFRA-097.yaml file is read. This string
+# tests that the recycled-ID guard does not false-fire on description body
+# text that resembles a status reference (INFRA-234 regression).
 git -C "$FAKE_REPO" add docs/gaps.yaml
 if out=$(git -C "$FAKE_REPO" commit -m "add description with 'status: open' text to TEST-D" 2>&1); then
     ok "guard does not false-fire on description-body 'status: open' text"
