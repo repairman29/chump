@@ -90,6 +90,8 @@ pub const WASTE_KINDS: &[&str] = &[
     "edit_burst",
     "session_abandoned", // INFRA-493 synthetic — from session_end outcome=abandoned
     "session_starved",   // INFRA-493 synthetic — from session_end outcome=starved
+    "worker_exit_timeout", // INFRA-572 synthetic — from worker_exit exit_class=TIMEOUT
+    "worker_exit_oom",   // INFRA-572 synthetic — from worker_exit exit_class=OOM_KILL
 ];
 
 /// Build a waste report for the given time window. `since_secs` is the
@@ -118,22 +120,33 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         // Only inspect lines that look like JSON ALERT events OR the
         // INFRA-477 session_end events (INFRA-493 promotes those with
         // outcome=abandoned|starved into synthetic waste kinds).
+        // INFRA-572: also inspect worker_exit events (classified by exit_class).
         let is_alert = line.contains(r#""event":"ALERT""#) || line.contains(r#""kind":""#);
         let is_session_end = line.contains(r#""kind":"session_end""#);
-        if !is_alert && !is_session_end {
+        let is_worker_exit = line.contains(r#""kind":"worker_exit""#);
+        if !is_alert && !is_session_end && !is_worker_exit {
             continue;
         }
 
         // INFRA-493: classify session_end by outcome before the WASTE_KINDS
         // filter. session_end events themselves are not waste — only the
         // ones with outcome=abandoned|starved are.
+        // INFRA-572: classify worker_exit by exit_class — TIMEOUT and
+        // OOM_KILL are waste; CLEAN and INTERRUPT are not.
         let raw_kind = extract_field(line, "kind").unwrap_or_default();
         let is_session_end_event = raw_kind == "session_end";
+        let is_worker_exit_event = raw_kind == "worker_exit";
         let kind = if is_session_end_event {
             match extract_field(line, "outcome").as_deref() {
                 Some("abandoned") => "session_abandoned".to_string(),
                 Some("starved") => "session_starved".to_string(),
                 _ => continue, // outcome=shipped is not waste; skip.
+            }
+        } else if is_worker_exit_event {
+            match extract_field(line, "exit_class").as_deref() {
+                Some("TIMEOUT") => "worker_exit_timeout".to_string(),
+                Some("OOM_KILL") => "worker_exit_oom".to_string(),
+                _ => continue, // CLEAN, INTERRUPT, ERROR_* not waste
             }
         } else {
             raw_kind
@@ -193,6 +206,10 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
             "fleet_wedge" | "fleet_starved" => {
                 extract_field(line, "gap_id").or_else(|| extract_field(line, "agent"))
             }
+            // INFRA-572: synthetic kinds — (gap_id, agent) pair is the entity.
+            "worker_exit_timeout" | "worker_exit_oom" => extract_field(line, "gap_id")
+                .or_else(|| extract_field(line, "agent_id"))
+                .or_else(|| extract_field(line, "agent")),
             // INFRA-493: synthetic kinds — session_id is the entity.
             "session_abandoned" | "session_starved" => extract_field(line, "session_id")
                 .or_else(|| extract_field(line, "session"))
@@ -649,7 +666,8 @@ mod tests {
     #[test]
     fn infra488_taxonomy_has_all_documented_kinds() {
         // INFRA-493: 10 original + 2 session-end synthetic = 12.
-        assert_eq!(WASTE_KINDS.len(), 12);
+        // INFRA-572: +2 worker_exit synthetic (timeout + oom) = 14.
+        assert_eq!(WASTE_KINDS.len(), 14);
     }
 
     #[test]
@@ -713,6 +731,45 @@ mod tests {
             abandoned.incidents, 1,
             "same session_id collapses to 1 incident"
         );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra572_worker_exit_classified_by_exit_class() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        let lines = [
+            // CLEAN — not waste
+            format!(
+                r#"{{"ts":"{}","event":"worker_exit","kind":"worker_exit","agent_id":"1","gap_id":"INFRA-A","rc":0,"exit_class":"CLEAN"}}"#,
+                now_iso
+            ),
+            // TIMEOUT — waste
+            format!(
+                r#"{{"ts":"{}","event":"worker_exit","kind":"worker_exit","agent_id":"1","gap_id":"INFRA-B","rc":124,"exit_class":"TIMEOUT"}}"#,
+                now_iso
+            ),
+            // OOM_KILL — waste
+            format!(
+                r#"{{"ts":"{}","event":"worker_exit","kind":"worker_exit","agent_id":"2","gap_id":"INFRA-C","rc":137,"exit_class":"OOM_KILL"}}"#,
+                now_iso
+            ),
+            // INTERRUPT — not waste
+            format!(
+                r#"{{"ts":"{}","event":"worker_exit","kind":"worker_exit","agent_id":"2","gap_id":"INFRA-D","rc":130,"exit_class":"INTERRUPT"}}"#,
+                now_iso
+            ),
+        ];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report(&tmp, 86400);
+        assert_eq!(
+            report.total_events, 2,
+            "only TIMEOUT and OOM_KILL are waste"
+        );
+        let kinds: Vec<&str> = report.entries.iter().map(|e| e.kind.as_str()).collect();
+        assert!(kinds.contains(&"worker_exit_timeout"));
+        assert!(kinds.contains(&"worker_exit_oom"));
+        assert!(!kinds.contains(&"worker_exit_clean"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

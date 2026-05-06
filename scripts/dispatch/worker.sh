@@ -82,6 +82,17 @@ mkdir -p "$FLEET_LOG_DIR"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
 
+# INFRA-572: map exit code to a named class for log scanning + waste-tally.
+classify_rc() {
+    case "$1" in
+        0)   echo "CLEAN" ;;
+        124) echo "TIMEOUT" ;;
+        130) echo "INTERRUPT" ;;
+        137) echo "OOM_KILL" ;;
+        *)   echo "ERROR_$1" ;;
+    esac
+}
+
 # INFRA-206: per-agent domain affinity. If FLEET_AGENT_DOMAINS is set (comma-
 # separated, e.g. "INFRA,EVAL,DOC"), agent K is assigned domains[(K-1) % N],
 # overriding the fleet-wide FLEET_DOMAIN_FILTER for this worker only.
@@ -540,6 +551,17 @@ Operator or sibling worker can rescue this branch via:
         wait "$_watchdog_pid" 2>/dev/null || true
     fi
 
+    # ── INFRA-572: classify exit code and emit worker_exit ambient event ──
+    exit_class="$(classify_rc "$rc")"
+    _amb_we="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    mkdir -p "$(dirname "$_amb_we")" 2>/dev/null || true
+    printf '{"ts":"%s","session":"%s","worktree":"%s","event":"worker_exit","kind":"worker_exit","agent_id":"%s","gap_id":"%s","rc":%d,"exit_class":"%s","backend":"%s","model":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+        "$wt_name" "$AGENT_ID" "$GAP_ID" "$rc" "$exit_class" \
+        "$FLEET_BACKEND" "${FLEET_MODEL:-default}" \
+        >> "$_amb_we" 2>/dev/null || true
+
     # ── INFRA-464: 401-storm detector ─────────────────────────────────────
     # Background: the 2026-05-03 Haiku fleet ran 875/911 cycles (96%) into
     # `Failed to authenticate. API Error: 401` for hours undetected. The
@@ -610,15 +632,15 @@ Operator or sibling worker can rescue this branch via:
     fi
 
     if [ $rc -eq 0 ]; then
-        log "$FLEET_BACKEND exited cleanly for $GAP_ID"
+        log "$FLEET_BACKEND exited CLEAN (rc=0) for $GAP_ID"
     elif [ $rc -eq 124 ]; then
         if [ "$_is_wedge" -eq 1 ]; then
-            log "WARN: $FLEET_BACKEND WEDGED (rc=124, cycle_log=${_cycle_log_size}B) on $GAP_ID — applying extended cooldown"
+            log "WARN: $FLEET_BACKEND exited TIMEOUT/WEDGED (rc=124, cycle_log=${_cycle_log_size}B) on $GAP_ID — applying extended cooldown"
         else
-            log "WARN: $FLEET_BACKEND timed out (${FLEET_TIMEOUT_S}s, cycle_log=${_cycle_log_size}B) on $GAP_ID"
+            log "WARN: $FLEET_BACKEND exited TIMEOUT (rc=124, ${FLEET_TIMEOUT_S}s, cycle_log=${_cycle_log_size}B) on $GAP_ID"
         fi
     else
-        log "WARN: $FLEET_BACKEND exited rc=$rc on $GAP_ID"
+        log "WARN: $FLEET_BACKEND exited $exit_class (rc=$rc) on $GAP_ID"
 
         # ── INFRA-267: P0 fallback to Anthropic ─────────────────────────────
         # When the chump-local backend (free-tier cascade) fails on a P0 gap,
