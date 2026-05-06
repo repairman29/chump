@@ -724,12 +724,20 @@ Operator or sibling worker can rescue this branch via:
         fi
     fi
 
-    # INFRA-492: emit session_end with outcome BEFORE the lease release.
-    # Outcome derivation: branch-gone (= PR landed) is shipped; rc==124
-    # is starved-as-timeout (close enough for the existing taxonomy);
-    # everything else is abandoned. Best-effort — silent on chump fail.
+    # INFRA-492 / INFRA-583: emit session_end with outcome BEFORE the lease
+    # release. Outcome derivation:
+    # - rc==0          = bot-merge.sh succeeded (PR created + auto-merge armed)
+    #                    → shipped. The original ': gone' branch-status check
+    #                    only flips AFTER GitHub deletes the merged remote
+    #                    branch — many seconds AFTER bot-merge returns. That
+    #                    mis-classified every just-shipped session as
+    #                    abandoned (~14m/hr false-positive in waste-tally).
+    # - rc==124        = timeout → starved
+    # - rc==137 / 139  = OOM / segfault → abandoned (legitimate)
+    # - other          = abandoned
+    # Best-effort — silent on chump fail.
     _outcome="abandoned"
-    if git -C "$REPO_ROOT" branch -vv 2>/dev/null | grep -E "$branch" | grep -q ': gone\]'; then
+    if [ "$rc" -eq 0 ]; then
         _outcome="shipped"
     elif [ "$rc" -eq 124 ]; then
         _outcome="starved"
