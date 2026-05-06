@@ -10,11 +10,9 @@ last_audited: 2026-04-25
 
 **Current quarter: Q2 2026.** As of 2026-04-19.
 
-> **Research thesis (accurate as of 2026-04-19):** Instruction injection effects vary
-> systematically by model tier. Lessons blocks help haiku-4-5 (confirmed n=100). They harm
-> sonnet-4-5 (+0.33 hallucination rate, confirmed n=100). Neuromod is net-negative on dynamic
-> tasks (EVAL-029). The individual cognitive modules (surprisal EMA, belief state, neuromod)
-> are **unablated** — EVAL-043 resolves this. See [RESEARCH_INTEGRITY.md](RESEARCH_INTEGRITY.md).
+> **Research methodology and validated-claims policy:** see
+> [`docs/process/RESEARCH_INTEGRITY.md`](../process/RESEARCH_INTEGRITY.md).
+> Specific empirical results and per-eval numbers are tracked privately.
 
 ---
 
