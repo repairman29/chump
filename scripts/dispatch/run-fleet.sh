@@ -41,9 +41,17 @@
 #                           (see INFRA-210 — exported below if unset)
 #
 # Stop:
-#   tmux kill-session -t <FLEET_SESSION>
-#   or: FLEET_SIZE=0 scripts/dispatch/run-fleet.sh
+#   FLEET_SIZE=0 scripts/dispatch/run-fleet.sh   ← preferred (cascade-kills orphans, INFRA-581)
+#   tmux kill-session -t <FLEET_SESSION>          ← leaves timeout+claude orphans alive
 #   or: Ctrl-C inside any pane (only kills that one agent's loop)
+#
+# INFRA-581: tmux kill-session kills the pane shell + worker.sh but
+# already-spawned `timeout Ns claude -p ...` grandchildren may have
+# setsid'd and survive as PPID=1 orphans consuming compute + racing new
+# fleet picks. FLEET_SIZE=0 teardown reads ~/.chump/fleet-pids-<session>.txt
+# (written at spawn) to cascade-kill worker subtrees; then pkill finishes
+# off any survivors. If you must use raw `tmux kill-session`, follow with:
+#   pkill -f "timeout [0-9]*s claude -p "
 
 set -euo pipefail
 
@@ -77,6 +85,8 @@ FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 FLEET_SESSION="${FLEET_SESSION:-chump-fleet}"
+# INFRA-581: per-session PID file so teardown can cascade-kill orphaned workers.
+FLEET_PIDS_FILE="${FLEET_PIDS_FILE:-$HOME/.chump/fleet-pids-${FLEET_SESSION}.txt}"
 FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
 FLEET_BACKEND="${FLEET_BACKEND:-claude}"
 # INFRA-459: default model is haiku — cost-efficient for xs/s/m fleet gaps.
@@ -138,12 +148,31 @@ fi
 
 # Tear-down-only path: FLEET_SIZE=0 means "stop the fleet, don't spawn".
 if [ "$FLEET_SIZE" = "0" ]; then
+    # INFRA-581: cascade-kill pane subtrees BEFORE tmux kill-session so
+    # worker.sh → timeout → claude children receive SIGTERM while still
+    # reachable via the pane shell's process group. Post-session pkill
+    # catches any that already setsid'd (PPID=1 orphans).
+    if [[ -f "$FLEET_PIDS_FILE" ]]; then
+        echo "[run-fleet] cascade-killing fleet worker subtrees (INFRA-581): $FLEET_PIDS_FILE"
+        while IFS= read -r _pid; do
+            [[ "$_pid" =~ ^[0-9]+$ ]] || continue
+            # Try process-group kill first (tmux panes typically get their own pgid).
+            kill -TERM "-${_pid}" 2>/dev/null || true
+            # Also kill direct children in case pgid differs.
+            pkill -TERM -P "$_pid" 2>/dev/null || true
+            kill -TERM "$_pid" 2>/dev/null || true
+        done < "$FLEET_PIDS_FILE"
+        rm -f "$FLEET_PIDS_FILE"
+    fi
     if tmux has-session -t "$FLEET_SESSION" 2>/dev/null; then
         echo "[run-fleet] tearing down tmux session: $FLEET_SESSION"
         tmux kill-session -t "$FLEET_SESSION"
     else
         echo "[run-fleet] no session named $FLEET_SESSION; nothing to do."
     fi
+    # Belt-and-suspenders: pkill any timeout+claude orphans that setsid'd
+    # before the SIGTERM above reached them (INFRA-581).
+    pkill -f "timeout [0-9]*s claude -p " 2>/dev/null || true
     exit 0
 fi
 
@@ -253,10 +282,18 @@ env_prefix="$(printf '%s ' "${worker_env[@]}")"
 tmux new-session -d -s "$FLEET_SESSION" -n fleet -c "$REPO_ROOT" \
     "${env_prefix} FLEET_SESSION=$FLEET_SESSION FLEET_SIZE=$FLEET_SIZE $SCRIPT_DIR/control.sh"
 
+mkdir -p "$(dirname "$FLEET_PIDS_FILE")"
+# Truncate any stale pids file from a prior run of the same session name.
+: > "$FLEET_PIDS_FILE"
+
 for i in $(seq 1 "$FLEET_SIZE"); do
     log="$FLEET_LOG_DIR/agent-${i}.log"
     cmd="${env_prefix} AGENT_ID=$i $SCRIPT_DIR/worker.sh 2>&1 | tee -a '$log'"
     tmux split-window -t "$FLEET_SESSION:fleet" -c "$REPO_ROOT" "$cmd"
+    # INFRA-581: capture the newly-created pane's shell PID so teardown can
+    # cascade-kill worker.sh → timeout → claude subtrees on FLEET_SIZE=0.
+    _pane_pid="$(tmux display-message -t "$FLEET_SESSION:fleet" -p '#{pane_pid}' 2>/dev/null || true)"
+    [[ "$_pane_pid" =~ ^[0-9]+$ ]] && echo "$_pane_pid" >> "$FLEET_PIDS_FILE"
     tmux select-layout -t "$FLEET_SESSION:fleet" tiled >/dev/null
 done
 
