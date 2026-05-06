@@ -199,7 +199,33 @@ for lease in "$LOCK_DIR"/*.json; do
     age_min=$(( (NOW_EPOCH - last_epoch) / 60 ))
     if (( age_min >= AGENT_SILENT_MIN )); then
         gap_id="$(python3 -c "import json; print(json.load(open('$lease')).get('gap_id','?'))" 2>/dev/null || echo '?')"
-        emit_alert "silent_agent" "session=$sess_id gap=$gap_id last_event_age=${age_min}m"
+
+        # INFRA-491: dedupe silent_agent alerts at the emitter. Pre-fix
+        # the watcher fired this alert every cycle (hourly) for as
+        # long as the lease lingered — a single 12h-stuck session
+        # showed as 12 silent_agent events. INFRA-489 deduped at the
+        # consumer (waste-tally), but accumulating noise in ambient.jsonl
+        # also bloats peripheral-vision tail glances and rotation log
+        # archives. Fix: per-session sidecar marker; skip re-emission
+        # if marker is fresh.
+        #
+        # Threshold: SILENT_REALERT_MIN (default 360min = 6h). After
+        # that the session has materially worsened (6h → 12h+), so we
+        # re-alert with the new age.
+        marker="/tmp/chump-silent-alerted-${sess_id}.ts"
+        realert_min="${SILENT_REALERT_MIN:-360}"
+        skip=0
+        if [[ -f "$marker" ]]; then
+            marker_mtime="$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0)"
+            marker_age_min=$(( (NOW_EPOCH - marker_mtime) / 60 ))
+            if (( marker_age_min < realert_min )); then
+                skip=1
+            fi
+        fi
+        if (( skip == 0 )); then
+            emit_alert "silent_agent" "session=$sess_id gap=$gap_id last_event_age=${age_min}m"
+            : > "$marker" 2>/dev/null || true
+        fi
     fi
 done
 shopt -u nullglob
@@ -306,6 +332,11 @@ except Exception:
 " "$lease" 2>/dev/null || echo '?')"
     if [[ "$DRY_RUN" -eq 0 ]]; then
         rm -f "$lease"
+        # INFRA-491: clear the silent_agent dedup marker now that the
+        # lease is gone. Future sessions that reuse this ID start
+        # fresh (no inherited dedup state from a prior abandoned
+        # session).
+        rm -f "/tmp/chump-silent-alerted-${sess_id}.ts" 2>/dev/null || true
     fi
     emit_alert "lease_expired_server" "session=${sess_id} gap=${gap_id} expired=${age_min}m_ago lease_file=$(basename "$lease") (reaped)"
 done
