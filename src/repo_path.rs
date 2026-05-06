@@ -192,6 +192,31 @@ pub fn repo_root() -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
+/// Returns the canonical path to the shared git common dir for `repo` (the `.git`
+/// directory shared across all linked worktrees). Returns `None` if `repo` is not
+/// inside a git tree or if the git invocation fails.
+fn git_common_dir(repo: &Path) -> Option<PathBuf> {
+    let out = std::process::Command::new("git")
+        .args(["rev-parse", "--git-common-dir"])
+        .current_dir(repo)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() {
+        return None;
+    }
+    let p = PathBuf::from(&s);
+    // --git-common-dir may return a relative path; resolve from repo dir.
+    if p.is_absolute() {
+        p.canonicalize().ok()
+    } else {
+        repo.join(p).canonicalize().ok()
+    }
+}
+
 /// Worktree root for per-worktree write paths (per-file `docs/gaps/<ID>.yaml`,
 /// `.chump/.last-yaml-op` freshness marker).
 ///
@@ -200,16 +225,24 @@ pub fn repo_root() -> PathBuf {
 /// shared state like `.chump/state.db`, but wrong for per-file YAMLs which must
 /// land in the operator's branch (i.e. the *linked worktree* they're cd'd into).
 ///
+/// INFRA-474: when `CHUMP_REPO`/`CHUMP_HOME` is explicitly set for **hermetic
+/// isolation** (a script points Chump at a completely separate repo), the CWD's
+/// git root may belong to a different git repository — in that case using it
+/// would leak writes into the wrong tree. We detect this by comparing the git
+/// common-dir of both paths: if they differ, the CWD is in an unrelated repo and
+/// `repo_root()` (= `CHUMP_REPO`) is the correct write target.
+///
 /// Resolution order (first non-empty wins):
 ///   1. `CHUMP_WORKTREE_ROOT` — explicit override (tests, scripts that cd around).
-///   2. `git rev-parse --show-toplevel` from CWD — resolves a linked worktree to
-///      itself, not to the main checkout (unlike walking up looking for `.git`).
-///   3. Falls back to `repo_root()` when CWD isn't a git repo (legitimate
-///      non-worktree caller, e.g. unit test in `/tmp`).
+///   2. `git rev-parse --show-toplevel` from CWD — but only when `CHUMP_REPO` is
+///      unset, OR when the CWD and `CHUMP_REPO` share the same git common-dir
+///      (i.e. the CWD is a linked worktree of the same repo). This resolves a
+///      linked worktree to itself rather than to the main checkout.
+///   3. Falls back to `repo_root()` when CWD isn't a git repo, or when CWD belongs
+///      to a different repo than `CHUMP_REPO` (hermetic isolation case).
 ///
-/// Always falls back gracefully — never panics. The git invocation is a single
-/// fork+exec on each call; called O(1) times per `chump gap` command, so the
-/// cost is negligible.
+/// Always falls back gracefully — never panics. The git invocations are O(1)
+/// fork+exec calls per `chump gap` command.
 pub fn worktree_root() -> PathBuf {
     if let Ok(p) = std::env::var("CHUMP_WORKTREE_ROOT") {
         let p = p.trim();
@@ -231,7 +264,31 @@ pub fn worktree_root() -> PathBuf {
             if !s.is_empty() {
                 let pb = PathBuf::from(s);
                 if pb.is_dir() {
-                    return pb;
+                    // INFRA-474: if CHUMP_REPO/CHUMP_HOME is explicitly set,
+                    // confirm the CWD's git repo is the *same* repo (possibly a
+                    // linked worktree). If they share the same git common-dir,
+                    // use the CWD's root (correct linked-worktree behaviour).
+                    // If they differ, the CWD is in an unrelated repo; fall
+                    // through to repo_root() so writes land in CHUMP_REPO.
+                    let explicit_repo = std::env::var("CHUMP_REPO")
+                        .or_else(|_| std::env::var("CHUMP_HOME"))
+                        .ok()
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| !s.is_empty())
+                        .map(PathBuf::from)
+                        .filter(|p| p.is_dir());
+                    if let Some(ref er) = explicit_repo {
+                        let same_repo = git_common_dir(&pb)
+                            .zip(git_common_dir(er))
+                            .map(|(a, b)| a == b)
+                            .unwrap_or(false);
+                        if same_repo {
+                            return pb;
+                        }
+                        // Different repo — CHUMP_REPO wins; fall through.
+                    } else {
+                        return pb;
+                    }
                 }
             }
         }
@@ -315,6 +372,65 @@ pub fn repo_root_is_explicit() -> bool {
 mod tests {
     use super::*;
     use std::process::Command;
+
+    /// INFRA-474: when CHUMP_REPO points to repo A and the process CWD is inside
+    /// repo B (a completely different git tree), worktree_root() must return repo A
+    /// (via repo_root()), not repo B's root.
+    #[test]
+    #[serial_test::serial]
+    fn worktree_root_respects_chump_repo_across_different_git_trees() {
+        let tmp = std::env::temp_dir();
+        let repo_a = tmp.join(format!("chump-474-a-{}", uuid::Uuid::new_v4().simple()));
+        let repo_b = tmp.join(format!("chump-474-b-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&repo_a).unwrap();
+        std::fs::create_dir_all(&repo_b).unwrap();
+        for r in [&repo_a, &repo_b] {
+            assert!(Command::new("git")
+                .args(["init"])
+                .current_dir(r)
+                .status()
+                .expect("git")
+                .success());
+        }
+
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        let prev_wt = std::env::var("CHUMP_WORKTREE_ROOT").ok();
+        // Point CHUMP_REPO at repo_a; process is running from repo_b's tree.
+        std::env::set_var("CHUMP_REPO", repo_a.display().to_string());
+        std::env::remove_var("CHUMP_HOME");
+        std::env::remove_var("CHUMP_WORKTREE_ROOT");
+        // Change CWD to repo_b so git rev-parse returns repo_b.
+        let orig_cwd = std::env::current_dir().ok();
+        std::env::set_current_dir(&repo_b).unwrap();
+
+        let result = worktree_root();
+        let canon_a = repo_a.canonicalize().unwrap();
+        assert_eq!(
+            result.canonicalize().unwrap_or(result.clone()),
+            canon_a,
+            "worktree_root() should return CHUMP_REPO (repo_a) when CWD is in a different git tree (repo_b)"
+        );
+
+        // Restore env and cwd.
+        if let Some(ref cwd) = orig_cwd {
+            let _ = std::env::set_current_dir(cwd);
+        }
+        match prev_repo {
+            Some(ref s) => std::env::set_var("CHUMP_REPO", s),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
+        match prev_home {
+            Some(ref s) => std::env::set_var("CHUMP_HOME", s),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match prev_wt {
+            Some(ref s) => std::env::set_var("CHUMP_WORKTREE_ROOT", s),
+            None => std::env::remove_var("CHUMP_WORKTREE_ROOT"),
+        }
+        let _ = std::fs::remove_dir_all(&repo_a);
+        let _ = std::fs::remove_dir_all(&repo_b);
+    }
 
     #[test]
     #[serial_test::serial]
