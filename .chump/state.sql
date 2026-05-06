@@ -16043,6 +16043,73 @@ gaps:
   closed_date: '2026-05-06'
   closed_pr: 1140
 
+- id: INFRA-496
+  domain: INFRA
+  title: "PR 1 of YAML deletion plan: regenerate .chump/state.sql to reflect latest state.db (1125 → 1202 gaps, 77 new + 26 ghost-reaper closures from manual-ship workflows). Reconciliation step before any deletion. No docs/gaps/*.yaml deletions yet — that's PR 2."
+  status: open
+  priority: P1
+  effort: xs
+
+- id: INFRA-497
+  domain: INFRA
+  title: docs-delta pre-commit hook misses Net-new-docs trailer for git commit -m
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The docs-delta pre-commit guard at scripts/git-hooks/pre-commit:1596-1636 (INFRA-009) requires a 'Net-new-docs: +N' trailer when a commit adds docs/*.md files. The check reads the trailer from $REPO_ROOT/.git/COMMIT_EDITMSG, which is STALE during pre-commit invocation: when 'git commit -m "..."' is used, the message goes through git internals and is not written to COMMIT_EDITMSG until AFTER pre-commit runs. Result: the hook always sees the previous commit's message and never finds the trailer, even when the user includes it correctly. Today (post-2026-04-28) the hook is in 'block' mode, forcing the user to either delete a comparable doc, hand-edit COMMIT_EDITMSG before invoking commit, or use the CHUMP_DOCS_DELTA_CHECK=0 bypass. The bypass is documented but not the intended path. Fix: move the trailer check to a commit-msg hook (where $1 is the actual message file being committed), or in pre-commit read from .git/MERGE_MSG / staged-message-tempfile if available. Reference: hit during 2026-05-05 IP-protection sweep round 5 (PR #1144) when adding docs/agents/RESEARCH_PRIVACY.md required the bypass.
+  acceptance_criteria:
+    - "git commit -m 'subject\\n\\nbody\\n\\nNet-new-docs: +N' with N >= actual delta is accepted by the hook without bypass"
+    - bypass via CHUMP_DOCS_DELTA_CHECK=0 still works
+    - advisory mode behavior on commits without trailer is unchanged
+    - hook covers both git commit -m and git commit (editor) paths
+  notes: |
+    Discovered during PR #1144 (round 5 IP-protection sweep). The hook code at lines 1606-1610 sets MSG_FILE="${1:-$REPO_ROOT/.git/COMMIT_EDITMSG}" but pre-commit hooks don't receive a message-file arg from git, so the default branch (stale COMMIT_EDITMSG) is always taken. Likely candidate fix: split this guard into pre-commit (compute and announce delta) + commit-msg (validate trailer).
+
+- id: INFRA-498
+  domain: INFRA
+  title: "PR 2 of YAML deletion plan: delete 1688 docs/gaps/*.yaml files (state.sql is canonical mirror) + add 'chump gap show <ID>' CLI for human-readable rendering. Companion to INFRA-496."
+  status: open
+  priority: P1
+  effort: m
+
+- id: INFRA-499
+  domain: INFRA
+  title: "PR 3 of YAML deletion plan: strip raw-YAML-edit pre-commit guard + gap-doctor YAML drift checks + CLAUDE.md/AGENTS.md per-file YAML references. Cleanup after INFRA-498 made docs/gaps/ empty."
+  status: open
+  priority: P1
+  effort: s
+
+- id: INFRA-500
+  domain: INFRA
+  title: "Split gap store: chump-proprietary maintains its own .chump/state.db for proprietary work items"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The public chump repo's gap registry (.chump/state.db) currently holds gaps for ALL work, including proprietary swarm-autonomy items (SWARM-001..013). This was discovered during 2026-05-06 IP-protection sweep round 6 — 13 SWARM gap titles were leaking the swarm-autonomy domain. Round 6 mitigated by renaming all SWARM titles to opaque 'Internal — see chump-proprietary/swarm' (mapping in chump-proprietary/swarm/ROADMAP.md). The proper fix is architectural: chump-proprietary should maintain its OWN .chump/state.db and chump CLI should pick the right store based on cwd / git remote. Today chump-proprietary has only .chump/worktrees/, no gap state. This means any gap reserved from a chump-proprietary worktree currently lands in the public repo's store. Acceptance: chump CLI auto-detects which store to use based on cwd's git remote; chump gap reserve from chump-proprietary lands in chump-proprietary/.chump/state.db; chump gap list aggregates across both stores when run from public repo (operator visibility); coordination tooling (chump-coord watch, fleet workers) handles dual-store correctly. Reference: discussion during 2026-05-06 IP sweep round 6 with operator.
+  acceptance_criteria:
+    - chump-proprietary has its own .chump/state.db
+    - chump CLI auto-routes gap reserve to the correct store based on cwd git remote
+    - operator can chump gap list across both stores
+    - fleet coordination (chump-coord, ambient.jsonl) works across both stores
+    - new SWARM-* and other proprietary gaps land in chump-proprietary store, not public
+
+- id: INFRA-501
+  domain: INFRA
+  title: PR/commit title hygiene policy + audit revealing past PR titles for IP exposure
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    PR titles, commit subjects, and branch names are a public-facing leak vector independent of code content. Discovered during 2026-05-06 IP sweep round 6 (this conversation): operator noted 'Our commit names have also been revealing in the PRs too...' Examples on past main: round-by-round IP-sweep PR titles describe the protective scrub itself ('round 4 — bulk move per-eval results + research/audits/briefs to private; redact RESEARCH_INTEGRITY directive'); these reveal what was hidden, when, and how. SWARM-* PRs would have been worse if any had shipped before the round-6 rename. Two parts: (1) Forward policy — establish PR-title hygiene rules (allowed: code identifiers, gap-registry status changes, methodology pointers; prohibited: specific findings, model-tier outcomes, descriptive proprietary-domain language, commit messages that explain the IP-protection rationale itself); apply to all PR creation paths (bot-merge.sh, gh pr create, manual). (2) Audit past PRs — scan main's commit history for PRs whose subjects reveal proprietary-domain work or IP-protection mechanics; decide on a per-PR basis whether to edit the GitHub PR title (gh pr edit, doesn't change git log on main) or accept as historical record. NEVER force-push main to rewrite history. Cross-reference with docs/agents/RESEARCH_PRIVACY.md (which already covers eval-content leaks but not commit-message leaks).
+  acceptance_criteria:
+    - PR-title hygiene policy documented in docs/agents/RESEARCH_PRIVACY.md or sibling
+    - bot-merge.sh and similar PR-creation paths reference the policy
+    - audit of past PR titles complete; per-PR decisions logged
+    - going-forward PRs do not include specific findings, model-tier outcomes, or proprietary-domain language in titles or first-line commit subjects
+    - operator approval required for any PR title that mentions the IP-protection mechanic itself
+
 - id: INFRA-AB-TOOL-CALL-COUNTER
   domain: INFRA
   title: ab-harness tool_calls counter greps wrong stream (always 0)
@@ -21450,91 +21517,91 @@ gaps:
 
 - id: SWARM-001
   domain: SWARM
-  title: Thermal Signature Modeling & Detection
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P0
   effort: m
 
 - id: SWARM-002
   domain: SWARM
-  title: WebSocket Performance Validation
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P0
   effort: s
 
 - id: SWARM-003
   domain: SWARM
-  title: Perimeter Assessment Behavior
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P0
   effort: m
 
 - id: SWARM-004
   domain: SWARM
-  title: Sensor Failure & Recovery System
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P0
   effort: m
 
 - id: SWARM-005
   domain: SWARM
-  title: Interior Search & Systematic Sweep
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P0
   effort: m
 
 - id: SWARM-006
   domain: SWARM
-  title: Surveillance Device Installation System
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P0
   effort: m
 
 - id: SWARM-007
   domain: SWARM
-  title: Mission Choreography Refinement
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P1
   effort: s
 
 - id: SWARM-008
   domain: SWARM
-  title: Performance Optimization
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P1
   effort: s
 
 - id: SWARM-009
   domain: SWARM
-  title: HUD Enhancement & Visualization
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P1
   effort: m
 
 - id: SWARM-010
   domain: SWARM
-  title: Documentation & Delivery Prep
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P1
   effort: s
 
 - id: SWARM-011
   domain: SWARM
-  title: Integration Testing & QA
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P1
   effort: s
 
 - id: SWARM-012
   domain: SWARM
-  title: Customer Validation
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P2
   effort: s
 
 - id: SWARM-013
   domain: SWARM
-  title: Release & Launch
+  title: Internal — see chump-proprietary/swarm
   status: open
   priority: P2
   effort: s
