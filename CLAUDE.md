@@ -62,6 +62,59 @@ chump gap ship <ID> --update-yaml
 - **PRs are intent-atomic**, not file-count-bounded. One logical change per PR.
 - **`--no-verify` is the reason most regressions ship.** Use very sparingly.
 
+## Fleet scaling gate (INFRA-518)
+
+Scaling fleet size is a deliberate stress test of prior-tier fixes. Each step-up requires the
+previous tier to be stable; each step-down trigger must be respected without operator override.
+
+### Scale-up criteria (all must hold)
+
+| Metric | 2 → 3 workers | 3 → 4 workers |
+|---|---|---|
+| Waste rate (`chump waste-tally --window 2h`) | < 20 % | < 15 % |
+| Ship rate (PRs merged / PRs opened, last 10) | ≥ 70 % | ≥ 80 % |
+| `fleet_wedge` events in ambient.jsonl (last 2 h) | 0 | 0 |
+| `silent_agent` events (last 2 h) | ≤ 1 | 0 |
+| `pr_stuck` events (last 2 h) | ≤ 1 | 0 |
+| Open INFRA gaps blocking fleet (P0/P1 kind=fleet) | 0 | 0 |
+
+Run before any scale-up:
+```bash
+chump waste-tally --window 2h          # check waste rate
+scripts/dispatch/fleet-status.sh       # check ship rate + agent health
+tail -200 .chump-locks/ambient.jsonl | grep -E '"kind":"(fleet_wedge|silent_agent|pr_stuck)"'
+```
+
+### Logging requirement (mandatory)
+
+Every scale-up **and** scale-down must emit to `ambient.jsonl`:
+```bash
+printf '{"ts":"%s","kind":"fleet_scale_change","from":%d,"to":%d,"rationale":"%s"}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" <old_size> <new_size> "<reason>" \
+  >> .chump-locks/ambient.jsonl
+```
+
+### Back-off triggers (immediate, no debate)
+
+- **`fleet_wedge` event appears** → drop to 2 workers; hold until 0 wedges for 30 min.
+- **`silent_agent` count > 1 in 1 h** → drop to 2 workers; investigate picker/lease race.
+- **`pr_stuck` cluster (≥ 3 in 2 h)** → drop to 2 workers; diagnose bot-merge contention.
+- **Waste rate > 30 % at any size** → drop to 2 workers; file a gap for the dominant waste kind.
+- **CI failure rate > 25 % (last 8 PRs)** → hold current size; do not scale up until resolved.
+
+### Rollback procedure
+
+```bash
+# 1. Kill excess workers (tmux pane names fleet-worker-N)
+tmux kill-pane -t fleet-worker-<N>
+# 2. Release orphaned leases
+ls .chump-locks/*.json | xargs -I{} chump --release --lease {}
+# 3. Log the scale-down (see Logging requirement above)
+# 4. Update FLEET_SIZE in run-fleet.sh invocation or env
+```
+
+Full retrospective: [`docs/syntheses/fleet-scaling-2026-05-06.md`](./docs/syntheses/fleet-scaling-2026-05-06.md)
+
 ## On-demand docs (read only when you hit the failure surface)
 
 - Subagents, fleet launcher, disk hygiene, operational gotchas (binary wedge, rebase footgun, syspolicyd, etc.): [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md)
