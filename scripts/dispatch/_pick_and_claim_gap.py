@@ -343,10 +343,16 @@ def main() -> int:
         # Start from staggered offset (same logic as _pick_gap.py).
         offset = (max(worker_idx, 1) - 1) % len(candidates)
 
+        # INFRA-569: dry-run mode — pick without claiming (no lease written).
+        dry_run = os.environ.get("CHUMP_FLEET_DRY_RUN", "0") == "1"
+
         # Try candidates in rotated order.
         for i in range(len(candidates)):
             idx = (offset + i) % len(candidates)
             gap_id = candidates[idx][4]  # Index changed from [3] to [4] due to affinity_score.
+            if dry_run:
+                print(gap_id)
+                return 0
             if try_claim_gap(gap_id, session_id, lock_dir):
                 print(gap_id)
                 return 0
