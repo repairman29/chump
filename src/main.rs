@@ -182,6 +182,7 @@ mod version;
 mod wasm_calc_tool;
 mod wasm_runner;
 mod wasm_text_tool;
+mod waste_tally;
 mod web_brain;
 mod web_push_send;
 mod web_server;
@@ -253,6 +254,29 @@ fn write_yaml_op_marker(repo_root: &std::path::Path, op: &str) {
         env!("CARGO_PKG_VERSION")
     );
     let _ = std::fs::write(&marker, body);
+}
+
+/// INFRA-488: parse a friendly duration string ("24h", "7d", "60m",
+/// "3600s") into seconds. Pure digits are interpreted as seconds.
+/// Returns None for unparseable input.
+fn parse_duration_to_secs(s: &str) -> Option<u64> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (num_part, unit_secs): (&str, u64) = if let Some(rest) = s.strip_suffix('d') {
+        (rest, 86_400)
+    } else if let Some(rest) = s.strip_suffix('h') {
+        (rest, 3_600)
+    } else if let Some(rest) = s.strip_suffix('m') {
+        (rest, 60)
+    } else if let Some(rest) = s.strip_suffix('s') {
+        (rest, 1)
+    } else {
+        (s, 1)
+    };
+    let n: u64 = num_part.parse().ok()?;
+    n.checked_mul(unit_secs)
 }
 
 /// Load .env from CHUMP_HOME/CHUMP_REPO first (so Chump Menu / run-discord.sh always get the right .env),
@@ -427,6 +451,41 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
         }
+    }
+
+    // `chump waste-tally [--since 24h|7d|...] [--json]`
+    // (INFRA-488) — Zero Waste mission pillar measurement primitive.
+    // Aggregates ALERT events from .chump-locks/ambient.jsonl that match
+    // the waste taxonomy (fleet_wedge, fleet_starved, lease_expired_server,
+    // reaper_silent, queue_stuck, ambient_oversize, pr_stuck, silent_agent,
+    // lease_overlap, edit_burst) and prints a per-kind tally with rough
+    // cost estimates where measurable. No new event emissions in MVP.
+    if args.get(1).map(String::as_str) == Some("waste-tally") {
+        let since_arg = args
+            .iter()
+            .position(|a| a == "--since")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_else(|| "24h".to_string());
+        let want_json = args.iter().any(|a| a == "--json");
+
+        // Parse "24h" / "7d" / "60m" / raw seconds.
+        let since_secs = parse_duration_to_secs(&since_arg).unwrap_or_else(|| {
+            eprintln!(
+                "chump waste-tally: invalid --since '{}' (expected like 24h, 7d, 60m, or seconds)",
+                since_arg
+            );
+            std::process::exit(2);
+        });
+
+        let repo_root = repo_path::repo_root();
+        let report = waste_tally::build_report(&repo_root, since_secs);
+        if want_json {
+            println!("{}", report.render_json());
+        } else {
+            print!("{}", report.render_text());
+        }
+        return Ok(());
     }
 
     // `chump session-track --start <GAP-ID>` / `--end <GAP-ID> --outcome <s|a|t>`

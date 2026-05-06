@@ -1,5 +1,23 @@
 # Claude Code — Chump session rules (hot overlay)
 
+## Mission (4 pillars)
+
+Build agents that are **Credible**, **Effective**, **Resilient**, and
+**Zero-Waste** — alone or as a team. Every session should answer
+whether or not it advanced the mission on at least one pillar.
+
+- **Credible** — outputs are tested, measured, and honest about what
+  they do and don't establish.
+- **Effective** — moves an agent toward solving real problems, not
+  toward shipping infrastructure for its own sake.
+- **Resilient** — degrades gracefully, recovers from common failure
+  modes (binary wedge, merge conflict, CI flake) without operator
+  rescue.
+- **Zero-Waste** — does not burn compute, time, or cost on cycles
+  that produce no value. Track via `chump waste-tally` (INFRA-488)
+  which classifies fleet wedges, starvation, abandoned leases, stuck
+  PRs, silent reapers, and lease overlaps from `ambient.jsonl`.
+
 > **Read [`AGENTS.md`](./AGENTS.md) first** for build/test/lint commands,
 > code style, gap-registry pattern, PR guidelines.
 > **This file** is the must-do-now overlay. **For operational gotchas
