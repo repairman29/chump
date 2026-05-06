@@ -37,6 +37,12 @@ use std::path::Path;
 pub struct WasteEntry {
     pub kind: String,
     pub count: u64,
+    /// INFRA-489: number of unique incidents after deduplicating by
+    /// (kind, entity). A single stuck reaper that re-emits every 30min
+    /// for 12h shows as `count=24, incidents=1`. `incidents` is the
+    /// headline metric going forward; `count` is preserved for
+    /// forensics. Equals `count` when no entity can be extracted.
+    pub incidents: u64,
     /// Sum of any `cooldown_secs`/`elapsed_seconds` field on these events.
     /// Best-effort — not all kinds carry a cost number.
     pub estimated_cost_secs: u64,
@@ -46,6 +52,11 @@ pub struct WasteEntry {
 pub struct WasteReport {
     pub since_seconds: u64,
     pub total_events: u64,
+    /// INFRA-489: total unique incidents (deduplicated). Always
+    /// `<= total_events`. The 7-day baseline measured 169 events but
+    /// only ~50 unique incidents — the rest were re-fired alerts on
+    /// the same problem.
+    pub total_incidents: u64,
     pub entries: Vec<WasteEntry>,
 }
 
@@ -66,14 +77,25 @@ pub const WASTE_KINDS: &[&str] = &[
 
 /// Build a waste report for the given time window. `since_secs` is the
 /// lookback window; events older than `now - since_secs` are excluded.
+///
+/// **INFRA-489:** also computes per-kind unique incidents by
+/// deduplicating against an entity key extracted from each event. Most
+/// re-fire alerts (reaper_silent every 30min, silent_agent every cycle)
+/// share the same entity, so a 12h-stuck reaper collapses from 24
+/// alerts to 1 incident. The entity comes from any of `session`,
+/// `reaper`, `pr`, `gap_id`, `agent` — whichever the event carries.
+/// Falls back to a per-event unique key (counts as its own incident)
+/// when no entity field is present.
 pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
     let ambient = repo_root.join(".chump-locks/ambient.jsonl");
     let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
     let now = current_unix();
     let cutoff = now.saturating_sub(since_secs);
 
-    let mut by_kind: BTreeMap<String, WasteEntry> = BTreeMap::new();
+    use std::collections::HashSet;
+    let mut by_kind: BTreeMap<String, (WasteEntry, HashSet<String>)> = BTreeMap::new();
     let mut total_in_window = 0u64;
+    let mut anon_seq: u64 = 0;
 
     for line in contents.lines() {
         // Only inspect lines that look like JSON ALERT events.
@@ -97,48 +119,138 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         let cost = extract_int_field(line, "cooldown_secs")
             .or_else(|| extract_int_field(line, "elapsed_seconds"))
             .unwrap_or(0);
-        let entry = by_kind.entry(kind.clone()).or_insert_with(|| WasteEntry {
-            kind: kind.clone(),
-            count: 0,
-            estimated_cost_secs: 0,
+
+        // INFRA-489: kind-aware entity extraction. The naive "first
+        // session field wins" approach picks the WATCHER (the coord
+        // process emitting the alert), not the entity the alert is
+        // ABOUT. silent_agent and lease_expired_server hide the actual
+        // session in the `note` field's "session=X" substring; the
+        // top-level `session` field is just the coord watcher and is
+        // identical across all alerts.
+        let entity = match kind.as_str() {
+            "silent_agent" | "lease_expired_server" | "lease_overlap" | "edit_burst" => {
+                // Entity is in the note's session= substring; gap_id is
+                // a fallback for events that omit session.
+                extract_session_from_note(line).or_else(|| extract_field(line, "gap_id"))
+            }
+            "reaper_silent" => extract_field(line, "reaper"),
+            "pr_stuck" => extract_int_field(line, "pr")
+                .map(|n| n.to_string())
+                .or_else(|| {
+                    // Legacy text form: '#1115 DIRTY ...'
+                    let note = extract_field(line, "note").unwrap_or_default();
+                    if note.starts_with('#') {
+                        let end = note.find(' ').unwrap_or(note.len());
+                        Some(note[..end].to_string())
+                    } else {
+                        None
+                    }
+                }),
+            "fleet_wedge" | "fleet_starved" => {
+                extract_field(line, "gap_id").or_else(|| extract_field(line, "agent"))
+            }
+            // queue_stuck, ambient_oversize, silent_agent's siblings:
+            // fall through to the generic search.
+            _ => extract_field(line, "session")
+                .or_else(|| extract_field(line, "reaper"))
+                .or_else(|| extract_int_field(line, "pr").map(|n| n.to_string()))
+                .or_else(|| extract_field(line, "gap_id"))
+                .or_else(|| extract_field(line, "agent"))
+                .or_else(|| extract_session_from_note(line)),
+        }
+        .unwrap_or_else(|| {
+            anon_seq += 1;
+            format!("__anon_{}", anon_seq)
         });
-        entry.count += 1;
-        entry.estimated_cost_secs = entry.estimated_cost_secs.saturating_add(cost);
+
+        let bucket = by_kind.entry(kind.clone()).or_insert_with(|| {
+            (
+                WasteEntry {
+                    kind: kind.clone(),
+                    count: 0,
+                    incidents: 0,
+                    estimated_cost_secs: 0,
+                },
+                HashSet::new(),
+            )
+        });
+        bucket.0.count += 1;
+        bucket.0.estimated_cost_secs = bucket.0.estimated_cost_secs.saturating_add(cost);
+        bucket.1.insert(entity);
     }
+
+    // Realize incidents = unique entity count.
+    let mut total_incidents = 0u64;
+    let entries: Vec<WasteEntry> = by_kind
+        .into_values()
+        .map(|(mut e, set)| {
+            e.incidents = set.len() as u64;
+            total_incidents += e.incidents;
+            e
+        })
+        .collect();
 
     WasteReport {
         since_seconds: since_secs,
         total_events: total_in_window,
-        entries: by_kind.into_values().collect(),
+        total_incidents,
+        entries,
     }
+}
+
+/// Parse the legacy free-text `note` field for `session=<id>`. Coord ALERTs
+/// emit JSON like `{"kind":"silent_agent","note":"session=infra-470-fix gap=..."}` —
+/// the entity for dedup is hidden inside `note`.
+fn extract_session_from_note(line: &str) -> Option<String> {
+    let note = extract_field(line, "note")?;
+    let needle = "session=";
+    let start = note.find(needle)? + needle.len();
+    let rest = &note[start..];
+    let end = rest
+        .find(|c: char| c.is_whitespace() || c == ',')
+        .unwrap_or(rest.len());
+    if end == 0 {
+        return None;
+    }
+    Some(rest[..end].to_string())
 }
 
 impl WasteReport {
     /// Render a human-readable summary for the terminal.
+    /// INFRA-489: headlines unique incidents (deduped by entity), with
+    /// raw event count shown alongside in parentheses for forensic
+    /// transparency. The 7-day baseline of 169 events compressed to ~50
+    /// incidents — the rest were re-fired alerts on the same problem.
     pub fn render_text(&self) -> String {
         let mut out = String::new();
         let hours = self.since_seconds / 3600;
         out.push_str(&format!(
-            "═══ Zero Waste Report ═══ (last {} h, total {} waste events)\n",
+            "═══ Zero Waste Report ═══ (last {} h, {} incidents from {} alerts)\n",
             hours.max(1),
+            self.total_incidents,
             self.total_events
         ));
         if self.entries.is_empty() {
             out.push_str("  (no waste events in window — fleet healthy 🎉)\n");
             return out;
         }
-        // Sort by count descending for visibility.
+        // Sort by incidents descending — re-fired alerts shouldn't dominate.
         let mut sorted = self.entries.clone();
-        sorted.sort_by_key(|e| std::cmp::Reverse(e.count));
+        sorted.sort_by_key(|e| std::cmp::Reverse(e.incidents));
         for e in &sorted {
+            let inflation = if e.incidents > 0 && e.count > e.incidents {
+                format!(" (×{} alerts)", e.count)
+            } else {
+                String::new()
+            };
             if e.estimated_cost_secs > 0 {
                 let mins = e.estimated_cost_secs / 60;
                 out.push_str(&format!(
-                    "  {:>6} × {:24}  ~{}m est. cost\n",
-                    e.count, e.kind, mins
+                    "  {:>4} × {:24}{}  ~{}m est. cost\n",
+                    e.incidents, e.kind, inflation, mins
                 ));
             } else {
-                out.push_str(&format!("  {:>6} × {}\n", e.count, e.kind));
+                out.push_str(&format!("  {:>4} × {}{}\n", e.incidents, e.kind, inflation));
             }
         }
         let total_mins: u64 = sorted.iter().map(|e| e.estimated_cost_secs).sum::<u64>() / 60;
@@ -152,23 +264,27 @@ impl WasteReport {
     }
 
     /// Render as JSON for tooling consumption.
+    /// INFRA-489: each entry now carries `incidents` (deduped) alongside
+    /// `count` (raw); top level adds `total_incidents`.
     pub fn render_json(&self) -> String {
         let entries_json: Vec<String> = self
             .entries
             .iter()
             .map(|e| {
                 format!(
-                    r#"{{"kind":"{}","count":{},"estimated_cost_secs":{}}}"#,
+                    r#"{{"kind":"{}","count":{},"incidents":{},"estimated_cost_secs":{}}}"#,
                     json_escape(&e.kind),
                     e.count,
+                    e.incidents,
                     e.estimated_cost_secs
                 )
             })
             .collect();
         format!(
-            r#"{{"since_seconds":{},"total_events":{},"entries":[{}]}}"#,
+            r#"{{"since_seconds":{},"total_events":{},"total_incidents":{},"entries":[{}]}}"#,
             self.since_seconds,
             self.total_events,
+            self.total_incidents,
             entries_json.join(",")
         )
     }
@@ -345,12 +461,16 @@ mod tests {
 
     #[test]
     fn infra488_render_text_shows_cost_estimate() {
+        // INFRA-489: use ..Default::default() so new fields don't churn
+        // every test site (lesson from INFRA-482).
         let report = WasteReport {
             since_seconds: 86400,
             total_events: 2,
+            total_incidents: 2,
             entries: vec![WasteEntry {
                 kind: "fleet_wedge".into(),
                 count: 2,
+                incidents: 2,
                 estimated_cost_secs: 28800, // 8 hours
             }],
         };
@@ -366,9 +486,11 @@ mod tests {
         let report = WasteReport {
             since_seconds: 86400,
             total_events: 1,
+            total_incidents: 1,
             entries: vec![WasteEntry {
                 kind: "fleet_starved".into(),
                 count: 5,
+                incidents: 1,
                 estimated_cost_secs: 0,
             }],
         };
@@ -379,6 +501,87 @@ mod tests {
         assert!(json.contains(r#""total_events":1"#));
         assert!(json.contains(r#""kind":"fleet_starved""#));
         assert!(json.contains(r#""count":5"#));
+    }
+
+    #[test]
+    fn infra489_dedup_collapses_refired_alerts() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        // Same reaper re-fires 5 times, plus one different reaper.
+        let mut lines = Vec::new();
+        for _ in 0..5 {
+            lines.push(format!(
+                r#"{{"event":"ALERT","kind":"reaper_silent","reaper":"pr","ts":"{}","age_hours":6}}"#,
+                now_iso
+            ));
+        }
+        lines.push(format!(
+            r#"{{"event":"ALERT","kind":"reaper_silent","reaper":"worktree","ts":"{}","age_hours":4}}"#,
+            now_iso
+        ));
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report(&tmp, 86400);
+        assert_eq!(report.total_events, 6);
+        assert_eq!(
+            report.total_incidents, 2,
+            "5+1 alerts collapse to 2 unique reapers"
+        );
+        let entry = report
+            .entries
+            .iter()
+            .find(|e| e.kind == "reaper_silent")
+            .unwrap();
+        assert_eq!(entry.count, 6);
+        assert_eq!(entry.incidents, 2);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra489_dedup_extracts_session_from_note_field() {
+        // silent_agent ALERTs put the entity in the legacy `note` field.
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        let lines: Vec<String> = (0..3)
+            .map(|_| format!(
+                r#"{{"event":"ALERT","kind":"silent_agent","ts":"{}","note":"session=infra-470-fix gap=INFRA-470 last_event_age=701m"}}"#,
+                now_iso
+            ))
+            .chain(std::iter::once(format!(
+                r#"{{"event":"ALERT","kind":"silent_agent","ts":"{}","note":"session=infra-471-fix gap=INFRA-471 last_event_age=620m"}}"#,
+                now_iso
+            )))
+            .collect();
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report(&tmp, 86400);
+        assert_eq!(report.total_events, 4);
+        let entry = report
+            .entries
+            .iter()
+            .find(|e| e.kind == "silent_agent")
+            .unwrap();
+        assert_eq!(entry.count, 4);
+        assert_eq!(entry.incidents, 2, "2 unique sessions despite 4 alerts");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra489_render_text_shows_inflation_marker() {
+        let report = WasteReport {
+            since_seconds: 86400,
+            total_events: 40,
+            total_incidents: 1,
+            entries: vec![WasteEntry {
+                kind: "reaper_silent".into(),
+                count: 40,
+                incidents: 1,
+                estimated_cost_secs: 0,
+            }],
+        };
+        let text = report.render_text();
+        // Headline shows incidents AND alert count.
+        assert!(text.contains("1 incidents from 40 alerts"));
+        // Per-entry shows the inflation marker.
+        assert!(text.contains("(×40 alerts)"));
     }
 
     #[test]
