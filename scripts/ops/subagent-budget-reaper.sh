@@ -31,6 +31,7 @@ fi
 # shellcheck source=../lib/reaper-instrumentation.sh
 source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
 reaper_setup subagent-budget
+reaper_check_disk_headroom  # INFRA-453: exit 0 + ALERT if <5% free
 
 BUDGET_MIN="${CHUMP_SUBAGENT_BUDGET_MIN:-30}"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
