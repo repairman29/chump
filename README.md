@@ -135,11 +135,9 @@ Running one agent is straightforward. Running ten — on the same repo, against 
 
 Chump ships nine cognitive-architecture modules and studies their effect via A/B eval — but **only some of them are wired into the chat-turn flow** (status per module: wired-with-behavioral-effect, wired-but-gated, removed, write-only research scaffold, or telemetry-only — see [`docs/architecture/CHUMP_FACULTY_MAP.md`](docs/architecture/CHUMP_FACULTY_MAP.md), reframed 2026-05-02 under DOC-010). **The architecture as a whole is not validated.** The validated finding to date is narrower: **instruction injection has tier-dependent effects** — prescriptive lessons help small models on specific tasks and harm frontier models. Individual-module ablation (EVAL-043) has shipped infrastructure; results land per-module as ablation flags reach n≥50/cell.
 
-Cite results at the specificity they are reported. See [`docs/process/RESEARCH_INTEGRITY.md`](docs/process/RESEARCH_INTEGRITY.md) for the accurate thesis and prohibited claims list.
+Cite results at the specificity they are reported. See [`docs/process/RESEARCH_INTEGRITY.md`](docs/process/RESEARCH_INTEGRITY.md) for the accurate thesis and prohibited claims list, and [`docs/research/RESEARCH_COMMUNITY.md`](docs/research/RESEARCH_COMMUNITY.md) for running studies on your own hardware.
 
-- [`docs/research/CONSCIOUSNESS_AB_RESULTS.md`](docs/research/CONSCIOUSNESS_AB_RESULTS.md) — full A/B study log
-- [`docs/research/consciousness-framework-paper.md`](docs/research/consciousness-framework-paper.md) — preprint
-- [`docs/research/RESEARCH_COMMUNITY.md`](docs/research/RESEARCH_COMMUNITY.md) — run studies on your own hardware
+Per-cell forensics, validated empirical results, and paper preprints are tracked privately so they can be published through controlled channels rather than scraped from a public repo. Contact the project owner for access.
 
 ---
 
