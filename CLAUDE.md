@@ -130,6 +130,32 @@ ls .chump-locks/*.json | xargs -I{} chump --release --lease {}
 
 Full retrospective: [`docs/syntheses/fleet-scaling-2026-05-06.md`](./docs/syntheses/fleet-scaling-2026-05-06.md)
 
+## MISSION-PM: gap registry health (META-046)
+
+Run `chump gap audit-priorities [--json]` to get a PM health snapshot.
+Exits non-zero if **P0 count > 5**, any **open P0 stuck > 7 d**, or any
+**vague (no AC) pickable gap** exists.
+
+Metrics reported:
+
+| Metric | Meaning |
+|---|---|
+| P0 count + ages | Open P0 gaps and how long they have been open |
+| Vague pickable | Open gaps with no acceptance_criteria — unpickable in practice |
+| Double-encoded depends_on | `depends_on` stored as JSON-string-of-JSON — import bug |
+| Missing-dep refs | `depends_on` entries pointing at non-existent gap IDs |
+| Open with closed_pr | status:open but closed_pr set — needs `chump gap ship` |
+| race-* test pollution | Open gaps with title starting `race-` — test fixture leak |
+
+Incorporate into the pre-ship checklist for any gap that touches the registry
+or picker logic:
+
+```bash
+chump gap audit-priorities          # non-zero = stop and fix
+```
+
+CI gate: `scripts/ci/test-gap-audit-priorities.sh`
+
 ## On-demand docs (read only when you hit the failure surface)
 
 - Subagents, fleet launcher, disk hygiene, operational gotchas (binary wedge, rebase footgun, syspolicyd, etc.): [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md)
