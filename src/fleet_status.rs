@@ -27,6 +27,8 @@ pub struct FleetStatus {
     pub shipped_24h: u64,
     pub abandoned_24h: u64,
     pub recent_wedges_6h: u64,
+    /// INFRA-534: actual API cost (USD) across all session_end events in last 24h.
+    pub cost_usd_24h: f64,
     pub repo_root: std::path::PathBuf,
 }
 
@@ -104,6 +106,14 @@ pub fn snapshot(repo_root: &Path) -> FleetStatus {
                 Some("abandoned") | Some("starved") => status.abandoned_24h += 1,
                 _ => {}
             }
+            // INFRA-534: sum token costs from all session_end events in window.
+            let input = extract_int_field(line, "input_tokens").unwrap_or(0);
+            let output = extract_int_field(line, "output_tokens").unwrap_or(0);
+            let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
+            if input > 0 || output > 0 || cache > 0 {
+                status.cost_usd_24h +=
+                    crate::session_ledger::cost_usd_from_tokens(input, output, cache);
+            }
         }
         if line.contains(r#""kind":"fleet_wedge""#) && ts_unix >= cutoff_6h {
             status.recent_wedges_6h += 1;
@@ -161,6 +171,12 @@ impl FleetStatus {
         if self.shipped_24h + self.abandoned_24h > 0 {
             out.push_str(&format!("                   ship-rate={}%\n", success_rate));
         }
+        if self.cost_usd_24h > 0.0 {
+            out.push_str(&format!(
+                "                   cost=${:.4} (last 24h)\n",
+                self.cost_usd_24h
+            ));
+        }
 
         // Waste.
         out.push_str(&format!(
@@ -212,6 +228,19 @@ fn parse_iso8601_to_unix(s: &str) -> Option<u64> {
         return None;
     }
     String::from_utf8_lossy(&out2.stdout).trim().parse().ok()
+}
+
+fn extract_int_field(line: &str, field: &str) -> Option<u64> {
+    let needle = format!(r#""{}":"#, field);
+    let start = line.find(&needle)? + needle.len();
+    let rest = &line[start..];
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
+    if end == 0 {
+        return None;
+    }
+    rest[..end].parse().ok()
 }
 
 fn extract_field(line: &str, field: &str) -> Option<String> {

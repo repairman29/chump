@@ -566,7 +566,20 @@ async fn main() -> Result<()> {
                     eprintln!("chump session-track --end: unknown outcome '{}' (expected shipped|abandoned|starved)", outcome_str);
                     std::process::exit(2);
                 });
-            session_ledger::emit_session_end(&repo_root, &session_id, &gap_id, outcome);
+            // INFRA-534: optional token counts for cost telemetry.
+            let tokens = match (
+                st_flag("--input-tokens").and_then(|s| s.parse::<u64>().ok()),
+                st_flag("--output-tokens").and_then(|s| s.parse::<u64>().ok()),
+                st_flag("--cache-read-tokens").and_then(|s| s.parse::<u64>().ok()),
+            ) {
+                (Some(i), Some(o), cache) => Some(session_ledger::TokenCounts {
+                    input_tokens: i,
+                    output_tokens: o,
+                    cache_read_tokens: cache.unwrap_or(0),
+                }),
+                _ => None,
+            };
+            session_ledger::emit_session_end(&repo_root, &session_id, &gap_id, outcome, tokens);
             println!(
                 "session_end logged: gap={} outcome={}",
                 gap_id,
