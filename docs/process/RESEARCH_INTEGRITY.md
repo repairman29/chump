@@ -17,51 +17,26 @@ last_audited: 2026-04-25
 
 ## The Accurate Thesis
 
-**What the evidence supports:**
+**What the evidence supports and what it does not is tracked privately.**
+Specific empirical results, validated-findings tables, model-tier deltas,
+and per-eval numbers live in the private companion repo (`chump-proprietary`).
+Contact the project owner for access.
 
-> Instruction injection at inference time has systematically different effects by model tier and
-> task class. Prescriptive directives (lessons blocks, neuromodulation hints) improve task
-> performance on small models (haiku-4-5) on specific task types (reflection, perception), but
-> actively harm performance on frontier models (sonnet-4-5+) — confirmed at n=100 with
-> cross-family validation. The harm mechanisms are diagnosable: conditional-chain dilution and
-> trivial-token contamination.
-
-**What the evidence does NOT support:**
-
-- "Cognitive architecture improves agent performance" — the architecture modules (surprisal EMA,
-  belief state, neuromodulation) are individually unablated. Only the lessons block is tested.
-- "Surprisal EMA is a positive contribution" — CHUMP_RESEARCH_BRIEF.md marked this "Confirmed"
-  but the underlying evals (EVAL-011..015) show deltas ≈ 0 on qwen2.5:7b and a second-LLM
-  rescore of −0.10 to −0.30. This claim must not be repeated until EVAL-043 (ablation) ships.
-- "Neuromodulation improves task performance" — EVAL-029 shows net-negative cross-architecture
-  signal (−0.10 to −0.16 mean delta). The fix (EVAL-030 task-class-aware gating) is shipped but
-  not yet re-validated.
-- "2000+ A/B trials validate Chump's cognitive architecture" — the trials validate the lessons
-  block on haiku-4-5 on two fixture types. The broader architecture claim requires EVAL-043.
+The shape of the claim is: instruction injection at inference time has
+systematically different effects by model tier and task class. The
+**direction** of the principal finding is stable across sweeps; the
+**magnitudes** are subject to ongoing methodological scrutiny. Do not
+state magnitudes, model names, or per-eval IDs in public docs, PRs, or
+external communications.
 
 ---
 
-## Validated Findings (cite freely)
+## Validated Findings
 
-| Finding | Evidence | Confidence |
-|---|---|---|
-| Lessons block helps haiku-4-5 on reflection fixture | EVAL-025, n=100, cross-family judge | High |
-| Lessons block backfires on sonnet-4-5 (+0.33 hallucination rate) | EVAL-027c, n=100 | High |
-| Neuromod harm is cross-architecture, two distinct mechanisms | EVAL-029 drilldown | Medium (n=50, single judge) |
-| Task-class-aware gating (EVAL-030) fixes neuromod harm on targeted task classes | EVAL-030 | Medium (not yet cross-validated) |
-| LLM judge bias: Anthropic judges reward hallucinated tool calls | EVAL-010 human label subset | Medium (n=12 tasks) |
-
-> **Standing caveat (EVAL-087, 2026-05-02):** All rows above were produced under prompt
-> conditions (explicit task IDs, structured rubrics, "the user asks…" preamble) that
-> external research (IAPS 2026; arXiv:2508.00943 ICLR 2026; Meta Muse Spark April 2026)
-> documents as detectable by frontier models. RESEARCH-026 / EVAL-094 will run the
-> n=50/cell paired naturalized-framing comparison; until that result is published, the
-> magnitude of the *correctness deltas* in this table may be inflated or deflated by
-> evaluation-context confounding. The *direction* of the lessons-block findings (helps
-> haiku, hurts sonnet) is consistent across multiple sweeps and unlikely to flip; the
-> *magnitudes* are the at-risk number. The caveat lifts when EVAL-094 ships an H0 result
-> (|Δ| ≤ 0.05, CI overlapping zero on both tiers), or the rows update with the corrected
-> magnitudes if EVAL-094 ships H1.
+Specific findings, evidence pointers, and confidence ratings are tracked
+in the private companion repo. Use the methodology requirements below for
+how to evaluate and report — do not reproduce specific deltas, n-values,
+or model names in public documentation.
 
 ---
 
@@ -187,13 +162,10 @@ These gaps exist specifically to correct the methodology:
 
 ## Documentation That Is Currently Inaccurate
 
-These docs contain claims that conflict with this directive. Do not propagate their framing.
-File RESEARCH-002 work by updating these files:
-
-- **docs/briefs/CHUMP_RESEARCH_BRIEF.md** — "Surprisal EMA: Confirmed" must be changed to "Unablated / preliminary"
-- **docs/briefs/CHUMP_PROJECT_BRIEF.md** — research section claims "cognitive architecture validated" across multiple faculties; must be narrowed to the lessons-block finding
-- **docs/architecture/CHUMP_FACULTY_MAP.md** — Metacognition row says "net-negative signal" but is still listed as active research direction without noting that it may need to be removed if EVAL-043 confirms net harm
-- **docs/research/CONSCIOUSNESS_AB_RESULTS.md** — Headline deltas cited without noting judge-bias caveat; add standing caveat at top of file
+The list of public docs whose framing must be reconciled with this
+directive is tracked privately. When updating any doc that references
+agent capability, faculty status, or eval results, default to the
+methodology language above and avoid specific deltas / model names.
 
 ---
 
