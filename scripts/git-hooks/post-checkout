@@ -56,12 +56,22 @@ if [[ -n "$MAIN_WT_ABS" && "$THIS_WT_ABS" != "$MAIN_WT_ABS" ]]; then
         # so all linked worktrees share build cache. Must merge into
         # the existing [build] table — TOML rejects duplicate section
         # headers.
+        #
+        # INFRA-535: when the fleet clone lives under /tmp/, $MAIN_WT_ABS/target
+        # fills the /tmp/ filesystem (6.8 GB disk-full observed 2026-05-06).
+        # Redirect to ~/.cache/chump-fleet-target/ so the shared cache lands
+        # on the home filesystem, not the ramdisk.
+        if [[ "$MAIN_WT_ABS" == /tmp/* || "$MAIN_WT_ABS" == /private/tmp/* ]]; then
+            _shared_target="${HOME}/.cache/chump-fleet-target"
+        else
+            _shared_target="$MAIN_WT_ABS/target"
+        fi
         if ! grep -q "^target-dir" "$LOCAL_CARGO_CONFIG"; then
             if grep -q "^\[build\]" "$LOCAL_CARGO_CONFIG"; then
                 # Insert target-dir as the first key under existing [build].
                 # Use a tempfile so the insert is atomic.
                 tmp_config="$(mktemp)" || tmp_config="${LOCAL_CARGO_CONFIG}.tmp"
-                awk -v target="$MAIN_WT_ABS/target" '
+                awk -v target="$_shared_target" '
                     /^\[build\]$/ {
                         print
                         print "# INFRA-481: shared target-dir so linked worktrees don'"'"'t each build multi-GB target/ trees."
@@ -77,7 +87,7 @@ if [[ -n "$MAIN_WT_ABS" && "$THIS_WT_ABS" != "$MAIN_WT_ABS" ]]; then
 # INFRA-481: shared target-dir so linked worktrees don't each build
 # multi-GB target/ trees. Auto-injected by scripts/git-hooks/post-checkout.
 [build]
-target-dir = "$MAIN_WT_ABS/target"
+target-dir = "$_shared_target"
 EOF
             fi
         fi
