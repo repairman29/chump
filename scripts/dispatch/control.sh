@@ -25,6 +25,9 @@ trap 'echo; echo "[control] bye."; exit 0' INT TERM
 # INFRA-558: emit fleet_queue_depth every 60s
 _last_queue_emit=0
 
+# INFRA-565: periodic fleet lease reaper (every 30 min)
+_last_reap=0
+
 while :; do
     clear
     printf '\033[1mchump fleet — session=%s  size=%s  refresh=%ss\033[0m\n' \
@@ -143,6 +146,52 @@ PYEOF
             "p0_count=${_p0_count:-0}" \
             "oldest_p0_age_days=${_oldest_p0_age:-0}" 2>/dev/null || true
         _last_queue_emit=$SECONDS
+    fi
+
+    # INFRA-565: reap stale fleet-* leases every 30 min
+    if (( SECONDS - _last_reap >= 1800 )); then
+        _reaped=0
+        for _lease in "$REPO_ROOT/.chump-locks"/fleet-*.json; do
+            [[ -f "$_lease" ]] || continue
+            _sid="$(basename "$_lease" .json)"
+            _pid="$(printf '%s' "$_sid" | rev | cut -d- -f2 | rev)"
+            _dead=0
+            if [[ "$_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$_pid" 2>/dev/null; then
+                _dead=1
+            fi
+            _hb_stale=0
+            _hb_age="$(python3 -c "
+import json, sys
+from datetime import datetime, timezone
+try:
+    d = json.load(open('$_lease'))
+    hb = d.get('heartbeat_at') or d.get('heartbeat') or d.get('taken_at') or ''
+    if hb:
+        t = datetime.fromisoformat(hb.rstrip('Z')).replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - t).total_seconds()
+        print(int(age))
+    else:
+        print(0)
+except Exception:
+    print(0)
+" 2>/dev/null || echo 0)"
+            if (( _hb_age > 7200 )); then
+                _hb_stale=1
+            fi
+            if (( _dead || _hb_stale )); then
+                _reason="pid_dead"
+                (( _hb_stale )) && _reason="heartbeat_stale_${_hb_age}s"
+                echo "[control] reaping stale fleet lease ($_reason): $(basename "$_lease")"
+                "$REPO_ROOT/scripts/dev/ambient-emit.sh" fleet_lease_reaped \
+                    "session_id=${_sid}" "reason=${_reason}" 2>/dev/null || true
+                rm -f "$_lease"
+                (( _reaped++ )) || true
+            fi
+        done
+        if (( _reaped > 0 )); then
+            echo "[control] reaped $_reaped stale fleet lease(s)"
+        fi
+        _last_reap=$SECONDS
     fi
 
     sleep "$REFRESH_S"
