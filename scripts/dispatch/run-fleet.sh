@@ -222,6 +222,28 @@ if (( _stale_reaped > 0 )); then
     echo "[run-fleet] reaped $_stale_reaped stale fleet lease(s) — picker unblocked"
 fi
 
+# INFRA-465: seed state.db before spawning workers so fresh worktrees have
+# pickable gaps. Compare state.db open-gap count against origin/main's
+# state.sql line count as a cheap drift signal; run 'chump gap import' if
+# state.db appears empty or behind. chump gap import is idempotent (skips
+# already-present rows) so running it on an up-to-date db is safe.
+_db="$REPO_ROOT/.chump/state.db"
+_db_open=0
+if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$_db" ]]; then
+    _db_open=$(sqlite3 "$_db" "SELECT COUNT(*) FROM gaps WHERE status='open';" 2>/dev/null || echo 0)
+fi
+# Count open gaps visible on origin/main via the tracked state.sql mirror.
+_sql_open=$(git show "origin/main:.chump/state.sql" 2>/dev/null \
+    | grep -c "^INSERT.*'open'" 2>/dev/null || echo 0)
+if (( _db_open < _sql_open )); then
+    echo "[run-fleet] INFRA-465: state.db has $_db_open open gaps, origin/main has $_sql_open — running 'chump gap import'"
+    (cd "$REPO_ROOT" && chump gap import) \
+        && echo "[run-fleet] gap import complete — state.db seeded" \
+        || echo "[run-fleet] WARNING: 'chump gap import' failed; workers may see no pickable gaps"
+else
+    echo "[run-fleet] state.db looks current ($_db_open open gaps) — skipping import"
+fi
+
 cat <<EOF
 [run-fleet] starting fleet
   session       : $FLEET_SESSION
