@@ -81,7 +81,7 @@ FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
 FLEET_BACKEND="${FLEET_BACKEND:-claude}"
 # INFRA-459: default model is haiku — cost-efficient for xs/s/m fleet gaps.
 # Override via FLEET_MODEL=sonnet for harder tasks.
-FLEET_MODEL="${FLEET_MODEL:-haiku}"
+FLEET_MODEL="${FLEET_MODEL:-sonnet}"
 # INFRA-371: token-burn defaults applied to every fleet worker unless
 # the caller overrides. These cut per-spawn token cost without losing
 # capability — workers can still re-enable for harder workloads.

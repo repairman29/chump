@@ -89,9 +89,13 @@ then `chump gap ship <ID> --update-yaml` and release the lease.
 ## Hard rules
 
 - **`proprietary/` is a private sibling repo — NEVER commit it here (2026-05-03).** Private swarm-autonomy code lives at `https://github.com/repairman29/chump-proprietary` (PRIVATE), checked out locally at `~/Projects/chump-proprietary/`. This public repo's `.gitignore` lists `proprietary/` as a defense-in-depth safety net. If you see a `proprietary/` directory inside *this* repo's tree it is a stray copy — do not stage it, do not edit it, do not reference it from public code. Public Chump and the private crate are independent: no submodule, no workspace membership, no shared `Cargo.toml`. Fleet workers running in public Chump worktrees should ignore `proprietary/` entirely.
-- **Default model: haiku** (`.claude/settings.json` pins
-  `claude-haiku-4-5`). Override per-session via `/model` for hard tasks;
-  fleet override via `FLEET_MODEL=sonnet`. Opus is ~50× haiku per token.
+- **Default model: haiku for IDE sessions, sonnet for fleet workers**
+  (`.claude/settings.json` pins `claude-haiku-4-5` for the operator's
+  Claude Code app; INFRA-515 flipped fleet's `FLEET_MODEL` default to
+  sonnet 2026-05-06 because haiku asks clarifying questions instead
+  of acting in `--dangerously-skip-permissions` mode — observed 1 ship
+  out of 9 cycles on haiku). Cost-sensitive fleet sweeps:
+  `FLEET_MODEL=haiku`. Opus is ~50× haiku per token.
 - **Never push directly to `main`.** Branch + worktree naming follows
   [AGENTS.md → Naming conventions](./AGENTS.md#naming-conventions-infra-186-2026-05-01)
   (canonical `chump/<codename>` branch, `.chump/worktrees/<name>`).
