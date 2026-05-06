@@ -2916,12 +2916,15 @@ async fn main() -> Result<()> {
                 std::process::exit(2);
             }
         };
-        let work_dir = args
+        let work_dir = if let Some(d) = args
             .iter()
             .position(|a| a == "--work-dir")
             .and_then(|i| args.get(i + 1))
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| repo_path::repo_root()));
+        {
+            std::path::PathBuf::from(d)
+        } else {
+            std::env::current_dir().unwrap_or_else(|_| repo_path::repo_root())
+        };
         let opts = gen::GenOptions { task, work_dir };
         match gen::run(opts).await {
             Ok(()) => return Ok(()),
