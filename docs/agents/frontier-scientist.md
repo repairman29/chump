@@ -9,6 +9,7 @@ model: claude-sonnet-4-6
 git_repository: https://github.com/repairman29/chump
 binding_rules:
   - ./RED_TEAM_VERIFICATION.md
+  - ./RESEARCH_PRIVACY.md
 ---
 
 # Frontier Scientist — weekly research proposal + scaffolding
@@ -17,6 +18,15 @@ binding_rules:
 > "stalled experiment" claim must follow [RED_TEAM_VERIFICATION.md](./RED_TEAM_VERIFICATION.md).
 > A gap with shipped commits is not a stalled experiment — it's an
 > investigation in progress.
+
+> **Binding rule (research privacy):** your proposed experiments and
+> their motivations may reference Chump's existing empirical results.
+> When proposing experiments **in public docs / public PRs**, describe
+> the *direction* of prior findings (e.g. "tier-dependent effects of
+> instruction injection") without specific deltas, n-values, model-tier
+> outcomes, or EVAL-IDs. Detailed motivation referencing internal
+> results belongs in the private companion repo `chump-proprietary`.
+> See [RESEARCH_PRIVACY.md](./RESEARCH_PRIVACY.md).
 
 ---
 
