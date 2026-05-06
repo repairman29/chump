@@ -436,7 +436,25 @@ run_timed_hb() {
     local _rc=$?
     set -e
     heartbeat_end
+    # INFRA-587: emit bot_merge_hang ALERT when a phase times out (exit 124 = timeout)
+    if [[ "$_rc" -eq 124 ]]; then
+        _emit_hang_alert "$label" "$max_secs"
+    fi
     return "$_rc"
+}
+
+# INFRA-587: emit a bot_merge_hang ALERT to ambient.jsonl when a phase times out.
+# Called by run_timed_hb when bot-merge-run-timed.py returns 124 (timeout).
+_emit_hang_alert() {
+    local phase="$1" timeout_secs="$2"
+    local ambient="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+    local now gap_label
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    gap_label="${GAP_IDS[0]:-none}"
+    printf '{"ts":"%s","session":"bot-merge-%d","event":"ALERT","kind":"bot_merge_hang","phase":"%s","timeout_secs":%s,"gap_id":"%s","note":"bot-merge phase timed out after %ss — possible hang (INFRA-587)"}\n' \
+        "$now" "$_BM_PID" "$phase" "$timeout_secs" "$gap_label" "$timeout_secs" \
+        >> "$ambient" 2>/dev/null || true
+    red "INFRA-587: phase '$phase' timed out after ${timeout_secs}s — bot_merge_hang ALERT emitted to ambient stream"
 }
 
 # INFRA-564: gh secondary rate-limit backoff — 60/120/240s, max 3 retries.
@@ -1264,15 +1282,23 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
     if [[ -n "$_autoclose_target_pr" ]] && command -v chump >/dev/null 2>&1; then
         for _gid in "${GAP_IDS[@]}"; do
             stage_start "auto-close gap $_gid via PR #$_autoclose_target_pr (INFRA-154)"
-            # Capture stderr so we can surface the actual error if ship fails
+            # Capture output so we can surface the actual error if ship fails
             # (was '>/dev/null 2>&1' which swallowed everything — see META-017).
             # INFRA-469: bin/chump shim handles timeout+heal+retry transparently.
-            _autoclose_err=$(CHUMP_REPO="$_autoclose_main_repo" \
-                             CHUMP_REAL_BINARY="$_autoclose_chump" \
-                             chump gap ship "$_gid" \
-                                --closed-pr "$_autoclose_target_pr" \
-                                --update-yaml 2>&1 >/dev/null)
+            # INFRA-587: wrapped with run_timed_hb (60s) so a hung chump binary
+            # emits a bot_merge_hang ALERT and doesn't stall the entire ship pipeline.
+            _tmpship=$(mktemp)
+            set +e
+            CHUMP_REPO="$_autoclose_main_repo" \
+            CHUMP_REAL_BINARY="$_autoclose_chump" \
+            run_timed_hb "gap ship $_gid" 60 \
+                chump gap ship "$_gid" \
+                    --closed-pr "$_autoclose_target_pr" \
+                    --update-yaml > "$_tmpship" 2>&1
             _autoclose_rc=$?
+            set -e
+            _autoclose_err=$(cat "$_tmpship")
+            rm -f "$_tmpship"
             if [[ $_autoclose_rc -eq 0 ]]; then
                 # INFRA-262: do NOT regenerate / stage .chump/state.sql here.
                 # Every parallel auto-close used to write .chump/state.sql, and
