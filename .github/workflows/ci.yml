@@ -690,12 +690,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+
+      - name: Install Linux packages for chump-desktop (workspace member)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            util-linux
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-audit
+
       - name: INFRA-503 — cargo audit moved to nightly cron
         run: |
           echo "::notice::cargo audit runs nightly via cargo-audit-nightly.yml (INFRA-503)"
           echo "      Per-PR audit was 12min × every PR; advisory DB updates daily."
       - name: chump gap list domain summary + test-filter (INFRA-431)
+        # INFRA-582: switched from --release to debug build; release compile was
+        # 9+ min cold. Debug with shared cache completes in <60s.
         run: |
-          cargo build --release --bin chump 2>&1 | tail -3
-          bash scripts/ci/test-gap-list-domain-summary.sh
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-gap-list-domain-summary.sh
 
