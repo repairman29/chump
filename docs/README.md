@@ -35,7 +35,6 @@ See [`rfcs/`](rfcs/) for draft proposals: inference backends, fleet workspace me
 
 | Document | Purpose |
 |----------|---------|
-| [FINDINGS.md](FINDINGS.md) | Empirical findings index (clean, citable summaries + pointers) |
 | [OOPS.md](OOPS.md) | Oops log: broken instruments, reframes, and retractions (keeps Findings uncluttered) |
 | [research/RESEARCH_COMMUNITY.md](research/RESEARCH_COMMUNITY.md) | How to contribute to the live research study |
 | [METRICS.md](METRICS.md) | CIS, phi proxy, surprisal threshold — exact computation from DB/logs |
