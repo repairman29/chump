@@ -62,6 +62,7 @@ BASE="${BASE:-main}"
 DIRTY_THRESHOLD_HOURS="${DIRTY_THRESHOLD_HOURS:-4}"
 CI_FAIL_THRESHOLD_HOURS="${CI_FAIL_THRESHOLD_HOURS:-2}"
 BEHIND_COMMITS_THRESHOLD="${BEHIND_COMMITS_THRESHOLD:-20}"
+SHARED_BLOCKER_THRESHOLD="${SHARED_BLOCKER_THRESHOLD:-3}"
 
 green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
 red()   { printf '\033[0;31m%s\033[0m\n' "$*"; }
@@ -71,6 +72,10 @@ dry()   { printf '  [dry-run] %s\n' "$*"; }
 
 green "=== stuck-pr-filer (base: $REMOTE/$BASE) ==="
 [[ $DRY_RUN -eq 1 ]] && info "Dry-run mode — no gaps will be filed."
+
+# Temp file for deferred CI-RED data (shared-blocker aggregation).
+# Format per line: pr_num\tcheck_name\tci_red_hours\tpr_branch\tgap_ids
+SHARED_BLOCKER_TMP=$(mktemp /tmp/chump-shared-blocker-XXXXXX)
 
 git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
     red "Could not fetch $REMOTE/$BASE — aborting."; exit 1
@@ -280,6 +285,168 @@ ${details}"
     FILED=$((FILED + 1))
 }
 
+# detect_shared_ci_blockers — INFRA-454
+# Reads SHARED_BLOCKER_TMP (lines: pr_num\tcheck_name\tci_red_hours\tpr_branch\tgap_ids).
+# Groups by check_name. Groups with N>=SHARED_BLOCKER_THRESHOLD get ONE cleanup gap;
+# smaller groups fall back to individual CI-RED per-PR gaps.
+detect_shared_ci_blockers() {
+    [[ ! -s "${SHARED_BLOCKER_TMP:-/dev/null}" ]] && return 0
+
+    green "=== shared-CI-blocker pass ==="
+
+    # Collect existing "CI blocker:" gap titles for dedup.
+    local existing_blocker_titles=""
+    if command -v chump >/dev/null 2>&1; then
+        existing_blocker_titles=$(chump gap list --status open --json 2>/dev/null \
+            | python3 -c "
+import json, sys
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for r in rows:
+    t = (r.get('title') or '')
+    if 'CI blocker:' in t:
+        print(t)
+" 2>/dev/null || true)
+    fi
+
+    # Group by check_name; emit GROUP or INDIVIDUAL directives.
+    local group_data
+    group_data=$(python3 - "$SHARED_BLOCKER_TMP" "$SHARED_BLOCKER_THRESHOLD" <<'PYEOF'
+import sys, collections
+
+data_file = sys.argv[1]
+threshold = int(sys.argv[2])
+
+groups = collections.defaultdict(list)
+with open(data_file) as f:
+    for line in f:
+        parts = line.rstrip('\n').split('\t')
+        if len(parts) < 5:
+            continue
+        pr_num, check_name, ci_red_hours, pr_branch, gap_ids = \
+            parts[0], parts[1], parts[2], parts[3], parts[4]
+        existing_prs = [x[0] for x in groups[check_name]]
+        if pr_num not in existing_prs:
+            groups[check_name].append((pr_num, ci_red_hours, pr_branch, gap_ids))
+
+for check_name, entries in sorted(groups.items()):
+    count = len(entries)
+    pr_nums = ','.join(x[0] for x in entries)
+    max_hrs = max((int(x[1]) for x in entries if x[1].isdigit()), default=0)
+    if count >= threshold:
+        print(f"GROUP\t{check_name}\t{count}\t{pr_nums}\t{max_hrs}")
+    else:
+        for pr_num, ci_red_hours, pr_branch, gap_ids in entries:
+            print(f"INDIVIDUAL\t{pr_num}\t{check_name}\t{ci_red_hours}\t{pr_branch}\t{gap_ids}")
+PYEOF
+    ) || true
+
+    [[ -z "$group_data" ]] && { info "no CI-RED deferred entries to process"; return 0; }
+
+    while IFS=$'\t' read -r _action _rest; do
+        case "$_action" in
+
+            GROUP)
+                local _check_name _count _pr_nums _max_hrs
+                IFS=$'\t' read -r _check_name _count _pr_nums _max_hrs <<<"$_rest"
+                local _title="CI blocker: ${_check_name} failing on ${_count}+ open PRs"
+
+                if grep -qF "CI blocker: ${_check_name}" <<<"${existing_blocker_titles}" 2>/dev/null; then
+                    info "  shared-blocker for '${_check_name}' already filed — skipping"
+                    continue
+                fi
+
+                # Locate associated test script by matching a .sh filename in the check name.
+                local _script_path=""
+                local _candidate
+                _candidate=$(printf '%s' "$_check_name" | grep -oE '[a-zA-Z0-9_.-]+\.sh' | head -1 || true)
+                if [[ -n "$_candidate" && -f "scripts/ci/$_candidate" ]]; then
+                    _script_path="scripts/ci/$_candidate"
+                fi
+
+                # Recent commits to the script on origin/main (broken-test-not-yet-rebased signal).
+                local _script_context=""
+                if [[ -n "$_script_path" ]]; then
+                    local _last_commit
+                    _last_commit=$(git log --format='%H' -1 origin/main -- "$_script_path" 2>/dev/null || true)
+                    if [[ -n "$_last_commit" ]]; then
+                        _script_context=$(git log --oneline -5 origin/main -- "$_script_path" 2>/dev/null || true)
+                        _script_context="${_script_context}
+$(git diff "${_last_commit}^" "$_last_commit" -- "$_script_path" 2>/dev/null | head -30 || true)"
+                    else
+                        _script_context="(no commits for $_script_path on origin/main)"
+                    fi
+                else
+                    _script_context="(script path not identified from check name: $_check_name)"
+                fi
+
+                if [[ $DRY_RUN -eq 1 ]]; then
+                    dry "would file shared-blocker gap: $_title"
+                    dry "  affected PRs ($_count): $_pr_nums"
+                    FILED=$((FILED + 1))
+                    continue
+                fi
+
+                command -v chump >/dev/null 2>&1 || {
+                    warn "chump not on PATH — skipping shared-blocker gap for '$_check_name'"; continue
+                }
+
+                local _reserved
+                _reserved=$(chump gap reserve --domain INFRA --title "$_title" \
+                    --priority P1 --effort s 2>&1 | tail -1)
+                if [[ ! "$_reserved" =~ ^INFRA-[0-9]+$ ]]; then
+                    warn "chump gap reserve failed for shared-blocker '$_check_name': $_reserved"
+                    continue
+                fi
+                info "  filed $_reserved: $_title"
+
+                local _ts
+                _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                local _desc
+                _desc="Shared CI-blocker detected by stuck-pr-filer (${_ts}).
+
+Failing CI step:  ${_check_name}
+Script path:      ${_script_path:-unknown}
+Affected PRs:     ${_count} (#${_pr_nums//,/ #})
+Oldest failure:   ${_max_hrs}h
+
+Recent changes to script on origin/main:
+${_script_context}
+
+Suggested action:
+  1. Check whether origin/main already fixed this test (git log above).
+  2. If yes: bulk-rebase affected PRs so they pick up the fix.
+  3. If no: fix the script and ship a patch PR first.
+  4. Once root cause resolved, re-arm affected PRs via bot-merge.sh."
+
+                chump gap set "$_reserved" --description "$_desc" 2>/dev/null || \
+                    warn "  could not set description on $_reserved"
+
+                local _lock_dir="${REAPER_LOCK_DIR:-.chump-locks}"
+                printf '{"event":"alert","kind":"shared_ci_blocker","ts":"%s","check_name":"%s","affected_prs":%s,"filed_gap":"%s"}\n' \
+                    "$_ts" "$_check_name" "$_count" "$_reserved" \
+                    >> "$_lock_dir/ambient.jsonl" 2>/dev/null || true
+
+                FILED=$((FILED + 1))
+                ;;
+
+            INDIVIDUAL)
+                local _pr_num _check_name _ci_red_hours _pr_branch _gap_ids
+                IFS=$'\t' read -r _pr_num _check_name _ci_red_hours _pr_branch _gap_ids <<<"$_rest"
+                local _reason="CI red for ${_ci_red_hours}h"
+                local _summary="At least one required check has been failing for ${_ci_red_hours}h (threshold ${CI_FAIL_THRESHOLD_HOURS}h). Failing check: ${_check_name}."
+                local _details="Original gap(s) cited in PR title/commits: ${_gap_ids}
+Branch: ${_pr_branch}
+Failing check: ${_check_name}
+Stuck class: CI-RED — ci-flake-rerun or human investigation required"
+                file_stuck_gap "$_pr_num" "$_reason" "$_summary" "$_details" "CI-RED"
+                ;;
+        esac
+    done <<<"$group_data"
+}
+
 # Walk open PRs.
 PRS_JSON=$(gh pr list --json number,title,headRefName,isDraft,author,mergeStateStatus,autoMergeRequest,updatedAt 2>/dev/null || echo "[]")
 if [[ "$PRS_JSON" == "[]" || -z "$PRS_JSON" ]]; then
@@ -345,7 +512,8 @@ while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE IS_DRAFT AUTHOR MSS HAS_AUTOME
     # Condition: CI red. Pull check status; treat any FAILURE/CANCELLED as red.
     CI_RED=0
     CI_RED_HOURS=0
-    if CHECKS_JSON=$(gh pr checks "$PR_NUM" --json state,completedAt 2>/dev/null); then
+    CI_FAILING_NAMES=""
+    if CHECKS_JSON=$(gh pr checks "$PR_NUM" --json name,state,completedAt 2>/dev/null); then
         CI_RED_HOURS=$(python3 -c "
 import json, sys
 from datetime import datetime, timezone
@@ -370,6 +538,24 @@ for r in rows:
 print(worst)
 " "$CHECKS_JSON" 2>/dev/null || echo 0)
         [[ "$CI_RED_HOURS" -gt 0 ]] && CI_RED=1
+        # Collect failing check names for shared-blocker aggregation.
+        if [[ "$CI_RED" == "1" ]]; then
+            CI_FAILING_NAMES=$(python3 -c "
+import json, sys
+try:
+    rows = json.loads(sys.argv[1])
+except Exception:
+    sys.exit()
+seen = set()
+for r in rows:
+    state = (r.get('state') or '').upper()
+    if state in ('FAILURE','CANCELLED','TIMED_OUT','ACTION_REQUIRED','ERROR'):
+        name = (r.get('name') or '').strip()
+        if name and name not in seen:
+            seen.add(name)
+            print(name)
+" "$CHECKS_JSON" 2>/dev/null || true)
+        fi
     fi
 
     # Condition: ORPHAN. auto-merge disarmed + no live lease for the cited gap.
@@ -393,9 +579,25 @@ print(worst)
         SUMMARY="Branch needs rebase. mergeStateStatus=DIRTY for ${AGE_HOURS}h (threshold ${DIRTY_THRESHOLD_HOURS}h)."
         STUCK_CLASS="REBASE"
     elif [[ "$CI_RED" == "1" && "$CI_RED_HOURS" -ge "$CI_FAIL_THRESHOLD_HOURS" ]]; then
-        REASON="CI red for ${CI_RED_HOURS}h"
-        SUMMARY="At least one required check has been failing for ${CI_RED_HOURS}h (threshold ${CI_FAIL_THRESHOLD_HOURS}h)."
         STUCK_CLASS="CI-RED"
+        # Defer CI-RED filing: detect_shared_ci_blockers() decides whether to file
+        # one shared-blocker gap (N>=$SHARED_BLOCKER_THRESHOLD) or individual gaps.
+        _names_to_record="${CI_FAILING_NAMES:-}"
+        if [[ -n "$_names_to_record" ]]; then
+            while IFS= read -r _cname; do
+                [[ -z "$_cname" ]] && continue
+                printf '%s\t%s\t%s\t%s\t%s\n' \
+                    "$PR_NUM" "$_cname" "$CI_RED_HOURS" "$PR_BRANCH" "${GAP_IDS:-none}" \
+                    >> "$SHARED_BLOCKER_TMP"
+            done <<<"$_names_to_record"
+        else
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$PR_NUM" "unknown" "$CI_RED_HOURS" "$PR_BRANCH" "${GAP_IDS:-none}" \
+                >> "$SHARED_BLOCKER_TMP"
+        fi
+        info "  → CI-RED deferred (${CI_RED_HOURS}h); will check for shared-blocker pattern"
+        SKIPPED=$((SKIPPED+1))
+        continue
     elif [[ "$BEHIND" -ge "$BEHIND_COMMITS_THRESHOLD" ]]; then
         REASON="${BEHIND} commits behind ${BASE}"
         SUMMARY="Branch is ${BEHIND} commits behind ${BASE} (threshold ${BEHIND_COMMITS_THRESHOLD}). The CLAUDE.md hard rule says rebase at 15."
@@ -414,6 +616,9 @@ Stuck class: ${STUCK_CLASS} — REBASE→pr-watch-shepherd, CI-RED→ci-flake-re
 
     file_stuck_gap "$PR_NUM" "$REASON" "$SUMMARY" "$DETAILS" "$STUCK_CLASS"
 done <<<"$PR_TSV"
+
+detect_shared_ci_blockers
+rm -f "${SHARED_BLOCKER_TMP:-}"
 
 echo ""
 green "=== stuck-pr-filer done: $FILED filed, $SKIPPED skipped ==="
