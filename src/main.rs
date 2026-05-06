@@ -1646,22 +1646,184 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // INFRA-586: PM health signal for META-046 curation.
+            // Checks: P0 ages, vague (no AC) pickable, double-encoded
+            // depends_on, missing-dep refs, open-with-closed-pr, race-*
+            // test pollution. Exits non-zero if P0 >5, any P0 stuck >7d,
+            // or any vague pickable gap exists.
+            "audit-priorities" => {
+                let now_secs = unix_ts() as i64;
+                let all_gaps = match store.list(None) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap audit-priorities: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let p0_open: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| g.priority == "P0" && g.status == "open")
+                    .collect();
+                let p0_count = p0_open.len();
+
+                let p0_stuck: Vec<(&gap_store::GapRow, i64)> = p0_open
+                    .iter()
+                    .filter_map(|g| {
+                        let age_days = (now_secs - g.created_at) / 86400;
+                        if age_days > 7 {
+                            Some((*g, age_days))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                let vague_pickable: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| g.status == "open" && g.acceptance_criteria.trim().is_empty())
+                    .collect();
+
+                let double_encoded: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| {
+                        let d = g.depends_on.trim();
+                        !d.is_empty() && d != "[]" && d.starts_with('"')
+                    })
+                    .collect();
+
+                let all_ids: std::collections::HashSet<&str> =
+                    all_gaps.iter().map(|g| g.id.as_str()).collect();
+                let mut missing_dep_pairs: Vec<(String, String)> = Vec::new();
+                for g in &all_gaps {
+                    if let Ok(serde_json::Value::Array(arr)) =
+                        serde_json::from_str::<serde_json::Value>(&g.depends_on)
+                    {
+                        for v in arr {
+                            if let serde_json::Value::String(dep_id) = v {
+                                if !all_ids.contains(dep_id.as_str()) {
+                                    missing_dep_pairs.push((g.id.clone(), dep_id));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let open_with_closed_pr: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| g.status == "open" && g.closed_pr.is_some())
+                    .collect();
+
+                let race_pollution: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| g.status == "open" && g.title.to_lowercase().starts_with("race-"))
+                    .collect();
+
+                if json_out {
+                    let report = serde_json::json!({
+                        "p0_count": p0_count,
+                        "p0_stuck_7d": p0_stuck.len(),
+                        "vague_pickable": vague_pickable.len(),
+                        "double_encoded_depends_on": double_encoded.len(),
+                        "missing_dep_refs": missing_dep_pairs.len(),
+                        "open_with_closed_pr": open_with_closed_pr.len(),
+                        "race_test_pollution": race_pollution.len(),
+                        "p0_gaps": p0_open.iter().map(|g| {
+                            let age_days = (now_secs - g.created_at) / 86400;
+                            serde_json::json!({"id": g.id, "title": g.title, "age_days": age_days})
+                        }).collect::<Vec<_>>(),
+                    });
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).unwrap_or_default()
+                    );
+                } else {
+                    println!("=== gap audit-priorities ===");
+                    println!();
+                    println!("P0 open gaps: {}", p0_count);
+                    for g in &p0_open {
+                        let age_days = (now_secs - g.created_at) / 86400;
+                        let stuck = if age_days > 7 { " *** STUCK" } else { "" };
+                        println!("  {} — {} ({}d old{})", g.id, g.title, age_days, stuck);
+                    }
+                    println!();
+                    println!("Vague (no AC) pickable: {}", vague_pickable.len());
+                    for g in &vague_pickable {
+                        println!("  {} — {} ({})", g.id, g.title, g.priority);
+                    }
+                    println!();
+                    println!("Double-encoded depends_on: {}", double_encoded.len());
+                    for g in &double_encoded {
+                        println!("  {} — depends_on={}", g.id, g.depends_on);
+                    }
+                    println!();
+                    println!("Missing-dep refs: {}", missing_dep_pairs.len());
+                    for (id, dep) in &missing_dep_pairs {
+                        println!("  {} → {} (not in registry)", id, dep);
+                    }
+                    println!();
+                    println!("Open with closed_pr set: {}", open_with_closed_pr.len());
+                    for g in &open_with_closed_pr {
+                        println!(
+                            "  {} — {} (closed_pr=#{})",
+                            g.id,
+                            g.title,
+                            g.closed_pr.unwrap_or(0)
+                        );
+                    }
+                    println!();
+                    println!("race-* test pollution (open): {}", race_pollution.len());
+                    for g in &race_pollution {
+                        println!("  {} — {}", g.id, g.title);
+                    }
+                }
+
+                let mut fail_reasons: Vec<String> = Vec::new();
+                if p0_count > 5 {
+                    fail_reasons.push(format!("P0 count {} > 5", p0_count));
+                }
+                if !p0_stuck.is_empty() {
+                    fail_reasons.push(format!("{} P0 gap(s) stuck >7d", p0_stuck.len()));
+                }
+                if !vague_pickable.is_empty() {
+                    fail_reasons.push(format!(
+                        "{} vague (no AC) pickable gap(s)",
+                        vague_pickable.len()
+                    ));
+                }
+                if fail_reasons.is_empty() {
+                    return Ok(());
+                }
+                for r in &fail_reasons {
+                    eprintln!("FAIL: {}", r);
+                }
+                std::process::exit(1);
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
-                eprintln!("  list       [--status open|done] [--json]");
-                eprintln!("  reserve    --domain D --title T [--priority P1] [--effort s]");
-                eprintln!("               (positional) D title…  — same as --domain / --title");
-                eprintln!("  claim      <GAP-ID> [--session ID] [--worktree PATH] [--ttl 3600]");
-                eprintln!("  preflight  <GAP-ID>");
-                eprintln!("  ship       <GAP-ID> [--session ID] [--update-yaml] [--closed-pr N]");
-                eprintln!("  set        <GAP-ID> [--title T] [--description D] [--priority P]");
-                eprintln!("                       [--effort E] [--status S] [--notes N]");
+                eprintln!("  list             [--status open|done] [--json]");
+                eprintln!("  reserve          --domain D --title T [--priority P1] [--effort s]");
                 eprintln!(
-                    "                       [--source-doc S] [--opened-date D] [--closed-date D] [--closed-pr N]"
+                    "                     (positional) D title…  — same as --domain / --title"
                 );
-                eprintln!("                       [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
-                eprintln!("  dump       [--out PATH] [--per-file [--out-dir docs/gaps/]]");
-                eprintln!("  import     [--yaml docs/gaps.yaml]");
+                eprintln!(
+                    "  claim            <GAP-ID> [--session ID] [--worktree PATH] [--ttl 3600]"
+                );
+                eprintln!("  preflight        <GAP-ID>");
+                eprintln!(
+                    "  ship             <GAP-ID> [--session ID] [--update-yaml] [--closed-pr N]"
+                );
+                eprintln!(
+                    "  set              <GAP-ID> [--title T] [--description D] [--priority P]"
+                );
+                eprintln!("                             [--effort E] [--status S] [--notes N]");
+                eprintln!(
+                    "                             [--source-doc S] [--opened-date D] [--closed-date D] [--closed-pr N]"
+                );
+                eprintln!("                             [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
+                eprintln!("  dump             [--out PATH] [--per-file [--out-dir docs/gaps/]]");
+                eprintln!("  import           [--yaml docs/gaps.yaml]");
+                eprintln!("  audit-priorities [--json]   # PM health check (META-046)");
                 std::process::exit(2);
             }
         }
