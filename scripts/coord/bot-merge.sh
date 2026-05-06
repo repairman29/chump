@@ -1134,6 +1134,9 @@ if [[ -z "$EXISTING_PR" ]]; then
     GAP_LINE=""
     [[ -n "$COMMIT_GAP_IDS" ]] && GAP_LINE="**Gaps addressed:** $COMMIT_GAP_IDS"
 
+    # INFRA-501: PR title is public — ensure the last commit subject complies with
+    # docs/agents/RESEARCH_PRIVACY.md § "PR title and commit subject hygiene".
+    # Prohibited: specific findings, model-tier outcomes, IP-protection mechanic language.
     PR_TITLE=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline | tail -1 | sed 's/^[a-f0-9]* //')
 
     # INFRA-060 (M2): if a `.chump-plans/<gap>.md` exists for any gap cited in
