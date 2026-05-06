@@ -252,6 +252,70 @@ fi
 # ── Paths ─────────────────────────────────────────────────────────────────────
 mkdir -p "$LOCK_DIR"
 
+# ── INFRA-403: claim-time exclusivity check ───────────────────────────────────
+# Closes the pre-PR race window: two sessions can both pass gap-preflight in the
+# same millisecond (no lease exists yet), then proceed to write leases and create
+# duplicate PRs. Re-checking here — right before writing our lease — aborts the
+# slower session cleanly. Without this, Check 1.5 in gap-preflight.sh only fires
+# when the OTHER PR already exists, leaving a window where both sessions create PRs.
+#
+# Two sources checked (mirrors gap-preflight Checks 1.5 + 2):
+#   1. .chump-locks/*.json — sibling may have written its lease while we were in
+#      the NATS KV / ambient-glance phase above.
+#   2. Open PRs for this gap-ID — sibling is already past gap-claim and pushing.
+#
+# Bypass: CHUMP_SPECULATIVE=1 (intentional race per INFRA-193) or
+#         CHUMP_PREFLIGHT_PR_CHECK=0 (skip PR check; lease check still runs).
+if [[ "${CHUMP_SPECULATIVE:-0}" != "1" ]]; then
+    _CLAIM_RACE="$(python3 - "$LOCK_DIR" "$GAP_ID" "$SESSION_ID" <<'PYEOF' 2>/dev/null || true
+import json, os, sys
+from datetime import datetime, timezone
+lock_dir, gap_id, my_session = sys.argv[1], sys.argv[2], sys.argv[3]
+now = datetime.now(timezone.utc)
+for fname in (sorted(os.listdir(lock_dir)) if os.path.isdir(lock_dir) else []):
+    if not fname.endswith(".json"):
+        continue
+    path = os.path.join(lock_dir, fname)
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except Exception:
+        continue
+    if d.get("session_id", "") == my_session:
+        continue
+    if d.get("gap_id") != gap_id:
+        continue
+    try:
+        expires = datetime.fromisoformat(d["expires_at"].rstrip("Z")).replace(tzinfo=timezone.utc)
+        heartbeat = datetime.fromisoformat(d["heartbeat_at"].rstrip("Z")).replace(tzinfo=timezone.utc)
+        grace = 30
+        stale_secs = 900
+        if (now - expires).total_seconds() > grace or (now - heartbeat).total_seconds() > stale_secs:
+            continue
+    except Exception:
+        continue
+    print(d.get("session_id", "unknown"))
+    sys.exit(0)
+PYEOF
+)"
+    if [[ -n "$_CLAIM_RACE" ]]; then
+        printf '[gap-claim] INFRA-403: lease conflict at claim time — session %s already holds %s.\n' "$_CLAIM_RACE" "$GAP_ID" >&2
+        printf '[gap-claim] Aborting to prevent duplicate-PR race (INFRA-403). Re-run musher --pick for next gap.\n' >&2
+        exit 1
+    fi
+
+    if [[ "${CHUMP_PREFLIGHT_PR_CHECK:-1}" != "0" ]] && command -v gh >/dev/null 2>&1; then
+        _PR_CLAIM="$(gh pr list --state open --search "${GAP_ID} in:title" \
+            --json number,headRefName -q '.[0]' 2>/dev/null || true)"
+        if [[ -n "$_PR_CLAIM" && "$_PR_CLAIM" != "null" && "$_PR_CLAIM" != "{}" ]]; then
+            _PR_NUM="$(printf '%s' "$_PR_CLAIM" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("number",""))' 2>/dev/null || true)"
+            printf '[gap-claim] INFRA-403: open PR #%s already implements %s — aborting claim.\n' "$_PR_NUM" "$GAP_ID" >&2
+            printf '[gap-claim] Sibling session reached gh pr create first (Check 1.5 at claim time).\n' >&2
+            exit 1
+        fi
+    fi
+fi
+
 # Sanitise session ID for use as filename (match Rust agent_lease.rs rules)
 SAFE_ID="${SESSION_ID//[^a-zA-Z0-9_-]/_}"
 LOCK_FILE="$LOCK_DIR/${SAFE_ID}.json"
