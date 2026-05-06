@@ -10,6 +10,8 @@ Chump has two co-equal lanes:
 
 **License:** [MIT](LICENSE) · **Platform:** macOS, Linux, Windows (WSL2) · **Docs:** [repairman29.github.io/chump](https://repairman29.github.io/chump/)
 
+> **Using a local LLM? No API key?** → [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) — 5-step guide for solo devs on Ollama.
+
 ---
 
 ## Quick start
