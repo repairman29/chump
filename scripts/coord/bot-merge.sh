@@ -740,6 +740,12 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     done
 fi
 
+# ── INFRA-537: ship-quality grade signal accumulators ───────────────────────
+# null = signal not captured (step skipped). true/false = captured result.
+_grade_clippy_ok="null"
+_grade_test_added="null"
+_grade_rebase_clean="null"
+
 # ── 1. Fetch and rebase ───────────────────────────────────────────────────────
 stage_start "git fetch $REMOTE/$BASE_BRANCH"
 run_timed_hb "git fetch" 180 git fetch "$REMOTE" "$BASE_BRANCH" --quiet
@@ -767,8 +773,10 @@ if [[ "$BEHIND" -gt 0 ]]; then
     fi
     if ! run_timed_hb "git rebase" 60 git rebase "${_rebase_args[@]}"; then
         red "git rebase failed or timed out — resolve conflicts or retry."
+        _grade_rebase_clean="false"
         exit 1
     fi
+    _grade_rebase_clean="true"
     stage_done
 
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
@@ -871,8 +879,10 @@ elif command -v cargo &>/dev/null; then
     stage_start "cargo clippy --workspace --all-targets"
     if ! run_timed_hb "cargo clippy" 900 cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
         red "clippy found errors — fix them before merging."
+        _grade_clippy_ok="false"
         exit 1
     fi
+    _grade_clippy_ok="true"
     stage_done
     green "clippy clean."
 fi
@@ -954,6 +964,19 @@ if [[ $SKIP_TESTS -eq 0 ]] && [[ "${CHUMP_SKIP_CI_SHELL:-0}" != "1" ]]; then
         stage_done
         green "All ${#CHANGED_TESTS[@]} PR-modified CI shell tests passed."
     fi
+fi
+
+# ── INFRA-537: test-added signal ─────────────────────────────────────────────
+# Scan the PR diff for test additions. Heuristic: any Rust #[test] or #[cfg(test)]
+# annotation, or any file whose path contains 'test' added/modified in this branch.
+_grade_test_added="false"
+_test_base="${CHUMP_BASE_REF:-${REMOTE}/${BASE_BRANCH}}"
+if git diff --name-only --diff-filter=AM "${_test_base}...HEAD" 2>/dev/null \
+        | grep -qiE 'test'; then
+    _grade_test_added="true"
+elif git diff "${_test_base}...HEAD" 2>/dev/null \
+        | grep -qE '^\+.*#\[(test|cfg\(test)'; then
+    _grade_test_added="true"
 fi
 
 # ── 4a-decomp. Decomposition advisory (FLEET-025 / FLEET-011 v0) ─────────────
@@ -1589,6 +1612,24 @@ EOF
     elif [[ "$_skip_target_purge" = "1" ]]; then
         info "Skipping ./target purge — CARGO_TARGET_DIR is outside this worktree (INFRA-210)."
     fi
+fi
+
+# INFRA-537: emit ship_grade event for per-agent/per-model quality tracking.
+# Captures clippy_ok, test_added, rebase_clean signals gathered above.
+# model and agent_id come from fleet env vars (set by run-fleet.sh / worker.sh);
+# for manual ships they default to "unknown".
+if [[ $DRY_RUN -eq 0 ]]; then
+    _grade_model="${FLEET_MODEL:-unknown}"
+    _grade_agent="${AGENT_ID:-unknown}"
+    _grade_amb="${REPO_ROOT}/.chump-locks/ambient.jsonl"
+    _grade_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    for gid in "${GAP_IDS[@]:-}"; do
+        [[ -z "$gid" ]] && continue
+        printf '{"event":"ship_grade","kind":"ship_grade","ts":"%s","gap_id":"%s","model":"%s","agent_id":"%s","clippy_ok":%s,"test_added":%s,"rebase_clean":%s}\n' \
+            "$_grade_ts" "$gid" "$_grade_model" "$_grade_agent" \
+            "$_grade_clippy_ok" "$_grade_test_added" "$_grade_rebase_clean" \
+            >> "$_grade_amb" 2>/dev/null || true
+    done
 fi
 
 # INFRA-492: emit session_end with outcome=shipped on the success path.
