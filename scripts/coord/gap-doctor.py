@@ -437,6 +437,26 @@ def main() -> int:
 
     args = ap.parse_args()
     root = repo_root()
+
+    # INFRA-499: post-INFRA-498 the per-file docs/gaps/<ID>.yaml mirrors
+    # are deleted from origin/main entirely (state.db is canonical,
+    # state.sql is the tracked human-readable mirror). gap-doctor's
+    # drift checks compare state.db against those YAMLs — with no
+    # tracked YAMLs the entire purpose is moot.
+    #
+    # Always short-circuit. Cron/launchd schedules keep working but
+    # do nothing useful. Local stale worktrees may still have YAMLs
+    # on disk (from before the deletion landed), but they're not on
+    # origin/main and not the source of truth.
+    print(
+        "[gap-doctor] post-INFRA-498: docs/gaps/*.yaml deleted from "
+        "origin/main — no drift to detect. state.db is canonical, "
+        ".chump/state.sql is the tracked mirror. Use 'chump gap show "
+        "<ID>' for human-readable per-gap inspection.",
+        file=sys.stderr,
+    )
+    return 0
+
     handlers = {
         "doctor": cmd_doctor,
         "sync-from-yaml": cmd_sync_from_yaml,

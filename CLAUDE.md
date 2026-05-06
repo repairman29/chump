@@ -37,7 +37,7 @@ bash scripts/setup/install-ambient-hooks.sh 2>&1 | tail -2  # FLEET-023, idempot
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 chump-coord watch &                              # FLEET-006 (skip if NATS unavailable)
 chump gap list --status open                     # canonical .chump/state.db
-python3 scripts/coord/gap-doctor.py doctor       # INFRA-155 drift check
+# python3 scripts/coord/gap-doctor.py doctor     # vacuous post-INFRA-498 — no YAML drift to detect
 scripts/coord/gap-preflight.sh <GAP-ID>          # exits 1 if not pickable
 chump --briefing <GAP-ID>                        # MEM-007 per-gap context
 ```
@@ -106,10 +106,10 @@ then `chump gap ship <ID> --update-yaml` and release the lease.
 - **Use `scripts/coord/chump-commit.sh <files> -m "msg"`**, not
   `git add && git commit` — wrapper resets unrelated staged files from
   other agents (twice-observed stomp on 2026-04-17).
-- **Never hand-edit `docs/gaps/<ID>.yaml`** — derived artifact of
-  `.chump/state.db`. Mutate via `chump gap …` only. Pre-commit guard
-  (INFRA-200) is blocking; if it fires switch to the CLI rather than
-  bypass.
+- **Mutate gaps via `chump gap …` only** — `.chump/state.db` is canonical;
+  `.chump/state.sql` is the tracked human-readable mirror. Per-file
+  `docs/gaps/<ID>.yaml` mirrors were deleted in INFRA-498 as redundant
+  with state.sql. Use `chump gap show <ID>` for human inspection.
 - **Rebase if your branch is more than 15 commits behind main.**
 - **Auto-merge IS the default** (since INFRA-MERGE-QUEUE 2026-04-19).
   `bot-merge.sh --auto-merge` arms `gh pr merge --auto --squash` at PR
