@@ -68,6 +68,7 @@ threshold_secs() {
 }
 
 reaper_setup watchdog
+reaper_check_disk_headroom  # INFRA-453: exit 0 + ALERT if <5% free
 
 ALERTS=0
 OK=0

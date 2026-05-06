@@ -55,6 +55,7 @@ if [[ "$IN_GITHUB_ACTIONS" != "true" ]]; then
     # shellcheck source=../lib/reaper-instrumentation.sh
     source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
     reaper_setup ci-summary
+    reaper_check_disk_headroom  # INFRA-453: exit 0 + ALERT if <5% free
     reaper_rotate_log /tmp/chump-ci-summary-rerun.out.log
     reaper_rotate_log /tmp/chump-ci-summary-rerun.err.log
     trap 'rc=$?; [[ $rc -ne 0 ]] && reaper_finish fail "{\"exit\":$rc}"' EXIT

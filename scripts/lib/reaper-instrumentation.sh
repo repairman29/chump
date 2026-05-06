@@ -130,6 +130,51 @@ print(json.dumps({
     printf '%s\n' "$json" >> "$ambient" 2>/dev/null || true
 }
 
+# reaper_check_disk_headroom — INFRA-453 disk-headroom circuit breaker.
+#
+# Call once at the top of every reaper (after reaper_setup). Checks df on
+# /tmp (heartbeat writes) and REAPER_LOCK_DIR (ambient.jsonl writes). If
+# either has <5% free space, emits ALERT kind=disk_critical to ambient.jsonl
+# and exits 0 — don't fail the launchd job, don't swallow the symptom.
+#
+# Bypass: CHUMP_SKIP_DISK_HEADROOM=1 (tests / dev only).
+reaper_check_disk_headroom() {
+    [[ "${CHUMP_SKIP_DISK_HEADROOM:-0}" == "1" ]] && return 0
+    local threshold="${CHUMP_DISK_CRITICAL_PCT:-5}"
+    local lock_dir="${REAPER_LOCK_DIR:-$(_reaper_main_repo)/.chump-locks}"
+    local ambient="$lock_dir/ambient.jsonl"
+    local ts
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    # Always check /tmp (heartbeat dir) and the lock dir (ambient.jsonl dir).
+    local dirs=("/tmp" "$lock_dir")
+    local triggered=0
+    local dir
+    for dir in "${dirs[@]}"; do
+        [[ -d "$dir" ]] || dir="$(dirname "$dir")"
+        local df_out used_pct free_pct
+        df_out="$(df -Ph "$dir" 2>/dev/null | tail -1)" || continue
+        used_pct="$(printf '%s\n' "$df_out" | awk '{print $5}' | tr -d '%')"
+        [[ "$used_pct" =~ ^[0-9]+$ ]] || continue
+        free_pct=$(( 100 - used_pct ))
+        if [[ "$free_pct" -lt "$threshold" ]]; then
+            printf 'ALERT [disk_critical] %s: %d%% free (threshold %d%%). df: %s\n' \
+                "$dir" "$free_pct" "$threshold" "$df_out" >&2
+            mkdir -p "$lock_dir" 2>/dev/null || true
+            printf '{"event":"ALERT","kind":"disk_critical","reaper":"%s","dir":"%s","free_pct":%d,"threshold_pct":%d,"ts":"%s","df":"%s"}\n' \
+                "${REAPER_NAME:-unknown}" "$dir" "$free_pct" "$threshold" "$ts" "$df_out" \
+                >> "$ambient" 2>/dev/null || true
+            triggered=1
+        fi
+    done
+
+    if [[ "$triggered" -eq 1 ]]; then
+        printf '[%s] disk critically low — %s exiting early to avoid ENOSPC heartbeat failure\n' \
+            "$ts" "${REAPER_NAME:-unknown}" >&2
+        exit 0
+    fi
+}
+
 # reaper_grade_watchdog — INFRA-452 cross-grade.
 #
 # The watchdog grades pr/worktree/branch/etc., but if the watchdog itself
