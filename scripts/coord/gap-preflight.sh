@@ -502,6 +502,22 @@ $SIBLING_GAP_YAML"
         fi
     fi
 
+    # ── INFRA-524: atomic-picker self-lock bypass ──────────────────────────
+    # _pick_and_claim_gap.py writes .gap-<ID>.lock with "session_id timestamp"
+    # before returning the gap to the worker. If this session wrote the lock,
+    # the gap is already ours — skip check_lease_claim to prevent the race
+    # where the worker claims via the lock file then immediately fails preflight
+    # when run inside the spawned agent's pre-flight (different CLAUDE_SESSION_ID
+    # but same CHUMP_SESSION_ID, so the JSON lease looks like a foreign claim).
+    _gap_lock_file="$LOCK_DIR/.gap-${GAP_ID}.lock"
+    if [[ -f "$_gap_lock_file" ]] && [[ -n "$SESSION_ID" ]]; then
+        _gap_lock_session="$(awk 'NR==1{print $1}' "$_gap_lock_file" 2>/dev/null || true)"
+        if [[ "$_gap_lock_session" == "$SESSION_ID" ]]; then
+            green "OK $GAP_ID — .gap-lock owned by this session; skip lease check (INFRA-524)."
+            continue
+        fi
+    fi
+
     # ── Check 2: live lease claim by another session ───────────────────────
     CLAIM="$(check_lease_claim "$GAP_ID" "$SESSION_ID")"
     if [[ -n "$CLAIM" ]]; then
