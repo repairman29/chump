@@ -1111,10 +1111,16 @@ async fn main() -> Result<()> {
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
                 let stack_on = flag("--stack-on");
                 let force = args.iter().any(|a| a == "--force");
+                // INFRA-592: --quiet suppresses progress; default emits one-line
+                // per phase to stderr so --json piping of stdout is unaffected.
+                let quiet = args.iter().any(|a| a == "--quiet");
 
                 // FLEET-029: ambient glance before allocating ID
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
                     use std::process::Command;
+                    if !quiet {
+                        eprint!("checking registry health...");
+                    }
                     let glance_result = Command::new("bash")
                         .arg("scripts/coord/chump-ambient-glance.sh")
                         .arg("--domain")
@@ -1132,6 +1138,9 @@ async fn main() -> Result<()> {
                             std::process::exit(1);
                         }
                     }
+                    if !quiet {
+                        eprintln!(" ok");
+                    }
                 }
 
                 // INFRA-216: use reserve_verified so sibling sessions on the
@@ -1140,8 +1149,14 @@ async fn main() -> Result<()> {
                 let session_id = std::env::var("CHUMP_SESSION_ID")
                     .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
                     .unwrap_or_else(|_| format!("chump-anon-{}", unix_ts()));
+                if !quiet {
+                    eprint!("reserving ID...");
+                }
                 match store.reserve_verified(&domain, &title, &priority, &effort, &session_id) {
                     Ok(id) => {
+                        if !quiet {
+                            eprintln!(" done {id}");
+                        }
                         // INFRA-061 (M3): when --stack-on is passed, emit the
                         // bot-merge.sh hint so dispatchers (and humans) know
                         // to chain. Goes to stderr so the bare gap id stays
@@ -1222,6 +1237,9 @@ async fn main() -> Result<()> {
                         return Ok(());
                     }
                     Err(e) => {
+                        if !quiet {
+                            eprintln!(); // end the "reserving ID..." line
+                        }
                         eprintln!("chump gap reserve: {e:#}");
                         std::process::exit(1);
                     }
