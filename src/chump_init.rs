@@ -1,12 +1,19 @@
-//! `chump init` — UX-001 first-run flow.
+//! `chump init` — first-run wizard (INFRA-597) + UX-001 web-server flow.
 //!
-//! Chains: detect-model → write-.env → start-server → open-browser
+//! Running `chump init` on a clean machine:
+//!   (a) checks brew tap repairman29/chump is installed
+//!   (b) writes ~/.chump/config.toml (API key + offline-LLM base URL)
+//!   (c) prompts for FLEET_MODEL preference (sonnet/haiku/opus)
+//!   (d) verifies binary freshness (INFRA-148 staleness check)
+//!   (e) writes ~/.chump/state.db scaffold
+//!   (f) emits next-step hint
 //!
-//! Idempotent: safe to re-run. Skips steps that are already done (e.g. .env
-//! already exists, server already running).
+//! Idempotent: safe to re-run. Skips steps that are already done.
+//! Pass --no-interactive to skip stdin prompts (for CI / test-chump-init-clean-machine.sh).
 
 use anyhow::{anyhow, Result};
-use std::path::Path;
+use std::io::{self, Write as IoWrite};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 // ────────────────────────── public entry point ──────────────────────────
@@ -19,6 +26,8 @@ use std::time::Duration;
 pub struct InitArgs {
     pub port: u16,
     pub open_browser: bool,
+    /// Skip stdin prompts; derive choices from env vars only (for CI/tests).
+    pub no_interactive: bool,
 }
 
 impl Default for InitArgs {
@@ -30,6 +39,7 @@ impl Default for InitArgs {
         Self {
             port,
             open_browser: true,
+            no_interactive: false,
         }
     }
 }
@@ -40,9 +50,9 @@ impl InitArgs {
     /// Recognized flags:
     /// - `--port N` — bind the web server to port N (overrides `CHUMP_WEB_PORT`)
     /// - `--no-browser` — skip the browser-open step (for CI / automation)
+    /// - `--no-interactive` — skip stdin prompts; use env-var defaults only
     ///
-    /// Returns `Err` for unknown flags or missing values, so callers can surface
-    /// a usage error instead of silently accepting noise.
+    /// Returns `Err` for unknown flags or missing values.
     pub fn from_argv(argv: &[String]) -> Result<Self> {
         let mut out = Self::default();
         let mut i = 0;
@@ -61,8 +71,12 @@ impl InitArgs {
                     out.open_browser = false;
                     i += 1;
                 }
+                "--no-interactive" => {
+                    out.no_interactive = true;
+                    i += 1;
+                }
                 "--help" | "-h" => {
-                    println!("Usage: chump init [--port N] [--no-browser]");
+                    println!("Usage: chump init [--port N] [--no-browser] [--no-interactive]");
                     std::process::exit(0);
                 }
                 other => return Err(anyhow!("chump init: unknown flag {other:?}")),
@@ -73,52 +87,253 @@ impl InitArgs {
 }
 
 pub fn run_init(repo_root: &Path, args: &InitArgs) -> Result<()> {
-    println!("🚀  chump init — first-run setup");
+    println!("chump init — first-run wizard");
     println!();
 
-    // PRODUCT-015: emit kind=activation_install on the first successful init
-    // (dedup via .chump/activation/installed_at marker). Local-only.
+    // PRODUCT-015: emit kind=activation_install on the first successful init.
     crate::activation::emit_install();
 
-    // Step 1: detect model
-    let model_cfg = detect_model();
-    println!("  [1/4] model detection ... {}", model_cfg.summary());
+    // (a) brew tap check
+    let tap_ok = check_brew_tap("repairman29/chump");
+    if tap_ok {
+        println!("  [a] brew tap repairman29/chump ... ok");
+    } else {
+        println!("  [a] brew tap repairman29/chump ... NOT installed");
+        println!("      Fix: brew tap repairman29/chump && brew install chump");
+    }
 
-    // Step 2: write .env (skip if already present)
+    // (b+c) ~/.chump/config.toml — API key + offline-LLM base + FLEET_MODEL
+    let chump_home = chump_home_dir();
+    std::fs::create_dir_all(&chump_home)
+        .map_err(|e| anyhow!("cannot create {}: {e}", chump_home.display()))?;
+
+    let config_path = chump_home.join("config.toml");
+    if config_path.exists() {
+        println!("  [b] ~/.chump/config.toml already exists — skipping write");
+        println!("  [c] FLEET_MODEL — using value in config.toml");
+    } else {
+        let fleet_model = resolve_fleet_model(args.no_interactive)?;
+        let (api_key, openai_base) = resolve_api_config(args.no_interactive)?;
+        write_config_toml(&config_path, &api_key, &openai_base, &fleet_model)?;
+        println!("  [b] wrote ~/.chump/config.toml");
+        println!("  [c] FLEET_MODEL={fleet_model}");
+    }
+
+    // (d) binary freshness (INFRA-148)
+    match crate::version::check_gap_binary_staleness(repo_root) {
+        crate::version::StalenessCheck::Fresh => {
+            println!(
+                "  [d] binary freshness ... ok ({})",
+                crate::version::chump_build_sha()
+            );
+        }
+        crate::version::StalenessCheck::Skip => {
+            println!("  [d] binary freshness ... skipped (no git or unknown SHA)");
+        }
+        crate::version::StalenessCheck::Stale {
+            commits_ahead,
+            latest_subject,
+        } => {
+            println!("  [d] binary freshness ... STALE ({commits_ahead} commit(s) behind HEAD)");
+            println!("      Latest: {latest_subject}");
+            println!("      Fix: brew upgrade chump  (or cargo install --path .)");
+        }
+    }
+
+    // (e) ~/.chump/state.db scaffold
+    let db_path = chump_home.join("state.db");
+    if db_path.exists() {
+        println!("  [e] ~/.chump/state.db already exists — skipping scaffold");
+    } else {
+        write_state_db_scaffold(&db_path)?;
+        println!("  [e] wrote ~/.chump/state.db scaffold");
+    }
+
+    // UX-001: detect model, write .env (repo-local), start server, open browser
+    let model_cfg = detect_model();
+    println!("  [*] model detection ... {}", model_cfg.summary());
+
     let env_path = repo_root.join(".env");
     if env_path.exists() {
-        println!("  [2/4] .env already exists — skipping write");
+        println!("  [*] .env already exists — skipping write");
     } else {
         write_minimal_env(&env_path, &model_cfg, args.port)?;
-        println!("  [2/4] wrote {}", env_path.display());
+        println!("  [*] wrote {}", env_path.display());
     }
 
-    // Step 3: ensure server is running (start if not)
     if server_is_healthy(args.port) {
-        println!("  [3/4] server already running on port {}", args.port);
+        println!("  [*] server already running on port {}", args.port);
     } else {
         start_server(repo_root, args.port)?;
-        println!("  [3/4] server started on port {}", args.port);
+        println!("  [*] server started on port {}", args.port);
     }
 
-    // Step 4: open browser (or note where to navigate)
     let url = format!("http://localhost:{}/v2/", args.port);
     if args.open_browser {
-        println!("  [4/4] opening {}", url);
+        println!("  [*] opening {}", url);
         open_browser(&url);
     } else {
-        println!("  [4/4] browser open skipped (--no-browser); navigate to {url}");
+        println!("  [*] browser open skipped (--no-browser); navigate to {url}");
     }
 
+    // (f) next-step hint
     println!();
-    println!("  ✓  Setup complete.");
-    println!("     PWA: {}", url);
+    println!("  chump init complete — try:");
+    println!("    chump gen \"summarize my last 5 commits\"");
+    println!("    chump fleet start");
+    println!();
+
     if !model_cfg.has_model() {
-        println!();
-        println!("  ⚠  No local model detected. Install Ollama and pull a model:");
-        println!("       brew install ollama && ollama pull qwen2.5:7b");
-        println!("     Then re-run: chump init");
+        println!("  No local model detected. Install Ollama and pull a model:");
+        println!("    brew install ollama && ollama pull qwen2.5:7b");
+        println!("  Then re-run: chump init");
     }
+    Ok(())
+}
+
+// ────────────────────────── (a) brew tap check ──────────────────────────
+
+fn check_brew_tap(tap: &str) -> bool {
+    // `brew tap` lists installed taps; grep for the target.
+    let out = std::process::Command::new("brew").args(["tap"]).output();
+    match out {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            stdout.lines().any(|l| l.trim() == tap)
+        }
+        _ => false,
+    }
+}
+
+// ────────────────────────── (b+c) config.toml ──────────────────────────
+
+fn chump_home_dir() -> PathBuf {
+    // Respect CHUMP_HOME override (used by tests).
+    if let Ok(h) = std::env::var("CHUMP_HOME") {
+        return PathBuf::from(h);
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home).join(".chump")
+}
+
+fn resolve_api_config(no_interactive: bool) -> Result<(String, String)> {
+    // Prefer env vars first (CI / non-interactive).
+    let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+    let openai_base = std::env::var("OPENAI_API_BASE").unwrap_or_default();
+
+    if !api_key.is_empty() || !openai_base.is_empty() || no_interactive {
+        return Ok((api_key, openai_base));
+    }
+
+    // Interactive: ask the user.
+    println!();
+    println!("  Configure API access (press Enter to skip a field):");
+    let api_key = prompt("    ANTHROPIC_API_KEY: ")?;
+    let openai_base = if api_key.is_empty() {
+        prompt("    OPENAI_API_BASE (for offline/local LLM, e.g. http://localhost:11434/v1): ")?
+    } else {
+        String::new()
+    };
+    println!();
+    Ok((api_key, openai_base))
+}
+
+fn resolve_fleet_model(no_interactive: bool) -> Result<String> {
+    if let Ok(m) = std::env::var("FLEET_MODEL") {
+        if !m.is_empty() {
+            return Ok(m);
+        }
+    }
+    if no_interactive {
+        return Ok("haiku".to_string());
+    }
+    println!();
+    println!("  FLEET_MODEL preference:");
+    println!("    1) haiku  — fast, cost-efficient (default for IDE sessions)");
+    println!("    2) sonnet — balanced (default for fleet workers)");
+    println!("    3) opus   — highest quality (~50x haiku cost)");
+    let choice = prompt("  Choose [1/2/3, default=2]: ")?;
+    let model = match choice.trim() {
+        "1" => "haiku",
+        "3" => "opus",
+        _ => "sonnet",
+    };
+    println!();
+    Ok(model.to_string())
+}
+
+fn write_config_toml(
+    path: &Path,
+    api_key: &str,
+    openai_base: &str,
+    fleet_model: &str,
+) -> Result<()> {
+    let mut lines = vec![
+        "# ~/.chump/config.toml — generated by chump init".to_string(),
+        "# Edit freely. Re-run 'chump init' only overwrites if this file is absent.".to_string(),
+        String::new(),
+        format!("fleet_model = {:?}", fleet_model),
+        String::new(),
+        "[api]".to_string(),
+    ];
+
+    if !api_key.is_empty() {
+        lines.push(format!("anthropic_api_key = {:?}", api_key));
+    } else {
+        lines.push("# anthropic_api_key = \"sk-ant-...\"".to_string());
+    }
+
+    if !openai_base.is_empty() {
+        lines.push(format!("openai_api_base = {:?}", openai_base));
+    } else {
+        lines.push(
+            "# openai_api_base = \"http://localhost:11434/v1\"  # for offline/local LLM"
+                .to_string(),
+        );
+    }
+
+    std::fs::write(path, lines.join("\n") + "\n")?;
+    Ok(())
+}
+
+fn prompt(label: &str) -> Result<String> {
+    print!("{label}");
+    io::stdout().flush()?;
+    let mut buf = String::new();
+    io::stdin().read_line(&mut buf)?;
+    Ok(buf.trim().to_string())
+}
+
+// ────────────────────────── (e) state.db scaffold ──────────────────────────
+
+fn write_state_db_scaffold(path: &Path) -> Result<()> {
+    // Minimal SQLite scaffold so `chump gap list` works immediately on a clean machine.
+    let conn = rusqlite::Connection::open(path)
+        .map_err(|e| anyhow!("cannot create {}: {e}", path.display()))?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS gaps (
+            id          TEXT PRIMARY KEY,
+            domain      TEXT NOT NULL DEFAULT '',
+            title       TEXT NOT NULL DEFAULT '',
+            status      TEXT NOT NULL DEFAULT 'open',
+            priority    TEXT NOT NULL DEFAULT 'P2',
+            effort      TEXT NOT NULL DEFAULT 's',
+            kind        TEXT NOT NULL DEFAULT 'feature',
+            assignee    TEXT NOT NULL DEFAULT '',
+            deps        TEXT NOT NULL DEFAULT '',
+            paths       TEXT NOT NULL DEFAULT '',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            meta        TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS gap_log (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            gap_id      TEXT NOT NULL,
+            event       TEXT NOT NULL,
+            ts          TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+    )
+    .map_err(|e| anyhow!("state.db scaffold failed: {e}"))?;
     Ok(())
 }
 
@@ -228,7 +443,6 @@ fn probe_first_model(url: &str) -> Option<String> {
         .output()
         .ok()?;
     let body = String::from_utf8(out.stdout).ok()?;
-    // Parse {"data":[{"id":"<model>"},...]}
     let v: serde_json::Value = serde_json::from_str(&body).ok()?;
     v["data"].as_array()?.first()?["id"]
         .as_str()
@@ -273,7 +487,6 @@ fn server_is_healthy(port: u16) -> bool {
 fn start_server(repo_root: &Path, port: u16) -> Result<()> {
     let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump"));
 
-    // Start chump --web in the background (detached from this process)
     let child = std::process::Command::new(&exe)
         .arg("--web")
         .arg("--port")
@@ -287,13 +500,12 @@ fn start_server(repo_root: &Path, port: u16) -> Result<()> {
     match child {
         Ok(_) => {}
         Err(e) => {
-            eprintln!("  [3/4] could not spawn server: {e}");
-            eprintln!("        Start manually: chump --web --port {}", port);
+            eprintln!("  [*] could not spawn server: {e}");
+            eprintln!("      Start manually: chump --web --port {}", port);
             return Ok(());
         }
     }
 
-    // Wait up to 15 seconds for the health endpoint to respond
     print!("         waiting for server");
     for i in 0..15 {
         std::thread::sleep(Duration::from_secs(1));
@@ -320,16 +532,13 @@ fn open_browser(url: &str) {
             .spawn()
     } else {
         eprintln!(
-            "  [4/4] cannot open browser on this platform — navigate to: {}",
+            "  [*] cannot open browser on this platform — navigate to: {}",
             url
         );
         return;
     };
     if let Err(e) = result {
-        eprintln!(
-            "  [4/4] could not open browser ({}): navigate to {}",
-            e, url
-        );
+        eprintln!("  [*] could not open browser ({}): navigate to {}", e, url);
     }
 }
 
@@ -341,12 +550,12 @@ mod tests {
 
     #[test]
     fn from_argv_empty_uses_defaults() {
-        // Snapshot env so default() is deterministic regardless of host shell.
         let prev = std::env::var("CHUMP_WEB_PORT").ok();
         std::env::remove_var("CHUMP_WEB_PORT");
         let args = InitArgs::from_argv(&[]).unwrap();
         assert_eq!(args.port, 3000);
         assert!(args.open_browser);
+        assert!(!args.no_interactive);
         if let Some(p) = prev {
             std::env::set_var("CHUMP_WEB_PORT", p);
         }
@@ -368,11 +577,24 @@ mod tests {
     }
 
     #[test]
+    fn from_argv_no_interactive_flag_works() {
+        let argv: Vec<String> = vec!["--no-interactive".into()];
+        let args = InitArgs::from_argv(&argv).unwrap();
+        assert!(args.no_interactive);
+    }
+
+    #[test]
     fn from_argv_combined_flags() {
-        let argv: Vec<String> = vec!["--port".into(), "4001".into(), "--no-browser".into()];
+        let argv: Vec<String> = vec![
+            "--port".into(),
+            "4001".into(),
+            "--no-browser".into(),
+            "--no-interactive".into(),
+        ];
         let args = InitArgs::from_argv(&argv).unwrap();
         assert_eq!(args.port, 4001);
         assert!(!args.open_browser);
+        assert!(args.no_interactive);
     }
 
     #[test]
@@ -398,7 +620,6 @@ mod tests {
 
     #[test]
     fn write_minimal_env_uses_supplied_port() {
-        // PID-unique tempdir so concurrent tests don't race on the .env path.
         let tmp = std::env::temp_dir().join(format!("chump_init_env_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
@@ -420,5 +641,88 @@ mod tests {
             "stale hard-coded 3000 leaked through:\n{written}"
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn write_config_toml_anthropic_key() {
+        let tmp = std::env::temp_dir().join(format!("chump_init_toml_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let p = tmp.join("config.toml");
+        write_config_toml(&p, "sk-ant-test", "", "sonnet").unwrap();
+        let s = std::fs::read_to_string(&p).unwrap();
+        assert!(
+            s.contains("fleet_model = \"sonnet\""),
+            "fleet_model missing:\n{s}"
+        );
+        assert!(
+            s.contains("anthropic_api_key = \"sk-ant-test\""),
+            "api key missing:\n{s}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn write_config_toml_openai_base() {
+        let tmp =
+            std::env::temp_dir().join(format!("chump_init_toml_oai_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let p = tmp.join("config.toml");
+        write_config_toml(&p, "", "http://localhost:11434/v1", "haiku").unwrap();
+        let s = std::fs::read_to_string(&p).unwrap();
+        assert!(
+            s.contains("fleet_model = \"haiku\""),
+            "fleet_model missing:\n{s}"
+        );
+        assert!(
+            s.contains("openai_api_base = \"http://localhost:11434/v1\""),
+            "openai_base missing:\n{s}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn write_state_db_scaffold_creates_tables() {
+        let tmp = std::env::temp_dir().join(format!("chump_init_db_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let p = tmp.join("state.db");
+        write_state_db_scaffold(&p).unwrap();
+        assert!(p.exists(), "state.db not created");
+        let conn = rusqlite::Connection::open(&p).unwrap();
+        let tables: Vec<String> = {
+            let mut stmt = conn
+                .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+                .unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+        assert!(
+            tables.contains(&"gaps".to_string()),
+            "gaps table missing: {tables:?}"
+        );
+        assert!(
+            tables.contains(&"gap_log".to_string()),
+            "gap_log table missing: {tables:?}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn resolve_fleet_model_from_env() {
+        std::env::set_var("FLEET_MODEL", "opus");
+        let m = resolve_fleet_model(true).unwrap();
+        assert_eq!(m, "opus");
+        std::env::remove_var("FLEET_MODEL");
+    }
+
+    #[test]
+    fn resolve_fleet_model_default_no_interactive() {
+        std::env::remove_var("FLEET_MODEL");
+        let m = resolve_fleet_model(true).unwrap();
+        assert_eq!(m, "haiku");
     }
 }
