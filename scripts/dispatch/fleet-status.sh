@@ -14,6 +14,7 @@
 # Usage:
 #   scripts/dispatch/fleet-status.sh           # tmux dashboard (interactive)
 #   scripts/dispatch/fleet-status.sh --once    # single snapshot to stdout
+#   scripts/dispatch/fleet-status.sh --json    # single JSON object to stdout
 #   scripts/dispatch/fleet-status.sh --pane ambient|queue|agents
 #                                              # render just one pane (used by tmux)
 #
@@ -225,6 +226,76 @@ render_all() {
   render_ambient
 }
 
+render_json() {
+  local PY="${PYTHON:-python3}"
+  "$PY" - "$LOCK_DIR" "$AMBIENT" <<'PY'
+import json, os, sys, time, collections
+
+lock_dir = sys.argv[1]
+ambient_path = sys.argv[2]
+now = time.time()
+
+# active_leases + fleet_workers_alive: count .json lease files
+leases = [f for f in os.listdir(lock_dir) if f.endswith(".json")] if os.path.isdir(lock_dir) else []
+active_leases = len(leases)
+fleet_workers_alive = active_leases
+
+# parse ambient for ships_24h and waste_30m
+ships_24h = 0
+waste_30m = 0
+cutoff_24h = now - 24 * 3600
+cutoff_30m = now - 30 * 60
+
+if os.path.isfile(ambient_path):
+    with open(ambient_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            ts = rec.get("ts", "")
+            try:
+                t = time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ")
+                t_epoch = time.mktime(t)
+            except (TypeError, ValueError):
+                continue
+            event = rec.get("event", "")
+            if event in ("gap_shipped", "ship") and t_epoch >= cutoff_24h:
+                ships_24h += 1
+            if event in ("waste", "fleet_waste", "idle_waste", "abandoned_lease") and t_epoch >= cutoff_30m:
+                waste_30m += 1
+
+# pickable_count: query chump gap list for open unclaimed gaps
+import subprocess
+pickable_count = 0
+try:
+    result = subprocess.run(
+        ["chump", "gap", "list", "--status", "open", "--json"],
+        capture_output=True, text=True, timeout=10
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        gaps = json.loads(result.stdout)
+        if isinstance(gaps, list):
+            pickable_count = sum(1 for g in gaps if not g.get("claimed_by"))
+except Exception:
+    # fallback: count lease files vs open gaps heuristic
+    pickable_count = -1  # unknown
+
+out = {
+    "active_leases": active_leases,
+    "ships_24h": ships_24h,
+    "pickable_count": pickable_count,
+    "waste_30m": waste_30m,
+    "fleet_workers_alive": fleet_workers_alive,
+    "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+}
+print(json.dumps(out))
+PY
+}
+
 # ---------- entrypoint ----------
 
 mode="tmux"
@@ -232,11 +303,17 @@ pane=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --once)        mode="once"; shift ;;
+    --json)        mode="json"; shift ;;
     --pane)        pane="${2:-}"; shift 2 ;;
     -h|--help)     sed -n '1,30p' "$0"; exit 0 ;;
     *)             echo "[fleet-status] unknown arg: $1" >&2; exit 2 ;;
   esac
 done
+
+if [[ "$mode" == "json" ]]; then
+  render_json
+  exit 0
+fi
 
 if [[ -n "$pane" ]]; then
   case "$pane" in
