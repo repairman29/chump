@@ -1,9 +1,8 @@
-//! INFRA-477: per-session cost ledger.
+//! INFRA-477 / INFRA-534: per-session cost ledger.
 //!
-//! MVP scope (this PR): elapsed-seconds + outcome only. Token-counting
-//! is deferred to a follow-up gap because it requires hooking every LLM
-//! call site, which is more invasive than the "performance feedback"
-//! payoff justifies in one PR.
+//! INFRA-477 MVP: elapsed-seconds + outcome.
+//! INFRA-534 follow-up: token counts (input/output/cache_read) captured
+//! into session_end so we can compute actual $ cost per shipped gap.
 //!
 //! Two events:
 //!   - `session_start` — written by `chump session-track --start <GAP>`
@@ -22,6 +21,34 @@
 //! that gates work would defeat its own purpose.
 
 use std::path::Path;
+
+/// Token usage counts from an Anthropic API response.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TokenCounts {
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+}
+
+/// Compute actual API cost in USD from token counts.
+///
+/// Default rates match Sonnet 4 pricing; override via env vars:
+/// - `CHUMP_COST_INPUT_PER_MTK`      (default 3.00  $/MTok)
+/// - `CHUMP_COST_OUTPUT_PER_MTK`     (default 15.00 $/MTok)
+/// - `CHUMP_COST_CACHE_READ_PER_MTK` (default 0.30  $/MTok)
+pub fn cost_usd_from_tokens(input: u64, output: u64, cache_read: u64) -> f64 {
+    let rate = |var: &str, default: f64| -> f64 {
+        std::env::var(var)
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    };
+    let input_rate = rate("CHUMP_COST_INPUT_PER_MTK", 3.00_f64);
+    let output_rate = rate("CHUMP_COST_OUTPUT_PER_MTK", 15.00_f64);
+    let cache_rate = rate("CHUMP_COST_CACHE_READ_PER_MTK", 0.30_f64);
+    (input as f64 * input_rate + output as f64 * output_rate + cache_read as f64 * cache_rate)
+        / 1_000_000.0
+}
 
 /// Session outcome — kept narrow on purpose. Adding new variants is a
 /// breaking change for downstream readers; do it deliberately.
@@ -75,7 +102,18 @@ pub fn emit_session_start(repo_root: &Path, session_id: &str, gap_id: &str) {
 /// most-recent matching `session_start` for `(gap_id, session_id)`.
 /// If no matching start is found, elapsed_seconds is `null` and the
 /// event still records the outcome — partial signal beats none.
-pub fn emit_session_end(repo_root: &Path, session_id: &str, gap_id: &str, outcome: Outcome) {
+///
+/// `tokens` is optional; when provided the event includes
+/// `input_tokens`, `output_tokens`, and `cache_read_tokens` so that
+/// downstream tools (waste-tally, fleet-status) can compute actual
+/// cost in USD.
+pub fn emit_session_end(
+    repo_root: &Path,
+    session_id: &str,
+    gap_id: &str,
+    outcome: Outcome,
+    tokens: Option<TokenCounts>,
+) {
     let lock_dir = repo_root.join(".chump-locks");
     let _ = std::fs::create_dir_all(&lock_dir);
     let ambient = lock_dir.join("ambient.jsonl");
@@ -88,12 +126,20 @@ pub fn emit_session_end(repo_root: &Path, session_id: &str, gap_id: &str, outcom
         Some(s) => format!(r#""elapsed_seconds":{}"#, s),
         None => r#""elapsed_seconds":null"#.to_string(),
     };
+    let token_fields = match tokens {
+        Some(t) => format!(
+            r#","input_tokens":{},"output_tokens":{},"cache_read_tokens":{}"#,
+            t.input_tokens, t.output_tokens, t.cache_read_tokens
+        ),
+        None => String::new(),
+    };
     let json = format!(
-        r#"{{"event":"session_end","kind":"session_end","ts":"{ts}","session_id":"{}","gap_id":"{}","outcome":"{}",{}}}"#,
+        r#"{{"event":"session_end","kind":"session_end","ts":"{ts}","session_id":"{}","gap_id":"{}","outcome":"{}",{}{}}}"#,
         json_escape_inline(session_id),
         json_escape_inline(gap_id),
         outcome.as_str(),
-        elapsed_field
+        elapsed_field,
+        token_fields
     );
     use std::io::Write;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -363,7 +409,7 @@ mod tests {
     fn infra477_emit_end_writes_outcome_and_elapsed_or_null() {
         let tmp = tempdir();
         // No matching start → elapsed_seconds:null but event still written
-        emit_session_end(&tmp, "sess-orphan", "INFRA-200", Outcome::Abandoned);
+        emit_session_end(&tmp, "sess-orphan", "INFRA-200", Outcome::Abandoned, None);
         let log = std::fs::read_to_string(tmp.join(".chump-locks/ambient.jsonl"))
             .expect("ambient.jsonl exists");
         assert!(log.contains(r#""kind":"session_end""#));
@@ -405,6 +451,77 @@ mod tests {
         assert_eq!(stats.n, 0);
         assert!(stats.median_elapsed_seconds.is_none());
         assert!(stats.render_oneline("INFRA").is_empty());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra534_emit_end_includes_token_fields() {
+        let tmp = tempdir();
+        emit_session_end(
+            &tmp,
+            "sess-tok",
+            "INFRA-534",
+            Outcome::Shipped,
+            Some(TokenCounts {
+                input_tokens: 1000,
+                output_tokens: 500,
+                cache_read_tokens: 200,
+            }),
+        );
+        let log = std::fs::read_to_string(tmp.join(".chump-locks/ambient.jsonl"))
+            .expect("ambient.jsonl exists");
+        assert!(log.contains(r#""input_tokens":1000"#), "got: {}", log);
+        assert!(log.contains(r#""output_tokens":500"#), "got: {}", log);
+        assert!(log.contains(r#""cache_read_tokens":200"#), "got: {}", log);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra534_cost_usd_from_tokens_dollar_math() {
+        // Default Sonnet rates: $3/MTok input, $15/MTok output, $0.30/MTok cache
+        // 1000 input + 500 output + 200 cache_read
+        // = (1000*3 + 500*15 + 200*0.30) / 1_000_000
+        // = (3000 + 7500 + 60) / 1_000_000 = 10560 / 1_000_000 = 0.01056
+        let cost = cost_usd_from_tokens(1000, 500, 200);
+        let expected = 0.01056_f64;
+        assert!(
+            (cost - expected).abs() < 1e-9,
+            "expected ~${:.5} got ${:.5}",
+            expected,
+            cost
+        );
+    }
+
+    #[test]
+    fn infra534_five_fake_session_ends_dollar_math() {
+        // 5 events each with input=10k output=2k cache=5k (Sonnet rates)
+        // per event: (10000*3 + 2000*15 + 5000*0.30)/1e6 = (30000+30000+1500)/1e6 = 0.0615
+        // total: 5 * 0.0615 = 0.3075
+        let tmp = tempdir();
+        let amb = tmp.join(".chump-locks/ambient.jsonl");
+        std::fs::create_dir_all(amb.parent().unwrap()).unwrap();
+        let lines: Vec<String> = (1..=5)
+            .map(|i| format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"2026-05-06T10:00:00Z","session_id":"sess-{}","gap_id":"INFRA-{}","outcome":"shipped","elapsed_seconds":600,"input_tokens":10000,"output_tokens":2000,"cache_read_tokens":5000}}"#,
+                i, i
+            ))
+            .collect();
+        std::fs::write(&amb, lines.join("\n") + "\n").unwrap();
+        // verify the math directly
+        let cost_per = cost_usd_from_tokens(10000, 2000, 5000);
+        let expected = 0.0615_f64;
+        assert!(
+            (cost_per - expected).abs() < 1e-9,
+            "per-event cost: expected ${:.4} got ${:.4}",
+            expected,
+            cost_per
+        );
+        let total = cost_per * 5.0;
+        assert!(
+            (total - 0.3075_f64).abs() < 1e-9,
+            "total: expected $0.3075 got ${:.4}",
+            total
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

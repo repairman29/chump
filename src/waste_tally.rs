@@ -48,6 +48,9 @@ pub struct WasteEntry {
     /// Sum of any `cooldown_secs`/`elapsed_seconds` field on these events.
     /// Best-effort — not all kinds carry a cost number.
     pub estimated_cost_secs: u64,
+    /// INFRA-534: actual API cost in USD derived from token counts on
+    /// `session_end` events. Zero for event kinds that don't carry tokens.
+    pub cost_usd: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -60,6 +63,9 @@ pub struct WasteReport {
     /// the same problem.
     pub total_incidents: u64,
     pub entries: Vec<WasteEntry>,
+    /// INFRA-534: total actual API cost (USD) across all waste entries
+    /// that carried token counts.
+    pub total_cost_usd: f64,
 }
 
 /// The set of `kind` values we classify as waste. Order matches the
@@ -122,7 +128,8 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         // filter. session_end events themselves are not waste — only the
         // ones with outcome=abandoned|starved are.
         let raw_kind = extract_field(line, "kind").unwrap_or_default();
-        let kind = if raw_kind == "session_end" {
+        let is_session_end_event = raw_kind == "session_end";
+        let kind = if is_session_end_event {
             match extract_field(line, "outcome").as_deref() {
                 Some("abandoned") => "session_abandoned".to_string(),
                 Some("starved") => "session_starved".to_string(),
@@ -147,6 +154,15 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         let cost = extract_int_field(line, "cooldown_secs")
             .or_else(|| extract_int_field(line, "elapsed_seconds"))
             .unwrap_or(0);
+        // INFRA-534: token-based cost only on session_end events.
+        let event_cost_usd = if is_session_end_event {
+            let input = extract_int_field(line, "input_tokens").unwrap_or(0);
+            let output = extract_int_field(line, "output_tokens").unwrap_or(0);
+            let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
+            crate::session_ledger::cost_usd_from_tokens(input, output, cache)
+        } else {
+            0.0
+        };
 
         // INFRA-489: kind-aware entity extraction. The naive "first
         // session field wins" approach picks the WATCHER (the coord
@@ -202,12 +218,14 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
                     count: 0,
                     incidents: 0,
                     estimated_cost_secs: 0,
+                    cost_usd: 0.0,
                 },
                 HashSet::new(),
             )
         });
         bucket.0.count += 1;
         bucket.0.estimated_cost_secs = bucket.0.estimated_cost_secs.saturating_add(cost);
+        bucket.0.cost_usd += event_cost_usd;
         bucket.1.insert(entity);
     }
 
@@ -222,11 +240,14 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         })
         .collect();
 
+    let total_cost_usd: f64 = entries.iter().map(|e| e.cost_usd).sum();
+
     WasteReport {
         since_seconds: since_secs,
         total_events: total_in_window,
         total_incidents,
         entries,
+        total_cost_usd,
     }
 }
 
@@ -298,25 +319,28 @@ impl WasteReport {
     /// Render as JSON for tooling consumption.
     /// INFRA-489: each entry now carries `incidents` (deduped) alongside
     /// `count` (raw); top level adds `total_incidents`.
+    /// INFRA-534: each entry includes `cost_usd`; top level adds `total_cost_usd`.
     pub fn render_json(&self) -> String {
         let entries_json: Vec<String> = self
             .entries
             .iter()
             .map(|e| {
                 format!(
-                    r#"{{"kind":"{}","count":{},"incidents":{},"estimated_cost_secs":{}}}"#,
+                    r#"{{"kind":"{}","count":{},"incidents":{},"estimated_cost_secs":{},"cost_usd":{:.6}}}"#,
                     json_escape(&e.kind),
                     e.count,
                     e.incidents,
-                    e.estimated_cost_secs
+                    e.estimated_cost_secs,
+                    e.cost_usd
                 )
             })
             .collect();
         format!(
-            r#"{{"since_seconds":{},"total_events":{},"total_incidents":{},"entries":[{}]}}"#,
+            r#"{{"since_seconds":{},"total_events":{},"total_incidents":{},"total_cost_usd":{:.6},"entries":[{}]}}"#,
             self.since_seconds,
             self.total_events,
             self.total_incidents,
+            self.total_cost_usd,
             entries_json.join(",")
         )
     }
@@ -504,7 +528,9 @@ mod tests {
                 count: 2,
                 incidents: 2,
                 estimated_cost_secs: 28800, // 8 hours
+                ..Default::default()
             }],
+            ..Default::default()
         };
         let text = report.render_text();
         assert!(text.contains("Zero Waste Report"));
@@ -524,7 +550,9 @@ mod tests {
                 count: 5,
                 incidents: 1,
                 estimated_cost_secs: 0,
+                ..Default::default()
             }],
+            ..Default::default()
         };
         let json = report.render_json();
         // Quick structural checks — not full parser.
@@ -607,7 +635,9 @@ mod tests {
                 count: 40,
                 incidents: 1,
                 estimated_cost_secs: 0,
+                ..Default::default()
             }],
+            ..Default::default()
         };
         let text = report.render_text();
         // Headline shows incidents AND alert count.
