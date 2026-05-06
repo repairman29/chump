@@ -338,23 +338,25 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
             # Bypass: FLEET_INLINE_BRIEFING=0 reverts to the old terse-prompt
             # behavior (forces claude to discover everything itself).
             if [[ "${FLEET_INLINE_BRIEFING:-1}" == "1" ]]; then
-                # INFRA-484: gap YAML may exist only in the main worktree
-                # (chump gap reserve writes it untracked). Fall back to
-                # the main repo's path so workers get gap context even
-                # when origin/main hasn't seen the YAML yet. Without this
-                # fallback, claude -p gets a "gap YAML not found" prompt,
-                # has to discover from state.db (not present in linked
-                # worktree), and burns the full FLEET_TIMEOUT_S in
-                # discovery — the exact wedge pattern observed
-                # 2026-05-05 (INFRA-470/471).
+                # INFRA-502: post-INFRA-498 docs/gaps/*.yaml is deleted.
+                # Use 'chump gap show <ID>' as the canonical gap-content
+                # source. State.db is canonical, the show subcommand
+                # renders the full gap dict in YAML format.
+                #
+                # Legacy paths preserved for back-compat with branches
+                # that pre-date INFRA-498 (e.g. an old worktree still
+                # has docs/gaps/<ID>.yaml on disk).
                 gap_yaml_path="$wt_path/docs/gaps/${GAP_ID}.yaml"
                 gap_yaml_main_path="$REPO_ROOT/docs/gaps/${GAP_ID}.yaml"
-                gap_yaml="(gap YAML not found — read docs/gaps/${GAP_ID}.yaml)"
-                if [[ -f "$gap_yaml_path" ]]; then
+                gap_yaml="(gap content not found — run 'chump gap show ${GAP_ID}')"
+                if chump_show_out="$(chump gap show "$GAP_ID" 2>/dev/null)" && [[ -n "$chump_show_out" ]]; then
+                    gap_yaml="$chump_show_out"
+                elif [[ -f "$gap_yaml_path" ]]; then
                     gap_yaml=$(cat "$gap_yaml_path")
+                    log "INFRA-502: legacy: gap YAML still in linked worktree"
                 elif [[ -f "$gap_yaml_main_path" ]]; then
                     gap_yaml=$(cat "$gap_yaml_main_path")
-                    log "INFRA-484: gap YAML missing in worktree; loaded from main repo"
+                    log "INFRA-502: legacy: gap YAML in main repo (pre-INFRA-498)"
                 fi
                 prompt="Ship gap ${GAP_ID}.
 
@@ -379,7 +381,7 @@ ${gap_yaml}
     git push (commit the close)
     gh pr merge <PR#> --auto --squash
 - Never push directly to main. Never use git commit --no-verify.
-- Never hand-edit docs/gaps/*.yaml — use 'chump gap set' / 'chump gap ship'.
+- Mutate gaps via 'chump gap set' / 'chump gap ship' (state.db canonical post-INFRA-498).
 - If you spot a real bug along the way, file it: 'chump gap reserve --domain INFRA --title \"...\"'
 
 When done, reply with the PR number only (e.g. \"#1234\")."
@@ -527,15 +529,24 @@ When done, reply with the PR number only (e.g. \"#1234\")."
         if [[ "$FLEET_BACKEND" == "chump-local" ]] \
            && [[ "${CHUMP_P0_FALLBACK:-1}" != "0" ]] \
            && command -v claude >/dev/null 2>&1; then
-            _gap_yaml_path="$wt_path/docs/gaps/${GAP_ID}.yaml"
+            # INFRA-502: priority lookup via 'chump gap show' (state.db
+            # canonical post-INFRA-498). Fall back to legacy YAML path
+            # if the show CLI fails (very old chump binary).
             _gap_priority=""
-            if [[ -f "$_gap_yaml_path" ]]; then
-                _gap_priority=$(grep -E '^\s*priority:' "$_gap_yaml_path" 2>/dev/null \
+            if _gs="$(chump gap show "$GAP_ID" 2>/dev/null)" && [[ -n "$_gs" ]]; then
+                _gap_priority=$(echo "$_gs" | grep -E '^\s*priority:' \
                     | head -1 | sed -E 's/.*priority:\s*//;s/["'\''"]//g' | tr -d ' ')
+            fi
+            if [[ -z "$_gap_priority" ]]; then
+                _gap_yaml_path="$wt_path/docs/gaps/${GAP_ID}.yaml"
+                if [[ -f "$_gap_yaml_path" ]]; then
+                    _gap_priority=$(grep -E '^\s*priority:' "$_gap_yaml_path" 2>/dev/null \
+                        | head -1 | sed -E 's/.*priority:\s*//;s/["'\''"]//g' | tr -d ' ')
+                fi
             fi
             if [[ "$_gap_priority" == "P0" ]]; then
                 log "INFRA-267: P0 gap $GAP_ID failed on chump-local rc=$rc — falling back to claude"
-                _fallback_prompt="Ship gap ${GAP_ID} (P0 fallback from chump-local rc=$rc). The gap is already claimed for this session; lease in .chump-locks/. Worktree: ${wt_path}. Pre-flight has already run. Read docs/gaps/${GAP_ID}.yaml for the gap spec. Implement, commit via scripts/coord/chump-commit.sh, ship via scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge."
+                _fallback_prompt="Ship gap ${GAP_ID} (P0 fallback from chump-local rc=$rc). The gap is already claimed for this session; lease in .chump-locks/. Worktree: ${wt_path}. Pre-flight has already run. Run 'chump gap show ${GAP_ID}' for the gap spec (post-INFRA-498). Implement, commit via scripts/coord/chump-commit.sh, ship via scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge."
                 FLEET_MODEL="${FLEET_MODEL-haiku}"
                 _model_arg=()
                 [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
