@@ -76,6 +76,7 @@ mod fleet_capability;
 mod fleet_db;
 mod fleet_status;
 mod fleet_tool;
+mod fleet_velocity;
 mod ftue_tool;
 mod gap_store;
 mod genai_conv;
@@ -463,6 +464,16 @@ async fn main() -> Result<()> {
         let repo_root = repo_path::repo_root();
         let status = fleet_status::snapshot(&repo_root);
         print!("{}", status.render_text());
+        return Ok(());
+    }
+
+    // `chump fleet-velocity` (INFRA-566) — ships/hour over 1h/6h/24h
+    // windows plus a forecast of hours until the open gap queue empties.
+    // Helps the operator decide when to file more gaps vs let fleet idle.
+    if args.get(1).map(String::as_str) == Some("fleet-velocity") {
+        let repo_root = repo_path::repo_root();
+        let snap = fleet_velocity::snapshot(&repo_root);
+        print!("{}", snap.render_text());
         return Ok(());
     }
 
