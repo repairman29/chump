@@ -173,6 +173,31 @@ if not dry_run:
     done <<<"$TRANSITIONS"
 fi
 
+# ── Check 1.5: INFRA-103 — serializing PRs blocking parallel-safe PRs ────────
+# If there are open auto-merge PRs labeled 'pr:serializing' AND there are also
+# open auto-merge PRs labeled 'pr:parallel-safe', the serializing PRs are
+# gating the parallel-safe ones unnecessarily. Alert so humans/agents can
+# reorder, expedite, or split the serializing PR.
+if command -v gh >/dev/null; then
+    say "checking for serializing PRs blocking parallel-safe PRs (INFRA-103)…"
+    _ser_count=0
+    _par_count=0
+    _ser_prs=""
+    _par_prs=""
+    if gh label list --limit 100 2>/dev/null | grep -q "pr:serializing"; then
+        _ser_prs="$(gh pr list --state open --label "pr:serializing" --json number,title --jq '.[] | "#\(.number) \(.title[:60])"' 2>/dev/null || true)"
+        _ser_count="$(printf '%s\n' "$_ser_prs" | grep -c '#' 2>/dev/null || echo 0)"
+    fi
+    if gh label list --limit 100 2>/dev/null | grep -q "pr:parallel-safe"; then
+        _par_prs="$(gh pr list --state open --label "pr:parallel-safe" --json number,title --jq '.[] | "#\(.number) \(.title[:60])"' 2>/dev/null || true)"
+        _par_count="$(printf '%s\n' "$_par_prs" | grep -c '#' 2>/dev/null || echo 0)"
+    fi
+    if [[ "$_ser_count" -gt 0 && "$_par_count" -gt 0 ]]; then
+        _ser_list="$(printf '%s\n' "$_ser_prs" | tr '\n' '|' | sed 's/|$//')"
+        emit_alert "serializing_blocking_parallel" "serializing_count=${_ser_count} parallel_safe_count=${_par_count} serializing_prs=${_ser_list:0:200}"
+    fi
+fi
+
 # ── Check 2: silent agents (lease present, no recent commits) ────────────────
 say "checking active leases for silent agents (no commits > ${AGENT_SILENT_MIN} min)..."
 shopt -s nullglob
