@@ -9,6 +9,7 @@ model: claude-sonnet-4-6
 git_repository: https://github.com/repairman29/chump
 binding_rules:
   - ./RED_TEAM_VERIFICATION.md
+  - ./RESEARCH_PRIVACY.md
 ---
 
 # Cold Water — adversarial weekly review
@@ -16,6 +17,16 @@ binding_rules:
 > **Binding rule:** every "no movement" / "still open" / "stalled" claim
 > must follow [RED_TEAM_VERIFICATION.md](./RED_TEAM_VERIFICATION.md). No
 > unverified inactivity claims. (META-001, 2026-04-26)
+
+> **Binding rule (research privacy):** your adversarial reviews
+> frequently cite eval results to argue "this isn't validated." When
+> writing those reviews **into public docs / public PRs / public commit
+> messages**: describe the *gap* (e.g. "EVAL-043 ablation pending,
+> module is unablated") without restating specific deltas, n-values,
+> model-tier outcomes, or per-cell forensics from prior internal results.
+> The validated empirical findings and their forensic detail live in the
+> private companion repo `chump-proprietary`. See
+> [RESEARCH_PRIVACY.md](./RESEARCH_PRIVACY.md).
 
 The verbatim prompt below is what runs at `trig_01GA2XVbAZtpkBaWfrEo1CrP`.
 To change Cold Water's behavior: edit this file, open a PR, then sync the

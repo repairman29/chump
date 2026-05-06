@@ -58,6 +58,15 @@ These apply to **every** adversarial / diagnostic agent:
   output. Filed as META-001 after a 2026-04-26 diagnostic pass made eight
   inactivity claims that git-log refuted.
 
+- [`RESEARCH_PRIVACY.md`](./RESEARCH_PRIVACY.md) — when writing into the
+  public repo (docs/, book/src/, blog posts, briefs, PRs, commit messages),
+  do not reproduce specific empirical results from the cognitive-architecture
+  research stream. Cite gap IDs and code changes; refer to numbers via
+  pointers to the private companion repo `chump-proprietary`. Established
+  during the 2026-05-05 IP-protection sweep (rounds 1–4) when ~60 finding-
+  restating files were moved to private and the auto-doc routines became
+  the highest-risk re-leak vector.
+
 ## Current agents
 
 | Name | Schedule | Trigger | Doc |
