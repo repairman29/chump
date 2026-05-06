@@ -1156,6 +1156,54 @@ pub fn cascade_for_status() -> Option<Arc<ProviderCascade>> {
     CASCADE_FOR_STATUS.get().cloned()
 }
 
+/// Return a one-line human-readable explanation of which cascade slot would be chosen and why.
+/// Used by `--why` transparency flag. Never panics; falls back gracefully when cascade is off.
+pub fn cascade_why() -> String {
+    if !cascade_enabled() {
+        let base = std::env::var("OPENAI_API_BASE").unwrap_or_default();
+        let label = if base.is_empty() {
+            "hosted OpenAI".to_string()
+        } else {
+            format!("single provider at {}", base)
+        };
+        return format!("cascade disabled — why: {label} (CHUMP_CASCADE_ENABLED not set)");
+    }
+    let cascade = ProviderCascade::from_env();
+    if cascade.slots.is_empty() {
+        return "cascade enabled but no slots configured — why: check CHUMP_PROVIDER_N_ENABLED"
+            .to_string();
+    }
+    let strategy = cascade._strategy.label();
+    let skip = cascade.skip_cloud_slots_for_round_type();
+    let min_privacy = std::env::var("CHUMP_ROUND_PRIVACY")
+        .ok()
+        .map(|s| parse_privacy_tier(&s));
+    let first_idx = if cascade._strategy == CascadeStrategy::Bandit {
+        cascade.bandit_first_available(min_privacy, skip)
+    } else {
+        cascade.first_available_slot(min_privacy, skip)
+    };
+    match first_idx {
+        Some(i) => {
+            let slot = &cascade.slots[i];
+            let rpd_pct = if slot.rpd_limit > 0 {
+                let used = slot.calls_today.load(Ordering::Relaxed);
+                format!("{:.0}%", 100.0 * used as f32 / slot.rpd_limit as f32)
+            } else {
+                "unlimited".to_string()
+            };
+            format!(
+                "cascade chose slot={} — why: {strategy} selection, RPD {rpd_pct} used, priority={}",
+                slot.name, slot.priority
+            )
+        }
+        None => format!(
+            "cascade: no slot available — why: {strategy} strategy, all {} slots rate-limited or circuit-open",
+            cascade.slots.len()
+        ),
+    }
+}
+
 /// Remaining RPD budget: (total across slots, per-slot (name, remaining)). Uses same headroom as rate limit. For orchestrator to decide worker count.
 pub fn cascade_budget_remaining() -> Option<(u64, Vec<(String, u32)>)> {
     let cascade = cascade_for_status().or_else(|| {
