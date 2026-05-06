@@ -367,6 +367,34 @@ run_timed_hb() {
     return "$_rc"
 }
 
+# INFRA-564: gh secondary rate-limit backoff — 60/120/240s, max 3 retries.
+# Usage: gh_with_backoff <label> <timeout_secs> <gh args...>
+gh_with_backoff() {
+    local label=$1 timeout_secs=$2; shift 2
+    local -a delays=(60 120 240)
+    local attempt=0 rc tmpout
+    while true; do
+        tmpout=$(mktemp)
+        set +e
+        run_timed_hb "$label" "$timeout_secs" gh "$@" 2>&1 | tee -a "$tmpout"
+        rc=${PIPESTATUS[0]}
+        set -e
+        if [[ $rc -eq 0 ]]; then
+            rm -f "$tmpout"; return 0
+        fi
+        if grep -qi "secondary rate limit" "$tmpout" && [[ $attempt -lt 3 ]]; then
+            local sleep_secs=${delays[$attempt]}
+            rm -f "$tmpout"
+            attempt=$((attempt + 1))
+            warn "gh secondary rate-limit hit — sleeping ${sleep_secs}s before retry ${attempt}/3…"
+            sleep "$sleep_secs"
+            continue
+        fi
+        rm -f "$tmpout"
+        return "$rc"
+    done
+}
+
 # ── INFRA-458: mid-flight chump-doctor wrap ──────────────────────────────────
 #
 # Every internal `chump <args>` call inside bot-merge.sh is at risk of hanging
@@ -1113,7 +1141,7 @@ if [[ -z "$EXISTING_PR" ]]; then
     if [[ $DRY_RUN -eq 1 ]]; then
         info "[dry-run] gh pr create --base $BASE_BRANCH --title \"$PR_TITLE\" …"
     else
-        if ! run_timed_hb "gh pr create" 120 gh pr create \
+        if ! gh_with_backoff "gh pr create" 120 pr create \
             --base "$BASE_BRANCH" \
             --title "$PR_TITLE" \
             --body "$(cat <<EOF
@@ -1468,7 +1496,7 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             green "[bench-mode] trial recorded → $_bench_log"
         else
             stage_start "gh pr merge #$TARGET_PR --auto --squash"
-            if ! run_timed_hb "gh pr merge" 120 gh pr merge "$TARGET_PR" --auto --squash; then
+            if ! gh_with_backoff "gh pr merge" 120 pr merge "$TARGET_PR" --auto --squash; then
                 red "gh pr merge failed or timed out."
                 exit 2
             fi
