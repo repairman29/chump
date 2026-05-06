@@ -14,10 +14,16 @@ REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 FLEET_SESSION="${FLEET_SESSION:-chump-fleet}"
 FLEET_SIZE="${FLEET_SIZE:-?}"
 REFRESH_S="${REFRESH_S:-5}"
+FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
+FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
+FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 
 cd "$REPO_ROOT"
 
 trap 'echo; echo "[control] bye."; exit 0' INT TERM
+
+# INFRA-558: emit fleet_queue_depth every 60s
+_last_queue_emit=0
 
 while :; do
     clear
@@ -81,6 +87,63 @@ for line in sys.stdin:
         echo "  (no ambient stream yet)"
     fi
     echo
+
+    # INFRA-558: emit fleet_queue_depth every 60s
+    if (( SECONDS - _last_queue_emit >= 60 )); then
+        _queue_json="$(chump gap list --status open --json 2>/dev/null || echo '[]')"
+        if [[ -n "$_queue_json" && "$_queue_json" != "[]" ]]; then
+            read -r _pickable _p0_count _oldest_p0_age < <(python3 - <<PYEOF
+import json, os, sys
+from datetime import date, datetime
+
+gaps = json.loads("""$_queue_json""")
+today = date.today()
+
+prio_filter = [p.strip().upper() for p in os.environ.get("FLEET_PRIORITY_FILTER", "P0,P1").split(",") if p.strip()]
+effort_filter = [e.strip().lower() for e in os.environ.get("FLEET_EFFORT_FILTER", "xs,s,m").split(",") if e.strip()]
+domain_filter = [d.strip().lower() for d in os.environ.get("FLEET_DOMAIN_FILTER", "").split(",") if d.strip()]
+
+pickable = 0
+p0_count = 0
+oldest_p0_opened = None
+
+for g in gaps:
+    p = (g.get("priority") or "").upper()
+    e = (g.get("effort") or "").lower()
+    d = (g.get("domain") or "").lower()
+
+    if p == "P0":
+        p0_count += 1
+        od = g.get("opened_date") or g.get("created_at") or ""
+        if od:
+            try:
+                opened = datetime.fromisoformat(od[:10]).date()
+                if oldest_p0_opened is None or opened < oldest_p0_opened:
+                    oldest_p0_opened = opened
+            except Exception:
+                pass
+
+    if prio_filter and p not in prio_filter:
+        continue
+    if effort_filter and e not in effort_filter:
+        continue
+    if domain_filter and d not in domain_filter:
+        continue
+    pickable += 1
+
+oldest_age = (today - oldest_p0_opened).days if oldest_p0_opened else 0
+print(pickable, p0_count, oldest_age)
+PYEOF
+            ) 2>/dev/null || { _pickable=0; _p0_count=0; _oldest_p0_age=0; }
+        else
+            _pickable=0; _p0_count=0; _oldest_p0_age=0
+        fi
+        "$REPO_ROOT/scripts/dev/ambient-emit.sh" fleet_queue_depth \
+            "pickable_count=${_pickable:-0}" \
+            "p0_count=${_p0_count:-0}" \
+            "oldest_p0_age_days=${_oldest_p0_age:-0}" 2>/dev/null || true
+        _last_queue_emit=$SECONDS
+    fi
 
     sleep "$REFRESH_S"
 done
