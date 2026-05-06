@@ -391,8 +391,10 @@ jobs:
         run: bash scripts/ci/test-infra-119-bot-merge-hang.sh
 
       - name: Dual-surface coordination smoke (INFRA-032)
-        # RESEARCH-018 closed 2026-04-23; use RESEARCH-020 (still-open P1)
-        run: bash scripts/ci/coord-surfaces-smoke.sh RESEARCH-020
+        # INFRA-499 (2026-05-06): post-INFRA-498 docs/gaps/*.yaml deleted,
+        # so CI's state.db starts empty. Smoke test now reserves a fresh
+        # gap on the fly when no arg given (self-contained).
+        run: bash scripts/ci/coord-surfaces-smoke.sh
 
       - name: chump-mcp-coord tools/list (INFRA-033)
         run: bash scripts/ci/test-mcp-coord-smoke.sh
