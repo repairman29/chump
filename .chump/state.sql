@@ -833,6 +833,93 @@ gaps:
     - "Empirical context: today's INFRA-337 subagent had no awareness that bot-merge.sh had been timing out for siblings — so it waited 600s before giving up. With reflexive telemetry, the briefing would have shown 'your last 2 INFRA-* dispatches stalled at bot-merge' and the agent could have skipped the wait and gone straight to manual recovery."
   depends_on: [MEM-007]
 
+- id: COG-041
+  domain: COG
+  title: semantic lesson retrieval — vector-embed reflection rows; on gap claim, briefing pulls top-k semantically-similar past lessons (replaces recency×frequency heuristic that surfaces noise as often as signal)
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - reflection rows + lessons rows vector-embedded on insert (use sqlite-vec or hnswlib)
+    - chump --briefing <ID> queries top-k by cosine similarity to gap title+description, not by recency×frequency
+    - "test: 5 gaps with intentionally distinct domains return distinct lesson sets"
+    - "measure: lesson read-rate by next session > 30% (vs. ~5% baseline for current heuristic)"
+  closed_date: '2026-05-05'
+  closed_pr: 1112
+
+- id: COG-042
+  domain: COG
+  title: differential reflection — every shipped PR's reflection row records 'what I did differently than last time on this gap class' explicitly; not just descriptive 'what I did'
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - reflection schema gains a delta_from_last field
+    - "tool: chump reflect --gap <ID> opens a 2-line prompt that asks what differed from prior similar gap; defaults populated by COG-041 retrieval"
+    - reflection rows missing delta_from_last fail a pre-commit guard on RESEARCH/EVAL gaps (require methodology delta) — advisory on others
+  closed_date: '2026-05-05'
+  closed_pr: 1120
+
+- id: COG-043
+  domain: COG
+  title: lesson action-telemetry — log when an agent's commit / PR actually applies a chump_improvement_targets directive (string-match against directive keywords + commit body, or LLM judge); the missing 'did it help' signal that unblocks COG-041 quality measurement
+  status: done
+  priority: P1
+  effort: m
+  closed_date: '2026-05-05'
+  closed_pr: 1115
+
+- id: COG-044
+  domain: COG
+  title: "hybrid lesson scoring: combine semantic + recency-frequency (score = alpha * semantic + (1-alpha) * recency); tunable alpha env"
+  status: open
+  priority: P2
+  effort: xs
+
+- id: COG-045
+  domain: COG
+  title: topic-diversity lesson selection — pick top-k that cover DIFFERENT topics (penalize cosine-similar pairs in selected set); avoids 5 redundant auth lessons
+  status: open
+  priority: P2
+  effort: s
+
+- id: COG-046
+  domain: COG
+  title: real embedding-backed lesson retrieval (Ollama nomic-embed-text) — replaces TF-IDF, catches synonyms TF-IDF can't (auth vs credentials, fleet vs dispatcher); local, no API cost
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-05-05'
+  closed_pr: 1118
+
+- id: COG-047
+  domain: COG
+  title: negative filter for lessons — don't re-surface a lesson already shown earlier in the same session (one-shot per session)
+  status: open
+  priority: P3
+  effort: xs
+
+- id: COG-048
+  domain: COG
+  title: lesson freshness decay — drop lessons that reference deleted files or dead modules (auto-staleness check via git ls-files)
+  status: open
+  priority: P3
+  effort: s
+
+- id: COG-049
+  domain: COG
+  title: context-expanded lesson queries — append recent ambient ALERTs + last 3 closed PR titles to the gap text before embedding/scoring; more signal in the query
+  status: open
+  priority: P3
+  effort: s
+
+- id: COG-050
+  domain: COG
+  title: "COG-043 follow-up: wire bot-merge.sh auto-close hook to call 'chump lesson-grade <GAP> --pr <N>' for action-telemetry events (deferred from #1115 due to sensitive-path code-reviewer escalation)"
+  status: open
+  priority: P3
+  effort: xs
+
 - id: COMP-001
   domain: COMP
   title: Skills system — reusable SKILL.md procedure documents with auto-create
@@ -1486,7 +1573,7 @@ gaps:
 - id: DOC-016
   domain: DOC
   title: docs/strategy/AGENT_MEMORY_TIERS.md — Tier 1 (code) / Tier 2 (docs) / Tier 3 (runtime-injected) memory model + Tier-2→Tier-3 migration discipline + scaling doctrine
-  status: open
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
@@ -1498,6 +1585,8 @@ gaps:
     - Cross-references META-028 (per-spawn defaults) + META-031 (CLAUDE.md governance) + INFRA-396 (silent-failure smokes) as the operational mechanisms
     - "Falsifying claim: if next session's measurement run shows post-META-028 self-ship rate REGRESSES below 70%, the Tier-3 leverage thesis is wrong and this doc retracts"
   depends_on: [META-025, META-028, META-031]
+  closed_date: '2026-05-03'
+  closed_pr: 1030
 
 - id: DOC-017
   domain: DOC
@@ -3240,7 +3329,7 @@ gaps:
 - id: EVAL-096
   domain: EVAL
   title: "EVAL-096: n=100/cell + cross-judge replication of CHUMP_BYPASS_NEUROMOD on current binary"
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -3251,6 +3340,8 @@ gaps:
     - Wilson 95% CIs computed for both cells
     - F3 aggregate-magnitude verdict reinstated or confirmed-retired based on threshold rule
     - FINDINGS.md F3 caveat updated with the result
+  closed_date: '2026-05-03'
+  closed_pr: 1017
 
 - id: EVAL-097
   domain: EVAL
@@ -3260,6 +3351,40 @@ gaps:
   effort: s
   closed_date: '2026-05-03'
   closed_pr: 1003
+
+- id: EVAL-098
+  domain: EVAL
+  title: validate COG-041 semantic retrieval — for N closed gaps run briefing both ways, measure Jaccard overlap of returned lessons; baseline before flipping CHUMP_LESSONS_SEMANTIC=1 by default
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "scripts/eval/cog-041-semantic-vs-recency.sh: pick 20 closed gaps from chump gap list --status done --json"
+    - for each, run chump --briefing both modes, parse the lessons block
+    - compute Jaccard overlap (intersection / union) per gap
+    - "aggregate: mean overlap, median overlap, fraction of gaps with overlap < 0.3 (= meaningfully different rankings)"
+    - write report to docs/eval/COG-041-semantic-vs-recency-<date>.md
+    - "prereg: lock methodology BEFORE running"
+  closed_date: '2026-05-05'
+  closed_pr: 1114
+
+- id: EVAL-099
+  domain: EVAL
+  title: COG-041 downstream quality eval — using COG-043 action-telemetry, compare semantic vs recency-frequency by 'lesson-applied rate' over next N sessions; the BETTER measurement that EVAL-098's divergence-only check explicitly cannot make
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-05-05'
+  closed_pr: 1117
+
+- id: EVAL-100
+  domain: EVAL
+  title: "EVAL-098 follow-up: harness grep-pipefail bug fix + commit first eval report (n=10, mean Jaccard 0.640, ACCEPT H1 at threshold)"
+  status: done
+  priority: P3
+  effort: xs
+  closed_date: '2026-05-05'
+  closed_pr: 1116
 
 - id: EVAL-82
   domain: EVAL
@@ -13480,7 +13605,7 @@ gaps:
 - id: INFRA-336
   domain: INFRA
   title: worker.sh classifies stalls into bot-merge-hung / cargo-build-timeout / API-credit-exhausted / unknown (chump_improvement_targets notes= field populated)
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -13488,11 +13613,13 @@ gaps:
     - "Classification is best-effort: probe last 60s of subagent stdout for known signatures"
     - "Test: scripts/ci/test-stall-cause-taxonomy.sh asserts each classification fires for the corresponding fixture stdout pattern"
   depends_on: [META-025]
+  closed_date: '2026-05-03'
+  closed_pr: 981
 
 - id: INFRA-337
   domain: INFRA
   title: Flip CHUMP_SCOPE_CHECK from warn to enforce for subagent-issued commits (INFRA-189 hardening)
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -13500,6 +13627,8 @@ gaps:
     - Operator override CHUMP_SCOPE_CHECK=warn still works
     - "Test: scripts/ci/test-scope-check-subagent-enforce.sh asserts subagent commits with out-of-scope edits are blocked, while parent-session commits emit warn"
   depends_on: [META-025, INFRA-189]
+  closed_date: '2026-05-03'
+  closed_pr: 995
 
 - id: INFRA-338
   domain: INFRA
@@ -14564,7 +14693,7 @@ gaps:
 - id: INFRA-390
   domain: INFRA
   title: COG-032 bench harness needs CHUMP_BENCH_MODE — bot-merge.sh disposes of PR (no merge to main) so trials are replayable per prereg requirement
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -14574,6 +14703,8 @@ gaps:
     - "Test: scripts/ci/test-bot-merge-bench-mode.sh — run bot-merge against a sandbox repo with CHUMP_BENCH_MODE=1; assert (a) auto-merge not armed (no autoMergeRequest in gh pr view), (b) JSONL line appended with all required fields, (c) state.db gap row UNCHANGED"
     - "Falsifying condition: if the prereg's 'replayable trials' requirement can be satisfied by re-checking out the bench task fixture each trial (bench is JSON-defined, not depend on main state), this gap is overengineering. Verify before implementing: re-read COG-032 prereg §3 (Cells) for whether the issue is bench-state mutation vs PR-state mutation."
   depends_on: [COG-032, INFRA-324]
+  closed_date: '2026-05-03'
+  closed_pr: 1011
 
 - id: INFRA-391
   domain: INFRA
@@ -14610,7 +14741,7 @@ gaps:
 - id: INFRA-393
   domain: INFRA
   title: COG-032 pilot harness — minimal serial trial runner (n=5 single-cell, naive; defers async/interleave to follow-up)
-  status: open
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
@@ -14622,6 +14753,8 @@ gaps:
     - "Test: scripts/ci/test-cog032-pilot-harness.sh runs --dry-run with stub bench file + asserts the plan output enumerates n trials with correct env-var matrix"
     - "Deferred to follow-up gap: interleaved A/B/C-per-task ordering, async parallelism, resilience to API errors mid-trial, lessons-snapshot capture per prereg §8"
   depends_on: [COG-032, INFRA-324, INFRA-390]
+  closed_date: '2026-05-03'
+  closed_pr: 1020
 
 - id: INFRA-394
   domain: INFRA
@@ -14681,7 +14814,7 @@ gaps:
 - id: INFRA-398
   domain: INFRA
   title: scripts/setup/install-all.sh first-run idempotent preflight — runs every install-*.sh on a new dogfood machine (sccache, launchd plists, hooks). Right now they're shipped but nobody runs them
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -14691,6 +14824,8 @@ gaps:
     - "Test: scripts/ci/test-install-all-idempotent.sh runs install-all.sh twice, asserts second run is no-op (no diffs, no plist re-loads)"
     - "Empirical context: today the operator manually invoked install-sccache.sh mid-session when cargo cold-builds were saturating the fleet; pre-INFRA-398 a new dogfood machine has all of these installer scripts but no entry point telling them to run."
   depends_on: [INFRA-202, FLEET-023, INFRA-209]
+  closed_date: '2026-05-03'
+  closed_pr: 1039
 
 - id: INFRA-399
   domain: INFRA
@@ -15206,7 +15341,7 @@ gaps:
 - id: INFRA-431
   domain: INFRA
   title: chump gap list — domain breakdown + filter test domains by default + warn when domain population is anomalous
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -15217,6 +15352,8 @@ gaps:
     - "Backward compat: --json output unchanged (no summary, no filtering — JSON is for tooling). Filtering only applies to human-readable output"
   notes: |
     Filed 2026-05-03 after the INFRA-428 audit. The 306-row test-fixture leak hid in plain sight for an unknown duration because the default chump gap list output flattens by ID alphabetically without flagging anomalous domain populations. The alert is the load-bearing piece — without it the next leak goes undetected just as long.
+  closed_date: '2026-05-04'
+  closed_pr: 1076
 
 - id: INFRA-438
   domain: INFRA
@@ -15246,7 +15383,7 @@ gaps:
 - id: INFRA-445
   domain: INFRA
   title: "PR #1080 stuck [CI-RED] — CI red for 9h"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -15265,11 +15402,13 @@ gaps:
     Original gap(s) cited in PR title/commits: INFRA-310
     Branch: chump/infra-310-fleet-2-20260503-204219
     Stuck class: CI-RED — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  closed_date: '2026-05-04'
+  closed_pr: 1080
 
 - id: INFRA-446
   domain: INFRA
   title: "PR #1076 stuck [CI-RED] — CI red for 9h"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -15288,11 +15427,13 @@ gaps:
     Original gap(s) cited in PR title/commits: INFRA-431
     Branch: chump/infra-431-gap-list-summary
     Stuck class: CI-RED — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  closed_date: '2026-05-04'
+  closed_pr: 1076
 
 - id: INFRA-447
   domain: INFRA
   title: "PR #1074 stuck [CI-RED] — CI red for 9h"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -15312,11 +15453,13 @@ gaps:
     INFRA-402
     Branch: chump/infra-402-set-fields-guard
     Stuck class: CI-RED — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  closed_date: '2026-05-04'
+  closed_pr: 1074
 
 - id: INFRA-448
   domain: INFRA
   title: "PR #1072 stuck [REBASE] — DIRTY for 9h"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -15335,11 +15478,13 @@ gaps:
     Original gap(s) cited in PR title/commits: FLEET-040
     Branch: chump/fleet-040-fleet-1-20260503-202546
     Stuck class: REBASE — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  closed_date: '2026-05-04'
+  closed_pr: 1072
 
 - id: INFRA-449
   domain: INFRA
   title: "PR #1068 stuck [REBASE] — DIRTY for 9h"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -15358,11 +15503,13 @@ gaps:
     Original gap(s) cited in PR title/commits: FLEET-040
     Branch: chump/fleet-040-skip-shipped
     Stuck class: REBASE — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  closed_date: '2026-05-04'
+  closed_pr: 1068
 
 - id: INFRA-450
   domain: INFRA
   title: "PR #1063 stuck [REBASE] — DIRTY for 9h"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -15381,11 +15528,13 @@ gaps:
     Original gap(s) cited in PR title/commits: INFRA-428
     Branch: chump/infra-428-spike-cleanup
     Stuck class: REBASE — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  closed_date: '2026-05-04'
+  closed_pr: 1063
 
 - id: INFRA-451
   domain: INFRA
   title: "launchd installer scripts bake CWD-relative absolute path — plists break when install-time worktree is reaped (root cause: 4 of 5 reapers silent 24h+, watchdog included)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -15395,11 +15544,13 @@ gaps:
     - "Same INFRA-247 root cause class: CWD-relative path captured at write time, breaks when CWD goes away. Pairs with that fix"
   notes: |
     Observed 2026-05-04: 4 of 5 reapers silent 24h+ (auto-arm, branch, ci-flake-rerun, ci-flake) plus reaper-watchdog itself. All baked /Users/jeffadkins/Projects/Chump/.claude/worktrees/infra-323-rename/scripts/... — that worktree was reaped this morning by the (still-working) stale-worktree-reaper. Snowballed into disk-full because no cleanup happened for ~24h. Re-ran the install-*-launchd.sh scripts from the main checkout to fix immediate state, but the underlying installer behavior repeats this every time the install-source worktree dies.
+  closed_date: '2026-05-04'
+  closed_pr: 1096
 
 - id: INFRA-452
   domain: INFRA
   title: reaper-watchdog has same blind spot as the reapers it watches — when watchdog's own launchd plist breaks, nobody alerts (canary died with canaries today)
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -15408,6 +15559,8 @@ gaps:
     - "Until then: reaper-watchdog should ALSO check its own heartbeat freshness and panic-loud (write to ambient.jsonl + stderr) if its OWN heartbeat is missing — self-aware liveness check"
   notes: |
     Today's outage was invisible for 24h+ specifically because the watchdog had the same broken-path bug as the reapers it watches. The whole point of the watchdog is to alert on reaper failures; it needs a higher-confidence redundancy story than 'same launchd, same install path, same blast radius'.
+  closed_date: '2026-05-04'
+  closed_pr: 1097
 
 - id: INFRA-453
   domain: INFRA
@@ -15452,7 +15605,7 @@ gaps:
 - id: INFRA-456
   domain: INFRA
   title: "lift gap-integrity guards into gap_store::set_fields — DB write path can't bypass closed_pr/recycled-ID/hijack guards (today these only inspect YAML diffs)"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -15463,6 +15616,432 @@ gaps:
     - "Migration: existing scripts that call set_fields with status:done absent closed_pr (today silently succeed, surfaced via gap-doctor.py) will start returning Err. Audit + fix call sites BEFORE landing this gap; otherwise it'll break gap-doctor's auto-fix paths"
   notes: |
     Filed 2026-05-04 from the upstream-pattern audit. INFRA-402 covers closed_pr alone; this is the architectural lift — every integrity invariant guarded today by pre-commit YAML-diff inspection should also be enforced at the SQLite write path so DB-direct writes can't silently bypass. Sets the pattern: any future write path inherits the guards by being a gap_store caller, not by being a pre-commit observer. Subsumes INFRA-402.
+  closed_date: '2026-05-06'
+  closed_pr: 1124
+
+- id: INFRA-457
+  domain: INFRA
+  title: chump gap import does not propagate status changes from per-file YAML — closer-closed gaps revert to open on every import+dump cycle
+  status: done
+  priority: P0
+  effort: s
+  opened_date: '2026-05-04'
+  closed_date: '2026-05-05'
+  closed_pr: 1095
+
+- id: INFRA-458
+  domain: INFRA
+  title: bot-merge.sh mid-flight chump-doctor — wrap every internal chump gap call with timeout+auto-heal+retry to kill the wedge-tax mid-pipeline (preflight INFRA-379 catches startup wedges only, not the 5+ daily mid-flight stalls)
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-05-05'
+  closed_pr: 1098
+
+- id: INFRA-459
+  domain: INFRA
+  title: flip FLEET_BACKEND default back to claude+Haiku; invert INFRA-420 cost-guard (cascade bank too small for dev workload per operator 2026-05-04)
+  status: done
+  priority: P1
+  effort: xs
+  notes: duplicate of INFRA-457 (same FLEET_BACKEND flip request, filed in parallel)
+  opened_date: '2026-05-04'
+  closed_date: '2026-05-05'
+  closed_pr: 1
+
+- id: INFRA-460
+  domain: INFRA
+  title: "P0: chump gap import does not propagate status changes from per-file YAML to state.db (root cause of all OPEN-BUT-LANDED ghost gaps; INSERT OR IGNORE skips updates)"
+  status: done
+  priority: P0
+  effort: s
+  closed_date: '2026-05-04'
+  closed_pr: 1095
+
+- id: INFRA-461
+  domain: INFRA
+  title: fleet workers spawned from main worktree stomp interactive session lease — workers should always derive unique per-pane session ID, not inherit $CLAUDE_SESSION_ID/$HOME/.chump/session_id from operator's interactive shell
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - fleet workers running from main worktree get a unique per-pane session ID (e.g. fleet-<sessionname>-<paneindex>-<random>) regardless of \$HOME/.chump/session_id
+    - gap-claim.sh refuses to accept a session ID matching the operator interactive pattern when called by worker.sh
+    - "test: spawning a fleet from main worktree leaves the operator lease intact"
+  closed_date: '2026-05-05'
+  closed_pr: 1099
+
+- id: INFRA-462
+  domain: INFRA
+  title: bot-merge.sh embedded gap-preflight ignores explicit $CHUMP_SESSION_ID env — uses worktree-scoped ID instead, so own-session leases falsely flagged as foreign when fleet stomps the worktree ID
+  status: superseded
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - gap-preflight.sh reads CHUMP_SESSION_ID env first when matching own-session leases, before falling back to .wt-session-id
+    - bot-merge.sh propagates CHUMP_SESSION_ID to all subshells (env-export, not just inline)
+    - "test: CHUMP_SESSION_ID=foo + own-session lease = preflight passes"
+  notes: |
+    Symptom of INFRA-461 (fleet workers stomping chump-Chump-* lease made gap-preflight correctly reject when foreign session temporarily held the gap_id). With INFRA-461 fix landed (#1099), the foreign-claim case can't occur. gap-preflight.sh already honors CHUMP_SESSION_ID first per line 51.
+
+- id: INFRA-463
+  domain: INFRA
+  title: gap-preflight.sh prints wrong session ID in 'claimed by session X' error — reports the lease HOLDER's stomped ID instead of the lease's actual session_id field, masking the real claimant
+  status: superseded
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - gap-preflight.sh error message reads the actual session_id field from the lease JSON, not the filename or process-context
+    - "test: lease file with session_id A but filename B → error reports A"
+  notes: |
+    Symptom of INFRA-461. The 'wrong session ID' was actually correct for the foreign claim that briefly held the gap_id in chump-Chump-* lease. With #1099 fleet workers no longer stomp that lease, so the surface vanishes.
+
+- id: INFRA-464
+  domain: INFRA
+  title: fleet 401-storm detector — Haiku fleet 875/911 cycles (96%) failed with 'Invalid authentication credentials' for hours undetected; worker.sh should ALERT after N consecutive 401s and self-pause
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - worker.sh tracks consecutive auth failures per session in a counter file
+    - after 3 consecutive 401/auth_error responses, ALERT kind=fleet_auth_storm to ambient.jsonl AND pause that worker (sleep 30min)
+    - after 5 consecutive, exit the worker loop entirely
+    - reaper-watchdog grades fleet_auth_storm events
+  closed_date: '2026-05-05'
+  closed_pr: 1100
+
+- id: INFRA-465
+  domain: INFRA
+  title: fresh worktrees on origin/main have a stale .chump/state.db relative to docs/gaps/<ID>.yaml mirrors — fleet workers see no pickable gaps until 'chump gap import' is run; run-fleet.sh should auto-seed on spawn
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - run-fleet.sh checks .chump/state.db against docs/gaps/ count and runs 'chump gap import' if drift detected before spawning workers
+    - "alternatively: worker.sh runs 'chump gap import' once at startup if state.db gap count < YAML count"
+    - "test: spawn fleet from a worktree where state.db has fewer rows than docs/gaps/*.yaml count, verify auto-seeded before first cycle"
+
+- id: INFRA-466
+  domain: INFRA
+  title: gap-claim.sh writes lease to LINKED worktree's .chump-locks/ instead of main repo's — fleets spawned from linked worktrees create lease files invisible to siblings on main repo, breaking cross-worktree gap-preflight (observed 2026-05-04 with fleet on /tmp/chump-fleet-host)
+  status: open
+  priority: P2
+  effort: s
+
+- id: INFRA-467
+  domain: INFRA
+  title: lease dir is always $HOME/.chump-locks/<repo>/ — eliminate the linked-worktree-vs-main-repo lock_dir ambiguity that breaks cross-worktree gap-preflight (INFRA-466 is symptom)
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - gap-claim.sh / gap-preflight.sh / chump gap reserve all resolve LOCK_DIR via single helper that returns \$HOME/.chump-locks/<repo-name>/
+    - "test: invoke from main repo, linked worktree, /tmp checkout — all write to same path"
+    - "migration: copy existing .chump-locks/ to new home on first run"
+    - INFRA-466 closes as resolved
+  closed_date: '2026-05-05'
+  closed_pr: 1102
+
+- id: INFRA-468
+  domain: INFRA
+  title: "atomic 'chump claim <ID>' — single CLI call: pick + worktree + lease + state.db seed + binary health check. Replaces 6-step shell dance currently required"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "chump claim <ID> command does atomically: lease + worktree creation + state.db seed if drifted + binary health probe"
+    - exits non-zero with actionable error if any step fails
+    - replaces the 6-line shell dance documented in CLAUDE.md mandatory pre-flight
+    - "test: chump claim INFRA-XXX from any cwd produces a ready-to-edit worktree"
+  closed_date: '2026-05-05'
+  closed_pr: 1110
+
+- id: INFRA-469
+  domain: INFRA
+  title: transparent binary-wedge heal at the chump shim level — every chump invocation auto-detects wedge and heals, eliminating per-script chump_with_doctor wrapping (INFRA-458 pattern but generalized)
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - chump shim binary detects syspolicyd wedge automatically (e.g. PID alive but no fd activity for 10s) and heals via inode-swap
+    - all internal chump invocations route through this shim
+    - INFRA-458 chump_with_doctor wrapper deleted as redundant
+    - "test: simulate wedge via slow-fork preload, verify auto-heal fires"
+
+- id: INFRA-470
+  domain: INFRA
+  title: make state.db truly canonical — YAML is render-only output of 'chump gap dump'; pre-commit regenerates docs/gaps/ from DB; no human edits possible (eliminate INFRA-460 / INFRA-465 drift class)
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - pre-commit guard blocks any direct edit to docs/gaps/<ID>.yaml — they are render-only
+    - chump gap dump regenerates the YAML mirrors atomically post-merge via merge_group hook
+    - chump gap import becomes optional / debug-only since DB never drifts
+    - "test: hand-edit docs/gaps/X.yaml + git commit → blocked"
+  closed_date: '2026-05-05'
+  closed_pr: 1108
+
+- id: INFRA-471
+  domain: INFRA
+  title: model-class-aware fleet routing — Sonnet/Opus picks effort=m+l cognitive work, Haiku picks effort=xs+s cleanup; routing.yaml already supports task_class but FLEET_MODEL is set globally per fleet, not per pick
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - fleet workers query routing.yaml at pick time using task_class derived from gap ID (COG-* → cognition, INFRA-* → coord, etc.)
+    - FLEET_MODEL no longer global — set per pick based on routing
+    - Haiku-class panes refuse to pick effort=l
+    - m gaps; Sonnet-class panes refuse to pick effort=xs
+    - "test: spawn fleet with mixed model panes, verify each picks appropriate effort level"
+
+- id: INFRA-472
+  domain: INFRA
+  title: bot-merge.sh's pre-rebase auto-stage handles untracked files (INFRA-404) but NOT modified files — rebase fails with 'unstaged changes'; modified-file commit cycle adds 1 retry round-trip per ship (observed INFRA-458 + INFRA-470 this session)
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - bot-merge.sh's pre-rebase step detects modified+staged files and auto-commits them with a default message OR clearly errors before pre-flight to save the rebase round-trip
+    - "alternative: if rebase fails with unstaged changes, recover by auto-staging+committing+retry once"
+    - "test: bot-merge invoked on a worktree with clean A files + dirty M files completes without manual git commit cycle"
+  closed_date: '2026-05-05'
+  closed_pr: 1109
+
+- id: INFRA-473
+  domain: INFRA
+  title: bot-merge.sh CI shell test runner truncates failed-test output to tail-10 — when a test reports 'N passed M failed' you can't tell WHICH test failed without re-running locally; should preserve the full output of any failing CI shell test
+  status: done
+  priority: P3
+  effort: xs
+  closed_date: '2026-05-05'
+  closed_pr: 1113
+
+- id: INFRA-474
+  domain: INFRA
+  title: CHUMP_REPO env doesn't override repo path resolution for 'chump gap reserve' (and likely other write operations) — chump still resolves to git toplevel of cwd, leaking writes into the wrong repo when called from a script that intended hermetic isolation
+  status: open
+  priority: P2
+  effort: xs
+
+- id: INFRA-475
+  domain: INFRA
+  title: "atomic_claim.rs: replace .unwrap() on PathBuf::to_str() with proper error path (code-reviewer follow-up from #1110)"
+  status: done
+  priority: P3
+  effort: xs
+  closed_date: '2026-05-05'
+  closed_pr: 1111
+
+- id: INFRA-476
+  domain: INFRA
+  title: docs-delta pre-commit guard's Net-new-docs trailer parse path is unreachable — pre-commit fires BEFORE git writes COMMIT_EDITMSG (same blind spot INFRA-200 fixed for raw-yaml guard); operators must bypass with CHUMP_DOCS_DELTA_CHECK=0, defeating the audit trail
+  status: open
+  priority: P3
+  effort: xs
+
+- id: INFRA-477
+  domain: INFRA
+  title: per-session cost ledger — every chump session writes its tokens-spent + elapsed-seconds + outcome to ambient.jsonl; next session's briefing surfaces 'last session like this cost $X' as cost feedback
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - session start writes session_start_cost event (tokens_spent=0)
+    - every chump CLI invocation appends tokens to a per-session counter file
+    - session end (graceful or via reaper) emits session_end with total tokens, elapsed seconds, outcome (PR landed / abandoned / starved)
+    - "chump --briefing surfaces 'avg-session-cost-on-similar-gaps: $X' from past closed gaps"
+    - "test: spawn fleet of 2, ship 1 PR each, verify cost events present in ambient.jsonl + briefing surfaces them"
+  closed_date: '2026-05-05'
+  closed_pr: 1121
+
+- id: INFRA-478
+  domain: INFRA
+  title: consolidate scripts/coord/ shell scripts into single chump-coord Rust binary — atomic claim+lease+preflight+ship state machine; replaces gap-claim.sh, gap-preflight.sh, bot-merge.sh, etc.; eliminates cross-script bug surface (INFRA-462/463/466/472 class)
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "new chump-coord binary (separate target) handles: gap reserve / set / ship / list / preflight / claim / unclaim / lease-write / lease-release"
+    - "migrates incrementally: shell wrappers stay as thin shims that call the Rust binary, then are deleted gap-by-gap"
+    - "tests: every existing scripts/ci/test-gap-*.sh passes against the new binary"
+    - "metric: scripts/coord/ shell LOC drops by 70%+ when complete"
+
+- id: INFRA-479
+  domain: INFRA
+  title: cap CLAUDE.md at 2K tokens — current ~12K mandatory preamble eats every spawn's first 30K tokens before any work; on-demand retrieval via chump --briefing already exists, push it harder; CLAUDE.md becomes pointers + non-negotiable rules only
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - CLAUDE.md trimmed to <= 2000 tokens (currently ~12000)
+    - moved sections live in docs/process/CLAUDE_GOTCHAS.md (already exists per consolidation) — push more sections in there
+    - "kept inline: mandatory pre-flight, claim/ship one-liners, hard rules, ambient peripheral-vision summary"
+    - "test: wc -m CLAUDE.md / 4 must be <= 2000"
+
+- id: INFRA-480
+  domain: INFRA
+  title: "PR #1115 stuck [ORPHAN] — auto-merge disarmed, no live owner"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/1115
+    
+    Detected by stuck-pr-filer (2026-05-05T19:52:02Z).
+    
+    Trigger: auto-merge disarmed, no live owner
+    Auto-merge is disarmed and the original gap(s) [INFRA-472] have no live lease — the opening agent likely exited without re-arming.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 1115 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: INFRA-472
+    Branch: chump/cog-043-action-telemetry
+    Stuck class: ORPHAN — REBASE→pr-watch-shepherd, CI-RED→ci-flake-rerun or human, BEHIND→pr-watch-shepherd, ORPHAN→auto-arm-sweeper
+  closed_date: '2026-05-05'
+  closed_pr: 1115
+
+- id: INFRA-481
+  domain: INFRA
+  title: /tmp/<worktree>/target ignores INFRA-210 shared CARGO_TARGET_DIR — each /tmp linked-worktree builds its own multi-GB target dir; observed disk-full at 100% mid-session today (5 worktrees × ~10GB each)
+  status: done
+  priority: P2
+  effort: xs
+  closed_date: '2026-05-05'
+  closed_pr: 1125
+
+- id: INFRA-482
+  domain: INFRA
+  title: "derive Default on PR-frequently-extended structs (GapBriefing, Reflection, ImprovementTarget) — refactor test sites to use ..Default::default() so adding a new field doesn't churn 5+ test constructors; cuts merge-conflict surface for the COG-042 vs INFRA-477 class observed 2026-05-05"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - GapBriefing derives Default (or has a Default impl that mirrors the empty-state early-return)
+    - "all GapBriefing-construction sites in src/briefing.rs tests use the struct-update syntax with ..Default::default()"
+    - Reflection + ImprovementTarget similarly extended where applicable
+    - "test: scripts/ci/test-pr-extension-collision.sh — synthesize a parallel-PR scenario where both add a new field, verify 3-way merge succeeds without manual intervention"
+    - "deferred follow-up: src/*.rs custom merge driver for Rust struct-field unions (bigger lift)"
+  closed_date: '2026-05-05'
+  closed_pr: 1122
+
+- id: INFRA-483
+  domain: INFRA
+  title: "fleet waste: claude -p hangs silently with 0-byte cycle logs (rc=124 timeout) AND worker.sh skips cooldown on timeouts — burns 600s×N cycles forever on stuck gaps. Observed 2026-05-05 sonnet fleet: 2 workers x 2-3 cycles each on INFRA-470/471, all 0-byte logs, total ~40min wasted. Two fixes: (1) apply cooldown on rc=124 too, (2) escalate cooldown duration when cycle_log size is 0 (clear no-output signal vs partial-progress signal)."
+  status: done
+  priority: P0
+  effort: xs
+  closed_date: '2026-05-05'
+  closed_pr: 1127
+
+- id: INFRA-484
+  domain: INFRA
+  title: "chump gap reserve auto-commit the YAML mirror — today reserve writes docs/gaps/<ID>.yaml to disk untracked, so linked worktrees (fleet workers) created from origin/main get a 'gap YAML not found' prompt and operate blind. Caught 2026-05-05 fleet wedge investigation: INFRA-470/471 YAMLs existed in main worktree but were never committed; sonnet workers spawned claude -p with no gap context, claude got stuck in discovery and timed out at 600s with 0-byte output. Fix: chump gap reserve commits the YAML in the same operation (or worker.sh falls back to main worktree path)."
+  status: done
+  priority: P0
+  effort: s
+  closed_date: '2026-05-05'
+  closed_pr: 1128
+
+- id: INFRA-485
+  domain: INFRA
+  title: "pre-push auto-merge-armed guard too strict — blocks pushes to already-BLOCKED/DIRTY/UNSTABLE PRs where squash-loss is impossible. Today: any 'auto-merge armed' triggers the guard regardless of mergeStateStatus. PR #52 footgun specifically requires CLEAN status at first-green. Fix: only block when state=OPEN AND autoMergeRequest!=null AND mergeStateStatus=CLEAN. All other states (BLOCKED, DIRTY, UNSTABLE, BEHIND) are safe to push to. Observed in INFRA-477 ship: blocked the close-commit push even though PR was BLOCKED on CI for a clippy fix."
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-06'
+  closed_pr: 1129
+
+- id: INFRA-486
+  domain: INFRA
+  title: extend INFRA-484 auto-stage to chump gap ship --update-yaml + chump gap set --update-yaml — same untracked-YAML failure mode applies wherever YAML is regenerated, not just at reserve time
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-06'
+  closed_pr: 1130
+
+- id: INFRA-487
+  domain: INFRA
+  title: "one-time backfill: commit ~480 orphaned docs/gaps/<ID>.yaml mirrors to git — most never made it to origin/main because pre-INFRA-484 reserves wrote untracked files. Workers now have INFRA-483 main-repo fallback so this isn't blocking, but the gap registry should be consistent. Plan: separate chore-PR with the bulk YAML commit, no logic changes."
+  status: open
+  priority: P2
+  effort: xs
+
+- id: INFRA-488
+  domain: INFRA
+  title: Zero Waste mission pillar + chump waste-tally subcommand — track + measure waste so the fleet can iterate on its own efficiency. Adds 'Zero Waste' as 4th mission pillar (alongside Credible/Effective/Resilient). Implements 'chump waste-tally [--since 24h]' that aggregates existing waste-classified events from ambient.jsonl (fleet_wedge, fleet_starved, lease_expired_server, reaper_silent, queue_stuck, ambient_oversize) into a human-readable per-kind tally. No new event emissions in this PR — taxonomy uses what's already there.
+  status: done
+  priority: P0
+  effort: s
+  closed_date: '2026-05-06'
+  closed_pr: 1131
+
+- id: INFRA-489
+  domain: INFRA
+  title: "chump waste-tally double-counts re-fired alerts — dedupe by (kind, entity) so a single stuck reaper for 12h doesn't appear as 40 incidents. silent_agent: 63 alerts but only 24 unique sessions (2.6x inflation). reaper_silent: 40 alerts but 1 stuck reaper. Fix: extract entity from common fields (session, reaper, pr) and aggregate uniquely. Add --raw flag to keep MVP behavior for forensic comparison."
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-06'
+  closed_pr: 1132
+
+- id: INFRA-490
+  domain: INFRA
+  title: "worker.sh lease cleanup never matches: 'rm -f .chump-locks/*${GAP_ID}*.json' is case-sensitive but lease files are lowercase session IDs (e.g. 'infra-470-fix.json') while GAP_ID is uppercase ('INFRA-470'). Result: every fleet cycle leaks its lease, lease lingers up to 6h TTL, watcher emits silent_agent + lease_expired_server alerts. Was THE root cause of the 26 unique silent_agent + 23 lease_expired_server incidents in the post-INFRA-489 baseline. Fix: read CHUMP_SESSION_ID env (already exported) and rm the exact lease file at $REPO_ROOT/.chump-locks/$CHUMP_SESSION_ID.json — no globbing."
+  status: done
+  priority: P0
+  effort: xs
+  closed_date: '2026-05-06'
+  closed_pr: 1133
+
+- id: INFRA-491
+  domain: INFRA
+  title: queue-health-monitor.sh re-emits silent_agent every hour for the same session — dedup at the emitter so a stuck lease is one alert, not 6+. Same shape pattern that motivated INFRA-489 (waste-tally dedup) but at the source. Sidecar marker file at /tmp/chump-silent-alerted-<session>.ts, skip re-emission if mtime < SILENT_REALERT_MIN (default 6h). Reset by chump-doctor or operator clearing the marker. Reduces ambient.jsonl noise and makes future waste-tally measurements meaningful.
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-06'
+  closed_pr: 1134
+
+- id: INFRA-492
+  domain: INFRA
+  title: "wire INFRA-477 session-track into bot-merge.sh + worker.sh — today the cost ledger CLI exists but nothing emits session_start/session_end, so the data is empty. Fix: bot-merge.sh emits session_start at top + session_end --outcome shipped on success / abandoned on failure; worker.sh emits the same per cycle. Without this, INFRA-477's briefing-surfaced 'historical median elapsed' is always 'no data'."
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-06'
+  closed_pr: 1135
+
+- id: INFRA-493
+  domain: INFRA
+  title: "extend waste-tally taxonomy to include session_end events with outcome=abandoned|starved — once INFRA-492 wires session-track into the lifecycle, the cost ledger captures abandoned sessions; the waste tally should count them. Adds two synthetic kinds: 'session_abandoned' (outcome=abandoned), 'session_starved' (outcome=starved). Reads same ambient.jsonl, classifies by event=session_end + outcome filter. Closes the loop: data emitted -> data measured."
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-06'
+  closed_pr: 1137
+
+- id: INFRA-494
+  domain: INFRA
+  title: "chump fleet-status — single-command dashboard combining waste-tally + recent ships + PR queue state + active leases. After 14+ ships building the Zero Waste tooling, the fleet has measurement primitives (waste-tally, session-track) but no quick 'is it healthy right now' snapshot. Aggregates: open PRs by mergeStateStatus, last-24h waste incidents, last-24h shipped count, active lease count + their ages, fleet-wedge ALERTs in last 6h. One screenful for the operator."
+  status: done
+  priority: P1
+  effort: s
+  closed_date: '2026-05-06'
+  closed_pr: 1139
+
+- id: INFRA-495
+  domain: INFRA
+  title: "bot-merge.sh leaks the lease on successful ship — operator workflows leave a stale lease file at .chump-locks/<session>.json that lingers up to 6h TTL. INFRA-490 fixed this for fleet workers (worker.sh deletes by CHUMP_SESSION_ID); same fix needed in bot-merge.sh's success path. Surface: 'chump fleet-status' showed 10 stale leases from this session's manual ships (INFRA-484/485/486/488/489/490/491/492/493/494), each lingering 1-5h. Fix: rm -f $REPO_ROOT/.chump-locks/$CHUMP_SESSION_ID.json after the session_end emit at end of bot-merge.sh."
+  status: done
+  priority: P1
+  effort: xs
+  closed_date: '2026-05-06'
+  closed_pr: 1140
 
 - id: INFRA-AB-TOOL-CALL-COUNTER
   domain: INFRA
@@ -17152,6 +17731,124 @@ gaps:
   notes: |
     Filed 2026-05-04 from the upstream-pattern audit. Today every individual failure was technically visible in some pre-existing surface (chump gap list count, gh pr checks, df, ls heartbeats) but no layer was asserting cross-cutting invariants. The fix is the seam, not new monitors. Subsumes / coordinates: INFRA-431, INFRA-451, INFRA-452, INFRA-453, INFRA-454.
 
+- id: META-034
+  domain: META
+  title: open-gap quality sweep — audit ~88 open gaps for vague acceptance criteria, dupes, stale priorities; fleet workers ship 2-3x faster on well-specified gaps so this is a fleet-throughput multiplier
+  status: open
+  priority: P2
+  effort: m
+
+- id: META-035
+  domain: META
+  title: cascade re-positioning — cascade is for END-USER offline-LLM mission + cross-judge evals, NOT for dev fleet (too little bank). Update CLAUDE.md, ROADMAP, briefs to make the divide explicit; revisit any 'cascade for dev' assumption left over from 2026-05-02/03 activation arc
+  status: open
+  priority: P2
+  effort: s
+
+- id: META-036
+  domain: META
+  title: open-gap quality sweep — audit ~88 open gaps for vague acceptance criteria, dupes, stale priorities; fleet-throughput multiplier
+  status: open
+  priority: P2
+  effort: m
+
+- id: META-037
+  domain: META
+  title: cascade re-positioning — cascade is for END-USER offline-LLM mission + cross-judge evals, NOT dev fleet (too little bank). Update CLAUDE.md/ROADMAP/briefs
+  status: open
+  priority: P2
+  effort: s
+
+- id: META-038
+  domain: META
+  title: "[UMBRELLA] coord-tax collapse — reduce coordination layer overhead so agent sessions spend cognition on the work, not on lease/worktree/state.db/binary-wedge maintenance"
+  status: open
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - children INFRA-467/468/469/470 all shipped
+    - "after all 4 land, run a 5-PR sample session and measure: (a) time from claim to first edit, (b) % of shell scripts touched per PR vs. coordination scripts, (c) shell-script lines deleted from scripts/coord/ + scripts/dispatch/. Target: 40% reduction in coord-script touch rate."
+  notes: |
+    FROZEN at 6/6 sub-gaps shipped (INFRA-460/64/67/68/70/72) plus INFRA-469 deferred + INFRA-471 deferred. Per 2026-05-05 strategic review: stop adding coord features, start CULLING. Direction 1 is sub-project COMPLETE; further coord-tax fixes go through new META-042 (cull) gap, not here.
+
+- id: META-039
+  domain: META
+  title: "[UMBRELLA] close the learning loop — chump_improvement_targets currently captures lessons but they don't actually steer agent behavior; semantic retrieval + differential reflection + lesson-effectiveness audit"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - children COG-041 (semantic retrieval), COG-042 (differential reflection), META-040 (lesson-effectiveness audit) all shipped
+    - 3 lessons surfaced via semantic retrieval correlate with measurable behavior change in next 10 PRs
+    - chump_improvement_targets table has more no-effect rows pruned than added in steady state
+
+- id: META-040
+  domain: META
+  title: lesson-effectiveness audit — nightly job grades each chump_improvement_targets row by 'did the next session that received this lesson actually behave differently'; prune the no-effect rows
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - nightly cron grades each lesson row by next-session adoption (did session A read lesson L AND change behavior in a way the lesson predicted?)
+    - prune rows with adoption=0 over 30 days
+    - emit ambient kind=lessons_pruned
+    - "ROI metric: "
+    - pruned/
+    - total
+    - " ratio"
+  closed_date: '2026-05-05'
+  closed_pr: 1119
+
+- id: META-041
+  domain: META
+  title: "[UMBRELLA] separate agent-judgment from dispatch-script — fleet workers currently run claude -p with a fixed prompt; upgrade to a real agent loop with plan-before-claim, milestone emission, ask-when-stuck"
+  status: open
+  priority: P2
+  effort: xl
+  acceptance_criteria:
+    - "children: plan-before-claim spec, milestone-emission protocol, ask-when-stuck channel"
+    - "agent loop documented as state machine: PLAN→CLAIM→IMPLEMENT (with milestones)→COMMIT→SHIP→REFLECT"
+    - fleet workers convert from bash claude -p to chump-native agent loop
+
+- id: META-042
+  domain: META
+  title: "[UMBRELLA] cull scripts/coord/ to MVP — freeze the surface at 'chump claim + bot-merge + chump gap reserve/set/ship + lease', delete or absorb everything else; target 50% reduction in shell LOC over 2 weeks"
+  status: open
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "audit scripts/coord/: inventory every script + its callers + its responsibilities"
+    - "categorize as: KEEP (load-bearing, atomic claim/ship), ABSORB (logic moves into a Rust subcommand), DELETE (dead code or superseded)"
+    - "track 'shell LOC in scripts/coord/' as the metric; baseline: $(find scripts/coord -name '*.sh' "
+    - " xargs wc -l "
+    - " tail -1)"
+    - "target: 50% reduction over 2 weeks"
+    - child gaps file specific deletes/absorptions
+
+- id: META-043
+  domain: META
+  title: "discipline: every new feature must ship with a preregistered eval (EVAL-098 pattern) — no measurement = no merge; bot-merge.sh gate enforces presence of docs/eval/preregistered/<GAP>.md when commit modifies cognition-or-routing-related src/"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "bot-merge.sh adds a guard: if commit modifies src/{briefing,reflection,reflection_db,prompt_assembly,provider_*,bandit*,cog_*,cognition_*}.rs OR src/atomic_claim.rs OR scripts/dispatch/, require docs/eval/preregistered/<GAP-ID>.md present in commit"
+    - "bypass: CHUMP_NO_PREREG=1 with reason (e.g. for trivial typo fixes inside cognition modules)"
+    - "test: scripts/ci/test-prereg-required-for-cognition.sh covers 3 cases (cognition src + prereg = pass, cognition src + no prereg = fail, non-cognition src = pass)"
+
+- id: META-044
+  domain: META
+  title: "META-* gaps are structurally unactionable: fleet auto-pickup excludes META-* per CLAUDE.md, which means the namespace named for process-improvement is the one with no autonomous routing path. Options: (a) include META-* in fleet filter when effort=xs|s and acceptance is concrete, (b) elevated visibility in operator briefing/RED_LETTER for any META filed, (c) ALERT kind=meta_filed event to ambient.jsonl on every META reserve. Pick one or combo."
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - concrete META-* gaps (acceptance criteria filled, effort xs
+    - s, no judgment-call language) become fleet-pickable
+    - operator gets ambient ALERT at META-* reserve time so high-priority process changes don't sit invisibly
+    - "or: paired-INFRA pattern documented as the canonical workaround until (a)/(b) lands"
+    - "test: scripts/ci/test-meta-gap-routing.sh verifies the chosen routing actually fires under default fleet filters"
+
 - id: PRODUCT-001
   domain: PRODUCT
   title: PWA Dashboard — ship status, what-we're-doing, recent episodes
@@ -17620,6 +18317,13 @@ gaps:
   depends_on: [FLEET-008, RESEARCH-032]
   notes: |
     Filed by Claude on 2026-05-02 after the user explicitly asked "how would Chump handle this if we were using the PWA to drive multi agent orchestration?". The session was a 2-hour reverse-engineered UX spec for this gap. Every primitive listed was visibly needed by the human and worked around manually.
+
+- id: PRODUCT-026
+  domain: PRODUCT
+  title: product-shaped session — pick one user-visible thread (PWA Tier-2, Discord intent inference, or onboarding-friction) and ship end-to-end. Reset the 80% substrate-fixation pattern; my 2026-05-03 session shipped 13 of 18 PRs in coordination layer
+  status: open
+  priority: P2
+  effort: m
 
 - id: QUALITY-001
   domain: RELIABILITY
@@ -18300,7 +19004,7 @@ gaps:
 - id: RESEARCH-029
   domain: RESEARCH
   title: SKILL0 competitive positioning — inference-time injection vs training internalization
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -18321,6 +19025,8 @@ gaps:
     - Written position statement filed in docs/ on whether Chump's lesson injection effect is compatible with the SKILL0 internalization hypothesis
   depends_on: [RESEARCH-021]
   opened_date: '2026-04-26'
+  closed_date: '2026-05-03'
+  closed_pr: 1015
 
 - id: RESEARCH-030
   domain: RESEARCH
@@ -20741,6 +21447,97 @@ gaps:
   status: superseded
   priority: P2
   effort: xs
+
+- id: SWARM-001
+  domain: SWARM
+  title: Thermal Signature Modeling & Detection
+  status: open
+  priority: P0
+  effort: m
+
+- id: SWARM-002
+  domain: SWARM
+  title: WebSocket Performance Validation
+  status: open
+  priority: P0
+  effort: s
+
+- id: SWARM-003
+  domain: SWARM
+  title: Perimeter Assessment Behavior
+  status: open
+  priority: P0
+  effort: m
+
+- id: SWARM-004
+  domain: SWARM
+  title: Sensor Failure & Recovery System
+  status: open
+  priority: P0
+  effort: m
+
+- id: SWARM-005
+  domain: SWARM
+  title: Interior Search & Systematic Sweep
+  status: open
+  priority: P0
+  effort: m
+
+- id: SWARM-006
+  domain: SWARM
+  title: Surveillance Device Installation System
+  status: open
+  priority: P0
+  effort: m
+
+- id: SWARM-007
+  domain: SWARM
+  title: Mission Choreography Refinement
+  status: open
+  priority: P1
+  effort: s
+
+- id: SWARM-008
+  domain: SWARM
+  title: Performance Optimization
+  status: open
+  priority: P1
+  effort: s
+
+- id: SWARM-009
+  domain: SWARM
+  title: HUD Enhancement & Visualization
+  status: open
+  priority: P1
+  effort: m
+
+- id: SWARM-010
+  domain: SWARM
+  title: Documentation & Delivery Prep
+  status: open
+  priority: P1
+  effort: s
+
+- id: SWARM-011
+  domain: SWARM
+  title: Integration Testing & QA
+  status: open
+  priority: P1
+  effort: s
+
+- id: SWARM-012
+  domain: SWARM
+  title: Customer Validation
+  status: open
+  priority: P2
+  effort: s
+
+- id: SWARM-013
+  domain: SWARM
+  title: Release & Launch
+  status: open
+  priority: P2
+  effort: s
 
 - id: TEST-001
   domain: TEST
