@@ -1593,4 +1593,15 @@ if [[ $DRY_RUN -eq 0 ]]; then
     done
 fi
 
+# INFRA-495: release the operator's lease at end of successful ship.
+# Pre-fix bot-merge.sh emitted session_end but left the lease file at
+# .chump-locks/$CHUMP_SESSION_ID.json — the watcher then re-emitted
+# silent_agent every hour for 6h until the TTL reaper deleted it.
+# 'chump fleet-status' (INFRA-494) surfaced 10 such stale leases from
+# manual ships within minutes of going live; this is the operator-side
+# parallel of INFRA-490's worker.sh fix.
+if [[ $DRY_RUN -eq 0 && -n "${CHUMP_SESSION_ID:-}" ]]; then
+    rm -f "$REPO_ROOT/.chump-locks/${CHUMP_SESSION_ID}.json" 2>/dev/null || true
+fi
+
 green "=== bot-merge done. ==="
