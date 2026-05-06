@@ -599,7 +599,25 @@ When done, reply with the PR number only (e.g. \"#1234\")."
     fi
 
     # ── Release lease + prune worktree ────────────────────────────────────
-    # The lease will TTL-expire on its own; we also try to remove it cleanly.
+    # INFRA-490: pre-fix this used the glob `*${GAP_ID}*.json` which was
+    # case-sensitive — but lease files are named after the session ID
+    # (e.g. `infra-470-fix.json`, `fleet-chump-fleet-agent1-NNNN.json`),
+    # not the gap ID. The glob only matched leases whose session name
+    # happened to contain the uppercase gap ID; the fleet's session
+    # naming convention never produces such a match. Result: every
+    # fleet cycle leaked its lease, the lease lingered to TTL, and the
+    # watcher emitted `silent_agent` + `lease_expired_server` alerts —
+    # the dominant kinds in the post-INFRA-489 waste-tally baseline
+    # (26 + 23 = 49/93 incidents).
+    #
+    # Fix: delete the exact lease file by the known session ID. Fall
+    # back to the legacy glob for any non-fleet caller that didn't
+    # export CHUMP_SESSION_ID (best-effort, won't make things worse).
+    if [[ -n "${CHUMP_SESSION_ID:-}" ]]; then
+        rm -f "$REPO_ROOT/.chump-locks/${CHUMP_SESSION_ID}.json" 2>/dev/null || true
+    fi
+    # Legacy fallback (also catches any non-session-named leases this
+    # gap may have under older code paths).
     rm -f "$REPO_ROOT/.chump-locks/"*"${GAP_ID}"*.json 2>/dev/null || true
 
     # Worktree cleanup — keep it on disk if claude actually shipped a PR
