@@ -395,34 +395,41 @@ $SIBLING_GAP_YAML"
         fi
     fi
 
-    # ── Check 1: done on main ──────────────────────────────────────────────
+    # ── Check 1: done on main / registered ─────────────────────────────────
+    # INFRA-499: post-INFRA-498 docs/gaps/*.yaml is empty so GAPS_YAML is
+    # always empty too. Registration check now defers to state.db via
+    # `chump gap preflight <ID>`, which is canonical anyway. The legacy
+    # "if -n GAPS_YAML" block is preserved as a fallback for any
+    # pre-deletion checkout.
+    STATUS=""
     if [[ -n "$GAPS_YAML" ]]; then
         STATUS="$(gap_status "$GAP_ID")"
-        if [[ -z "$STATUS" ]]; then
-            if my_pending_reserves_gap "$GAP_ID"; then
-                info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but matches session lease (pending_new_gap or gap_id) — OK (INFRA-021/INFRA-344)."
-            elif _pf_out="$(chump gap preflight "$GAP_ID" 2>&1)" \
-                    && echo "$_pf_out" | grep -q '\[preflight\] OK'; then
-                # INFRA-168: gap exists in local state.db with status=open — no YAML needed.
-                # This is the canonical post-INFRA-059 path for gaps reserved via
-                # `chump gap reserve` but not yet pushed to origin/main.
-                info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but found open in local state.db (chump gap preflight) — OK (INFRA-168)."
-            elif gap_locally_open "$GAP_ID"; then
-                info "NOTE: $GAP_ID is not on $REMOTE/$BASE yet but exists in local state.db with status=open — OK (INFRA-344: filing-style PR)."
-            elif [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
-                info "WARN: $GAP_ID not in gaps.yaml — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
-            else
-                red "SKIP $GAP_ID — not found in gap registry (docs/gaps/ or docs/gaps.yaml)."
-                red "  Reserve an ID first: scripts/coord/gap-reserve.sh <DOMAIN> \"title\""
-                red "  (atomic; writes pending_new_gap to your lease). Two agents inventing"
-                red "  the same ID was the INFRA-016/017/018 collision chain (2026-04-20)."
-                red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1"
-                FAILED=1
-                continue
-            fi
-        elif [[ "$STATUS" == "done" ]]; then
+        if [[ "$STATUS" == "done" ]]; then
             red "SKIP $GAP_ID — already status:done on $REMOTE/$BASE."
             red "  The work exists. No need to re-implement. Choose a different gap."
+            FAILED=1
+            continue
+        fi
+    fi
+    if [[ -z "$STATUS" ]]; then
+        # No status from YAML — check state.db (canonical post-INFRA-498).
+        if my_pending_reserves_gap "$GAP_ID"; then
+            info "NOTE: $GAP_ID matches session lease (pending_new_gap or gap_id) — OK (INFRA-021/INFRA-344)."
+        elif _pf_out="$(chump gap preflight "$GAP_ID" 2>&1)" \
+                && echo "$_pf_out" | grep -q '\[preflight\] OK'; then
+            # INFRA-168 / INFRA-499: gap exists in local state.db with
+            # status=open. Canonical path post-INFRA-498.
+            info "NOTE: $GAP_ID found open in local state.db — OK (INFRA-168/INFRA-499)."
+        elif gap_locally_open "$GAP_ID"; then
+            info "NOTE: $GAP_ID exists in local state.db with status=open — OK (INFRA-344: filing-style PR)."
+        elif [[ "${CHUMP_ALLOW_UNREGISTERED_GAP:-0}" == "1" ]]; then
+            info "WARN: $GAP_ID not in registry — CHUMP_ALLOW_UNREGISTERED_GAP=1, proceeding."
+        else
+            red "SKIP $GAP_ID — not found in gap registry (state.db is canonical post-INFRA-498)."
+            red "  Reserve an ID first: chump gap reserve --domain D --title T"
+            red "  (atomic; writes pending_new_gap to your lease). Two agents inventing"
+            red "  the same ID was the INFRA-016/017/018 collision chain (2026-04-20)."
+            red "  Bootstrap escape hatch: CHUMP_ALLOW_UNREGISTERED_GAP=1"
             FAILED=1
             continue
         fi
