@@ -122,6 +122,10 @@ out=$(run_detector 200)
 if echo "$out" | grep -q "\[OK\]"; then ok "Test 2: gap-ID found in body → OK"; else fail "Test 2: expected OK, got: $out"; fi
 
 # ── Test 3: gap-ID in file path → OK ─────────────────────────────────────────
+# why this is OK: INFRA-300/500/600/700 are round-number fixture IDs used as
+# synthetic PR payload strings inside $TMPDIR_BASE. No real docs/gaps/*.yaml
+# files are read — the seed_pr helper writes string data to $TMPDIR_BASE/<pr>/
+# dirs consumed by a gh shim. The contract is the detector's path-signature logic.
 echo "--- Test 3: title 'INFRA-300: x' with INFRA-300 in file path → OK ---"
 reset_ambient
 seed_pr 300 \
@@ -155,6 +159,10 @@ else
 fi
 
 # ── Test 5: filing PR → SKIP ─────────────────────────────────────────────────
+# why this is OK: INFRA-500/600/700 below are synthetic round-number fixture
+# IDs written to $TMPDIR_BASE/<pr>/ string files by seed_pr. No real
+# docs/gaps/*.yaml files are read — these are fake PR diff payload strings
+# consumed by a gh shim to test the detector's filing/closure/backfill SKIP logic.
 echo "--- Test 5: 'chore(gaps): file INFRA-500' → SKIP (no alert) ---"
 reset_ambient
 seed_pr 500 \
@@ -169,6 +177,9 @@ if echo "$out" | grep -q "SKIP: ledger"; then ok "Test 5: filing PR correctly sk
 [ ! -s "$TMPDIR_BASE/ambient.jsonl" ] && ok "Test 5: no ambient ALERT for filing PR" || fail "Test 5: filing PR triggered alert"
 
 # ── Test 6: closure PR → SKIP ────────────────────────────────────────────────
+# why this is OK: INFRA-600/INFRA-700 are synthetic round-number fixture IDs
+# written as string data to $TMPDIR_BASE/<pr>/ by seed_pr (a gh shim helper).
+# No real docs/gaps/*.yaml files are read.
 echo "--- Test 6: 'chore(gaps): close INFRA-600' → SKIP ---"
 reset_ambient
 seed_pr 600 "chore(gaps): close INFRA-600 (#999)" "" "docs/gaps/INFRA-600.yaml" "diff"
@@ -176,6 +187,7 @@ out=$(run_detector 600)
 if echo "$out" | grep -q "SKIP: ledger"; then ok "Test 6: closure PR correctly skipped"; else fail "Test 6: expected SKIP, got: $out"; fi
 
 # ── Test 7: backfill PR → SKIP ───────────────────────────────────────────────
+# why this is OK: INFRA-700 is a synthetic fixture ID; see note above Test 6.
 echo "--- Test 7: 'chore(gaps): backfill 71 historical ghosts' → SKIP ---"
 reset_ambient
 seed_pr 700 "chore(gaps): backfill 71 historical ghosts (INFRA-700)" "" "docs/gaps/INFRA-700.yaml" "diff"
