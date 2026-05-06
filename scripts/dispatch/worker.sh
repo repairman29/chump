@@ -57,7 +57,7 @@ FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
 FLEET_BACKEND="${FLEET_BACKEND:-claude}"
-FLEET_MODEL="${FLEET_MODEL:-haiku}"
+FLEET_MODEL="${FLEET_MODEL:-sonnet}"
 IDLE_SLEEP_S="${IDLE_SLEEP_S:-60}"
 
 # INFRA-315: poll-jitter + idle-backpressure. Without jitter, N workers
@@ -388,13 +388,16 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             else
                 prompt="Ship gap $GAP_ID in this repository. Read CLAUDE.md and AGENTS.md first. The gap is already claimed for this session; the lease is in .chump-locks/. Implement the gap per its description, commit via scripts/coord/chump-commit.sh, and ship via scripts/coord/bot-merge.sh --gap $GAP_ID --auto-merge. Reply with the PR number only."
             fi
-            # INFRA-364: default to haiku for cost. Operator had \$92 of unused
-            # workspace API credit while the squad burned the \$20/mo subscription
-            # cap. Sonnet is ~10× haiku per token; for fleet's "ship a small
-            # gap" workload haiku is plenty. Override via FLEET_MODEL=sonnet
-            # for harder gaps. Empty string = let claude config default win
-            # (back-compat).
-            FLEET_MODEL="${FLEET_MODEL-haiku}"
+            # INFRA-515 (2026-05-06): default flipped haiku → sonnet.
+            # Live fleet validation found haiku asks "should I implement
+            # or clarify?" instead of doing the work; --dangerously-skip-
+            # permissions has no stdin to answer, so claude -p sits 600s
+            # and times out. Throughput: 1 ship out of 9 cycles on haiku.
+            # Sonnet is ~3× per-token but actually ships → net cheaper.
+            # Override for cost-sensitive sweeps: FLEET_MODEL=haiku.
+            # INFRA-471's per-pick routing still bumps m/l/xl to sonnet
+            # explicitly; xs/s used to fall to haiku, now defaults sonnet.
+            FLEET_MODEL="${FLEET_MODEL-sonnet}"
             _model_arg=()
             [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
             log "spawning claude -p (timeout ${FLEET_TIMEOUT_S}s, backend=claude, model=${FLEET_MODEL:-default}) → $cycle_log"
@@ -547,7 +550,7 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             if [[ "$_gap_priority" == "P0" ]]; then
                 log "INFRA-267: P0 gap $GAP_ID failed on chump-local rc=$rc — falling back to claude"
                 _fallback_prompt="Ship gap ${GAP_ID} (P0 fallback from chump-local rc=$rc). The gap is already claimed for this session; lease in .chump-locks/. Worktree: ${wt_path}. Pre-flight has already run. Run 'chump gap show ${GAP_ID}' for the gap spec (post-INFRA-498). Implement, commit via scripts/coord/chump-commit.sh, ship via scripts/coord/bot-merge.sh --gap ${GAP_ID} --auto-merge."
-                FLEET_MODEL="${FLEET_MODEL-haiku}"
+                FLEET_MODEL="${FLEET_MODEL-sonnet}"
                 _model_arg=()
                 [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
                 (
