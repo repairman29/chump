@@ -1,7 +1,0 @@
-- id: INFRA-367
-  domain: INFRA
-  title: state.sql merge conflicts on multi-day rebases — auto-regenerate or untrack
-  status: open
-  priority: P2
-  effort: xs
-

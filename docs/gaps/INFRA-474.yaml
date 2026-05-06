@@ -1,7 +1,0 @@
-- id: INFRA-474
-  domain: INFRA
-  title: "PR 1 of YAML deletion plan: regenerate .chump/state.sql to reflect latest state.db (1125 → 1202 gaps, 77 new + 26 ghost-reaper closures from manual-ship workflows). Reconciliation step before any deletion. No docs/gaps/*.yaml deletions yet — that's PR 2."
-  status: open
-  priority: P1
-  effort: xs
-

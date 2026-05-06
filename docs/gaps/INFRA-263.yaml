@@ -1,7 +1,0 @@
-- id: INFRA-263
-  domain: INFRA
-  title: "tauri-cowork-e2e: restore /task round-trip on v2 chump-chat (deferred from INFRA-250)"
-  status: open
-  priority: P3
-  effort: xs
-

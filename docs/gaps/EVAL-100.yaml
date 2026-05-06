@@ -1,9 +1,0 @@
-- id: EVAL-100
-  domain: EVAL
-  title: "EVAL-098 follow-up: harness grep-pipefail bug fix + commit first eval report (n=10, mean Jaccard 0.640, ACCEPT H1 at threshold)"
-  status: done
-  priority: P3
-  effort: xs
-  closed_date: '2026-05-05'
-  closed_pr: 1116
-

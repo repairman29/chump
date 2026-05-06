@@ -1,7 +1,0 @@
-- id: INFRA-456
-  domain: INFRA
-  title: "lift gap-integrity guards into gap_store::set_fields — DB write path can't bypass closed_pr/recycled-ID/hijack guards (today these only inspect YAML diffs)"
-  status: open
-  priority: P1
-  effort: m
-

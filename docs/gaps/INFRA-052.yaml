@@ -1,4 +1,0 @@
-- id: INFRA-052
-  domain: infra
-  title: scripts/resolve-gaps-conflict.py — automate gaps.yaml tail-append rebase resolution
-

@@ -1,7 +1,0 @@
-- id: INFRA-269
-  domain: INFRA
-  title: "chump cascade stats subcommand: summarize last-N-days backend ship rate per provider from reflection rows"
-  status: open
-  priority: P3
-  effort: s
-  opened_date: "2026-05-02"

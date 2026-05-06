@@ -1,7 +1,0 @@
-- id: INFRA-328
-  domain: INFRA
-  title: install-stale-pr-reaper-launchd.sh — installer script for the hand-installed plist
-  status: open
-  priority: P3
-  effort: xs
-

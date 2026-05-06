@@ -1,7 +1,0 @@
-- id: INFRA-267
-  domain: INFRA
-  title: cascade-aware fallback to Anthropic for P0 gaps when every cascade slot fails (avoid silent P0 failure)
-  status: open
-  priority: P2
-  effort: s
-
