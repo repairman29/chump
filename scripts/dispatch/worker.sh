@@ -261,7 +261,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     if ! timeout 3 chump gap preflight "$GAP_ID" >/dev/null 2>&1; then
         log "skipping $GAP_ID: failed pre-pick preflight (claimed/done/missing); next cycle"
         # INFRA-544: picker wrote .gap-<ID>.lock; release it on pivot so siblings can pick.
-        rm -f "$REPO_ROOT/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
+        rm -f "${CHUMP_REPO:-$REPO_ROOT}/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
         continue
     fi
 
@@ -287,7 +287,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
                 > "$REPO_ROOT/.chump-locks/cooldown/${GAP_ID}.json"
         fi
         # INFRA-544: release gap lock on pivot so siblings can pick.
-        rm -f "$REPO_ROOT/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
+        rm -f "${CHUMP_REPO:-$REPO_ROOT}/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
         continue
     fi
 
@@ -306,7 +306,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         # the cycle and pick a different gap on the next iteration.
         log "WARN: worktree create failed for $GAP_ID; trying next pick"
         # INFRA-544: release gap lock on pivot so siblings can pick.
-        rm -f "$REPO_ROOT/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
+        rm -f "${CHUMP_REPO:-$REPO_ROOT}/.chump-locks/.gap-${GAP_ID}.lock" 2>/dev/null || true
         continue
     fi
 
