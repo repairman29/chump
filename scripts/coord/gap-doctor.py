@@ -444,18 +444,21 @@ def main() -> int:
     # drift checks compare state.db against those YAMLs — with no
     # tracked YAMLs the entire purpose is moot.
     #
-    # Always short-circuit. Cron/launchd schedules keep working but
-    # do nothing useful. Local stale worktrees may still have YAMLs
-    # on disk (from before the deletion landed), but they're not on
-    # origin/main and not the source of truth.
-    print(
-        "[gap-doctor] post-INFRA-498: docs/gaps/*.yaml deleted from "
-        "origin/main — no drift to detect. state.db is canonical, "
-        ".chump/state.sql is the tracked mirror. Use 'chump gap show "
-        "<ID>' for human-readable per-gap inspection.",
-        file=sys.stderr,
-    )
-    return 0
+    # Short-circuit only when the working tree's docs/gaps/ has no
+    # YAMLs at all. Test fixtures (test-gap-doctor-safe-sweep.sh)
+    # create their own tempdir-scoped docs/gaps/ + state.db pair to
+    # exercise the drift detection — those still need to work.
+    gaps_dir = root / "docs" / "gaps"
+    has_yamls = gaps_dir.is_dir() and any(gaps_dir.glob("*.yaml"))
+    if not has_yamls:
+        print(
+            "[gap-doctor] post-INFRA-498: docs/gaps/*.yaml deleted — "
+            "no drift to detect. state.db is canonical, .chump/state.sql "
+            "is the tracked mirror. Use 'chump gap show <ID>' for "
+            "human-readable per-gap inspection.",
+            file=sys.stderr,
+        )
+        return 0
 
     handlers = {
         "doctor": cmd_doctor,
