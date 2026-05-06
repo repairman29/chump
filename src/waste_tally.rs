@@ -22,6 +22,8 @@
 //! | `silent_agent`          | coord          | live session stopped heartbeat  |
 //! | `lease_overlap`         | coord          | two sessions claim same files   |
 //! | `edit_burst`            | coord          | rapid mutations, rebase risk    |
+//! | `session_abandoned`     | INFRA-477/492  | session ended without shipping  |
+//! | `session_starved`       | INFRA-477/492  | session timed out (rc=124)      |
 //!
 //! ## Output
 //!
@@ -62,6 +64,13 @@ pub struct WasteReport {
 
 /// The set of `kind` values we classify as waste. Order matches the
 /// taxonomy table in the module-level docs.
+///
+/// **INFRA-493:** synthetic kinds `session_abandoned` and
+/// `session_starved` are also counted — these are derived from
+/// INFRA-477's `session_end` events filtered by `outcome`. They have
+/// no event line literally tagged `kind=session_abandoned`; the
+/// classifier promotes `event=session_end` + `outcome=abandoned` into
+/// that synthetic kind for tally purposes.
 pub const WASTE_KINDS: &[&str] = &[
     "fleet_wedge",
     "fleet_starved",
@@ -73,6 +82,8 @@ pub const WASTE_KINDS: &[&str] = &[
     "silent_agent",
     "lease_overlap",
     "edit_burst",
+    "session_abandoned", // INFRA-493 synthetic — from session_end outcome=abandoned
+    "session_starved",   // INFRA-493 synthetic — from session_end outcome=starved
 ];
 
 /// Build a waste report for the given time window. `since_secs` is the
@@ -98,11 +109,28 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
     let mut anon_seq: u64 = 0;
 
     for line in contents.lines() {
-        // Only inspect lines that look like JSON ALERT events.
-        if !line.contains(r#""event":"ALERT""#) && !line.contains(r#""kind":""#) {
+        // Only inspect lines that look like JSON ALERT events OR the
+        // INFRA-477 session_end events (INFRA-493 promotes those with
+        // outcome=abandoned|starved into synthetic waste kinds).
+        let is_alert = line.contains(r#""event":"ALERT""#) || line.contains(r#""kind":""#);
+        let is_session_end = line.contains(r#""kind":"session_end""#);
+        if !is_alert && !is_session_end {
             continue;
         }
-        let kind = extract_field(line, "kind").unwrap_or_default();
+
+        // INFRA-493: classify session_end by outcome before the WASTE_KINDS
+        // filter. session_end events themselves are not waste — only the
+        // ones with outcome=abandoned|starved are.
+        let raw_kind = extract_field(line, "kind").unwrap_or_default();
+        let kind = if raw_kind == "session_end" {
+            match extract_field(line, "outcome").as_deref() {
+                Some("abandoned") => "session_abandoned".to_string(),
+                Some("starved") => "session_starved".to_string(),
+                _ => continue, // outcome=shipped is not waste; skip.
+            }
+        } else {
+            raw_kind
+        };
         if !WASTE_KINDS.iter().any(|&k| k == kind) {
             continue;
         }
@@ -149,6 +177,10 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
             "fleet_wedge" | "fleet_starved" => {
                 extract_field(line, "gap_id").or_else(|| extract_field(line, "agent"))
             }
+            // INFRA-493: synthetic kinds — session_id is the entity.
+            "session_abandoned" | "session_starved" => extract_field(line, "session_id")
+                .or_else(|| extract_field(line, "session"))
+                .or_else(|| extract_field(line, "gap_id")),
             // queue_stuck, ambient_oversize, silent_agent's siblings:
             // fall through to the generic search.
             _ => extract_field(line, "session")
@@ -586,10 +618,72 @@ mod tests {
 
     #[test]
     fn infra488_taxonomy_has_all_documented_kinds() {
-        // Smoke test: the taxonomy table in module docs lists 10 kinds.
-        // If a future commit adds/removes a kind, the constant is the
-        // single source of truth.
-        assert_eq!(WASTE_KINDS.len(), 10);
+        // INFRA-493: 10 original + 2 session-end synthetic = 12.
+        assert_eq!(WASTE_KINDS.len(), 12);
+    }
+
+    #[test]
+    fn infra493_session_end_abandoned_classified_as_waste() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        let lines = [
+            // shipped session — should NOT count as waste
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"sess-A","gap_id":"INFRA-1","outcome":"shipped","elapsed_seconds":600}}"#,
+                now_iso
+            ),
+            // abandoned session — counts as waste
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"sess-B","gap_id":"INFRA-2","outcome":"abandoned","elapsed_seconds":300}}"#,
+                now_iso
+            ),
+            // starved (timeout) — counts as waste
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"sess-C","gap_id":"INFRA-3","outcome":"starved","elapsed_seconds":600}}"#,
+                now_iso
+            ),
+        ];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report(&tmp, 86400);
+        // 2 waste events (abandoned + starved); shipped excluded.
+        assert_eq!(report.total_events, 2);
+        let kinds: Vec<&str> = report.entries.iter().map(|e| e.kind.as_str()).collect();
+        assert!(kinds.contains(&"session_abandoned"));
+        assert!(kinds.contains(&"session_starved"));
+        // Cost summed from elapsed_seconds.
+        let abandoned = report
+            .entries
+            .iter()
+            .find(|e| e.kind == "session_abandoned")
+            .unwrap();
+        assert_eq!(abandoned.estimated_cost_secs, 300);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra493_session_end_dedupes_by_session_id() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        // Same session abandoned twice (shouldn't happen but test the dedup).
+        let lines: Vec<String> = (0..3)
+            .map(|i| format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"sess-X","gap_id":"INFRA-{}","outcome":"abandoned","elapsed_seconds":100}}"#,
+                now_iso, i
+            ))
+            .collect();
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report(&tmp, 86400);
+        let abandoned = report
+            .entries
+            .iter()
+            .find(|e| e.kind == "session_abandoned")
+            .unwrap();
+        assert_eq!(abandoned.count, 3);
+        assert_eq!(
+            abandoned.incidents, 1,
+            "same session_id collapses to 1 incident"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     fn chrono_now_iso() -> String {
