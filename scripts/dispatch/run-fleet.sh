@@ -161,6 +161,28 @@ fi
 
 mkdir -p "$FLEET_LOG_DIR"
 
+# INFRA-519: reap stale fleet-* leases before spawning new panes.
+# tmux-kill bypasses worker.sh exit-cleanup, leaving orphaned lease files whose
+# PIDs are no longer alive. Stale leases block the picker (treated as live
+# within TTL), starving a fresh fleet of pickable gaps.
+# session_id format: fleet-<FLEET_SESSION>-agent<N>-<PID>-<epoch>
+# PID is the second-to-last dash-separated field — safe even if FLEET_SESSION
+# contains dashes because the trailing <PID>-<epoch> suffix is always numeric.
+_stale_reaped=0
+for _lease in "$REPO_ROOT/.chump-locks"/fleet-*.json; do
+    [[ -f "$_lease" ]] || continue
+    _sid="$(basename "$_lease" .json)"
+    _pid="$(printf '%s' "$_sid" | rev | cut -d- -f2 | rev)"
+    if [[ "$_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$_pid" 2>/dev/null; then
+        echo "[run-fleet] reaping stale lease (pid $_pid dead): $(basename "$_lease")"
+        rm -f "$_lease"
+        (( _stale_reaped++ )) || true
+    fi
+done
+if (( _stale_reaped > 0 )); then
+    echo "[run-fleet] reaped $_stale_reaped stale fleet lease(s) — picker unblocked"
+fi
+
 cat <<EOF
 [run-fleet] starting fleet
   session       : $FLEET_SESSION
