@@ -251,6 +251,29 @@ BOT_MERGE_HOT_FILES=(
     "AGENTS.md"
 )
 
+# ── INFRA-103: serializing hot-file list ──────────────────────────────────────
+# PRs touching any of these files cannot safely land concurrently because they
+# modify shared coordination state or global config. All other PRs are
+# parallel-safe. Configure via BM_SERIALIZING_HOT_FILES env var (colon-separated
+# overrides the entire list) or append with BM_SERIALIZING_EXTRA (colon-separated).
+_DEFAULT_SERIALIZING_HOT_FILES=(
+    "gaps.yaml"
+    ".chump/state.db"
+    ".chump/state.sql"
+    "CLAUDE.md"
+    ".gitmodules"
+    "Cargo.lock"
+)
+if [[ -n "${BM_SERIALIZING_HOT_FILES:-}" ]]; then
+    IFS=':' read -ra SERIALIZING_HOT_FILES <<< "$BM_SERIALIZING_HOT_FILES"
+else
+    SERIALIZING_HOT_FILES=("${_DEFAULT_SERIALIZING_HOT_FILES[@]}")
+fi
+if [[ -n "${BM_SERIALIZING_EXTRA:-}" ]]; then
+    IFS=':' read -ra _extra <<< "$BM_SERIALIZING_EXTRA"
+    SERIALIZING_HOT_FILES+=("${_extra[@]}")
+fi
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 # INFRA-026 — timestamped banners let the fleet distinguish "stuck" from
 # "working hard." Every green/red/info output carries `[bot-merge HH:MM:SS]`.
@@ -291,6 +314,55 @@ emit_hot_file_warnings() {
             fi
         done
     done <<< "$diff_files"
+}
+
+# ── INFRA-103: PR parallelism classifier ──────────────────────────────────────
+# Outputs "serializing" if the diff touches any SERIALIZING_HOT_FILES entry,
+# "parallel-safe" otherwise. Applies a GitHub label to the PR so the queue
+# health monitor (and humans) can spot avoidable serialization.
+classify_pr_parallelism() {
+    local diff_files
+    diff_files="$(git diff "$REMOTE/$BASE_BRANCH"..HEAD --name-only 2>/dev/null || true)"
+    [[ -z "$diff_files" ]] && { echo "parallel-safe"; return; }
+    local path hot
+    while IFS= read -r path; do
+        [[ -z "$path" ]] && continue
+        for hot in "${SERIALIZING_HOT_FILES[@]}"; do
+            if [[ "$path" == "$hot" ]]; then
+                echo "serializing"
+                return
+            fi
+        done
+    done <<< "$diff_files"
+    echo "parallel-safe"
+}
+
+apply_pr_parallelism_label() {
+    local pr_number="$1"
+    local class
+    class="$(classify_pr_parallelism)"
+    local label="pr:${class}"
+    info "INFRA-103: PR #${pr_number} classified as ${class} — applying label '${label}'"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        info "[dry-run] gh pr edit $pr_number --add-label $label"
+        return 0
+    fi
+    # Create the label if it doesn't exist (idempotent).
+    if [[ "$class" == "serializing" ]]; then
+        gh label create "pr:serializing" --color "e4e669" --description "Touches shared hot files; cannot land concurrently with other serializing PRs" --force 2>/dev/null || true
+    else
+        gh label create "pr:parallel-safe" --color "0075ca" --description "Does not touch shared coordination files; can land concurrently with other parallel-safe PRs" --force 2>/dev/null || true
+    fi
+    gh pr edit "$pr_number" --add-label "$label" 2>/dev/null || true
+    # Emit ambient event so queue-health-monitor and sibling agents see the class.
+    local ambient="${LOCK_DIR:-/tmp}/ambient.jsonl"
+    local now
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local gap_label="${GAP_IDS[0]:-none}"
+    printf '{"ts":"%s","session":"bot-merge-%d","event":"pr_classified","kind":"pr_classified","pr":"%s","class":"%s","gap_id":"%s","serializing_hot_files":"%s"}\n' \
+        "$now" "$_BM_PID" "$pr_number" "$class" "$gap_label" \
+        "$(IFS=','; echo "${SERIALIZING_HOT_FILES[*]}")" \
+        >> "$ambient" 2>/dev/null || true
 }
 
 __STAGE_LABEL=""
@@ -1193,6 +1265,18 @@ EOF
     fi
 else
     green "PR #$EXISTING_PR already exists — updated by push."
+fi
+
+# ── INFRA-103: apply parallelism label to the PR ─────────────────────────────
+# Classify this PR as 'serializing' or 'parallel-safe' based on whether it
+# touches shared coordination hot files. Label is applied regardless of
+# whether the PR was just created or already existed.
+_label_pr="${EXISTING_PR:-}"
+if [[ -z "$_label_pr" ]]; then
+    _label_pr="$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")"
+fi
+if [[ -n "$_label_pr" ]]; then
+    apply_pr_parallelism_label "$_label_pr"
 fi
 
 # ── 6.75. Auto-close gap on the implementation PR (INFRA-154) ────────────────
