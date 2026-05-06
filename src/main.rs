@@ -492,6 +492,7 @@ async fn main() -> Result<()> {
             .cloned()
             .unwrap_or_else(|| "24h".to_string());
         let want_json = args.iter().any(|a| a == "--json");
+        let by_domain = args.iter().any(|a| a == "--by-domain");
 
         // Parse "24h" / "7d" / "60m" / raw seconds.
         let since_secs = parse_duration_to_secs(&since_arg).unwrap_or_else(|| {
@@ -503,11 +504,20 @@ async fn main() -> Result<()> {
         });
 
         let repo_root = repo_path::repo_root();
-        let report = waste_tally::build_report(&repo_root, since_secs);
-        if want_json {
-            println!("{}", report.render_json());
+        if by_domain {
+            let report = waste_tally::build_domain_report(&repo_root, since_secs);
+            if want_json {
+                println!("{}", report.render_json());
+            } else {
+                print!("{}", report.render_text());
+            }
         } else {
-            print!("{}", report.render_text());
+            let report = waste_tally::build_report(&repo_root, since_secs);
+            if want_json {
+                println!("{}", report.render_json());
+            } else {
+                print!("{}", report.render_text());
+            }
         }
         return Ok(());
     }
