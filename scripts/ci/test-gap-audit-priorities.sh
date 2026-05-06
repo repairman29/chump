@@ -96,7 +96,8 @@ else
     fail "expected exit 1 on vague pickable gap"
 fi
 
-VAGUE_COUNT=$("$BIN" gap audit-priorities --json 2>/dev/null | grep -oP '"vague_pickable":\s*\K[0-9]+' || echo 0)
+VAGUE_COUNT=$("$BIN" gap audit-priorities --json 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('vague_pickable',0))" 2>/dev/null || echo 0)
 if [[ "$VAGUE_COUNT" -ge 1 ]]; then
     ok "vague_pickable count >= 1 (got $VAGUE_COUNT)"
 else
@@ -106,7 +107,8 @@ fi
 # 4c. race-* title pollution check.
 "$BIN" gap reserve --domain INFRA --priority P2 --effort xs \
     --title "race-fixture-test" --quiet 2>/dev/null
-RACE_COUNT=$("$BIN" gap audit-priorities --json 2>/dev/null | grep -oP '"race_test_pollution":\s*\K[0-9]+' || echo 0)
+RACE_COUNT=$("$BIN" gap audit-priorities --json 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('race_test_pollution',0))" 2>/dev/null || echo 0)
 if [[ "$RACE_COUNT" -ge 1 ]]; then
     ok "race_test_pollution count >= 1 (got $RACE_COUNT)"
 else
