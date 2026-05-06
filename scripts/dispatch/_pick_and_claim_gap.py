@@ -17,6 +17,7 @@ Environment (same as _pick_gap.py plus):
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import re
@@ -119,11 +120,12 @@ def get_lock_dir() -> Path:
 def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
     """Attempt to write a lease for gap_id atomically. Return True if successful.
 
-    Uses a two-file strategy:
-    1. gap-id.lock — canonical indicator that gap is claimed (created atomically)
+    Uses a two-file strategy with fcntl.flock for atomicity:
+    1. gap-id.lock — canonical indicator that gap is claimed
     2. session-id.json — metadata about the claiming session
 
-    The lock file is the critical piece; the session lease is just for bookkeeping.
+    INFRA-513: Use fcntl.flock around the check+claim pair to prevent TOCTOU race
+    where two workers both scan empty leases and try to claim the same gap.
     """
     lock_dir.mkdir(parents=True, exist_ok=True)
 
@@ -141,36 +143,38 @@ def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
         "speculative": True,
     }
 
-    # Atomic claim: try to create a gap-specific lock file.
-    # If it already exists, the gap is claimed.
     gap_lock_file = lock_dir / f".gap-{gap_id}.lock"
     session_lease_file = lock_dir / f"{session_id}.json"
     temp_lease = lock_dir / f".tmp-{session_id}-{gap_id}-{now}"
+    lockfile = lock_dir / ".claim-lock"
 
     try:
-        # Try to create the gap lock atomically (exclusive creation).
-        # This is the critical atomic operation.
-        try:
-            with open(gap_lock_file, "x") as f:
-                f.write(f"{session_id} {now}\n")
-            gap_lock_created = True
-        except FileExistsError:
-            gap_lock_created = False
+        # Use fcntl.flock around the check+claim to prevent TOCTOU race.
+        # This serializes access so only one worker can claim at a time.
+        with open(lockfile, "a") as lock_f:
+            fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
+            try:
+                # Check if gap is already claimed (within the lock).
+                if gap_lock_file.exists():
+                    return False
 
-        if not gap_lock_created:
-            return False
+                # Create the gap lock file (still within the lock).
+                with open(gap_lock_file, "w") as f:
+                    f.write(f"{session_id} {now}\n")
 
-        # Gap lock created successfully. Now write the session lease.
-        try:
-            with open(temp_lease, "w") as f:
-                json.dump(lease, f, indent=2)
-            temp_lease.rename(session_lease_file)
-        except Exception:
-            # Lease write failed, but we already created the lock.
-            # Return True anyway since we successfully claimed the gap.
-            pass
+                # Gap lock created successfully. Now write the session lease.
+                try:
+                    with open(temp_lease, "w") as f:
+                        json.dump(lease, f, indent=2)
+                    temp_lease.rename(session_lease_file)
+                except Exception:
+                    # Lease write failed, but we already created the lock.
+                    # Return True anyway since we successfully claimed the gap.
+                    pass
 
-        return True
+                return True
+            finally:
+                fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
 
     except Exception:
         return False
