@@ -1,0 +1,7 @@
+- id: INFRA-497
+  domain: INFRA
+  title: docs-delta pre-commit hook misses Net-new-docs trailer for git commit -m
+  status: open
+  priority: P2
+  effort: m
+
