@@ -882,6 +882,188 @@ async fn main() -> Result<()> {
         }
     }
 
+    // `chump fleet <start|stop|status|scale>` (INFRA-596)
+    // Wraps scripts/dispatch/run-fleet.sh + fleet-status.sh so operators
+    // don't need to remember FLEET_SIZE/FLEET_EFFORT_FILTER/CHUMP_REPO env vars.
+    // Reads defaults from ~/.chump/config.toml [fleet] section when present.
+    if args.get(1).map(String::as_str) == Some("fleet") {
+        let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
+        let repo_root = repo_path::repo_root();
+        let run_fleet_sh = repo_root.join("scripts/dispatch/run-fleet.sh");
+        let fleet_status_sh = repo_root.join("scripts/dispatch/fleet-status.sh");
+        let flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+
+        // Simple [fleet] section reader for ~/.chump/config.toml.
+        let config_toml = std::env::var("HOME")
+            .ok()
+            .map(std::path::PathBuf::from)
+            .map(|h| h.join(".chump/config.toml"))
+            .and_then(|p| std::fs::read_to_string(p).ok())
+            .unwrap_or_default();
+        let cfg = |key: &str| -> Option<String> {
+            config_toml
+                .lines()
+                .find(|l| l.trim_start().starts_with(key))
+                .and_then(|l| l.splitn(2, '=').nth(1))
+                .map(|v| v.trim().trim_matches('"').to_string())
+                .filter(|v| !v.is_empty())
+        };
+
+        match subcmd {
+            "start" => {
+                let size = flag("--size")
+                    .or_else(|| cfg("size"))
+                    .unwrap_or_else(|| "2".to_string());
+                let model = flag("--model")
+                    .or_else(|| cfg("model"))
+                    .unwrap_or_else(|| "sonnet".to_string());
+                let effort = flag("--effort")
+                    .or_else(|| cfg("effort"))
+                    .unwrap_or_else(|| "xs,s,m".to_string());
+                let domain = flag("--domain")
+                    .or_else(|| cfg("domain"))
+                    .unwrap_or_default();
+                let status = std::process::Command::new("bash")
+                    .arg(&run_fleet_sh)
+                    .env("FLEET_SIZE", &size)
+                    .env("FLEET_MODEL", &model)
+                    .env("FLEET_EFFORT_FILTER", &effort)
+                    .env("FLEET_DOMAIN_FILTER", &domain)
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("chump fleet start: {e}");
+                        std::process::exit(1);
+                    });
+                std::process::exit(status.code().unwrap_or(1));
+            }
+            "stop" => {
+                let session = flag("--session")
+                    .or_else(|| cfg("session"))
+                    .unwrap_or_else(|| "chump-fleet".to_string());
+                let status = std::process::Command::new("bash")
+                    .arg(&run_fleet_sh)
+                    .env("FLEET_SIZE", "0")
+                    .env("FLEET_SESSION", &session)
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("chump fleet stop: {e}");
+                        std::process::exit(1);
+                    });
+                std::process::exit(status.code().unwrap_or(1));
+            }
+            "status" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let mut cmd = std::process::Command::new("bash");
+                cmd.arg(&fleet_status_sh);
+                if want_json {
+                    cmd.arg("--json");
+                } else {
+                    cmd.arg("--once");
+                }
+                let status = cmd.status().unwrap_or_else(|e| {
+                    eprintln!("chump fleet status: {e}");
+                    std::process::exit(1);
+                });
+                std::process::exit(status.code().unwrap_or(1));
+            }
+            "scale" => {
+                let n_str = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump fleet scale <N>");
+                    std::process::exit(2);
+                });
+                let n: u32 = n_str.parse().unwrap_or_else(|_| {
+                    eprintln!("chump fleet scale: N must be a positive integer, got '{n_str}'");
+                    std::process::exit(2);
+                });
+                let session = flag("--session")
+                    .or_else(|| cfg("session"))
+                    .unwrap_or_else(|| "chump-fleet".to_string());
+
+                // Persist desired size so restarts and monitors can read it.
+                let state_dir = repo_root.join(".chump");
+                let _ = std::fs::create_dir_all(&state_dir);
+                let _ = std::fs::write(state_dir.join("fleet-desired-size"), format!("{n}\n"));
+
+                // Emit ambient event (matches fleet_scale_change schema in CLAUDE.md).
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&ambient_path)
+                {
+                    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                    let _ = writeln!(
+                        f,
+                        "{{\"ts\":\"{ts}\",\"kind\":\"fleet_scale_request\",\"to\":{n},\"session\":\"{session}\"}}"
+                    );
+                }
+
+                // Count alive worker windows in the tmux session.
+                let current_count: u32 = std::process::Command::new("tmux")
+                    .args(["list-windows", "-t", &session, "-F", "#W"])
+                    .output()
+                    .ok()
+                    .map(|o| {
+                        String::from_utf8_lossy(&o.stdout)
+                            .lines()
+                            .filter(|l| l.starts_with("fleet-worker-"))
+                            .count() as u32
+                    })
+                    .unwrap_or(0);
+
+                println!("[fleet scale] session={session} current={current_count} → desired={n}");
+
+                if n > current_count {
+                    let worker_sh = repo_root.join("scripts/dispatch/worker.sh");
+                    for i in (current_count + 1)..=n {
+                        let pane_name = format!("fleet-worker-{i}");
+                        let worker_cmd = format!("AGENT_ID={i} bash {}", worker_sh.display());
+                        let ok = std::process::Command::new("tmux")
+                            .args(["new-window", "-t", &session, "-n", &pane_name, &worker_cmd])
+                            .status()
+                            .map(|s| s.success())
+                            .unwrap_or(false);
+                        if ok {
+                            println!("[fleet scale] spawned {pane_name}");
+                        } else {
+                            eprintln!("[fleet scale] WARNING: failed to spawn {pane_name}");
+                        }
+                    }
+                } else if n < current_count {
+                    for i in (n + 1)..=current_count {
+                        let target = format!("{session}:fleet-worker-{i}");
+                        let ok = std::process::Command::new("tmux")
+                            .args(["kill-window", "-t", &target])
+                            .status()
+                            .map(|s| s.success())
+                            .unwrap_or(false);
+                        if ok {
+                            println!("[fleet scale] killed fleet-worker-{i}");
+                        } else {
+                            println!("[fleet scale] fleet-worker-{i} not found (already stopped)");
+                        }
+                    }
+                } else {
+                    println!("[fleet scale] already at {n} workers — no change");
+                }
+                return Ok(());
+            }
+            _ => {
+                eprintln!("Usage: chump fleet <start|stop|status|scale>");
+                eprintln!("  start  [--size N] [--model M] [--effort xs,s,m] [--domain D]");
+                eprintln!("  stop   [--session NAME]");
+                eprintln!("  status [--json]");
+                eprintln!("  scale  N [--session NAME]");
+                std::process::exit(2);
+            }
+        }
+    }
+
     // `chump gap <subcommand>` (INFRA-023) — SQLite-backed gap store.
     //
     // Subcommands: list, reserve, claim, preflight, ship, dump, import
