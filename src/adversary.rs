@@ -640,6 +640,20 @@ mod e2e_rule_to_ambient {
             .collect()
     }
 
+    /// Like `read_ambient` but returns only lines whose `session` field matches
+    /// `session_id`. Concurrent tests from other modules can write to the same
+    /// temp file via the shared CHUMP_AMBIENT_LOG env var; filtering by the
+    /// unique session value isolates exactly the lines this test emitted.
+    fn read_ambient_for_session(
+        path: &std::path::Path,
+        session_id: &str,
+    ) -> Vec<serde_json::Value> {
+        read_ambient(path)
+            .into_iter()
+            .filter(|l| l["session"] == session_id)
+            .collect()
+    }
+
     /// Full integration: YAML rule fires on a tool call, emit_ambient_alert
     /// writes one line, the line parses as JSON and carries all fields the
     /// downstream consumers depend on.
@@ -667,7 +681,7 @@ rules:
 
         emit_ambient_alert(&alert);
 
-        let lines = read_ambient(&ambient_path);
+        let lines = read_ambient_for_session(&ambient_path, "infra130-test-session");
         assert_eq!(lines.len(), 1, "exactly one ambient line should be emitted");
         let row = &lines[0];
 
@@ -770,7 +784,7 @@ rules:
         };
         assert!(mapped.is_ok(), "Warn action must map to Ok(())");
 
-        let lines = read_ambient(&ambient_path);
+        let lines = read_ambient_for_session(&ambient_path, "infra130-warn-session");
         assert_eq!(lines.len(), 1, "Warn action must still emit ambient line");
         assert_eq!(lines[0]["action"], "warn");
         assert_eq!(lines[0]["rule"], "warn-on-rm-rf-tmp");
@@ -810,7 +824,7 @@ rules:
             .expect("rule must match");
         emit_ambient_alert(&alert);
 
-        let lines = read_ambient(&ambient_path);
+        let lines = read_ambient_for_session(&ambient_path, "infra130-escape-session");
         assert_eq!(lines.len(), 1);
         // serde_json::from_str succeeded inside read_ambient — that alone
         // proves the line is valid JSON despite the embedded quote/newline.
