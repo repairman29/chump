@@ -102,6 +102,7 @@ mod memory_graph_tool;
 mod memory_graph_viz;
 mod memory_tool;
 mod messaging;
+mod mission_grade;
 #[cfg(feature = "mistralrs-infer")]
 mod mistralrs_provider;
 mod model_overlay;
@@ -456,6 +457,23 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
         }
+    }
+
+    // `chump mission-grade [--json]` (INFRA-599) — auto-emit 4-pillar scorecard.
+    // Counts pickable, in_flight, and shipped_24h gaps per pillar
+    // (EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE, identified by title prefix),
+    // emits kind=mission_grade to ambient.jsonl, and prints to stdout.
+    if args.get(1).map(String::as_str) == Some("mission-grade") {
+        let want_json = args.iter().any(|a| a == "--json");
+        let repo_root = repo_path::repo_root();
+        let report = mission_grade::build_report(&repo_root);
+        mission_grade::emit(&repo_root, &report);
+        if want_json {
+            println!("{}", report.render_json());
+        } else {
+            print!("{}", report.render_text());
+        }
+        return Ok(());
     }
 
     // `chump fleet-status` (INFRA-494) — single-command operator

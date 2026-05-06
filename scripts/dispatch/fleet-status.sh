@@ -303,6 +303,24 @@ out = {
     "fleet_workers_alive": fleet_workers_alive,
     "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
 }
+
+# INFRA-599: include latest mission_grade event from ambient.jsonl
+latest_mg = None
+if os.path.isfile(ambient_path):
+    with open(ambient_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("kind") == "mission_grade":
+                latest_mg = rec
+if latest_mg is not None:
+    out["mission_grade"] = latest_mg
+
 print(json.dumps(out))
 PY
 }
