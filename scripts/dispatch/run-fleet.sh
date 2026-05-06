@@ -42,8 +42,14 @@
 #
 # Stop:
 #   FLEET_SIZE=0 scripts/dispatch/run-fleet.sh   ← preferred (cascade-kills orphans, INFRA-581)
-#   tmux kill-session -t <FLEET_SESSION>          ← leaves timeout+claude orphans alive
+#   tmux kill-session -t <FLEET_SESSION>          ← safe: orphan-reaper sentinel fires (INFRA-602)
 #   or: Ctrl-C inside any pane (only kills that one agent's loop)
+#
+# INFRA-602: a sentinel watcher process (outside tmux) is spawned at fleet start.
+# It polls `tmux has-session` every 3s; when the fleet session disappears for any
+# reason it runs: pkill -f "timeout [0-9]*s claude -p "
+# If you bypass tmux entirely (e.g. SIGKILL on the tmux server), follow with:
+#   pkill -f "timeout [0-9]*s claude -p "
 #
 # INFRA-581: tmux kill-session kills the pane shell + worker.sh but
 # already-spawned `timeout Ns claude -p ...` grandchildren may have
@@ -309,6 +315,19 @@ tmux new-session -d -s "$FLEET_SESSION" -n fleet -c "$REPO_ROOT" \
 mkdir -p "$(dirname "$FLEET_PIDS_FILE")"
 # Truncate any stale pids file from a prior run of the same session name.
 : > "$FLEET_PIDS_FILE"
+
+# INFRA-602: orphan-reaper sentinel. Runs outside tmux; polls until the fleet
+# session disappears (for ANY reason — kill-session, server crash, Ctrl-C), then
+# pkills any surviving timeout+claude workers. Covers the path FLEET_SIZE=0
+# teardown misses: a raw `tmux kill-session` by the operator.
+(
+    while tmux has-session -t "$FLEET_SESSION" 2>/dev/null; do
+        sleep 3
+    done
+    pkill -f "timeout [0-9]*s claude -p " 2>/dev/null || true
+) &
+_sentinel_pid=$!
+echo "$_sentinel_pid" >> "$FLEET_PIDS_FILE"
 
 for i in $(seq 1 "$FLEET_SIZE"); do
     log="$FLEET_LOG_DIR/agent-${i}.log"
