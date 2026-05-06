@@ -388,8 +388,11 @@ run_timed_hb() {
 # Bypass: CHUMP_INTERNAL_DOCTOR=0 — disable the wrap entirely (raw chump).
 # Useful for tests that mock `chump` and don't want the heal path firing.
 chump_with_doctor() {
+    # INFRA-526: honour CHUMP_BINARY so callers can pin to a specific binary
+    # (e.g. ~/.cargo/bin/chump) without mutating PATH. Falls back to `chump`.
+    local _chump_bin="${CHUMP_BINARY:-chump}"
     if [[ "${CHUMP_INTERNAL_DOCTOR:-1}" == "0" ]]; then
-        chump "$@"
+        "$_chump_bin" "$@"
         return $?
     fi
     local timeout_secs="${CHUMP_INTERNAL_TIMEOUT:-30}"
@@ -400,7 +403,7 @@ chump_with_doctor() {
         TO=(timeout "$timeout_secs")
     fi
 
-    "${TO[@]}" chump "$@"
+    "${TO[@]}" "$_chump_bin" "$@"
     local rc=$?
 
     # rc 124 = GNU coreutils timeout. rc 137 = SIGKILL (sometimes seen on
@@ -413,7 +416,7 @@ chump_with_doctor() {
         else
             yellow "chump-doctor.sh not found at $doctor — skipping heal, retrying anyway" >&2
         fi
-        "${TO[@]}" chump "$@"
+        "${TO[@]}" "$_chump_bin" "$@"
         rc=$?
         if [[ $rc -eq 0 ]]; then
             green "chump $* recovered after doctor heal" >&2
@@ -1151,17 +1154,24 @@ fi
 #   - chump binary missing or `chump gap ship` fails (often: gap already done)
 if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP:-1}" != "0" ]] && [[ ${#GAP_IDS[@]} -gt 0 ]] && [[ "${CHUMP_BENCH_MODE:-0}" != "1" ]]; then
     _autoclose_target_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
-    # META-022: resolve the canonical (main) repo's .chump/state.db path so
-    # `chump gap ship` finds the gap even when bot-merge.sh runs inside a
-    # linked worktree (the typical case — gap reservations live in the main
-    # repo's state.db, but each linked worktree has its own empty state.db
-    # under .git/worktrees/<name>/.chump/). Without this, every bot-merge
-    # auto-close on a /tmp worktree silently no-op'd and stamped "✓ done"
-    # while the YAML mirror stayed at status=open. Caused META-017 drift
-    # for #870 / #875 / #876 on 2026-05-02.
-    _autoclose_main_repo=$(git rev-parse --git-common-dir 2>/dev/null \
-        | xargs -I{} realpath "{}/.." 2>/dev/null \
-        || pwd)
+    # INFRA-526 / META-022: use $MAIN_REPO (set by repo-paths.sh at startup)
+    # as the canonical .chump/state.db target. The previous inline computation
+    # (`git rev-parse --git-common-dir | xargs -I{} realpath "{}/.."`) was
+    # fragile: when xargs receives empty input it exits 0 without running
+    # realpath, making the pipeline exit 0 with no output and bypassing the
+    # `|| pwd` fallback — resulting in CHUMP_REPO="" which caused repo_root()
+    # to fall back to CWD (the linked worktree), targeting the wrong state.db.
+    # $MAIN_REPO uses `cd && pwd` with a $REPO_ROOT fallback and is already
+    # verified by the time we reach this block.
+    _autoclose_main_repo="${MAIN_REPO:-$REPO_ROOT}"
+    # INFRA-526: pin to the canonical chump binary path so an outdated binary
+    # in $PATH (e.g., a stale symlink or a different version) doesn't silently
+    # skip the --closed-pr flag. Fall back to PATH-resolved chump if absent.
+    _autoclose_chump="chump"
+    if [[ -x "${HOME}/.cargo/bin/chump" ]]; then
+        _autoclose_chump="${HOME}/.cargo/bin/chump"
+    fi
+    info "INFRA-526: auto-close targeting state.db at $_autoclose_main_repo/.chump/state.db (binary: $_autoclose_chump)"
     if [[ -n "$_autoclose_target_pr" ]] && command -v chump >/dev/null 2>&1; then
         for _gid in "${GAP_IDS[@]}"; do
             stage_start "auto-close gap $_gid via PR #$_autoclose_target_pr (INFRA-154)"
@@ -1170,6 +1180,7 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
             # INFRA-458: chump_with_doctor wraps with timeout+heal+retry so a
             # mid-flight syspolicyd wedge doesn't strand the auto-close step.
             _autoclose_err=$(CHUMP_REPO="$_autoclose_main_repo" \
+                             CHUMP_BINARY="$_autoclose_chump" \
                              chump_with_doctor gap ship "$_gid" \
                                 --closed-pr "$_autoclose_target_pr" \
                                 --update-yaml 2>&1 >/dev/null)
