@@ -909,7 +909,7 @@ async fn main() -> Result<()> {
             config_toml
                 .lines()
                 .find(|l| l.trim_start().starts_with(key))
-                .and_then(|l| l.splitn(2, '=').nth(1))
+                .and_then(|l| l.split_once('=').map(|x| x.1))
                 .map(|v| v.trim().trim_matches('"').to_string())
                 .filter(|v| !v.is_empty())
         };
