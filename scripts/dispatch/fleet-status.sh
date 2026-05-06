@@ -216,7 +216,18 @@ for f, n in per_filter.most_common(5):
 PY
 }
 
+render_version_skew() {
+  # INFRA-609: check if running fleet's worker.sh is behind origin/main.
+  local skew_script="$REPO_ROOT/scripts/dev/fleet-version-skew-detect.sh"
+  if [[ -x "$skew_script" ]]; then
+    if ! "$skew_script" 2>&1; then
+      : # non-zero exit already printed the warning
+    fi
+  fi
+}
+
 render_all() {
+  render_version_skew
   render_agents
   echo
   render_queue
