@@ -37,15 +37,22 @@ git push -qu origin feature
 LOCAL_SHA=$(git rev-parse HEAD)
 REMOTE_SHA=$(git rev-parse origin/feature)
 
-# Stub gh: mark feature as auto-merge-armed so Guard 2 would fire.
+# Stub gh: mark feature as auto-merge-armed AND mergeStateStatus=CLEAN
+# so Guard 2 fires (INFRA-485 only blocks on CLEAN). Older fixture
+# returned plain "true" — pre-INFRA-485 the guard tested any-armed,
+# post-INFRA-485 it tests CLEAN.
 mkdir -p "$TMP/bin"
 cat > "$TMP/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 if [[ "$1 $2" == "pr view" ]] && [[ " $* " == *" --json "* ]]; then
     if [[ " $* " == *"--jq"* ]]; then
-        echo "true"
+        # INFRA-485: caller's --jq reduces to either the
+        # mergeStateStatus string (when state=OPEN + auto-merge armed)
+        # or "no_armed". Return CLEAN so the test simulates the
+        # dangerous case Guard 2 should still block.
+        echo "CLEAN"
     else
-        echo '{"state":"OPEN","autoMergeRequest":{"enabledAt":"2026-05-03T00:00:00Z"}}'
+        echo '{"state":"OPEN","autoMergeRequest":{"enabledAt":"2026-05-03T00:00:00Z"},"mergeStateStatus":"CLEAN"}'
     fi
     exit 0
 fi
