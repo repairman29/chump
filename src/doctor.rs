@@ -20,9 +20,9 @@
 //! 12. Audit chain integrity (Sprint A3)
 //!
 //! Output:
-//!   - Default: ANSI-styled report to stdout, exit 0 if all Pass, exit 1 if any Fail
-//!   - `--json`: machine-readable JSON to stdout
-//!   - `--verbose`: include raw values for each check
+//! - Default: ANSI-styled report to stdout, exit 0 if all Pass, exit 1 if any Fail
+//! - `--json`: machine-readable JSON to stdout
+//! - `--verbose`: include raw values for each check
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
