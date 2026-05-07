@@ -109,6 +109,7 @@ mod model_overlay;
 mod neuromodulation;
 mod notify_tool;
 mod onboard_repo_tool;
+mod operator_presence;
 mod patch_apply;
 mod pending_peer_approval;
 mod perception;
