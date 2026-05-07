@@ -90,6 +90,7 @@ mod hooks;
 mod interrupt_notify;
 mod introspect_tool;
 mod job_log;
+mod kpi_report;
 mod lesson_action;
 mod lesson_embeddings;
 mod limits;
@@ -2687,6 +2688,37 @@ async fn main() -> Result<()> {
                 report.today_spend_usd, budget_usd
             );
             std::process::exit(1);
+        }
+        return Ok(());
+    }
+
+    // `chump kpi report --tokens-per-ship N [--json]` (INFRA-640)
+    // Extends INFRA-617 with rolling tokens-per-ship calculation.
+    // For each shipped gap in the last N days, sums token counts from
+    // kind=session_end (outcome=shipped) and kind=token_usage_partial events.
+    // Outputs P50/P90/Max tokens-per-ship, $/ship at Sonnet pricing, top-5
+    // most-expensive ships. Identifies token-heavy work patterns.
+    if args.get(1).map(String::as_str) == Some("kpi")
+        && args.get(2).map(String::as_str) == Some("report")
+    {
+        let flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let window_days = flag("--tokens-per-ship")
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(7);
+        let want_json = args.iter().any(|a| a == "--json");
+
+        let repo_root = repo_path::repo_root();
+        let report = kpi_report::build_report(&repo_root, window_days);
+
+        if want_json {
+            println!("{}", report.render_json());
+        } else {
+            print!("{}", report.render_text());
         }
         return Ok(());
     }
