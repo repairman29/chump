@@ -189,6 +189,9 @@ manual_strip = "allow"
 manual_split_once = "allow"
 lines_filter_map_ok = "allow"
 manual_is_multiple_of = "allow"
+never_loop = "allow"
+manual_clamp = "allow"
+field_reassign_with_default = "allow"
 
 [workspace.lints.rust]
 dead_code = "allow"
