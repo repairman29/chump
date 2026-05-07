@@ -122,6 +122,7 @@ mod platform_router;
 mod plugin;
 mod policy_override;
 mod pr_coupling_cost;
+mod pr_fix_clippy;
 mod precision_controller;
 mod provider_bandit;
 mod provider_cascade;
@@ -600,6 +601,40 @@ async fn main() -> Result<()> {
             println!("{}", report.render_json());
         } else {
             print!("{}", report.render_text());
+        }
+        return Ok(());
+    }
+
+    // `chump pr fix-clippy <PR#> [--dry-run]`
+    // (INFRA-618) — ZERO-WASTE: auto-fix obvious clippy lints on a PR branch.
+    // Targets: manual_split_once, unused_variables, redundant_clone, single_match.
+    // Safety: refuses if --fix touches >3 files or diff looks non-trivial.
+    if args.get(1).map(String::as_str) == Some("pr")
+        && args.get(2).map(String::as_str) == Some("fix-clippy")
+    {
+        let pr_number: Option<u64> = args.get(3).and_then(|s| s.parse().ok());
+        let pr_number = match pr_number {
+            Some(n) => n,
+            None => {
+                eprintln!("Usage: chump pr fix-clippy <PR#> [--dry-run]");
+                std::process::exit(2);
+            }
+        };
+        let dry_run = args.iter().any(|a| a == "--dry-run");
+        let repo_root = repo_path::repo_root();
+        match pr_fix_clippy::fix_clippy(pr_number, &repo_root, dry_run) {
+            Ok(r) => {
+                if !r.dry_run {
+                    println!(
+                        "chump pr fix-clippy: PR #{} fixed — {} files, {} lines.",
+                        r.pr_number, r.files_changed, r.lines_changed
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("chump pr fix-clippy: {e}");
+                std::process::exit(1);
+            }
         }
         return Ok(());
     }
