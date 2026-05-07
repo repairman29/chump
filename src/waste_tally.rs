@@ -51,6 +51,11 @@ pub struct WasteEntry {
     /// INFRA-534: actual API cost in USD derived from token counts on
     /// `session_end` events. Zero for event kinds that don't carry tokens.
     pub cost_usd: f64,
+    /// INFRA-641: total tokens burned across the events that contributed
+    /// to this entry. Sum of `input_tokens + output_tokens` (or analogues)
+    /// from any session_end / session_token_orphan events bucketed here.
+    /// Zero for event kinds that don't carry token counts.
+    pub tokens_burned: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -66,6 +71,10 @@ pub struct WasteReport {
     /// INFRA-534: total actual API cost (USD) across all waste entries
     /// that carried token counts.
     pub total_cost_usd: f64,
+    /// INFRA-641: total tokens burned across all waste entries.
+    /// Useful when paired with `chump waste-tally --tokens` to size the
+    /// daily token spend a single waste class is consuming.
+    pub total_tokens_burned: u64,
 }
 
 /// The set of `kind` values we classify as waste. Order matches the
@@ -400,13 +409,17 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
             .or_else(|| extract_int_field(line, "elapsed_seconds"))
             .unwrap_or(0);
         // INFRA-534: token-based cost only on session_end events.
-        let event_cost_usd = if is_session_end_event {
+        // INFRA-641: also harvest tokens_burned for the per-class report.
+        let (event_cost_usd, event_tokens_burned) = if is_session_end_event {
             let input = extract_int_field(line, "input_tokens").unwrap_or(0);
             let output = extract_int_field(line, "output_tokens").unwrap_or(0);
             let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
-            crate::session_ledger::cost_usd_from_tokens(input, output, cache)
+            (
+                crate::session_ledger::cost_usd_from_tokens(input, output, cache),
+                input.saturating_add(output).saturating_add(cache),
+            )
         } else {
-            0.0
+            (0.0, 0u64)
         };
 
         // INFRA-489: kind-aware entity extraction. The naive "first
@@ -468,6 +481,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
                     incidents: 0,
                     estimated_cost_secs: 0,
                     cost_usd: 0.0,
+                    tokens_burned: 0,
                 },
                 HashSet::new(),
             )
@@ -475,6 +489,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         bucket.0.count += 1;
         bucket.0.estimated_cost_secs = bucket.0.estimated_cost_secs.saturating_add(cost);
         bucket.0.cost_usd += event_cost_usd;
+        bucket.0.tokens_burned = bucket.0.tokens_burned.saturating_add(event_tokens_burned);
         bucket.1.insert(entity);
     }
 
@@ -550,6 +565,11 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
                 });
             bucket.0.count += 1;
             bucket.0.cost_usd += cost;
+            // INFRA-641: orphan token totals also feed the --tokens report.
+            bucket.0.tokens_burned = bucket
+                .0
+                .tokens_burned
+                .saturating_add(inp.saturating_add(out).saturating_add(crd));
             bucket.1.insert(sid);
         }
     }
@@ -566,6 +586,10 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         .collect();
 
     let total_cost_usd: f64 = entries.iter().map(|e| e.cost_usd).sum();
+    let total_tokens_burned: u64 = entries
+        .iter()
+        .map(|e| e.tokens_burned)
+        .fold(0u64, u64::saturating_add);
 
     WasteReport {
         since_seconds: since_secs,
@@ -573,6 +597,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         total_incidents,
         entries,
         total_cost_usd,
+        total_tokens_burned,
     }
 }
 
@@ -645,29 +670,86 @@ impl WasteReport {
     /// INFRA-489: each entry now carries `incidents` (deduped) alongside
     /// `count` (raw); top level adds `total_incidents`.
     /// INFRA-534: each entry includes `cost_usd`; top level adds `total_cost_usd`.
+    /// INFRA-641: each entry includes `tokens_burned`; top level adds
+    /// `total_tokens_burned`.
     pub fn render_json(&self) -> String {
         let entries_json: Vec<String> = self
             .entries
             .iter()
             .map(|e| {
                 format!(
-                    r#"{{"kind":"{}","count":{},"incidents":{},"estimated_cost_secs":{},"cost_usd":{:.6}}}"#,
+                    r#"{{"kind":"{}","count":{},"incidents":{},"estimated_cost_secs":{},"cost_usd":{:.6},"tokens_burned":{}}}"#,
                     json_escape(&e.kind),
                     e.count,
                     e.incidents,
                     e.estimated_cost_secs,
-                    e.cost_usd
+                    e.cost_usd,
+                    e.tokens_burned
                 )
             })
             .collect();
         format!(
-            r#"{{"since_seconds":{},"total_events":{},"total_incidents":{},"total_cost_usd":{:.6},"entries":[{}]}}"#,
+            r#"{{"since_seconds":{},"total_events":{},"total_incidents":{},"total_cost_usd":{:.6},"total_tokens_burned":{},"entries":[{}]}}"#,
             self.since_seconds,
             self.total_events,
             self.total_incidents,
             self.total_cost_usd,
+            self.total_tokens_burned,
             entries_json.join(",")
         )
+    }
+
+    /// INFRA-641: render a token-focused summary table.
+    /// Sorts entries by `tokens_burned` descending so the heaviest waste
+    /// classes lead. Pairs with `chump waste-tally --tokens` for sizing
+    /// daily token budgets against waste classes.
+    pub fn render_text_tokens(&self) -> String {
+        let mut out = String::new();
+        let hours = self.since_seconds / 3600;
+        out.push_str(&format!(
+            "═══ Zero Waste — Token Burn ═══ (last {} h, {} total tokens, ${:.2} est.)\n",
+            hours.max(1),
+            format_tokens(self.total_tokens_burned),
+            self.total_cost_usd
+        ));
+        if self.entries.is_empty() || self.total_tokens_burned == 0 {
+            out.push_str("  (no token-bearing waste events in window)\n");
+            return out;
+        }
+        let mut sorted: Vec<&WasteEntry> = self
+            .entries
+            .iter()
+            .filter(|e| e.tokens_burned > 0)
+            .collect();
+        sorted.sort_by_key(|e| std::cmp::Reverse(e.tokens_burned));
+        for e in &sorted {
+            let pct = if self.total_tokens_burned > 0 {
+                (e.tokens_burned as f64 / self.total_tokens_burned as f64) * 100.0
+            } else {
+                0.0
+            };
+            out.push_str(&format!(
+                "  {:>4} × {:24}  {:>9} tokens ({:>4.1}%)  ${:.2}\n",
+                e.incidents,
+                e.kind,
+                format_tokens(e.tokens_burned),
+                pct,
+                e.cost_usd
+            ));
+        }
+        out
+    }
+}
+
+/// INFRA-641: human-readable token count helper. Compresses big numbers
+/// to k/M form so a 12.4M token waste class is readable at a glance.
+fn format_tokens(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1_000_000.0)
+    } else if n >= 1_000 {
+        format!("{:.1}k", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
     }
 }
 
@@ -1237,6 +1319,104 @@ mod tests {
             report.entries.iter().map(|e| &e.kind).collect::<Vec<_>>()
         );
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── INFRA-641: --tokens flag tests ───────────────────────────────────
+
+    #[test]
+    fn infra641_render_text_tokens_shows_per_class_breakdown() {
+        let report = WasteReport {
+            since_seconds: 86400,
+            total_events: 4,
+            total_incidents: 3,
+            entries: vec![
+                WasteEntry {
+                    kind: "session_abandoned".into(),
+                    count: 2,
+                    incidents: 2,
+                    tokens_burned: 1_200_000,
+                    cost_usd: 4.8,
+                    ..Default::default()
+                },
+                WasteEntry {
+                    kind: "session_token_orphan".into(),
+                    count: 1,
+                    incidents: 1,
+                    tokens_burned: 300_000,
+                    cost_usd: 1.2,
+                    ..Default::default()
+                },
+            ],
+            total_cost_usd: 6.0,
+            total_tokens_burned: 1_500_000,
+        };
+        let text = report.render_text_tokens();
+        assert!(
+            text.contains("Token Burn"),
+            "header missing — got:\n{}",
+            text
+        );
+        // Heaviest class leads (sorted by tokens_burned desc).
+        let abandoned_pos = text.find("session_abandoned").expect("abandoned line");
+        let orphan_pos = text.find("session_token_orphan").expect("orphan line");
+        assert!(
+            abandoned_pos < orphan_pos,
+            "session_abandoned (1.2M tokens) should sort above session_token_orphan (300k); got:\n{}",
+            text
+        );
+        // Compressed token formatting: 1.2M / 300.0k.
+        assert!(text.contains("1.2M"), "got:\n{}", text);
+        assert!(text.contains("300.0k"), "got:\n{}", text);
+        // Cost shown alongside token counts.
+        assert!(text.contains("$4.80"), "got:\n{}", text);
+    }
+
+    #[test]
+    fn infra641_render_text_tokens_handles_empty_window() {
+        let empty = WasteReport::default();
+        let text = empty.render_text_tokens();
+        assert!(text.contains("Token Burn"));
+        assert!(text.contains("no token-bearing waste events"));
+    }
+
+    #[test]
+    fn infra641_render_json_includes_tokens_fields() {
+        let report = WasteReport {
+            since_seconds: 3600,
+            total_events: 1,
+            total_incidents: 1,
+            entries: vec![WasteEntry {
+                kind: "session_abandoned".into(),
+                count: 1,
+                incidents: 1,
+                tokens_burned: 42_000,
+                cost_usd: 0.17,
+                ..Default::default()
+            }],
+            total_cost_usd: 0.17,
+            total_tokens_burned: 42_000,
+        };
+        let json = report.render_json();
+        assert!(
+            json.contains(r#""tokens_burned":42000"#),
+            "per-entry tokens_burned missing — got:\n{}",
+            json
+        );
+        assert!(
+            json.contains(r#""total_tokens_burned":42000"#),
+            "top-level total_tokens_burned missing — got:\n{}",
+            json
+        );
+    }
+
+    #[test]
+    fn infra641_format_tokens_compresses_big_numbers() {
+        assert_eq!(format_tokens(0), "0");
+        assert_eq!(format_tokens(999), "999");
+        assert_eq!(format_tokens(1_000), "1.0k");
+        assert_eq!(format_tokens(1_500), "1.5k");
+        assert_eq!(format_tokens(1_000_000), "1.0M");
+        assert_eq!(format_tokens(12_400_000), "12.4M");
     }
 
     fn chrono_now_iso() -> String {
