@@ -13,9 +13,9 @@
 //! ```
 //!
 //! - `--log`  Path to ambient.jsonl. Defaults to `$CHUMP_AMBIENT_LOG` then
-//!            `.chump-locks/ambient.jsonl` relative to repo root.
+//!   `.chump-locks/ambient.jsonl` relative to repo root.
 //! - `--days` Window: only rows whose `ts` is within the last N days.
-//!            Default: 30.
+//!   Default: 30.
 //! - `--seed` RNG seed for Thompson sampling replay. Default: 42.
 //! - `--out`  Output report path. Default: `docs/research/bandit-replay-2026-05.md`.
 
@@ -130,7 +130,7 @@ fn parse_decisions(path: &PathBuf, days: u64) -> Vec<Decision> {
     };
 
     let mut out = vec![];
-    for line in std::io::BufReader::new(f).lines().flatten() {
+    for line in std::io::BufReader::new(f).lines().map_while(Result::ok) {
         let row: AmbientRow = match serde_json::from_str(&line) {
             Ok(r) => r,
             Err(_) => continue,
