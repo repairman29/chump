@@ -82,6 +82,24 @@ if [[ -f "$REPO_ROOT/.env" && "${CHUMP_FLEET_NOENV:-0}" != "1" ]]; then
     echo "[run-fleet] sourced $REPO_ROOT/.env (INFRA-351) — set CHUMP_FLEET_NOENV=1 to skip"
 fi
 
+# INFRA-620: detect auth mode before consuming any fleet config, so the
+# mode is available for the ambient emit and worker_env construction below.
+# Subscription mode: CLAUDE_CODE_OAUTH_TOKEN set, ANTHROPIC_API_KEY absent.
+# In subscription mode the parent Claude Code app refreshes the token
+# in-process every ~30-60min; already-spawned workers keep the OLD token
+# in their inherited env and all fail simultaneously. We write the current
+# token to ~/.chump/oauth-token.json, start a background refresher, and
+# tell workers to re-read from that file before each spawn.
+_fleet_auth_mode="unknown"
+_fleet_auth_path="none"
+if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+    _fleet_auth_mode="api_key"
+    _fleet_auth_path="ANTHROPIC_API_KEY"
+elif [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
+    _fleet_auth_mode="subscription"
+    _fleet_auth_path="CLAUDE_CODE_OAUTH_TOKEN"
+fi
+
 FLEET_SIZE="${FLEET_SIZE:-8}"
 # INFRA-371: timeout default lowered 1800→600. Most INFRA gaps that ship
 # do so in 5–10min on hot cargo cache; the rest are usually wedged
@@ -277,6 +295,87 @@ fi
 # in the worker pane falls back to the user's claude.ai subscription
 # cap instead of consuming workspace API credit, the exact failure mode
 # INFRA-351 set out to fix.
+
+# INFRA-620: emit fleet_auth_mode ambient event so operators can see which
+# auth path workers are using, and diagnose the subscription-token-expiry
+# failure mode (auth_storm at T+30-60min after launch).
+_amb_log="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+mkdir -p "$(dirname "$_amb_log")" 2>/dev/null || true
+printf '{"ts":"%s","kind":"fleet_auth_mode","auth_mode":"%s","auth_path":"%s","sdk_has_refresh":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$_fleet_auth_mode" "$_fleet_auth_path" \
+    "${CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH:-0}" \
+    >> "$_amb_log" 2>/dev/null || true
+echo "[run-fleet] INFRA-620: auth_mode=$_fleet_auth_mode auth_path=$_fleet_auth_path"
+
+# INFRA-620: subscription-mode token refresh setup. Write current token to
+# a well-known file; start a background refresher; workers re-read before
+# each claude -p spawn instead of using the stale inherited env value.
+_oauth_token_file=""
+if [[ "$_fleet_auth_mode" == "subscription" ]]; then
+    _oauth_token_file="$HOME/.chump/oauth-token.json"
+    mkdir -p "$HOME/.chump"
+    chmod 700 "$HOME/.chump" 2>/dev/null || true
+    printf '{"token":"%s","written_at":"%s","source":"launch_env"}\n' \
+        "$CLAUDE_CODE_OAUTH_TOKEN" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        > "$_oauth_token_file"
+    chmod 600 "$_oauth_token_file"
+    echo "[run-fleet] INFRA-620: wrote oauth token snapshot → $_oauth_token_file"
+
+    # Background token refresher: every 5 min, try to extract the current
+    # oauth token (the parent Claude Code app refreshes it in-process; we
+    # probe macOS keychain and known Claude CLI credential paths). On
+    # success, atomically replace the token file so workers pick it up on
+    # their next spawn. On failure, the file retains the last good token and
+    # workers fall back to ANTHROPIC_API_KEY when that token also expires.
+    (
+        _tf="$_oauth_token_file"
+        _amb="$_amb_log"
+        while true; do
+            sleep 300
+            _refreshed=""
+            # 1. Try macOS Keychain (service names used by claude CLI).
+            for _svc in "Claude Code" "claude.ai" "Claude"; do
+                _refreshed=$(security find-generic-password -s "$_svc" -w 2>/dev/null || true)
+                [[ -n "$_refreshed" ]] && break
+            done
+            # 2. Try well-known credential files written by Claude CLI.
+            if [[ -z "$_refreshed" ]]; then
+                for _cred in \
+                    "$HOME/.claude/.credentials.json" \
+                    "$HOME/.config/claude/credentials.json"
+                do
+                    if [[ -f "$_cred" ]]; then
+                        _refreshed=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$_cred'))
+    t = d.get('access_token') or d.get('token') or d.get('claudeAiOauthToken','')
+    print(t)
+except Exception:
+    pass
+" 2>/dev/null || true)
+                        [[ -n "$_refreshed" ]] && break
+                    fi
+                done
+            fi
+            if [[ -n "$_refreshed" ]]; then
+                printf '{"token":"%s","written_at":"%s","source":"refresher"}\n' \
+                    "$_refreshed" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                    > "${_tf}.tmp"
+                mv "${_tf}.tmp" "$_tf"
+                printf '{"ts":"%s","kind":"fleet_oauth_token_refreshed","source":"refresher"}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_amb" 2>/dev/null || true
+            fi
+        done
+    ) &
+    _token_refresher_pid=$!
+    # Track refresher so FLEET_SIZE=0 teardown can kill it.
+    mkdir -p "$(dirname "$FLEET_PIDS_FILE")"
+    echo "$_token_refresher_pid" >> "$FLEET_PIDS_FILE"
+    echo "[run-fleet] INFRA-620: token refresher started (pid=$_token_refresher_pid, interval=300s)"
+fi
+
 worker_env=(
     "REPO_ROOT=$REPO_ROOT"
     "FLEET_LOG_DIR=$FLEET_LOG_DIR"
@@ -305,6 +404,13 @@ worker_env=(
     ${GROQ_API_KEY:+"GROQ_API_KEY=$GROQ_API_KEY"}
     ${MISTRAL_API_KEY:+"MISTRAL_API_KEY=$MISTRAL_API_KEY"}
     ${FIREWORKS_API_KEY:+"FIREWORKS_API_KEY=$FIREWORKS_API_KEY"}
+    # INFRA-620: subscription oauth token refresh. Pass the token file path
+    # so workers can re-read the current token before each claude -p spawn.
+    # In subscription mode, explicitly clear the inherited CLAUDE_CODE_OAUTH_TOKEN
+    # so workers don't silently use the stale launch-time value — they must
+    # re-read from the file (which the background refresher keeps current).
+    ${_oauth_token_file:+"CHUMP_OAUTH_TOKEN_FILE=$_oauth_token_file"}
+    ${_oauth_token_file:+"CLAUDE_CODE_OAUTH_TOKEN="}
 )
 env_prefix="$(printf '%s ' "${worker_env[@]}")"
 
