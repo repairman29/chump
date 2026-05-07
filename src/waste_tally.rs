@@ -92,6 +92,7 @@ pub const WASTE_KINDS: &[&str] = &[
     "session_starved",   // INFRA-493 synthetic — from session_end outcome=starved
     "worker_exit_timeout", // INFRA-572 synthetic — from worker_exit exit_class=TIMEOUT
     "worker_exit_oom",   // INFRA-572 synthetic — from worker_exit exit_class=OOM_KILL
+    "session_token_orphan", // INFRA-639 synthetic — token_usage_partial with no session_end
 ];
 
 /// Domain-level aggregate for `--by-domain` output (INFRA-574).
@@ -475,6 +476,82 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         bucket.0.estimated_cost_secs = bucket.0.estimated_cost_secs.saturating_add(cost);
         bucket.0.cost_usd += event_cost_usd;
         bucket.1.insert(entity);
+    }
+
+    // INFRA-639: aggregate token_usage_partial events for sessions that never
+    // emitted session_end (killed workers). Tracks the LAST seen values per
+    // session_id because claude streams cumulative usage — the final partial
+    // event has the most complete token count before the worker was killed.
+    {
+        // Collect session_ids that DID emit session_end within the window.
+        let mut session_end_ids: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        for line in contents.lines() {
+            if !line.contains(r#""kind":"session_end""#) {
+                continue;
+            }
+            if let Some(ts) = extract_field(line, "ts") {
+                if let Some(unix) = parse_iso8601_to_unix(&ts) {
+                    if unix < cutoff {
+                        continue;
+                    }
+                }
+            }
+            if let Some(sid) =
+                extract_field(line, "session_id").or_else(|| extract_field(line, "session"))
+            {
+                session_end_ids.insert(sid);
+            }
+        }
+
+        // For each token_usage_partial event with no matching session_end,
+        // track the last-seen token values per session_id.
+        let mut orphan_tokens: BTreeMap<String, (u64, u64, u64)> = BTreeMap::new();
+        for line in contents.lines() {
+            if !line.contains(r#""kind":"token_usage_partial""#) {
+                continue;
+            }
+            if let Some(ts) = extract_field(line, "ts") {
+                if let Some(unix) = parse_iso8601_to_unix(&ts) {
+                    if unix < cutoff {
+                        continue;
+                    }
+                }
+            }
+            let sid = match extract_field(line, "session_id")
+                .or_else(|| extract_field(line, "session"))
+            {
+                Some(s) => s,
+                None => continue,
+            };
+            if session_end_ids.contains(&sid) {
+                continue; // session_end carries the definitive cumulative count
+            }
+            let inp = extract_int_field(line, "input").unwrap_or(0);
+            let out = extract_int_field(line, "output").unwrap_or(0);
+            let crd = extract_int_field(line, "cache_read").unwrap_or(0);
+            // Overwrite with latest values (API sends cumulative per-stream).
+            orphan_tokens.insert(sid, (inp, out, crd));
+        }
+
+        for (sid, (inp, out, crd)) in orphan_tokens {
+            total_in_window += 1;
+            let cost = crate::session_ledger::cost_usd_from_tokens(inp, out, crd);
+            let bucket = by_kind
+                .entry("session_token_orphan".to_string())
+                .or_insert_with(|| {
+                    (
+                        WasteEntry {
+                            kind: "session_token_orphan".to_string(),
+                            ..Default::default()
+                        },
+                        std::collections::HashSet::new(),
+                    )
+                });
+            bucket.0.count += 1;
+            bucket.0.cost_usd += cost;
+            bucket.1.insert(sid);
+        }
     }
 
     // Realize incidents = unique entity count.
@@ -898,7 +975,8 @@ mod tests {
     fn infra488_taxonomy_has_all_documented_kinds() {
         // INFRA-493: 10 original + 2 session-end synthetic = 12.
         // INFRA-572: +2 worker_exit synthetic (timeout + oom) = 14.
-        assert_eq!(WASTE_KINDS.len(), 14);
+        // INFRA-639: +1 session_token_orphan (partial tokens, no session_end) = 15.
+        assert_eq!(WASTE_KINDS.len(), 15);
     }
 
     #[test]
@@ -1094,6 +1172,71 @@ mod tests {
         assert!(json.contains(r#""domain":"INFRA""#));
         assert!(json.contains(r#""incidents":2"#));
         assert!(json.contains(r#""total_incidents":3"#));
+    }
+
+    #[test]
+    fn infra639_partial_tokens_without_session_end_create_orphan_entry() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        // Two partial events for the same orphaned session (no session_end).
+        // Second event has higher counts — build_report should take last-seen.
+        let lines = [
+            format!(
+                r#"{{"ts":"{now}","kind":"token_usage_partial","session_id":"orphan-1","gap_id":"INFRA-639","cycle_id":"1-INFRA-639-20260506","input":500,"output":100,"cache_read":200,"cache_creation":0}}"#,
+                now = now_iso
+            ),
+            format!(
+                r#"{{"ts":"{now}","kind":"token_usage_partial","session_id":"orphan-1","gap_id":"INFRA-639","cycle_id":"1-INFRA-639-20260506","input":1000,"output":300,"cache_read":400,"cache_creation":0}}"#,
+                now = now_iso
+            ),
+        ];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report(&tmp, 86400);
+        let orphan = report
+            .entries
+            .iter()
+            .find(|e| e.kind == "session_token_orphan");
+        assert!(
+            orphan.is_some(),
+            "session_token_orphan entry expected; got: {:?}",
+            report.entries.iter().map(|e| &e.kind).collect::<Vec<_>>()
+        );
+        let orphan = orphan.unwrap();
+        assert_eq!(orphan.incidents, 1, "one unique orphaned session");
+        assert!(
+            orphan.cost_usd > 0.0,
+            "cost_usd should be nonzero for orphaned tokens"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra639_partial_tokens_suppressed_when_session_end_present() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        // Partial event + matching session_end for same session_id → no orphan.
+        let lines = [
+            format!(
+                r#"{{"ts":"{now}","kind":"token_usage_partial","session_id":"sess-done","gap_id":"INFRA-639","cycle_id":"1-INFRA-639-20260506","input":1000,"output":200,"cache_read":0,"cache_creation":0}}"#,
+                now = now_iso
+            ),
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{now}","session_id":"sess-done","gap_id":"INFRA-639","outcome":"shipped","elapsed_seconds":600,"input_tokens":1000,"output_tokens":200,"cache_read_tokens":0}}"#,
+                now = now_iso
+            ),
+        ];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report(&tmp, 86400);
+        let orphan = report
+            .entries
+            .iter()
+            .find(|e| e.kind == "session_token_orphan");
+        assert!(
+            orphan.is_none(),
+            "no orphan entry when session_end covers the session; entries: {:?}",
+            report.entries.iter().map(|e| &e.kind).collect::<Vec<_>>()
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     fn chrono_now_iso() -> String {

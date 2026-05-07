@@ -531,6 +531,30 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             # binary is missing.
             chump session-track --start "$GAP_ID" >/dev/null 2>&1 || true
 
+            # INFRA-639: per-cycle token attribution via tee+parse.
+            # Start a background python3 process that reads claude's stdout
+            # JSON stream through a named pipe and emits token_usage_partial
+            # ambient events for each line carrying a .usage field.  If the
+            # worker is killed before session_end fires, the partial events
+            # already persisted to ambient.jsonl so waste-tally can attribute
+            # the burned tokens (aggregated in src/waste_tally.rs).
+            _cycle_id="${AGENT_ID}-${GAP_ID}-${sid}"
+            _tok_fifo=""
+            _tok_parser_pid=0
+            _tok_parse_script="$REPO_ROOT/scripts/dispatch/_parse_token_usage.py"
+            _amb_for_tok="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+            if [[ -f "$_tok_parse_script" ]] && command -v mkfifo >/dev/null 2>&1; then
+                _tok_fifo_candidate="$(mktemp -u -t chump-tok.XXXXXX 2>/dev/null || true)"
+                if [[ -n "$_tok_fifo_candidate" ]] && mkfifo "$_tok_fifo_candidate" 2>/dev/null; then
+                    _tok_fifo="$_tok_fifo_candidate"
+                    python3 "$_tok_parse_script" \
+                        "$_tok_fifo" "$_amb_for_tok" "$GAP_ID" "$_cycle_id" \
+                        "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                        >/dev/null 2>&1 &
+                    _tok_parser_pid=$!
+                fi
+            fi
+
             # INFRA-525: checkpoint-on-timeout watchdog. Sonnet workers
             # routinely write the fix + tests + run cargo build, then
             # timeout at 600s before getting to 'gh pr create + bot-merge'.
@@ -576,10 +600,26 @@ Operator or sibling worker can rescue this branch via:
             (
                 cd "$wt_path" || exit 99
                 # Same surface as src/dispatch.rs WorkBackend::Headless.
+                # INFRA-639: tee stdout through the token-parser fifo when
+                # available so partial usage events are captured mid-flight.
+                # pipefail (inherited) propagates claude's exit code through tee.
                 # shellcheck disable=SC2086
-                $TO claude -p "$prompt" --dangerously-skip-permissions "${_model_arg[@]}"
+                if [[ -n "$_tok_fifo" ]]; then
+                    $TO claude -p "$prompt" --dangerously-skip-permissions "${_model_arg[@]}" \
+                        | tee "$_tok_fifo"
+                else
+                    $TO claude -p "$prompt" --dangerously-skip-permissions "${_model_arg[@]}"
+                fi
             ) >"$cycle_log" 2>&1
             rc=$?
+
+            # INFRA-639: tear down token parser after claude exits.
+            if [[ "$_tok_parser_pid" -ne 0 ]]; then
+                wait "$_tok_parser_pid" 2>/dev/null || true
+                _tok_parser_pid=0
+            fi
+            rm -f "$_tok_fifo" 2>/dev/null || true
+            _tok_fifo=""
 
             # INFRA-525: kill the checkpoint watchdog if claude exited
             # cleanly before T-30s — no rescue needed.
