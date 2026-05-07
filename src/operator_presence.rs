@@ -18,8 +18,8 @@
 //!     `provider_cascade.rs` already reads, so no changes are needed there.
 //!   - `AutonomousPolicy::picker_filter()` returns an SQL WHERE snippet for the
 //!     gap picker's `chump gap list` query.
-//!   - `AutonomousPolicy::check_cost_cap()` returns Err when the daily cap is
-//!     exceeded; callers should halt the current work unit.
+//!   - `AutonomousPolicy::check_cost_cap(current, cap)` returns Err when the daily cap
+//!     is exceeded; callers should halt the current work unit.
 //!   - `AutonomousPolicy::append_digest()` writes a one-liner to the digest file.
 //!   - `AutonomousPolicy::halt_on_credential_failure()` writes the recall notice
 //!     and returns Err so the launcher can exit cleanly.
@@ -212,13 +212,16 @@ impl AutonomousPolicy {
 
     /// (c) Check whether the daily cost cap has been exceeded.
     ///
-    /// `current_cost_usd` should come from `chump_cost_tracker` session totals.
-    pub fn check_cost_cap(&self, current_cost_usd: f64) -> Result<()> {
-        if current_cost_usd >= self.daily_cost_cap_usd {
+    /// Pass `self.daily_cost_cap_usd` (captured at construction from env) or an
+    /// explicit override. Accepting the cap as a parameter removes the env-var
+    /// dependency from the call site, enabling parallel test execution without
+    /// test-isolation annotations.
+    pub fn check_cost_cap(&self, current_cost_usd: f64, daily_cap_usd: f64) -> Result<()> {
+        if current_cost_usd >= daily_cap_usd {
             anyhow::bail!(
                 "autonomous-mode daily cost cap reached: ${:.4} >= ${:.2}; halting",
                 current_cost_usd,
-                self.daily_cost_cap_usd
+                daily_cap_usd
             );
         }
         Ok(())
@@ -361,18 +364,14 @@ mod tests {
 
     #[test]
     fn cost_cap_under_limit_ok() {
-        clear_env();
-        env::set_var("CHUMP_AUTONOMOUS_DAILY_COST_CAP_USD", "2.00");
         let policy = AutonomousPolicy::from_state(&PresenceState::Absent { hours: 5.0 }).unwrap();
-        assert!(policy.check_cost_cap(1.99).is_ok());
+        assert!(policy.check_cost_cap(1.99, 2.00).is_ok());
     }
 
     #[test]
     fn cost_cap_at_limit_err() {
-        clear_env();
-        env::set_var("CHUMP_AUTONOMOUS_DAILY_COST_CAP_USD", "2.00");
         let policy = AutonomousPolicy::from_state(&PresenceState::Absent { hours: 5.0 }).unwrap();
-        assert!(policy.check_cost_cap(2.00).is_err());
+        assert!(policy.check_cost_cap(2.00, 2.00).is_err());
     }
 
     #[test]
