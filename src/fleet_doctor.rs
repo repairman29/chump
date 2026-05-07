@@ -393,7 +393,8 @@ fn etime_to_secs(etime: &str) -> u64 {
         (0, etime)
     };
     let parts: Vec<&str> = rest.split(':').collect();
-    let secs = match parts.len() {
+    
+    match parts.len() {
         3 => {
             let h: u64 = parts[0].parse().unwrap_or(0);
             let m: u64 = parts[1].parse().unwrap_or(0);
@@ -410,8 +411,7 @@ fn etime_to_secs(etime: &str) -> u64 {
             days * 86400 + s
         }
         _ => 0,
-    };
-    secs
+    }
 }
 
 // ── check 4: waste-tally last 30 min ─────────────────────────────────────────
