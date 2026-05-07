@@ -3566,6 +3566,7 @@ async fn main() -> Result<()> {
         if why {
             eprintln!("{}", provider_cascade::cascade_why());
         }
+        let quiet = args.iter().any(|a| a == "--quiet");
         let assignee_from_env = std::env::var("CHUMP_AUTONOMY_ASSIGNEE").ok();
         let assignee = args
             .windows(2)
@@ -3573,11 +3574,17 @@ async fn main() -> Result<()> {
             .map(|w| w[1].as_str())
             .or(assignee_from_env.as_deref())
             .unwrap_or("chump");
+        let t0_once = std::time::Instant::now();
         let out = autonomy_loop::autonomy_once(assignee).await?;
         println!(
             "status={} task_id={:?} detail={}",
             out.status, out.task_id, out.detail
         );
+        if !quiet {
+            let elapsed = t0_once.elapsed().as_secs_f64();
+            let slot = provider_cascade::get_last_used_slot().unwrap_or_default();
+            gen::print_cost_summary(elapsed, 0, out.detail.len(), &slot);
+        }
         return Ok(());
     }
 
@@ -3787,7 +3794,12 @@ async fn main() -> Result<()> {
         } else {
             std::env::current_dir().unwrap_or_else(|_| repo_path::repo_root())
         };
-        let opts = gen::GenOptions { task, work_dir };
+        let quiet = args.iter().any(|a| a == "--quiet");
+        let opts = gen::GenOptions {
+            task,
+            work_dir,
+            quiet,
+        };
         match gen::run(opts).await {
             Ok(()) => return Ok(()),
             Err(e) => {
