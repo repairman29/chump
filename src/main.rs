@@ -50,6 +50,7 @@ mod context_engine;
 mod context_firewall;
 mod context_window;
 mod cost_tracker;
+mod cost_watch;
 mod counterfactual;
 mod dashboard;
 mod db_pool;
@@ -2196,6 +2197,48 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // `chump cost-watch [--budget X] [--hard-cap] [--json]` (INFRA-608)
+    // Running tally of Anthropic spend vs per-cycle budget. Reads session_end
+    // token-cost rows from ambient.jsonl, groups by model, projects monthly,
+    // and emits 🔴 when today's spend exceeds the daily budget threshold.
+    // --hard-cap exits 1 when over budget (blocks fleet spawn).
+    if args.get(1).map(String::as_str) == Some("cost-watch") {
+        let flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let budget_usd = flag("--budget")
+            .and_then(|s| s.parse::<f64>().ok())
+            .or_else(|| {
+                std::env::var("CHUMP_DAILY_BUDGET")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+            })
+            .unwrap_or(5.0_f64);
+        let hard_cap = args.iter().any(|a| a == "--hard-cap");
+        let want_json = args.iter().any(|a| a == "--json");
+
+        let repo_root = repo_path::repo_root();
+        let report = cost_watch::build_report(&repo_root, budget_usd);
+
+        if want_json {
+            println!("{}", report.render_json());
+        } else {
+            print!("{}", report.render_text());
+        }
+
+        if hard_cap && report.over_budget {
+            eprintln!(
+                "chump cost-watch: 🔴 hard-cap triggered — today's spend ${:.4} exceeds budget ${:.2}/day",
+                report.today_spend_usd, budget_usd
+            );
+            std::process::exit(1);
+        }
+        return Ok(());
     }
 
     // `chump dispatch route <GAP-ID>` (COG-035) — print the candidate cascade
