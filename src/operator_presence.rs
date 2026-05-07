@@ -289,9 +289,22 @@ pub fn emit_ambient_event(kind: &str, absent_hours: Option<f64>) -> Result<()> {
 mod tests {
     use super::*;
     use std::env;
+    use std::sync::Mutex;
     use tempfile::TempDir;
 
-    fn clear_env() {
+    // INFRA-651: serialize env-mutating tests. Multiple tests set/clear the
+    // same CHUMP_AUTONOMOUS_* env vars then call from_state() which reads
+    // env at runtime — parallel test execution races and one test's clear
+    // wipes another test's setup before from_state captures the value.
+    // A single global Mutex around every test that touches env serializes
+    // them inside this module without affecting cargo test --test-threads.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn clear_env() -> std::sync::MutexGuard<'static, ()> {
+        // Acquire lock FIRST so the env mutation + subsequent test body
+        // are atomic relative to other tests in this module. Caller binds
+        // the guard: `let _lock = clear_env();` so it drops at test end.
+        let lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         for key in &[
             "CHUMP_OPERATOR_LAST_SEEN_UNIX",
             "CHUMP_OPERATOR_ACTIVITY_PATH",
@@ -302,11 +315,12 @@ mod tests {
         ] {
             env::remove_var(key);
         }
+        lock
     }
 
     #[test]
     fn present_when_last_seen_recent() {
-        clear_env();
+        let _lock = clear_env();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -319,7 +333,7 @@ mod tests {
 
     #[test]
     fn absent_when_last_seen_old() {
-        clear_env();
+        let _lock = clear_env();
         let old = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -337,7 +351,7 @@ mod tests {
 
     #[test]
     fn present_when_no_signal() {
-        clear_env();
+        let _lock = clear_env();
         // No env var; point activity path at a non-existent dir so mtime fails.
         env::set_var("CHUMP_OPERATOR_ACTIVITY_PATH", "/nonexistent/path/xyz");
         assert_eq!(detect(), PresenceState::Present);
@@ -345,14 +359,14 @@ mod tests {
 
     #[test]
     fn policy_none_when_present() {
-        clear_env();
+        let _lock = clear_env();
         let state = PresenceState::Present;
         assert!(AutonomousPolicy::from_state(&state).is_none());
     }
 
     #[test]
     fn policy_some_when_absent() {
-        clear_env();
+        let _lock = clear_env();
         let state = PresenceState::Absent { hours: 7.5 };
         let policy = AutonomousPolicy::from_state(&state).unwrap();
         assert!((policy.absent_hours - 7.5).abs() < 0.01);
@@ -361,7 +375,7 @@ mod tests {
 
     #[test]
     fn cost_cap_under_limit_ok() {
-        clear_env();
+        let _lock = clear_env();
         env::set_var("CHUMP_AUTONOMOUS_DAILY_COST_CAP_USD", "2.00");
         let policy = AutonomousPolicy::from_state(&PresenceState::Absent { hours: 5.0 }).unwrap();
         assert!(policy.check_cost_cap(1.99).is_ok());
@@ -369,7 +383,7 @@ mod tests {
 
     #[test]
     fn cost_cap_at_limit_err() {
-        clear_env();
+        let _lock = clear_env();
         env::set_var("CHUMP_AUTONOMOUS_DAILY_COST_CAP_USD", "2.00");
         let policy = AutonomousPolicy::from_state(&PresenceState::Absent { hours: 5.0 }).unwrap();
         assert!(policy.check_cost_cap(2.00).is_err());
@@ -384,7 +398,7 @@ mod tests {
 
     #[test]
     fn cascade_env_overrides_contains_autonomous_mode() {
-        clear_env();
+        let _lock = clear_env();
         let state = PresenceState::Absent { hours: 5.0 };
         let policy = AutonomousPolicy::from_state(&state).unwrap();
         let overrides = policy.cascade_env_overrides();
@@ -396,7 +410,7 @@ mod tests {
 
     #[test]
     fn cascade_env_disables_anthropic_slots() {
-        clear_env();
+        let _lock = clear_env();
         env::set_var("CHUMP_PROVIDER_1_NAME", "anthropic-claude-opus");
         env::set_var("CHUMP_PROVIDER_2_NAME", "groq");
 
@@ -420,7 +434,7 @@ mod tests {
 
     #[test]
     fn append_digest_creates_file() {
-        clear_env();
+        let _lock = clear_env();
         let dir = TempDir::new().unwrap();
         let digest = dir.path().join("digest.jsonl");
         env::set_var("CHUMP_AUTONOMOUS_DIGEST_PATH", digest.to_str().unwrap());
@@ -438,7 +452,7 @@ mod tests {
 
     #[test]
     fn halt_on_credential_failure_returns_err() {
-        clear_env();
+        let _lock = clear_env();
         let dir = TempDir::new().unwrap();
         let digest = dir.path().join("digest.jsonl");
         env::set_var("CHUMP_AUTONOMOUS_DIGEST_PATH", digest.to_str().unwrap());
