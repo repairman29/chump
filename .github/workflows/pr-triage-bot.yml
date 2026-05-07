@@ -233,26 +233,43 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Skip if lint-class (handled by auto-fix-lint job)
+      - name: Classify failure via FAILURE_MODES.yaml catalog (INFRA-647)
         id: skip_check
         run: |
+          set -euo pipefail
           NAME='${{ github.event.check_run.name }}'
-          if echo "$NAME" | grep -qE '^(clippy|fmt)$'; then
-            echo "::notice::Skipping file-fix-gap for lint-class job '$NAME' — auto-fix-lint handles it"
+          # Build chump binary first (needed for classify-failure).
+          # We build here so the classify step has the binary ready.
+          cargo build --bin chump -q 2>/dev/null || true
+
+          # Classify: prefer catalog match; fall back to heuristic.
+          if [ -f ./target/debug/chump ]; then
+            RESULT=$(./target/debug/chump classify-failure --job "$NAME" --json 2>/dev/null || echo '{}')
+          else
+            RESULT='{}'
+          fi
+
+          CLASS=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('classification','real-bug'))" 2>/dev/null || echo "real-bug")
+          ACTION=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('auto_action','file_gap'))" 2>/dev/null || echo "file_gap")
+          CATALOG_ID=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id','unknown'))" 2>/dev/null || echo "unknown")
+
+          echo "class=$CLASS"    >> "$GITHUB_OUTPUT"
+          echo "action=$ACTION"  >> "$GITHUB_OUTPUT"
+          echo "catalog_id=$CATALOG_ID" >> "$GITHUB_OUTPUT"
+
+          # Skip lint-class (auto-fix-lint handles it) and flake+infra without gap.
+          if [ "$CLASS" = "lint" ]; then
+            echo "::notice::Skipping file-fix-gap for lint-class job '$NAME' (catalog: $CATALOG_ID) — auto-fix-lint handles it"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          elif [ "$CLASS" = "flake" ] || [ "$CLASS" = "infra-broken" ]; then
+            echo "::notice::Skipping gap-file for $CLASS job '$NAME' (catalog: $CATALOG_ID); action=$ACTION"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up Rust
-        if: steps.skip_check.outputs.skip == 'false'
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build chump binary
-        if: steps.skip_check.outputs.skip == 'false'
-        run: cargo build --bin chump -q
-
       - name: File P0 fix gap
+        id: file_gap
         if: steps.skip_check.outputs.skip == 'false'
         env:
           CHUMP_ALLOW_MAIN_WORKTREE: "1"
@@ -261,9 +278,11 @@ jobs:
           CHUMP_RESERVE_VERIFY: "0"
           PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
           CHECK_NAME: ${{ github.event.check_run.name }}
+          FAILURE_CLASS: ${{ steps.skip_check.outputs.class }}
+          CATALOG_ID: ${{ steps.skip_check.outputs.catalog_id }}
         run: |
           set -euo pipefail
-          GAP_TITLE="CREDIBLE: fix CI failure '${CHECK_NAME}' in PR #${PR_NUMBER}"
+          GAP_TITLE="CREDIBLE: fix ${FAILURE_CLASS} failure '${CHECK_NAME}' in PR #${PR_NUMBER}"
           GAP_ID=$(./target/debug/chump gap reserve \
             --domain INFRA \
             --priority P0 \
@@ -272,7 +291,7 @@ jobs:
             --force \
             --quiet)
           ./target/debug/chump gap set "${GAP_ID}" \
-            --notes "auto-filed by pr-triage-bot" \
+            --notes "auto-filed by pr-triage-bot (INFRA-624); catalog entry: ${CATALOG_ID}; class: ${FAILURE_CLASS}" \
             --acceptance-criteria "CI check '${CHECK_NAME}' passes on PR #${PR_NUMBER} or the root cause is fixed in a follow-up PR"
           echo "GAP_ID=${GAP_ID}" >> "$GITHUB_OUTPUT"
 
@@ -281,10 +300,16 @@ jobs:
         env:
           PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
           CHECK_NAME: ${{ github.event.check_run.name }}
+          FAILURE_CLASS: ${{ steps.skip_check.outputs.class }}
+          CATALOG_ID: ${{ steps.skip_check.outputs.catalog_id }}
+          GAP_ID: ${{ steps.file_gap.outputs.GAP_ID }}
         run: |
-          gh pr comment "$PR_NUMBER" --body "🤖 **pr-triage-bot** detected a real test/check failure: \`${CHECK_NAME}\`.
+          gh pr comment "$PR_NUMBER" --body "🤖 **pr-triage-bot** detected a \`${FAILURE_CLASS}\` failure: \`${CHECK_NAME}\`.
 
-          A P0 fix gap has been filed and the fleet will pick it up via INFRA-627 auto-promotion. No author action required immediately, but feel free to investigate.
+          - Catalog entry: \`${CATALOG_ID}\` (INFRA-647 FAILURE_MODES.yaml)
+          - Gap filed: \`${GAP_ID}\` — fleet picks it up via INFRA-627 auto-promotion.
+
+          No author action required immediately, but feel free to investigate.
 
           *Bot is INFRA-624.*" || true
           gh pr edit "$PR_NUMBER" --add-label needs-fleet-pickup || true

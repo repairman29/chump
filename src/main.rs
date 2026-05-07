@@ -71,6 +71,7 @@ mod episode_extractor;
 mod episode_tool;
 mod eval_harness;
 mod execute_gap;
+mod failure_catalog;
 mod file_watch;
 mod fleet;
 mod fleet_capability;
@@ -770,6 +771,14 @@ async fn main() -> Result<()> {
                 );
             }
         }
+        return Ok(());
+    }
+
+    // `chump classify-failure [--job NAME] [--log FILE|-] [--json]`  (INFRA-647)
+    // Reads docs/process/FAILURE_MODES.yaml and classifies a CI failure.
+    // pr-triage-bot.yml calls this to decide: fix | rerun | file_gap | escalate.
+    if args.get(1).map(String::as_str) == Some("classify-failure") {
+        failure_catalog::run_classify(&args[2..]);
         return Ok(());
     }
 
