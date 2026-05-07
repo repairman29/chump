@@ -23,3 +23,6 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 
 [package.metadata.dist]
 dist = false
+
+[lints]
+workspace = true

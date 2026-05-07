@@ -28,3 +28,6 @@ tokio = { version = "1", features = ["time", "process", "io-util"] }
 
 [package.metadata.dist]
 dist = false
+
+[lints]
+workspace = true

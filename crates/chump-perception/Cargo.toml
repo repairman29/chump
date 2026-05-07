@@ -16,3 +16,6 @@ serde = { version = "1", features = ["derive"] }
 # missing_docs = "warn" deferred — first publish ships the existing
 # module verbatim. A follow-up will add docs to every pub symbol then
 # turn the lint back on.
+
+[lints]
+workspace = true
