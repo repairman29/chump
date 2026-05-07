@@ -26,6 +26,7 @@ use anyhow::{bail, Context, Result};
 use axonerai::provider::Message;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Instant;
 
 const FILE_BEGIN: &str = "===FILE:";
 const FILE_END: &str = "===ENDFILE===";
@@ -33,12 +34,82 @@ const FILE_END: &str = "===ENDFILE===";
 pub struct GenOptions {
     pub task: String,
     pub work_dir: PathBuf,
+    /// When true, suppress the per-call cost summary line.
+    pub quiet: bool,
+}
+
+/// Estimate token count and USD cost, then print a one-line summary to stderr.
+///
+/// Token estimate: (input_chars + output_chars) / 4 — rough but consistent.
+/// Cost table uses published $/MTok rates; unknown models default to Sonnet pricing.
+pub fn print_cost_summary(elapsed_secs: f64, input_chars: usize, output_chars: usize, slot: &str) {
+    let total_tokens = ((input_chars + output_chars) / 4).max(1);
+    let cost_usd = estimate_cost_usd(total_tokens as u64, slot);
+    let model_label = friendly_model_label(slot);
+    eprintln!(
+        "completed in {:.1}s — {:>5} tokens (~${:.2} {})",
+        elapsed_secs,
+        fmt_tokens(total_tokens as u64),
+        cost_usd,
+        model_label,
+    );
+}
+
+fn estimate_cost_usd(tokens: u64, slot: &str) -> f64 {
+    let slot_lc = slot.to_lowercase();
+    // $/MTok blended (input+output averaged); offline/local models are $0
+    let per_million: f64 = if slot_lc.contains("opus") {
+        75.0
+    } else if slot_lc.contains("sonnet") {
+        15.0
+    } else if slot_lc.contains("haiku") {
+        1.25
+    } else if slot_lc.contains("gpt-4") {
+        30.0
+    } else if slot_lc.contains("gpt-3") {
+        0.5
+    } else if slot_lc.is_empty()
+        || slot_lc.contains("local")
+        || slot_lc.contains("ollama")
+        || slot_lc.contains("mistral")
+    {
+        0.0
+    } else {
+        15.0 // default: Sonnet pricing
+    };
+    tokens as f64 / 1_000_000.0 * per_million
+}
+
+fn friendly_model_label(slot: &str) -> String {
+    if slot.is_empty() {
+        return "unknown".to_string();
+    }
+    let lc = slot.to_lowercase();
+    if lc.contains("opus") {
+        "Opus".to_string()
+    } else if lc.contains("sonnet") {
+        "Sonnet".to_string()
+    } else if lc.contains("haiku") {
+        "Haiku".to_string()
+    } else {
+        // Use the slot name directly, trimmed to 20 chars
+        slot.chars().take(20).collect()
+    }
+}
+
+fn fmt_tokens(n: u64) -> String {
+    if n >= 1_000 {
+        format!("{:.1}k", n as f64 / 1_000.0)
+    } else {
+        n.to_string()
+    }
 }
 
 pub async fn run(opts: GenOptions) -> Result<()> {
     let work_dir = &opts.work_dir;
+    let t0 = Instant::now();
 
-    if let Ok(stub_rel) = std::env::var("CHUMP_GEN_STUB_FILE") {
+    let (input_chars, output_chars) = if let Ok(stub_rel) = std::env::var("CHUMP_GEN_STUB_FILE") {
         // CI / smoke-test path — prepend a comment, no real LLM call.
         let target = work_dir.join(&stub_rel);
         let existing = std::fs::read_to_string(&target)
@@ -47,13 +118,17 @@ pub async fn run(opts: GenOptions) -> Result<()> {
         std::fs::write(&target, &patched)
             .with_context(|| format!("CHUMP_GEN_STUB_FILE write: {}", target.display()))?;
         println!("gen (stub): patched {}", stub_rel);
+        (opts.task.len(), patched.len())
     } else {
         // Real LLM path via provider cascade.
         let provider = crate::provider_cascade::build_provider();
         let ctx = gather_source_context(work_dir)?;
+        let in_chars = opts.task.len() + ctx.len();
         let edits = request_edits(&*provider, &opts.task, &ctx).await?;
+        let out_chars: usize = edits.iter().map(|(p, c)| p.len() + c.len()).sum();
         apply_file_edits(&edits, work_dir)?;
-    }
+        (in_chars, out_chars)
+    };
 
     // Verify the edit compiles.
     let status = Command::new("cargo")
@@ -90,6 +165,13 @@ pub async fn run(opts: GenOptions) -> Result<()> {
     }
 
     println!("gen: committed — {}", commit_msg);
+
+    if !opts.quiet {
+        let elapsed = t0.elapsed().as_secs_f64();
+        let slot = crate::provider_cascade::get_last_used_slot().unwrap_or_default();
+        print_cost_summary(elapsed, input_chars, output_chars, &slot);
+    }
+
     Ok(())
 }
 
