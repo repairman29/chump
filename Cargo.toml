@@ -38,6 +38,10 @@ name = "fleet-ws-echo"
 path = "src/bin/fleet_ws_echo.rs"
 
 [[bin]]
+name = "bandit-replay"
+path = "src/bin/bandit-replay.rs"
+
+[[bin]]
 name = "quantum-tool-choice"
 path = "experiments/quantum_tool_choice.rs"
 
