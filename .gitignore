@@ -156,3 +156,4 @@ docs/gaps.yaml
 # Lives as a sibling Cargo workspace under proprietary/. Canonical home:
 # https://github.com/repairman29/chump-proprietary (PRIVATE).
 proprietary/
+bin/chump.wedged-*
