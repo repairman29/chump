@@ -25,3 +25,5 @@ tempfile = "3"
 
 [lints.rust]
 missing_docs = "warn"
+
+

@@ -1,3 +1,5 @@
+#![allow(clippy::doc_overindented_list_items)]
+#![allow(unknown_lints)]
 //! MCP server: Chump gap registry queries via JSON-RPC 2.0 over stdio.
 //! Set CHUMP_REPO (or CHUMP_HOME) to point at the repo root.
 //!

@@ -13,3 +13,6 @@ readme = "README.md"
 [dependencies]
 rusqlite = { version = "0.32", features = ["bundled"] }
 anyhow = "1.0"
+
+[lints]
+workspace = true

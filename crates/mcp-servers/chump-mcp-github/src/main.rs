@@ -1,3 +1,5 @@
+#![allow(clippy::doc_overindented_list_items)]
+#![allow(unknown_lints)]
 //! MCP server: GitHub operations via `gh` CLI.
 //! JSON-RPC 2.0 over stdio. Each request is one line of JSON on stdin, response on stdout.
 //!

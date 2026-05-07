@@ -22,3 +22,5 @@ serial_test = "3"
 
 [lints.rust]
 missing_docs = "warn"
+
+
