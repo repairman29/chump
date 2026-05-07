@@ -128,6 +128,7 @@ mod provider_quality;
 mod ratings;
 mod read_url_tool;
 mod reasoning_mode;
+mod rebase_stuck;
 mod recipe;
 mod reflect_delta;
 mod reflection;
@@ -614,6 +615,16 @@ async fn main() -> Result<()> {
             print!("{}", report.render_text());
         }
         return Ok(());
+    }
+
+    // `chump rebase-stuck [--pr <N>] [--apply] [--json]`
+    // (INFRA-607) — RESILIENT: detect DIRTY PRs and attempt auto-rebase.
+    // Safety gate: only auto-resolves conflicts in <3 files AND <20 lines
+    // AND no test-touching files. --apply force-pushes with-lease.
+    if args.get(1).map(String::as_str) == Some("rebase-stuck") {
+        let sub_args: Vec<String> = args[2..].to_vec();
+        let exit_code = rebase_stuck::run(&sub_args);
+        std::process::exit(exit_code);
     }
 
     // `chump ci-summary [--since 24h|7d|...] [--json]`
