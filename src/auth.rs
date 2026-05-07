@@ -233,10 +233,10 @@ pub fn fleet_doctor_validate() -> DoctorReport {
     }
 
     let mode_env = std::env::var("CHUMP_AUTH_MODE").unwrap_or_else(|_| "auto".into());
-    if mode_env.to_ascii_lowercase() == "api-key" && !creds.has_api_key() {
+    if mode_env.eq_ignore_ascii_case("api-key") && !creds.has_api_key() {
         warnings.push("CHUMP_AUTH_MODE=api-key but ANTHROPIC_API_KEY is absent or empty.".into());
     }
-    if mode_env.to_ascii_lowercase() == "oauth" && !creds.has_oauth() {
+    if mode_env.eq_ignore_ascii_case("oauth") && !creds.has_oauth() {
         warnings.push(
             "CHUMP_AUTH_MODE=oauth but no OAUTH token found (env, refresh file, or config.toml)."
                 .into(),
