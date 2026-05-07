@@ -101,10 +101,10 @@ async fn handle_list_open_gaps(params: &Value) -> Result<Value> {
         let rows: Box<dyn Iterator<Item = rusqlite::Result<Value>>> =
             if let Some(ref pf) = priority_filter {
                 stmt_pri = conn.prepare(SQL_PRI)?;
-                Box::new(stmt_pri.query_map(params![pf], |row| row_to_json(row))?)
+                Box::new(stmt_pri.query_map(params![pf], row_to_json)?)
             } else {
                 stmt_all = conn.prepare(SQL_ALL)?;
-                Box::new(stmt_all.query_map([], |row| row_to_json(row))?)
+                Box::new(stmt_all.query_map([], row_to_json)?)
             };
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(|e| anyhow!("query failed: {}", e))?
@@ -151,7 +151,7 @@ async fn handle_get_gap(params: &Value) -> Result<Value> {
          LIMIT 1",
     )?;
     let pattern = format!("%-{}", gap_id);
-    let result = stmt.query_row(params![gap_id, pattern], |row| row_to_json(row));
+    let result = stmt.query_row(params![gap_id, pattern], row_to_json);
 
     match result {
         Ok(gap) => Ok(json!({ "success": true, "gap": gap })),
