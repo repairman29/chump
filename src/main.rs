@@ -647,6 +647,13 @@ async fn main() -> Result<()> {
             .cloned()
             .unwrap_or_else(|| "24h".to_string());
         let want_json = args.iter().any(|a| a == "--json");
+        let emit_alert = args.iter().any(|a| a == "--emit-alert");
+        let threshold_pct: u64 = args
+            .iter()
+            .position(|a| a == "--threshold")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
 
         let since_secs = parse_duration_to_secs(&since_arg).unwrap_or_else(|| {
             eprintln!(
@@ -661,6 +668,16 @@ async fn main() -> Result<()> {
             println!("{}", report.render_json());
         } else {
             print!("{}", report.render_text());
+        }
+        if emit_alert {
+            let ambient_path = repo_path::repo_root().join(".chump-locks/ambient.jsonl");
+            if report.emit_ambient_alert(threshold_pct, &ambient_path) {
+                eprintln!(
+                    "ci-summary: ALERT emitted — failure rate {}% exceeds {}% threshold",
+                    report.failure_rate_pct(),
+                    threshold_pct
+                );
+            }
         }
         return Ok(());
     }
