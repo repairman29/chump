@@ -1498,6 +1498,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-mcp-memory"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "chump-mcp-tavily"
 version = "0.1.0"
 dependencies = [
