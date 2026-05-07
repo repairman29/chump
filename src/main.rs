@@ -1888,6 +1888,17 @@ async fn main() -> Result<()> {
                     .filter(|g| g.priority == "P0" && g.status == "open")
                     .collect();
                 let p0_count = p0_open.len();
+                // INFRA-627: auto-filed P0s (from pr-triage-bot) are exempt
+                // from the P0 >5 budget — they represent real CI failures the
+                // fleet must attack first and should not be demoted by the
+                // operator-curation rule.
+                let auto_filed_marker = "auto-filed by pr-triage-bot";
+                let p0_auto_filed: Vec<&gap_store::GapRow> = p0_open
+                    .iter()
+                    .filter(|g| g.notes.contains(auto_filed_marker))
+                    .copied()
+                    .collect();
+                let p0_manual_count = p0_count - p0_auto_filed.len();
 
                 let p0_stuck: Vec<(&gap_store::GapRow, i64)> = p0_open
                     .iter()
@@ -1944,6 +1955,8 @@ async fn main() -> Result<()> {
                 if json_out {
                     let report = serde_json::json!({
                         "p0_count": p0_count,
+                        "p0_manual_count": p0_manual_count,
+                        "p0_auto_filed_count": p0_auto_filed.len(),
                         "p0_stuck_7d": p0_stuck.len(),
                         "vague_pickable": vague_pickable.len(),
                         "double_encoded_depends_on": double_encoded.len(),
@@ -1952,7 +1965,8 @@ async fn main() -> Result<()> {
                         "race_test_pollution": race_pollution.len(),
                         "p0_gaps": p0_open.iter().map(|g| {
                             let age_days = (now_secs - g.created_at) / 86400;
-                            serde_json::json!({"id": g.id, "title": g.title, "age_days": age_days})
+                            let auto_filed = g.notes.contains(auto_filed_marker);
+                            serde_json::json!({"id": g.id, "title": g.title, "age_days": age_days, "auto_filed": auto_filed})
                         }).collect::<Vec<_>>(),
                     });
                     println!(
@@ -1962,11 +1976,24 @@ async fn main() -> Result<()> {
                 } else {
                     println!("=== gap audit-priorities ===");
                     println!();
-                    println!("P0 open gaps: {}", p0_count);
+                    println!(
+                        "P0 open gaps: {} ({} manual, {} auto-filed by pr-triage-bot)",
+                        p0_count,
+                        p0_manual_count,
+                        p0_auto_filed.len()
+                    );
                     for g in &p0_open {
                         let age_days = (now_secs - g.created_at) / 86400;
                         let stuck = if age_days > 7 { " *** STUCK" } else { "" };
-                        println!("  {} — {} ({}d old{})", g.id, g.title, age_days, stuck);
+                        let marker = if g.notes.contains(auto_filed_marker) {
+                            " [auto-filed]"
+                        } else {
+                            ""
+                        };
+                        println!(
+                            "  {} — {} ({}d old{}{})",
+                            g.id, g.title, age_days, stuck, marker
+                        );
                     }
                     println!();
                     println!("Vague (no AC) pickable: {}", vague_pickable.len());
@@ -2001,8 +2028,13 @@ async fn main() -> Result<()> {
                 }
 
                 let mut fail_reasons: Vec<String> = Vec::new();
-                if p0_count > 5 {
-                    fail_reasons.push(format!("P0 count {} > 5", p0_count));
+                // INFRA-627: auto-filed P0s exempt from budget — count only manual ones.
+                if p0_manual_count > 5 {
+                    fail_reasons.push(format!(
+                        "P0 manual count {} > 5 (plus {} auto-filed, exempt)",
+                        p0_manual_count,
+                        p0_auto_filed.len()
+                    ));
                 }
                 if !p0_stuck.is_empty() {
                     fail_reasons.push(format!("{} P0 gap(s) stuck >7d", p0_stuck.len()));
