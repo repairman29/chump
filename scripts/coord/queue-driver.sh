@@ -47,6 +47,72 @@ fi
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 RESOLVER="$REPO_ROOT/scripts/coord/resolve-gaps-conflict.py"
 
+# INFRA-670: files whose change in a merged commit requires ALL open PRs to be
+# rebased immediately, not just the next-in-queue one. Touching Cargo.toml /
+# workspace lint config invalidates every branch's Cargo state, which causes
+# DIRTY conflicts for every open PR if left unattended.
+WORKSPACE_HOT_FILES=(
+    "Cargo.toml"
+    "rust-toolchain.toml"
+)
+
+# Detect whether the most recent commit on main touched any WORKSPACE_HOT_FILES.
+# If it did, call `gh pr update-branch` on every open non-draft PR and emit an
+# ambient event. Returns 0 always (errors per-PR are soft).
+cascade_rebase_if_hot() {
+    local changed
+    changed=$(git -C "$REPO_ROOT" diff HEAD~1..HEAD --name-only 2>/dev/null || true)
+    [[ -z "$changed" ]] && return 0
+
+    local triggered_by=""
+    for hot in "${WORKSPACE_HOT_FILES[@]}"; do
+        if echo "$changed" | grep -qx "$hot"; then
+            triggered_by="$hot"
+            break
+        fi
+    done
+    [[ -z "$triggered_by" ]] && return 0
+
+    echo "queue-driver: workspace hot-file '$triggered_by' changed on main — cascade rebasing all open PRs"
+
+    local all_prs
+    all_prs=$(gh pr list \
+        --state open \
+        --limit 100 \
+        --json number,isDraft \
+        -q '[.[] | select(.isDraft == false) | .number] | sort | .[]')
+
+    if [[ -z "$all_prs" ]]; then
+        echo "queue-driver: cascade — no open non-draft PRs to rebase"
+        return 0
+    fi
+
+    local ok=0 fail=0
+    for pr in $all_prs; do
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            echo "queue-driver: (dry-run) cascade would rebase PR #$pr"
+            ok=$((ok + 1))
+        else
+            if gh pr update-branch "$pr" 2>&1; then
+                echo "queue-driver: ✓ cascade rebased PR #$pr"
+                ok=$((ok + 1))
+            else
+                echo "queue-driver: ✗ cascade rebase failed for PR #$pr (may already be up-to-date or DIRTY)"
+                fail=$((fail + 1))
+            fi
+        fi
+    done
+
+    local ambient="$REPO_ROOT/.chump-locks/ambient.jsonl"
+    local now
+    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","kind":"cascade_rebase_triggered","triggered_by":"%s","pr_ok":%d,"pr_fail":%d,"dry_run":%d}\n' \
+        "$now" "$triggered_by" "$ok" "$fail" "$DRY_RUN" \
+        >> "$ambient" 2>/dev/null || true
+
+    echo "queue-driver: cascade done — $ok rebased, $fail failed"
+}
+
 # Try to auto-resolve a DIRTY PR by rebasing on main and running the gaps.yaml
 # conflict resolver. Refuses if any non-gaps file conflicts. Returns 0 on
 # successful push, non-zero otherwise (caller should leave PR alone).
@@ -132,6 +198,11 @@ resolve_dirty_pr() {
   git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
   return 0
 }
+
+# INFRA-670: cascade rebase when a workspace-wide file (Cargo.toml, etc.) just
+# landed on main. Must run before the BEHIND/DIRTY loop so we don't miss PRs
+# that don't have auto-merge armed but still need rebasing.
+cascade_rebase_if_hot
 
 # Pull every open PR with auto-merge armed, sorted oldest-first by PR number.
 # Process BEHIND (cheap update-branch) and DIRTY (heavier rebase) — both block

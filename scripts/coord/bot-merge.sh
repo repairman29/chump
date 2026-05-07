@@ -249,6 +249,10 @@ BOT_MERGE_HOT_FILES=(
     "scripts/coord/gap-reserve.sh"
     "CLAUDE.md"
     "AGENTS.md"
+    # INFRA-670: workspace-wide files — touching these requires cascade rebase
+    # of all sibling PRs (queue-driver.sh cascade_rebase_if_hot handles it).
+    "Cargo.toml"
+    "rust-toolchain.toml"
 )
 
 # ── INFRA-103: serializing hot-file list ──────────────────────────────────────
