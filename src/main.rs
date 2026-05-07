@@ -147,6 +147,7 @@ mod schedule_tool;
 mod screen_vision_tool;
 mod session;
 pub mod session_compact;
+mod session_export;
 mod session_ledger;
 mod session_search_tool;
 mod set_working_repo_tool;
@@ -709,6 +710,67 @@ async fn main() -> Result<()> {
             "       chump session-track --end <GAP-ID> --outcome <shipped|abandoned|starved>"
         );
         std::process::exit(2);
+    }
+
+    // `chump session-export [--session-id <ID>]` (INFRA-616) — emit a handoff
+    // snapshot to ~/.chump/sessions/<session-id>.md so the next Opus
+    // orchestrator session can resume with full context via session-resume.
+    if args.get(1).map(String::as_str) == Some("session-export") {
+        let flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1).cloned())
+        };
+        let session_id = flag("--session-id")
+            .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
+            .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
+            .unwrap_or_else(|| {
+                // Fall back to a timestamp-based ID so exports are never lost.
+                format!("session-{}", unix_ts())
+            });
+        let repo_root = repo_path::repo_root();
+        let export = session_export::build_export(&session_id, &repo_root);
+        let md = export.render_md();
+
+        let out_path = session_export::export_path(&session_id);
+        if let Some(parent) = out_path.parent() {
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!(
+                    "chump session-export: cannot create {}: {e:#}",
+                    parent.display()
+                );
+                std::process::exit(1);
+            }
+        }
+        if let Err(e) = std::fs::write(&out_path, &md) {
+            eprintln!(
+                "chump session-export: cannot write {}: {e:#}",
+                out_path.display()
+            );
+            std::process::exit(1);
+        }
+        println!("session-export written: {}", out_path.display());
+        print!("{}", md);
+        return Ok(());
+    }
+
+    // `chump session-resume <session-id>` (INFRA-616) — read a prior export
+    // and print it to stdout for injection into the new session's context.
+    if args.get(1).map(String::as_str) == Some("session-resume") {
+        let session_id = args.get(2).cloned().unwrap_or_else(|| {
+            eprintln!("Usage: chump session-resume <session-id>");
+            std::process::exit(2);
+        });
+        let path = session_export::export_path(&session_id);
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            eprintln!(
+                "chump session-resume: cannot read {}: {e:#}",
+                path.display()
+            );
+            std::process::exit(1);
+        });
+        print!("{}", content);
+        return Ok(());
     }
 
     // `chump dashboard` (INFRA-063 / M5) — print the cycle-time dashboard:
