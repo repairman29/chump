@@ -83,6 +83,7 @@ mod gap_store;
 mod gen;
 mod genai_conv;
 mod git_tools;
+mod health;
 mod health_server;
 mod hitl_escalation;
 mod hooks;
@@ -636,6 +637,48 @@ async fn main() -> Result<()> {
             Err(e) => {
                 eprintln!("chump pr fix-clippy: {e}");
                 std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
+    // `chump health-digest [--since 7d] [--json] [--emit] [--webhook]`
+    // (INFRA-646) — RESILIENT: weekly health digest. Summarises ships count,
+    // ship rate, waste $ by class, top-3 burning gaps, P0 compliance, pillar
+    // balance, SLO breaches, and EFFECTIVE productizations for the past 7 days.
+    // --emit appends a weekly_health_digest event to ambient.jsonl.
+    // --webhook POSTs to CHUMP_WEBHOOK_URL (if set).
+    if args.get(1).map(String::as_str) == Some("health-digest") {
+        let since_arg = args
+            .iter()
+            .position(|a| a == "--since")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_else(|| "7d".to_string());
+        let want_json = args.iter().any(|a| a == "--json");
+        let do_emit = args.iter().any(|a| a == "--emit");
+        let do_webhook = args.iter().any(|a| a == "--webhook");
+        let since_secs = parse_duration_to_secs(&since_arg).unwrap_or_else(|| {
+            eprintln!(
+                "chump health-digest: invalid --since '{}' (expected like 7d, 14d, 24h)",
+                since_arg
+            );
+            std::process::exit(2);
+        });
+        let repo_root = repo_path::repo_root();
+        let summary = health::build_week_summary(&repo_root, since_secs);
+        if want_json {
+            println!("{}", summary.render_json());
+        } else {
+            print!("{}", summary.render_text());
+        }
+        if do_emit {
+            health::emit_to_ambient(&repo_root, &summary);
+        }
+        if do_webhook {
+            let delivered = health::deliver_webhook(&summary);
+            if !delivered {
+                eprintln!("chump health-digest: webhook delivery skipped or failed (check CHUMP_WEBHOOK_URL)");
             }
         }
         return Ok(());
