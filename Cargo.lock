@@ -1469,9 +1469,9 @@ name = "chump-mcp-gaps"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "rusqlite",
  "serde",
  "serde_json",
- "serde_yaml",
  "tokio",
 ]
 
