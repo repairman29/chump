@@ -74,7 +74,7 @@ pub fn parse_roadmap(content: &str) -> Vec<WeekOutcome> {
                 let is_placeholder = id.contains("NEW")
                     || id.contains("XXX")
                     || id.contains('-') && {
-                        let suffix = id.splitn(2, '-').nth(1).unwrap_or("");
+                        let suffix = id.split_once('-').map(|x| x.1).unwrap_or("");
                         suffix == "NEW" || suffix == "XXX"
                     };
                 w.gaps.push(RoadmapGap {
