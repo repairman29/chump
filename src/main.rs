@@ -74,6 +74,7 @@ mod file_watch;
 mod fleet;
 mod fleet_capability;
 mod fleet_db;
+mod fleet_doctor;
 mod fleet_status;
 mod fleet_tool;
 mod fleet_velocity;
@@ -934,6 +935,17 @@ async fn main() -> Result<()> {
         };
 
         match subcmd {
+            "doctor" => {
+                let fix = args.iter().any(|a| a == "--fix");
+                let want_json = args.iter().any(|a| a == "--json");
+                let report = fleet_doctor::run(&repo_root, fix);
+                let exit_code = if want_json {
+                    fleet_doctor::print_json_report(&report)
+                } else {
+                    fleet_doctor::print_report(&report)
+                };
+                std::process::exit(exit_code);
+            }
             "start" => {
                 let size = flag("--size")
                     .or_else(|| cfg("size"))
@@ -1073,11 +1085,12 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
             _ => {
-                eprintln!("Usage: chump fleet <start|stop|status|scale>");
-                eprintln!("  start  [--size N] [--model M] [--effort xs,s,m] [--domain D]");
-                eprintln!("  stop   [--session NAME]");
-                eprintln!("  status [--json]");
-                eprintln!("  scale  N [--session NAME]");
+                eprintln!("Usage: chump fleet <start|stop|status|scale|doctor>");
+                eprintln!("  start   [--size N] [--model M] [--effort xs,s,m] [--domain D]");
+                eprintln!("  stop    [--session NAME]");
+                eprintln!("  status  [--json]");
+                eprintln!("  scale   N [--session NAME]");
+                eprintln!("  doctor  [--fix] [--json]");
                 std::process::exit(2);
             }
         }
