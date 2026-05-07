@@ -103,27 +103,26 @@ else
     fi
 fi
 
-# 9. YAML parses (best-effort with python's yaml module if available).
+# 9. YAML parses — PyYAML required; fail hard if unavailable so CI never soft-skips.
 if command -v python3 >/dev/null 2>&1; then
-    if python3 -c "import yaml; yaml.safe_load(open('$WF'))" 2>/dev/null; then
-        ok "YAML parses cleanly"
-    else
-        # PyYAML may not be installed; fall back to trivial syntax check
-        if python3 -c "
-import sys
-with open('$WF') as f:
-    lines = f.readlines()
-# Trivial: ensure no obviously-broken indentation, count braces
-err = 0
-for i,l in enumerate(lines, 1):
-    if l.startswith('\t'):  err+=1
-sys.exit(0 if err==0 else 1)
-" 2>/dev/null; then
-            ok "YAML structurally plausible (PyYAML not installed; tab check passed)"
-        else
-            fail "YAML has tab characters or other structural issues"
-        fi
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        echo "  ERROR: PyYAML not installed — cannot validate workflow YAML (run: pip install pyyaml)"
+        FAIL=$((FAIL+1))
+        echo
+        echo "=== Results: $PASS passed, $FAIL failed ==="
+        exit 1
     fi
+    if python3 -c "import yaml, sys; yaml.safe_load(open('$WF'))" 2>&1; then
+        ok "YAML parses cleanly (PyYAML)"
+    else
+        fail "YAML parse error in $WF"
+    fi
+else
+    echo "  ERROR: python3 not found — cannot validate workflow YAML"
+    FAIL=$((FAIL+1))
+    echo
+    echo "=== Results: $PASS passed, $FAIL failed ==="
+    exit 1
 fi
 
 echo

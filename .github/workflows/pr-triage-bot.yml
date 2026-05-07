@@ -144,8 +144,8 @@ jobs:
           git add -A
           git commit -m "[auto-fix] clippy + rustfmt — pr-triage-bot
 
-Resolves lint failures from CI run ${{ github.event.workflow_run.html_url }}.
-Bot: INFRA-624. Author can revert if the fix is wrong."
+            Resolves lint failures from CI run ${{ github.event.workflow_run.html_url }}.
+            Bot: INFRA-624. Author can revert if the fix is wrong."
           git push origin "HEAD:${{ steps.pr.outputs.branch }}"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
