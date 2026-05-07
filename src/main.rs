@@ -1118,12 +1118,181 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            "snapshot" => {
+                // `chump fleet snapshot` — INFRA-612
+                // Captures current fleet state (leases, locks, queue size, ambient tail)
+                // into .chump/restart-snapshots/<ts>.json for later replay.
+                let snapshots_dir = repo_root.join(".chump/restart-snapshots");
+                let _ = std::fs::create_dir_all(&snapshots_dir);
+                let locks_dir = repo_root.join(".chump-locks");
+
+                let ts = chrono::Utc::now();
+                let ts_str = ts.format("%Y%m%d-%H%M%S").to_string();
+                let ts_iso = ts.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+                // Collect active lease files.
+                let mut leases: Vec<serde_json::Value> = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(&locks_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map(|e| e == "json").unwrap_or(false) {
+                            if let Ok(raw) = std::fs::read_to_string(&path) {
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                                    leases.push(serde_json::json!({
+                                        "filename": path.file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("unknown"),
+                                        "lease": v
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Collect last 200 lines of ambient.jsonl.
+                let ambient_path = locks_dir.join("ambient.jsonl");
+                let ambient_tail: Vec<serde_json::Value> = std::fs::read_to_string(&ambient_path)
+                    .unwrap_or_default()
+                    .lines()
+                    .rev()
+                    .take(200)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .filter_map(|l| serde_json::from_str(l).ok())
+                    .collect();
+
+                // Fleet desired size.
+                let fleet_desired_size: Option<u32> =
+                    std::fs::read_to_string(repo_root.join(".chump/fleet-desired-size"))
+                        .ok()
+                        .and_then(|s| s.trim().parse().ok());
+
+                let snapshot = serde_json::json!({
+                    "snapshot_id": ts_str,
+                    "ts": ts_iso,
+                    "fleet_desired_size": fleet_desired_size,
+                    "leases": leases,
+                    "ambient_tail": ambient_tail
+                });
+
+                let out_path = snapshots_dir.join(format!("{ts_str}.json"));
+                match std::fs::write(
+                    &out_path,
+                    serde_json::to_string_pretty(&snapshot).unwrap_or_default(),
+                ) {
+                    Ok(()) => {
+                        println!("[fleet snapshot] wrote {}", out_path.display());
+                        println!(
+                            "[fleet snapshot] leases={} ambient_events={}",
+                            leases.len(),
+                            ambient_tail.len()
+                        );
+                        // Emit ambient event.
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            let _ = writeln!(
+                                f,
+                                "{{\"ts\":\"{ts_iso}\",\"kind\":\"fleet_snapshot\",\"snapshot_id\":\"{ts_str}\",\"leases\":{}}}", leases.len()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[fleet snapshot] failed to write snapshot: {e}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
+            "restore" => {
+                // `chump fleet restore <snapshot-id>` — INFRA-612
+                // Replays lease state from a snapshot created by `fleet snapshot`.
+                // Useful for diagnostics after a planned restart.
+                let snapshot_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump fleet restore <snapshot-id>");
+                    eprintln!("  snapshot-id: timestamp like 20260506-191935 or full path");
+                    std::process::exit(2);
+                });
+
+                let snapshots_dir = repo_root.join(".chump/restart-snapshots");
+                let locks_dir = repo_root.join(".chump-locks");
+
+                // Resolve snapshot path — accept full path or bare ID.
+                let snap_path = if std::path::Path::new(&snapshot_id).exists() {
+                    std::path::PathBuf::from(&snapshot_id)
+                } else {
+                    snapshots_dir.join(format!("{snapshot_id}.json"))
+                };
+
+                let raw = std::fs::read_to_string(&snap_path).unwrap_or_else(|e| {
+                    eprintln!("[fleet restore] cannot read {}: {e}", snap_path.display());
+                    std::process::exit(1);
+                });
+                let snapshot: serde_json::Value = serde_json::from_str(&raw).unwrap_or_else(|e| {
+                    eprintln!("[fleet restore] invalid JSON in snapshot: {e}");
+                    std::process::exit(1);
+                });
+
+                let ts_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                let ambient_path = locks_dir.join("ambient.jsonl");
+                let _ = std::fs::create_dir_all(&locks_dir);
+
+                // Replay leases — write each back to .chump-locks/<filename>.
+                let mut replayed = 0u32;
+                if let Some(leases) = snapshot["leases"].as_array() {
+                    for entry in leases {
+                        let filename = entry["filename"].as_str().unwrap_or("unknown.json");
+                        let lease_val = &entry["lease"];
+                        if lease_val.is_null() {
+                            continue;
+                        }
+                        let dest = locks_dir.join(filename);
+                        if let Ok(content) = serde_json::to_string_pretty(lease_val) {
+                            if std::fs::write(&dest, content).is_ok() {
+                                println!("[fleet restore] replayed lease → {}", dest.display());
+                                replayed += 1;
+                            }
+                        }
+                    }
+                }
+
+                // Restore fleet-desired-size if present.
+                if let Some(size) = snapshot["fleet_desired_size"].as_u64() {
+                    let _ = std::fs::create_dir_all(repo_root.join(".chump"));
+                    let _ = std::fs::write(
+                        repo_root.join(".chump/fleet-desired-size"),
+                        format!("{size}\n"),
+                    );
+                    println!("[fleet restore] fleet-desired-size → {size}");
+                }
+
+                println!("[fleet restore] snapshot={snapshot_id} leases_replayed={replayed}");
+
+                // Emit ambient event.
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&ambient_path)
+                {
+                    let _ = writeln!(
+                        f,
+                        "{{\"ts\":\"{ts_iso}\",\"kind\":\"fleet_restore\",\"snapshot_id\":\"{snapshot_id}\",\"leases_replayed\":{replayed}}}"
+                    );
+                }
+                return Ok(());
+            }
             _ => {
-                eprintln!("Usage: chump fleet <start|stop|status|scale>");
-                eprintln!("  start  [--size N] [--model M] [--effort xs,s,m] [--domain D]");
-                eprintln!("  stop   [--session NAME]");
-                eprintln!("  status [--json]");
-                eprintln!("  scale  N [--session NAME]");
+                eprintln!("Usage: chump fleet <start|stop|status|scale|snapshot|restore>");
+                eprintln!("  start    [--size N] [--model M] [--effort xs,s,m] [--domain D]");
+                eprintln!("  stop     [--session NAME]");
+                eprintln!("  status   [--json]");
+                eprintln!("  scale    N [--session NAME]");
+                eprintln!("  snapshot");
+                eprintln!("  restore  <snapshot-id>");
                 std::process::exit(2);
             }
         }
