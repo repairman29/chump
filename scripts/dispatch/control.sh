@@ -31,6 +31,9 @@ _last_reap=0
 # INFRA-556: ghost-gap reaper (every 5 min)
 _last_ghost_reap=0
 
+# INFRA-626: operator-recall detector (every 5 min)
+_last_recall_check=0
+
 while :; do
     clear
     printf '\033[1mchump fleet — session=%s  size=%s  refresh=%ss\033[0m\n' \
@@ -203,6 +206,15 @@ except Exception:
             "$REPO_ROOT/scripts/coord/ghost-gap-reaper.sh" 2>&1 | grep -v '^$' || true
         fi
         _last_ghost_reap=$SECONDS
+    fi
+
+    # INFRA-626: check halt-class conditions every 5 min; emit operator_recall if triggered
+    if (( SECONDS - _last_recall_check >= 300 )); then
+        _recall_script="$REPO_ROOT/scripts/dispatch/operator-recall.sh"
+        if [[ -x "$_recall_script" ]]; then
+            REPO_ROOT="$REPO_ROOT" "$_recall_script" 2>&1 | grep '^\[operator-recall\]' || true
+        fi
+        _last_recall_check=$SECONDS
     fi
 
     sleep "$REFRESH_S"
