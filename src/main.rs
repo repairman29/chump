@@ -119,6 +119,7 @@ mod plan_mode;
 mod platform_router;
 mod plugin;
 mod policy_override;
+mod pr_coupling_cost;
 mod precision_controller;
 mod provider_bandit;
 mod provider_cascade;
@@ -537,6 +538,49 @@ async fn main() -> Result<()> {
             } else {
                 print!("{}", report.render_text());
             }
+        }
+        return Ok(());
+    }
+
+    // `chump pr-coupling-cost <PR#> [--diff-files f1,f2,...] [--json]`
+    // (INFRA-595) — CREDIBLE: per-PR coupling-tax measurement.
+    // Reads .github/workflows/ci.yml dorny/paths-filter rules; for each file
+    // in the PR diff prints a table of {file, jobs_triggered}.
+    // --diff-files accepts a comma-separated override (for tests/offline use).
+    if args.get(1).map(String::as_str) == Some("pr-coupling-cost") {
+        let pr_number: Option<u64> = args.get(2).and_then(|s| s.parse().ok());
+        let want_json = args.iter().any(|a| a == "--json");
+
+        let diff_files_override: Option<Vec<String>> = args
+            .iter()
+            .position(|a| a == "--diff-files")
+            .and_then(|i| args.get(i + 1))
+            .map(|s| s.split(',').map(|f| f.trim().to_string()).collect());
+
+        let diff_files: Vec<String> = if let Some(files) = diff_files_override {
+            files
+        } else if let Some(pr) = pr_number {
+            pr_coupling_cost::fetch_pr_files(pr)
+        } else {
+            eprintln!("Usage: chump pr-coupling-cost <PR#> [--diff-files f1,f2,...] [--json]");
+            std::process::exit(2);
+        };
+
+        let repo_root = repo_path::repo_root();
+        let ci_yml_path = repo_root.join(".github/workflows/ci.yml");
+        let ci_yml = std::fs::read_to_string(&ci_yml_path).unwrap_or_else(|e| {
+            eprintln!(
+                "chump pr-coupling-cost: cannot read {}: {e}",
+                ci_yml_path.display()
+            );
+            std::process::exit(1);
+        });
+
+        let report = pr_coupling_cost::build_report(pr_number, &diff_files, &ci_yml);
+        if want_json {
+            println!("{}", report.render_json());
+        } else {
+            print!("{}", report.render_text());
         }
         return Ok(());
     }
