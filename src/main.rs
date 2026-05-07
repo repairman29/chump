@@ -76,6 +76,7 @@ mod file_watch;
 mod fleet;
 mod fleet_capability;
 mod fleet_db;
+mod fleet_health;
 mod fleet_status;
 mod fleet_tool;
 mod fleet_velocity;
@@ -483,6 +484,33 @@ async fn main() -> Result<()> {
             println!("{}", report.render_json());
         } else {
             print!("{}", report.render_text());
+        }
+        return Ok(());
+    }
+
+    // `chump health [--json] [--watch]` (INFRA-644) — composite fleet health
+    // score (0-100) rolling up fleet-status, waste-tally, cost-watch,
+    // mission-grade, pr-stuck, version-skew, auth, and ghost-gaps.
+    // Emits kind=fleet_health to ambient.jsonl on each run.
+    if args.get(1).map(String::as_str) == Some("health") {
+        let want_json = args.iter().any(|a| a == "--json");
+        let watch = args.iter().any(|a| a == "--watch");
+        let repo_root = repo_path::repo_root();
+        loop {
+            let report = fleet_health::build_report(&repo_root);
+            fleet_health::emit(&repo_root, &report);
+            if want_json {
+                println!("{}", report.render_json());
+            } else {
+                print!("{}", report.render_text());
+            }
+            if !watch {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(30));
+            // Clear terminal for next iteration.
+            print!("\x1b[2J\x1b[H");
+            let _ = std::io::stdout().flush();
         }
         return Ok(());
     }
