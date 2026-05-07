@@ -193,3 +193,9 @@ manual_is_multiple_of = "allow"
 [workspace.lints.rust]
 dead_code = "allow"
 unknown_lints = "allow"
+
+# Root crate (chump) opts into workspace-defined lints. Without this section
+# the root crate ignores [workspace.lints.*] and CI fails on the very lints
+# we just relaxed (observed on PR #1265 first attempt).
+[lints]
+workspace = true
