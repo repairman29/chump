@@ -4,15 +4,15 @@
 //! action-based dispatch (mirrors [`crate::checkpoint_tool`]).
 //!
 //! Actions:
-//!   - `register`           — register the current peer (role + capabilities)
-//!   - `list`               — list all known peers with status
-//!   - `dispatch`           — send work to a peer (by id, role, or capabilities)
-//!   - `status`             — show detailed status for a single peer
-//!   - `propose_merge`      — record a workspace merge proposal (V1: no execution)
-//!   - `heartbeat`          — bump current peer's last_seen timestamp
-//!   - `exchange_workspace` — atomically swap blackboard snapshots with a peer
-//!   - `merge_workspace`    — initiate a bounded merge session with a peer (FLEET-003c)
-//!   - `split_workspace`    — end an active merge session (FLEET-003c)
+//! - `register`           — register the current peer (role + capabilities)
+//! - `list`               — list all known peers with status
+//! - `dispatch`           — send work to a peer (by id, role, or capabilities)
+//! - `status`             — show detailed status for a single peer
+//! - `propose_merge`      — record a workspace merge proposal (V1: no execution)
+//! - `heartbeat`          — bump current peer's last_seen timestamp
+//! - `exchange_workspace` — atomically swap blackboard snapshots with a peer
+//! - `merge_workspace`    — initiate a bounded merge session with a peer (FLEET-003c)
+//! - `split_workspace`    — end an active merge session (FLEET-003c)
 //!
 //! V1 is a scaffold: dispatches are recorded but not executed against remote peers,
 //! and merge proposals are persisted-as-intent only.
