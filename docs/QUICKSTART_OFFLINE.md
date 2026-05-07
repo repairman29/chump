@@ -84,6 +84,46 @@ The worker runs inside the worktree, commits its changes, and ships a PR — all
 
 ---
 
+## Authentication modes (API key vs subscription OAUTH)
+
+Chump supports two Anthropic auth modes. Both are first-class — the fleet detects, prefers, and can fall back between them automatically.
+
+| Mode | Credential | When to use |
+|---|---|---|
+| API key | `ANTHROPIC_API_KEY=sk-ant-...` | Pay-per-token accounts, CI, most users |
+| Subscription OAUTH | `CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...` | Claude subscription (Max / Pro) accounts |
+
+### Auto-detection (default)
+
+Set whichever credential you have and Chump figures out the rest:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...          # OR
+export CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+```
+
+When both are present, the API key is preferred. Override with:
+
+```bash
+export CHUMP_AUTH_MODE=oauth      # force subscription OAUTH
+export CHUMP_AUTH_MODE=api-key    # force API key
+export CHUMP_AUTH_MODE=auto       # default: prefer API key, fall back to OAUTH
+```
+
+### OAUTH token refresh (subscription mode)
+
+Subscription OAUTH tokens expire. The fleet auto-refreshes them every 5 minutes by writing the current token to `~/.chump/oauth-token.json`. Workers re-read this file before each `claude -p` call so they always have a fresh token.
+
+If a 401 occurs (both modes configured), the fleet falls back to the other mode and emits a `fleet_auth_fallback` event to `ambient.jsonl`.
+
+### Validate your auth setup
+
+```bash
+chump fleet doctor    # validates both API key and OAUTH paths
+```
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
