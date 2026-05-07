@@ -154,12 +154,10 @@ pub fn build_week_summary(repo_root: &Path, since_secs: u64) -> WeekSummary {
                     let input = extract_int_field(line, "input_tokens").unwrap_or(0);
                     let output = extract_int_field(line, "output_tokens").unwrap_or(0);
                     let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
-                    let cost =
-                        crate::session_ledger::cost_usd_from_tokens(input, output, cache);
-                    let bucket =
-                        waste_by_kind
-                            .entry(kind.to_string())
-                            .or_insert_with(|| (0, 0.0, HashSet::new()));
+                    let cost = crate::session_ledger::cost_usd_from_tokens(input, output, cache);
+                    let bucket = waste_by_kind
+                        .entry(kind.to_string())
+                        .or_insert_with(|| (0, 0.0, HashSet::new()));
                     bucket.0 += 1;
                     bucket.1 += cost;
                     bucket.2.insert(entity);
@@ -191,9 +189,7 @@ pub fn build_week_summary(repo_root: &Path, since_secs: u64) -> WeekSummary {
                 * 0.015; // rough $/hr estimate for fleet compute
             let entity = extract_field(line, "gap_id")
                 .or_else(|| extract_field(line, "session"))
-                .or_else(|| {
-                    extract_int_field(line, "pr").map(|n| format!("#{}", n))
-                })
+                .or_else(|| extract_int_field(line, "pr").map(|n| format!("#{}", n)))
                 .or_else(|| extract_field(line, "reaper"))
                 .or_else(|| extract_field(line, "agent"))
                 .unwrap_or_else(|| {
@@ -233,7 +229,10 @@ pub fn build_week_summary(repo_root: &Path, since_secs: u64) -> WeekSummary {
     // ── Top-3 burning gaps by tokens ─────────────────────────────────────────
     let mut token_vec: Vec<BurningGap> = token_by_gap
         .into_iter()
-        .map(|(gap_id, total_tokens)| BurningGap { gap_id, total_tokens })
+        .map(|(gap_id, total_tokens)| BurningGap {
+            gap_id,
+            total_tokens,
+        })
         .collect();
     token_vec.sort_by_key(|b| std::cmp::Reverse(b.total_tokens));
     token_vec.truncate(3);
@@ -278,10 +277,7 @@ pub fn build_week_summary(repo_root: &Path, since_secs: u64) -> WeekSummary {
 
 /// Read the gap DB to extract P0 count, pillar balance, and productization metrics.
 /// Returns (p0_count, pillar_counts, effective_filed, effective_shipped).
-fn summarise_gaps(
-    repo_root: &Path,
-    window_cutoff_unix: u64,
-) -> (u64, Vec<PillarCount>, u64, u64) {
+fn summarise_gaps(repo_root: &Path, window_cutoff_unix: u64) -> (u64, Vec<PillarCount>, u64, u64) {
     let store = match crate::gap_store::GapStore::open(repo_root) {
         Ok(s) => s,
         Err(_) => return (0, Vec::new(), 0, 0),
@@ -328,7 +324,13 @@ fn summarise_gaps(
         }
     }
 
-    let pillar_order = ["EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE", "(other)"];
+    let pillar_order = [
+        "EFFECTIVE",
+        "CREDIBLE",
+        "RESILIENT",
+        "ZERO-WASTE",
+        "(other)",
+    ];
     let pillar_counts: Vec<PillarCount> = pillar_order
         .iter()
         .filter_map(|p| {
@@ -381,7 +383,11 @@ impl WeekSummary {
         ));
 
         // P0 compliance
-        let p0_icon = if self.p0_compliant { "OK" } else { "OVER BUDGET" };
+        let p0_icon = if self.p0_compliant {
+            "OK"
+        } else {
+            "OVER BUDGET"
+        };
         out.push_str(&format!(
             "P0 budget:    {} open  (≤5 required) — {}\n",
             self.p0_count, p0_icon
@@ -558,7 +564,10 @@ pub fn emit_to_ambient(repo_root: &Path, summary: &WeekSummary) {
 /// Optionally adds `Authorization: Bearer $CHUMP_WEBHOOK_TOKEN`.
 /// If `CHUMP_WEBHOOK_SLACK=1`, wraps JSON in a minimal Slack Block Kit payload.
 pub fn deliver_webhook(summary: &WeekSummary) -> bool {
-    let url = match std::env::var("CHUMP_WEBHOOK_URL").ok().filter(|s| !s.is_empty()) {
+    let url = match std::env::var("CHUMP_WEBHOOK_URL")
+        .ok()
+        .filter(|s| !s.is_empty())
+    {
         Some(u) => u,
         None => return false,
     };
@@ -586,7 +595,7 @@ pub fn deliver_webhook(summary: &WeekSummary) -> bool {
         Ok(out) => {
             let code = String::from_utf8_lossy(&out.stdout);
             let code_n: u32 = code.trim().parse().unwrap_or(0);
-            code_n >= 200 && code_n < 300
+            (200..300).contains(&code_n)
         }
         Err(_) => false,
     }
@@ -597,7 +606,11 @@ fn slack_block_kit(summary: &WeekSummary) -> String {
         Some(r) => format!("{:.0}%", r),
         None => "n/a".to_string(),
     };
-    let p0_icon = if summary.p0_compliant { ":white_check_mark:" } else { ":warning:" };
+    let p0_icon = if summary.p0_compliant {
+        ":white_check_mark:"
+    } else {
+        ":warning:"
+    };
     let total_slo: u64 = summary.slo_breaches.iter().map(|s| s.incidents).sum();
     let text = format!(
         "Chump Weekly Health | Ships: {} | Rate: {} | Waste: ${:.4} | P0: {} {} | SLO breaches: {} | EFFECTIVE {}/{}",
@@ -785,10 +798,22 @@ mod tests {
         let tmp = tmpdir();
         let ts = now_iso();
         let lines = [
-            format!(r#"{{"kind":"ship_grade","ts":"{}","gap_id":"INFRA-1","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#, ts),
-            format!(r#"{{"kind":"ship_grade","ts":"{}","gap_id":"INFRA-2","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#, ts),
-            format!(r#"{{"kind":"ship_grade","ts":"{}","gap_id":"INFRA-3","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#, ts),
-            format!(r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"sess-A","gap_id":"INFRA-4","outcome":"abandoned","elapsed_seconds":300}}"#, ts),
+            format!(
+                r#"{{"kind":"ship_grade","ts":"{}","gap_id":"INFRA-1","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#,
+                ts
+            ),
+            format!(
+                r#"{{"kind":"ship_grade","ts":"{}","gap_id":"INFRA-2","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#,
+                ts
+            ),
+            format!(
+                r#"{{"kind":"ship_grade","ts":"{}","gap_id":"INFRA-3","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#,
+                ts
+            ),
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"sess-A","gap_id":"INFRA-4","outcome":"abandoned","elapsed_seconds":300}}"#,
+                ts
+            ),
         ];
         write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
         let summary = build_week_summary(&tmp, 604800);
@@ -804,14 +829,26 @@ mod tests {
         let tmp = tmpdir();
         let ts = now_iso();
         let lines = [
-            format!(r#"{{"event":"ALERT","kind":"fleet_wedge","ts":"{}","gap_id":"INFRA-1","cooldown_secs":14400}}"#, ts),
-            format!(r#"{{"event":"ALERT","kind":"fleet_wedge","ts":"{}","gap_id":"INFRA-1","cooldown_secs":14400}}"#, ts),
-            format!(r#"{{"event":"ALERT","kind":"pr_stuck","ts":"{}","pr":42}}"#, ts),
+            format!(
+                r#"{{"event":"ALERT","kind":"fleet_wedge","ts":"{}","gap_id":"INFRA-1","cooldown_secs":14400}}"#,
+                ts
+            ),
+            format!(
+                r#"{{"event":"ALERT","kind":"fleet_wedge","ts":"{}","gap_id":"INFRA-1","cooldown_secs":14400}}"#,
+                ts
+            ),
+            format!(
+                r#"{{"event":"ALERT","kind":"pr_stuck","ts":"{}","pr":42}}"#,
+                ts
+            ),
         ];
         write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
         let summary = build_week_summary(&tmp, 604800);
         assert!(!summary.waste_by_class.is_empty());
-        let wedge = summary.waste_by_class.iter().find(|w| w.kind == "fleet_wedge");
+        let wedge = summary
+            .waste_by_class
+            .iter()
+            .find(|w| w.kind == "fleet_wedge");
         assert!(wedge.is_some(), "expected fleet_wedge in waste");
         // Two fleet_wedge lines but same gap_id entity → 1 incident after dedup
         assert_eq!(wedge.unwrap().incidents, 1);
@@ -823,9 +860,18 @@ mod tests {
         let tmp = tmpdir();
         let ts = now_iso();
         let lines = [
-            format!(r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"s1","gap_id":"INFRA-10","outcome":"abandoned","input_tokens":50000,"output_tokens":10000,"cache_read_tokens":0,"elapsed_seconds":300}}"#, ts),
-            format!(r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"s2","gap_id":"INFRA-20","outcome":"abandoned","input_tokens":20000,"output_tokens":5000,"cache_read_tokens":0,"elapsed_seconds":200}}"#, ts),
-            format!(r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"s3","gap_id":"INFRA-30","outcome":"abandoned","input_tokens":5000,"output_tokens":1000,"cache_read_tokens":0,"elapsed_seconds":100}}"#, ts),
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"s1","gap_id":"INFRA-10","outcome":"abandoned","input_tokens":50000,"output_tokens":10000,"cache_read_tokens":0,"elapsed_seconds":300}}"#,
+                ts
+            ),
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"s2","gap_id":"INFRA-20","outcome":"abandoned","input_tokens":20000,"output_tokens":5000,"cache_read_tokens":0,"elapsed_seconds":200}}"#,
+                ts
+            ),
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"s3","gap_id":"INFRA-30","outcome":"abandoned","input_tokens":5000,"output_tokens":1000,"cache_read_tokens":0,"elapsed_seconds":100}}"#,
+                ts
+            ),
         ];
         write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
         let summary = build_week_summary(&tmp, 604800);
@@ -841,9 +887,18 @@ mod tests {
         let tmp = tmpdir();
         let ts = now_iso();
         let lines = [
-            format!(r#"{{"event":"ALERT","kind":"fleet_wedge","ts":"{}","gap_id":"INFRA-1"}}"#, ts),
-            format!(r#"{{"event":"ALERT","kind":"pr_stuck","ts":"{}","pr":11}}"#, ts),
-            format!(r#"{{"event":"ALERT","kind":"pr_stuck","ts":"{}","pr":12}}"#, ts),
+            format!(
+                r#"{{"event":"ALERT","kind":"fleet_wedge","ts":"{}","gap_id":"INFRA-1"}}"#,
+                ts
+            ),
+            format!(
+                r#"{{"event":"ALERT","kind":"pr_stuck","ts":"{}","pr":11}}"#,
+                ts
+            ),
+            format!(
+                r#"{{"event":"ALERT","kind":"pr_stuck","ts":"{}","pr":12}}"#,
+                ts
+            ),
         ];
         write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
         let summary = build_week_summary(&tmp, 604800);
@@ -885,7 +940,11 @@ mod tests {
             ..Default::default()
         };
         let json = summary.render_json();
-        assert!(json.contains(r#""kind":"weekly_health_digest""#), "got: {}", json);
+        assert!(
+            json.contains(r#""kind":"weekly_health_digest""#),
+            "got: {}",
+            json
+        );
         assert!(json.contains(r#""ships":5"#), "got: {}", json);
         assert!(json.contains(r#""p0_count":2"#), "got: {}", json);
         assert!(json.contains(r#""p0_compliant":true"#), "got: {}", json);
