@@ -17,10 +17,30 @@
 set -euo pipefail
 
 # --quiet suppresses per-worktree install lines; errors still go to stderr.
+# --profile <name>  selects the hook profile written to each worktree's
+#   .git/chump-hook-profile. Profiles: chump (default, all guards),
+#   chump-proprietary (gap-id + fmt/check/clippy + credential; no research
+#   guards), external-minimal (gap-id + fmt/check only).
 QUIET=0
-for arg in "$@"; do
-    [[ "$arg" == "--quiet" ]] && QUIET=1
+PROFILE="chump"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --quiet) QUIET=1; shift ;;
+        --profile)
+            shift
+            PROFILE="${1:-}"
+            [ -z "$PROFILE" ] && { echo "error: --profile requires a value" >&2; exit 1; }
+            shift
+            ;;
+        *) shift ;;
+    esac
 done
+
+case "$PROFILE" in
+    chump|chump-proprietary|external-minimal) ;;
+    *) echo "error: unknown profile '$PROFILE'; valid: chump, chump-proprietary, external-minimal" >&2; exit 1 ;;
+esac
+
 log() { [[ "$QUIET" == "0" ]] && echo "$@" || true; }
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -59,7 +79,9 @@ while read -r line; do
                 name=$(basename "$src")
                 ln -sf "$src" "$wt_gitdir/hooks/$name"
             done
-            log "installed: $wt_gitdir/hooks/* -> $SRC_DIR/*"
+            # Write the profile so the hook knows which guards to activate.
+            printf '%s\n' "$PROFILE" > "$wt_gitdir/chump-hook-profile"
+            log "installed: $wt_gitdir/hooks/* -> $SRC_DIR/* (profile: $PROFILE)"
             worktree_count=$((worktree_count + 1))
             ;;
     esac

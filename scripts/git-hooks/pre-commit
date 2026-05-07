@@ -81,6 +81,43 @@ set -e
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
 # ------------------------------------------------------------------
+# Profile-based env-var defaults (INFRA-631)
+# Reads $GIT_DIR/chump-hook-profile written by install-hooks.sh --profile.
+# Explicit env vars always win; profile sets the fallback via ${VAR:=val}.
+# Profiles:
+#   chump             — all guards active (default)
+#   chump-proprietary — gap-id, recycled-id, fmt/check, credential active;
+#                       research guards (prereg, cross-judge, kappa) disabled
+#   external-minimal  — gap-id + fmt/check only; all other guards disabled
+# ------------------------------------------------------------------
+_GIT_DIR="$(git rev-parse --absolute-git-dir 2>/dev/null || true)"
+_HOOK_PROFILE="chump"
+if [ -n "$_GIT_DIR" ] && [ -f "$_GIT_DIR/chump-hook-profile" ]; then
+    _HOOK_PROFILE="$(tr -d '[:space:]' < "$_GIT_DIR/chump-hook-profile")"
+fi
+case "$_HOOK_PROFILE" in
+    chump-proprietary)
+        : "${CHUMP_PREREG_CHECK:=0}"
+        : "${CHUMP_PREREG_CONTENT_CHECK:=0}"
+        : "${CHUMP_CROSS_JUDGE_CHECK:=0}"
+        : "${CHUMP_KAPPA_GATE:=0}"
+        ;;
+    external-minimal)
+        : "${CHUMP_LEASE_CHECK:=0}"
+        : "${CHUMP_SCOPE_CHECK:=0}"
+        : "${CHUMP_STOMP_WARN:=0}"
+        : "${CHUMP_PREREG_CHECK:=0}"
+        : "${CHUMP_PREREG_CONTENT_CHECK:=0}"
+        : "${CHUMP_CROSS_JUDGE_CHECK:=0}"
+        : "${CHUMP_KAPPA_GATE:=0}"
+        : "${CHUMP_SUBMODULE_CHECK:=0}"
+        : "${CHUMP_BOOK_SYNC_CHECK:=0}"
+        : "${CHUMP_DOCS_DELTA_CHECK:=0}"
+        : "${CHUMP_CREDENTIAL_CHECK:=0}"
+        ;;
+esac
+
+# ------------------------------------------------------------------
 # 1. Lease-collision guard
 # ------------------------------------------------------------------
 
