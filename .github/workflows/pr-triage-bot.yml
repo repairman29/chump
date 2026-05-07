@@ -43,10 +43,15 @@ jobs:
   # not from a PR or has any non-lint failures.
   # ────────────────────────────────────────────────────────────────────
   auto-fix-lint:
+    # INFRA-624 fix: GitHub fires workflow_run.event='push' for same-repo PRs
+    # (not 'pull_request'), so the original filter excluded every real PR run
+    # and the bot only triggered on main pushes. Use head_branch instead —
+    # any branch other than main is a candidate PR. The "Resolve PR" step
+    # below confirms via gh API and skips if no PR is associated.
     if: >-
       github.event_name == 'workflow_run' &&
       github.event.workflow_run.conclusion == 'failure' &&
-      github.event.workflow_run.event == 'pull_request'
+      github.event.workflow_run.head_branch != 'main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
