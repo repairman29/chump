@@ -1,36 +1,211 @@
-# INFRA-624: pr-triage-bot — auto-file P0 bug-fix gaps for failing PRs.
-# When a CI check run fails on a pull request, the bot files a CREDIBLE fix
-# gap at P0 with notes="auto-filed by pr-triage-bot" so the fleet attacks it
-# next cycle without operator intervention (INFRA-627).
+# INFRA-624: pr-triage-bot — autonomous PR babysitting.
+#
+# When CI completes on a PR with a failure, classify the failed jobs and
+# either auto-fix (lint class), file an auto-promoted P0 fix gap (test
+# class), or comment + label (other). Replaces the manual "wake every
+# 5min, check PRs, fix red X" loop a session has to run today.
+#
+# Two jobs:
+#  (1) auto-fix-lint  — fires on workflow_run.completed for the CI
+#                       workflow when conclusion==failure and the only
+#                       failing required jobs are lint-class (clippy
+#                       and/or fmt). Clones PR branch, runs
+#                       `cargo clippy --fix && cargo fmt`, force-pushes
+#                       with bot identity, comments on PR.
+#  (2) file-fix-gap   — fires on check_run.completed for any failing
+#                       check on a PR. Files a CREDIBLE P0 fix gap so
+#                       the fleet picks up the failure without operator
+#                       intervention (works alongside INFRA-627
+#                       auto-promotion).
+#
+# Bot identity: chump-pr-triage-bot. Author can revert if a fix is wrong.
+#
+# Permissions: contents:write (push lint fixes + commit gap registry),
+# pull-requests:write (comment + label).
+
 name: pr-triage-bot
 
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
   check_run:
     types: [completed]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
-  triage-failure:
+  # ────────────────────────────────────────────────────────────────────
+  # JOB 1: auto-fix lint failures
+  # Fires once per CI workflow completion. Skipped if not failure or
+  # not from a PR or has any non-lint failures.
+  # ────────────────────────────────────────────────────────────────────
+  auto-fix-lint:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Resolve PR + branch
+        id: pr
+        run: |
+          set -euo pipefail
+          RUN_ID=${{ github.event.workflow_run.id }}
+          PR=$(gh api "/repos/${{ github.repository }}/actions/runs/$RUN_ID" \
+                --jq '.pull_requests[0].number // empty')
+          if [ -z "$PR" ]; then
+            echo "::notice::No PR for run $RUN_ID — skip"
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          STATE=$(gh pr view "$PR" --json state --jq .state)
+          if [ "$STATE" != "OPEN" ]; then
+            echo "::notice::PR #$PR is $STATE — skip"
+            echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
+          {
+            echo "skip=false"
+            echo "number=$PR"
+            echo "branch=$BRANCH"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Classify failed jobs (lint-only?)
+        id: classify
+        if: steps.pr.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          RUN_ID=${{ github.event.workflow_run.id }}
+          FAILED=$(gh api "/repos/${{ github.repository }}/actions/runs/$RUN_ID/jobs" \
+                    --jq '[.jobs[] | select(.conclusion == "failure") | .name] | join(",")')
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          # Lint-class iff every failing job matches clippy/fmt/test-rollup
+          # The "test" job is a rollup that fails when shards fail, so it's
+          # OK if clippy is the actual failure and "test" is the cascade.
+          if echo "$FAILED" | grep -qE '\b(clippy|fmt)\b'; then
+            if ! echo "$FAILED" | grep -qE '\b(cargo-test|e2e-pwa|e2e-golden-path|e2e-battle-sim|tauri-cowork-e2e|audit|ACP)\b'; then
+              echo "lint_only=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "lint_only=false" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "lint_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout PR branch
+        if: >-
+          steps.pr.outputs.skip == 'false' &&
+          steps.classify.outputs.lint_only == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.branch }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Rust
+        if: >-
+          steps.pr.outputs.skip == 'false' &&
+          steps.classify.outputs.lint_only == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: cargo clippy --fix && cargo fmt
+        if: >-
+          steps.pr.outputs.skip == 'false' &&
+          steps.classify.outputs.lint_only == 'true'
+        run: |
+          set -euo pipefail
+          cargo clippy --bin chump --fix --allow-dirty --allow-staged 2>&1 | tail -10 || true
+          # Try other binaries best-effort; ignore failures
+          for b in bandit-replay; do
+            cargo clippy --bin "$b" --fix --allow-dirty --allow-staged 2>&1 | tail -5 || true
+          done
+          cargo fmt
+
+      - name: Commit + push lint fixes
+        id: push
+        if: >-
+          steps.pr.outputs.skip == 'false' &&
+          steps.classify.outputs.lint_only == 'true'
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "::notice::No clippy/fmt changes — nothing to push"
+            echo "pushed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git config user.name 'chump-pr-triage-bot'
+          git config user.email 'chump-pr-triage-bot@users.noreply.github.com'
+          git add -A
+          git commit -m "[auto-fix] clippy + rustfmt — pr-triage-bot
+
+Resolves lint failures from CI run ${{ github.event.workflow_run.html_url }}.
+Bot: INFRA-624. Author can revert if the fix is wrong."
+          git push origin "HEAD:${{ steps.pr.outputs.branch }}"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR (lint fix applied)
+        if: >-
+          steps.pr.outputs.skip == 'false' &&
+          steps.classify.outputs.lint_only == 'true' &&
+          steps.push.outputs.pushed == 'true'
+        run: |
+          gh pr comment "${{ steps.pr.outputs.number }}" --body "🤖 **pr-triage-bot** auto-applied \`cargo clippy --fix && cargo fmt\` to resolve lint failures.
+
+          - Triggered by: failed run [${{ github.event.workflow_run.id }}](${{ github.event.workflow_run.html_url }})
+          - Failed jobs: \`${{ steps.classify.outputs.failed }}\`
+          - CI re-runs on this push; auto-merge proceeds if green.
+
+          *Bot is INFRA-624. Revert this commit if the lint fix is incorrect.*"
+
+  # ────────────────────────────────────────────────────────────────────
+  # JOB 2: file P0 fix gap on real failures (existing skeleton, kept
+  # alongside the auto-fix path so test-class failures get a tracked
+  # fix-gap that the fleet picks up via INFRA-627 auto-promotion).
+  # ────────────────────────────────────────────────────────────────────
+  file-fix-gap:
     if: |
+      github.event_name == 'check_run' &&
       github.event.check_run.conclusion == 'failure' &&
       github.event.check_run.pull_requests[0] != null
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
-      pull-requests: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Rust toolchain
+      - name: Skip if lint-class (handled by auto-fix-lint job)
+        id: skip_check
+        run: |
+          NAME='${{ github.event.check_run.name }}'
+          if echo "$NAME" | grep -qE '^(clippy|fmt)$'; then
+            echo "::notice::Skipping file-fix-gap for lint-class job '$NAME' — auto-fix-lint handles it"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Rust
+        if: steps.skip_check.outputs.skip == 'false'
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
 
       - name: Build chump binary
+        if: steps.skip_check.outputs.skip == 'false'
         run: cargo build --bin chump -q
 
-      - name: File P0 bug-fix gap
+      - name: File P0 fix gap
+        if: steps.skip_check.outputs.skip == 'false'
         env:
           CHUMP_ALLOW_MAIN_WORKTREE: "1"
           CHUMP_RESERVE_NO_AUTOSTAGE: "1"
@@ -48,18 +223,29 @@ jobs:
             --title "${GAP_TITLE}" \
             --force \
             --quiet)
-          echo "Reserved gap: ${GAP_ID}"
-
           ./target/debug/chump gap set "${GAP_ID}" \
             --notes "auto-filed by pr-triage-bot" \
             --acceptance-criteria "CI check '${CHECK_NAME}' passes on PR #${PR_NUMBER} or the root cause is fixed in a follow-up PR"
-
           echo "GAP_ID=${GAP_ID}" >> "$GITHUB_OUTPUT"
 
-      - name: Commit updated gap registry
+      - name: Comment on PR + label
+        if: steps.skip_check.outputs.skip == 'false'
+        env:
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+          CHECK_NAME: ${{ github.event.check_run.name }}
         run: |
-          git config user.name  "pr-triage-bot"
-          git config user.email "pr-triage-bot@chump-fleet"
-          git add .chump/state.sql docs/gaps.yaml 2>/dev/null || true
+          gh pr comment "$PR_NUMBER" --body "🤖 **pr-triage-bot** detected a real test/check failure: \`${CHECK_NAME}\`.
+
+          A P0 fix gap has been filed and the fleet will pick it up via INFRA-627 auto-promotion. No author action required immediately, but feel free to investigate.
+
+          *Bot is INFRA-624.*" || true
+          gh pr edit "$PR_NUMBER" --add-label needs-fleet-pickup || true
+
+      - name: Commit updated gap registry
+        if: steps.skip_check.outputs.skip == 'false'
+        run: |
+          git config user.name  "chump-pr-triage-bot"
+          git config user.email "chump-pr-triage-bot@users.noreply.github.com"
+          git add .chump/state.sql docs/gaps.yaml docs/gaps/ 2>/dev/null || true
           git diff --cached --quiet || git commit -m "INFRA-624: auto-file P0 fix gap for failing PR CI"
           git push origin HEAD
