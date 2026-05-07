@@ -9,6 +9,7 @@ use axonerai::provider::{CompletionResponse, Message, Provider, Tool};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
 
 use crate::cost_tracker;
 use crate::llm_backend_metrics;
@@ -1410,6 +1411,81 @@ fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
         api_key,
         model,
     ))
+}
+
+// ── Process-singleton provider + inference semaphore (INFRA-165) ─────────────
+
+static INFERENCE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+static GLOBAL_PROVIDER: OnceLock<Arc<SemaphoreProvider>> = OnceLock::new();
+
+fn inference_semaphore() -> &'static Arc<Semaphore> {
+    INFERENCE_SEMAPHORE.get_or_init(|| {
+        let permits = std::env::var("CHUMP_INFERENCE_PERMITS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .filter(|&n| n >= 1)
+            .unwrap_or(1);
+        Arc::new(Semaphore::new(permits))
+    })
+}
+
+/// Wraps an inner Provider and acquires a permit from the shared inference
+/// Semaphore before every complete() call, providing backpressure across all
+/// concurrent callers (web, discord, spawn_worker).
+pub(crate) struct SemaphoreProvider {
+    pub(crate) inner: Box<dyn Provider + Send + Sync>,
+    pub(crate) sem: Arc<Semaphore>,
+}
+
+#[async_trait]
+impl Provider for SemaphoreProvider {
+    async fn complete(
+        &self,
+        messages: Vec<Message>,
+        tools: Option<Vec<Tool>>,
+        max_tokens: Option<u32>,
+        system_prompt: Option<String>,
+    ) -> Result<CompletionResponse> {
+        let _permit = self
+            .sem
+            .acquire()
+            .await
+            .expect("inference semaphore closed");
+        self.inner
+            .complete(messages, tools, max_tokens, system_prompt)
+            .await
+    }
+}
+
+/// Boxes an Arc<SemaphoreProvider> so callers that expect Box<dyn Provider> can share
+/// the singleton without cloning the inner provider.
+struct ArcProvider(Arc<SemaphoreProvider>);
+
+#[async_trait]
+impl Provider for ArcProvider {
+    async fn complete(
+        &self,
+        messages: Vec<Message>,
+        tools: Option<Vec<Tool>>,
+        max_tokens: Option<u32>,
+        system_prompt: Option<String>,
+    ) -> Result<CompletionResponse> {
+        self.0
+            .complete(messages, tools, max_tokens, system_prompt)
+            .await
+    }
+}
+
+/// Return the process-singleton provider, gated by CHUMP_INFERENCE_PERMITS (default 1).
+/// Interactive callers (web, discord, spawn_worker) must use this instead of build_provider()
+/// so that inference concurrency is bounded and connection reuse is maximised.
+pub fn global_provider() -> Box<dyn Provider + Send + Sync> {
+    let arc = Arc::clone(GLOBAL_PROVIDER.get_or_init(|| {
+        let inner = build_provider_inner_wrapped();
+        let sem = Arc::clone(inference_semaphore());
+        Arc::new(SemaphoreProvider { inner, sem })
+    }));
+    Box::new(ArcProvider(arc))
 }
 
 #[cfg(test)]

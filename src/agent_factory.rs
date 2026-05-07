@@ -42,7 +42,7 @@ pub fn build_chump_agent_cli() -> Result<(ChumpAgent, Session<crate::session::Re
     tool_routing::log_tool_inventory();
     let typed = Session::new().assemble();
     let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
-        crate::provider_cascade::build_provider();
+        crate::provider_cascade::global_provider();
 
     let mut registry = ToolRegistry::new();
     crate::tool_inventory::register_from_inventory(&mut registry);
@@ -96,7 +96,7 @@ pub fn build_chump_agent_web_components(
     let (provider, mistral_for_stream) =
         crate::provider_cascade::build_provider_with_mistral_stream();
     #[cfg(not(feature = "mistralrs-infer"))]
-    let provider = crate::provider_cascade::build_provider();
+    let provider = crate::provider_cascade::global_provider();
 
     let mut registry = ToolRegistry::new();
     crate::tool_inventory::register_from_inventory(&mut registry);
