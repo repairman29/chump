@@ -293,7 +293,7 @@ fn percentile_u64(sorted: &[ShipTokens], pct: usize) -> Option<u64> {
         return None;
     }
     // Nearest-rank method: ceiling(pct/100 * n), 1-indexed → 0-indexed.
-    let rank = (pct * sorted.len() + 99) / 100;
+    let rank = (pct * sorted.len()).div_ceil(100);
     let idx = rank.saturating_sub(1).min(sorted.len() - 1);
     Some(sorted[idx].total_tokens)
 }
