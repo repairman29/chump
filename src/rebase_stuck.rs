@@ -409,9 +409,7 @@ fn extract_str(obj: &str, key: &str) -> String {
         inner[..end].to_string()
     } else {
         // Non-string value — return raw until delimiter.
-        let end = rest
-            .find([',', '}'])
-            .unwrap_or(rest.len());
+        let end = rest.find([',', '}']).unwrap_or(rest.len());
         rest[..end].trim().to_string()
     }
 }
