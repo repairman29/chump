@@ -195,9 +195,14 @@ fn parse_iso8601_to_unix(s: &str) -> Option<u64> {
 }
 
 fn extract_field(line: &str, field: &str) -> Option<String> {
-    let needle = format!(r#""{}":" "#, field).replace(" ", "");
+    // Bug fix (INFRA-608 follow-up): the previous needle pre-consumed the
+    // opening value-quote which left `rest` already inside the string,
+    // bypassing the strip_prefix branch and dragging the closing quote
+    // into the result. Use a needle that stops at the colon so the
+    // strip_prefix('"') branch works as intended.
+    let needle = format!(r#""{}":"#, field);
     let start = line.find(&needle)? + needle.len();
-    let rest = &line[start..];
+    let rest = line[start..].trim_start();
     if let Some(inner) = rest.strip_prefix('"') {
         let end = inner.find('"')?;
         Some(inner[..end].to_string())
@@ -226,14 +231,20 @@ mod tests {
 
     #[test]
     fn test_unix_to_date_utc() {
-        // 2026-05-06T00:00:00Z = 1746489600
-        assert_eq!(unix_to_date_utc(1_746_489_600), "2026-05-06");
+        // 2024-01-01T00:00:00Z = 1704067200 (year-agnostic fixture)
+        assert_eq!(unix_to_date_utc(1_704_067_200), "2024-01-01");
+        // 2025-05-06T00:00:00Z = 1746489600
+        assert_eq!(unix_to_date_utc(1_746_489_600), "2025-05-06");
     }
 
     #[test]
     fn test_parse_iso8601() {
         assert_eq!(
-            parse_iso8601_to_unix("2026-05-06T00:00:00Z"),
+            parse_iso8601_to_unix("2024-01-01T00:00:00Z"),
+            Some(1_704_067_200)
+        );
+        assert_eq!(
+            parse_iso8601_to_unix("2025-05-06T00:00:00Z"),
             Some(1_746_489_600)
         );
     }
