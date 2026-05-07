@@ -135,6 +135,7 @@ mod repo_allowlist;
 mod repo_allowlist_tool;
 mod repo_path;
 mod repo_tools;
+mod roadmap_status;
 mod routes;
 mod rpc_mode;
 mod run_test_tool;
@@ -469,6 +470,21 @@ async fn main() -> Result<()> {
         let repo_root = repo_path::repo_root();
         let report = mission_grade::build_report(&repo_root);
         mission_grade::emit(&repo_root, &report);
+        if want_json {
+            println!("{}", report.render_json());
+        } else {
+            print!("{}", report.render_text());
+        }
+        return Ok(());
+    }
+
+    // `chump roadmap-status [--json]` (INFRA-606) — reads docs/ROADMAP.md,
+    // shows 🟢/🟡/🔴 progress per weekly outcome, lists implementing gaps
+    // with shipped/in-flight/open counts cross-referenced against state.db.
+    if args.get(1).map(String::as_str) == Some("roadmap-status") {
+        let want_json = args.iter().any(|a| a == "--json");
+        let repo_root = repo_path::repo_root();
+        let report = roadmap_status::build_report(&repo_root);
         if want_json {
             println!("{}", report.render_json());
         } else {
