@@ -93,6 +93,40 @@ mkdir -p "$FLEET_LOG_DIR"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
 
+# INFRA-620: re-read CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json
+# before each claude -p spawn. Prevents auth_storm when the inherited token
+# expires after ~30-60min in subscription mode (the parent Claude Code app
+# refreshes its token in-process; already-spawned workers keep the OLD value
+# unless we actively re-read a file that run-fleet.sh's refresher keeps current).
+# Falls back to ANTHROPIC_API_KEY when token file is missing/empty/expired.
+refresh_oauth_token() {
+    local token_file="${CHUMP_OAUTH_TOKEN_FILE:-}"
+    [[ -z "$token_file" ]] && return 0  # api_key mode — nothing to do
+    local tok=""
+    if [[ -f "$token_file" ]]; then
+        tok=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$token_file'))
+    print(d.get('token',''))
+except Exception:
+    pass
+" 2>/dev/null || true)
+    fi
+    if [[ -n "$tok" ]]; then
+        export CLAUDE_CODE_OAUTH_TOKEN="$tok"
+        return 0
+    fi
+    # Token file missing or empty — fall back to ANTHROPIC_API_KEY if available.
+    if [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        log "WARN INFRA-620: oauth token file unreadable or empty; falling back to ANTHROPIC_API_KEY"
+        unset CLAUDE_CODE_OAUTH_TOKEN 2>/dev/null || true
+        return 0
+    fi
+    log "WARN INFRA-620: oauth token file unreadable and no ANTHROPIC_API_KEY — auth may fail"
+    return 0  # non-fatal; let claude -p surface the auth error naturally
+}
+
 # INFRA-572: map exit code to a named class for log scanning + waste-tally.
 classify_rc() {
     case "$1" in
@@ -486,6 +520,9 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             FLEET_MODEL="${FLEET_MODEL-sonnet}"
             _model_arg=()
             [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
+            # INFRA-620: re-read oauth token from file before each spawn so
+            # subscription-mode workers don't use the stale launch-time token.
+            refresh_oauth_token
             log "spawning claude -p (timeout ${FLEET_TIMEOUT_S}s, backend=claude, model=${FLEET_MODEL:-default}) → $cycle_log"
             # INFRA-492: wire INFRA-477 session-track. Pre-fix the cost
             # ledger CLI existed but nothing emitted session_start /
