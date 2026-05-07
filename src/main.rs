@@ -111,6 +111,7 @@ mod neuromodulation;
 mod notify_tool;
 mod onboard_repo_tool;
 mod operator_presence;
+mod orchestrate;
 mod patch_apply;
 mod pending_peer_approval;
 mod perception;
@@ -3709,6 +3710,22 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         } // end #[cfg(feature = "discord")] block
+    }
+
+    // `chump orchestrate` (INFRA-598) — Opus-driven conversational loop.
+    //
+    // Reads CLAUDE.md doctrine into system prompt, dispatches operator natural-language
+    // intents to chump fleet/gap subcommands, and emits 4-pillar mission grade each iter.
+    // Stub mode: CHUMP_ORCHESTRATE_STUB=1 (no LLM call; keyword routing only).
+    if args.get(1).map(String::as_str) == Some("orchestrate") {
+        let repo_root = repo_path::repo_root();
+        match orchestrate::run(&repo_root).await {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("chump orchestrate: {e:#}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump gen <task>` (INFRA-593 / COG-054) — user-facing single-shot coding task.
