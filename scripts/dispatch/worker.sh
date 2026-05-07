@@ -175,6 +175,25 @@ while :; do
     log "cycle $cycle: fetching origin/main"
     git fetch origin main --quiet || log "WARN: git fetch failed; continuing"
 
+    # ── INFRA-614: honour fleet quiesce ──────────────────────────────────
+    # If .chump/.fleet-quiesce-flag exists the operator has requested a
+    # coordinated stand-down. Workers finish their current pick (already
+    # underway from the previous cycle); on the NEXT pick attempt they see
+    # the flag here and exit cleanly instead of taking new work.
+    _quiesce_flag="${REPO_ROOT}/.chump/.fleet-quiesce-flag"
+    if [ -f "$_quiesce_flag" ]; then
+        _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        _amb_path="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+        printf '{"ts":"%s","session":"%s","kind":"fleet_quiesce_worker_exit","agent_id":"%s"}\n' \
+            "$_ts" \
+            "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
+            "$AGENT_ID" \
+            >> "$_amb_path" 2>/dev/null || true
+        log "fleet quiescing — accept_new_picks=false; exiting cleanly (agent $AGENT_ID)"
+        exit 0
+    fi
+
     # ── Pick a gap ────────────────────────────────────────────────────────
     # We use `chump gap list --json` directly (musher.py has its own cooldown
     # heuristics; for fleet workers we want the simplest "highest-priority

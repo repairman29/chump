@@ -1118,12 +1118,50 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-614: graceful coordinated stand-down.
+            // Writes .chump/fleet-quiesce-flag so workers finish their current
+            // pick but accept no new ones, then exit cleanly.
+            "quiesce" => {
+                let timeout_s: u64 = flag("--timeout")
+                    .and_then(|v| v.trim_end_matches('s').parse().ok())
+                    .unwrap_or(600);
+
+                let state_dir = repo_root.join(".chump");
+                let _ = std::fs::create_dir_all(&state_dir);
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                let flag_json = format!("{{\"ts\":\"{ts}\",\"timeout_s\":{timeout_s}}}\n");
+                std::fs::write(state_dir.join(".fleet-quiesce-flag"), &flag_json).unwrap_or_else(
+                    |e| {
+                        eprintln!("chump fleet quiesce: could not write flag: {e}");
+                        std::process::exit(1);
+                    },
+                );
+
+                // Emit ambient event so operator dashboards and logs show it.
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&ambient_path)
+                {
+                    let _ = writeln!(
+                        f,
+                        "{{\"ts\":\"{ts}\",\"kind\":\"fleet_quiesce_request\",\"timeout_s\":{timeout_s}}}"
+                    );
+                }
+
+                println!("[fleet quiesce] flag written — workers will finish current pick then exit (timeout={timeout_s}s)");
+                println!("[fleet quiesce] fleet status: quiescing");
+                println!("[fleet quiesce] to cancel: rm .chump/.fleet-quiesce-flag");
+                return Ok(());
+            }
             _ => {
-                eprintln!("Usage: chump fleet <start|stop|status|scale>");
-                eprintln!("  start  [--size N] [--model M] [--effort xs,s,m] [--domain D]");
-                eprintln!("  stop   [--session NAME]");
-                eprintln!("  status [--json]");
-                eprintln!("  scale  N [--session NAME]");
+                eprintln!("Usage: chump fleet <start|stop|status|scale|quiesce>");
+                eprintln!("  start    [--size N] [--model M] [--effort xs,s,m] [--domain D]");
+                eprintln!("  stop     [--session NAME]");
+                eprintln!("  status   [--json]");
+                eprintln!("  scale    N [--session NAME]");
+                eprintln!("  quiesce  [--timeout 600s]");
                 std::process::exit(2);
             }
         }

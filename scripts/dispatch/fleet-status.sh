@@ -105,6 +105,14 @@ render_queue() {
 }
 
 render_agents() {
+  # INFRA-614: show quiescing banner when stand-down is in progress.
+  local _qflag="$REPO_ROOT/.chump/.fleet-quiesce-flag"
+  if [[ -f "$_qflag" ]]; then
+    local _qtimeout=""
+    _qtimeout="$(python3 -c "import json,sys; d=json.load(open('$_qflag')); print(d.get('timeout_s','?'))" 2>/dev/null || echo "?")"
+    echo "*** fleet status: QUIESCING (timeout=${_qtimeout}s) — workers finishing current pick, no new picks accepted ***"
+    echo "*** to cancel: rm $_qflag ***"
+  fi
   echo "========== per-agent state ($(date -u +%H:%M:%SZ)) =========="
   mkdir -p "$LOCK_DIR" 2>/dev/null || true
 
