@@ -1427,14 +1427,110 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            "audit-pids" => {
+                // `chump fleet audit-pids [--apply]` — INFRA-649
+                //
+                // Checks that claude_pid_count == 2 * worker_count (±1 tolerance).
+                // Each worker spawns a `timeout Ns claude -p ...` wrapper + the claude
+                // subprocess, so 2 PIDs per worker is the invariant.
+                //
+                // Without --apply: report only.
+                // With --apply:
+                //   PIDs > expected+1 → pkill orphans (INFRA-602 sentinel pattern)
+                //   PIDs < expected-1 → respawn via fleet-restart.sh (INFRA-611)
+                //
+                // Emits kind=fleet_pid_invariant to ambient.jsonl with delta + action.
+                let apply = args.iter().any(|a| a == "--apply");
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+                let worker_count: u32 =
+                    std::fs::read_to_string(repo_root.join(".chump/fleet-desired-size"))
+                        .ok()
+                        .and_then(|s| s.trim().parse().ok())
+                        .unwrap_or(0);
+
+                let expected = worker_count * 2;
+
+                // pgrep -c exits 1 when no matches but still prints "0"; handle both.
+                let actual: u32 = std::process::Command::new("pgrep")
+                    .args(["-c", "-f", "timeout [0-9]*s claude -p "])
+                    .output()
+                    .ok()
+                    .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
+                    .unwrap_or(0);
+
+                let delta: i64 = actual as i64 - expected as i64;
+                let in_tolerance = delta.abs() <= 1;
+
+                println!(
+                    "[fleet audit-pids] worker_count={worker_count} expected_pids={expected} \
+                     actual_pids={actual} delta={delta:+} apply={apply}"
+                );
+
+                let action = if in_tolerance {
+                    println!("[fleet audit-pids] invariant OK (within ±1 tolerance)");
+                    "ok"
+                } else if !apply {
+                    if delta > 0 {
+                        println!(
+                            "[fleet audit-pids] DRIFT: {delta:+} excess PIDs — run with --apply to prune"
+                        );
+                    } else {
+                        println!(
+                            "[fleet audit-pids] DRIFT: {delta} missing PIDs — run with --apply to respawn"
+                        );
+                    }
+                    "drift"
+                } else if delta > 0 {
+                    // More PIDs than expected → kill orphaned timeout+claude pairs.
+                    println!("[fleet audit-pids] --apply: pruning orphan PIDs (delta={delta:+})");
+                    let _ = std::process::Command::new("pkill")
+                        .args(["-f", "timeout [0-9]*s claude -p "])
+                        .status();
+                    "pruned"
+                } else {
+                    // Fewer PIDs than expected → respawn via fleet-restart.sh.
+                    println!(
+                        "[fleet audit-pids] --apply: respawning fleet to worker_count={worker_count}"
+                    );
+                    let restart_sh = repo_root.join("scripts/dispatch/fleet-restart.sh");
+                    let session = cfg("session").unwrap_or_else(|| "chump-fleet".to_string());
+                    let _ = std::process::Command::new("bash")
+                        .arg(&restart_sh)
+                        .env("FLEET_SIZE", worker_count.to_string())
+                        .env("FLEET_SESSION", &session)
+                        .status();
+                    "respawned"
+                };
+
+                // Emit ambient event.
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&ambient_path)
+                {
+                    let _ = writeln!(
+                        f,
+                        "{{\"ts\":\"{ts}\",\"kind\":\"fleet_pid_invariant\",\
+                         \"worker_count\":{worker_count},\"expected\":{expected},\
+                         \"actual\":{actual},\"delta\":{delta},\
+                         \"apply\":{apply},\"action\":\"{action}\"}}"
+                    );
+                }
+                return Ok(());
+            }
             _ => {
-                eprintln!("Usage: chump fleet <start|stop|status|scale|snapshot|restore>");
-                eprintln!("  start    [--size N] [--model M] [--effort xs,s,m] [--domain D]");
-                eprintln!("  stop     [--session NAME]");
-                eprintln!("  status   [--json]");
-                eprintln!("  scale    N [--session NAME]");
+                eprintln!(
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|audit-pids>"
+                );
+                eprintln!("  start      [--size N] [--model M] [--effort xs,s,m] [--domain D]");
+                eprintln!("  stop       [--session NAME]");
+                eprintln!("  status     [--json]");
+                eprintln!("  scale      N [--session NAME]");
                 eprintln!("  snapshot");
-                eprintln!("  restore  <snapshot-id>");
+                eprintln!("  restore    <snapshot-id>");
+                eprintln!("  audit-pids [--apply]");
                 std::process::exit(2);
             }
         }
