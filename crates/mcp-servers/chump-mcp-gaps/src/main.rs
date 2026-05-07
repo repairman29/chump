@@ -2,11 +2,12 @@
 //! Set CHUMP_REPO (or CHUMP_HOME) to point at the repo root.
 //!
 //! Supported methods:
-//!   - list_open_gaps { priority? }   — list open gaps, optional P1/P2/P3 filter
-//!   - get_gap { gap_id }             — return full gap entry by ID
+//!   - list_open_gaps { priority? }   — list open gaps, optional P0/P1/P2 filter
+//!   - get_gap { gap_id }             — return full gap entry by ID (prefix match)
 //!   - claim_gap { gap_id }           — run scripts/coord/gap-claim.sh for the gap
 
 use anyhow::{anyhow, Result};
+use rusqlite::{params, Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -47,53 +48,77 @@ fn repo_dir() -> Result<PathBuf> {
     Ok(p)
 }
 
-fn gaps_yaml_path() -> Result<PathBuf> {
-    Ok(repo_dir()?.join("docs").join("gaps.yaml"))
+fn state_db_path() -> Result<PathBuf> {
+    Ok(repo_dir()?.join(".chump").join("state.db"))
 }
 
-fn load_gaps_yaml() -> Result<Value> {
-    let path = gaps_yaml_path()?;
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| anyhow!("failed to read {}: {}", path.display(), e))?;
-    let parsed: serde_yaml::Value =
-        serde_yaml::from_str(&content).map_err(|e| anyhow!("failed to parse gaps.yaml: {}", e))?;
-    let json_val = serde_json::to_value(parsed)
-        .map_err(|e| anyhow!("failed to convert gaps.yaml to JSON: {}", e))?;
-    Ok(json_val)
+fn open_db() -> Result<Connection> {
+    let path = state_db_path()?;
+    Connection::open_with_flags(
+        &path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| anyhow!("failed to open {}: {}", path.display(), e))
+}
+
+fn row_to_json(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
+    Ok(json!({
+        "id":                  row.get::<_, String>(0)?,
+        "domain":              row.get::<_, String>(1)?,
+        "title":               row.get::<_, String>(2)?,
+        "description":         row.get::<_, String>(3)?,
+        "priority":            row.get::<_, String>(4)?,
+        "effort":              row.get::<_, String>(5)?,
+        "status":              row.get::<_, String>(6)?,
+        "acceptance_criteria": row.get::<_, String>(7)?,
+        "depends_on":          row.get::<_, String>(8)?,
+        "notes":               row.get::<_, String>(9)?,
+        "source_doc":          row.get::<_, String>(10)?,
+        "opened_date":         row.get::<_, String>(11)?,
+        "closed_pr":           row.get::<_, Option<i64>>(12)?,
+    }))
 }
 
 async fn handle_list_open_gaps(params: &Value) -> Result<Value> {
-    let priority_filter = params.get("priority").and_then(|v| v.as_str());
-    let data = load_gaps_yaml()?;
-    let gaps = data
-        .get("gaps")
-        .and_then(|g| g.as_array())
-        .ok_or_else(|| anyhow!("gaps.yaml has no 'gaps' array"))?;
+    let priority_filter = params
+        .get("priority")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_uppercase());
+    let conn = open_db()?;
 
-    let open: Vec<&Value> = gaps
-        .iter()
-        .filter(|g| {
-            let status = g.get("status").and_then(|s| s.as_str()).unwrap_or("");
-            if status != "open" {
-                return false;
-            }
-            if let Some(pf) = priority_filter {
-                let priority = g.get("priority").and_then(|p| p.as_str()).unwrap_or("");
-                return priority.eq_ignore_ascii_case(pf);
-            }
-            true
-        })
-        .collect();
+    let gaps: Vec<Value> = {
+        const SQL_ALL: &str = "SELECT id, domain, title, description, priority, effort, status,
+                    acceptance_criteria, depends_on, notes, source_doc,
+                    opened_date, closed_pr
+             FROM gaps WHERE status = 'open' ORDER BY id";
+        const SQL_PRI: &str = "SELECT id, domain, title, description, priority, effort, status,
+                    acceptance_criteria, depends_on, notes, source_doc,
+                    opened_date, closed_pr
+             FROM gaps WHERE status = 'open' AND upper(priority) = ?1 ORDER BY id";
 
-    let summary: Vec<Value> = open
+        let mut stmt_all;
+        let mut stmt_pri;
+        let rows: Box<dyn Iterator<Item = rusqlite::Result<Value>>> =
+            if let Some(ref pf) = priority_filter {
+                stmt_pri = conn.prepare(SQL_PRI)?;
+                Box::new(stmt_pri.query_map(params![pf], |row| row_to_json(row))?)
+            } else {
+                stmt_all = conn.prepare(SQL_ALL)?;
+                Box::new(stmt_all.query_map([], |row| row_to_json(row))?)
+            };
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|e| anyhow!("query failed: {}", e))?
+    };
+
+    let summary: Vec<Value> = gaps
         .iter()
         .map(|g| {
             json!({
-                "id": g.get("id").unwrap_or(&Value::Null),
-                "title": g.get("title").unwrap_or(&Value::Null),
-                "domain": g.get("domain").unwrap_or(&Value::Null),
-                "priority": g.get("priority").unwrap_or(&Value::Null),
-                "effort": g.get("effort").unwrap_or(&Value::Null),
+                "id":       g["id"],
+                "title":    g["title"],
+                "domain":   g["domain"],
+                "priority": g["priority"],
+                "effort":   g["effort"],
             })
         })
         .collect();
@@ -113,22 +138,27 @@ async fn handle_get_gap(params: &Value) -> Result<Value> {
         .trim()
         .to_uppercase();
 
-    let data = load_gaps_yaml()?;
-    let gaps = data
-        .get("gaps")
-        .and_then(|g| g.as_array())
-        .ok_or_else(|| anyhow!("gaps.yaml has no 'gaps' array"))?;
+    let conn = open_db()?;
 
-    let found = gaps.iter().find(|g| {
-        g.get("id")
-            .and_then(|id| id.as_str())
-            .map(|id| id.eq_ignore_ascii_case(&gap_id))
-            .unwrap_or(false)
-    });
+    // Try exact match first, then prefix match (e.g. "INFRA-628" or "628")
+    let mut stmt = conn.prepare(
+        "SELECT id, domain, title, description, priority, effort, status,
+                acceptance_criteria, depends_on, notes, source_doc,
+                opened_date, closed_pr
+         FROM gaps
+         WHERE upper(id) = ?1 OR upper(id) LIKE ?2
+         ORDER BY id
+         LIMIT 1",
+    )?;
+    let pattern = format!("%-{}", gap_id);
+    let result = stmt.query_row(params![gap_id, pattern], |row| row_to_json(row));
 
-    match found {
-        Some(gap) => Ok(json!({ "success": true, "gap": gap })),
-        None => Ok(json!({ "success": false, "error": format!("gap '{}' not found", gap_id) })),
+    match result {
+        Ok(gap) => Ok(json!({ "success": true, "gap": gap })),
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            Ok(json!({ "success": false, "error": format!("gap '{}' not found", gap_id) }))
+        }
+        Err(e) => Err(anyhow!("query failed: {}", e)),
     }
 }
 
@@ -145,9 +175,14 @@ async fn handle_claim_gap(params: &Value) -> Result<Value> {
     }
 
     let dir = repo_dir()?;
-    let script = dir.join("scripts").join("gap-claim.sh");
+    let script = dir.join("scripts").join("coord").join("gap-claim.sh");
+    let script = if script.exists() {
+        script
+    } else {
+        dir.join("scripts").join("gap-claim.sh")
+    };
     if !script.exists() {
-        return Err(anyhow!("gap-claim.sh not found at {}", script.display()));
+        return Err(anyhow!("gap-claim.sh not found under scripts/"));
     }
 
     let out = Command::new("bash")
@@ -180,24 +215,24 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             "tools": [
                 {
                     "name": "list_open_gaps",
-                    "description": "List open gaps in the Chump gap registry (docs/gaps.yaml). Optional priority filter (P1, P2, P3).",
+                    "description": "List open gaps in the Chump gap registry (.chump/state.db). Optional priority filter (P0, P1, P2).",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
                             "priority": {
                                 "type": "string",
-                                "description": "Optional priority filter: P1, P2, or P3"
+                                "description": "Optional priority filter: P0, P1, or P2"
                             }
                         }
                     }
                 },
                 {
                     "name": "get_gap",
-                    "description": "Get full details for a specific gap by ID (e.g. COG-001, MEM-007).",
+                    "description": "Get full details for a specific gap by ID or short prefix (e.g. INFRA-628, MEM-007, or just 628).",
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "gap_id": { "type": "string", "description": "Gap ID, e.g. COG-001" }
+                            "gap_id": { "type": "string", "description": "Gap ID or suffix, e.g. INFRA-628 or 628" }
                         },
                         "required": ["gap_id"]
                     }
@@ -208,7 +243,7 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                     "inputSchema": {
                         "type": "object",
                         "properties": {
-                            "gap_id": { "type": "string", "description": "Gap ID to claim, e.g. COMP-009" }
+                            "gap_id": { "type": "string", "description": "Gap ID to claim, e.g. INFRA-628" }
                         },
                         "required": ["gap_id"]
                     }
