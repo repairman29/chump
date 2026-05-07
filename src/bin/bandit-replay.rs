@@ -606,7 +606,7 @@ This is a conservative estimate that slightly underestimates both strategies' tr
     }
     // Always include the last point.
     if let Some(last) = points.last() {
-        if n % stride != 0 {
+        if !n.is_multiple_of(stride) {
             buf.push_str(&format!(
                 "| {} | {:.3} | {:.3} |\n",
                 last.t, last.thompson_regret, last.ucb1_regret
