@@ -537,6 +537,7 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|| "24h".to_string());
         let want_json = args.iter().any(|a| a == "--json");
         let by_domain = args.iter().any(|a| a == "--by-domain");
+        let want_tokens = args.iter().any(|a| a == "--tokens");
 
         // Parse "24h" / "7d" / "60m" / raw seconds.
         let since_secs = parse_duration_to_secs(&since_arg).unwrap_or_else(|| {
@@ -559,6 +560,8 @@ async fn main() -> Result<()> {
             let report = waste_tally::build_report(&repo_root, since_secs);
             if want_json {
                 println!("{}", report.render_json());
+            } else if want_tokens {
+                print!("{}", report.render_text_tokens());
             } else {
                 print!("{}", report.render_text());
             }
