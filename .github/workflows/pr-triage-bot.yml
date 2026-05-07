@@ -133,6 +133,9 @@ jobs:
         if: >-
           steps.pr.outputs.skip == 'false' &&
           steps.classify.outputs.lint_only == 'true'
+        env:
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          BRANCH: ${{ steps.pr.outputs.branch }}
         run: |
           set -euo pipefail
           if git diff --quiet; then
@@ -142,11 +145,18 @@ jobs:
           git config user.name 'chump-pr-triage-bot'
           git config user.email 'chump-pr-triage-bot@users.noreply.github.com'
           git add -A
-          git commit -m "[auto-fix] clippy + rustfmt — pr-triage-bot
+          MSG=$(cat <<EOF
+          [auto-fix] clippy + rustfmt — pr-triage-bot
 
             Resolves lint failures from CI run ${{ github.event.workflow_run.html_url }}.
             Bot: INFRA-624. Author can revert if the fix is wrong."
           git push origin "HEAD:${{ steps.pr.outputs.branch }}"
+          Resolves lint failures from CI run ${RUN_URL}.
+          Bot: INFRA-624. Author can revert if the fix is wrong.
+          EOF
+          )
+          git commit -m "${MSG}"
+          git push origin "HEAD:${BRANCH}"
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Comment on PR (lint fix applied)
@@ -154,14 +164,24 @@ jobs:
           steps.pr.outputs.skip == 'false' &&
           steps.classify.outputs.lint_only == 'true' &&
           steps.push.outputs.pushed == 'true'
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          FAILED: ${{ steps.classify.outputs.failed }}
         run: |
-          gh pr comment "${{ steps.pr.outputs.number }}" --body "🤖 **pr-triage-bot** auto-applied \`cargo clippy --fix && cargo fmt\` to resolve lint failures.
+          set -euo pipefail
+          BODY=$(cat <<EOF
+          🤖 **pr-triage-bot** auto-applied \`cargo clippy --fix && cargo fmt\` to resolve lint failures.
 
-          - Triggered by: failed run [${{ github.event.workflow_run.id }}](${{ github.event.workflow_run.html_url }})
-          - Failed jobs: \`${{ steps.classify.outputs.failed }}\`
+          - Triggered by: failed run [${RUN_ID}](${RUN_URL})
+          - Failed jobs: \`${FAILED}\`
           - CI re-runs on this push; auto-merge proceeds if green.
 
-          *Bot is INFRA-624. Revert this commit if the lint fix is incorrect.*"
+          *Bot is INFRA-624. Revert this commit if the lint fix is incorrect.*
+          EOF
+          )
+          gh pr comment "${PR_NUMBER}" --body "${BODY}"
 
   # ────────────────────────────────────────────────────────────────────
   # JOB 2: file P0 fix gap on real failures (existing skeleton, kept
