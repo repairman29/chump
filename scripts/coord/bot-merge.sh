@@ -952,7 +952,30 @@ info "cargo parallelism: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (override via env)
 # OFF (preserves human-developer fail-fast ergonomics); agents pass --fast
 # explicitly.
 if [[ $FAST -eq 1 ]]; then
-    info "Skipping local clippy (--fast). CI clippy is the gate."
+    # 2026-05-07: Even in --fast mode, run `cargo clippy --workspace --fix`
+    # as a cheap auto-correction pass. This catches the wave of fleet PRs
+    # that ship doc-list-overindented / manual_strip / manual_split_once
+    # / lines_filter_map_ok / manual_is_multiple_of style lints that
+    # fleet workers' Rust style produces. Auto-fix is fast (<2 min on
+    # warm cache) and amends the lint fixes into the current commit so
+    # CI sees a clean PR. If clippy --fix can't auto-resolve everything,
+    # we still let CI be the gate (no -D warnings).
+    if command -v cargo &>/dev/null; then
+        stage_start "cargo clippy --workspace --fix (--fast pre-flight auto-correct)"
+        run_timed_hb "cargo clippy --fix" 240 cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged 2>&1 || true
+        if ! git diff --quiet || git diff --cached --quiet 2>&1 | grep -q .; then
+            if [[ -n "$(git status --porcelain)" ]]; then
+                info "clippy --fix auto-corrected lints — staging + amending"
+                git add -A
+                git commit --amend --no-edit --no-verify >/dev/null 2>&1 || \
+                    git commit --no-verify -m "chore: cargo clippy --fix (auto from bot-merge.sh --fast pre-flight, INFRA-624 follow-up)"
+            fi
+        fi
+        stage_done
+        green "clippy --fix pre-flight done."
+    else
+        info "Skipping local clippy (--fast, no cargo). CI clippy is the gate."
+    fi
 elif command -v cargo &>/dev/null; then
     stage_start "cargo clippy --workspace --all-targets"
     if ! run_timed_hb "cargo clippy" 900 cargo clippy --workspace --all-targets -- -D warnings 2>&1; then

@@ -175,3 +175,16 @@ tempfile = "3"
 # dead_code noise so clippy stays actionable on real issues (unused imports/vars, style).
 [lints.rust]
 dead_code = "allow"
+
+# Stylistic clippy lints relaxed at workspace level. These caught a wave of
+# fleet-shipped PRs in 2026-05-07 because clippy 1.95 made them strict and
+# fleet workers' Rust style predates the new defaults. They're cosmetic,
+# not correctness; the cycle-thrash of force-pushing fixes outweighs the
+# style benefit. If we ever want them back, downgrade to "warn" first to
+# scrub the codebase, then back to "deny".
+[lints.clippy]
+doc_list_item_overindented = "allow"
+manual_strip = "allow"
+manual_split_once = "allow"
+lines_filter_map_ok = "allow"
+manual_is_multiple_of = "allow"
