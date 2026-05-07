@@ -102,6 +102,7 @@ dotenvy = "0.15"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
 rand = "0.10"
+regex = "1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 anyhow = "1.0"
 thiserror = { version = "2.0", optional = true }

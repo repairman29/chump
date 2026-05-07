@@ -5,12 +5,12 @@
 //! into session_end so we can compute actual $ cost per shipped gap.
 //!
 //! Two events:
-//!   - `session_start` — written by `chump session-track --start <GAP>`
-//!     at the moment work begins (typically right after `chump claim`).
-//!   - `session_end`   — written by `chump session-track --end <GAP>
-//!     --outcome <shipped|abandoned|starved>` when the session
-//!     terminates (typically right after `bot-merge.sh` ships or after
-//!     manual abandon).
+//! - `session_start` — written by `chump session-track --start <GAP>`
+//!   at the moment work begins (typically right after `chump claim`).
+//! - `session_end`   — written by `chump session-track --end <GAP>
+//!   --outcome <shipped|abandoned|starved>` when the session
+//!   terminates (typically right after `bot-merge.sh` ships or after
+//!   manual abandon).
 //!
 //! Briefing surfaces aggregate stats for past sessions on the same
 //! domain: "Recent sessions on INFRA gaps: median elapsed 24m, range

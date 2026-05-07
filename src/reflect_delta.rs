@@ -2,22 +2,22 @@
 //! than last time on this gap class."
 //!
 //! Pairs with COG-043 (action-telemetry):
-//!   - COG-043 measures whether shown lessons WERE applied.
-//!   - COG-042 measures whether the agent's APPROACH changed across
-//!     similar gaps. Both feed META-040 (lesson-effectiveness audit).
+//! - COG-043 measures whether shown lessons WERE applied.
+//! - COG-042 measures whether the agent's APPROACH changed across
+//!   similar gaps. Both feed META-040 (lesson-effectiveness audit).
 //!
 //! Minimum viable shape — pure additive, no schema migration:
-//!   - `chump reflect-delta <GAP-ID> "<text>"` emits a `delta_recorded`
-//!     event to `.chump-locks/ambient.jsonl` with ts + session + gap + text.
-//!   - Briefing surfaces recent `delta_recorded` events for similar gaps
-//!     so the next agent on a related gap sees how the last attempt
-//!     differed from the time before that.
+//! - `chump reflect-delta <GAP-ID> "<text>"` emits a `delta_recorded`
+//!   event to `.chump-locks/ambient.jsonl` with ts + session + gap + text.
+//! - Briefing surfaces recent `delta_recorded` events for similar gaps
+//!   so the next agent on a related gap sees how the last attempt
+//!   differed from the time before that.
 //!
 //! Population mechanism is deferred:
-//!   - For now, agents call the CLI explicitly when they have something
-//!     concrete to record. A follow-up gap (COG-052+) will wire the
-//!     bot-merge ship path to prompt for delta on close, similar to
-//!     COG-050 deferring COG-043's bot-merge hook.
+//! - For now, agents call the CLI explicitly when they have something
+//!   concrete to record. A follow-up gap (COG-052+) will wire the
+//!   bot-merge ship path to prompt for delta on close, similar to
+//!   COG-050 deferring COG-043's bot-merge hook.
 
 use std::path::Path;
 
