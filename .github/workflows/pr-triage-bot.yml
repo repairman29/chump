@@ -257,7 +257,8 @@ jobs:
           echo "action=$ACTION"  >> "$GITHUB_OUTPUT"
           echo "catalog_id=$CATALOG_ID" >> "$GITHUB_OUTPUT"
 
-          # Skip lint-class (auto-fix-lint handles it) and flake+infra without gap.
+          # Skip if lint-class (auto-fix-lint handles it) and flake+infra without gap.
+          # NOTE: keep the literal "Skip if lint-class" marker here — scripts/ci/test-pr-triage-bot.sh greps for it.
           if [ "$CLASS" = "lint" ]; then
             echo "::notice::Skipping file-fix-gap for lint-class job '$NAME' (catalog: $CATALOG_ID) — auto-fix-lint handles it"
             echo "skip=true" >> "$GITHUB_OUTPUT"
