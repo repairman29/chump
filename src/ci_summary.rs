@@ -20,6 +20,8 @@
 //! `chump ci-summary [--since 24h] [--json]`
 
 use std::collections::BTreeMap;
+use std::io::Write as _;
+use std::path::Path;
 use std::process::Command;
 
 // ── Public types ────────────────────────────────────────────────────────────
@@ -418,6 +420,79 @@ impl CiReport {
     }
 }
 
+// ── Ambient alert emission ───────────────────────────────────────────────────
+
+impl CiReport {
+    /// Failure rate as a percentage (0–100), rounded down.
+    pub fn failure_rate_pct(&self) -> u64 {
+        if self.total_runs_checked == 0 {
+            return 0;
+        }
+        self.failed_runs * 100 / self.total_runs_checked
+    }
+
+    /// If failure rate exceeds `threshold_pct`, append a `kind=ci_health` ALERT
+    /// to `ambient_path` and return `true`. Returns `false` when under threshold
+    /// or when the file cannot be opened (non-fatal).
+    pub fn emit_ambient_alert(&self, threshold_pct: u64, ambient_path: &Path) -> bool {
+        let rate = self.failure_rate_pct();
+        if rate <= threshold_pct {
+            return false;
+        }
+        let top_class = self
+            .entries
+            .first()
+            .map(|e| e.class.as_str())
+            .unwrap_or("unknown");
+        let ts = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let secs = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            // Format as ISO 8601 via `date` to avoid pulling in chrono.
+            let out = Command::new("date")
+                .args(["-u", "-r", &secs.to_string(), "+%Y-%m-%dT%H:%M:%SZ"])
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+            // GNU date fallback (-d @secs)
+            out.unwrap_or_else(|| {
+                Command::new("date")
+                    .args(["-u", "-d", &format!("@{secs}"), "+%Y-%m-%dT%H:%M:%SZ"])
+                    .output()
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    .unwrap_or_else(|| "1970-01-01T00:00:00Z".to_string())
+            })
+        };
+        let line = format!(
+            "{{\"ts\":\"{ts}\",\"event\":\"ALERT\",\"kind\":\"ci_health\",\
+             \"failure_rate_pct\":{rate},\"threshold_pct\":{threshold_pct},\
+             \"total_runs\":{total},\"failed_runs\":{failed},\
+             \"top_class\":\"{top_class}\",\"since_seconds\":{since}}}",
+            ts = ts,
+            rate = rate,
+            threshold_pct = threshold_pct,
+            total = self.total_runs_checked,
+            failed = self.failed_runs,
+            top_class = top_class,
+            since = self.since_seconds,
+        );
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(ambient_path)
+        {
+            let _ = writeln!(f, "{}", line);
+            return true;
+        }
+        false
+    }
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 fn current_unix() -> u64 {
@@ -664,6 +739,81 @@ mod tests {
     fn infra506_parse_run_list_empty() {
         let runs = parse_run_list("[]");
         assert!(runs.is_empty());
+    }
+
+    // ── Unit: failure_rate_pct + emit_ambient_alert ────────────────────────
+
+    #[test]
+    fn infra511_failure_rate_pct_correct() {
+        let r = CiReport {
+            since_seconds: 86400,
+            total_runs_checked: 50,
+            failed_runs: 12,
+            entries: vec![],
+        };
+        assert_eq!(r.failure_rate_pct(), 24);
+    }
+
+    #[test]
+    fn infra511_failure_rate_pct_zero_total() {
+        let r = CiReport::default();
+        assert_eq!(r.failure_rate_pct(), 0);
+    }
+
+    #[test]
+    fn infra511_emit_alert_under_threshold_no_write() {
+        let r = CiReport {
+            since_seconds: 604800,
+            total_runs_checked: 20,
+            failed_runs: 1, // 5% — under 10% threshold
+            entries: vec![],
+        };
+        let dir = std::env::temp_dir().join(format!("infra511_test_{}", std::process::id()));
+        let path = dir.join("ambient.jsonl");
+        let emitted = r.emit_ambient_alert(10, &path);
+        assert!(!emitted, "should not emit when under threshold");
+        assert!(!path.exists(), "file should not be created");
+    }
+
+    #[test]
+    fn infra511_emit_alert_over_threshold_writes_jsonl() {
+        let r = CiReport {
+            since_seconds: 604800,
+            total_runs_checked: 50,
+            failed_runs: 12, // 24% — over 10%
+            entries: vec![CiEntry {
+                class: "real-bug".into(),
+                count: 8,
+                sample_lines: vec![],
+            }],
+        };
+        let dir = std::env::temp_dir().join(format!("infra511_alert_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ambient.jsonl");
+        let emitted = r.emit_ambient_alert(10, &path);
+        assert!(emitted, "should emit when over threshold");
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            contents.contains("\"kind\":\"ci_health\""),
+            "got: {}",
+            contents
+        );
+        assert!(
+            contents.contains("\"event\":\"ALERT\""),
+            "got: {}",
+            contents
+        );
+        assert!(
+            contents.contains("\"failure_rate_pct\":24"),
+            "got: {}",
+            contents
+        );
+        assert!(
+            contents.contains("\"top_class\":\"real-bug\""),
+            "got: {}",
+            contents
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ── Plumbing: gh run list round-trip ───────────────────────────────────
