@@ -4,18 +4,18 @@
 //! JSON-RPC 2.0 over stdio. Each request is one line of JSON on stdin, response on stdout.
 //!
 //! Supported methods (matching the tool names in the main binary):
-//!   - gh_list_issues { repo, label?, state? }
-//!   - gh_create_issue { repo, title, body?, labels? }
-//!   - gh_list_my_prs { repo?, state? }
-//!   - gh_pr_status { repo }
-//!   - gh_pr_create { repo, title, body?, base?, head? }
-//!   - gh_repo_info { repo }
-//!   - gh_get_issue { repo, number }
-//!   - gh_create_branch { name }
-//!   - gh_pr_checks { pr_number }
-//!   - gh_pr_comment { pr_number, body }
-//!   - gh_pr_view_comments { pr_number }
-//!   - github_clone_or_pull { repo, ref? }
+//! - gh_list_issues { repo, label?, state? }
+//! - gh_create_issue { repo, title, body?, labels? }
+//! - gh_list_my_prs { repo?, state? }
+//! - gh_pr_status { repo }
+//! - gh_pr_create { repo, title, body?, base?, head? }
+//! - gh_repo_info { repo }
+//! - gh_get_issue { repo, number }
+//! - gh_create_branch { name }
+//! - gh_pr_checks { pr_number }
+//! - gh_pr_comment { pr_number, body }
+//! - gh_pr_view_comments { pr_number }
+//! - github_clone_or_pull { repo, ref? }
 
 use anyhow::{anyhow, Result};
 use serde::{Deserialize, Serialize};

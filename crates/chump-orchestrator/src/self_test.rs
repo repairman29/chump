@@ -7,17 +7,17 @@
 //! linked worktrees — pure in-process loop exercise.
 //!
 //! Two callers share this module:
-//!   - `chump-orchestrator --self-test` (the CLI smoke a human can run
-//!     manually to verify the orchestrator loop is healthy).
-//!   - `crates/chump-orchestrator/tests/e2e_smoke.rs` (the cargo-test
-//!     gating the same flow in CI).
+//! - `chump-orchestrator --self-test` (the CLI smoke a human can run
+//!   manually to verify the orchestrator loop is healthy).
+//! - `crates/chump-orchestrator/tests/e2e_smoke.rs` (the cargo-test
+//!   gating the same flow in CI).
 //!
 //! Acceptance contract:
-//!   - 4 dummy files appear under `<scratch>/synth-test/<GAP-ID>` (one per gap).
-//!   - 4 reflection rows captured by the in-memory writer, one per gap,
-//!     all with `outcome = "shipped"`.
-//!   - Wall time well under 10 seconds (the monitor uses millisecond ticks
-//!     for tests).
+//! - 4 dummy files appear under `<scratch>/synth-test/<GAP-ID>` (one per gap).
+//! - 4 reflection rows captured by the in-memory writer, one per gap,
+//!   all with `outcome = "shipped"`.
+//! - Wall time well under 10 seconds (the monitor uses millisecond ticks
+//!   for tests).
 
 use crate::dispatch::{dispatch_gap_with, DispatchHandle, SpawnResult, Spawner};
 use crate::monitor::{DispatchOutcome, MonitorLoop, PrProvider, PrStatus, WatchEntry};

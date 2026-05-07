@@ -1,11 +1,11 @@
 //! INFRA-616: `chump session-export` / `chump session-resume` — multi-session handoff.
 //!
 //! `session-export` emits `~/.chump/sessions/<session-id>.md` with:
-//!   - ships landed (gaps with `session_end outcome=shipped` for this session)
-//!   - gaps filed during the session (gap IDs seen in `session_start` events)
-//!   - pillar-grade trajectory (open gap counts per mission pillar)
-//!   - handoff-priority items (open P0/P1 gaps)
-//!   - notable findings from ambient.jsonl `notable_finding` events
+//! - ships landed (gaps with `session_end outcome=shipped` for this session)
+//! - gaps filed during the session (gap IDs seen in `session_start` events)
+//! - pillar-grade trajectory (open gap counts per mission pillar)
+//! - handoff-priority items (open P0/P1 gaps)
+//! - notable findings from ambient.jsonl `notable_finding` events
 //!
 //! `session-resume <session-id>` reads that file and prints it to stdout so the
 //! Opus orchestrator can inject it at the top of a new session's context.

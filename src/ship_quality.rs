@@ -2,9 +2,9 @@
 //!
 //! For each `ship_grade` event emitted by `bot-merge.sh`, records three
 //! binary quality signals:
-//!   - `clippy_ok`    — did local `cargo clippy` pass? (null when --fast skipped it)
-//!   - `test_added`   — does the PR diff contain at least one test addition?
-//!   - `rebase_clean` — did `git rebase` complete without conflicts? (null when up-to-date)
+//! - `clippy_ok`    — did local `cargo clippy` pass? (null when --fast skipped it)
+//! - `test_added`   — does the PR diff contain at least one test addition?
+//! - `rebase_clean` — did `git rebase` complete without conflicts? (null when up-to-date)
 //!
 //! Events are tagged with `model` (FLEET_MODEL env) and `agent_id`
 //! (AGENT_ID env) so the aggregation can surface empirical numbers like

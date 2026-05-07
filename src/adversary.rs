@@ -11,11 +11,11 @@
 //! ## Rule format (chump-adversary.yaml)
 //! ```yaml
 //! rules:
-//!   - name: no-force-push
-//!     match: "run_cli"           # exact tool name or "*" for any
-//!     pattern: "command contains 'git push --force'"
-//!     action: block              # warn | block
-//!     reason: "Force pushes can destroy history"
+//! - name: no-force-push
+//!   match: "run_cli"           # exact tool name or "*" for any
+//!   pattern: "command contains 'git push --force'"
+//!   action: block              # warn | block
+//!   reason: "Force pushes can destroy history"
 //! ```
 //!
 //! ### Pattern syntax

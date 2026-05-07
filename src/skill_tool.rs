@@ -1,17 +1,17 @@
 //! skill_manage tool — agent-facing interface for creating, viewing, updating, and deleting skills.
 //!
 //! Progressive disclosure:
-//!   - Level 0: `list` returns metadata only (name + description + category)
-//!   - Level 1: `view <name>` returns full SKILL.md content
+//! - Level 0: `list` returns metadata only (name + description + category)
+//! - Level 1: `view <name>` returns full SKILL.md content
 //!
 //! Actions:
-//!   - list: enumerate installed skills
-//!   - view <name>: load full SKILL.md content
-//!   - create <name> <description> <body>: new skill (body is Markdown with procedure/pitfalls/verification)
-//!   - patch <name> <old_string> <new_string>: targeted update
-//!   - edit <name> <description> <body>: full replacement
-//!   - delete <name>: remove skill
-//!   - record_outcome <name> <success>: agent-initiated outcome tracking
+//! - list: enumerate installed skills
+//! - view <name>: load full SKILL.md content
+//! - create <name> <description> <body>: new skill (body is Markdown with procedure/pitfalls/verification)
+//! - patch <name> <old_string> <new_string>: targeted update
+//! - edit <name> <description> <body>: full replacement
+//! - delete <name>: remove skill
+//! - record_outcome <name> <success>: agent-initiated outcome tracking
 
 use crate::skills::{self, SkillFrontmatter, SkillMetadata};
 use anyhow::{anyhow, Result};
