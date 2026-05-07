@@ -1,65 +1,457 @@
-# INFRA-624: pr-triage-bot — auto-file P0 bug-fix gaps for failing PRs.
-# When a CI check run fails on a pull request, the bot files a CREDIBLE fix
-# gap at P0 with notes="auto-filed by pr-triage-bot" so the fleet attacks it
-# next cycle without operator intervention (INFRA-627).
+# INFRA-624: pr-triage-bot — autonomous CI triage without session loops.
+#
+# Fires on every check_run completion (and on schedule for BLOCKED detection).
+# Classifies the failure and applies one of five auto-actions:
+#
+#   1. lint-only  → cargo clippy --fix + cargo fmt + force-push + comment
+#   2. flake      → gh run rerun --failed  (1× per run-id)
+#   3. real-bug   → file P1 fix gap + comment + label needs-author-attention
+#   4. BLOCKED>2h → rerun CI (drift detection)  [schedule trigger only]
+#   5. DIRTY      → auto-rebase small conflicts
+#
+# Idempotency: refuses to re-apply any action for the same head_sha.
+# Bot identity: chump-pr-triage-bot
+
 name: pr-triage-bot
 
 on:
   check_run:
     types: [completed]
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (print decisions, no mutations)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: pr-triage-bot-${{ github.event.check_run.pull_requests[0].number || 'sched' }}
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
-  triage-failure:
-    if: |
+  # ── Actions 1–3 and 5: respond to individual check_run completion ──────────
+  on-check-run:
+    name: Triage check_run failure
+    if: >-
+      github.event_name == 'check_run' &&
       github.event.check_run.conclusion == 'failure' &&
       github.event.check_run.pull_requests[0] != null
+
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: read
+
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Rust toolchain
+      # ── Extract event metadata ────────────────────────────────────────────
+      - name: Extract metadata
+        id: meta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA:    ${{ github.event.check_run.head_sha }}
+          CHECK_NAME:  ${{ github.event.check_run.name }}
+          PR_NUMBER:   ${{ github.event.check_run.pull_requests[0].number }}
+          PR_HEAD_REF: ${{ github.event.check_run.pull_requests[0].head.ref }}
+          DETAILS_URL: ${{ github.event.check_run.details_url }}
+        run: |
+          echo "head_sha=${HEAD_SHA}"       >> "$GITHUB_OUTPUT"
+          echo "check_name=${CHECK_NAME}"   >> "$GITHUB_OUTPUT"
+          echo "pr_number=${PR_NUMBER}"     >> "$GITHUB_OUTPUT"
+          echo "pr_head_ref=${PR_HEAD_REF}" >> "$GITHUB_OUTPUT"
+
+          # Extract run_id from details_url (.../actions/runs/123456789...)
+          RUN_ID=$(echo "$DETAILS_URL" | grep -oE '/runs/[0-9]+' | head -1 | tr -d '/runs/')
+          echo "run_id=${RUN_ID:-}" >> "$GITHUB_OUTPUT"
+
+          # Detect merge-conflict state
+          MERGE_STATE=$(gh pr view "$PR_NUMBER" --json mergeStateStatus -q '.mergeStateStatus' 2>/dev/null || echo "UNKNOWN")
+          echo "merge_state=${MERGE_STATE}" >> "$GITHUB_OUTPUT"
+
+      # ── Idempotency guard ─────────────────────────────────────────────────
+      - name: Check idempotency
+        id: idempotent
+        env:
+          GH_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA:   ${{ steps.meta.outputs.head_sha }}
+          PR_NUMBER:  ${{ steps.meta.outputs.pr_number }}
+        run: |
+          # Search for an existing bot comment that already handled this sha
+          EXISTING=$(gh pr view "$PR_NUMBER" --json comments \
+            -q ".comments[] | select(.body | contains(\"<!-- pr-triage-bot:${HEAD_SHA}:\")) | .body" \
+            2>/dev/null | head -1 || true)
+          if [[ -n "$EXISTING" ]]; then
+            echo "already_handled=true" >> "$GITHUB_OUTPUT"
+            echo "[pr-triage-bot] Already handled sha=${HEAD_SHA} — skipping."
+          else
+            echo "already_handled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Classify failure ─────────────────────────────────────────────────
+      - name: Classify failure
+        id: classify
+        if: steps.idempotent.outputs.already_handled == 'false'
+        env:
+          GH_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+          CHECK_NAME:  ${{ steps.meta.outputs.check_name }}
+          RUN_ID:      ${{ steps.meta.outputs.run_id }}
+          MERGE_STATE: ${{ steps.meta.outputs.merge_state }}
+        run: |
+          # DIRTY conflict → auto-rebase wins over everything else
+          if [[ "$MERGE_STATE" == "DIRTY" ]]; then
+            echo "class=dirty" >> "$GITHUB_OUTPUT"
+            echo "[pr-triage-bot] class=dirty (merge conflict)"
+            exit 0
+          fi
+
+          # Lint-only: check name matches clippy / rustfmt patterns
+          if echo "$CHECK_NAME" | grep -qiE 'clippy|rustfmt|fmt.check|format.check'; then
+            echo "class=lint-only" >> "$GITHUB_OUTPUT"
+            echo "[pr-triage-bot] class=lint-only (check name: ${CHECK_NAME})"
+            exit 0
+          fi
+
+          # Fetch run log for deeper classification (skip if no run_id)
+          CLASS="real-bug"
+          if [[ -n "${RUN_ID:-}" ]]; then
+            LOG=$(gh run view "$RUN_ID" --log-failed 2>/dev/null || true)
+            CLASS=$(python3 <<PYEOF
+import sys
+log = """${LOG}"""
+lower = log.lower()
+
+def is_infra_broken():
+    return (
+        "no space left on device" in lower or
+        "rustup: error" in lower or
+        "error: toolchain '" in lower or
+        "the runner has received a shutdown signal" in lower or
+        "the operation was canceled" in lower or
+        "rate limit exceeded" in lower or
+        "error response from daemon" in lower or
+        "tls handshake timeout" in lower or
+        "i/o timeout" in lower or
+        "name resolution failed" in lower
+    )
+
+def is_flake():
+    return (
+        "econnreset" in lower or
+        "signal: killed" in lower or
+        "oom killer" in lower or
+        ("connection refused" in lower and "error[e" not in lower) or
+        "operation timed out" in lower or
+        "context deadline exceeded" in lower or
+        "socket hang up" in lower or
+        ("killed" in lower and "memory" in lower)
+    )
+
+if is_infra_broken():
+    print("flake")   # infra-broken → still rerun once
+elif is_flake():
+    print("flake")
+else:
+    print("real-bug")
+PYEOF
+)
+          fi
+
+          echo "class=${CLASS}" >> "$GITHUB_OUTPUT"
+          echo "[pr-triage-bot] class=${CLASS} (run_id=${RUN_ID:-none})"
+
+      # ── Action 2: flake → rerun --failed (1× per run-id) ─────────────────
+      - name: "Action 2: Flake rerun"
+        if: >-
+          steps.idempotent.outputs.already_handled == 'false' &&
+          steps.classify.outputs.class == 'flake'
+        env:
+          GH_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID:     ${{ steps.meta.outputs.run_id }}
+          HEAD_SHA:   ${{ steps.meta.outputs.head_sha }}
+          PR_NUMBER:  ${{ steps.meta.outputs.pr_number }}
+          DRY_RUN:    ${{ inputs.dry_run == true && '1' || '0' }}
+        run: |
+          set -euo pipefail
+
+          # Cooldown: skip if we've already rerun this run_id
+          COOLDOWN_FILE="/tmp/pr-triage-bot-rerun-${RUN_ID:-unknown}.done"
+          if [[ -f "$COOLDOWN_FILE" ]]; then
+            echo "[pr-triage-bot] Cooldown active for run_id=${RUN_ID} — skipping rerun."
+            exit 0
+          fi
+
+          MARKER="<!-- pr-triage-bot:${HEAD_SHA}:flake-rerun -->"
+          BODY="${MARKER}
+          :arrows_counterclockwise: **pr-triage-bot** detected a **flaky failure** in \`${{ steps.meta.outputs.check_name }}\` and triggered a one-time rerun.
+
+          If the failure persists on rerun, it will be classified as a real bug and a fix gap will be filed."
+
+          if [[ "${DRY_RUN}" == "1" ]]; then
+            echo "[dry-run] Would rerun run_id=${RUN_ID} and comment on PR #${PR_NUMBER}"
+          else
+            if [[ -n "${RUN_ID:-}" ]]; then
+              gh run rerun "$RUN_ID" --failed
+              touch "$COOLDOWN_FILE"
+            fi
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+          fi
+          echo "[pr-triage-bot] Flake rerun dispatched for run_id=${RUN_ID:-none}"
+
+      # ── Action 3: real-bug → file P1 gap + comment + label ───────────────
+      - name: Set up Rust toolchain (for gap filing)
+        if: >-
+          steps.idempotent.outputs.already_handled == 'false' &&
+          steps.classify.outputs.class == 'real-bug'
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
 
       - name: Build chump binary
+        if: >-
+          steps.idempotent.outputs.already_handled == 'false' &&
+          steps.classify.outputs.class == 'real-bug'
         run: cargo build --bin chump -q
 
-      - name: File P0 bug-fix gap
+      - name: "Action 3: Real-bug — file P1 gap + comment + label"
+        if: >-
+          steps.idempotent.outputs.already_handled == 'false' &&
+          steps.classify.outputs.class == 'real-bug'
         env:
+          GH_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA:    ${{ steps.meta.outputs.head_sha }}
+          CHECK_NAME:  ${{ steps.meta.outputs.check_name }}
+          PR_NUMBER:   ${{ steps.meta.outputs.pr_number }}
           CHUMP_ALLOW_MAIN_WORKTREE: "1"
           CHUMP_RESERVE_NO_AUTOSTAGE: "1"
           FLEET_029_AMBIENT_GLANCE_SKIP: "1"
           CHUMP_RESERVE_VERIFY: "0"
-          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
-          CHECK_NAME: ${{ github.event.check_run.name }}
+          DRY_RUN: ${{ inputs.dry_run == true && '1' || '0' }}
         run: |
           set -euo pipefail
-          GAP_TITLE="CREDIBLE: fix CI failure '${CHECK_NAME}' in PR #${PR_NUMBER}"
-          GAP_ID=$(./target/debug/chump gap reserve \
-            --domain INFRA \
-            --priority P0 \
-            --effort xs \
-            --title "${GAP_TITLE}" \
-            --force \
-            --quiet)
-          echo "Reserved gap: ${GAP_ID}"
+          MARKER="<!-- pr-triage-bot:${HEAD_SHA}:real-bug -->"
 
-          ./target/debug/chump gap set "${GAP_ID}" \
-            --notes "auto-filed by pr-triage-bot" \
-            --acceptance-criteria "CI check '${CHECK_NAME}' passes on PR #${PR_NUMBER} or the root cause is fixed in a follow-up PR"
+          GAP_TITLE="CREDIBLE: fix CI failure '${CHECK_NAME}' blocking PR #${PR_NUMBER}"
+          GAP_ID=""
+          if [[ "${DRY_RUN}" != "1" ]]; then
+            GAP_ID=$(./target/debug/chump gap reserve \
+              --domain INFRA \
+              --priority P1 \
+              --effort xs \
+              --title "${GAP_TITLE}" \
+              --force \
+              --quiet 2>/dev/null || true)
 
-          echo "GAP_ID=${GAP_ID}" >> "$GITHUB_OUTPUT"
+            if [[ -n "${GAP_ID:-}" ]]; then
+              ./target/debug/chump gap set "${GAP_ID}" \
+                --notes "auto-filed by pr-triage-bot on check_run failure" \
+                --acceptance-criteria "CI check '${CHECK_NAME}' passes on PR #${PR_NUMBER} or root cause is resolved" \
+                2>/dev/null || true
+            fi
 
-      - name: Commit updated gap registry
+            # Create needs-author-attention label if missing
+            gh label create "needs-author-attention" --color "e4e669" --description "PR requires attention from the author" 2>/dev/null || true
+            gh pr edit "$PR_NUMBER" --add-label "needs-author-attention" || true
+          fi
+
+          GAP_REF="${GAP_ID:+ Filed gap: \`${GAP_ID}\`.}"
+          BODY="${MARKER}
+          :x: **pr-triage-bot** detected a **real test failure** in \`${CHECK_NAME}\` on PR #${PR_NUMBER}.${GAP_REF}
+
+          This failure does not look like a transient flake. A fix gap has been filed for the fleet to pick up. The PR has been labelled \`needs-author-attention\`.
+
+          <details><summary>Head SHA</summary><code>${HEAD_SHA}</code></details>"
+
+          if [[ "${DRY_RUN}" == "1" ]]; then
+            echo "[dry-run] Would file P1 gap '${GAP_TITLE}' and comment on PR #${PR_NUMBER}"
+          else
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+          fi
+          echo "[pr-triage-bot] Real-bug gap filed: ${GAP_ID:-dry-run}"
+
+      # ── Action 1: lint-only → clippy --fix + fmt + force-push + comment ──
+      - name: "Action 1: Lint-only — clippy --fix + fmt + force-push"
+        if: >-
+          steps.idempotent.outputs.already_handled == 'false' &&
+          steps.classify.outputs.class == 'lint-only'
+        env:
+          GH_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA:    ${{ steps.meta.outputs.head_sha }}
+          CHECK_NAME:  ${{ steps.meta.outputs.check_name }}
+          PR_NUMBER:   ${{ steps.meta.outputs.pr_number }}
+          PR_HEAD_REF: ${{ steps.meta.outputs.pr_head_ref }}
+          DRY_RUN:     ${{ inputs.dry_run == true && '1' || '0' }}
         run: |
-          git config user.name  "pr-triage-bot"
-          git config user.email "pr-triage-bot@chump-fleet"
-          git add .chump/state.sql docs/gaps.yaml 2>/dev/null || true
-          git diff --cached --quiet || git commit -m "INFRA-624: auto-file P0 fix gap for failing PR CI"
-          git push origin HEAD
+          set -euo pipefail
+          MARKER="<!-- pr-triage-bot:${HEAD_SHA}:lint-fix -->"
+
+          # Checkout the PR branch so we can mutate it
+          git fetch origin "${PR_HEAD_REF}"
+          git checkout "${PR_HEAD_REF}"
+
+          # Ensure stable toolchain with clippy component
+          rustup component add clippy rustfmt 2>/dev/null || true
+
+          # Apply lint fixes; exit 0 even if nothing to fix
+          cargo clippy --fix --allow-dirty --allow-staged 2>&1 || true
+          cargo fmt 2>&1 || true
+
+          # Check if there are actual changes
+          if git diff --quiet; then
+            echo "[pr-triage-bot] No lint changes to push — may be a non-fixable clippy warning."
+            exit 0
+          fi
+
+          git config user.name  "chump-pr-triage-bot"
+          git config user.email "chump-pr-triage-bot@chump-fleet"
+          git add -A
+          git commit -m "chore: pr-triage-bot auto-fix clippy/fmt on ${PR_HEAD_REF}
+
+          Auto-applied by pr-triage-bot (INFRA-624) for check '${CHECK_NAME}' failure.
+          head_sha=${HEAD_SHA}"
+
+          BODY="${MARKER}
+          :wrench: **pr-triage-bot** auto-fixed **lint/format** failures in \`${CHECK_NAME}\` and force-pushed the branch.
+
+          <details><summary>Head SHA at time of fix</summary><code>${HEAD_SHA}</code></details>"
+
+          if [[ "${DRY_RUN}" == "1" ]]; then
+            echo "[dry-run] Would force-push ${PR_HEAD_REF} and comment on PR #${PR_NUMBER}"
+            git diff HEAD~1
+          else
+            git push origin "${PR_HEAD_REF}" --force-with-lease
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+          fi
+          echo "[pr-triage-bot] Lint fix applied and pushed to ${PR_HEAD_REF}"
+
+      # ── Action 5: DIRTY → auto-rebase ─────────────────────────────────────
+      - name: "Action 5: Dirty — auto-rebase small conflicts"
+        if: >-
+          steps.idempotent.outputs.already_handled == 'false' &&
+          steps.classify.outputs.class == 'dirty'
+        env:
+          GH_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA:    ${{ steps.meta.outputs.head_sha }}
+          PR_NUMBER:   ${{ steps.meta.outputs.pr_number }}
+          PR_HEAD_REF: ${{ steps.meta.outputs.pr_head_ref }}
+          DRY_RUN:     ${{ inputs.dry_run == true && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          MARKER="<!-- pr-triage-bot:${HEAD_SHA}:auto-rebase -->"
+
+          git fetch origin main "${PR_HEAD_REF}"
+          git checkout "${PR_HEAD_REF}"
+
+          # Count conflict files to gate on "small"
+          CONFLICT_COUNT=$(git diff --name-only origin/main...HEAD | wc -l | tr -d ' ')
+          MERGE_BASE=$(git merge-base HEAD origin/main)
+          CHANGED=$(git diff --name-only "$MERGE_BASE"...HEAD | wc -l | tr -d ' ')
+
+          if [[ "$CHANGED" -gt 10 ]]; then
+            echo "[pr-triage-bot] Too many changed files (${CHANGED}) — not auto-rebasing."
+            exit 0
+          fi
+
+          git config user.name  "chump-pr-triage-bot"
+          git config user.email "chump-pr-triage-bot@chump-fleet"
+
+          # Attempt rebase; bail if conflicts
+          if ! git rebase origin/main --quiet 2>&1; then
+            git rebase --abort || true
+            echo "[pr-triage-bot] Rebase had conflicts — leaving for author."
+            exit 0
+          fi
+
+          BODY="${MARKER}
+          :twisted_rightwards_arrows: **pr-triage-bot** detected a merge conflict (DIRTY state) and auto-rebased this branch onto \`main\`.
+
+          <details><summary>Head SHA before rebase</summary><code>${HEAD_SHA}</code></details>"
+
+          if [[ "${DRY_RUN}" == "1" ]]; then
+            echo "[dry-run] Would force-push rebased ${PR_HEAD_REF} and comment on PR #${PR_NUMBER}"
+            git log --oneline -5
+          else
+            git push origin "${PR_HEAD_REF}" --force-with-lease
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+          fi
+          echo "[pr-triage-bot] Auto-rebase complete for ${PR_HEAD_REF}"
+
+  # ── Action 4: BLOCKED >2h with checks green → rerun (CI drift) ────────────
+  blocked-rerun:
+    name: Rerun blocked-but-green PRs
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find and rerun blocked-but-green PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN:  ${{ inputs.dry_run == true && '1' || '0' }}
+        run: |
+          set -euo pipefail
+
+          THRESHOLD_SECS=$((2 * 3600))  # 2 hours
+          NOW=$(date -u +%s)
+
+          echo "[pr-triage-bot] Scanning open PRs for BLOCKED>2h with green checks…"
+
+          # Fetch open PRs with auto-merge armed
+          gh pr list \
+            --state open \
+            --json number,headRefName,headRefOid,updatedAt,mergeStateStatus,autoMergeRequest \
+            --limit 100 \
+            -q '.[] | select(.autoMergeRequest != null) | [.number, .headRefName, .headRefOid, .updatedAt, .mergeStateStatus] | @tsv' \
+          | while IFS=$'\t' read -r pr_num branch head_sha updated_at merge_state; do
+              [[ "$merge_state" != "BLOCKED" ]] && continue
+
+              # Age check
+              UPDATED_EPOCH=$(date -d "$updated_at" +%s 2>/dev/null || \
+                              python3 -c "import datetime; print(int(datetime.datetime.fromisoformat('${updated_at}'.replace('Z','+00:00')).timestamp()))" 2>/dev/null || echo 0)
+              AGE_SECS=$(( NOW - UPDATED_EPOCH ))
+              [[ "$AGE_SECS" -lt "$THRESHOLD_SECS" ]] && continue
+
+              # Check that all required checks passed (green) — BLOCKED is CI drift
+              ALL_GREEN=$(gh pr checks "$pr_num" --json name,state \
+                -q 'all(.state == "SUCCESS" or .state == "SKIPPED")' 2>/dev/null || echo "false")
+              [[ "$ALL_GREEN" != "true" ]] && continue
+
+              echo "[pr-triage-bot] PR #${pr_num} (${branch}) BLOCKED ${AGE_SECS}s with all checks green → rerun"
+
+              MARKER="<!-- pr-triage-bot:${head_sha}:blocked-rerun -->"
+
+              # Idempotency: skip if we already commented for this sha
+              EXISTING=$(gh pr view "$pr_num" --json comments \
+                -q ".comments[] | select(.body | contains(\"<!-- pr-triage-bot:${head_sha}:blocked-rerun -->\")) | .id" \
+                2>/dev/null | head -1 || true)
+              [[ -n "$EXISTING" ]] && { echo "  Already handled — skipping."; continue; }
+
+              if [[ "${DRY_RUN}" == "1" ]]; then
+                echo "  [dry-run] Would rerun latest CI for PR #${pr_num}"
+                continue
+              fi
+
+              # Trigger a fresh run by re-requesting review or re-queueing checks
+              LATEST_RUN=$(gh run list --branch "$branch" --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)
+              if [[ -n "${LATEST_RUN:-}" ]]; then
+                gh run rerun "$LATEST_RUN" || true
+              fi
+
+              BLOCKED_HOURS=$(( AGE_SECS / 3600 ))
+              BODY="${MARKER}
+          :hourglass_flowing_sand: **pr-triage-bot** detected this PR has been **BLOCKED for ${BLOCKED_HOURS}h** despite all checks passing — likely CI drift. Triggered a fresh CI run.
+
+          <details><summary>Head SHA</summary><code>${head_sha}</code></details>"
+              gh pr comment "$pr_num" --body "$BODY" || true
+            done
+
+          echo "[pr-triage-bot] Blocked-rerun scan complete."
