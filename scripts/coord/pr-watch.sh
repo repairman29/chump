@@ -189,7 +189,32 @@ while (( $(date +%s) < DEADLINE )); do
             attempt_recovery || exit $?
             sleep 5  # brief pause before re-poll so the queue sees the new state
             ;;
-        "OPEN BLOCKED" | "OPEN BEHIND" | "OPEN CLEAN" | "OPEN HAS_HOOKS" | "OPEN UNSTABLE" | "OPEN UNKNOWN")
+        "OPEN BEHIND")
+            # INFRA-638: BEHIND means main moved past us; rebase without disarming
+            # (auto-merge stays armed; we just need to push a fresh commit).
+            say "BEHIND detected → rebase + force-push"
+            git fetch origin main --quiet
+            if git rebase origin/main >/tmp/pr-watch-rebase-$$.log 2>&1; then
+                if ! CHUMP_GAP_CHECK=0 git push --force-with-lease origin "$BRANCH" >/dev/null 2>&1; then
+                    say "force-push rejected — will retry"
+                else
+                    say "rebased ✓"
+                fi
+            else
+                say "rebase conflicts — trying auto-resolve recipe"
+                if attempt_auto_resolve_conflicts \
+                   && GIT_EDITOR=true git rebase --continue >>/tmp/pr-watch-rebase-$$.log 2>&1; then
+                    say "  ✓ auto-resolved"
+                    CHUMP_GAP_CHECK=0 git push --force-with-lease origin "$BRANCH" >/dev/null 2>&1 || true
+                else
+                    say "✗ conflicts need operator — aborting rebase, leaving BEHIND"
+                    git rebase --abort 2>/dev/null || true
+                fi
+                rm -f /tmp/pr-watch-rebase-$$.log
+            fi
+            sleep 5
+            ;;
+        "OPEN BLOCKED" | "OPEN CLEAN" | "OPEN HAS_HOOKS" | "OPEN UNSTABLE" | "OPEN UNKNOWN")
             # Healthy in-flight states — let the queue / CI work
             ;;
         *)
