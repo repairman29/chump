@@ -162,7 +162,7 @@ fn unix_to_date_utc(ts: u64) -> String {
     let h = 5 * g + 2;
     let day = (h % 153) / 5 + 1;
     let month = (h / 153 + 2) % 12 + 1;
-    let year = e / 1461 - 4716 + (14 - month as i64) / 12;
+    let year = e / 1461 - 4716 + (14 - month) / 12;
     format!("{:04}-{:02}-{:02}", year, month, day)
 }
 
@@ -198,8 +198,7 @@ fn extract_field(line: &str, field: &str) -> Option<String> {
     let needle = format!(r#""{}":" "#, field).replace(" ", "");
     let start = line.find(&needle)? + needle.len();
     let rest = &line[start..];
-    if rest.starts_with('"') {
-        let inner = &rest[1..];
+    if let Some(inner) = rest.strip_prefix('"') {
         let end = inner.find('"')?;
         Some(inner[..end].to_string())
     } else {
