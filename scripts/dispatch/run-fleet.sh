@@ -139,6 +139,9 @@ esac
 
 SID="$(date +%Y%m%d-%H%M%S)-$$"
 FLEET_LOG_DIR="${FLEET_LOG_DIR:-/tmp/chump-fleet-${SID}}"
+# INFRA-623: record launch epoch so fleet-autorestart-daemon can compare
+# oauth-token.json mtime against fleet start when refreshing credentials.
+FLEET_START_EPOCH="${FLEET_START_EPOCH:-$(date +%s)}"
 
 # INFRA-210: every worktree compiling its own target/ is the #1 disk hog.
 # Default to a shared target dir unless the caller explicitly set their own.
@@ -291,6 +294,9 @@ worker_env=(
     # CHUMP_SESSION_ID per pane and not stomp the operator's interactive
     # lease via the .wt-session-id fallback.
     "FLEET_SESSION=$FLEET_SESSION"
+    # INFRA-623: workers inherit launch epoch so fleet-restart --refresh-auth
+    # can compare oauth-token.json mtime against fleet start time.
+    "FLEET_START_EPOCH=$FLEET_START_EPOCH"
     "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
     # INFRA-371 token-burn defaults
     "FLEET_INLINE_BRIEFING=$FLEET_INLINE_BRIEFING"
@@ -328,6 +334,20 @@ mkdir -p "$(dirname "$FLEET_PIDS_FILE")"
 ) &
 _sentinel_pid=$!
 echo "$_sentinel_pid" >> "$FLEET_PIDS_FILE"
+
+# INFRA-611/INFRA-623: auto-restart daemon — watches ambient.jsonl for trigger
+# conditions (currently: fleet_auth_storm) and restarts the fleet with fresh
+# credentials when the threshold is reached.
+if [[ -x "$SCRIPT_DIR/fleet-autorestart-daemon.sh" ]]; then
+    FLEET_SESSION="$FLEET_SESSION" \
+    FLEET_START_EPOCH="$FLEET_START_EPOCH" \
+    CHUMP_AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" \
+    REPO_ROOT="$REPO_ROOT" \
+    "$SCRIPT_DIR/fleet-autorestart-daemon.sh" &
+    _daemon_pid=$!
+    echo "$_daemon_pid" >> "$FLEET_PIDS_FILE"
+    echo "[run-fleet] INFRA-611 autorestart daemon spawned (pid $_daemon_pid)"
+fi
 
 for i in $(seq 1 "$FLEET_SIZE"); do
     log="$FLEET_LOG_DIR/agent-${i}.log"
