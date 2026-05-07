@@ -195,7 +195,7 @@ fn build_agent(channel_id: ChannelId) -> Result<Agent> {
     tool_routing::log_tool_inventory();
     let typed = Session::new().assemble();
     let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
-        crate::provider_cascade::build_provider();
+        crate::provider_cascade::global_provider();
 
     let mut registry = ToolRegistry::new();
     crate::tool_inventory::register_from_inventory(&mut registry);

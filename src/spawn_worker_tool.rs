@@ -204,7 +204,7 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
 
         // Run the agent in the isolated worktree
         let result = async {
-            let provider = provider_cascade::build_provider();
+            let provider = provider_cascade::global_provider();
             let mut registry = ToolRegistry::new();
             tool_inventory::register_worker_tools(&mut registry);
 

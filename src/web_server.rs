@@ -3058,3 +3058,95 @@ mod api_battle_tests {
         let _ = crate::web_sessions_db::session_delete(&sid);
     }
 }
+
+#[cfg(test)]
+mod semaphore_gate {
+    use crate::provider_cascade::SemaphoreProvider;
+    use async_trait::async_trait;
+    use axonerai::provider::{CompletionResponse, Message, Provider, Tool};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    use std::time::Duration;
+    use tokio::sync::Semaphore;
+
+    struct DelayProvider {
+        delay_ms: u64,
+        call_count: Arc<AtomicUsize>,
+        concurrent_peak: Arc<AtomicUsize>,
+        in_flight: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Provider for DelayProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<Vec<Tool>>,
+            _max_tokens: Option<u32>,
+            _system_prompt: Option<String>,
+        ) -> anyhow::Result<CompletionResponse> {
+            let cur = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            // track peak concurrency seen inside complete()
+            let mut peak = self.concurrent_peak.load(Ordering::SeqCst);
+            while cur > peak {
+                match self.concurrent_peak.compare_exchange(
+                    peak,
+                    cur,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    Ok(_) => break,
+                    Err(v) => peak = v,
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(self.delay_ms)).await;
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+            Err(anyhow::anyhow!("test-provider"))
+        }
+    }
+
+    /// With CHUMP_INFERENCE_PERMITS=1, two concurrent complete() calls must be
+    /// serialised: the second waits for the first, so peak in-flight == 1.
+    #[tokio::test]
+    async fn two_concurrent_calls_are_serialized() {
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let concurrent_peak = Arc::new(AtomicUsize::new(0));
+        let in_flight = Arc::new(AtomicUsize::new(0));
+        let inner = Box::new(DelayProvider {
+            delay_ms: 60,
+            call_count: Arc::clone(&call_count),
+            concurrent_peak: Arc::clone(&concurrent_peak),
+            in_flight: Arc::clone(&in_flight),
+        });
+        let sem = Arc::new(Semaphore::new(1));
+        let provider = Arc::new(SemaphoreProvider { inner, sem });
+
+        let start = std::time::Instant::now();
+        let p1 = Arc::clone(&provider);
+        let p2 = Arc::clone(&provider);
+        let (_, _) = tokio::join!(
+            p1.complete(vec![], None, None, None),
+            p2.complete(vec![], None, None, None),
+        );
+
+        let elapsed = start.elapsed();
+        assert_eq!(
+            call_count.load(Ordering::SeqCst),
+            2,
+            "both calls must complete"
+        );
+        assert_eq!(
+            concurrent_peak.load(Ordering::SeqCst),
+            1,
+            "semaphore must serialise: peak concurrency inside complete() should be 1"
+        );
+        assert!(
+            elapsed >= Duration::from_millis(120),
+            "serialised calls take >= 2× delay ({:?})",
+            elapsed
+        );
+    }
+}
