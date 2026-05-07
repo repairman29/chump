@@ -302,7 +302,7 @@ fn conflict_diff(repo_dir: &str) -> String {
 fn count_conflict_files(diff: &str) -> usize {
     diff.lines()
         .filter(|l| l.starts_with("--- a/") || l.starts_with("+++ b/"))
-        .filter_map(|l| l.splitn(2, '/').nth(1))
+        .filter_map(|l| l.split_once('/').map(|x| x.1))
         .collect::<std::collections::BTreeSet<_>>()
         .len()
 }
@@ -404,14 +404,13 @@ fn extract_str(obj: &str, key: &str) -> String {
         None => return String::new(),
     };
     let rest = obj[pos..].trim_start();
-    if rest.starts_with('"') {
-        let inner = &rest[1..];
+    if let Some(inner) = rest.strip_prefix('"') {
         let end = inner.find('"').unwrap_or(inner.len());
         inner[..end].to_string()
     } else {
         // Non-string value — return raw until delimiter.
         let end = rest
-            .find(|c: char| c == ',' || c == '}')
+            .find([',', '}'])
             .unwrap_or(rest.len());
         rest[..end].trim().to_string()
     }
