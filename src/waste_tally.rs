@@ -716,8 +716,11 @@ impl WasteReport {
             out.push_str("  (no token-bearing waste events in window)\n");
             return out;
         }
-        let mut sorted: Vec<&WasteEntry> =
-            self.entries.iter().filter(|e| e.tokens_burned > 0).collect();
+        let mut sorted: Vec<&WasteEntry> = self
+            .entries
+            .iter()
+            .filter(|e| e.tokens_burned > 0)
+            .collect();
         sorted.sort_by_key(|e| std::cmp::Reverse(e.tokens_burned));
         for e in &sorted {
             let pct = if self.total_tokens_burned > 0 {
