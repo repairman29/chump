@@ -1,11 +1,12 @@
 // Chump v2 service worker — offline-first shell cache.
-const CACHE = 'chump-v2-shell-2';
+const CACHE = 'chump-v2-shell-3';
 const SHELL = [
   '/v2/',
   '/v2/index.html',
   '/v2/manifest.json',
   '/v2/app.js',
   '/v2/chat.js',
+  '/v2/inference-profile.js',
   '/icon.svg',
   '/icon-192.png',
   '/icon-512.png',

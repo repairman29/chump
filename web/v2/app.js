@@ -8,6 +8,7 @@ class ChumpNav extends HTMLElement {
     { id: 'results',  label: 'Results',  icon: '📊' },
     { id: 'tasks',    label: 'Tasks',    icon: '⚡' },
     { id: 'memory',   label: 'Memory',   icon: '🧠' },
+    { id: 'models',   label: 'Models',   icon: '🤖' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
   ];
 
@@ -274,6 +275,7 @@ const VIEWS = {
   results:  () => document.createElement('chump-view-results'),
   tasks:    () => document.createElement('chump-view-tasks'),
   memory:   () => document.createElement('chump-view-memory'),
+  models:   () => document.createElement('chump-view-models'),
   settings: () => document.createElement('chump-view-settings'),
 };
 
