@@ -84,6 +84,10 @@ CHUMP_POLL_JITTER="${CHUMP_POLL_JITTER:-30}"
 # is idle (filters too tight, queue actually empty, etc.) instead of
 # guessing why workers are quiet.
 CHUMP_STARVE_THRESHOLD="${CHUMP_STARVE_THRESHOLD:-3}"
+# INFRA-613: After this many consecutive empty picks, the worker emits
+# kind=worker_stand_down and exits cleanly so the fleet auto-restart daemon
+# (INFRA-611) can optionally respawn with relaxed filters or scale down.
+CHUMP_STAND_DOWN_THRESHOLD="${CHUMP_STAND_DOWN_THRESHOLD:-5}"
 
 # Per-worker counter of consecutive empty picks. Reset on every
 # successful pick.
@@ -311,6 +315,42 @@ PY
                 exit 0
             fi
         fi
+
+        # INFRA-613: worker stand-down on persistent starvation. After
+        # STAND_DOWN_THRESHOLD consecutive empty cycles, emit worker_stand_down
+        # event and exit cleanly. The auto-restart daemon (INFRA-611) picks up
+        # the signal and optionally respawns with relaxed filters or scales down.
+        if [ "$_starve_count" -ge "$CHUMP_STAND_DOWN_THRESHOLD" ]; then
+            # Compute stand-down reasoning: which filter tier is exhausted?
+            _stand_down_reason=""
+            if [ -n "$FLEET_DOMAIN_FILTER" ]; then
+                _stand_down_reason="filter=DOMAIN=${FLEET_DOMAIN_FILTER} exhausted; try dropping domain restriction"
+            elif [ "$FLEET_EFFORT_FILTER" != "xs,s,m,l" ]; then
+                _stand_down_reason="filter=EFFORT=${FLEET_EFFORT_FILTER} exhausted; try expanding to include larger efforts"
+            elif [ "$FLEET_PRIORITY_FILTER" != "P0,P1,P2,P3" ]; then
+                _stand_down_reason="filter=PRIORITY=${FLEET_PRIORITY_FILTER} exhausted; try expanding to include lower priorities"
+            else
+                _stand_down_reason="filters maximally relaxed (prio=P0-P3, effort=xs-l, domain=any); backlog truly empty"
+            fi
+
+            _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            _amb_path="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+            mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"worker_stand_down","kind":"worker_stand_down","agent_id":"%s","consecutive_empty":%d,"filters":"prio=%s domain=%s effort=%s","reason":"%s"}\n' \
+                "$_ts" \
+                "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
+                "$AGENT_ID" \
+                "$AGENT_ID" \
+                "$_starve_count" \
+                "$FLEET_PRIORITY_FILTER" \
+                "${FLEET_DOMAIN_FILTER:-any}" \
+                "$FLEET_EFFORT_FILTER" \
+                "$_stand_down_reason" \
+                >> "$_amb_path" 2>/dev/null || true
+            log "INFRA-613: worker_stand_down (consecutive_empty=$_starve_count >= STAND_DOWN_THRESHOLD=$CHUMP_STAND_DOWN_THRESHOLD); reason: $_stand_down_reason"
+            exit 0
+        fi
+
         # FLEET-043: exponential backoff on empty picks.
         # After CHUMP_STARVE_THRESHOLD, backoff multiplier ramps: 1x → 2x → 4x → 8x.
         # Each missed pick multiplies IDLE_SLEEP_S by the current multiplier, up to 600s cap.
