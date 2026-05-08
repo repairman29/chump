@@ -937,4 +937,79 @@ mod tests {
             res.map(|p| p.display().to_string())
         );
     }
+
+    #[test]
+    fn claim_bails_when_script_missing() {
+        let opts = DispatchOptions {
+            gap_id: "TEST-001",
+            work: WorkBackend::Interactive,
+            auto_merge: false,
+            skip_tests: true,
+            paths: None,
+            repo_root: PathBuf::from("/tmp"),
+        };
+        let ws = ws_with_dir(&opts, PathBuf::from("/tmp"));
+        let err = claim(&ws).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("gap-claim.sh missing"),
+            "expected missing-file error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn dispatch_outcome_tracks_gap_and_result() {
+        let outcome = DispatchOutcome {
+            gap_id: "INFRA-191".to_string(),
+            branch: "claude/infra-191".to_string(),
+            result: ShipResult::Shipped { pr_number: 1234 },
+            duration_secs: 42,
+        };
+        assert_eq!(outcome.gap_id, "INFRA-191");
+        assert_eq!(outcome.branch, "claude/infra-191");
+        assert_eq!(outcome.duration_secs, 42);
+        match outcome.result {
+            ShipResult::Shipped { pr_number } => assert_eq!(pr_number, 1234),
+            _ => panic!("expected Shipped result"),
+        }
+    }
+
+    #[test]
+    fn dispatch_options_with_paths() {
+        let opts = DispatchOptions {
+            gap_id: "INFRA-302",
+            work: WorkBackend::Interactive,
+            auto_merge: true,
+            skip_tests: false,
+            paths: Some("src/,scripts/"),
+            repo_root: PathBuf::from("/repo"),
+        };
+        assert_eq!(opts.paths, Some("src/,scripts/"));
+    }
+
+    #[test]
+    fn ship_result_aborted_variant() {
+        let aborted = ShipResult::Aborted {
+            error: "test error message".into(),
+        };
+        match aborted {
+            ShipResult::Aborted { ref error } => assert_eq!(error, "test error message"),
+            _ => panic!("expected Aborted variant"),
+        }
+    }
+
+    #[test]
+    fn workspace_accessors_expose_opts_and_dir() {
+        let opts = DispatchOptions {
+            gap_id: "INFRA-191",
+            work: WorkBackend::Interactive,
+            auto_merge: false,
+            skip_tests: true,
+            paths: None,
+            repo_root: PathBuf::from("/repo"),
+        };
+        let ws = ws_with_dir(&opts, PathBuf::from("/working"));
+        assert_eq!(ws.opts().gap_id, "INFRA-191");
+        assert_eq!(ws.working_dir(), PathBuf::from("/working"));
+    }
 }
