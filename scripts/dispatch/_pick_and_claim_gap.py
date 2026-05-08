@@ -213,6 +213,14 @@ def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
     ttl_seconds = 4 * 3600
     expires_at = now + ttl_seconds
 
+    # 2026-05-08 INFRA-713: speculative is now opt-in via CHUMP_SPECULATIVE=1
+    # (per CLAUDE.md original design — speculative race is intentional, not
+    # default). Hardcoded `speculative: True` caused observed collisions:
+    # CREDIBLE-003 shipped twice from agent2 cycles racing each other (#1286
+    # vs #1288), and worker 2 picked INFRA-710 immediately after I shipped
+    # it manually (because the existing lease was speculative, picker didn't
+    # treat it as exclusive). Default to exclusive; opt into race mode.
+    _speculative = os.environ.get("CHUMP_SPECULATIVE", "0") == "1"
     lease = {
         "session_id": session_id,
         "gap_id": gap_id,
@@ -220,7 +228,7 @@ def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
         "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at)),
         "heartbeat_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
         "purpose": "fleet:pick_and_claim",
-        "speculative": True,
+        "speculative": _speculative,
     }
 
     gap_lock_file = lock_dir / f".gap-{gap_id}.lock"
