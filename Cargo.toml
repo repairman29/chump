@@ -195,6 +195,10 @@ manual_clamp = "allow"
 field_reassign_with_default = "allow"
 # Wave 3 (2026-05-08, observed on PRs #1277/#1278/#1290):
 manual_range_contains = "allow"
+# Wave 4 (2026-05-08, still blocking #1277/#1278/#1290 after wave 3):
+collapsible_match = "allow"
+manual_pattern_char_comparison = "allow"
+redundant_closure = "allow"
 
 [workspace.lints.rust]
 dead_code = "allow"
