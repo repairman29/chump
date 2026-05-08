@@ -101,11 +101,15 @@ elif [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
 fi
 
 FLEET_SIZE="${FLEET_SIZE:-8}"
-# INFRA-371: timeout default lowered 1800→600. Most INFRA gaps that ship
-# do so in 5–10min on hot cargo cache; the rest are usually wedged
-# (claude churning) and just burn tokens until the kill. Raise via
-# FLEET_TIMEOUT_S=1800 for substantive work or harder gaps.
-FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-600}"
+# INFRA-371: timeout default lowered 1800→600.
+# INFRA-707: raised 600→900. Post-rebalancing (FLEET-046) the fleet picks
+# substantive EFFECTIVE/CREDIBLE gaps that write 600-900 lines of Rust —
+# these consistently hit the 600s wall. Data: INFRA-645 shipped (PR #1278)
+# but got killed 6s after printing the PR number; INFRA-604/605 committed
+# 600-900 LoC via WIP checkpoint but couldn't finish. 900s catches
+# finish-line kills without wasting much more on true stalls (shipped gaps
+# avg 200s, max 460s — plenty of headroom).
+FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-900}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
