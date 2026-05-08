@@ -642,10 +642,10 @@ Operator or sibling worker can rescue this branch via:
                 # pipefail (inherited) propagates claude's exit code through tee.
                 # shellcheck disable=SC2086
                 if [[ -n "$_tok_fifo" ]]; then
-                    $TO claude -p "$prompt" --dangerously-skip-permissions "${_model_arg[@]}" \
+                    $TO claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json "${_model_arg[@]}" \
                         | tee "$_tok_fifo"
                 else
-                    $TO claude -p "$prompt" --dangerously-skip-permissions "${_model_arg[@]}"
+                    $TO claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json "${_model_arg[@]}"
                 fi
             ) >"$cycle_log" 2>&1
             rc=$?
@@ -828,7 +828,7 @@ Operator or sibling worker can rescue this branch via:
                 (
                     cd "$wt_path" || exit 99
                     # shellcheck disable=SC2086
-                    $TO claude -p "$_fallback_prompt" --dangerously-skip-permissions "${_model_arg[@]}"
+                    $TO claude -p "$_fallback_prompt" --dangerously-skip-permissions --output-format stream-json "${_model_arg[@]}"
                 ) >>"$cycle_log" 2>&1
                 rc=$?
                 if [ $rc -eq 0 ]; then
