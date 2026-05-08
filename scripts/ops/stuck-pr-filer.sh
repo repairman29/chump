@@ -12,7 +12,7 @@
 #
 # What it does. Walks open PRs, scores each against four stuck conditions:
 #   - DIRTY    : mergeStateStatus=DIRTY for > DIRTY_THRESHOLD_HOURS
-#   - CI_RED   : any required check failing for > CI_FAIL_THRESHOLD_HOURS
+#   - CI_RED   : any required check failing for > CI_FAIL_THRESHOLD_MINS
 #   - BEHIND   : > BEHIND_COMMITS_THRESHOLD commits behind base
 #   - ORPHAN   : auto-merge disarmed AND no live lease for the PR's gap
 # When a PR matches any condition, files an INFRA gap titled
@@ -32,7 +32,8 @@
 #   REMOTE                       git remote (default: origin)
 #   BASE                         base branch (default: main)
 #   DIRTY_THRESHOLD_HOURS        DIRTY age before filing (default: 4)
-#   CI_FAIL_THRESHOLD_HOURS      CI red age before filing (default: 2)
+#   CI_FAIL_THRESHOLD_MINS       CI red age in minutes before filing (default: 20)
+#   CI_FAIL_THRESHOLD_HOURS      (legacy, converted to mins if set)
 #   BEHIND_COMMITS_THRESHOLD     commits-behind that triggers a gap (default: 20)
 #   CHUMP_STUCK_PR_FILER=0       bypass — exit 0 immediately
 #
@@ -61,7 +62,14 @@ DRY_RUN=0
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
 DIRTY_THRESHOLD_HOURS="${DIRTY_THRESHOLD_HOURS:-4}"
-CI_FAIL_THRESHOLD_HOURS="${CI_FAIL_THRESHOLD_HOURS:-2}"
+# INFRA-727: lowered from 2h to 20min. Fleet cycles are 2-15min; a PR that's
+# been CI-red for 20min is definitely not going to self-heal. The stuck-pr-filer
+# runs hourly, so effective detection latency is 20-80min (threshold + poll).
+CI_FAIL_THRESHOLD_MINS="${CI_FAIL_THRESHOLD_MINS:-20}"
+# Back-compat: convert legacy hours setting if someone still uses it
+if [[ -n "${CI_FAIL_THRESHOLD_HOURS:-}" ]]; then
+    CI_FAIL_THRESHOLD_MINS=$(( CI_FAIL_THRESHOLD_HOURS * 60 ))
+fi
 BEHIND_COMMITS_THRESHOLD="${BEHIND_COMMITS_THRESHOLD:-20}"
 SHARED_BLOCKER_THRESHOLD="${SHARED_BLOCKER_THRESHOLD:-3}"
 
@@ -75,7 +83,7 @@ green "=== stuck-pr-filer (base: $REMOTE/$BASE) ==="
 [[ $DRY_RUN -eq 1 ]] && info "Dry-run mode — no gaps will be filed."
 
 # Temp file for deferred CI-RED data (shared-blocker aggregation).
-# Format per line: pr_num\tcheck_name\tci_red_hours\tpr_branch\tgap_ids
+# Format per line: pr_num\tcheck_name\tci_red_mins\tpr_branch\tgap_ids
 SHARED_BLOCKER_TMP=$(mktemp /tmp/chump-shared-blocker-XXXXXX)
 
 git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
@@ -287,7 +295,7 @@ ${details}"
 }
 
 # detect_shared_ci_blockers — INFRA-454
-# Reads SHARED_BLOCKER_TMP (lines: pr_num\tcheck_name\tci_red_hours\tpr_branch\tgap_ids).
+# Reads SHARED_BLOCKER_TMP (lines: pr_num\tcheck_name\tci_red_mins\tpr_branch\tgap_ids).
 # Groups by check_name. Groups with N>=SHARED_BLOCKER_THRESHOLD get ONE cleanup gap;
 # smaller groups fall back to individual CI-RED per-PR gaps.
 detect_shared_ci_blockers() {
@@ -326,11 +334,11 @@ with open(data_file) as f:
         parts = line.rstrip('\n').split('\t')
         if len(parts) < 5:
             continue
-        pr_num, check_name, ci_red_hours, pr_branch, gap_ids = \
+        pr_num, check_name, ci_red_mins, pr_branch, gap_ids = \
             parts[0], parts[1], parts[2], parts[3], parts[4]
         existing_prs = [x[0] for x in groups[check_name]]
         if pr_num not in existing_prs:
-            groups[check_name].append((pr_num, ci_red_hours, pr_branch, gap_ids))
+            groups[check_name].append((pr_num, ci_red_mins, pr_branch, gap_ids))
 
 for check_name, entries in sorted(groups.items()):
     count = len(entries)
@@ -339,8 +347,8 @@ for check_name, entries in sorted(groups.items()):
     if count >= threshold:
         print(f"GROUP\t{check_name}\t{count}\t{pr_nums}\t{max_hrs}")
     else:
-        for pr_num, ci_red_hours, pr_branch, gap_ids in entries:
-            print(f"INDIVIDUAL\t{pr_num}\t{check_name}\t{ci_red_hours}\t{pr_branch}\t{gap_ids}")
+        for pr_num, ci_red_mins, pr_branch, gap_ids in entries:
+            print(f"INDIVIDUAL\t{pr_num}\t{check_name}\t{ci_red_mins}\t{pr_branch}\t{gap_ids}")
 PYEOF
     ) || true
 
@@ -434,10 +442,10 @@ Suggested action:
                 ;;
 
             INDIVIDUAL)
-                local _pr_num _check_name _ci_red_hours _pr_branch _gap_ids
-                IFS=$'\t' read -r _pr_num _check_name _ci_red_hours _pr_branch _gap_ids <<<"$_rest"
-                local _reason="CI red for ${_ci_red_hours}h"
-                local _summary="At least one required check has been failing for ${_ci_red_hours}h (threshold ${CI_FAIL_THRESHOLD_HOURS}h). Failing check: ${_check_name}."
+                local _pr_num _check_name _ci_red_mins _pr_branch _gap_ids
+                IFS=$'\t' read -r _pr_num _check_name _ci_red_mins _pr_branch _gap_ids <<<"$_rest"
+                local _reason="CI red for ${_ci_red_mins}m"
+                local _summary="At least one required check has been failing for ${_ci_red_mins}m (threshold ${CI_FAIL_THRESHOLD_MINS}m). Failing check: ${_check_name}."
                 local _details="Original gap(s) cited in PR title/commits: ${_gap_ids}
 Branch: ${_pr_branch}
 Failing check: ${_check_name}
@@ -512,10 +520,10 @@ while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE IS_DRAFT AUTHOR MSS HAS_AUTOME
 
     # Condition: CI red. Pull check status; treat any FAILURE/CANCELLED as red.
     CI_RED=0
-    CI_RED_HOURS=0
+    CI_RED_MINS=0
     CI_FAILING_NAMES=""
     if CHECKS_JSON=$(gh pr checks "$PR_NUM" --json name,state,completedAt 2>/dev/null); then
-        CI_RED_HOURS=$(python3 -c "
+        CI_RED_MINS=$(python3 -c "
 import json, sys
 from datetime import datetime, timezone
 try:
@@ -531,14 +539,14 @@ for r in rows:
             continue
         try:
             t = datetime.fromisoformat(ts.replace('Z','+00:00'))
-            hrs = int((datetime.now(timezone.utc) - t).total_seconds() / 3600)
-            if hrs > worst:
-                worst = hrs
+            mins = int((datetime.now(timezone.utc) - t).total_seconds() / 60)
+            if mins > worst:
+                worst = mins
         except Exception:
             pass
 print(worst)
 " "$CHECKS_JSON" 2>/dev/null || echo 0)
-        [[ "$CI_RED_HOURS" -gt 0 ]] && CI_RED=1
+        [[ "$CI_RED_MINS" -gt 0 ]] && CI_RED=1
         # Collect failing check names for shared-blocker aggregation.
         if [[ "$CI_RED" == "1" ]]; then
             CI_FAILING_NAMES=$(python3 -c "
@@ -570,7 +578,7 @@ for r in rows:
         done
     fi
 
-    info "  state: mss=$MSS  behind=$BEHIND  ci_red_hrs=$CI_RED_HOURS  age_hrs=$AGE_HOURS  orphan=$ORPHAN  gaps=${GAP_IDS:-none}"
+    info "  state: mss=$MSS  behind=$BEHIND  ci_red_mins=$CI_RED_MINS  age_hrs=$AGE_HOURS  orphan=$ORPHAN  gaps=${GAP_IDS:-none}"
 
     REASON=""
     SUMMARY=""
@@ -579,7 +587,7 @@ for r in rows:
         REASON="DIRTY for ${AGE_HOURS}h"
         SUMMARY="Branch needs rebase. mergeStateStatus=DIRTY for ${AGE_HOURS}h (threshold ${DIRTY_THRESHOLD_HOURS}h)."
         STUCK_CLASS="REBASE"
-    elif [[ "$CI_RED" == "1" && "$CI_RED_HOURS" -ge "$CI_FAIL_THRESHOLD_HOURS" ]]; then
+    elif [[ "$CI_RED" == "1" && "$CI_RED_MINS" -ge "$CI_FAIL_THRESHOLD_MINS" ]]; then
         STUCK_CLASS="CI-RED"
         # Defer CI-RED filing: detect_shared_ci_blockers() decides whether to file
         # one shared-blocker gap (N>=$SHARED_BLOCKER_THRESHOLD) or individual gaps.
@@ -588,15 +596,15 @@ for r in rows:
             while IFS= read -r _cname; do
                 [[ -z "$_cname" ]] && continue
                 printf '%s\t%s\t%s\t%s\t%s\n' \
-                    "$PR_NUM" "$_cname" "$CI_RED_HOURS" "$PR_BRANCH" "${GAP_IDS:-none}" \
+                    "$PR_NUM" "$_cname" "$CI_RED_MINS" "$PR_BRANCH" "${GAP_IDS:-none}" \
                     >> "$SHARED_BLOCKER_TMP"
             done <<<"$_names_to_record"
         else
             printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$PR_NUM" "unknown" "$CI_RED_HOURS" "$PR_BRANCH" "${GAP_IDS:-none}" \
+                "$PR_NUM" "unknown" "$CI_RED_MINS" "$PR_BRANCH" "${GAP_IDS:-none}" \
                 >> "$SHARED_BLOCKER_TMP"
         fi
-        info "  → CI-RED deferred (${CI_RED_HOURS}h); will check for shared-blocker pattern"
+        info "  → CI-RED deferred (${CI_RED_MINS}m); will check for shared-blocker pattern"
         SKIPPED=$((SKIPPED+1))
         continue
     elif [[ "$BEHIND" -ge "$BEHIND_COMMITS_THRESHOLD" ]]; then
