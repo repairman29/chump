@@ -129,6 +129,7 @@ mod plugin;
 mod policy_override;
 mod pr_coupling_cost;
 mod pr_fix_clippy;
+mod pr_triage;
 mod precision_controller;
 mod provider_bandit;
 mod provider_cascade;
@@ -670,6 +671,32 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 eprintln!("chump pr fix-clippy: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
+    // `chump pr triage [--rerun-flakes] [--rebase-dirty] [--json]`
+    // (INFRA-605) — EFFECTIVE: scan all open PRs, classify, report CI health.
+    if args.get(1).map(String::as_str) == Some("pr")
+        && args.get(2).map(String::as_str) == Some("triage")
+    {
+        let opts = pr_triage::TriageOptions {
+            rerun_flakes: args.iter().any(|a| a == "--rerun-flakes"),
+            rebase_dirty: args.iter().any(|a| a == "--rebase-dirty"),
+            json: args.iter().any(|a| a == "--json"),
+        };
+        match pr_triage::run_triage(&opts) {
+            Ok(report) => {
+                if opts.json {
+                    print!("{}", pr_triage::render_json(&report));
+                } else {
+                    print!("{}", pr_triage::render_text(&report));
+                }
+            }
+            Err(e) => {
+                eprintln!("chump pr triage: {e}");
                 std::process::exit(1);
             }
         }
