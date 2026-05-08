@@ -2,7 +2,7 @@
   domain: PRODUCT
   title: "EFFECTIVE: VS Code extension wrapping chump --acp for IDE integration"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - VS Code extension that launches chump --acp as a stdio backend on activation
