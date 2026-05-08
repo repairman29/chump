@@ -3254,7 +3254,10 @@ mod api_battle_tests {
         // The original assertion (Some(true)) was speculative; the API
         // contract is just session_id. status=200 on the line above is the
         // success signal.
-        assert!(v.get("session_id").is_some(), "expected session_id in response, got: {v}");
+        assert!(
+            v.get("session_id").is_some(),
+            "expected session_id in response, got: {v}"
+        );
 
         let session_id = v.get("session_id").and_then(|x| x.as_str()).unwrap();
         let _ = crate::web_sessions_db::session_delete(session_id);
