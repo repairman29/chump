@@ -1735,8 +1735,20 @@ async fn main() -> Result<()> {
                             }
                             if !g.acceptance_criteria.is_empty() {
                                 println!("  acceptance_criteria:");
+                                let mut has_incomplete = false;
                                 for c in g.acceptance_criteria.split('|') {
-                                    println!("    - {}", c.trim());
+                                    let trimmed = c.trim();
+                                    println!("    - {}", trimmed);
+                                    // INFRA-756: flag if AC contains placeholder text
+                                    if trimmed.to_uppercase().contains("TODO")
+                                        || trimmed.contains("TBD")
+                                        || trimmed.contains("<fill in>")
+                                    {
+                                        has_incomplete = true;
+                                    }
+                                }
+                                if has_incomplete {
+                                    eprintln!("WARN: gap {}: acceptance_criteria contains incomplete placeholders (TODO/TBD/<fill in>)", g.id);
                                 }
                             }
                             if !g.depends_on.is_empty() {
@@ -1896,6 +1908,27 @@ async fn main() -> Result<()> {
                 // per phase to stderr so --json piping of stdout is unaffected.
                 let quiet = args.iter().any(|a| a == "--quiet");
                 let why = args.iter().any(|a| a == "--why");
+                let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
+                let custom_acceptance_criteria = flag("--acceptance-criteria");
+
+                // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
+                // unless --skip-obs-acs is set or --acceptance-criteria is provided.
+                let acceptance_criteria_json = match custom_acceptance_criteria {
+                    Some(raw) => {
+                        let parts: Vec<&str> = raw.split('|').collect();
+                        serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
+                    }
+                    None if !skip_obs_acs => {
+                        let obs_acs = vec![
+                            "TODO: what events emitted on success/failure/timeout",
+                            "TODO: how cost tracked and reported to operator",
+                            "TODO: failure-class taxonomy (distinguish transient vs permanent)",
+                            "TODO: smoke test command to verify observability",
+                        ];
+                        serde_json::to_string(&obs_acs).unwrap_or_else(|_| "[]".into())
+                    }
+                    _ => "[]".into(),
+                };
 
                 // FLEET-029: ambient glance before allocating ID
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
@@ -1939,6 +1972,20 @@ async fn main() -> Result<()> {
                         if !quiet {
                             eprintln!(" done {id}");
                         }
+
+                        // INFRA-756: set acceptance_criteria if not empty (default obs-ACs or custom)
+                        if acceptance_criteria_json != "[]" {
+                            let update = gap_store::GapFieldUpdate {
+                                acceptance_criteria: Some(acceptance_criteria_json),
+                                ..Default::default()
+                            };
+                            if let Err(e) = store.set_fields(&id, update) {
+                                if !quiet {
+                                    eprintln!("warning: failed to set acceptance_criteria: {e}");
+                                }
+                            }
+                        }
+
                         // INFRA-061 (M3): when --stack-on is passed, emit the
                         // bot-merge.sh hint so dispatchers (and humans) know
                         // to chain. Goes to stderr so the bare gap id stays
