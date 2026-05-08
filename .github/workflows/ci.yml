@@ -343,6 +343,9 @@ jobs:
       - name: default-flip advisory guard (INFRA-762)
         run: bash scripts/ci/test-default-flip-guard.sh
 
+      - name: flake-autorerun harness fixture (INFRA-764)
+        run: bash scripts/ci/test-flake-autorerun.sh
+
       - name: pr-watch shepherd smoke (INFRA-354)
         run: bash scripts/ci/test-pr-watch-shepherd-smoke.sh
 
@@ -537,8 +540,8 @@ jobs:
         with:
           shared-key: ci-cargo-test
 
-      - name: cargo test
-        run: cargo test --workspace
+      - name: cargo test (with INFRA-764 flake auto-rerun)
+        run: bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace
 
   # ── E2E shards (INFRA-549) ────────────────────────────────────────────────
   # The old monolithic test-e2e (>1h26m, serialized behind unit-test rollup)

@@ -558,6 +558,33 @@ events:
     consumers: [fleet-brief]
     fields_required: [provider, model, result, detail]
 
+  # ── Flake auto-rerun harness (INFRA-764) ──────────────────────────────────
+  - kind: flake_autorerun_initiated
+    emitter: scripts/ci/cargo-test-with-rerun.sh
+    trigger: cargo test failed AND every failing test is in
+      docs/process/KNOWN_FLAKES.yaml; about to rerun once
+    consumers: [fleet-brief, kpi-report, waste-tally]
+    fields_required: [ts, source, note]
+
+  - kind: flake_autorerun_recovered
+    emitter: scripts/ci/cargo-test-with-rerun.sh
+    trigger: rerun-after-flake-detection went green; CI treats as transient
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, source, note]
+
+  - kind: flake_autorerun_persisted
+    emitter: scripts/ci/cargo-test-with-rerun.sh
+    trigger: rerun-after-flake-detection still red; surface to CI as real failure
+    consumers: [fleet-brief, waste-tally, watchdog]
+    fields_required: [ts, source, note]
+
+  - kind: flake_autorerun_skipped
+    emitter: scripts/ci/cargo-test-with-rerun.sh
+    trigger: at least one failing test is NOT in KNOWN_FLAKES.yaml, or no
+      parseable failure shape detected; auto-rerun declined
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, source, note]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
