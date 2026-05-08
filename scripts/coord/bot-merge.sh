@@ -1413,21 +1413,22 @@ for g in data:
                     info "Auto-close: $_gid produced no diff (likely already status=done)"
                 fi
             else
-                # META-022: print the actual chump gap ship stderr instead of
-                # the misleading "may already be done" line. Common causes:
-                # gap not in main repo's state.db (use chump gap reserve), or
-                # state.db locked by a hung sibling process.
-                yellow "Auto-close FAILED for $_gid (chump gap ship rc=$_autoclose_rc):"
+                # INFRA-678: gap ship failure is fatal — abort before auto-merge arm.
+                # Previously this was a warning-only path, which let ghost gaps slip
+                # through (INFRA-664). Now we exit 1 so CI surfaces the failure
+                # visibly instead of silently shipping a gap in an unknown state.
+                red "Auto-close FAILED for $_gid (chump gap ship rc=$_autoclose_rc) — aborting auto-merge:"
                 if [[ -n "$_autoclose_err" ]]; then
                     while IFS= read -r _line; do
                         [[ -z "$_line" ]] && continue
-                        yellow "  | $_line"
+                        red "  | $_line"
                     done <<< "$_autoclose_err"
                 fi
-                yellow "  YAML mirror NOT updated; gap status NOT flipped."
-                yellow "  Recover: chump gap ship $_gid --closed-pr $_autoclose_target_pr --update-yaml"
-                yellow "           (run from main repo: $_autoclose_main_repo)"
-                yellow "  See: docs/process/CLAUDE_GOTCHAS.md#error-missing-closed-pr"
+                red "  YAML mirror NOT updated; gap status NOT flipped."
+                red "  Recover: chump gap ship $_gid --closed-pr $_autoclose_target_pr --update-yaml"
+                red "           (run from main repo: $_autoclose_main_repo)"
+                red "  See: docs/process/CLAUDE_GOTCHAS.md#error-missing-closed-pr"
+                exit 1
             fi
             stage_done
         done
