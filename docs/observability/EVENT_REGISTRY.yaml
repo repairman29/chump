@@ -550,3 +550,11 @@ events:
     emitter: chump waste-tally / kpi-report
     trigger: aggregated metric snapshot for downstream consumers
     consumers: [fleet-brief]
+
+  # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
+  - kind: obs_coverage_test_fixture
+    emitter: scripts/ci/test-obs-coverage-guard.sh
+    trigger: synthetic event written by INFRA-757 test fixture; never emitted
+      by production code paths
+    consumers: []
+    status: test-fixture

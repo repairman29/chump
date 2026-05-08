@@ -385,6 +385,12 @@ jobs:
       - name: lease TTL file-based reaper (INFRA-115)
         run: bash scripts/ci/test-infra-115-lease-ttl-file.sh
 
+      - name: observability coverage — new src/dispatch.sh and src/main-reachable .rs need a tracing/ambient/lessons hook (INFRA-757)
+        run: bash scripts/ci/test-obs-coverage-guard.sh
+
+      - name: observability coverage — live PR diff against base ref (INFRA-757)
+        run: bash scripts/ci/test-observability-coverage.sh
+
       - name: PWA root redirect / -> /v2/ (INFRA-254)
         run: bash scripts/ci/test-infra-254-pwa-root-redirect.sh
 
