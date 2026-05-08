@@ -551,6 +551,13 @@ events:
     trigger: aggregated metric snapshot for downstream consumers
     consumers: [fleet-brief]
 
+  # ── Free-tier dispatch testing ─────────────────────────────────────────
+  - kind: free_tier_e2e
+    emitter: scripts/dispatch/free-tier-e2e-test.sh
+    trigger: free-tier e2e test completes (pass, partial, timeout, or fail)
+    consumers: [fleet-brief]
+    fields_required: [provider, model, result, detail]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
