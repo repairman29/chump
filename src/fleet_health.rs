@@ -716,11 +716,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
     let ok_24h = count_kind_since(&contents, "auto_restart_ok", h24_ago);
     let fail_24h = count_kind_since(&contents, "auto_restart_fail", h24_ago);
     let total_restarts = ok_24h + fail_24h;
-    let restart_rate = if total_restarts > 0 {
-        ok_24h * 100 / total_restarts
-    } else {
-        100 // no restarts = no failures
-    };
+    let restart_rate = (ok_24h * 100).checked_div(total_restarts).unwrap_or(100);
     results.push(SloResult {
         id: "L1-SLO-3",
         target: "auto-restart success > 95%",
@@ -744,7 +740,7 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         current: p50_min
             .map(|m| format!("{}min", m))
             .unwrap_or_else(|| "no data".into()),
-        breached: p50_min.map_or(false, |m| m >= 30),
+        breached: p50_min.is_some_and(|m| m >= 30),
         detail: p50_min
             .map(|m| format!("P50 ship-time {}min in last 24h (target: <30min)", m))
             .unwrap_or_else(|| "no gaps closed in last 24h — cannot compute P50".into()),
