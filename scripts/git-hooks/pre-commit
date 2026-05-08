@@ -1631,5 +1631,24 @@ if [ "${CHUMP_CREDENTIAL_CHECK:-1}" != "0" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------
+# 9. Pre-deploy smoke test for infra changes (CREDIBLE-001)
+# ------------------------------------------------------------------
+# Runs PyYAML parse, shellcheck, and cargo clippy for commits touching
+# .github/workflows/*, scripts/coord/*, scripts/dispatch/*, or Cargo.toml.
+# Bypass: CREDIBLE_INFRA_SMOKE_BYPASS=1 (documented for edge cases).
+
+if [ "${CREDIBLE_INFRA_SMOKE_BYPASS:-0}" != "1" ]; then
+    SMOKE_SCRIPT="$REPO_ROOT/scripts/ci/test-infra-changes-smoke.sh"
+    if [ -x "$SMOKE_SCRIPT" ]; then
+        # Pass the staged files to the script; if none, it auto-detects from git status
+        STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR || true)
+        if [ -n "$STAGED_FILES" ]; then
+            if ! "$SMOKE_SCRIPT" $STAGED_FILES; then
+                exit 1
+            fi
+        fi
+    fi
+fi
 
 exit 0
