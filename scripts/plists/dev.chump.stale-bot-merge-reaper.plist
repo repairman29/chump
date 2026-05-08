@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.chump.stale-bot-merge-reaper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/Users/jeffadkins/Projects/Chump/scripts/ops/stale-bot-merge-reaper.sh --execute</string>
+  </array>
+  <!-- Run every 30 minutes. Kills bash bot-merge.sh processes older than 1h
+       that were wedging the fleet (38 zombies observed on 2026-05-08). -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-stale-bot-merge-reaper.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-stale-bot-merge-reaper.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+  </dict>
+</dict>
+</plist>
