@@ -1,0 +1,7 @@
+- id: INFRA-722
+  domain: INFRA
+  title: "ZERO-WASTE: split main.rs phase 1 — extract cli/ subcommand dispatch (dispatch, routes, platform_router, rpc_mode)"
+  status: open
+  priority: P2
+  effort: m
+

@@ -1,0 +1,7 @@
+- id: INFRA-726
+  domain: INFRA
+  title: "ZERO-WASTE: split main.rs phase 5 — extract mod declarations into lib.rs and wire crate-level pub use"
+  status: open
+  priority: P2
+  effort: m
+

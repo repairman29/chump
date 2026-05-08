@@ -1,0 +1,7 @@
+- id: INFRA-724
+  domain: INFRA
+  title: "ZERO-WASTE: split main.rs phase 3 — extract fleet/ module group (fleet, fleet_capability, fleet_db, fleet_health, fleet_status, fleet_tool, fleet_velocity, cluster_mesh)"
+  status: open
+  priority: P2
+  effort: m
+
