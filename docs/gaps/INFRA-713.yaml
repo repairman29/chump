@@ -1,0 +1,7 @@
+- id: INFRA-713
+  domain: INFRA
+  title: "RESILIENT: speculative-by-default → opt-in (CHUMP_SPECULATIVE=1) — fleet picker hardcoded speculative=True caused collisions today (CREDIBLE-003 dup #1286/#1288, INFRA-710 race after manual ship). Default to exclusive lease; race mode opt-in per CLAUDE.md design."
+  status: open
+  priority: P0
+  effort: xs
+
