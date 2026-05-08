@@ -695,31 +695,31 @@ pub fn render_markdown(b: &GapBriefing) -> String {
         );
     }
     let mut out = String::new();
-    out.push_str(&format!("# Briefing: {} — {}\n\n", b.gap_id, b.gap_title));
-    out.push_str(&format!(
-        "- **Domain:** {}\n- **Priority:** {}\n- **Effort:** {}\n",
-        if b.gap_domain.is_empty() {
-            "(none)"
-        } else {
-            &b.gap_domain
-        },
-        if b.gap_priority.is_empty() {
-            "(none)"
-        } else {
-            &b.gap_priority
-        },
-        if b.gap_effort.is_empty() {
-            "(none)"
-        } else {
-            &b.gap_effort
-        },
-    ));
+
+    // Clean up escaped quotes in the title
+    let clean_title = b.gap_title.replace("\\\"", "\"");
+
+    // Header with ID and title
+    out.push_str(&format!("# {}: {}\n\n", b.gap_id, clean_title));
+
+    // Metadata in a cleaner format
+    out.push_str("**Metadata**\n");
+    if !b.gap_domain.is_empty() {
+        out.push_str(&format!("- Domain: `{}`\n", b.gap_domain));
+    }
+    if !b.gap_priority.is_empty() {
+        out.push_str(&format!("- Priority: {}\n", b.gap_priority));
+    }
+    if !b.gap_effort.is_empty() {
+        out.push_str(&format!("- Effort: {}\n", b.gap_effort));
+    }
     if !b.depends_on.is_empty() {
-        out.push_str(&format!("- **Depends on:** {}\n", b.depends_on.join(", ")));
+        out.push_str(&format!("- Depends on: {}\n", b.depends_on.join(", ")));
     }
     out.push('\n');
 
-    out.push_str("## Acceptance criteria\n\n");
+    // Acceptance criteria
+    out.push_str("## Acceptance Criteria\n\n");
     match &b.gap_acceptance {
         Some(a) => {
             out.push_str(a);
@@ -728,78 +728,155 @@ pub fn render_markdown(b: &GapBriefing) -> String {
         None => out.push_str("_(none recorded)_\n\n"),
     }
 
-    out.push_str("## Top relevant reflections (chump_improvement_targets)\n\n");
+    // Relevant reflections
+    out.push_str("## Reflections\n\n");
     if b.relevant_reflections.is_empty() {
-        out.push_str("_(no reflections matched this gap's domain — first agent on this beat)_\n\n");
+        out.push_str("_(no previous lessons for this domain)_\n\n");
     } else {
         for r in &b.relevant_reflections {
-            let scope = r.scope.as_deref().unwrap_or("(global)");
+            let scope = r.scope.as_deref().unwrap_or("global");
             out.push_str(&format!(
-                "- [{:?}] {} — _{}_\n",
+                "- **{:?}** — {}\n  _{}_\n",
                 r.priority, r.directive, scope
             ));
         }
         out.push('\n');
     }
 
-    out.push_str("## Recent ambient events (peripheral vision)\n\n");
-    if b.recent_ambient_events.is_empty() {
-        out.push_str("_(no recent events touching this gap's domain)_\n\n");
-    } else {
-        for ev in &b.recent_ambient_events {
-            out.push_str(&format!("- `{}`\n", ev));
+    // Recent path edits
+    if !b.recent_path_edits.is_empty() {
+        out.push_str("## Recent File Activity\n\n");
+        for entry in &b.recent_path_edits {
+            out.push_str(&format!("- {}\n", entry));
         }
         out.push('\n');
     }
 
-    out.push_str("## Strategic doc cross-references\n\n");
-    if b.strategic_doc_refs.is_empty() {
-        out.push_str("_(no mentions in FACULTY_MAP / STRATEGY_VS_GOOSE / RESEARCH_PLAN / AB_RESULTS / RESEARCH_BRIEF)_\n\n");
-    } else {
+    // Ambient events - extract key information
+    if !b.recent_ambient_events.is_empty() {
+        out.push_str("## Recent Activity\n\n");
+        for ev in &b.recent_ambient_events {
+            let event_summary = summarize_ambient_event(ev);
+            out.push_str(&format!("- {}\n", event_summary));
+        }
+        out.push('\n');
+    }
+
+    // Strategic doc references
+    if !b.strategic_doc_refs.is_empty() {
+        out.push_str("## Related Documentation\n\n");
         for r in &b.strategic_doc_refs {
             out.push_str(&format!("- {}\n", r));
         }
         out.push('\n');
     }
 
-    out.push_str("## Escalation events (last 24h)\n\n");
-    if b.escalation_events.is_empty() {
-        out.push_str("_(no escalation events for this gap in the last 24h)_\n\n");
-    } else {
-        out.push_str(
-            "> **ALERT** — a previous agent was stuck on this gap. Review before starting.\n\n",
-        );
-        for ev in &b.escalation_events {
-            out.push_str(&format!("- `{}`\n", ev));
-        }
-        out.push('\n');
-    }
-
-    out.push_str("## Similar closed PRs\n\n");
-    if b.similar_closed_prs.is_empty() {
-        out.push_str("_(no closed PRs found via `gh pr list --search`)_\n\n");
-    } else {
+    // Similar PRs
+    if !b.similar_closed_prs.is_empty() {
+        out.push_str("## Similar Closed PRs\n\n");
         let list: Vec<String> = b
             .similar_closed_prs
             .iter()
-            .map(|n| format!("#{n}"))
+            .map(|n| format!("#{}", n))
             .collect();
-        out.push_str(&list.join(", "));
-        out.push_str("\n\n");
+        out.push_str(&format!("{}\n\n", list.join(", ")));
     }
 
-    // COG-051: recent edits to paths mentioned in the gap.
-    out.push_str("## Recent edits to paths mentioned in gap\n\n");
-    if b.recent_path_edits.is_empty() {
-        out.push_str("_(no recognisable file paths in gap text, or no git history for them)_\n\n");
-    } else {
-        for entry in &b.recent_path_edits {
-            out.push_str(&format!("- `{}`\n", entry));
+    // Escalation events (most important, show prominently if present)
+    if !b.escalation_events.is_empty() {
+        out.push_str("## ⚠️  Escalation Alert\n\n");
+        out.push_str(
+            "> A previous agent was stuck on this gap. Review carefully before starting.\n\n",
+        );
+        for ev in &b.escalation_events {
+            let event_summary = summarize_ambient_event(ev);
+            out.push_str(&format!("> - {}\n", event_summary));
         }
         out.push('\n');
     }
 
     out
+}
+
+/// Extract human-readable summary from JSON event line.
+fn summarize_ambient_event(line: &str) -> String {
+    if line.is_empty() {
+        return "_(empty event)_".to_string();
+    }
+
+    // Extract event type (field may be "kind" or "event")
+    let event_type = extract_json_field(line, "kind")
+        .or_else(|| extract_json_field(line, "event"))
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Extract timestamp for conciseness
+    let ts = extract_json_field(line, "ts")
+        .map(|t| {
+            // Extract just the time part: "2026-05-08T14:39:03Z" -> "14:39:03"
+            if let Some(time_start) = t.find('T') {
+                let time_end = time_start + 9; // "T" + HH:MM:SS
+                if time_end <= t.len() {
+                    t[time_start + 1..time_end].to_string()
+                } else {
+                    t
+                }
+            } else {
+                t
+            }
+        })
+        .unwrap_or_default();
+
+    // Build summary based on event type
+    let summary = match event_type.as_str() {
+        "file_edit" => {
+            let path = extract_json_field(line, "path").unwrap_or_else(|| "unknown".to_string());
+            let path_short = path.split('/').next_back().unwrap_or(&path);
+            format!("📝 file edited: {}", path_short)
+        }
+        "bash_call" => {
+            let cmd = extract_json_field(line, "cmd").unwrap_or_else(|| "unknown".to_string());
+            // Extract just the command name
+            let cmd_short = cmd.split_whitespace().next().unwrap_or(&cmd);
+            format!("⌨️  {}", cmd_short)
+        }
+        "alert" => {
+            let msg = extract_json_field(line, "msg")
+                .or_else(|| extract_json_field(line, "message"))
+                .unwrap_or_else(|| "alert".to_string());
+            format!("⚠️  alert: {}", msg)
+        }
+        "escalation" => {
+            let stuck_at =
+                extract_json_field(line, "stuck_at").unwrap_or_else(|| "unknown".to_string());
+            format!("🚨 escalation: {}", stuck_at)
+        }
+        _ => {
+            let worktree =
+                extract_json_field(line, "worktree").unwrap_or_else(|| "unknown".to_string());
+            format!("event ({})", worktree)
+        }
+    };
+
+    if ts.is_empty() {
+        summary
+    } else {
+        format!("{} {}", ts, summary)
+    }
+}
+
+/// Extract a JSON field value as a string, handling basic JSON escaping.
+fn extract_json_field(line: &str, field: &str) -> Option<String> {
+    let search = format!("\"{}\":\"", field);
+    let start = line.find(&search)? + search.len();
+    let rest = &line[start..];
+    let end = rest.find('"')?;
+    let value = &rest[..end];
+    Some(
+        value
+            .replace("\\\"", "\"")
+            .replace("\\\\", "\\")
+            .replace("\\n", "\n"),
+    )
 }
 
 #[cfg(test)]
@@ -998,15 +1075,14 @@ gaps:
             ..Default::default()
         };
         let md = render_markdown(&b);
-        assert!(md.contains("# Briefing: MEM-007"));
-        assert!(md.contains("## Acceptance criteria"));
-        assert!(md.contains("## Top relevant reflections"));
-        assert!(md.contains("## Recent ambient events"));
-        assert!(md.contains("## Strategic doc cross-references"));
-        assert!(md.contains("## Escalation events (last 24h)"));
-        assert!(md.contains("## Similar closed PRs"));
+        assert!(md.contains("# MEM-007:"));
+        assert!(md.contains("## Acceptance Criteria"));
+        assert!(md.contains("## Reflections"));
+        assert!(md.contains("## Recent Activity"));
+        assert!(md.contains("## Related Documentation"));
+        assert!(md.contains("## Similar Closed PRs"));
         assert!(md.contains("#123"));
-        assert!(md.contains("**Depends on:** MEM-006"));
+        assert!(md.contains("Depends on: MEM-006"));
     }
 
     #[test]
@@ -1076,7 +1152,7 @@ gaps:
             ..Default::default()
         };
         let md = render_markdown(&b);
-        assert!(md.contains("## Recent edits to paths mentioned in gap"));
+        assert!(md.contains("## Recent File Activity"));
         assert!(md.contains("src/briefing.rs: abc1234"));
     }
 
@@ -1090,8 +1166,7 @@ gaps:
             ..Default::default()
         };
         let md = render_markdown(&b);
-        assert!(md.contains("## Recent edits to paths mentioned in gap"));
-        assert!(md.contains("no recognisable file paths"));
+        assert!(!md.contains("## Recent File Activity"));
     }
 
     #[test]
@@ -1108,9 +1183,8 @@ gaps:
             ..Default::default()
         };
         let md = render_markdown(&b);
-        assert!(md.contains("## Escalation events (last 24h)"));
-        assert!(md.contains("ALERT"));
-        assert!(md.contains("stuck_at"));
+        assert!(md.contains("## ⚠️  Escalation Alert"));
+        assert!(md.contains("escalation"));
     }
 
     #[test]
