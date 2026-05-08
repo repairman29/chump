@@ -299,6 +299,23 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     fi
 
     GAP_ID="$pick"
+
+    # INFRA-471: per-pick model class from routing.yaml.
+    # FLEET_MODEL is the worker's base model class (used for effort filtering);
+    # _resolve_model.py walks routing.yaml to find the best model for THIS gap,
+    # overriding FLEET_MODEL locally for the current cycle only.
+    # gap_json is still in scope here (written before picker, not yet deleted).
+    _resolved_model="$(printf '%s' "$gap_json" | \
+        GAP_ID="$GAP_ID" \
+        REPO_ROOT="$REPO_ROOT" \
+        FLEET_MODEL="$FLEET_MODEL" \
+        python3 "$REPO_ROOT/scripts/dispatch/_resolve_model.py" 2>/dev/null \
+        || true)"
+    if [[ -n "$_resolved_model" ]] && [[ "$_resolved_model" != "$FLEET_MODEL" ]]; then
+        log "INFRA-471: routing gap=$GAP_ID model $FLEET_MODEL → $_resolved_model (routing.yaml)"
+        FLEET_MODEL="$_resolved_model"
+    fi
+
     # INFRA-315: clear starvation counter on a successful pick. The next
     # empty cycle starts the threshold over from zero.
     _starve_count=0

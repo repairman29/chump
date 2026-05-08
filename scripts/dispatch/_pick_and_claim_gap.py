@@ -373,6 +373,14 @@ def main() -> int:
         required_model = (g.get("required_model") or "").lower()
         if required_model and required_model != worker_model:
             continue
+        # INFRA-471: model-class effort gate (routing.yaml drives pick policy).
+        # haiku workers refuse effort=m/l/xl — cognitive overhead exceeds capability.
+        # sonnet workers refuse effort=xs — cheap models handle cleanup; don't burn frontier tokens.
+        # opus is unconstrained.
+        if worker_model == "haiku" and e in ("m", "l", "xl"):
+            continue
+        if worker_model == "sonnet" and e == "xs":
+            continue
         deps_raw = g.get("depends_on")
         if isinstance(deps_raw, str):
             try:
