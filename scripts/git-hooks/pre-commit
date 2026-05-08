@@ -72,6 +72,12 @@
 #    for likely API keys / tokens before they hit git history. Bypass:
 #    CHUMP_CREDENTIAL_CHECK=0.
 #
+# 10. Event-registry guard (INFRA-754, 2026-05-08): refuse commits that
+#     introduce a new `"kind":"X"` ambient.jsonl event literal not listed
+#     in docs/observability/EVENT_REGISTRY.yaml. "Observability before
+#     scale" — consumers must be able to discover every emitter from one
+#     place. Bypass: CHUMP_EVENT_REGISTRY_CHECK=0 (with reason trailer).
+#
 # Install once: `./scripts/setup/install-hooks.sh`
 # Skip for one commit: `git commit --no-verify` (use sparingly — also
 # skips the lease check, which defeats the coordination system).
@@ -1648,6 +1654,23 @@ if [ "${CREDIBLE_INFRA_SMOKE_BYPASS:-0}" != "1" ]; then
                 exit 1
             fi
         fi
+    fi
+fi
+
+# 10. Event-registry guard (INFRA-754, 2026-05-08)
+# ------------------------------------------------------------------
+# Refuses any commit that introduces a new `"kind":"X"` ambient event
+# literal where X is not registered in docs/observability/EVENT_REGISTRY.yaml.
+# Mechanically enforces "observability before scale" — every emitter must be
+# discoverable from one place so consumers (fleet-brief, waste-tally,
+# kpi-report, watchdogs) can parse the stream without surprise.
+# Bypass: CHUMP_EVENT_REGISTRY_CHECK=0 (add `Event-Registry-Bypass: <reason>`
+# trailer to commit body).
+
+EVENT_REGISTRY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-event-registry.sh"
+if [ -x "$EVENT_REGISTRY_HOOK" ]; then
+    if ! "$EVENT_REGISTRY_HOOK"; then
+        exit 1
     fi
 fi
 
