@@ -255,6 +255,20 @@ BOT_MERGE_HOT_FILES=(
     "rust-toolchain.toml"
 )
 
+# INFRA-711: extend BOT_MERGE_HOT_FILES with additional workspace-wide paths
+# (src/main.rs, src/lib.rs, src/agent_loop/**, src/dispatch.rs, etc.)
+# Paths are configurable via scripts/coord/cascade-rebase-trigger-paths.txt
+_bm_cascade_config="${REPO_ROOT:-$(git rev-parse --show-toplevel)}/scripts/coord/cascade-rebase-trigger-paths.txt"
+if [[ -f "$_bm_cascade_config" ]]; then
+    while IFS= read -r line; do
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        # Skip paths that are already hardcoded
+        [[ "$line" == "Cargo.toml" || "$line" == "rust-toolchain.toml" ]] && continue
+        BOT_MERGE_HOT_FILES+=("$line")
+    done < "$_bm_cascade_config"
+fi
+
 # ── INFRA-103: serializing hot-file list ──────────────────────────────────────
 # PRs touching any of these files cannot safely land concurrently because they
 # modify shared coordination state or global config. All other PRs are

@@ -1,0 +1,8 @@
+Cargo.toml
+rust-toolchain.toml
+Cargo.lock
+src/main.rs
+src/lib.rs
+src/agent_loop/**
+src/dispatch.rs
+.github/workflows/ci.yml
