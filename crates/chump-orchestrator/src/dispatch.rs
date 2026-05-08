@@ -1826,4 +1826,65 @@ routes: []
         let msg = format!("{err:#}");
         assert!(msg.contains("worktree add failed"), "got: {msg}");
     }
+
+    // ── INFRA-718: scope invariants ──────────────────────────────────
+
+    /// INFRA-718: dispatch prompt must include scope invariants that
+    /// prevent agents from accepting SWARM-/PRIVATE-/INTERNAL- prefixed
+    /// gaps. The rules are injected from CHUMP_DISPATCH_RULES.md, which
+    /// is loaded and prepended to the prompt.
+    #[test]
+    fn build_prompt_includes_scope_invariants_refusing_swarm_gaps() {
+        let dir = tempfile::tempdir().unwrap();
+        let docs = dir.path().join("docs").join("process");
+        std::fs::create_dir_all(&docs).unwrap();
+        std::fs::write(
+            docs.join("CHUMP_DISPATCH_RULES.md"),
+            "---\ndoc_tag: canonical\nowner_gap:\nlast_audited: 2026-04-25\n---\n\n\
+             ## SCOPE INVARIANTS (defense-in-depth)\n\n\
+             - **Refuse SWARM-, PRIVATE-, INTERNAL- prefixed gaps.** \
+             If the gap ID starts with `SWARM-`, `PRIVATE-`, or `INTERNAL-`, \
+             immediately reply `SCOPE-REFUSE: this gap domain is out of scope` and exit.\n",
+        )
+        .unwrap();
+        let prompt = build_prompt("SWARM-001", dir.path());
+        assert!(
+            prompt.contains("SCOPE-REFUSE"),
+            "prompt must contain SCOPE-REFUSE instruction"
+        );
+        assert!(
+            prompt.contains("SWARM-"),
+            "prompt must mention SWARM- prefix"
+        );
+    }
+
+    /// INFRA-718: test that the scope invariants block is actually
+    /// injected from the rules file and present in the prompt sent
+    /// to dispatched agents. This verifies the defense-in-depth
+    /// component of INFRA-718 alongside the picker exclusion (INFRA-710).
+    #[test]
+    fn build_prompt_injects_scope_invariants_from_rules() {
+        let dir = tempfile::tempdir().unwrap();
+        let docs = dir.path().join("docs").join("process");
+        std::fs::create_dir_all(&docs).unwrap();
+        let rules = "## SCOPE INVARIANTS\n\
+                    - **Refuse SWARM- gaps.** Reply `SCOPE-REFUSE: blocked scope` and exit.\n\
+                    - **Refuse files outside gap.paths.**\n\
+                    - **Refuse Cargo.toml dep additions without approval.**\n";
+        std::fs::write(docs.join("CHUMP_DISPATCH_RULES.md"), rules).unwrap();
+
+        let prompt = build_prompt("INFRA-718", dir.path());
+        assert!(
+            prompt.contains("SCOPE-REFUSE"),
+            "dispatch prompt must include scope-refuse language"
+        );
+        assert!(
+            prompt.contains("gap.paths"),
+            "dispatch prompt must mention gap.paths restriction"
+        );
+        assert!(
+            prompt.contains("Cargo.toml"),
+            "dispatch prompt must mention Cargo.toml restriction"
+        );
+    }
 }
