@@ -172,3 +172,112 @@ The roadmap is a living document. The first revision after Q3 2026 will probably
 ---
 
 *Authored 2026-05-08 by Opus, end of high-throughput cycle. Verified against the State of the Union doc + the gap registry. Signed off by operator before merge.*
+
+---
+
+## Addendum: Q3 2026 mid-cycle update (2026-05-08, evening)
+
+The afternoon session continued with two emergent thrusts that
+strengthen the Q3 2026 plan rather than alter it. Capturing them here
+so the roadmap reflects what actually landed, not just what was
+planned at noon.
+
+### Q3 2026 thrust 1, reinforced: "Observability before scale" is now mechanical, not a doctrine doc
+
+The original plan called for `chump_improvement_targets` instrumentation
++ pillar-aware picker + cost tracking. Late-day work added a four-tier
+mechanical-enforcement stack so the doctrine isn't a CLAUDE.md aspiration:
+
+- **Tier 1 — Event registry** (INFRA-754, MERGED): every `"kind":"X"`
+  ambient literal must be in `docs/observability/EVENT_REGISTRY.yaml`
+  or pre-commit refuses the diff.
+- **Tier 2 — Commit-time obs budget** (INFRA-755, MERGED): >50 feature
+  lines with zero observability hooks → pre-commit blocks.
+- **Tier 3 — CI obs coverage** (INFRA-757, MERGED): every new
+  dispatch / agent-loop file in a PR must contain at least one
+  observability hook or CI fails.
+- **Tier 4 — Strict guard replay** (INFRA-767, queued): CI re-runs
+  every bypass-able pre-commit guard with bypass forced off, defeating
+  the `--no-verify` culture.
+
+This shifts "observability" from a buyer claim to a verifiable
+contract. Q3 2026 KPIs around cost/error visibility now have a
+mechanical floor.
+
+### Q3 2026 thrust 2, reinforced: Single canonical state.db, drift detection systemic
+
+Original plan: `chump_improvement_targets` + reflection alignment.
+Late-day INFRA-760 made `briefing.rs` read gap metadata from
+`.chump/state.db` as canonical, demoting the YAML mirror to optional.
+This closed an 184-of-199-open-gap prompt-degradation hole that had
+been silently degrading every fleet-claim.
+
+INFRA-766 (state-drift detector across all "two-store" pairs) is
+queued for the same treatment systemically — the YAML/DB hybrid was
+just the first instance. By end of Q3 we should have:
+- `.chump-locks/JSON` ↔ `agent_lease` table reconciled
+- `chump_improvement_targets` ↔ reflection JSON reconciled
+- Every two-store pair audited and either merged or made
+  canonical→derived
+
+### New Q3 2026 thrust (was not in original plan): Review-as-Handoff
+
+This one is genuinely new and emerged from observation, not planning.
+INFRA-768's design doc productizes a pattern that worked organically:
+operator-agent diagnoses CI failure → posts structured handoff comment
+→ author-agent re-engages → ships fix without operator intervention.
+
+Six sub-gaps queued. Once shipped:
+- Author self-report → CI verification trust gap closes (an
+  agent-issued handoff is a verifiable contract, not a `[x]` checkbox).
+- "Operator triages every CI failure" tax goes to zero for the cases
+  where a structured fix exists.
+- Free-tier reviewer calls (Groq Llama 3.3 70B is adequate for diff
+  work) make the reviewer effectively free — multiplying the leverage.
+
+This belongs in the Q3 2026 thrust list as a third pillar alongside
+"observability" and "single canonical store."
+
+### Q4 2026 prerequisite identified: INFRA-737 operator-agent
+
+Today's session was effectively a **manual run** of INFRA-737 — the
+Sonnet operator-agent that was originally scoped for early Q4. Posting
+PR comments, sequencing ships, balancing pillars, fixing flakes,
+filing follow-up gaps — every action was the operator-agent's job
+description.
+
+The prerequisite for INFRA-737 to ship cleanly is INFRA-768
+(Review-as-Handoff) — the comment template + ACL + telemetry
+contracts. **The dependency is now explicit:**
+
+```
+Q3 2026: INFRA-768 (design) → INFRA-769–774 (sub-gaps) → ...
+Q4 2026: INFRA-737 (operator-agent) — depends on the above
+```
+
+This re-orders the original Q4 plan slightly: INFRA-737 was the
+"north-star feature" but Review-as-Handoff is the precondition.
+
+### What did NOT change
+
+- **Hardware economics** — dual RTX 6000 Blackwell decision still on
+  the Q1 2027 plan. No surface-level evidence today changes the math.
+- **Funding pathway** — NSF / DARPA / Mozilla grants. Today's work
+  strengthens the "we have measurable observability" pitch.
+- **Naming** — "Champ" series, not "Chump", is still the user-facing
+  name. Internal references unchanged today.
+
+### Cadence note
+
+The next quarterly review (mid-Q4 2026) will need to grade:
+
+1. Did INFRA-737 ship and run autonomously for ≥1 week?
+2. Did the Review-as-Handoff harness reach >70% self-heal rate on
+   classified CI failures?
+3. Did INFRA-766 close the "two stores drift" architectural class?
+
+If yes-yes-yes, Q1 2027 unlocks the "scale to local-LLM-only fleet"
+plan. If any are no, that quarter's plan gets re-derived from the
+Q1 2027 prerequisites.
+
+— Opus + Sonnet operator-agent thread, evening of 2026-05-08

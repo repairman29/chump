@@ -280,3 +280,134 @@ status." The next Opus session should look meaningfully different —
 strategy and architecture, not babysitting.
 
 — Opus, end of cycle 2026-05-08
+
+---
+
+## Part 2: Late-day pipeline thrust (2026-05-08, evening addendum)
+
+The afternoon session continued past the original write-up with two
+coherent ship bursts and a real-time meta-review of where the pipeline
+fails us. Rather than rewrite the document, this addendum captures what
+the rest of the cycle landed and what's queued.
+
+### Doctrine stack — observability-before-scale, mechanically enforced
+
+Four PRs, all merged to main:
+
+- **#1348 INFRA-754** — `docs/observability/EVENT_REGISTRY.yaml` (~99
+  registered ambient kinds) + a pre-commit guard that refuses any
+  commit introducing an unregistered `"kind":"X"` literal. Bypass:
+  `CHUMP_EVENT_REGISTRY_CHECK=0` with `Event-Registry-Bypass:` trailer.
+- **#1350 INFRA-755** — observability-budget pre-commit guard. Refuses
+  commits adding > 50 feature lines (.rs/.sh/.py) with zero observability
+  hooks (tracing macros / ambient JSON literals / `chump_improvement_targets`
+  writes / `metric_record`).
+- **#1351 INFRA-757** — CI observability-coverage check. For every NEW
+  file in `scripts/dispatch/*.sh`, `scripts/coord/*.sh`,
+  `src/agent_loop/*.rs`, or any `src/*.rs` reachable from `main.rs` /
+  `dispatch.rs` / `agent_loop`, requires at least one observability hook.
+- **#1354 INFRA-760** — `briefing.rs` reads gap metadata from
+  `.chump/state.db` as the canonical source. YAML mirror demoted to
+  optional fallback. Closed the 184-of-199-open-gap prompt-degradation
+  hole where agents claiming gaps with no YAML mirror were getting
+  empty `GapBriefing` (no title / AC / priority / effort / domain).
+
+The doctrine is now "observability before scale" + "state.db is the
+single canonical source for gap metadata" — both mechanically enforced
+at the cheapest reasonable layer.
+
+### Pipeline-fix sequence (operator-directed, velocity-unlock order)
+
+Six follow-up PRs after a meta-review of where today's CI cycles got
+spent. Filed as gaps tagged by pillar then shipped in the order each
+unlocks the next:
+
+1. **INFRA-763 ✅ MERGED #1359** — fix `failure_catalog::tests`
+   `process::id()` tempfile race. One-line `tempfile::NamedTempFile`
+   replacement. Bit at least three of the cycle's PRs; nobody had picked
+   up the root-cause fix.
+2. **CREDIBLE-012 ✅ MERGED #1362** — `gap_drift_orphan` ALERT rescope
+   to OPEN gaps only. Pre-rescope: 1484 IDs (92% noise from done /
+   superseded gaps that don't need YAML). Post-rescope: ~184 OPEN-only
+   IDs (real signal).
+3. **INFRA-761 (#1363, auto-merge armed)** — pre-push `cargo test
+   --bin chump --tests` full-suite gate. Tree-hash cache so re-pushes
+   are <1s. Bypass: `CHUMP_TEST_GATE=0` with `Test-Gate-Bypass:`
+   trailer. Kills the "I ran scoped tests locally and it passed"
+   failure mode that wasted EVAL-026 (#1349) and others.
+4. **INFRA-762 ✅ MERGED #1365** — default-flip pre-commit advisory
+   guard. When a staged diff in `*flags*.rs` / `*config*.rs` flips
+   `unwrap_or(false)↔(true)` or a bool const, lists candidate stale
+   tests in OTHER files. Advisory only (INFRA-761 is the actual block);
+   the pair = "pre-commit prompt + pre-push enforcement."
+5. **INFRA-764 (#1366, auto-merge armed)** — flake-catalog auto-rerun
+   harness. `scripts/ci/cargo-test-with-rerun.sh` wraps cargo test;
+   on failure consults `docs/process/KNOWN_FLAKES.yaml`; if every
+   failing test is catalogued, reruns once. Real bugs never auto-rerun.
+   Four new ambient kinds for telemetry; flake/real ratio becomes a
+   visible signal.
+6. **INFRA-767 (#1367, auto-merge armed)** — strict CI replay of
+   pre-commit guards. Soft-resets HEAD to base, re-stages the PR diff,
+   runs every bypass-able guard with bypass forced off. Closes the
+   `--no-verify` culture leak.
+
+### Review-as-Handoff productization (parent gap + design doc + 6 sub-gaps)
+
+The afternoon's most generative observation: an operator-agent diagnosed
+PR #1349's CI failure, posted a structured comment with the exact fix,
+and the author-agent (still alive in another worktree) read it and
+committed within 10 minutes — without operator intervention. The
+pattern is reproducible.
+
+- **#1360 INFRA-768 ✅ MERGED** — design doc at
+  `docs/architecture/REVIEW_AS_HANDOFF.md` codifying the comment template,
+  `[handoff:apply]` ACL, author-agent re-engagement loop, reviewer-role
+  daemon (`chump review --serve`), and 5 ambient telemetry kinds.
+- **INFRA-769–774 (filed, fleet pickup)** — sub-gaps for the components.
+
+**Important caveat from the cycle:** the EVAL-026 #1349 handoff
+demonstrated a failure mode too — by the time the comment landed, the
+author's branch had been recycled for unrelated PRODUCT-063 work. The
+agent correctly recognized "stale" and closed the PR rather than
+mis-apply, but the EVAL-026 default-flip itself never landed. Filed
+**INFRA-777** to re-pick the work and **INFRA-778** to refine INFRA-771's
+re-engagement loop with branch-divergence detection.
+
+### Operational gotchas surfaced and gapped
+
+- **INFRA-779** — main repo became `(bare)` mid-session. Linked-worktree
+  scripts that call `git status` / `git commit` need explicit
+  `GIT_WORK_TREE` export now. Either intentional (CLAUDE.md update) or
+  accidental (root-cause fix). Ate ~10 min of context across two
+  recovery loops today.
+- **INFRA-780** — `~/.local/bin/chump` binary staleness. The new
+  `gap decompose` subcommand was unusable today because the installed
+  binary lagged behind merged source. Filed for an auto-nudge or
+  optional auto-rebuild gate.
+
+### Gaps queued for the next session (ordered by leverage)
+
+| ID | Pillar | Effort | Why next |
+|---|---|---|---|
+| INFRA-737 | EFFECTIVE | m | Sonnet operator-agent w/ Opus escalation. The whole afternoon I was *acting* as this — diagnosing PRs, sequencing ships, posting handoff comments. INFRA-768 is the precursor. **Single biggest leverage gap.** |
+| INFRA-771 | EFFECTIVE | m | Author-agent re-engagement loop (now refined per INFRA-778's branch-divergence finding). |
+| INFRA-772 | EFFECTIVE | m | `chump review --serve` daemon. The reviewer side of Review-as-Handoff. |
+| INFRA-766 | RESILIENT | m | State-drift detector across all "two-store" pairs (today's INFRA-760 fixed one instance; the pattern repeats). |
+| CREDIBLE-013 | CREDIBLE | m | CI failure triage layer (flake/real/known-bug classification before status posts). |
+
+### Net-net for the cycle
+
+- **10 PRs merged or auto-merge-armed** by this operator-agent today
+  (doctrine stack 4 + pipeline-fix 6 + Review-as-Handoff design 1).
+- **~15 gaps filed** with proper pillar tags, decomposition, and
+  cross-references. Including 6 sub-gaps for Review-as-Handoff and 4
+  follow-up gaps from the EOD sweep (INFRA-777/778/779/780).
+- **One real handoff failure** (#1349 EVAL-026) captured as INFRA-777
+  + INFRA-778 rather than papered over. Honest about what didn't work.
+- **The doctrine is mechanical now.** "Observability before scale" is
+  enforceable at registry, commit, push, and CI tiers. "Two stores
+  drift" is being systematically tracked (INFRA-766). "I ran scoped
+  tests" lie is dead (INFRA-761 + INFRA-767). Today's pipeline fixes
+  prevent today's failure modes from re-occurring.
+
+— Opus + Sonnet operator-agent thread, end of full cycle 2026-05-08
