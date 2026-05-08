@@ -17,6 +17,7 @@
 //! - `gh pr list --search <gap-id> --state closed` for prior PRs (best-effort,
 //!   silently skipped if `gh` is unavailable)
 
+use crate::gap_store;
 use crate::reflection::ImprovementTarget;
 use crate::reflection_db;
 use crate::repo_path;
@@ -90,6 +91,16 @@ pub struct GapBriefing {
 /// on this repo because INFRA-188 deleted it. The lessons pool
 /// (`chump_improvement_targets`) was queried only AFTER the gap parse
 /// succeeded, so the broken parse silently disabled lessons-injection too.
+///
+/// **INFRA-760 (2026-05-08):** state.db is now the primary source. The
+/// per-file YAML mirror is queried only as a fallback (e.g. pre-import
+/// branches that haven't run `chump gap reserve`). Before this change, 184
+/// of 199 open gaps had no YAML mirror because gap-reserve wrote rows to
+/// state.db but the YAML write was best-effort; agents claiming those gaps
+/// got a half-empty briefing with no title/AC/priority/effort/domain. The
+/// state.db row carries every field we need, so reading from it directly
+/// closes the briefing-degradation hole and makes the YAML mirror an
+/// optional human-readable artifact instead of load-bearing.
 pub fn build_briefing(gap_id: &str) -> GapBriefing {
     build_briefing_at(gap_id, &repo_path::repo_root())
 }
@@ -101,18 +112,22 @@ pub fn build_briefing(gap_id: &str) -> GapBriefing {
 pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     let gap_id = gap_id.trim().to_string();
 
-    // Prefer per-file (canonical post-INFRA-188).
-    let per_file_path = root.join("docs/gaps").join(format!("{gap_id}.yaml"));
-    let parsed = fs::read_to_string(&per_file_path)
-        .ok()
-        .and_then(|s| parse_gap(&s, &gap_id))
-        .or_else(|| {
-            // Fallback: legacy monolithic gaps.yaml (pre-INFRA-188 layout).
-            let gaps_path = root.join("docs/gaps.yaml");
-            fs::read_to_string(&gaps_path)
-                .ok()
-                .and_then(|s| parse_gap(&s, &gap_id))
-        });
+    // INFRA-760: try state.db first (canonical). This handles the 184-of-199
+    // open gaps that had no YAML mirror in the legacy code path.
+    let parsed = parse_gap_from_db(root, &gap_id).or_else(|| {
+        // Per-file YAML (canonical post-INFRA-188 for human readers).
+        let per_file_path = root.join("docs/gaps").join(format!("{gap_id}.yaml"));
+        fs::read_to_string(&per_file_path)
+            .ok()
+            .and_then(|s| parse_gap(&s, &gap_id))
+            .or_else(|| {
+                // Fallback: legacy monolithic gaps.yaml (pre-INFRA-188 layout).
+                let gaps_path = root.join("docs/gaps.yaml");
+                fs::read_to_string(&gaps_path)
+                    .ok()
+                    .and_then(|s| parse_gap(&s, &gap_id))
+            })
+    });
 
     let Some(parsed) = parsed else {
         return GapBriefing {
@@ -314,6 +329,55 @@ struct ParsedGap {
     effort: String,
     domain: String,
     depends_on: Vec<String>,
+}
+
+/// INFRA-760: read a gap's metadata directly from `.chump/state.db` and
+/// shape it into the [`ParsedGap`] the briefing renderer expects. Returns
+/// `None` if state.db is missing or the row isn't there — caller falls
+/// back to YAML.
+///
+/// Conversions:
+/// - `acceptance_criteria` is stored as a JSON array of strings; we join
+///   it as a bullet-list ("- a\n- b") so the rendered briefing reads the
+///   same way it does from YAML's `acceptance: >` block.
+/// - `depends_on` is stored as a JSON array; we parse it directly into
+///   `Vec<String>`. Falls back to single-element vec on parse failure
+///   so a malformed entry doesn't lose the dep entirely.
+fn parse_gap_from_db(root: &Path, gap_id: &str) -> Option<ParsedGap> {
+    let store = gap_store::GapStore::open(root).ok()?;
+    let row = store.get(gap_id).ok().flatten()?;
+
+    // Acceptance: JSON array → bullet-prefixed multi-line block.
+    let acceptance = if row.acceptance_criteria.trim().is_empty() {
+        None
+    } else if let Ok(items) = serde_json::from_str::<Vec<String>>(&row.acceptance_criteria) {
+        if items.is_empty() {
+            None
+        } else {
+            Some(
+                items
+                    .iter()
+                    .map(|s| format!("- {}", s.trim()))
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+        }
+    } else {
+        // Not a JSON array — treat the whole field as one acceptance blob.
+        Some(row.acceptance_criteria.trim().to_string())
+    };
+
+    // depends_on: JSON array of IDs → Vec<String>.
+    let depends_on: Vec<String> = serde_json::from_str(&row.depends_on).unwrap_or_default();
+
+    Some(ParsedGap {
+        title: row.title,
+        acceptance,
+        priority: row.priority,
+        effort: row.effort,
+        domain: row.domain,
+        depends_on,
+    })
 }
 
 /// Tiny line-based YAML parser tuned for `docs/gaps.yaml`'s shape. Avoids
@@ -1322,5 +1386,111 @@ gaps:
         assert!(!domain_path_hints("memory").is_empty());
         assert!(!domain_path_hints("eval").is_empty());
         assert!(domain_path_hints("totally-unknown").is_empty());
+    }
+
+    /// INFRA-760: state.db is now the primary source for gap metadata.
+    /// This test seeds ONLY the database (no YAML mirror) and asserts the
+    /// briefing renders fully populated — the architectural property that
+    /// closes the 184-of-199-open-gaps degradation hole.
+    #[test]
+    fn build_briefing_at_reads_from_state_db_when_no_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Seed state.db via GapStore::open (creates schema), then INSERT
+        // a row directly so we don't tangle with reserve() side effects.
+        let store = gap_store::GapStore::open(dir.path()).unwrap();
+        let conn = store.conn_for_test();
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, priority, effort, status,
+                               acceptance_criteria, depends_on)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                "INFRA-760-A",
+                "infra",
+                "test gap from state.db",
+                "P1",
+                "s",
+                "open",
+                r#"["AC item one","AC item two"]"#,
+                r#"["INFRA-754"]"#,
+            ],
+        )
+        .unwrap();
+        drop(store);
+
+        // No docs/gaps/<ID>.yaml exists — only state.db.
+        let b = build_briefing_at("INFRA-760-A", dir.path());
+
+        assert!(
+            !b.gap_not_found,
+            "expected state.db read to populate the briefing"
+        );
+        assert_eq!(b.gap_title, "test gap from state.db");
+        assert_eq!(b.gap_priority, "P1");
+        assert_eq!(b.gap_effort, "s");
+        assert_eq!(b.gap_domain, "infra");
+        assert_eq!(b.depends_on, vec!["INFRA-754".to_string()]);
+
+        // Acceptance is rendered as a bullet list joined from the JSON array.
+        let ac = b.gap_acceptance.expect("acceptance should be Some");
+        assert!(ac.contains("- AC item one"), "got: {ac}");
+        assert!(ac.contains("- AC item two"), "got: {ac}");
+    }
+
+    /// INFRA-760: state.db wins over YAML when both exist. This protects
+    /// against a stale YAML lying around with old data while state.db has
+    /// the real current row (e.g. after `chump gap update`).
+    #[test]
+    fn build_briefing_at_prefers_state_db_over_yaml() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Seed state.db with one title.
+        let store = gap_store::GapStore::open(dir.path()).unwrap();
+        let conn = store.conn_for_test();
+        conn.execute(
+            "INSERT INTO gaps (id, domain, title, priority, effort, status)
+             VALUES ('CLASH-1', 'infra', 'db is canonical', 'P1', 's', 'open')",
+            [],
+        )
+        .unwrap();
+        drop(store);
+
+        // Seed a YAML mirror with a DIFFERENT (stale) title.
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        fs::create_dir_all(&gaps_dir).unwrap();
+        fs::write(
+            gaps_dir.join("CLASH-1.yaml"),
+            "- id: CLASH-1\n  domain: infra\n  title: stale yaml\n  status: open\n  priority: P3\n  effort: l\n",
+        )
+        .unwrap();
+
+        let b = build_briefing_at("CLASH-1", dir.path());
+        assert_eq!(b.gap_title, "db is canonical");
+        assert_eq!(b.gap_priority, "P1");
+        assert_eq!(b.gap_effort, "s");
+    }
+
+    /// INFRA-760: when state.db lacks a row but YAML has it, fall back to
+    /// YAML (preserves existing INFRA-331 behavior for any edge case).
+    #[test]
+    fn build_briefing_at_falls_back_to_yaml_when_db_lacks_row() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // Initialise state.db schema but DON'T seed the gap.
+        let store = gap_store::GapStore::open(dir.path()).unwrap();
+        drop(store);
+
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        fs::create_dir_all(&gaps_dir).unwrap();
+        fs::write(
+            gaps_dir.join("YAML-ONLY.yaml"),
+            "- id: YAML-ONLY\n  domain: infra\n  title: yaml-only fallback\n  status: open\n  priority: P2\n  effort: xs\n",
+        )
+        .unwrap();
+
+        let b = build_briefing_at("YAML-ONLY", dir.path());
+        assert!(!b.gap_not_found);
+        assert_eq!(b.gap_title, "yaml-only fallback");
+        assert_eq!(b.gap_priority, "P2");
     }
 }
