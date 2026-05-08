@@ -229,7 +229,74 @@ if tmux has-session -t "$FLEET_SESSION" 2>/dev/null; then
     exit 2
 fi
 
+# INFRA-621: launch-time auth verification. Probe the detected auth path with
+# a minimal claude call to ensure credentials are valid before spawning workers.
+# This catches misconfigurations early (e.g., expired OAUTH token, invalid API key)
+# and emits a clear diagnostic to ambient.jsonl.
 mkdir -p "$FLEET_LOG_DIR"
+_amb_log="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+mkdir -p "$(dirname "$_amb_log")" 2>/dev/null || true
+
+_auth_probe_failed=0
+_auth_probe_error=""
+
+if [[ "$FLEET_BACKEND" == "claude" ]]; then
+    echo "[run-fleet] INFRA-621: probing auth path ($_fleet_auth_path)..."
+    _probe_out=$(timeout 30 claude --once "ok" 2>&1) && _probe_rc=0 || _probe_rc=$?
+
+    if [[ $_probe_rc -eq 0 ]]; then
+        echo "[run-fleet] INFRA-621: auth probe succeeded"
+        printf '{"ts":"%s","kind":"fleet_auth_verified","auth_mode":"%s","auth_path":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "$_fleet_auth_mode" "$_fleet_auth_path" \
+            >> "$_amb_log" 2>/dev/null || true
+    else
+        _auth_probe_failed=1
+
+        # Generate operator-friendly error hints based on auth mode.
+        if [[ "$_fleet_auth_mode" == "subscription" ]]; then
+            if grep -q "401\|Unauthorized\|invalid.*token" <<<"$_probe_out" 2>/dev/null; then
+                _auth_probe_error="CLAUDE_CODE_OAUTH_TOKEN is expired or invalid. Refresh your subscription credentials."
+            else
+                _auth_probe_error="CLAUDE_CODE_OAUTH_TOKEN authentication failed."
+            fi
+        elif [[ "$_fleet_auth_mode" == "api_key" ]]; then
+            if grep -q "401\|Unauthorized\|invalid.*key" <<<"$_probe_out" 2>/dev/null; then
+                _auth_probe_error="ANTHROPIC_API_KEY is invalid or has insufficient permissions."
+            else
+                _auth_probe_error="ANTHROPIC_API_KEY authentication failed."
+            fi
+        elif [[ "$_fleet_auth_mode" == "unknown" ]]; then
+            _auth_probe_error="No auth credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN."
+        else
+            _auth_probe_error="Auth probe failed: $_probe_out"
+        fi
+
+        # Check for conflicting auth setup (both set but one is empty).
+        if [[ -n "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
+            && [[ "$_fleet_auth_mode" != "api_key" ]]; then
+            _auth_probe_error="$_auth_probe_error (hint: ANTHROPIC_API_KEY is set but appears invalid; unset it if you want to use OAUTH token instead)"
+        fi
+        if [[ -z "${ANTHROPIC_API_KEY:-}" && -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
+            && [[ "$_fleet_auth_mode" != "subscription" ]]; then
+            _auth_probe_error="$_auth_probe_error (hint: CLAUDE_CODE_OAUTH_TOKEN is set but appears invalid; unset it if you want to use API key instead)"
+        fi
+
+        echo "[run-fleet] ERROR: INFRA-621: auth probe failed" >&2
+        echo "[run-fleet]   $_auth_probe_error" >&2
+        printf '{"ts":"%s","kind":"fleet_auth_misconfigured","auth_mode":"%s","auth_path":"%s","error":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            "$_fleet_auth_mode" "$_fleet_auth_path" \
+            "$(echo "$_auth_probe_error" | sed 's/"/""/g')" \
+            >> "$_amb_log" 2>/dev/null || true
+
+        if [[ "${CHUMP_FLEET_FORCE_LAUNCH:-0}" != "1" ]]; then
+            exit 3
+        else
+            echo "[run-fleet] WARNING: CHUMP_FLEET_FORCE_LAUNCH=1 — proceeding despite auth probe failure"
+        fi
+    fi
+fi
 
 # INFRA-519: reap stale fleet-* leases before spawning new panes.
 # tmux-kill bypasses worker.sh exit-cleanup, leaving orphaned lease files whose
