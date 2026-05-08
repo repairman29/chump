@@ -2680,6 +2680,308 @@ async fn main() -> Result<()> {
                 }
                 std::process::exit(1);
             }
+            "decompose" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap decompose <GAP-ID> [--apply] [--json]");
+                    eprintln!();
+                    eprintln!(
+                        "Suggests xs/s slices for a large (m/l) gap using the provider cascade."
+                    );
+                    eprintln!("  --apply   File the suggested slices and demote the parent");
+                    eprintln!("  --json    Output suggestions as JSON");
+                    std::process::exit(2);
+                });
+                let apply = args.iter().any(|a| a == "--apply");
+                let parent = match store.get(&gap_id) {
+                    Ok(Some(g)) => g,
+                    Ok(None) => {
+                        eprintln!("chump gap decompose: gap {gap_id} not found");
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap decompose: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+                if parent.status != "open" {
+                    eprintln!(
+                        "chump gap decompose: {gap_id} is not open (status={})",
+                        parent.status
+                    );
+                    std::process::exit(1);
+                }
+                let effort_lc = parent.effort.to_lowercase();
+                if effort_lc == "xs" || effort_lc == "s" {
+                    eprintln!(
+                        "chump gap decompose: {gap_id} is already effort={} — nothing to decompose",
+                        parent.effort
+                    );
+                    std::process::exit(0);
+                }
+
+                eprintln!("decomposing {gap_id} ({}) via LLM...", parent.title);
+                let provider = crate::provider_cascade::build_provider();
+                let ac_display = if parent.acceptance_criteria.trim().is_empty()
+                    || parent.acceptance_criteria.trim() == "[]"
+                {
+                    "(none)".to_string()
+                } else {
+                    parent.acceptance_criteria.clone()
+                };
+
+                let system_prompt = "You are a project management assistant for a software project. \
+                    Your job is to decompose large gaps (tasks) into smaller, independently shippable slices. \
+                    Each slice must be xs (< 1 hour) or s (1-4 hours) effort. \
+                    Each slice needs crisp, testable acceptance criteria. \
+                    Output ONLY a JSON array of objects with these fields: \
+                    {\"title\": \"...\", \"effort\": \"xs|s\", \"priority\": \"P1|P2\", \"acceptance_criteria\": [\"...\", \"...\"], \"depends_on\": []}. \
+                    The depends_on field should reference other slices by their 0-based index in the array (e.g. [0] means depends on the first slice). \
+                    Do not include any text outside the JSON array.".to_string();
+
+                let user_msg = format!(
+                    "Decompose this gap into xs/s slices:\n\n\
+                     ID: {}\n\
+                     Domain: {}\n\
+                     Title: {}\n\
+                     Priority: {}\n\
+                     Effort: {}\n\
+                     Description: {}\n\
+                     Acceptance Criteria: {}\n\
+                     Notes: {}",
+                    parent.id,
+                    parent.domain,
+                    parent.title,
+                    parent.priority,
+                    parent.effort,
+                    if parent.description.is_empty() {
+                        "(none)"
+                    } else {
+                        &parent.description
+                    },
+                    ac_display,
+                    if parent.notes.is_empty() {
+                        "(none)"
+                    } else {
+                        &parent.notes
+                    },
+                );
+
+                let messages = vec![axonerai::provider::Message {
+                    role: "user".into(),
+                    content: user_msg,
+                }];
+
+                let resp = match tokio::runtime::Handle::current().block_on(provider.complete(
+                    messages,
+                    None,
+                    Some(4096),
+                    Some(system_prompt),
+                )) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("chump gap decompose: LLM call failed: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let raw_text = resp.text.unwrap_or_default();
+                let json_start = raw_text.find('[').unwrap_or(0);
+                let json_end = raw_text.rfind(']').map(|i| i + 1).unwrap_or(raw_text.len());
+                let json_slice = &raw_text[json_start..json_end];
+
+                #[derive(Debug, serde::Deserialize)]
+                struct SliceSuggestion {
+                    title: String,
+                    effort: String,
+                    priority: String,
+                    acceptance_criteria: Vec<String>,
+                    #[serde(default)]
+                    depends_on: Vec<usize>,
+                }
+
+                let suggestions: Vec<SliceSuggestion> = match serde_json::from_str(json_slice) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("chump gap decompose: failed to parse LLM response as JSON: {e}");
+                        eprintln!(
+                            "Raw response (first 500 chars): {}",
+                            &raw_text[..raw_text.len().min(500)]
+                        );
+                        std::process::exit(1);
+                    }
+                };
+
+                if suggestions.is_empty() {
+                    eprintln!("chump gap decompose: LLM returned no slices");
+                    std::process::exit(1);
+                }
+
+                if json_out {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!(suggestions
+                            .iter()
+                            .enumerate()
+                            .map(|(i, s)| {
+                                serde_json::json!({
+                                    "index": i,
+                                    "title": s.title,
+                                    "effort": s.effort,
+                                    "priority": s.priority,
+                                    "acceptance_criteria": s.acceptance_criteria,
+                                    "depends_on": s.depends_on,
+                                })
+                            })
+                            .collect::<Vec<_>>()))
+                        .unwrap_or_default()
+                    );
+                } else if !apply {
+                    eprintln!();
+                    eprintln!("Suggested slices for {} ({}):", parent.id, parent.title);
+                    eprintln!();
+                    for (i, s) in suggestions.iter().enumerate() {
+                        let deps_str = if s.depends_on.is_empty() {
+                            String::new()
+                        } else {
+                            format!(
+                                " (depends on: {})",
+                                s.depends_on
+                                    .iter()
+                                    .map(|d| format!("slice {d}"))
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            )
+                        };
+                        eprintln!(
+                            "  [{i}] {} ({}/{}){}",
+                            s.title, s.priority, s.effort, deps_str
+                        );
+                        for ac in &s.acceptance_criteria {
+                            eprintln!("      - {ac}");
+                        }
+                        eprintln!();
+                    }
+                    eprintln!("Run with --apply to file these slices and demote the parent to P2.");
+                }
+
+                if apply {
+                    let session_id = std::env::var("CHUMP_SESSION_ID")
+                        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+                        .unwrap_or_else(|_| format!("chump-anon-{}", unix_ts()));
+                    let mut filed_ids: Vec<String> = Vec::new();
+
+                    for s in &suggestions {
+                        let slice_title = format!(
+                            "{}: {} ({} slice)",
+                            parent.domain.to_uppercase(),
+                            s.title,
+                            parent.id
+                        );
+                        let effort = if s.effort == "xs" || s.effort == "s" {
+                            s.effort.clone()
+                        } else {
+                            "s".to_string()
+                        };
+                        let priority = if s.priority == "P1" || s.priority == "P2" {
+                            s.priority.clone()
+                        } else {
+                            "P1".to_string()
+                        };
+
+                        match store.reserve_verified(
+                            &parent.domain,
+                            &slice_title,
+                            &priority,
+                            &effort,
+                            &session_id,
+                        ) {
+                            Ok(new_id) => {
+                                let ac_json = serde_json::to_string(&s.acceptance_criteria)
+                                    .unwrap_or_else(|_| "[]".into());
+                                let _ = store.set_fields(
+                                    &new_id,
+                                    gap_store::GapFieldUpdate {
+                                        acceptance_criteria: Some(ac_json),
+                                        ..Default::default()
+                                    },
+                                );
+
+                                let gaps_dir = worktree_root.join("docs/gaps");
+                                if gaps_dir.is_dir() {
+                                    let yaml_path = gaps_dir.join(format!("{}.yaml", new_id));
+                                    let _ = store.dump_per_file_single(&new_id, &gaps_dir);
+                                    let _ = std::process::Command::new("git")
+                                        .args(["add", &yaml_path.to_string_lossy()])
+                                        .current_dir(&worktree_root)
+                                        .status();
+                                }
+
+                                eprintln!("  filed {new_id}: {slice_title}");
+                                filed_ids.push(new_id);
+                            }
+                            Err(e) => {
+                                eprintln!("  ERROR filing slice '{}': {e:#}", s.title);
+                            }
+                        }
+                    }
+
+                    // Resolve inter-slice depends_on using filed IDs
+                    for (i, s) in suggestions.iter().enumerate() {
+                        if !s.depends_on.is_empty() && i < filed_ids.len() {
+                            let dep_ids: Vec<String> = s
+                                .depends_on
+                                .iter()
+                                .filter_map(|&idx| filed_ids.get(idx).cloned())
+                                .collect();
+                            if !dep_ids.is_empty() {
+                                let deps_json =
+                                    serde_json::to_string(&dep_ids).unwrap_or_else(|_| "[]".into());
+                                let _ = store.set_fields(
+                                    &filed_ids[i],
+                                    gap_store::GapFieldUpdate {
+                                        depends_on: Some(deps_json),
+                                        ..Default::default()
+                                    },
+                                );
+                            }
+                        }
+                    }
+
+                    // Demote parent to P2
+                    let _ = store.set_fields(
+                        &gap_id,
+                        gap_store::GapFieldUpdate {
+                            priority: Some("P2".into()),
+                            notes: Some(format!(
+                                "Decomposed into {} slices: {}",
+                                filed_ids.len(),
+                                filed_ids.join(", ")
+                            )),
+                            ..Default::default()
+                        },
+                    );
+                    eprintln!();
+                    eprintln!(
+                        "Decomposed {gap_id} into {} slices. Parent demoted to P2.",
+                        filed_ids.len()
+                    );
+
+                    if json_out {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "slices": filed_ids,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    } else {
+                        println!("{}", filed_ids.join("\n"));
+                    }
+                }
+
+                return Ok(());
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
@@ -2702,6 +3004,7 @@ async fn main() -> Result<()> {
                     "                             [--source-doc S] [--opened-date D] [--closed-date D] [--closed-pr N]"
                 );
                 eprintln!("                             [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
+                eprintln!("  decompose        <GAP-ID> [--apply] [--json]  # LLM-assisted slicing");
                 eprintln!("  dump             [--out PATH] [--per-file [--out-dir docs/gaps/]]");
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
                 eprintln!("  audit-priorities [--json]   # PM health check (META-046)");
