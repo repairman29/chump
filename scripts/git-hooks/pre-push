@@ -40,6 +40,30 @@ set -euo pipefail
 REMOTE="$1"
 # $2 is the remote URL; unused here.
 
+# -----------------------------------------------------------------------
+# Guard 0: cargo fmt --check (INFRA-749)
+#
+# Fleet workers can bypass the pre-commit hook (--no-verify) or skip
+# bot-merge.sh entirely, pushing unformatted code that blocks CI. This
+# guard catches the gap: it runs at push time, is independent of how
+# commits were created, and is fast (~1-2s on cached builds).
+# Bypass: CHUMP_FMT_CHECK=0 git push
+# -----------------------------------------------------------------------
+if [[ "${CHUMP_FMT_CHECK:-1}" != "0" ]] && command -v cargo &>/dev/null; then
+    if ls src/**/*.rs &>/dev/null 2>&1; then
+        if ! cargo fmt --all -- --check >/dev/null 2>&1; then
+            echo "" >&2
+            echo "[pre-push] BLOCKED: cargo fmt --check failed (INFRA-749)." >&2
+            echo "[pre-push] Unformatted Rust code cannot be pushed — CI will reject it." >&2
+            echo "" >&2
+            echo "[pre-push] Fix: cargo fmt --all && git add -u && git commit --amend --no-edit" >&2
+            echo "[pre-push] Bypass: CHUMP_FMT_CHECK=0 git push" >&2
+            echo "" >&2
+            exit 1
+        fi
+    fi
+fi
+
 # INFRA-368: detect a legitimate rebase force-push so Guards 1+2 silently
 # auto-skip (Guard 3 still runs — race protection applies regardless).
 #
