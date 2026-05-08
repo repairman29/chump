@@ -1722,4 +1722,21 @@ if [ -x "$GAP_DIVERGE_HOOK" ]; then
     fi
 fi
 
+# 14. Git-identity sanity guard (INFRA-787, 2026-05-08)
+# ------------------------------------------------------------------
+# Refuses commits where the effective git author identity is a
+# test-fixture sentinel (t@t / t@t.t / empty / "t" / "test"). Catches
+# the failure mode demonstrated today where a CI fixture leaked
+# user.email=t@t.t into main repo's .git/config; GitHub mapped that
+# email to a random 2011 account and attributed every fleet commit to
+# the wrong user.
+# Bypass: CHUMP_GIT_IDENTITY_CHECK=0 (with `Git-Identity-Bypass:` trailer).
+
+GIT_IDENTITY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-git-identity.sh"
+if [ -x "$GIT_IDENTITY_HOOK" ]; then
+    if ! "$GIT_IDENTITY_HOOK"; then
+        exit 1
+    fi
+fi
+
 exit 0
