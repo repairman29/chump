@@ -265,8 +265,56 @@ jobs:
           elif [ "$CLASS" = "flake" ] || [ "$CLASS" = "infra-broken" ]; then
             echo "::notice::Skipping gap-file for $CLASS job '$NAME' (catalog: $CATALOG_ID); action=$ACTION"
             echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "should_rerun=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auto-rerun flake/infra-broken failures (INFRA-669)
+        id: rerun
+        if: >-
+          steps.skip_check.outputs.should_rerun == 'true' &&
+          github.event.check_run.pull_requests[0] != null
+        env:
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+          CHECK_NAME: ${{ github.event.check_run.name }}
+          CLASS: ${{ steps.skip_check.outputs.class }}
+        run: |
+          set -euo pipefail
+
+          # Get the PR branch to find the associated workflow run.
+          BRANCH=$(gh pr view "$PR_NUMBER" --json headRefName --jq .headRefName 2>/dev/null || echo "")
+          if [ -z "$BRANCH" ]; then
+            echo "::notice::Could not resolve PR #$PR_NUMBER branch — skip rerun"
+            echo "rerun_attempted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Query the most recent workflow run for this branch.
+          RUN=$(gh api "/repos/${{ github.repository }}/actions/runs" \
+            --jq ".runs[] | select(.head_branch == \"$BRANCH\" and .name == \"CI\") | {id, run_attempt}" \
+            --slurp --jq '.[0]' 2>/dev/null || echo "{}")
+
+          RUN_ID=$(echo "$RUN" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id', ''))" 2>/dev/null || echo "")
+          RUN_ATTEMPT=$(echo "$RUN" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('run_attempt', 1))" 2>/dev/null || echo "1")
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::notice::Could not find workflow run for branch '$BRANCH' — skip rerun"
+            echo "rerun_attempted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "::notice::Found workflow run $RUN_ID (attempt $RUN_ATTEMPT) for $CLASS failure in check '$CHECK_NAME'"
+
+          # Cap reruns at 3 attempts.
+          if [ "$RUN_ATTEMPT" -lt 3 ]; then
+            echo "::notice::Rerunning failed jobs in run $RUN_ID (attempt $RUN_ATTEMPT / 3)"
+            gh run rerun "$RUN_ID" --failed 2>&1 | head -5 || true
+            echo "rerun_attempted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Reached rerun limit (attempt $RUN_ATTEMPT >= 3) — mark for investigation"
+            echo "rerun_attempted=false" >> "$GITHUB_OUTPUT"
+            echo "needs_investigation=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: File P0 fix gap
@@ -296,7 +344,7 @@ jobs:
             --acceptance-criteria "CI check '${CHECK_NAME}' passes on PR #${PR_NUMBER} or the root cause is fixed in a follow-up PR"
           echo "GAP_ID=${GAP_ID}" >> "$GITHUB_OUTPUT"
 
-      - name: Comment on PR + label
+      - name: Comment on PR + label (real failures)
         if: steps.skip_check.outputs.skip == 'false'
         env:
           PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
@@ -314,6 +362,33 @@ jobs:
 
           *Bot is INFRA-624.*" || true
           gh pr edit "$PR_NUMBER" --add-label needs-fleet-pickup || true
+
+      - name: Comment on PR (flake/infra rerun or investigation needed)
+        if: steps.skip_check.outputs.should_rerun == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+          CHECK_NAME: ${{ github.event.check_run.name }}
+          CLASS: ${{ steps.skip_check.outputs.class }}
+          RERUN_ATTEMPTED: ${{ steps.rerun.outputs.rerun_attempted }}
+          NEEDS_INVESTIGATION: ${{ steps.rerun.outputs.needs_investigation }}
+        run: |
+          set -euo pipefail
+          if [ "$RERUN_ATTEMPTED" = "true" ]; then
+            BODY="🤖 **pr-triage-bot** detected a \`${CLASS}\` failure in \`${CHECK_NAME}\` and triggered an automatic rerun of failed jobs.
+
+          No author action required — re-check CI status in a moment.
+
+          *Bot is INFRA-669.*"
+          elif [ "$NEEDS_INVESTIGATION" = "true" ]; then
+            BODY="🤖 **pr-triage-bot** detected a \`${CLASS}\` failure in \`${CHECK_NAME}\` that has been rerun 3 times already.
+
+          **Investigation needed** — please review the logs and determine root cause.
+
+          *Bot is INFRA-669.*"
+          else
+            exit 0
+          fi
+          gh pr comment "$PR_NUMBER" --body "$BODY" || true
 
       - name: Commit updated gap registry
         if: steps.skip_check.outputs.skip == 'false'
