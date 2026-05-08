@@ -24,6 +24,7 @@
 //! | `edit_burst`            | coord          | rapid mutations, rebase risk    |
 //! | `session_abandoned`     | INFRA-477/492  | session ended without shipping  |
 //! | `session_starved`       | INFRA-477/492  | session timed out (rc=124)      |
+//! | `session_shipped_not_valuable` | FLEET-050 | session shipped code with no user value |
 //!
 //! ## Output
 //!
@@ -99,9 +100,10 @@ pub const WASTE_KINDS: &[&str] = &[
     "edit_burst",
     "session_abandoned", // INFRA-493 synthetic — from session_end outcome=abandoned
     "session_starved",   // INFRA-493 synthetic — from session_end outcome=starved
-    "worker_exit_timeout", // INFRA-572 synthetic — from worker_exit exit_class=TIMEOUT
-    "worker_exit_oom",   // INFRA-572 synthetic — from worker_exit exit_class=OOM_KILL
-    "session_token_orphan", // INFRA-639 synthetic — token_usage_partial with no session_end
+    "session_shipped_not_valuable", // FLEET-050 synthetic — from session_end outcome=shipped-not-valuable
+    "worker_exit_timeout",          // INFRA-572 synthetic — from worker_exit exit_class=TIMEOUT
+    "worker_exit_oom",              // INFRA-572 synthetic — from worker_exit exit_class=OOM_KILL
+    "session_token_orphan",         // INFRA-639 synthetic — token_usage_partial with no session_end
 ];
 
 /// Domain-level aggregate for `--by-domain` output (INFRA-574).
@@ -165,6 +167,7 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
             match extract_field(line, "outcome").as_deref() {
                 Some("abandoned") => "session_abandoned".to_string(),
                 Some("starved") => "session_starved".to_string(),
+                Some("shipped-not-valuable") => "session_shipped_not_valuable".to_string(),
                 _ => continue,
             }
         } else if is_worker_exit_event {
@@ -226,9 +229,11 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
             "worker_exit_timeout" | "worker_exit_oom" => extract_field(line, "gap_id")
                 .or_else(|| extract_field(line, "agent_id"))
                 .or_else(|| extract_field(line, "agent")),
-            "session_abandoned" | "session_starved" => extract_field(line, "session_id")
-                .or_else(|| extract_field(line, "session"))
-                .or_else(|| extract_field(line, "gap_id")),
+            "session_abandoned" | "session_starved" | "session_shipped_not_valuable" => {
+                extract_field(line, "session_id")
+                    .or_else(|| extract_field(line, "session"))
+                    .or_else(|| extract_field(line, "gap_id"))
+            }
             _ => extract_field(line, "session")
                 .or_else(|| extract_field(line, "reaper"))
                 .or_else(|| extract_int_field(line, "pr").map(|n| n.to_string()))
@@ -373,6 +378,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         // INFRA-493: classify session_end by outcome before the WASTE_KINDS
         // filter. session_end events themselves are not waste — only the
         // ones with outcome=abandoned|starved are.
+        // FLEET-050: also classify outcome=shipped-not-valuable as waste.
         // INFRA-572: classify worker_exit by exit_class — TIMEOUT and
         // OOM_KILL are waste; CLEAN and INTERRUPT are not.
         let raw_kind = extract_field(line, "kind").unwrap_or_default();
@@ -382,6 +388,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
             match extract_field(line, "outcome").as_deref() {
                 Some("abandoned") => "session_abandoned".to_string(),
                 Some("starved") => "session_starved".to_string(),
+                Some("shipped-not-valuable") => "session_shipped_not_valuable".to_string(),
                 _ => continue, // outcome=shipped is not waste; skip.
             }
         } else if is_worker_exit_event {
@@ -458,9 +465,12 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
                 .or_else(|| extract_field(line, "agent_id"))
                 .or_else(|| extract_field(line, "agent")),
             // INFRA-493: synthetic kinds — session_id is the entity.
-            "session_abandoned" | "session_starved" => extract_field(line, "session_id")
-                .or_else(|| extract_field(line, "session"))
-                .or_else(|| extract_field(line, "gap_id")),
+            // FLEET-050: include shipped_not_valuable outcome.
+            "session_abandoned" | "session_starved" | "session_shipped_not_valuable" => {
+                extract_field(line, "session_id")
+                    .or_else(|| extract_field(line, "session"))
+                    .or_else(|| extract_field(line, "gap_id"))
+            }
             // queue_stuck, ambient_oversize, silent_agent's siblings:
             // fall through to the generic search.
             _ => extract_field(line, "session")
@@ -1060,7 +1070,8 @@ mod tests {
         // INFRA-493: 10 original + 2 session-end synthetic = 12.
         // INFRA-572: +2 worker_exit synthetic (timeout + oom) = 14.
         // INFRA-639: +1 session_token_orphan (partial tokens, no session_end) = 15.
-        assert_eq!(WASTE_KINDS.len(), 15);
+        // FLEET-050: +1 session_shipped_not_valuable (shipped but no user value) = 16.
+        assert_eq!(WASTE_KINDS.len(), 16);
     }
 
     #[test]
@@ -1124,6 +1135,39 @@ mod tests {
             abandoned.incidents, 1,
             "same session_id collapses to 1 incident"
         );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn fleet050_session_end_shipped_not_valuable_classified_as_waste() {
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        let lines = [
+            // shipped session with value — should NOT count as waste
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"sess-A","gap_id":"INFRA-1","outcome":"shipped","elapsed_seconds":600}}"#,
+                now_iso
+            ),
+            // shipped but not valuable — counts as waste
+            format!(
+                r#"{{"event":"session_end","kind":"session_end","ts":"{}","session_id":"sess-B","gap_id":"INFRA-2","outcome":"shipped-not-valuable","elapsed_seconds":300}}"#,
+                now_iso
+            ),
+        ];
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+        let report = build_report(&tmp, 86400);
+        // Only 1 waste event (shipped-not-valuable); shipped excluded.
+        assert_eq!(report.total_events, 1);
+        let kinds: Vec<&str> = report.entries.iter().map(|e| e.kind.as_str()).collect();
+        assert!(kinds.contains(&"session_shipped_not_valuable"));
+        assert!(!kinds.contains(&"session_abandoned"));
+        // Cost summed from elapsed_seconds.
+        let not_valuable = report
+            .entries
+            .iter()
+            .find(|e| e.kind == "session_shipped_not_valuable")
+            .unwrap();
+        assert_eq!(not_valuable.estimated_cost_secs, 300);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
