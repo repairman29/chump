@@ -1,9 +1,37 @@
 # Subagent dispatch — shipping epilogue + briefing protocol
 
 > **Filed in:** [META-025](../gaps/META-025.yaml) — measured 25-33% subagent
-> self-ship rate this session against ~80% work-quality. Ship-stage hand-off
-> is the bottleneck, not cognition. **The fix is operational, not cognitive:
-> every subagent prompt must include the standard shipping epilogue below.**
+> self-ship rate this session against ~80% work-quality. Two bottlenecks:
+> (1) ship-stage hand-off (fixed by the shipping epilogue below), and
+> (2) clarifying-question hesitation (fixed by the no-clarifying-questions
+> directive below). **Every subagent prompt must include both.**
+
+## The no-clarifying-questions directive (paste into every subagent prompt)
+
+Add this as the **first section** of every subagent prompt, before the task
+description:
+
+```
+## Execution contract (read before anything else)
+
+- **No clarifying questions.** You have everything you need. If something is
+  ambiguous, make the most reasonable call, note it in your final report, and
+  keep moving. Do not stop to ask.
+- **Auto-decide on ambiguous AC.** If an acceptance criterion is vague, apply
+  the most conservative interpretation that still satisfies the letter of the
+  criterion. Document your interpretation in one line; do not pause.
+- **Scope is fixed.** Do not expand beyond the deliverables listed. Do not
+  do adjacent cleanup, refactors, or "while I'm here" changes.
+- **Ship or report BLOCKED.** Every session ends with either a PR number or
+  a one-line BLOCKED reason. "I wasn't sure" is not a valid BLOCKED reason —
+  make the call and ship.
+```
+
+This single addition is responsible for the majority of the expected ship-rate
+improvement. The hesitation / clarifying-question mode is the most common
+subagent failure pattern after ship-stage wedges.
+
+---
 
 ## The 25%→80% problem
 
@@ -80,22 +108,32 @@ Notes: <2-3 sentences on tricky calls or recovery paths used>
 
 ## What goes in the briefing BEFORE the epilogue
 
-The shipping epilogue is the LAST section of the prompt. Above it, the
-briefing should include (in order):
+The shipping epilogue is the LAST section of the prompt. Structure in order:
 
-1. **What you're building** — one paragraph, the deliverable named.
-2. **Read first (in order)** — explicit file paths the agent should load
+1. **No-clarifying-questions directive** (above) — verbatim, first thing.
+2. **What you're building** — one paragraph, the deliverable named.
+3. **Read first (in order)** — explicit file paths the agent should load
    before writing. Don't paste content; tell them what to read.
-3. **The contract** — what the deliverable MUST contain (acceptance
+4. **The contract** — what the deliverable MUST contain (acceptance
    criteria from the gap, schema fields, success criteria).
-4. **What you must NOT do** — concrete forbiddances (don't expand scope,
+5. **What you must NOT do** — concrete forbiddances (don't expand scope,
    don't bypass guards, don't hand-edit per-file YAMLs).
-5. **The shipping epilogue** (above) — verbatim, no edits.
+6. **The shipping epilogue** (above) — verbatim, no edits.
 
 ## Anti-patterns observed
 
 These are real failure modes from this session, not theoretical:
 
+- **Subagent asks clarifying questions instead of shipping.** The prompt
+  ends there — the operator never sees the work. Fixed by the
+  no-clarifying-questions directive at the top of every prompt. Root cause:
+  default model behavior optimizes for safety-via-confirmation; fleet
+  subagents must be pre-authorized to make judgment calls.
+- **Subagent pauses on ambiguous AC instead of making a call.** Often
+  accompanied by "I need more context" or "could you clarify". The
+  auto-decide rule (most conservative interpretation + document it) closes
+  this. If the call turns out wrong, the gap is re-opened — cheaper than
+  a stalled agent.
 - **Subagent writes prereg, commits locally, never pushes.** Fixed by the
   epilogue's manual-recovery section.
 - **Operator uses `Agent` tool to "check status" of an existing subagent
@@ -113,8 +151,11 @@ These are real failure modes from this session, not theoretical:
 
 [META-025](../gaps/META-025.yaml) commits to remeasuring after this
 template lands: N=5 fresh subagent dispatches, self-ship rate target
-≥ 70% (vs 25% baseline). If the rate doesn't improve materially, the
-problem isn't the epilogue and the meta-finding needs revision.
+≥ 70% (vs 25% baseline). Two changes are being tracked together:
+(1) shipping epilogue (already in use since META-025), and
+(2) no-clarifying-questions directive (added in COG-053).
+If the rate still doesn't improve, the bottleneck has shifted — file a new
+gap with the observed failure taxonomy rather than patching this doc further.
 
 ## See also
 
@@ -125,5 +166,7 @@ problem isn't the epilogue and the meta-finding needs revision.
 - [DOC-015](../gaps/DOC-015.yaml) — Agent vs SendMessage discipline
 - [INFRA-333..337](../gaps/) — sibling improvements (pre-flight,
   heartbeat, telemetry report, stall taxonomy, scope enforcement)
+- [COG-053](../gaps/COG-053.yaml) — no-clarifying-questions directive +
+  auto-decide rule (the parallel fix to INFRA-515's sonnet default)
 - [CLAUDE.md](../../CLAUDE.md) "Spawning subagents" subsection (added
   with this PR)
