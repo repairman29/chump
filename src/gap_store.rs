@@ -90,6 +90,15 @@ impl GapStore {
         repo_root.join(".chump").join("state.db")
     }
 
+    /// Test-only accessor for the underlying connection. Production callers
+    /// must use the typed methods (`get`, `reserve`, etc.). This exists so
+    /// briefing-module tests (INFRA-760) can seed synthetic gaps directly
+    /// without re-implementing the reserve() flow.
+    #[cfg(test)]
+    pub fn conn_for_test(&self) -> &Connection {
+        &self.conn
+    }
+
     pub fn open(repo_root: &Path) -> Result<Self> {
         let path = Self::db_path(repo_root);
         if let Some(parent) = path.parent() {
