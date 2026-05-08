@@ -66,6 +66,15 @@ LAST_STATE=""
 
 say() { printf '\033[1;36m[pr-watch]\033[0m PR #%s: %s\n' "$PR" "$*"; }
 
+write_heartbeat() {
+    local hb="/tmp/chump-pr-watch.heartbeat"
+    {
+        echo "ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        echo "status=running"
+        echo "pr=$PR"
+    } > "$hb" 2>/dev/null || true
+}
+
 # INFRA-387: attempt to auto-resolve a rebase conflict using the recipe
 # proven during the 2026-05-03 batch-unstick (7/8 PRs auto-recovered):
 #   .chump/state.sql        — regenerate via `chump gap dump --out`
@@ -170,6 +179,7 @@ attempt_recovery() {
 
 while (( $(date +%s) < DEADLINE )); do
     state=$(gh pr view "$PR" --json state,mergeStateStatus -q '"\(.state) \(.mergeStateStatus)"' 2>/dev/null || echo "UNKNOWN UNKNOWN")
+    write_heartbeat
 
     if [[ "$state" != "$LAST_STATE" ]]; then
         say "$state"

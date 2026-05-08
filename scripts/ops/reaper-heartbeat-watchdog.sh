@@ -50,7 +50,8 @@ done
 # stamps a fresh one at exit, so the read reflects the *previous* run —
 # which is exactly the gap we want to detect (the canary died with the
 # canaries it was supposed to grade).
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked)
+# INFRA-683: added pr-watch and distill as non-reaper heartbeat targets.
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked distill)
 
 # Per-reaper alert thresholds (seconds since last heartbeat).
 threshold_secs() {
@@ -59,10 +60,11 @@ threshold_secs() {
         worktree)    echo $((4 * 3600)) ;;   # 4h (cadence 1h × 4x)
         branch)      echo $((48 * 3600)) ;;  # 48h (cadence 24h × 2x)
         stuck-pr)    echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-307)
-        pr-watch)    echo $((1 * 3600)) ;;   # 1h (cadence 10min × 6x — INFRA-354)
+        pr-watch)    echo $((5 * 60)) ;;     # 5m (INFRA-683: async process, not a reaper)
         watchdog)    echo $((90 * 60)) ;;    # 90min (cadence 30min × 3x — INFRA-452)
         ci-flake)    echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-375)
         pr-blocked)  echo $((2 * 3600)) ;;   # 2h (cadence 1h × 2x — INFRA-550)
+        distill)     echo $((1 * 3600)) ;;   # 1h (INFRA-683: async process, not a reaper)
         *)           echo $((4 * 3600)) ;;
     esac
 }
@@ -75,16 +77,28 @@ OK=0
 NOW=$(date +%s)
 
 for name in "${TARGETS[@]}"; do
-    hb="/tmp/chump-reaper-${name}.heartbeat"
+    # INFRA-683: pr-watch and distill are non-reaper processes that write heartbeats
+    is_daemon=0
+    case "$name" in
+        pr-watch) hb="/tmp/chump-pr-watch.heartbeat"; is_daemon=1 ;;
+        distill)  hb="/tmp/chump-distill.heartbeat"; is_daemon=1 ;;
+        *)        hb="/tmp/chump-reaper-${name}.heartbeat" ;;
+    esac
     threshold=$(threshold_secs "$name")
     if [[ ! -f "$hb" ]]; then
-        msg="reaper ${name} has never heartbeated — heartbeat file missing at $hb. Install the launchd job (scripts/setup/install-stale-${name}-reaper-launchd.sh) or run the reaper manually once."
-        printf 'ALERT [reaper_silent] %s\n' "$msg" >&2
+        if [[ $is_daemon -eq 1 ]]; then
+            msg="daemon process ${name} has never heartbeated — heartbeat file missing at $hb. Check if the process is running."
+            alert_kind="daemon_silent"
+        else
+            msg="reaper ${name} has never heartbeated — heartbeat file missing at $hb. Install the launchd job (scripts/setup/install-stale-${name}-reaper-launchd.sh) or run the reaper manually once."
+            alert_kind="reaper_silent"
+        fi
+        printf 'ALERT [%s] %s\n' "$alert_kind" "$msg" >&2
         # Emit ALERT to ambient.jsonl directly (use raw JSON so we don't
         # depend on the broadcast.sh wrapper for fail-safety).
         ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        printf '{"event":"ALERT","kind":"reaper_silent","reaper":"%s","ts":"%s","reason":%s}\n' \
-            "$name" "$ts" \
+        printf '{"event":"ALERT","kind":"%s","reaper":"%s","ts":"%s","reason":%s}\n' \
+            "$alert_kind" "$name" "$ts" \
             "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$msg" 2>/dev/null || echo "\"$msg\"")" \
             >> "$REAPER_LOCK_DIR/ambient.jsonl" 2>/dev/null || true
         ALERTS=$((ALERTS + 1))
@@ -108,11 +122,17 @@ for name in "${TARGETS[@]}"; do
     threshold_h=$(( threshold / 3600 ))
 
     if [[ $age -gt $threshold ]]; then
-        msg="reaper ${name} has not run in ${age_h}h (threshold ${threshold_h}h). Last heartbeat at ${ts_line:-unknown}. Check launchctl list | grep dev.chump.stale-${name}-reaper and /tmp/chump-stale-${name}-reaper.err.log."
-        printf 'ALERT [reaper_silent] %s\n' "$msg" >&2
+        if [[ $is_daemon -eq 1 ]]; then
+            msg="daemon process ${name} has not run in ${age_h}h (threshold ${threshold_h}h). Last heartbeat at ${ts_line:-unknown}. Check if the process is running."
+            alert_kind="daemon_silent"
+        else
+            msg="reaper ${name} has not run in ${age_h}h (threshold ${threshold_h}h). Last heartbeat at ${ts_line:-unknown}. Check launchctl list | grep dev.chump.stale-${name}-reaper and /tmp/chump-stale-${name}-reaper.err.log."
+            alert_kind="reaper_silent"
+        fi
+        printf 'ALERT [%s] %s\n' "$alert_kind" "$msg" >&2
         ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-        printf '{"event":"ALERT","kind":"reaper_silent","reaper":"%s","ts":"%s","age_hours":%d,"threshold_hours":%d,"reason":%s}\n' \
-            "$name" "$ts" "$age_h" "$threshold_h" \
+        printf '{"event":"ALERT","kind":"%s","reaper":"%s","ts":"%s","age_hours":%d,"threshold_hours":%d,"reason":%s}\n' \
+            "$alert_kind" "$name" "$ts" "$age_h" "$threshold_h" \
             "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$msg" 2>/dev/null || echo "\"$msg\"")" \
             >> "$REAPER_LOCK_DIR/ambient.jsonl" 2>/dev/null || true
         ALERTS=$((ALERTS + 1))
