@@ -179,6 +179,10 @@ pub struct ProviderSlot {
     pub privacy: PrivacyTier,
     /// Context window in thousands of tokens (e.g. 1000 = 1M). From CHUMP_PROVIDER_{N}_CONTEXT_K. Used when CHUMP_PREFER_LARGE_CONTEXT=1.
     pub context_k: Option<u32>,
+    /// Model class: haiku / sonnet / opus. Maps free-tier providers to Claude
+    /// tiers so the cascade can prefer the right slot for each task complexity.
+    /// From CHUMP_PROVIDER_{N}_MODEL_CLASS. Matched against CHUMP_PREFERRED_MODEL_CLASS.
+    pub model_class: Option<String>,
     pub rpm_limit: u32,
     pub calls_this_minute: AtomicU32,
     pub minute_start: Mutex<Instant>,
@@ -188,6 +192,8 @@ pub struct ProviderSlot {
     pub calls_today: AtomicU32,
     /// Start of the current 24h window.
     pub day_start: Mutex<Instant>,
+    /// When set, skip this slot until the cooldown expires (429 backoff).
+    pub cooldown_until: Mutex<Option<Instant>>,
 }
 
 fn within_rate_limit(slot: &ProviderSlot) -> bool {
@@ -232,6 +238,59 @@ fn within_rate_limit(slot: &ProviderSlot) -> bool {
     true
 }
 
+fn is_cooling_down(slot: &ProviderSlot) -> bool {
+    let guard = slot
+        .cooldown_until
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    guard.map(|t| Instant::now() < t).unwrap_or(false)
+}
+
+fn cooldown_remaining(slot: &ProviderSlot) -> Option<Duration> {
+    let guard = slot
+        .cooldown_until
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    guard.and_then(|t| {
+        let now = Instant::now();
+        if now < t {
+            Some(t - now)
+        } else {
+            None
+        }
+    })
+}
+
+fn set_cooldown(slot: &ProviderSlot, duration: Duration) {
+    let mut guard = slot
+        .cooldown_until
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    *guard = Some(Instant::now() + duration);
+}
+
+/// Parse Retry-After seconds from an error string. Providers embed it as
+/// "retry after Ns" or "Retry-After: N" or just the status + a seconds hint.
+fn parse_retry_after_secs(err: &str) -> Option<u64> {
+    let lower = err.to_ascii_lowercase();
+    // "retry after 30s" / "retry-after: 30" / "try again in 30 seconds"
+    for pattern in &["retry after ", "retry-after: ", "try again in "] {
+        if let Some(pos) = lower.find(pattern) {
+            let after = &err[pos + pattern.len()..];
+            let num_str: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(n) = num_str.parse::<u64>() {
+                return Some(n.clamp(1, 120));
+            }
+        }
+    }
+    None
+}
+
+/// Default cooldown when a 429 doesn't include a Retry-After hint.
+const DEFAULT_429_COOLDOWN_S: u64 = 30;
+/// Max cooldown we'll wait for a single slot before cascading.
+const MAX_WAIT_FOR_PREFERRED_S: u64 = 60;
+
 fn record_call(slot: &ProviderSlot) {
     slot.calls_this_minute.fetch_add(1, Ordering::Relaxed);
     slot.calls_today.fetch_add(1, Ordering::Relaxed);
@@ -271,12 +330,14 @@ impl ProviderCascade {
                     tier: ProviderTier::Local,
                     privacy: PrivacyTier::Safe,
                     context_k: None,
+                    model_class: None,
                     rpm_limit: 0,
                     calls_this_minute: AtomicU32::new(0),
                     minute_start: Mutex::new(Instant::now()),
                     rpd_limit: 0,
                     calls_today: AtomicU32::new(0),
                     day_start: Mutex::new(Instant::now()),
+                    cooldown_until: Mutex::new(None),
                 });
             }
         }
@@ -314,6 +375,10 @@ impl ProviderCascade {
             let context_k = std::env::var(format!("CHUMP_PROVIDER_{}_CONTEXT_K", n))
                 .ok()
                 .and_then(|v| v.trim().parse::<u32>().ok());
+            let model_class = std::env::var(format!("CHUMP_PROVIDER_{}_MODEL_CLASS", n))
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.trim().to_lowercase());
 
             let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
             slots.push(ProviderSlot {
@@ -324,12 +389,14 @@ impl ProviderCascade {
                 tier: ProviderTier::Cloud,
                 privacy,
                 context_k,
+                model_class,
                 rpm_limit: rpm,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
                 rpd_limit: rpd,
                 calls_today: AtomicU32::new(0),
                 day_start: Mutex::new(Instant::now()),
+                cooldown_until: Mutex::new(None),
             });
         }
 
@@ -389,9 +456,10 @@ impl ProviderCascade {
             .iter()
             .enumerate()
             .filter(|(_, slot)| {
-                !(has_cloud && slot.tier == ProviderTier::Local)
+                (!has_cloud || slot.tier != ProviderTier::Local)
                     && min_privacy.is_none_or(|min| slot.privacy >= min)
                     && !local_openai::is_circuit_open(&slot.base_url)
+                    && !is_cooling_down(slot)
                     && within_rate_limit(slot)
             })
             .skip(skip_cloud)
@@ -437,10 +505,23 @@ impl ProviderCascade {
             crate::precision_controller::PrecisionRegime::Explore
                 | crate::precision_controller::PrecisionRegime::Conservative
         );
+        let preferred_class = std::env::var("CHUMP_PREFERRED_MODEL_CLASS")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.trim().to_lowercase());
         let mut order: Vec<usize> = (0..self.slots.len()).collect();
         order.sort_by(|&i, &j| {
             let a = &self.slots[i];
             let b = &self.slots[j];
+            // Model-class match: slots tagged with the preferred class sort first
+            let class_a: i32 = match (&preferred_class, &a.model_class) {
+                (Some(pref), Some(mc)) if mc == pref => -1,
+                _ => 0,
+            };
+            let class_b: i32 = match (&preferred_class, &b.model_class) {
+                (Some(pref), Some(mc)) if mc == pref => -1,
+                _ => 0,
+            };
             // Regime-based tier bias: prefer local when Exploit, cloud when Explore/Conservative
             let tier_bias_a: i32 = if (prefer_local && a.tier == ProviderTier::Local)
                 || (prefer_cloud && a.tier == ProviderTier::Cloud)
@@ -458,15 +539,17 @@ impl ProviderCascade {
             };
             let da = provider_quality::demotion_offset(&a.name);
             let db = provider_quality::demotion_offset(&b.name);
-            tier_bias_a.cmp(&tier_bias_b).then_with(|| {
-                da.cmp(&db).then_with(|| {
-                    if prefer_large_context() {
-                        let ak = a.context_k.unwrap_or(0);
-                        let bk = b.context_k.unwrap_or(0);
-                        bk.cmp(&ak).then_with(|| a.priority.cmp(&b.priority))
-                    } else {
-                        a.priority.cmp(&b.priority)
-                    }
+            class_a.cmp(&class_b).then_with(|| {
+                tier_bias_a.cmp(&tier_bias_b).then_with(|| {
+                    da.cmp(&db).then_with(|| {
+                        if prefer_large_context() {
+                            let ak = a.context_k.unwrap_or(0);
+                            let bk = b.context_k.unwrap_or(0);
+                            bk.cmp(&ak).then_with(|| a.priority.cmp(&b.priority))
+                        } else {
+                            a.priority.cmp(&b.priority)
+                        }
+                    })
                 })
             })
         });
@@ -489,6 +572,17 @@ impl ProviderCascade {
             if provider_quality::should_skip_slot(&slot.name) {
                 if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                     eprintln!("[cascade] {} sanity-fail rate >10%, skipping", slot.name);
+                }
+                continue;
+            }
+            if is_cooling_down(slot) {
+                if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                    let remaining = cooldown_remaining(slot).unwrap_or_default();
+                    eprintln!(
+                        "[cascade] {} cooling down ({:.0}s remaining), skipping",
+                        slot.name,
+                        remaining.as_secs_f64()
+                    );
                 }
                 continue;
             }
@@ -816,6 +910,11 @@ impl Provider for ProviderCascade {
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(30);
+        let max_preferred_waits: u32 = std::env::var("CHUMP_CASCADE_MAX_PREFERRED_WAITS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(2);
+        let mut preferred_waits: u32 = 0;
         let mut retried = false;
         let mut idx = 0;
         loop {
@@ -836,10 +935,10 @@ impl Provider for ProviderCascade {
                     .enumerate()
                     .skip(idx)
                     .find(|(_, slot)| {
-                        // Skip local in cloud-first mode; it's the explicit last resort
-                        !(has_cloud && slot.tier == ProviderTier::Local)
+                        (!has_cloud || slot.tier != ProviderTier::Local)
                             && min_privacy.is_none_or(|min| slot.privacy >= min)
                             && !local_openai::is_circuit_open(&slot.base_url)
+                            && !is_cooling_down(slot)
                             && within_rate_limit(slot)
                     })
                     .map(|(i, _)| i)
@@ -1075,32 +1174,72 @@ impl Provider for ProviderCascade {
                     return Ok(r);
                 }
                 Err(e) => {
-                    // Also cascade on 429 (rate limit) or 403 (no access/credits on this slot).
-                    // The inner LocalOpenAIProvider returns Err immediately on these; we just
-                    // try the next slot.  We do NOT cascade on 400/422 (bad request — the
-                    // request itself is wrong and another provider won't help).
-                    // EXCEPTION: tool_use_failed / tool call validation failed are model-capability
-                    // errors (e.g. Llama generating hermes-format calls); another provider may work.
                     let e_str = format!("{} {:?}", e, e);
-                    // INFRA-300: classify via shared predicate. Cascades on
-                    // 429/413 (rate), 401/403 (access), 402/credit_limit
-                    // (billing — added when Together's free credits drained
-                    // and the PWA started returning empty bubbles), and
-                    // tool_use_failed (model capability). Transport-level
-                    // transient errors (timeout/reset) need the typed &Error,
-                    // so they're checked separately.
                     if local_openai::is_transient_error(&e)
                         || should_cascade_on_error_string(&e_str)
                     {
                         local_openai::record_circuit_failure(&slot.base_url);
                         if let Some(b) = self.bandit() {
-                            // Transient failure on this slot — reward 0 so the
-                            // bandit learns to avoid it until it recovers.
                             b.update(&slot.name, 0.0);
                         }
-                        if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+
+                        // Set per-slot cooldown on 429 so we don't re-hit it immediately.
+                        let is_rate_limit = e_str.contains("429")
+                            || e_str.to_ascii_lowercase().contains("rate limit");
+                        if is_rate_limit {
+                            let cooldown_s =
+                                parse_retry_after_secs(&e_str).unwrap_or(DEFAULT_429_COOLDOWN_S);
+                            set_cooldown(slot, Duration::from_secs(cooldown_s));
+                            tracing::info!(
+                                target: "chump::provider_cascade",
+                                slot = %slot.name,
+                                cooldown_s,
+                                model_class = ?slot.model_class,
+                                "429 backoff — slot cooling down"
+                            );
+                            if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                                eprintln!(
+                                    "[cascade] {} rate-limited, cooldown {}s",
+                                    slot.name, cooldown_s
+                                );
+                            }
+
+                            // If this slot matches the preferred model class and
+                            // the cooldown is short, wait instead of cascading to
+                            // a mismatched tier.
+                            let preferred_class = std::env::var("CHUMP_PREFERRED_MODEL_CLASS")
+                                .ok()
+                                .filter(|s| !s.is_empty())
+                                .map(|s| s.trim().to_lowercase());
+                            let slot_matches_pref = match (&preferred_class, &slot.model_class) {
+                                (Some(pref), Some(mc)) => mc == pref,
+                                _ => false,
+                            };
+                            if slot_matches_pref
+                                && cooldown_s <= MAX_WAIT_FOR_PREFERRED_S
+                                && preferred_waits < max_preferred_waits
+                            {
+                                preferred_waits += 1;
+                                if std::env::var("CHUMP_LOG_TIMING").is_ok() {
+                                    eprintln!(
+                                        "[cascade] waiting {}s for preferred-class slot {} ({}/{})",
+                                        cooldown_s, slot.name, preferred_waits, max_preferred_waits
+                                    );
+                                }
+                                tokio::time::sleep(Duration::from_secs(cooldown_s)).await;
+                                {
+                                    let mut g = slot
+                                        .cooldown_until
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner());
+                                    *g = None;
+                                }
+                                continue;
+                            }
+                        } else if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                             eprintln!("[cascade] {} failed (transient), trying next", slot.name);
                         }
+
                         idx = i + 1;
                         continue;
                     }
@@ -1524,12 +1663,14 @@ mod tests {
                 tier: ProviderTier::Cloud,
                 privacy: PrivacyTier::Safe,
                 context_k: None,
+                model_class: None,
                 rpm_limit: 10,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
                 rpd_limit: 100,
                 calls_today: AtomicU32::new(7),
                 day_start: Mutex::new(Instant::now()),
+                cooldown_until: Mutex::new(None),
             },
             ProviderSlot {
                 name: "test_slot_b".to_string(),
@@ -1544,12 +1685,14 @@ mod tests {
                 tier: ProviderTier::Cloud,
                 privacy: PrivacyTier::Safe,
                 context_k: None,
+                model_class: None,
                 rpm_limit: 10,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
                 rpd_limit: 50,
                 calls_today: AtomicU32::new(50),
                 day_start: Mutex::new(Instant::now()),
+                cooldown_until: Mutex::new(None),
             },
         ];
 
@@ -2108,6 +2251,8 @@ mod tests {
             rpd_limit,
             calls_today: AtomicU32::new(calls_today),
             day_start: Mutex::new(Instant::now()),
+            cooldown_until: Mutex::new(None),
+            model_class: None,
         }
     }
 

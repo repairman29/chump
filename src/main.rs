@@ -2682,16 +2682,21 @@ async fn main() -> Result<()> {
             }
             "decompose" => {
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump gap decompose <GAP-ID> [--apply] [--json]");
+                    eprintln!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json]");
                     eprintln!();
                     eprintln!(
                         "Suggests xs/s slices for a large (m/l) gap using the provider cascade."
                     );
+                    eprintln!("  --verify  Validate slices via a stronger model before filing");
                     eprintln!("  --apply   File the suggested slices and demote the parent");
                     eprintln!("  --json    Output suggestions as JSON");
+                    eprintln!();
+                    eprintln!("Verify model: set CHUMP_VERIFY_API_BASE + CHUMP_VERIFY_MODEL,");
+                    eprintln!("  or falls back to ANTHROPIC_API_KEY with claude-sonnet-4-6.");
                     std::process::exit(2);
                 });
                 let apply = args.iter().any(|a| a == "--apply");
+                let verify = args.iter().any(|a| a == "--verify");
                 let parent = match store.get(&gap_id) {
                     Ok(Some(g)) => g,
                     Ok(None) => {
@@ -2815,6 +2820,199 @@ async fn main() -> Result<()> {
                     eprintln!("chump gap decompose: LLM returned no slices");
                     std::process::exit(1);
                 }
+
+                // ── Verification pass (--verify) ────────────────────────────
+                //
+                // Route each slice through a stronger model to check:
+                //   1. Is effort truly xs/s?
+                //   2. Are ACs testable (not vague)?
+                //   3. Does it overlap with sibling slices?
+                //   4. Does it map back to the parent gap's intent?
+                //
+                // The verifier can revise title/ACs or reject a slice entirely.
+                // Uses CHUMP_VERIFY_API_BASE + CHUMP_VERIFY_MODEL, or falls
+                // back to ANTHROPIC_API_KEY with claude-sonnet.
+                #[derive(Debug, serde::Deserialize)]
+                struct VerifyVerdict {
+                    pass: bool,
+                    reason: String,
+                    #[serde(default)]
+                    revised_title: Option<String>,
+                    #[serde(default)]
+                    revised_effort: Option<String>,
+                    #[serde(default)]
+                    revised_acceptance_criteria: Option<Vec<String>>,
+                }
+
+                let suggestions = if verify {
+                    let verify_provider: Option<
+                        Box<dyn axonerai::provider::Provider + Send + Sync>,
+                    > = {
+                        let vbase = std::env::var("CHUMP_VERIFY_API_BASE")
+                            .ok()
+                            .filter(|s| !s.is_empty());
+                        let vmodel = std::env::var("CHUMP_VERIFY_MODEL")
+                            .ok()
+                            .filter(|s| !s.is_empty());
+                        let vkey = std::env::var("CHUMP_VERIFY_API_KEY")
+                            .ok()
+                            .filter(|s| !s.is_empty());
+                        if let (Some(base), Some(model)) = (vbase, vmodel) {
+                            let key = vkey.unwrap_or_default();
+                            Some(Box::new(crate::local_openai::LocalOpenAIProvider::new(
+                                base, key, model,
+                            )))
+                        } else if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+                            if !api_key.is_empty() {
+                                let model = "claude-sonnet-4-6".to_string();
+                                Some(Box::new(crate::local_openai::LocalOpenAIProvider::new(
+                                    "https://api.anthropic.com/v1".to_string(),
+                                    api_key,
+                                    model,
+                                )))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    };
+
+                    match verify_provider {
+                        None => {
+                            eprintln!("chump gap decompose: --verify requested but no verify model available.");
+                            eprintln!("Set CHUMP_VERIFY_API_BASE + CHUMP_VERIFY_MODEL, or ANTHROPIC_API_KEY.");
+                            std::process::exit(1);
+                        }
+                        Some(vp) => {
+                            eprintln!(
+                                "verifying {} slices via stronger model...",
+                                suggestions.len()
+                            );
+
+                            let siblings_summary: String = suggestions
+                                .iter()
+                                .enumerate()
+                                .map(|(i, s)| {
+                                    format!(
+                                        "[{i}] {} ({}) — {:?}",
+                                        s.title, s.effort, s.acceptance_criteria
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n");
+
+                            let mut verified: Vec<SliceSuggestion> = Vec::new();
+                            let mut rejected = 0usize;
+
+                            for (i, s) in suggestions.into_iter().enumerate() {
+                                let verify_system = "You are a senior engineering reviewer. \
+                                    You verify whether a proposed task slice is well-defined and shippable. \
+                                    For each slice, check: \
+                                    (1) Is the effort estimate realistic? xs means < 1 hour, s means 1-4 hours. \
+                                    (2) Are the acceptance criteria testable and specific (not vague)? \
+                                    (3) Does this slice overlap with any sibling slices? \
+                                    (4) Does it map back to the parent gap's intent? \
+                                    Output ONLY a JSON object: \
+                                    {\"pass\": true/false, \"reason\": \"...\", \
+                                    \"revised_title\": \"...\" (optional, only if title needs fixing), \
+                                    \"revised_effort\": \"xs|s\" (optional, only if effort is wrong), \
+                                    \"revised_acceptance_criteria\": [\"...\"] (optional, only if ACs need tightening)}. \
+                                    Do not include any text outside the JSON object.".to_string();
+
+                                let verify_msg = format!(
+                                    "Parent gap: {} — {}\nParent ACs: {}\n\n\
+                                     All proposed sibling slices:\n{}\n\n\
+                                     Verify this slice:\n\
+                                     [{i}] Title: {}\n\
+                                     Effort: {}\n\
+                                     Priority: {}\n\
+                                     Acceptance Criteria: {:?}",
+                                    parent.id,
+                                    parent.title,
+                                    ac_display,
+                                    siblings_summary,
+                                    s.title,
+                                    s.effort,
+                                    s.priority,
+                                    s.acceptance_criteria,
+                                );
+
+                                let vmsg = vec![axonerai::provider::Message {
+                                    role: "user".into(),
+                                    content: verify_msg,
+                                }];
+
+                                match tokio::runtime::Handle::current().block_on(vp.complete(
+                                    vmsg,
+                                    None,
+                                    Some(1024),
+                                    Some(verify_system),
+                                )) {
+                                    Ok(vresp) => {
+                                        let vtext = vresp.text.unwrap_or_default();
+                                        let vj_start = vtext.find('{').unwrap_or(0);
+                                        let vj_end =
+                                            vtext.rfind('}').map(|j| j + 1).unwrap_or(vtext.len());
+                                        let vj = &vtext[vj_start..vj_end];
+
+                                        match serde_json::from_str::<VerifyVerdict>(vj) {
+                                            Ok(verdict) => {
+                                                if verdict.pass {
+                                                    let final_slice = SliceSuggestion {
+                                                        title: verdict
+                                                            .revised_title
+                                                            .unwrap_or(s.title),
+                                                        effort: verdict
+                                                            .revised_effort
+                                                            .unwrap_or(s.effort),
+                                                        priority: s.priority,
+                                                        acceptance_criteria: verdict
+                                                            .revised_acceptance_criteria
+                                                            .unwrap_or(s.acceptance_criteria),
+                                                        depends_on: s.depends_on,
+                                                    };
+                                                    eprintln!("  [{i}] PASS: {}", verdict.reason);
+                                                    verified.push(final_slice);
+                                                } else {
+                                                    eprintln!(
+                                                        "  [{i}] REJECTED: {}",
+                                                        verdict.reason
+                                                    );
+                                                    rejected += 1;
+                                                }
+                                            }
+                                            Err(_) => {
+                                                eprintln!("  [{i}] WARN: could not parse verdict, keeping slice as-is");
+                                                verified.push(s);
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("  [{i}] WARN: verify call failed ({e:#}), keeping slice as-is");
+                                        verified.push(s);
+                                    }
+                                }
+                            }
+
+                            if rejected > 0 {
+                                eprintln!(
+                                    "verification: {} passed, {} rejected",
+                                    verified.len(),
+                                    rejected
+                                );
+                            }
+
+                            if verified.is_empty() {
+                                eprintln!("chump gap decompose: all slices rejected by verifier");
+                                std::process::exit(1);
+                            }
+                            verified
+                        }
+                    }
+                } else {
+                    suggestions
+                };
 
                 if json_out {
                     println!(
