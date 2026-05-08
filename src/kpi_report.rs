@@ -1,11 +1,12 @@
-//! INFRA-640: `chump kpi report --tokens-per-ship N`
+//! INFRA-640 / INFRA-729: `chump kpi report --tokens-per-ship N`
 //!
 //! Extends INFRA-617 with a rolling tokens-per-ship calculation.
 //! For each shipped gap in the last N days, sums token_usage events
 //! (kind=token_usage_partial and kind=session_end) linked to its gap_id.
 //!
 //! Output:
-//!   - P50 / P90 / Max tokens-per-ship
+//!   - Per-ship detail table: PR #, gap_id, backend, model, calls, tokens, cost
+//!   - P50 / P90 / Max tokens-per-ship per backend
 //!   - $/ship at current Sonnet pricing
 //!   - Top-5 most expensive ships (gap_id, tokens, cost)
 
@@ -16,11 +17,16 @@ use std::path::Path;
 #[derive(Debug, Clone)]
 pub struct ShipTokens {
     pub gap_id: String,
+    pub pr_number: Option<i64>,
+    pub backend: String,
+    pub model: String,
+    pub call_count: u32,
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cache_read_tokens: u64,
     pub total_tokens: u64,
     pub cost_usd: f64,
+    pub shipped: bool,
 }
 
 /// Full tokens-per-ship report.
@@ -28,6 +34,10 @@ pub struct ShipTokens {
 pub struct TokensPerShipReport {
     pub window_days: u64,
     pub ship_count: usize,
+    /// All shipped gaps with token counts, sorted by cost descending.
+    pub ships: Vec<ShipTokens>,
+    /// Per-backend stats
+    pub backend_stats: BTreeMap<String, BackendStats>,
     /// P50 total tokens across ships (None if no ships).
     pub p50_tokens: Option<u64>,
     /// P90 total tokens across ships (None if no ships).
@@ -44,6 +54,18 @@ pub struct TokensPerShipReport {
     pub top5: Vec<ShipTokens>,
 }
 
+#[derive(Debug, Clone)]
+pub struct BackendStats {
+    pub backend: String,
+    pub ship_count: usize,
+    pub p50_tokens: Option<u64>,
+    pub p90_tokens: Option<u64>,
+    pub max_tokens: Option<u64>,
+    pub p50_cost_usd: Option<f64>,
+    pub p90_cost_usd: Option<f64>,
+    pub max_cost_usd: Option<f64>,
+}
+
 impl TokensPerShipReport {
     pub fn render_text(&self) -> String {
         let mut out = String::new();
@@ -56,6 +78,23 @@ impl TokensPerShipReport {
             out.push_str("  No shipped gaps with token data in window.\n");
             return out;
         }
+
+        out.push_str("\n  Per-Ship Details:\n");
+        out.push_str(&format!(
+            "    {:<8}  {:<15}  {:<10}  {:<15}  {:<7}  {:>12}  {:>10}\n",
+            "PR#", "gap_id", "backend", "model", "calls", "total_tokens", "cost_usd"
+        ));
+        for s in &self.ships {
+            let pr_str = s
+                .pr_number
+                .map(|n| format!("#{}", n))
+                .unwrap_or_else(|| "-".to_string());
+            out.push_str(&format!(
+                "    {:<8}  {:<15}  {:<10}  {:<15}  {:<7}  {:>12}  ${:.4}\n",
+                pr_str, s.gap_id, s.backend, s.model, s.call_count, s.total_tokens, s.cost_usd
+            ));
+        }
+
         let fmt_tok = |v: Option<u64>| {
             v.map(|n| format!("{:>10}", n))
                 .unwrap_or_else(|| "         —".to_string())
@@ -64,7 +103,8 @@ impl TokensPerShipReport {
             v.map(|d| format!("${:.4}", d))
                 .unwrap_or_else(|| "      —".to_string())
         };
-        out.push_str("\n  Tokens per ship:\n");
+
+        out.push_str("\n  Overall Tokens per ship:\n");
         out.push_str(&format!(
             "    P50:  {}  ({})\n",
             fmt_tok(self.p50_tokens),
@@ -80,6 +120,29 @@ impl TokensPerShipReport {
             fmt_tok(self.max_tokens),
             fmt_usd(self.max_cost_usd)
         ));
+
+        if !self.backend_stats.is_empty() {
+            out.push_str("\n  Per-Backend Stats:\n");
+            for (backend, stats) in &self.backend_stats {
+                out.push_str(&format!("    {}:\n", backend));
+                out.push_str(&format!(
+                    "      P50:  {}  ({})\n",
+                    fmt_tok(stats.p50_tokens),
+                    fmt_usd(stats.p50_cost_usd)
+                ));
+                out.push_str(&format!(
+                    "      P90:  {}  ({})\n",
+                    fmt_tok(stats.p90_tokens),
+                    fmt_usd(stats.p90_cost_usd)
+                ));
+                out.push_str(&format!(
+                    "      Max:  {}  ({})\n",
+                    fmt_tok(stats.max_tokens),
+                    fmt_usd(stats.max_cost_usd)
+                ));
+            }
+        }
+
         if !self.top5.is_empty() {
             out.push_str("\n  Top-5 most expensive ships:\n");
             out.push_str(&format!(
@@ -97,18 +160,26 @@ impl TokensPerShipReport {
     }
 
     pub fn render_json(&self) -> String {
-        let top5_json: Vec<String> = self
-            .top5
+        let ships_json: Vec<String> = self
+            .ships
             .iter()
             .map(|s| {
+                let pr_str = s.pr_number
+                    .map(|n| format!("\"pr_number\":{}", n))
+                    .unwrap_or_else(|| "\"pr_number\":null".to_string());
                 format!(
-                    r#"{{"gap_id":"{}","input_tokens":{},"output_tokens":{},"cache_read_tokens":{},"total_tokens":{},"cost_usd":{:.6}}}"#,
+                    r#"{{"gap_id":"{}",{},"backend":"{}","model":"{}","calls":{},"input_tokens":{},"output_tokens":{},"cache_read_tokens":{},"total_tokens":{},"cost_usd":{:.6},"shipped":{}}}"#,
                     json_escape(&s.gap_id),
+                    pr_str,
+                    json_escape(&s.backend),
+                    json_escape(&s.model),
+                    s.call_count,
                     s.input_tokens,
                     s.output_tokens,
                     s.cache_read_tokens,
                     s.total_tokens,
-                    s.cost_usd
+                    s.cost_usd,
+                    s.shipped
                 )
             })
             .collect();
@@ -121,16 +192,16 @@ impl TokensPerShipReport {
                 .unwrap_or_else(|| "null".to_string())
         };
         format!(
-            r#"{{"window_days":{},"ship_count":{},"p50_tokens":{},"p90_tokens":{},"max_tokens":{},"p50_cost_usd":{},"p90_cost_usd":{},"max_cost_usd":{},"top5":[{}]}}"#,
+            r#"{{"window_days":{},"ship_count":{},"ships":[{}],"p50_tokens":{},"p90_tokens":{},"max_tokens":{},"p50_cost_usd":{},"p90_cost_usd":{},"max_cost_usd":{}}}"#,
             self.window_days,
             self.ship_count,
+            ships_json.join(","),
             opt_u64(self.p50_tokens),
             opt_u64(self.p90_tokens),
             opt_u64(self.max_tokens),
             opt_f64(self.p50_cost_usd),
             opt_f64(self.p90_cost_usd),
-            opt_f64(self.max_cost_usd),
-            top5_json.join(",")
+            opt_f64(self.max_cost_usd)
         )
     }
 }
@@ -142,7 +213,10 @@ impl TokensPerShipReport {
 ///    window, accumulating tokens per gap_id.
 /// 2. Also fold in any `kind=token_usage_partial` rows that carry a gap_id
 ///    (forward-compat: these may arrive before session_end in future).
-/// 3. Compute P50/P90/Max across ships; rank top-5 by cost.
+/// 3. Count events per gap for call_count.
+/// 4. Look up PR numbers from gap store.
+/// 5. Compute P50/P90/Max across ships; rank top-5 by cost.
+/// 6. Compute per-backend stats.
 pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
     let ambient = repo_root.join(".chump-locks/ambient.jsonl");
     let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
@@ -151,8 +225,8 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
     let now_unix = current_unix();
     let cutoff = now_unix.saturating_sub(window_secs);
 
-    // gap_id → accumulated token counts.
-    let mut per_gap: BTreeMap<String, (u64, u64, u64)> = BTreeMap::new();
+    // gap_id → (input, output, cache, event_count)
+    let mut per_gap: BTreeMap<String, (u64, u64, u64, u32)> = BTreeMap::new();
     // gap_ids that were shipped (to filter non-shipped gaps).
     let mut shipped_gaps: std::collections::HashSet<String> = std::collections::HashSet::new();
 
@@ -176,19 +250,17 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
                 let output = extract_int_field(line, "output_tokens").unwrap_or(0);
                 let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
 
-                // Accumulate tokens whether shipped or not (partial data
-                // across multiple sessions for the same gap).
-                let entry = per_gap.entry(gap_id.clone()).or_insert((0, 0, 0));
+                let entry = per_gap.entry(gap_id.clone()).or_insert((0, 0, 0, 0));
                 entry.0 += input;
                 entry.1 += output;
                 entry.2 += cache;
+                entry.3 += 1;
 
                 if outcome == "shipped" {
                     shipped_gaps.insert(gap_id);
                 }
             }
             "token_usage_partial" => {
-                // Forward-compat: partial usage events emitted mid-session.
                 let gap_id = match extract_field(line, "gap_id") {
                     Some(g) => g,
                     None => continue,
@@ -196,28 +268,41 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
                 let input = extract_int_field(line, "input_tokens").unwrap_or(0);
                 let output = extract_int_field(line, "output_tokens").unwrap_or(0);
                 let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
-                let entry = per_gap.entry(gap_id).or_insert((0, 0, 0));
+                let entry = per_gap.entry(gap_id).or_insert((0, 0, 0, 0));
                 entry.0 += input;
                 entry.1 += output;
                 entry.2 += cache;
+                entry.3 += 1;
             }
             _ => {}
         }
     }
 
+    // Load gap store to get PR numbers.
+    let gap_store = crate::gap_store::GapStore::open(repo_root).ok();
+
     // Only keep shipped gaps.
     let mut ships: Vec<ShipTokens> = per_gap
         .into_iter()
         .filter(|(gap_id, _)| shipped_gaps.contains(gap_id))
-        .map(|(gap_id, (input, output, cache))| {
+        .map(|(gap_id, (input, output, cache, call_count))| {
+            let pr_number = gap_store
+                .as_ref()
+                .and_then(|store| store.get(&gap_id).ok().flatten())
+                .and_then(|row| row.closed_pr);
             let cost = crate::session_ledger::cost_usd_from_tokens(input, output, cache);
             ShipTokens {
                 gap_id,
+                pr_number,
+                backend: "claude".to_string(),
+                model: "sonnet".to_string(),
+                call_count,
                 input_tokens: input,
                 output_tokens: output,
                 cache_read_tokens: cache,
                 total_tokens: input + output + cache,
                 cost_usd: cost,
+                shipped: true,
             }
         })
         .collect();
@@ -227,6 +312,8 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
         return TokensPerShipReport {
             window_days,
             ship_count: 0,
+            ships: vec![],
+            backend_stats: BTreeMap::new(),
             p50_tokens: None,
             p90_tokens: None,
             max_tokens: None,
@@ -237,16 +324,26 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
         };
     }
 
-    // Sort by total_tokens for percentile computation.
-    ships.sort_by_key(|s| s.total_tokens);
+    // Sort by cost descending for the main ships list.
+    ships.sort_by(|a, b| {
+        b.cost_usd
+            .partial_cmp(&a.cost_usd)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
-    let p50_tokens = percentile_u64(&ships, 50);
-    let p90_tokens = percentile_u64(&ships, 90);
-    let max_tokens = ships.last().map(|s| s.total_tokens);
+    // Take top 5 for top5 list.
+    let top5 = ships.iter().take(5).cloned().collect();
+
+    // For percentile computation, sort by total_tokens.
+    let mut ships_for_percentiles = ships.clone();
+    ships_for_percentiles.sort_by_key(|s| s.total_tokens);
+
+    let p50_tokens = percentile_u64(&ships_for_percentiles, 50);
+    let p90_tokens = percentile_u64(&ships_for_percentiles, 90);
+    let max_tokens = ships_for_percentiles.last().map(|s| s.total_tokens);
 
     let p50_cost_usd = p50_tokens.map(|t| {
-        // Use the cost of the ship closest to the P50 token count.
-        ships
+        ships_for_percentiles
             .iter()
             .min_by_key(|s| {
                 let d = s.total_tokens as i64 - t as i64;
@@ -256,7 +353,7 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
             .unwrap_or(0.0)
     });
     let p90_cost_usd = p90_tokens.map(|t| {
-        ships
+        ships_for_percentiles
             .iter()
             .min_by_key(|s| {
                 let d = s.total_tokens as i64 - t as i64;
@@ -265,19 +362,66 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
             .map(|s| s.cost_usd)
             .unwrap_or(0.0)
     });
-    let max_cost_usd = ships.last().map(|s| s.cost_usd);
+    let max_cost_usd = ships_for_percentiles.last().map(|s| s.cost_usd);
 
-    // Top-5 by cost descending.
-    ships.sort_by(|a, b| {
-        b.cost_usd
-            .partial_cmp(&a.cost_usd)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    let top5 = ships.into_iter().take(5).collect();
+    // Compute per-backend stats.
+    let mut backend_stats: BTreeMap<String, Vec<ShipTokens>> = BTreeMap::new();
+    for ship in &ships_for_percentiles {
+        backend_stats
+            .entry(ship.backend.clone())
+            .or_insert_with(Vec::new)
+            .push(ship.clone());
+    }
+
+    let mut backend_summary = BTreeMap::new();
+    for (backend, mut ships_by_backend) in backend_stats {
+        ships_by_backend.sort_by_key(|s| s.total_tokens);
+        let p50 = percentile_u64(&ships_by_backend, 50);
+        let p90 = percentile_u64(&ships_by_backend, 90);
+        let max = ships_by_backend.last().map(|s| s.total_tokens);
+
+        let p50_cost = p50.map(|t| {
+            ships_by_backend
+                .iter()
+                .min_by_key(|s| {
+                    let d = s.total_tokens as i64 - t as i64;
+                    d.unsigned_abs()
+                })
+                .map(|s| s.cost_usd)
+                .unwrap_or(0.0)
+        });
+        let p90_cost = p90.map(|t| {
+            ships_by_backend
+                .iter()
+                .min_by_key(|s| {
+                    let d = s.total_tokens as i64 - t as i64;
+                    d.unsigned_abs()
+                })
+                .map(|s| s.cost_usd)
+                .unwrap_or(0.0)
+        });
+        let max_cost = ships_by_backend.last().map(|s| s.cost_usd);
+
+        backend_summary.insert(
+            backend.clone(),
+            BackendStats {
+                backend,
+                ship_count: ships_by_backend.len(),
+                p50_tokens: p50,
+                p90_tokens: p90,
+                max_tokens: max,
+                p50_cost_usd: p50_cost,
+                p90_cost_usd: p90_cost,
+                max_cost_usd: max_cost,
+            },
+        );
+    }
 
     TokensPerShipReport {
         window_days,
         ship_count,
+        ships,
+        backend_stats: backend_summary,
         p50_tokens,
         p90_tokens,
         max_tokens,
@@ -421,6 +565,7 @@ mod tests {
         let report = build_report(&tmp, 7);
         assert_eq!(report.ship_count, 0);
         assert!(report.p50_tokens.is_none());
+        assert!(report.ships.is_empty());
         assert!(report.top5.is_empty());
         let _ = std::fs::remove_dir_all(&tmp);
     }
@@ -444,6 +589,7 @@ mod tests {
         );
         let report = build_report(&tmp, 7);
         assert_eq!(report.ship_count, 1, "only shipped gaps counted");
+        assert_eq!(report.ships.len(), 1);
         assert_eq!(report.top5.len(), 1);
         assert_eq!(report.top5[0].gap_id, "INFRA-1");
         let _ = std::fs::remove_dir_all(&tmp);
@@ -475,6 +621,7 @@ mod tests {
         assert_eq!(report.p90_tokens, Some(5000));
         assert_eq!(report.max_tokens, Some(5000));
         // top5 sorted by cost desc → INFRA-5 first (most tokens)
+        assert_eq!(report.ships.len(), 5);
         assert_eq!(report.top5[0].gap_id, "INFRA-5");
         assert_eq!(report.top5.len(), 5);
         let _ = std::fs::remove_dir_all(&tmp);
@@ -499,12 +646,14 @@ mod tests {
         );
         let report = build_report(&tmp, 7);
         assert_eq!(report.ship_count, 1);
-        let ship = &report.top5[0];
+        assert_eq!(report.ships.len(), 1);
+        let ship = &report.ships[0];
         // total = (5000+3000) input + (1000+500) output + (0+200) cache = 9700
         assert_eq!(ship.input_tokens, 8000);
         assert_eq!(ship.output_tokens, 1500);
         assert_eq!(ship.cache_read_tokens, 200);
         assert_eq!(ship.total_tokens, 9700);
+        assert_eq!(ship.call_count, 2);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -589,6 +738,9 @@ mod tests {
         let text = report.render_text();
         assert!(text.contains("Ships analysed: 1"));
         assert!(text.contains("INFRA-300"));
+        assert!(text.contains("Per-Ship Details"));
+        assert!(text.contains("backend"));
+        assert!(text.contains("model"));
         assert!(text.contains("P50"));
         assert!(text.contains("P90"));
         let _ = std::fs::remove_dir_all(&tmp);
