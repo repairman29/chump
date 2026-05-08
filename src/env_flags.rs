@@ -239,7 +239,9 @@ pub fn chump_bypass_perception() -> bool {
 /// used by the EVAL-043 ablation suite. `CHUMP_BYPASS_NEUROMOD` takes precedence when set;
 /// `CHUMP_NEUROMOD_ENABLED=0` is the legacy COG-006 gate and still works independently.
 ///
-/// Default: **off** (neuromod updates active, subject to `CHUMP_NEUROMOD_ENABLED`).
+/// Default: **on** (neuromod bypassed). EVAL-026 found neuromod reduces accuracy on
+/// some task classes; no eval has shown net benefit. Opt in with
+/// `CHUMP_BYPASS_NEUROMOD=0` when running A/B sweeps.
 #[inline]
 pub fn chump_bypass_neuromod() -> bool {
     std::env::var("CHUMP_BYPASS_NEUROMOD")
@@ -247,7 +249,7 @@ pub fn chump_bypass_neuromod() -> bool {
             let t = v.trim();
             t == "1" || t.eq_ignore_ascii_case("true")
         })
-        .unwrap_or(false)
+        .unwrap_or(true)
 }
 
 /// EVAL-058: Executive Function / Blackboard ablation gate.
@@ -526,7 +528,10 @@ mod tests {
     fn chump_bypass_neuromod_values() {
         let key = "CHUMP_BYPASS_NEUROMOD";
         std::env::remove_var(key);
-        assert!(!super::chump_bypass_neuromod(), "default must be off");
+        assert!(
+            super::chump_bypass_neuromod(),
+            "default must be on (neuromod off)"
+        );
         std::env::set_var(key, "1");
         assert!(super::chump_bypass_neuromod());
         std::env::set_var(key, "true");
