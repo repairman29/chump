@@ -343,6 +343,9 @@ jobs:
       - name: default-flip advisory guard (INFRA-762)
         run: bash scripts/ci/test-default-flip-guard.sh
 
+      - name: gap-divergence guard (INFRA-783)
+        run: bash scripts/ci/test-gap-divergence-guard.sh
+
       - name: flake-autorerun harness fixture (INFRA-764)
         run: bash scripts/ci/test-flake-autorerun.sh
 
