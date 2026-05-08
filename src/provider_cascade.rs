@@ -456,7 +456,7 @@ impl ProviderCascade {
             .iter()
             .enumerate()
             .filter(|(_, slot)| {
-                !(has_cloud && slot.tier == ProviderTier::Local)
+                (!has_cloud || slot.tier != ProviderTier::Local)
                     && min_privacy.is_none_or(|min| slot.privacy >= min)
                     && !local_openai::is_circuit_open(&slot.base_url)
                     && !is_cooling_down(slot)
@@ -935,7 +935,7 @@ impl Provider for ProviderCascade {
                     .enumerate()
                     .skip(idx)
                     .find(|(_, slot)| {
-                        !(has_cloud && slot.tier == ProviderTier::Local)
+                        (!has_cloud || slot.tier != ProviderTier::Local)
                             && min_privacy.is_none_or(|min| slot.privacy >= min)
                             && !local_openai::is_circuit_open(&slot.base_url)
                             && !is_cooling_down(slot)
@@ -2251,6 +2251,8 @@ mod tests {
             rpd_limit,
             calls_today: AtomicU32::new(calls_today),
             day_start: Mutex::new(Instant::now()),
+            cooldown_until: Mutex::new(None),
+            model_class: None,
         }
     }
 
