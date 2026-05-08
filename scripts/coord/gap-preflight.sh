@@ -189,24 +189,20 @@ gap_status() {
 # Returns "session_id:expires_at" for any live lease with matching gap_id that
 # belongs to a different session, or empty string if free.
 #
-# INFRA-193 (speculative execution): if the CALLER is speculative
-# (CHUMP_SPECULATIVE=1) AND the existing claim is also marked
-# `"speculative": true`, the conflict is allowed — both sessions race in
-# parallel and first-to-land wins. Any non-speculative collision still
-# blocks: exclusive lease semantics remain the safe default.
+# INFRA-735: All gaps are now exclusive (no speculative-execution race mode).
+# Hard-kill: any collision (including prior speculative-mode leases with
+# "speculative": true) blocks the claim.
 check_lease_claim() {
     local gap_id="$1"
     local my_session="$2"
-    local my_speculative="${CHUMP_SPECULATIVE:-0}"
     [[ -d "$LOCK_DIR" ]] || return 0
 
-    python3 - "$LOCK_DIR" "$gap_id" "$my_session" "$my_speculative" <<'PYEOF'
+    python3 - "$LOCK_DIR" "$gap_id" "$my_session" <<'PYEOF'
 import json, os, sys
 from datetime import datetime, timezone
 
-lock_dir, gap_id, my_session, my_spec = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+lock_dir, gap_id, my_session = sys.argv[1], sys.argv[2], sys.argv[3]
 now = datetime.now(timezone.utc)
-my_spec = my_spec == "1"
 
 for fname in os.listdir(lock_dir):
     if not fname.endswith(".json"):
@@ -259,16 +255,7 @@ for fname in os.listdir(lock_dir):
     except Exception:
         continue  # unparseable timestamps → treat as expired
 
-    # INFRA-193: speculative-on-speculative is NOT a conflict — both race.
-    other_spec = bool(d.get("speculative"))
-    if my_spec and other_spec:
-        # Surface as advisory note so the operator sees the race
-        sys.stderr.write(
-            f"[gap-preflight] INFRA-193 speculative race: '{d['session_id']}' is also "
-            f"working on {gap_id} (both speculative). First-to-land wins.\n"
-        )
-        continue
-
+    # INFRA-735: All gaps are exclusive. Block any collision.
     print(f"{d['session_id']}:{d.get('expires_at', '?')}")
     sys.exit(0)
 PYEOF
@@ -449,12 +436,11 @@ $SIBLING_GAP_YAML"
     # status:done state, and PR #874 hadn't merged yet. Both workers spent
     # claude -p quota on a gap that was actively being shipped — pure waste.
     #
+    # INFRA-735: Hard-kill speculative-execution race mode. Block all collisions.
     # This check searches open PRs by exact gap-ID match in title and blocks
     # the claim if found, unless:
     #   - CHUMP_PREFLIGHT_PR_CHECK=0 (operator opt-out)
-    #   - CHUMP_SPECULATIVE=1        (INFRA-193 speculative race wanted)
     if [[ "${CHUMP_PREFLIGHT_PR_CHECK:-1}" != "0" ]] \
-            && [[ "${CHUMP_SPECULATIVE:-0}" != "1" ]] \
             && command -v gh >/dev/null 2>&1; then
         PR_FOR_GAP="$(gh pr list --state open --search "${GAP_ID} in:title" \
             --json number,headRefName -q '.[0]' 2>/dev/null || true)"
@@ -467,7 +453,6 @@ $SIBLING_GAP_YAML"
                 # See: docs/process/CLAUDE_GOTCHAS.md#error-gap-collision
                 warn_with_help "SKIP $GAP_ID — open PR #$PR_NUM ($PR_HEAD) is already implementing this gap. Pick a different gap, or wait for #$PR_NUM to land/close." "error-gap-collision"
                 red "  Bypass: CHUMP_PREFLIGHT_PR_CHECK=0 (skip this check)"
-                red "  Or: CHUMP_SPECULATIVE=1 (race against the existing PR per INFRA-193)"
                 FAILED=1
                 continue
             fi
@@ -485,15 +470,15 @@ $SIBLING_GAP_YAML"
     #   - Check 2 (file): check_lease_claim() for .chump-locks/ (same-host visible)
     #   - Union: either source blocking means the gap is unavailable
     #
+    # INFRA-735: Hard-kill speculative-execution race mode. Block all collisions.
+    #
     # If chump-coord is unavailable or NATS unreachable, NATS check returns
     # empty (no-op); file-based check still runs. Coordination is sound even
     # when NATS is down — fleet simply falls back to same-machine only.
     #
     # Bypass:
     #   CHUMP_PREFLIGHT_NATS_CHECK=0 (skip NATS union, local-only)
-    #   CHUMP_SPECULATIVE=1          (INFRA-193 race wanted)
     if [[ "${CHUMP_PREFLIGHT_NATS_CHECK:-1}" != "0" ]] \
-            && [[ "${CHUMP_SPECULATIVE:-0}" != "1" ]] \
             && command -v chump-coord >/dev/null 2>&1; then
         NATS_HOLDER="$(chump-coord whois "$GAP_ID" 2>/dev/null || true)"
         # Strip whitespace; empty means no claim (or NATS unreachable).
@@ -503,7 +488,6 @@ $SIBLING_GAP_YAML"
             red "  This is another machine's claim — union of NATS KV + .chump-locks/ blocks this gap."
             red "  Coordinate with that session or wait for the claim to expire (NATS KV TTL)."
             red "  Bypass: CHUMP_PREFLIGHT_NATS_CHECK=0 (skip cross-machine check)"
-            red "  Or: CHUMP_SPECULATIVE=1 (race per INFRA-193)"
             FAILED=1
             continue
         fi

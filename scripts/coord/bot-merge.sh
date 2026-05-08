@@ -115,13 +115,6 @@ SKIP_TESTS=0
 FAST=0
 DRY_RUN=0
 NO_MERGE_DRIVER=0
-# INFRA-193: speculative execution opt-in. With --speculative, gap-claim.sh
-# writes `"speculative": true` into the lease and gap-preflight.sh allows
-# concurrent claims by other speculative-mode sessions on the same gap.
-# After auto-merge is armed for our PR, the post-arm sweep below scans for
-# open sibling PRs citing the same gap and closes them with a "superseded
-# by #N" comment. CHUMP_SPECULATIVE=1 is the env equivalent.
-SPECULATIVE=${CHUMP_SPECULATIVE:-0}
 GAP_IDS=()
 NEXT_IS_GAP=0
 # INFRA-061 (M3): --stack-on <PREV-GAP-ID> opens this PR with base=claude/<branch
@@ -150,7 +143,7 @@ for arg in "$@"; do
         --skip-tests)  SKIP_TESTS=1 ;;
         --fast)        FAST=1; SKIP_TESTS=1 ;;
         --dry-run)     DRY_RUN=1 ;;
-        --speculative) SPECULATIVE=1 ;;
+        --speculative) ;; # INFRA-735: deprecated to no-op (no longer used)
         --no-merge-driver) NO_MERGE_DRIVER=1 ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
@@ -801,9 +794,7 @@ fi
 # ── 0. Gap pre-flight (abort if work is already done on main) ─────────────────
 if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     info "Running gap pre-flight for: ${GAP_IDS[*]} …"
-    # INFRA-193: when speculative, export so gap-preflight allows the
-    # concurrent-speculative case (still blocks non-speculative collisions).
-    if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
+    if ! "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
         red "Gap pre-flight failed — aborting to avoid duplicate work."
         red "The gaps are already done or claimed. Pick a different gap from docs/gaps.yaml."
         exit 1
@@ -811,18 +802,14 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     green "Gap pre-flight passed."
 
     # Write gap claim to lease file (replaces YAML in_progress edit — no merge conflicts).
-    # INFRA-193: under `set -u`, an empty bash array can't be safely expanded with
-    # "${arr[@]}". Build the optional flag as a string, then word-split via $arr.
-    _claim_extra=""
-    [[ "$SPECULATIVE" == "1" ]] && _claim_extra="--speculative"
     for gid in "${GAP_IDS[@]}"; do
         if [[ $DRY_RUN -eq 0 ]]; then
-            "$SCRIPT_DIR/gap-claim.sh" "$gid" $_claim_extra
+            "$SCRIPT_DIR/gap-claim.sh" "$gid"
             # INFRA-492: emit session_start so INFRA-477's cost ledger
             # gets data. Best-effort — silent on chump fail.
             chump session-track --start "$gid" >/dev/null 2>&1 || true
         else
-            info "[dry-run] gap-claim.sh $gid $_claim_extra"
+            info "[dry-run] gap-claim.sh $gid"
         fi
     done
 fi
@@ -1619,51 +1606,6 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             green "Auto-merge enabled — PR will land when CI passes."
         fi
 
-        # ── INFRA-193: speculative-execution loser sweep ─────────────────────
-        # When --speculative was set, scan open PRs that cite the same gap
-        # ID(s) and close them as superseded. The losers' branches stay intact
-        # (no force-push, no commit loss) — only the PR is closed with a
-        # diagnostic comment pointing at the winning PR. Bypass with
-        # CHUMP_SPECULATIVE_SWEEP=0 (e.g. when re-running bot-merge.sh on a
-        # PR that's already armed and you don't want to re-close losers).
-        if [[ "$SPECULATIVE" == "1" ]] \
-            && [[ "${CHUMP_SPECULATIVE_SWEEP:-1}" != "0" ]] \
-            && [[ ${#GAP_IDS[@]} -gt 0 ]] \
-            && [[ -n "$TARGET_PR" ]]; then
-            stage_start "INFRA-193 speculative loser sweep (gap=${GAP_IDS[*]})"
-            for _gid in "${GAP_IDS[@]}"; do
-                # Search open PRs whose title or body mentions the gap ID.
-                # Exclude our own PR. gh pr list --search syntax: "GAP-ID in:title,body".
-                _losers=$(gh pr list --state open --search "$_gid" \
-                    --json number,headRefName,title \
-                    --jq ".[] | select(.number != $TARGET_PR) | \"\(.number)|\(.headRefName)|\(.title)\"" \
-                    2>/dev/null | head -10 || true)
-                if [[ -z "$_losers" ]]; then
-                    info "  No sibling PRs cite $_gid — clean win."
-                    continue
-                fi
-                while IFS='|' read -r _lpr _lbranch _ltitle; do
-                    [[ -z "$_lpr" ]] && continue
-                    # Defence-in-depth: require the loser PR's title or
-                    # branch to also reference the gap ID directly (avoids
-                    # supersede-by-mention false positives).
-                    if [[ "$_ltitle" != *"$_gid"* ]] && [[ "$_lbranch" != *"$(echo "$_gid" | tr '[:upper:]' '[:lower:]')"* ]]; then
-                        info "  PR #$_lpr mentions $_gid in body only (title=$_ltitle, branch=$_lbranch) — skipping (false-positive guard)."
-                        continue
-                    fi
-                    info "  Closing PR #$_lpr (branch=$_lbranch) as superseded by #$TARGET_PR …"
-                    _supersede_msg="$(printf 'Auto-closing as superseded by #%s.\n\nINFRA-193 speculative-execution race: two agents picked up %s in parallel; PR #%s won the race to ship and is queued for auto-merge. Branch `%s` stays intact (no force-push, no commit loss) — re-open this PR or cherry-pick if the winning PR is later reverted.\n\nSee CLAUDE.md → "Speculative execution (INFRA-193)" for opt-in semantics.' \
-                        "$TARGET_PR" "$_gid" "$TARGET_PR" "$_lbranch")"
-                    if [[ $DRY_RUN -eq 0 ]]; then
-                        gh pr close "$_lpr" --comment "$_supersede_msg" 2>/dev/null \
-                            || info "  WARN: could not close PR #$_lpr (already closed? insufficient perms?)"
-                    else
-                        info "  [dry-run] gh pr close $_lpr --comment '...'"
-                    fi
-                done <<< "$_losers"
-            done
-            stage_done
-        fi
 
         # INFRA-190: fire-and-forget pr-watch.sh so the PR auto-recovers
         # if main moves while it's queued (DIRTY → rebase + force-push +

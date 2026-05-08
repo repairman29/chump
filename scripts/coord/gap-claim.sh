@@ -24,13 +24,9 @@
 #                             to edit. Written to the lease JSON under "paths".
 #                             chump-commit.sh uses this for advisory conflict
 #                             warnings when another session claims the same file.
-#   --speculative             INFRA-193: opt-in speculative-execution mode.
-#                             Marks the lease with `"speculative": true` so
-#                             gap-preflight.sh allows concurrent claims by other
-#                             speculative-mode sessions. First-to-land wins; the
-#                             loser's PR is auto-closed by the post-merge sweep
-#                             in bot-merge.sh / stale-pr-reaper.sh. Default OFF
-#                             — exclusive lease semantics remain the safe default.
+#   --speculative             INFRA-735: deprecated to no-op. Speculative-execution
+#                             race mode (INFRA-193) is being hard-killed. The flag is
+#                             accepted for backward-compat but has no effect.
 #
 # Environment:
 #   CHUMP_SESSION_ID         explicit session ID override (highest priority)
@@ -39,7 +35,7 @@
 #   CHUMP_ALLOW_MAIN_WORKTREE  set to 1 to allow claiming from the main worktree
 #   CHUMP_PATH_CASE_CHECK    set to 0 to skip the path-case guard (default: 1)
 #   CHUMP_LOCK_DIR           override `.chump-locks/` path (tests; must match gap-preflight)
-#   CHUMP_SPECULATIVE        INFRA-193: equivalent to --speculative when set to 1
+#   CHUMP_SPECULATIVE        INFRA-735: deprecated to no-op. Speculative-execution race mode is being hard-killed.
 
 set -euo pipefail
 
@@ -77,7 +73,9 @@ while [[ $# -gt 0 ]]; do
             CLAIM_PATHS="${1#--paths=}"
             ;;
         --speculative)
-            SPECULATIVE=1
+            # INFRA-735: --speculative flag deprecated to no-op. INFRA-193
+            # speculative-execution race mode is being hard-killed. The flag is
+            # accepted (no error) for backward-compat, but ignored.
             ;;
         *)
             echo "Unknown argument: $1" >&2
@@ -341,14 +339,12 @@ EXPIRES="$(date -u -v+"${TTL_HOURS}"H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
 # inject/update the gap_id. Otherwise write a minimal standalone claim.
 if [[ -f "$LOCK_FILE" ]]; then
     # Use python3 to merge gap_id (and optional paths) into existing JSON
-    python3 - "$LOCK_FILE" "$GAP_ID" "$CLAIM_PATHS" "$SPECULATIVE" <<'PYEOF'
+    python3 - "$LOCK_FILE" "$GAP_ID" "$CLAIM_PATHS" <<'PYEOF'
 import json, sys
-path, gid, paths_csv, spec = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+path, gid, paths_csv = sys.argv[1], sys.argv[2], sys.argv[3]
 with open(path) as f:
     d = json.load(f)
 d["gap_id"] = gid
-if spec == "1":
-    d["speculative"] = True
 p = d.get("pending_new_gap")
 if isinstance(p, dict) and p.get("id") == gid:
     d.pop("pending_new_gap", None)
@@ -366,15 +362,15 @@ with open(path, "w") as f:
     f.write("\n")
 PYEOF
     if [[ -n "$CLAIM_PATHS" ]]; then
-        printf '[gap-claim] Updated %s → gap_id=%s, paths=%s%s\n' "$LOCK_FILE" "$GAP_ID" "$CLAIM_PATHS" "$([[ "$SPECULATIVE" == "1" ]] && echo ' (speculative)' || true)"
+        printf '[gap-claim] Updated %s → gap_id=%s, paths=%s\n' "$LOCK_FILE" "$GAP_ID" "$CLAIM_PATHS"
     else
-        printf '[gap-claim] Updated %s → gap_id=%s%s\n' "$LOCK_FILE" "$GAP_ID" "$([[ "$SPECULATIVE" == "1" ]] && echo ' (speculative)' || true)"
+        printf '[gap-claim] Updated %s → gap_id=%s\n' "$LOCK_FILE" "$GAP_ID"
     fi
 else
     # No existing lease — write a minimal standalone claim
-    python3 - "$LOCK_FILE" "$GAP_ID" "$SESSION_ID" "$NOW" "$EXPIRES" "$CLAIM_PATHS" "$SPECULATIVE" <<'PYEOF'
+    python3 - "$LOCK_FILE" "$GAP_ID" "$SESSION_ID" "$NOW" "$EXPIRES" "$CLAIM_PATHS" <<'PYEOF'
 import json, sys
-path, gap_id, session_id, taken_at, expires_at, paths_csv, spec = sys.argv[1:]
+path, gap_id, session_id, taken_at, expires_at, paths_csv = sys.argv[1:]
 paths_list = [p.strip() for p in paths_csv.split(",") if p.strip()] if paths_csv else []
 d = {
     "session_id": session_id,
@@ -385,16 +381,14 @@ d = {
     "purpose": f"gap:{gap_id}",
     "gap_id": gap_id,
 }
-if spec == "1":
-    d["speculative"] = True
 with open(path, "w") as f:
     json.dump(d, f, indent=2)
     f.write("\n")
 PYEOF
     if [[ -n "$CLAIM_PATHS" ]]; then
-        printf '[gap-claim] Claimed %s for session %s (expires %s, paths=%s)%s\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES" "$CLAIM_PATHS" "$([[ "$SPECULATIVE" == "1" ]] && echo ' [SPECULATIVE]' || true)"
+        printf '[gap-claim] Claimed %s for session %s (expires %s, paths=%s)\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES" "$CLAIM_PATHS"
     else
-        printf '[gap-claim] Claimed %s for session %s (expires %s)%s\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES" "$([[ "$SPECULATIVE" == "1" ]] && echo ' [SPECULATIVE]' || true)"
+        printf '[gap-claim] Claimed %s for session %s (expires %s)\n' "$GAP_ID" "$SESSION_ID" "$EXPIRES"
     fi
 fi
 
@@ -419,38 +413,6 @@ if command -v chump >/dev/null 2>&1; then
         --ttl "$_CLAIM_TTL_SECS" 2>/dev/null || true
 fi
 
-# ── INFRA-193: speculative-mode advisory banner ──────────────────────────────
-# When the operator opts in to speculative execution, surface the racing
-# siblings explicitly so the human/agent knows they are not the only one
-# working on this gap.
-if [[ "$SPECULATIVE" == "1" ]]; then
-    SIBLING_LIST="$(python3 - "$LOCK_DIR" "$GAP_ID" "$SESSION_ID" <<'PYEOF' 2>/dev/null || true
-import json, os, sys
-lock_dir, gid, mine = sys.argv[1], sys.argv[2], sys.argv[3]
-out = []
-if os.path.isdir(lock_dir):
-    for fn in sorted(os.listdir(lock_dir)):
-        if not fn.endswith(".json"):
-            continue
-        try:
-            d = json.load(open(os.path.join(lock_dir, fn)))
-        except Exception:
-            continue
-        if d.get("session_id") == mine:
-            continue
-        if d.get("gap_id") == gid:
-            tag = " [spec]" if d.get("speculative") else ""
-            out.append(f"{d.get('session_id','?')}{tag}")
-print(",".join(out))
-PYEOF
-)"
-    if [[ -n "$SIBLING_LIST" ]]; then
-        printf '[gap-claim] SPECULATIVE: racing sibling sessions on %s: %s\n' "$GAP_ID" "$SIBLING_LIST"
-        printf '[gap-claim]   First-to-land wins; loser PRs auto-closed by stale-pr-reaper.sh / bot-merge.sh post-arm sweep.\n'
-    else
-        printf '[gap-claim] SPECULATIVE: no current racing siblings on %s — you are the first speculative claimer.\n' "$GAP_ID"
-    fi
-fi
 
 # ── INFRA-102: session_start emit (fallback for non-Claude-Code dispatch) ────
 # The SessionStart Claude Code hook (ambient-context-inject.sh) is the primary
