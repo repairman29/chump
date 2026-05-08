@@ -47,14 +47,27 @@ fi
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 RESOLVER="$REPO_ROOT/scripts/coord/resolve-gaps-conflict.py"
 
-# INFRA-670: files whose change in a merged commit requires ALL open PRs to be
-# rebased immediately, not just the next-in-queue one. Touching Cargo.toml /
-# workspace lint config invalidates every branch's Cargo state, which causes
-# DIRTY conflicts for every open PR if left unattended.
+# INFRA-670/INFRA-711: files whose change in a merged commit requires ALL open
+# PRs to be rebased immediately, not just the next-in-queue one. Includes
+# workspace config (Cargo.toml, rust-toolchain.toml) and high-traffic shared code
+# (src/main.rs, src/lib.rs, src/agent_loop/**, src/dispatch.rs). Invalidates
+# every branch's build state, which causes DIRTY conflicts if left unattended.
+# Additional paths are configurable via scripts/coord/cascade-rebase-trigger-paths.txt
 WORKSPACE_HOT_FILES=(
     "Cargo.toml"
     "rust-toolchain.toml"
 )
+
+_cascade_config="$REPO_ROOT/scripts/coord/cascade-rebase-trigger-paths.txt"
+if [[ -f "$_cascade_config" ]]; then
+    while IFS= read -r line; do
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        # Skip paths that are already hardcoded
+        [[ "$line" == "Cargo.toml" || "$line" == "rust-toolchain.toml" ]] && continue
+        WORKSPACE_HOT_FILES+=("$line")
+    done < "$_cascade_config"
+fi
 
 # Detect whether the most recent commit on main touched any WORKSPACE_HOT_FILES.
 # If it did, call `gh pr update-branch` on every open non-draft PR and emit an
