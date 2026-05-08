@@ -1,0 +1,7 @@
+- id: PRODUCT-050
+  domain: PRODUCT
+  title: "EFFECTIVE: chump gen — wire read_file + list_dir tools into gen subcommand (PRODUCT-046 slice 1)"
+  status: open
+  priority: P1
+  effort: xs
+

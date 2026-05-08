@@ -1,0 +1,7 @@
+- id: PRODUCT-060
+  domain: PRODUCT
+  title: "EFFECTIVE: PWA phase 3 — parallelism governor (soft-cap 4, hard-cap 6) + decision channel inbox (PRODUCT-025 slice 3)"
+  status: open
+  priority: P2
+  effort: s
+

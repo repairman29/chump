@@ -1,0 +1,7 @@
+- id: PRODUCT-062
+  domain: PRODUCT
+  title: "EFFECTIVE: MCP server install — chump mcp install <name> downloads + configures server from registry (PRODUCT-033 slice 2)"
+  status: open
+  priority: P1
+  effort: s
+

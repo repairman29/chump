@@ -1,0 +1,7 @@
+- id: PRODUCT-053
+  domain: PRODUCT
+  title: "EFFECTIVE: PWA — show active cascade slots + model names on /settings page (PRODUCT-034 slice 1)"
+  status: open
+  priority: P1
+  effort: xs
+

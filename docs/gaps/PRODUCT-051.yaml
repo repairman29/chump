@@ -1,0 +1,7 @@
+- id: PRODUCT-051
+  domain: PRODUCT
+  title: "EFFECTIVE: chump gen — add patch_file + run_cli tools for iterative fixing (PRODUCT-046 slice 2)"
+  status: open
+  priority: P1
+  effort: xs
+

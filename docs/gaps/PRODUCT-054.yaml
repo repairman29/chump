@@ -1,0 +1,7 @@
+- id: PRODUCT-054
+  domain: PRODUCT
+  title: "EFFECTIVE: PWA — toggle cascade slots on/off from UI + persist to config.toml (PRODUCT-034 slice 2)"
+  status: open
+  priority: P1
+  effort: s
+

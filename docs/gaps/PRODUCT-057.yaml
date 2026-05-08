@@ -1,0 +1,7 @@
+- id: PRODUCT-057
+  domain: PRODUCT
+  title: "EFFECTIVE: VS Code ext — chat sidebar panel with SSE-streamed agent responses (PRODUCT-048 slice 2)"
+  status: open
+  priority: P1
+  effort: s
+

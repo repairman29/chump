@@ -1,0 +1,7 @@
+- id: PRODUCT-055
+  domain: PRODUCT
+  title: "EFFECTIVE: PWA — per-slot latency + token/s metrics on inference settings page (PRODUCT-034 slice 3)"
+  status: open
+  priority: P2
+  effort: s
+

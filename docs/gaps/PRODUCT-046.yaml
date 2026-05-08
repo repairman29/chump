@@ -2,7 +2,7 @@
   domain: PRODUCT
   title: "EFFECTIVE: chump gen uses agent loop with tool-use instead of single-shot"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "chump gen drives ChumpAgent::run with light tool set (read_file, write_file, patch_file, run_cli, list_dir) instead of single-shot ===FILE=== parsing"

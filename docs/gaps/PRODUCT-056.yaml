@@ -1,0 +1,7 @@
+- id: PRODUCT-056
+  domain: PRODUCT
+  title: "EFFECTIVE: VS Code ext — scaffold extension + launch chump --acp as stdio backend (PRODUCT-048 slice 1)"
+  status: open
+  priority: P1
+  effort: s
+

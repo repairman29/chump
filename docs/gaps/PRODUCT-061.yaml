@@ -1,0 +1,7 @@
+- id: PRODUCT-061
+  domain: PRODUCT
+  title: "EFFECTIVE: MCP server discovery — chump mcp list shows available servers from local registry (PRODUCT-033 slice 1)"
+  status: open
+  priority: P1
+  effort: xs
+

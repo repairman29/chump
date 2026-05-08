@@ -1,0 +1,7 @@
+- id: PRODUCT-058
+  domain: PRODUCT
+  title: "EFFECTIVE: VS Code ext — tool approval prompts as VS Code quickpick + file edits via editor API (PRODUCT-048 slice 3)"
+  status: open
+  priority: P1
+  effort: s
+

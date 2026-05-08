@@ -1,0 +1,7 @@
+- id: PRODUCT-059
+  domain: PRODUCT
+  title: "EFFECTIVE: PWA phase 1 — read-only live results board (leases + PRs + CI status) (PRODUCT-025 slice 1)"
+  status: open
+  priority: P1
+  effort: s
+
