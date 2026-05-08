@@ -4,12 +4,13 @@
 // ── <chump-nav> ───────────────────────────────────────────────────────────────
 class ChumpNav extends HTMLElement {
   static #ITEMS = [
-    { id: 'chat',     label: 'Chat',     icon: '💬' },
-    { id: 'results',  label: 'Results',  icon: '📊' },
-    { id: 'tasks',    label: 'Tasks',    icon: '⚡' },
-    { id: 'memory',   label: 'Memory',   icon: '🧠' },
-    { id: 'models',   label: 'Models',   icon: '🤖' },
-    { id: 'settings', label: 'Settings', icon: '⚙' },
+    { id: 'chat',      label: 'Chat',      icon: '💬' },
+    { id: 'results',   label: 'Results',   icon: '📊' },
+    { id: 'tasks',     label: 'Tasks',     icon: '⚡' },
+    { id: 'decisions', label: 'Decisions', icon: '🎯' },
+    { id: 'memory',    label: 'Memory',    icon: '🧠' },
+    { id: 'models',    label: 'Models',    icon: '🤖' },
+    { id: 'settings',  label: 'Settings',  icon: '⚙' },
   ];
 
   connectedCallback() {
@@ -164,18 +165,92 @@ class ChumpViewMemory extends HTMLElement {
 }
 customElements.define('chump-view-memory', ChumpViewMemory);
 
+// ── <chump-parallelism-governor> ─────────────────────────────────────────────
+class ChumpParallelismGovernor extends HTMLElement {
+  connectedCallback() {
+    const saved = localStorage.getItem('parallelism-limit') || '4';
+    this.innerHTML = `
+      <label class="setting-row">
+        <span class="setting-label">Parallelism Governor</span>
+        <input
+          type="range"
+          min="1"
+          max="16"
+          value="${saved}"
+          id="parallelism-slider"
+          class="setting-slider"
+          aria-label="Max concurrent operations"
+        />
+        <span class="setting-value" id="parallelism-value">${saved}</span>
+      </label>
+    `;
+    this.querySelector('#parallelism-slider')?.addEventListener('change', (e) => {
+      localStorage.setItem('parallelism-limit', e.target.value);
+      this.querySelector('#parallelism-value').textContent = e.target.value;
+      document.dispatchEvent(new CustomEvent('chump:parallelism-changed', { detail: parseInt(e.target.value) }));
+    });
+  }
+}
+customElements.define('chump-parallelism-governor', ChumpParallelismGovernor);
+
+// ── <chump-view-decisions> ────────────────────────────────────────────────────
+class ChumpViewDecisions extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Decisions</h2>
+        <p class="view-subtitle">Decision channel inbox — pending actions</p>
+      </section>
+      <section class="decisions-list" id="decisions-list">
+        <p class="placeholder">Loading decisions…</p>
+      </section>
+    `;
+    this.#load();
+  }
+
+  #load() {
+    const list = this.querySelector('#decisions-list');
+    fetch('/api/decisions')
+      .then((r) => r.json())
+      .then((decisions) => {
+        if (!Array.isArray(decisions) || decisions.length === 0) {
+          list.innerHTML = '<p class="placeholder">No pending decisions. All caught up!</p>';
+          return;
+        }
+        list.innerHTML = decisions.slice(0, 30).map((d) => {
+          const priority = d.priority || 'normal';
+          const action = d.action || 'decision';
+          return `
+            <article class="task-card">
+              <header class="task-card-header">
+                <span class="task-status ${priority}">${priority}</span>
+                <span class="task-id">${d.id ?? ''}</span>
+              </header>
+              <p class="task-desc"><strong>${action}</strong></p>
+              ${d.context ? `<p class="task-desc" style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;">${d.context}</p>` : ''}
+            </article>
+          `;
+        }).join('');
+      })
+      .catch(() => {
+        list.innerHTML = '<p class="placeholder">Could not load decisions (offline or server not running).</p>';
+      });
+  }
+}
+customElements.define('chump-view-decisions', ChumpViewDecisions);
+
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
   connectedCallback() {
     this.innerHTML = `
       <section class="view-header">
         <h2>Settings</h2>
-        <p class="view-subtitle">v2 shell · Chump PWA rebuild (PRODUCT-012)</p>
+        <p class="view-subtitle">v2 shell · Chump PWA rebuild (PRODUCT-012, PRODUCT-044)</p>
       </section>
       <section class="settings-grid">
         <label class="setting-row">
           <span class="setting-label">Version</span>
-          <span class="setting-value">v2-alpha (PRODUCT-012 shell)</span>
+          <span class="setting-value">v2-alpha (PRODUCT-012 shell + phase 3)</span>
         </label>
         <label class="setting-row">
           <span class="setting-label">Framework</span>
@@ -185,6 +260,10 @@ class ChumpViewSettings extends HTMLElement {
           <span class="setting-label">Offline</span>
           <span class="setting-value">Service Worker active — shell cached</span>
         </label>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">Fleet Control</p>
+          <chump-parallelism-governor></chump-parallelism-governor>
+        </div>
       </section>
     `;
   }
@@ -271,12 +350,13 @@ customElements.define('chump-view-chat', ChumpViewChat);
 
 // ── Router ────────────────────────────────────────────────────────────────────
 const VIEWS = {
-  chat:     () => document.createElement('chump-view-chat'),
-  results:  () => document.createElement('chump-view-results'),
-  tasks:    () => document.createElement('chump-view-tasks'),
-  memory:   () => document.createElement('chump-view-memory'),
-  models:   () => document.createElement('chump-view-models'),
-  settings: () => document.createElement('chump-view-settings'),
+  chat:      () => document.createElement('chump-view-chat'),
+  results:   () => document.createElement('chump-view-results'),
+  tasks:     () => document.createElement('chump-view-tasks'),
+  decisions: () => document.createElement('chump-view-decisions'),
+  memory:    () => document.createElement('chump-view-memory'),
+  models:    () => document.createElement('chump-view-models'),
+  settings:  () => document.createElement('chump-view-settings'),
 };
 
 document.addEventListener('chump:navigate', (e) => {
