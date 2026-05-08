@@ -6,7 +6,17 @@
 #   priority   — string equality (P0, P1, P2)
 #   effort     — string OR list of strings (e.g. xs, or [l, xl])
 #   task_class — string; wired values: `research` (EVAL-*/RESEARCH-* gaps),
-#                `cognition` (COG-* gaps, INFRA-265)
+#                `cognition` (COG-* gaps, INFRA-265), `coord` (INFRA-* gaps)
+#
+# INFRA-471: model_class field added to each route. Drives per-pick model
+# selection in worker.sh — FLEET_MODEL is no longer global; it is overridden
+# per gap via _resolve_model.py which walks this table. Also controls which
+# effort levels each model-class worker accepts at pick time:
+#   haiku  — picks xs, s only (refuses m, l, xl)
+#   sonnet — picks s, m, l, xl (refuses xs)
+#   opus   — picks any effort
+#
+# model_class field values: haiku | sonnet | opus
 #
 # Candidate fields:
 #   backend       — `claude` or `chump-local`
@@ -25,11 +35,13 @@ routes:
   # Active Inference / synthetic neuromodulation code — see the EVAL-074
   # retraction in docs/RESEARCH_INTEGRITY.md for the failure mode.
   - match: { task_class: cognition }
+    model_class: sonnet
     why: COG-* gaps cannot tolerate confident-sounding wrong answers
     candidates:
       - { backend: claude, why: cognition-needs-frontier }
 
   - match: { task_class: research }
+    model_class: sonnet
     why: EVAL/RESEARCH gaps require correctness — no free-tier risk
     candidates:
       - { backend: claude, why: research-needs-frontier }
@@ -38,12 +50,23 @@ routes:
   # the gap surface for large work is too big for the free-tier cascade
   # to nail consistently — claude reliably, even on P0/P2 large efforts.
   - match: { effort: [l, xl] }
+    model_class: sonnet
     why: large work needs frontier reasoning
     candidates:
       - { backend: claude, why: frontier-large-work }
 
+  # INFRA-471: medium effort — sonnet quality needed; haiku workers skip these.
+  - match: { effort: m }
+    model_class: sonnet
+    why: medium work warrants frontier reasoning; cheap models miss edge cases
+    candidates:
+      - { backend: claude, why: sonnet-medium-work }
+      - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-medium-fallback }
+      - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: together-medium-fallback }
+
   - match: { effort: xs }
-    why: trivial codemod-class — fast cheap models suffice
+    model_class: haiku
+    why: trivial codemod-class — fast cheap models suffice; sonnet workers skip these
     candidates:
       - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-fast-cheap }
       - { backend: chump-local, model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free, provider_pfx: TOGETHER, why: together-free-fallback }
@@ -52,6 +75,7 @@ routes:
   # default_candidates (which mixes free-tier + claude); explicit makes
   # the cascade-first intent visible to operators reading the table.
   - match: { effort: s }
+    model_class: haiku
     why: small work — cascade-first with frontier fallback at default
     candidates:
       - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: groq-small }
