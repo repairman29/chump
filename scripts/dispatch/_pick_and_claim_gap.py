@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
-"""INFRA-415: atomic gap picker+claimer for fleet workers.
+"""INFRA-415 + FLEET-046: atomic gap picker+claimer for fleet workers.
 
 Extends _pick_gap.py with claiming logic so gap-picker returns ONLY gaps
 that have already been claimed (atomically) by this invocation. Prevents
 concurrent workers from picking the same gap.
+
+FLEET-046: pillar-aware rebalancing. Reads recent ship history from
+state.db to detect domain monopoly (e.g. INFRA >70% of last 20 ships)
+and pillar starvation (a pillar absent from recent ships). Gaps from
+underserved domains/pillars get a sort-key boost so they surface ahead
+of yet-another-INFRA-fix.
 
 Reads the open-gap JSON, applies fleet filters, attempts to claim each
 candidate in priority order. Returns the first gap that was successfully
@@ -13,6 +19,10 @@ Environment (same as _pick_gap.py plus):
   SESSION_ID       session identifier for lease (e.g. from CLAUDE_SESSION_ID)
   CHUMP_LOCK_DIR   override .chump-locks path (default: repo_root/.chump-locks)
   FLEET_MODEL      worker's model tier (haiku, sonnet, opus) for filtering by required_model
+  CHUMP_REBALANCE  set to "0" to disable pillar/domain rebalancing (default: enabled)
+  CHUMP_STATE_DB   override path to state.db (default: repo_root/.chump/state.db)
+  REBALANCE_WINDOW number of recent ships to consider (default: 20)
+  REBALANCE_DOMAIN_THRESHOLD  domain monopoly threshold 0-100 (default: 70)
 """
 
 from __future__ import annotations
@@ -28,6 +38,76 @@ from pathlib import Path
 
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
+PILLAR_TAGS = {"EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE", "MISSION"}
+
+
+def extract_pillar(title: str) -> str:
+    """Extract pillar tag from gap title (e.g. 'EFFECTIVE: foo bar' → 'EFFECTIVE')."""
+    upper = title.lstrip().upper()
+    for tag in PILLAR_TAGS:
+        if upper.startswith(tag + ":"):
+            return tag
+    return ""
+
+
+def get_ship_history(window: int) -> list[dict]:
+    """Read last `window` shipped gaps from state.db. Returns [{domain, title}]."""
+    repo_root = os.environ.get("REPO_ROOT", ".")
+    db_path = os.environ.get("CHUMP_STATE_DB", os.path.join(repo_root, ".chump", "state.db"))
+    if not os.path.exists(db_path):
+        return []
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT domain, title FROM gaps "
+            "WHERE status='done' AND closed_pr IS NOT NULL "
+            "ORDER BY closed_at DESC LIMIT ?",
+            (window,),
+        ).fetchall()
+        conn.close()
+        return [{"domain": r[0], "title": r[1]} for r in rows]
+    except Exception:
+        return []
+
+
+def compute_rebalance_boosts(
+    ship_history: list[dict],
+    domain_threshold: int,
+) -> tuple[str, set[str]]:
+    """Return (monopoly_domain, starved_pillars) based on ship history imbalance.
+
+    monopoly_domain: the domain that exceeds threshold% of recent ships (e.g.
+    "INFRA" at 100%). Empty string if no monopoly. Caller boosts any gap whose
+    domain != monopoly_domain.
+
+    starved_pillars: pillar tags absent from recent ship titles. If no recent
+    ship has an EFFECTIVE: prefix, EFFECTIVE-tagged gaps get a boost.
+    """
+    if not ship_history:
+        return "", set()
+
+    domain_counts: dict[str, int] = {}
+    seen_pillars: set[str] = set()
+    for s in ship_history:
+        d = (s.get("domain") or "").upper()
+        if d:
+            domain_counts[d] = domain_counts.get(d, 0) + 1
+        pillar = extract_pillar(s.get("title", ""))
+        if pillar:
+            seen_pillars.add(pillar)
+
+    total = len(ship_history)
+    monopoly_domain: str = ""
+    for domain, count in domain_counts.items():
+        pct = (count * 100) // total
+        if pct >= domain_threshold:
+            monopoly_domain = domain.upper()
+            break
+
+    starved_pillars = PILLAR_TAGS - seen_pillars
+
+    return monopoly_domain, starved_pillars
 
 
 def csv(env_key: str) -> list[str]:
@@ -238,7 +318,18 @@ def main() -> int:
         for s in os.environ.get("WORKER_SKILLS", "").split(",")
         if s.strip()
     ) if affinity_enabled else set()
-    PRIO_SCORE = {"P0": 8, "P1": 4, "P2": 2, "P3": 1}
+
+    # FLEET-046: pillar/domain rebalancing.
+    rebalance_enabled = os.environ.get("CHUMP_REBALANCE", "1") != "0"
+    monopoly_domain: str = ""
+    starved_pillars: set[str] = set()
+    if rebalance_enabled:
+        window = int(os.environ.get("REBALANCE_WINDOW", "20"))
+        threshold = int(os.environ.get("REBALANCE_DOMAIN_THRESHOLD", "70"))
+        ship_history = get_ship_history(window)
+        monopoly_domain, starved_pillars = compute_rebalance_boosts(
+            ship_history, threshold
+        )
 
     candidates = []
     for g in gaps:
@@ -319,11 +410,26 @@ def main() -> int:
             # Each matched skill adds 1 point (up to len(skills_required)).
             affinity_score += len(skills_required & worker_skills)
 
-        # Primary sort: affinity score (desc) if enabled, then priority, then effort, then created_at.
+        # FLEET-046: rebalance boost. Gaps from underserved domains/pillars
+        # get a sort-key bonus equivalent to bumping them up 2 priority
+        # levels (e.g. P2 sorts like P0).
+        rebalance_boost = 0
+        if rebalance_enabled:
+            title = g.get("title", "")
+            gap_domain = d.upper()
+            gap_pillar = extract_pillar(title)
+            if monopoly_domain and gap_domain != monopoly_domain:
+                rebalance_boost += 2
+            if gap_pillar and gap_pillar in starved_pillars:
+                rebalance_boost += 2
+
+        effective_prio = max(PRIO_RANK.get(p, 9) - rebalance_boost, 0)
+
+        # Primary sort: affinity (desc), effective priority, effort, created_at.
         candidates.append(
             (
-                -affinity_score,  # Negative for descending sort.
-                PRIO_RANK.get(p, 9),
+                -affinity_score,
+                effective_prio,
                 EFFORT_RANK.get(e, 9),
                 g.get("created_at") or 0,
                 gid,
@@ -354,6 +460,24 @@ def main() -> int:
                 print(gap_id)
                 return 0
             if try_claim_gap(gap_id, session_id, lock_dir):
+                # FLEET-046: log when rebalancing influenced the pick.
+                if rebalance_enabled and (monopoly_domain or starved_pillars):
+                    ambient_path = os.environ.get(
+                        "AMBIENT_JSONL", ".chump-locks/ambient.jsonl"
+                    )
+                    try:
+                        event = {
+                            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                            "event": "INFO",
+                            "kind": "rebalance_active",
+                            "picked": gap_id,
+                            "monopoly_domain": monopoly_domain,
+                            "starved_pillars": sorted(starved_pillars),
+                        }
+                        with open(ambient_path, "a") as f:
+                            f.write(json.dumps(event) + "\n")
+                    except Exception:
+                        pass
                 print(gap_id)
                 return 0
     else:
