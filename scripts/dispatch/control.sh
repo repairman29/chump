@@ -34,6 +34,10 @@ _last_ghost_reap=0
 # INFRA-626: operator-recall detector (every 5 min)
 _last_recall_check=0
 
+# INFRA-663: critical-path file change detector (every 15 min)
+_last_critical_check=0
+_fleet_launch_commit=""
+
 while :; do
     clear
     printf '\033[1mchump fleet — session=%s  size=%s  refresh=%ss\033[0m\n' \
@@ -215,6 +219,57 @@ except Exception:
             REPO_ROOT="$REPO_ROOT" "$_recall_script" 2>&1 | grep '^\[operator-recall\]' || true
         fi
         _last_recall_check=$SECONDS
+    fi
+
+    # INFRA-663: check for critical-path file changes in main every 15 min
+    if (( SECONDS - _last_critical_check >= 900 )); then
+        # Lazy-init fleet launch commit once from the ambient log (emit time)
+        if [[ -z "$_fleet_launch_commit" ]] && [[ -f "$REPO_ROOT/.chump-locks/ambient.jsonl" ]]; then
+            _fleet_launch_commit=$(git rev-parse HEAD 2>/dev/null || true)
+            if [[ -z "$_fleet_launch_commit" ]]; then
+                echo "[control] warning: could not determine fleet launch commit" >&2
+            fi
+        fi
+
+        if [[ -n "$_fleet_launch_commit" ]]; then
+            _critical_files=(
+                "scripts/dispatch/worker.sh"
+                "scripts/dispatch/_pick_and_claim_gap.py"
+                "src/operator_presence.rs"
+            )
+
+            # Fetch latest main to check for changes
+            if git fetch origin main --quiet 2>/dev/null; then
+                _skew_detected=0
+                for _file in "${_critical_files[@]}"; do
+                    if [[ -f "$REPO_ROOT/$_file" ]]; then
+                        # Get SHA of file at fleet launch
+                        _launch_sha=$(git show "$_fleet_launch_commit:$_file" 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "")
+                        # Get SHA of file in current origin/main
+                        _main_sha=$(git show "origin/main:$_file" 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "")
+
+                        if [[ -n "$_launch_sha" && -n "$_main_sha" && "$_launch_sha" != "$_main_sha" ]]; then
+                            echo "[control] CRITICAL FILE SKEW DETECTED: $_file changed in origin/main since fleet launch"
+                            _skew_detected=1
+                            break
+                        fi
+                    fi
+                done
+
+                if (( _skew_detected )); then
+                    "$REPO_ROOT/scripts/dev/ambient-emit.sh" fleet_critical_skew \
+                        "file=$_file" "fleet_launch=$_fleet_launch_commit" \
+                        "main_head=$(git rev-parse origin/main 2>/dev/null || echo '?')" 2>/dev/null || true
+                    echo "[control] triggering fleet restart due to critical-path changes"
+                    if [[ -x "$REPO_ROOT/scripts/dispatch/fleet-restart.sh" ]]; then
+                        REPO_ROOT="$REPO_ROOT" FLEET_START_EPOCH="${FLEET_START_EPOCH:-0}" \
+                            "$REPO_ROOT/scripts/dispatch/fleet-restart.sh" 2>&1 | grep '^\[fleet-restart\]' || true
+                    fi
+                fi
+            fi
+        fi
+
+        _last_critical_check=$SECONDS
     fi
 
     sleep "$REFRESH_S"
