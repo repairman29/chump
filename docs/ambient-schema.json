@@ -32,7 +32,8 @@
         "bash_call",
         "INTENT",
         "ALERT",
-        "fleet_queue_depth"
+        "fleet_queue_depth",
+        "gen_smoke_results"
       ],
       "description": "One of the well-known event kinds. Adding a new kind requires a new entry here AND a new branch in the oneOf below."
     }
@@ -93,6 +94,20 @@
         "msg": { "type": "string" }
       },
       "required": ["kind"]
+    },
+    {
+      "title": "gen_smoke_results",
+      "description": "Emitted by scripts/qa/test-chump-gen-fixtures.sh (INFRA-594) after running the 10-fixture chump-gen smoke suite.",
+      "properties": {
+        "event": { "const": "gen_smoke_results" },
+        "pass_count": { "type": "string", "pattern": "^[0-9]+$" },
+        "fail_count": { "type": "string", "pattern": "^[0-9]+$" },
+        "total": { "type": "string", "pattern": "^[0-9]+$" },
+        "pass_rate": { "type": "string", "pattern": "^[0-9]+$" },
+        "elapsed_ms": { "type": "string", "pattern": "^[0-9]+$" },
+        "gap": { "type": "string" }
+      },
+      "required": ["pass_count", "fail_count", "total"]
     },
     {
       "title": "fleet_queue_depth",
