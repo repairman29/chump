@@ -3057,6 +3057,301 @@ mod api_battle_tests {
 
         let _ = crate::web_sessions_db::session_delete(&sid);
     }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_stop_happy_path() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/stop")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"request_id":"test-id-123"}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(true));
+        assert_eq!(v.get("cancelled").and_then(|x| x.as_bool()), Some(false));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_stop_empty_request_id_bad_request() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/stop")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"request_id":""}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_stop_whitespace_only_request_id_bad_request() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/stop")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"request_id":"   "}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_approve_happy_path() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/approve")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"request_id":"approval-id","allowed":true}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(true));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_approve_denied() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/approve")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"request_id":"approval-id","allowed":false}"#,
+            ))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(true));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_inject_hint_happy_path() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/inject-hint")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                r#"{"hint":"test hint","tool_context":"test_tool"}"#,
+            ))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(true));
+        assert!(v.get("blackboard_id").is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_inject_hint_without_context() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/inject-hint")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"hint":"test hint"}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("ok").and_then(|x| x.as_bool()), Some(true));
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_inject_hint_empty_hint_bad_request() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/inject-hint")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"hint":""}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_inject_hint_whitespace_only_bad_request() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/inject-hint")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"hint":"   "}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_inject_hint_too_long_bad_request() {
+        let long_hint = "x".repeat(2001);
+        let body_str = format!(r#"{{"hint":"{}"}}"#, long_hint);
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/inject-hint")
+            .header("content-type", "application/json")
+            .body(Body::from(body_str))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_sessions_list_happy_path() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/sessions")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(v.is_array());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_sessions_create_happy_path() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/sessions")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"title":"test session"}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // 2026-05-08: handler returns `{"session_id": <id>}` — no `ok` field.
+        // The original assertion (Some(true)) was speculative; the API
+        // contract is just session_id. status=200 on the line above is the
+        // success signal.
+        assert!(
+            v.get("session_id").is_some(),
+            "expected session_id in response, got: {v}"
+        );
+
+        let session_id = v.get("session_id").and_then(|x| x.as_str()).unwrap();
+        let _ = crate::web_sessions_db::session_delete(session_id);
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_inject_hint_with_auth_enabled() {
+        let prev_token = std::env::var("CHUMP_WEB_TOKEN").ok();
+        std::env::set_var("CHUMP_WEB_TOKEN", "secret-token");
+
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/inject-hint")
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer secret-token")
+            .body(Body::from(r#"{"hint":"test hint"}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+
+        match prev_token {
+            Some(t) => std::env::set_var("CHUMP_WEB_TOKEN", t),
+            None => std::env::remove_var("CHUMP_WEB_TOKEN"),
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_inject_hint_unauthorized() {
+        let prev_token = std::env::var("CHUMP_WEB_TOKEN").ok();
+        std::env::set_var("CHUMP_WEB_TOKEN", "secret-token");
+
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/inject-hint")
+            .header("content-type", "application/json")
+            .header("authorization", "Bearer wrong-token")
+            .body(Body::from(r#"{"hint":"test hint"}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+        match prev_token {
+            Some(t) => std::env::set_var("CHUMP_WEB_TOKEN", t),
+            None => std::env::remove_var("CHUMP_WEB_TOKEN"),
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_stop_unauthorized() {
+        let prev_token = std::env::var("CHUMP_WEB_TOKEN").ok();
+        std::env::set_var("CHUMP_WEB_TOKEN", "secret-token");
+
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/stop")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"request_id":"test"}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+        match prev_token {
+            Some(t) => std::env::set_var("CHUMP_WEB_TOKEN", t),
+            None => std::env::remove_var("CHUMP_WEB_TOKEN"),
+        }
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_approve_unauthorized() {
+        let prev_token = std::env::var("CHUMP_WEB_TOKEN").ok();
+        std::env::set_var("CHUMP_WEB_TOKEN", "secret-token");
+
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/approve")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"request_id":"test","allowed":true}"#))
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::UNAUTHORIZED);
+
+        match prev_token {
+            Some(t) => std::env::set_var("CHUMP_WEB_TOKEN", t),
+            None => std::env::remove_var("CHUMP_WEB_TOKEN"),
+        }
+    }
 }
 
 #[cfg(test)]
