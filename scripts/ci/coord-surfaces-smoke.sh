@@ -17,6 +17,10 @@ trap 'rm -rf "$TMP"' EXIT
 export CHUMP_LOCK_DIR="$TMP"
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export CHUMP_SESSION_ID="coord-surfaces-smoke-$$"
+# Smoke test creates an ephemeral gap — skip guards that check for real remote
+# branches (INFRA-573) or open PRs (INFRA-273) to avoid collisions with live work.
+export CHUMP_ALLOW_REUSE_BRANCH=1
+export CHUMP_PREFLIGHT_PR_CHECK=0
 
 if [[ ! -x "$ROOT/target/debug/chump" ]]; then
   echo "coord-surfaces-smoke: building target/debug/chump …" >&2
@@ -29,7 +33,7 @@ if [[ -n "${1:-}" ]]; then
     GAP_ID="$1"
 else
     echo "[coord-surfaces-smoke] reserving fresh gap for self-contained test …" >&2
-    GAP_ID=$("$ROOT/target/debug/chump" gap reserve --domain INFRA --priority P3 --effort xs \
+    GAP_ID=$("$ROOT/target/debug/chump" gap reserve --domain SMOKE --priority P3 --effort xs \
         --title "coord-surfaces-smoke fixture (auto-clean)" 2>&1 | tail -1)
     echo "[coord-surfaces-smoke] reserved $GAP_ID" >&2
 fi
