@@ -499,8 +499,14 @@ if [ "${CHUMP_GAPS_LOCK:-1}" != "0" ]; then
 import subprocess, sys, re
 try:
     import yaml
-except ImportError:
-    sys.exit(0)  # PyYAML not installed — silent skip (CI catches it)
+except ImportError as e:
+    sys.stderr.write("[pre-commit] ERROR: PyYAML not installed — gap YAML validity check cannot run.\n")
+    sys.stderr.write("[pre-commit] Install it via:\n")
+    sys.stderr.write("[pre-commit]   pip install pyyaml\n")
+    sys.stderr.write("[pre-commit] or (macOS):\n")
+    sys.stderr.write("[pre-commit]   brew install python3\n")
+    sys.stderr.write("[pre-commit] Then retry the commit.\n")
+    sys.exit(1)
 def _gaps_text(ref=None):
     """Read all gaps as monolithic YAML text from per-file or monolithic layout."""
     prefix = f"{ref}:" if ref else ":"
