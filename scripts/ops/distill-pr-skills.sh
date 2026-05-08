@@ -168,4 +168,12 @@ if [[ "$TOTAL_NEW" -gt 0 ]]; then
     say "  Next agent with CHUMP_LESSONS_AT_SPAWN_N>0 will pick them up automatically."
     say "  Manual peek: chump --briefing <GAP-ID> (per-gap) or sqlite3 ${DB} 'SELECT directive, scope, priority FROM chump_improvement_targets ORDER BY id DESC LIMIT 10;'"
 fi
+
+# Write heartbeat for daemon monitoring (INFRA-683)
+{
+    echo "ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "status=ok"
+    echo "new_targets=$TOTAL_NEW"
+} > /tmp/chump-distill.heartbeat 2>/dev/null || true
+
 exit 0
