@@ -1,13 +1,9 @@
 - id: PRODUCT-063
   domain: PRODUCT
   title: "EFFECTIVE: chump gap decompose <ID> — LLM-assisted gap slicing into fleet-pickable xs/s pieces"
-  status: open
+  status: done
   priority: P1
   effort: s
-  acceptance_criteria:
-    - "chump gap decompose <ID> calls provider cascade to suggest xs/s slices with crisp ACs"
-    - "Default mode (--suggest) prints slices to stderr for operator review"
-    - "--apply mode files slices via reserve_verified, sets ACs and depends_on, demotes parent to P2"
-    - "--json mode outputs structured JSON for scripted consumption"
-    - "Refuses to decompose gaps that are already xs/s or not open"
-    - "Works with any provider (Ollama, Groq, Together, Anthropic)"
+  closed_date: '2026-05-08'
+  closed_pr: 1353
+

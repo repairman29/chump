@@ -153,23 +153,30 @@ fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
     let overlay = maybe_overlay_from_env().unwrap_or_default();
 
     format!(
-        "{overlay}You are a code agent. Complete this gap by calling tools. \
-Do NOT write prose — only call tools.
+        "{overlay}You are a code agent working in a Rust repository. \
+Your ONLY job is to make code changes that satisfy the gap below, then commit.
 
 ## Gap
 ```yaml
 {gap_yaml}
 ```
 
-## Instructions
-1. Call read_file to read the source file(s) mentioned in the gap.
-2. Call write_file or patch_file to make the code changes.
-3. Call git_commit to commit with message: \"{gap_id}: <short description>\".
-4. Reply with ONLY the text \"done\".
+## Workflow (follow exactly)
+1. read_file — read the file(s) that need changing (e.g. Cargo.toml, src/*.rs).
+2. write_file — write the ENTIRE modified file back to the SAME path. \
+   You must include ALL original content with only your targeted changes applied. \
+   Do NOT create new files unless the gap specifically requires it.
+3. patch_file — alternative to write_file for small changes (preferred for large files).
+4. git_commit — commit with message \"{gap_id}: <short summary of what changed>\". \
+   This automatically stages modified files.
+5. Respond with the single word: done
 
-IMPORTANT: Every response must be a tool call. Never explain, never describe \
-what you will do. If you need to read a file, call read_file. If you need to \
-write code, call write_file. Do NOT output code in text — always use write_file.",
+## Rules
+- NEVER write documentation, plans, or markdown files. ONLY modify source/config files.
+- NEVER explain what you will do. Every response = one tool call.
+- NEVER create files like chump-plan.md, docs/<ID>.md, or similar.
+- write_file REPLACES the file at the given path. Include the full file content.
+- After git_commit succeeds, respond \"done\" and stop.",
         overlay = overlay,
         gap_yaml = gap_yaml,
         gap_id = gap_id,
