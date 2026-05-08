@@ -1707,4 +1707,19 @@ if [ -x "$DEFAULT_FLIP_HOOK" ]; then
     "$DEFAULT_FLIP_HOOK" || true
 fi
 
+# 13. Gap-divergence guard (INFRA-783, 2026-05-08)
+# ------------------------------------------------------------------
+# Refuses commits where docs/gaps/<ID>.yaml diverges from state.db
+# (canonical post-INFRA-760). Catches gap-ID collisions, manual YAML
+# edits that bypass `chump gap set`, and accidental overwrites.
+# Bypass: CHUMP_GAP_DIVERGE_CHECK=0 with `Gap-Diverge-Bypass: <reason>`
+# trailer in commit body.
+
+GAP_DIVERGE_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-gap-divergence.sh"
+if [ -x "$GAP_DIVERGE_HOOK" ]; then
+    if ! "$GAP_DIVERGE_HOOK"; then
+        exit 1
+    fi
+fi
+
 exit 0
