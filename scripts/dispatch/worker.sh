@@ -92,10 +92,21 @@ _starve_count=0
 _dispatch_fail_count=0
 # Exponential backoff state for empty picks: tracks current backoff multiplier.
 _backoff_multiplier=1
+# FLEET-042: heartbeat state for health monitoring.
+_last_heartbeat=$(date +%s)
+_heartbeat_interval=60
 
 mkdir -p "$FLEET_LOG_DIR"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
+
+# FLEET-042: write heartbeat file with current epoch + gap_id.
+write_heartbeat() {
+    local gap_id="${1:-none}"
+    local now=$(date +%s)
+    local heartbeat_file="/tmp/chump-fleet-worker-${AGENT_ID}.heartbeat"
+    printf '%s %s\n' "$now" "$gap_id" > "$heartbeat_file" 2>/dev/null || true
+}
 
 # INFRA-620: re-read CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json
 # before each claude -p spawn. Prevents auth_storm when the inherited token
@@ -324,11 +335,21 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
 ' 2>/dev/null || echo "$IDLE_SLEEP_S")"
         fi
         log "no pickable gap (filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER); sleeping ${_sleep_s}s (starve=$_starve_count, backoff_mult=${_backoff_multiplier}x)"
-        sleep "$_sleep_s"
+        # FLEET-042: heartbeat during idle with short sleeps to keep file fresh.
+        _sleep_remaining=$(printf '%.0f' "$_sleep_s")
+        while [ "$_sleep_remaining" -gt 0 ]; do
+            _this_sleep=$(( _sleep_remaining > 10 ? 10 : _sleep_remaining ))
+            sleep "$_this_sleep"
+            write_heartbeat "idle"
+            _sleep_remaining=$(( _sleep_remaining - _this_sleep ))
+        done
         continue
     fi
 
     GAP_ID="$pick"
+
+    # FLEET-042: update heartbeat with picked gap.
+    write_heartbeat "$GAP_ID"
 
     # INFRA-471: per-pick model class from routing.yaml.
     # FLEET_MODEL is the worker's base model class (used for effort filtering);
@@ -661,6 +682,17 @@ Operator or sibling worker can rescue this branch via:
                 _checkpoint_pid=$!
             fi
 
+            # FLEET-042: heartbeat background process while claude is running.
+            _heartbeat_pid=0
+            (
+                sleep 1  # Let claude process start
+                while kill -0 $$ 2>/dev/null; do
+                    write_heartbeat "$GAP_ID"
+                    sleep "$_heartbeat_interval"
+                done
+            ) &
+            _heartbeat_pid=$!
+
             (
                 cd "$wt_path" || exit 99
                 # Same surface as src/dispatch.rs WorkBackend::Headless.
@@ -676,6 +708,12 @@ Operator or sibling worker can rescue this branch via:
                 fi
             ) >"$cycle_log" 2>&1
             rc=$?
+
+            # FLEET-042: kill heartbeat background process after claude exits.
+            if [[ "$_heartbeat_pid" -ne 0 ]]; then
+                kill "$_heartbeat_pid" 2>/dev/null || true
+                wait "$_heartbeat_pid" 2>/dev/null || true
+            fi
 
             # INFRA-639: tear down token parser after claude exits.
             if [[ "$_tok_parser_pid" -ne 0 ]]; then
