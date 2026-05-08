@@ -434,6 +434,9 @@ jobs:
       - name: chump-mcp-coord tools/list (INFRA-033)
         run: bash scripts/ci/test-mcp-coord-smoke.sh
 
+      - name: env-var coverage — all src/ reads documented or allowlisted (DOC-026)
+        run: bash scripts/ci/test-env-var-coverage.sh
+
       # INFRA-024: standalone example workspace (not a root workspace member).
       # Locked build catches accidental drift in examples/apalis-poc/Cargo.lock.
       # Cheap (~30s) — keep it co-located with the other build-using checks.
