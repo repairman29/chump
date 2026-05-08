@@ -174,7 +174,10 @@ pub fn build_export(session_id: &str, repo_root: &Path) -> SessionExport {
                     let input = extract_u64(line, "input_tokens").unwrap_or(0);
                     let output = extract_u64(line, "output_tokens").unwrap_or(0);
                     let cache = extract_u64(line, "cache_read_tokens").unwrap_or(0);
-                    let cost = crate::session_ledger::cost_usd_from_tokens(input, output, cache);
+                    let model =
+                        extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
+                    let cost =
+                        crate::session_ledger::cost_usd_from_tokens(&model, input, output, cache);
                     ships_landed.push((gap_id, elapsed, cost));
                 }
             }
