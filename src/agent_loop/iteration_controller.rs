@@ -139,7 +139,40 @@ impl<'a> IterationController<'a> {
             track_batch_outcome(outcome, counter, max_consecutive_fails)
         };
 
+        // INFRA-784: inter-request delay for free-tier providers (Groq, Cerebras, etc.)
+        // to prevent RPM exhaustion. Resolve the delay once before the loop to avoid
+        // repeated env reads on the hot path. Delay is skipped on the first iteration
+        // (before the first LLM call) to keep cold-start latency unaffected.
+        //
+        // Resolution order:
+        //   1. CHUMP_FREE_TIER_DELAY_MS — explicit ms override (any value, including 0
+        //      to disable while CHUMP_FREE_TIER_MODE is set).
+        //   2. CHUMP_FREE_TIER_MODE=1 — set by execute_gap() when is_free_tier_model()
+        //      is true; uses the default 5 000 ms.
+        //   3. Neither set — no delay (normal / paid-tier behaviour).
+        const DEFAULT_FREE_TIER_DELAY_MS: u64 = 5_000;
+        let free_tier_delay_ms: Option<u64> = {
+            let explicit = std::env::var("CHUMP_FREE_TIER_DELAY_MS")
+                .ok()
+                .and_then(|s| s.trim().parse::<u64>().ok());
+            if let Some(ms) = explicit {
+                Some(ms)
+            } else if std::env::var("CHUMP_FREE_TIER_MODE").ok().as_deref() == Some("1") {
+                Some(DEFAULT_FREE_TIER_DELAY_MS)
+            } else {
+                None
+            }
+        };
+
         for _iter in 1..=self.max_iterations {
+            // INFRA-784: apply inter-request delay from iteration 2 onward.
+            if let Some(delay_ms) = free_tier_delay_ms {
+                if _iter > 1 && delay_ms > 0 {
+                    eprintln!("[free-tier] delay {delay_ms}ms before iter {_iter}");
+                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                }
+            }
+
             crate::belief_state::decay_turn();
 
             let tools_for_call = if skip_tools_first_call && model_calls_count == 0 {

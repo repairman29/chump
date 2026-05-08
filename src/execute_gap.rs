@@ -270,6 +270,12 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
     if free_tier {
         let model = std::env::var("OPENAI_MODEL").unwrap_or_default();
         eprintln!("[execute-gap] free-tier mode: model={model}, 5-tool slim profile");
+        // INFRA-784: signal the agent loop to insert inter-request delays so we
+        // don't exhaust the provider's RPM quota on multi-step dispatches.
+        // CHUMP_FREE_TIER_DELAY_MS takes precedence if set; this is the fallback
+        // that triggers the default 5 000 ms delay when neither flag was set
+        // explicitly by the operator.
+        std::env::set_var("CHUMP_FREE_TIER_MODE", "1");
     }
 
     // INFRA-060 (M2): plan-mode gate. Skip for free-tier — saves latency
