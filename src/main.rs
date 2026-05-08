@@ -22,6 +22,7 @@ mod asi_telemetry;
 mod ask_jeff_db;
 mod ask_jeff_tool;
 mod atomic_claim;
+mod auth;
 mod autonomy_fsm;
 mod autonomy_loop;
 mod autopilot;

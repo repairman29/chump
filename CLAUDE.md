@@ -62,6 +62,20 @@ gh pr merge <N> --auto --squash
 chump gap ship <ID> --update-yaml
 ```
 
+## Auth modes (INFRA-622)
+
+Both `ANTHROPIC_API_KEY` (API-key) and `CLAUDE_CODE_OAUTH_TOKEN` (subscription OAUTH) are first-class.
+
+| Mode | Env | Notes |
+|---|---|---|
+| `auto` (default) | — | Prefer `ANTHROPIC_API_KEY` if non-empty; else OAUTH |
+| `api-key` | `CHUMP_AUTH_MODE=api-key` | Force API key; error if absent |
+| `oauth` | `CHUMP_AUTH_MODE=oauth` | Force subscription token; error if absent |
+
+Workers re-evaluate credentials before each `claude -p` spawn. OAUTH tokens are refreshed to `~/.chump/oauth-token.json` every 5 min; workers read from there. On a 401, the fleet falls back to the other mode (if available) and emits `kind=fleet_auth_fallback` to `ambient.jsonl`.
+
+Validate: `chump fleet doctor` — exits non-zero if no valid auth path found.
+
 ## Hard rules
 
 - **`proprietary/` — NEVER commit here.** Private sibling repo; stray copies must not be staged or referenced.
