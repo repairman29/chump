@@ -50,9 +50,9 @@ providers:
     model_class: sonnet
     privacy: safe
     context_k: 128
-    rpm: 24
-    rpd: 800
-    tpm: 20000
+    rpm: 30
+    rpd: 1000
+    tpm: 12000
     tpd: 0
     cooldown_s: 48
     reset_window: rolling
@@ -86,7 +86,7 @@ providers:
     model_class: sonnet
     privacy: caution
     context_k: 128
-    rpm: 20
+    rpm: 60
     rpd: 2000
     tpm: 0
     tpd: 0
@@ -148,7 +148,8 @@ providers:
     reset_window: rolling
     retry_after: no
     notes: >
-      Fastest Gemini model. 1M context. Free tier trains on prompts.
+      CAUTION: may be deprecated (retired 2026-03-03 per Google docs).
+      Replacement: gemini-2.5-flash-lite. Verify availability before relying.
       Same API key shared across all Gemini models but independent limits.
 
   # ─── Gemini 2.5 Flash (sonnet tier) ──────────────────────────────────
@@ -159,7 +160,7 @@ providers:
     privacy: trains
     context_k: 1000
     rpm: 10
-    rpd: 1000
+    rpd: 1500
     tpm: 1000000
     tpd: 0
     cooldown_s: 30
