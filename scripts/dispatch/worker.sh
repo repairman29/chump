@@ -182,6 +182,18 @@ while :; do
     log "cycle $cycle: fetching origin/main"
     git fetch origin main --quiet || log "WARN: git fetch failed; continuing"
 
+    # ── INFRA-727: repair stuck PRs before picking new work ──────────────
+    # Rebase open fleet PRs with CI failures onto latest main. Many failures
+    # are stale-branch issues (missing clippy fixes, test fixture updates)
+    # that a rebase resolves. Lightweight — skips PRs under 10min old and
+    # respects a 30min cooldown per PR. Only agent 1 runs this to avoid
+    # 3 workers all rebasing the same PRs simultaneously.
+    if [[ "${AGENT_ID:-1}" == "1" ]] && [[ "${CHUMP_PR_REPAIR:-1}" != "0" ]]; then
+        "$REPO_ROOT/scripts/ops/pr-repair-rebase.sh" 2>&1 | while read -r line; do
+            log "$line"
+        done || true
+    fi
+
     # ── Pick a gap ────────────────────────────────────────────────────────
     # We use `chump gap list --json` directly (musher.py has its own cooldown
     # heuristics; for fleet workers we want the simplest "highest-priority
