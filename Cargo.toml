@@ -193,6 +193,8 @@ manual_is_multiple_of = "allow"
 never_loop = "allow"
 manual_clamp = "allow"
 field_reassign_with_default = "allow"
+# Wave 3 (2026-05-08, observed on PRs #1277/#1278/#1290):
+manual_range_contains = "allow"
 
 [workspace.lints.rust]
 dead_code = "allow"
