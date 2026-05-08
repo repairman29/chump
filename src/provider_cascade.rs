@@ -2074,4 +2074,417 @@ mod tests {
             "annotated error must include the Ollama base URL for the probe command"
         );
     }
+
+    // ── CREDIBLE-010: routing + fallback unit tests ───────────────────────
+
+    /// Helper: build a ProviderSlot with controllable rate limit state.
+    fn test_slot(
+        name: &str,
+        priority: u32,
+        tier: ProviderTier,
+        privacy: PrivacyTier,
+        rpm_limit: u32,
+        rpd_limit: u32,
+        calls_this_minute: u32,
+        calls_today: u32,
+    ) -> ProviderSlot {
+        ProviderSlot {
+            name: name.to_string(),
+            base_url: format!("https://{}.example.invalid/v1", name),
+            provider: LocalOpenAIProvider::with_fallback(
+                format!("https://{}.example.invalid/v1", name),
+                None,
+                "test-key".to_string(),
+                "test-model".to_string(),
+            ),
+            priority,
+            tier,
+            privacy,
+            context_k: None,
+            rpm_limit,
+            calls_this_minute: AtomicU32::new(calls_this_minute),
+            minute_start: Mutex::new(Instant::now()),
+            rpd_limit,
+            calls_today: AtomicU32::new(calls_today),
+            day_start: Mutex::new(Instant::now()),
+        }
+    }
+
+    // ── resolved_openai_api_key ──────────────────────────────────────────
+
+    #[test]
+    #[serial_test::serial(openai_env)]
+    fn resolved_key_returns_ollama_when_empty() {
+        std::env::remove_var("OPENAI_API_KEY");
+        assert_eq!(resolved_openai_api_key(), "ollama");
+    }
+
+    #[test]
+    #[serial_test::serial(openai_env)]
+    fn resolved_key_returns_ollama_for_placeholder() {
+        std::env::set_var("OPENAI_API_KEY", "token-abc123");
+        assert_eq!(resolved_openai_api_key(), "ollama");
+        std::env::set_var("OPENAI_API_KEY", "not-needed");
+        assert_eq!(resolved_openai_api_key(), "ollama");
+        std::env::remove_var("OPENAI_API_KEY");
+    }
+
+    #[test]
+    #[serial_test::serial(openai_env)]
+    fn resolved_key_returns_real_key_verbatim() {
+        std::env::set_var("OPENAI_API_KEY", "sk-proj-abc123xyz");
+        assert_eq!(resolved_openai_api_key(), "sk-proj-abc123xyz");
+        std::env::remove_var("OPENAI_API_KEY");
+    }
+
+    // ── looks_like_openai_platform_key ───────────────────────────────────
+
+    #[test]
+    fn openai_key_detection_sk_prefix() {
+        assert!(looks_like_openai_platform_key("sk-abc123"));
+        assert!(looks_like_openai_platform_key("sk-proj-abc123"));
+        assert!(looks_like_openai_platform_key("  sk-abc123  ")); // with whitespace
+    }
+
+    #[test]
+    fn openai_key_detection_non_sk() {
+        assert!(!looks_like_openai_platform_key("ollama"));
+        assert!(!looks_like_openai_platform_key("gsk_abc123")); // Groq key
+        assert!(!looks_like_openai_platform_key("nvapi-abc123")); // NVIDIA key
+        assert!(!looks_like_openai_platform_key(""));
+    }
+
+    // ── parse_privacy_tier ───────────────────────────────────────────────
+
+    #[test]
+    fn privacy_tier_parsing() {
+        assert_eq!(parse_privacy_tier("trains"), PrivacyTier::Trains);
+        assert_eq!(parse_privacy_tier("TRAINS"), PrivacyTier::Trains);
+        assert_eq!(parse_privacy_tier("  Trains  "), PrivacyTier::Trains);
+        assert_eq!(parse_privacy_tier("caution"), PrivacyTier::Caution);
+        assert_eq!(parse_privacy_tier("safe"), PrivacyTier::Safe);
+        assert_eq!(parse_privacy_tier("unknown"), PrivacyTier::Safe); // default
+        assert_eq!(parse_privacy_tier(""), PrivacyTier::Safe);
+    }
+
+    // ── rpm_headroom_pct ─────────────────────────────────────────────────
+
+    #[test]
+    #[serial_test::serial(cascade_rpm_env)]
+    fn rpm_headroom_defaults_to_80_pct() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+        let pct = rpm_headroom_pct();
+        assert!(
+            (pct - 0.80).abs() < f32::EPSILON,
+            "default headroom should be 0.80, got {}",
+            pct
+        );
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_rpm_env)]
+    fn rpm_headroom_custom_value() {
+        std::env::set_var("CHUMP_CASCADE_RPM_HEADROOM", "50");
+        let pct = rpm_headroom_pct();
+        assert!(
+            (pct - 0.50).abs() < f32::EPSILON,
+            "headroom should be 0.50, got {}",
+            pct
+        );
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_rpm_env)]
+    fn rpm_headroom_clamped_to_bounds() {
+        // Over 100 → clamped to 100
+        std::env::set_var("CHUMP_CASCADE_RPM_HEADROOM", "200");
+        let pct = rpm_headroom_pct();
+        assert!(
+            (pct - 1.0).abs() < f32::EPSILON,
+            "headroom >100 should clamp to 1.0, got {}",
+            pct
+        );
+        // Under 1 → clamped to 1
+        std::env::set_var("CHUMP_CASCADE_RPM_HEADROOM", "0.5");
+        let pct = rpm_headroom_pct();
+        assert!(
+            (pct - 0.01).abs() < f32::EPSILON,
+            "headroom <1 should clamp to 0.01, got {}",
+            pct
+        );
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+    }
+
+    // ── within_rate_limit ────────────────────────────────────────────────
+
+    #[test]
+    #[serial_test::serial(cascade_rpm_env)]
+    fn within_rate_limit_allows_when_under_rpm() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM"); // use default 80%
+        let slot = test_slot("a", 1, ProviderTier::Cloud, PrivacyTier::Safe, 100, 0, 50, 0);
+        // 50 calls, limit=100, effective=80 → under limit
+        assert!(within_rate_limit(&slot));
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_rpm_env)]
+    fn within_rate_limit_blocks_at_effective_rpm() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM"); // 80%
+        let slot = test_slot("b", 1, ProviderTier::Cloud, PrivacyTier::Safe, 100, 0, 80, 0);
+        // 80 calls, limit=100, effective=80 → at limit
+        assert!(!within_rate_limit(&slot));
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_rpm_env)]
+    fn within_rate_limit_blocks_at_effective_rpd() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM"); // 80%
+        let slot = test_slot("c", 1, ProviderTier::Cloud, PrivacyTier::Safe, 0, 1000, 0, 800);
+        // RPM unlimited (0), RPD: 800 calls, limit=1000, effective=800 → at limit
+        assert!(!within_rate_limit(&slot));
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_rpm_env)]
+    fn within_rate_limit_allows_unlimited_rpm_and_rpd() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+        let slot = test_slot("d", 1, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 999, 999);
+        // Both limits=0 → unlimited, so any call count is OK
+        assert!(within_rate_limit(&slot));
+    }
+
+    // ── record_call ──────────────────────────────────────────────────────
+
+    #[test]
+    fn record_call_increments_both_counters() {
+        let slot = test_slot("rec", 1, ProviderTier::Cloud, PrivacyTier::Safe, 10, 100, 0, 0);
+        assert_eq!(slot.calls_this_minute.load(Ordering::Relaxed), 0);
+        assert_eq!(slot.calls_today.load(Ordering::Relaxed), 0);
+        record_call(&slot);
+        assert_eq!(slot.calls_this_minute.load(Ordering::Relaxed), 1);
+        assert_eq!(slot.calls_today.load(Ordering::Relaxed), 1);
+        record_call(&slot);
+        record_call(&slot);
+        assert_eq!(slot.calls_this_minute.load(Ordering::Relaxed), 3);
+        assert_eq!(slot.calls_today.load(Ordering::Relaxed), 3);
+    }
+
+    // ── first_available_slot routing ─────────────────────────────────────
+
+    #[test]
+    #[serial_test::serial(cascade_routing_env)]
+    fn first_available_picks_lowest_priority_cloud_slot() {
+        // Clear env vars that affect routing
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+        std::env::remove_var("CHUMP_PREFER_LARGE_CONTEXT");
+        std::env::remove_var("CHUMP_LOG_TIMING");
+
+        let cascade = ProviderCascade {
+            slots: vec![
+                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
+                test_slot("groq", 10, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+            ],
+            _strategy: CascadeStrategy::Priority,
+            bandit: OnceLock::new(),
+        };
+
+        // When cloud slots exist, local is skipped; groq (priority=10) picked first
+        let idx = cascade.first_available_slot(None, 0);
+        assert_eq!(idx, Some(1), "should pick groq (index 1, lowest cloud priority)");
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_routing_env)]
+    fn first_available_skips_rate_limited_slot() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+        std::env::remove_var("CHUMP_PREFER_LARGE_CONTEXT");
+        std::env::remove_var("CHUMP_LOG_TIMING");
+
+        let cascade = ProviderCascade {
+            slots: vec![
+                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
+                // groq: RPM exhausted (30/30 at 80% headroom = 24 effective, 30 > 24)
+                test_slot("groq", 10, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 30, 0),
+                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+            ],
+            _strategy: CascadeStrategy::Priority,
+            bandit: OnceLock::new(),
+        };
+
+        let idx = cascade.first_available_slot(None, 0);
+        assert_eq!(idx, Some(2), "should skip rate-limited groq, pick nvidia");
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_routing_env)]
+    fn first_available_respects_privacy_filter() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+        std::env::remove_var("CHUMP_PREFER_LARGE_CONTEXT");
+        std::env::remove_var("CHUMP_LOG_TIMING");
+
+        let cascade = ProviderCascade {
+            slots: vec![
+                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
+                // Mistral trains on data — privacy=Trains
+                test_slot("mistral", 10, ProviderTier::Cloud, PrivacyTier::Trains, 30, 0, 0, 0),
+                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+            ],
+            _strategy: CascadeStrategy::Priority,
+            bandit: OnceLock::new(),
+        };
+
+        // With min_privacy=Safe, mistral (Trains) should be skipped
+        let idx = cascade.first_available_slot(Some(PrivacyTier::Safe), 0);
+        assert_eq!(idx, Some(2), "should skip Trains-tier mistral, pick Safe nvidia");
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_routing_env)]
+    fn first_available_returns_none_when_all_exhausted() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+        std::env::remove_var("CHUMP_PREFER_LARGE_CONTEXT");
+        std::env::remove_var("CHUMP_LOG_TIMING");
+
+        let cascade = ProviderCascade {
+            slots: vec![
+                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
+                // Both cloud slots rate-limited
+                test_slot("groq", 10, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 30, 0),
+                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 30, 0),
+            ],
+            _strategy: CascadeStrategy::Priority,
+            bandit: OnceLock::new(),
+        };
+
+        // All cloud slots exhausted, local is skipped in cloud-first mode → None
+        let idx = cascade.first_available_slot(None, 0);
+        assert!(idx.is_none(), "all cloud exhausted → None (local is last-resort only)");
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_routing_env)]
+    fn first_available_cloud_only_when_cloud_exists() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+        std::env::remove_var("CHUMP_PREFER_LARGE_CONTEXT");
+        std::env::remove_var("CHUMP_LOG_TIMING");
+
+        // Only local slots — no cloud. Local should be picked.
+        let cascade = ProviderCascade {
+            slots: vec![
+                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
+            ],
+            _strategy: CascadeStrategy::Priority,
+            bandit: OnceLock::new(),
+        };
+
+        let idx = cascade.first_available_slot(None, 0);
+        assert_eq!(idx, Some(0), "only-local cascade should pick the local slot");
+    }
+
+    // ── skip_cloud_slots_for_round_type ──────────────────────────────────
+
+    #[test]
+    #[serial_test::serial(cascade_round_type_env)]
+    fn task_aware_skips_slots_for_low_value_rounds() {
+        std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
+        std::env::remove_var("CHUMP_PREFER_LARGE_CONTEXT");
+        std::env::remove_var("CHUMP_LOG_TIMING");
+        std::env::set_var("CHUMP_CURRENT_ROUND_TYPE", "research");
+
+        let cascade = ProviderCascade {
+            slots: vec![
+                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
+                test_slot("groq", 10, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+                test_slot("cerebras", 30, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+            ],
+            _strategy: CascadeStrategy::TaskAware,
+            bandit: OnceLock::new(),
+        };
+
+        // TaskAware + research → skip 2 cloud slots, pick 3rd
+        let skip = cascade.skip_cloud_slots_for_round_type();
+        assert_eq!(skip, 2, "research round should skip 2 cloud slots");
+
+        let idx = cascade.first_available_slot(None, skip);
+        assert_eq!(idx, Some(3), "should skip groq+nvidia, pick cerebras");
+
+        std::env::remove_var("CHUMP_CURRENT_ROUND_TYPE");
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_round_type_env)]
+    fn task_aware_no_skip_for_work_rounds() {
+        std::env::set_var("CHUMP_CURRENT_ROUND_TYPE", "work");
+
+        let cascade = ProviderCascade {
+            slots: vec![],
+            _strategy: CascadeStrategy::TaskAware,
+            bandit: OnceLock::new(),
+        };
+
+        let skip = cascade.skip_cloud_slots_for_round_type();
+        assert_eq!(skip, 0, "work rounds should not skip any cloud slots");
+
+        std::env::remove_var("CHUMP_CURRENT_ROUND_TYPE");
+    }
+
+    // ── cascade_enabled ──────────────────────────────────────────────────
+
+    #[test]
+    #[serial_test::serial(cascade_enabled_env)]
+    fn cascade_enabled_only_when_set_to_1() {
+        std::env::remove_var("CHUMP_CASCADE_ENABLED");
+        assert!(!cascade_enabled());
+
+        std::env::set_var("CHUMP_CASCADE_ENABLED", "0");
+        assert!(!cascade_enabled());
+
+        std::env::set_var("CHUMP_CASCADE_ENABLED", "true");
+        assert!(!cascade_enabled(), "only '1' enables cascade, not 'true'");
+
+        std::env::set_var("CHUMP_CASCADE_ENABLED", "1");
+        assert!(cascade_enabled());
+
+        std::env::remove_var("CHUMP_CASCADE_ENABLED");
+    }
+
+    // ── CascadeStrategy label ────────────────────────────────────────────
+
+    #[test]
+    fn cascade_strategy_labels() {
+        assert_eq!(CascadeStrategy::Priority.label(), "priority");
+        assert_eq!(CascadeStrategy::TaskAware.label(), "task_aware");
+        assert_eq!(CascadeStrategy::Bandit.label(), "bandit");
+    }
+
+    // ── prefer_large_context ─────────────────────────────────────────────
+
+    #[test]
+    #[serial_test::serial(large_context_env)]
+    fn prefer_large_context_off_by_default() {
+        std::env::remove_var("CHUMP_PREFER_LARGE_CONTEXT");
+        assert!(!prefer_large_context());
+    }
+
+    #[test]
+    #[serial_test::serial(large_context_env)]
+    fn prefer_large_context_enabled_with_1() {
+        std::env::set_var("CHUMP_PREFER_LARGE_CONTEXT", "1");
+        assert!(prefer_large_context());
+        std::env::set_var("CHUMP_PREFER_LARGE_CONTEXT", "true");
+        assert!(prefer_large_context());
+        std::env::remove_var("CHUMP_PREFER_LARGE_CONTEXT");
+    }
+
+    // ── PrivacyTier ordering ─────────────────────────────────────────────
+
+    #[test]
+    fn privacy_tier_ordering_trains_lt_safe() {
+        assert!(PrivacyTier::Trains < PrivacyTier::Caution);
+        assert!(PrivacyTier::Caution < PrivacyTier::Safe);
+        assert!(PrivacyTier::Trains < PrivacyTier::Safe);
+    }
 }
