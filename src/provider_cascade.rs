@@ -2078,6 +2078,7 @@ mod tests {
     // ── CREDIBLE-010: routing + fallback unit tests ───────────────────────
 
     /// Helper: build a ProviderSlot with controllable rate limit state.
+    #[allow(clippy::too_many_arguments)]
     fn test_slot(
         name: &str,
         priority: u32,
@@ -2222,7 +2223,16 @@ mod tests {
     #[serial_test::serial(cascade_rpm_env)]
     fn within_rate_limit_allows_when_under_rpm() {
         std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM"); // use default 80%
-        let slot = test_slot("a", 1, ProviderTier::Cloud, PrivacyTier::Safe, 100, 0, 50, 0);
+        let slot = test_slot(
+            "a",
+            1,
+            ProviderTier::Cloud,
+            PrivacyTier::Safe,
+            100,
+            0,
+            50,
+            0,
+        );
         // 50 calls, limit=100, effective=80 → under limit
         assert!(within_rate_limit(&slot));
     }
@@ -2231,7 +2241,16 @@ mod tests {
     #[serial_test::serial(cascade_rpm_env)]
     fn within_rate_limit_blocks_at_effective_rpm() {
         std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM"); // 80%
-        let slot = test_slot("b", 1, ProviderTier::Cloud, PrivacyTier::Safe, 100, 0, 80, 0);
+        let slot = test_slot(
+            "b",
+            1,
+            ProviderTier::Cloud,
+            PrivacyTier::Safe,
+            100,
+            0,
+            80,
+            0,
+        );
         // 80 calls, limit=100, effective=80 → at limit
         assert!(!within_rate_limit(&slot));
     }
@@ -2240,7 +2259,16 @@ mod tests {
     #[serial_test::serial(cascade_rpm_env)]
     fn within_rate_limit_blocks_at_effective_rpd() {
         std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM"); // 80%
-        let slot = test_slot("c", 1, ProviderTier::Cloud, PrivacyTier::Safe, 0, 1000, 0, 800);
+        let slot = test_slot(
+            "c",
+            1,
+            ProviderTier::Cloud,
+            PrivacyTier::Safe,
+            0,
+            1000,
+            0,
+            800,
+        );
         // RPM unlimited (0), RPD: 800 calls, limit=1000, effective=800 → at limit
         assert!(!within_rate_limit(&slot));
     }
@@ -2249,7 +2277,16 @@ mod tests {
     #[serial_test::serial(cascade_rpm_env)]
     fn within_rate_limit_allows_unlimited_rpm_and_rpd() {
         std::env::remove_var("CHUMP_CASCADE_RPM_HEADROOM");
-        let slot = test_slot("d", 1, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 999, 999);
+        let slot = test_slot(
+            "d",
+            1,
+            ProviderTier::Local,
+            PrivacyTier::Safe,
+            0,
+            0,
+            999,
+            999,
+        );
         // Both limits=0 → unlimited, so any call count is OK
         assert!(within_rate_limit(&slot));
     }
@@ -2258,7 +2295,16 @@ mod tests {
 
     #[test]
     fn record_call_increments_both_counters() {
-        let slot = test_slot("rec", 1, ProviderTier::Cloud, PrivacyTier::Safe, 10, 100, 0, 0);
+        let slot = test_slot(
+            "rec",
+            1,
+            ProviderTier::Cloud,
+            PrivacyTier::Safe,
+            10,
+            100,
+            0,
+            0,
+        );
         assert_eq!(slot.calls_this_minute.load(Ordering::Relaxed), 0);
         assert_eq!(slot.calls_today.load(Ordering::Relaxed), 0);
         record_call(&slot);
@@ -2282,9 +2328,36 @@ mod tests {
 
         let cascade = ProviderCascade {
             slots: vec![
-                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
-                test_slot("groq", 10, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
-                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+                test_slot(
+                    "local",
+                    0,
+                    ProviderTier::Local,
+                    PrivacyTier::Safe,
+                    0,
+                    0,
+                    0,
+                    0,
+                ),
+                test_slot(
+                    "groq",
+                    10,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    0,
+                    0,
+                ),
+                test_slot(
+                    "nvidia",
+                    20,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    0,
+                    0,
+                ),
             ],
             _strategy: CascadeStrategy::Priority,
             bandit: OnceLock::new(),
@@ -2292,7 +2365,11 @@ mod tests {
 
         // When cloud slots exist, local is skipped; groq (priority=10) picked first
         let idx = cascade.first_available_slot(None, 0);
-        assert_eq!(idx, Some(1), "should pick groq (index 1, lowest cloud priority)");
+        assert_eq!(
+            idx,
+            Some(1),
+            "should pick groq (index 1, lowest cloud priority)"
+        );
     }
 
     #[test]
@@ -2304,10 +2381,37 @@ mod tests {
 
         let cascade = ProviderCascade {
             slots: vec![
-                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
+                test_slot(
+                    "local",
+                    0,
+                    ProviderTier::Local,
+                    PrivacyTier::Safe,
+                    0,
+                    0,
+                    0,
+                    0,
+                ),
                 // groq: RPM exhausted (30/30 at 80% headroom = 24 effective, 30 > 24)
-                test_slot("groq", 10, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 30, 0),
-                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+                test_slot(
+                    "groq",
+                    10,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    30,
+                    0,
+                ),
+                test_slot(
+                    "nvidia",
+                    20,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    0,
+                    0,
+                ),
             ],
             _strategy: CascadeStrategy::Priority,
             bandit: OnceLock::new(),
@@ -2326,10 +2430,37 @@ mod tests {
 
         let cascade = ProviderCascade {
             slots: vec![
-                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
+                test_slot(
+                    "local",
+                    0,
+                    ProviderTier::Local,
+                    PrivacyTier::Safe,
+                    0,
+                    0,
+                    0,
+                    0,
+                ),
                 // Mistral trains on data — privacy=Trains
-                test_slot("mistral", 10, ProviderTier::Cloud, PrivacyTier::Trains, 30, 0, 0, 0),
-                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+                test_slot(
+                    "mistral",
+                    10,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Trains,
+                    30,
+                    0,
+                    0,
+                    0,
+                ),
+                test_slot(
+                    "nvidia",
+                    20,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    0,
+                    0,
+                ),
             ],
             _strategy: CascadeStrategy::Priority,
             bandit: OnceLock::new(),
@@ -2337,7 +2468,11 @@ mod tests {
 
         // With min_privacy=Safe, mistral (Trains) should be skipped
         let idx = cascade.first_available_slot(Some(PrivacyTier::Safe), 0);
-        assert_eq!(idx, Some(2), "should skip Trains-tier mistral, pick Safe nvidia");
+        assert_eq!(
+            idx,
+            Some(2),
+            "should skip Trains-tier mistral, pick Safe nvidia"
+        );
     }
 
     #[test]
@@ -2349,10 +2484,37 @@ mod tests {
 
         let cascade = ProviderCascade {
             slots: vec![
-                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
+                test_slot(
+                    "local",
+                    0,
+                    ProviderTier::Local,
+                    PrivacyTier::Safe,
+                    0,
+                    0,
+                    0,
+                    0,
+                ),
                 // Both cloud slots rate-limited
-                test_slot("groq", 10, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 30, 0),
-                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 30, 0),
+                test_slot(
+                    "groq",
+                    10,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    30,
+                    0,
+                ),
+                test_slot(
+                    "nvidia",
+                    20,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    30,
+                    0,
+                ),
             ],
             _strategy: CascadeStrategy::Priority,
             bandit: OnceLock::new(),
@@ -2360,7 +2522,10 @@ mod tests {
 
         // All cloud slots exhausted, local is skipped in cloud-first mode → None
         let idx = cascade.first_available_slot(None, 0);
-        assert!(idx.is_none(), "all cloud exhausted → None (local is last-resort only)");
+        assert!(
+            idx.is_none(),
+            "all cloud exhausted → None (local is last-resort only)"
+        );
     }
 
     #[test]
@@ -2372,15 +2537,26 @@ mod tests {
 
         // Only local slots — no cloud. Local should be picked.
         let cascade = ProviderCascade {
-            slots: vec![
-                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
-            ],
+            slots: vec![test_slot(
+                "local",
+                0,
+                ProviderTier::Local,
+                PrivacyTier::Safe,
+                0,
+                0,
+                0,
+                0,
+            )],
             _strategy: CascadeStrategy::Priority,
             bandit: OnceLock::new(),
         };
 
         let idx = cascade.first_available_slot(None, 0);
-        assert_eq!(idx, Some(0), "only-local cascade should pick the local slot");
+        assert_eq!(
+            idx,
+            Some(0),
+            "only-local cascade should pick the local slot"
+        );
     }
 
     // ── skip_cloud_slots_for_round_type ──────────────────────────────────
@@ -2395,10 +2571,46 @@ mod tests {
 
         let cascade = ProviderCascade {
             slots: vec![
-                test_slot("local", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0),
-                test_slot("groq", 10, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
-                test_slot("nvidia", 20, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
-                test_slot("cerebras", 30, ProviderTier::Cloud, PrivacyTier::Safe, 30, 0, 0, 0),
+                test_slot(
+                    "local",
+                    0,
+                    ProviderTier::Local,
+                    PrivacyTier::Safe,
+                    0,
+                    0,
+                    0,
+                    0,
+                ),
+                test_slot(
+                    "groq",
+                    10,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    0,
+                    0,
+                ),
+                test_slot(
+                    "nvidia",
+                    20,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    0,
+                    0,
+                ),
+                test_slot(
+                    "cerebras",
+                    30,
+                    ProviderTier::Cloud,
+                    PrivacyTier::Safe,
+                    30,
+                    0,
+                    0,
+                    0,
+                ),
             ],
             _strategy: CascadeStrategy::TaskAware,
             bandit: OnceLock::new(),
