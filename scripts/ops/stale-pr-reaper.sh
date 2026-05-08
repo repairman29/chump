@@ -122,16 +122,15 @@ is_filing_pr_title() {
 PRS=$(gh pr list --json number,title,headRefName \
     --jq '.[] | "\(.number)\t\(.headRefName)\t\(.title)"' 2>/dev/null || true)
 
-if [[ -z "$PRS" ]]; then
-    info "No open PRs found."
-    green "=== reaper done (nothing to do) ==="
-    exit 0
-fi
-
 CLOSED=0
 WARNED=0
 
+if [[ -z "$PRS" ]]; then
+    info "No open PRs found — skipping stale-PR checks."
+fi
+
 while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE; do
+    [[ -z "$PR_NUM" ]] && continue
     info "PR #$PR_NUM  branch=$PR_BRANCH"
     info "  title: $PR_TITLE"
 
@@ -258,10 +257,75 @@ Run \`scripts/coord/gap-preflight.sh ${DONE_LIST// / }\` to confirm, then pick a
 
 done <<< "$PRS"
 
+# INFRA-674: ghost-status reaper — for each MERGED PR in the last 24h,
+# parse gap IDs from title+body; if state.db shows the gap still open,
+# run `chump gap ship` to close it. This catches the "shipped but never
+# closed" phantom that blocks the picker for hours (e.g. INFRA-664 via #1264).
+GHOST_CLOSED=0
+GHOST_CLOSED_PAIRS=""
+if command -v chump >/dev/null 2>&1; then
+    green "=== ghost-status scan (INFRA-674): checking merged PRs (last 24h) ==="
+
+    # gh's --search merged:> filter uses ISO-8601 date; use last 24h window
+    SINCE=$(date -u -v-24H '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+        || date -u -d '24 hours ago' '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+        || date -u '+%Y-%m-%dT%H:%M:%SZ')
+    SINCE_DATE="${SINCE%%T*}"
+
+    MERGED_PRS=$(gh pr list --state merged \
+        --search "merged:>=${SINCE_DATE}" \
+        --json number,title,body \
+        --jq '.[] | "\(.number)\t\(.title)\t\(.body // "")"' 2>/dev/null || true)
+
+    if [[ -z "$MERGED_PRS" ]]; then
+        info "No merged PRs in last 24h — nothing to scan."
+    else
+        while IFS=$'\t' read -r M_NUM M_TITLE M_BODY; do
+            [[ -z "$M_NUM" ]] && continue
+
+            M_GAP_IDS=$(printf '%s\n%s\n' "$M_TITLE" "$M_BODY" \
+                | grep -oE '\b[A-Z]+-[0-9]+\b' | sort -u || true)
+            [[ -z "$M_GAP_IDS" ]] && continue
+
+            for GID in $M_GAP_IDS; do
+                # Query local state.db via chump gap show; extract status line
+                GID_STATUS=$(chump gap show "$GID" 2>/dev/null \
+                    | awk '/^[[:space:]]*status:/{sub(/^[[:space:]]*status:[[:space:]]*/,""); print; exit}' \
+                    || true)
+                [[ "$GID_STATUS" == "open" ]] || continue
+
+                info "  Ghost detected: $GID status=open but PR #$M_NUM is merged."
+                if [[ $DRY_RUN -eq 1 ]]; then
+                    dry "chump gap ship $GID --closed-pr $M_NUM --update-yaml"
+                else
+                    if chump gap ship "$GID" --closed-pr "$M_NUM" --update-yaml 2>/dev/null; then
+                        green "  Closed ghost gap $GID (PR #$M_NUM)."
+                        GHOST_CLOSED=$((GHOST_CLOSED + 1))
+                        GHOST_CLOSED_PAIRS="${GHOST_CLOSED_PAIRS}{\"gap_id\":\"$GID\",\"pr\":$M_NUM},"
+                    else
+                        warn "chump gap ship $GID --closed-pr $M_NUM failed — skipping."
+                    fi
+                fi
+            done
+        done <<< "$MERGED_PRS"
+    fi
+
+    if [[ $GHOST_CLOSED -gt 0 ]]; then
+        # Emit ALERT kind=ghost_status_closed to ambient
+        LOCK_DIR="${REAPER_LOCK_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.chump-locks}"
+        AMBIENT="$LOCK_DIR/ambient.jsonl"
+        PAIRS_JSON="[${GHOST_CLOSED_PAIRS%,}]"
+        TS=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+        printf '{"ts":"%s","event":"ALERT","kind":"ghost_status_closed","count":%d,"gaps":%s}\n' \
+            "$TS" "$GHOST_CLOSED" "$PAIRS_JSON" >> "$AMBIENT" 2>/dev/null || true
+        green "  Emitted ALERT kind=ghost_status_closed for $GHOST_CLOSED gap(s)."
+    fi
+fi
+
 echo ""
-green "=== reaper done: $CLOSED closed, $WARNED warnings ==="
+green "=== reaper done: $CLOSED closed, $WARNED warnings, $GHOST_CLOSED ghost gaps closed ==="
 
 # INFRA-120: stamp heartbeat + emit reaper_run event. Disarm trap first so we
 # don't double-emit on the EXIT trap.
 trap - EXIT
-reaper_finish ok "{\"closed\":$CLOSED,\"warned\":$WARNED}"
+reaper_finish ok "{\"closed\":$CLOSED,\"warned\":$WARNED,\"ghost_closed\":$GHOST_CLOSED}"
