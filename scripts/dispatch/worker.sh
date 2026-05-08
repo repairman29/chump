@@ -88,6 +88,10 @@ CHUMP_STARVE_THRESHOLD="${CHUMP_STARVE_THRESHOLD:-3}"
 # Per-worker counter of consecutive empty picks. Reset on every
 # successful pick.
 _starve_count=0
+# Per-worker counter of consecutive dispatch failures. Reset on successful ship.
+_dispatch_fail_count=0
+# Exponential backoff state for empty picks: tracks current backoff multiplier.
+_backoff_multiplier=1
 
 mkdir -p "$FLEET_LOG_DIR"
 
@@ -284,19 +288,30 @@ PY
                 exit 0
             fi
         fi
-        # INFRA-315: jittered sleep — randomize ±CHUMP_POLL_JITTER% around
-        # IDLE_SLEEP_S. e.g. with default 60s + 30%: window 42-78s. Breaks
-        # phase-lock between sibling workers so they don't all wake up at
-        # the same instant to race the same gap. python3 (already a
-        # dependency above) for the random arithmetic; awk fallback if not.
-        _sleep_s="$(IDLE="$IDLE_SLEEP_S" JIT="$CHUMP_POLL_JITTER" python3 -c '
+        # FLEET-043: exponential backoff on empty picks.
+        # After CHUMP_STARVE_THRESHOLD, backoff multiplier ramps: 1x → 2x → 4x → 8x.
+        # Each missed pick multiplies IDLE_SLEEP_S by the current multiplier, up to 600s cap.
+        if [ "$_starve_count" -gt "$CHUMP_STARVE_THRESHOLD" ]; then
+            _max_backoff="${CHUMP_BACKOFF_MAX_SECS:-600}"
+            # Ramp multiplier: starve_count=4 → 2x, 5 → 4x, 6 → 8x (min multiplier at threshold)
+            _ramp=$((_starve_count - CHUMP_STARVE_THRESHOLD))
+            _backoff_multiplier=$((2 ** _ramp))  # 2^0=1, 2^1=2, 2^2=4, 2^3=8, ...
+            if [ "$_backoff_multiplier" -gt 8 ]; then
+                _backoff_multiplier=8  # cap at 8x
+            fi
+            _raw_sleep=$(( IDLE_SLEEP_S * _backoff_multiplier ))
+            _sleep_s=$(( _raw_sleep > _max_backoff ? _max_backoff : _raw_sleep ))
+        else
+            # Pre-threshold: use jittered sleep as before.
+            _sleep_s="$(IDLE="$IDLE_SLEEP_S" JIT="$CHUMP_POLL_JITTER" python3 -c '
 import os, random
 idle = float(os.environ.get("IDLE", "60"))
 jit  = float(os.environ.get("JIT",  "30")) / 100.0
 delta = idle * jit
 print(max(1.0, idle + random.uniform(-delta, +delta)))
 ' 2>/dev/null || echo "$IDLE_SLEEP_S")"
-        log "no pickable gap (filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER); sleeping ${_sleep_s}s (starve=$_starve_count)"
+        fi
+        log "no pickable gap (filters: prio=$FLEET_PRIORITY_FILTER domain=${FLEET_DOMAIN_FILTER:-any} effort=$FLEET_EFFORT_FILTER); sleeping ${_sleep_s}s (starve=$_starve_count, backoff_mult=${_backoff_multiplier}x)"
         sleep "$_sleep_s"
         continue
     fi
@@ -322,6 +337,8 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     # INFRA-315: clear starvation counter on a successful pick. The next
     # empty cycle starts the threshold over from zero.
     _starve_count=0
+    # FLEET-043: reset backoff multiplier when a gap is picked.
+    _backoff_multiplier=1
     # INFRA-536: cycle timing — record wall-clock start so we can emit
     # elapsed_s in the cycle_end ambient event for p90 measurement.
     _cycle_start_s=$(date +%s)
@@ -753,9 +770,13 @@ Operator or sibling worker can rescue this branch via:
         _is_wedge=1
     fi
 
+    # FLEET-043: track consecutive dispatch failures for circuit breaker.
+    # Reset on success, increment on any failure.
     if [ $rc -eq 0 ]; then
         log "$FLEET_BACKEND exited CLEAN (rc=0) for $GAP_ID"
+        _dispatch_fail_count=0
     elif [ $rc -eq 124 ]; then
+        _dispatch_fail_count=$((_dispatch_fail_count + 1))
         if [ "$_is_wedge" -eq 1 ]; then
             log "WARN: $FLEET_BACKEND exited TIMEOUT/WEDGED (rc=124, cycle_log=${_cycle_log_size}B) on $GAP_ID — applying extended cooldown"
         else
@@ -763,6 +784,7 @@ Operator or sibling worker can rescue this branch via:
         fi
     else
         log "WARN: $FLEET_BACKEND exited $exit_class (rc=$rc) on $GAP_ID"
+        _dispatch_fail_count=$((_dispatch_fail_count + 1))
 
         # ── INFRA-267: P0 fallback to Anthropic ─────────────────────────────
         # When the chump-local backend (free-tier cascade) fails on a P0 gap,
@@ -854,6 +876,25 @@ Operator or sibling worker can rescue this branch via:
                 "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                 > "$cooldown_dir/${GAP_ID}.json" 2>/dev/null || true
             log "cooldown: $GAP_ID skipped for ${cooldown_s}s (kind=$_cooldown_kind, rc=$rc)"
+
+            # FLEET-043: circuit breaker on consecutive dispatch failures.
+            # After CHUMP_DISPATCH_FAIL_THRESHOLD (default 5) consecutive failures,
+            # worker pauses 30min and emits worker_circuit_open alert.
+            _dispatch_fail_threshold="${CHUMP_DISPATCH_FAIL_THRESHOLD:-5}"
+            if [ "$_dispatch_fail_count" -ge "$_dispatch_fail_threshold" ]; then
+                _circuit_pause_secs="${CHUMP_CIRCUIT_PAUSE_SECS:-1800}"  # 30min default
+                _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
+                printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"ALERT","kind":"worker_circuit_open","agent_id":"%s","consecutive_failures":%d,"pause_secs":%d}\n' \
+                    "$_ts" \
+                    "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
+                    "$AGENT_ID" "$AGENT_ID" "$_dispatch_fail_count" "$_circuit_pause_secs" \
+                    >> "$_amb" 2>/dev/null || true
+                log "ALERT kind=worker_circuit_open consecutive_dispatch_failures=$_dispatch_fail_count — pausing ${_circuit_pause_secs}s before next cycle"
+                _dispatch_fail_count=0  # reset after emitting alert
+                sleep "$_circuit_pause_secs"
+            fi
 
             # INFRA-483: emit ALERT to ambient.jsonl on wedge so the
             # operator sees pure-waste cycles surface in the standard
