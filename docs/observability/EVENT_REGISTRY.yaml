@@ -558,6 +558,22 @@ events:
     trigger: aggregated metric snapshot for downstream consumers
     consumers: [fleet-brief]
 
+  # ── Bounced-PR detector (INFRA-781) ───────────────────────────────────────
+  - kind: pr_bounced_unfinished
+    emitter: scripts/coord/bounced-pr-detector.sh
+    trigger: PR closed without merging AND no equivalent file content has
+      landed in main since close — work bounced into the void; auto-files
+      a recovery gap when CHUMP_BOUNCED_PR_AUTO_FILE_GAP=1 (default on)
+    consumers: [fleet-brief, watchdog, operator-paging]
+    fields_required: [ts, source, pr, note]
+
+  - kind: pr_bounced_relanded
+    emitter: scripts/coord/bounced-pr-detector.sh
+    trigger: PR closed unmerged but >=50% of touched files have post-close
+      merged commits — work re-routed, informational only
+    consumers: [fleet-brief]
+    fields_required: [ts, source, pr, note]
+
   # ── Free-tier dispatch testing ─────────────────────────────────────────
   - kind: free_tier_e2e
     emitter: scripts/dispatch/free-tier-e2e-test.sh
