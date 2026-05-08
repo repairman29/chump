@@ -1,0 +1,7 @@
+- id: INFRA-758
+  domain: INFRA
+  title: "RESILIENT: pre-push cargo fmt guard prevents unformatted code from reaching CI"
+  status: open
+  priority: P1
+  effort: xs
+
