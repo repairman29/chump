@@ -8,6 +8,33 @@
 > Mission Driver session (see [`CLAUDE.md` → Mission Driver](../CLAUDE.md#mission-driver--every-session-not-just-when-asked))
 > when an outcome lands or a week ends.
 
+## 4-pillar mission & current cycle thrusts
+
+Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Waste**.
+
+| Pillar | Focus (this cycle) | Sample thrusts |
+|---|---|---|
+| **Effective** | User-facing velocity | App integration (PRODUCT-036/037), agent decision quality (FLEET-052), end-to-end flows |
+| **Credible** | Measurable progress | Effort sizing (INFRA-708), operator feedback loops (FLEET-048), pillar metrics (FLEET-053/054) |
+| **Resilient** | Failure tolerance | SWARM-domain exclusion (INFRA-710), stall detection (INFRA-705), worker health (FLEET-042) |
+| **Zero-Waste** | Cycle efficiency | Effort-scaled timeout (INFRA-707), wedge diagnosis (INFRA-706), pre-ship quality (INFRA-666) |
+
+**This week's bets** (P0 gaps picked from the queue):
+- INFRA-710 (RESILIENT: SWARM-* exclusion)
+- INFRA-708 (CREDIBLE: effort sizing)
+- INFRA-707 (ZERO-WASTE: timeout tuning)
+- FLEET-052 (EFFECTIVE: non-INFRA gap filing)
+- FLEET-048 (CREDIBLE: operator feedback)
+
+**Sunset** (last 5 PRs shipped):
+- #1282 — INFRA-707 prep: FLEET_TIMEOUT_S 600→900
+- #1281 — INFRA-471: model-class-aware routing
+- #1279 — INFRA-709: integration test guard
+- #1276 — INFRA-594: chump gen smoke suite
+- #1274 — INFRA-696: CVE audit
+
+---
+
 ## Vision (June 6 2026)
 
 An operator runs **`chump start --orchestrator opus`** on a clean Mac and gets
