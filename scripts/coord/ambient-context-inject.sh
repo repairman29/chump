@@ -83,6 +83,7 @@ CONTEXT="$(
     SESSION_ID="$SESSION_ID" \
     HOOK_EVENT="$HOOK_EVENT" \
     N="$N" \
+    REPO_ROOT="$REPO_ROOT" \
     python3 - <<'PY'
 import json, os, sys, time
 from pathlib import Path
@@ -159,6 +160,26 @@ for e in events:
 
 # Render compact context block
 lines_out = []
+
+# INFRA-721: SessionStart only — operator-facing fleet brief at the top.
+# Skip on PreToolUse (too noisy per-tool-call). Best-effort; never fail the
+# hook if fleet-brief.sh is missing or errors.
+if hook == "SessionStart":
+    import subprocess
+    repo_root = os.environ.get("REPO_ROOT", ".")
+    brief_script = os.path.join(repo_root, "scripts", "dispatch", "fleet-brief.sh")
+    if os.path.exists(brief_script) and os.access(brief_script, os.X_OK):
+        try:
+            res = subprocess.run(
+                ["bash", brief_script],
+                capture_output=True, text=True, timeout=15,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                lines_out.append(res.stdout.rstrip())
+                lines_out.append("")
+        except Exception:
+            pass
+
 lines_out.append("=== Ambient stream (FLEET-019 matrix wiring, hook=" + hook + ") ===")
 lines_out.append(
     f"Window: last {len(events)} events from .chump-locks/ambient.jsonl  |  "
