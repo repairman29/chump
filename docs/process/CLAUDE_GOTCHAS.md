@@ -234,6 +234,62 @@ when no `--gap` was given, or when the chump binary doesn't support
 
 [^pr52]: Historical context — PR #52 (2026-04-18) lost 11 commits when an agent kept pushing after auto-merge was armed; GitHub captured the branch at first-CI-green and dropped everything pushed after. Recovery PR #65 was hand-cherry-picked. The merge queue (INFRA-MERGE-QUEUE) closes the race only if you stop pushing once the PR is in the queue.
 
+## Agent UI verification (PRODUCT-037, 2026-05-08)
+
+When a gap touches `web/` (PWA, static assets, `app.js`, `index.html`, etc.), the agent **must** verify the served UI before shipping — not just that the files exist, but that the server actually serves them correctly. Use `scripts/dev/dev-server.sh` (not `restart-chump-web.sh` or `run-web.sh`, which are operator tools with git-pull + full rebuild logic that are wrong for in-worktree verification).
+
+```bash
+# 1. Start a lightweight dev server on a dedicated port (won't collide with the
+#    operator's live server on 3000, and won't do a git pull / release build).
+scripts/dev/dev-server.sh start --port 3737
+
+# 2. Verify key paths respond 200.  Default paths: /api/health and /v2/
+scripts/dev/dev-server.sh verify --port 3737
+
+# 3. Verify additional app-specific paths your gap touches.
+scripts/dev/dev-server.sh verify --port 3737 /v2/ /api/dashboard /api/jobs
+
+# 4. Check health manually if you want the JSON body.
+curl -s http://127.0.0.1:3737/api/health | python3 -m json.tool
+
+# 5. Stop when done (good hygiene — don't leave stray processes).
+scripts/dev/dev-server.sh stop --port 3737
+```
+
+**Port 3737 is the agent verification default.** It is reserved for in-worktree agent checks; port 3000 is the operator's live server. This prevents agents from stomping the running PWA.
+
+**Build flag.** By default `dev-server.sh start` uses the nearest pre-built binary (`target/debug/chump` preferred over `target/release/chump`). Pass `--build` to rebuild first:
+
+```bash
+scripts/dev/dev-server.sh start --port 3737 --build   # rebuild debug binary, then start
+```
+
+**`cargo run` fallback.** If no binary exists at all (fresh clone), `dev-server.sh start` automatically builds a debug binary before starting.
+
+**Status + restart helpers:**
+
+```bash
+scripts/dev/dev-server.sh status   # exit 0 if running, exit 1 if stopped
+scripts/dev/dev-server.sh restart  # stop + start in one shot
+```
+
+**Gotcha — worktree `target/` may be empty (PRODUCT-037).** Linked worktrees share `CARGO_TARGET_DIR` only if the env is explicitly set; by default each worktree has its own `target/`. If `start` reports "no pre-built binary found", pass `--build` or point `CARGO_TARGET_DIR` at the main repo's target:
+
+```bash
+CARGO_TARGET_DIR="$(git rev-parse --show-toplevel)/target" \
+  scripts/dev/dev-server.sh start --port 3737
+```
+
+**Must-do for PWA gap acceptance.** Any gap whose `acceptance_criteria` mentions the UI or PWA must include at least one `verify` pass in its acceptance evidence. Document the passing output in your PR body:
+
+```
+## UI verification
+$ scripts/dev/dev-server.sh verify --port 3737 /api/health /v2/
+[dev-server] PASS  200  /api/health
+[dev-server] PASS  200  /v2/
+[dev-server] all paths OK
+```
+
 ## Speculative execution (INFRA-193, opt-in)
 
 Default coordination is **exclusive lease** — one agent per gap. That serializes work and adds coordination latency. For latency-critical or high-diversity gaps you can opt two (or more) agents into a deliberate race:
