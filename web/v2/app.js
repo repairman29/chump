@@ -5,6 +5,7 @@
 class ChumpNav extends HTMLElement {
   static #ITEMS = [
     { id: 'chat',     label: 'Chat',     icon: '💬' },
+    { id: 'results',  label: 'Results',  icon: '📊' },
     { id: 'tasks',    label: 'Tasks',    icon: '⚡' },
     { id: 'memory',   label: 'Memory',   icon: '🧠' },
     { id: 'settings', label: 'Settings', icon: '⚙' },
@@ -189,6 +190,75 @@ class ChumpViewSettings extends HTMLElement {
 }
 customElements.define('chump-view-settings', ChumpViewSettings);
 
+// ── <chump-view-results> ──────────────────────────────────────────────────────
+class ChumpViewResults extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Results Board</h2>
+        <p class="view-subtitle">Live status and recent completions</p>
+      </section>
+      <section id="results-container" style="padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto;">
+        <p class="placeholder">Loading results…</p>
+      </section>
+    `;
+    this.#load();
+  }
+
+  #load() {
+    const container = this.querySelector('#results-container');
+    Promise.all([
+      fetch('/api/dashboard').then(r => r.json()).catch(() => ({})),
+      fetch('/api/jobs').then(r => r.json()).catch(() => [])
+    ]).then(([dashboard, jobs]) => {
+      if (!dashboard && !jobs) {
+        container.innerHTML = '<p class="placeholder">No results available (offline or server not running).</p>';
+        return;
+      }
+
+      let html = '';
+
+      if (dashboard && Object.keys(dashboard).length > 0) {
+        html += `
+          <article class="task-card">
+            <header class="task-card-header">
+              <span class="task-status ${dashboard.ship_running ? 'running' : 'done'}">
+                ${dashboard.ship_running ? 'Active' : 'Idle'}
+              </span>
+            </header>
+            <p class="task-desc"><strong>Agent Status:</strong> ${dashboard.ship_running ? 'Running' : 'Stopped'}</p>
+            ${dashboard.ship_summary ? `<p class="task-desc"><strong>Current Round:</strong> ${JSON.stringify(dashboard.ship_summary).substring(0, 100)}…</p>` : ''}
+          </article>
+        `;
+      }
+
+      if (Array.isArray(jobs) && jobs.length > 0) {
+        jobs.slice(0, 15).forEach(job => {
+          html += `
+            <article class="task-card">
+              <header class="task-card-header">
+                <span class="task-status ${job.status ?? 'unknown'}">${job.status ?? 'pending'}</span>
+                <span class="task-id">${job.id ?? job.job_id ?? ''}</span>
+              </header>
+              <p class="task-desc">${job.description ?? job.title ?? '(no title)'}</p>
+              ${job.result ? `<p class="task-desc" style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;"><strong>Result:</strong> ${job.result}</p>` : ''}
+            </article>
+          `;
+        });
+      }
+
+      if (!html) {
+        container.innerHTML = '<p class="placeholder">No active jobs or results yet.</p>';
+      } else {
+        container.innerHTML = html;
+      }
+    }).catch(() => {
+      container.innerHTML = '<p class="placeholder">Failed to load results.</p>';
+    });
+  }
+}
+customElements.define('chump-view-results', ChumpViewResults);
+
 // ── <chump-view-chat> ─────────────────────────────────────────────────────────
 class ChumpViewChat extends HTMLElement {
   connectedCallback() {
@@ -201,6 +271,7 @@ customElements.define('chump-view-chat', ChumpViewChat);
 // ── Router ────────────────────────────────────────────────────────────────────
 const VIEWS = {
   chat:     () => document.createElement('chump-view-chat'),
+  results:  () => document.createElement('chump-view-results'),
   tasks:    () => document.createElement('chump-view-tasks'),
   memory:   () => document.createElement('chump-view-memory'),
   settings: () => document.createElement('chump-view-settings'),
