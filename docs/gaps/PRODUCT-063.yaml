@@ -1,7 +1,7 @@
 - id: PRODUCT-063
   domain: PRODUCT
   title: "EFFECTIVE: chump gap decompose <ID> — LLM-assisted gap slicing into fleet-pickable xs/s pieces"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
