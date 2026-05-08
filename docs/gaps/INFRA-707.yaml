@@ -1,0 +1,7 @@
+- id: INFRA-707
+  domain: INFRA
+  title: "ZERO-WASTE: effort-scaled timeout — xs=300s s=600s m=1200s instead of flat 600s"
+  status: open
+  priority: P2
+  effort: m
+

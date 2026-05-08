@@ -1,0 +1,7 @@
+- id: INFRA-708
+  domain: INFRA
+  title: "CREDIBLE: audit effort sizing — re-grade s gaps that require full Rust subcommands to m"
+  status: open
+  priority: P2
+  effort: m
+

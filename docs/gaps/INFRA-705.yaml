@@ -1,0 +1,7 @@
+- id: INFRA-705
+  domain: INFRA
+  title: "RESILIENT: stall-detector — kill wedged cycles at 120s instead of burning 600s"
+  status: open
+  priority: P2
+  effort: m
+

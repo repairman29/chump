@@ -1,0 +1,7 @@
+- id: INFRA-706
+  domain: INFRA
+  title: "ZERO-WASTE: investigate 0-byte wedge pattern — agents stuck before producing output"
+  status: open
+  priority: P2
+  effort: m
+
