@@ -668,6 +668,286 @@ fn json_escape(s: &str) -> String {
     out
 }
 
+// ── SLO check (INFRA-645) ─────────────────────────────────────────────────────
+
+/// One SLO with its current measurement and breach status.
+#[derive(Debug, Clone)]
+pub struct SloResult {
+    pub id: &'static str,
+    pub target: &'static str,
+    pub current: String,
+    pub breached: bool,
+    pub detail: String,
+}
+
+/// Evaluate all fleet SLOs against live data.
+/// See docs/process/FLEET_SLOS.md for authoritative definitions.
+pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
+    let mut results = Vec::new();
+    let now = current_unix();
+    let week_ago = now.saturating_sub(7 * 24 * 3600);
+    let day_start = now - (now % 86_400);
+    let h24_ago = now.saturating_sub(24 * 3600);
+
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    // L1-SLO-1: silent_agent = 0/week
+    let silent_7d = count_kind_since(&contents, "silent_agent", week_ago);
+    results.push(SloResult {
+        id: "L1-SLO-1",
+        target: "silent_agent = 0/week",
+        current: format!("{}", silent_7d),
+        breached: silent_7d > 0,
+        detail: format!("{} silent_agent event(s) in last 7d (target: 0)", silent_7d),
+    });
+
+    // L1-SLO-2: orphan_claude = 0/day
+    let orphan_today = count_kind_since(&contents, "orphan_claude", day_start);
+    results.push(SloResult {
+        id: "L1-SLO-2",
+        target: "orphan_claude = 0/day",
+        current: format!("{}", orphan_today),
+        breached: orphan_today > 0,
+        detail: format!("{} orphan_claude event(s) today (target: 0)", orphan_today),
+    });
+
+    // L1-SLO-3: auto-restart success rate > 95%
+    let ok_24h = count_kind_since(&contents, "auto_restart_ok", h24_ago);
+    let fail_24h = count_kind_since(&contents, "auto_restart_fail", h24_ago);
+    let total_restarts = ok_24h + fail_24h;
+    let restart_rate = (ok_24h * 100).checked_div(total_restarts).unwrap_or(100);
+    results.push(SloResult {
+        id: "L1-SLO-3",
+        target: "auto-restart success > 95%",
+        current: format!("{}%", restart_rate),
+        breached: total_restarts > 0 && restart_rate < 95,
+        detail: if total_restarts == 0 {
+            "no auto_restart events in 24h (no data — passing by default)".into()
+        } else {
+            format!(
+                "{}/{} restarts succeeded in 24h ({}%)",
+                ok_24h, total_restarts, restart_rate
+            )
+        },
+    });
+
+    // L2-SLO-1: P50 ship-time < 30min (created_at → closed_at for 24h window)
+    let p50_min = p50_ship_time_minutes(repo_root);
+    results.push(SloResult {
+        id: "L2-SLO-1",
+        target: "P50 ship-time < 30min",
+        current: p50_min
+            .map(|m| format!("{}min", m))
+            .unwrap_or_else(|| "no data".into()),
+        breached: p50_min.is_some_and(|m| m >= 30),
+        detail: p50_min
+            .map(|m| format!("P50 ship-time {}min in last 24h (target: <30min)", m))
+            .unwrap_or_else(|| "no gaps closed in last 24h — cannot compute P50".into()),
+    });
+
+    // L2-SLO-2: waste < 5% of sessions (proxy until per-token accounting is wired)
+    let waste_7d = count_waste_since(&contents, week_ago);
+    let sessions_7d = count_kind_since(&contents, "session_end", week_ago).max(1);
+    let waste_pct = waste_7d * 100 / sessions_7d;
+    results.push(SloResult {
+        id: "L2-SLO-2",
+        target: "waste < 5% of tokens",
+        current: format!("~{}%", waste_pct),
+        breached: waste_pct >= 5,
+        detail: format!(
+            "{} waste incidents / {} sessions in 7d (~{}%) — use `chump waste-tally --tokens` for exact token %",
+            waste_7d, sessions_7d, waste_pct
+        ),
+    });
+
+    // L2-SLO-3: P0 count <= 5
+    let p0_count = count_p0_gaps(repo_root);
+    results.push(SloResult {
+        id: "L2-SLO-3",
+        target: "P0 count ≤ 5",
+        current: format!("{}", p0_count),
+        breached: p0_count > 5,
+        detail: format!("{} open P0 gaps (target: ≤5)", p0_count),
+    });
+
+    // L2-SLO-4: pillar balance >= 2 pickable in every pillar
+    let grade = crate::mission_grade::build_report(repo_root);
+    let pillar_counts = [
+        ("EFFECTIVE", grade.effective.count_pickable),
+        ("CREDIBLE", grade.credible.count_pickable),
+        ("RESILIENT", grade.resilient.count_pickable),
+        ("ZERO-WASTE", grade.zero_waste.count_pickable),
+    ];
+    let pillars_under_two = pillar_counts.iter().filter(|(_, c)| *c < 2).count();
+    results.push(SloResult {
+        id: "L2-SLO-4",
+        target: "pillar balance ≥ 2 pickable each",
+        current: format!("{} under target", pillars_under_two),
+        breached: pillars_under_two > 0,
+        detail: format!(
+            "EFFECTIVE:{} CREDIBLE:{} RESILIENT:{} ZERO-WASTE:{} (target: ≥2 each)",
+            grade.effective.count_pickable,
+            grade.credible.count_pickable,
+            grade.resilient.count_pickable,
+            grade.zero_waste.count_pickable,
+        ),
+    });
+
+    // L2-SLO-5: ghost-gap count < 2
+    let ghosts = count_ghost_gaps(repo_root);
+    results.push(SloResult {
+        id: "L2-SLO-5",
+        target: "ghost-gap count < 2",
+        current: format!("{}", ghosts),
+        breached: ghosts >= 2,
+        detail: format!(
+            "{} ghost gaps (open status, closed_pr set; target: <2)",
+            ghosts
+        ),
+    });
+
+    // L3-SLO-1: operator-recall < 1/week
+    let recall_7d = count_kind_since(&contents, "operator_recall", week_ago);
+    results.push(SloResult {
+        id: "L3-SLO-1",
+        target: "operator-recall < 1/week",
+        current: format!("{}", recall_7d),
+        breached: recall_7d >= 1,
+        detail: format!(
+            "{} operator_recall event(s) in last 7d (target: <1)",
+            recall_7d
+        ),
+    });
+
+    results
+}
+
+pub fn render_slo_text(results: &[SloResult]) -> String {
+    let breach_count = results.iter().filter(|r| r.breached).count();
+    let mut out = String::new();
+    out.push_str("═══ Fleet SLO Check ═══\n\n");
+    for r in results {
+        if r.breached {
+            out.push_str(&format!(
+                "  ✗ BREACH  {}  [{}]  {}\n",
+                r.id, r.current, r.target
+            ));
+            out.push_str(&format!("             └─ {}\n", r.detail));
+        } else {
+            out.push_str(&format!(
+                "  ✓ pass    {}  [{}]  {}\n",
+                r.id, r.current, r.target
+            ));
+        }
+    }
+    out.push('\n');
+    if breach_count == 0 {
+        out.push_str("  All SLOs passing.\n");
+    } else {
+        out.push_str(&format!(
+            "  {} SLO(s) breached — see docs/process/FLEET_SLOS.md\n",
+            breach_count
+        ));
+    }
+    out
+}
+
+pub fn render_slo_json(results: &[SloResult]) -> String {
+    let breach_count = results.iter().filter(|r| r.breached).count();
+    let items: Vec<String> = results
+        .iter()
+        .map(|r| {
+            format!(
+                r#"{{"id":"{}","target":"{}","current":"{}","breached":{},"detail":"{}"}}"#,
+                r.id,
+                r.target,
+                r.current,
+                r.breached,
+                json_escape(&r.detail)
+            )
+        })
+        .collect();
+    format!(
+        r#"{{"slo_breaches":{},"slos":[{}]}}"#,
+        breach_count,
+        items.join(",")
+    )
+}
+
+// ── SLO helpers ───────────────────────────────────────────────────────────────
+
+fn count_kind_since(contents: &str, kind: &str, since_unix: u64) -> u64 {
+    let needle = format!(r#""kind":"{}""#, kind);
+    let mut count = 0u64;
+    for line in contents.lines() {
+        if !line.contains(&needle) {
+            continue;
+        }
+        let ts = extract_field(line, "ts")
+            .and_then(|t| parse_iso8601_to_unix(&t))
+            .unwrap_or(0);
+        if ts >= since_unix {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn count_waste_since(contents: &str, since_unix: u64) -> u64 {
+    let mut count = 0u64;
+    for line in contents.lines() {
+        let ts = extract_field(line, "ts")
+            .and_then(|t| parse_iso8601_to_unix(&t))
+            .unwrap_or(0);
+        if ts < since_unix {
+            continue;
+        }
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if crate::waste_tally::WASTE_KINDS.contains(&kind.as_str()) {
+            count += 1;
+        }
+    }
+    count
+}
+
+fn p50_ship_time_minutes(repo_root: &Path) -> Option<u64> {
+    let Ok(gs) = crate::gap_store::GapStore::open(repo_root) else {
+        return None;
+    };
+    let Ok(closed) = gs.list(Some("closed")) else {
+        return None;
+    };
+    let now = current_unix();
+    let day_ago = now.saturating_sub(24 * 3600);
+    let mut durations: Vec<u64> = closed
+        .iter()
+        .filter_map(|g| {
+            let closed_at = g.closed_at? as u64;
+            if closed_at < day_ago {
+                return None;
+            }
+            let created_at = g.created_at as u64;
+            Some(closed_at.saturating_sub(created_at) / 60)
+        })
+        .collect();
+    if durations.is_empty() {
+        return None;
+    }
+    durations.sort_unstable();
+    Some(durations[durations.len() / 2])
+}
+
+fn count_p0_gaps(repo_root: &Path) -> u64 {
+    let Ok(gs) = crate::gap_store::GapStore::open(repo_root) else {
+        return 0;
+    };
+    let Ok(open) = gs.list(Some("open")) else {
+        return 0;
+    };
+    open.iter().filter(|g| g.priority.as_str() == "P0").count() as u64
+}
+
 // ── Unit tests ─────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
