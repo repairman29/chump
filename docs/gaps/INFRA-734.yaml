@@ -1,0 +1,7 @@
+- id: INFRA-734
+  domain: INFRA
+  title: "RESILIENT: claude -p --output-format stream-json requires --verbose flag — INFRA-714 shipped half the wiring; fleet workers now error 'When using --print, --output-format=stream-json requires --verbose' on every cycle. 3-site fix in worker.sh, all spawn invocations."
+  status: open
+  priority: P0
+  effort: xs
+
