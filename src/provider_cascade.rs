@@ -179,6 +179,10 @@ pub struct ProviderSlot {
     pub privacy: PrivacyTier,
     /// Context window in thousands of tokens (e.g. 1000 = 1M). From CHUMP_PROVIDER_{N}_CONTEXT_K. Used when CHUMP_PREFER_LARGE_CONTEXT=1.
     pub context_k: Option<u32>,
+    /// Model class: haiku / sonnet / opus. Maps free-tier providers to Claude
+    /// tiers so the cascade can prefer the right slot for each task complexity.
+    /// From CHUMP_PROVIDER_{N}_MODEL_CLASS. Matched against CHUMP_PREFERRED_MODEL_CLASS.
+    pub model_class: Option<String>,
     pub rpm_limit: u32,
     pub calls_this_minute: AtomicU32,
     pub minute_start: Mutex<Instant>,
@@ -271,6 +275,7 @@ impl ProviderCascade {
                     tier: ProviderTier::Local,
                     privacy: PrivacyTier::Safe,
                     context_k: None,
+                    model_class: None,
                     rpm_limit: 0,
                     calls_this_minute: AtomicU32::new(0),
                     minute_start: Mutex::new(Instant::now()),
@@ -314,6 +319,10 @@ impl ProviderCascade {
             let context_k = std::env::var(format!("CHUMP_PROVIDER_{}_CONTEXT_K", n))
                 .ok()
                 .and_then(|v| v.trim().parse::<u32>().ok());
+            let model_class = std::env::var(format!("CHUMP_PROVIDER_{}_MODEL_CLASS", n))
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(|s| s.trim().to_lowercase());
 
             let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
             slots.push(ProviderSlot {
@@ -324,6 +333,7 @@ impl ProviderCascade {
                 tier: ProviderTier::Cloud,
                 privacy,
                 context_k,
+                model_class,
                 rpm_limit: rpm,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -437,10 +447,23 @@ impl ProviderCascade {
             crate::precision_controller::PrecisionRegime::Explore
                 | crate::precision_controller::PrecisionRegime::Conservative
         );
+        let preferred_class = std::env::var("CHUMP_PREFERRED_MODEL_CLASS")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.trim().to_lowercase());
         let mut order: Vec<usize> = (0..self.slots.len()).collect();
         order.sort_by(|&i, &j| {
             let a = &self.slots[i];
             let b = &self.slots[j];
+            // Model-class match: slots tagged with the preferred class sort first
+            let class_a: i32 = match (&preferred_class, &a.model_class) {
+                (Some(pref), Some(mc)) if mc == pref => -1,
+                _ => 0,
+            };
+            let class_b: i32 = match (&preferred_class, &b.model_class) {
+                (Some(pref), Some(mc)) if mc == pref => -1,
+                _ => 0,
+            };
             // Regime-based tier bias: prefer local when Exploit, cloud when Explore/Conservative
             let tier_bias_a: i32 = if (prefer_local && a.tier == ProviderTier::Local)
                 || (prefer_cloud && a.tier == ProviderTier::Cloud)
@@ -458,15 +481,17 @@ impl ProviderCascade {
             };
             let da = provider_quality::demotion_offset(&a.name);
             let db = provider_quality::demotion_offset(&b.name);
-            tier_bias_a.cmp(&tier_bias_b).then_with(|| {
-                da.cmp(&db).then_with(|| {
-                    if prefer_large_context() {
-                        let ak = a.context_k.unwrap_or(0);
-                        let bk = b.context_k.unwrap_or(0);
-                        bk.cmp(&ak).then_with(|| a.priority.cmp(&b.priority))
-                    } else {
-                        a.priority.cmp(&b.priority)
-                    }
+            class_a.cmp(&class_b).then_with(|| {
+                tier_bias_a.cmp(&tier_bias_b).then_with(|| {
+                    da.cmp(&db).then_with(|| {
+                        if prefer_large_context() {
+                            let ak = a.context_k.unwrap_or(0);
+                            let bk = b.context_k.unwrap_or(0);
+                            bk.cmp(&ak).then_with(|| a.priority.cmp(&b.priority))
+                        } else {
+                            a.priority.cmp(&b.priority)
+                        }
+                    })
                 })
             })
         });
@@ -1524,6 +1549,7 @@ mod tests {
                 tier: ProviderTier::Cloud,
                 privacy: PrivacyTier::Safe,
                 context_k: None,
+                model_class: None,
                 rpm_limit: 10,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -1544,6 +1570,7 @@ mod tests {
                 tier: ProviderTier::Cloud,
                 privacy: PrivacyTier::Safe,
                 context_k: None,
+                model_class: None,
                 rpm_limit: 10,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
