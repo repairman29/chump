@@ -42,10 +42,19 @@ So by default Discord uses **Ollama** at 11434 with **qwen2.5:14b**. Override in
 
 ## Run scripts
 
+**Recommended: Use the unified control script**
+
+| Script | Purpose |
+|--------|--------|
+| `scripts/discord.sh` | Unified Discord bot control: `start`, `stop`, `restart`, `status`. Auto-selects variant (Ollama, vLLM, mistral.rs) based on .env and system config. |
+
+**Individual scripts (for advanced use)**
+
 | Script | Purpose |
 |--------|--------|
 | `run-discord.sh` | Sources `.env`, sets `CHUMP_HOME` to repo root, exports Ollama defaults, runs `cargo run -- --discord`. Exits if `DISCORD_TOKEN` unset or if another `chump`/legacy `rust-agent` Discord process is running. |
 | `run-discord-ollama.sh` | Same as above; also runs a preflight (Ollama reachable) and exits with instructions if not. |
+| `run-discord-full.sh` | Builds with `inprocess-embed` feature for full tools (repo access, semantic search, battle QA). |
 | `scripts/ci/check-discord-preflight.sh` | Checks: `.env` exists, `DISCORD_TOKEN` set, no duplicate bot process, model server reachable (Ollama 11434 or `OPENAI_API_BASE`). |
 
 ## ChumpMenu (menu bar app)
@@ -76,4 +85,4 @@ So when started from ChumpMenu, Discord runs with CWD and `CHUMP_HOME` equal to 
 3. **Model:** Run Ollama (e.g. `ollama serve && ollama pull qwen2.5:14b`) or set `OPENAI_API_BASE`/`OPENAI_MODEL` in `.env` to another server.
 4. **Start:** From repo root run `./run-discord.sh` or `./run-discord-ollama.sh`, or use ChumpMenu with repo path set to that root (e.g. `~/Projects/Chump`).
 
-If the bot doesn’t reply: see [DISCORD_TROUBLESHOOTING.md](DISCORD_TROUBLESHOOTING.md).
+If the bot doesn’t reply: see [DISCORD_TROUBLESHOOTING.md](../operations/DISCORD_TROUBLESHOOTING.md).

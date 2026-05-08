@@ -6,7 +6,7 @@ last_audited: 2026-04-25
 
 # Discord troubleshooting
 
-If the bot won't start, connects but doesn't reply, or only works in DMs, check the following. For a full picture of what's configured, see [DISCORD_CONFIG.md](DISCORD_CONFIG.md).
+If the bot won't start, connects but doesn't reply, or only works in DMs, check the following. For a full picture of what's configured, see [DISCORD_CONFIG.md](../howto/DISCORD_CONFIG.md).
 
 ## 1. Message Content Intent (most common)
 
@@ -36,10 +36,9 @@ Run preflight to verify:
 
 Multiple processes cause duplicate replies. Stop any existing Chump Discord process before starting:
 
-- ChumpMenu: use **Stop Chump**.
-- Or: `pkill -f 'chump.*--discord'` (and `pkill -f 'rust-agent.*--discord'` for legacy binaries)
-
-Then start again with `./run-discord.sh` or `./run-discord-ollama.sh`.
+- **Unified control:** `./scripts/discord.sh stop` then `./scripts/discord.sh start` (recommended).
+- **ChumpMenu:** use **Stop Chump**.
+- **Manual:** `pkill -f 'chump.*--discord'` (and `pkill -f 'rust-agent.*--discord'` for legacy binaries)
 
 ## 4. Model server (Ollama or vLLM)
 
@@ -108,4 +107,5 @@ After fixing the cause, try again in Discord; no need to restart the bot unless 
 2. `.env` has `DISCORD_TOKEN=<your-token>` (no quotes unless the token contains spaces).
 3. `./scripts/ci/check-discord-preflight.sh` passes.
 4. Only one bot process; Ollama (or your model server) is running.
-5. Restart the bot after changing .env or intents.
+5. Start bot with `./scripts/discord.sh start` (unified control) or `./run-discord.sh`.
+6. Check status: `./scripts/discord.sh status`.
