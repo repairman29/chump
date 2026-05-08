@@ -63,6 +63,7 @@ echo "Test 1: stale-fetch force-push must be blocked"
 input="refs/heads/feature $LOCAL_SHA refs/heads/feature $LOCAL_VIEW_REMOTE_SHA"
 set +e
 out=$(echo "$input" | CHUMP_AUTOMERGE_OVERRIDE=1 CHUMP_GAP_CHECK=0 \
+    CHUMP_FMT_CHECK=0 CHUMP_TEST_GATE=0 \
     "$HOOK" "$TMP/origin.git" "$TMP/origin.git" 2>&1)
 rc=$?
 set -e
@@ -83,6 +84,7 @@ echo ""
 echo "Test 2: CHUMP_FORCE_LEASE_CHECK=0 must allow the same scenario"
 set +e
 out=$(echo "$input" | CHUMP_AUTOMERGE_OVERRIDE=1 CHUMP_GAP_CHECK=0 \
+    CHUMP_FMT_CHECK=0 CHUMP_TEST_GATE=0 \
     CHUMP_FORCE_LEASE_CHECK=0 "$HOOK" "$TMP/origin.git" "$TMP/origin.git" 2>&1)
 rc=$?
 set -e
@@ -106,6 +108,7 @@ NEW_LOCAL_SHA=$(git rev-parse HEAD)
 input2="refs/heads/feature $NEW_LOCAL_SHA refs/heads/feature $FRESH_REMOTE_SHA"
 set +e
 out=$(echo "$input2" | CHUMP_AUTOMERGE_OVERRIDE=1 CHUMP_GAP_CHECK=0 \
+    CHUMP_FMT_CHECK=0 CHUMP_TEST_GATE=0 \
     "$HOOK" "$TMP/origin.git" "$TMP/origin.git" 2>&1)
 rc=$?
 set -e
@@ -128,6 +131,7 @@ ZEROS="0000000000000000000000000000000000000000"
 input3="refs/heads/new-branch $NEW_LOCAL_SHA refs/heads/new-branch $ZEROS"
 set +e
 out=$(echo "$input3" | CHUMP_AUTOMERGE_OVERRIDE=1 CHUMP_GAP_CHECK=0 \
+    CHUMP_FMT_CHECK=0 CHUMP_TEST_GATE=0 \
     "$HOOK" "$TMP/origin.git" "$TMP/origin.git" 2>&1)
 rc=$?
 set -e
