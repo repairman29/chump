@@ -1,0 +1,207 @@
+# Provider rate table — canonical free-tier limits per provider/model.
+#
+# INFRA-775: ProviderCascade::from_env() will read this file and merge with
+# CHUMP_PROVIDER_{N}_* env vars (env overrides YAML). Until then, this is the
+# human-readable reference that .env slot config is derived from.
+#
+# Fields:
+#   provider        — human label (matches CHUMP_PROVIDER_{N}_NAME)
+#   model           — API model ID
+#   base_url        — OpenAI-compat endpoint
+#   model_class     — haiku | sonnet | opus (maps to Claude tier for routing)
+#   privacy         — safe | caution | trains
+#   context_k       — context window in thousands of tokens
+#   rpm             — requests per minute (0 = unlimited)
+#   rpd             — requests per day (0 = unlimited)
+#   tpm             — tokens per minute (0 = unlimited/unknown)
+#   tpd             — tokens per day (0 = unlimited/unknown)
+#   cooldown_s      — default backoff on 429 when no Retry-After header
+#   reset_window    — rolling | fixed-minute | fixed-day
+#   retry_after     — does provider send Retry-After header? yes | no | sometimes
+#   notes           — free-form operational notes
+#
+# Last verified: 2026-05-08
+# Source: provider docs + empirical probing during cascade testing.
+
+providers:
+
+  # ─── Cerebras ─────────────────────────────────────────────────────────
+  - provider: cerebras
+    model: qwen-3-235b-a22b-instruct-2507
+    base_url: https://api.cerebras.ai/v1
+    model_class: sonnet
+    privacy: safe
+    context_k: 128
+    rpm: 30
+    rpd: 14400
+    tpm: 0
+    tpd: 0
+    cooldown_s: 15
+    reset_window: rolling
+    retry_after: yes
+    notes: >
+      Fastest inference (>2000 tok/s). Free tier generous on RPD.
+      qwen-3-235b sometimes returns 429 queue_exceeded; falls back fast.
+
+  # ─── Groq ─────────────────────────────────────────────────────────────
+  - provider: groq
+    model: llama-3.3-70b-versatile
+    base_url: https://api.groq.com/openai/v1
+    model_class: sonnet
+    privacy: safe
+    context_k: 128
+    rpm: 24
+    rpd: 800
+    tpm: 20000
+    tpd: 0
+    cooldown_s: 48
+    reset_window: rolling
+    retry_after: yes
+    notes: >
+      Very fast but low RPD. Sends Retry-After header on 429 (typically 48s).
+      TPM limit (20k) can trigger 413 on large prompts — cascade treats as rate limit.
+
+  # ─── NVIDIA NIM ───────────────────────────────────────────────────────
+  - provider: nvidia
+    model: meta/llama-3.3-70b-instruct
+    base_url: https://integrate.api.nvidia.com/v1
+    model_class: sonnet
+    privacy: caution
+    context_k: 128
+    rpm: 32
+    rpd: 5000
+    tpm: 0
+    tpd: 0
+    cooldown_s: 30
+    reset_window: rolling
+    retry_after: no
+    notes: >
+      Free-tier generous. Privacy unclear (DPA not public) — treat as caution.
+      Slower than Cerebras/Groq but reliable. Good cascade fallback.
+
+  # ─── Hyperbolic ───────────────────────────────────────────────────────
+  - provider: hyperbolic
+    model: Qwen/Qwen3-Coder-480B-A35B-Instruct
+    base_url: https://api.hyperbolic.xyz/v1
+    model_class: sonnet
+    privacy: caution
+    context_k: 128
+    rpm: 20
+    rpd: 2000
+    tpm: 0
+    tpd: 0
+    cooldown_s: 30
+    reset_window: rolling
+    retry_after: no
+    notes: >
+      ~$1 free credit on signup. 480B model good for harder tasks.
+      Credit-based, not rate-based — may return 402 when credit exhausted.
+
+  # ─── OpenRouter ───────────────────────────────────────────────────────
+  - provider: openrouter
+    model: qwen/qwen3-coder:free
+    base_url: https://openrouter.ai/api/v1
+    model_class: haiku
+    privacy: caution
+    context_k: 128
+    rpm: 16
+    rpd: 800
+    tpm: 0
+    tpd: 0
+    cooldown_s: 30
+    reset_window: rolling
+    retry_after: sometimes
+    notes: >
+      Aggregator — :free models rotate availability. Lower quality than
+      direct provider access. Good for overflow.
+
+  # ─── GitHub Models ────────────────────────────────────────────────────
+  - provider: github
+    model: meta/Llama-3.3-70B-Instruct
+    base_url: https://models.github.ai/inference
+    model_class: haiku
+    privacy: safe
+    context_k: 8
+    rpm: 12
+    rpd: 120
+    tpm: 0
+    tpd: 0
+    cooldown_s: 60
+    reset_window: fixed-day
+    retry_after: no
+    notes: >
+      Smallest free tier (120 RPD). Microsoft DPA = strongest privacy.
+      8K context only — not suitable for large prompts.
+
+  # ─── Gemini 2.0 Flash Lite (haiku tier) ──────────────────────────────
+  - provider: gemini-2.0-flash-lite
+    model: gemini-2.0-flash-lite
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    model_class: haiku
+    privacy: trains
+    context_k: 1000
+    rpm: 15
+    rpd: 1500
+    tpm: 1000000
+    tpd: 0
+    cooldown_s: 30
+    reset_window: rolling
+    retry_after: no
+    notes: >
+      Fastest Gemini model. 1M context. Free tier trains on prompts.
+      Same API key shared across all Gemini models but independent limits.
+
+  # ─── Gemini 2.5 Flash (sonnet tier) ──────────────────────────────────
+  - provider: gemini-2.5-flash
+    model: gemini-2.5-flash
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    model_class: sonnet
+    privacy: trains
+    context_k: 1000
+    rpm: 10
+    rpd: 1000
+    tpm: 1000000
+    tpd: 0
+    cooldown_s: 30
+    reset_window: rolling
+    retry_after: no
+    notes: >
+      Best balanced Gemini model. Good reasoning + speed. 1M context.
+      Confirmed working with LocalOpenAIProvider 2026-05-08.
+
+  # ─── Gemini 2.5 Pro (opus tier) ──────────────────────────────────────
+  - provider: gemini-2.5-pro
+    model: gemini-2.5-pro
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai
+    model_class: opus
+    privacy: trains
+    context_k: 2000
+    rpm: 5
+    rpd: 50
+    tpm: 1000000
+    tpd: 0
+    cooldown_s: 60
+    reset_window: rolling
+    retry_after: no
+    notes: >
+      Strongest Gemini reasoning. Very low RPD (50) — reserve for
+      verify/decompose passes and complex tasks. 2M context.
+
+  # ─── Together.ai (disabled — credit exhausted) ───────────────────────
+  - provider: together
+    model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free
+    base_url: https://api.together.xyz/v1
+    model_class: haiku
+    privacy: safe
+    context_k: 128
+    rpm: 60
+    rpd: 2000
+    tpm: 0
+    tpd: 0
+    cooldown_s: 30
+    reset_window: rolling
+    retry_after: no
+    enabled: false
+    notes: >
+      Free-tier credits exhausted as of 2026-05-02. Returns 402.
+      Re-enable if credits replenished. Was a good cascade fallback.
