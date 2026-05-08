@@ -1,0 +1,7 @@
+- id: INFRA-650
+  domain: INFRA
+  title: "ZERO-WASTE: fleet auto-prune-down — scale fleet smaller when over-resourced. Triggers (any): (a) queue empty + 0 in-flight work for 30min (tear down completely until next gap filed), (b) cost-watch (INFRA-608) hard-cap at 80% with N hours left in day (tighten to FLEET_SIZE/2), (c) ship rate flat despite N workers for 60min (scale to N-1, observe), (d) autonomous-mode (INFRA-625) operator-absent >24h (free-tier-only + minimum size). Inverse of INFRA-518 expansion gate (which scales UP). Together they form a closed-loop fleet-sizing controller. AC: src/fleet_resize.rs evaluates 4 conditions; chump fleet auto-resize subcommand; integrated into INFRA-611 auto-restart daemon; emits 'kind=fleet_resize_decision' ambient with reasoning; test scripts/ci/test-fleet-auto-prune.sh covers each trigger."
+  status: open
+  priority: P1
+  effort: m
+
