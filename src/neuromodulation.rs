@@ -339,9 +339,11 @@ mod tests {
 
     #[test]
     #[serial(neuromod_env)]
-    fn neuromod_enabled_default_on() {
+    fn neuromod_enabled_default_off() {
         std::env::remove_var("CHUMP_NEUROMOD_ENABLED");
-        assert!(neuromod_enabled());
+        std::env::remove_var("CHUMP_BYPASS_NEUROMOD");
+        // EVAL-026: bypass defaults ON → neuromod_enabled() returns false.
+        assert!(!neuromod_enabled());
     }
 
     #[test]

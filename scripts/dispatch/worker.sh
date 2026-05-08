@@ -406,6 +406,8 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         log "INFRA-471: routing gap=$GAP_ID model $FLEET_MODEL → $_resolved_model (routing.yaml)"
         FLEET_MODEL="$_resolved_model"
     fi
+    # PRODUCT-063: export model class so provider_cascade prefers matching tier
+    export CHUMP_PREFERRED_MODEL_CLASS="${_resolved_model:-$FLEET_MODEL}"
 
     # INFRA-315: clear starvation counter on a successful pick. The next
     # empty cycle starts the threshold over from zero.
