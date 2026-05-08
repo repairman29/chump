@@ -54,7 +54,29 @@ for lock_file in "$LOCK_DIR"/.gap-*.lock; do
 
     lease_file="$LOCK_DIR/${session_id}.json"
     if [[ -f "$lease_file" ]]; then
-        echo "  SKIP (live lease): $lock_file  [session=$session_id]"
+        # 2026-05-08 INFRA-732 extension: lease file present is NOT enough —
+        # session_id encodes a PID (fleet-<...>-<PID>-<EPOCH>). If PID is
+        # dead, the lease is a zombie and the lock should be reaped. Without
+        # this check, the reaper missed the most common stall pattern (72
+        # zombies observed mid-session, all had lease files but dead PIDs).
+        pid=$(printf '%s' "$session_id" | grep -oE '[0-9]+-[0-9]+$' | cut -d- -f1)
+        if [[ -n "$pid" ]] && ! ps -p "$pid" >/dev/null 2>&1; then
+            # PID is dead — zombie. Reap both lock + lease.
+            if [[ "$DRY_RUN" == "true" ]]; then
+                echo "  WOULD REAP (pid=$pid dead): $lock_file"
+            else
+                rm -f "$lock_file" "$lease_file"
+                echo "  REAPED (pid=$pid dead): $lock_file + lease"
+                printf '{"ts":"%s","kind":"stale_gap_lock_reaped","lock":"%s","session":"%s","reason":"pid_dead","pid":%d}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                    "$(basename "$lock_file")" \
+                    "$session_id" "$pid" \
+                    >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+            fi
+            REAPED=$((REAPED+1))
+            continue
+        fi
+        echo "  SKIP (live lease + live pid): $lock_file  [session=$session_id]"
         SKIPPED=$((SKIPPED+1))
         continue
     fi
