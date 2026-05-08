@@ -210,8 +210,8 @@ if ! command -v tmux >/dev/null 2>&1; then
     echo "[run-fleet] ERROR: tmux not on PATH (brew install tmux)" >&2
     exit 1
 fi
-if ! command -v claude >/dev/null 2>&1; then
-    echo "[run-fleet] ERROR: claude CLI not on PATH" >&2
+if [[ "$FLEET_BACKEND" == "claude" ]] && ! command -v claude >/dev/null 2>&1; then
+    echo "[run-fleet] ERROR: claude CLI not on PATH (required for FLEET_BACKEND=claude)" >&2
     exit 1
 fi
 if [ ! -x "$SCRIPT_DIR/worker.sh" ]; then
