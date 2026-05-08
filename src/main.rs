@@ -5329,9 +5329,16 @@ mod tests {
             .await;
 
         std::env::set_var("OPENAI_API_BASE", mock.uri());
+        // INFRA-677: disable consecutive-tool-fails breaker so a sibling
+        // test setting CHUMP_MAX_CONSECUTIVE_TOOL_FAILS=1 mid-run can't
+        // trip our agent. Observed sporadic CI failure: returned "Aborting:
+        // 3 consecutive tool batches with no successful calls" instead of
+        // "Mocked reply" because env-var races slip past #[serial].
+        std::env::set_var("CHUMP_MAX_CONSECUTIVE_TOOL_FAILS", "99999");
         let (agent, _) = agent_factory::build_chump_agent_cli().expect("build agent");
         let outcome = agent.run("Hello").await.unwrap();
         std::env::remove_var("OPENAI_API_BASE");
+        std::env::remove_var("CHUMP_MAX_CONSECUTIVE_TOOL_FAILS");
         assert!(
             outcome.reply.contains("Mocked reply"),
             "expected reply to contain mock content, got: {}",
