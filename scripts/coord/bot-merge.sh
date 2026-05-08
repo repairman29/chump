@@ -41,7 +41,7 @@
 #   0  PR opened/updated (or already up to date)
 #   1  Pre-flight check failed (gap preflight, fmt, clippy, tests)
 #   2  Push or gh command failed
-#   3  Branch too stale to merge safely (>40 commits behind main)
+#   3  Branch too stale to merge safely (>50 commits behind main)
 
 set -euo pipefail
 
@@ -828,9 +828,9 @@ info "Fetched $REMOTE/$BASE_BRANCH."
 
 BEHIND=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo 0)
 
-# Hard abort if branch is extremely stale — rebase at 40+ commits is risky and
+# Hard abort if branch is extremely stale — rebase at 50+ commits is risky and
 # likely means the work has already landed on main via another agent.
-if [[ "$BEHIND" -gt 40 ]]; then
+if [[ "$BEHIND" -gt 50 ]]; then
     red "Branch is $BEHIND commits behind $REMOTE/$BASE_BRANCH — too stale to merge safely."
     red "Run: scripts/coord/gap-preflight.sh ${GAP_IDS[*]:-<gap-ids>}"
     red "Then: git fetch && git rebase $REMOTE/$BASE_BRANCH (resolve conflicts)"
