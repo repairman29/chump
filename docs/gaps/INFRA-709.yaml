@@ -1,0 +1,7 @@
+- id: INFRA-709
+  domain: INFRA
+  title: "RESILIENT: integration_agent_run_against_mock #[ignore] — test breaks on every new agent-loop guard (INFRA-677 max-tool-fails, today max-iterations). Mark ignore until mock contract matches loop semantics."
+  status: open
+  priority: P0
+  effort: xs
+
