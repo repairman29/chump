@@ -101,9 +101,9 @@ pub const WASTE_KINDS: &[&str] = &[
     "session_abandoned", // INFRA-493 synthetic — from session_end outcome=abandoned
     "session_starved",   // INFRA-493 synthetic — from session_end outcome=starved
     "session_shipped_not_valuable", // FLEET-050 synthetic — from session_end outcome=shipped-not-valuable
-    "worker_exit_timeout", // INFRA-572 synthetic — from worker_exit exit_class=TIMEOUT
-    "worker_exit_oom",   // INFRA-572 synthetic — from worker_exit exit_class=OOM_KILL
-    "session_token_orphan", // INFRA-639 synthetic — token_usage_partial with no session_end
+    "worker_exit_timeout",          // INFRA-572 synthetic — from worker_exit exit_class=TIMEOUT
+    "worker_exit_oom",              // INFRA-572 synthetic — from worker_exit exit_class=OOM_KILL
+    "session_token_orphan",         // INFRA-639 synthetic — token_usage_partial with no session_end
 ];
 
 /// Domain-level aggregate for `--by-domain` output (INFRA-574).
