@@ -345,12 +345,17 @@ failures:
     confidence: 0.99
     examples: ["disk full on runner"]
 "#;
-        let tmpf =
-            std::env::temp_dir().join(format!("failure_catalog_test_{}.yaml", std::process::id()));
-        std::fs::write(&tmpf, yaml).unwrap();
-        let cat = FailureCatalog::load(&tmpf);
-        let _ = std::fs::remove_file(&tmpf);
-        cat
+        // INFRA-763: previously this used `temp_dir().join("failure_catalog_test_{PID}.yaml")`
+        // which keyed the tempfile only on process::id(). All four tests in this module
+        // run inside the same `cargo test` process, so they all wrote to the same path
+        // and raced on load+delete — randomly seeing 0 entries when a sibling deleted
+        // mid-flight. Symptom: assertion failed: left=0 right=4 on
+        // infra647_catalog_len_matches_entries. Bit at least three PRs in one session.
+        // Fix: NamedTempFile gives every call a unique random-suffix path; load reads
+        // eagerly so dropping the handle (auto-deletes) at end of scope is safe.
+        let tmpf = tempfile::NamedTempFile::new().expect("create tempfile");
+        std::fs::write(tmpf.path(), yaml).unwrap();
+        FailureCatalog::load(tmpf.path())
     }
 
     #[test]
