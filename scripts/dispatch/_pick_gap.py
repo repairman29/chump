@@ -177,9 +177,16 @@ def main() -> int:
         notes = (g.get("notes") or "").strip()
         if notes.upper().startswith("SUPERSEDED"):
             continue
+        # INFRA-756: downrank gaps with incomplete acceptance_criteria (obs-AC placeholders)
+        # by adding 5 to priority rank. This keeps them pickable but below fully-specified gaps.
+        prio_rank = PRIO_RANK.get(p, 9)
+        ac_text = (g.get("acceptance_criteria") or "").upper()
+        if ac_text and ("TODO" in ac_text or "TBD" in ac_text or "<FILL IN>" in ac_text):
+            prio_rank += 5
+
         candidates.append(
             (
-                PRIO_RANK.get(p, 9),
+                prio_rank,
                 EFFORT_RANK.get(e, 9),
                 g.get("created_at") or 0,
                 gid,
