@@ -159,5 +159,31 @@ B2_SECOND=$(grep "Bucket 2" /tmp/sweep-2nd.out | grep -oE '[0-9]+ →' | grep -o
 [[ "$B2_SECOND" == "0" ]] || { echo "[FAIL] Bucket 2 still has $B2_SECOND drifts after first sweep"; exit 1; }
 echo "[PASS] safe-sweep is idempotent (Bucket 1+2 stay 0)"
 
+# ── Test 5: CREDIBLE-012 — done DB-only gaps do NOT trigger alert ────────────
+# Pre-rescope, every done/superseded gap in state.db without a YAML mirror
+# triggered the gap_drift_orphan alert — 92% noise. CREDIBLE-012 rescoped
+# the alert to OPEN gaps only. This test seeds a done DB-only gap and
+# asserts no new alert fires for it.
 echo ""
-echo "[OK] all 4 INFRA-308 safe-sweep cases passed"
+echo "Test 5: CREDIBLE-012 — done DB-only gaps do not trigger gap_drift_orphan alert"
+db_insert "INFRA-B5-DONE" "done"
+# Rotate ambient log so the prior INFRA-B3 alert from Test 3 isn't counted.
+> "$AMBIENT"
+python3 scripts/coord/gap-doctor.py safe-sweep >/tmp/sweep-credible012.out 2>&1
+DONE_ALERT=$(grep '"kind":"gap_drift_orphan"' "$AMBIENT" | grep "INFRA-B5-DONE" || true)
+if [[ -n "$DONE_ALERT" ]]; then
+    echo "[FAIL] CREDIBLE-012 regression: done DB-only gap INFRA-B5-DONE triggered alert: $DONE_ALERT"
+    exit 1
+fi
+echo "[PASS] CREDIBLE-012: done DB-only gap correctly suppressed from alert"
+
+# Also verify the print summary distinguishes total from open.
+if ! grep -qE "Bucket 3 \(DB-only orphans\).*[0-9]+ total / [0-9]+ OPEN" /tmp/sweep-credible012.out; then
+    echo "[FAIL] CREDIBLE-012: print summary missing 'total / OPEN' breakdown"
+    cat /tmp/sweep-credible012.out
+    exit 1
+fi
+echo "[PASS] CREDIBLE-012: print summary distinguishes total vs OPEN"
+
+echo ""
+echo "[OK] all 5 INFRA-308 safe-sweep cases passed (incl. CREDIBLE-012 rescope)"
