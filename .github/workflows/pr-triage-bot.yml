@@ -398,3 +398,191 @@ jobs:
           git add .chump/state.sql docs/gaps.yaml docs/gaps/ 2>/dev/null || true
           git diff --cached --quiet || git commit -m "INFRA-624: auto-file P0 fix gap for failing PR CI"
           git push origin HEAD
+
+  # ────────────────────────────────────────────────────────────────────
+  # JOB 3: half-implementation detector (INFRA-671)
+  # Fires on cargo-test failures with "no method named X" or "cannot find
+  # function X" where X appears in PR diff as callsite but not definition.
+  # Disables auto-merge, comments, files completion gap.
+  # ────────────────────────────────────────────────────────────────────
+  half-impl-detector:
+    if: |
+      github.event_name == 'check_run' &&
+      github.event.check_run.conclusion == 'failure' &&
+      github.event.check_run.name == 'cargo-test' &&
+      github.event.check_run.pull_requests[0] != null
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR info
+        id: pr_info
+        env:
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+        run: |
+          PR_DATA=$(gh pr view "$PR_NUMBER" --json number,headRefName,baseRefName --jq '.')
+          BRANCH=$(echo "$PR_DATA" | python3 -c "import sys,json; print(json.load(sys.stdin)['headRefName'])" 2>/dev/null || echo "")
+          if [ -z "$BRANCH" ]; then
+            echo "::notice::Could not resolve PR branch"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Get cargo-test failure logs
+        id: logs
+        if: steps.pr_info.outputs.skip == 'false'
+        env:
+          RUN_ID: ${{ github.event.check_run.check_run_id }}
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+        run: |
+          # Get the workflow run ID from the check run
+          BRANCH="${{ steps.pr_info.outputs.branch }}"
+
+          # Query the most recent workflow run for this branch
+          RUN=$(gh api "/repos/${{ github.repository }}/actions/runs" \
+            --jq ".runs[] | select(.head_branch == \"$BRANCH\" and .name == \"CI\") | {id, run_attempt}" \
+            --slurp --jq '.[0]' 2>/dev/null || echo "{}")
+
+          RUN_ID=$(echo "$RUN" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id', ''))" 2>/dev/null || echo "")
+          if [ -z "$RUN_ID" ]; then
+            echo "::notice::Could not find workflow run"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Get the cargo-test job logs
+          LOGS=$(gh run view "$RUN_ID" --log 2>/dev/null | grep -A 100 "cargo-test" || echo "")
+          echo "logs=$LOGS" >> "$GITHUB_OUTPUT"
+
+      - name: Detect half-implementation pattern
+        id: detect
+        if: steps.pr_info.outputs.skip == 'false'
+        env:
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+          BRANCH: ${{ steps.pr_info.outputs.branch }}
+        run: |
+          set -euo pipefail
+          LOGS="${{ steps.logs.outputs.logs }}"
+
+          # Pattern: "no method named X" or "cannot find function X"
+          PATTERN='no method named|cannot find function'
+          if ! echo "$LOGS" | grep -E "$PATTERN" > /dev/null; then
+            echo "::notice::No half-impl pattern found in logs"
+            echo "detected=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Extract the symbol name (simple heuristic: word after "named" or "function")
+          SYMBOL=$(echo "$LOGS" | grep -oE "(?:no method named|cannot find function) \`?[a-z_][a-z0-9_]*" | head -1 | grep -oE "[a-z_][a-z0-9_]*$" || echo "")
+          if [ -z "$SYMBOL" ]; then
+            echo "::notice::Could not extract symbol name"
+            echo "detected=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Get PR diff
+          DIFF=$(gh pr diff "$PR_NUMBER" 2>/dev/null || echo "")
+
+          # Check if symbol appears as callsite (fn call or method call) but not definition
+          # Callsite patterns: symbol() or .symbol( or -> symbol (
+          CALLSITE_PATTERN="(\.|->|\s)$SYMBOL\s*\(|$SYMBOL\s*\(|::\s*$SYMBOL\s*\("
+          DEF_PATTERN="fn\s+$SYMBOL\s*\(|$SYMBOL\s*:\s*fn"
+
+          HAS_CALLSITE=$(echo "$DIFF" | grep -E "^\+" | grep -E "$CALLSITE_PATTERN" > /dev/null && echo "true" || echo "false")
+          HAS_DEF=$(echo "$DIFF" | grep -E "^\+" | grep -E "$DEF_PATTERN" > /dev/null && echo "true" || echo "false")
+
+          echo "symbol=$SYMBOL" >> "$GITHUB_OUTPUT"
+          echo "has_callsite=$HAS_CALLSITE" >> "$GITHUB_OUTPUT"
+          echo "has_def=$HAS_DEF" >> "$GITHUB_OUTPUT"
+
+          if [ "$HAS_CALLSITE" = "true" ] && [ "$HAS_DEF" = "false" ]; then
+            echo "::notice::Detected half-implementation: $SYMBOL called but not defined"
+            echo "detected=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Symbol pattern doesn't match half-implementation criteria"
+            echo "detected=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Disable auto-merge on PR
+        if: >-
+          steps.pr_info.outputs.skip == 'false' &&
+          steps.detect.outputs.detected == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+        run: |
+          gh pr merge "$PR_NUMBER" --auto 2>/dev/null || true
+          gh pr automerge disable "$PR_NUMBER" 2>/dev/null || true
+
+      - name: File completion gap
+        id: file_gap
+        if: >-
+          steps.pr_info.outputs.skip == 'false' &&
+          steps.detect.outputs.detected == 'true'
+        env:
+          CHUMP_ALLOW_MAIN_WORKTREE: "1"
+          CHUMP_RESERVE_NO_AUTOSTAGE: "1"
+          FLEET_029_AMBIENT_GLANCE_SKIP: "1"
+          CHUMP_RESERVE_VERIFY: "0"
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+          SYMBOL: ${{ steps.detect.outputs.symbol }}
+        run: |
+          set -euo pipefail
+          cargo build --bin chump -q 2>/dev/null || true
+
+          GAP_TITLE="CREDIBLE: complete implementation of $SYMBOL in PR #$PR_NUMBER"
+          GAP_ID=$(./target/debug/chump gap reserve \
+            --domain INFRA \
+            --priority P1 \
+            --effort s \
+            --title "${GAP_TITLE}" \
+            --force \
+            --quiet)
+          ./target/debug/chump gap set "${GAP_ID}" \
+            --notes "auto-filed by half-impl-detector (INFRA-671) on PR #$PR_NUMBER; symbol: $SYMBOL" \
+            --acceptance-criteria "Symbol \`$SYMBOL\` is fully implemented (definition exists) and all tests pass"
+          echo "GAP_ID=${GAP_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on PR (half-implementation detected)
+        if: >-
+          steps.pr_info.outputs.skip == 'false' &&
+          steps.detect.outputs.detected == 'true'
+        env:
+          PR_NUMBER: ${{ github.event.check_run.pull_requests[0].number }}
+          SYMBOL: ${{ steps.detect.outputs.symbol }}
+          GAP_ID: ${{ steps.file_gap.outputs.GAP_ID }}
+        run: |
+          BODY=$(cat <<'EOF'
+          🤖 **pr-triage-bot** detected a half-implementation in this PR.
+
+          The symbol `${SYMBOL}` is called in your code but not fully implemented (definition not found).
+
+          - Completion gap filed: `${GAP_ID}`
+          - Auto-merge has been disabled until this is resolved.
+
+          Please implement the definition of `${SYMBOL}` or remove the callsite.
+
+          *Bot is INFRA-671.*
+          EOF
+          )
+          gh pr comment "$PR_NUMBER" --body "${BODY}" || true
+
+      - name: Commit updated gap registry
+        if: >-
+          steps.pr_info.outputs.skip == 'false' &&
+          steps.detect.outputs.detected == 'true'
+        run: |
+          git config user.name  "chump-pr-triage-bot"
+          git config user.email "chump-pr-triage-bot@users.noreply.github.com"
+          git add .chump/state.sql docs/gaps.yaml docs/gaps/ 2>/dev/null || true
+          git diff --cached --quiet || git commit -m "INFRA-671: auto-file completion gap for half-implementation"
+          git push origin HEAD
