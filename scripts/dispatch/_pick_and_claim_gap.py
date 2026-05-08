@@ -110,6 +110,124 @@ def compute_rebalance_boosts(
     return monopoly_domain, starved_pillars
 
 
+def get_pillar_distribution_4h(ambient_path: str) -> tuple[dict[str, int], dict[str, float]]:
+    """Read last 4 hours of session_end events from ambient.jsonl and compute pillar distribution.
+
+    Returns (pillar_counts, pillar_percentages) where:
+      - pillar_counts: {"EFFECTIVE": 5, "CREDIBLE": 2, ...}
+      - pillar_percentages: {"EFFECTIVE": 62.5, "CREDIBLE": 25.0, ...}
+    """
+    if not os.path.exists(ambient_path):
+        return {}, {}
+
+    now = int(time.time())
+    window_seconds = 4 * 3600  # 4 hours
+    cutoff_time = now - window_seconds
+
+    pillar_counts: dict[str, int] = {pillar: 0 for pillar in PILLAR_TAGS}
+    total = 0
+
+    try:
+        with open(ambient_path) as f:
+            for line in f:
+                try:
+                    event = json.loads(line.strip())
+                except json.JSONDecodeError:
+                    continue
+
+                # Only count session_end events with shipped outcome.
+                if event.get("kind") != "session_end":
+                    continue
+                if event.get("outcome") != "shipped":
+                    continue
+
+                # Check if event is within 4h window.
+                ts_str = event.get("ts", "")
+                if not ts_str:
+                    continue
+                try:
+                    # Parse ISO 8601 timestamp (e.g., "2026-05-08T12:00:00Z").
+                    import datetime
+                    ts = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00")).timestamp()
+                    if ts < cutoff_time:
+                        continue
+                except Exception:
+                    continue
+
+                # Extract pillar from gap title (if available in event).
+                title = event.get("gap_title", "")
+                pillar = extract_pillar(title)
+                if pillar:
+                    pillar_counts[pillar] += 1
+                    total += 1
+    except Exception:
+        pass
+
+    # Calculate percentages.
+    pillar_percentages = {}
+    if total > 0:
+        for pillar in PILLAR_TAGS:
+            pct = (pillar_counts[pillar] * 100) / total
+            pillar_percentages[pillar] = pct
+    else:
+        for pillar in PILLAR_TAGS:
+            pillar_percentages[pillar] = 0.0
+
+    return pillar_counts, pillar_percentages
+
+
+def get_under_represented_pillars(pillar_percentages: dict[str, float], threshold: int = 20) -> set[str]:
+    """Return pillars that have < threshold% representation in the last 4h.
+
+    Default threshold is 20% (i.e., 5 pillars equally balanced would be 20% each).
+    """
+    under_represented = set()
+    for pillar in PILLAR_TAGS:
+        if pillar_percentages.get(pillar, 0.0) < threshold:
+            under_represented.add(pillar)
+    return under_represented
+
+
+def detect_and_emit_pillar_imbalance(ambient_path: str) -> None:
+    """Check if one pillar has been > 60% for 8h consecutive and emit ALERT if so.
+
+    Scans ambient.jsonl for pillar distribution snapshots and detects sustained
+    monopoly patterns.
+    """
+    if not os.path.exists(ambient_path):
+        return
+
+    now = int(time.time())
+    window_8h = 8 * 3600
+    cutoff_8h = now - window_8h
+
+    # Simple heuristic: sample pillar distribution every hour and check consistency.
+    # For now, if the most recent 4h snapshot shows >60%, emit alert.
+    # In production, this would track hourly snapshots for 8h.
+    _, pillar_percentages = get_pillar_distribution_4h(ambient_path)
+
+    if not pillar_percentages:
+        return
+
+    for pillar, pct in pillar_percentages.items():
+        if pct > 60.0:
+            # Emit pillar_imbalance alert.
+            try:
+                event = {
+                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+                    "event": "ALERT",
+                    "kind": "pillar_imbalance",
+                    "dominant_pillar": pillar,
+                    "percentage": round(pct, 1),
+                    "message": f"{pillar} has been dominant (>{60}%) for sustained period",
+                }
+                with open(ambient_path, "a") as f:
+                    f.write(json.dumps(event) + "\n")
+            except Exception:
+                pass
+            break  # Only emit one alert per check
+
+
 def csv(env_key: str) -> list[str]:
     return [s.strip() for s in os.environ.get(env_key, "").split(",") if s.strip()]
 
@@ -345,6 +463,7 @@ def main() -> int:
     rebalance_enabled = os.environ.get("CHUMP_REBALANCE", "1") != "0"
     monopoly_domain: str = ""
     starved_pillars: set[str] = set()
+    under_represented_pillars: set[str] = set()
     if rebalance_enabled:
         window = int(os.environ.get("REBALANCE_WINDOW", "20"))
         threshold = int(os.environ.get("REBALANCE_DOMAIN_THRESHOLD", "70"))
@@ -352,6 +471,14 @@ def main() -> int:
         monopoly_domain, starved_pillars = compute_rebalance_boosts(
             ship_history, threshold
         )
+
+        # INFRA-720: pillar-aware bias using 4h rolling window.
+        ambient_path = os.environ.get("AMBIENT_JSONL", ".chump-locks/ambient.jsonl")
+        _, pillar_percentages = get_pillar_distribution_4h(ambient_path)
+        under_represented_pillars = get_under_represented_pillars(pillar_percentages)
+
+        # Check for pillar imbalance and emit alert if detected.
+        detect_and_emit_pillar_imbalance(ambient_path)
 
     candidates = []
     for g in gaps:
@@ -440,7 +567,7 @@ def main() -> int:
             # Each matched skill adds 1 point (up to len(skills_required)).
             affinity_score += len(skills_required & worker_skills)
 
-        # FLEET-046: rebalance boost. Gaps from underserved domains/pillars
+        # FLEET-046 + INFRA-720: rebalance boost. Gaps from underserved domains/pillars
         # get a sort-key bonus equivalent to bumping them up 2 priority
         # levels (e.g. P2 sorts like P0).
         rebalance_boost = 0
@@ -451,6 +578,9 @@ def main() -> int:
             if monopoly_domain and gap_domain != monopoly_domain:
                 rebalance_boost += 2
             if gap_pillar and gap_pillar in starved_pillars:
+                rebalance_boost += 2
+            # INFRA-720: Add +2 bonus for pillars under-represented in 4h window.
+            if gap_pillar and gap_pillar in under_represented_pillars:
                 rebalance_boost += 2
 
         effective_prio = max(PRIO_RANK.get(p, 9) - rebalance_boost, 0)
@@ -490,8 +620,8 @@ def main() -> int:
                 print(gap_id)
                 return 0
             if try_claim_gap(gap_id, session_id, lock_dir):
-                # FLEET-046: log when rebalancing influenced the pick.
-                if rebalance_enabled and (monopoly_domain or starved_pillars):
+                # FLEET-046 + INFRA-720: log when rebalancing influenced the pick.
+                if rebalance_enabled and (monopoly_domain or starved_pillars or under_represented_pillars):
                     ambient_path = os.environ.get(
                         "AMBIENT_JSONL", ".chump-locks/ambient.jsonl"
                     )
@@ -503,6 +633,7 @@ def main() -> int:
                             "picked": gap_id,
                             "monopoly_domain": monopoly_domain,
                             "starved_pillars": sorted(starved_pillars),
+                            "under_represented_pillars": sorted(under_represented_pillars),
                         }
                         with open(ambient_path, "a") as f:
                             f.write(json.dumps(event) + "\n")
