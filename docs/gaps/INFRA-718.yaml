@@ -1,0 +1,7 @@
+- id: INFRA-718
+  domain: INFRA
+  title: "RESILIENT: dispatch prompt scope/privacy guardrails — agents refuse SWARM-/PRIVATE- gaps + refuse to expand beyond gap.paths. Defense-in-depth alongside picker exclude (INFRA-710)."
+  status: open
+  priority: P0
+  effort: xs
+

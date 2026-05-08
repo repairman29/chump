@@ -1,0 +1,7 @@
+- id: INFRA-720
+  domain: INFRA
+  title: "EFFECTIVE: pillar-aware picker bias — track ship-by-pillar in 4h rolling window; bias next pick toward under-represented pillar; ALERT pillar_imbalance when one pillar > 60% for 8h. Mission-balance as fleet property, not operator-prod."
+  status: open
+  priority: P0
+  effort: s
+

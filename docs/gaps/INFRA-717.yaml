@@ -1,0 +1,7 @@
+- id: INFRA-717
+  domain: INFRA
+  title: "EFFECTIVE: dispatch prompt self-verify — workers must run cargo check + clippy + symbol-resolution check before bot-merge. Cuts half-impl rate (PR #1256 class)."
+  status: open
+  priority: P0
+  effort: xs
+
