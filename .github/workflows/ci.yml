@@ -758,3 +758,6 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-gap-list-domain-summary.sh
 
+# Required check on every PR and merge_group entry.
+# Gates: fmt, clippy, unit tests, integration tests, doc build.
+# Why: primary correctness + style fence before anything lands on main.
