@@ -1691,4 +1691,20 @@ if [ -x "$OBS_BUDGET_HOOK" ]; then
     fi
 fi
 
+# 12. Default-flip advisory (INFRA-762, 2026-05-08)
+# ------------------------------------------------------------------
+# Advisory only — warns when a staged diff in *_flags*.rs / *_config*.rs
+# contains a default-value flip (unwrap_or(false)↔unwrap_or(true) or
+# const FOO: bool flip), and lists candidate stale tests in OTHER files
+# that reference the flipped function. Catches the EVAL-026 #1349 class
+# (flipped a default, missed a parallel assert in another file).
+# Exit always 0 — INFRA-761 (push-time cargo-test gate) is the actual
+# block; this is the prompt that points at the right test files.
+# Bypass: CHUMP_DEFAULT_FLIP_CHECK=0 (silent).
+
+DEFAULT_FLIP_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-default-flip.sh"
+if [ -x "$DEFAULT_FLIP_HOOK" ]; then
+    "$DEFAULT_FLIP_HOOK" || true
+fi
+
 exit 0
