@@ -1,0 +1,30 @@
+- id: INFRA-790
+  domain: INFRA
+  title: "RESILIENT: Gemini thinking-token budget — strip or budget for think blocks in agent loop"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria: |
+    Gemini 2.5 models emit thinking tokens (similar to Qwen3's
+    <think>...</think> blocks) that consume output token budget
+    but aren't part of the response content. The existing Qwen
+    thinking-token stripping in LocalOpenAIProvider may already
+    handle this, but needs verification.
+
+    Check:
+    1. Does Gemini 2.5 Flash emit thinking tokens via the OpenAI
+       compat endpoint? If so, are they in `content` or in a
+       separate field?
+    2. Does LocalOpenAIProvider's existing think-block stripping
+       handle them? If not, add Gemini-specific stripping.
+    3. Are thinking tokens billed? If yes, can they be disabled
+       via API parameter (e.g., `thinking: {type: "disabled"}`)?
+
+    If thinking tokens can't be disabled and are billed, add
+    max_tokens budget accounting: the free-tier prompt should
+    set a lower max_tokens to leave room for thinking overhead.
+
+    Test: Dispatch a gap via gemini-2.5-flash and check that
+    thinking tokens don't appear in tool call arguments or
+    commit messages.
+
