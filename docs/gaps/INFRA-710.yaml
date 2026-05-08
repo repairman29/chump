@@ -1,0 +1,7 @@
+- id: INFRA-710
+  domain: INFRA
+  title: "RESILIENT: SWARM-* exclusion in fleet picker — proprietary domain leak risk after fleet shipped SWARM-007/010 PRs (closed as #1283/#1284). Add SWARM- to EXCLUDE_PREFIXES_REGEX in worker.sh."
+  status: open
+  priority: P0
+  effort: xs
+

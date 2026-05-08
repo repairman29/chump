@@ -154,7 +154,10 @@ fi
 trap 'log "interrupted; exiting loop"; exit 0' INT TERM
 
 # Hard rule from CLAUDE.md: never auto-pickup these — they need human judgment.
-EXCLUDE_PREFIXES_REGEX='^(EVAL-|RESEARCH-|META-)'
+# 2026-05-08: SWARM-* added — that domain belongs to chump-proprietary
+# (private repo). The public fleet picked up SWARM-007/010 and pushed
+# branches before this guard landed; closed manually as PRs #1283/#1284.
+EXCLUDE_PREFIXES_REGEX='^(EVAL-|RESEARCH-|META-|SWARM-)'
 
 cd "$REPO_ROOT"
 
