@@ -234,6 +234,20 @@ def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
         with open(lockfile, "a") as lock_f:
             fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
             try:
+                # INFRA-676: sweep stale gap locks belonging to THIS session
+                # before creating a new one, so a previously-killed worker for
+                # the same session_id can't block the fleet indefinitely.
+                for stale in lock_dir.glob(".gap-*.lock"):
+                    try:
+                        first_token = stale.read_text().split()[0]
+                    except Exception:
+                        first_token = ""
+                    if first_token == session_id:
+                        try:
+                            stale.unlink()
+                        except Exception:
+                            pass
+
                 # Check if gap is already claimed (within the lock).
                 if gap_lock_file.exists():
                     return False
