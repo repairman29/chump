@@ -1,0 +1,23 @@
+- id: INFRA-779
+  domain: INFRA
+  title: "RESILIENT: PR #1363 pre-push hook CI test fixture missing Cargo.toml"
+  status: open
+  priority: P1
+  effort: xs
+  depends_on:
+    - INFRA-761
+  acceptance_criteria: |
+    PR #1363 (INFRA-761: pre-push cargo-test gate) added a CI test in
+    scripts/ci/ that creates a temp git repo to exercise the pre-push
+    hook. The test fails because the temp clone doesn't have Cargo.toml,
+    so `cargo test --bin chump --tests` in the hook exits 1 with:
+      error: could not find `Cargo.toml` in `/tmp/.../main_clone`
+
+    The CI log shows:
+      [FAIL] hook exited 1 but didn't print the expected diagnostic
+
+    Fix: The test fixture must include a minimal Cargo.toml + src/main.rs
+    (similar to the FTUE fixture) so cargo test can at least find the
+    manifest, even if there are no tests to run.
+
+    Test: fast-checks passes on the INFRA-761 branch after the fix.
