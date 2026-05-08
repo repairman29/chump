@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { ensureOllamaOrSkip } from '../lib/ollama-check';
 
 test.describe('API (no browser)', () => {
   test('GET /api/health', async ({ request }) => {
@@ -177,6 +178,13 @@ test.describe('PWA mobile viewport', () => {
 });
 
 test.describe('Chat /task path (tolerates slow local Ollama)', () => {
+  test.beforeAll(async () => {
+    const available = await ensureOllamaOrSkip();
+    if (!available) {
+      test.skip();
+    }
+  });
+
   test('/task creates assistant reply in thread', async ({ page }) => {
     const title = `pw-task-${Date.now()}`;
     await page.goto('/');
