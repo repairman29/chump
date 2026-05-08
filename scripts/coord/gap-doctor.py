@@ -343,13 +343,30 @@ def cmd_safe_sweep(args, root: Path) -> int:
     common = set(yaml_view) & set(db_view)
     bucket1 = sorted(g for g in common if db_view[g]["status"] == "done" and yaml_view[g].get("status") != "done")
     bucket2 = sorted(g for g in common if db_view[g]["status"] == "open" and yaml_view[g].get("status") == "done")
-    bucket3 = sorted(set(db_view) - set(yaml_view))
+
+    # CREDIBLE-012 (2026-05-08): rescope bucket3 to OPEN gaps only.
+    #
+    # Pre-rescope, bucket3 = "every gap in state.db with no YAML mirror" — which
+    # included 1300+ done/superseded historical gaps that don't need a mirror.
+    # The alert was 92% noise. Worse: INFRA-760 made the YAML mirror OPTIONAL
+    # for the briefing-prompt path (state.db is now canonical), so even open
+    # gaps don't strictly require a YAML for fleet operation — only for
+    # human-readable browsing of `docs/gaps/`.
+    #
+    # Rescope: emit ALERT only when an OPEN gap has no YAML, since that's the
+    # only case where a human (or git-blame archeologist) would notice the
+    # absence and lose context. Done/superseded gaps need no mirror.
+    #
+    # bucket3_all preserves the legacy total for the print summary; only
+    # bucket3_open triggers the actual ALERT emit below.
+    bucket3_all = sorted(set(db_view) - set(yaml_view))
+    bucket3 = sorted(g for g in bucket3_all if db_view[g].get("status") == "open")
     bucket4 = sorted(set(yaml_view) - set(db_view))
 
     print(f"== gap-doctor safe-sweep (INFRA-308) ==")
     print(f"  Bucket 1 (DB done / YAML open) : {len(bucket1)} → auto sync-from-db")
     print(f"  Bucket 2 (DB open / YAML done) : {len(bucket2)} → auto sync-from-yaml")
-    print(f"  Bucket 3 (DB-only orphans)     : {len(bucket3)} → ALERT (manual review)")
+    print(f"  Bucket 3 (DB-only orphans)     : {len(bucket3_all)} total / {len(bucket3)} OPEN → ALERT on open only (CREDIBLE-012)")
     print(f"  Bucket 4 (YAML-only / missing) : {len(bucket4)} → ALERT (manual review)")
 
     # Apply safe buckets (these are no-ops if --dry-run)
@@ -402,9 +419,11 @@ def cmd_safe_sweep(args, root: Path) -> int:
         from datetime import datetime, timezone
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         if bucket3:
+            # CREDIBLE-012: ids/note only mention OPEN gaps now. The alert is
+            # actionable (low cardinality, real signal), not a noise floor.
             evt = {"ts": ts, "event": "ALERT", "kind": "gap_drift_orphan",
                    "source": "gap-doctor-safe-sweep", "ids": bucket3,
-                   "note": f"{len(bucket3)} gaps in state.db with no YAML mirror"}
+                   "note": f"{len(bucket3)} OPEN gap(s) in state.db with no YAML mirror (per CREDIBLE-012, done/superseded gaps no longer counted; YAML is optional post-INFRA-760)"}
             with ambient.open("a") as f:
                 f.write(_json.dumps(evt, separators=(",", ":")) + "\n")
         if bucket4:
