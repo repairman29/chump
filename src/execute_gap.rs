@@ -55,7 +55,7 @@ use anyhow::{anyhow, Context, Result};
 
 use crate::agent_factory::build_chump_agent_cli;
 use crate::agent_loop::ChumpAgent;
-use crate::model_overlay::maybe_overlay_from_env;
+use crate::model_overlay::{detect_model_family, maybe_overlay_from_env, ModelFamily};
 use crate::plan_mode::{self, PlanOutcome};
 
 /// Build the dispatched-subagent prompt. Mirrors `chump_orchestrator::dispatch::build_prompt`
@@ -105,6 +105,110 @@ After ship, exit. Reply ONLY with the PR number.{epilogue}",
     )
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// INFRA-733: free-tier dispatch harness (Groq, Cerebras, NVIDIA, etc.)
+// ──────────────────────────────────────────────────────────────────────
+
+/// Detect whether `OPENAI_MODEL` + `OPENAI_API_BASE` point at a non-Claude
+/// free-tier provider. When true, `execute_gap` uses a slim 5-tool profile
+/// and a simplified prompt that avoids confusing non-Claude models.
+fn is_free_tier_model() -> bool {
+    let model = std::env::var("OPENAI_MODEL")
+        .unwrap_or_default()
+        .to_lowercase();
+    let base = std::env::var("OPENAI_API_BASE")
+        .unwrap_or_default()
+        .to_lowercase();
+
+    // Anything that resolves to a non-Claude family is free-tier candidate
+    let family = detect_model_family(&model);
+    let is_non_claude = !matches!(family, ModelFamily::Sonnet | ModelFamily::OtherClaude);
+
+    // Double-check: base URL must point at a known free-tier endpoint, not Ollama
+    let is_cloud_endpoint = base.contains("groq.com")
+        || base.contains("cerebras.ai")
+        || base.contains("together.xyz")
+        || base.contains("nvidia.com")
+        || base.contains("openrouter.ai")
+        || base.contains("github.ai")
+        || base.contains("googleapis.com")
+        || base.contains("hyperbolic.xyz");
+
+    is_non_claude && is_cloud_endpoint
+}
+
+/// Build a simplified prompt for free-tier models. Key differences from
+/// `build_execute_gap_prompt`:
+///
+/// 1. Inlines the gap YAML directly (no "read the file" indirection)
+/// 2. Lists only the 5 available tools with clear descriptions
+/// 3. Explicit step-by-step workflow: read → edit → commit → ship
+/// 4. No defensive SCOPE-REFUSE clauses (Llama hallucinated refusals)
+/// 5. No `run_cli`/`run_test` — CI tests after PR opens
+fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
+    // Try to read the gap YAML to inline it
+    let gap_yaml = std::fs::read_to_string(repo_root.join(format!("docs/gaps/{gap_id}.yaml")))
+        .unwrap_or_else(|_| format!("(gap YAML not found — work on gap {gap_id})"));
+
+    let overlay = maybe_overlay_from_env().unwrap_or_default();
+
+    format!(
+        "{overlay}You are a code agent. Complete this gap by calling tools. \
+Do NOT write prose — only call tools.
+
+## Gap
+```yaml
+{gap_yaml}
+```
+
+## Instructions
+1. Call read_file to read the source file(s) mentioned in the gap.
+2. Call write_file or patch_file to make the code changes.
+3. Call git_commit to commit with message: \"{gap_id}: <short description>\".
+4. Reply with ONLY the text \"done\".
+
+IMPORTANT: Every response must be a tool call. Never explain, never describe \
+what you will do. If you need to read a file, call read_file. If you need to \
+write code, call write_file. Do NOT output code in text — always use write_file.",
+        overlay = overlay,
+        gap_yaml = gap_yaml,
+        gap_id = gap_id,
+    )
+}
+
+/// Build a [`ChumpAgent`] with the slim 5-tool free-tier profile.
+/// Bypasses the full system prompt and session manager — free-tier runs
+/// are single-shot (no conversation history needed).
+fn build_free_tier_agent() -> Result<ChumpAgent> {
+    // Force cascade OFF for free-tier — we want direct-to-provider, not
+    // cascading through 8 slots with varying rate limits.
+    std::env::set_var("CHUMP_CASCADE_ENABLED", "0");
+
+    // Clear tool approval gating — unattended dispatch must not wait for
+    // human approval. The .env may have CHUMP_TOOLS_ASK=write_file,...
+    // which blocks write_file/patch_file/git_commit indefinitely when
+    // there's no event channel to receive approval.
+    std::env::remove_var("CHUMP_TOOLS_ASK");
+
+    let provider: Box<dyn axonerai::provider::Provider + Send + Sync> =
+        crate::provider_cascade::build_provider_single_pub();
+
+    let mut registry = axonerai::tool::ToolRegistry::new();
+    crate::tool_inventory::register_free_dispatch_tools(&mut registry);
+
+    let max_iter = std::env::var("CHUMP_AGENT_MAX_ITER")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(30);
+
+    Ok(ChumpAgent::new(
+        provider, registry, None, // no system prompt — user message IS the full prompt
+        None, // no session manager — single-shot
+        None, // no event channel for CLI
+        max_iter,
+    ))
+}
+
 /// Minimal gap-id syntactic check — must match `[A-Z][A-Z0-9]+-\d+`-ish
 /// (DOMAIN-NUMBER). Fails the run early if the caller passed garbage so we
 /// don't waste a provider call building a prompt for a non-gap.
@@ -152,25 +256,46 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
 
     let repo_root = std::env::current_dir().unwrap_or_default();
 
-    // INFRA-060 (M2): plan-mode gate. Enumerate likely files, scan open
-    // PRs, write `.chump-plans/<gap>.md`. Abort *before* spinning up the
-    // provider+agent if the queue is too crowded — saves provider cost.
-    match plan_mode::run_plan_mode(gap_id, &repo_root)? {
-        PlanOutcome::Proceed { plan_path } => {
-            if let Some(p) = plan_path {
-                eprintln!("[execute-gap] plan-mode: wrote {}", p.display());
+    // INFRA-733: detect free-tier model before plan-mode (skip plan-mode
+    // for free-tier — plan_mode calls `gh pr list` and reads DISPATCH_RULES
+    // which confuses non-Claude models).
+    let free_tier = is_free_tier_model();
+    if free_tier {
+        let model = std::env::var("OPENAI_MODEL").unwrap_or_default();
+        eprintln!("[execute-gap] free-tier mode: model={model}, 5-tool slim profile");
+    }
+
+    // INFRA-060 (M2): plan-mode gate. Skip for free-tier — saves latency
+    // and avoids `gh pr list` hangs in cold worktrees.
+    if !free_tier {
+        match plan_mode::run_plan_mode(gap_id, &repo_root)? {
+            PlanOutcome::Proceed { plan_path } => {
+                if let Some(p) = plan_path {
+                    eprintln!("[execute-gap] plan-mode: wrote {}", p.display());
+                }
             }
-        }
-        PlanOutcome::Abort { reason, conflicts } => {
-            return Err(anyhow!(
-                "plan-mode aborted: {reason}\nconflicts: {conflicts:?}"
-            ));
+            PlanOutcome::Abort { reason, conflicts } => {
+                return Err(anyhow!(
+                    "plan-mode aborted: {reason}\nconflicts: {conflicts:?}"
+                ));
+            }
         }
     }
 
-    let (agent, _ready_session) = build_chump_agent_cli()
-        .context("building Chump agent for --execute-gap (provider config? OPENAI_API_BASE?)")?;
-    let prompt = build_execute_gap_prompt(gap_id, &repo_root);
+    let agent = if free_tier {
+        build_free_tier_agent().context("building free-tier agent for --execute-gap (INFRA-733)")?
+    } else {
+        let (a, _ready_session) = build_chump_agent_cli().context(
+            "building Chump agent for --execute-gap (provider config? OPENAI_API_BASE?)",
+        )?;
+        a
+    };
+
+    let prompt = if free_tier {
+        build_free_tier_prompt(gap_id, &repo_root)
+    } else {
+        build_execute_gap_prompt(gap_id, &repo_root)
+    };
 
     let outcome = agent
         .run(&prompt)

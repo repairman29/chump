@@ -1373,6 +1373,13 @@ impl Provider for OpenAiApiLlmRecorder {
     }
 }
 
+/// Build a single (non-cascading) provider from `OPENAI_API_BASE` +
+/// `OPENAI_API_KEY` + `OPENAI_MODEL`. Public so free-tier dispatch
+/// (INFRA-733) can bypass the cascade entirely.
+pub fn build_provider_single_pub() -> Box<dyn Provider + Send + Sync> {
+    build_provider_single()
+}
+
 fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
     #[cfg(feature = "mistralrs-infer")]
     {

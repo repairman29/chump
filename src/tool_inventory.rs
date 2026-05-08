@@ -118,6 +118,34 @@ pub fn register_worker_tools(registry: &mut ToolRegistry) {
     }
 }
 
+/// Minimal tool set for free-tier dispatched agents (Groq, Cerebras, NVIDIA,
+/// etc.). Non-Claude models get confused by 30+ tools and pick wrong ones
+/// (observed: Llama 3.3 70B called `ask_jeff` instead of `read_file` with
+/// the full tool inventory). 5 tools is the sweet spot: read → edit → commit.
+///
+/// Deliberately excludes `run_cli` and `run_test` — cold worktrees need a
+/// full `cargo build` from scratch (3-5 min), which causes agent timeouts.
+/// CI runs tests after the PR is opened instead.
+const DISPATCH_FREE_TOOL_KEYS: &[&str] = &[
+    "read_file",
+    "list_dir",
+    "write_file",
+    "patch_file",
+    "git_commit",
+];
+
+/// Register the slim free-tier dispatch tool set. Used by `execute_gap.rs`
+/// when `OPENAI_MODEL` resolves to a non-Claude family (INFRA-733).
+pub fn register_free_dispatch_tools(registry: &mut ToolRegistry) {
+    let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
+        .filter(|e| DISPATCH_FREE_TOOL_KEYS.contains(&e.sort_key))
+        .collect();
+    entries.sort_by(|a, b| a.sort_key.cmp(b.sort_key));
+    for entry in entries {
+        registry.register(tool_middleware::wrap_tool((entry.factory)()));
+    }
+}
+
 /// Core tools for light interactive chat (`CHUMP_LIGHT_CONTEXT=1`).
 /// Keeps prompt token count low for faster local inference (~10 tools vs ~40).
 const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[
