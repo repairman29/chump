@@ -1,0 +1,25 @@
+- id: INFRA-729
+  domain: INFRA
+  title: "CREDIBLE: finish chump kpi report --tokens-per-ship implementation — gap INFRA-640 was filed but the binary still routes 'kpi report' through the agent loop instead of computing the report. Aggregate token_usage_partial + session_end events from ambient.jsonl into per-shipped-PR token counts; output P50/P90/Max + estimated cost-per-ship per backend (claude/cerebras/groq). Pre-req for honest cost analysis vs estimates."
+  status: done
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "src/main.rs subcommand 'kpi report --tokens-per-ship' produces structured table: PR # "
+    - " gap_id "
+    - " backend "
+    - " model "
+    - " calls "
+    - " input_tk "
+    - " output_tk "
+    - " cache_tk "
+    - " cost_USD "
+    - " shipped? "
+    - " landed?"
+    - reads ambient.jsonl session_end + token_usage_partial events, joins to merged PRs by gap_id
+    - outputs P50/P90/Max for each backend (claude vs chump-local cascade)
+    - test scripts/ci/test-kpi-report-tokens.sh on a fixture week of ambient + 5 shipped PRs
+    - 24h after INFRA-714 stream-json lands, this should show real cost data not estimates
+  closed_date: '2026-05-08'
+  closed_pr: 1336
+

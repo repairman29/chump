@@ -369,7 +369,7 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
     for ship in &ships_for_percentiles {
         backend_stats
             .entry(ship.backend.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(ship.clone());
     }
 
