@@ -766,6 +766,46 @@ Operator or sibling worker can rescue this branch via:
         "$FLEET_BACKEND" "${FLEET_MODEL:-default}" \
         >> "$_amb_we" 2>/dev/null || true
 
+    # ── INFRA-666: pre-ship-clippy-fix phase ──────────────────────────────
+    # After claude exits cleanly (rc=0), run cargo clippy + fmt to fix any
+    # auto-fixable lints BEFORE bot-merge opens the PR. Opt-out: set
+    # CHUMP_SKIP_PRESHIP_CLIPPY=1. If clippy/fmt fails, log and continue
+    # (the PR is already open; we just won't have lint fixes).
+    if [[ "$rc" -eq 0 ]] && [[ "${CHUMP_SKIP_PRESHIP_CLIPPY:-0}" != "1" ]]; then
+        log "INFRA-666: pre-ship-clippy-fix phase starting"
+        (
+            cd "$wt_path" || exit 0
+            # Apply clippy fixes (allow-dirty for staged changes, allow-staged for both).
+            cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged 2>/dev/null || {
+                log "WARN INFRA-666: cargo clippy --fix failed (continuing)"
+                exit 0
+            }
+            # Format code.
+            cargo fmt --all 2>/dev/null || {
+                log "WARN INFRA-666: cargo fmt failed (continuing)"
+                exit 0
+            }
+            # If there are new changes, amend the last commit and push.
+            if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+                git add -A 2>/dev/null || true
+                git -c user.name='chump-fleet' \
+                    -c user.email='chump-fleet@noreply.bot' \
+                    commit --amend --no-edit 2>/dev/null || {
+                    log "WARN INFRA-666: amend commit failed (continuing)"
+                    exit 0
+                }
+                # Force-push so the PR on GitHub gets updated (auto-merge is already armed).
+                git push --force-with-lease origin "$branch" 2>/dev/null || {
+                    log "WARN INFRA-666: force-push failed (PR may have stale lints)"
+                    exit 0
+                }
+                log "INFRA-666: clippy fixes pushed (amend + force-push)"
+            else
+                log "INFRA-666: no clippy fixes needed"
+            fi
+        ) || true  # non-fatal — PR is already open
+    fi
+
     # ── INFRA-464: 401-storm detector ─────────────────────────────────────
     # Background: the 2026-05-03 Haiku fleet ran 875/911 cycles (96%) into
     # `Failed to authenticate. API Error: 401` for hours undetected. The
