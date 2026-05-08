@@ -161,21 +161,21 @@ Your ONLY job is to make code changes that satisfy the gap below, then commit.
 {gap_yaml}
 ```
 
-## Workflow (follow exactly)
-1. read_file — read the file(s) that need changing (e.g. Cargo.toml, src/*.rs).
-2. write_file — write the ENTIRE modified file back to the SAME path. \
-   You must include ALL original content with only your targeted changes applied. \
-   Do NOT create new files unless the gap specifically requires it.
-3. patch_file — alternative to write_file for small changes (preferred for large files).
-4. git_commit — commit with message \"{gap_id}: <short summary of what changed>\". \
+## Workflow (follow exactly, ONE tool call per response)
+Step 1: read_file — read the file that needs changing.
+Step 2: patch_file — apply your change as a unified diff patch. \
+   Provide the old text and new text. Do NOT rewrite the entire file.
+Step 3: git_commit — commit with message \"{gap_id}: <short summary>\". \
    This automatically stages modified files.
-5. Respond with the single word: done
+Step 4: Respond with the single word: done
 
 ## Rules
-- NEVER write documentation, plans, or markdown files. ONLY modify source/config files.
-- NEVER explain what you will do. Every response = one tool call.
-- NEVER create files like chump-plan.md, docs/<ID>.md, or similar.
-- write_file REPLACES the file at the given path. Include the full file content.
+- ONE tool call per response. Do NOT call multiple tools at once.
+- NEVER write documentation, plans, or markdown files.
+- NEVER explain what you will do — just call the tool.
+- NEVER create new files (no chump-plan.md, no docs/*.md).
+- Use patch_file for ALL modifications — it only changes what you specify.
+- You MUST read a file with read_file BEFORE patching it.
 - After git_commit succeeds, respond \"done\" and stop.",
         overlay = overlay,
         gap_yaml = gap_yaml,

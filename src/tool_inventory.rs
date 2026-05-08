@@ -126,13 +126,12 @@ pub fn register_worker_tools(registry: &mut ToolRegistry) {
 /// Deliberately excludes `run_cli` and `run_test` — cold worktrees need a
 /// full `cargo build` from scratch (3-5 min), which causes agent timeouts.
 /// CI runs tests after the PR is opened instead.
-const DISPATCH_FREE_TOOL_KEYS: &[&str] = &[
-    "read_file",
-    "list_dir",
-    "write_file",
-    "patch_file",
-    "git_commit",
-];
+///
+/// EFFECTIVE-005: write_file removed — Llama 3.3 70B replaces entire files
+/// with truncated/placeholder content. patch_file is safer: the model only
+/// specifies the diff, not the full file. Use write_file only for new files
+/// (which we don't need for most xs gaps).
+const DISPATCH_FREE_TOOL_KEYS: &[&str] = &["read_file", "list_dir", "patch_file", "git_commit"];
 
 /// Register the slim free-tier dispatch tool set. Used by `execute_gap.rs`
 /// when `OPENAI_MODEL` resolves to a non-Claude family (INFRA-733).

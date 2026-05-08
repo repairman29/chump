@@ -1,0 +1,7 @@
+- id: INFRA-770
+  domain: INFRA
+  title: "EFFECTIVE: Review-as-Handoff sub-gap 2/6 — [handoff:apply] ACL. Trust check verifies comment author against session-metadata 'reviewer' capability OR operator OR PR-author (self-handoff). Untrusted comments treated as advisory. Spec: docs/architecture/REVIEW_AS_HANDOFF.md §4. Depends on: INFRA-768."
+  status: open
+  priority: P1
+  effort: s
+

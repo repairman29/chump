@@ -1,0 +1,32 @@
+- id: EFFECTIVE-004
+  domain: EFFECTIVE
+  title: "EFFECTIVE: sequential tool execution for free-tier multi-tool responses — read before write"
+  status: open
+  priority: P1
+  effort: s
+  depends_on:
+    - INFRA-733
+  acceptance_criteria: |
+    When a free-tier model returns multiple tool calls in one response (e.g.
+    [read_file, write_file, git_commit]), execute them SEQUENTIALLY and feed
+    each result back before the next call. Currently the agent loop batches all
+    tool calls from one response together, so write_file runs without seeing
+    read_file's result — causing blind writes that nuke files.
+
+    Observed in EFFECTIVE-001 e2e test (Groq Llama 3.3 70B, 2026-05-08):
+    - Model returned 3 tool_calls in one response (read_file + write_file + git_commit)
+    - write_file replaced 212-line Cargo.toml with 1-line placeholder
+    - Because it hadn't seen read_file result when generating write_file args
+
+    Fix: In free-tier path of iteration_controller (or tool_runner), when
+    batch has > 1 tool call and includes both read_file and write_file:
+    1. Execute read_file first
+    2. Append result to conversation
+    3. Re-invoke provider for next tool call (or execute remaining calls
+       if they don't depend on read results)
+    4. Alternative: always force single-tool-call mode for free-tier models
+       by setting max_tool_calls=1 in the API request (if supported)
+
+    Test: mock server returns [read_file, write_file] in one response;
+    verify write_file sees read_file content before executing.
+
