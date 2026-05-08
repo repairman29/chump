@@ -259,16 +259,12 @@ for fname in os.listdir(lock_dir):
     except Exception:
         continue  # unparseable timestamps → treat as expired
 
-    # INFRA-193: speculative-on-speculative is NOT a conflict — both race.
-    other_spec = bool(d.get("speculative"))
-    if my_spec and other_spec:
-        # Surface as advisory note so the operator sees the race
-        sys.stderr.write(
-            f"[gap-preflight] INFRA-193 speculative race: '{d['session_id']}' is also "
-            f"working on {gap_id} (both speculative). First-to-land wins.\n"
-        )
-        continue
-
+    # INFRA-735 (2026-05-08): speculative race mode removed. Every conflict
+    # is now a hard block — first-to-claim wins, second-to-arrive must pick
+    # a different gap. The branch that allowed `my_spec && other_spec` to
+    # pass through was an INFRA-193 design that never paid off in practice
+    # (observed: 2x compute, dupe PRs shipped #1286/#1288 same gap). The
+    # advisory note is removed; collision is always blocking.
     print(f"{d['session_id']}:{d.get('expires_at', '?')}")
     sys.exit(0)
 PYEOF

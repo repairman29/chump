@@ -77,7 +77,10 @@ while [[ $# -gt 0 ]]; do
             CLAIM_PATHS="${1#--paths=}"
             ;;
         --speculative)
-            SPECULATIVE=1
+            # INFRA-735: speculative race mode removed. Flag accepted for
+            # backward compat but has no effect — every claim is exclusive.
+            echo "[gap-claim] note: --speculative is deprecated (INFRA-735); single-winner enforced." >&2
+            SPECULATIVE=0
             ;;
         *)
             echo "Unknown argument: $1" >&2

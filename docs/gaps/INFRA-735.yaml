@@ -1,0 +1,7 @@
+- id: INFRA-735
+  domain: INFRA
+  title: "RESILIENT: hard-kill speculative-execution race mode (INFRA-193 deprecation) — INFRA-713 made it opt-in but operator's call: every speculative race wastes 2x compute and observed dupe-PR shipping (CREDIBLE-003 #1286/#1288, INFRA-710 collision). Picker writes speculative=false unconditionally, gap-preflight blocks every collision (no advisory branch), bot-merge speculative loser-sweep removed, gap-claim --speculative flag deprecated to no-op."
+  status: open
+  priority: P0
+  effort: xs
+

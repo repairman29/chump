@@ -1619,50 +1619,14 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             green "Auto-merge enabled — PR will land when CI passes."
         fi
 
-        # ── INFRA-193: speculative-execution loser sweep ─────────────────────
-        # When --speculative was set, scan open PRs that cite the same gap
-        # ID(s) and close them as superseded. The losers' branches stay intact
-        # (no force-push, no commit loss) — only the PR is closed with a
-        # diagnostic comment pointing at the winning PR. Bypass with
-        # CHUMP_SPECULATIVE_SWEEP=0 (e.g. when re-running bot-merge.sh on a
-        # PR that's already armed and you don't want to re-close losers).
-        if [[ "$SPECULATIVE" == "1" ]] \
-            && [[ "${CHUMP_SPECULATIVE_SWEEP:-1}" != "0" ]] \
-            && [[ ${#GAP_IDS[@]} -gt 0 ]] \
-            && [[ -n "$TARGET_PR" ]]; then
-            stage_start "INFRA-193 speculative loser sweep (gap=${GAP_IDS[*]})"
-            for _gid in "${GAP_IDS[@]}"; do
-                # Search open PRs whose title or body mentions the gap ID.
-                # Exclude our own PR. gh pr list --search syntax: "GAP-ID in:title,body".
-                _losers=$(gh pr list --state open --search "$_gid" \
-                    --json number,headRefName,title \
-                    --jq ".[] | select(.number != $TARGET_PR) | \"\(.number)|\(.headRefName)|\(.title)\"" \
-                    2>/dev/null | head -10 || true)
-                if [[ -z "$_losers" ]]; then
-                    info "  No sibling PRs cite $_gid — clean win."
-                    continue
-                fi
-                while IFS='|' read -r _lpr _lbranch _ltitle; do
-                    [[ -z "$_lpr" ]] && continue
-                    # Defence-in-depth: require the loser PR's title or
-                    # branch to also reference the gap ID directly (avoids
-                    # supersede-by-mention false positives).
-                    if [[ "$_ltitle" != *"$_gid"* ]] && [[ "$_lbranch" != *"$(echo "$_gid" | tr '[:upper:]' '[:lower:]')"* ]]; then
-                        info "  PR #$_lpr mentions $_gid in body only (title=$_ltitle, branch=$_lbranch) — skipping (false-positive guard)."
-                        continue
-                    fi
-                    info "  Closing PR #$_lpr (branch=$_lbranch) as superseded by #$TARGET_PR …"
-                    _supersede_msg="$(printf 'Auto-closing as superseded by #%s.\n\nINFRA-193 speculative-execution race: two agents picked up %s in parallel; PR #%s won the race to ship and is queued for auto-merge. Branch `%s` stays intact (no force-push, no commit loss) — re-open this PR or cherry-pick if the winning PR is later reverted.\n\nSee CLAUDE.md → "Speculative execution (INFRA-193)" for opt-in semantics.' \
-                        "$TARGET_PR" "$_gid" "$TARGET_PR" "$_lbranch")"
-                    if [[ $DRY_RUN -eq 0 ]]; then
-                        gh pr close "$_lpr" --comment "$_supersede_msg" 2>/dev/null \
-                            || info "  WARN: could not close PR #$_lpr (already closed? insufficient perms?)"
-                    else
-                        info "  [dry-run] gh pr close $_lpr --comment '...'"
-                    fi
-                done <<< "$_losers"
-            done
-            stage_done
+        # ── INFRA-735 (2026-05-08): speculative loser-sweep removed ──────────
+        # Speculative execution (INFRA-193) is gone — the picker no longer
+        # writes speculative=true on leases, and gap-preflight blocks every
+        # collision. So there are no "losers" to sweep. The --speculative
+        # flag is silently accepted upstream for backward-compat, but the
+        # behavior is permanently neutered: $SPECULATIVE has no effect here.
+        if [[ "$SPECULATIVE" == "1" ]]; then
+            info "  Note: --speculative is deprecated (INFRA-735); flag ignored. Single-winner is now always enforced."
         fi
 
         # INFRA-190: fire-and-forget pr-watch.sh so the PR auto-recovers

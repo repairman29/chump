@@ -213,14 +213,14 @@ def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
     ttl_seconds = 4 * 3600
     expires_at = now + ttl_seconds
 
-    # 2026-05-08 INFRA-713: speculative is now opt-in via CHUMP_SPECULATIVE=1
-    # (per CLAUDE.md original design — speculative race is intentional, not
-    # default). Hardcoded `speculative: True` caused observed collisions:
-    # CREDIBLE-003 shipped twice from agent2 cycles racing each other (#1286
-    # vs #1288), and worker 2 picked INFRA-710 immediately after I shipped
-    # it manually (because the existing lease was speculative, picker didn't
-    # treat it as exclusive). Default to exclusive; opt into race mode.
-    _speculative = os.environ.get("CHUMP_SPECULATIVE", "0") == "1"
+    # 2026-05-08 INFRA-735: speculative is REMOVED. INFRA-193 introduced it
+    # as a race-mode opt-in for "latency-critical" gaps; INFRA-713 made it
+    # env-gated. Empirically the diversity-bonus benefit never materialized
+    # (both racers are usually Sonnet on the same prompt), and the cost is
+    # 2x compute + observed dupe-PR shipping (CREDIBLE-003 #1286/#1288).
+    # The flag still parses upstream (gap-claim.sh, bot-merge.sh) for
+    # backward compat, but the lease here ALWAYS records speculative=false.
+    # gap-preflight.sh treats every conflict as a hard collision regardless.
     lease = {
         "session_id": session_id,
         "gap_id": gap_id,
@@ -228,7 +228,7 @@ def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
         "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(expires_at)),
         "heartbeat_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
         "purpose": "fleet:pick_and_claim",
-        "speculative": _speculative,
+        "speculative": False,
     }
 
     gap_lock_file = lock_dir / f".gap-{gap_id}.lock"
