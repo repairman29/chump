@@ -38,11 +38,12 @@ ChumpMenu/ChumpMenu.app/
 # Agent path-lease files (runtime only; never commit)
 .chump-locks/
 
-# SQLite gap store — binary DB is not committed; only the .sql dump is tracked
+# SQLite gap store — binary DB is not committed; only the compressed .lz4 is tracked
 .chump/state.db
 .chump/state.db-shm
 .chump/state.db-wal
 .chump/state.db.bak
+.chump/state.sql
 
 # Auditor (INFRA-087) runtime state — strikes index + raw findings dumps
 .chump/auditor-strikes.json
