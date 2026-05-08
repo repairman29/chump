@@ -20,6 +20,9 @@ You are responsible for **driving the 4 pillars**, not just servicing gaps as th
 
 PM-curation role: see **META-046**. Honest pillar-grade reports are part of the job, not an aside.
 
+Explicit SLO targets for each pillar and layer: [`docs/process/FLEET_SLOS.md`](./docs/process/FLEET_SLOS.md).
+Check current vs. target at any time: `chump health --slo-check` (exits non-zero on breach).
+
 ## MANDATORY pre-flight (every session, before any work)
 
 ```bash

@@ -496,7 +496,22 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("health") {
         let want_json = args.iter().any(|a| a == "--json");
         let watch = args.iter().any(|a| a == "--watch");
+        let slo_check = args.iter().any(|a| a == "--slo-check");
         let repo_root = repo_path::repo_root();
+
+        if slo_check {
+            let results = fleet_health::check_slos(&repo_root);
+            if want_json {
+                println!("{}", fleet_health::render_slo_json(&results));
+            } else {
+                print!("{}", fleet_health::render_slo_text(&results));
+            }
+            if results.iter().any(|r| r.breached) {
+                std::process::exit(1);
+            }
+            return Ok(());
+        }
+
         loop {
             let report = fleet_health::build_report(&repo_root);
             fleet_health::emit(&repo_root, &report);
