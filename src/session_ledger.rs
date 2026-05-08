@@ -4,6 +4,11 @@
 //! INFRA-534 follow-up: token counts (input/output/cache_read) captured
 //! into session_end so we can compute actual $ cost per shipped gap.
 //!
+//! INFRA-730: per-model token rates loaded from docs/pricing/model_rates.yaml.
+//! Replaces flat $3/$15 Sonnet defaults that overstate costs 3-∞× for
+//! non-Sonnet backends. Falls back to Sonnet rates with one-time warning
+//! if model_id is unknown.
+//!
 //! Two events:
 //! - `session_start` — written by `chump session-track --start <GAP>`
 //!   at the moment work begins (typically right after `chump claim`).
@@ -20,7 +25,40 @@
 //! Best-effort: all writes silently no-op on I/O failure. Telemetry
 //! that gates work would defeat its own purpose.
 
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::OnceLock;
+
+#[derive(Debug, Clone, Deserialize)]
+struct ModelRate {
+    model_id: String,
+    input_per_mtk: f64,
+    output_per_mtk: f64,
+    cache_read_per_mtk: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ModelRatesFile {
+    models: Vec<ModelRate>,
+}
+
+static MODEL_RATES: OnceLock<HashMap<String, ModelRate>> = OnceLock::new();
+
+fn load_model_rates() -> &'static HashMap<String, ModelRate> {
+    MODEL_RATES.get_or_init(|| {
+        let mut rates = HashMap::new();
+        // Try to load from docs/pricing/model_rates.yaml
+        if let Ok(yaml_content) = std::fs::read_to_string("docs/pricing/model_rates.yaml") {
+            if let Ok(parsed) = serde_yaml::from_str::<ModelRatesFile>(&yaml_content) {
+                for model in parsed.models {
+                    rates.insert(model.model_id.clone(), model);
+                }
+            }
+        }
+        rates
+    })
+}
 
 /// Token usage counts from an Anthropic API response.
 #[derive(Debug, Clone, Copy, Default)]
@@ -30,22 +68,54 @@ pub struct TokenCounts {
     pub cache_read_tokens: u64,
 }
 
-/// Compute actual API cost in USD from token counts.
+/// Compute actual API cost in USD from token counts and model_id.
 ///
-/// Default rates match Sonnet 4 pricing; override via env vars:
+/// Looks up rates from docs/pricing/model_rates.yaml (INFRA-730).
+/// Falls back to Sonnet 4.5 rates ($3 input, $15 output, $0.30 cache) with
+/// a one-time warning if model_id not found. Can override via env vars:
 /// - `CHUMP_COST_INPUT_PER_MTK`      (default 3.00  $/MTok)
 /// - `CHUMP_COST_OUTPUT_PER_MTK`     (default 15.00 $/MTok)
 /// - `CHUMP_COST_CACHE_READ_PER_MTK` (default 0.30  $/MTok)
-pub fn cost_usd_from_tokens(input: u64, output: u64, cache_read: u64) -> f64 {
-    let rate = |var: &str, default: f64| -> f64 {
-        std::env::var(var)
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(default)
+pub fn cost_usd_from_tokens(model_id: &str, input: u64, output: u64, cache_read: u64) -> f64 {
+    // Env var override takes precedence
+    if let Ok(var) = std::env::var("CHUMP_COST_INPUT_PER_MTK") {
+        if let Ok(input_rate) = var.parse::<f64>() {
+            let output_rate = std::env::var("CHUMP_COST_OUTPUT_PER_MTK")
+                .ok()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(15.0_f64);
+            let cache_rate = std::env::var("CHUMP_COST_CACHE_READ_PER_MTK")
+                .ok()
+                .and_then(|s| s.parse::<f64>().ok())
+                .unwrap_or(0.30_f64);
+            return (input as f64 * input_rate
+                + output as f64 * output_rate
+                + cache_read as f64 * cache_rate)
+                / 1_000_000.0;
+        }
+    }
+
+    let rates = load_model_rates();
+    let (input_rate, output_rate, cache_rate) = if let Some(model) = rates.get(model_id) {
+        (
+            model.input_per_mtk,
+            model.output_per_mtk,
+            model.cache_read_per_mtk,
+        )
+    } else {
+        // Fallback to Sonnet defaults with warning
+        static WARNED: OnceLock<()> = OnceLock::new();
+        if WARNED.get().is_none() {
+            tracing::warn!(
+                "Model '{}' not found in model_rates.yaml; using Sonnet 4.5 defaults. \
+                 Add the model to docs/pricing/model_rates.yaml to get accurate pricing.",
+                model_id
+            );
+            let _ = WARNED.set(());
+        }
+        (3.00_f64, 15.00_f64, 0.30_f64)
     };
-    let input_rate = rate("CHUMP_COST_INPUT_PER_MTK", 3.00_f64);
-    let output_rate = rate("CHUMP_COST_OUTPUT_PER_MTK", 15.00_f64);
-    let cache_rate = rate("CHUMP_COST_CACHE_READ_PER_MTK", 0.30_f64);
+
     (input as f64 * input_rate + output as f64 * output_rate + cache_read as f64 * cache_rate)
         / 1_000_000.0
 }
@@ -482,7 +552,7 @@ mod tests {
         // 1000 input + 500 output + 200 cache_read
         // = (1000*3 + 500*15 + 200*0.30) / 1_000_000
         // = (3000 + 7500 + 60) / 1_000_000 = 10560 / 1_000_000 = 0.01056
-        let cost = cost_usd_from_tokens(1000, 500, 200);
+        let cost = cost_usd_from_tokens("claude-sonnet-4.5", 1000, 500, 200);
         let expected = 0.01056_f64;
         assert!(
             (cost - expected).abs() < 1e-9,
@@ -508,7 +578,7 @@ mod tests {
             .collect();
         std::fs::write(&amb, lines.join("\n") + "\n").unwrap();
         // verify the math directly
-        let cost_per = cost_usd_from_tokens(10000, 2000, 5000);
+        let cost_per = cost_usd_from_tokens("claude-sonnet-4.5", 10000, 2000, 5000);
         let expected = 0.0615_f64;
         assert!(
             (cost_per - expected).abs() < 1e-9,

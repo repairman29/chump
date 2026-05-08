@@ -111,8 +111,9 @@ pub fn snapshot(repo_root: &Path) -> FleetStatus {
             let output = extract_int_field(line, "output_tokens").unwrap_or(0);
             let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
             if input > 0 || output > 0 || cache > 0 {
+                let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
                 status.cost_usd_24h +=
-                    crate::session_ledger::cost_usd_from_tokens(input, output, cache);
+                    crate::session_ledger::cost_usd_from_tokens(&model, input, output, cache);
             }
         }
         if line.contains(r#""kind":"fleet_wedge""#) && ts_unix >= cutoff_6h {

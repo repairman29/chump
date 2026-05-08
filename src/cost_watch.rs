@@ -119,7 +119,7 @@ pub fn build_report(repo_root: &Path, budget_usd_per_day: f64) -> CostWatchRepor
         let output = extract_int_field(line, "output_tokens").unwrap_or(0);
         let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
         let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
-        let cost = crate::session_ledger::cost_usd_from_tokens(input, output, cache);
+        let cost = crate::session_ledger::cost_usd_from_tokens(&model, input, output, cache);
 
         let entry = by_model.entry(model.clone()).or_insert_with(|| ModelSpend {
             model: model.clone(),

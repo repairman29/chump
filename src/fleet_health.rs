@@ -488,7 +488,8 @@ fn scan_cost_today(repo_root: &Path, budget: f64) -> (f64, bool) {
         let input = extract_int_field(line, "input_tokens").unwrap_or(0);
         let output = extract_int_field(line, "output_tokens").unwrap_or(0);
         let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
-        spend += crate::session_ledger::cost_usd_from_tokens(input, output, cache);
+        let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
+        spend += crate::session_ledger::cost_usd_from_tokens(&model, input, output, cache);
     }
     let over = spend > budget;
     (spend, over)

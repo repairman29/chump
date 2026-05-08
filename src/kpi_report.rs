@@ -206,11 +206,15 @@ pub fn build_report(repo_root: &Path, window_days: u64) -> TokensPerShipReport {
     }
 
     // Only keep shipped gaps.
+    // NOTE: kpi_report aggregates tokens across multiple session_end events,
+    // each potentially with different model_id. Cost calculation uses "unknown"
+    // as fallback (INFRA-730), which resolves to Sonnet rates. For precise
+    // per-model costing, track model_id per session_end event in the data source.
     let mut ships: Vec<ShipTokens> = per_gap
         .into_iter()
         .filter(|(gap_id, _)| shipped_gaps.contains(gap_id))
         .map(|(gap_id, (input, output, cache))| {
-            let cost = crate::session_ledger::cost_usd_from_tokens(input, output, cache);
+            let cost = crate::session_ledger::cost_usd_from_tokens("unknown", input, output, cache);
             ShipTokens {
                 gap_id,
                 input_tokens: input,

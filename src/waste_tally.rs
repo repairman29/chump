@@ -197,7 +197,8 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
             let input = extract_int_field(line, "input_tokens").unwrap_or(0);
             let output = extract_int_field(line, "output_tokens").unwrap_or(0);
             let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
-            crate::session_ledger::cost_usd_from_tokens(input, output, cache)
+            let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
+            crate::session_ledger::cost_usd_from_tokens(&model, input, output, cache)
         } else {
             0.0
         };
@@ -414,8 +415,9 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
             let input = extract_int_field(line, "input_tokens").unwrap_or(0);
             let output = extract_int_field(line, "output_tokens").unwrap_or(0);
             let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
+            let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
             (
-                crate::session_ledger::cost_usd_from_tokens(input, output, cache),
+                crate::session_ledger::cost_usd_from_tokens(&model, input, output, cache),
                 input.saturating_add(output).saturating_add(cache),
             )
         } else {
@@ -551,7 +553,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
 
         for (sid, (inp, out, crd)) in orphan_tokens {
             total_in_window += 1;
-            let cost = crate::session_ledger::cost_usd_from_tokens(inp, out, crd);
+            let cost = crate::session_ledger::cost_usd_from_tokens("unknown", inp, out, crd);
             let bucket = by_kind
                 .entry("session_token_orphan".to_string())
                 .or_insert_with(|| {
