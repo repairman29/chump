@@ -68,6 +68,12 @@ pub struct GapBriefing {
     /// counts. Surfaced as a one-liner in the rendered briefing so the
     /// next agent sees historical cost ("median 24m, range 8–67m").
     pub session_stats: crate::session_ledger::SessionStats,
+    /// COG-051: recent git commits that touched file paths mentioned in the
+    /// gap's title or acceptance criteria. Each entry is one formatted log
+    /// line: `<path>: <sha> <subject>`. Capped at 10 commits per path, 5
+    /// paths max. Empty when no recognisable paths appear in gap text or git
+    /// is unavailable.
+    pub recent_path_edits: Vec<String>,
     /// `true` when the gap was not found in `docs/gaps.yaml`. Renderer prints
     /// a clear error in this case rather than a misleading half-empty briefing.
     pub gap_not_found: bool,
@@ -124,6 +130,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             escalation_events: Vec::new(),
             recent_deltas: Vec::new(),
             session_stats: crate::session_ledger::SessionStats::default(),
+            recent_path_edits: Vec::new(),
             gap_not_found: true,
         };
     };
@@ -200,6 +207,16 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
 
     let escalation_events = filter_escalation_events(&ambient_path, &gap_id, 24 * 3600);
 
+    // COG-051: surface recent git edits to paths mentioned in gap text so
+    // the agent arrives with architectural context instead of grepping blind.
+    let gap_text = format!(
+        "{} {}",
+        parsed.title,
+        parsed.acceptance.as_deref().unwrap_or("")
+    );
+    let mentioned_paths = extract_paths_from_text(&gap_text);
+    let recent_path_edits = recent_edits_for_paths(root, &mentioned_paths, 10);
+
     // COG-042: surface recent `delta_recorded` events for same-domain
     // gaps so the next agent sees how past attempts on this class
     // differed from each other.
@@ -224,8 +241,70 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         escalation_events,
         recent_deltas,
         session_stats,
+        recent_path_edits,
         gap_not_found: false,
     }
+}
+
+/// Extract file-path-like tokens from arbitrary gap text.
+///
+/// Matches tokens that contain `/` but are not URLs (`://`) and whose first
+/// segment starts with an alphanumeric character. Caps at 5 unique paths so
+/// the git-log fan-out stays bounded. Preserves first-seen order.
+pub fn extract_paths_from_text(text: &str) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut paths = Vec::new();
+    for token in text.split_whitespace() {
+        // Three-pass strip: punctuation → trailing sentence period → punctuation
+        // again (trimming the period may expose another backtick/comma).
+        let punctuation = |c: char| matches!(c, '`' | ',' | '(' | ')' | '"' | '\'' | ';' | '!');
+        let token = token.trim_matches(punctuation);
+        let token = token.trim_end_matches('.');
+        let token = token.trim_matches(punctuation);
+        if token.contains('/') && !token.contains("://") {
+            // First segment must start with an alphanumeric (not a leading /).
+            let first_char = token.chars().next().unwrap_or('/');
+            if first_char.is_alphanumeric() {
+                if seen.insert(token.to_string()) {
+                    paths.push(token.to_string());
+                    if paths.len() >= 5 {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    paths
+}
+
+/// Run `git log --oneline -<limit> -- <path>` for each path and return
+/// formatted entries `"<path>: <sha> <subject>"`. Best-effort: silently
+/// skips paths that produce no output or when git is unavailable.
+pub fn recent_edits_for_paths(root: &Path, paths: &[String], limit: usize) -> Vec<String> {
+    let mut result = Vec::new();
+    for path in paths {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .arg("log")
+            .arg(format!("-{limit}"))
+            .arg("--oneline")
+            .arg("--")
+            .arg(path)
+            .output();
+        let Ok(out) = output else { continue };
+        if !out.status.success() {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        for line in text.lines() {
+            let line = line.trim();
+            if !line.is_empty() {
+                result.push(format!("{path}: {line}"));
+            }
+        }
+    }
+    result
 }
 
 /// Parsed gap fields used by the briefing. Keep this struct private to the
@@ -711,6 +790,17 @@ pub fn render_markdown(b: &GapBriefing) -> String {
         out.push_str("\n\n");
     }
 
+    // COG-051: recent edits to paths mentioned in the gap.
+    out.push_str("## Recent edits to paths mentioned in gap\n\n");
+    if b.recent_path_edits.is_empty() {
+        out.push_str("_(no recognisable file paths in gap text, or no git history for them)_\n\n");
+    } else {
+        for entry in &b.recent_path_edits {
+            out.push_str(&format!("- `{}`\n", entry));
+        }
+        out.push('\n');
+    }
+
     out
 }
 
@@ -919,6 +1009,91 @@ gaps:
         assert!(md.contains("## Similar closed PRs"));
         assert!(md.contains("#123"));
         assert!(md.contains("**Depends on:** MEM-006"));
+    }
+
+    #[test]
+    fn extract_paths_finds_rust_and_script_paths() {
+        let text =
+            "edit src/briefing.rs and scripts/coord/bot-merge.sh, then update docs/ROADMAP.md";
+        let paths = extract_paths_from_text(text);
+        assert!(
+            paths.contains(&"src/briefing.rs".to_string()),
+            "got {:?}",
+            paths
+        );
+        assert!(
+            paths.contains(&"scripts/coord/bot-merge.sh".to_string()),
+            "got {:?}",
+            paths
+        );
+        assert!(
+            paths.contains(&"docs/ROADMAP.md".to_string()),
+            "got {:?}",
+            paths
+        );
+    }
+
+    #[test]
+    fn extract_paths_ignores_urls() {
+        let text = "see https://example.com/foo for context, edit src/foo.rs";
+        let paths = extract_paths_from_text(text);
+        assert!(
+            !paths.iter().any(|p| p.contains("://")),
+            "URL leaked: {:?}",
+            paths
+        );
+        assert!(paths.contains(&"src/foo.rs".to_string()));
+    }
+
+    #[test]
+    fn extract_paths_caps_at_five() {
+        let text = "a/b.rs c/d.rs e/f.rs g/h.rs i/j.rs k/l.rs m/n.rs";
+        let paths = extract_paths_from_text(text);
+        assert_eq!(paths.len(), 5);
+    }
+
+    #[test]
+    fn extract_paths_strips_trailing_punctuation() {
+        let text = "edit `src/briefing.rs`, then `src/main.rs`.";
+        let paths = extract_paths_from_text(text);
+        assert!(
+            paths.contains(&"src/briefing.rs".to_string()),
+            "got {:?}",
+            paths
+        );
+        assert!(
+            paths.contains(&"src/main.rs".to_string()),
+            "got {:?}",
+            paths
+        );
+    }
+
+    #[test]
+    fn render_markdown_includes_recent_path_edits_section() {
+        let b = GapBriefing {
+            gap_id: "COG-051".into(),
+            gap_title: "Test".into(),
+            gap_domain: "cog".into(),
+            recent_path_edits: vec!["src/briefing.rs: abc1234 add path edits".into()],
+            ..Default::default()
+        };
+        let md = render_markdown(&b);
+        assert!(md.contains("## Recent edits to paths mentioned in gap"));
+        assert!(md.contains("src/briefing.rs: abc1234"));
+    }
+
+    #[test]
+    fn render_markdown_shows_empty_path_edits_message() {
+        let b = GapBriefing {
+            gap_id: "COG-099".into(),
+            gap_title: "No paths here".into(),
+            gap_domain: "cog".into(),
+            recent_path_edits: vec![],
+            ..Default::default()
+        };
+        let md = render_markdown(&b);
+        assert!(md.contains("## Recent edits to paths mentioned in gap"));
+        assert!(md.contains("no recognisable file paths"));
     }
 
     #[test]
