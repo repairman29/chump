@@ -264,12 +264,10 @@ pub fn extract_paths_from_text(text: &str) -> Vec<String> {
         if token.contains('/') && !token.contains("://") {
             // First segment must start with an alphanumeric (not a leading /).
             let first_char = token.chars().next().unwrap_or('/');
-            if first_char.is_alphanumeric() {
-                if seen.insert(token.to_string()) {
-                    paths.push(token.to_string());
-                    if paths.len() >= 5 {
-                        break;
-                    }
+            if first_char.is_alphanumeric() && seen.insert(token.to_string()) {
+                paths.push(token.to_string());
+                if paths.len() >= 5 {
+                    break;
                 }
             }
         }
