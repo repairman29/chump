@@ -1361,13 +1361,18 @@ impl LocalOpenAIProvider {
             .collect();
 
         let finish = finish_reason.as_deref().unwrap_or("stop");
-        let stop_reason = match finish {
-            "tool_calls" => StopReason::ToolUse,
+        let mut stop_reason = match finish {
+            "tool_calls" | "function_call" | "function_calls" => StopReason::ToolUse,
             "stop" => StopReason::EndTurn,
             "length" => StopReason::MaxTokens,
             "content_filter" => StopReason::ContentFilter,
             _ => StopReason::EndTurn,
         };
+        // INFRA-733: promote to ToolUse when provider returned tool calls but
+        // used an unrecognized finish_reason (common with Groq/Together/Cerebras).
+        if !parsed_tool_calls.is_empty() && !matches!(stop_reason, StopReason::ToolUse) {
+            stop_reason = StopReason::ToolUse;
+        }
 
         Ok(CompletionResponse {
             text,
@@ -1498,13 +1503,18 @@ impl LocalOpenAIProvider {
         };
 
         let finish = choice.finish_reason.as_deref().unwrap_or("stop");
-        let stop_reason = match finish {
-            "tool_calls" => StopReason::ToolUse,
+        let mut stop_reason = match finish {
+            "tool_calls" | "function_call" | "function_calls" => StopReason::ToolUse,
             "stop" => StopReason::EndTurn,
             "length" => StopReason::MaxTokens,
             "content_filter" => StopReason::ContentFilter,
             _ => StopReason::EndTurn,
         };
+        // INFRA-733: promote to ToolUse when provider returned tool calls but
+        // used an unrecognized finish_reason (common with Groq/Together/Cerebras).
+        if !tool_calls.is_empty() && !matches!(stop_reason, StopReason::ToolUse) {
+            stop_reason = StopReason::ToolUse;
+        }
 
         Ok(CompletionResponse {
             text,
@@ -1720,6 +1730,88 @@ mod tests {
         assert_eq!(out.tool_calls[0].name, "run_cli");
         assert!(out.tool_calls[0].input.is_object());
         assert!(out.tool_calls[0].input.as_object().unwrap().is_empty());
+    }
+
+    /// INFRA-733: Groq/Together return `finish_reason: "function_call"` instead
+    /// of `"tool_calls"`. Verify we still recognize tool calls.
+    #[tokio::test]
+    async fn complete_function_call_finish_reason_recognized() {
+        let mock = MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "I'll read that file.",
+                    "tool_calls": [{
+                        "id": "call_groq_1",
+                        "function": {
+                            "name": "read_file",
+                            "arguments": "{\"path\": \"src/main.rs\"}"
+                        }
+                    }]
+                },
+                "finish_reason": "function_call"
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let provider = LocalOpenAIProvider::new(
+            mock.uri().to_string(),
+            "not-needed".to_string(),
+            "test".to_string(),
+        );
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "Read the file".to_string(),
+        }];
+        let out = provider.complete(messages, None, None, None).await.unwrap();
+        assert_eq!(out.tool_calls.len(), 1);
+        assert_eq!(out.tool_calls[0].name, "read_file");
+        assert!(matches!(out.stop_reason, StopReason::ToolUse));
+    }
+
+    /// INFRA-733: When provider returns `finish_reason: "stop"` but includes
+    /// tool_calls in the response (observed with some Cerebras models), promote
+    /// stop_reason to ToolUse so the agent loop processes them.
+    #[tokio::test]
+    async fn complete_promotes_stop_to_tool_use_when_calls_present() {
+        let mock = MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "Running command.",
+                    "tool_calls": [{
+                        "id": "call_cerebras_1",
+                        "function": {
+                            "name": "run_cli",
+                            "arguments": "{\"command\": \"echo hello\"}"
+                        }
+                    }]
+                },
+                "finish_reason": "stop"
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let provider = LocalOpenAIProvider::new(
+            mock.uri().to_string(),
+            "not-needed".to_string(),
+            "test".to_string(),
+        );
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "Say hello".to_string(),
+        }];
+        let out = provider.complete(messages, None, None, None).await.unwrap();
+        assert_eq!(out.tool_calls.len(), 1);
+        assert!(matches!(out.stop_reason, StopReason::ToolUse));
     }
 
     /// Task 1.3: deterministic trim — newest user turn survives; injection ctx carries its query hint.
