@@ -494,13 +494,31 @@ if [ "${CHUMP_GAPS_LOCK:-1}" != "0" ]; then
         # "could not find expected ':'" in CI for every PR.
         # This guard runs PyYAML's safe_load on the staged content;
         # any parse error blocks the commit. Bypass: CHUMP_GAPS_LOCK=0
-        if command -v python3 >/dev/null 2>&1; then
+        if ! command -v python3 >/dev/null 2>&1; then
+            echo "[pre-commit] ERROR: python3 is required but not found." >&2
+            echo "[pre-commit]" >&2
+            echo "[pre-commit] Install Python3:" >&2
+            echo "[pre-commit]   brew install python3" >&2
+            echo "[pre-commit]" >&2
+            echo "[pre-commit] This guard is required for gap YAML validation." >&2
+            exit 1
+        elif true; then
             yaml_err=$(python3 - <<'PYEOF_YAMLLINT'
 import subprocess, sys, re
 try:
     import yaml
 except ImportError:
-    sys.exit(0)  # PyYAML not installed — silent skip (CI catches it)
+    sys.stderr.write("[pre-commit] ERROR: PyYAML is required but not installed.\n")
+    sys.stderr.write("[pre-commit]\n")
+    sys.stderr.write("[pre-commit] Install PyYAML:\n")
+    sys.stderr.write("[pre-commit]   brew install python3           (if python3 not installed)\n")
+    sys.stderr.write("[pre-commit]   pip install pyyaml             (for the PyYAML module)\n")
+    sys.stderr.write("[pre-commit]\n")
+    sys.stderr.write("[pre-commit] Or to update an existing Python:\n")
+    sys.stderr.write("[pre-commit]   python3 -m pip install pyyaml\n")
+    sys.stderr.write("[pre-commit]\n")
+    sys.stderr.write("[pre-commit] This guard is required for gap YAML validation.\n")
+    sys.exit(1)
 def _gaps_text(ref=None):
     """Read all gaps as monolithic YAML text from per-file or monolithic layout."""
     prefix = f"{ref}:" if ref else ":"
