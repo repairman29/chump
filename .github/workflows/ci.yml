@@ -346,6 +346,9 @@ jobs:
       - name: flake-autorerun harness fixture (INFRA-764)
         run: bash scripts/ci/test-flake-autorerun.sh
 
+      - name: pre-push cargo-test full-suite gate (INFRA-761)
+        run: bash scripts/ci/test-pre-push-test-gate.sh
+
       - name: pr-watch shepherd smoke (INFRA-354)
         run: bash scripts/ci/test-pr-watch-shepherd-smoke.sh
 
