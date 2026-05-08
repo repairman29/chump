@@ -1,0 +1,7 @@
+- id: INFRA-766
+  domain: INFRA
+  title: "RESILIENT: state-drift detector — catalog every 'two-store' pair in the codebase (.chump-locks/JSON ↔ agent_lease table; docs/gaps.yaml legacy ↔ docs/gaps/<ID>.yaml ↔ state.db; .env vs .env.example; Cargo workspace lints vs Cargo.toml; chump_improvement_targets vs reflection JSON), document which is canonical for each, and add a daily reconcile job that emits ALERT kind=store_drift when reads of the non-canonical store would have given a different answer. Same architectural pattern as INFRA-760 (briefing.rs YAML→state.db) — apply systemically."
+  status: open
+  priority: P1
+  effort: m
+
