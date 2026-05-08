@@ -24,7 +24,8 @@ NATS-backed coordination bus, and a per-gap "briefing" memory system. The
 workspace ships a `chump` CLI binary, several supporting crates, and a docs/
 ledger that drives autonomous gap-picking.
 
-See [`docs/architecture/ARCHITECTURE.md`](./docs/architecture/ARCHITECTURE.md) for the system map,
+See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the 4-pillar mission and active thrusts,
+[`docs/architecture/ARCHITECTURE.md`](./docs/architecture/ARCHITECTURE.md) for the system map,
 [`docs/research/RESEARCH_PLAN_2026Q3.md`](./docs/research/RESEARCH_PLAN_2026Q3.md) for current
 direction, and [`docs/architecture/TEAM_OF_AGENTS.md`](./docs/architecture/TEAM_OF_AGENTS.md) for the
 multi-agent design.
