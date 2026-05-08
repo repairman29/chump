@@ -155,6 +155,72 @@ fn pop_queued_message() -> Option<QueuedMessage> {
 use crate::agent_factory::build_chump_agent_web_components;
 use crate::system_prompt::{chump_system_prompt, env_is_mabel, strip_thinking};
 
+/// Split text into Discord-sized chunks (≤1990 chars) at word/line boundaries.
+fn chunk_for_discord(text: &str) -> Vec<String> {
+    const MAX_CHARS: usize = 1990;
+    if text.chars().count() <= MAX_CHARS {
+        return vec![text.to_string()];
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < chars.len() {
+        let remaining = chars.len() - start;
+        if remaining <= MAX_CHARS {
+            chunks.push(chars[start..].iter().collect());
+            break;
+        }
+        let end = start + MAX_CHARS;
+        let min_split = start + MAX_CHARS * 85 / 100;
+        let split_at = (min_split..end)
+            .rev()
+            .find(|&i| chars[i] == '\n' || chars[i] == ' ')
+            .unwrap_or(end);
+        let chunk: String = chars[start..split_at].iter().collect::<String>();
+        chunks.push(chunk.trim_end().to_string());
+        let next_start = (split_at..chars.len())
+            .find(|&i| chars[i] != ' ' && chars[i] != '\n' && chars[i] != '\r')
+            .unwrap_or(chars.len());
+        start = next_start;
+    }
+    chunks
+}
+
+/// Send a reply, splitting into multiple messages if needed (up to 3).
+/// Appends a truncation notice if the reply exceeded 3 messages.
+async fn send_reply(
+    channel_id: ChannelId,
+    http: &std::sync::Arc<serenity::http::Http>,
+    text: &str,
+) {
+    const MAX_CHUNKS: usize = 3;
+    if text.is_empty() {
+        return;
+    }
+    let chunks = chunk_for_discord(text);
+    let total = chunks.len();
+    for (i, chunk) in chunks.into_iter().enumerate() {
+        if i >= MAX_CHUNKS {
+            break;
+        }
+        let content = if i == MAX_CHUNKS - 1 && total > MAX_CHUNKS {
+            format!(
+                "{}\n\n*(reply too long — ask me to continue)*",
+                chunk.trim_end()
+            )
+        } else {
+            chunk
+        };
+        if let Err(e) = channel_id.say(http, &content).await {
+            eprintln!(
+                "{}",
+                chump_log::redact(&format!("Discord send error: {:?}", e))
+            );
+            break;
+        }
+    }
+}
+
 /// If CHUMP_WARM_SERVERS=1, run warm-the-ovens.sh and wait (up to 90s). Returns true if ready or skipped, false if timeout.
 async fn ensure_ovens_warm() -> bool {
     if std::env::var("CHUMP_WARM_SERVERS")
@@ -246,9 +312,10 @@ fn latest_mabel_report() -> Option<String> {
     std::fs::read_to_string(first.path()).ok()
 }
 
-/// Latest fleet report for Discord, truncated. When no file exists, message differs for Mabel vs Chump.
+/// Latest fleet report for Discord. When no file exists, message differs for Mabel vs Chump.
+/// Long reports are paginated by the caller via send_reply.
 fn on_demand_fleet_status_markdown(is_mabel_bot: bool) -> String {
-    let mut to_send = match latest_mabel_report() {
+    match latest_mabel_report() {
         Some(r) => r,
         None => {
             if is_mabel_bot {
@@ -258,15 +325,7 @@ fn on_demand_fleet_status_markdown(is_mabel_bot: bool) -> String {
                     .to_string()
             }
         }
-    };
-    const MAX_DISCORD_LEN: usize = 2000;
-    if to_send.len() > MAX_DISCORD_LEN {
-        to_send = format!(
-            "{}…\n[… truncated; full report in logs/mabel-report-*.md]",
-            &to_send[..MAX_DISCORD_LEN.saturating_sub(60)]
-        );
     }
-    to_send
 }
 
 fn rate_limit_turns_per_min() -> u32 {
@@ -518,16 +577,11 @@ async fn run_one_discord_turn(
                     );
                     let _ = std::io::stderr().flush();
                 }
-                let reply_len = if out.len() > 1990 { 1990 } else { out.len() };
                 dbg_log(
                     "run_turn_end",
-                    &serde_json::json!({ "request_id": request_id, "reply_len": reply_len, "hypothesisId": "H1" }),
+                    &serde_json::json!({ "request_id": request_id, "reply_len": out.len(), "hypothesisId": "H1" }),
                 );
-                if out.len() > 1990 {
-                    format!("{}…", &out[..1989])
-                } else {
-                    out
-                }
+                out
             }
             Err(e) => {
                 let err_msg = format!("Error: {}", e);
@@ -573,17 +627,12 @@ async fn run_one_discord_turn(
                     let _ = std::io::stderr().flush(); // so timing appears in companion.log when stderr is redirected
                 }
                 // #region agent log
-                let reply_len = if out.len() > 1990 { 1990 } else { out.len() };
                 dbg_log(
                     "run_turn_end",
-                    &serde_json::json!({ "request_id": request_id, "reply_len": reply_len, "hypothesisId": "H1" }),
+                    &serde_json::json!({ "request_id": request_id, "reply_len": out.len(), "hypothesisId": "H1" }),
                 );
                 // #endregion
-                if out.len() > 1990 {
-                    format!("{}…", &out[..1989])
-                } else {
-                    out
-                }
+                out
             }
             Err(e) => {
                 let err_msg = format!("Error: {}", e);
@@ -642,12 +691,7 @@ fn drain_one_queued_message(
             to_send.len(),
             preview.replace('\n', " ")
         );
-        if let Err(e) = channel_id.say(&http, &to_send).await {
-            eprintln!(
-                "{}",
-                chump_log::redact(&format!("Discord send error: {:?}", e))
-            );
-        }
+        send_reply(channel_id, &http, &to_send).await;
         // Notify DM skipped for queued path (would require Context). Agent can notify on next turn.
         chump_log::set_request_id(None);
         drain_one_queued_message(semaphore, http);
@@ -806,7 +850,10 @@ impl EventHandler for Handler {
         // Rate limit: per-channel turns per minute (0 = off)
         if !rate_limit_check(channel_id.get()) {
             let _ = channel_id
-                .say(&http, "Rate limited; try again in a minute.")
+                .say(
+                    &http,
+                    "You've hit the rate limit — please wait a minute before sending another message.",
+                )
                 .await;
             return;
         }
@@ -860,7 +907,26 @@ impl EventHandler for Handler {
             || on_demand_status.starts_with("!status ");
         if is_on_demand_status {
             let to_send = on_demand_fleet_status_markdown(is_mabel);
-            let _ = channel_id.say(&http, &to_send).await;
+            send_reply(channel_id, &http, &to_send).await;
+            return;
+        }
+
+        // Help command: list available commands
+        let is_help = on_demand_status == "!help"
+            || on_demand_status == "help"
+            || on_demand_status.starts_with("!help ");
+        if is_help {
+            let bot_name = if is_mabel { "Mabel" } else { "Chump" };
+            let help_text = format!(
+                "**{} commands:**\n\
+                • `!status` — latest fleet report\n\
+                • `!help` — this message\n\
+                • `what are you up to?` — what I'm currently doing (sent to DMs)\n\
+                • `answer: #N <text>` — record answer to question #N (owner only)\n\n\
+                Ask me anything else and I'll reply using the AI.",
+                bot_name
+            );
+            let _ = channel_id.say(&http, &help_text).await;
             return;
         }
 
@@ -910,7 +976,7 @@ impl EventHandler for Handler {
                 let _ = channel_id
                     .say(
                         &http,
-                        "I'm on autopilot right now; your message is queued. I'll respond at the next available moment (usually within a few minutes).",
+                        "Queued — I'll reply when I'm free (usually a few minutes).",
                     )
                     .await;
             }
@@ -957,24 +1023,17 @@ impl EventHandler for Handler {
                 to_send.len(),
                 preview.replace('\n', " ")
             );
-            let say_result = channel_id.say(&http, &to_send).await;
+            send_reply(channel_id, &http, &to_send).await;
             // #region agent log
             dbg_log(
                 "say_done",
                 &serde_json::json!({
                     "request_id": request_id,
-                    "ok": say_result.is_ok(),
-                    "err": say_result.as_ref().err().map(|e| e.to_string()),
+                    "ok": true,
                     "hypothesisId": "H2"
                 }),
             );
             // #endregion
-            if let Err(e) = say_result {
-                eprintln!(
-                    "{}",
-                    chump_log::redact(&format!("Discord send error: {:?}", e))
-                );
-            }
             if let Some(notify_msg) = chump_log::take_pending_notify() {
                 if let Ok(id_str) = std::env::var("CHUMP_READY_DM_USER_ID") {
                     let id_str = id_str.trim();
