@@ -47,14 +47,7 @@ jobs:
           if [ -f "$PER_FILE" ]; then
             STATUS=$(grep -m1 '^  status:' "$PER_FILE" | awk '{print $2}' || true)
           elif [ -f "docs/gaps.yaml" ]; then
-            STATUS=$(python3 -c "
-import yaml, sys
-d = yaml.safe_load(open('docs/gaps.yaml'))
-for g in d.get('gaps', []):
-    if g.get('id') == sys.argv[1]:
-        print(g.get('status', ''))
-        sys.exit(0)
-" "$GAP_ID" 2>/dev/null || true)
+            STATUS=$(python3 -c 'import yaml, sys; d = yaml.safe_load(open("docs/gaps.yaml")); [print(g.get("status", "")) for g in d.get("gaps", []) if g.get("id") == sys.argv[1]]' "$GAP_ID" 2>/dev/null || true)
           else
             echo "Gap registry not found (neither per-file nor monolithic). Skipping."
             exit 0
