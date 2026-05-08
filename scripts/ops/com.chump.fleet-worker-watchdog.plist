@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.fleet-worker-watchdog</string>
+    <key>Program</key>
+    <string>/usr/bin/env</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>bash</string>
+        <string>{{REPO_ROOT}}/scripts/ops/fleet-worker-watchdog.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>120</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/chump-fleet-watchdog.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/chump-fleet-watchdog.err</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>REPO_ROOT</key>
+        <string>{{REPO_ROOT}}</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>
