@@ -541,6 +541,21 @@ ${gap_yaml}
 - Mutate gaps via 'chump gap set' / 'chump gap ship' (state.db canonical post-INFRA-498).
 - If you spot a real bug along the way, file it: 'chump gap reserve --domain INFRA --title \"...\"'
 
+══ BEFORE CALLING BOT-MERGE: Self-Verify (INFRA-717) ══
+REQUIRED: Before shipping, run these 3 self-verify steps. Reject any code
+that fails these checks.
+1. cargo check --workspace
+   Verify no compilation errors.
+2. cargo clippy --workspace --fix --allow-dirty
+   Apply clippy fixes and verify no clippy warnings remain.
+3. Symbol-resolution check
+   Grep your diff for new method/fn calls (lines with . or :: followed by
+   identifier). For each new call, verify it is defined in either:
+     - Your diff (same PR), or
+     - On main (git show main:<file> | grep -q 'def\|fn ')
+   If a new call is undefined in both places, REJECT the code and explain
+   the orphan call.
+
 When done, reply with the PR number only (e.g. \"#1234\")."
             else
                 prompt="Ship gap $GAP_ID in this repository. Read CLAUDE.md and AGENTS.md first. The gap is already claimed for this session; the lease is in .chump-locks/. Implement the gap per its description, commit via scripts/coord/chump-commit.sh, and ship via scripts/coord/bot-merge.sh --gap $GAP_ID --auto-merge. Reply with the PR number only."
