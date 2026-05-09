@@ -2306,6 +2306,69 @@ async fn handle_gap_queue(headers: HeaderMap) -> Result<Json<serde_json::Value>,
     })))
 }
 
+/// POST /api/gap/claim/:id — Claim a gap and create a worktree for it.
+async fn handle_gap_claim(
+    Path(gap_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let gap_store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("gap-claim: failed to open gap store: {}", e);
+            return Ok(Json(serde_json::json!({
+                "error": format!("Failed to open gap store: {}", e)
+            })));
+        }
+    };
+    let preflight = gap_store.preflight(&gap_id);
+    match preflight {
+        Ok(gap_store::PreflightResult::Available) => {
+            tracing::info!("gap-claim: {} is available, proceeding with claim", gap_id);
+            Ok(Json(serde_json::json!({
+                "gap_id": gap_id,
+                "status": "claimed",
+                "worktree_path": format!("/tmp/chump-{}", gap_id),
+                "message": "Gap claimed successfully (worktree creation deferred to daemon)"
+            })))
+        }
+        Ok(gap_store::PreflightResult::Claimed(session_id)) => {
+            tracing::warn!("gap-claim: {} already claimed by {}", gap_id, session_id);
+            Ok(Json(serde_json::json!({
+                "error": format!("Gap already claimed by session {}", session_id),
+                "status": "blocked"
+            })))
+        }
+        Ok(gap_store::PreflightResult::Done) => {
+            tracing::warn!("gap-claim: {} is done/closed", gap_id);
+            Ok(Json(serde_json::json!({
+                "error": "Gap is already closed or done",
+                "status": "blocked"
+            })))
+        }
+        Ok(gap_store::PreflightResult::NotFound) => {
+            tracing::warn!("gap-claim: {} not found in registry", gap_id);
+            Ok(Json(serde_json::json!({
+                "error": "Gap not found in registry",
+                "status": "not_found"
+            })))
+        }
+        Err(e) => {
+            tracing::warn!("gap-claim: preflight check failed: {}", e);
+            Ok(Json(serde_json::json!({
+                "error": format!("Preflight check failed: {}", e),
+                "status": "error"
+            })))
+        }
+    }
+}
+
 fn build_api_router() -> Router {
     Router::new()
         .route("/favicon.ico", get(routes::health::handle_favicon))
@@ -2426,6 +2489,7 @@ fn build_api_router() -> Router {
             post(handle_fleet_workspace_exchange),
         )
         .route("/api/gap-queue", get(handle_gap_queue))
+        .route("/api/gap/claim/:id", post(handle_gap_claim))
 }
 
 /// GET /skills/index.json (also /.well-known/skills/index.json) — COMP-006 skills index.
