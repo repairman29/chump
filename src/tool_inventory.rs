@@ -266,7 +266,7 @@ pub fn register_from_inventory(registry: &mut ToolRegistry) {
 
     let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
         .filter(|e| e.enabled())
-        .filter(|e| allowlist.map_or(true, |keys| keys.contains(&e.sort_key)))
+        .filter(|e| allowlist.is_none_or(|keys| keys.contains(&e.sort_key)))
         // Skip inline tools that have MCP replacements
         .filter(|e| !mcp_names.contains(e.sort_key))
         .collect();
