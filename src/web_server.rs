@@ -2450,6 +2450,38 @@ async fn handle_gap_work(
     })))
 }
 
+/// Helper to configure GitHub credentials for agent subprocess.
+/// Supports two modes:
+/// 1. Explicit (secure): GH_TOKEN and SSH_KEY_PATH env vars override keyring lookup
+/// 2. Implicit (local dev): inherits parent process env (gh CLI from keyring, SSH keys)
+/// Logs credential presence without exposing values (sanitized for security).
+fn configure_agent_credentials(cmd: &mut std::process::Command) {
+    // GH_TOKEN: explicit GitHub token (overrides keyring)
+    if let Ok(token) = std::env::var("GH_TOKEN") {
+        cmd.env("GH_TOKEN", token);
+        tracing::debug!("gap-work: forwarding explicit GH_TOKEN to agent");
+    } else {
+        // No explicit token; agent will use keyring lookup (local dev path)
+        tracing::debug!("gap-work: agent will use local keyring for GitHub auth");
+    }
+
+    // SSH_KEY_PATH: explicit SSH key for git operations
+    if let Ok(key_path) = std::env::var("SSH_KEY_PATH") {
+        let path_display = key_path.clone();
+        cmd.env("SSH_KEY_PATH", key_path);
+        tracing::debug!(
+            "gap-work: forwarding explicit SSH_KEY_PATH to agent ({})",
+            path_display
+        );
+    }
+
+    // GITHUB_TOKEN: alternative to GH_TOKEN (some tools use this)
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        cmd.env("GITHUB_TOKEN", token);
+        tracing::debug!("gap-work: forwarding explicit GITHUB_TOKEN to agent");
+    }
+}
+
 /// Spawn an autonomous workflow to work on and ship a gap.
 /// Follows Chump's agent protocol per `execute_gap.rs`:
 /// 1. chump claim <ID> — atomic: setup worktree with gap checked out
@@ -2458,6 +2490,7 @@ async fn handle_gap_work(
 ///    - runs multi-turn agent loop to work on gap
 ///    - agent commits, pushes, creates/merges PR autonomously
 /// 3. chump gap ship <ID> --update-yaml — finalize and sync YAML mirror
+/// Credentials: supports explicit (GH_TOKEN, SSH_KEY_PATH env vars) or implicit (keyring)
 /// Returns error if any step fails; logs all transitions for ambient observability.
 async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     use std::process::Command;
@@ -2474,6 +2507,7 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
         .arg(gap_id)
         .current_dir(&repo_root)
         .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+    configure_agent_credentials(&mut cmd);
 
     match cmd.status() {
         Ok(status) if status.success() => {
@@ -2504,6 +2538,7 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
         .arg(gap_id)
         .current_dir(&repo_root)
         .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+    configure_agent_credentials(&mut cmd);
 
     match cmd.status() {
         Ok(status) if status.success() => {
@@ -2539,6 +2574,7 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
         .arg("--update-yaml")
         .current_dir(&repo_root)
         .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+    configure_agent_credentials(&mut cmd);
 
     match cmd.status() {
         Ok(status) if status.success() => {
