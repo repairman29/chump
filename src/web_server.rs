@@ -28,6 +28,7 @@ use crate::approval_resolver;
 use crate::autopilot;
 use crate::db_pool;
 use crate::episode_db;
+use crate::gap_store;
 use crate::limits;
 use crate::pilot_metrics;
 use crate::repo_path;
@@ -2225,6 +2226,86 @@ async fn handle_fleet_workspace_exchange(
 }
 
 /// All `/api/*` routes plus favicon. Merged under static file fallback in [`start_web_server`].
+/// GET /api/gap-queue — List of open gaps with preflight status for PWA dispatch queue.
+/// Returns `{gaps: [{id, title, priority, effort, preflight_status, preflight_error?}]}`
+/// where preflight_status is "claimable" | "conflict" | "blocked" | "error".
+async fn handle_gap_queue(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+
+    let gap_store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("gap-queue: failed to open gap store: {}", e);
+            return Ok(Json(
+                serde_json::json!({ "gaps": [], "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let open_gaps = match gap_store.list(Some("open")) {
+        Ok(gaps) => gaps,
+        Err(e) => {
+            tracing::warn!("gap-queue: failed to list open gaps: {}", e);
+            return Ok(Json(
+                serde_json::json!({ "gaps": [], "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let mut result_gaps = Vec::new();
+    for gap in open_gaps {
+        let preflight_result = gap_store.preflight(&gap.id);
+        let (preflight_status, preflight_error) = match preflight_result {
+            Ok(gap_store::PreflightResult::Available) => ("claimable".to_string(), None),
+            Ok(gap_store::PreflightResult::Claimed(session_id)) => (
+                "blocked".to_string(),
+                Some(format!("Already claimed by session {}", session_id)),
+            ),
+            Ok(gap_store::PreflightResult::Done) => (
+                "blocked".to_string(),
+                Some("Gap is already closed/done".to_string()),
+            ),
+            Ok(gap_store::PreflightResult::NotFound) => (
+                "error".to_string(),
+                Some("Gap not found in registry".to_string()),
+            ),
+            Err(e) => ("error".to_string(), Some(e.to_string())),
+        };
+
+        result_gaps.push(serde_json::json!({
+            "id": gap.id,
+            "title": gap.title,
+            "priority": gap.priority,
+            "effort": gap.effort,
+            "preflight_status": preflight_status,
+            "preflight_error": preflight_error
+        }));
+    }
+
+    let claimable_count = result_gaps
+        .iter()
+        .filter(|g| g["preflight_status"] == "claimable")
+        .count();
+    tracing::info!(
+        "gap-queue: {} open gaps, {} claimable (PRODUCT-043)",
+        result_gaps.len(),
+        claimable_count
+    );
+
+    Ok(Json(serde_json::json!({
+        "gaps": result_gaps,
+        "count": result_gaps.len(),
+        "claimable_count": claimable_count
+    })))
+}
+
 fn build_api_router() -> Router {
     Router::new()
         .route("/favicon.ico", get(routes::health::handle_favicon))
@@ -2344,6 +2425,7 @@ fn build_api_router() -> Router {
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),
         )
+        .route("/api/gap-queue", get(handle_gap_queue))
 }
 
 /// GET /skills/index.json (also /.well-known/skills/index.json) — COMP-006 skills index.
