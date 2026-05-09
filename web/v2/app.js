@@ -6,6 +6,7 @@ class ChumpNav extends HTMLElement {
   static #ITEMS = [
     { id: 'chat',      label: 'Chat',      icon: '💬' },
     { id: 'results',   label: 'Results',   icon: '📊' },
+    { id: 'agent',     label: 'Agent',     icon: '🔄' },
     { id: 'tasks',     label: 'Tasks',     icon: '⚡' },
     { id: 'decisions', label: 'Decisions', icon: '🎯' },
     { id: 'memory',    label: 'Memory',    icon: '🧠' },
@@ -391,10 +392,111 @@ class ChumpViewChat extends HTMLElement {
 }
 customElements.define('chump-view-chat', ChumpViewChat);
 
+// ── <chump-view-agent> ────────────────────────────────────────────────────────
+class ChumpViewAgent extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Gap Queue</h2>
+        <p class="view-subtitle">Fleet orchestrator — claim and work gaps autonomously</p>
+      </section>
+      <section class="gap-queue-stats" id="gap-stats">
+        <div class="stat-item">
+          <span class="stat-value">—</span>
+          <span class="stat-label">Open</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-value">—</span>
+          <span class="stat-label">Claimable</span>
+        </div>
+      </section>
+      <section class="gap-list" id="gap-list">
+        <p class="placeholder">Loading gap queue…</p>
+      </section>
+    `;
+    this.#load();
+    this.#poll = setInterval(() => this.#load(), 5000);
+  }
+
+  disconnectedCallback() {
+    clearInterval(this.#poll);
+  }
+
+  #load() {
+    const list = this.querySelector('#gap-list');
+    const stats = this.querySelector('#gap-stats');
+    fetch('/api/gap-queue')
+      .then((r) => r.json())
+      .then((d) => {
+        const gaps = d.gaps ?? [];
+        const claimable = d.claimable_count ?? 0;
+
+        if (gaps.length === 0) {
+          list.innerHTML = '<p class="placeholder">No gaps in queue.</p>';
+          stats.innerHTML = `
+            <div class="stat-item"><span class="stat-value">0</span><span class="stat-label">Open</span></div>
+            <div class="stat-item"><span class="stat-value">0</span><span class="stat-label">Claimable</span></div>
+          `;
+          return;
+        }
+
+        stats.innerHTML = `
+          <div class="stat-item"><span class="stat-value">${gaps.length}</span><span class="stat-label">Open</span></div>
+          <div class="stat-item"><span class="stat-value">${claimable}</span><span class="stat-label">Claimable</span></div>
+        `;
+
+        list.innerHTML = gaps.map((g) => {
+          const badgeClass = g.preflight_status === 'claimable' ? 'badge-success' :
+                            g.preflight_status === 'blocked' ? 'badge-warn' : 'badge-error';
+          return `
+            <article class="gap-card">
+              <header class="gap-card-header">
+                <span class="gap-id">${g.id}</span>
+                <span class="gap-badge ${badgeClass}">${g.preflight_status || 'unknown'}</span>
+                <span class="gap-priority">${g.priority || 'P?'}/${g.effort || '?'}</span>
+              </header>
+              <p class="gap-title">${g.title || '(no title)'}</p>
+              ${g.preflight_error ? `<p class="gap-error">${g.preflight_error}</p>` : ''}
+              ${g.preflight_status === 'claimable' ? `<button class="gap-claim-btn" data-gap-id="${g.id}">Claim</button>` : ''}
+            </article>
+          `;
+        }).join('');
+
+        // Attach claim handlers
+        list.querySelectorAll('.gap-claim-btn').forEach((btn) => {
+          btn.addEventListener('click', (e) => this.#claim(e.target.dataset.gapId));
+        });
+      })
+      .catch((err) => {
+        list.innerHTML = `<p class="placeholder">Could not load gap queue: ${err.message}</p>`;
+      });
+  }
+
+  #claim(gapId) {
+    fetch(`/api/gap/claim/${gapId}`, { method: 'POST' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) {
+          alert(`Claim failed: ${d.error}`);
+        } else {
+          alert(`Claimed ${gapId}. Worktree: ${d.worktree_path}`);
+          this.#load();
+        }
+      })
+      .catch((err) => {
+        alert(`Claim error: ${err.message}`);
+      });
+  }
+
+  #poll;
+}
+customElements.define('chump-view-agent', ChumpViewAgent);
+
 // ── Router ────────────────────────────────────────────────────────────────────
 const VIEWS = {
   chat:      () => document.createElement('chump-view-chat'),
   results:   () => document.createElement('chump-view-results'),
+  agent:     () => document.createElement('chump-view-agent'),
   tasks:     () => document.createElement('chump-view-tasks'),
   decisions: () => document.createElement('chump-view-decisions'),
   memory:    () => document.createElement('chump-view-memory'),
