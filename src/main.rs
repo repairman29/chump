@@ -873,9 +873,11 @@ async fn main() -> Result<()> {
         let repo_root = repo_path::repo_root();
         if let Some(gap_id) = st_flag("--start") {
             session_ledger::emit_session_start(&repo_root, &session_id, &gap_id);
+            let dashboard_url = std::env::var("CHUMP_WEB_URL")
+                .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
             println!(
-                "session_start logged: gap={} session={}",
-                gap_id, session_id
+                "session_start logged: gap={} session={}\ndashboard: {}",
+                gap_id, session_id, dashboard_url
             );
             return Ok(());
         }
