@@ -2433,7 +2433,10 @@ async fn handle_gap_work(
 
     let gap_id_clone = gap_id.clone();
     tokio::spawn(async move {
-        tracing::info!("gap-work: spawning autonomous workflow for {}", gap_id_clone);
+        tracing::info!(
+            "gap-work: spawning autonomous workflow for {}",
+            gap_id_clone
+        );
 
         if let Err(e) = spawn_gap_workflow(&gap_id_clone).await {
             tracing::error!("gap-work: workflow failed for {}: {}", gap_id_clone, e);
@@ -2469,7 +2472,11 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
             tracing::info!("gap-work: claim succeeded for {}", gap_id);
         }
         Ok(status) => {
-            tracing::warn!("gap-work: claim failed for {} with status {}", gap_id, status);
+            tracing::warn!(
+                "gap-work: claim failed for {} with status {}",
+                gap_id,
+                status
+            );
             return Err(format!("Claim failed: {}", status).into());
         }
         Err(e) => {
@@ -2493,7 +2500,11 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
             Ok(())
         }
         Ok(status) => {
-            tracing::warn!("gap-work: ship failed for {} with status {}", gap_id, status);
+            tracing::warn!(
+                "gap-work: ship failed for {} with status {}",
+                gap_id,
+                status
+            );
             Err(format!("Ship failed: {}", status).into())
         }
         Err(e) => {
