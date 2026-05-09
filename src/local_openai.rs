@@ -1032,12 +1032,29 @@ impl Provider for LocalOpenAIProvider {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(8192)
-                .clamp(1024, 32768);
+                .clamp(1024, 131072);
             let keep_alive =
                 std::env::var("CHUMP_OLLAMA_KEEP_ALIVE").unwrap_or_else(|_| "30m".to_string());
             body["options"] =
                 json!({ "num_ctx": num_ctx, "temperature": temperature, "top_p": top_p });
             body["keep_alive"] = json!(keep_alive);
+
+            // PRODUCT-065: disable Qwen3 extended thinking for web-slim profile.
+            // Ollama's `think` parameter controls server-side thinking token
+            // generation (separate from the `/no_think` text directive which only
+            // affects in-context behavior). With think:false, eval tokens drop
+            // from ~280 to ~110 and response time halves (18s → 9s on M4/8B).
+            //
+            // CHUMP_OLLAMA_THINK=0: force think off (web-slim default)
+            // CHUMP_OLLAMA_THINK=1: force think on
+            // unset: think off when web_slim_active(), on otherwise
+            let think = match std::env::var("CHUMP_OLLAMA_THINK") {
+                Ok(v) => v.trim() == "1",
+                Err(_) => !crate::tool_inventory::web_slim_active(),
+            };
+            if !think {
+                body["think"] = json!(false);
+            }
 
             // num_ctx overflow early warning: when assembled prompt approaches
             // num_ctx, Ollama silently drops connections instead of returning a
