@@ -1,0 +1,13 @@
+- id: PRODUCT-070
+  domain: PRODUCT
+  title: "Fix e2e-pwa test timeout by enabling CHUMP_LIGHT_CONTEXT for web_slim profile"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "CHUMP_LIGHT_CONTEXT=1 added to e2e-pwa test env block in .github/workflows/ci.yml"
+    - "CHUMP_LIGHT_CONTEXT env var passed through to chump --web invocation"
+    - "e2e-pwa test passes on qwen2.5:7b (completes within ~10s, not timeout)"
+    - "All three PWA PRs (#1375, #1378, #1373) auto-merge after this fix lands"
+  depends_on: []
+  notes: "The e2e-pwa test times out without web_slim profile (16 tools >120s on qwen2.5:7b vs 6 tools ~10s). Auto-detection requires CHUMP_LIGHT_CONTEXT=1 + Ollama port 11434."
