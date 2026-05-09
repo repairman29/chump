@@ -2451,6 +2451,10 @@ async fn handle_gap_work(
 }
 
 /// Spawn an autonomous workflow to claim, work, and ship a gap.
+/// Follows CLAUDE.md agent protocol:
+/// 1. chump claim <ID> — atomic: fetch + verify + doctor + worktree + lease
+/// 2. chump gap ship <ID> --update-yaml — close gap + sync YAML mirror to reflect gap.status
+/// Returns error if any step fails; logs all transitions for ambient observability.
 async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     use std::process::Command;
 
@@ -2459,7 +2463,7 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo_path::runtime_base());
 
-    // Step 1: Claim the gap (if not already claimed)
+    // Step 1: Claim the gap (CLAUDE.md rule: always work in a linked worktree)
     tracing::info!("gap-work: claiming {} in {}", gap_id, repo_root.display());
     let mut cmd = Command::new(&chump_bin);
     cmd.arg("claim")
@@ -2486,17 +2490,25 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
     }
 
     // Step 2: Ship the gap (runs the full workflow via the git worktree)
-    tracing::info!("gap-work: shipping {} via chump gap ship", gap_id);
+    // Per CLAUDE.md: chump gap ship <ID> --update-yaml closes gap + syncs YAML mirror
+    tracing::info!(
+        "gap-work: shipping {} via chump gap ship --update-yaml",
+        gap_id
+    );
     let mut cmd = Command::new(&chump_bin);
     cmd.arg("gap")
         .arg("ship")
         .arg(gap_id)
+        .arg("--update-yaml")
         .current_dir(&repo_root)
         .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
 
     match cmd.status() {
         Ok(status) if status.success() => {
-            tracing::info!("gap-work: ship succeeded for {}", gap_id);
+            tracing::info!(
+                "gap-work: ship succeeded for {} — gap closed and YAML synced",
+                gap_id
+            );
             Ok(())
         }
         Ok(status) => {
