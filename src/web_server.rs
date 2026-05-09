@@ -2369,6 +2369,58 @@ async fn handle_gap_claim(
     }
 }
 
+/// GET /api/gap/status/:id — Get the current status of a claimed gap.
+async fn handle_gap_status(
+    Path(gap_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let gap_store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("gap-status: failed to open gap store: {}", e);
+            return Ok(Json(serde_json::json!({
+                "error": format!("Failed to open gap store: {}", e)
+            })));
+        }
+    };
+
+    match gap_store.get(&gap_id) {
+        Ok(Some(gap)) => {
+            tracing::info!("gap-status: {} has status {}", gap_id, gap.status);
+            Ok(Json(serde_json::json!({
+                "gap_id": gap_id,
+                "status": gap.status,
+                "title": gap.title,
+                "priority": gap.priority,
+                "effort": gap.effort,
+                "closed_date": gap.closed_date,
+                "closed_pr": gap.closed_pr
+            })))
+        }
+        Ok(None) => {
+            tracing::warn!("gap-status: {} not found", gap_id);
+            Ok(Json(serde_json::json!({
+                "error": "Gap not found",
+                "status": "not_found"
+            })))
+        }
+        Err(e) => {
+            tracing::warn!("gap-status: error querying gap {}: {}", gap_id, e);
+            Ok(Json(serde_json::json!({
+                "error": format!("Failed to query gap: {}", e),
+                "status": "error"
+            })))
+        }
+    }
+}
+
 fn build_api_router() -> Router {
     Router::new()
         .route("/favicon.ico", get(routes::health::handle_favicon))
@@ -2490,6 +2542,7 @@ fn build_api_router() -> Router {
         )
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gap/claim/:id", post(handle_gap_claim))
+        .route("/api/gap/status/:id", get(handle_gap_status))
 }
 
 /// GET /skills/index.json (also /.well-known/skills/index.json) — COMP-006 skills index.

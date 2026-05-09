@@ -448,6 +448,11 @@ class ChumpViewAgent extends HTMLElement {
         list.innerHTML = gaps.map((g) => {
           const badgeClass = g.preflight_status === 'claimable' ? 'badge-success' :
                             g.preflight_status === 'blocked' ? 'badge-warn' : 'badge-error';
+          const actions = g.preflight_status === 'claimable'
+            ? `<button class="gap-claim-btn" data-gap-id="${g.id}">Claim</button>`
+            : g.preflight_status === 'blocked'
+            ? `<button class="gap-work-btn" data-gap-id="${g.id}">Work</button><button class="gap-status-btn" data-gap-id="${g.id}">Status</button>`
+            : '';
           return `
             <article class="gap-card">
               <header class="gap-card-header">
@@ -457,7 +462,7 @@ class ChumpViewAgent extends HTMLElement {
               </header>
               <p class="gap-title">${g.title || '(no title)'}</p>
               ${g.preflight_error ? `<p class="gap-error">${g.preflight_error}</p>` : ''}
-              ${g.preflight_status === 'claimable' ? `<button class="gap-claim-btn" data-gap-id="${g.id}">Claim</button>` : ''}
+              ${actions ? `<div class="gap-actions">${actions}</div>` : ''}
             </article>
           `;
         }).join('');
