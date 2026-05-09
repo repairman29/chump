@@ -166,6 +166,47 @@ const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[
     "write_file",
 ];
 
+/// Ultra-slim tool set for PWA web chat on local models (qwen3:8b etc.).
+///
+/// PRODUCT-065: benchmarked on M4 with qwen3:8b via Ollama:
+///   - 16 tools (LIGHT_CHAT_TOOL_KEYS): >120s, timeout
+///   - 5 tools: 10.5s, correct tool call
+///   - 1 tool: 3s
+///
+/// The sweet spot is 5-6 tools. Enough for interactive dev chat (read, write,
+/// list, run commands, do math, persist learnings) without drowning the model
+/// in schema tokens that cause infinite thinking loops.
+///
+/// Activate: `CHUMP_WEB_SLIM_TOOLS=1` or auto-detected when
+/// `CHUMP_LIGHT_CONTEXT=1` + Ollama endpoint.
+const WEB_SLIM_TOOL_KEYS: &[&str] = &[
+    "calculator",
+    "list_dir",
+    "memory_brain",
+    "read_file",
+    "run_cli",
+    "write_file",
+];
+
+/// True when web-slim tool profile should be used.
+///
+/// Explicit: `CHUMP_WEB_SLIM_TOOLS=1`
+/// Auto: `CHUMP_LIGHT_CONTEXT=1` + Ollama endpoint detected
+pub fn web_slim_active() -> bool {
+    if let Ok(v) = std::env::var("CHUMP_WEB_SLIM_TOOLS") {
+        let t = v.trim();
+        return t == "1" || t.eq_ignore_ascii_case("true");
+    }
+    // Auto-detect: light context + local Ollama
+    if env_flags::light_interactive_active() {
+        let base = std::env::var("OPENAI_API_BASE").unwrap_or_default();
+        if base.contains("11434") {
+            return true;
+        }
+    }
+    false
+}
+
 /// Tools the agent loop considers essential for self-improvement workflows.
 /// Every name in this list MUST appear in [`LIGHT_CHAT_TOOL_KEYS`] — enforced
 /// by `light_profile_includes_all_critical_tools` in the test module below.
@@ -190,13 +231,33 @@ const LIGHT_PROFILE_CRITICAL_TOOLS: &[&str] = &[
 ];
 
 /// Register all inventory tools into `registry` (wrapped with middleware). Deterministic order by sort_key.
-/// When `CHUMP_LIGHT_CONTEXT=1` and this is an interactive (non-heartbeat) turn, registers only
-/// [`LIGHT_CHAT_TOOL_KEYS`] for faster local inference.
+///
+/// Tool profile selection (most restrictive wins):
+/// - `web_slim_active()` → [`WEB_SLIM_TOOL_KEYS`] (6 tools, for local models via PWA)
+/// - `CHUMP_LIGHT_CONTEXT=1` → [`LIGHT_CHAT_TOOL_KEYS`] (16 tools, for capable local models)
+/// - default → all enabled tools (~30-40)
 ///
 /// MCP-discovered tools take priority: if an MCP server provides a tool with the same sort_key,
 /// the inline version is skipped and the MCP proxy is registered instead.
 pub fn register_from_inventory(registry: &mut ToolRegistry) {
-    let light = env_flags::light_interactive_active();
+    let web_slim = web_slim_active();
+    let light = !web_slim && env_flags::light_interactive_active();
+
+    // Pick the tool allowlist for this profile
+    let allowlist: Option<&[&str]> = if web_slim {
+        Some(WEB_SLIM_TOOL_KEYS)
+    } else if light {
+        Some(LIGHT_CHAT_TOOL_KEYS)
+    } else {
+        None
+    };
+
+    if web_slim {
+        eprintln!(
+            "[tool_inventory] PRODUCT-065: web-slim profile active ({} tools)",
+            WEB_SLIM_TOOL_KEYS.len()
+        );
+    }
 
     // Collect MCP tool names so we can skip inline duplicates
     let mcp_tools = crate::mcp_bridge::all_mcp_tools();
@@ -205,7 +266,7 @@ pub fn register_from_inventory(registry: &mut ToolRegistry) {
 
     let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
         .filter(|e| e.enabled())
-        .filter(|e| !light || LIGHT_CHAT_TOOL_KEYS.contains(&e.sort_key))
+        .filter(|e| allowlist.map_or(true, |keys| keys.contains(&e.sort_key)))
         // Skip inline tools that have MCP replacements
         .filter(|e| !mcp_names.contains(e.sort_key))
         .collect();
@@ -214,10 +275,12 @@ pub fn register_from_inventory(registry: &mut ToolRegistry) {
         registry.register(tool_middleware::wrap_tool((entry.factory)()));
     }
 
-    // Register MCP proxy tools (skip in light mode unless whitelisted)
+    // Register MCP proxy tools (skip in slim/light mode unless whitelisted)
     for meta in mcp_tools {
-        if light && !LIGHT_CHAT_TOOL_KEYS.contains(&meta.name.as_str()) {
-            continue;
+        if let Some(keys) = allowlist {
+            if !keys.contains(&meta.name.as_str()) {
+                continue;
+            }
         }
         let proxy = crate::mcp_bridge::McpProxyTool::new(meta);
         registry.register(tool_middleware::wrap_tool(Box::new(proxy)));
@@ -385,7 +448,9 @@ inventory::submit! {
 
 #[cfg(test)]
 mod tests {
-    use super::{LIGHT_CHAT_TOOL_KEYS, LIGHT_PROFILE_CRITICAL_TOOLS, WORKER_TOOL_KEYS};
+    use super::{
+        LIGHT_CHAT_TOOL_KEYS, LIGHT_PROFILE_CRITICAL_TOOLS, WEB_SLIM_TOOL_KEYS, WORKER_TOOL_KEYS,
+    };
 
     /// Guard against the regression that hit qwen3:8b on 2026-04-15:
     /// `patch_file` was missing from `LIGHT_CHAT_TOOL_KEYS`, so the model's
@@ -447,5 +512,56 @@ mod tests {
                 key
             );
         }
+    }
+
+    /// WEB_SLIM_TOOL_KEYS sorted alphabetically.
+    #[test]
+    fn web_slim_tool_keys_sorted_alphabetically() {
+        let mut sorted = WEB_SLIM_TOOL_KEYS.to_vec();
+        sorted.sort();
+        assert_eq!(
+            sorted, WEB_SLIM_TOOL_KEYS,
+            "WEB_SLIM_TOOL_KEYS must stay sorted alphabetically"
+        );
+    }
+
+    /// WEB_SLIM_TOOL_KEYS no-duplicates guard.
+    #[test]
+    fn web_slim_tool_keys_have_no_duplicates() {
+        let mut seen = std::collections::HashSet::new();
+        for &key in WEB_SLIM_TOOL_KEYS {
+            assert!(
+                seen.insert(key),
+                "WEB_SLIM_TOOL_KEYS contains duplicate '{}'",
+                key
+            );
+        }
+    }
+
+    /// WEB_SLIM_TOOL_KEYS is a subset of LIGHT_CHAT_TOOL_KEYS.
+    /// This ensures any tool in web-slim is also available in the
+    /// broader light profile (consistency across profile tiers).
+    #[test]
+    fn web_slim_is_subset_of_light_chat() {
+        for &key in WEB_SLIM_TOOL_KEYS {
+            assert!(
+                LIGHT_CHAT_TOOL_KEYS.contains(&key),
+                "WEB_SLIM_TOOL_KEYS contains '{}' which is missing from LIGHT_CHAT_TOOL_KEYS — \
+                 web-slim must be a subset of light-chat",
+                key
+            );
+        }
+    }
+
+    /// PRODUCT-065: web-slim must stay ≤ 6 tools. Benchmarked on M4/qwen3:8b:
+    /// >6 tools causes 120s+ inference timeouts. This is a hard constraint.
+    #[test]
+    fn web_slim_max_tool_count() {
+        assert!(
+            WEB_SLIM_TOOL_KEYS.len() <= 6,
+            "WEB_SLIM_TOOL_KEYS has {} tools but max is 6 (PRODUCT-065 benchmark: \
+             >6 tools causes 120s+ inference on M4/qwen3:8b)",
+            WEB_SLIM_TOOL_KEYS.len()
+        );
     }
 }
