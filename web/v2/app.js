@@ -261,11 +261,54 @@ class ChumpViewSettings extends HTMLElement {
           <span class="setting-value">Service Worker active — shell cached</span>
         </label>
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">Inference Settings</p>
+          <div id="cascade-slots" style="margin-bottom: 16px; font-size: 0.9em; color: var(--text-muted);">
+            <p>Loading cascade slot info…</p>
+          </div>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
           <p class="setting-label" style="margin-bottom: 12px;">Fleet Control</p>
           <chump-parallelism-governor></chump-parallelism-governor>
         </div>
       </section>
     `;
+    this.#loadCascadeInfo();
+  }
+
+  #loadCascadeInfo() {
+    const container = this.querySelector('#cascade-slots');
+    fetch('/api/repo/context')
+      .then(r => r.json())
+      .then(ctx => {
+        if (!ctx || !ctx.effective_root) {
+          container.innerHTML = '<p style="color: var(--error-color);">Unable to load cascade info</p>';
+          return;
+        }
+        const html = `
+          <div style="background: var(--bg-secondary); padding: 12px; border-radius: 6px;">
+            <div style="margin-bottom: 8px;"><strong>Repo Root</strong></div>
+            <div style="margin-bottom: 12px; font-family: monospace; font-size: 0.85em; color: var(--text-secondary);">
+              ${ctx.effective_root}
+            </div>
+            <div style="margin-bottom: 8px;"><strong>Active Profile</strong></div>
+            <div style="color: var(--text-secondary);">
+              ${ctx.active_profile || '(none configured)'}
+            </div>
+            ${ctx.profiles && ctx.profiles.length > 0 ? `
+              <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">
+                <strong>Available Profiles (${ctx.profiles.length})</strong>
+                <ul style="margin: 8px 0; padding-left: 20px;">
+                  ${ctx.profiles.map(p => `<li>${p}</li>`).join('')}
+                </ul>
+              </div>
+            ` : ''}
+          </div>
+        `;
+        container.innerHTML = html;
+      })
+      .catch(err => {
+        container.innerHTML = `<p style="color: var(--error-color);">Error: ${err.message}</p>`;
+      });
   }
 }
 customElements.define('chump-view-settings', ChumpViewSettings);
