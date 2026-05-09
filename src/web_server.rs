@@ -2421,6 +2421,88 @@ async fn handle_gap_status(
     }
 }
 
+/// POST /api/gap/work/:id — Trigger Chump to autonomously work on a claimed gap.
+/// Spawns a background process to claim, work, and ship the gap.
+async fn handle_gap_work(
+    Path(gap_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let gap_id_clone = gap_id.clone();
+    tokio::spawn(async move {
+        tracing::info!("gap-work: spawning autonomous workflow for {}", gap_id_clone);
+
+        if let Err(e) = spawn_gap_workflow(&gap_id_clone).await {
+            tracing::error!("gap-work: workflow failed for {}: {}", gap_id_clone, e);
+        }
+    });
+
+    Ok(Json(serde_json::json!({
+        "status": "started",
+        "gap_id": gap_id,
+        "message": "Autonomous workflow triggered"
+    })))
+}
+
+/// Spawn an autonomous workflow to claim, work, and ship a gap.
+async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::Command;
+
+    let chump_bin = std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+    let repo_root = std::env::var("CHUMP_REPO")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_path::runtime_base());
+
+    // Step 1: Claim the gap (if not already claimed)
+    tracing::info!("gap-work: claiming {} in {}", gap_id, repo_root.display());
+    let mut cmd = Command::new(&chump_bin);
+    cmd.arg("claim")
+        .arg(gap_id)
+        .current_dir(&repo_root)
+        .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+
+    match cmd.status() {
+        Ok(status) if status.success() => {
+            tracing::info!("gap-work: claim succeeded for {}", gap_id);
+        }
+        Ok(status) => {
+            tracing::warn!("gap-work: claim failed for {} with status {}", gap_id, status);
+            return Err(format!("Claim failed: {}", status).into());
+        }
+        Err(e) => {
+            tracing::error!("gap-work: failed to spawn chump claim: {}", e);
+            return Err(Box::new(e));
+        }
+    }
+
+    // Step 2: Ship the gap (runs the full workflow via the git worktree)
+    tracing::info!("gap-work: shipping {} via chump gap ship", gap_id);
+    let mut cmd = Command::new(&chump_bin);
+    cmd.arg("gap")
+        .arg("ship")
+        .arg(gap_id)
+        .current_dir(&repo_root)
+        .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+
+    match cmd.status() {
+        Ok(status) if status.success() => {
+            tracing::info!("gap-work: ship succeeded for {}", gap_id);
+            Ok(())
+        }
+        Ok(status) => {
+            tracing::warn!("gap-work: ship failed for {} with status {}", gap_id, status);
+            Err(format!("Ship failed: {}", status).into())
+        }
+        Err(e) => {
+            tracing::error!("gap-work: failed to spawn chump gap ship: {}", e);
+            Err(Box::new(e))
+        }
+    }
+}
+
 fn build_api_router() -> Router {
     Router::new()
         .route("/favicon.ico", get(routes::health::handle_favicon))
@@ -2543,6 +2625,7 @@ fn build_api_router() -> Router {
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gap/claim/:id", post(handle_gap_claim))
         .route("/api/gap/status/:id", get(handle_gap_status))
+        .route("/api/gap/work/:id", post(handle_gap_work))
 }
 
 /// GET /skills/index.json (also /.well-known/skills/index.json) — COMP-006 skills index.

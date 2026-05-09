@@ -471,6 +471,16 @@ class ChumpViewAgent extends HTMLElement {
         list.querySelectorAll('.gap-claim-btn').forEach((btn) => {
           btn.addEventListener('click', (e) => this.#claim(e.target.dataset.gapId));
         });
+
+        // Attach work handlers
+        list.querySelectorAll('.gap-work-btn').forEach((btn) => {
+          btn.addEventListener('click', (e) => this.#work(e.target.dataset.gapId));
+        });
+
+        // Attach status handlers
+        list.querySelectorAll('.gap-status-btn').forEach((btn) => {
+          btn.addEventListener('click', (e) => this.#status(e.target.dataset.gapId));
+        });
       })
       .catch((err) => {
         list.innerHTML = `<p class="placeholder">Could not load gap queue: ${err.message}</p>`;
@@ -490,6 +500,38 @@ class ChumpViewAgent extends HTMLElement {
       })
       .catch((err) => {
         alert(`Claim error: ${err.message}`);
+      });
+  }
+
+  #work(gapId) {
+    fetch(`/api/gap/work/${gapId}`, { method: 'POST' })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) {
+          alert(`Work failed: ${d.error}`);
+        } else {
+          alert(`Workflow started for ${gapId}. Chump is working...`);
+          this.#load();
+        }
+      })
+      .catch((err) => {
+        alert(`Work error: ${err.message}`);
+      });
+  }
+
+  #status(gapId) {
+    fetch(`/api/gap/status/${gapId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) {
+          alert(`Status error: ${d.error}`);
+        } else {
+          const msg = `Gap: ${gapId}\nStatus: ${d.status}\nTitle: ${d.title}\nPriority: ${d.priority}/${d.effort}`;
+          alert(msg);
+        }
+      })
+      .catch((err) => {
+        alert(`Status error: ${err.message}`);
       });
   }
 
