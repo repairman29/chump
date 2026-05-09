@@ -2452,8 +2452,10 @@ async fn handle_gap_work(
 
 /// Helper to configure GitHub credentials for agent subprocess.
 /// Supports two modes:
+///
 /// 1. Explicit (secure): GH_TOKEN and SSH_KEY_PATH env vars override keyring lookup
 /// 2. Implicit (local dev): inherits parent process env (gh CLI from keyring, SSH keys)
+///
 /// Logs credential presence without exposing values (sanitized for security).
 fn configure_agent_credentials(cmd: &mut std::process::Command) {
     // GH_TOKEN: explicit GitHub token (overrides keyring)
@@ -2484,13 +2486,15 @@ fn configure_agent_credentials(cmd: &mut std::process::Command) {
 
 /// Spawn an autonomous workflow to work on and ship a gap.
 /// Follows Chump's agent protocol per `execute_gap.rs`:
+///
 /// 1. chump claim <ID> — atomic: setup worktree with gap checked out
 /// 2. chump --execute-gap <ID> — spawn full agent session that:
 ///    - reads gap acceptance criteria
 ///    - runs multi-turn agent loop to work on gap
 ///    - agent commits, pushes, creates/merges PR autonomously
 /// 3. chump gap ship <ID> --update-yaml — finalize and sync YAML mirror
-/// Credentials: supports explicit (GH_TOKEN, SSH_KEY_PATH env vars) or implicit (keyring)
+///
+/// Credentials: supports explicit (GH_TOKEN, SSH_KEY_PATH env vars) or implicit (keyring).
 /// Returns error if any step fails; logs all transitions for ambient observability.
 async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     use std::process::Command;
