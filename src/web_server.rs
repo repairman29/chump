@@ -2719,9 +2719,9 @@ fn build_api_router() -> Router {
             post(handle_fleet_workspace_exchange),
         )
         .route("/api/gap-queue", get(handle_gap_queue))
-        .route("/api/gap/claim/:id", post(handle_gap_claim))
-        .route("/api/gap/status/:id", get(handle_gap_status))
-        .route("/api/gap/work/:id", post(handle_gap_work))
+        .route("/api/gap/claim/{id}", post(handle_gap_claim))
+        .route("/api/gap/status/{id}", get(handle_gap_status))
+        .route("/api/gap/work/{id}", post(handle_gap_work))
 }
 
 /// GET /skills/index.json (also /.well-known/skills/index.json) — COMP-006 skills index.
