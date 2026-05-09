@@ -79,6 +79,36 @@ Workers re-evaluate credentials before each `claude -p` spawn. OAUTH tokens are 
 
 Validate: `chump fleet doctor` — exits non-zero if no valid auth path found.
 
+## GitHub credentials for agents (INFRA-AGENT-CREDS)
+
+Autonomous agents spawned via `chump --execute-gap` or `/api/gap/work` need GitHub access to commit, push, and merge PRs.
+
+Two modes:
+
+**1. Implicit (local dev)** — agent inherits parent process environment:
+- `gh` CLI token from macOS keyring (or system credential helper)
+- SSH keys from `~/.ssh/` 
+- No explicit configuration needed; works on developer machines
+- **Limitation:** breaks in Docker, sandboxed workers, different-user processes
+
+**2. Explicit (production)** — agent uses environment variables:
+```bash
+export GH_TOKEN="ghp_..."                    # GitHub API token (overrides keyring)
+export SSH_KEY_PATH="~/.ssh/id_ed25519"     # Path to SSH key for git ops
+export GITHUB_TOKEN="ghp_..."                # Alternative to GH_TOKEN (some tools)
+```
+
+Pass these to the workflow:
+```bash
+GH_TOKEN="..." chump --execute-gap <ID>
+# or via PWA:
+GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
+```
+
+**Sanitization:** credential values never appear in logs. Only `"forwarding explicit GH_TOKEN"` debug messages confirm presence.
+
+**Backwards compatible:** if env vars unset, agent falls back to keyring (implicit mode).
+
 ## Hard rules
 
 - **`proprietary/` — NEVER commit here.** Private sibling repo; stray copies must not be staged or referenced.
