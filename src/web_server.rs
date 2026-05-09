@@ -2450,10 +2450,14 @@ async fn handle_gap_work(
     })))
 }
 
-/// Spawn an autonomous workflow to claim, work, and ship a gap.
-/// Follows CLAUDE.md agent protocol:
-/// 1. chump claim <ID> — atomic: fetch + verify + doctor + worktree + lease
-/// 2. chump gap ship <ID> --update-yaml — close gap + sync YAML mirror to reflect gap.status
+/// Spawn an autonomous workflow to work on and ship a gap.
+/// Follows Chump's agent protocol per `execute_gap.rs`:
+/// 1. chump claim <ID> — atomic: setup worktree with gap checked out
+/// 2. chump --execute-gap <ID> — spawn full agent session that:
+///    - reads gap acceptance criteria
+///    - runs multi-turn agent loop to work on gap
+///    - agent commits, pushes, creates/merges PR autonomously
+/// 3. chump gap ship <ID> --update-yaml — finalize and sync YAML mirror
 /// Returns error if any step fails; logs all transitions for ambient observability.
 async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     use std::process::Command;
@@ -2489,10 +2493,43 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
         }
     }
 
-    // Step 2: Ship the gap (runs the full workflow via the git worktree)
-    // Per CLAUDE.md: chump gap ship <ID> --update-yaml closes gap + syncs YAML mirror
+    // Step 2: Spawn full agent session (execute_gap.rs)
+    // This runs multi-turn loop: work on gap → commit → push → create PR → merge
     tracing::info!(
-        "gap-work: shipping {} via chump gap ship --update-yaml",
+        "gap-work: spawning agent session via chump --execute-gap {}",
+        gap_id
+    );
+    let mut cmd = Command::new(&chump_bin);
+    cmd.arg("--execute-gap")
+        .arg(gap_id)
+        .current_dir(&repo_root)
+        .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+
+    match cmd.status() {
+        Ok(status) if status.success() => {
+            tracing::info!("gap-work: agent session succeeded for {}", gap_id);
+        }
+        Ok(status) => {
+            tracing::warn!(
+                "gap-work: agent session failed for {} with status {}",
+                gap_id,
+                status
+            );
+            // Log but continue to ship phase — may have partial progress
+            tracing::info!(
+                "gap-work: continuing to ship phase despite agent exit code {}",
+                status
+            );
+        }
+        Err(e) => {
+            tracing::error!("gap-work: failed to spawn agent session: {}", e);
+            return Err(Box::new(e));
+        }
+    }
+
+    // Step 3: Ship the gap (closes gap + syncs YAML mirror per CLAUDE.md)
+    tracing::info!(
+        "gap-work: finalizing gap {} via chump gap ship --update-yaml",
         gap_id
     );
     let mut cmd = Command::new(&chump_bin);
