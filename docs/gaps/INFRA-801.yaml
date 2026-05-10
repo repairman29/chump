@@ -1,0 +1,17 @@
+- id: INFRA-801
+  domain: INFRA
+  title: "ZERO-WASTE: fix pr-watch-shepherd.sh branch mismatch — DIRTY-after-arm PRs never recovered"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    pr-watch-shepherd.sh creates an ephemeral worktree with -B tmp-shepherd-pr$PR (line 164), then tries git checkout -B "$BRANCH" origin/$BRANCH (line 176). But the PRs branch (e.g. chump/infra-767-mirror-guards-ci) is already checked out in the original worktree, so git refuses to check it out in a second worktree. The || true on line 176 silently swallows the error, HEAD stays on tmp-shepherd-pr$PR, and pr-watch.sh exits 4 because git symbolic-ref --short HEAD does not match the PR headRefName.
+    
+    Result: ALL DIRTY-after-arm PRs cycle through cooldowns forever. PRs #1367 and #1387 have been stuck for days.
+    
+    Fix: Add a --branch-override flag to pr-watch.sh that accepts the branch name directly (skipping the git symbolic-ref check), or make the shepherd pass the branch via env var so pr-watch.sh can compare against the PR headRefName without requiring the branch to be checked out.
+  acceptance_criteria:
+    - DIRTY-after-arm PR is recovered by shepherd within one cycle
+    - pr-watch-shepherd logs show recovered instead of cooldown
+    - No regression for non-shepherd pr-watch.sh callers (bot-merge, manual)
+

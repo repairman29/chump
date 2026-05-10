@@ -1,0 +1,18 @@
+- id: INFRA-802
+  domain: INFRA
+  title: "ZERO-WASTE: auto-arm-sweeper launchd — gh not authenticated, re-arm never happens"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    auto-arm-sweeper.sh runs under launchd which does not inherit the users gh auth token (~/.config/gh/hosts.yml). The error log shows: "ERROR: gh api user returned empty (not logged in?)". This means auto-arm-sweeper runs but can never re-arm any PR because every gh call fails auth.
+    
+    The sweepers plist (dev.chump.auto-arm-sweeper) does not set GH_TOKEN or GH_HOST. Fix: either (a) add GH_TOKEN to the plists environment via a wrapper that reads ~/.config/gh/hosts.yml, or (b) create a shared auth helper that all launchd agents source.
+    
+    Affected agents: auto-arm-sweeper (exit 256 / code 1, confirmed). May also affect stuck-pr-filer and other launchd agents that call gh.
+  acceptance_criteria:
+    - auto-arm-sweeper launchd log shows successful gh auth
+    - auto-arm-sweeper re-arms a PR that lost auto-merge
+    - Other launchd agents using gh also authenticate
+    - Fix documented in the plist or a shared auth wrapper
+
