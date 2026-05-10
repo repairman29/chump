@@ -146,7 +146,6 @@ wasmtime-wasi = "44"
 wasi-common = "44"
 sha2 = "0.11.0"
 hex = "0.4.3"
-unused = "0.1.0"
 
 [profile.release]
 # Keep debug info for profiling (flamegraph, cargo-profiler). Strip in CI if needed.
