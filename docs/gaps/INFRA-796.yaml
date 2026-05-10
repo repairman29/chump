@@ -9,6 +9,7 @@
     Each operator intent iteration emits a structured `kind=orchestrate_intent` event to ambient.jsonl
     with duration, estimated token counts, tool count, and failure classification (transient vs permanent).
     This gives operators and downstream tooling (waste-tally, fleet-health) visibility into orchestrator activity.
+  pr: 1421
   acceptance_criteria:
     - orchestrate loop emits kind=orchestrate_intent event to ambient.jsonl each iteration
     - event includes: intent text, status (success/failure), tool_count, est_input_tokens, est_output_tokens, elapsed_ms

@@ -10,6 +10,7 @@
     The real parser (used in production) is Opus-driven: the system prompt instructs the model
     to emit TOOL: chump <subcommand> lines, which parse_tool_calls() extracts and run_tool() executes.
     This means the "real" LLM-based intent parsing is already implemented through the Opus conversational loop.
+  pr: 1421
   acceptance_criteria:
     - stub parser (CHUMP_ORCHESTRATE_STUB=1) routes spawn/start/fleet → fleet status via keyword matching
     - stub parser routes grade/mission/pillar → mission-grade
