@@ -361,13 +361,13 @@ impl KpiReport {
         out.push_str("║        Chump KPI Report (INFRA-617)        ║\n");
         out.push_str("╚══════════════════════════════════════════════╝\n\n");
         out.push_str(&self.ship_rate.render_text());
-        out.push_str("\n");
+        out.push('\n');
         out.push_str(&self.mission_history.render_text());
-        out.push_str("\n");
+        out.push('\n');
         out.push_str(&self.cost_savings.render_text());
-        out.push_str("\n");
+        out.push('\n');
         out.push_str(&self.leverage.render_text());
-        out.push_str("\n");
+        out.push('\n');
         out.push_str(&self.tokens_per_ship.render_text());
         out
     }
@@ -593,7 +593,7 @@ fn build_leverage_section(repo_root: &Path) -> LeverageSection {
             depended_by_count: count,
         })
         .collect();
-    entries.sort_by(|a, b| b.depended_by_count.cmp(&a.depended_by_count));
+    entries.sort_by_key(|b| std::cmp::Reverse(b.depended_by_count));
     entries.truncate(10);
 
     LeverageSection { entries }
@@ -854,7 +854,7 @@ mod tests {
     }
 
     fn unix_to_iso_date(ts: i64) -> String {
-        let d = (ts / 86_400) as i64 + 2_440_588;
+        let d = (ts / 86_400) + 2_440_588;
         let f = d + 1401 + ((((4 * d + 274_277) / 146_097) * 3) / 4) - 38;
         let e = 4 * f + 3;
         let g = (e % 1461) / 4;

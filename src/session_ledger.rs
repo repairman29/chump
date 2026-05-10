@@ -48,11 +48,22 @@ static MODEL_RATES: OnceLock<HashMap<String, ModelRate>> = OnceLock::new();
 fn load_model_rates() -> &'static HashMap<String, ModelRate> {
     MODEL_RATES.get_or_init(|| {
         let mut rates = HashMap::new();
-        // Try to load from docs/pricing/model_rates.yaml
-        if let Ok(yaml_content) = std::fs::read_to_string("docs/pricing/model_rates.yaml") {
-            if let Ok(parsed) = serde_yaml::from_str::<ModelRatesFile>(&yaml_content) {
-                for model in parsed.models {
-                    rates.insert(model.model_id.clone(), model);
+        // Try CARGO_MANIFEST_DIR first (set by Cargo during tests/builds), then CWD-relative.
+        let candidates: Vec<std::path::PathBuf> = std::env::var("CARGO_MANIFEST_DIR")
+            .map(|d| {
+                vec![
+                    std::path::PathBuf::from(&d).join("docs/pricing/model_rates.yaml"),
+                    std::path::PathBuf::from("docs/pricing/model_rates.yaml"),
+                ]
+            })
+            .unwrap_or_else(|_| vec![std::path::PathBuf::from("docs/pricing/model_rates.yaml")]);
+        for path in candidates {
+            if let Ok(yaml_content) = std::fs::read_to_string(&path) {
+                if let Ok(parsed) = serde_yaml::from_str::<ModelRatesFile>(&yaml_content) {
+                    for model in parsed.models {
+                        rates.insert(model.model_id.clone(), model);
+                    }
+                    break;
                 }
             }
         }
