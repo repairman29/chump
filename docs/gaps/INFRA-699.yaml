@@ -1,0 +1,12 @@
+- id: INFRA-699
+  domain: INFRA
+  title: "ZERO-WASTE: remove unused 'unused' crate dependency from Cargo.toml — listed but never imported"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Cargo.toml [dependencies] no longer lists 'unused = ...'
+    - cargo build / cargo test --workspace pass after removal
+    - "cargo tree "
+    - " grep -c '^unused' returns 0"
+
