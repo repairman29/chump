@@ -408,17 +408,23 @@ const SPAWN_LESSONS_DEFAULT_N: usize = 5;
 /// prompt starts crowding out the actual task.
 const SPAWN_LESSONS_MAX_N: usize = 20;
 
-/// Read CHUMP_LESSONS_AT_SPAWN_N env var. Returns `None` when unset (the
-/// default — spawn-loaded lessons OFF). When set, the value is clamped to
-/// [0, SPAWN_LESSONS_MAX_N]. Malformed values fall back to the default (5).
+/// Read CHUMP_LESSONS_AT_SPAWN_N env var.
 ///
-/// COG-024 invariant: returning `None` here means the spawn-lessons path is
-/// completely silent. Callers MUST treat None as "do nothing."
+/// FLEET-049: defaults to `SPAWN_LESSONS_DEFAULT_N` (5) when unset — lessons
+/// are ON by default with the quality gate active. Set to `0` to disable.
+/// When set, the value is clamped to [0, SPAWN_LESSONS_MAX_N]. Malformed
+/// values fall back to the default.
+///
+/// COG-024 invariant: returning `None` means the spawn-lessons path is
+/// completely silent. `Some(0)` means lessons are explicitly disabled.
 pub fn spawn_lessons_n() -> Option<usize> {
-    let raw = std::env::var("CHUMP_LESSONS_AT_SPAWN_N").ok()?;
+    let raw = match std::env::var("CHUMP_LESSONS_AT_SPAWN_N") {
+        Ok(s) => s,
+        Err(_) => return Some(SPAWN_LESSONS_DEFAULT_N),
+    };
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return None;
+        return Some(SPAWN_LESSONS_DEFAULT_N);
     }
     let parsed: usize = trimmed.parse().unwrap_or(SPAWN_LESSONS_DEFAULT_N);
     Some(parsed.min(SPAWN_LESSONS_MAX_N))
@@ -442,20 +448,27 @@ fn outcome_quality(outcome_class: Option<&str>) -> f64 {
     }
 }
 
+/// Default quality threshold for lesson injection (FLEET-049).
+/// Matches the documented default in docs/operations/FLEET_ENV_VARS_H_N.md.
+const LESSON_QUALITY_THRESHOLD_DEFAULT: f64 = 0.6;
+
 /// Read `CHUMP_LESSON_QUALITY_THRESHOLD` env var (float 0.0–1.0).
-/// Returns 0.0 when unset (no filter — all lessons pass).
+///
+/// FLEET-049: defaults to 0.6 when unset — lessons with cosine similarity
+/// below 0.6 are filtered out at spawn time. Set to 0.0 to disable the
+/// quality gate (inject all lessons regardless of score).
 /// Clamps the parsed value to [0.0, 1.0].
-/// Malformed values fall back to 0.0 (safe default — same as unset).
+/// Malformed values fall back to the default.
 pub fn lesson_quality_threshold() -> f64 {
     let raw = match std::env::var("CHUMP_LESSON_QUALITY_THRESHOLD") {
         Ok(s) => s,
-        Err(_) => return 0.0,
+        Err(_) => return LESSON_QUALITY_THRESHOLD_DEFAULT,
     };
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return 0.0;
+        return LESSON_QUALITY_THRESHOLD_DEFAULT;
     }
-    let parsed: f64 = trimmed.parse().unwrap_or(0.0);
+    let parsed: f64 = trimmed.parse().unwrap_or(LESSON_QUALITY_THRESHOLD_DEFAULT);
     parsed.clamp(0.0, 1.0)
 }
 
@@ -2344,9 +2357,14 @@ mod tests {
 
     #[test]
     #[serial(reflection_db)]
-    fn spawn_lessons_n_unset_returns_none() {
+    fn fleet049_spawn_lessons_n_unset_returns_default_n() {
+        // FLEET-049: lessons default-ON — unset env → Some(SPAWN_LESSONS_DEFAULT_N)
         std::env::remove_var("CHUMP_LESSONS_AT_SPAWN_N");
-        assert_eq!(spawn_lessons_n(), None);
+        assert_eq!(
+            spawn_lessons_n(),
+            Some(5),
+            "lessons must be ON by default (FLEET-049)"
+        );
     }
 
     #[test]
@@ -2386,7 +2404,8 @@ mod tests {
             )
             .expect("test invariant");
         }
-        let lessons = load_spawn_lessons("", 3);
+        // Use threshold=0.0: this test is about max_n capping, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("", 3, 0.0);
         assert_eq!(lessons.len(), 3);
     }
 
@@ -2425,7 +2444,8 @@ mod tests {
         )
         .expect("test invariant");
 
-        let lessons = load_spawn_lessons("", 10);
+        // Use threshold=0.0: this test checks priority/seed exclusion, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("", 10, 0.0);
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
         assert!(directives.contains(&"real high lesson"));
         assert!(!directives.contains(&"low priority lesson"));
@@ -2451,7 +2471,8 @@ mod tests {
         )
         .expect("test invariant");
 
-        let lessons = load_spawn_lessons("", 10);
+        // Use threshold=0.0: this test checks ranking by frequency, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("", 10, 0.0);
         // The recurring one must be first; both unique directives should
         // appear (GROUP BY collapses dupes).
         assert_eq!(lessons.len(), 2, "duplicates collapsed via GROUP BY");
@@ -2479,7 +2500,8 @@ mod tests {
         )
         .expect("test invariant");
 
-        let lessons = load_spawn_lessons("patch_file", 10);
+        // Use threshold=0.0: this test checks domain filtering, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("patch_file", 10, 0.0);
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
         assert!(directives.contains(&"universal lesson"));
         assert!(directives.contains(&"patch-scoped lesson"));
@@ -2504,7 +2526,8 @@ mod tests {
         )
         .expect("test invariant");
 
-        let lessons = load_spawn_lessons("global", 10);
+        // Use threshold=0.0: this test checks global domain behaviour, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("global", 10, 0.0);
         assert_eq!(
             lessons.len(),
             2,
@@ -2702,9 +2725,13 @@ mod tests {
 
     #[test]
     #[serial(reflection_db)]
-    fn mem009_lesson_quality_threshold_default_zero() {
+    fn fleet049_lesson_quality_threshold_default_is_0_6() {
+        // FLEET-049: quality gate default raised from 0.0 to 0.6 to match docs.
         std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
-        assert_eq!(lesson_quality_threshold(), 0.0);
+        assert!(
+            (lesson_quality_threshold() - 0.6).abs() < f64::EPSILON,
+            "default threshold must be 0.6 (FLEET-049)"
+        );
     }
 
     #[test]
@@ -2721,12 +2748,12 @@ mod tests {
         assert_eq!(lesson_quality_threshold(), 1.0, "above 1.0 clamps to 1.0");
         std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "-0.5");
         assert_eq!(lesson_quality_threshold(), 0.0, "below 0.0 clamps to 0.0");
-        // Malformed value falls back to 0.0.
+        // Malformed value falls back to the default (LESSON_QUALITY_THRESHOLD_DEFAULT = 0.6).
         std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "garbage");
         assert_eq!(
             lesson_quality_threshold(),
-            0.0,
-            "malformed falls back to 0.0"
+            LESSON_QUALITY_THRESHOLD_DEFAULT,
+            "malformed falls back to default (FLEET-049: 0.6)"
         );
         std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
     }
@@ -2869,10 +2896,14 @@ mod tests {
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
         assert_eq!(directives, vec!["success lesson"]);
 
-        // Remove threshold → both surface.
+        // Remove threshold → default 0.6 gate applies; failure-class (quality=0.0) excluded.
         std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
         let all_lessons = load_spawn_lessons("", 10);
-        assert_eq!(all_lessons.len(), 2, "no threshold → all lessons returned");
+        assert_eq!(
+            all_lessons.len(),
+            1,
+            "no threshold → default 0.6 gate, only success-class returned"
+        );
     }
 }
 
