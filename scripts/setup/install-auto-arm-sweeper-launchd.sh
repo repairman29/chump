@@ -73,6 +73,9 @@ cat > "$PLIST" <<PLISTEOF
     <string>${LOG_ERR}</string>
     <key>EnvironmentVariables</key>
     <dict>
+        <!-- gh CLI needs HOME for auth token, PATH for git/python3 (INFRA-802). -->
+        <key>HOME</key>
+        <string>${HOME}</string>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
