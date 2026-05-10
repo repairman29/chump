@@ -1,7 +1,7 @@
 - id: INFRA-743
   domain: INFRA
   title: "EFFECTIVE: chump init detects Ollama and configures local-LLM defaults"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -10,4 +10,6 @@
     - "If no models are pulled, suggests 'ollama pull qwen2.5:7b' (or appropriate model for available RAM)"
     - If neither Ollama nor ANTHROPIC_API_KEY is found, wizard explains both options with one-liner setup commands
     - Writes a minimal .env or config.toml that makes 'chump gen' work immediately after init
+  closed_pr: 1384
+  closed_date: '2026-05-10'
 
