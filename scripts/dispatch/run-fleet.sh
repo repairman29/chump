@@ -118,7 +118,15 @@ FLEET_SESSION="${FLEET_SESSION:-chump-fleet}"
 # INFRA-581: per-session PID file so teardown can cascade-kill orphaned workers.
 FLEET_PIDS_FILE="${FLEET_PIDS_FILE:-$HOME/.chump/fleet-pids-${FLEET_SESSION}.txt}"
 FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
-FLEET_BACKEND="${FLEET_BACKEND:-claude}"
+# INFRA-738: auto-detect backend based on ANTHROPIC_API_KEY.
+#   - Key set   → FLEET_BACKEND defaults to claude (preserves current behavior)
+#   - Key unset → FLEET_BACKEND defaults to chump-local (Ollama/local LLM)
+#   - Explicit FLEET_BACKEND override always wins.
+if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
+    FLEET_BACKEND="${FLEET_BACKEND:-chump-local}"
+else
+    FLEET_BACKEND="${FLEET_BACKEND:-claude}"
+fi
 # INFRA-459: default model is haiku — cost-efficient for xs/s/m fleet gaps.
 # Override via FLEET_MODEL=sonnet for harder tasks.
 FLEET_MODEL="${FLEET_MODEL:-sonnet}"
@@ -137,17 +145,19 @@ export FLEET_INLINE_BRIEFING="${FLEET_INLINE_BRIEFING:-1}"
 export CHUMP_LESSONS_AT_SPAWN_N="${CHUMP_LESSONS_AT_SPAWN_N:-0}"
 export CHUMP_AMBIENT_INSTALL_SKIP="${CHUMP_AMBIENT_INSTALL_SKIP:-1}"
 
-# INFRA-459: inverted cost-guard (was INFRA-420). Default is now claude+haiku.
-# chump-local (cascade) is blocked unless the operator explicitly opts in —
-# the free-tier cascade bank was too small for dev workload (2026-05-04) and
-# attempts silently stall instead of failing loud. Use claude (haiku) instead.
+# INFRA-738: chump-local backend guard. When ANTHROPIC_API_KEY is set and the
+# user explicitly chose chump-local, require CHUMP_FLEET_ALLOW_CHUMP_LOCAL_BACKEND=1
+# as a safety gate (the cascade bank was too small for dev workload historically,
+# INFRA-459). When ANTHROPIC_API_KEY is unset, chump-local is the only option
+# and is allowed automatically.
 if [[ "$FLEET_BACKEND" == "chump-local" \
+        && -n "${ANTHROPIC_API_KEY:-}" \
         && "${CHUMP_FLEET_ALLOW_CHUMP_LOCAL_BACKEND:-0}" != "1" ]]; then
     echo "[run-fleet] REFUSING to start fleet on backend=chump-local" >&2
-    echo "[run-fleet]   cascade bank is too small for dev workload (INFRA-459," >&2
-    echo "[run-fleet]   2026-05-04); calls stall silently instead of failing." >&2
+    echo "[run-fleet]   ANTHROPIC_API_KEY is set and cascade bank is too small for" >&2
+    echo "[run-fleet]   dev workload (INFRA-459, 2026-05-04); calls stall silently." >&2
     echo "[run-fleet]   To override:    CHUMP_FLEET_ALLOW_CHUMP_LOCAL_BACKEND=1 $0" >&2
-    echo "[run-fleet]   Recommended:    unset FLEET_BACKEND  (defaults to claude+haiku)" >&2
+    echo "[run-fleet]   Unset ANTHROPIC_API_KEY to auto-default to chump-local." >&2
     exit 2
 fi
 
