@@ -1,90 +1,15 @@
 - id: INFRA-810
   domain: INFRA
   title: "RESILIENT: stale core.worktree in main .git/config poisons show-toplevel for all linked worktrees"
-  status: open
+  status: done
   priority: P1
   effort: s
-  depends_on: [INFRA-804]
-  description: |
-    ## Root cause
-
-    The main `.git/config` contains:
-
-      [core]
-          bare = false
-          worktree = /private/tmp/chump-credible-011
-
-    with `extensions.worktreeConfig = true`. Because `extensions.worktreeConfig`
-    moves worktree-specific overrides to per-worktree `config.worktree` files,
-    a `core.worktree` entry in the **main** config is supposed to be the
-    fallback for worktrees that have no `config.worktree` of their own. In
-    practice every linked worktree in `.git/worktrees/<name>/` is missing
-    `config.worktree`, so every worktree inherits the stale
-    `core.worktree = /private/tmp/chump-credible-011` value.
-
-    ## Observed failures
-
-    - `git -C /private/tmp/chump-infra-667 rev-parse --show-toplevel` returns
-      `/private/tmp/chump-credible-011` instead of `/private/tmp/chump-infra-667`
-    - `git add` and `git commit` silently succeed against the wrong tree
-    - `chump gap reserve` writes gap YAML to the wrong worktree (credible-011)
-      even when called from the main checkout
-
-    ## How the stale value got there
-
-    When `git worktree add` creates a new worktree it writes `core.worktree`
-    to the per-worktree `config.worktree`. If `extensions.worktreeConfig` was
-    not set at that point, git writes to the main `config` instead and the
-    value persists as a global override after `extensions.worktreeConfig` is
-    later enabled.
-
-    ## Verification steps
-
-    ```bash
-    # confirm the poison value
-    git config --local core.worktree   # should print nothing or the main checkout path
-
-    # confirm worktrees lack config.worktree
-    for wt in .git/worktrees/*/; do
-      echo "$wt:"; cat "$wt/config.worktree" 2>/dev/null || echo "  (missing)"; done
-
-    # reproduce the wrong show-toplevel
-    git -C /private/tmp/chump-infra-667 rev-parse --show-toplevel
-    ```
-
-    ## Fix (three parts)
-
-    1. **Remove stale `core.worktree` from main config:**
-       ```bash
-       git config --unset core.worktree
-       ```
-
-    2. **Run `git worktree repair` to rebuild backlink files:**
-       ```bash
-       git worktree repair
-       ```
-
-    3. **Guard in `gap-claim.sh`:** after `git worktree add`, verify identity:
-       ```bash
-       ACTUAL="$(git -C "$WT_PATH" rev-parse --show-toplevel 2>/dev/null)"
-       if [[ "$ACTUAL" != "$WT_PATH" ]]; then
-         git worktree repair "$WT_PATH"
-         ACTUAL="$(git -C "$WT_PATH" rev-parse --show-toplevel 2>/dev/null)"
-         [[ "$ACTUAL" == "$WT_PATH" ]] || { echo "worktree identity mismatch"; exit 1; }
-       fi
-       ```
-
-    ## Relation to INFRA-804
-
-    INFRA-804 tracks missing `bare=false` in per-worktree `config.worktree`.
-    This gap tracks the complementary problem: a stale `core.worktree` in the
-    main config that contaminates all worktrees lacking `config.worktree`.
-    Both should be fixed together to make `extensions.worktreeConfig` behave
-    correctly.
-
   acceptance_criteria:
-    - "`git config --local core.worktree` in main checkout prints nothing (value removed)"
-    - "`git -C /private/tmp/chump-<any> rev-parse --show-toplevel` returns the correct worktree path"
-    - "`gap-claim.sh` runs the identity check and calls `git worktree repair` on mismatch"
-    - "`chump gap reserve` from the main checkout writes YAML to `docs/gaps/` in the main checkout, not a linked worktree"
-    - "`git worktree repair` exits 0 with no output after the fix"
+    - git config --local core.worktree in main checkout prints nothing
+    - git -C <any-tmp-worktree> rev-parse --show-toplevel returns the correct path
+    - gap-claim.sh runs identity check and calls git worktree repair on mismatch
+    - chump gap reserve from main checkout writes YAML to main repo docs/gaps/
+    - git worktree repair exits 0 after fix
+  closed_date: '2026-05-10'
+  closed_pr: 1419
+
