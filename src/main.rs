@@ -3461,12 +3461,13 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // `chump kpi report --tokens-per-ship N [--json]` (INFRA-640)
-    // Extends INFRA-617 with rolling tokens-per-ship calculation.
-    // For each shipped gap in the last N days, sums token counts from
-    // kind=session_end (outcome=shipped) and kind=token_usage_partial events.
-    // Outputs P50/P90/Max tokens-per-ship, $/ship at Sonnet pricing, top-5
-    // most-expensive ships. Identifies token-heavy work patterns.
+    // `chump kpi report` (INFRA-617) — exec-summary view of mission progress.
+    // Sections: ship rate trend (1d/7d/30d), mission grade history, cost savings
+    // vs Anthropic-only baseline, top productizations by leverage, tokens-per-ship.
+    // Flags:
+    //   --tokens-per-ship N   only show tokens-per-ship section (backward compat)
+    //   --json                machine-readable JSON output
+    //   --pdf                 pipe markdown through pandoc for grant pitches
     if args.get(1).map(String::as_str) == Some("kpi")
         && args.get(2).map(String::as_str) == Some("report")
     {
@@ -3480,14 +3481,52 @@ async fn main() -> Result<()> {
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(7);
         let want_json = args.iter().any(|a| a == "--json");
+        let want_pdf = args.iter().any(|a| a == "--pdf");
+        let only_tokens = args.iter().any(|a| a == "--tokens-per-ship");
 
         let repo_root = repo_path::repo_root();
-        let report = kpi_report::build_report(&repo_root, window_days);
 
-        if want_json {
-            println!("{}", report.render_json());
+        if only_tokens {
+            // Backward-compat: only the tokens-per-ship section.
+            let report = kpi_report::build_report(&repo_root, window_days);
+            if want_json {
+                println!("{}", report.render_json());
+            } else {
+                print!("{}", report.render_text());
+            }
         } else {
-            print!("{}", report.render_text());
+            let report = kpi_report::build_full_report(&repo_root, window_days);
+            let output = if want_json {
+                report.render_json()
+            } else {
+                report.render_text()
+            };
+
+            if want_pdf {
+                // Pipe markdown through pandoc for a grant-ready PDF.
+                let md = report.render_text();
+                let mut child = match std::process::Command::new("pandoc")
+                    .args(["-f", "markdown", "-o", "chump-kpi-report.pdf"])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("chump kpi report: --pdf requested but pandoc not found: {e}");
+                        eprintln!("Falling back to stdout:");
+                        print!("{output}");
+                        return Ok(());
+                    }
+                };
+                if let Some(mut stdin) = child.stdin.take() {
+                    use std::io::Write;
+                    let _ = stdin.write_all(md.as_bytes());
+                }
+                let _ = child.wait();
+                println!("Wrote chump-kpi-report.pdf");
+            } else {
+                print!("{output}");
+            }
         }
         return Ok(());
     }
