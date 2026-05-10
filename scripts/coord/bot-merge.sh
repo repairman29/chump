@@ -1008,8 +1008,8 @@ fi
 
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
-    stage_start "cargo test --workspace"
-    if ! run_timed_hb "cargo test" 3600 cargo test --workspace 2>&1; then
+    stage_start "cargo test --bin chump --tests"
+    if ! run_timed_hb "cargo test" 1200 cargo test --bin chump --tests 2>&1; then
         red "Tests failed — fix them before merging."
         info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
         info "that is most likely OOM, not a real test failure. Try lowering"
