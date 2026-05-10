@@ -41,24 +41,42 @@ if [[ "${CHUMP_PR_WATCH:-1}" == "0" ]]; then
     exit 0
 fi
 
-PR="${1:?usage: $0 <PR#> [--once]}"
+PR="${1:?usage: $0 <PR#> [--once] [--branch-override <name>]}"
+shift
 ONCE=0
-[[ "${2:-}" == "--once" ]] && ONCE=1
+BRANCH_OVERRIDE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --once) ONCE=1; shift ;;
+        --branch-override)
+            BRANCH_OVERRIDE="$2"; shift 2 ;;
+        --branch-override=*)
+            BRANCH_OVERRIDE="${1#--branch-override=}"; shift ;;
+        *) shift ;;
+    esac
+done
 
 TIMEOUT_S="${PR_WATCH_TIMEOUT:-1800}"
 POLL_S="${PR_WATCH_POLL:-30}"
 
-# Confirm we're in a git checkout with the branch checked out.
-if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
-    echo "[pr-watch] ERROR: not in a git checkout with a branch — refusing to push" >&2
-    exit 4
-fi
+# When --branch-override is set, skip the symbolic-ref check (used by
+# pr-watch-shepherd.sh which runs from an ephemeral worktree).
+if [[ -n "$BRANCH_OVERRIDE" ]]; then
+    BRANCH="$BRANCH_OVERRIDE"
+else
+    # Confirm we're in a git checkout with the branch checked out.
+    if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
+        echo "[pr-watch] ERROR: not in a git checkout with a branch — refusing to push" >&2
+        exit 4
+    fi
 
-# Confirm this branch matches the PR.
-PR_BRANCH=$(gh pr view "$PR" --json headRefName -q .headRefName 2>/dev/null || true)
-if [[ -n "$PR_BRANCH" && "$PR_BRANCH" != "$BRANCH" ]]; then
-    echo "[pr-watch] ERROR: current branch '$BRANCH' does not match PR #$PR head '$PR_BRANCH'" >&2
-    exit 4
+    # Confirm this branch matches the PR.
+    PR_BRANCH=$(gh pr view "$PR" --json headRefName -q .headRefName 2>/dev/null || true)
+    if [[ -n "$PR_BRANCH" && "$PR_BRANCH" != "$BRANCH" ]]; then
+        echo "[pr-watch] ERROR: current branch '$BRANCH' does not match PR #$PR head '$PR_BRANCH'" >&2
+        exit 4
+    fi
 fi
 
 DEADLINE=$(($(date +%s) + TIMEOUT_S))

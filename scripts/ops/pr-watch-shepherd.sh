@@ -168,14 +168,13 @@ while IFS= read -r entry; do
     fi
 
     # 3. Run pr-watch in the ephemeral worktree.
-    #    pr-watch.sh checks `git symbolic-ref` so we need a real branch ref;
-    #    `git worktree add -B` gave us tmp-shepherd-prN but pr-watch will
-    #    refuse because branch name != PR's headRefName. Re-checkout under
-    #    the real branch name (it now exists locally as origin/BRANCH).
+    #    pr-watch.sh checks `git symbolic-ref` to get the branch name for
+    #    force-push. In an ephemeral worktree the symbolic-ref points to
+    #    tmp-shepherd-prN, not the PR's branch. Pass --branch-override to
+    #    skip the check and use the real branch name (INFRA-801).
     pushd "$WT" >/dev/null
-    git checkout -B "$BRANCH" "origin/$BRANCH" >/dev/null 2>&1 || true
     set +e
-    bash "$PR_WATCH" "$PR" --once
+    bash "$PR_WATCH" "$PR" --once --branch-override "$BRANCH"
     rc=$?
     set -e
     popd >/dev/null
