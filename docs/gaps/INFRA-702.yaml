@@ -1,0 +1,11 @@
+- id: INFRA-702
+  domain: INFRA
+  title: "ZERO-WASTE: update CLAUDE.md stale gap references — INFRA-471 and INFRA-538 listed as P0 anchors but status unclear"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CLAUDE.md no longer references INFRA-471 (state.db restore) and INFRA-538 (model-class routing) as 'today's P0 anchor' since they're either done or stale
+    - update with current top-3 P0 anchors
+    - grep INFRA-471 INFRA-538 CLAUDE.md returns no matches OR is in a 'historical' section
+
