@@ -1,7 +1,9 @@
 - id: INFRA-795
   domain: INFRA
   title: "ZERO-WASTE: optimize bot-merge.sh test scope from --workspace to --bin chump --tests"
-  status: open
+  status: done
+  closed_pr: 1389
+  closed_date: '2026-05-10'
   priority: P1
   effort: xs
   description: |

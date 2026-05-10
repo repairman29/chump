@@ -1,7 +1,9 @@
 - id: INFRA-793
   domain: INFRA
   title: "ZERO-WASTE: fix chump-commit.sh index mutex for linked worktrees"
-  status: open
+  status: done
+  closed_pr: 1389
+  closed_date: '2026-05-10'
   priority: P1
   effort: s
   description: |

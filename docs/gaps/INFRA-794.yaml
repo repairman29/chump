@@ -1,7 +1,9 @@
 - id: INFRA-794
   domain: INFRA
   title: "ZERO-WASTE: diagnostic script for core.worktree misconfiguration across worktrees"
-  status: open
+  status: done
+  closed_pr: 1389
+  closed_date: '2026-05-10'
   priority: P1
   effort: m
   description: |

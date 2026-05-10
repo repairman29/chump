@@ -1,7 +1,9 @@
 - id: META-053
   domain: META
   title: "CREDIBLE: session handoff format for cross-tool agent continuity"
-  status: open
+  status: done
+  closed_pr: 1389
+  closed_date: '2026-05-10'
   priority: P1
   effort: s
   description: |

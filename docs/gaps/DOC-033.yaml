@@ -1,16 +1,17 @@
 - id: DOC-033
   domain: DOC
   title: "CREDIBLE: create docs/CONTINUAL_LEARNING.md with session learnings"
-  status: open
+  status: done
+  closed_pr: 1389
+  closed_date: '2026-05-10'
   priority: P1
   effort: s
   description: |
-    
     AGENTS.md references docs/CONTINUAL_LEARNING.md (line 486) but this file
-    does not exist. The file is described as storing learned
+    does not exist. The file is described as storing learned session findings
+    and the handoff format for cross-tool agent continuity (see META-053).
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - docs/CONTINUAL_LEARNING.md exists and is not a stub
+    - File documents the session handoff format (Goal/Instructions/Discoveries/Accomplished/ToDo/Files sections)
+    - At least one example handoff is present or referenced
 
