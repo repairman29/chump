@@ -152,6 +152,15 @@ pub fn run_init(repo_root: &Path, args: &InitArgs) -> Result<()> {
     // UX-001: detect model, write .env (repo-local), start server, open browser
     let model_cfg = detect_model();
     println!("  [*] model detection ... {}", model_cfg.summary());
+    if model_cfg.source.contains("Ollama") {
+        let models = fetch_ollama_models("http://localhost:11434/v1/models");
+        if !models.is_empty() {
+            println!("         Available models:");
+            for m in &models {
+                println!("           - {m}");
+            }
+        }
+    }
 
     let env_path = repo_root.join(".env");
     if env_path.exists() {
@@ -184,8 +193,13 @@ pub fn run_init(repo_root: &Path, args: &InitArgs) -> Result<()> {
     println!();
 
     if !model_cfg.has_model() {
-        println!("  No local model detected. Install Ollama and pull a model:");
-        println!("    brew install ollama && ollama pull qwen2.5:7b");
+        if model_cfg.source.contains("Ollama") {
+            println!("  Ollama is running but no models are pulled.");
+            println!("    Pull a model: ollama pull qwen2.5:7b");
+        } else {
+            println!("  No local model detected. Install Ollama and pull a model:");
+            println!("    brew install ollama && ollama pull qwen2.5:7b");
+        }
         println!("  Then re-run: chump init");
     }
     Ok(())
@@ -375,10 +389,12 @@ fn detect_model() -> ModelConfig {
 
     // 2. Ollama on default port
     if probe_url("http://localhost:11434/v1/models") {
+        let models = fetch_ollama_models("http://localhost:11434/v1/models");
+        let model = models.first().cloned();
         return ModelConfig {
             api_base: Some("http://localhost:11434/v1".into()),
             api_key: "ollama".into(),
-            model: Some("qwen2.5:7b".into()),
+            model,
             source: "Ollama (localhost:11434)",
         };
     }
@@ -447,6 +463,22 @@ fn probe_first_model(url: &str) -> Option<String> {
     v["data"].as_array()?.first()?["id"]
         .as_str()
         .map(String::from)
+}
+
+fn fetch_ollama_models(url: &str) -> Vec<String> {
+    std::process::Command::new("curl")
+        .args(["-sf", "--max-time", "2", url])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|body| serde_json::from_str::<serde_json::Value>(&body).ok())
+        .and_then(|v| v["data"].as_array().cloned())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item["id"].as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 // ────────────────────────── .env writer ──────────────────────────
