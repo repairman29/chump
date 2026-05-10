@@ -1,0 +1,12 @@
+- id: INFRA-813
+  domain: INFRA
+  title: "RESILIENT: gap_reserve_cross_host_race test leaks bot commits into live worktrees"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Identify which test creates bot-authored commits (init/first/unrelated-change with f.txt and README.md) and confirm it is gap_reserve_cross_host_race.rs or equivalent"
+    - "Ensure the test uses a fully isolated temp dir (e.g. tempfile::TempDir) that cannot collide with /tmp/chump-* paths used by live worktrees"
+    - "Add assertion in the test that no path outside its own tmpdir was modified"
+    - "Add CI smoke check: scripts/ci/test-gap-reserve-race-isolation.sh verifies no /tmp/chump-* worktree has unexpected commits after running the test suite"
+
