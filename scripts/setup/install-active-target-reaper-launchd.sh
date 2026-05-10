@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# install-active-target-reaper-launchd.sh — install daily LaunchAgent that
-# purges stale `target/` directories in linked worktrees. Idempotent.
+# install-active-target-reaper-launchd.sh — install LaunchAgent that purges
+# stale `target/` directories in linked worktrees and /tmp/chump-*. Idempotent.
 #
-# Mirrors install-stale-worktree-reaper-launchd.sh. Runs once per day
-# (StartInterval 86400) — target/ purges aren't urgent, just hygiene.
+# Runs every 4h (StartInterval 14400) with --age-days 1 so worktrees that
+# go quiet for 24h get their cargo cache reclaimed before disk fills.
 #
 # Verify:
 #   launchctl list | grep dev.chump.active-target-reaper
@@ -36,12 +36,11 @@ cat >"$DEST" <<EOF
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>$REPO/scripts/ops/active-target-reaper.sh --execute</string>
+    <string>$REPO/scripts/ops/active-target-reaper.sh --execute --age-days 1</string>
   </array>
-  <!-- Once per day. Purges target/ in worktrees with mtime > 7d, skipping
-       active leases and worktrees with .chump-no-reap. -->
+  <!-- Every 4h. Purges target/ in worktrees (including /tmp/chump-*) idle >1d. -->
   <key>StartInterval</key>
-  <integer>86400</integer>
+  <integer>14400</integer>
   <key>RunAtLoad</key>
   <false/>
   <key>StandardOutPath</key>

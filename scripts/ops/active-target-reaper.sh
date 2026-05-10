@@ -10,10 +10,9 @@
 # long-lived worktrees that haven't shipped yet (or that ran tests for
 # review then sat) keep the cache forever.
 #
-# What it does (per linked worktree under .claude/worktrees/):
+# What it does (per worktree — scans .claude/worktrees/ AND /tmp/chump-*):
 #   1. Skip if no target/ directory.
-#   2. Skip if target/ mtime is fresher than --age-days (default 7d).
-#      Conservative — we don't want to disrupt active development.
+#   2. Skip if target/ mtime is fresher than --age-days (default 1d).
 #   3. Skip if .chump-no-reap exists in the worktree (opt-out).
 #   4. Skip if any active lease in .chump-locks/*.json names this worktree
 #      AND target/ mtime is fresher than 1 day (active session).
@@ -23,15 +22,15 @@
 # Usage:
 #   ./scripts/ops/active-target-reaper.sh              # default: --dry-run
 #   ./scripts/ops/active-target-reaper.sh --execute    # actually purge
-#   ./scripts/ops/active-target-reaper.sh --execute --age-days 14
+#   ./scripts/ops/active-target-reaper.sh --execute --age-days 2
 #
-# Install hourly via launchd:
+# Install every 4h via launchd:
 #   ./scripts/setup/install-active-target-reaper-launchd.sh
 
 set -euo pipefail
 
 DRY_RUN=1
-AGE_DAYS=7
+AGE_DAYS=1
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
@@ -60,11 +59,6 @@ if command -v git >/dev/null 2>&1; then
 fi
 WORKTREES_DIR="$REPO/.claude/worktrees"
 
-if [[ ! -d "$WORKTREES_DIR" ]]; then
-    echo "no worktrees dir at $WORKTREES_DIR — nothing to do"
-    exit 0
-fi
-
 AGE_SECONDS=$((AGE_DAYS * 86400))
 NOW=$(date +%s)
 RECLAIMED_BYTES=0
@@ -81,7 +75,16 @@ if [[ -d "$REPO/.chump-locks" ]]; then
     done
 fi
 
-for wt in "$WORKTREES_DIR"/*/; do
+# Build list of candidate worktree roots: .claude/worktrees/* + /tmp/chump-*
+CANDIDATE_DIRS=()
+[[ -d "$WORKTREES_DIR" ]] && for d in "$WORKTREES_DIR"/*/; do
+    [[ -d "$d" ]] && CANDIDATE_DIRS+=("${d%/}")
+done
+for d in /tmp/chump-*/; do
+    [[ -d "$d" ]] && CANDIDATE_DIRS+=("${d%/}")
+done
+
+for wt in "${CANDIDATE_DIRS[@]+"${CANDIDATE_DIRS[@]}"}"; do
     [[ -d "$wt" ]] || continue
     wt="${wt%/}"
     target="$wt/target"
