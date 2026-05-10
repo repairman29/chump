@@ -27,7 +27,7 @@ set -euo pipefail
 # ── Constants ──────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TEST_GAP_ID="E2E-TEST-$(date +%s)"
+TEST_GAP_ID="E2E-$(date +%s)"
 WT_PATH="/private/tmp/chump-e2e-test-$$"
 E2E_TIMEOUT="${E2E_TIMEOUT:-120}"
 E2E_MAX_ITER="${E2E_MAX_ITER:-12}"
@@ -49,7 +49,7 @@ _provider_model() {
     case "$1" in
         groq)       echo "llama-3.3-70b-versatile" ;;
         nvidia)     echo "meta/llama-3.3-70b-instruct" ;;
-        cerebras)   echo "llama-3.3-70b" ;;
+        cerebras)   echo "qwen-3-235b-a22b-instruct-2507" ;;
         github)     echo "meta-llama-3.3-70b-instruct" ;;
         together)   echo "meta-llama/Llama-3.3-70B-Instruct-Turbo" ;;
         hyperbolic) echo "meta-llama/Llama-3.3-70B-Instruct" ;;
