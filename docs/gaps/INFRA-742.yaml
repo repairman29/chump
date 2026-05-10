@@ -1,7 +1,7 @@
 - id: INFRA-742
   domain: INFRA
   title: "RESILIENT: auto-configure context window limits for local LLMs at startup"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -9,4 +9,6 @@
     - For non-Ollama OpenAI-compatible endpoints, chump reads context_k from model_registry.yaml (INFRA-739) or falls back to 16k
     - Tool schema token budget stays under 25% of detected context window — if the full tool set exceeds this, auto-switch to LIGHT_CHAT_TOOL_KEYS
     - warn_if_near_num_ctx fires at 85% instead of current threshold, and suggests concrete action (trim memory, reduce tool set)
+  closed_date: '2026-05-10'
+  closed_pr: 1424
 
