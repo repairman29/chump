@@ -102,5 +102,47 @@ echo "$out" | grep -qE "pr-watch (heartbeated|has)" || {
     echo "[FAIL] watchdog didn't recognize pr-watch target. output:"; echo "$out"; exit 1; }
 echo "[PASS] watchdog grades pr-watch"
 
+
+# ── Test 5: --branch-override bypasses symbolic-ref check (INFRA-801) ────
+# When pr-watch.sh runs from an ephemeral worktree (detached HEAD or wrong
+# branch), it must NOT exit 4 ("symbolic-ref failed") when --branch-override
+# is supplied. It will exit non-zero for other reasons (can't reach GitHub)
+# but the specific exit-4 branch-mismatch error must not fire.
 echo ""
-echo "[OK] all 4 INFRA-354 shepherd smoke cases passed"
+echo "Test 5: --branch-override skips symbolic-ref check in detached-HEAD worktree"
+PRWATCH="$REPO_ROOT/scripts/coord/pr-watch.sh"
+TMP5=$(mktemp -d)
+trap 'rm -rf "$TMP5"' EXIT
+# Create a bare git repo so we can make a worktree with detached HEAD
+git init --bare "$TMP5/bare.git" >/dev/null 2>&1
+git clone "$TMP5/bare.git" "$TMP5/clone" >/dev/null 2>&1 || true
+# If clone is empty (no commits), create a stub commit
+(
+    cd "$TMP5/clone" 2>/dev/null || true
+    git config user.email "test@test" 2>/dev/null || true
+    git config user.name "test" 2>/dev/null || true
+    touch stub && git add stub 2>/dev/null || true
+    git commit -m "stub" 2>/dev/null || true
+    git checkout --detach HEAD 2>/dev/null || true  # detached HEAD
+) 2>/dev/null || true
+
+set +e
+out5=$(cd "$TMP5/clone" && CHUMP_PR_WATCH=0 bash "$PRWATCH" 9999 --once --branch-override "some-branch" 2>&1)
+rc5=$?
+set -e
+if [[ $rc5 -eq 4 ]]; then
+    echo "[FAIL] pr-watch.sh exited 4 (symbolic-ref error) despite --branch-override"
+    echo "  output: $out5"
+    exit 1
+fi
+# The bypass env CHUMP_PR_WATCH=0 should short-circuit and exit 0 cleanly,
+# confirming --branch-override was accepted and the symbolic-ref check skipped.
+[[ $rc5 -eq 0 ]] || {
+    echo "[FAIL] expected exit 0 with CHUMP_PR_WATCH=0 bypass, got $rc5"
+    echo "  output: $out5"
+    exit 1
+}
+echo "[PASS] --branch-override accepted (exit 0, no symbolic-ref error)"
+
+echo ""
+echo "[OK] all 5 shepherd / pr-watch smoke cases passed (INFRA-354 + INFRA-801)"
