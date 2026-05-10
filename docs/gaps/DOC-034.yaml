@@ -1,12 +1,12 @@
 - id: DOC-034
   domain: DOC
-  title: "EFFECTIVE: fleet env vars A-G/H-N/O-Z docs batch (DOC-028+029+030)"
-  status: open
+  title: 'EFFECTIVE: fleet env vars A-G/H-N/O-Z docs batch (DOC-028+029+030)'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-10'

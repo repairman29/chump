@@ -1,7 +1,7 @@
 - id: INFRA-802
   domain: INFRA
   title: "ZERO-WASTE: auto-arm-sweeper launchd — gh not authenticated, re-arm never happens"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -12,4 +12,5 @@
     - auto-arm-sweeper.sh succeeds under launchd
     - gh api user returns the correct user from launchd context
     - existing behavior when run from shell unchanged
+  closed_date: '2026-05-10'
 
