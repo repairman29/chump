@@ -27,8 +27,8 @@ use std::path::Path;
 /// A minimal view of a gap entry from `docs/gaps.yaml`.
 ///
 /// We only deserialize the fields the picker needs. Extra fields in the YAML
-/// (description, source_doc, closed_date, etc.) are ignored by serde so the
-/// schema can evolve without breaking us.
+/// (description, source_doc, etc.) are ignored by serde so the schema can
+/// evolve without breaking us.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Gap {
     pub id: String,
@@ -42,6 +42,10 @@ pub struct Gap {
     pub status: String,
     #[serde(default)]
     pub depends_on: Option<Vec<String>>,
+    /// ISO date string set when the gap is shipped (e.g. "2026-05-10").
+    /// Used by the domain-bias logic (FLEET-045) to order recent ships.
+    #[serde(default)]
+    pub closed_date: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -117,6 +121,38 @@ fn effort_rank(e: &str) -> u8 {
     }
 }
 
+/// Extract the domain prefix from a gap ID (e.g., `"INFRA"` from `"INFRA-123"`).
+/// Falls back to the full ID if there is no `-` separator.
+fn gap_domain(id: &str) -> &str {
+    id.split_once('-').map(|(prefix, _)| prefix).unwrap_or(id)
+}
+
+/// Compute the fraction of the last `window` done gaps whose domain equals
+/// `domain`. Done gaps are sorted by `closed_date` descending so the most
+/// recently shipped gaps are counted first. When `closed_date` is absent the
+/// gap sorts after all dated gaps (YAML insertion order as a tiebreak).
+///
+/// Returns 0.0 when there are no done gaps in the window (no signal → no bias).
+pub fn domain_concentration(all: &[Gap], domain: &str, window: usize) -> f64 {
+    let mut done: Vec<&Gap> = all.iter().filter(|g| g.status == "done").collect();
+    // Sort by closed_date desc; gaps without a date sort last.
+    done.sort_by(|a, b| {
+        b.closed_date
+            .as_deref()
+            .unwrap_or("")
+            .cmp(a.closed_date.as_deref().unwrap_or(""))
+    });
+    let recent: Vec<&Gap> = done.into_iter().take(window).collect();
+    if recent.is_empty() {
+        return 0.0;
+    }
+    let count = recent
+        .iter()
+        .filter(|g| gap_domain(&g.id) == domain)
+        .count();
+    count as f64 / recent.len() as f64
+}
+
 /// Read `CHUMP_DISPATCH_CAPACITY` from env, defaulting to 3.
 pub fn dispatch_capacity() -> usize {
     std::env::var("CHUMP_DISPATCH_CAPACITY")
@@ -173,8 +209,48 @@ pub fn pick_gap<'a>(
         })
         .collect();
 
-    // Rule 5: sort by priority ASC, then effort ASC (prefer small+urgent)
-    eligible.sort_by_key(|g| (priority_rank(&g.priority), effort_rank(&g.effort)));
+    // Rule 5: sort by domain bias, then priority ASC, then effort ASC.
+    //
+    // FLEET-045: when >CHUMP_PICKER_BIAS_THRESHOLD (default 80%) of the last
+    // CHUMP_PICKER_BIAS_WINDOW (default 10) shipped gaps belong to the INFRA
+    // domain, add a sort penalty to INFRA gaps so the picker naturally reaches
+    // for PRODUCT/EFFECTIVE work next. The penalty is 1 (vs 0 for non-INFRA),
+    // so INFRA gaps remain pickable when there is nothing else — the bias
+    // nudges but does not block.
+    let bias_threshold: f64 = std::env::var("CHUMP_PICKER_BIAS_THRESHOLD")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0.80_f64);
+    let bias_window: usize = std::env::var("CHUMP_PICKER_BIAS_WINDOW")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(10_usize);
+    let infra_ratio = domain_concentration(all, "INFRA", bias_window);
+    let bias_active = infra_ratio > bias_threshold;
+    if bias_active {
+        tracing::info!(
+            infra_ratio = infra_ratio,
+            bias_threshold = bias_threshold,
+            bias_window = bias_window,
+            "fleet045: domain-bias active — INFRA concentration {:.0}% > threshold {:.0}%; \
+             deprioritizing INFRA gaps this pick",
+            infra_ratio * 100.0,
+            bias_threshold * 100.0,
+        );
+    }
+
+    eligible.sort_by_key(|g| {
+        let domain_penalty: u8 = if bias_active && gap_domain(&g.id) == "INFRA" {
+            1
+        } else {
+            0
+        };
+        (
+            domain_penalty,
+            priority_rank(&g.priority),
+            effort_rank(&g.effort),
+        )
+    });
 
     // Rule 6: return top candidate
     eligible.into_iter().next()
@@ -193,6 +269,19 @@ mod tests {
             effort: effort.into(),
             status: status.into(),
             depends_on: deps.map(|v| v.into_iter().map(String::from).collect()),
+            closed_date: None,
+        }
+    }
+
+    fn g_done(id: &str, closed: &str) -> Gap {
+        Gap {
+            id: id.into(),
+            title: format!("title for {id}"),
+            priority: "P1".into(),
+            effort: "s".into(),
+            status: "done".into(),
+            depends_on: None,
+            closed_date: Some(closed.into()),
         }
     }
 
@@ -400,5 +489,148 @@ mod tests {
         let cap = dispatch_capacity();
         std::env::remove_var("CHUMP_DISPATCH_CAPACITY");
         assert_eq!(cap, 5);
+    }
+
+    // ── FLEET-045: domain-bias tests ─────────────────────────────────────
+
+    #[test]
+    fn fleet045_gap_domain_extracts_prefix() {
+        assert_eq!(gap_domain("INFRA-123"), "INFRA");
+        assert_eq!(gap_domain("PRODUCT-074"), "PRODUCT");
+        assert_eq!(gap_domain("COG-040"), "COG");
+        assert_eq!(gap_domain("FLEET-045"), "FLEET");
+        assert_eq!(gap_domain("NO_DASH"), "NO_DASH");
+    }
+
+    #[test]
+    fn fleet045_domain_concentration_all_infra() {
+        let gaps = vec![
+            g_done("INFRA-1", "2026-05-10"),
+            g_done("INFRA-2", "2026-05-09"),
+            g_done("INFRA-3", "2026-05-08"),
+            g_done("PRODUCT-1", "2026-05-07"),
+        ];
+        // Window 3: last 3 done = INFRA-1, INFRA-2, INFRA-3 → 100% INFRA
+        let ratio = domain_concentration(&gaps, "INFRA", 3);
+        assert!(
+            (ratio - 1.0).abs() < f64::EPSILON,
+            "all 3 recent = INFRA → ratio 1.0, got {ratio}"
+        );
+    }
+
+    #[test]
+    fn fleet045_domain_concentration_mixed() {
+        let gaps = vec![
+            g_done("INFRA-1", "2026-05-10"),
+            g_done("INFRA-2", "2026-05-09"),
+            g_done("PRODUCT-1", "2026-05-08"),
+            g_done("INFRA-3", "2026-05-07"),
+            g_done("PRODUCT-2", "2026-05-06"),
+        ];
+        // Window 5: 3 INFRA out of 5 = 0.6
+        let ratio = domain_concentration(&gaps, "INFRA", 5);
+        assert!((ratio - 0.6).abs() < 1e-9, "3/5 = 0.6, got {ratio}");
+    }
+
+    #[test]
+    fn fleet045_domain_concentration_no_done_gaps() {
+        let gaps = vec![
+            g("INFRA-1", "P1", "s", "open", None),
+            g("PRODUCT-1", "P1", "s", "open", None),
+        ];
+        let ratio = domain_concentration(&gaps, "INFRA", 10);
+        assert_eq!(ratio, 0.0, "no done gaps → ratio 0.0 (no bias)");
+    }
+
+    #[test]
+    #[serial(picker_bias)]
+    fn fleet045_bias_demotes_infra_when_threshold_exceeded() {
+        // 9 recent INFRA ships → 90% > default 80% threshold.
+        // With bias active, PRODUCT-1 (P2) should beat INFRA-999 (P1).
+        std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
+        std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");
+        let mut gaps: Vec<Gap> = (1..=9)
+            .map(|i| g_done(&format!("INFRA-{i}"), &format!("2026-05-{i:02}")))
+            .collect();
+        gaps.push(g("INFRA-999", "P1", "s", "open", None));
+        gaps.push(g("PRODUCT-1", "P2", "s", "open", None));
+        let done = done_ids(&gaps);
+        let result = pick_gap(&gaps, &done, &no_live(), 0, 3).expect("should pick");
+        assert_eq!(
+            result.id, "PRODUCT-1",
+            "bias should demote INFRA-999 (P1) below PRODUCT-1 (P2) when INFRA > 80%"
+        );
+        std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
+        std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");
+    }
+
+    #[test]
+    #[serial(picker_bias)]
+    fn fleet045_bias_inactive_when_below_threshold() {
+        // Only 5 of 10 recent ships are INFRA (50%) — below 80% threshold.
+        // Normal priority ordering should apply: INFRA-999 (P1) beats PRODUCT-1 (P2).
+        std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
+        std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");
+        let mut gaps: Vec<Gap> = (1..=5)
+            .map(|i| g_done(&format!("INFRA-{i}"), &format!("2026-05-{i:02}")))
+            .collect();
+        for i in 6..=10 {
+            gaps.push(g_done(&format!("PRODUCT-{i}"), &format!("2026-05-{i:02}")));
+        }
+        gaps.push(g("INFRA-999", "P1", "s", "open", None));
+        gaps.push(g("PRODUCT-99", "P2", "s", "open", None));
+        let done = done_ids(&gaps);
+        let result = pick_gap(&gaps, &done, &no_live(), 0, 3).expect("should pick");
+        assert_eq!(
+            result.id, "INFRA-999",
+            "bias should not fire at 50% INFRA — P1 beats P2 normally"
+        );
+        std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
+        std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");
+    }
+
+    #[test]
+    #[serial(picker_bias)]
+    fn fleet045_bias_infra_only_queue_still_picks() {
+        // Even with bias active, if only INFRA gaps are open, we still pick one.
+        std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
+        std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");
+        let mut gaps: Vec<Gap> = (1..=9)
+            .map(|i| g_done(&format!("INFRA-{i}"), &format!("2026-05-{i:02}")))
+            .collect();
+        gaps.push(g("INFRA-999", "P1", "s", "open", None));
+        let done = done_ids(&gaps);
+        let result =
+            pick_gap(&gaps, &done, &no_live(), 0, 3).expect("bias must not block all gaps");
+        assert_eq!(
+            result.id, "INFRA-999",
+            "INFRA-only queue still picks under bias"
+        );
+        std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
+        std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");
+    }
+
+    #[test]
+    #[serial(picker_bias)]
+    fn fleet045_custom_threshold_env() {
+        // Set threshold to 0.5 — 6/10 INFRA should trigger bias.
+        std::env::set_var("CHUMP_PICKER_BIAS_THRESHOLD", "0.5");
+        std::env::set_var("CHUMP_PICKER_BIAS_WINDOW", "10");
+        let mut gaps: Vec<Gap> = (1..=6)
+            .map(|i| g_done(&format!("INFRA-{i}"), &format!("2026-05-{i:02}")))
+            .collect();
+        for i in 7..=10 {
+            gaps.push(g_done(&format!("COG-{i}"), &format!("2026-05-{i:02}")));
+        }
+        gaps.push(g("INFRA-999", "P1", "s", "open", None));
+        gaps.push(g("COG-99", "P2", "s", "open", None));
+        let done = done_ids(&gaps);
+        let result = pick_gap(&gaps, &done, &no_live(), 0, 3).expect("should pick");
+        assert_eq!(
+            result.id, "COG-99",
+            "threshold=0.5 + 60% INFRA should bias away from INFRA-999"
+        );
+        std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
+        std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");
     }
 }

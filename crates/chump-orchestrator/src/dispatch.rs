@@ -1096,6 +1096,7 @@ mod tests {
             effort: "m".into(),
             status: "open".into(),
             depends_on: None,
+            closed_date: None,
         }
     }
 

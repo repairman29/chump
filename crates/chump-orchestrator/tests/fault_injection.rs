@@ -46,6 +46,7 @@ fn test_gap(id: &str) -> Gap {
         effort: "s".into(),
         status: "open".into(),
         depends_on: None,
+        closed_date: None,
     }
 }
 
