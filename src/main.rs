@@ -345,6 +345,7 @@ async fn main() -> Result<()> {
         desktop_launcher::launch_and_wait(&args);
     }
     load_dotenv();
+    local_openai::auto_configure_context_window().await;
 
     // `chump --briefing <GAP-ID>` (MEM-007) — agent context-query that returns
     // "what should I know before working on gap X?". Reads docs/gaps.yaml,
