@@ -1,13 +1,2 @@
-pub mod audit;
-pub mod autopilot;
-pub mod brain;
-pub mod chat;
-pub mod dashboard;
 pub mod health;
-pub mod push;
-pub mod repo;
-pub mod sessions;
 pub mod shared;
-pub mod shortcuts;
-pub mod tasks;
-pub mod upload;
