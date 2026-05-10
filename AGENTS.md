@@ -153,6 +153,7 @@ session, and someone else's PR is starving for review.
 | `.chump/state.sql` | Readable SQL diff of `state.db`; regenerate with `chump gap dump --out .chump/state.sql` after merge conflicts |
 | [`docs/operations/PUBLISHING.md`](./docs/operations/PUBLISHING.md) | crates.io publish order, tokens, and consumer `path`+`version` deps |
 | [`docs/operations/INFERENCE_PROFILES.md`](./docs/operations/INFERENCE_PROFILES.md) | Local inference (vLLM-MLX 8000 / Ollama 11434) |
+| [`scripts/README.md`](./scripts/README.md) | Script taxonomy, canonical tool per task, entry points per directory (DOC-024) |
 
 ## How to claim work
 
