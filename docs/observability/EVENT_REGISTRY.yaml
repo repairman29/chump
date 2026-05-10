@@ -608,6 +608,14 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, source, note]
 
+  - kind: feature_silent_failure
+    emitter: scripts/ci/run-feature-smokes.sh
+    trigger: a load-bearing feature path (chump --briefing, bot-merge.sh) produced
+      empty or structurally incomplete output for a known input — cascading-silent-
+      failure class detected (INFRA-396)
+    consumers: [fleet-brief, watchdog, kpi-report]
+    fields_required: [ts, kind, feature, reason]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
