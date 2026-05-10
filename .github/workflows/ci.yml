@@ -787,3 +787,6 @@ jobs:
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
 # Why: primary correctness + style fence before anything lands on main.
+      - name: bounced-PR detector fixture (INFRA-781)
+        run: bash scripts/ci/test-bounced-pr-detector.sh
+
