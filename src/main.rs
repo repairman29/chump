@@ -2755,6 +2755,61 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // INFRA-538: rebuild state.db from .chump/state.sql when the DB
+            // is corrupted. Backs up existing DB first, then replays YAML.
+            "restore" => {
+                let from_sql = args.iter().any(|a| a == "--from-sql");
+                if !from_sql {
+                    eprintln!("Usage: chump gap restore --from-sql");
+                    eprintln!(
+                        "       Rebuilds .chump/state.db from .chump/state.sql (YAML mirror)."
+                    );
+                    std::process::exit(2);
+                }
+                let sql_path = repo_root.join(".chump").join("state.sql");
+                if !sql_path.exists() {
+                    eprintln!(
+                        "chump gap restore: {} not found — nothing to restore from",
+                        sql_path.display()
+                    );
+                    std::process::exit(1);
+                }
+                let db_path = gap_store::GapStore::db_path(&repo_root);
+                // Back up existing DB before clobbering it.
+                if db_path.exists() {
+                    let bak = db_path.with_extension("db.bak");
+                    std::fs::copy(&db_path, &bak).unwrap_or_else(|e| {
+                        eprintln!("chump gap restore: could not back up state.db: {e}");
+                        std::process::exit(1);
+                    });
+                    eprintln!("backed up {} → {}", db_path.display(), bak.display());
+                    // Remove the corrupted DB so GapStore::open creates a fresh one.
+                    std::fs::remove_file(&db_path).unwrap_or_else(|e| {
+                        eprintln!("chump gap restore: could not remove corrupted state.db: {e}");
+                        std::process::exit(1);
+                    });
+                }
+                let mut fresh_store = match gap_store::GapStore::open(&repo_root) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("chump gap restore: could not open fresh state.db: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+                match fresh_store.restore_from_state_sql(&sql_path) {
+                    Ok(n) => {
+                        println!(
+                            "chump gap restore: rebuilt state.db from {} — {} gap(s) restored",
+                            sql_path.display(),
+                            n
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap restore: restore failed: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             // INFRA-586: PM health signal for META-046 curation.
             // Checks: P0 ages, vague (no AC) pickable, double-encoded
             // depends_on, missing-dep refs, open-with-closed-pr, race-*
@@ -3680,6 +3735,7 @@ async fn main() -> Result<()> {
                 eprintln!("  decompose        <GAP-ID> [--apply] [--json]  # LLM-assisted slicing");
                 eprintln!("  dump             [--out PATH] [--per-file [--out-dir docs/gaps/]]");
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
+                eprintln!("  restore          --from-sql  # rebuild state.db from .chump/state.sql (INFRA-538)");
                 eprintln!("  audit-priorities [--json]   # PM health check (META-046)");
                 eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check");
                 std::process::exit(2);

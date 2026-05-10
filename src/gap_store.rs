@@ -2040,6 +2040,121 @@ impl GapStore {
         Ok((inserted, skipped, backfilled + status_backfilled))
     }
 
+    /// INFRA-538 — rebuild state.db from `.chump/state.sql` (the tracked YAML
+    /// mirror). Reads the YAML dump at `sql_path`, clears the `gaps` table,
+    /// and re-inserts all rows. Preserves every field including `closed_pr`,
+    /// `closed_date`, `notes`, and affinity columns.
+    ///
+    /// The caller is responsible for backing up the existing state.db before
+    /// calling this (typically rename to state.db.bak).
+    pub fn restore_from_state_sql(&mut self, sql_path: &Path) -> Result<usize> {
+        let text = std::fs::read_to_string(sql_path)
+            .with_context(|| format!("reading state.sql at {}", sql_path.display()))?;
+        let file: YamlGapsFile = serde_yaml::from_str(&text)
+            .with_context(|| format!("parsing YAML in {}", sql_path.display()))?;
+
+        // Clear existing data so the restore is a full replacement, not a merge.
+        self.conn
+            .execute("DELETE FROM gaps", [])
+            .context("clearing gaps table before restore")?;
+
+        let mut inserted = 0usize;
+        for g in &file.gaps {
+            let ac = match &g.acceptance_criteria {
+                Some(v) => normalize_string_list(v),
+                None => String::new(),
+            };
+            let deps = match &g.depends_on {
+                Some(v) => {
+                    let json: serde_json::Value =
+                        serde_json::from_str(&v.to_string()).unwrap_or(serde_json::Value::Null);
+                    normalize_string_list(&json)
+                }
+                None => String::new(),
+            };
+            let notes = g
+                .notes
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let source_doc = g
+                .source_doc
+                .as_ref()
+                .map(yaml_value_to_loose_string)
+                .unwrap_or_default();
+            let opened_date = g
+                .opened_date
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let closed_date = g
+                .closed_date
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let closed_pr = g.closed_pr.as_ref().and_then(yaml_value_to_i64);
+            let skills_required = g
+                .skills_required
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let preferred_backend = g
+                .preferred_backend
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let preferred_machine = g
+                .preferred_machine
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let estimated_minutes = g
+                .estimated_minutes
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let required_model = g
+                .required_model
+                .as_ref()
+                .map(yaml_value_to_string)
+                .unwrap_or_default();
+            let created_at = unix_now();
+
+            self.conn.execute(
+                "INSERT OR REPLACE INTO gaps(id,domain,title,description,priority,effort,status,
+                    acceptance_criteria,depends_on,notes,source_doc,created_at,
+                    opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                    preferred_machine,estimated_minutes,required_model)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
+                params![
+                    g.id,
+                    g.domain,
+                    g.title,
+                    g.description,
+                    g.priority,
+                    g.effort,
+                    g.status,
+                    ac,
+                    deps,
+                    notes,
+                    source_doc,
+                    created_at,
+                    opened_date,
+                    closed_date,
+                    closed_pr,
+                    skills_required,
+                    preferred_backend,
+                    preferred_machine,
+                    estimated_minutes,
+                    required_model,
+                ],
+            )
+            .with_context(|| format!("inserting gap {} during restore", g.id))?;
+            inserted += 1;
+        }
+        Ok(inserted)
+    }
+
     /// INFRA-460 — propagate `status: done` from per-file YAML mirrors to
     /// state.db. Mirrors `backfill_closed_pr_from_yaml` (INFRA-233): a
     /// post-import UPDATE pass that catches rows the `INSERT OR IGNORE`
