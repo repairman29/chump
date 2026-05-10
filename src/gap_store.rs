@@ -2319,6 +2319,12 @@ fn yaml_block_scalar(s: &str, indent: &str) -> String {
     out
 }
 
+/// Parse a gap's acceptance_criteria JSON list into Vec<String>. Returns an
+/// empty Vec when the field is empty or unparseable. Public for COG-052 audit-ac.
+pub fn parse_json_ac_list(s: &str) -> Vec<String> {
+    parse_json_string_list(s).unwrap_or_default()
+}
+
 /// Parse a stored JSON-string-array column back to Vec<String>. Returns None
 /// when the field is empty or unparseable.
 fn parse_json_string_list(s: &str) -> Option<Vec<String>> {
@@ -4417,6 +4423,20 @@ meta:
         let blocks = extract_unknown_field_blocks(yaml);
         assert_eq!(blocks.len(), 1, "got blocks: {:?}", blocks);
         assert!(blocks[0].starts_with("  closed_commit: "));
+    }
+
+    #[test]
+    fn cog052_parse_json_ac_list_roundtrip() {
+        // Well-formed JSON array.
+        let items = parse_json_ac_list(r#"["cargo check passes","test script exits 0"]"#);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0], "cargo check passes");
+        assert_eq!(items[1], "test script exits 0");
+        // Empty / blank input returns empty vec.
+        assert!(parse_json_ac_list("").is_empty());
+        assert!(parse_json_ac_list("   ").is_empty());
+        // Unparseable returns empty vec (graceful).
+        assert!(parse_json_ac_list("not json").is_empty());
     }
 
     /// Empty-input guard: nothing to preserve, nothing returned.
