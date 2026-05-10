@@ -7,6 +7,7 @@
 #
 # Usage:
 #   scripts/coord/bot-merge.sh [--gap GAP-ID ...] [--stack-on PREV-GAP-ID] [--auto-merge] [--skip-tests] [--dry-run] [--no-merge-driver]
+#                              [--branch-prefix PREFIX] [--pr-template PATH] [--required-checks CHECK1,CHECK2,...]
 #
 #   --stack-on PREV-GAP-ID
 #                  Open this PR with base=<prev-PR-head> instead of main. When
@@ -34,6 +35,26 @@
 #                  Disable custom git merge drivers (INFRA-310) during rebase.
 #                  Use when custom drivers are causing issues or you want to
 #                  force git's default 3-way merge strategy.
+#   --branch-prefix PREFIX
+#                  Branch namespace prefix for auto-derive and branch rename
+#                  (default: 'chump'). Set to the tool prefix used by the target
+#                  repo — e.g. 'acme' for branches like 'acme/feat-123-title'.
+#                  Env: BM_BRANCH_PREFIX
+#   --pr-template PATH
+#                  Path to a Markdown file whose contents replace the default
+#                  PR body template. Use for repos with their own PR structure
+#                  (e.g. chump-proprietary). Supports the following placeholders
+#                  which are substituted before posting:
+#                    {{COMMIT_LOG}}   one-line git log since base
+#                    {{GAP_LINE}}     "Gaps addressed: ..." or empty
+#                    {{PLAN_BLOCK}}   plan-mode details block or empty
+#                  Env: BM_PR_TEMPLATE
+#   --required-checks CHECK1,CHECK2,...
+#                  Comma-separated list of CI check names that must pass before
+#                  auto-merge is armed. When set, only checks matching one of
+#                  these names are considered blockers (others are advisory).
+#                  When unset, any FAILURE/ERROR check blocks auto-merge.
+#                  Env: BM_REQUIRED_CHECKS
 #
 # Requirements: gh CLI authenticated, GITHUB_TOKEN in env or gh keyring, cargo.
 #
@@ -122,6 +143,13 @@ NO_MERGE_DRIVER=0
 # open sibling PRs citing the same gap and closes them with a "superseded
 # by #N" comment. CHUMP_SPECULATIVE=1 is the env equivalent.
 SPECULATIVE=${CHUMP_SPECULATIVE:-0}
+# INFRA-632: portability knobs — configurable branch prefix, PR template, required CI checks.
+BRANCH_PREFIX="${BM_BRANCH_PREFIX:-chump}"
+PR_TEMPLATE="${BM_PR_TEMPLATE:-}"
+REQUIRED_CHECKS="${BM_REQUIRED_CHECKS:-}"
+NEXT_IS_BRANCH_PREFIX=0
+NEXT_IS_PR_TEMPLATE=0
+NEXT_IS_REQUIRED_CHECKS=0
 GAP_IDS=()
 NEXT_IS_GAP=0
 # INFRA-061 (M3): --stack-on <PREV-GAP-ID> opens this PR with base=claude/<branch
@@ -143,15 +171,33 @@ for arg in "$@"; do
         NEXT_IS_STACK_ON=0
         continue
     fi
+    if [[ $NEXT_IS_BRANCH_PREFIX -eq 1 ]]; then
+        BRANCH_PREFIX="$arg"
+        NEXT_IS_BRANCH_PREFIX=0
+        continue
+    fi
+    if [[ $NEXT_IS_PR_TEMPLATE -eq 1 ]]; then
+        PR_TEMPLATE="$arg"
+        NEXT_IS_PR_TEMPLATE=0
+        continue
+    fi
+    if [[ $NEXT_IS_REQUIRED_CHECKS -eq 1 ]]; then
+        REQUIRED_CHECKS="$arg"
+        NEXT_IS_REQUIRED_CHECKS=0
+        continue
+    fi
     case "$arg" in
-        --gap)         NEXT_IS_GAP=1 ;;
-        --stack-on)    NEXT_IS_STACK_ON=1 ;;
-        --auto-merge)  AUTO_MERGE=1 ;;
-        --skip-tests)  SKIP_TESTS=1 ;;
-        --fast)        FAST=1; SKIP_TESTS=1 ;;
-        --dry-run)     DRY_RUN=1 ;;
-        --speculative) SPECULATIVE=1 ;;
+        --gap)             NEXT_IS_GAP=1 ;;
+        --stack-on)        NEXT_IS_STACK_ON=1 ;;
+        --auto-merge)      AUTO_MERGE=1 ;;
+        --skip-tests)      SKIP_TESTS=1 ;;
+        --fast)            FAST=1; SKIP_TESTS=1 ;;
+        --dry-run)         DRY_RUN=1 ;;
+        --speculative)     SPECULATIVE=1 ;;
         --no-merge-driver) NO_MERGE_DRIVER=1 ;;
+        --branch-prefix)   NEXT_IS_BRANCH_PREFIX=1 ;;
+        --pr-template)     NEXT_IS_PR_TEMPLATE=1 ;;
+        --required-checks) NEXT_IS_REQUIRED_CHECKS=1 ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -182,8 +228,12 @@ if [[ ${#GAP_IDS[@]} -eq 0 ]]; then
     # (infra-, research-, etc.) because the domain IS the gap-ID prefix we
     # want to extract. Then turn dashes into spaces and uppercase so
     # 'infra-127-reflection' becomes 'INFRA 127 RELECTION' for the grep.
+    # INFRA-632: strip BRANCH_PREFIX (and legacy Chump prefixes) so gap-ID
+    # auto-derive works for non-Chump repos with custom branch namespaces.
+    # Use ${BRANCH_PREFIX:-chump} so the pattern degrades gracefully when this
+    # block is eval'd in isolation (e.g. unit tests that source only this block).
     _branch_tail=$(echo "$_branch_name" \
-        | sed -E 's,^(chump|claude|chore)/(file-|close-|fix-)?,,' \
+        | sed -E "s,^(${BRANCH_PREFIX:-chump}|chump|claude|chore)/(file-|close-|fix-)?,," \
         | tr '-' ' ' | tr 'a-z' 'A-Z')
     # Extract every <DOMAIN>-<NUMBER> pattern from the cleaned branch name.
     _derived_gaps=$(echo "$_branch_tail" \
@@ -677,12 +727,15 @@ fi
 # This lets agents create a worktree without specifying -b, and bot-merge derives
 # the branch name from the worktree dir (e.g., .chump/worktrees/infra-127 → chump/infra-127).
 _wt_dir="$(basename "$REPO_ROOT" 2>/dev/null || echo "")"
-if [[ -n "$_wt_dir" ]] && ! echo "$BRANCH" | grep -qE '^(chump|claude|chore|cursor|goose|aider)/'; then
+# INFRA-632: build the known-prefix pattern from BRANCH_PREFIX + legacy Chump prefixes.
+_known_prefix_re="^(${BRANCH_PREFIX}|chump|claude|chore|cursor|goose|aider)/"
+_known_wt_re="^(${BRANCH_PREFIX}|chump|claude|chore|cursor|goose|aider)-"
+if [[ -n "$_wt_dir" ]] && ! echo "$BRANCH" | grep -qE "$_known_prefix_re"; then
     # Current branch doesn't have a tool prefix. If the worktree basename doesn't
-    # start with a tool prefix either, derive chump/<basename> as a suggestion.
-    if ! echo "$_wt_dir" | grep -qE '^(chump|claude|chore|cursor|goose|aider)-'; then
-        _default_branch="chump/${_wt_dir}"
-        info "INFRA-187: current branch '$BRANCH' lacks tool prefix (chump/, claude/, etc.)."
+    # start with a tool prefix either, derive <BRANCH_PREFIX>/<basename> as a suggestion.
+    if ! echo "$_wt_dir" | grep -qE "$_known_wt_re"; then
+        _default_branch="${BRANCH_PREFIX}/${_wt_dir}"
+        info "INFRA-187: current branch '$BRANCH' lacks tool prefix (${BRANCH_PREFIX}/, chump/, claude/, etc.)."
         info "Renaming to match worktree: $BRANCH → $_default_branch"
         if ! run git branch -m "$BRANCH" "$_default_branch"; then
             red "Failed to rename branch — proceeding with current branch '$BRANCH'."
@@ -1236,13 +1289,23 @@ if [[ -z "$EXISTING_PR" ]]; then
         fi
     done
 
-    if [[ $DRY_RUN -eq 1 ]]; then
-        info "[dry-run] gh pr create --base $BASE_BRANCH --title \"$PR_TITLE\" …"
+    # INFRA-632: build PR body — use --pr-template file when provided,
+    # substituting {{COMMIT_LOG}}, {{GAP_LINE}}, {{PLAN_BLOCK}} placeholders;
+    # otherwise fall back to the default Chump template.
+    if [[ -n "$PR_TEMPLATE" ]]; then
+        if [[ ! -f "$PR_TEMPLATE" ]]; then
+            red "INFRA-632: --pr-template '$PR_TEMPLATE' not found."
+            exit 1
+        fi
+        _commit_log_escaped=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline | sed 's/^/- /' | sed 's/[&/\]/\\&/g' | tr '\n' '\r')
+        _pr_body=$(sed \
+            -e "s|{{GAP_LINE}}|${GAP_LINE}|g" \
+            -e "s|{{PLAN_BLOCK}}|${PLAN_BLOCK}|g" \
+            "$PR_TEMPLATE" \
+            | awk -v cl="$_commit_log_escaped" '{gsub(/\{\{COMMIT_LOG\}\}/, cl); print}' \
+            | tr '\r' '\n')
     else
-        if ! gh_with_backoff "gh pr create" 120 pr create \
-            --base "$BASE_BRANCH" \
-            --title "$PR_TITLE" \
-            --body "$(cat <<EOF
+        _pr_body="$(cat <<EOF
 ## Changes
 $(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline | sed 's/^/- /')
 
@@ -1256,7 +1319,16 @@ $([ $SKIP_TESTS -eq 0 ] && echo "- [x] \`cargo test\` passed" || echo "- [ ] tes
 
 🤖 Opened by bot-merge.sh
 EOF
-)"; then
+)"
+    fi
+
+    if [[ $DRY_RUN -eq 1 ]]; then
+        info "[dry-run] gh pr create --base $BASE_BRANCH --title \"$PR_TITLE\" …"
+    else
+        if ! gh_with_backoff "gh pr create" 120 pr create \
+            --base "$BASE_BRANCH" \
+            --title "$PR_TITLE" \
+            --body "$_pr_body"; then
             red "gh pr create failed or timed out."
             exit 2
         fi
@@ -1509,7 +1581,31 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         # (This prevents PR #470-style situations where auto-merge is armed on a PR
         # that's waiting for shared infrastructure to be fixed.)
         stage_start "CI status pre-flight check"
-        _ci_status=$(gh pr checks "$TARGET_PR" 2>/dev/null | grep -E "FAILURE|ERROR" || true)
+        # INFRA-632: when --required-checks is set, only flag failures for
+        # checks whose name matches one of the comma-separated entries.
+        # When unset, any FAILURE/ERROR check blocks auto-merge (original behaviour).
+        _all_failing=$(gh pr checks "$TARGET_PR" 2>/dev/null | grep -E "FAILURE|ERROR" || true)
+        if [[ -n "$REQUIRED_CHECKS" && -n "$_all_failing" ]]; then
+            _ci_status=""
+            IFS=',' read -ra _req_list <<< "$REQUIRED_CHECKS"
+            while IFS= read -r _line; do
+                for _req in "${_req_list[@]}"; do
+                    _req_trimmed="${_req#"${_req%%[![:space:]]*}"}"
+                    _req_trimmed="${_req_trimmed%"${_req_trimmed##*[![:space:]]}"}"
+                    if echo "$_line" | grep -qF "$_req_trimmed"; then
+                        _ci_status+="$_line"$'\n'
+                        break
+                    fi
+                done
+            done <<< "$_all_failing"
+            _ci_status="${_ci_status%$'\n'}"
+            if [[ -n "$_all_failing" ]] && [[ -z "$_ci_status" ]]; then
+                info "INFRA-632: failing checks are non-required — proceeding (advisory only):"
+                echo "$_all_failing" | sed 's/^/  [advisory] /'
+            fi
+        else
+            _ci_status="$_all_failing"
+        fi
         if [[ -n "$_ci_status" ]]; then
             red "BLOCKER: Required CI jobs failed. Not arming auto-merge."
             red "Failed checks:"
