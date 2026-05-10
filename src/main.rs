@@ -1207,7 +1207,7 @@ async fn main() -> Result<()> {
                     }
                     dispatch::ShipResult::Aborted { error } => {
                         eprintln!("[dispatch] aborted: {error}");
-                        std::process::exit(3);
+                        std::process::exit(1);
                     }
                 }
             }
