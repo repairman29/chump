@@ -4116,14 +4116,26 @@ async fn main() -> Result<()> {
         }
     }
 
-    // `chump mcp list` (INFRA-MCP-DISCOVERY) — enumerate discovered MCP servers
-    // grouped by source (PATH, user-config, system). Works without validate_config()
-    // so it is useful during setup / debugging.
+    // `chump mcp list [--installed] [--json]` (PRODUCT-061)
+    //
+    // Default: print the registry catalog (registry/mcp-servers.toml).
+    // --installed: print discovered installed binaries (PATH/user-config/system).
+    // --json: machine-readable output for either mode.
     if args.get(1).map(|s| s == "mcp").unwrap_or(false)
         && args.get(2).map(|s| s == "list").unwrap_or(false)
     {
-        let servers = mcp_discovery::discover_mcp_servers();
-        mcp_discovery::print_mcp_list(&servers);
+        let installed = args.iter().any(|a| a == "--installed");
+        let json = args.iter().any(|a| a == "--json");
+        if installed {
+            let servers = mcp_discovery::discover_mcp_servers();
+            tracing::info!(count = servers.len(), "mcp list --installed");
+            mcp_discovery::print_mcp_list(&servers, json);
+        } else {
+            let repo_root = crate::repo_path::repo_root();
+            let entries = mcp_discovery::read_registry(&repo_root);
+            tracing::info!(count = entries.len(), "mcp list registry");
+            mcp_discovery::print_registry(&entries, json);
+        }
         return Ok(());
     }
 
