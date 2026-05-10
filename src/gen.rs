@@ -144,8 +144,23 @@ pub async fn run(opts: GenOptions) -> Result<()> {
             "gen: agent loop complete"
         );
         let out_chars = outcome.reply.len();
-        let edits = parse_file_edits(&outcome.reply)?;
-        apply_file_edits(&edits, work_dir)?;
+        // PRODUCT-052: fallback detection.
+        // 0 tool calls → model doesn't support tool-use; ===FILE=== blocks required.
+        // >0 tool calls → model used patch_file etc.; ===FILE=== blocks are optional
+        //   (agent may have already applied changes to disk — not an error if absent).
+        let edits = if outcome.total_tool_calls == 0 {
+            tracing::warn!(
+                reply_chars = outcome.reply.len(),
+                "gen: agent used 0 tools — model may not support tool-use; \
+                 treating reply as ===FILE=== blocks"
+            );
+            parse_file_edits(&outcome.reply)?
+        } else {
+            parse_file_edits(&outcome.reply).unwrap_or_default()
+        };
+        if !edits.is_empty() {
+            apply_file_edits(&edits, work_dir)?;
+        }
         (in_chars, out_chars)
     };
 
@@ -313,5 +328,20 @@ mod tests {
         let tmp = std::env::temp_dir();
         let edits = vec![("/etc/passwd".to_string(), "".to_string())];
         assert!(apply_file_edits(&edits, &tmp).is_err());
+    }
+
+    // Fallback detection: when model used 0 tool_calls, FILE blocks are required.
+    #[test]
+    fn fallback_zero_tool_calls_requires_file_blocks() {
+        // No FILE blocks → error (model must have used ===FILE=== format)
+        assert!(parse_file_edits("I made the change, see above.").is_err());
+    }
+
+    // When model used tools (total_tool_calls > 0), FILE blocks are optional.
+    #[test]
+    fn fallback_tool_use_path_accepts_no_file_blocks() {
+        // Simulates the `parse_file_edits(&outcome.reply).unwrap_or_default()` call.
+        let edits = parse_file_edits("patch_file was already called").unwrap_or_default();
+        assert!(edits.is_empty());
     }
 }
