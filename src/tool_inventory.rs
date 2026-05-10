@@ -145,10 +145,10 @@ pub fn register_free_dispatch_tools(registry: &mut ToolRegistry) {
     }
 }
 
-/// Tool keys for `chump gen` (PRODUCT-050). Read-only file ops so the agent
-/// can explore context before emitting edits in ===FILE=== format. No
-/// write/patch/commit tools — gen.rs owns those steps after parsing.
-const GEN_TOOL_KEYS: &[&str] = &["list_dir", "read_file"];
+/// Tool keys for `chump gen` (PRODUCT-050/051). Read ops for context exploration,
+/// patch_file + run_cli for iterative code editing and cargo check loops.
+/// Excludes git_commit — gen.rs owns the commit step after the agent finishes.
+const GEN_TOOL_KEYS: &[&str] = &["list_dir", "patch_file", "read_file", "run_cli"];
 
 /// Register the gen tool set. Does not check `enabled()` — set CHUMP_REPO
 /// before `agent.run()` so read_file/list_dir resolve paths correctly.

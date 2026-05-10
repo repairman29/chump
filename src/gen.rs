@@ -209,16 +209,18 @@ pub async fn run(opts: GenOptions) -> Result<()> {
     Ok(())
 }
 
-/// Build a [`ChumpAgent`] for `chump gen` with read_file + list_dir tools.
+/// Build a [`ChumpAgent`] for `chump gen` with read_file, list_dir, patch_file,
+/// and run_cli tools (PRODUCT-050 / PRODUCT-051).
 ///
-/// The agent explores the codebase, then emits edits in ===FILE=== format in
-/// its final reply. gen.rs applies those edits, runs cargo check, and commits.
+/// The agent explores context, patches files, verifies with `cargo check`, and
+/// iterates on failures. It emits final ===FILE=== blocks (or has already applied
+/// edits via patch_file) — gen.rs applies any remaining blocks, then commits.
 fn build_gen_agent(provider: Box<dyn axonerai::provider::Provider + Send + Sync>) -> ChumpAgent {
     let system = format!(
-        "You are a coding assistant. Use read_file and list_dir tools to explore \
-         the codebase as needed, then make the requested change. Output ONLY the \
-         modified files in your final response using this exact format for each \
-         changed file:\n\n\
+        "You are a coding assistant. Use read_file and list_dir to explore the \
+         codebase, patch_file to apply changes, and run_cli to run `cargo check` \
+         or `cargo test` and iterate on any errors. When all changes are correct, \
+         output ONLY the final modified files using this exact format:\n\n\
          {FILE_BEGIN} path/to/file.rs===\n<complete file content>\n{FILE_END}\n\n\
          Do not include any explanation outside these delimited blocks."
     );
@@ -227,7 +229,7 @@ fn build_gen_agent(provider: Box<dyn axonerai::provider::Provider + Send + Sync>
     let max_iter = std::env::var("CHUMP_AGENT_MAX_ITER")
         .ok()
         .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(20);
+        .unwrap_or(10);
     ChumpAgent::new(
         provider,
         registry,
