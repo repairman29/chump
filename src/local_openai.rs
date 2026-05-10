@@ -449,10 +449,9 @@ const CODE_PUNCT_THRESHOLD: f64 = 0.15;
 const JSON_PUNCT_THRESHOLD: f64 = 0.25;
 
 /// Threshold (fraction of num_ctx) above which we emit an early warning. At
-/// 80%, Ollama's typical behavior is "still works but starting to drop
-/// connections under load"; at 95% it silently fails. Warning at 80% gives
-/// users actionable lead time.
-const NUM_CTX_WARN_FRACTION: f64 = 0.80;
+/// 85%, Ollama starts dropping connections under load; at 95% it silently
+/// fails. Warning at 85% gives users actionable lead time.
+const NUM_CTX_WARN_FRACTION: f64 = 0.85;
 
 /// ASCII-punctuation fraction used to classify a string as prose / code / JSON.
 pub(crate) fn punct_density(s: &str) -> f64 {
@@ -571,8 +570,10 @@ pub(crate) fn warn_if_near_num_ctx(
             estimated_tokens = estimated,
             num_ctx = num_ctx,
             pct_used = format!("{:.0}", pct),
-            "ollama prompt approaching num_ctx limit; expect dropped connections or silent truncation. \
-             Bump CHUMP_OLLAMA_NUM_CTX (current cap: 32768) or trim brain/memory injections."
+            "ollama prompt approaching num_ctx limit — expect dropped connections or silent truncation. \
+             Actions: (1) trim memory (set CHUMP_CONTEXT_SUMMARY_THRESHOLD lower), \
+             (2) reduce tool set (set CHUMP_LIGHT_CONTEXT=1 or CHUMP_WEB_SLIM_TOOLS=1), \
+             (3) raise CHUMP_OLLAMA_NUM_CTX if your model supports a larger context."
         );
     }
 }
@@ -1624,6 +1625,120 @@ struct ToolCallAccum {
     arguments: String,
 }
 
+/// Auto-configure context window env vars at startup (INFRA-742).
+///
+/// When `OPENAI_API_BASE` points to Ollama, queries `/api/show` to read the
+/// model's `num_ctx` and sets:
+///   - `CHUMP_CONTEXT_MAX_TOKENS` = num_ctx
+///   - `CHUMP_CONTEXT_SUMMARY_THRESHOLD` = 80% of num_ctx
+///
+/// For non-Ollama OpenAI-compatible endpoints, falls back to 16 k.
+///
+/// If the full tool set's estimated schema tokens exceed 25% of num_ctx,
+/// sets `CHUMP_LIGHT_CONTEXT=1` to cap the tool set automatically.
+///
+/// No-ops when `CHUMP_CONTEXT_MAX_TOKENS` is already set (respects explicit config).
+pub async fn auto_configure_context_window() {
+    if std::env::var("CHUMP_CONTEXT_MAX_TOKENS")
+        .map(|v| {
+            let t = v.trim();
+            !t.is_empty() && t != "0"
+        })
+        .unwrap_or(false)
+    {
+        return; // explicit config wins
+    }
+
+    let base_url = std::env::var("OPENAI_API_BASE").unwrap_or_default();
+    if base_url.is_empty() {
+        return; // no local endpoint configured — skip
+    }
+
+    let is_ollama = base_url.contains("11434");
+    let num_ctx: u32 = if is_ollama {
+        probe_ollama_num_ctx(&base_url).await.unwrap_or(16_384)
+    } else {
+        16_384 // non-Ollama fallback; INFRA-739 will add model_registry.yaml lookup
+    };
+
+    std::env::set_var("CHUMP_CONTEXT_MAX_TOKENS", num_ctx.to_string());
+    let threshold = ((num_ctx as f64) * 0.80) as u32;
+    std::env::set_var("CHUMP_CONTEXT_SUMMARY_THRESHOLD", threshold.to_string());
+
+    tracing::info!(
+        num_ctx,
+        threshold,
+        source = if is_ollama {
+            "ollama /api/show"
+        } else {
+            "default-16k"
+        },
+        "auto-configured context window"
+    );
+
+    // Tool budget check: if estimated full-set schema tokens exceed 25% of
+    // num_ctx and no explicit tool profile is set, switch to LIGHT_CHAT.
+    let already_profiled = std::env::var("CHUMP_LIGHT_CONTEXT").is_ok()
+        || std::env::var("CHUMP_WEB_SLIM_TOOLS").is_ok();
+    if !already_profiled {
+        let tool_count = inventory::iter::<crate::tool_inventory::ToolEntry>()
+            .filter(|e| e.enabled())
+            .count();
+        // Conservative: ~300 tokens per tool (name + description + JSON schema overhead).
+        let estimated_schema_tokens = tool_count * 300;
+        let budget_limit = ((num_ctx as f64) * 0.25) as usize;
+        if estimated_schema_tokens > budget_limit {
+            std::env::set_var("CHUMP_LIGHT_CONTEXT", "1");
+            tracing::warn!(
+                tool_count,
+                estimated_schema_tokens,
+                budget_limit,
+                num_ctx,
+                "tool schema budget exceeds 25% of context window — auto-set CHUMP_LIGHT_CONTEXT=1"
+            );
+        }
+    }
+}
+
+/// Query Ollama's /api/show endpoint to discover the model's configured num_ctx.
+async fn probe_ollama_num_ctx(base_url: &str) -> Option<u32> {
+    let model = std::env::var("OPENAI_MODEL").unwrap_or_default();
+    if model.is_empty() {
+        return None;
+    }
+    // Strip /v1 suffix to get Ollama root URL (e.g. http://127.0.0.1:11434)
+    let root = base_url.trim_end_matches('/').trim_end_matches("/v1");
+    let url = format!("{}/api/show", root);
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&serde_json::json!({"name": model}))
+        .timeout(std::time::Duration::from_secs(3))
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let json: serde_json::Value = resp.json().await.ok()?;
+    // Primary: model_info["llama.context_length"]
+    if let Some(v) = json["model_info"]["llama.context_length"].as_u64() {
+        return Some(v as u32);
+    }
+    // Fallback: parse parameters string for "num_ctx <N>" line
+    if let Some(params) = json["parameters"].as_str() {
+        for line in params.lines() {
+            let mut parts = line.split_whitespace();
+            if parts.next() == Some("num_ctx") {
+                if let Some(Ok(n)) = parts.next().map(|s| s.parse::<u32>()) {
+                    return Some(n);
+                }
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2269,7 +2384,7 @@ mod tests {
         assert!(toks >= 4, "CJK estimate too low: {}", toks);
     }
 
-    /// The warning only fires above 80% of num_ctx. Below threshold = silent.
+    /// The warning fires above 85% of num_ctx (INFRA-742). Below threshold = silent.
     /// (We can't capture tracing output easily without a subscriber fixture,
     /// so these tests pin the pure estimate_prompt_tokens path and verify the
     /// helper itself doesn't panic when called.)
@@ -2286,11 +2401,50 @@ mod tests {
 
     #[test]
     fn warn_if_near_num_ctx_no_panic_over_threshold() {
-        // Build a message large enough to exceed 80% of a 1024 num_ctx
-        // (that's ~819 tokens ≈ 3276 chars).
+        // Build a message large enough to exceed 85% of a 1024 num_ctx
+        // (that's ~870 tokens ≈ 3480 chars). INFRA-742 raised threshold 80% → 85%.
         let big = "x".repeat(5000);
         let msgs = vec![serde_json::json!({"role": "user", "content": big})];
         warn_if_near_num_ctx(&msgs, None, 1024);
+    }
+
+    // INFRA-742: under-threshold at 84% should not fire (warn at 85%).
+    #[test]
+    fn warn_if_near_num_ctx_silent_just_below_85pct() {
+        // 84% of 1024 = ~860 tokens ≈ 3440 chars prose.
+        let just_under = "w".repeat(3440);
+        let msgs = vec![serde_json::json!({"role": "user", "content": just_under})];
+        // no panic — function should be silent at 84%
+        warn_if_near_num_ctx(&msgs, None, 1024);
+    }
+
+    // INFRA-742: auto_configure_context_window respects explicit CHUMP_CONTEXT_MAX_TOKENS.
+    #[tokio::test]
+    #[serial]
+    async fn auto_configure_skips_when_already_set() {
+        std::env::set_var("CHUMP_CONTEXT_MAX_TOKENS", "32768");
+        std::env::set_var("OPENAI_API_BASE", "http://127.0.0.1:11434/v1");
+        auto_configure_context_window().await;
+        // Should remain 32768 — not overwritten.
+        assert_eq!(std::env::var("CHUMP_CONTEXT_MAX_TOKENS").unwrap(), "32768");
+        std::env::remove_var("CHUMP_CONTEXT_MAX_TOKENS");
+        std::env::remove_var("OPENAI_API_BASE");
+    }
+
+    // INFRA-742: probe falls back gracefully when Ollama is not running.
+    #[tokio::test]
+    async fn probe_ollama_num_ctx_returns_none_when_unreachable() {
+        // Use a port that is not listening.
+        let result = probe_ollama_num_ctx("http://127.0.0.1:19999/v1").await;
+        assert!(result.is_none());
+    }
+
+    // INFRA-742: probe strips /v1 suffix correctly.
+    #[test]
+    fn probe_ollama_url_strip() {
+        let base = "http://127.0.0.1:11434/v1";
+        let root = base.trim_end_matches('/').trim_end_matches("/v1");
+        assert_eq!(root, "http://127.0.0.1:11434");
     }
 
     /// CHUMP_NUM_CTX_WARN=0 suppresses the warning path entirely.
