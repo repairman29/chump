@@ -808,3 +808,8 @@ jobs:
         env:
           CHUMP_OBS_BUDGET_BYPASS: "1"
         run: bash scripts/ci/test-worktree-show-toplevel.sh
+
+      - name: handoff comment template lint (INFRA-769)
+        env:
+          CHUMP_OBS_BUDGET_BYPASS: "1"
+        run: bash scripts/ci/test-lint-handoff-comment.sh
