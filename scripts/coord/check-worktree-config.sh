@@ -57,10 +57,10 @@ while IFS= read -r line; do
             if [[ "$JSON_MODE" == "1" ]]; then
                 RESULTS=$(python3 -c "
 import json, sys
-r = json.loads('$RESULTS')
-r.append({'worktree': '$wt_path', 'git_dir': '$git_dir', 'core.worktree': '$actual_cfg', 'expected': '$expected_wt', 'status': '$status'})
+r = json.loads(sys.argv[1])
+r.append({'worktree': sys.argv[2], 'git_dir': sys.argv[3], 'core.worktree': sys.argv[4], 'expected': sys.argv[5], 'status': sys.argv[6]})
 print(json.dumps(r))
-" 2>/dev/null || echo "$RESULTS")
+" "$RESULTS" "$wt_path" "$git_dir" "$actual_cfg" "$expected_wt" "$status" 2>/dev/null || echo "$RESULTS")
             else
                 if [[ "$status" == "mismatch" ]]; then
                     echo "[CHECK] MISMATCH: $wt_path"
