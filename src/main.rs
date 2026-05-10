@@ -146,6 +146,7 @@ mod repo_allowlist;
 mod repo_allowlist_tool;
 mod repo_path;
 mod repo_tools;
+mod rescue_tally;
 mod roadmap_status;
 mod routes;
 mod rpc_mode;
@@ -516,6 +517,9 @@ async fn main() -> Result<()> {
         loop {
             let report = fleet_health::build_report(&repo_root);
             fleet_health::emit(&repo_root, &report);
+            // Emit kind=session_rescue for any new rescues found (INFRA-667).
+            let rescues = rescue_tally::scan_rescues(&repo_root, 24);
+            rescue_tally::emit_rescue_events(&repo_root, &rescues);
             if want_json {
                 println!("{}", report.render_json());
             } else {
