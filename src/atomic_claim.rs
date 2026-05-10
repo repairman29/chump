@@ -208,6 +208,13 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         )
     })?;
 
+    // 6b. Verify (and repair if needed) the gitdir back-reference.
+    // Concurrent `git worktree add` calls from sibling agents can clobber
+    // .git/worktrees/<name>/gitdir, causing the new worktree to resolve to
+    // the wrong repo root (INFRA-779). Repair is safe: git computes this
+    // value deterministically as the canonicalized path of <worktree>/.git.
+    verify_and_repair_gitdir(&args.repo_root, &branch, &worktree_path)?;
+
     // 7. Shell out to gap-claim.sh inside the new worktree.
     let mut claim_cmd = Command::new("bash");
     claim_cmd
@@ -243,6 +250,52 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Verify that .git/worktrees/<branch-slug>/gitdir points at <worktree_path>/.git.
+/// Repairs the file if wrong (INFRA-779: concurrent sibling claims can clobber it).
+fn verify_and_repair_gitdir(repo_root: &Path, _branch: &str, worktree_path: &Path) -> Result<()> {
+    // The worktrees entry name is the last component of the branch slug
+    // (git uses the worktree directory name, not the branch name).
+    let wt_name = worktree_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if wt_name.is_empty() {
+        return Ok(());
+    }
+
+    let gitdir_file = repo_root
+        .join(".git")
+        .join("worktrees")
+        .join(wt_name)
+        .join("gitdir");
+    if !gitdir_file.exists() {
+        return Ok(());
+    }
+
+    // git stores the canonical (realpath) value of <worktree>/.git
+    let dot_git = worktree_path.join(".git");
+    let canonical = std::fs::canonicalize(&dot_git).unwrap_or(dot_git.clone());
+    let expected = canonical.to_str().unwrap_or("").to_string();
+    if expected.is_empty() {
+        return Ok(());
+    }
+
+    let recorded = std::fs::read_to_string(&gitdir_file)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if recorded != expected {
+        eprintln!(
+            "[claim] INFRA-779: gitdir mismatch for {wt_name} — repairing\n  was: {recorded}\n  now: {expected}"
+        );
+        std::fs::write(&gitdir_file, format!("{expected}\n"))
+            .with_context(|| format!("repairing gitdir file {}", gitdir_file.display()))?;
+    }
+
+    Ok(())
+}
 
 fn run_git(cwd: &Path, args: &[&str]) -> Result<String> {
     let out = Command::new("git")
@@ -414,5 +467,63 @@ mod tests {
     fn from_argv_flag_in_gap_id_position() {
         let argv: Vec<String> = vec!["claim".into(), "--paths".into(), "x".into()];
         assert!(ClaimArgs::from_argv(&argv, PathBuf::from(".")).is_err());
+    }
+
+    // INFRA-779: verify_and_repair_gitdir repairs a clobbered gitdir file
+    #[test]
+    fn infra779_repairs_clobbered_gitdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path().to_path_buf();
+        let wt_path = tmp.path().join("chump-infra-999");
+        std::fs::create_dir_all(&wt_path).unwrap();
+
+        // Simulate the worktree .git file and the worktrees entry.
+        let dot_git = wt_path.join(".git");
+        std::fs::write(&dot_git, "gitdir: placeholder\n").unwrap();
+
+        let wt_entry = repo_root
+            .join(".git")
+            .join("worktrees")
+            .join("chump-infra-999");
+        std::fs::create_dir_all(&wt_entry).unwrap();
+
+        // Write a WRONG gitdir (simulates concurrent clobber).
+        let gitdir_file = wt_entry.join("gitdir");
+        std::fs::write(&gitdir_file, "/private/tmp/chump-OTHER/.git\n").unwrap();
+
+        verify_and_repair_gitdir(&repo_root, "chump/infra-999-claim", &wt_path).unwrap();
+
+        let repaired = std::fs::read_to_string(&gitdir_file).unwrap();
+        let repaired = repaired.trim();
+        // After repair it must point at the worktree's .git (canonical form).
+        let canonical = std::fs::canonicalize(&dot_git).unwrap();
+        assert_eq!(repaired, canonical.to_str().unwrap());
+    }
+
+    #[test]
+    fn infra779_noop_when_gitdir_already_correct() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_root = tmp.path().to_path_buf();
+        let wt_path = tmp.path().join("chump-infra-998");
+        std::fs::create_dir_all(&wt_path).unwrap();
+
+        let dot_git = wt_path.join(".git");
+        std::fs::write(&dot_git, "gitdir: placeholder\n").unwrap();
+        let canonical = std::fs::canonicalize(&dot_git).unwrap();
+        let canonical_str = canonical.to_str().unwrap();
+
+        let wt_entry = repo_root
+            .join(".git")
+            .join("worktrees")
+            .join("chump-infra-998");
+        std::fs::create_dir_all(&wt_entry).unwrap();
+        let gitdir_file = wt_entry.join("gitdir");
+        std::fs::write(&gitdir_file, format!("{canonical_str}\n")).unwrap();
+
+        verify_and_repair_gitdir(&repo_root, "chump/infra-998-claim", &wt_path).unwrap();
+
+        // Must remain unchanged.
+        let after = std::fs::read_to_string(&gitdir_file).unwrap();
+        assert_eq!(after.trim(), canonical_str);
     }
 }
