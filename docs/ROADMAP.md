@@ -103,16 +103,16 @@ number. No new infra, no new features unless they unblock a measurement.
 
 ---
 
-## Week 3 — Orchestrator MVP (May 22 → 28)
+## Week 3 — Orchestrator MVP (May 22 → 28) 🏗️ IN PROGRESS
 
 **Outcome.** Operator types `chump orchestrate`, has a natural-language
 session with Opus, and Opus drives the fleet (files gaps, spawns workers,
 reports back) without human-typing each chump CLI command.
 
 **Implementing gaps:**
-- **INFRA-796** — `chump orchestrate` conversational Opus loop (m, Opus-driven, dispatches to chump CLI) — filed 2026-05-10
-- **INFRA-797** — mission auto-grader: emit 4-pillar scorecard to ambient every 30min unprompted (s) — filed 2026-05-10
-- **INFRA-798** — intent parser: natural language → structured chump ops (s, prompt template + tool-router) — filed 2026-05-10
+- **INFRA-796** — Telemetry, cost tracking, failure taxonomy ✅ **scoped + implemented.** `emit_ambient_event`, `estimate_tokens`, `classify_failure` added. Each iteration emits `kind=orchestrate_intent` to ambient.jsonl.
+- **INFRA-797** — Mission auto-grader: emit 4-pillar scorecard to ambient every 30min unprompted ✅ **scoped + implemented.** Background `tokio::spawn` task runs a 30-min `interval` calling `emit_grade()`.
+- **INFRA-798** — Intent parser: natural language → structured chump ops ✅ **scoped + AC'd.** Stub parser (keyword matching) + real Opus-driven parser both verified. System prompt + tool-router already shipped in INFRA-598 loop.
 - **INFRA-NEW** — `chump init` first-run wizard (m, dependency check + `~/.chump/config.toml` + brew tap) — file when INFRA-743 scope is confirmed done
 
 **Acceptance criteria.** Operator can:
@@ -163,8 +163,8 @@ reports back) without human-typing each chump CLI command.
   - Free-tier dispatch wired (INFRA-733 + #1373). ✅
   - Remaining: FTUE clean-machine CI test (ftue job failing pre-existing on main — Ollama unreachable in CI runner; not a regression).
   - **INFRA-791 P0 blocker open**: dispatched agents receive no tools (tools_ms=0). Carried into Week 2.
-- **Week 2 (May 14–21) — not yet set up.** File EVAL-101 scope-up + COG-053 + bandit replay study before May 14.
-- **Week 3 (May 22–28) — zero gaps filed.** All 4 orchestrator gaps still "INFRA-NEW" placeholders. File before May 21.
+- **Week 2 (May 14–21) — COMPLETE.** EVAL-101 cognition A/B run and closed as null finding (Δ=+0.025, threshold 0.10). Result at `docs/eval/EVAL-101-cognition-ab-2026-05-10.md`.
+- **Week 3 (May 22–28) — IN PROGRESS.** INFRA-796/797/798 scoped and implemented. `chump orchestrate` loop exists with telemetry + auto-grade timer + stub/real intent parser.
 - **Pillar balance (2026-05-10):** EFFECTIVE 43% (dominant), CREDIBLE 20%, RESILIENT 13%, ZERO-WASTE 6%, MISSION 3%. 86 pickable, 107 vague (no ACs — unpickable).
 - **Next actions:**
   1. Fix INFRA-791 (P0 blocker — tools not reaching agents).

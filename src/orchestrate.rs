@@ -1,8 +1,26 @@
-//! `chump orchestrate` — Opus-driven conversational loop (INFRA-598).
+//! `chump orchestrate` — Opus-driven conversational loop (INFRA-598, INFRA-796, INFRA-797).
 //!
 //! Reads CLAUDE.md doctrine into system prompt, uses provider_cascade::build_provider()
 //! with FLEET_MODEL=opus by default, routes operator natural-language intents to chump
-//! fleet/gap subcommands, and emits 4-pillar mission grade after every iteration.
+//! fleet/gap subcommands, emits 4-pillar mission grade after every iteration, and runs
+//! a background 30-min auto-grade timer.
+//!
+//! ## Telemetry (INFRA-796)
+//!
+//! Each iteration emits a `kind=orchestrate_intent` event to ambient.jsonl with:
+//!   - `intent`: the operator's natural-language input
+//!   - `status`: success / failure / timeout
+//!   - `tool_count`: number of TOOL lines dispatched
+//!   - `est_input_tokens` / `est_output_tokens`: approximate token counts
+//!   - `elapsed_ms`: wall-clock duration of the LLM call
+//!
+//! Tool execution failures are classified as transient (network/rate-limit) vs
+//! permanent (syntax/unknown-command) via the `failure_class` field.
+//!
+//! ## Auto-grade timer (INFRA-797)
+//!
+//! A background tokio task emits `kind=mission_grade` to ambient.jsonl every 30
+//! minutes, so the operator always has a recent scorecard even during long pauses.
 //!
 //! ## Stub mode (CI / smoke tests)
 //!
@@ -13,6 +31,7 @@ use anyhow::{Context, Result};
 use axonerai::provider::Message;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
+use std::time::Instant;
 
 /// Maps FLEET_MODEL env → concrete model identifier for the orchestrator session.
 /// Workers default to sonnet; the orchestrator defaults to opus.
@@ -83,6 +102,60 @@ fn run_tool(cmd: &str, repo_root: &Path) -> String {
     }
 }
 
+/// Emit a structured event to ambient.jsonl for fleet observability (INFRA-796).
+fn emit_ambient_event(repo_root: &Path, kind: &str, fields: &[(&str, &str)]) {
+    // Respect CHUMP_AMBIENT_IN_PROMPT override (used by tests and CI).
+    let ambient = if let Ok(path) = std::env::var("CHUMP_AMBIENT_IN_PROMPT") {
+        Path::new(&path).to_path_buf()
+    } else {
+        let lock_dir = repo_root.join(".chump-locks");
+        let _ = std::fs::create_dir_all(&lock_dir);
+        lock_dir.join("ambient.jsonl")
+    };
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let mut map = serde_json::Map::new();
+    map.insert("ts".into(), serde_json::Value::String(ts));
+    map.insert("kind".into(), serde_json::Value::String(kind.into()));
+    for (k, v) in fields {
+        map.insert((*k).into(), serde_json::Value::String((*v).into()));
+    }
+    let event = serde_json::Value::Object(map).to_string();
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient)
+    {
+        let _ = writeln!(f, "{event}");
+    }
+}
+
+/// Rough token estimate: 1 token ≈ 4 characters for English text.
+/// Used for cost approximation when the provider doesn't return usage.
+fn estimate_tokens(text: &str) -> u64 {
+    (text.len() / 4).max(1) as u64
+}
+
+/// Classify a tool execution failure as transient or permanent (INFRA-796).
+fn classify_failure(error_msg: &str) -> &'static str {
+    let lc = error_msg.to_lowercase();
+    if lc.contains("timed out")
+        || lc.contains("timeout")
+        || lc.contains("rate limit")
+        || lc.contains("too many requests")
+        || lc.contains("connection refused")
+        || lc.contains("connection reset")
+        || lc.contains("network error")
+        || lc.contains("5xx")
+        || lc.contains("internal server error")
+        || lc.contains("service unavailable")
+    {
+        "transient"
+    } else {
+        "permanent"
+    }
+}
+
 /// Compute, emit to ambient.jsonl, and print the 4-pillar mission grade.
 fn emit_grade(repo_root: &Path) {
     let report = crate::mission_grade::build_report(repo_root);
@@ -138,6 +211,16 @@ pub async fn run(repo_root: &Path) -> Result<()> {
         Some(crate::provider_cascade::build_provider())
     };
 
+    // Spawn background auto-grade timer (INFRA-797): emit mission grade every 30 min.
+    let bg_root = repo_root.to_path_buf();
+    let _bg_handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(1800));
+        loop {
+            interval.tick().await;
+            emit_grade(&bg_root);
+        }
+    });
+
     println!("[orchestrate] ready (model={model}, stub={stub_mode}). Type intent or 'exit'.");
 
     // Initial grade on startup (AC-d).
@@ -165,9 +248,19 @@ pub async fn run(repo_root: &Path) -> Result<()> {
             continue;
         }
         if matches!(intent.as_str(), "exit" | "quit") {
+            emit_ambient_event(
+                repo_root,
+                "orchestrate_session_end",
+                &[("intent", "exit"), ("status", "ok")],
+            );
             println!("[orchestrate] bye.");
             break;
         }
+
+        let iter_start = Instant::now();
+        let mut tool_count: usize = 0;
+        let mut had_failure = false;
+        let mut failure_classes: Vec<&str> = Vec::new();
 
         let reply = if stub_mode {
             stub_response(&intent)
@@ -190,16 +283,53 @@ pub async fn run(repo_root: &Path) -> Result<()> {
             text
         };
 
+        let llm_elapsed_ms = iter_start.elapsed().as_millis() as u64;
+
         println!("{reply}");
         println!();
 
         // Execute TOOL: lines dispatched by the LLM (AC-c).
+        let tool_start = Instant::now();
         for cmd in parse_tool_calls(&reply) {
+            tool_count += 1;
             let result = run_tool(&cmd, repo_root);
             if !result.is_empty() {
                 println!("  [{}]\n  {}\n", cmd, result);
             }
+            // Classify tool execution failures (INFRA-796).
+            if result.contains("error") || result.contains("Error") || result.contains("failed") {
+                had_failure = true;
+                failure_classes.push(classify_failure(&result));
+            }
         }
+        let tool_elapsed_ms = tool_start.elapsed().as_millis() as u64;
+
+        // Emit telemetry event (INFRA-796).
+        let est_in = estimate_tokens(&format!("{system}\n{intent}"));
+        let est_out = estimate_tokens(&reply);
+        let total_elapsed = llm_elapsed_ms + tool_elapsed_ms;
+        let failure_class = if had_failure {
+            if failure_classes.contains(&"transient") {
+                "transient"
+            } else {
+                "permanent"
+            }
+        } else {
+            "none"
+        };
+        emit_ambient_event(
+            repo_root,
+            "orchestrate_intent",
+            &[
+                ("intent", &intent),
+                ("status", if had_failure { "failure" } else { "success" }),
+                ("tool_count", &tool_count.to_string()),
+                ("est_input_tokens", &est_in.to_string()),
+                ("est_output_tokens", &est_out.to_string()),
+                ("elapsed_ms", &total_elapsed.to_string()),
+                ("failure_class", failure_class),
+            ],
+        );
 
         // Emit 4-pillar grade after every iter (AC-d).
         emit_grade(repo_root);

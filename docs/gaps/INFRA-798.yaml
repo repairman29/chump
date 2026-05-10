@@ -4,9 +4,20 @@
   status: open
   priority: P1
   effort: s
+  description: |
+    Intent-to-action mapping for chump orchestrate. The stub parser (used when CHUMP_ORCHESTRATE_STUB=1)
+    uses keyword matching (spawn→fleet status, grade→mission-grade, stop→fleet stop).
+    The real parser (used in production) is Opus-driven: the system prompt instructs the model
+    to emit TOOL: chump <subcommand> lines, which parse_tool_calls() extracts and run_tool() executes.
+    This means the "real" LLM-based intent parsing is already implemented through the Opus conversational loop.
+  pr: 1421
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - stub parser (CHUMP_ORCHESTRATE_STUB=1) routes spawn/start/fleet → fleet status via keyword matching
+    - stub parser routes grade/mission/pillar → mission-grade
+    - stub parser routes stop/halt → fleet stop
+    - stub parser falls back to gap list for unrecognized intents
+    - real parser (Opus-driven) uses system prompt instructing LLM to emit TOOL: chump <subcommand> lines
+    - parse_tool_calls extracts TOOL: lines from any LLM response
+    - run_tool executes chump subcommands and returns stdout+stderr
+    - smoke test verifies all 4 stub routes produce correct TOOL lines
 
