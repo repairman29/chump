@@ -518,10 +518,33 @@ pub fn rescue_raw_diff_as_patch(text: &str) -> Option<ToolCall> {
     })
 }
 
+/// Priority rank for free-tier tool ordering (EFFECTIVE-004).
+/// Lower value = executed first. Reads must precede writes so `patch_file`
+/// sees the current file content and `git_commit` fires last.
+fn free_tier_tool_rank(name: &str) -> u8 {
+    match name {
+        "read_file" => 0,
+        "list_dir" => 1,
+        "patch_file" => 2,
+        "git_commit" => 3,
+        _ => 4,
+    }
+}
+
 pub fn efe_order_tool_calls(calls: &[ToolCall]) -> Vec<ToolCall> {
     if calls.len() <= 1 {
         return calls.to_vec();
     }
+
+    // EFFECTIVE-004: in free-tier mode belief_state is a stub (score_tools
+    // returns empty), so fall back to a hardcoded read-before-write ordering
+    // for the slim 4-tool profile rather than preserving the model's order.
+    if crate::env_flags::env_trim_eq("CHUMP_FREE_TIER_MODE", "1") {
+        let mut ordered = calls.to_vec();
+        ordered.sort_by_key(|c| free_tier_tool_rank(c.name.as_str()));
+        return ordered;
+    }
+
     let names: Vec<&str> = calls.iter().map(|c| c.name.as_str()).collect();
     let scores = crate::belief_state::score_tools(&names);
     if scores.is_empty() {
@@ -1107,6 +1130,54 @@ mod efe_order_tests {
             in_names, out_refs,
             "efe_order_tool_calls must preserve tool set"
         );
+    }
+
+    // ── EFFECTIVE-004: free-tier sequential ordering ───────────────────
+
+    #[test]
+    #[serial_test::serial(free_tier_env)]
+    fn effective004_free_tier_patch_before_read_is_reordered() {
+        std::env::set_var("CHUMP_FREE_TIER_MODE", "1");
+        // Model sent patch_file before read_file — must be reversed.
+        let calls = vec![tc("patch_file"), tc("read_file")];
+        let out = efe_order_tool_calls(&calls);
+        std::env::remove_var("CHUMP_FREE_TIER_MODE");
+        assert_eq!(out[0].name, "read_file", "read_file must come first");
+        assert_eq!(out[1].name, "patch_file", "patch_file must come second");
+    }
+
+    #[test]
+    #[serial_test::serial(free_tier_env)]
+    fn effective004_free_tier_full_order_read_list_patch_commit() {
+        std::env::set_var("CHUMP_FREE_TIER_MODE", "1");
+        // Model sent in the worst possible order.
+        let calls = vec![
+            tc("git_commit"),
+            tc("patch_file"),
+            tc("list_dir"),
+            tc("read_file"),
+        ];
+        let out = efe_order_tool_calls(&calls);
+        std::env::remove_var("CHUMP_FREE_TIER_MODE");
+        assert_eq!(out[0].name, "read_file");
+        assert_eq!(out[1].name, "list_dir");
+        assert_eq!(out[2].name, "patch_file");
+        assert_eq!(out[3].name, "git_commit");
+    }
+
+    #[test]
+    #[serial_test::serial(free_tier_env)]
+    fn effective004_normal_mode_does_not_apply_free_tier_sort() {
+        std::env::remove_var("CHUMP_FREE_TIER_MODE");
+        // Without free-tier mode, belief_state returns empty → original order preserved.
+        let calls = vec![tc("git_commit"), tc("read_file")];
+        let out = efe_order_tool_calls(&calls);
+        // belief_state stub returns empty, so original order is preserved in non-free-tier path.
+        assert_eq!(
+            out[0].name, "git_commit",
+            "non-free-tier must preserve model order"
+        );
+        assert_eq!(out[1].name, "read_file");
     }
 }
 
