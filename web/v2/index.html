@@ -191,6 +191,95 @@
     }
     .memory-text { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 
+    /* ── View: agent/gap-queue ──────────────────────────────────────────── */
+    .gap-queue-stats {
+      display: flex;
+      gap: 16px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .stat-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .stat-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .gap-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+    .gap-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+    }
+    .gap-card-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .gap-id {
+      font-size: 12px;
+      font-weight: 600;
+      font-family: "SF Mono", monospace;
+      color: var(--text);
+    }
+    .gap-badge {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+    }
+    .badge-success { background: rgba(48,209,88,0.15); color: var(--success); }
+    .badge-warn   { background: rgba(255,159,10,0.15); color: var(--warn); }
+    .badge-error  { background: rgba(255,69,58,0.15); color: var(--error); }
+    .gap-priority {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-left: auto;
+      font-family: "SF Mono", monospace;
+    }
+    .gap-title {
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.4;
+      margin-bottom: 6px;
+    }
+    .gap-error {
+      font-size: 12px;
+      color: var(--warn);
+      background: rgba(255,159,10,0.1);
+      padding: 6px 8px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 8px;
+    }
+    .gap-claim-btn {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: var(--accent);
+      color: var(--bg);
+      cursor: pointer;
+    }
+    .gap-claim-btn:hover { opacity: 0.9; }
+    .gap-claim-btn:active { opacity: 0.8; }
+
     /* ── View: settings ─────────────────────────────────────────────────── */
     .settings-grid { padding: 16px; display: flex; flex-direction: column; gap: 1px; }
     .setting-row {
@@ -304,33 +393,6 @@
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));
     if (!navigator.onLine) document.body.classList.add('offline');
-
-    // V1→V2 migration: backward-compatibility aliases for e2e tests.
-    // The tests reference v1 element IDs; map them to v2 Web Component elements.
-    function createTestAliases() {
-      // #msg-input ← chump-view-chat's #input (message composer)
-      const chatInput = document.querySelector('chump-view-chat #input');
-      if (chatInput) chatInput.id = 'msg-input';
-
-      // #settings-btn ← nav button for settings (replaces old header button)
-      const settingsNav = document.querySelector('[data-view="settings"]');
-      if (settingsNav) settingsNav.id = 'settings-btn';
-
-      // #sessions-toggle ← nav button for chat (legacy "sessions" = chat view in v2)
-      const chatNav = document.querySelector('[data-view="chat"]');
-      if (chatNav) chatNav.id = 'sessions-toggle';
-
-      // #send-btn is already correct in chump-view-chat
-    }
-
-    // Aliases must be set after Web Components hydrate.
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', createTestAliases);
-    } else {
-      // Already loaded; create aliases now and again after a tick for slow hydration.
-      createTestAliases();
-      setTimeout(createTestAliases, 100);
-    }
   </script>
 </body>
 </html>

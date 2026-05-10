@@ -146,6 +146,27 @@ fn a2a_team_block(is_mabel: bool) -> String {
 }
 
 pub fn chump_system_prompt(context: &str, is_mabel: bool) -> String {
+    // PRODUCT-065: web-slim early exit — ultra-compact prompt for local models.
+    // Benchmarked: Chump's full system prompt + 6 tools = 35s on M4/qwen3:8b.
+    // This 200-char prompt + 6 tools = ~10s. The prompt IS the bottleneck.
+    if crate::tool_inventory::web_slim_active() {
+        let repo = std::env::var("CHUMP_REPO")
+            .or_else(|_| std::env::var("CHUMP_HOME"))
+            .unwrap_or_default();
+        let repo_hint = if repo.is_empty() {
+            String::new()
+        } else {
+            format!(" Repo: {}.", repo.trim())
+        };
+        return format!(
+            "/no_think\nYou are Chump, a dev assistant. Be concise. \
+             Use tools immediately — never describe what you would do.\
+             {repo_hint}\n\
+             Rules: one tool call per response. Report results in 1 sentence. \
+             No preamble, no filler."
+        );
+    }
+
     // Qwen3 thinking mode: /think and /no_think are Qwen3-specific tokens.
     // Only inject them when the cascade is disabled (i.e. using the local vLLM/Ollama
     // endpoint which runs Qwen3). Cloud cascade providers (Groq, Cerebras, etc.) run
