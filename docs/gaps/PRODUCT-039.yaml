@@ -1,9 +1,0 @@
-- id: PRODUCT-039
-  domain: PRODUCT
-  title: "MISSION: Discord bot ergonomics for operator workflow"
-  status: done
-  priority: P1
-  effort: xs
-  closed_date: '2026-05-08'
-  closed_pr: 1324
-

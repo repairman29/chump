@@ -1,9 +1,0 @@
-- id: PRODUCT-042
-  domain: PRODUCT
-  title: "PRODUCT: PWA phase 1 — live results board (read-only status)"
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1308
-

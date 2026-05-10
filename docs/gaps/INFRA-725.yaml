@@ -1,7 +1,0 @@
-- id: INFRA-725
-  domain: INFRA
-  title: "ZERO-WASTE: split main.rs phase 4 — extract memory/ module group (memory_db, memory_graph, memory_graph_tool, memory_graph_viz, memory_tool, belief_state, episode_db, episode_extractor)"
-  status: open
-  priority: P2
-  effort: m
-

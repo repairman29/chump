@@ -1,7 +1,0 @@
-- id: INFRA-773
-  domain: INFRA
-  title: "EFFECTIVE: Review-as-Handoff sub-gap 5/6 — ambient telemetry + fleet-brief integration. Five new kinds: review_handoff_initiated|applied|failed|timeout|escalated. Register per INFRA-754. Consumers: fleet-brief surfaces 'N PRs self-healed today'; kpi-report computes (applied)/(initiated) self-heal rate; waste-tally computes (failed+timeout)/(initiated) reviewer-error rate. Spec: docs/architecture/REVIEW_AS_HANDOFF.md §7. Depends on: INFRA-768."
-  status: open
-  priority: P1
-  effort: xs
-

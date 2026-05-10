@@ -1,9 +1,0 @@
-- id: INFRA-613
-  domain: INFRA
-  title: "RESILIENT: worker self-stand-down on starvation — instead of N empty pick cycles costing compute (~22m/h waste observed 2026-05-06), worker proactively exits when starve_count ≥ STAND_DOWN_THRESHOLD (default 5, override CHUMP_STAND_DOWN_THRESHOLD). Workflow: (1) detect starve signal (existing kind=fleet_starved), (2) emit kind=worker_stand_down with reasoning ('filter=INFRA P0|P1 xs|s exhausted; suggest expand to P2 or m'), (3) clean exit (release lease, no orphans), (4) chump fleet auto-restart daemon (INFRA-611) picks up the signal, optionally widens filters, respawns worker fresh. Operator: 'Bots should have a stand-down/reset opportunity wired in instead of starving.' AC: scripts/dispatch/worker.sh adds stand-down branch in starve-detection block; emits ambient before exit; INFRA-611 auto-restart subscribes to worker_stand_down events; test scripts/ci/test-worker-stand-down.sh forces empty queue + asserts worker exits cleanly within 6 cycles."
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1343
-

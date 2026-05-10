@@ -1,9 +1,0 @@
-- id: DOC-023
-  domain: DOC
-  title: "MISSION: docs/external/ doc track for Chump-as-a-platform (chump-proprietary REQ-007). Net-new doc directory documenting how external projects consume Chump. First reader: Reeve / Surety Robotics. Content: onboarding (overlaps + extends EXTERNAL_REPO_USAGE.md REQ-003), MCP server config catalog, supported integration patterns (vendored scripts vs CHUMP_SCRIPTS env), per-repo state.db semantics, two-registry architecture (gaps + missions), failure modes + recovery. AC: docs/external/README.md as table of contents; docs/external/onboarding.md walks bootstrap; chump-proprietary CHUMP_BOOTSTRAP.md cites docs/external/ as canonical. Net-new-docs: +1 directory (acceptable per Red Letter #3 because it's a tracked product surface, not sprawl)."
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1296
-
