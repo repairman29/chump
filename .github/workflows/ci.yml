@@ -388,6 +388,9 @@ jobs:
       - name: gap-status-flip guard (INFRA-158)
         run: bash scripts/ci/test-gap-status-flip.sh
 
+      - name: speculative-on-speculative arm guard (INFRA-684)
+        run: bash scripts/ci/test-speculative-on-speculative-guard.sh
+
       - name: raw-YAML-edit guard (INFRA-200, blocking since 2026-05-02)
         run: bash scripts/ci/test-raw-yaml-guard.sh
 
