@@ -4716,12 +4716,14 @@ async fn main() -> Result<()> {
         let task = match args.get(2) {
             Some(t) if !t.starts_with('-') => t.clone(),
             _ => {
-                eprintln!("Usage: chump gen <task> [--work-dir PATH]");
+                eprintln!("Usage: chump gen <task> [--work-dir PATH] [--local]");
                 eprintln!();
                 eprintln!("  chump gen \"add a /health endpoint to my axum server\"");
+                eprintln!("  chump gen --local \"add a /health endpoint\"");
                 eprintln!();
                 eprintln!("Uses the provider cascade to make the change, runs cargo check,");
-                eprintln!("and commits the result.");
+                eprintln!("and commits the result. Use --local to force the local Ollama");
+                eprintln!("provider and bypass the cloud cascade.");
                 std::process::exit(2);
             }
         };
@@ -4735,10 +4737,12 @@ async fn main() -> Result<()> {
             std::env::current_dir().unwrap_or_else(|_| repo_path::repo_root())
         };
         let quiet = args.iter().any(|a| a == "--quiet");
+        let local = args.iter().any(|a| a == "--local");
         let opts = gen::GenOptions {
             task,
             work_dir,
             quiet,
+            local,
         };
         match gen::run(opts).await {
             Ok(()) => return Ok(()),

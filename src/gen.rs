@@ -36,6 +36,8 @@ pub struct GenOptions {
     pub work_dir: PathBuf,
     /// When true, suppress the per-call cost summary line.
     pub quiet: bool,
+    /// When true, force local-only provider (bypass cascade, use Ollama).
+    pub local: bool,
 }
 
 /// Estimate token count and USD cost, then print a one-line summary to stderr.
@@ -120,8 +122,14 @@ pub async fn run(opts: GenOptions) -> Result<()> {
         println!("gen (stub): patched {}", stub_rel);
         (opts.task.len(), patched.len())
     } else {
-        // Real LLM path via provider cascade.
-        let provider = crate::provider_cascade::build_provider();
+        // Real LLM path via provider cascade (or local-only if --local).
+        let provider: Box<dyn axonerai::provider::Provider + Send + Sync> = if opts.local {
+            std::env::set_var("OPENAI_API_BASE", "http://127.0.0.1:11434/v1");
+            std::env::set_var("OPENAI_API_KEY", "ollama");
+            crate::provider_cascade::build_provider_single_pub()
+        } else {
+            crate::provider_cascade::build_provider()
+        };
         let ctx = gather_source_context(work_dir)?;
         let in_chars = opts.task.len() + ctx.len();
         let edits = request_edits(&*provider, &opts.task, &ctx).await?;
