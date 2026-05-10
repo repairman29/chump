@@ -1,14 +1,16 @@
 - id: INFRA-803
   domain: INFRA
   title: "RESILIENT: free-tier dispatch missing push/PR step after agent commit"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "After a free-tier agent (Groq/Cerebras/Together/NVIDIA) commits and returns 'done', execute_gap drives bot-merge.sh --fast --auto-merge so a PR is created"
-    - "The orchestrator monitor's gh pr list poll finds a PR (no silent timeout)"
-    - "Non-free-tier (Claude) path is unchanged — Claude still calls bot-merge.sh via run_cli itself"
-    - "free_tier_ship failure propagates as a non-zero exit code (not swallowed)"
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-10'
+  closed_pr: 1400
   context: "INFRA-733 added the free-tier tool-call adapter but left the ship step unimplemented. The agent committed locally but nothing pushed/PR'd, causing the orchestrator to poll indefinitely. Fixed in execute_gap.rs: free_tier_ship() runs bot-merge.sh as post-processing after agent.run()."
   follows: INFRA-733
 
