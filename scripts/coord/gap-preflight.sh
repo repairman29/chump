@@ -454,22 +454,35 @@ $SIBLING_GAP_YAML"
     #   - CHUMP_PREFLIGHT_PR_CHECK=0 (operator opt-out)
     #   - CHUMP_SPECULATIVE=1        (INFRA-193 speculative race wanted)
     if [[ "${CHUMP_PREFLIGHT_PR_CHECK:-1}" != "0" ]] \
-            && [[ "${CHUMP_SPECULATIVE:-0}" != "1" ]] \
             && command -v gh >/dev/null 2>&1; then
-        PR_FOR_GAP="$(gh pr list --state open --search "${GAP_ID} in:title" \
-            --json number,headRefName -q '.[0]' 2>/dev/null || true)"
-        if [[ -n "$PR_FOR_GAP" && "$PR_FOR_GAP" != "null" && "$PR_FOR_GAP" != "{}" ]]; then
-            PR_NUM="$(printf '%s' "$PR_FOR_GAP" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("number",""))' 2>/dev/null)"
-            PR_HEAD="$(printf '%s' "$PR_FOR_GAP" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("headRefName",""))' 2>/dev/null)"
+        _PR_QUERY="$(gh pr list --state open --search "${GAP_ID} in:title" \
+            --json number,headRefName,autoMergeRequest -q '.[0]' 2>/dev/null || true)"
+        if [[ -n "$_PR_QUERY" && "$_PR_QUERY" != "null" && "$_PR_QUERY" != "{}" ]]; then
+            PR_NUM="$(printf '%s' "$_PR_QUERY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("number",""))' 2>/dev/null)"
+            PR_HEAD="$(printf '%s' "$_PR_QUERY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("headRefName",""))' 2>/dev/null)"
+            _PR_ARMED="$(printf '%s' "$_PR_QUERY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("armed" if d.get("autoMergeRequest") else "open")' 2>/dev/null)"
             # Skip if it's our OWN branch (we're re-running preflight on the same work).
             CURRENT_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
             if [[ -n "$PR_NUM" && "$PR_HEAD" != "$CURRENT_BRANCH" ]]; then
-                # See: docs/process/CLAUDE_GOTCHAS.md#error-gap-collision
-                warn_with_help "SKIP $GAP_ID — open PR #$PR_NUM ($PR_HEAD) is already implementing this gap. Pick a different gap, or wait for #$PR_NUM to land/close." "error-gap-collision"
-                red "  Bypass: CHUMP_PREFLIGHT_PR_CHECK=0 (skip this check)"
-                red "  Or: CHUMP_SPECULATIVE=1 (race against the existing PR per INFRA-193)"
-                FAILED=1
-                continue
+                if [[ "${CHUMP_SPECULATIVE:-0}" != "1" ]]; then
+                    # See: docs/process/CLAUDE_GOTCHAS.md#error-gap-collision
+                    warn_with_help "SKIP $GAP_ID — open PR #$PR_NUM ($PR_HEAD) [$_PR_ARMED] is already implementing this gap. Pick a different gap, or wait for #$PR_NUM to land/close." "error-gap-collision"
+                    red "  Bypass: CHUMP_PREFLIGHT_PR_CHECK=0 (skip this check)"
+                    red "  Or: CHUMP_SPECULATIVE=1 (race against the existing PR per INFRA-193)"
+                    FAILED=1
+                    continue
+                else
+                    # INFRA-684: speculative mode — show the spec-lease holder.
+                    # If the existing PR is already armed, the race is decided.
+                    info "SPEC-LEASE: PR #$PR_NUM ($PR_HEAD) holds the open impl for $GAP_ID [$_PR_ARMED]."
+                    if [[ "$_PR_ARMED" == "armed" ]]; then
+                        warn_with_help "SKIP $GAP_ID — PR #$PR_NUM is already armed for auto-merge (spec race decided). Racing into an armed PR wastes quota — the winner is #$PR_NUM." "error-gap-collision"
+                        red "  If PR #$PR_NUM is abandoned, bypass: CHUMP_SPECULATIVE=1 CHUMP_PREFLIGHT_PR_CHECK=0"
+                        FAILED=1
+                        continue
+                    fi
+                    info "  Spec race still open — PR #$PR_NUM not yet armed. Proceeding with speculative claim."
+                fi
             fi
         fi
     fi

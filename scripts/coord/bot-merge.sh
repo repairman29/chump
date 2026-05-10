@@ -1610,6 +1610,24 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
 
             green "[bench-mode] trial recorded → $_bench_log"
         else
+            # ── INFRA-684: speculative-on-speculative guard ───────────────────
+            # Before arming, check that no other PR for the same gap is already
+            # armed. If two speculative agents both reach this point before the
+            # INFRA-193 loser sweep runs, both could get auto-merge enabled and
+            # both could land (or conflict). The check exits 1 if a competing
+            # armed PR is detected; bypass with CHUMP_SPEC_ON_SPEC_CHECK=0.
+            if [[ "${CHUMP_SPEC_ON_SPEC_CHECK:-1}" != "0" ]] \
+                    && [[ ${#GAP_IDS[@]} -gt 0 ]]; then
+                for _spec_gid in "${GAP_IDS[@]}"; do
+                    if ! "$SCRIPT_DIR/check-spec-on-spec.sh" "$_spec_gid" "$TARGET_PR"; then
+                        red "INFRA-684: Arm blocked — competing armed PR exists for $_spec_gid."
+                        red "  The speculative race was already decided. Aborting this arm."
+                        red "  Bypass (if the competing PR is stale): CHUMP_SPEC_ON_SPEC_CHECK=0"
+                        exit 1
+                    fi
+                done
+            fi
+
             stage_start "gh pr merge #$TARGET_PR --auto --squash"
             if ! gh_with_backoff "gh pr merge" 120 pr merge "$TARGET_PR" --auto --squash; then
                 red "gh pr merge failed or timed out."
