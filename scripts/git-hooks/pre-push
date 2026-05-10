@@ -130,6 +130,10 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             echo "[pre-push] (one-time per tree-hash; cached at $CACHE_MARKER on green)" >&2
             echo "[pre-push] Bypass: CHUMP_TEST_GATE=0 git push  (with Test-Gate-Bypass: trailer)" >&2
 
+            # Unset bot-dispatch git identity so test-spawned git ops
+            # don't inherit chump-dispatch@chump.bot (INFRA-813).
+            unset GIT_AUTHOR_EMAIL GIT_COMMITTER_EMAIL GIT_AUTHOR_NAME GIT_COMMITTER_NAME
+
             # --no-fail-fast so we surface the full failure list, not just first.
             # --quiet trims the per-test PASS lines but keeps FAILED lines.
             if cargo test --bin chump --tests --no-fail-fast --quiet 2>&1 | tail -200; then

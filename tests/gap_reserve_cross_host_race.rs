@@ -55,6 +55,8 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_SESSION_ID", "session-a"),
                 ("CHUMP_RAW_YAML_LOCK", "0"),
                 ("FLEET_029_AMBIENT_GLANCE_SKIP", "1"),
+                // INFRA-813: prevent autostage from touching files outside the tempdir.
+                ("CHUMP_RESERVE_NO_AUTOSTAGE", "1"),
                 // Ensure repo_root() resolves to the tempdir, not the caller's
                 // CHUMP_REPO/CHUMP_HOME, so test gaps don't pollute the real registry.
                 ("CHUMP_REPO", &root_a_str),
@@ -75,6 +77,8 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_SESSION_ID", "session-z"),
                 ("CHUMP_RAW_YAML_LOCK", "0"),
                 ("FLEET_029_AMBIENT_GLANCE_SKIP", "1"),
+                // INFRA-813: prevent autostage from touching files outside the tempdir.
+                ("CHUMP_RESERVE_NO_AUTOSTAGE", "1"),
                 // Ensure repo_root() resolves to the tempdir, not the caller's
                 // CHUMP_REPO/CHUMP_HOME, so test gaps don't pollute the real registry.
                 ("CHUMP_REPO", &root_b_str),
