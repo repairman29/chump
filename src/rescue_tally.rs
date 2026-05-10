@@ -25,8 +25,8 @@ pub struct RescueCommit {
 /// Scan git log on the default branch for rescue commits in the last `window_hours` hours.
 /// Returns the list found; caller decides whether to emit ambient events.
 pub fn scan_rescues(repo_root: &Path, window_hours: u64) -> Vec<RescueCommit> {
-    let operator_email = std::env::var("CHUMP_GIT_AUTHOR_EMAIL")
-        .unwrap_or_else(|_| "jeffadkins".to_string());
+    let operator_email =
+        std::env::var("CHUMP_GIT_AUTHOR_EMAIL").unwrap_or_else(|_| "jeffadkins".to_string());
 
     let since = format!("{} hours ago", window_hours);
     let output = std::process::Command::new("git")
@@ -184,10 +184,14 @@ mod tests {
 
     #[test]
     fn infra667_auto_merge_filter() {
-        assert!(is_auto_merge_subject("Merge pull request #123 from foo/bar"));
+        assert!(is_auto_merge_subject(
+            "Merge pull request #123 from foo/bar"
+        ));
         assert!(is_auto_merge_subject("Merge branch 'main'"));
         assert!(!is_auto_merge_subject("fix(infra-667): rescue tally"));
-        assert!(!is_auto_merge_subject("feat(product-042): add health endpoint"));
+        assert!(!is_auto_merge_subject(
+            "feat(product-042): add health endpoint"
+        ));
     }
 
     #[test]

@@ -109,7 +109,6 @@ mod memory_graph_viz;
 mod memory_tool;
 mod messaging;
 mod mission_grade;
-mod rescue_tally;
 #[cfg(feature = "mistralrs-infer")]
 mod mistralrs_provider;
 mod model_overlay;
@@ -147,6 +146,7 @@ mod repo_allowlist;
 mod repo_allowlist_tool;
 mod repo_path;
 mod repo_tools;
+mod rescue_tally;
 mod roadmap_status;
 mod routes;
 mod rpc_mode;
