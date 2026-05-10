@@ -1,7 +1,7 @@
 - id: INFRA-801
   domain: INFRA
   title: "ZERO-WASTE: fix pr-watch-shepherd.sh branch mismatch — DIRTY-after-arm PRs never recovered"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -13,4 +13,6 @@
     - pr-watch.sh supports --branch-override flag for ephemeral worktrees
     - pr-watch.sh --once --branch-override <name> works without symbolic-ref
     - existing behavior (no --branch-override) unchanged
+  closed_date: '2026-05-10'
+  closed_pr: 1394
 

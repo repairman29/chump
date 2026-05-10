@@ -49,3 +49,18 @@ or every hour for finer granularity; both work).
 | Ship heartbeat | stopped |
 | SQLite errors (last 500 lines) | 0 |
 
+
+### Checkpoint: 2026-05-10T20:23:46Z (T0+184h)
+
+| Metric | Value |
+|--------|-------|
+| memory_db size | 1.3M |
+| WAL | 0B |
+| logs/ size | 258M |
+| sessions/ size | 4.9M |
+| Model server | web_ok |
+| Chump RSS | 843.9M |
+| Ship heartbeat | stopped |
+| SQLite errors (last 500 lines) | 0 |
+| Largest logs | 18M vllm-mlx-8000.log;9.0M ollama-serve.log;7.9M farmer-brown-launchd.out.log; |
+
