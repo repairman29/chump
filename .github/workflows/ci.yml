@@ -815,4 +815,16 @@ jobs:
         run: bash scripts/ci/test-lint-handoff-comment.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
+      # INFRA-682: auto-detect when PR diff matches NONE of the code: patterns.
+      # If filter.outputs.code is false on a PR, all required CI checks
+      # (fast-checks, clippy, cargo-test, test rollup) will be SKIPPED — branch
+      # protection treats skipped as non-passing and blocks the merge forever.
+      # Emitting a ::warning:: here makes the root cause visible before the PR
+      # author spends time debugging stuck CI.
+      - name: Warn if PR diff matches no code-filter pattern (INFRA-682)
+        if: steps.filter.outputs.code == 'false' && github.event_name == 'pull_request'
+        run: |
+          echo "::warning::PR diff matches NONE of the 'code:' paths-filter allowlist (ci.yml). Required CI checks will be SKIPPED — branch protection will block this PR from merging. Fix: add the changed path(s) to the 'code:' section in .github/workflows/ci.yml. See INFRA-272/INFRA-682."
+      - name: path-filter allowlist structural coverage (INFRA-682)
+        run: bash scripts/ci/check-path-filter-coverage.sh
 
