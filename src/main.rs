@@ -1264,6 +1264,25 @@ async fn main() -> Result<()> {
                 let domain = flag("--domain")
                     .or_else(|| cfg("domain"))
                     .unwrap_or_default();
+                // Persist last-used config for `chump fleet restart`.
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+                let last_config = std::path::Path::new(&home).join(".chump/last-fleet-config.json");
+                let _ = std::fs::create_dir_all(
+                    last_config.parent().unwrap_or(std::path::Path::new("/tmp")),
+                );
+                let _ = std::fs::write(
+                    &last_config,
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "size": size,
+                        "model": model,
+                        "effort": effort,
+                        "domain": domain,
+                        "session": flag("--session").or_else(|| cfg("session")).unwrap_or_else(|| "chump-fleet".to_string()),
+                        "updated_at": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                    }))
+                    .unwrap_or_default(),
+                );
+
                 let status = std::process::Command::new("bash")
                     .arg(&run_fleet_sh)
                     .env("FLEET_SIZE", &size)
@@ -1649,9 +1668,125 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            "restart" => {
+                // `chump fleet restart` — INFRA-610
+                let fleet_restart_sh = repo_root.join("scripts/dispatch/fleet-restart.sh");
+                let session = flag("--session")
+                    .or_else(|| cfg("session"))
+                    .unwrap_or_else(|| "chump-fleet".to_string());
+                let size_override = flag("--size");
+
+                // 1. Take a before-restart snapshot.
+                let snapshots_dir = repo_root.join(".chump/restart-snapshots");
+                let _ = std::fs::create_dir_all(&snapshots_dir);
+                let locks_dir = repo_root.join(".chump-locks");
+                let ts = chrono::Utc::now();
+                let ts_str = ts.format("%Y%m%d-%H%M%S").to_string();
+                let ts_iso = ts.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+                let mut leases: Vec<serde_json::Value> = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(&locks_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map(|e| e == "json").unwrap_or(false) {
+                            if let Ok(raw) = std::fs::read_to_string(&path) {
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                                    leases.push(serde_json::json!({
+                                        "filename": path.file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("unknown"),
+                                        "lease": v
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let ambient_path = locks_dir.join("ambient.jsonl");
+                let ambient_tail: Vec<serde_json::Value> = std::fs::read_to_string(&ambient_path)
+                    .unwrap_or_default()
+                    .lines()
+                    .rev()
+                    .take(200)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .filter_map(|l| serde_json::from_str(l).ok())
+                    .collect();
+
+                let desired_size: Option<u32> =
+                    std::fs::read_to_string(repo_root.join(".chump/fleet-desired-size"))
+                        .ok()
+                        .and_then(|s| s.trim().parse().ok());
+
+                let snapshot = serde_json::json!({
+                    "snapshot_id": ts_str,
+                    "ts": ts_iso,
+                    "kind": "pre_restart",
+                    "fleet_desired_size": desired_size,
+                    "leases": leases,
+                    "ambient_tail": ambient_tail
+                });
+
+                let out_path = snapshots_dir.join(format!("{ts_str}.json"));
+                match std::fs::write(
+                    &out_path,
+                    serde_json::to_string_pretty(&snapshot).unwrap_or_default(),
+                ) {
+                    Ok(()) => {
+                        println!("[fleet restart] snapshot saved to {}", out_path.display());
+                        println!(
+                            "[fleet restart] leases={} ambient_events={}",
+                            leases.len(),
+                            ambient_tail.len()
+                        );
+                        let _ = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                            .and_then(|mut f| {
+                                writeln!(
+                                    f,
+                                    "{{\"ts\":\"{ts_iso}\",\"kind\":\"fleet_restart_snapshot\",\"snapshot_id\":\"{ts_str}\"}}"
+                                )
+                            });
+                    }
+                    Err(e) => {
+                        eprintln!("[fleet restart] WARNING: failed to save snapshot: {e}");
+                    }
+                }
+
+                // 2. Resolve fleet size: --size flag > last-fleet-config > desired-size > config.toml > 2
+                let size = size_override
+                    .or_else(|| {
+                        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+                        let p = std::path::Path::new(&home).join(".chump/last-fleet-config.json");
+                        std::fs::read_to_string(&p).ok().and_then(|raw| {
+                            serde_json::from_str::<serde_json::Value>(&raw)
+                                .ok()
+                                .and_then(|v| v["size"].as_str().map(String::from))
+                        })
+                    })
+                    .or_else(|| desired_size.map(|s| s.to_string()))
+                    .or_else(|| cfg("size"))
+                    .unwrap_or_else(|| "2".to_string());
+
+                // 3. Delegate to fleet-restart.sh
+                let status = std::process::Command::new("bash")
+                    .arg(&fleet_restart_sh)
+                    .env("FLEET_SIZE", &size)
+                    .env("FLEET_SESSION", &session)
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("chump fleet restart: {e}");
+                        std::process::exit(1);
+                    });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|audit-pids>"
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids>"
                 );
                 eprintln!("  start      [--size N] [--model M] [--effort xs,s,m] [--domain D]");
                 eprintln!("  stop       [--session NAME]");
@@ -1659,6 +1794,7 @@ async fn main() -> Result<()> {
                 eprintln!("  scale      N [--session NAME]");
                 eprintln!("  snapshot");
                 eprintln!("  restore    <snapshot-id>");
+                eprintln!("  restart    [--size N] [--session NAME]");
                 eprintln!("  audit-pids [--apply]");
                 std::process::exit(2);
             }
