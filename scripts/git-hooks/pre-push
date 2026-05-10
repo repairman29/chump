@@ -32,6 +32,13 @@
 # before allowing a force-push and aborts if the remote tip has moved.
 # Bypass: CHUMP_FORCE_LEASE_CHECK=0 git push  (use when intentional)
 #
+# Guard 4 (bot-merge required for new gap branches — INFRA-719): On a
+# first-push (new branch) of a chump/<gap-id>-* branch, requires that the
+# push was initiated by bot-merge.sh (CHUMP_BOT_MERGE_IN_PROGRESS=1).
+# Prevents the "git push -u origin branch + gh pr create" manual bypass which
+# skips gap-ship-fatal (INFRA-678) and the auto-close hook (INFRA-154).
+# Bypass: CHUMP_BYPASS_BOT_MERGE=1 git push  (rare; add a comment why)
+#
 # Install once: ./scripts/setup/install-hooks.sh
 
 set -euo pipefail
@@ -192,6 +199,33 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
     # Skip if pushing to main/master (branch protection handles that).
     [[ "$branch" == "main" || "$branch" == "master" ]] && continue
+
+    # -----------------------------------------------------------------------
+    # Guard 4: bot-merge required for new gap branch pushes (INFRA-719)
+    #
+    # A first-push (remote_sha == 0x40 zeros) of a chump/<gap-id>-* branch
+    # must go through bot-merge.sh so gap-ship-fatal (INFRA-678) and the
+    # INFRA-154 auto-close hook always fire. Manual "git push + gh pr create"
+    # bypasses both and leaves gaps in status:open after their PR merges.
+    # -----------------------------------------------------------------------
+    ZERO_SHA="0000000000000000000000000000000000000000"
+    if [[ "$remote_sha" == "$ZERO_SHA" ]] \
+        && [[ "$branch" =~ ^chump/[a-zA-Z]+-[0-9]+ ]] \
+        && [[ "${CHUMP_BOT_MERGE_IN_PROGRESS:-0}" != "1" ]] \
+        && [[ "${CHUMP_BYPASS_BOT_MERGE:-0}" != "1" ]]; then
+        echo "" >&2
+        echo "[pre-push] BLOCKED (INFRA-719): direct push of gap branch '$branch' to a new PR." >&2
+        echo "[pre-push] Use bot-merge.sh to ship gap branches — it wires gap-ship-fatal" >&2
+        echo "[pre-push] (INFRA-678) and the auto-close hook (INFRA-154)." >&2
+        echo "" >&2
+        echo "[pre-push] Ship command:" >&2
+        echo "[pre-push]   scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge" >&2
+        echo "" >&2
+        echo "[pre-push] Bypass (use with comment explaining why):" >&2
+        echo "[pre-push]   CHUMP_BYPASS_BOT_MERGE=1 git push" >&2
+        echo "" >&2
+        exit 1
+    fi
 
     # INFRA-368: capture rebase state once per pushed ref so the per-guard
     # checks don't all re-grep the reflog.

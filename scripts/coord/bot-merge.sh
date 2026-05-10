@@ -1177,6 +1177,10 @@ fi
 
 # ── 5. Push ───────────────────────────────────────────────────────────────────
 stage_start "git push $BRANCH → $REMOTE"
+# INFRA-719: signal to the pre-push hook that this push is bot-merge-initiated.
+# The hook blocks first-push of chump/* branches unless this flag is set, to
+# prevent the manual "git push + gh pr create" bypass that skips gap-ship-fatal.
+export CHUMP_BOT_MERGE_IN_PROGRESS=1
 if ! run_timed_hb "git push" 120 git push "$REMOTE" "$BRANCH" --force-with-lease; then
     red "git push failed or timed out."
     exit 2
