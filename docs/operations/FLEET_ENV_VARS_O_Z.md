@@ -29,6 +29,8 @@ Operator-facing Tier 1 vars: `.env.example`.
 | `CHUMP_PREFER_LARGE_CONTEXT` | `0` | Prefer model slots with larger context windows during cascade selection. |
 | `CHUMP_PREFERRED_MODEL_CLASS` | _(none)_ | Force a specific model class (`haiku`, `sonnet`, `opus`) for all sessions. |
 | `CHUMP_PREWARM` | `0` | Send a warmup request to the inference backend before the first real call. |
+| `CHUMP_PICKER_BIAS_THRESHOLD` | `0.8` | Fraction of recent ships in the same domain that triggers domain-diversity bias in `--pick-gap` (FLEET-045). |
+| `CHUMP_PICKER_BIAS_WINDOW` | `10` | Number of most-recently-shipped gaps inspected to compute domain concentration for the picker bias. |
 | `CHUMP_PROBE_THRESHOLD` | `0.1` | Bandit probe-phase token budget as a fraction of total budget. |
 | `CHUMP_PROJECT_MODE` | `0` | Enable project-scope context (loads project files into every session). |
 | `CHUMP_READ_FILE_HARD_CAP_CHARS` | `500000` | Hard character cap on file reads; truncates beyond this limit. |
