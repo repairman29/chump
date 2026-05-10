@@ -202,9 +202,15 @@ fi
 # their git-reset and git-add calls, causing one agent to unstage another
 # agent's in-flight changes (silently producing an empty or wrong commit).
 #
-# Uses a dedicated mutex file (.git/.chump-index-mutex) rather than locking
-# .git/index directly — git uses .git/index.lock for its own internal locking
-# and we must not interfere with that mechanism.
+# Uses a dedicated mutex file (.chump-index-mutex in the git dir) rather than
+# locking .git/index directly — git uses .git/index.lock for its own internal
+# locking and we must not interfere with that mechanism.
+#
+# Uses $(git rev-parse --git-dir) instead of $REPO_ROOT/.git because linked
+# worktrees have .git as a FILE (not a directory) — the actual git dir is
+# e.g. $MAIN_REPO/.git/worktrees/<name>/. BUG: previous code used
+# $REPO_ROOT/.git which failed on linked worktrees (CREDIBLE-017 session,
+# 2026-05-10). Fixed in INFRA-793.
 #
 # flock(1) is available on Linux (util-linux); BSD/macOS ships without it.
 # Fallback: print a warning and proceed unprotected. Still safe when only one
@@ -216,7 +222,7 @@ fi
 # is released when git exits.
 #
 # Bypass: CHUMP_INDEX_LOCK=0
-_INDEX_MUTEX="$REPO_ROOT/.git/.chump-index-mutex"
+_INDEX_MUTEX="$(git rev-parse --git-dir)/.chump-index-mutex"
 if [[ "${CHUMP_INDEX_LOCK:-1}" != "0" ]] && command -v flock >/dev/null 2>&1; then
     exec 200>>"$_INDEX_MUTEX"
     if ! flock -w 30 200; then

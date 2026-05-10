@@ -495,6 +495,15 @@ Publish hygiene rules:
 - Run `cargo publish --dry-run` before any PR touching publishable crates
 - Check `docs/eval/INFRA-025-crate-publish-audit.md` for bucket classification (publish/internal/repo-only)
 
+## Session handoff format (META, 2026-05-10)
+
+When handing off between agents (e.g. Claude Code → goose, or across
+sessions for the same tool), use the structured format documented in
+[`docs/CONTINUAL_LEARNING.md`](./docs/CONTINUAL_LEARNING.md). The format
+captures: goal, instructions, discoveries, accomplishments, and prioritized
+next steps. This prevents context-window loss of diagnosed-but-unfiled
+findings between sessions.
+
 ## Learned User Preferences
 
 - When continuing another tool's in-flight thread (for example Claude Code), prefer driving the scoped handoff to a clear engineering stopping point (clean commit, PR or merge, and explicit notes on what is still outstanding) before returning to general backlog review unless you explicitly redirect mid-thread.
