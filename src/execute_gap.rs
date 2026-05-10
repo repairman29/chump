@@ -137,6 +137,58 @@ fn is_free_tier_model() -> bool {
     is_non_claude && is_cloud_endpoint
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// EFFECTIVE-002: free-tier provider rotation
+// ──────────────────────────────────────────────────────────────────────
+
+/// One entry in the ordered rotation list.
+struct FreeTierProviderSpec {
+    model: String,
+    base_url: String,
+    /// Name of the env var holding the API key for this provider
+    /// (e.g. `"GROQ_API_KEY"`).  Falls back to `OPENAI_API_KEY` when unset.
+    api_key_env: String,
+}
+
+/// Parse `CHUMP_FREE_TIER_PROVIDERS` (format: `model@base_url:KEY_ENV,...`)
+/// or return the built-in Groq → Cerebras → NVIDIA default order.
+fn parse_free_tier_providers() -> Vec<FreeTierProviderSpec> {
+    const DEFAULTS: &str = concat!(
+        "llama-3.3-70b-versatile@https://api.groq.com/openai/v1:GROQ_API_KEY,",
+        "llama-3.3-70b@https://api.cerebras.ai/v1:CEREBRAS_API_KEY,",
+        "meta/llama-3.3-70b-instruct@https://integrate.api.nvidia.com/v1:NVIDIA_API_KEY"
+    );
+    let raw = std::env::var("CHUMP_FREE_TIER_PROVIDERS").unwrap_or_else(|_| DEFAULTS.to_string());
+    raw.split(',')
+        .filter_map(|entry| {
+            let entry = entry.trim();
+            // Split on last ':' to get KEY_ENV, then '@' to get model vs base_url
+            let (model_base, key_env) = entry.rsplit_once(':')?;
+            let (model, base_url) = model_base.split_once('@')?;
+            if model.is_empty() || base_url.is_empty() || key_env.is_empty() {
+                return None;
+            }
+            Some(FreeTierProviderSpec {
+                model: model.trim().to_string(),
+                base_url: base_url.trim().to_string(),
+                api_key_env: key_env.trim().to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Point env vars at `spec` so `build_provider_single_pub` picks it up.
+fn activate_free_tier_provider(spec: &FreeTierProviderSpec) {
+    std::env::set_var("OPENAI_API_BASE", &spec.base_url);
+    std::env::set_var("OPENAI_MODEL", &spec.model);
+    // Prefer the provider-specific key; fall back to the generic one.
+    if let Ok(key) = std::env::var(&spec.api_key_env) {
+        std::env::set_var("OPENAI_API_KEY", key);
+    }
+    // Re-evaluate free-tier detection so is_free_tier_model() stays consistent.
+    std::env::set_var("CHUMP_FREE_TIER_MODE", "1");
+}
+
 /// Build a simplified prompt for free-tier models. Key differences from
 /// `build_execute_gap_prompt`:
 ///
@@ -328,34 +380,91 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
         }
     }
 
-    let agent = if free_tier {
-        build_free_tier_agent().context("building free-tier agent for --execute-gap (INFRA-733)")?
-    } else {
-        let (a, _ready_session) = build_chump_agent_cli().context(
-            "building Chump agent for --execute-gap (provider config? OPENAI_API_BASE?)",
-        )?;
-        a
-    };
-
     let prompt = if free_tier {
         build_free_tier_prompt(gap_id, &repo_root)
     } else {
         build_execute_gap_prompt(gap_id, &repo_root)
     };
 
+    if free_tier {
+        // EFFECTIVE-002: rotate through Groq → Cerebras → NVIDIA on 429/exhaustion.
+        let providers = parse_free_tier_providers();
+        // Start from the provider already configured (match by base URL), or index 0.
+        let current_base = std::env::var("OPENAI_API_BASE")
+            .unwrap_or_default()
+            .to_lowercase();
+        let start = providers
+            .iter()
+            .position(|s| current_base.contains(&s.base_url.to_lowercase()))
+            .unwrap_or(0);
+
+        let mut last_err: Option<anyhow::Error> = None;
+        let total = providers.len();
+        for offset in 0..total {
+            let idx = (start + offset) % total;
+            let spec = &providers[idx];
+
+            // Skip providers whose API key is not available.
+            let has_key = std::env::var(&spec.api_key_env).is_ok()
+                || std::env::var("OPENAI_API_KEY")
+                    .map(|k| !k.is_empty())
+                    .unwrap_or(false);
+            if !has_key {
+                eprintln!(
+                    "[execute-gap] free-tier rotation: skipping {} — no key ({} unset)",
+                    spec.model, spec.api_key_env
+                );
+                continue;
+            }
+
+            activate_free_tier_provider(spec);
+            eprintln!(
+                "[execute-gap] free-tier: trying provider {}/{} — {}",
+                offset + 1,
+                total,
+                spec.model
+            );
+
+            let agent = build_free_tier_agent()
+                .with_context(|| format!("building free-tier agent for {}", spec.model))?;
+
+            match agent.run(&prompt).await {
+                Ok(outcome) => {
+                    free_tier_ship(gap_id, &repo_root)
+                        .await
+                        .with_context(|| format!("free-tier ship step failed for gap {gap_id}"))?;
+                    return Ok(outcome.reply);
+                }
+                Err(e) => {
+                    let e_str = format!("{e:#}");
+                    if crate::provider_cascade::should_cascade_on_error_string(&e_str)
+                        && offset + 1 < total
+                    {
+                        eprintln!(
+                            "[execute-gap] free-tier rotation: {} exhausted ({e_str:.120}), \
+                             trying next provider",
+                            spec.model
+                        );
+                        last_err = Some(e);
+                        continue;
+                    }
+                    return Err(e).with_context(|| format!("agent loop failed for gap {gap_id}"));
+                }
+            }
+        }
+        return Err(last_err
+            .unwrap_or_else(|| anyhow!("no free-tier providers with API keys configured"))
+            .context(format!(
+                "all free-tier providers exhausted for gap {gap_id}"
+            )));
+    }
+
+    let (agent, _ready_session) = build_chump_agent_cli()
+        .context("building Chump agent for --execute-gap (provider config? OPENAI_API_BASE?)")?;
     let outcome = agent
         .run(&prompt)
         .await
         .with_context(|| format!("agent loop failed for gap {gap_id}"))?;
-
-    if free_tier {
-        // The free-tier agent committed but has no push or PR tools.
-        // Drive the ship pipeline here so the orchestrator finds a PR to poll.
-        free_tier_ship(gap_id, &repo_root)
-            .await
-            .with_context(|| format!("free-tier ship step failed for gap {gap_id}"))?;
-    }
-
     Ok(outcome.reply)
 }
 
@@ -1054,5 +1163,84 @@ mod tests {
             "expected ≥2 model calls (initial + after read_file result); got {}",
             received.len()
         );
+    }
+
+    // ── EFFECTIVE-002: provider rotation ──────────────────────────────────
+
+    #[test]
+    fn effective002_parse_defaults_returns_three_providers() {
+        // Without CHUMP_FREE_TIER_PROVIDERS set the default list has 3 entries.
+        std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
+        let specs = parse_free_tier_providers();
+        assert_eq!(specs.len(), 3, "default rotation must have 3 providers");
+        assert!(
+            specs[0].base_url.contains("groq.com"),
+            "first default must be Groq"
+        );
+        assert!(
+            specs[1].base_url.contains("cerebras.ai"),
+            "second default must be Cerebras"
+        );
+        assert!(
+            specs[2].base_url.contains("nvidia.com"),
+            "third default must be NVIDIA"
+        );
+    }
+
+    #[test]
+    fn effective002_parse_custom_env_overrides_defaults() {
+        std::env::set_var(
+            "CHUMP_FREE_TIER_PROVIDERS",
+            "my-model@https://api.example.com/v1:MY_KEY",
+        );
+        let specs = parse_free_tier_providers();
+        std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
+        assert_eq!(specs.len(), 1);
+        assert_eq!(specs[0].model, "my-model");
+        assert_eq!(specs[0].base_url, "https://api.example.com/v1");
+        assert_eq!(specs[0].api_key_env, "MY_KEY");
+    }
+
+    #[test]
+    fn effective002_parse_skips_malformed_entries() {
+        std::env::set_var(
+            "CHUMP_FREE_TIER_PROVIDERS",
+            // Second entry is malformed (no '@'), third is good
+            "good-model@https://api.example.com/v1:KEY,bad-entry,other@https://b.com/v1:K2",
+        );
+        let specs = parse_free_tier_providers();
+        std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
+        assert_eq!(specs.len(), 2, "malformed entry must be silently skipped");
+        assert_eq!(specs[0].model, "good-model");
+        assert_eq!(specs[1].model, "other");
+    }
+
+    #[test]
+    #[serial(openai_model_env)]
+    fn effective002_activate_sets_env_vars() {
+        let orig_base = std::env::var("OPENAI_API_BASE").ok();
+        let orig_model = std::env::var("OPENAI_MODEL").ok();
+        let orig_key = std::env::var("OPENAI_API_KEY").ok();
+
+        std::env::set_var("MY_TEST_KEY_002", "sk-test-token");
+        let spec = FreeTierProviderSpec {
+            model: "llama-test".to_string(),
+            base_url: "https://api.test.com/v1".to_string(),
+            api_key_env: "MY_TEST_KEY_002".to_string(),
+        };
+        activate_free_tier_provider(&spec);
+
+        assert_eq!(
+            std::env::var("OPENAI_API_BASE").unwrap(),
+            "https://api.test.com/v1"
+        );
+        assert_eq!(std::env::var("OPENAI_MODEL").unwrap(), "llama-test");
+        assert_eq!(std::env::var("OPENAI_API_KEY").unwrap(), "sk-test-token");
+
+        // Restore
+        restore_env_var("OPENAI_API_BASE", orig_base);
+        restore_env_var("OPENAI_MODEL", orig_model);
+        restore_env_var("OPENAI_API_KEY", orig_key);
+        std::env::remove_var("MY_TEST_KEY_002");
     }
 }
