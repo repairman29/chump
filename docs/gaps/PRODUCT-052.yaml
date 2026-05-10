@@ -1,9 +1,0 @@
-- id: PRODUCT-052
-  domain: PRODUCT
-  title: "EFFECTIVE: chump gen — fallback to ===FILE=== blocks when model lacks tool-use (PRODUCT-046 slice 3)"
-  status: done
-  priority: P1
-  effort: xs
-  closed_date: '2026-05-10'
-  closed_pr: 1418
-

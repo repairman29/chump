@@ -1,7 +1,0 @@
-- id: INFRA-719
-  domain: INFRA
-  title: "RESILIENT: eliminate manual gh-pr-create ship path — wrap or block direct PR creation for gap branches; force every shipper through bot-merge.sh so gap-ship-fatal (INFRA-678) always fires."
-  status: open
-  priority: P1
-  effort: s
-

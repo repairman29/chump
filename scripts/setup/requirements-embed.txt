@@ -1,5 +1,0 @@
-# Local Chump embed server (scripts/embed_server.py)
-sentence-transformers>=2.2.0
-fastapi>=0.100.0
-uvicorn>=0.22.0
-pydantic>=2.0.0

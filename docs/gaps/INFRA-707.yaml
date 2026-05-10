@@ -1,9 +1,0 @@
-- id: INFRA-707
-  domain: INFRA
-  title: "ZERO-WASTE: effort-scaled timeout — xs=300s s=600s m=1200s instead of flat 600s"
-  status: done
-  priority: P2
-  effort: m
-  closed_date: '2026-05-08'
-  closed_pr: 1282
-

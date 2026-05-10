@@ -1,7 +1,0 @@
-- id: INFRA-765
-  domain: INFRA
-  title: "EFFECTIVE: bot-merge.sh auto-rebase-on-base-merge for stacked PRs — when a PR's base branch (chump/infra-X) merges into main, bot-merge.sh detects all open PRs whose base = that branch, rebases each onto main, force-pushes with --force-with-lease, re-arms auto-merge. Eliminates manual ceremony I did 3x today for the obs-doctrine stack (rebased #1350 #1351 #1354 by hand)."
-  status: open
-  priority: P1
-  effort: m
-

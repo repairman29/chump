@@ -1,9 +1,0 @@
-- id: FLEET-047
-  domain: FLEET
-  title: "EFFECTIVE: decompose PRODUCT gaps into xs/s slices with crisp AC"
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1352
-

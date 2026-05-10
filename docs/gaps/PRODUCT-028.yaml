@@ -1,9 +1,0 @@
-- id: PRODUCT-028
-  domain: PRODUCT
-  title: "EFFECTIVE: PWA model selection guide + inference profile tuning UI — offline solo devs need to pick and configure local LLMs without reading source code"
-  status: done
-  priority: P1
-  effort: m
-  closed_date: '2026-05-08'
-  closed_pr: 1329
-

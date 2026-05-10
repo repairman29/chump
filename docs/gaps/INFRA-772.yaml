@@ -1,7 +1,0 @@
-- id: INFRA-772
-  domain: INFRA
-  title: "EFFECTIVE: Review-as-Handoff sub-gap 4/6 — chump review --serve daemon. Subscribes ambient kind=pr_check_fail, pulls PR + failed-job logs + diff, calls model with template-anchored prompt (cascade-routed for cost), validates diff via 'git apply --check' on throwaway worktree, posts comment. Watches branch for next push (15-min timeout). Spec: docs/architecture/REVIEW_AS_HANDOFF.md §6."
-  status: open
-  priority: P1
-  effort: m
-
