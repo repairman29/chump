@@ -94,6 +94,23 @@ done
 # shellcheck source=../lib/repo-paths.sh
 source "$(dirname "$0")/../lib/repo-paths.sh"
 
+# ── INFRA-810: worktree show-toplevel health check ────────────────────────────
+# core.bare=true in the main .git/config prevents `git rev-parse --show-toplevel`
+# from working in linked worktrees. With extensions.worktreeconfig=true, we can
+# override per-worktree by writing config.worktree with core.bare=false to the
+# worktree's gitdir. Auto-heal here so callers don't hit silent failures.
+if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
+    _WT_GITDIR="$(git rev-parse --absolute-git-dir 2>/dev/null || true)"
+    if [[ -n "$_WT_GITDIR" ]]; then
+        printf '[core]\n\tbare = false\n' > "$_WT_GITDIR/config.worktree"
+        git worktree repair 2>/dev/null || true
+        if git rev-parse --show-toplevel >/dev/null 2>&1; then
+            printf '[gap-claim] INFRA-810: auto-healed core.bare in worktree gitdir %s\n' "$_WT_GITDIR" >&2
+        fi
+    fi
+fi
+unset _WT_GITDIR
+
 # ── Path-case guard (INFRA-WORKTREE-PATH-CASE) ───────────────────────────────
 # macOS is case-insensitive, so /Users/jeffadkins/projects/Chump and
 # /Users/jeffadkins/Projects/Chump resolve to the same directory. But
