@@ -72,7 +72,7 @@ TS=$(date +%s)
 TAG="cognition-ab-${TS}"
 
 run_cell() {
-  local cell="$1" label="$2"
+  local fixture="$1" cell="$2" label="$3"
   echo ""
   echo "=== Cell $cell ($label) ==="
   echo "  flags: CHUMP_REFLECTION_INJECTION=${CHUMP_REFLECTION_INJECTION:-0} CHUMP_NEUROMOD_ENABLED=${CHUMP_NEUROMOD_ENABLED:-0} CHUMP_LESSONS_SEMANTIC=${CHUMP_LESSONS_SEMANTIC:-0}"
@@ -80,7 +80,7 @@ run_cell() {
   echo ""
 
   bash "$HARNESS" \
-    --fixture "${1}" \
+    --fixture "$fixture" \
     --flag CHUMP_COGNITION_AB_DUMMY \
     --tag "${TAG}-${cell}" \
     --limit "$N_PER_CELL" \
@@ -91,22 +91,24 @@ run_cell() {
 echo "[cognition-ab] Cell A: cognition stack OFF"
 export CHUMP_REFLECTION_INJECTION=0 CHUMP_NEUROMOD_ENABLED=0 CHUMP_LESSONS_SEMANTIC=0
 CELL_A_LOG="$OUT_DIR/${TAG}-A.jsonl"
-run_cell "$FIXTURE" "A"
-# The harness writes to a timestamped file; find it
-find "$OUT_DIR" -name "${TAG}-A-*.jsonl" -not -name "*.summary.*" 2>/dev/null | head -1 > /tmp/cell_a_log_path
+run_cell "$FIXTURE" "A" "cognition OFF"
+CELL_A_LOG=$(ls "$OUT_DIR"/"${TAG}-A-"*.jsonl 2>/dev/null | grep -v '.summary.' | head -1 || true)
+echo "$CELL_A_LOG" > /tmp/cell_a_log_path
 
 # Cell B: cognition ON
 echo "[cognition-ab] Cell B: cognition stack ON"
 export CHUMP_REFLECTION_INJECTION=1 CHUMP_NEUROMOD_ENABLED=1 CHUMP_LESSONS_SEMANTIC=1
-run_cell "$FIXTURE" "B"
-find "$OUT_DIR" -name "${TAG}-B-*.jsonl" -not -name "*.summary.*" 2>/dev/null | head -1 > /tmp/cell_b_log_path
+run_cell "$FIXTURE" "B" "cognition ON"
+CELL_B_LOG=$(ls "$OUT_DIR"/"${TAG}-B-"*.jsonl 2>/dev/null | grep -v '.summary.' | head -1 || true)
+echo "$CELL_B_LOG" > /tmp/cell_b_log_path
 
 # Cell C: control (OFF + padded fixture)
 echo "[cognition-ab] Cell C: cognition OFF + 500-token neutral padding"
 export CHUMP_REFLECTION_INJECTION=0 CHUMP_NEUROMOD_ENABLED=0 CHUMP_LESSONS_SEMANTIC=0
 if [[ -f "$PADDED_FIXTURE" ]]; then
-  run_cell "$PADDED_FIXTURE" "C"
-  find "$OUT_DIR" -name "${TAG}-C-*.jsonl" -not -name "*.summary.*" 2>/dev/null | head -1 > /tmp/cell_c_log_path
+  run_cell "$PADDED_FIXTURE" "C" "OFF + padding"
+  CELL_C_LOG=$(ls "$OUT_DIR"/"${TAG}-C-"*.jsonl 2>/dev/null | grep -v '.summary.' | head -1 || true)
+  echo "$CELL_C_LOG" > /tmp/cell_c_log_path
 else
   echo "  WARNING: padded fixture not found at $PADDED_FIXTURE — skipping Cell C"
   echo "  Generate it: scripts/eval/generate-padded-fixture.sh"
