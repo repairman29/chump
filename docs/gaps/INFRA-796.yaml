@@ -1,0 +1,12 @@
+- id: INFRA-796
+  domain: INFRA
+  title: "EFFECTIVE: chump orchestrate — conversational Opus loop that drives the fleet from plain-English operator intent"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

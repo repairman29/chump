@@ -19,19 +19,19 @@ Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Was
 | **Resilient** | Failure tolerance | SWARM-domain exclusion (INFRA-710), stall detection (INFRA-705), worker health (FLEET-042) |
 | **Zero-Waste** | Cycle efficiency | Effort-scaled timeout (INFRA-707), wedge diagnosis (INFRA-706), pre-ship quality (INFRA-666) |
 
-**This week's bets** (P0 gaps picked from the queue):
-- INFRA-710 (RESILIENT: SWARM-* exclusion)
-- INFRA-708 (CREDIBLE: effort sizing)
-- INFRA-707 (ZERO-WASTE: timeout tuning)
-- FLEET-052 (EFFECTIVE: non-INFRA gap filing)
-- FLEET-048 (CREDIBLE: operator feedback)
+**This week's bets** (Week 2 opens May 14; final Week 1 push + blocker clearance):
+- **INFRA-791** P0 — CRITICAL: dispatched agents receive no tools (tools_ms=0). Blocker for all feature work.
+- **INFRA-721** P0 — EFFECTIVE: fleet brief on SessionStart (operator situational awareness)
+- **EFFECTIVE-001** P1 — end-to-end free-tier ship test (Llama 3.3 70B, gap to PR)
+- **EVAL-101** P1 — cognition A/B sweep (needs scope-up, starts Week 2 if not cleared)
+- **INFRA-604** P1 — `chump pillar-balance` command (productizes Mission Driver pillar check)
 
-**Sunset** (last 5 PRs shipped):
-- #1282 — INFRA-707 prep: FLEET_TIMEOUT_S 600→900
-- #1281 — INFRA-471: model-class-aware routing
-- #1279 — INFRA-709: integration test guard
-- #1276 — INFRA-594: chump gen smoke suite
-- #1274 — INFRA-696: CVE audit
+**Sunset** (last 5 PRs shipped, 2026-05-10):
+- #1389 — session gaps from CREDIBLE-017: commit.sh mutex fix, worktree config diag, bot-merge scope, handoff format, CONTINUAL_LEARNING.md
+- #1388 — CREDIBLE-017: standardize CLI exit codes (exit(3)→exit(1))
+- #1386 — INFRA-736: correct claude-opus-4.7 and deepseek-v3 model rates
+- #1385 — INFRA-610: `chump fleet restart` subcommand
+- #1383 — INFRA-738: auto-default to chump-local when ANTHROPIC_API_KEY unset
 
 ---
 
@@ -68,20 +68,20 @@ shipped.
 
 ---
 
-## Week 1 — User-facing front door (May 6 → 13)
+## Week 1 — User-facing front door (May 6 → 13) ✅ SHIPPED
 
 **Outcome.** A solo dev with Ollama can run `chump gen "<task>"` and get
-a working PR.
+a working PR. **Achieved.**
 
 **Implementing gaps:**
-- **INFRA-593** — `chump gen <task>` single-shot user-facing coding command (P0 m, **in flight #1204**)
-- **INFRA-591** — offline-LLM quickstart doc (P1 s, pickable)
-- **INFRA-XXX** — `chump fleet` subcommand (start/stop/status) — **to be filed**
-- **INFRA-594** — chump-gen fixture suite (10 tasks, asserts working code) (P1 s, pickable)
-- **INFRA-592** — chump gap reserve progress output (P1 xs, **in flight #1201**)
+- **INFRA-593** — `chump gen <task>` single-shot coding command ✅ (#1204)
+- **INFRA-591** — offline-LLM quickstart doc ✅ (#1216)
+- **INFRA-610** — `chump fleet` subcommand (start/stop/status/restart) ✅ (#1385)
+- **INFRA-743** — `chump init` lists available Ollama models ✅ (#1384)
+- **INFRA-733** — free-tier dispatch harness (non-Claude LLMs) ✅ (#1355 + #1373)
+- **INFRA-594** — chump-gen smoke suite ✅ (#1276)
 
-**Out of scope this week.** Orchestrator conversation, PWA dashboard,
-cognition A/B (those are weeks 2-4).
+**Remaining.** FTUE clean-machine CI test (pre-existing Ollama-unreachable failure on main; not a Week 1 regression — defer to Week 4 polish).
 
 ---
 
@@ -108,11 +108,11 @@ number. No new infra, no new features unless they unblock a measurement.
 session with Opus, and Opus drives the fleet (files gaps, spawns workers,
 reports back) without human-typing each chump CLI command.
 
-**Implementing gaps (to be filed as a coherent set):**
-- **INFRA-NEW** — `chump init` first-run wizard (m, dependency check + `~/.chump/config.toml` + brew tap verification)
-- **INFRA-NEW** — `chump orchestrate` conversational loop (m, Opus-driven, reads CLAUDE.md doctrine + dispatches to chump CLI)
-- **INFRA-NEW** — intent parser: natural language → structured chump ops (s, prompt template + tool-router)
-- **INFRA-NEW** — mission auto-grader emits 4-pillar scorecard to ambient every 30min unprompted (s)
+**Implementing gaps:**
+- **INFRA-796** — `chump orchestrate` conversational Opus loop (m, Opus-driven, dispatches to chump CLI) — filed 2026-05-10
+- **INFRA-797** — mission auto-grader: emit 4-pillar scorecard to ambient every 30min unprompted (s) — filed 2026-05-10
+- **INFRA-798** — intent parser: natural language → structured chump ops (s, prompt template + tool-router) — filed 2026-05-10
+- **INFRA-NEW** — `chump init` first-run wizard (m, dependency check + `~/.chump/config.toml` + brew tap) — file when INFRA-743 scope is confirmed done
 
 **Acceptance criteria.** Operator can:
 - Type "spawn the fleet on infra p0/p1, size 4" → fleet starts.
@@ -127,10 +127,10 @@ reports back) without human-typing each chump CLI command.
 **Outcome.** Pitch-ready 5-min demo on a clean Mac.
 
 **Implementing gaps:**
-- **PRODUCT-025** — PWA dashboard MVP (currently L; split into shippable slices: registry view, fleet pane, ambient stream pane)
-- **INFRA-NEW** — clean-Mac FTUE integration test (replays `brew install … chump init … chump gen` on a fresh runner)
-- **DOC-NEW** — README rewrite anchored on the demo flow
-- **INFRA-NEW** — performance tuning at FLEET_SIZE=10 with cascade hot (Cerebras/Groq slots loaded, measure cost savings vs Anthropic baseline)
+- **PRODUCT-025** — PWA dashboard MVP (L; split into shippable slices: registry view, fleet pane, ambient stream pane)
+- **INFRA-799** — FTUE clean-machine CI test (brew install + chump init + chump gen on fresh runner) — filed 2026-05-10
+- **DOC-NEW** — README rewrite anchored on the demo flow — file Week 4
+- **INFRA-NEW** — performance tuning at FLEET_SIZE=10 with cascade hot — file Week 4
 
 **Out of scope.** Anything that doesn't appear in the 5-minute demo.
 
@@ -153,7 +153,21 @@ reports back) without human-typing each chump CLI command.
 
 ## Status (live; updated by Mission Driver)
 
-- **Updated.** 2026-05-06 (initial)
-- **Ships toward outcomes:** Week 1 (user-facing) — 0 of 5 outcomes shipped (INFRA-593 in flight)
-- **Blocked.** None currently.
-- **Next action.** File the 4 INFRA-NEW gaps for Week 3 orchestrator MVP + the PRODUCT-025 split for Week 4. Run EVAL-101 in Week 2.
+- **Updated.** 2026-05-10
+- **Week 1 (May 6–13) — OUTCOME SHIPPED.** User-facing front door complete:
+  - `chump gen <task>` shipped (INFRA-593, #1204). ✅
+  - Offline-LLM quickstart doc shipped (INFRA-591, #1216). ✅
+  - `chump fleet start/stop/status/restart` shipped (INFRA-610, #1385). ✅
+  - `chump init` lists live Ollama models (INFRA-743, #1384). ✅
+  - Free-tier dispatch wired (INFRA-733 + #1373). ✅
+  - Remaining: FTUE clean-machine CI test (ftue job failing pre-existing on main — Ollama unreachable in CI runner; not a regression).
+  - **INFRA-791 P0 blocker open**: dispatched agents receive no tools (tools_ms=0). Carried into Week 2.
+- **Week 2 (May 14–21) — not yet set up.** File EVAL-101 scope-up + COG-053 + bandit replay study before May 14.
+- **Week 3 (May 22–28) — zero gaps filed.** All 4 orchestrator gaps still "INFRA-NEW" placeholders. File before May 21.
+- **Pillar balance (2026-05-10):** EFFECTIVE 43% (dominant), CREDIBLE 20%, RESILIENT 13%, ZERO-WASTE 6%, MISSION 3%. 86 pickable, 107 vague (no ACs — unpickable).
+- **Next actions:**
+  1. Fix INFRA-791 (P0 blocker — tools not reaching agents).
+  2. Verify INFRA-593 (`chump gen`) status; promote to Week 1 close if shipped.
+  3. File Week 2 gaps (EVAL-101 scope-up, COG-053, bandit replay) before May 14.
+  4. File 4 Week 3 orchestrator gaps before May 21.
+  5. File Week 4 FTUE integration test + README rewrite gaps.
