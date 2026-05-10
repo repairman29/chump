@@ -2404,7 +2404,8 @@ mod tests {
             )
             .expect("test invariant");
         }
-        let lessons = load_spawn_lessons("", 3);
+        // Use threshold=0.0: this test is about max_n capping, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("", 3, 0.0);
         assert_eq!(lessons.len(), 3);
     }
 
@@ -2443,7 +2444,8 @@ mod tests {
         )
         .expect("test invariant");
 
-        let lessons = load_spawn_lessons("", 10);
+        // Use threshold=0.0: this test checks priority/seed exclusion, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("", 10, 0.0);
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
         assert!(directives.contains(&"real high lesson"));
         assert!(!directives.contains(&"low priority lesson"));
@@ -2469,7 +2471,8 @@ mod tests {
         )
         .expect("test invariant");
 
-        let lessons = load_spawn_lessons("", 10);
+        // Use threshold=0.0: this test checks ranking by frequency, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("", 10, 0.0);
         // The recurring one must be first; both unique directives should
         // appear (GROUP BY collapses dupes).
         assert_eq!(lessons.len(), 2, "duplicates collapsed via GROUP BY");
@@ -2497,7 +2500,8 @@ mod tests {
         )
         .expect("test invariant");
 
-        let lessons = load_spawn_lessons("patch_file", 10);
+        // Use threshold=0.0: this test checks domain filtering, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("patch_file", 10, 0.0);
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
         assert!(directives.contains(&"universal lesson"));
         assert!(directives.contains(&"patch-scoped lesson"));
@@ -2522,7 +2526,8 @@ mod tests {
         )
         .expect("test invariant");
 
-        let lessons = load_spawn_lessons("global", 10);
+        // Use threshold=0.0: this test checks global domain behaviour, not quality filtering.
+        let lessons = load_spawn_lessons_with_threshold("global", 10, 0.0);
         assert_eq!(
             lessons.len(),
             2,
@@ -2743,12 +2748,12 @@ mod tests {
         assert_eq!(lesson_quality_threshold(), 1.0, "above 1.0 clamps to 1.0");
         std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "-0.5");
         assert_eq!(lesson_quality_threshold(), 0.0, "below 0.0 clamps to 0.0");
-        // Malformed value falls back to 0.0.
+        // Malformed value falls back to the default (LESSON_QUALITY_THRESHOLD_DEFAULT = 0.6).
         std::env::set_var("CHUMP_LESSON_QUALITY_THRESHOLD", "garbage");
         assert_eq!(
             lesson_quality_threshold(),
-            0.0,
-            "malformed falls back to 0.0"
+            LESSON_QUALITY_THRESHOLD_DEFAULT,
+            "malformed falls back to default (FLEET-049: 0.6)"
         );
         std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
     }
@@ -2891,10 +2896,14 @@ mod tests {
         let directives: Vec<_> = lessons.iter().map(|t| t.directive.as_str()).collect();
         assert_eq!(directives, vec!["success lesson"]);
 
-        // Remove threshold → both surface.
+        // Remove threshold → default 0.6 gate applies; failure-class (quality=0.0) excluded.
         std::env::remove_var("CHUMP_LESSON_QUALITY_THRESHOLD");
         let all_lessons = load_spawn_lessons("", 10);
-        assert_eq!(all_lessons.len(), 2, "no threshold → all lessons returned");
+        assert_eq!(
+            all_lessons.len(),
+            1,
+            "no threshold → default 0.6 gate, only success-class returned"
+        );
     }
 }
 
