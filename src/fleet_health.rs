@@ -62,6 +62,7 @@ pub struct HealthReport {
     pub pillars_starved: u64,
     pub auth_ok: bool,
     pub commits_behind: u64,
+    pub session_rescues_24h: u64,
 }
 
 pub fn build_report(repo_root: &Path) -> HealthReport {
@@ -208,6 +209,22 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
         signals.push(s);
     }
 
+    // ── 8. Session rescues (operator-authored commits in 24h window) ──────────
+    let session_rescues_24h = crate::rescue_tally::count_rescues_24h(repo_root);
+    let rescue_alert_threshold = crate::rescue_tally::alert_threshold();
+    if session_rescues_24h >= rescue_alert_threshold {
+        let s = HealthSignal {
+            name: "session_rescues".into(),
+            penalty: 10,
+            detail: format!(
+                "{} operator rescue(s) in last 24h (threshold {})",
+                session_rescues_24h, rescue_alert_threshold
+            ),
+        };
+        total_penalty += s.penalty;
+        signals.push(s);
+    }
+
     // ── Score + grade ─────────────────────────────────────────────────────────
     let raw_score = (100i64 - total_penalty).max(0).min(100);
     let score = raw_score as u8;
@@ -236,6 +253,7 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
         pillars_starved,
         auth_ok,
         commits_behind,
+        session_rescues_24h,
     }
 }
 
@@ -262,7 +280,7 @@ impl HealthReport {
             .map(|s| format!(r#""{}""#, json_escape(&s.name)))
             .unwrap_or_else(|| r#"null"#.to_string());
         format!(
-            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb}}}"#,
+            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr}}}"#,
             ts = self.ts,
             score = self.score,
             grade = self.grade,
@@ -279,6 +297,7 @@ impl HealthReport {
             pstar = self.pillars_starved,
             auth = self.auth_ok,
             cb = self.commits_behind,
+            sr = self.session_rescues_24h,
         )
     }
 
@@ -308,7 +327,7 @@ impl HealthReport {
             })
             .unwrap_or_else(|| "null".to_string());
         format!(
-            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"signals":[{sigs}],"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"waste_top_kind":"{wtk}","fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"budget_usd_per_day":{budget:.2},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb}}}"#,
+            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"signals":[{sigs}],"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"waste_top_kind":"{wtk}","fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"budget_usd_per_day":{budget:.2},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr}}}"#,
             ts = self.ts,
             score = self.score,
             grade = self.grade,
@@ -328,6 +347,7 @@ impl HealthReport {
             pstar = self.pillars_starved,
             auth = self.auth_ok,
             cb = self.commits_behind,
+            sr = self.session_rescues_24h,
         )
     }
 
@@ -381,6 +401,10 @@ impl HealthReport {
             "  Auth:     {}   version_skew: {} commits behind\n",
             if self.auth_ok { "ok" } else { "FAIL" },
             self.commits_behind
+        ));
+        out.push_str(&format!(
+            "  Rescues:  {} operator rescue(s) in last 24h\n",
+            self.session_rescues_24h
         ));
         if !self.signals.is_empty() {
             out.push_str("\n  Penalties:\n");
@@ -1050,6 +1074,7 @@ mod tests {
             pillars_starved: 0,
             auth_ok: true,
             commits_behind: 0,
+            session_rescues_24h: 0,
         };
         let json = report.render_event_json();
         assert!(json.contains(r#""kind":"fleet_health""#), "kind field");
@@ -1089,6 +1114,7 @@ mod tests {
             pillars_starved: 0,
             auth_ok: true,
             commits_behind: 0,
+            session_rescues_24h: 0,
         };
         let text = report.render_text();
         assert!(text.contains("75/100"), "score in text");
@@ -1119,6 +1145,7 @@ mod tests {
             pillars_starved: 0,
             auth_ok: true,
             commits_behind: 0,
+            session_rescues_24h: 0,
         };
         let json = report.render_json();
         assert!(json.starts_with('{'), "starts with {{");
@@ -1162,6 +1189,7 @@ mod tests {
             pillars_starved: 0,
             auth_ok: true,
             commits_behind: 0,
+            session_rescues_24h: 0,
         };
         emit(&tmp, &report);
         let contents = std::fs::read_to_string(tmp.join(".chump-locks/ambient.jsonl")).unwrap();

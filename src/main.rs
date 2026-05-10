@@ -109,6 +109,7 @@ mod memory_graph_viz;
 mod memory_tool;
 mod messaging;
 mod mission_grade;
+mod rescue_tally;
 #[cfg(feature = "mistralrs-infer")]
 mod mistralrs_provider;
 mod model_overlay;
@@ -516,6 +517,9 @@ async fn main() -> Result<()> {
         loop {
             let report = fleet_health::build_report(&repo_root);
             fleet_health::emit(&repo_root, &report);
+            // Emit kind=session_rescue for any new rescues found (INFRA-667).
+            let rescues = rescue_tally::scan_rescues(&repo_root, 24);
+            rescue_tally::emit_rescue_events(&repo_root, &rescues);
             if want_json {
                 println!("{}", report.render_json());
             } else {
