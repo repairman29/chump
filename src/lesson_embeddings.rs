@@ -121,6 +121,7 @@ pub fn cosine_similarity_f32(a: &[f32], b: &[f32]) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn cog046_cosine_orthogonal() {
@@ -151,12 +152,14 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn cog046_embedding_enabled_default_off() {
         std::env::remove_var("CHUMP_LESSONS_EMBEDDING");
         assert!(!embedding_enabled());
     }
 
     #[test]
+    #[serial]
     fn cog046_embedding_enabled_recognizes_truthy() {
         for v in ["1", "true", "on"] {
             std::env::set_var("CHUMP_LESSONS_EMBEDDING", v);
