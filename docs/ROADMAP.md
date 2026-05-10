@@ -19,12 +19,11 @@ Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Was
 | **Resilient** | Failure tolerance | SWARM-domain exclusion (INFRA-710), stall detection (INFRA-705), worker health (FLEET-042) |
 | **Zero-Waste** | Cycle efficiency | Effort-scaled timeout (INFRA-707), wedge diagnosis (INFRA-706), pre-ship quality (INFRA-666) |
 
-**This week's bets** (Week 2 opens May 14; final Week 1 push + blocker clearance):
-- **INFRA-791** P0 — CRITICAL: dispatched agents receive no tools (tools_ms=0). Blocker for all feature work.
-- **INFRA-721** P0 — EFFECTIVE: fleet brief on SessionStart (operator situational awareness)
-- **EFFECTIVE-001** P1 — end-to-end free-tier ship test (Llama 3.3 70B, gap to PR)
-- **EVAL-101** P1 — cognition A/B sweep (needs scope-up, starts Week 2 if not cleared)
-- **INFRA-604** P1 — `chump pillar-balance` command (productizes Mission Driver pillar check)
+**This week's bets** (Week 2 — Credible evidence, May 14→21):
+- **EVAL-101** P0 — cognition A/B sweep (prereg filed, runner ready, start sweep)
+- **INFRA-595** P1 ✅ — per-PR coupling-tax measurement (`chump pr-coupling-cost`)
+- **INFRA-601** P1 ✅ — bandit Thompson vs UCB1 replay study (done in #1225)
+- **COG-053** P1 ✅ — subagent self-ship rate measurement (done in #1310)
 
 **Sunset** (last 5 PRs shipped, 2026-05-10):
 - #1389 — session gaps from CREDIBLE-017: commit.sh mutex fix, worktree config diag, bot-merge scope, handoff format, CONTINUAL_LEARNING.md
@@ -92,10 +91,12 @@ by how much. We've shipped COG-041 / COG-046 / COG-042 / COG-043 on faith;
 this week we measure.
 
 **Implementing gaps:**
-- **EVAL-101** — cognition A/B with fleet evidence (P1, **needs scope-up to P0 + concrete fixture**)
-- **COG-053** — subagent self-ship rate measurement (P0 m, currently auto-skipped by fleet — needs operator dispatch or domain promotion)
-- **INFRA-595** — per-PR coupling-tax measurement (P1 s, pickable)
-- **EVAL-NEW** — bandit Thompson vs UCB1 replay study (1000 cascade decisions, regret comparison) — **to be filed**
+- **EVAL-101** (P0 m) — cognition A/B with fleet evidence ✅ **preregistration filed, fixture ready.** Run `scripts/eval/run-cognition-ab.sh` to execute the 60-trial sweep. Preregistered at `docs/eval/preregistered/EVAL-101.md`.
+- **INFRA-595** (P1 s) ✅ — per-PR coupling-tax measurement. `chump pr-coupling-cost` shipped in #1224.
+- **INFRA-601** (P1 s) ✅ — bandit Thompson vs UCB1 replay study. `src/bin/bandit-replay.rs` + report shipped in #1225.
+- **COG-053** (P1 m) ✅ — subagent self-ship rate measurement. Prompt epilogue shipped in #1310.
+
+**Remaining.** Run `scripts/eval/run-cognition-ab.sh` (needs Claude Sonnet API access + ~$4). When results land at `docs/eval/EVAL-101-cognition-ab-<date>.md`, close EVAL-101 as supported/rejected/ambiguous per the decision rule in the preregistration.
 
 **Out of scope this week.** Anything that doesn't produce a measurable
 number. No new infra, no new features unless they unblock a measurement.
