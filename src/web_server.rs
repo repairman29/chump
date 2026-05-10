@@ -2465,13 +2465,13 @@ fn emit_ambient_event(gap_id: &str, phase: &str, status: &str) {
             .append(true)
             .open(&ambient_path)
         {
-            let _ = writeln!(file, "{}", event.to_string());
+            let _ = writeln!(file, "{}", event);
         }
     }
 }
 
 /// Run pre-flight validation via gap-preflight.sh (exits 1 if not pickable).
-fn run_preflight_check(gap_id: &str, repo_root: &std::path::PathBuf) -> Result<(), String> {
+fn run_preflight_check(gap_id: &str, repo_root: &std::path::Path) -> Result<(), String> {
     let preflight_script = repo_root.join("scripts/coord/gap-preflight.sh");
     if !preflight_script.exists() {
         tracing::warn!("gap-preflight.sh not found, skipping pre-flight check");
@@ -2497,7 +2497,7 @@ fn run_preflight_check(gap_id: &str, repo_root: &std::path::PathBuf) -> Result<(
 }
 
 /// Release lease for a gap (cleanup on error).
-fn cleanup_lease(gap_id: &str, repo_root: &std::path::PathBuf) {
+fn cleanup_lease(gap_id: &str, repo_root: &std::path::Path) {
     let session_id = format!("chump-pwa-{}", gap_id);
     let lease_path = repo_root
         .join(".chump-locks")
