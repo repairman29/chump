@@ -9,9 +9,16 @@ use crate::local_openai;
 use crate::provider_cascade;
 
 pub async fn handle_health() -> Json<serde_json::Value> {
+    let active_model = std::env::var("OPENAI_MODEL")
+        .ok()
+        .or_else(|| std::env::var("CHUMP_MODEL").ok())
+        .unwrap_or_else(|| "mlx-community/Qwen3.5-9B-OptiQ-4bit".to_string());
+
     Json(serde_json::json!({
         "status": "ok",
-        "service": "chump-web"
+        "service": "chump-web",
+        "model_id": active_model,
+        "active_model": active_model
     }))
 }
 

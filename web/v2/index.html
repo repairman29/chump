@@ -304,6 +304,33 @@
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));
     if (!navigator.onLine) document.body.classList.add('offline');
+
+    // V1→V2 migration: backward-compatibility aliases for e2e tests.
+    // The tests reference v1 element IDs; map them to v2 Web Component elements.
+    function createTestAliases() {
+      // #msg-input ← chump-view-chat's #input (message composer)
+      const chatInput = document.querySelector('chump-view-chat #input');
+      if (chatInput) chatInput.id = 'msg-input';
+
+      // #settings-btn ← nav button for settings (replaces old header button)
+      const settingsNav = document.querySelector('[data-view="settings"]');
+      if (settingsNav) settingsNav.id = 'settings-btn';
+
+      // #sessions-toggle ← nav button for chat (legacy "sessions" = chat view in v2)
+      const chatNav = document.querySelector('[data-view="chat"]');
+      if (chatNav) chatNav.id = 'sessions-toggle';
+
+      // #send-btn is already correct in chump-view-chat
+    }
+
+    // Aliases must be set after Web Components hydrate.
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', createTestAliases);
+    } else {
+      // Already loaded; create aliases now and again after a tick for slow hydration.
+      createTestAliases();
+      setTimeout(createTestAliases, 100);
+    }
   </script>
 </body>
 </html>
