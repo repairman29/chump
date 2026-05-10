@@ -2914,9 +2914,83 @@ fn sync_chump_web_bound_port_marker(requested_port: u16, bound_port: u16) {
     }
 }
 
+/// EFFECTIVE-013: Validate environment before binding to the port.
+///
+/// Hard failures (returns `Err`) — server must not start:
+/// * `CHUMP_REPO` is set but the path does not exist or is not a directory.
+/// * `CHUMP_BIN` is set to an absolute path that does not exist or is not executable.
+///
+/// Soft warnings (emits to stderr, returns `Ok`) — server continues:
+/// * `GH_TOKEN` not set — agent falls back to keyring; ops may be degraded.
+pub fn validate_startup_env() -> Result<()> {
+    // -- CHUMP_REPO --------------------------------------------------------
+    if let Ok(repo) = std::env::var("CHUMP_REPO") {
+        let p = std::path::Path::new(&repo);
+        if !p.exists() {
+            eprintln!("[web] CHUMP_REPO not found: {repo}");
+            return Err(anyhow::anyhow!(
+                "CHUMP_REPO not found: {repo} — set CHUMP_REPO to an existing repo checkout"
+            ));
+        }
+        if !p.is_dir() {
+            eprintln!("[web] CHUMP_REPO is not a directory: {repo}");
+            return Err(anyhow::anyhow!("CHUMP_REPO is not a directory: {repo}"));
+        }
+    }
+
+    // -- CHUMP_BIN ---------------------------------------------------------
+    // Only validate when explicitly set to an absolute path; a bare name
+    // (e.g. the default "chump") is resolved by the OS at spawn time.
+    if let Ok(bin) = std::env::var("CHUMP_BIN") {
+        let p = std::path::Path::new(&bin);
+        if p.is_absolute() {
+            if !p.exists() {
+                eprintln!("[web] CHUMP_BIN not found or not executable: {bin}");
+                return Err(anyhow::anyhow!(
+                    "CHUMP_BIN not found: {bin} — set CHUMP_BIN to the chump binary path"
+                ));
+            }
+            // On Unix, check execute bit.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = std::fs::metadata(&bin)
+                    .map(|m| m.permissions().mode())
+                    .unwrap_or(0);
+                if mode & 0o111 == 0 {
+                    eprintln!("[web] CHUMP_BIN not found or not executable: {bin}");
+                    return Err(anyhow::anyhow!(
+                        "CHUMP_BIN exists but is not executable: {bin} — run `chmod +x {bin}`"
+                    ));
+                }
+            }
+        }
+    }
+
+    // -- GH_TOKEN (soft) ---------------------------------------------------
+    if std::env::var("GH_TOKEN").is_err() && std::env::var("GITHUB_TOKEN").is_err() {
+        eprintln!(
+            "[web] WARNING: GH_TOKEN not set, agent will use keyring \
+             (set GH_TOKEN or GITHUB_TOKEN if keyring is unavailable)"
+        );
+        tracing::warn!(
+            "effective013: GH_TOKEN not set — agent will fall back to keyring; \
+             set GH_TOKEN or GITHUB_TOKEN if keyring is unavailable"
+        );
+    } else {
+        tracing::info!(
+            "effective013: startup validation passed (CHUMP_REPO, CHUMP_BIN, credentials OK)"
+        );
+    }
+
+    Ok(())
+}
+
 /// Start the web server. Binds to 0.0.0.0:port (or the next free port if that one is in use).
 /// Serves GET /api/health and static files from web/.
 pub async fn start_web_server(port: u16) -> Result<()> {
+    validate_startup_env()?;
+
     let static_dir = pwa_static_dir();
     if let Err(e) = std::fs::create_dir_all(&static_dir) {
         eprintln!(
@@ -3934,6 +4008,88 @@ mod semaphore_gate {
             elapsed >= Duration::from_millis(120),
             "serialised calls take >= 2× delay ({:?})",
             elapsed
+        );
+    }
+}
+
+#[cfg(test)]
+mod startup_validation_tests {
+    use super::validate_startup_env;
+    use serial_test::serial;
+
+    #[test]
+    #[serial(startup_env)]
+    fn effective013_chump_repo_not_set_passes() {
+        std::env::remove_var("CHUMP_REPO");
+        std::env::remove_var("CHUMP_BIN");
+        // GH_TOKEN may or may not be set; we don't care for this test.
+        // Without CHUMP_REPO set, validation must pass (no repo to check).
+        let result = validate_startup_env();
+        // Only check CHUMP_REPO/CHUMP_BIN failures; GH_TOKEN warning is fine.
+        assert!(
+            result.is_ok() || result.unwrap_err().to_string().contains("GH_TOKEN"),
+            "no CHUMP_REPO set → validation should not fail on repo"
+        );
+    }
+
+    #[test]
+    #[serial(startup_env)]
+    fn effective013_chump_repo_nonexistent_fails() {
+        std::env::set_var("CHUMP_REPO", "/nonexistent-chump-repo-path-abc123");
+        std::env::remove_var("CHUMP_BIN");
+        let result = validate_startup_env();
+        std::env::remove_var("CHUMP_REPO");
+        assert!(
+            result.is_err(),
+            "nonexistent CHUMP_REPO must fail validation"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("CHUMP_REPO not found") || msg.contains("/nonexistent"),
+            "error should mention CHUMP_REPO: {msg}"
+        );
+    }
+
+    #[test]
+    #[serial(startup_env)]
+    fn effective013_chump_repo_existing_dir_passes() {
+        let tmp = std::env::temp_dir();
+        std::env::set_var("CHUMP_REPO", tmp.to_str().unwrap());
+        std::env::remove_var("CHUMP_BIN");
+        let result = validate_startup_env();
+        std::env::remove_var("CHUMP_REPO");
+        assert!(
+            result.is_ok(),
+            "existing directory for CHUMP_REPO must pass: {result:?}"
+        );
+    }
+
+    #[test]
+    #[serial(startup_env)]
+    fn effective013_chump_bin_absolute_nonexistent_fails() {
+        std::env::remove_var("CHUMP_REPO");
+        std::env::set_var("CHUMP_BIN", "/nonexistent-bin-path-abc123/chump");
+        let result = validate_startup_env();
+        std::env::remove_var("CHUMP_BIN");
+        assert!(result.is_err(), "nonexistent absolute CHUMP_BIN must fail");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("CHUMP_BIN"),
+            "error should mention CHUMP_BIN: {msg}"
+        );
+    }
+
+    #[test]
+    #[serial(startup_env)]
+    fn effective013_chump_bin_bare_name_passes() {
+        // Bare name (no path separator) is resolved by OS at spawn time — don't validate.
+        std::env::remove_var("CHUMP_REPO");
+        std::env::set_var("CHUMP_BIN", "chump");
+        let result = validate_startup_env();
+        std::env::remove_var("CHUMP_BIN");
+        assert!(
+            result.is_ok(),
+            "bare CHUMP_BIN name must not fail startup validation: {result:?}"
         );
     }
 }
