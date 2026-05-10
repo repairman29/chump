@@ -115,5 +115,38 @@ if ! echo "$output" | grep -q "Cargo.toml"; then
 fi
 echo "[OK] test-4: script detects Cargo.toml missing from allowlist"
 
+# ── Test 5: gitignored dir (target/) should NOT be flagged ────────────────
+# Create a real git repo in a sub-temp so check-ignore works correctly.
+GIT_TMP="$(mktemp -d)"
+trap 'rm -rf "$GIT_TMP"' EXIT
+git -C "$GIT_TMP" init -q
+git -C "$GIT_TMP" config user.email "test@test.com"
+git -C "$GIT_TMP" config user.name "Test"
+printf '/target\n' > "$GIT_TMP/.gitignore"
+mkdir -p "$GIT_TMP/.github/workflows" "$GIT_TMP/src" "$GIT_TMP/target"
+cat >"$GIT_TMP/.github/workflows/ci.yml" <<'YAML'
+jobs:
+  changes:
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'src/**'
+              - '.github/workflows/**'
+            e2e:
+              - 'src/**'
+YAML
+# target/ is gitignored → script must NOT flag it
+if ! REPO_ROOT="$GIT_TMP" bash "$CHECK" >/dev/null 2>&1; then
+    echo "FAIL test-5: script flagged gitignored 'target/' as missing from allowlist"
+    REPO_ROOT="$GIT_TMP" bash "$CHECK" >&2 || true
+    exit 1
+fi
+echo "[OK] test-5: gitignored directory 'target/' correctly skipped"
+
 echo ""
-echo "PASS: test-path-filter-allowlist (4/4 cases verified)"
+echo "PASS: test-path-filter-allowlist (5/5 cases verified)"

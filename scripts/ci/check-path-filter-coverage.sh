@@ -72,10 +72,11 @@ emit_failure() {
 
 echo "[check-path-filter-coverage] scanning $REPO_ROOT against $CI_YML ..."
 
-# ── 1. Every non-hidden top-level directory ───────────────────────────────
+# ── 1. Every non-hidden top-level directory (skip gitignored) ────────────
 while IFS= read -r -d '' dir; do
     name="$(basename "$dir")"
     [[ "$name" == .* ]] && continue
+    git -C "$REPO_ROOT" check-ignore -q "$name" 2>/dev/null && continue
     is_covered "$name" || emit_failure "$name"
 done < <(find "$REPO_ROOT" -maxdepth 1 -mindepth 1 -type d -print0 | sort -z)
 
