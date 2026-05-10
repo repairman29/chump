@@ -145,6 +145,23 @@ pub fn register_free_dispatch_tools(registry: &mut ToolRegistry) {
     }
 }
 
+/// Tool keys for `chump gen` (PRODUCT-050). Read-only file ops so the agent
+/// can explore context before emitting edits in ===FILE=== format. No
+/// write/patch/commit tools — gen.rs owns those steps after parsing.
+const GEN_TOOL_KEYS: &[&str] = &["list_dir", "read_file"];
+
+/// Register the gen tool set. Does not check `enabled()` — set CHUMP_REPO
+/// before `agent.run()` so read_file/list_dir resolve paths correctly.
+pub fn register_gen_tools(registry: &mut ToolRegistry) {
+    let mut entries: Vec<_> = inventory::iter::<ToolEntry>()
+        .filter(|e| GEN_TOOL_KEYS.contains(&e.sort_key))
+        .collect();
+    entries.sort_by(|a, b| a.sort_key.cmp(b.sort_key));
+    for entry in entries {
+        registry.register(tool_middleware::wrap_tool((entry.factory)()));
+    }
+}
+
 /// Core tools for light interactive chat (`CHUMP_LIGHT_CONTEXT=1`).
 /// Keeps prompt token count low for faster local inference (~10 tools vs ~40).
 const LIGHT_CHAT_TOOL_KEYS: &[&str] = &[

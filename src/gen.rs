@@ -1,8 +1,9 @@
-//! `chump gen <task>` — single-shot user-facing coding task (INFRA-593).
+//! `chump gen <task>` — agent-loop user-facing coding task (INFRA-593 / PRODUCT-050).
 //!
 //! Front door for the offline-LLM mission: takes a natural-language task,
-//! uses `provider_cascade::build_provider()` to produce code edits, applies
-//! them to the current working directory, runs `cargo check`, and commits.
+//! drives `ChumpAgent::run` with `read_file` + `list_dir` tools to explore
+//! context and produce code edits, applies them to the current working
+//! directory, runs `cargo check`, and commits.
 //!
 //! ## Stub mode (CI / smoke tests)
 //!
@@ -22,8 +23,8 @@
 //!
 //! Only paths that are relative and contain no `..` traversal are accepted.
 
+use crate::agent_loop::ChumpAgent;
 use anyhow::{bail, Context, Result};
-use axonerai::provider::Message;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
@@ -122,7 +123,7 @@ pub async fn run(opts: GenOptions) -> Result<()> {
         println!("gen (stub): patched {}", stub_rel);
         (opts.task.len(), patched.len())
     } else {
-        // Real LLM path via provider cascade (or local-only if --local).
+        // Real LLM path — agent loop with read_file + list_dir tools (PRODUCT-050).
         let provider: Box<dyn axonerai::provider::Provider + Send + Sync> = if opts.local {
             std::env::set_var("OPENAI_API_BASE", "http://127.0.0.1:11434/v1");
             std::env::set_var("OPENAI_API_KEY", "ollama");
@@ -130,10 +131,20 @@ pub async fn run(opts: GenOptions) -> Result<()> {
         } else {
             crate::provider_cascade::build_provider()
         };
-        let ctx = gather_source_context(work_dir)?;
-        let in_chars = opts.task.len() + ctx.len();
-        let edits = request_edits(&*provider, &opts.task, &ctx).await?;
-        let out_chars: usize = edits.iter().map(|(p, c)| p.len() + c.len()).sum();
+        // Point repo tools at the gen work dir so read_file/list_dir resolve paths.
+        std::env::set_var("CHUMP_REPO", work_dir);
+        let agent = build_gen_agent(provider);
+        let user_prompt = format!("Task: {}", opts.task);
+        let in_chars = user_prompt.len();
+        tracing::info!(task = %opts.task, work_dir = %work_dir.display(), "gen: agent loop started");
+        let outcome = agent.run(&user_prompt).await.context("gen agent run")?;
+        tracing::info!(
+            tool_calls = outcome.total_tool_calls,
+            reply_chars = outcome.reply.len(),
+            "gen: agent loop complete"
+        );
+        let out_chars = outcome.reply.len();
+        let edits = parse_file_edits(&outcome.reply)?;
         apply_file_edits(&edits, work_dir)?;
         (in_chars, out_chars)
     };
@@ -183,65 +194,33 @@ pub async fn run(opts: GenOptions) -> Result<()> {
     Ok(())
 }
 
-/// Collect up to ~8 KB of source context from `src/` (or the work dir root).
-fn gather_source_context(work_dir: &Path) -> Result<String> {
-    let mut out = String::new();
-    let src_dir = work_dir.join("src");
-    let base = if src_dir.is_dir() {
-        src_dir
-    } else {
-        work_dir.to_path_buf()
-    };
-    if let Ok(entries) = std::fs::read_dir(&base) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p.extension().map(|e| e == "rs").unwrap_or(false) {
-                if let Ok(content) = std::fs::read_to_string(&p) {
-                    let rel = p.strip_prefix(work_dir).unwrap_or(&p);
-                    let snippet = &content[..content.len().min(3000)];
-                    out.push_str(&format!("// {}\n{}\n\n", rel.display(), snippet));
-                    if out.len() > 8000 {
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    Ok(out)
-}
-
-/// Call the provider and return parsed `(rel_path, content)` edits.
-async fn request_edits(
-    provider: &(dyn axonerai::provider::Provider + Send + Sync),
-    task: &str,
-    source_ctx: &str,
-) -> Result<Vec<(String, String)>> {
+/// Build a [`ChumpAgent`] for `chump gen` with read_file + list_dir tools.
+///
+/// The agent explores the codebase, then emits edits in ===FILE=== format in
+/// its final reply. gen.rs applies those edits, runs cargo check, and commits.
+fn build_gen_agent(provider: Box<dyn axonerai::provider::Provider + Send + Sync>) -> ChumpAgent {
     let system = format!(
-        "You are a coding assistant. Make the requested change and output ONLY \
-         the modified files using this exact format for each changed file:\n\n\
+        "You are a coding assistant. Use read_file and list_dir tools to explore \
+         the codebase as needed, then make the requested change. Output ONLY the \
+         modified files in your final response using this exact format for each \
+         changed file:\n\n\
          {FILE_BEGIN} path/to/file.rs===\n<complete file content>\n{FILE_END}\n\n\
          Do not include any explanation outside these delimited blocks."
     );
-
-    let user_content = if source_ctx.is_empty() {
-        format!("Task: {task}")
-    } else {
-        format!("Task: {task}\n\nSource files:\n{source_ctx}")
-    };
-
-    let messages = vec![Message {
-        role: "user".into(),
-        content: user_content,
-    }];
-
-    let resp = provider
-        .complete(messages, None, Some(4096), Some(system))
-        .await
-        .context("provider.complete for gen")?;
-
-    let text = resp.text.unwrap_or_default();
-    let edits = parse_file_edits(&text)?;
-    Ok(edits)
+    let mut registry = axonerai::tool::ToolRegistry::new();
+    crate::tool_inventory::register_gen_tools(&mut registry);
+    let max_iter = std::env::var("CHUMP_AGENT_MAX_ITER")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(20);
+    ChumpAgent::new(
+        provider,
+        registry,
+        Some(system),
+        None, // no session history — single task
+        None, // no event channel — CLI output
+        max_iter,
+    )
 }
 
 /// Parse `===FILE: path===\ncontent\n===ENDFILE===` blocks from LLM output.
