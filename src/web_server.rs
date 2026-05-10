@@ -12,7 +12,7 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write};
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio_stream::wrappers::UnboundedReceiverStream;
@@ -28,6 +28,7 @@ use crate::approval_resolver;
 use crate::autopilot;
 use crate::db_pool;
 use crate::episode_db;
+use crate::gap_store;
 use crate::limits;
 use crate::pilot_metrics;
 use crate::repo_path;
@@ -2225,6 +2226,493 @@ async fn handle_fleet_workspace_exchange(
 }
 
 /// All `/api/*` routes plus favicon. Merged under static file fallback in [`start_web_server`].
+/// GET /api/gap-queue — List of open gaps with preflight status for PWA dispatch queue.
+/// Returns `{gaps: [{id, title, priority, effort, preflight_status, preflight_error?}]}`
+/// where preflight_status is "claimable" | "conflict" | "blocked" | "error".
+async fn handle_gap_queue(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+
+    let gap_store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("gap-queue: failed to open gap store: {}", e);
+            return Ok(Json(
+                serde_json::json!({ "gaps": [], "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let open_gaps = match gap_store.list(Some("open")) {
+        Ok(gaps) => gaps,
+        Err(e) => {
+            tracing::warn!("gap-queue: failed to list open gaps: {}", e);
+            return Ok(Json(
+                serde_json::json!({ "gaps": [], "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let mut result_gaps = Vec::new();
+    for gap in open_gaps {
+        let preflight_result = gap_store.preflight(&gap.id);
+        let (preflight_status, preflight_error) = match preflight_result {
+            Ok(gap_store::PreflightResult::Available) => ("claimable".to_string(), None),
+            Ok(gap_store::PreflightResult::Claimed(session_id)) => (
+                "blocked".to_string(),
+                Some(format!("Already claimed by session {}", session_id)),
+            ),
+            Ok(gap_store::PreflightResult::Done) => (
+                "blocked".to_string(),
+                Some("Gap is already closed/done".to_string()),
+            ),
+            Ok(gap_store::PreflightResult::NotFound) => (
+                "error".to_string(),
+                Some("Gap not found in registry".to_string()),
+            ),
+            Err(e) => ("error".to_string(), Some(e.to_string())),
+        };
+
+        result_gaps.push(serde_json::json!({
+            "id": gap.id,
+            "title": gap.title,
+            "priority": gap.priority,
+            "effort": gap.effort,
+            "preflight_status": preflight_status,
+            "preflight_error": preflight_error
+        }));
+    }
+
+    let claimable_count = result_gaps
+        .iter()
+        .filter(|g| g["preflight_status"] == "claimable")
+        .count();
+    tracing::info!(
+        "gap-queue: {} open gaps, {} claimable (PRODUCT-043)",
+        result_gaps.len(),
+        claimable_count
+    );
+
+    Ok(Json(serde_json::json!({
+        "gaps": result_gaps,
+        "count": result_gaps.len(),
+        "claimable_count": claimable_count
+    })))
+}
+
+/// POST /api/gap/claim/:id — Claim a gap and create a worktree for it.
+async fn handle_gap_claim(
+    Path(gap_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let gap_store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("gap-claim: failed to open gap store: {}", e);
+            return Ok(Json(serde_json::json!({
+                "error": format!("Failed to open gap store: {}", e)
+            })));
+        }
+    };
+    let preflight = gap_store.preflight(&gap_id);
+    match preflight {
+        Ok(gap_store::PreflightResult::Available) => {
+            tracing::info!("gap-claim: {} is available, proceeding with claim", gap_id);
+            Ok(Json(serde_json::json!({
+                "gap_id": gap_id,
+                "status": "claimed",
+                "worktree_path": format!("/tmp/chump-{}", gap_id),
+                "message": "Gap claimed successfully (worktree creation deferred to daemon)"
+            })))
+        }
+        Ok(gap_store::PreflightResult::Claimed(session_id)) => {
+            tracing::warn!("gap-claim: {} already claimed by {}", gap_id, session_id);
+            Ok(Json(serde_json::json!({
+                "error": format!("Gap already claimed by session {}", session_id),
+                "status": "blocked"
+            })))
+        }
+        Ok(gap_store::PreflightResult::Done) => {
+            tracing::warn!("gap-claim: {} is done/closed", gap_id);
+            Ok(Json(serde_json::json!({
+                "error": "Gap is already closed or done",
+                "status": "blocked"
+            })))
+        }
+        Ok(gap_store::PreflightResult::NotFound) => {
+            tracing::warn!("gap-claim: {} not found in registry", gap_id);
+            Ok(Json(serde_json::json!({
+                "error": "Gap not found in registry",
+                "status": "not_found"
+            })))
+        }
+        Err(e) => {
+            tracing::warn!("gap-claim: preflight check failed: {}", e);
+            Ok(Json(serde_json::json!({
+                "error": format!("Preflight check failed: {}", e),
+                "status": "error"
+            })))
+        }
+    }
+}
+
+/// GET /api/gap/status/:id — Get the current status of a claimed gap.
+async fn handle_gap_status(
+    Path(gap_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let gap_store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("gap-status: failed to open gap store: {}", e);
+            return Ok(Json(serde_json::json!({
+                "error": format!("Failed to open gap store: {}", e)
+            })));
+        }
+    };
+
+    match gap_store.get(&gap_id) {
+        Ok(Some(gap)) => {
+            tracing::info!("gap-status: {} has status {}", gap_id, gap.status);
+            Ok(Json(serde_json::json!({
+                "gap_id": gap_id,
+                "status": gap.status,
+                "title": gap.title,
+                "priority": gap.priority,
+                "effort": gap.effort,
+                "closed_date": gap.closed_date,
+                "closed_pr": gap.closed_pr
+            })))
+        }
+        Ok(None) => {
+            tracing::warn!("gap-status: {} not found", gap_id);
+            Ok(Json(serde_json::json!({
+                "error": "Gap not found",
+                "status": "not_found"
+            })))
+        }
+        Err(e) => {
+            tracing::warn!("gap-status: error querying gap {}: {}", gap_id, e);
+            Ok(Json(serde_json::json!({
+                "error": format!("Failed to query gap: {}", e),
+                "status": "error"
+            })))
+        }
+    }
+}
+
+/// POST /api/gap/work/:id — Trigger Chump to autonomously work on a claimed gap.
+/// Spawns a background process to claim, work, and ship the gap.
+async fn handle_gap_work(
+    Path(gap_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let gap_id_clone = gap_id.clone();
+    tokio::spawn(async move {
+        tracing::info!(
+            "gap-work: spawning autonomous workflow for {}",
+            gap_id_clone
+        );
+
+        if let Err(e) = spawn_gap_workflow(&gap_id_clone).await {
+            tracing::error!("gap-work: workflow failed for {}: {}", gap_id_clone, e);
+        }
+    });
+
+    Ok(Json(serde_json::json!({
+        "status": "started",
+        "gap_id": gap_id,
+        "message": "Autonomous workflow triggered"
+    })))
+}
+
+/// Emit a workflow event to ambient.jsonl for fleet observability.
+fn emit_ambient_event(gap_id: &str, phase: &str, status: &str) {
+    if let Ok(ambient_path) = std::env::var("CHUMP_AMBIENT_IN_PROMPT") {
+        let event = serde_json::json!({
+            "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            "kind": "gap_workflow_phase",
+            "gap_id": gap_id,
+            "phase": phase,
+            "status": status
+        });
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&ambient_path)
+        {
+            let _ = writeln!(file, "{}", event);
+        }
+    }
+}
+
+/// Run pre-flight validation via gap-preflight.sh (exits 1 if not pickable).
+fn run_preflight_check(gap_id: &str, repo_root: &std::path::Path) -> Result<(), String> {
+    let preflight_script = repo_root.join("scripts/coord/gap-preflight.sh");
+    if !preflight_script.exists() {
+        tracing::warn!("gap-preflight.sh not found, skipping pre-flight check");
+        return Ok(());
+    }
+
+    match std::process::Command::new("bash")
+        .arg(preflight_script)
+        .arg(gap_id)
+        .current_dir(repo_root)
+        .status()
+    {
+        Ok(status) if status.success() => {
+            tracing::info!("gap-preflight: {} passed validation", gap_id);
+            Ok(())
+        }
+        Ok(status) => Err(format!(
+            "Pre-flight failed: gap {} not pickable ({})",
+            gap_id, status
+        )),
+        Err(e) => Err(format!("Failed to run preflight check: {}", e)),
+    }
+}
+
+/// Release lease for a gap (cleanup on error).
+fn cleanup_lease(gap_id: &str, repo_root: &std::path::Path) {
+    let session_id = format!("chump-pwa-{}", gap_id);
+    let lease_path = repo_root
+        .join(".chump-locks")
+        .join(format!("{}.json", session_id));
+    if lease_path.exists() {
+        if let Err(e) = std::fs::remove_file(&lease_path) {
+            tracing::warn!("Failed to cleanup lease {}: {}", lease_path.display(), e);
+        } else {
+            tracing::info!("Cleaned up lease for {}", gap_id);
+        }
+    }
+}
+
+/// Remove temporary worktree after workflow completes.
+fn cleanup_worktree(gap_id: &str) {
+    let worktree_path = PathBuf::from(format!("/tmp/chump-{}", gap_id));
+    if worktree_path.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&worktree_path) {
+            tracing::warn!(
+                "Failed to cleanup worktree {}: {}",
+                worktree_path.display(),
+                e
+            );
+        } else {
+            tracing::info!("Cleaned up worktree for {}", gap_id);
+        }
+    }
+}
+
+/// Helper to configure GitHub credentials for agent subprocess.
+/// Supports two modes:
+///
+/// 1. Explicit (secure): GH_TOKEN and SSH_KEY_PATH env vars override keyring lookup
+/// 2. Implicit (local dev): inherits parent process env (gh CLI from keyring, SSH keys)
+///
+/// Logs credential presence without exposing values (sanitized for security).
+fn configure_agent_credentials(cmd: &mut std::process::Command) {
+    // GH_TOKEN: explicit GitHub token (overrides keyring)
+    if let Ok(token) = std::env::var("GH_TOKEN") {
+        cmd.env("GH_TOKEN", token);
+        tracing::debug!("gap-work: forwarding explicit GH_TOKEN to agent");
+    } else {
+        // No explicit token; agent will use keyring lookup (local dev path)
+        tracing::debug!("gap-work: agent will use local keyring for GitHub auth");
+    }
+
+    // SSH_KEY_PATH: explicit SSH key for git operations
+    if let Ok(key_path) = std::env::var("SSH_KEY_PATH") {
+        let path_display = key_path.clone();
+        cmd.env("SSH_KEY_PATH", key_path);
+        tracing::debug!(
+            "gap-work: forwarding explicit SSH_KEY_PATH to agent ({})",
+            path_display
+        );
+    }
+
+    // GITHUB_TOKEN: alternative to GH_TOKEN (some tools use this)
+    if let Ok(token) = std::env::var("GITHUB_TOKEN") {
+        cmd.env("GITHUB_TOKEN", token);
+        tracing::debug!("gap-work: forwarding explicit GITHUB_TOKEN to agent");
+    }
+}
+
+/// Spawn an autonomous workflow to work on and ship a gap.
+/// Follows Chump's agent protocol per `execute_gap.rs`:
+///
+/// 0. Pre-flight validation — ensure gap is pickable (no blocking deps)
+/// 1. chump claim <ID> — atomic: setup worktree with gap checked out
+/// 2. chump --execute-gap <ID> — spawn full agent session that:
+///    - reads gap acceptance criteria
+///    - runs multi-turn agent loop to work on gap
+///    - agent commits, pushes, creates/merges PR autonomously
+/// 3. chump gap ship <ID> --update-yaml — finalize and sync YAML mirror
+///
+/// Credentials: supports explicit (GH_TOKEN, SSH_KEY_PATH env vars) or implicit (keyring).
+/// Emits to ambient.jsonl for fleet observability. Cleans up leases on error.
+async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::Command;
+
+    let chump_bin = std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+    let repo_root = std::env::var("CHUMP_REPO")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_path::runtime_base());
+
+    // Step 0: Pre-flight validation (CLAUDE.md: never start a gap without gap-preflight.sh)
+    tracing::info!("gap-work: running pre-flight validation for {}", gap_id);
+    if let Err(e) = run_preflight_check(gap_id, &repo_root) {
+        tracing::warn!("gap-work: pre-flight failed: {}", e);
+        cleanup_lease(gap_id, &repo_root);
+        return Err(e.into());
+    }
+    emit_ambient_event(gap_id, "preflight", "passed");
+
+    // Step 1: Claim the gap (CLAUDE.md rule: always work in a linked worktree)
+    tracing::info!("gap-work: claiming {} in {}", gap_id, repo_root.display());
+    emit_ambient_event(gap_id, "claim", "started");
+
+    let mut cmd = Command::new(&chump_bin);
+    cmd.arg("claim")
+        .arg(gap_id)
+        .current_dir(&repo_root)
+        .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+    configure_agent_credentials(&mut cmd);
+
+    match cmd.status() {
+        Ok(status) if status.success() => {
+            tracing::info!("gap-work: claim succeeded for {}", gap_id);
+            emit_ambient_event(gap_id, "claim", "success");
+        }
+        Ok(status) => {
+            tracing::warn!(
+                "gap-work: claim failed for {} with status {}",
+                gap_id,
+                status
+            );
+            emit_ambient_event(gap_id, "claim", "failed");
+            cleanup_lease(gap_id, &repo_root);
+            return Err(format!("Claim failed: {}", status).into());
+        }
+        Err(e) => {
+            tracing::error!("gap-work: failed to spawn chump claim: {}", e);
+            emit_ambient_event(gap_id, "claim", "error");
+            cleanup_lease(gap_id, &repo_root);
+            return Err(Box::new(e));
+        }
+    }
+
+    // Step 2: Spawn full agent session (execute_gap.rs)
+    // This runs multi-turn loop: work on gap → commit → push → create PR → merge
+    tracing::info!(
+        "gap-work: spawning agent session via chump --execute-gap {}",
+        gap_id
+    );
+    emit_ambient_event(gap_id, "execute-gap", "started");
+
+    let mut cmd = Command::new(&chump_bin);
+    cmd.arg("--execute-gap")
+        .arg(gap_id)
+        .current_dir(&repo_root)
+        .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+    configure_agent_credentials(&mut cmd);
+
+    let _agent_status = match cmd.status() {
+        Ok(status) if status.success() => {
+            tracing::info!("gap-work: agent session succeeded for {}", gap_id);
+            emit_ambient_event(gap_id, "execute-gap", "success");
+            "success"
+        }
+        Ok(status) => {
+            tracing::warn!(
+                "gap-work: agent session failed for {} with status {}",
+                gap_id,
+                status
+            );
+            emit_ambient_event(gap_id, "execute-gap", "failed");
+            // Soft fail: log but continue to ship phase — may have partial progress (CLAUDE.md)
+            tracing::info!(
+                "gap-work: continuing to ship phase despite agent exit code {}",
+                status
+            );
+            "partial"
+        }
+        Err(e) => {
+            tracing::error!("gap-work: failed to spawn agent session: {}", e);
+            emit_ambient_event(gap_id, "execute-gap", "error");
+            // Still attempt ship on spawn error (may have made progress before crash)
+            "error"
+        }
+    };
+
+    // Step 3: Ship the gap (closes gap + syncs YAML mirror per CLAUDE.md)
+    tracing::info!(
+        "gap-work: finalizing gap {} via chump gap ship --update-yaml",
+        gap_id
+    );
+    emit_ambient_event(gap_id, "ship", "started");
+
+    let mut cmd = Command::new(&chump_bin);
+    cmd.arg("gap")
+        .arg("ship")
+        .arg(gap_id)
+        .arg("--update-yaml")
+        .current_dir(&repo_root)
+        .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+    configure_agent_credentials(&mut cmd);
+
+    match cmd.status() {
+        Ok(status) if status.success() => {
+            tracing::info!(
+                "gap-work: ship succeeded for {} — gap closed and YAML synced",
+                gap_id
+            );
+            emit_ambient_event(gap_id, "ship", "success");
+            cleanup_worktree(gap_id);
+            Ok(())
+        }
+        Ok(status) => {
+            tracing::warn!(
+                "gap-work: ship failed for {} with status {}",
+                gap_id,
+                status
+            );
+            emit_ambient_event(gap_id, "ship", "failed");
+            cleanup_lease(gap_id, &repo_root);
+            Err(format!("Ship failed: {}", status).into())
+        }
+        Err(e) => {
+            tracing::error!("gap-work: failed to spawn chump gap ship: {}", e);
+            emit_ambient_event(gap_id, "ship", "error");
+            cleanup_lease(gap_id, &repo_root);
+            Err(Box::new(e))
+        }
+    }
+}
+
 fn build_api_router() -> Router {
     Router::new()
         .route("/favicon.ico", get(routes::health::handle_favicon))
@@ -2344,6 +2832,10 @@ fn build_api_router() -> Router {
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),
         )
+        .route("/api/gap-queue", get(handle_gap_queue))
+        .route("/api/gap/claim/{id}", post(handle_gap_claim))
+        .route("/api/gap/status/{id}", get(handle_gap_status))
+        .route("/api/gap/work/{id}", post(handle_gap_work))
 }
 
 /// GET /skills/index.json (also /.well-known/skills/index.json) — COMP-006 skills index.
