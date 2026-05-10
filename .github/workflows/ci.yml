@@ -798,3 +798,8 @@ jobs:
 
       - name: precommit strict replay fixture (INFRA-767)
         run: bash scripts/ci/test-precommit-strict-replay.sh
+
+      - name: no-manual-ship-bypass guard (INFRA-719)
+        env:
+          CHUMP_OBS_BUDGET_BYPASS: "1"
+        run: bash scripts/ci/test-no-manual-ship-bypass.sh
