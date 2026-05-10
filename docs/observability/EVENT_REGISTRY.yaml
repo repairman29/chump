@@ -240,6 +240,13 @@ events:
     consumers: [audit-log, kpi-report]
     fields_required: [gap_id, closed_pr]
 
+  - kind: gap_workflow_phase
+    emitter: src/web_server.rs (PWA autonomous workflows)
+    trigger: autonomous gap workflow transitions between phases
+    consumers: [fleet-brief, ambient-context-inject]
+    fields_required: [gap_id, phase, status]
+    docs: "Phase values: preflight, claim, execute-gap, ship. Status: started, success, failed, error, partial"
+
   - kind: gap_drift_orphan
     emitter: scripts/coord/gap-doctor.py
     trigger: gap in state.db without YAML mirror
