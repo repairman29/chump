@@ -561,6 +561,34 @@ chump gap preflight <GAP-ID>              # exit 0=available, 1=done/claimed
 chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]   # flip status: done + stamp closed_date (+ closed_pr if given); --update-yaml regenerates docs/gaps/<ID>.yaml
 chump gap set <GAP-ID> [--title|--description|--priority|--effort|--status|--notes|--source-doc|--opened-date|--closed-date|--closed-pr N|--acceptance-criteria "a|b|c"|--depends-on "X,Y"]
 chump gap dump                            # full export to per-file docs/gaps/<ID>.yaml mirrors
+chump gap restore --from-sql              # rebuild state.db from .chump/state.sql when DB is corrupted (INFRA-538)
+```
+
+### state.db corruption recovery (INFRA-538)
+
+If `.chump/state.db` is corrupted or missing but `.chump/state.sql` (the tracked YAML mirror) is intact:
+
+```bash
+# Verify state.sql exists and has content
+wc -l .chump/state.sql
+
+# Rebuild state.db from the YAML mirror.
+# Automatically backs up existing state.db → state.db.bak before overwriting.
+chump gap restore --from-sql
+
+# Verify the row count looks right
+sqlite3 .chump/state.db "SELECT COUNT(*) FROM gaps"
+
+# Optional: re-import per-file docs/gaps/ YAMLs to pick up any gaps added
+# since the last state.sql regen
+chump gap import
+```
+
+If `state.sql` is also corrupted or out of date, fall back to rebuilding from the per-file YAML mirrors in `docs/gaps/`:
+```bash
+# Remove corrupted state.db and rebuild from scratch via import
+rm .chump/state.db
+chump gap import   # seeds a fresh state.db from docs/gaps/*.yaml
 ```
 
 ## Known error classes — self-help index (INFRA-590)

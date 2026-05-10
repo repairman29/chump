@@ -836,4 +836,7 @@ jobs:
           echo "::warning::PR diff matches NONE of the 'code:' paths-filter allowlist (ci.yml). Required CI checks will be SKIPPED — branch protection will block this PR from merging. Fix: add the changed path(s) to the 'code:' section in .github/workflows/ci.yml. See INFRA-272/INFRA-682."
       - name: path-filter allowlist structural coverage (INFRA-682)
         run: bash scripts/ci/check-path-filter-coverage.sh
-
+      - name: state.db corruption recovery — restore from state.sql (INFRA-538)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-state-db-restore.sh
