@@ -813,3 +813,6 @@ jobs:
         env:
           CHUMP_OBS_BUDGET_BYPASS: "1"
         run: bash scripts/ci/test-lint-handoff-comment.sh
+      - name: CI failure triage classification (CREDIBLE-013)
+        run: bash scripts/ci/test-triage-test-failure.sh
+
