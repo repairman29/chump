@@ -893,4 +893,166 @@ mod tests {
              even when it is wrapped by with_context"
         );
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // CREDIBLE-011 — free-tier dispatch integration tests
+    // Mock OpenAI-compat server verifies the tool loop end-to-end.
+    // ──────────────────────────────────────────────────────────────────
+
+    fn restore_env_var(key: &str, val: Option<String>) {
+        match val {
+            Some(v) => std::env::set_var(key, v),
+            None => std::env::remove_var(key),
+        }
+    }
+
+    #[test]
+    #[serial(openai_model_env)]
+    fn credible011_is_free_tier_model_true_for_groq_llama() {
+        let prev_model = std::env::var("OPENAI_MODEL").ok();
+        let prev_base = std::env::var("OPENAI_API_BASE").ok();
+        std::env::set_var("OPENAI_MODEL", "llama-3.3-70b");
+        std::env::set_var("OPENAI_API_BASE", "https://api.groq.com/openai/v1");
+        let result = is_free_tier_model();
+        restore_env_var("OPENAI_MODEL", prev_model);
+        restore_env_var("OPENAI_API_BASE", prev_base);
+        assert!(
+            result,
+            "Groq endpoint + non-Claude model must detect as free-tier"
+        );
+    }
+
+    #[test]
+    #[serial(openai_model_env)]
+    fn credible011_is_free_tier_model_false_for_claude_on_groq() {
+        let prev_model = std::env::var("OPENAI_MODEL").ok();
+        let prev_base = std::env::var("OPENAI_API_BASE").ok();
+        std::env::set_var("OPENAI_MODEL", "claude-sonnet-4-5-20250929");
+        std::env::set_var("OPENAI_API_BASE", "https://api.groq.com/openai/v1");
+        let result = is_free_tier_model();
+        restore_env_var("OPENAI_MODEL", prev_model);
+        restore_env_var("OPENAI_API_BASE", prev_base);
+        assert!(
+            !result,
+            "Claude model must never be classified as free-tier"
+        );
+    }
+
+    #[test]
+    #[serial(openai_model_env)]
+    fn credible011_is_free_tier_model_false_for_llama_on_ollama() {
+        let prev_model = std::env::var("OPENAI_MODEL").ok();
+        let prev_base = std::env::var("OPENAI_API_BASE").ok();
+        std::env::set_var("OPENAI_MODEL", "llama-3.3-70b");
+        std::env::set_var("OPENAI_API_BASE", "http://localhost:11434/v1");
+        let result = is_free_tier_model();
+        restore_env_var("OPENAI_MODEL", prev_model);
+        restore_env_var("OPENAI_API_BASE", prev_base);
+        assert!(!result, "Local Ollama is not a free-tier cloud endpoint");
+    }
+
+    /// Integration test: mock OpenAI-compat server → native tool_call for
+    /// read_file → tool executes → model replies "done" → loop terminates.
+    /// Verifies the complete provider → tool-dispatch → reply cycle without
+    /// a real model or any cloud dependency.
+    #[tokio::test]
+    #[serial]
+    async fn credible011_free_tier_tool_loop_read_file_then_done() {
+        use serde_json::json;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let dir =
+            std::env::temp_dir().join(format!("credible011_{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        std::fs::write(
+            dir.join("hello.txt"),
+            "hello from free-tier integration test\n",
+        )
+        .expect("write test file");
+
+        let mock = MockServer::start().await;
+
+        // Turn 1: native tool_call asking for read_file.
+        // Priority 1 = highest precedence in wiremock (lower number = matched first).
+        // up_to_n_times(1) exhausts this mock after the first request.
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": "call_001",
+                            "type": "function",
+                            "function": {
+                                "name": "read_file",
+                                "arguments": "{\"path\": \"hello.txt\"}"
+                            }
+                        }]
+                    },
+                    "finish_reason": "tool_calls"
+                }],
+                "model": "llama-3.3-70b",
+                "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}
+            })))
+            .up_to_n_times(1)
+            .with_priority(1)
+            .mount(&mock)
+            .await;
+
+        // Turn 2 (after tool result): model terminates with "done".
+        // Priority 2 = lower precedence, acts as fallback once turn-1 is exhausted.
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "done",
+                        "tool_calls": null
+                    },
+                    "finish_reason": "stop"
+                }],
+                "model": "llama-3.3-70b",
+                "usage": {"prompt_tokens": 150, "completion_tokens": 5, "total_tokens": 155}
+            })))
+            .with_priority(2)
+            .mount(&mock)
+            .await;
+
+        let prev_base = std::env::var("OPENAI_API_BASE").ok();
+        let prev_model = std::env::var("OPENAI_MODEL").ok();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+
+        std::env::set_var("OPENAI_API_BASE", mock.uri());
+        std::env::set_var("OPENAI_MODEL", "llama-3.3-70b");
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::set_var("CHUMP_HOME", &dir);
+
+        let agent = build_free_tier_agent().expect("build free-tier agent");
+        let outcome = agent.run("Read hello.txt then reply done.").await;
+
+        restore_env_var("OPENAI_API_BASE", prev_base);
+        restore_env_var("OPENAI_MODEL", prev_model);
+        restore_env_var("CHUMP_REPO", prev_repo);
+        restore_env_var("CHUMP_HOME", prev_home);
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let reply = outcome.expect("agent run must not error").reply;
+        assert!(
+            reply.contains("done"),
+            "expected final reply to contain 'done'; got: {reply:?}"
+        );
+
+        // Verify the mock received the post-tool follow-up call: at least 2 requests.
+        let received = mock.received_requests().await.unwrap_or_default();
+        assert!(
+            received.len() >= 2,
+            "expected ≥2 model calls (initial + after read_file result); got {}",
+            received.len()
+        );
+    }
 }
