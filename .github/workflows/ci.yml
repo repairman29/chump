@@ -790,3 +790,8 @@ jobs:
       - name: bounced-PR detector fixture (INFRA-781)
         run: bash scripts/ci/test-bounced-pr-detector.sh
 
+      - name: precommit strict replay — mirror local guards to CI (INFRA-767)
+        run: bash scripts/ci/precommit-strict-replay.sh
+
+      - name: precommit strict replay fixture (INFRA-767)
+        run: bash scripts/ci/test-precommit-strict-replay.sh
