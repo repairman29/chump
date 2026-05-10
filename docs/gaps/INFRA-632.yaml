@@ -1,0 +1,7 @@
+- id: INFRA-632
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh portability for non-Chump repos (chump-proprietary REQ-006). Today script assumes claude/<codename> branch convention + Chump's CI gates + Chump PR template. chump-proprietary uses different repo URL, possibly different branches, different CI. Need: configurable --branch-prefix (default 'chump'), --pr-template (path to template), --required-checks (comma list); test against a fixture non-Chump repo. AC: documented invocation that ships a chump-proprietary gap end-to-end (PR→merge→squash); test scripts/ci/test-bot-merge-portability.sh covers fixture repo; existing Chump invocation backward compat."
+  status: open
+  priority: P1
+  effort: s
+
