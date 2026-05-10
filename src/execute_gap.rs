@@ -141,10 +141,13 @@ fn is_free_tier_model() -> bool {
 /// `build_execute_gap_prompt`:
 ///
 /// 1. Inlines the gap YAML directly (no "read the file" indirection)
-/// 2. Lists only the 5 available tools with clear descriptions
-/// 3. Explicit step-by-step workflow: read → edit → commit → ship
+/// 2. Lists only the 4 available tools with clear descriptions
+/// 3. Explicit step-by-step workflow: read → patch → commit → reply "done"
 /// 4. No defensive SCOPE-REFUSE clauses (Llama hallucinated refusals)
-/// 5. No `run_cli`/`run_test` — CI tests after PR opens
+/// 5. No `run_cli`/`run_test`/`git_push` — push + PR creation is handled
+///    by `execute_gap` as post-processing after the agent returns "done"
+///    (INFRA-733 follow-up: free-tier models must not call push tools —
+///    too many schema tokens and observed hallucination of wrong tool names)
 fn build_free_tier_prompt(gap_id: &str, repo_root: &std::path::Path) -> String {
     // Try to read the gap YAML to inline it
     let gap_yaml = std::fs::read_to_string(repo_root.join(format!("docs/gaps/{gap_id}.yaml")))
@@ -214,6 +217,36 @@ fn build_free_tier_agent() -> Result<ChumpAgent> {
         None, // no event channel for CLI
         max_iter,
     ))
+}
+
+/// Push the current branch and open a PR via `bot-merge.sh`.
+///
+/// Called by `execute_gap` after the free-tier agent returns "done".
+/// The agent can only commit (no `git_push`/`run_cli` in its tool set);
+/// this function owns the push+PR step so the orchestrator can find a PR to poll.
+/// Uses `--fast` to skip local clippy/test — CI is the gate, and free-tier
+/// dispatch runs against tight task-budget walls (INFRA-252 / INFRA-733).
+async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()> {
+    let script = repo_root.join("scripts/coord/bot-merge.sh");
+    eprintln!("[execute-gap] free-tier ship: bot-merge.sh --gap {gap_id} --fast --auto-merge");
+    let status = tokio::process::Command::new("bash")
+        .arg(&script)
+        .arg("--gap")
+        .arg(gap_id)
+        .arg("--fast")
+        .arg("--auto-merge")
+        .current_dir(repo_root)
+        .status()
+        .await
+        .with_context(|| format!("launching bot-merge.sh for {gap_id}"))?;
+    if !status.success() {
+        return Err(anyhow!(
+            "bot-merge.sh exited {} for gap {}",
+            status.code().unwrap_or(-1),
+            gap_id
+        ));
+    }
+    Ok(())
 }
 
 /// Minimal gap-id syntactic check — must match `[A-Z][A-Z0-9]+-\d+`-ish
@@ -314,6 +347,14 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
         .run(&prompt)
         .await
         .with_context(|| format!("agent loop failed for gap {gap_id}"))?;
+
+    if free_tier {
+        // The free-tier agent committed but has no push or PR tools.
+        // Drive the ship pipeline here so the orchestrator finds a PR to poll.
+        free_tier_ship(gap_id, &repo_root)
+            .await
+            .with_context(|| format!("free-tier ship step failed for gap {gap_id}"))?;
+    }
 
     Ok(outcome.reply)
 }
