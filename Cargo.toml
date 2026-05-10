@@ -118,6 +118,7 @@ r2d2_sqlite = { version = "0.25", features = ["bundled"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1.0.118", features = ["derive"] }
 serde_json = "1.0"
+toml = { version = "0.8", features = ["parse"] }
 base64 = "0.22"
 aes-gcm = "0.10"
 serenity = { version = "0.12", optional = true, default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "rustls_backend"] }

@@ -5,9 +5,80 @@
 //! all discovery is triggered by calling [`discover_mcp_servers`] explicitly.
 //! No globals, no startup scanning. The results are used by `chump mcp list`
 //! and (eventually) `chump mcp enable`.
+//!
+//! PRODUCT-061: `registry/mcp-servers.toml` is the catalog of known servers.
+//! `chump mcp list` (no flags) shows the catalog; `--installed` shows discovered
+//! installed binaries; `--json` makes either mode machine-readable.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+
+// ── Registry (PRODUCT-061) ────────────────────────────────────────────────────
+
+/// One entry from `registry/mcp-servers.toml`.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct RegistryEntry {
+    pub name: String,
+    pub description: String,
+    pub transport: String,
+    pub package: Option<String>,
+}
+
+/// Wrapper so `toml::from_str` can deserialize `[[server]]` sections.
+#[derive(Debug, serde::Deserialize)]
+struct RegistryFile {
+    #[serde(default)]
+    server: Vec<RegistryEntry>,
+}
+
+/// Load `registry/mcp-servers.toml` relative to `repo_root`.
+/// Returns an empty Vec on any error (missing file, parse error) so callers
+/// degrade gracefully.
+pub fn read_registry(repo_root: &Path) -> Vec<RegistryEntry> {
+    let path = repo_root.join("registry").join("mcp-servers.toml");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    match toml::from_str::<RegistryFile>(&content) {
+        Ok(f) => f.server,
+        Err(e) => {
+            eprintln!(
+                "[mcp_discovery] WARN: failed to parse {}: {e}",
+                path.display()
+            );
+            Vec::new()
+        }
+    }
+}
+
+/// Print catalog (all registry entries) to stdout.
+pub fn print_registry(entries: &[RegistryEntry], json: bool) {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(entries).unwrap_or_default()
+        );
+        return;
+    }
+    if entries.is_empty() {
+        println!("No servers found in registry.");
+        return;
+    }
+    println!("MCP server registry ({} servers):", entries.len());
+    println!();
+    for e in entries {
+        let pkg = e
+            .package
+            .as_deref()
+            .map(|p| format!("  install: cargo install {p}"))
+            .unwrap_or_default();
+        println!("  {:<20} [{}]  {}", e.name, e.transport, e.description);
+        if !pkg.is_empty() {
+            println!("  {:<20} {}", "", pkg);
+        }
+    }
+}
 
 /// Where a discovered MCP server binary was found.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -160,8 +231,32 @@ pub fn discover_mcp_servers() -> Vec<McpServerInfo> {
     results
 }
 
-/// Print `chump mcp list` output to stdout. Groups servers by source.
-pub fn print_mcp_list(servers: &[McpServerInfo]) {
+/// Print `chump mcp list --installed` output to stdout.
+///
+/// `json=true` emits a JSON array; `json=false` groups servers by source.
+pub fn print_mcp_list(servers: &[McpServerInfo], json: bool) {
+    if json {
+        #[derive(serde::Serialize)]
+        struct Row<'a> {
+            name: &'a str,
+            path: &'a Path,
+            source: &'a str,
+        }
+        let rows: Vec<Row> = servers
+            .iter()
+            .map(|s| Row {
+                name: &s.name,
+                path: &s.path,
+                source: s.source.label(),
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&rows).unwrap_or_default()
+        );
+        return;
+    }
+
     if servers.is_empty() {
         println!("No chump-mcp-* servers found.");
         println!();
@@ -460,7 +555,7 @@ mod tests {
 
     #[test]
     fn print_mcp_list_empty_does_not_panic() {
-        print_mcp_list(&[]);
+        print_mcp_list(&[], false);
     }
 
     #[test]
@@ -477,6 +572,6 @@ mod tests {
                 source: McpSource::UserConfig,
             },
         ];
-        print_mcp_list(&servers);
+        print_mcp_list(&servers, false);
     }
 }

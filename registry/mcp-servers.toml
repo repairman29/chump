@@ -1,0 +1,47 @@
+# Chump MCP server registry — known servers the operator can install and enable.
+#
+# Each [[server]] entry describes a server that integrates with the MCP protocol.
+# Fields:
+#   name        — short identifier used in `chump mcp enable <name>`
+#   description — one-line human-readable summary
+#   transport   — protocol transport: "stdio" | "http" | "sse"
+#   package     — cargo/binary name for installation (optional)
+#
+# PRODUCT-033: this registry is the source of truth for `chump mcp list`.
+# PRODUCT-061: initial 5 bundled entries.
+
+[[server]]
+name = "filesystem"
+description = "Read and write local files with path sandboxing"
+transport = "stdio"
+package = "chump-mcp-filesystem"
+
+[[server]]
+name = "git"
+description = "Git repository operations: log, diff, blame, branch management"
+transport = "stdio"
+package = "chump-mcp-git"
+
+[[server]]
+name = "web-search"
+description = "Web search via Tavily or Brave Search APIs"
+transport = "stdio"
+package = "chump-mcp-web-search"
+
+[[server]]
+name = "database"
+description = "SQLite and PostgreSQL query interface for structured data access"
+transport = "stdio"
+package = "chump-mcp-database"
+
+[[server]]
+name = "code-analysis"
+description = "Static analysis, syntax trees, and code metrics via tree-sitter"
+transport = "stdio"
+package = "chump-mcp-code-analysis"
+
+[[server]]
+name = "github"
+description = "GitHub API: issues, pull requests, commits, and code search"
+transport = "stdio"
+package = "chump-mcp-github"
