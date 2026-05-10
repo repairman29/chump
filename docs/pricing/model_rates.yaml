@@ -23,7 +23,7 @@
 #   - Don't delete entries for retired models — set status=deprecated and
 #     keep the rate so historical cost reports still resolve.
 
-last_global_verified: "2026-05-08"
+last_global_verified: "2026-05-10"
 schema_version: 1
 
 models:
@@ -45,12 +45,12 @@ models:
     notes: "INFRA-369 IDE-session pin; xs/s mechanical fleet work."
 
   - model_id: claude-opus-4.7
-    input_per_mtk: 15.00
-    output_per_mtk: 75.00
-    cache_read_per_mtk: 1.50
+    input_per_mtk: 5.00
+    output_per_mtk: 25.00
+    cache_read_per_mtk: 0.50
     source_url: https://www.anthropic.com/pricing
-    last_verified: "2026-05-08"
-    notes: "Reserved for INFRA-687-class refactors; ~50× haiku."
+    last_verified: "2026-05-10"
+    notes: "Reserved for INFRA-687-class refactors; ~5× haiku. Opus 4.1 (legacy) was $15/$75; Opus 4.7 dropped to $5/$25."
 
   - model_id: claude-haiku-3.5
     input_per_mtk: 0.80
@@ -114,12 +114,12 @@ models:
 
   # ── Paid OSS-model serverless (Together / DeepInfra / Fireworks tier) ─────
   - model_id: together-deepseek-v3
-    input_per_mtk: 0.85
-    output_per_mtk: 0.85
+    input_per_mtk: 0.25
+    output_per_mtk: 0.25
     cache_read_per_mtk: 0.0
     source_url: https://docs.together.ai/docs/serverless-models
-    last_verified: "2026-05-08"
-    notes: "DeepSeek-V3 paid serverless — Tier-2 candidate. Phase 2 pilot ($10 budget). NOT free; account credit must be added explicitly."
+    last_verified: "2026-05-10"
+    notes: "DeepSeek-V3 serverless — Tier-2 candidate. Corrected from 0.85 to 0.25 via INFRA-731 refresh script (LiteLLM comparison)."
     requires_credit: true
 
   - model_id: together-llama-3.3-70b-turbo
