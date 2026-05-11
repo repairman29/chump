@@ -910,6 +910,8 @@ jobs:
         env:
           CHUMP_OBS_BUDGET_BYPASS: "1"
         run: bash scripts/ci/test-lint-handoff-comment.sh
+      - name: review-as-handoff author re-engagement loop (INFRA-771)
+        run: bash scripts/ci/test-review-handoff-reengage.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
 
