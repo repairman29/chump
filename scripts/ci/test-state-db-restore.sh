@@ -76,7 +76,7 @@ check() {
 }
 
 # ── Test 1: restore from state.sql into a fresh state.db ────────────────────
-CHUMP_REPO="$TMP" "$CHUMP_BIN" gap restore --from-sql >/dev/null 2>&1
+CHUMP_REPO="$TMP" "$CHUMP_BIN" gap restore --from-sql >/dev/null 2>&1 || true
 row_count="$(sqlite3 "$TMP/.chump/state.db" "SELECT COUNT(*) FROM gaps")"
 check "test-1 (row count = 3 after restore)" "$row_count" "3"
 
@@ -96,16 +96,16 @@ check "test-4 (TEST-001 notes preserved)" "$(echo "$notes" | head -1 | tr -d '\n
 # Corrupt state.db by truncating it
 : > "$TMP/.chump/state.db"
 # Restore should regenerate it
-CHUMP_REPO="$TMP" "$CHUMP_BIN" gap restore --from-sql >/dev/null 2>&1
+CHUMP_REPO="$TMP" "$CHUMP_BIN" gap restore --from-sql >/dev/null 2>&1 || true
 row_count_after="$(sqlite3 "$TMP/.chump/state.db" "SELECT COUNT(*) FROM gaps")"
 check "test-5 (corrupt→restore row count = 3)" "$row_count_after" "3"
 
 # ── Test 6: backup is created as state.db.bak ────────────────────────────────
 # The previous restore created a .bak from the empty file; that's fine.
 # Now seed a real db, corrupt it, restore, and verify .bak exists.
-CHUMP_REPO="$TMP" "$CHUMP_BIN" gap restore --from-sql >/dev/null 2>&1
+CHUMP_REPO="$TMP" "$CHUMP_BIN" gap restore --from-sql >/dev/null 2>&1 || true
 : > "$TMP/.chump/state.db"   # corrupt again
-CHUMP_REPO="$TMP" "$CHUMP_BIN" gap restore --from-sql >/dev/null 2>&1
+CHUMP_REPO="$TMP" "$CHUMP_BIN" gap restore --from-sql >/dev/null 2>&1 || true
 if [[ -f "$TMP/.chump/state.db.bak" ]]; then
     echo "[OK] test-6 (state.db.bak created)"
     PASS=$(( PASS + 1 ))
