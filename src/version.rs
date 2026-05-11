@@ -426,6 +426,7 @@ mod tests {
     /// Replay the PR #1444 failure mode: simulate a 1-commit-stale binary
     /// running a destructive op (no override). Must REFUSE.
     #[test]
+    #[serial_test::serial]
     fn pr_1444_replay_refuses_without_override() {
         let (dir, sha1) = make_stale_repo();
         // Defensive: ensure no leaked env from a parallel test.
@@ -445,6 +446,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn override_env_recognized() {
         // Direct env-var read; we don't exercise the full function (compile-baked SHA)
         // but verify the operator-facing escape hatch is wired correctly.
@@ -459,6 +461,7 @@ mod tests {
     }
 
     #[test]
+    #[serial_test::serial]
     fn override_env_unset_means_no_override() {
         unsafe {
             std::env::remove_var("CHUMP_ALLOW_STALE_DESTRUCTIVE");
