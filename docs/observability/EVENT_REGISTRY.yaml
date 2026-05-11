@@ -111,6 +111,18 @@ events:
     consumers: [waste-tally, kpi-report]
     fields_required: [agent_id, gap_id, rc, exit_class]
 
+  - kind: worker_cooldown
+    emitter: scripts/dispatch/worker.sh (FLEET-051)
+    trigger: single worker failure on a gap; per-worker cooldown written
+    consumers: [fleet-brief]
+    fields_required: [gap_id, worker_id, until, cooldown_kind]
+
+  - kind: worker_cooldown_cluster_wide
+    emitter: scripts/dispatch/worker.sh (FLEET-051)
+    trigger: distinct-worker failure count reaches FLEET_COOLDOWN_THRESHOLD (default 3)
+    consumers: [fleet-brief, watchdog]
+    fields_required: [gap_id, worker_count, until]
+
   - kind: worker_circuit_open
     emitter: scripts/dispatch/worker.sh (FLEET-043)
     trigger: N consecutive dispatch failures, worker pauses
