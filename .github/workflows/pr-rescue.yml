@@ -1,0 +1,57 @@
+# RESILIENT-006: PR-stale auto-rebase.
+#
+# Scans auto-merge-armed PRs every 2 hours for CI failures that have since
+# passed on main, then rebases + re-arms auto-merge automatically.
+#
+# Triggered: schedule (every 2h) + workflow_dispatch for manual runs.
+# Safe to run concurrently — each PR branch gets an independent temp clone.
+
+name: pr-rescue (RESILIENT-006)
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Optional: single PR number to rescue (leave blank to scan all)"
+        required: false
+        default: ""
+      stale_hours:
+        description: "Age threshold in hours (default: 4)"
+        required: false
+        default: "4"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  rescue:
+    name: scan and rebase stale PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      PR_RESCUE_STALE_HOURS: ${{ inputs.stale_hours || '4' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run pr-rescue
+        run: |
+          if [[ -n "${{ inputs.pr_number }}" ]]; then
+            bash scripts/coord/pr-rescue.sh --pr "${{ inputs.pr_number }}"
+          else
+            bash scripts/coord/pr-rescue.sh
+          fi
+
+      - name: Upload ambient log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-rescue-ambient-log
+          path: .chump-locks/ambient.jsonl
+          if-no-files-found: ignore
