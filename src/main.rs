@@ -321,6 +321,49 @@ fn load_dotenv() {
     }
 }
 
+/// EFFECTIVE-009: grouped command reference for `chump` with no args / `--help`.
+fn cli_help_text() -> String {
+    let mut s = String::new();
+    s.push_str("chump — gap orchestration tool\n");
+    s.push_str("\n");
+    s.push_str("Gap management:\n");
+    s.push_str("  gap list               List gaps (--status open, --domain INFRA)\n");
+    s.push_str("  gap ship <ID>          Close a gap (--update-yaml, --closed-pr N)\n");
+    s.push_str("  gap claim <ID>         Atomic claim: fetch + verify + worktree + lease\n");
+    s.push_str("  gap reserve            Reserve a new gap ID\n");
+    s.push_str("  gap set <ID>           Update gap fields (--status, --notes, etc.)\n");
+    s.push_str("  gap preflight <ID>     Check if a gap is safe to claim\n");
+    s.push_str("  gap dump               Dump gap registry (--per-file, --out PATH)\n");
+    s.push_str("  gap import             Import gaps from YAML into state.db\n");
+    s.push_str("\n");
+    s.push_str("Fleet / coordination:\n");
+    s.push_str("  dispatch <ID>          Run a gap through the full pipeline\n");
+    s.push_str("  fleet status           Show fleet status\n");
+    s.push_str("  fleet start            Start fleet workers\n");
+    s.push_str("  fleet stop             Stop fleet workers\n");
+    s.push_str("  fleet restart          Restart fleet workers\n");
+    s.push_str("\n");
+    s.push_str("Session / cognition:\n");
+    s.push_str(
+        "  init                   First-run setup (detect model, write .env, start server)\n",
+    );
+    s.push_str("  --briefing <ID>        Agent briefing for a gap\n");
+    s.push_str("  --curate               Run memory curation pass\n");
+    s.push_str("  --heartbeat            Send heartbeat for active lease\n");
+    s.push_str("  lesson-grade <ID>      Score lesson directives against a closed PR\n");
+    s.push_str("\n");
+    s.push_str("Analytics:\n");
+    s.push_str("  funnel                 Show activation funnel\n");
+    s.push_str("  health-digest          Show system health digest\n");
+    s.push_str("  cascade status         Show provider cascade status\n");
+    s.push_str("  cascade why            Show cascade routing decisions\n");
+    s.push_str("\n");
+    s.push_str("Flags:\n");
+    s.push_str("  --version, -V          Print version\n");
+    s.push_str("  --help, -h             Show this help\n");
+    s
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -338,6 +381,16 @@ async fn main() -> Result<()> {
             version::chump_build_sha(),
             version::chump_build_date(),
         );
+        return Ok(());
+    }
+
+    // EFFECTIVE-009: `chump` with no args shows help instead of launching agent mode.
+    if args.len() <= 1
+        || args
+            .iter()
+            .any(|a| a == "--help" || a == "-h" || a == "help")
+    {
+        eprintln!("{}", cli_help_text());
         return Ok(());
     }
 
@@ -2353,7 +2406,12 @@ async fn main() -> Result<()> {
                             // meta: preamble (~20k-line corruption observed 2026-04-27); a
                             // fresh build catches that and similar future serialization
                             // changes.
-                            let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
+                            if version::warn_if_stale_for_gap_mutation(&repo_root) {
+                                return Err(anyhow::anyhow!(
+                                    "gap ship --update-yaml refused: binary is stale — \
+                                     rebuild with `cargo install --path . --bin chump --force`"
+                                ));
+                            }
                             // INFRA-229 (post-INFRA-188 cutover, 2026-05-02):
                             // write the per-file YAML mirror at
                             // docs/gaps/<ID>.yaml instead of the deleted
@@ -2491,7 +2549,12 @@ async fn main() -> Result<()> {
                         // .last-yaml-op freshness marker so the pre-commit
                         // raw-YAML guard recognizes the regenerated file as
                         // canonical.
-                        let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
+                        if version::warn_if_stale_for_gap_mutation(&repo_root) {
+                            return Err(anyhow::anyhow!(
+                                "gap set refused: binary is stale — \
+                                 rebuild with `cargo install --path . --bin chump --force`"
+                            ));
+                        }
                         // INFRA-498: gated on directory existence — no-op
                         // when docs/gaps/ is absent (post-deletion state).
                         let per_file_dir = worktree_root.join("docs").join("gaps");
@@ -2538,7 +2601,12 @@ async fn main() -> Result<()> {
                 // (--out PATH or --per-file) — stdout dump for piping shouldn't
                 // spam stderr unconditionally.
                 if out_path.is_some() || per_file {
-                    let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
+                    if version::warn_if_stale_for_gap_mutation(&repo_root) {
+                        return Err(anyhow::anyhow!(
+                            "gap dump refused: binary is stale — \
+                             rebuild with `cargo install --path . --bin chump --force`"
+                        ));
+                    }
                 }
 
                 // ── INFRA-188 v0: --per-file path ────────────────────────────

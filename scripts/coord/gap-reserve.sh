@@ -200,3 +200,13 @@ if [[ "$DOMAIN" == "META" ]]; then
         >> "$_ambient" 2>/dev/null || true
     echo "[gap-reserve] INFO: emitted meta_filed alert to ambient.jsonl (META-044)" >&2
 fi
+
+# EVAL-086: stamp opened_date on new gaps so stall detection is expressible as
+# a registry query. The Rust path currently leaves opened_date=''; patch it here
+# under the same flock we already hold.
+_db="$MAIN_REPO/.chump/state.db"
+if [[ -f "$_db" ]]; then
+    _today="$(date -u +%Y-%m-%d)"
+    sqlite3 "$_db" "UPDATE gaps SET opened_date='$_today' WHERE id='$NEW_ID' AND (opened_date IS NULL OR opened_date='')" 2>/dev/null || true
+    echo "[gap-reserve] INFO: stamped opened_date=$_today on $NEW_ID" >&2
+fi
