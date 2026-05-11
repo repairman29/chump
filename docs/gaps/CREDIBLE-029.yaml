@@ -1,0 +1,16 @@
+- id: CREDIBLE-029
+  domain: CREDIBLE
+  title: "CREDIBLE: atomic gap-ID allocator — prevent two concurrent sessions reserving the same ID (today INFRA-819 was double-reserved by #1448 and #1449; INFRA-820 nearly collided too)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`chump gap reserve` uses atomic allocation against a shared coordination point (NATS via chump-coord, or a fcntl flock on a sentinel file) so two concurrent reserves can never return the same ID"
+    - "Implementation considers checking origin/main + open PR branches before issuing a new ID (today's check only consulted local state.db, missing IDs reserved by sibling worktree #1449)"
+    - "scripts/ci/test-gap-id-collision.sh — race fixture: spawn 5 concurrent `chump gap reserve` calls in subshells, assert all 5 IDs returned are distinct and sequential"
+    - "pre-push hook augmented with cross-PR check: scan open PR branches via `gh pr list --json files` for any docs/gaps/<ID>.yaml that overlaps with the current branch's new gap files; FAIL push if collision"
+    - "Emits ambient kind=gap_id_allocator_collision with chosen_id, conflicting_pr, resolution (chose_next_free|aborted) when the cross-PR check fires"
+    - "Reconciliation: when allocator sees a YAML on main with id=X but state.db has X marked `status: invalidated` (from a rolled-back race), auto-import the YAML's content into state.db"
+    - "Documented in docs/process/GAP_REGISTRY_INVARIANTS.md as invariant I-4 (cross-session ID uniqueness) alongside CREDIBLE-028's I-3"
+    - "Test fixture replays today's race: state where #1448 reserves INFRA-819 + #1449 reserves INFRA-819 concurrently → allocator detects collision, second call gets INFRA-820 (or next free), no manual rename required post-hoc"
+
