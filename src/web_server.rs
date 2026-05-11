@@ -2936,6 +2936,10 @@ fn build_api_router() -> Router {
             get(routes::health::handle_cascade_status),
         )
         .route(
+            "/api/cascade-slot-toggle",
+            post(routes::health::handle_cascade_slot_toggle),
+        )
+        .route(
             "/api/cognitive-state",
             get(routes::health::handle_cognitive_state),
         )
