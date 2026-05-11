@@ -815,6 +815,14 @@ jobs:
         run: bash scripts/ci/test-lint-handoff-comment.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
+
+      - name: stale-binary destructive-op guard (INFRA-825)
+        # Asserts chump gap ship --update-yaml / dump --per-file hard-fail
+        # on a stale binary. PR #1444 silently reverted META-044 because
+        # this gate didn't exist — the soft warning was ignored by the
+        # implementer. Now hard-fail with CHUMP_ALLOW_STALE_DESTRUCTIVE=1
+        # as the audited escape hatch.
+        run: bash scripts/ci/test-stale-binary-ship-blocked.sh
       # INFRA-682: auto-detect when PR diff matches NONE of the code: patterns.
       # If filter.outputs.code is false on a PR, all required CI checks
       # (fast-checks, clippy, cargo-test, test rollup) will be SKIPPED — branch
