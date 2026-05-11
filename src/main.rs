@@ -321,6 +321,53 @@ fn load_dotenv() {
     }
 }
 
+fn print_help() {
+    println!("chump — gap orchestration tool\n");
+    println!("USAGE: chump <command> [args]\n");
+    println!("Gap management:");
+    println!("  gap <sub>          list | show | set | ship | reserve | audit-priorities | ...");
+    println!("  claim <GAP-ID>     atomic claim: worktree + lease + preflight");
+    println!("  dispatch <GAP-ID>  dispatch agent to work a gap");
+    println!("  gen <task>         single-shot coding task via LLM cascade\n");
+    println!("Fleet / coordination:");
+    println!("  fleet <sub>        up | status | scale | audit-pids | ...");
+    println!("  orchestrate        conversational operator loop (Opus-driven)");
+    println!("  cascade <sub>      provider cascade config and status\n");
+    println!("Analytics / reporting:");
+    println!("  health             fleet health check + SLO status");
+    println!("  health-digest      condensed health report");
+    println!("  fleet-status       agent status summary");
+    println!("  fleet-velocity     ship rate and cycle time");
+    println!("  waste-tally        compute waste rate (CHUMP_TASK_STUCK_SECS)");
+    println!("  kpi                KPI report: ship rate, cost savings, leverage");
+    println!("  cost               cost tracking");
+    println!("  cost-watch         live cost monitor");
+    println!("  ship-quality       ship quality metrics");
+    println!("  roadmap-status     roadmap milestone status\n");
+    println!("Session / cognition:");
+    println!("  session-track      track session activity");
+    println!("  session-export     export session data");
+    println!("  session-resume     resume a previous session");
+    println!("  reflect-delta      reflect on recent changes");
+    println!("  lesson-grade       grade lessons for a gap");
+    println!("  mission-grade      4-pillar mission alignment score\n");
+    println!("CI / dev tools:");
+    println!("  ci-summary         CI check summary for a PR");
+    println!("  classify-failure   classify a CI failure as flake/real/unknown");
+    println!("  rebase-stuck       help diagnose a stuck rebase");
+    println!("  pr <sub>           pr review | pr coupling-cost");
+    println!("  eval <sub>         eval harness management");
+    println!("  mcp <sub>          MCP server discovery and status");
+    println!("  dashboard          open the PWA dashboard");
+    println!("  init               first-run setup (model detect + .env + server)\n");
+    println!("Flags:");
+    println!("  --version          print version + build SHA");
+    println!("  --briefing <ID>    per-gap context before claiming");
+    println!("  --web              start PWA web server");
+    println!("  --leases           list active path leases");
+    println!("  --claim/--release  path lease operations (for scripts)");
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -338,6 +385,16 @@ async fn main() -> Result<()> {
             version::chump_build_sha(),
             version::chump_build_date(),
         );
+        return Ok(());
+    }
+
+    let no_args = args.len() == 1;
+    let help_cmd = args
+        .get(1)
+        .map(|s| s == "help" || s == "--help" || s == "-h")
+        .unwrap_or(false);
+    if no_args || help_cmd {
+        print_help();
         return Ok(());
     }
 
