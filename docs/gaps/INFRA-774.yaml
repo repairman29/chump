@@ -4,4 +4,11 @@
   status: open
   priority: P1
   effort: s
+  acceptance_criteria: |
+    Criterion 1: A fixture PR with a deliberately-stale assertion is created to synthesize a CI failure
+    Criterion 2: `chump review --serve` is run against the fixture PR and posts a reviewer comment with a valid template- anchored diff
+    Criterion 3: Author re-engagement (per sub-gap 3) detects the comment, applies the diff, and pushes
+    Criterion 4: CI flips from red to green within 15 minutes of the re-engagement push
+    Criterion 5: All 5 telemetry events (initiated, applied, failed, timeout, escalated) emit during the test run
+    Criterion 6: The smoke test is committed as `scripts/ci/test-review-handoff-smoke.sh` and passes in CI
 
