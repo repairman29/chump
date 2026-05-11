@@ -1,0 +1,7 @@
+- id: COG-052
+  domain: COG
+  title: "EFFECTIVE: gap acceptance-criteria-as-test consistency checker — agents ship code that compiles + tests pass, but doesn't actually satisfy the gap's stated acceptance criteria. Build a per-gap auditor: for each closed gap, check whether each AC item was actually demonstrated in the PR diff. Surface gaps where AC and ship diverge → operator review needed."
+  status: open
+  priority: P1
+  effort: s
+
