@@ -147,6 +147,7 @@ mod repo_allowlist_tool;
 mod repo_path;
 mod repo_tools;
 mod rescue_tally;
+mod review_handoff;
 mod roadmap_status;
 mod routes;
 mod rpc_mode;
