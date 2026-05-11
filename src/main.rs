@@ -3710,6 +3710,178 @@ async fn main() -> Result<()> {
 
                 return Ok(());
             }
+            // INFRA-635: gap rebalance — P0 budget enforcement + pillar floor check.
+            // Reads state.db, identifies violations, suggests or applies corrections.
+            "rebalance" => {
+                let apply = args.iter().any(|a| a == "--apply");
+                let as_json = args.iter().any(|a| a == "--json");
+
+                tracing::info!(apply = apply, "gap-rebalance invoked");
+
+                let all_gaps = match store.list(None) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap rebalance: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let open_gaps: Vec<&gap_store::GapRow> =
+                    all_gaps.iter().filter(|g| g.status == "open").collect();
+
+                // ── P0 budget check (CLAUDE.md: ≤ 5 P0s) ────────────────────────
+                let p0_budget: usize = 5;
+                let mut p0_gaps: Vec<&gap_store::GapRow> = open_gaps
+                    .iter()
+                    .filter(|g| g.priority == "P0")
+                    .copied()
+                    .collect();
+                // Sort oldest first (by opened_date, then id)
+                p0_gaps.sort_by(|a, b| a.opened_date.cmp(&b.opened_date).then(a.id.cmp(&b.id)));
+
+                let mut actions: Vec<String> = Vec::new();
+                let mut applied: Vec<String> = Vec::new();
+
+                if p0_gaps.len() > p0_budget {
+                    let excess = p0_gaps.len() - p0_budget;
+                    let demote_candidates = &p0_gaps[..excess];
+                    for g in demote_candidates {
+                        let rationale = format!(
+                            "auto-demoted P0→P1: P0 budget exceeded by {} (max {}), oldest stale P0",
+                            excess, p0_budget
+                        );
+                        actions.push(format!("DEMOTE {} P0→P1  reason: {}", g.id, rationale));
+                        if apply {
+                            match store.set_fields(
+                                &g.id,
+                                gap_store::GapFieldUpdate {
+                                    priority: Some("P1".to_string()),
+                                    notes: Some(rationale.clone()),
+                                    ..Default::default()
+                                },
+                            ) {
+                                Ok(_) => applied.push(g.id.clone()),
+                                Err(e) => eprintln!("failed to demote {}: {e}", g.id),
+                            }
+                        }
+                    }
+                }
+
+                // ── Pillar floor check (same logic as pillar-balance) ─────────
+                let pickable: Vec<&gap_store::GapRow> = open_gaps
+                    .iter()
+                    .filter(|g| {
+                        matches!(g.priority.as_str(), "P0" | "P1")
+                            && matches!(g.effort.as_str(), "xs" | "s" | "m")
+                    })
+                    .copied()
+                    .collect();
+
+                let total = pickable.len();
+                let pillars = ["EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE"];
+                let mut pillar_counts: std::collections::HashMap<&str, Vec<String>> =
+                    pillars.iter().map(|p| (*p, Vec::new())).collect();
+
+                for g in &pickable {
+                    let title_up = g.title.to_uppercase();
+                    let mut assigned = false;
+                    for p in &pillars {
+                        if title_up.contains(p) {
+                            pillar_counts.entry(p).or_default().push(g.id.clone());
+                            assigned = true;
+                            break;
+                        }
+                    }
+                    if !assigned {
+                        // no-op — OTHER bucket
+                    }
+                }
+
+                // Flag under-floor pillars
+                for p in &pillars {
+                    let n = pillar_counts.get(p).map(|v| v.len()).unwrap_or(0);
+                    if n < 2 {
+                        actions.push(format!(
+                            "FILE 1-2 {p} gaps  reason: only {n} pickable (floor=2, CLAUDE.md §pillar-floor)"
+                        ));
+                    }
+                }
+                // Flag dominant pillars (> 50%)
+                if total > 0 {
+                    for p in &pillars {
+                        let n = pillar_counts.get(p).map(|v| v.len()).unwrap_or(0);
+                        if n * 2 > total {
+                            // Find oldest P1 to suggest demoting to P2
+                            let ids = pillar_counts.get(p).cloned().unwrap_or_default();
+                            let suggest_demote = ids.first().cloned().unwrap_or_default();
+                            actions.push(format!(
+                                "DEMOTE {suggest_demote} P1→P2  reason: {p} dominates ({n}/{total} >{:.0}%)",
+                                n as f64 / total as f64 * 100.0
+                            ));
+                            if apply && !suggest_demote.is_empty() {
+                                let rationale = format!(
+                                    "auto-demoted P1→P2: {} dominates at {}/{} pickable",
+                                    p, n, total
+                                );
+                                match store.set_fields(
+                                    &suggest_demote,
+                                    gap_store::GapFieldUpdate {
+                                        priority: Some("P2".to_string()),
+                                        notes: Some(rationale),
+                                        ..Default::default()
+                                    },
+                                ) {
+                                    Ok(_) => applied.push(suggest_demote.clone()),
+                                    Err(e) => eprintln!("failed to demote {suggest_demote}: {e}"),
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Output ────────────────────────────────────────────────────
+                if as_json {
+                    let out = serde_json::json!({
+                        "p0_count": p0_gaps.len(),
+                        "p0_budget": p0_budget,
+                        "total_pickable": total,
+                        "actions": actions,
+                        "applied": applied,
+                        "clean": actions.is_empty(),
+                    });
+                    println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+                } else {
+                    println!(
+                        "Gap rebalance: {} open gaps  ({} pickable P0/P1 xs/s/m)  P0={}/{}",
+                        open_gaps.len(),
+                        total,
+                        p0_gaps.len(),
+                        p0_budget
+                    );
+                    if actions.is_empty() {
+                        println!("\n✓ Registry clean — P0 budget OK, all pillars ≥ 2 pickable, none > 50%.");
+                    } else {
+                        println!("\nSuggested actions:");
+                        for a in &actions {
+                            println!("  • {a}");
+                        }
+                        if apply {
+                            if applied.is_empty() {
+                                println!("\nNo changes applied.");
+                            } else {
+                                println!("\nApplied: {}", applied.join(", "));
+                            }
+                        } else {
+                            println!("\nRun with --apply to execute.");
+                        }
+                    }
+                }
+
+                if !actions.is_empty() && !apply {
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
@@ -3738,6 +3910,7 @@ async fn main() -> Result<()> {
                 eprintln!("  restore          --from-sql  # rebuild state.db from .chump/state.sql (INFRA-538)");
                 eprintln!("  audit-priorities [--json]   # PM health check (META-046)");
                 eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check");
+                eprintln!("  rebalance        [--apply] [--json]  # P0 budget + pillar floor enforcement (INFRA-635)");
                 std::process::exit(2);
             }
         }
