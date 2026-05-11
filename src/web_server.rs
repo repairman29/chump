@@ -2225,6 +2225,216 @@ async fn handle_fleet_workspace_exchange(
     Ok(Json(my_bb))
 }
 
+/// GET /api/fleet-status — Active agent sessions read from .chump-locks/*.json lease files.
+/// Returns `{sessions: [{session_id, gap_id, gap_title, gap_priority, gap_effort, branch,
+///   worktree_path, taken_at, expires_at, heartbeat_at, pr_number, pr_state, ci_status}],
+///   count: N}`.
+/// Data from: lease files (session/gap), gap_store (title/priority), gh CLI (PR/CI, best-effort).
+/// Works without GitHub access — pr_number/pr_state/ci_status will be null.
+/// PRODUCT-059: read-only live results board, phase 1.
+async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+
+    let lock_dir = std::env::var("CHUMP_LOCK_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join(".chump-locks"));
+
+    // ── Read all lease JSON files ────────────────────────────────────────────
+    let mut leases: Vec<serde_json::Value> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&lock_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let fname = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            // Skip ambient lock, cooldown, and non-lease files
+            if fname.starts_with("ambient") || !fname.contains('-') {
+                continue;
+            }
+            if let Ok(contents) = std::fs::read_to_string(&path) {
+                if let Ok(lease) = serde_json::from_str::<serde_json::Value>(&contents) {
+                    let gap_id = lease
+                        .get("gap_id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    if !gap_id.is_empty() {
+                        leases.push(lease);
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Enrich with gap_store metadata ───────────────────────────────────────
+    let gap_store = crate::gap_store::GapStore::open(&repo_root).ok();
+
+    let mut sessions: Vec<serde_json::Value> = Vec::new();
+    for lease in leases {
+        let gap_id = lease
+            .get("gap_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let session_id = lease
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let taken_at = lease
+            .get("taken_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let expires_at = lease
+            .get("expires_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let heartbeat_at = lease
+            .get("heartbeat_at")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let paths_val = lease.get("paths").cloned().unwrap_or(serde_json::json!([]));
+        let worktree_path: String = paths_val
+            .as_array()
+            .and_then(|arr| arr.first())
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        // Conventional branch name: chump/<gap-id-lowercase>-claim
+        let branch = format!("chump/{}-claim", gap_id.to_lowercase().replace('_', "-"));
+
+        let (gap_title, gap_priority, gap_effort) = if let Some(ref store) = gap_store {
+            match store.get(&gap_id) {
+                Ok(Some(gap)) => (gap.title.clone(), gap.priority.clone(), gap.effort.clone()),
+                _ => (String::new(), String::new(), String::new()),
+            }
+        } else {
+            (String::new(), String::new(), String::new())
+        };
+
+        // ── Best-effort PR lookup via gh CLI ─────────────────────────────────
+        // Runs synchronously but with a short timeout. If gh is unavailable or
+        // times out, pr_number/pr_state/ci_status remain null (AC: works without
+        // GitHub access).
+        let (pr_number, pr_state, ci_status) = {
+            let branch_clone = branch.clone();
+            let out = std::process::Command::new("gh")
+                .args([
+                    "pr",
+                    "list",
+                    "--head",
+                    &branch_clone,
+                    "--json",
+                    "number,state,statusCheckRollup",
+                    "--limit",
+                    "1",
+                    "--state",
+                    "all",
+                ])
+                .output();
+            match out {
+                Ok(o) if o.status.success() => {
+                    if let Ok(arr) = serde_json::from_slice::<Vec<serde_json::Value>>(&o.stdout) {
+                        if let Some(pr) = arr.first() {
+                            let num = pr.get("number").and_then(|v| v.as_u64());
+                            let state = pr
+                                .get("state")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_lowercase());
+                            // Aggregate CI: SUCCESS / FAILURE / PENDING / unknown
+                            let ci = pr.get("statusCheckRollup").and_then(|v| v.as_array()).map(
+                                |checks| {
+                                    let has_fail = checks.iter().any(|c| {
+                                        c.get("conclusion")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s == "FAILURE")
+                                            .unwrap_or(false)
+                                    });
+                                    let has_pending = checks.iter().any(|c| {
+                                        c.get("status")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s == "IN_PROGRESS" || s == "QUEUED")
+                                            .unwrap_or(false)
+                                    });
+                                    let all_success = checks.iter().all(|c| {
+                                        c.get("conclusion")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| s == "SUCCESS" || s == "SKIPPED")
+                                            .unwrap_or(false)
+                                    });
+                                    if has_fail {
+                                        "failure"
+                                    } else if has_pending {
+                                        "pending"
+                                    } else if all_success && !checks.is_empty() {
+                                        "success"
+                                    } else {
+                                        "unknown"
+                                    }
+                                    .to_string()
+                                },
+                            );
+                            (num, state, ci)
+                        } else {
+                            (None, None, None)
+                        }
+                    } else {
+                        (None, None, None)
+                    }
+                }
+                _ => (None, None, None),
+            }
+        };
+
+        sessions.push(serde_json::json!({
+            "session_id": session_id,
+            "gap_id": gap_id,
+            "gap_title": gap_title,
+            "gap_priority": gap_priority,
+            "gap_effort": gap_effort,
+            "branch": branch,
+            "worktree_path": worktree_path,
+            "taken_at": taken_at,
+            "expires_at": expires_at,
+            "heartbeat_at": heartbeat_at,
+            "pr_number": pr_number,
+            "pr_state": pr_state,
+            "ci_status": ci_status,
+        }));
+    }
+
+    // Sort newest-first by taken_at
+    sessions.sort_by(|a, b| {
+        let ta = b.get("taken_at").and_then(|v| v.as_str()).unwrap_or("");
+        let tb = a.get("taken_at").and_then(|v| v.as_str()).unwrap_or("");
+        ta.cmp(tb)
+    });
+
+    let count = sessions.len();
+    tracing::info!("fleet-status: {} active sessions (PRODUCT-059)", count);
+
+    Ok(Json(serde_json::json!({
+        "sessions": sessions,
+        "count": count,
+    })))
+}
+
 /// All `/api/*` routes plus favicon. Merged under static file fallback in [`start_web_server`].
 /// GET /api/gap-queue — List of open gaps with preflight status for PWA dispatch queue.
 /// Returns `{gaps: [{id, title, priority, effort, preflight_status, preflight_error?}]}`
@@ -2832,6 +3042,7 @@ fn build_api_router() -> Router {
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),
         )
+        .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
         .route("/api/gap/status/{id}", get(handle_gap_status))
