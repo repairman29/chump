@@ -553,6 +553,19 @@ events:
     trigger: chump mcp install <name> completes (any outcome — already_installed, cargo_installed, config_only)
     consumers: [fleet-brief, audit-log]
 
+  # ── Bot-autonomous CI assertion (CREDIBLE-002) ───────────────────────────
+  - kind: bot_autonomous_check_passed
+    emitter: scripts/ci/test-bot-autonomous.sh
+    trigger: pr-triage-bot committed an auto-fix to the fixture PR within the timeout
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, outcome, fixture_pr]
+
+  - kind: bot_autonomous_check_failed
+    emitter: scripts/ci/test-bot-autonomous.sh
+    trigger: pr-triage-bot did NOT commit within the timeout (bot may be broken)
+    consumers: [fleet-brief, watchdog, operator-paging]
+    fields_required: [ts, outcome, fixture_pr]
+
   - kind: activation_install
     emitter: scripts/setup/install.sh
     trigger: fresh chump install on a machine
