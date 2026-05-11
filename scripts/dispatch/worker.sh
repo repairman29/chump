@@ -259,6 +259,7 @@ PY
             ACTIVE_GAPS="$active_gaps" \
             GAP_JSON_FILE="$gap_json_file" \
             WORKER_INDEX="$AGENT_ID" \
+            WORKER_ID="$AGENT_ID" \
             COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
             python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>/dev/null || true)"
     rm -f "$gap_json_file"
@@ -1118,14 +1119,40 @@ Operator or sibling worker can rescue this branch via:
                 cooldown_s="${FLEET_RC1_COOLDOWN_S:-1800}"
                 _cooldown_kind="rc=$rc"
             fi
+            # FLEET-051: per-worker cooldown — file keyed ${AGENT_ID}-${GAP_ID}.json
+            # so sibling workers are not blocked by this worker's failure.
             cooldown_dir="$REPO_ROOT/.chump-locks/cooldown"
             mkdir -p "$cooldown_dir" 2>/dev/null || true
             cooldown_until=$(( $(date +%s) + cooldown_s ))
-            printf '{"gap_id":"%s","rc":%d,"kind":"%s","until":%d,"agent":"%s","ts":"%s"}\n' \
+            _safe_agent="${AGENT_ID:-0}"
+            printf '{"gap_id":"%s","rc":%d,"kind":"%s","until":%d,"agent":"%s","ts":"%s","worker_id":"%s"}\n' \
                 "$GAP_ID" "$rc" "$_cooldown_kind" "$cooldown_until" "$AGENT_ID" \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                > "$cooldown_dir/${GAP_ID}.json" 2>/dev/null || true
-            log "cooldown: $GAP_ID skipped for ${cooldown_s}s (kind=$_cooldown_kind, rc=$rc)"
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_safe_agent" \
+                > "$cooldown_dir/${_safe_agent}-${GAP_ID}.json" 2>/dev/null || true
+            log "cooldown: worker $AGENT_ID cooling $GAP_ID for ${cooldown_s}s (kind=$_cooldown_kind)"
+
+            # FLEET-051: cluster-wide block if >= FLEET_COOLDOWN_THRESHOLD distinct
+            # workers have all cooled on this gap. Default threshold = 3.
+            _cooldown_threshold="${FLEET_COOLDOWN_THRESHOLD:-3}"
+            _distinct_workers=$(ls "$cooldown_dir"/*"-${GAP_ID}.json" 2>/dev/null | wc -l | tr -d ' ')
+            if [ "${_distinct_workers:-0}" -ge "$_cooldown_threshold" ]; then
+                printf '{"gap_id":"%s","cooldown_kind":"cluster_wide","until":%d,"agent":"%s","ts":"%s","worker_count":%d}\n' \
+                    "$GAP_ID" "$cooldown_until" "$AGENT_ID" \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_distinct_workers" \
+                    > "$cooldown_dir/${GAP_ID}.json" 2>/dev/null || true
+                _ts_now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                printf '{"ts":"%s","session":"%s","kind":"worker_cooldown_cluster_wide","gap_id":"%s","worker_count":%d,"until":%d}\n' \
+                    "$_ts_now" "${CHUMP_SESSION_ID:-fleet}" "$GAP_ID" "$_distinct_workers" "$cooldown_until" \
+                    >> "$_amb" 2>/dev/null || true
+                log "cooldown: cluster-wide block on $GAP_ID ($__distinct_workers workers failed)"
+            else
+                _ts_now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                printf '{"ts":"%s","session":"%s","kind":"worker_cooldown","gap_id":"%s","worker_id":"%s","until":%d,"cooldown_kind":"%s"}\n' \
+                    "$_ts_now" "${CHUMP_SESSION_ID:-fleet}" "$GAP_ID" "$_safe_agent" "$cooldown_until" "$_cooldown_kind" \
+                    >> "$_amb" 2>/dev/null || true
+            fi
 
             # FLEET-043: circuit breaker on consecutive dispatch failures.
             # After CHUMP_DISPATCH_FAIL_THRESHOLD (default 5) consecutive failures,

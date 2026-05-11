@@ -400,12 +400,27 @@ def try_claim_gap(gap_id: str, session_id: str, lock_dir: Path) -> bool:
         return False
 
 
-def cooled_down_gaps(cooldown_dir: str) -> set[str]:
-    """INFRA-361: gap IDs whose cooldown record is still in the future."""
+def cooled_down_gaps(cooldown_dir: str, worker_id: str = "") -> set[str]:
+    """FLEET-051: gap IDs cooled for this worker (or cluster-wide).
+
+    File formats:
+    - ${WORKER_ID}-${GAP_ID}.json  per-worker cooldown (FLEET-051)
+    - ${GAP_ID}.json               legacy / cluster-wide cooldown
+
+    A gap is blocked when:
+      (a) it has a per-worker file for *this* worker_id whose until>now, OR
+      (b) it has a cluster-wide (legacy) file whose until>now, OR
+      (c) it has per-worker files from >= FLEET_COOLDOWN_THRESHOLD distinct workers
+
+    INFRA-361: expired records are cleaned up on read.
+    """
     if not cooldown_dir or not os.path.isdir(cooldown_dir):
         return set()
+    threshold = int(os.environ.get("FLEET_COOLDOWN_THRESHOLD", "3"))
     now = int(time.time())
     cooled: set[str] = set()
+    per_worker: dict[str, set[str]] = {}
+
     for entry in os.listdir(cooldown_dir):
         if not entry.endswith(".json"):
             continue
@@ -419,13 +434,29 @@ def cooled_down_gaps(cooldown_dir: str) -> set[str]:
         until = rec.get("until", 0)
         if not gid:
             continue
-        if until > now:
-            cooled.add(gid)
-        else:
+        if until <= now:
             try:
                 os.remove(path)
             except OSError:
                 pass
+            continue
+
+        stem = entry[:-5]
+        is_per_worker = stem[0].isdigit() if stem else False
+
+        if is_per_worker:
+            dash = stem.index("-")
+            file_worker = stem[:dash]
+            per_worker.setdefault(gid, set()).add(file_worker)
+            if worker_id and file_worker == str(worker_id):
+                cooled.add(gid)
+        else:
+            cooled.add(gid)
+
+    for gid, workers in per_worker.items():
+        if len(workers) >= threshold:
+            cooled.add(gid)
+
     return cooled
 
 
@@ -448,7 +479,10 @@ def main() -> int:
     worker_model = os.environ.get("FLEET_MODEL", "haiku").lower()
     exclude_re = re.compile(os.environ.get("EXCLUDE_RE", "^$"))
     active = set(os.environ.get("ACTIVE_GAPS", "").split())
-    cooled = cooled_down_gaps(os.environ.get("COOLDOWN_DIR", ""))
+    cooled = cooled_down_gaps(
+        os.environ.get("COOLDOWN_DIR", ""),
+        worker_id=os.environ.get("WORKER_ID", os.environ.get("AGENT_ID", "")),
+    )
 
     # INFRA-314: Worker skill affinity scoring.
     # CHUMP_AFFINITY=0 disables affinity matching (treats all gaps as eligible).
