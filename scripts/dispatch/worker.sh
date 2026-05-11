@@ -1265,6 +1265,139 @@ Operator or sibling worker can rescue this branch via:
         >> "$_amb" 2>/dev/null || true
     log "cycle_end: elapsed=${_cycle_elapsed}s rc=$rc kind=$_cycle_kind"
 
+    # ── INFRA-771: author-agent re-engagement loop ────────────────────────
+    # Before releasing the lease, scan own open PRs for trusted handoff
+    # comments (containing [handoff:apply]) that are newer than the PR HEAD
+    # commit. If found: apply the diff, run tests, push if green.
+    # Cap: 1 re-engagement per PR per worker session (tracked in _reh_done).
+    # Lease remains live throughout. Best-effort: never fail the cycle.
+    if [[ "${CHUMP_HANDOFF_REENGAGE:-1}" != "0" ]] && command -v gh >/dev/null 2>&1; then
+        _reh_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        _reh_done_file="${TMPDIR:-/tmp}/chump-reh-done-${AGENT_ID:-$$}"
+
+        # List own open PRs (numbers only)
+        _own_prs="$(gh pr list --author "@me" --state open --json number \
+            --jq '.[].number' 2>/dev/null || true)"
+
+        for _pr_num in $_own_prs; do
+            # Skip if we already re-engaged this PR in this session
+            if [[ -f "$_reh_done_file" ]] && grep -qxF "$_pr_num" "$_reh_done_file" 2>/dev/null; then
+                continue
+            fi
+
+            # Get the PR HEAD sha and comments in one call
+            _pr_json="$(gh pr view "$_pr_num" \
+                --json headRefOid,comments,headRefName 2>/dev/null || true)"
+            [[ -z "$_pr_json" ]] && continue
+
+            _head_sha="$(printf '%s' "$_pr_json" | python3 -c \
+                "import sys,json; d=json.load(sys.stdin); print(d.get('headRefOid',''))" \
+                2>/dev/null || true)"
+            _head_branch="$(printf '%s' "$_pr_json" | python3 -c \
+                "import sys,json; d=json.load(sys.stdin); print(d.get('headRefName',''))" \
+                2>/dev/null || true)"
+            [[ -z "$_head_sha" ]] && continue
+
+            # Find the timestamp of the HEAD commit
+            _head_ts="$(gh api "repos/{owner}/{repo}/commits/$_head_sha" \
+                --jq '.commit.committer.date' 2>/dev/null || true)"
+            [[ -z "$_head_ts" ]] && continue
+
+            # Scan comments for [handoff:apply] newer than HEAD commit
+            _handoff_body="$(printf '%s' "$_pr_json" | python3 - "$_head_ts" <<'PYEOF'
+import sys, json
+from datetime import datetime, timezone
+
+head_ts_str = sys.argv[1]
+try:
+    head_ts = datetime.fromisoformat(head_ts_str.replace("Z", "+00:00"))
+except Exception:
+    sys.exit(0)
+
+data = json.load(sys.stdin)
+comments = data.get("comments", [])
+for c in reversed(comments):
+    body = c.get("body", "")
+    if "[handoff:apply]" not in body:
+        continue
+    created = c.get("createdAt", "")
+    try:
+        c_ts = datetime.fromisoformat(created.replace("Z", "+00:00"))
+    except Exception:
+        continue
+    if c_ts > head_ts:
+        print(body)
+        break
+PYEOF
+2>/dev/null || true)"
+
+            [[ -z "$_handoff_body" ]] && continue
+
+            log "INFRA-771: handoff comment found on PR #$_pr_num — attempting re-engagement"
+
+            # Extract diff block from the handoff comment
+            _diff_block="$(printf '%s' "$_handoff_body" | python3 -c "
+import sys, re
+body = sys.stdin.read()
+m = re.search(r'\`\`\`diff\s*\n(.*?)\n\`\`\`', body, re.DOTALL)
+if m:
+    print(m.group(1))
+" 2>/dev/null || true)"
+
+            if [[ -z "$_diff_block" ]]; then
+                log "INFRA-771: no diff block in handoff comment for PR #$_pr_num — skipping"
+                continue
+            fi
+
+            # Record this PR as attempted (cap at 1 per session)
+            printf '%s\n' "$_pr_num" >> "$_reh_done_file" 2>/dev/null || true
+
+            # Apply diff to the worktree containing that branch
+            _reh_wt="$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null \
+                | grep -B2 "branch refs/heads/$_head_branch" \
+                | grep "^worktree " | head -1 | sed 's/^worktree //' || true)"
+            # Fall back to current worktree if branch matches
+            if [[ -z "$_reh_wt" ]]; then
+                _cur_branch="$(git -C "${wt_path:-$REPO_ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+                [[ "$_cur_branch" == "$_head_branch" ]] && _reh_wt="${wt_path:-$REPO_ROOT}"
+            fi
+            [[ -z "$_reh_wt" ]] && { log "INFRA-771: can't locate worktree for $_head_branch — skipping"; continue; }
+
+            # Apply and test
+            _reh_ok=0
+            if printf '%s\n' "$_diff_block" | git -C "$_reh_wt" apply --check - 2>/dev/null; then
+                printf '%s\n' "$_diff_block" | git -C "$_reh_wt" apply - 2>/dev/null && {
+                    # Run fast tests (INFRA-761 style: clippy + cargo test)
+                    if cargo test --manifest-path "$_reh_wt/Cargo.toml" --bin chump --tests \
+                            --quiet 2>/dev/null; then
+                        git -C "$_reh_wt" add -u 2>/dev/null || true
+                        git -C "$_reh_wt" commit -m "INFRA-771: apply handoff fix from PR #$_pr_num review" \
+                            --no-verify 2>/dev/null && {
+                            git -C "$_reh_wt" push origin "$_head_branch" --force-with-lease \
+                                2>/dev/null && _reh_ok=1
+                        }
+                    fi
+                }
+            fi
+
+            _reh_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            if [[ "$_reh_ok" -eq 1 ]]; then
+                log "INFRA-771: handoff applied and pushed for PR #$_pr_num"
+                printf '{"ts":"%s","event":"review_handoff_applied","session":"%s","pr":%s,"gap_id":"%s","agent":"%s"}\n' \
+                    "$_reh_ts" "${CHUMP_SESSION_ID:-$AGENT_ID}" "$_pr_num" "$GAP_ID" "$AGENT_ID" \
+                    >> "$_reh_amb" 2>/dev/null || true
+            else
+                log "INFRA-771: handoff apply or tests failed for PR #$_pr_num"
+                printf '{"ts":"%s","event":"review_handoff_failed","session":"%s","pr":%s,"gap_id":"%s","agent":"%s","reason":"apply_or_test_failure"}\n' \
+                    "$_reh_ts" "${CHUMP_SESSION_ID:-$AGENT_ID}" "$_pr_num" "$GAP_ID" "$AGENT_ID" \
+                    >> "$_reh_amb" 2>/dev/null || true
+            fi
+        done
+
+        rm -f "$_reh_done_file" 2>/dev/null || true
+    fi
+    # ── End INFRA-771 re-engagement loop ─────────────────────────────────
+
     # ── Release lease + prune worktree ────────────────────────────────────
     # INFRA-490: pre-fix this used the glob `*${GAP_ID}*.json` which was
     # case-sensitive — but lease files are named after the session ID
