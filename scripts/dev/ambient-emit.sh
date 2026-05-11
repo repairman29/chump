@@ -14,15 +14,62 @@
 # produce interleaved JSON. Falls back to no-lock on systems without flock.
 #
 # Environment:
-#   CHUMP_SESSION_ID   / CLAUDE_SESSION_ID  — used for the session field
-#   CHUMP_AMBIENT_LOG  — override the output path (default: .chump-locks/ambient.jsonl)
+#   CHUMP_SESSION_ID    / CLAUDE_SESSION_ID  — used for the session field
+#   CHUMP_AMBIENT_LOG   — override the output path (default: .chump-locks/ambient.jsonl)
+#   CHUMP_AGENT_HARNESS — harness identity (opencode / opencode-bigpickle /
+#                         fleet-dispatcher / claude-code-ide / manual / unknown)
+#   --harness <name>    — one-shot override for the harness field
 
 set -euo pipefail
 
+# ── CREDIBLE-037: harness attribution ─────────────────────────────────────────
+_HARNESS="${CHUMP_AGENT_HARNESS:-unknown}"
+_HARNESS_ALERTED=false
+_HARNESS_ALERT_FILE=""
+
+for arg in "$@"; do
+    if [[ "$arg" == "--harness" ]]; then
+        _HARNESS_SPECIFIED=true
+    fi
+done
+if [[ "${_HARNESS_SPECIFIED:-false}" != "true" ]]; then
+    # Check if --harness was passed as a flag
+    set +u
+    for ((i=1; i<=$#; i++)); do
+        if [[ "${!i}" == "--harness" ]]; then
+            next=$((i+1))
+            if [[ $next -le $# ]]; then
+                _HARNESS="${!next}"
+            fi
+        fi
+    done
+    set -u
+fi
+
+# One-shot missing_attribution alert per session when harness is unknown.
+if [[ "$_HARNESS" == "unknown" ]]; then
+    _alert_session="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
+    _HARNESS_ALERT_FILE="/tmp/chump-harness-alerted-${_alert_session}"
+    if [[ ! -f "$_HARNESS_ALERT_FILE" ]]; then
+        touch "$_HARNESS_ALERT_FILE"
+        _HARNESS_ALERTED=true
+    fi
+fi
+
 if [[ $# -eq 0 ]]; then
-    echo "Usage: $0 <event_kind> [key=value ...]" >&2
+    echo "Usage: $0 <event_kind> [key=value ...] [--harness <name>]" >&2
     exit 1
 fi
+
+# Consume --harness flag from args so it doesn't leak into EXTRA_JSON.
+_filtered_args=()
+_skip_next=false
+for arg in "$@"; do
+    if $_skip_next; then _skip_next=false; continue; fi
+    if [[ "$arg" == "--harness" ]]; then _skip_next=true; continue; fi
+    _filtered_args+=("$arg")
+done
+set -- "${_filtered_args[@]}"
 
 EVENT_KIND="$1"
 shift
@@ -71,8 +118,18 @@ for arg in "$@"; do
     EXTRA_JSON="${EXTRA_JSON},\"${KEY}\":\"${VAL_ESC}\""
 done
 
-# ── Build the JSON line ───────────────────────────────────────────────────────
-JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"event\":\"${EVENT_KIND}\"${EXTRA_JSON}}"
+# ── Build the JSON line (CREDIBLE-037: include harness field) ─────────────────
+JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"event\":\"${EVENT_KIND}\"${EXTRA_JSON}}"
+
+# ── CREDIBLE-037: emit one-shot missing_attribution alert ─────────────────────
+if [[ "${_HARNESS_ALERTED:-false}" == "true" ]]; then
+    _alert_json="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"kind\":\"missing_attribution\",\"event\":\"ALERT\",\"harness\":\"$_HARNESS\",\"hint\":\"CHUMP_AGENT_HARNESS not set; defaulting to 'unknown'. Set via env var or --harness flag.\"}"
+    if command -v flock &>/dev/null; then
+        ( flock -x 200; printf '%s\n' "$_alert_json" >> "$AMBIENT_LOG" ) 200>"${AMBIENT_LOG}.lock"
+    else
+        printf '%s\n' "$_alert_json" >> "$AMBIENT_LOG"
+    fi
+fi
 
 # ── INFRA-101: validate against docs/ambient-schema.json before append ───────
 # Catches the schema drift the 2026-04-26 audit flagged (INTENT rows with

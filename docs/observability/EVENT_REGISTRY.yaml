@@ -739,6 +739,14 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, gap, doc, session]
 
+  # ── CREDIBLE-037: harness attribution ─────────────────────────────────────
+  - kind: missing_attribution
+    emitter: scripts/dev/ambient-emit.sh (CREDIBLE-037)
+    trigger: CHUMP_AGENT_HARNESS not set and no --harness flag passed; ambient
+      event emitted with harness=unknown; one-shot ALERT per session
+    consumers: [fleet-brief]
+    fields_required: [ts, session, harness, hint]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
