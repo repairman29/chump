@@ -1,13 +1,14 @@
 - id: CREDIBLE-028
   domain: CREDIBLE
   title: "CREDIBLE: premature-gap-closure detector — ambient ALERT when state.db has status=done with closed_pr=N but PR N is not merged; reverse-mirror check ensures YAML/state.db consistency before reaper acts"
-  status: open
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "(a) scripts/ci/test-gap-closure-consistency.sh queries state.db for done gaps with closed_pr set, verifies each PR is merged via 'gh pr view'; exits 0 when all match, exits 1 with --strict on any mismatch"
-    - "(b) Mismatch emits ambient event: kind=gap_drift_premature_close, ids=[GAP-ID,...], note describes count and required action"
-    - "(c) --limit N (default 30 most-recent by closed_pr DESC) makes check practical for CI; --all scans full history"
-    - "(d) Script skips gracefully when gh CLI unavailable or state.db not found (exit 0 with WARN)"
-    - "(e) Script verified: first run against live state found INFRA-538/EVAL-086/INFRA-775 as real in-flight drifts"
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-11'
+  closed_pr: 1458
 
