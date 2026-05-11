@@ -196,6 +196,25 @@ cmd="${1:-}"
 
 case "$cmd" in
     start)
+        # INFRA-819: disk-space preflight — emit reaper_self_paused and exit 1
+        # if < CHUMP_HEARTBEAT_MIN_FREE_MB (default 50) MB free.
+        #
+        # Exit 1 (not 0) so launchd KeepAlive:{Crashed:true} re-queues a
+        # restart; ThrottleInterval=60 in the plist enforces 60s between
+        # attempts. Once the operator frees disk, the next attempt succeeds
+        # automatically — no manual 'launchctl start' needed.
+        _df_avail_mb=$(df -P "$LOCK_DIR" 2>/dev/null | awk 'NR==2 {printf "%d", $4/2048}' || echo "999")
+        _min_free_mb="${CHUMP_HEARTBEAT_MIN_FREE_MB:-50}"
+        if [[ "${_df_avail_mb:-999}" -lt "$_min_free_mb" ]]; then
+            printf '[%s] heartbeat-watcher: disk critically low (%s MB free, min %s MB) — emitting reaper_self_paused and backing off (INFRA-819)\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_df_avail_mb" "$_min_free_mb" >&2
+            # Best-effort ambient emit (may fail silently if ambient.jsonl is unwritable)
+            emit_event "reaper_self_paused" "reason=disk_critical" "avail_mb=${_df_avail_mb}" "min_mb=${_min_free_mb}" 2>/dev/null || true
+            unset _df_avail_mb _min_free_mb
+            exit 1
+        fi
+        unset _df_avail_mb _min_free_mb
+
         # Prevent multiple instances via PID file
         if [[ -f "$PID_FILE" ]]; then
             existing_pid="$(cat "$PID_FILE" 2>/dev/null || true)"

@@ -1,23 +1,18 @@
 - id: INFRA-798
   domain: INFRA
   title: "EFFECTIVE: intent parser — natural language to structured chump ops (prompt template + tool-router for chump orchestrate)"
-  status: open
+  status: done
   priority: P1
   effort: s
-  description: |
-    Intent-to-action mapping for chump orchestrate. The stub parser (used when CHUMP_ORCHESTRATE_STUB=1)
-    uses keyword matching (spawn→fleet status, grade→mission-grade, stop→fleet stop).
-    The real parser (used in production) is Opus-driven: the system prompt instructs the model
-    to emit TOOL: chump <subcommand> lines, which parse_tool_calls() extracts and run_tool() executes.
-    This means the "real" LLM-based intent parsing is already implemented through the Opus conversational loop.
-  pr: 1421
   acceptance_criteria:
-    - "src/intent_parser.rs: IntentOp enum (GapList, GapShow, GapClaim, GapShip, GapReserve, FleetStatus, FleetStart, FleetStop, MissionGrade, PillarBalance, WasteTally, Unknown)"
-    - "parse_intent() resolves gap IDs (INFRA-798, PRODUCT-032) and priority filters (P0/P1/P2) from original-case input"
-    - "format_intent_prompt() returns prompt template listing allowed chump commands for LLM-based resolution"
-    - "chump orchestrate <text> (single-shot) prints JSON with intent/command/kind and emits ambient event"
-    - "emit_intent_event() writes kind=intent_parse_ok or kind=intent_parse_unknown to .chump-locks/ambient.jsonl"
-    - "IntentOp::to_chump_command() returns canonical CLI string for each variant"
-    - "12 unit tests pass: cargo test --bin chump intent_parser"
-    - "cargo check passes with mod intent_parser wired into src/main.rs"
+    - "done — src/intent_parser.rs: IntentOp enum (12 variants) + parse_intent() keyword router + format_intent_prompt() LLM fallback"
+    - "done — emit_intent_event() writes kind=intent_parse_ok|intent_parse_unknown to .chump-locks/ambient.jsonl"
+    - "done — chump orchestrate <text> single-shot mode: prints JSON {intent,command,kind} and emits ambient event"
+    - "done — extract_gap_id uses orig_words (uppercase) not lc_words to correctly handle INFRA-798 style IDs"
+    - "done — 12 unit tests in mod tests covering all IntentOp variants, priority filter, LLM prompt format"
+    - "done — CI cargo-test guard: install_mcp_server_no_install test patched with env_lock+PATH sanitization (PR #1478)"
+  opened_date: '2026-05-10'
+  closed_date: '2026-05-11'
+  closed_pr: 1478
+  pr: 1421
 

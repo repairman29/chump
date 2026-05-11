@@ -46,6 +46,11 @@
   <key>StartInterval</key>
   <integer>21600</integer>
 
+  <!-- INFRA-819: guard against rapid restarts if synthesis-pass crashes
+       (e.g. ENOSPC mid-write). 60s matches the heartbeat-watcher backoff. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
   <!-- Do NOT run at load — wait for the first interval to elapse. -->
   <key>RunAtLoad</key>
   <false/>
