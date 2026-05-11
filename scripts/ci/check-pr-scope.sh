@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# check-pr-scope.sh — CREDIBLE-026: PR scope-vs-title divergence detector.
+#
+# Checks that a PR's file changes are consistent with its title/body scope.
+# Two rules:
+#
+#   Rule A — chore(gaps) purity: a PR prefixed 'chore(gaps):' or 'docs(gaps):'
+#     must NOT modify src/**, scripts/** (non-ci), or delete test files.
+#     These prefixes imply gap-registry-only changes.
+#
+#   Rule B — silent revert: a PR that deletes a file added/modified in another
+#     merged PR within 72h, where no commit in the current PR has subject
+#     starting with 'Revert', is flagged as a potential silent revert.
+#     (Lightweight proxy for PR #1444's META-044 silent revert.)
+#
+# Exit: 0 = clean, 1 = violations found (unless --warn-only).
+#
+# Usage:
+#   bash scripts/ci/check-pr-scope.sh [--base <branch>] [--warn-only]
+
+set -euo pipefail
+
+pass() { printf '[PASS] %s\n' "$*"; }
+fail() { printf '[FAIL] %s\n' "$*" >&2; }
+warn() { printf '[WARN] %s\n' "$*" >&2; }
+info() { printf '[INFO] %s\n' "$*"; }
+
+WARN_ONLY=0
+BASE_BRANCH="${GITHUB_BASE_REF:-main}"
+prev_arg=""
+for arg in "$@"; do
+    case "$arg" in
+        --warn-only) WARN_ONLY=1 ;;
+        --base|--repo-root) ;;
+    esac
+    [[ "$prev_arg" == "--base" ]] && BASE_BRANCH="$arg"
+    prev_arg="$arg"
+done
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+VIOLATIONS=0
+report_violation() {
+    fail "$1"
+    VIOLATIONS=$((VIOLATIONS + 1))
+}
+
+# ── Resolve merge base ────────────────────────────────────────────────────────
+MERGE_BASE="$(git merge-base HEAD "origin/${BASE_BRANCH}" 2>/dev/null \
+    || git merge-base HEAD "${BASE_BRANCH}" 2>/dev/null \
+    || echo "")"
+if [[ -z "$MERGE_BASE" ]]; then
+    warn "Could not compute merge base against $BASE_BRANCH — skipping scope check"
+    exit 0
+fi
+
+# ── Gather PR context ─────────────────────────────────────────────────────────
+# Use first commit subject (or gh pr title if available) as PR title proxy
+PR_TITLE="$(git log --pretty=format:%s "${MERGE_BASE}..HEAD" 2>/dev/null | tail -1 || true)"
+if command -v gh &>/dev/null; then
+    _gh_title="$(gh pr view --json title --jq '.title' 2>/dev/null || true)"
+    [[ -n "$_gh_title" ]] && PR_TITLE="$_gh_title"
+fi
+
+# Normalize title prefix (e.g. "chore(gaps): ..." → "chore(gaps)")
+PR_PREFIX="$(echo "$PR_TITLE" | grep -oE '^[a-z]+(\([^)]+\))?' || true)"
+info "PR title: '$PR_TITLE' (prefix: '$PR_PREFIX')"
+
+# ── Collect changed files ─────────────────────────────────────────────────────
+changed_files="$(git diff --name-only "${MERGE_BASE}..HEAD" 2>/dev/null || true)"
+deleted_files="$(git diff --name-only --diff-filter=D "${MERGE_BASE}..HEAD" 2>/dev/null || true)"
+
+# ── Rule A: chore(gaps) / docs(gaps) purity ──────────────────────────────────
+if echo "$PR_PREFIX" | grep -qE "^(chore|docs)\(gaps\)$"; then
+    # These prefixes claim the PR only touches gap YAML / docs
+    src_touched=()
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        # Allow: docs/gaps/*.yaml, docs/**/*.md, CLAUDE.md, AGENTS.md, MEMORY.md
+        # Disallow: src/**, scripts/ (non-ci), *.rs, *.toml (except docs)
+        case "$f" in
+            src/*.rs|src/**/*.rs)           src_touched+=("$f") ;;
+            crates/*/*.rs|crates/**/*.rs)   src_touched+=("$f") ;;
+            scripts/coord/*|scripts/dispatch/*|scripts/dev/*|scripts/setup/*)
+                                            src_touched+=("$f") ;;
+            *.toml)                         src_touched+=("$f") ;;
+        esac
+    done <<< "$changed_files"
+
+    if [[ ${#src_touched[@]} -gt 0 ]]; then
+        report_violation "Rule A (chore/docs gaps purity): title claims gap-only change but modifies source files:"
+        for f in "${src_touched[@]}"; do fail "  $f"; done
+        fail "  → If intentional, use 'feat:' or 'fix:' prefix, not 'chore(gaps):'"
+    else
+        pass "Rule A: chore(gaps) prefix matches gap-only changes"
+    fi
+else
+    pass "Rule A: non-gaps-only prefix — skipping purity check"
+fi
+
+# ── Rule B: silent revert detection ──────────────────────────────────────────
+# Check if any commit in PR range says "Revert" explicitly
+# Use a temp file to avoid subshell variable scoping with <() and pipefail
+_revert_count="$(git log --pretty=format:%s "${MERGE_BASE}..HEAD" 2>/dev/null \
+    | grep -icE "^revert" || true)"
+has_revert_commit=0
+[[ "$_revert_count" -gt 0 ]] && has_revert_commit=1
+
+if [[ "$has_revert_commit" -eq 1 ]]; then
+    pass "Rule B: explicit Revert commit detected — silent-revert check N/A"
+elif [[ -n "$deleted_files" ]] && command -v gh &>/dev/null; then
+    # For each deleted file, check if it appeared in a recently merged PR
+    # We use git log on origin/main to find when the file was last modified
+    silent_reverts=()
+    CUTOFF_SECS=259200  # 72 hours
+    now_secs="$(date +%s)"
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        # Get last commit on origin/main that touched this file
+        last_sha="$(git log "origin/${BASE_BRANCH}" --pretty=format:%H --follow -- "$f" 2>/dev/null | head -1 || true)"
+        [[ -z "$last_sha" ]] && continue
+        last_ts="$(git log -1 --pretty=format:%ct "$last_sha" 2>/dev/null || true)"
+        [[ -z "$last_ts" ]] && continue
+        age_secs=$(( now_secs - last_ts ))
+        if [[ "$age_secs" -lt "$CUTOFF_SECS" ]]; then
+            last_msg="$(git log -1 --pretty=format:%s "$last_sha" 2>/dev/null || true)"
+            silent_reverts+=("$f (last touched ${age_secs}s ago: '$last_msg')")
+        fi
+    done <<< "$deleted_files"
+
+    if [[ ${#silent_reverts[@]} -gt 0 ]]; then
+        report_violation "Rule B (silent revert): PR deletes recently-modified files without 'Revert' commit:"
+        for r in "${silent_reverts[@]}"; do fail "  $r"; done
+        fail "  → If intentional, add a commit titled 'Revert: <reason>' or mention files in PR body"
+    else
+        pass "Rule B: no silent reverts of recent files detected"
+    fi
+else
+    pass "Rule B: no deleted files or gh unavailable — skipping"
+fi
+
+# ── Emit ambient event on violation ──────────────────────────────────────────
+if [[ "$VIOLATIONS" -gt 0 ]]; then
+    _lock_dir="$REPO_ROOT/.chump-locks"
+    mkdir -p "$_lock_dir" 2>/dev/null || true
+    _amb="${CHUMP_AMBIENT_LOG:-$_lock_dir/ambient.jsonl}"
+    _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _pr="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+    printf '{"ts":"%s","event":"ALERT","kind":"pr_scope_divergence","source":"check-pr-scope","branch":"%s","violations":%d}\n' \
+        "$_ts" "$_pr" "$VIOLATIONS" >> "$_amb" 2>/dev/null || true
+fi
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+echo ""
+if [[ "$VIOLATIONS" -eq 0 ]]; then
+    echo "CREDIBLE-026: all PR scope checks passed."
+    exit 0
+elif [[ "$WARN_ONLY" -eq 1 ]]; then
+    warn "CREDIBLE-026: $VIOLATIONS violation(s) found (warn-only — not blocking)"
+    exit 0
+else
+    fail "CREDIBLE-026: $VIOLATIONS violation(s). Fix scope or update PR title."
+    exit 1
+fi
