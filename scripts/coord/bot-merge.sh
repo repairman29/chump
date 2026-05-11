@@ -1212,6 +1212,38 @@ if [[ -n "${GAP_ID:-}" ]] && [[ -x "$REPO_ROOT/scripts/dev/chump-ambient-glance.
     fi
 fi
 
+# ── 4c. Pre-registered eval guard (META-043) ─────────────────────────────────
+# If this commit modifies cognition-or-routing src, require a preregistered
+# eval doc at docs/eval/preregistered/<GAP-ID>.md to be present in the tree.
+# Rationale: no measurement = no merge (EVAL-098 pattern).
+# Bypass: CHUMP_NO_PREREG=1 (with reason in commit body)
+_PREREG_COGNITION_PATTERN='src/(briefing|reflection|reflection_db|prompt_assembly|provider_|bandit|cog_|cognition_|atomic_claim)'
+_PREREG_DISPATCH_PATTERN='scripts/dispatch/'
+if [[ "${CHUMP_NO_PREREG:-0}" != "1" ]] && [[ -n "${GAP_ID:-}" ]]; then
+    _prereg_base="${CHUMP_BASE_REF:-${REMOTE}/${BASE_BRANCH}}"
+    _cognition_touched=$(git diff --name-only --diff-filter=ACM "${_prereg_base}...HEAD" 2>/dev/null \
+        | grep -cE "^(${_PREREG_COGNITION_PATTERN}|${_PREREG_DISPATCH_PATTERN})" || echo 0)
+    if [[ "${_cognition_touched:-0}" -gt 0 ]]; then
+        _prereg_doc="docs/eval/preregistered/${GAP_ID}.md"
+        if [[ ! -f "$REPO_ROOT/${_prereg_doc}" ]]; then
+            red "[META-043] PREREG-REQUIRED: commit modifies cognition/routing src but"
+            red "  docs/eval/preregistered/${GAP_ID}.md is missing."
+            info "  Create the file (even a stub with hypothesis + metric) and re-run."
+            info "  Bypass once: CHUMP_NO_PREREG=1 scripts/coord/bot-merge.sh ..."
+            info "  Bypass trailer (required in commit): Prereg-Bypass-Reason: <reason>"
+            printf '{"ts":"%s","kind":"prereg_blocked","gap":"%s","missing":"%s","session":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_ID}" "${_prereg_doc}" "${SESSION_ID:-unknown}" \
+                >> "${REPO_ROOT}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+            exit 1
+        else
+            green "[META-043] prereg doc found: ${_prereg_doc}"
+            printf '{"ts":"%s","kind":"prereg_ok","gap":"%s","doc":"%s","session":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_ID}" "${_prereg_doc}" "${SESSION_ID:-unknown}" \
+                >> "${REPO_ROOT}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+        fi
+    fi
+fi
+
 # ── 5a. INFRA-306: pre-push MERGED check ─────────────────────────────────────
 # Bail BEFORE the force-push if a PR for this branch already MERGED. The
 # 30s window between the start of bot-merge and reaching here is enough for

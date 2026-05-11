@@ -701,6 +701,19 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, command]
 
+  # ── Pre-registered eval gate (META-043) ──────────────────────────────────
+  - kind: prereg_blocked
+    emitter: scripts/coord/bot-merge.sh §4c
+    trigger: commit modifies cognition/routing src but docs/eval/preregistered/<GAP-ID>.md is absent; bot-merge aborts
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, gap, missing, session]
+
+  - kind: prereg_ok
+    emitter: scripts/coord/bot-merge.sh §4c
+    trigger: cognition/routing src changed and preregistered eval doc confirmed present; ship proceeds
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, gap, doc, session]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
