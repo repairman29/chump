@@ -181,7 +181,7 @@ This finding is wrong if: a cross-judge evaluation at n≥50 with the correct ag
 
 ---
 
-**THE ONE BIG THING:** [P1] INFRA-819 — We are failing at research credibility. EVAL-101 — the only systematic measurement of whether the cognition stack (reflections, lessons, neuromodulation) actually improves agent outcomes — ran on the wrong model (Qwen 2.5 14b instead of preregistered claude-sonnet-4), at a third of the required sample size (n=20 vs. required n=50), omitted the confound-control cell (Cell C), used structural scoring only (prohibited by RESEARCH_INTEGRITY.md §6 when LLM judges were preregistered), and documented no deviations in the preregistration. The result was filed as a null result and the gap closed. The cognition stack — reflections, lessons, semantic ranking, neuromodulation — comprises dozens of shipped PRs and thousands of lines of Rust. All of it is currently faith-based. The null result cannot be cited as evidence that the stack fails, and cannot be cited as evidence that it succeeds. The Credible pillar has zero validated findings from this cycle. Every new cognitive-architecture gap filed without re-running the eval continues this compounding deficit.
+**THE ONE BIG THING:** [P1] INFRA-824 — We are failing at research credibility. EVAL-101 — the only systematic measurement of whether the cognition stack (reflections, lessons, neuromodulation) actually improves agent outcomes — ran on the wrong model (Qwen 2.5 14b instead of preregistered claude-sonnet-4), at a third of the required sample size (n=20 vs. required n=50), omitted the confound-control cell (Cell C), used structural scoring only (prohibited by RESEARCH_INTEGRITY.md §6 when LLM judges were preregistered), and documented no deviations in the preregistration. The result was filed as a null result and the gap closed. The cognition stack — reflections, lessons, semantic ranking, neuromodulation — comprises dozens of shipped PRs and thousands of lines of Rust. All of it is currently faith-based. The null result cannot be cited as evidence that the stack fails, and cannot be cited as evidence that it succeeds. The Credible pillar has zero validated findings from this cycle. Every new cognitive-architecture gap filed without re-running the eval continues this compounding deficit.
 
 ---
 
@@ -191,7 +191,7 @@ All five gaps verified via `chump gap list --json` after import (155 total, 61 o
 
 | Gap ID | Pillar | Priority | Effort | Title |
 |---|---|---|---|---|
-| INFRA-819 | CREDIBLE | P1 | m | EVAL-101 protocol deviation — re-run required with correct model/n/controls |
+| INFRA-824 | CREDIBLE | P1 | m | EVAL-101 protocol deviation — re-run required with correct model/n/controls |
 | INFRA-820 | ZERO-WASTE | P1 | s | Pillar starvation — ZERO-WASTE at 1 pickable gap; refill pool |
 | INFRA-821 | RESILIENT | P1 | s | state.db empty on fresh clone — chump gap list returns [] until manual import |
 | INFRA-822 | ZERO-WASTE | P1 | s | 17 open P1/P2 gaps have empty AC — unpickable in practice |

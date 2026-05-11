@@ -1,4 +1,4 @@
-- id: INFRA-819
+- id: INFRA-824
   domain: INFRA
   title: "CREDIBLE: EVAL-101 protocol deviation — ran on wrong model, wrong n, skipped Cell C, no deviation doc; re-run required"
   status: open
