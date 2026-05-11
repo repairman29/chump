@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.subagent-watchdog — INFRA-334: LaunchAgent for monitoring
+  subagent heartbeat events and alerting on silent subagents.
+
+  Runs scripts/ops/subagent-watchdog.sh every 5 minutes (300 seconds).
+  Emits ALERT kind=subagent_silent to ambient.jsonl when a subagent
+  has not heartbeated within SUBAGENT_SILENT_TIMEOUT_S (default 900s).
+
+  INSTALLATION (manual — not installed automatically):
+    1. Edit this file: replace /path/to/Chump with your actual repo path,
+       e.g. /Users/jeff/Projects/Chump
+    2. Copy to ~/Library/LaunchAgents/:
+         cp launchd/com.chump.subagent-watchdog.plist ~/Library/LaunchAgents/
+    3. Load the agent:
+         launchctl load ~/Library/LaunchAgents/com.chump.subagent-watchdog.plist
+    4. Verify it loaded:
+         launchctl list | grep chump.subagent-watchdog
+    5. To run immediately (for testing):
+         launchctl start com.chump.subagent-watchdog
+    6. To unload:
+         launchctl unload ~/Library/LaunchAgents/com.chump.subagent-watchdog.plist
+
+  LOGS:
+    stdout: /path/to/Chump/logs/subagent-watchdog.out.log
+    stderr: /path/to/Chump/logs/subagent-watchdog.err.log
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.subagent-watchdog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/subagent-watchdog.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Run every 5 minutes (300 seconds). -->
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <!-- Guard against rapid restarts if watchdog crashes. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <!-- Do NOT run at load — wait for the first interval to elapse. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/logs/subagent-watchdog.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/logs/subagent-watchdog.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+  </dict>
+</dict>
+</plist>

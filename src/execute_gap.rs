@@ -52,9 +52,11 @@
 //! comment).
 
 use anyhow::{anyhow, Context, Result};
+use tokio_util::sync::CancellationToken;
 
 use crate::agent_factory::build_chump_agent_cli;
 use crate::agent_loop::ChumpAgent;
+use crate::ambient_stream::locate_ambient;
 use crate::model_overlay::{detect_model_family, maybe_overlay_from_env, ModelFamily};
 use crate::plan_mode::{self, PlanOutcome};
 
@@ -326,6 +328,31 @@ fn validate_gap_id(gap_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// INFRA-334: emit a subagent heartbeat to ambient.jsonl.
+/// Writes kind=subagent_heartbeat so the watchdog can detect stalled agents.
+fn emit_subagent_heartbeat(gap_id: &str) {
+    use std::io::Write;
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let ambient =
+        locate_ambient(&cwd).unwrap_or_else(|| cwd.join(".chump-locks").join("ambient.jsonl"));
+    let _ = std::fs::create_dir_all(ambient.parent().unwrap_or(&cwd));
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let session = std::env::var("CHUMP_SESSION_ID")
+        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+        .unwrap_or_default();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"subagent_heartbeat\",\
+         \"gap_id\":\"{gap_id}\",\"agent_id\":\"execute_gap\"}}"
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// Run the agent loop on the dispatched-gap prompt. Used by main.rs's
 /// `--execute-gap` arm. Returns `Ok(reply)` on success.
 pub async fn execute_gap(gap_id: &str) -> Result<String> {
@@ -428,14 +455,39 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
             let agent = build_free_tier_agent()
                 .with_context(|| format!("building free-tier agent for {}", spec.model))?;
 
+            // INFRA-334: background heartbeat task for this provider attempt.
+            let ft_hb_cancel = CancellationToken::new();
+            let ft_hb_handle = {
+                let cancel = ft_hb_cancel.clone();
+                let gid = gap_id.to_string();
+                tokio::spawn(async move {
+                    let interval = std::env::var("CHUMP_SUBAGENT_HEARTBEAT_SECS")
+                        .ok()
+                        .and_then(|s| s.parse::<u64>().ok())
+                        .unwrap_or(300);
+                    loop {
+                        tokio::select! {
+                            _ = cancel.cancelled() => break,
+                            _ = tokio::time::sleep(std::time::Duration::from_secs(interval)) => {
+                                emit_subagent_heartbeat(&gid);
+                            }
+                        }
+                    }
+                })
+            };
+
             match agent.run(&prompt).await {
                 Ok(outcome) => {
+                    ft_hb_cancel.cancel();
+                    let _ = ft_hb_handle.await;
                     free_tier_ship(gap_id, &repo_root)
                         .await
                         .with_context(|| format!("free-tier ship step failed for gap {gap_id}"))?;
                     return Ok(outcome.reply);
                 }
                 Err(e) => {
+                    ft_hb_cancel.cancel();
+                    let _ = ft_hb_handle.await;
                     let e_str = format!("{e:#}");
                     if crate::provider_cascade::should_cascade_on_error_string(&e_str)
                         && offset + 1 < total
@@ -461,10 +513,37 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
 
     let (agent, _ready_session) = build_chump_agent_cli()
         .context("building Chump agent for --execute-gap (provider config? OPENAI_API_BASE?)")?;
+
+    // INFRA-334: background heartbeat task — emits kind=subagent_heartbeat every 300s.
+    let hb_cancel = CancellationToken::new();
+    let hb_handle = {
+        let cancel = hb_cancel.clone();
+        let gid = gap_id.to_string();
+        tokio::spawn(async move {
+            let interval = std::env::var("CHUMP_SUBAGENT_HEARTBEAT_SECS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(300);
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(interval)) => {
+                        emit_subagent_heartbeat(&gid);
+                    }
+                }
+            }
+        })
+    };
+
     let outcome = agent
         .run(&prompt)
         .await
         .with_context(|| format!("agent loop failed for gap {gap_id}"))?;
+
+    // Cancel heartbeat task once agent completes.
+    hb_cancel.cancel();
+    let _ = hb_handle.await;
+
     Ok(outcome.reply)
 }
 
@@ -474,7 +553,33 @@ pub async fn execute_gap_with_agent(agent: &ChumpAgent, gap_id: &str) -> Result<
     validate_gap_id(gap_id)?;
     let repo_root = std::env::current_dir().unwrap_or_default();
     let prompt = build_execute_gap_prompt(gap_id, &repo_root);
+
+    // INFRA-334: background heartbeat task for test-scoped subagents.
+    let hb_cancel = CancellationToken::new();
+    let hb_handle = {
+        let cancel = hb_cancel.clone();
+        let gid = gap_id.to_string();
+        tokio::spawn(async move {
+            let interval = std::env::var("CHUMP_SUBAGENT_HEARTBEAT_SECS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(300);
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => break,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(interval)) => {
+                        emit_subagent_heartbeat(&gid);
+                    }
+                }
+            }
+        })
+    };
+
     let outcome = agent.run(&prompt).await?;
+
+    hb_cancel.cancel();
+    let _ = hb_handle.await;
+
     Ok(outcome.reply)
 }
 
