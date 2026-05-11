@@ -1192,23 +1192,27 @@ Operator or sibling worker can rescue this branch via:
                     >> "$_amb" 2>/dev/null || true
             fi
 
-            # FLEET-043: circuit breaker on consecutive dispatch failures.
-            # After CHUMP_DISPATCH_FAIL_THRESHOLD (default 5) consecutive failures,
-            # worker pauses 30min and emits worker_circuit_open alert.
-            _dispatch_fail_threshold="${CHUMP_DISPATCH_FAIL_THRESHOLD:-5}"
-            if [ "$_dispatch_fail_count" -ge "$_dispatch_fail_threshold" ]; then
-                _circuit_pause_secs="${CHUMP_CIRCUIT_PAUSE_SECS:-1800}"  # 30min default
-                _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
-                mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
-                printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"ALERT","kind":"worker_circuit_open","agent_id":"%s","consecutive_failures":%d,"pause_secs":%d}\n' \
-                    "$_ts" \
-                    "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
-                    "$AGENT_ID" "$AGENT_ID" "$_dispatch_fail_count" "$_circuit_pause_secs" \
-                    >> "$_amb" 2>/dev/null || true
-                log "ALERT kind=worker_circuit_open consecutive_dispatch_failures=$_dispatch_fail_count — pausing ${_circuit_pause_secs}s before next cycle"
-                _dispatch_fail_count=0  # reset after emitting alert
-                sleep "$_circuit_pause_secs"
+            # INFRA-826 / FLEET-043: circuit breaker on consecutive non-ship cycles.
+            # After CHUMP_DISPATCH_FAIL_THRESHOLD (default 3) consecutive wedge/fail/
+            # timeout cycles, worker pauses CHUMP_CIRCUIT_PAUSE_SECS (default 300 = 5min)
+            # and emits kind=worker_circuit_open to ambient.jsonl.
+            # Disable entirely: CHUMP_CIRCUIT_BREAKER=0.
+            if [[ "${CHUMP_CIRCUIT_BREAKER:-1}" != "0" ]]; then
+                _dispatch_fail_threshold="${CHUMP_DISPATCH_FAIL_THRESHOLD:-3}"
+                if [ "$_dispatch_fail_count" -ge "$_dispatch_fail_threshold" ]; then
+                    _circuit_pause_secs="${CHUMP_CIRCUIT_PAUSE_SECS:-300}"  # 5min default
+                    _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                    _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                    mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
+                    printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"ALERT","kind":"worker_circuit_open","agent_id":"%s","consecutive_failures":%d,"pause_secs":%d}\n' \
+                        "$_ts" \
+                        "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
+                        "$AGENT_ID" "$AGENT_ID" "$_dispatch_fail_count" "$_circuit_pause_secs" \
+                        >> "$_amb" 2>/dev/null || true
+                    log "ALERT kind=worker_circuit_open consecutive_dispatch_failures=$_dispatch_fail_count — pausing ${_circuit_pause_secs}s before next cycle"
+                    _dispatch_fail_count=0  # reset after emitting alert
+                    sleep "$_circuit_pause_secs"
+                fi
             fi
 
             # INFRA-483: emit ALERT to ambient.jsonl on wedge so the

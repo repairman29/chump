@@ -917,6 +917,8 @@ jobs:
         run: bash scripts/ci/test-lint-handoff-comment.sh
       - name: review-as-handoff author re-engagement loop (INFRA-771)
         run: bash scripts/ci/test-review-handoff-reengage.sh
+      - name: worker circuit-breaker — threshold=3 pause=5min kill-switch (INFRA-826)
+        run: bash scripts/ci/test-worker-circuit-breaker.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
 
