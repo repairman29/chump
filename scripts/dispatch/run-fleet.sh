@@ -482,6 +482,8 @@ worker_env=(
     "FLEET_INLINE_BRIEFING=$FLEET_INLINE_BRIEFING"
     "CHUMP_LESSONS_AT_SPAWN_N=$CHUMP_LESSONS_AT_SPAWN_N"
     "CHUMP_AMBIENT_INSTALL_SKIP=$CHUMP_AMBIENT_INSTALL_SKIP"
+    # CREDIBLE-037: harness attribution for fleet-dispatcher workers
+    "CHUMP_AGENT_HARNESS=fleet-dispatcher"
     # INFRA-417 API keys — only added when actually set in the launcher
     # env (so we don't pollute panes with empty values that would mask a
     # legitimately-set system-level key).

@@ -2,9 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/repairman29/chump/blob/main/docs/ambient-schema.json",
   "title": "Chump ambient.jsonl event schema",
-  "description": "Schema for every line written to .chump-locks/ambient.jsonl. Validated at emit time by scripts/dev/ambient-emit.sh (INFRA-101). The 2026-04-26 audit found INTENT rows had reordered keys + a nonstandard shape — this schema is the canonical contract going forward. The four base fields (ts, session, worktree, event) are required for every event; per-event-kind extensions are listed below in oneOf.",
+  "description": "Schema for every line written to .chump-locks/ambient.jsonl. Validated at emit time by scripts/dev/ambient-emit.sh (INFRA-101). The 2026-04-26 audit found INTENT rows had reordered keys + a nonstandard shape — this schema is the canonical contract going forward. The five base fields (ts, session, worktree, harness, event) are required for every event; per-event-kind extensions are listed below in oneOf.",
   "type": "object",
-  "required": ["ts", "session", "worktree", "event"],
+  "required": ["ts", "session", "worktree", "harness", "event"],
   "properties": {
     "ts": {
       "type": "string",
@@ -21,6 +21,11 @@
       "type": "string",
       "minLength": 1,
       "description": "Basename of the writing worktree. Same as $(basename $(git rev-parse --show-toplevel)) for the writer."
+    },
+    "harness": {
+      "type": "string",
+      "enum": ["opencode", "opencode-bigpickle", "fleet-dispatcher", "claude-code-ide", "manual", "unknown"],
+      "description": "Agent harness identity (CREDIBLE-037). Set via CHUMP_AGENT_HARNESS env var or --harness flag. Values: opencode / opencode-bigpickle / fleet-dispatcher / claude-code-ide / manual / unknown."
     },
     "event": {
       "type": "string",
