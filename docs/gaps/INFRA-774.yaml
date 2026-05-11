@@ -1,7 +1,0 @@
-- id: INFRA-774
-  domain: INFRA
-  title: "EFFECTIVE: Review-as-Handoff sub-gap 6/6 — end-to-end smoke test. Synthesize a CI failure on a fixture PR (e.g. add a deliberately-stale assert), run chump review --serve, verify reviewer comment posts with valid template, verify author re-engagement applies, verify CI flips green within 15 min, verify all 5 telemetry events emit. CI fast-checks job: scripts/ci/test-review-handoff-smoke.sh. Spec: docs/architecture/REVIEW_AS_HANDOFF.md §10. Depends on: INFRA-768, sub-gaps 1-5."
-  status: open
-  priority: P1
-  effort: s
-

@@ -1,9 +1,0 @@
-- id: PRODUCT-029
-  domain: PRODUCT
-  title: "EFFECTIVE: Discord bot UX overhaul — the primary user-facing interaction surface has no open product gaps and no recent work"
-  status: done
-  priority: P1
-  effort: m
-  closed_date: '2026-05-08'
-  closed_pr: 1332
-

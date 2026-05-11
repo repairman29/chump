@@ -1,9 +1,0 @@
-- id: COG-051
-  domain: COG
-  title: "EFFECTIVE: chump --briefing <ID> should include recent file edits to paths the gap mentions. Today briefing has gap YAML + lessons + ambient events. If a gap acceptance says 'edit src/foo.rs', show the operator's recent edits to src/foo.rs so the agent has architectural context. Currently agents grep blindly to find similar code."
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1290
-
