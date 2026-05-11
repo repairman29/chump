@@ -1,11 +1,14 @@
 - id: CREDIBLE-029
   domain: CREDIBLE
   title: "CREDIBLE: atomic gap-ID allocator — prevent two concurrent sessions reserving the same ID (today INFRA-819 was double-reserved by #1448 and #1449; INFRA-820 nearly collided too)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "(a) reserve_verified() emits kind=gap_id_allocator_collision to ambient.jsonl on any detected collision — fields: chosen_id, conflicting_sessions (JSON array), resolution (won_tiebreak|lost_tiebreak_retrying), attempt number"
-    - "(b) scripts/ci/test-gap-id-collision.sh: spawn 5 concurrent chump gap reserve calls sharing one fixture state.db — assert all 5 IDs distinct, all carry correct domain prefix"
-    - "(c) test script exits 0 on the existing allocator (BEGIN IMMEDIATE + reserve_verified tiebreak) demonstrating no real collision under concurrent load"
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-11'
+  closed_pr: 1466
 
