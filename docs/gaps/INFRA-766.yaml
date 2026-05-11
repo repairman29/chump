@@ -4,4 +4,10 @@
   status: open
   priority: P1
   effort: m
+  acceptance_criteria: |
+    Criterion 1: Every "two-store" pair in the codebase is cataloged (e.g. `.chump-locks/JSON ↔ agent_lease table`, `docs/gaps/ ↔ state.db`, `.env ↔ .env.example`, `Cargo workspace lints ↔ Cargo.toml`, `chump_improvement_targets ↔ reflection JSON`)
+    Criterion 2: For each pair, the canonical store is documented in a design note or inline comment
+    Criterion 3: A daily reconcile job exists that reads the non-canonical store and emits an ALERT with `kind=store_drift` when results differ from the canonical store
+    Criterion 4: The reconcile job is wired into the daemon or a cron equivalent
+    Criterion 5: Test covers a deliberately-introduced drift and confirms ALERT emission
 

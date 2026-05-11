@@ -4,4 +4,9 @@
   status: open
   priority: P2
   effort: m
+  acceptance_criteria: |
+    Criterion 1: All provider-* modules (provider_bandit, provider_cascade, provider_quality, streaming_provider, local_openai, mistralrs_provider) are extracted from main.rs into a `providers/` module directory
+    Criterion 2: main.rs imports from the `providers` module rather than containing the implementations inline
+    Criterion 3: Cargo build and `cargo test` pass with no functional changes
+    Criterion 4: No public API surface change — callers of provider functions continue to work unchanged
 

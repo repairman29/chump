@@ -4,4 +4,11 @@
   status: open
   priority: P1
   effort: m
+  acceptance_criteria: |
+    Criterion 1: `chump review --serve` daemon subscribes to ambient events with `kind=pr_check_fail`
+    Criterion 2: On receiving a PR check failure event, the daemon pulls the PR details, failed-job logs, and diff
+    Criterion 3: The model is called with a template-anchored prompt using cascade routing for cost control
+    Criterion 4: The generated diff is validated via `git apply --check` on a throwaway worktree before posting
+    Criterion 5: A review comment is posted on the PR with the validated diff
+    Criterion 6: The daemon watches the branch for the next push with a 15-minute timeout
 
