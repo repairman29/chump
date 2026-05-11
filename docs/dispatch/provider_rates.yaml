@@ -15,7 +15,7 @@
 #   rpd             — requests per day (0 = unlimited)
 #   tpm             — tokens per minute (0 = unlimited/unknown)
 #   tpd             — tokens per day (0 = unlimited/unknown)
-#   cooldown_s      — default backoff on 429 when no Retry-After header
+#   cooldown_default_s — default backoff on 429 when no Retry-After header
 #   reset_window    — rolling | fixed-minute | fixed-day
 #   retry_after     — does provider send Retry-After header? yes | no | sometimes
 #   notes           — free-form operational notes
@@ -30,13 +30,13 @@ providers:
     model: qwen-3-235b-a22b-instruct-2507
     base_url: https://api.cerebras.ai/v1
     model_class: sonnet
-    privacy: safe
+    privacy_tier: safe
     context_k: 128
     rpm: 30
     rpd: 14400
     tpm: 0
     tpd: 0
-    cooldown_s: 15
+    cooldown_default_s: 15
     reset_window: rolling
     retry_after: yes
     notes: >
@@ -48,13 +48,13 @@ providers:
     model: llama-3.3-70b-versatile
     base_url: https://api.groq.com/openai/v1
     model_class: sonnet
-    privacy: safe
+    privacy_tier: safe
     context_k: 128
     rpm: 30
     rpd: 1000
     tpm: 12000
     tpd: 0
-    cooldown_s: 48
+    cooldown_default_s: 48
     reset_window: rolling
     retry_after: yes
     notes: >
@@ -66,13 +66,13 @@ providers:
     model: meta/llama-3.3-70b-instruct
     base_url: https://integrate.api.nvidia.com/v1
     model_class: sonnet
-    privacy: caution
+    privacy_tier: caution
     context_k: 128
     rpm: 32
     rpd: 5000
     tpm: 0
     tpd: 0
-    cooldown_s: 30
+    cooldown_default_s: 30
     reset_window: rolling
     retry_after: no
     notes: >
@@ -84,13 +84,13 @@ providers:
     model: Qwen/Qwen3-Coder-480B-A35B-Instruct
     base_url: https://api.hyperbolic.xyz/v1
     model_class: sonnet
-    privacy: caution
+    privacy_tier: caution
     context_k: 128
     rpm: 60
     rpd: 2000
     tpm: 0
     tpd: 0
-    cooldown_s: 30
+    cooldown_default_s: 30
     reset_window: rolling
     retry_after: no
     notes: >
@@ -102,13 +102,13 @@ providers:
     model: qwen/qwen3-coder:free
     base_url: https://openrouter.ai/api/v1
     model_class: haiku
-    privacy: caution
+    privacy_tier: caution
     context_k: 128
     rpm: 16
     rpd: 800
     tpm: 0
     tpd: 0
-    cooldown_s: 30
+    cooldown_default_s: 30
     reset_window: rolling
     retry_after: sometimes
     notes: >
@@ -120,13 +120,13 @@ providers:
     model: meta/Llama-3.3-70B-Instruct
     base_url: https://models.github.ai/inference
     model_class: haiku
-    privacy: safe
+    privacy_tier: safe
     context_k: 8
     rpm: 12
     rpd: 120
     tpm: 0
     tpd: 0
-    cooldown_s: 60
+    cooldown_default_s: 60
     reset_window: fixed-day
     retry_after: no
     notes: >
@@ -138,13 +138,13 @@ providers:
     model: gemini-2.0-flash-lite
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
     model_class: haiku
-    privacy: trains
+    privacy_tier: trains
     context_k: 1000
     rpm: 15
     rpd: 1500
     tpm: 1000000
     tpd: 0
-    cooldown_s: 30
+    cooldown_default_s: 30
     reset_window: rolling
     retry_after: no
     notes: >
@@ -157,13 +157,13 @@ providers:
     model: gemini-2.5-flash
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
     model_class: sonnet
-    privacy: trains
+    privacy_tier: trains
     context_k: 1000
     rpm: 10
     rpd: 1500
     tpm: 1000000
     tpd: 0
-    cooldown_s: 30
+    cooldown_default_s: 30
     reset_window: rolling
     retry_after: no
     notes: >
@@ -175,13 +175,13 @@ providers:
     model: gemini-2.5-pro
     base_url: https://generativelanguage.googleapis.com/v1beta/openai
     model_class: opus
-    privacy: trains
+    privacy_tier: trains
     context_k: 2000
     rpm: 5
     rpd: 50
     tpm: 1000000
     tpd: 0
-    cooldown_s: 60
+    cooldown_default_s: 60
     reset_window: rolling
     retry_after: no
     notes: >
@@ -193,13 +193,13 @@ providers:
     model: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free
     base_url: https://api.together.xyz/v1
     model_class: haiku
-    privacy: safe
+    privacy_tier: safe
     context_k: 128
     rpm: 60
     rpd: 2000
     tpm: 0
     tpd: 0
-    cooldown_s: 30
+    cooldown_default_s: 30
     reset_window: rolling
     retry_after: no
     enabled: false

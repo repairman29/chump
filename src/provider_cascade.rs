@@ -19,6 +19,99 @@ use crate::provider_quality;
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
 const MAX_SLOTS: u32 = 10;
 
+// ── INFRA-775: provider_rates.yaml support ────────────────────────────────────
+
+/// One entry from docs/dispatch/provider_rates.yaml.
+#[derive(Debug, serde::Deserialize, Default, Clone)]
+struct ProviderRateEntry {
+    pub provider: String,
+    #[serde(default)]
+    pub rpm: u32,
+    #[serde(default)]
+    pub rpd: u32,
+    #[serde(default)]
+    pub tpm: u64,
+    #[serde(default)]
+    pub cooldown_default_s: u64,
+    #[serde(default)]
+    pub privacy_tier: String,
+    #[serde(default)]
+    pub context_k: Option<u32>,
+    #[serde(default)]
+    pub model_class: Option<String>,
+    // Optional fields (informational, not used by cascade logic)
+    #[serde(default)]
+    pub reset_window: String,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+struct ProviderRatesFile {
+    pub providers: Vec<ProviderRateEntry>,
+}
+
+/// Load docs/dispatch/provider_rates.yaml from the repo root.
+/// Returns an empty table if the file is missing or unparseable.
+fn load_provider_rates() -> Vec<ProviderRateEntry> {
+    let repo_root = crate::repo_path::runtime_base();
+    let path = repo_root.join("docs/dispatch/provider_rates.yaml");
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return vec![];
+    };
+    match serde_yaml::from_str::<ProviderRatesFile>(&contents) {
+        Ok(f) => f.providers,
+        Err(e) => {
+            tracing::warn!("provider_rates.yaml parse error: {e}");
+            vec![]
+        }
+    }
+}
+
+/// Look up a named provider in the rates table (case-insensitive prefix match).
+fn lookup_rates<'a>(rates: &'a [ProviderRateEntry], name: &str) -> Option<&'a ProviderRateEntry> {
+    let lc = name.to_ascii_lowercase();
+    rates.iter().find(|r| {
+        let rn = r.provider.to_ascii_lowercase();
+        rn == lc || lc.starts_with(&rn) || rn.starts_with(&lc)
+    })
+}
+
+/// Print the merged rate table for `chump cascade status`.
+pub fn print_cascade_status() {
+    let rates = load_provider_rates();
+    if rates.is_empty() {
+        println!("(provider_rates.yaml not found or empty — env-only mode)");
+        return;
+    }
+    println!(
+        "{:<22}  {:>6}  {:>6}  {:>12}  {:>16}  {:>11}  {:>12}  {:>12}",
+        "provider",
+        "rpm",
+        "rpd",
+        "tpm",
+        "cooldown_default",
+        "privacy_tier",
+        "context_k",
+        "model_class"
+    );
+    println!("{}", "─".repeat(105));
+    for e in &rates {
+        if e.enabled == Some(false) {
+            continue;
+        }
+        let ctx = e
+            .context_k
+            .map(|k| format!("{}k", k))
+            .unwrap_or_else(|| "?".to_string());
+        let mc = e.model_class.as_deref().unwrap_or("?");
+        println!(
+            "{:<22}  {:>6}  {:>6}  {:>12}  {:>13}s  {:>11}  {:>12}  {:>12}",
+            e.provider, e.rpm, e.rpd, e.tpm, e.cooldown_default_s, e.privacy_tier, ctx, mc
+        );
+    }
+}
+
 /// INFRA-352: emit a structured ambient.jsonl event when the cascade has
 /// exhausted every slot it could try and is about to return Err to the caller.
 /// Best-effort: never breaks the call. Pattern mirrors `adversary::emit_ambient_alert`.
@@ -194,6 +287,8 @@ pub struct ProviderSlot {
     pub day_start: Mutex<Instant>,
     /// When set, skip this slot until the cooldown expires (429 backoff).
     pub cooldown_until: Mutex<Option<Instant>>,
+    /// INFRA-775: per-slot default 429 cooldown (loaded from provider_rates.yaml, env override).
+    pub cooldown_default_s: u64,
 }
 
 fn within_rate_limit(slot: &ProviderSlot) -> bool {
@@ -308,7 +403,9 @@ pub struct ProviderCascade {
 
 impl ProviderCascade {
     /// Load slots from env. Slot 0 from OPENAI_*; slots 1..=3 from CHUMP_PROVIDER_{N}_*.
+    /// INFRA-775: merges with docs/dispatch/provider_rates.yaml (env vars override YAML).
     pub fn from_env() -> Self {
+        let yaml_rates = load_provider_rates();
         let mut slots: Vec<ProviderSlot> = Vec::new();
 
         if let Ok(base) = std::env::var("OPENAI_API_BASE") {
@@ -322,6 +419,7 @@ impl ProviderCascade {
                     .filter(|s| !s.is_empty());
                 let provider =
                     LocalOpenAIProvider::with_fallback(base.clone(), fallback, api_key, model);
+                let yaml_local = lookup_rates(&yaml_rates, "local");
                 slots.push(ProviderSlot {
                     name: "local".to_string(),
                     base_url: base,
@@ -329,8 +427,8 @@ impl ProviderCascade {
                     priority: 0,
                     tier: ProviderTier::Local,
                     privacy: PrivacyTier::Safe,
-                    context_k: None,
-                    model_class: None,
+                    context_k: yaml_local.and_then(|y| y.context_k),
+                    model_class: yaml_local.and_then(|y| y.model_class.clone()),
                     rpm_limit: 0,
                     calls_this_minute: AtomicU32::new(0),
                     minute_start: Mutex::new(Instant::now()),
@@ -338,6 +436,9 @@ impl ProviderCascade {
                     calls_today: AtomicU32::new(0),
                     day_start: Mutex::new(Instant::now()),
                     cooldown_until: Mutex::new(None),
+                    cooldown_default_s: yaml_local
+                        .map(|y| y.cooldown_default_s)
+                        .unwrap_or(DEFAULT_429_COOLDOWN_S),
                 });
             }
         }
@@ -357,6 +458,10 @@ impl ProviderCascade {
                 .unwrap_or_else(|_| "gpt-4".to_string());
             let name = std::env::var(format!("CHUMP_PROVIDER_{}_NAME", n))
                 .unwrap_or_else(|_| format!("slot_{}", n));
+
+            // INFRA-775: look up YAML defaults for this named provider; env overrides.
+            let yaml_entry = lookup_rates(&yaml_rates, &name);
+
             let priority = std::env::var(format!("CHUMP_PROVIDER_{}_PRIORITY", n))
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -364,21 +469,36 @@ impl ProviderCascade {
             let rpm = std::env::var(format!("CHUMP_PROVIDER_{}_RPM", n))
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(30);
+                .unwrap_or_else(|| yaml_entry.map(|y| y.rpm).unwrap_or(30));
             let rpd = std::env::var(format!("CHUMP_PROVIDER_{}_RPD", n))
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(0);
+                .unwrap_or_else(|| yaml_entry.map(|y| y.rpd).unwrap_or(0));
             let privacy = std::env::var(format!("CHUMP_PROVIDER_{}_PRIVACY", n))
                 .map(|s| parse_privacy_tier(&s))
-                .unwrap_or(PrivacyTier::Safe);
+                .unwrap_or_else(|_| {
+                    yaml_entry
+                        .map(|y| parse_privacy_tier(&y.privacy_tier))
+                        .unwrap_or(PrivacyTier::Safe)
+                });
             let context_k = std::env::var(format!("CHUMP_PROVIDER_{}_CONTEXT_K", n))
                 .ok()
-                .and_then(|v| v.trim().parse::<u32>().ok());
+                .and_then(|v| v.trim().parse::<u32>().ok())
+                .or_else(|| yaml_entry.and_then(|y| y.context_k));
             let model_class = std::env::var(format!("CHUMP_PROVIDER_{}_MODEL_CLASS", n))
                 .ok()
                 .filter(|s| !s.is_empty())
-                .map(|s| s.trim().to_lowercase());
+                .map(|s| s.trim().to_lowercase())
+                .or_else(|| yaml_entry.and_then(|y| y.model_class.clone()));
+            let cooldown_default_s = std::env::var(format!("CHUMP_PROVIDER_{}_COOLDOWN_S", n))
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or_else(|| {
+                    yaml_entry
+                        .map(|y| y.cooldown_default_s)
+                        .filter(|&c| c > 0)
+                        .unwrap_or(DEFAULT_429_COOLDOWN_S)
+                });
 
             let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
             slots.push(ProviderSlot {
@@ -397,6 +517,7 @@ impl ProviderCascade {
                 calls_today: AtomicU32::new(0),
                 day_start: Mutex::new(Instant::now()),
                 cooldown_until: Mutex::new(None),
+                cooldown_default_s,
             });
         }
 
@@ -1188,7 +1309,7 @@ impl Provider for ProviderCascade {
                             || e_str.to_ascii_lowercase().contains("rate limit");
                         if is_rate_limit {
                             let cooldown_s =
-                                parse_retry_after_secs(&e_str).unwrap_or(DEFAULT_429_COOLDOWN_S);
+                                parse_retry_after_secs(&e_str).unwrap_or(slot.cooldown_default_s);
                             set_cooldown(slot, Duration::from_secs(cooldown_s));
                             tracing::info!(
                                 target: "chump::provider_cascade",
@@ -1671,6 +1792,7 @@ mod tests {
                 calls_today: AtomicU32::new(7),
                 day_start: Mutex::new(Instant::now()),
                 cooldown_until: Mutex::new(None),
+                cooldown_default_s: DEFAULT_429_COOLDOWN_S,
             },
             ProviderSlot {
                 name: "test_slot_b".to_string(),
@@ -1693,6 +1815,7 @@ mod tests {
                 calls_today: AtomicU32::new(50),
                 day_start: Mutex::new(Instant::now()),
                 cooldown_until: Mutex::new(None),
+                cooldown_default_s: DEFAULT_429_COOLDOWN_S,
             },
         ];
 
@@ -2252,6 +2375,7 @@ mod tests {
             calls_today: AtomicU32::new(calls_today),
             day_start: Mutex::new(Instant::now()),
             cooldown_until: Mutex::new(None),
+            cooldown_default_s: DEFAULT_429_COOLDOWN_S,
             model_class: None,
         }
     }

@@ -1026,6 +1026,14 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump cascade status` (INFRA-775) — merged rate table from provider_rates.yaml + env.
+    if args.get(1).map(String::as_str) == Some("cascade")
+        && args.get(2).map(String::as_str) == Some("status")
+    {
+        provider_cascade::print_cascade_status();
+        return Ok(());
+    }
+
     // `chump cascade stats [--json]` (INFRA-269) — per-slot cascade traffic
     // table from chump_provider_quality. Companion to the
     // 40-cascade-consumption-report.sh overnight script: this is the
