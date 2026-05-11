@@ -927,23 +927,12 @@ if [[ "$BEHIND" -gt 0 && "$_skip_rebase" == "0" ]]; then
     # Re-check gap status after rebase: main may have merged the gap while we rebased.
     if [[ ${#GAP_IDS[@]} -gt 0 && $DRY_RUN -eq 0 ]]; then
         info "Re-checking gaps after rebase …"
-        # INFRA-344: skip the post-rebase preflight for filing-style PRs that introduce
-        # the gap YAML as a new file. For such PRs the gap is by definition not yet on
-        # origin/main (this PR ships it). Preflight would misread "not found on main" as
-        # "completed on main" and abort — root cause of INFRA-307 and INFRA-340.
-        _new_gap_yaml_in_pr=0
-        for _gid in "${GAP_IDS[@]}"; do
-            if git diff --name-only --diff-filter=A "${REMOTE}/${BASE_BRANCH}..HEAD" 2>/dev/null \
-                    | grep -qx "docs/gaps/${_gid}.yaml"; then
-                info "INFRA-344: docs/gaps/${_gid}.yaml is new in this PR (filing-style) — skipping post-rebase preflight."
-                _new_gap_yaml_in_pr=1
-            fi
-        done
-        if [[ "$_new_gap_yaml_in_pr" == "0" ]]; then
-            if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
-                red "Gap was completed on main while we rebased — nothing left to push."
-                exit 1
-            fi
+        # INFRA-509: INFRA-344 filing-style PR detection removed — post-INFRA-498,
+        # gap YAMLs are no longer added as new files in PRs; state.db is canonical.
+        # Always run preflight here so we catch gaps completed on main while rebasing.
+        if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
+            red "Gap was completed on main while we rebased — nothing left to push."
+            exit 1
         fi
     fi
 else
@@ -1174,8 +1163,10 @@ if [[ "${CHUMP_DECOMP_HINT:-1}" != "0" ]]; then
     # bumps, mass formatting) shouldn't trigger because they're already atomic
     # by intent. Detect by checking if >80% of touched files are in known
     # codemod paths.
+    # INFRA-509: dropped docs/gaps/ from codemod pattern — post-INFRA-498 PRs
+    # no longer bulk-add gap YAMLs; docs/gaps/ changes should trigger the hint.
     DECOMP_CODEMOD="$(git diff --name-only --diff-filter=AM "$DECOMP_BASE...HEAD" 2>/dev/null \
-                     | grep -cE '^(docs/gaps/|\.chump/state\.sql|Cargo\.lock|book/src/)' || echo 0)"
+                     | grep -cE '^(\.chump/state\.sql|Cargo\.lock|book/src/)' || echo 0)"
     DECOMP_CODEMOD_RATIO=0
     if [[ "$DECOMP_FILES" -gt 0 ]]; then
         DECOMP_CODEMOD_RATIO=$(( DECOMP_CODEMOD * 100 / DECOMP_FILES ))
@@ -1458,51 +1449,18 @@ if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP
             _autoclose_err=$(cat "$_tmpship")
             rm -f "$_tmpship"
             if [[ $_autoclose_rc -eq 0 ]]; then
-                # INFRA-262: do NOT regenerate / stage .chump/state.sql here.
-                # Every parallel auto-close used to write .chump/state.sql, and
-                # that single hot file caused 6+ rebase-conflict cascades in
-                # the 2026-05-02 fleet session (every sibling PR's auto-close
-                # commit conflicted with this one's). state.sql is a fully
-                # regenerable artifact from .chump/state.db (canonical SQLite
-                # store), and .github/workflows/regenerate-gaps-yaml.yml keeps
-                # it in sync on main via merge_group anyway. Reviewers see
-                # gap deltas in the per-file docs/gaps/<ID>.yaml diff, not
-                # state.sql. Removing it from the auto-close commit kills the
-                # cascade entirely.
-                #
-                # Stage only the files we expect this command to have touched.
-                # If nothing changed (e.g. gap already done), skip the commit.
-                # INFRA-226: post-INFRA-188-cutover the monolithic docs/gaps.yaml
-                # may not exist anymore — gaps live in docs/gaps/<ID>.yaml.
-                # Stat both paths so the auto-close commit picks up whichever
-                # mirror chump gap ship --update-yaml wrote into. Conditional
-                # `git add` calls avoid the `pathspec did not match any files`
-                # fatal that previously aborted bot-merge BEFORE auto-merge
-                # arming, leaving every post-cutover PR un-armed (PR #759 etc).
-                _autoclose_changed=$(git status --porcelain docs/gaps.yaml docs/gaps/ 2>/dev/null || echo "")
-                if [[ -n "$_autoclose_changed" ]]; then
-                    [[ -f docs/gaps.yaml ]] && git add docs/gaps.yaml
-                    [[ -d docs/gaps ]]      && git add docs/gaps/
-                    git commit -m "chore(close): auto-close $_gid via PR #$_autoclose_target_pr (INFRA-154)" \
-                               --no-verify >/dev/null 2>&1 || {
-                        yellow "Auto-close commit failed for $_gid — leaving the PR as-is"
-                        stage_done
-                        continue
-                    }
-                    if ! run_timed_hb "git push (auto-close)" 120 git push origin "$BRANCH"; then
-                        yellow "Auto-close push failed for $_gid — the close commit is local only"
-                    else
-                        green "Auto-closed $_gid (closed_pr=$_autoclose_target_pr) — squashed atomically by merge queue"
-                        # INFRA-192: forward-chain notifier. When a gap closes,
-                        # scan open gaps for `depends_on` entries containing
-                        # this ID; emit a `gap_unblocked` ambient event for
-                        # each downstream so sibling agents can pick them up
-                        # immediately (instead of via manual queue-scan or
-                        # cycle-by-cycle Cold Water sweep).
-                        # Best-effort: never blocks the close path.
-                        if command -v chump >/dev/null 2>&1 \
-                            && [[ -x scripts/coord/broadcast.sh ]]; then
-                            _unblocked=$(chump gap list --status open --json 2>/dev/null \
+                # INFRA-509: removed docs/gaps.yaml / docs/gaps/ git-add block.
+                # Post-INFRA-498 state.db is canonical; chump gap ship updates it
+                # in-place — no YAML files are written, so nothing needs staging.
+                # The git commit + push that followed were also dead (nothing staged).
+                green "Auto-closed $_gid (closed_pr=$_autoclose_target_pr) — squashed atomically by merge queue"
+                # INFRA-192: forward-chain notifier. When a gap closes, scan open
+                # gaps for `depends_on` containing this ID; emit gap_unblocked so
+                # sibling agents can pick up downstream immediately.
+                # Best-effort: never blocks the close path.
+                if command -v chump >/dev/null 2>&1 \
+                    && [[ -x scripts/coord/broadcast.sh ]]; then
+                    _unblocked=$(chump gap list --status open --json 2>/dev/null \
                                 | python3 -c "
 import json, sys
 gid = '$_gid'
@@ -1530,10 +1488,6 @@ for g in data:
                                 green "Forward-chain (INFRA-192): $_gid unblocked ${_unblocked_count} downstream gap(s); broadcast to siblings"
                             fi
                         fi
-                    fi
-                else
-                    info "Auto-close: $_gid produced no diff (likely already status=done)"
-                fi
             else
                 # INFRA-678: gap ship failure is fatal — abort before auto-merge arm.
                 # Previously this was a warning-only path, which let ghost gaps slip
