@@ -121,6 +121,18 @@ events:
     trigger: starvation threshold hit, worker exits cleanly
     consumers: [fleet-brief]
 
+  - kind: worker_wedge_detected
+    emitter: scripts/dispatch/worker.sh (INFRA-823)
+    trigger: claude -p produced near-empty log after timeout (rc=124 or rc=0 AND log < 100B)
+    consumers: [fleet-brief, watchdog]
+    fields_required: [agent_id, gap_id, rc, cycle_log_size, wedge_count]
+
+  - kind: fleet_wedge_storm
+    emitter: scripts/dispatch/worker.sh (INFRA-823)
+    trigger: N wedge events in rolling 1h window (CHUMP_WEDGE_STORM_THRESHOLD, default 5)
+    consumers: [fleet-brief, watchdog]
+    fields_required: [agent_id, recent_wedges, threshold, window_h]
+
   # ── Auth ───────────────────────────────────────────────────────────────────
   - kind: fleet_auth_storm
     emitter: scripts/dispatch/worker.sh
