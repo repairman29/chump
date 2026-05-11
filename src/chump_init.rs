@@ -579,6 +579,7 @@ fn open_browser(url: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn from_argv_empty_uses_defaults() {
@@ -743,7 +744,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
+    // INFRA-825 follow-up: these two tests mutate the FLEET_MODEL env var
+    // which is process-global, so running them in parallel races. The
+    // failure mode: from_env sets opus, default_no_interactive removes it,
+    // both call resolve_fleet_model() and assert distinct values. Cargo's
+    // default parallel test runner caused sporadic CI failures on PR #1474.
+    // #[serial] forces sequential execution across these env-touching tests.
     #[test]
+    #[serial]
     fn resolve_fleet_model_from_env() {
         std::env::set_var("FLEET_MODEL", "opus");
         let m = resolve_fleet_model(true).unwrap();
@@ -752,6 +760,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn resolve_fleet_model_default_no_interactive() {
         std::env::remove_var("FLEET_MODEL");
         let m = resolve_fleet_model(true).unwrap();
