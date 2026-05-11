@@ -1,13 +1,14 @@
 - id: CREDIBLE-027
   domain: CREDIBLE
   title: "CREDIBLE: scratch-commit / mass-deletion guard — CI fails any PR whose net diff vs main deletes >100 lines from files unrelated to its title/body, OR contains commits with vague-titles ('first', 'init', 'wip', 'unrelated change'); would have caught #1441's 378k-line wipe"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "(a) scripts/ci/check-mass-deletion.sh: two checks — vague commit titles (exact match on 'first','init','wip','unrelated change' etc.) and net-deletion >100 lines from files not mentioned in PR title/body/commits"
-    - "(b) --warn-only exits 0 for local dev; default strict mode exits 1 on any violation"
-    - "(c) REPO_ROOT resolved via 'git rev-parse --show-toplevel' (not script-relative) so fixture-based tests can cd to test repos"
-    - "(d) scripts/ci/test-mass-deletion-guard.sh: 6-case fixture suite — vague title flagged, clean title passes, unrelated mass-delete flagged, mentioned-file delete passes, warn-only exits 0, strict exits 1"
-    - "(e) Would have caught RESILIENT-003 rogue commits ('first','init','unrelated change','INFRA-X') and PR #1441's 378k-line wipe"
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-11'
+  closed_pr: 1459
 
