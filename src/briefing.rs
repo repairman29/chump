@@ -121,6 +121,14 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             .ok()
             .and_then(|s| parse_gap(&s, &gap_id))
             .or_else(|| {
+                // INFRA-689: closed-gap archive (docs/gaps/closed/<ID>.yaml).
+                // Allows chump --briefing to surface lessons from shipped gaps.
+                let closed_path = root.join("docs/gaps/closed").join(format!("{gap_id}.yaml"));
+                fs::read_to_string(&closed_path)
+                    .ok()
+                    .and_then(|s| parse_gap(&s, &gap_id))
+            })
+            .or_else(|| {
                 // Fallback: legacy monolithic gaps.yaml (pre-INFRA-188 layout).
                 let gaps_path = root.join("docs/gaps.yaml");
                 fs::read_to_string(&gaps_path)
