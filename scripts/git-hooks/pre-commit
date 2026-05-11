@@ -1060,6 +1060,134 @@ PYEOF_CLOSED_PR
 fi
 
 # ------------------------------------------------------------------
+# 3c. Test-lag guard (META-032) — reject status:done on gaps whose
+#     acceptance_criteria contain 'test', 'asserts', or 'verifies' when
+#     no scripts/ci/*.sh file references the gap ID.
+#     Bypass: CHUMP_TEST_LAG_CHECK=0 with a Obs-Bypass-Reason: trailer.
+# ------------------------------------------------------------------
+if [ "${CHUMP_TEST_LAG_CHECK:-1}" != "0" ]; then
+    if git diff --cached --name-only --diff-filter=ACM | grep -qE '^docs/gaps(\.yaml|/[^/]+\.yaml)$'; then
+        _test_lag_offenders=$(python3 - <<'PYEOF_TEST_LAG'
+import re, subprocess, sys, os
+
+KEYWORDS = ("test", "asserts", "verifies", "verify")
+
+def staged_text(path):
+    try:
+        return subprocess.check_output(
+            ["git", "show", f":0:{path}"], stderr=subprocess.DEVNULL
+        ).decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+def base_status(path):
+    try:
+        txt = subprocess.check_output(
+            ["git", "show", f"HEAD:{path}"], stderr=subprocess.DEVNULL
+        ).decode("utf-8", errors="replace")
+        m = re.search(r"^\s*status:\s*(\S+)", txt, re.MULTILINE)
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
+
+def parse_gaps(text):
+    """Return {gap_id: {status, acs: [str]}} from a YAML blob."""
+    gaps = {}
+    cur_id = None
+    in_acs = False
+    for line in text.splitlines():
+        id_m = re.match(r"^-?\s*id:\s*([A-Z][A-Z0-9_-]+)", line)
+        if id_m:
+            cur_id = id_m.group(1)
+            gaps[cur_id] = {"status": "", "acs": []}
+            in_acs = False
+            continue
+        if cur_id is None:
+            continue
+        st = re.match(r"^\s+status:\s*(\S+)", line)
+        if st:
+            gaps[cur_id]["status"] = st.group(1)
+            in_acs = False
+            continue
+        if re.match(r"^\s+acceptance_criteria\s*:", line):
+            in_acs = True
+            continue
+        if in_acs:
+            # New top-level key → end of ACs
+            if re.match(r"^\s+[a-z_]+\s*:", line) and not line.strip().startswith("-"):
+                in_acs = False
+                continue
+            # Extract string values from list items (handles both "str" and ["str"] forms)
+            for s in re.findall(r'"([^"]+)"', line):
+                gaps[cur_id]["acs"].append(s)
+    return gaps
+
+staged_paths = subprocess.check_output(
+    ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+    stderr=subprocess.DEVNULL
+).decode().splitlines()
+gap_paths = [p for p in staged_paths
+             if re.match(r"^docs/gaps(/[^/]+\.yaml|\.yaml)$", p)]
+
+repo_root = subprocess.check_output(
+    ["git", "rev-parse", "--show-toplevel"], stderr=subprocess.DEVNULL
+).decode().strip()
+ci_dir = os.path.join(repo_root, "scripts", "ci")
+
+offenders = []
+for path in gap_paths:
+    txt = staged_text(path)
+    if not txt:
+        continue
+    gaps = parse_gaps(txt)
+    for gid, info in gaps.items():
+        if info["status"] != "done":
+            continue
+        # Only flag newly-done (not already done on HEAD)
+        if base_status(path) == "done":
+            continue
+        # Is any AC test-checkable?
+        all_acs = " ".join(info["acs"]).lower()
+        if not any(kw in all_acs for kw in KEYWORDS):
+            continue
+        # Is there a scripts/ci file referencing this gap?
+        gap_id_lower = gid.lower().replace("_", "-")
+        found = False
+        if os.path.isdir(ci_dir):
+            for fname in os.listdir(ci_dir):
+                if not fname.endswith(".sh"):
+                    continue
+                # Filename match (e.g., test-meta-032-*.sh or test-*-meta-032.sh)
+                if gap_id_lower in fname.lower():
+                    found = True
+                    break
+                # Content match — grep for the gap ID string
+                fpath = os.path.join(ci_dir, fname)
+                try:
+                    with open(fpath, "r", errors="ignore") as f:
+                        if gid in f.read():
+                            found = True
+                            break
+                except Exception:
+                    pass
+        if not found:
+            offenders.append(gid)
+
+print("\n".join(offenders))
+PYEOF_TEST_LAG
+)
+        if [ -n "$_test_lag_offenders" ]; then
+            echo "[pre-commit] TEST-LAG (META-032) — gap(s) closing without a CI test that covers test-checkable ACs:" >&2
+            echo "$_test_lag_offenders" | sed 's/^/  /' >&2
+            echo "" >&2
+            echo "[pre-commit] Add scripts/ci/test-<gap-id>.sh that references the gap ID, then re-commit." >&2
+            echo "[pre-commit] Bypass (rare): CHUMP_TEST_LAG_CHECK=0 git commit ... with Test-Lag-Bypass: <reason> trailer" >&2
+            exit 1
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 3b. Raw-YAML-edit guard (INFRA-094 / INFRA-200) — REMOVED by INFRA-499.
 #
 # The guard caught hand-edits to docs/gaps/<ID>.yaml that bypassed the
