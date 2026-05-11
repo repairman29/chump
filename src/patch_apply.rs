@@ -226,6 +226,93 @@ pub fn apply_unified_diff(old: &str, diff: &str) -> Result<String, PatchApplyErr
     apply_patch_strict(old, &p)
 }
 
+/// Fuzzy patch matching: tries strict first, then falls back to whitespace-tolerant
+/// and context-drift-tolerant matching. Use when the model generates "almost right" diffs.
+pub fn apply_unified_diff_fuzzy(old: &str, diff: &str) -> Result<String, PatchApplyError> {
+    let p = parse_single_file_patch(diff)?;
+    apply_patch_strict(old, &p).or_else(|_strict_err| apply_patch_fuzzy(old, &p))
+}
+
+/// Apply with fuzzy matching: trims whitespace before comparing context/remove lines,
+/// and allows ±3 lines of context drift when a line doesn't match at the expected position.
+fn apply_patch_fuzzy<'a>(old: &str, patch: &Patch<'a>) -> Result<String, PatchApplyError> {
+    let old_lines: Vec<&str> = old.lines().collect();
+    let mut out: Vec<String> = Vec::new();
+    let mut idx: usize = 0;
+    let context_drift: usize = 3;
+
+    for (hunk_index, hunk) in patch.hunks.iter().enumerate() {
+        let start_line = hunk.old_range.start as usize;
+        if start_line < 1 {
+            return Err(PatchApplyError::InvalidHunk {
+                message: format!(
+                    "hunk {}: invalid old_range.start {}",
+                    hunk_index, hunk.old_range.start
+                ),
+            });
+        }
+        let start_idx = start_line - 1;
+        while idx < start_idx {
+            if idx >= old_lines.len() {
+                return Err(PatchApplyError::ContextMismatch {
+                    hunk_index,
+                    old_line_1based: idx + 1,
+                    expected: "(more lines expected before this hunk)".to_string(),
+                    actual: None,
+                });
+            }
+            out.push(old_lines[idx].to_string());
+            idx += 1;
+        }
+        for line in &hunk.lines {
+            match line {
+                Line::Context(s) | Line::Remove(s) => {
+                    let trimmed = s.trim();
+                    let mut matched = false;
+                    for offset in 0..=context_drift {
+                        let candidate_idx = idx + offset;
+                        if candidate_idx < old_lines.len()
+                            && old_lines[candidate_idx].trim() == trimmed
+                        {
+                            for j in 0..offset {
+                                out.push(old_lines[idx + j].to_string());
+                            }
+                            idx = candidate_idx + 1;
+                            if let Line::Remove(_) = line {
+                            } else {
+                                out.push((*s).to_string());
+                            }
+                            matched = true;
+                            break;
+                        }
+                    }
+                    if !matched {
+                        return Err(PatchApplyError::ContextMismatch {
+                            hunk_index,
+                            old_line_1based: idx + 1,
+                            expected: (*s).to_string(),
+                            actual: old_lines.get(idx).map(|l| l.to_string()),
+                        });
+                    }
+                }
+                Line::Add(s) => {
+                    out.push((*s).to_string());
+                }
+            }
+        }
+    }
+    while idx < old_lines.len() {
+        out.push(old_lines[idx].to_string());
+        idx += 1;
+    }
+
+    let mut joined = out.join("\n");
+    if patch.end_newline {
+        joined.push('\n');
+    }
+    Ok(joined)
+}
+
 /// First old-file line number (1-based) implicated by the diff, for snippets.
 pub fn first_target_line_1based(diff: &str) -> Option<u64> {
     if let Ok(p) = parse_single_file_patch(diff) {
