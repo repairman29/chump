@@ -72,77 +72,28 @@ test.describe('PWA shell', () => {
     await page.goto('/');
     await expect(page.locator('#msg-input')).toBeVisible();
     await expect(page.locator('#send-btn')).toBeVisible();
-    await expect(page.locator('#new-chat-btn')).toBeVisible();
   });
 
-  test('ui_selftest=1 reports pass (SSE parser)', async ({ page }) => {
-    await page.goto('/?ui_selftest=1');
-    await expect(page.locator('#toast')).toContainText(/ui_selftest=1: all passed/i, {
-      timeout: 20_000,
-    });
-  });
-
-  test('settings: theme light then dark', async ({ page }) => {
+  test('navigate between views via sidebar', async ({ page }) => {
     await page.goto('/');
-    // Substring "Settings" would also match "Open Settings" on the PWA setup banner.
-    const settingsBtn = page.locator('#settings-btn');
-    await settingsBtn.scrollIntoViewIfNeeded();
-    await settingsBtn.click();
-    await expect(page.locator('#settings-modal')).toBeVisible();
-    await page.locator('#settings-theme').selectOption('light');
-    // The settings modal grew tall enough that #settings-save lands past the
-    // viewport on Playwright's default (1280×720) and `scrollIntoViewIfNeeded`
-    // doesn't reach into the modal's internal scroll container. Even
-    // `click({ force: true })` still enforces the in-viewport check. The
-    // button IS visible+enabled+stable; only its geometry is outside the
-    // viewport. Use `dispatchEvent('click')` which fires the JS event handler
-    // directly with no geometry requirements — the click handler doesn't
-    // care where the button is rendered. Proper UX fix would be a sticky
-    // footer for the modal — out of scope here.
-    const saveBtn = page.locator('#settings-save');
-    await saveBtn.dispatchEvent('click');
-    await expect(page.locator('#settings-modal')).not.toBeVisible();
-    await expect(page.locator('body')).toHaveClass(/theme-light/);
-    await settingsBtn.scrollIntoViewIfNeeded();
-    await settingsBtn.click();
-    await page.locator('#settings-theme').selectOption('dark');
-    await saveBtn.dispatchEvent('click');
-    await expect(page.locator('body')).not.toHaveClass(/theme-light/);
+    await expect(page.locator('#msg-input')).toBeVisible();
+    await page.locator('#settings-btn').click();
+    await expect(page.locator('chump-view-settings')).toBeVisible();
+    await page.locator('[data-view="tasks"]').click();
+    await expect(page.locator('chump-view-tasks')).toBeVisible();
   });
 
-  test('sidecar: open, Tasks tab, Mind tab', async ({ page }) => {
-    // Renamed from "Providers tab" — the dedicated providers tab was
-    // consolidated into the cognitive "Mind" tab (which shows provider
-    // info alongside neuromodulation, belief state, etc.). The PWA HTML
-    // no longer has data-tab="providers" or #sidecar-providers; "mind"
-    // is the analogous test target.
+  test('settings view shows v2 shell info', async ({ page }) => {
     await page.goto('/');
-    await page.locator('#sidecar-toggle').click();
-    await expect(page.locator('body')).toHaveClass(/sidecar-open/);
-    await page.locator('button[data-tab="tasks"]').click();
-    await expect(page.locator('#new-task-btn')).toBeVisible();
-    await page.locator('button[data-tab="mind"]').click();
-    // Active class lands on the tab button itself when selected.
-    await expect(page.locator('button[data-tab="mind"]')).toHaveClass(/active/);
+    await page.locator('#settings-btn').click();
+    await expect(page.locator('chump-view-settings')).toBeVisible();
+    await expect(page.locator('chump-view-settings')).toContainText('v2 shell');
   });
 
-  test('sessions drawer toggle', async ({ page }) => {
+  test('sessions toggle activates chat view', async ({ page }) => {
     await page.goto('/');
     await page.locator('#sessions-toggle').click();
-    await expect(page.locator('body')).toHaveClass(/sessions-open/);
-    await expect(page.locator('#sessions-search')).toBeAttached();
-  });
-
-  test('attachment chip after choosing a .txt file', async ({ page }) => {
-    await page.goto('/');
-    await page.locator('#file-input').setInputFiles({
-      name: 'e2e-attach.txt',
-      mimeType: 'text/plain',
-      buffer: Buffer.from('hello e2e\n'),
-    });
-    await expect(page.locator('#attachment-chips .attachment-chip')).toContainText('e2e-attach.txt');
-    await page.locator('#attachment-chips .chip-remove').first().click();
-    await expect(page.locator('#attachment-chips .attachment-chip')).toHaveCount(0);
+    await expect(page.locator('[data-view="chat"]')).toHaveAttribute('aria-current', 'page');
   });
 });
 
@@ -160,20 +111,12 @@ test.describe('PWA mobile viewport', () => {
     expect(sendBox && sendBox.height).toBeGreaterThanOrEqual(40);
   });
 
-  test('sessions toggle and drawer search', async ({ page }) => {
+  test('nav items accessible in mobile viewport', async ({ page }) => {
     await page.goto('/');
-    const toggleBox = await page.locator('#sessions-toggle').boundingBox();
-    expect(toggleBox && toggleBox.width).toBeGreaterThanOrEqual(40);
-    await page.locator('#sessions-toggle').click();
-    await expect(page.locator('body')).toHaveClass(/sessions-open/);
-    await expect(page.locator('#sessions-search')).toBeVisible();
-  });
-
-  test('settings: quick setup section visible in browser shell', async ({ page }) => {
-    await page.goto('/');
+    await expect(page.locator('[data-view="chat"]')).toBeVisible();
+    await expect(page.locator('[data-view="settings"]')).toBeVisible();
     await page.locator('#settings-btn').click();
-    await expect(page.locator('#settings-onboarding-section')).toBeVisible();
-    await expect(page.locator('#settings-onboarding-section')).toContainText('Quick setup');
+    await expect(page.locator('chump-view-settings')).toBeVisible();
   });
 });
 
@@ -190,7 +133,7 @@ test.describe('Chat /task path (tolerates slow local Ollama)', () => {
     await page.goto('/');
     await page.locator('#msg-input').fill(`/task ${title}`);
     await page.locator('#send-btn').click();
-    const bubbles = page.locator('.message.assistant .bubble');
+    const bubbles = page.locator('chump-chat').locator('.msg.assistant .bubble');
     await expect(bubbles.last()).toContainText('Created task', { timeout: 300_000 });
     await expect(bubbles.last()).toContainText(title);
   });
@@ -199,13 +142,12 @@ test.describe('Chat /task path (tolerates slow local Ollama)', () => {
     await page.goto('/');
     await page.locator('#msg-input').fill(`/task nt-${Date.now()}`);
     await page.locator('#send-btn').click();
-    await expect(page.locator('#chat-container .message.assistant')).toHaveCount(1, {
+    await expect(page.locator('chump-chat').locator('.msg.assistant')).toHaveCount(1, {
       timeout: 300_000,
     });
-    // New chat lives in the sessions drawer; open it so the button is not covered by the header.
-    await page.locator('#sessions-toggle').click();
-    await expect(page.locator('body')).toHaveClass(/sessions-open/);
-    await page.locator('#new-chat-btn').click();
-    await expect(page.locator('#chat-container .message')).toHaveCount(0, { timeout: 120_000 });
+    await page.locator('#msg-input').fill('');
+    await page.locator('#msg-input').fill(`/task nt2-${Date.now()}`);
+    await page.locator('#send-btn').click();
+    await expect(page.locator('chump-chat').locator('.msg')).toHaveCount(2, { timeout: 120_000 });
   });
 });
