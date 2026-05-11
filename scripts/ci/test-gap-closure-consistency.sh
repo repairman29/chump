@@ -27,21 +27,18 @@ STRICT=0
 EMIT_ALERT=0
 LIMIT=30   # default: check the 30 most-recently-closed gaps; use --all to check everything
 ALL=0
+# Parse args without indirect expansion (portable to bash 3 on macOS)
+prev_arg=""
 for arg in "$@"; do
     case "$arg" in
         --strict)      STRICT=1 ;;
         --emit-alert)  EMIT_ALERT=1 ;;
         --all)         ALL=1; LIMIT=999999 ;;
-        --limit)       ;;  # handled below with positional
     esac
-done
-# --limit N
-for i in $(seq 1 $#); do
-    arg="${!i}"
-    if [[ "$arg" == "--limit" ]]; then
-        next=$((i+1))
-        [[ -n "${!next:-}" ]] && LIMIT="${!next}"
+    if [[ "$prev_arg" == "--limit" ]]; then
+        LIMIT="$arg"
     fi
+    prev_arg="$arg"
 done
 
 # ── Resolve state.db ─────────────────────────────────────────────────────────
