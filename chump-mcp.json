@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "chump-mcp-filesystem",
+      "args": [],
+      "env": {},
+      "enabled": true
+    },
+    "git": {
+      "command": "chump-mcp-git",
+      "args": [],
+      "env": {},
+      "enabled": true
+    },
+    "github": {
+      "command": "chump-mcp-github",
+      "args": [],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": ""
+      },
+      "enabled": false
+    },
+    "gaps": {
+      "command": "chump-mcp-gaps",
+      "args": [],
+      "env": {},
+      "enabled": true
+    },
+    "memory": {
+      "command": "chump-mcp-memory",
+      "args": [],
+      "env": {},
+      "enabled": true
+    }
+  }
+}
