@@ -22,10 +22,7 @@
     Failing check: ftue
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "done — implementation shipped in PR #1397; ACs fulfilled at time of merge (INFRA-822 retrospective)"
   closed_date: '2026-05-10'
   closed_pr: 1397
 
