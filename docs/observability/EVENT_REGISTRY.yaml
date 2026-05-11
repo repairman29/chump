@@ -584,6 +584,37 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, source, pr, note]
 
+  # ── Review-as-Handoff telemetry (INFRA-773) ──────────────────────────────
+  - kind: review_handoff_initiated
+    emitter: src/review_handoff.rs (chump review --serve daemon)
+    trigger: reviewer-agent posts a [handoff:apply] comment on a PR
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, pr, reviewer_session, failure_surface]
+
+  - kind: review_handoff_applied
+    emitter: scripts/dispatch/worker.sh (author re-engagement loop)
+    trigger: author-agent push lands and CI flips green after applying handoff diff
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, pr, author_session, handoff_comment_id]
+
+  - kind: review_handoff_failed
+    emitter: scripts/dispatch/worker.sh (author re-engagement loop)
+    trigger: author-agent push lands but CI is still red after applying handoff diff
+    consumers: [fleet-brief, kpi-report, waste-tally]
+    fields_required: [ts, pr, author_session, failure_detail]
+
+  - kind: review_handoff_timeout
+    emitter: src/review_handoff.rs (chump review --serve daemon)
+    trigger: no author push within 15 min of handoff comment; escalation queued
+    consumers: [fleet-brief, kpi-report, waste-tally]
+    fields_required: [ts, pr, reviewer_session, elapsed_seconds]
+
+  - kind: review_handoff_escalated
+    emitter: src/review_handoff.rs (chump review --serve daemon)
+    trigger: failure or timeout triggers operator notification via configured channel
+    consumers: [fleet-brief, operator-paging]
+    fields_required: [ts, pr, reason, channel]
+
   # ── Free-tier dispatch testing ─────────────────────────────────────────
   - kind: free_tier_e2e
     emitter: scripts/dispatch/free-tier-e2e-test.sh
