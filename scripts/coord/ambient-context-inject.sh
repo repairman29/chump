@@ -162,23 +162,42 @@ for e in events:
 lines_out = []
 
 # INFRA-721: SessionStart only — operator-facing fleet brief at the top.
-# Skip on PreToolUse (too noisy per-tool-call). Best-effort; never fail the
-# hook if fleet-brief.sh is missing or errors.
+# Prefer `chump fleet brief` (INFRA-721 Rust subcommand); fall back to the
+# legacy fleet-brief.sh shell script if the binary isn't on PATH.
+# Best-effort; never fail the hook.
 if hook == "SessionStart":
-    import subprocess
+    import subprocess, shutil
     repo_root = os.environ.get("REPO_ROOT", ".")
-    brief_script = os.path.join(repo_root, "scripts", "dispatch", "fleet-brief.sh")
-    if os.path.exists(brief_script) and os.access(brief_script, os.X_OK):
+    brief_out = ""
+    # Prefer the Rust subcommand (chump fleet brief)
+    chump_bin = shutil.which("chump")
+    if chump_bin:
         try:
             res = subprocess.run(
-                ["bash", brief_script],
+                [chump_bin, "fleet", "brief"],
                 capture_output=True, text=True, timeout=15,
+                env={**os.environ, "CHUMP_REPO": repo_root},
             )
             if res.returncode == 0 and res.stdout.strip():
-                lines_out.append(res.stdout.rstrip())
-                lines_out.append("")
+                brief_out = res.stdout.rstrip()
         except Exception:
             pass
+    # Fallback: legacy fleet-brief.sh
+    if not brief_out:
+        brief_script = os.path.join(repo_root, "scripts", "dispatch", "fleet-brief.sh")
+        if os.path.exists(brief_script) and os.access(brief_script, os.X_OK):
+            try:
+                res = subprocess.run(
+                    ["bash", brief_script],
+                    capture_output=True, text=True, timeout=15,
+                )
+                if res.returncode == 0 and res.stdout.strip():
+                    brief_out = res.stdout.rstrip()
+            except Exception:
+                pass
+    if brief_out:
+        lines_out.append(brief_out)
+        lines_out.append("")
 
 lines_out.append("=== Ambient stream (FLEET-019 matrix wiring, hook=" + hook + ") ===")
 lines_out.append(

@@ -1871,9 +1871,248 @@ async fn main() -> Result<()> {
                     });
                 std::process::exit(status.code().unwrap_or(1));
             }
+            // INFRA-721: 60-second operator briefing — 24h ships, pillar mix,
+            // stalls, auto-fixed, manual rescues, suggested actions.
+            // Wire: FLEET-019 SessionStart hook calls this at session open.
+            "brief" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let window_secs: i64 = flag("--window")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(86400); // 24 h default
+
+                let now = chrono::Utc::now();
+                let now_ts = now.timestamp();
+                let cutoff = now_ts - window_secs;
+                let ts_iso = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+                let locks_dir = repo_root.join(".chump-locks");
+                let ambient_path = locks_dir.join("ambient.jsonl");
+
+                // ── Parse ambient.jsonl ──────────────────────────────────
+                let events: Vec<serde_json::Value> = std::fs::read_to_string(&ambient_path)
+                    .unwrap_or_default()
+                    .lines()
+                    .filter_map(|l| serde_json::from_str(l).ok())
+                    .collect();
+
+                // Filter to window
+                let window_events: Vec<&serde_json::Value> = events
+                    .iter()
+                    .filter(|e| {
+                        e.get("ts")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                            .map(|dt| dt.timestamp() >= cutoff)
+                            .unwrap_or(false)
+                    })
+                    .collect();
+
+                // Count by "event" field (top-level event type)
+                let count_event = |ev: &str| -> usize {
+                    window_events
+                        .iter()
+                        .filter(|e| e.get("event").and_then(|v| v.as_str()) == Some(ev))
+                        .count()
+                };
+                // Count by "kind" sub-field (used in alert-category events)
+                let count_kind = |kind: &str| -> usize {
+                    window_events
+                        .iter()
+                        .filter(|e| e.get("kind").and_then(|v| v.as_str()) == Some(kind))
+                        .count()
+                };
+
+                let ships = count_event("commit");
+                let auto_fixed = count_kind("flake_rerun_queued") + count_kind("lint_auto_fix");
+                let manual_rescues = count_kind("manual_rescue");
+                let fleet_wedges = count_kind("fleet_wedge");
+                let silent_agents = count_kind("silent_agent");
+                let pr_stuck = count_kind("pr_stuck");
+                // Alerts are counted over last 30 min regardless of the main window
+                let alert_cutoff = now_ts - 30 * 60;
+                let alerts: usize = events
+                    .iter()
+                    .filter(|e| {
+                        let is_alert = e.get("event").and_then(|v| v.as_str()) == Some("ALERT")
+                            || e.get("event").and_then(|v| v.as_str()) == Some("alert");
+                        if !is_alert {
+                            return false;
+                        }
+                        e.get("ts")
+                            .and_then(|v| v.as_str())
+                            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                            .map(|dt| dt.timestamp() >= alert_cutoff)
+                            .unwrap_or(false)
+                    })
+                    .count();
+
+                // Active leases → stall detection (leases older than 4h)
+                let stall_threshold = now_ts - 4 * 3600;
+                let mut stalls: Vec<String> = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(&locks_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map(|e| e == "json").unwrap_or(false) {
+                            if let Ok(raw) = std::fs::read_to_string(&path) {
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) {
+                                    let gap_id = v
+                                        .get("gap_id")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("?")
+                                        .to_string();
+                                    let claimed_at = v
+                                        .get("claimed_at")
+                                        .and_then(|x| x.as_i64())
+                                        .unwrap_or(now_ts);
+                                    if claimed_at < stall_threshold {
+                                        let age_h = (now_ts - claimed_at) / 3600;
+                                        stalls.push(format!("{gap_id} ({age_h}h)"));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Pillar mix from open P0/P1 gaps ─────────────────────────
+                let store_res = gap_store::GapStore::open(&repo_root);
+                let mut pillar_counts: std::collections::HashMap<&str, usize> = [
+                    ("EFFECTIVE", 0),
+                    ("CREDIBLE", 0),
+                    ("RESILIENT", 0),
+                    ("ZERO-WASTE", 0),
+                ]
+                .iter()
+                .cloned()
+                .collect();
+                let mut total_pickable = 0usize;
+                if let Ok(ref store) = store_res {
+                    if let Ok(gaps) = store.list(Some("open")) {
+                        for g in &gaps {
+                            if !matches!(g.priority.as_str(), "P0" | "P1") {
+                                continue;
+                            }
+                            if !matches!(g.effort.as_str(), "xs" | "s" | "m") {
+                                continue;
+                            }
+                            total_pickable += 1;
+                            let t = g.title.to_uppercase();
+                            for pillar in &["EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE"] {
+                                if t.contains(pillar) {
+                                    *pillar_counts.entry(pillar).or_insert(0) += 1;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Suggested actions ────────────────────────────────────
+                let mut suggestions: Vec<String> = Vec::new();
+                if fleet_wedges > 0 {
+                    suggestions.push(format!(
+                        "⚠  {} fleet_wedge event(s) — drop to 2 workers per CLAUDE.md",
+                        fleet_wedges
+                    ));
+                }
+                if silent_agents > 1 {
+                    suggestions.push(format!(
+                        "⚠  {} silent_agent event(s) — investigate lease/picker race",
+                        silent_agents
+                    ));
+                }
+                if pr_stuck >= 3 {
+                    suggestions.push(format!(
+                        "⚠  {} pr_stuck event(s) — diagnose bot-merge contention",
+                        pr_stuck
+                    ));
+                }
+                if !stalls.is_empty() {
+                    suggestions.push(format!("⚠  Stalled leases: {}", stalls.join(", ")));
+                }
+                let zw = *pillar_counts.get("ZERO-WASTE").unwrap_or(&0);
+                let re = *pillar_counts.get("RESILIENT").unwrap_or(&0);
+                if zw < 2 {
+                    suggestions.push(format!(
+                        "📌 ZERO-WASTE has {zw} pickable gap(s) — file 1-2 to balance"
+                    ));
+                }
+                if re < 2 {
+                    suggestions.push(format!(
+                        "📌 RESILIENT has {re} pickable gap(s) — file 1-2 to balance"
+                    ));
+                }
+                if suggestions.is_empty() {
+                    suggestions.push("✓  No urgent actions — fleet looks healthy".to_string());
+                }
+
+                if want_json {
+                    let out = serde_json::json!({
+                        "ts": ts_iso,
+                        "window_h": window_secs / 3600,
+                        "ships_24h": ships,
+                        "auto_fixed": auto_fixed,
+                        "manual_rescues": manual_rescues,
+                        "stalls_gt_4h": stalls,
+                        "fleet_wedges": fleet_wedges,
+                        "silent_agents": silent_agents,
+                        "pr_stuck": pr_stuck,
+                        "alerts": alerts,
+                        "pillar_mix": {
+                            "EFFECTIVE": pillar_counts.get("EFFECTIVE").copied().unwrap_or(0),
+                            "CREDIBLE":  pillar_counts.get("CREDIBLE").copied().unwrap_or(0),
+                            "RESILIENT": pillar_counts.get("RESILIENT").copied().unwrap_or(0),
+                            "ZERO-WASTE": pillar_counts.get("ZERO-WASTE").copied().unwrap_or(0),
+                            "total_pickable": total_pickable,
+                        },
+                        "suggestions": suggestions,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+                } else {
+                    let window_h = window_secs / 3600;
+                    println!("═══ Fleet brief (last {window_h}h) ═══");
+                    println!(
+                        "Ships: {ships}  (≈{}/hr)",
+                        if window_h > 0 {
+                            format!("{:.1}", ships as f64 / window_h as f64)
+                        } else {
+                            "?".to_string()
+                        }
+                    );
+                    let eff = pillar_counts.get("EFFECTIVE").copied().unwrap_or(0);
+                    let cre = pillar_counts.get("CREDIBLE").copied().unwrap_or(0);
+                    let res = pillar_counts.get("RESILIENT").copied().unwrap_or(0);
+                    let zw2 = pillar_counts.get("ZERO-WASTE").copied().unwrap_or(0);
+                    println!(
+                        "Pillars: EFFECTIVE={eff} CREDIBLE={cre} RESILIENT={res} ZERO-WASTE={zw2}  (of {total_pickable} pickable)"
+                    );
+                    println!(
+                        "Stalls > 4h: {}",
+                        if stalls.is_empty() {
+                            "0".to_string()
+                        } else {
+                            stalls.join(", ")
+                        }
+                    );
+                    println!("Auto-fixed: {auto_fixed}  flake-rerun+lint");
+                    println!("Manual rescues: {manual_rescues}");
+                    if alerts > 0 {
+                        println!("Alerts(30m): {alerts}");
+                    }
+                    if !suggestions.iter().all(|s| s.starts_with('✓')) {
+                        println!("\nActions:");
+                        for s in &suggestions {
+                            println!("  {s}");
+                        }
+                    } else {
+                        println!("{}", suggestions[0]);
+                    }
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids>"
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief>"
                 );
                 eprintln!("  start      [--size N] [--model M] [--effort xs,s,m] [--domain D]");
                 eprintln!("  stop       [--session NAME]");
@@ -1883,6 +2122,7 @@ async fn main() -> Result<()> {
                 eprintln!("  restore    <snapshot-id>");
                 eprintln!("  restart    [--size N] [--session NAME]");
                 eprintln!("  audit-pids [--apply]");
+                eprintln!("  brief      [--json] [--window SECS]");
                 std::process::exit(2);
             }
         }
