@@ -1,0 +1,17 @@
+- id: CREDIBLE-027
+  domain: CREDIBLE
+  title: "CREDIBLE: scratch-commit / mass-deletion guard — CI fails any PR whose net diff vs main deletes >100 lines from files unrelated to its title/body, OR contains commits with vague-titles ('first', 'init', 'wip', 'unrelated change'); would have caught #1441's 378k-line wipe"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/ci/test-pr-scratch-commit-guard.sh runs as a required CI check on every PR"
+    - "FAIL rule A — vague commit titles: any commit in the PR range whose subject matches /^(first|init|wip|unrelated change|temp|scratch|test commit|tmp|\\.+)$/i"
+    - "FAIL rule B — mass deletion vs scope: net diff vs main deletes >100 lines across files NOT referenced (by path or basename) in PR title, body, or commit-message bodies"
+    - "FAIL rule C — file-count blast: net diff touches >50 files when PR title prefix is `chore(gaps):` or `docs:` (scope-prefix consistency)"
+    - "Each failure surfaces as a structured PR review comment listing rule + offending commits/paths, NOT just a red CI light"
+    - "Emits ambient kind=pr_scratch_commit_blocked with pr, rule_fired, evidence[] fields"
+    - "Test fixtures replay against historical PRs: must FAIL #1441 (rule A + B); must FAIL #1444 (rule B); must PASS #1443, #1439, #1432 (legitimate cross-cutting PRs)"
+    - "Allow-list mechanism: a PR with label `cross-cutting-acknowledged` bypasses rule B (escape hatch for legit refactors); usage logged"
+    - "Documented in docs/process/PR_HYGIENE.md adjacent to CREDIBLE-026's scope-honesty rules"
+
