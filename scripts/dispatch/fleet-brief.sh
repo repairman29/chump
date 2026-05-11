@@ -136,6 +136,15 @@ stalls_str=""
 echo "Stalls > 4h: ${#stalls_4h[@]}${stalls_str}"
 echo "Auto-fixed: lint=$auto_lint_fixes flake-rerun=$auto_flake_reruns"
 echo "Manual rescues: $manual_rescues"
+# CREDIBLE-025: per-model ship breakdown (from ship_grade events).
+_model_rate_script="$REPO_ROOT/scripts/dispatch/model-ship-rate.sh"
+if [[ -x "$_model_rate_script" ]]; then
+    _msr_out="$(bash "$_model_rate_script" --window 24h 2>/dev/null || true)"
+    if [[ -n "$_msr_out" && "$_msr_out" != *"no ship_grade events"* ]]; then
+        echo ""
+        echo "$_msr_out"
+    fi
+fi
 if [ "${#suggestions[@]}" -gt "0" ]; then
     echo ""
     echo "Suggested actions:"

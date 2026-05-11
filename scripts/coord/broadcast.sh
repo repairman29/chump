@@ -50,6 +50,8 @@ fi
 SESSION_ID="${SESSION_ID:-broadcast-$$-$(date +%s)}"
 
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# CREDIBLE-025: include worker model in all events so per-model stats are attributable.
+MODEL="${FLEET_MODEL:-${CHUMP_MODEL:-unknown}}"
 
 # ── Build JSON payload ────────────────────────────────────────────────────────
 build_json() {
@@ -95,9 +97,9 @@ case "$EVENT" in
         GAP="${1:-}"
         FILES="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 INTENT <gap-id> [files]" >&2; exit 1; }
-        JSON="$(build_json event INTENT session "$SESSION_ID" ts "$TS" gap "$GAP" files "$FILES")"
+        JSON="$(build_json event INTENT session "$SESSION_ID" ts "$TS" gap "$GAP" files "$FILES" model "$MODEL")"
         emit_to_file "$JSON"
-        emit_to_nats INTENT "gap=$GAP" "files=$FILES"
+        emit_to_nats INTENT "gap=$GAP" "files=$FILES" "model=$MODEL"
         printf '[broadcast] INTENT  session=%s  gap=%s\n' "$SESSION_ID" "$GAP"
         ;;
 
@@ -122,9 +124,9 @@ case "$EVENT" in
     DONE)
         GAP="${1:-}"; COMMIT="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 DONE <gap-id> [commit-sha]" >&2; exit 1; }
-        JSON="$(build_json event DONE session "$SESSION_ID" ts "$TS" gap "$GAP" commit "$COMMIT")"
+        JSON="$(build_json event DONE session "$SESSION_ID" ts "$TS" gap "$GAP" commit "$COMMIT" model "$MODEL")"
         emit_to_file "$JSON"
-        emit_to_nats DONE "gap=$GAP" "commit=$COMMIT"
+        emit_to_nats DONE "gap=$GAP" "commit=$COMMIT" "model=$MODEL"
         printf '[broadcast] DONE    gap=%s  commit=%s\n' "$GAP" "$COMMIT"
         ;;
 
