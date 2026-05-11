@@ -323,6 +323,75 @@ fn load_dotenv() {
     }
 }
 
+/// EFFECTIVE-009 — print grouped command reference.
+/// Shown when `chump` is run with no args, or when `chump help` / `chump --help` is used.
+fn print_help() {
+    let ver = version::chump_version();
+    println!("chump — gap orchestration tool  (v{ver})");
+    println!();
+    println!("USAGE");
+    println!("  chump <command> [options]");
+    println!("  chump <command> --help        show help for that command");
+    println!("  chump --version               print version + build SHA");
+    println!();
+    println!("GAP MANAGEMENT");
+    println!("  gap <sub>          list, show, reserve, ship, audit-priorities …");
+    println!("  claim <GAP-ID>     atomic worktree + lease + preflight in one call");
+    println!("  gen <task>         AI-driven single-shot coding task (offline-LLM)");
+    println!();
+    println!("FLEET");
+    println!("  fleet <sub>        worker control — up/status/down/doctor …");
+    println!("  dispatch <sub>     route/scoreboard/simulate/cost-report …");
+    println!("  orchestrate        Opus-driven conversational loop (interactive)");
+    println!();
+    println!("ANALYTICS");
+    println!("  health             current gap-registry health snapshot");
+    println!("  health-digest      markdown digest with P0/P1 counts + warnings");
+    println!("  fleet-status       per-worker throughput + lease state");
+    println!("  fleet-velocity     PRs/day and ship-rate trend");
+    println!("  waste-tally        % of compute spent on closed-without-merge PRs");
+    println!("  ship-quality       post-merge signal: pass rate, revert rate");
+    println!("  roadmap-status     milestone completion %");
+    println!(
+        "  mission-grade      current pillar grades (EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE)"
+    );
+    println!("  lesson-grade       lesson-learning quality score");
+    println!("  ci-summary         last-N CI run outcomes");
+    println!("  classify-failure   categorize a CI/PR failure for the improvement tracker");
+    println!("  kpi report         KPI scorecard across all pillars");
+    println!("  cost-watch         real-time inference spend + per-slot breakdown");
+    println!("  cost record-pr     attach cost metadata to a merged PR");
+    println!("  pr-coupling-cost   cost of PRs that move together (coupling smell)");
+    println!("  cascade stats      per-slot hit/miss/error counts for the provider cascade");
+    println!("  funnel             install → first_task → return_d2 activation funnel");
+    println!("  dashboard          open the local web dashboard");
+    println!();
+    println!("SESSION / REFLECTION");
+    println!("  session-track      start or continue a named work session");
+    println!("  session-export     export session transcript as markdown");
+    println!("  session-resume     re-attach to the most recent session");
+    println!("  reflect-delta      compute lesson-delta since last reflection");
+    println!("  rebase-stuck       auto-resolve stuck rebase for a given branch");
+    println!("  pr fix-clippy      run clippy --fix on the current PR branch");
+    println!("  pr triage          assign labels + reviewer to open PRs");
+    println!();
+    println!("SERVER MODES  (long-running, not for interactive use)");
+    println!("  --web              start the PWA web server (default port 3000)");
+    println!("  --acp              ACP stdio mode for Zed / JetBrains / VS Code");
+    println!("  --discord          Discord gateway bot (requires --features discord)");
+    println!("  --telegram         Telegram bot (requires TELEGRAM_BOT_TOKEN)");
+    println!("  --slack            Slack Socket Mode bot (requires SLACK_BOT_TOKEN)");
+    println!("  --rpc              internal JSON-RPC loop (fleet workers)");
+    println!();
+    println!("FIRST RUN");
+    println!("  init               detect model, write .env, start server, open browser");
+    println!();
+    println!("DOCS");
+    println!("  AGENTS.md          coordination rules and pillar definitions");
+    println!("  docs/ROADMAP.md    milestone plan");
+    println!("  scripts/README.md  script taxonomy and entry points");
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -340,6 +409,17 @@ async fn main() -> Result<()> {
             version::chump_build_sha(),
             version::chump_build_date(),
         );
+        return Ok(());
+    }
+
+    // EFFECTIVE-009: no-args → help; `chump help` → help. Must come before
+    // any mode that falls through to the interactive agent loop.
+    let wants_help = args.len() == 1
+        || args.get(1).map(String::as_str) == Some("help")
+        || args.get(1).map(String::as_str) == Some("--help")
+        || args.get(1).map(String::as_str) == Some("-h");
+    if wants_help {
+        print_help();
         return Ok(());
     }
 
