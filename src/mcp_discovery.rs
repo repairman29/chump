@@ -1092,7 +1092,18 @@ package = "chump-mcp-filesystem"
     fn install_mcp_server_no_install_adds_to_config() {
         let tmp = TempDir::new().unwrap();
         write_registry(tmp.path());
+        // Serialize PATH mutations and strip any chump-mcp-git that CI may have
+        // installed (e.g. from a prior cargo install step in the same runner).
+        // Without this guard, command_exists() returns true → AlreadyInstalled.
+        let _lock = env_lock().lock().unwrap();
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        let clean_path = std::env::split_paths(&old_path)
+            .filter(|d| !d.join("chump-mcp-git").is_file())
+            .collect::<Vec<_>>();
+        // SAFETY: single-threaded under env_lock.
+        std::env::set_var("PATH", std::env::join_paths(&clean_path).unwrap());
         let outcome = install_mcp_server(tmp.path(), tmp.path(), "git", true).unwrap();
+        std::env::set_var("PATH", old_path);
         assert!(matches!(outcome, InstallOutcome::ConfigOnly));
         let cfg = read_mcp_config(tmp.path());
         assert!(cfg.mcp_servers.contains_key("git"));
