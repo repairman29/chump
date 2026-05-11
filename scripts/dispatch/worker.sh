@@ -105,6 +105,12 @@ _backoff_multiplier=1
 _last_heartbeat=$(date +%s)
 _heartbeat_interval=60
 
+# INFRA-823: per-worker wedge tracking for first-output watchdog and storm detection.
+_wedge_retries=0
+_wedge_count=0
+_wedge_storm_threshold="${CHUMP_WEDGE_STORM_THRESHOLD:-5}"
+_first_output_timeout="${CHUMP_FIRST_OUTPUT_TIMEOUT_S:-120}"
+
 mkdir -p "$FLEET_LOG_DIR"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
@@ -743,21 +749,75 @@ Operator or sibling worker can rescue this branch via:
             ) &
             _heartbeat_pid=$!
 
-            (
-                cd "$wt_path" || exit 99
-                # Same surface as src/dispatch.rs WorkBackend::Headless.
-                # INFRA-639: tee stdout through the token-parser fifo when
-                # available so partial usage events are captured mid-flight.
-                # pipefail (inherited) propagates claude's exit code through tee.
-                # shellcheck disable=SC2086
-                if [[ -n "$_tok_fifo" ]]; then
-                    $TO claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose "${_model_arg[@]}" \
-                        | tee "$_tok_fifo"
+            # INFRA-823: first-output watchdog + wedge retry loop.
+            # Kills and retries if claude produces no stdout within
+            # FIRST_OUTPUT_TIMEOUT_S (default 120s). Max 2 retries.
+            _wedge_retries=0
+            _wedge_retry_max=2
+            _prompt="$prompt"
+            while [ "$_wedge_retries" -le "$_wedge_retry_max" ]; do
+                # Use shorter timeout for retries (300s) vs initial (FLEET_TIMEOUT_S).
+                if [ "$_wedge_retries" -gt 0 ]; then
+                    _retry_to_s="${CHUMP_RETRY_TIMEOUT_S:-300}"
+                    if command -v timeout >/dev/null 2>&1; then
+                        _TO="timeout ${_retry_to_s}s"
+                    elif command -v gtimeout >/dev/null 2>&1; then
+                        _TO="gtimeout ${_retry_to_s}s"
+                    else
+                        _TO="$TO"
+                    fi
                 else
-                    $TO claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose "${_model_arg[@]}"
+                    _TO="$TO"
                 fi
-            ) >"$cycle_log" 2>&1
-            rc=$?
+                : > "$cycle_log"
+                (
+                    cd "$wt_path" || exit 99
+                    # Same surface as src/dispatch.rs WorkBackend::Headless.
+                    # INFRA-639: tee stdout through the token-parser fifo when
+                    # available so partial usage events are captured mid-flight.
+                    # pipefail (inherited) propagates claude's exit code through tee.
+                    # shellcheck disable=SC2086
+                    if [[ -n "$_tok_fifo" ]]; then
+                        $_TO claude -p "$_prompt" --dangerously-skip-permissions --output-format stream-json --verbose "${_model_arg[@]}" \
+                            | tee "$_tok_fifo"
+                    else
+                        $_TO claude -p "$_prompt" --dangerously-skip-permissions --output-format stream-json --verbose "${_model_arg[@]}"
+                    fi
+                ) >"$cycle_log" 2>&1 &
+                _claude_pid=$!
+
+                # First-output watchdog: kills claude if no stdout within
+                # FIRST_OUTPUT_TIMEOUT_S. Prevents burning full FLEET_TIMEOUT_S
+                # on a wedged agent that will never produce output.
+                (
+                    sleep "$_first_output_timeout"
+                    if [ -f "$cycle_log" ] && [ "$(wc -c < "$cycle_log" 2>/dev/null || echo 0)" -lt 10 ]; then
+                        kill "-TERM" "$_claude_pid" 2>/dev/null || true
+                        sleep 2
+                        kill "-KILL" "$_claude_pid" 2>/dev/null || true
+                    fi
+                ) &
+                _fo_watchdog_pid=$!
+
+                wait "$_claude_pid" 2>/dev/null
+                rc=$?
+                kill "$_fo_watchdog_pid" 2>/dev/null || true
+                wait "$_fo_watchdog_pid" 2>/dev/null || true
+
+                # Check for wedge: near-empty log + timeout or clean exit.
+                _log_sz=0
+                [ -f "$cycle_log" ] && _log_sz=$(wc -c < "$cycle_log" 2>/dev/null | tr -d ' ' || echo 0)
+                if [ "$_log_sz" -lt 100 ] && { [ "$rc" -eq 124 ] || [ "$rc" -eq 0 ]; }; then
+                    _wedge_retries=$((_wedge_retries + 1))
+                    _wedge_count=$((_wedge_count + 1))
+                    if [ "$_wedge_retries" -le "$_wedge_retry_max" ]; then
+                        log "INFRA-823: wedge detected (rc=$rc, log=${_log_sz}B) — retry $_wedge_retries/$_wedge_retry_max with unstick prompt"
+                        _prompt="You appear to be stuck producing output. Start working immediately. ${_prompt}"
+                        continue
+                    fi
+                fi
+                break
+            done
 
             # FLEET-042: kill heartbeat background process after claude exits.
             if [[ "$_heartbeat_pid" -ne 0 ]]; then
@@ -908,21 +968,56 @@ Operator or sibling worker can rescue this branch via:
         [ -f "$_auth_counter_file" ] && rm -f "$_auth_counter_file"
     fi
 
-    # INFRA-483: detect "0-byte cycle log" as a strong wedge signal —
-    # claude -p produced no stdout for the entire FLEET_TIMEOUT_S
-    # window. Distinct from "claude worked but timed out" (cycle_log
-    # has content) and "claude exited cleanly" (rc=0). Treat as wasted
-    # compute; apply EXTRA cooldown so workers don't infinitely retry
-    # the same wedged gap.
+    # INFRA-823: detect "0-byte cycle log" as a strong wedge signal —
+    # claude -p produced no stdout for the entire timeout window.
+    # Also catches rc=0 + 0-byte (claude exited cleanly having done
+    # nothing — missed by the original rc=124-only check). Emit
+    # ambient alert so operators see it, not just a log line.
     _cycle_log_size=0
     if [ -f "$cycle_log" ]; then
         _cycle_log_size=$(wc -c < "$cycle_log" 2>/dev/null | tr -d ' ' || echo 0)
     fi
     _is_wedge=0
-    if [ "$rc" -eq 124 ] && [ "$_cycle_log_size" -lt 100 ]; then
-        # 100-byte threshold — anything smaller is essentially "no work
-        # done"; legitimate work logs are always thousands of bytes.
+    if [ "$_cycle_log_size" -lt 100 ] && { [ "$rc" -eq 124 ] || [ "$rc" -eq 0 ]; }; then
         _is_wedge=1
+    fi
+
+    if [ "$_is_wedge" -eq 1 ]; then
+        _wedge_count=$((_wedge_count + 1))
+        _ts_w="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        _amb_w="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        mkdir -p "$(dirname "$_amb_w")" 2>/dev/null || true
+        printf '{"ts":"%s","session":"%s","worktree":"%s","event":"ALERT","kind":"worker_wedge_detected","agent_id":"%s","gap_id":"%s","rc":%d,"cycle_log_size":%d,"wedge_count":%d}\n' \
+            "$_ts_w" \
+            "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+            "$wt_name" "$AGENT_ID" "$GAP_ID" "$rc" "$_cycle_log_size" "$_wedge_count" \
+            >> "$_amb_w" 2>/dev/null || true
+        log "ALERT kind=worker_wedge_detected agent=$AGENT_ID gap=$GAP_ID rc=$rc log=${_cycle_log_size}B wedge_count=$_wedge_count"
+
+        # INFRA-823: wedge storm detection — if N+ wedges in rolling 1h window,
+        # emit fleet_wedge_storm. This indicates a systemic issue (auth down,
+        # API incompatibility, prompt format break) rather than per-gap bad luck.
+        _wedge_storm_file="/tmp/chump-fleet-worker-${AGENT_ID}.wedge-count"
+        _now_ts=$(date +%s)
+        _one_hour_ago=$(( _now_ts - 3600 ))
+        # Append current wedge timestamp to rolling window file.
+        printf '%d\n' "$_now_ts" >> "$_wedge_storm_file" 2>/dev/null || true
+        # Count timestamps within the last hour; prune older ones.
+        _recent_wedges=0
+        if [ -f "$_wedge_storm_file" ]; then
+            _tmp_pruned="/tmp/chump-fleet-worker-${AGENT_ID}.wedge-pruned"
+            awk -v cutoff="$_one_hour_ago" '$1 > cutoff' "$_wedge_storm_file" > "$_tmp_pruned" 2>/dev/null || true
+            mv "$_tmp_pruned" "$_wedge_storm_file" 2>/dev/null || true
+            _recent_wedges=$(wc -l < "$_wedge_storm_file" 2>/dev/null | tr -d ' ' || echo 0)
+        fi
+        if [ "$_recent_wedges" -ge "$_wedge_storm_threshold" ]; then
+            printf '{"ts":"%s","session":"%s","worktree":"%s","event":"ALERT","kind":"fleet_wedge_storm","agent_id":"%s","recent_wedges":%d,"threshold":%d,"window_h":1}\n' \
+                "$_ts_w" \
+                "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                "$wt_name" "$AGENT_ID" "$_recent_wedges" "$_wedge_storm_threshold" \
+                >> "$_amb_w" 2>/dev/null || true
+            log "ALERT kind=fleet_wedge_storm agent=$AGENT_ID recent_wedges=$_recent_wedges >= threshold=$_wedge_storm_threshold"
+        fi
     fi
 
     # FLEET-043: track consecutive dispatch failures for circuit breaker.
