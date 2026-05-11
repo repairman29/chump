@@ -1,7 +1,7 @@
 - id: INFRA-538
   domain: INFRA
   title: "RESILIENT: state.db corruption recovery path. Today if .chump/state.db is corrupted (INFRA-049/052/055/057/064/208 class), chump gap commands fail. Need: 'chump gap restore --from-sql' that rebuilds state.db from .chump/state.sql (the tracked YAML mirror). Documented as the 4th column of the canonical-state contract: state.db (live) ↔ state.sql (tracked) ↔ rebuild path."
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -10,4 +10,6 @@
     - preserves all rows including closed_pr/closed_date/notes
     - scripts/ci/test-state-db-restore.sh — corrupt db then restore + verify count(*) matches state.sql
     - CLAUDE.md operational gotchas section documents the heal path
+  closed_pr: 1433
+  closed_date: '2026-05-11'
 
