@@ -17,7 +17,7 @@ use crate::local_openai::{self, LocalOpenAIProvider};
 use crate::provider_quality;
 
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
-const MAX_SLOTS: u32 = 10;
+const MAX_SLOTS: u32 = 11;
 
 /// INFRA-352: emit a structured ambient.jsonl event when the cascade has
 /// exhausted every slot it could try and is about to return Err to the caller.
@@ -307,7 +307,7 @@ pub struct ProviderCascade {
 }
 
 impl ProviderCascade {
-    /// Load slots from env. Slot 0 from OPENAI_*; slots 1..=3 from CHUMP_PROVIDER_{N}_*.
+    /// Load slots from env. Slot 0 from OPENAI_*; slots 1..=MAX_SLOTS from CHUMP_PROVIDER_{N}_*.
     pub fn from_env() -> Self {
         let mut slots: Vec<ProviderSlot> = Vec::new();
 
