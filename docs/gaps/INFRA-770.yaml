@@ -4,9 +4,13 @@
   status: open
   priority: P1
   effort: s
-  acceptance_criteria: |
-    Criterion 1: Trust check verifies comment author against session-metadata `reviewer` capability, operator identity, or PR-author (self-handoff)
-    Criterion 2: Untrusted comments are treated as advisory (not applied automatically)
-    Criterion 3: Implementation follows `docs/architecture/REVIEW_AS_HANDOFF.md` §4 specification
-    Criterion 4: Test covers trusted (reviewer, operator, self) and untrusted comment scenarios
+  acceptance_criteria:
+    - "src/review_handoff.rs exists and compiles: HandoffComment, TrustContext, parse_handoff_comment, is_trusted_handoff, has_reviewer_lease"
+    - "Operator path: comment.author == operator_login (non-empty) → trusted"
+    - "Reviewer-lease path: .chump-locks/*.json with capabilities:[\"reviewer\"], matching github_login, non-expired expires_at → trusted"
+    - "Self-handoff path: comment.author == pr_author → trusted"
+    - "All other callers → untrusted (is_trusted_handoff returns false)"
+    - "parse_handoff_comment returns None when [handoff:apply] annotation absent or unclosed"
+    - "parse_iso8601_to_unix correctly rounds trip 1970-01-01T00:00:00Z → 0 and a known 2026 timestamp"
+    - "16 unit tests pass: cargo test --bin chump review_handoff"
 
