@@ -676,6 +676,19 @@ events:
     consumers: [fleet-brief, watchdog, kpi-report]
     fields_required: [ts, kind, feature, reason]
 
+  # ── Intent parser (INFRA-798) ─────────────────────────────────────────────
+  - kind: intent_parse_ok
+    emitter: src/intent_parser.rs (chump orchestrate <text> single-shot mode)
+    trigger: natural-language intent resolved to a known IntentOp variant
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, command]
+
+  - kind: intent_parse_unknown
+    emitter: src/intent_parser.rs (chump orchestrate <text> single-shot mode)
+    trigger: pattern matching returned IntentOp::Unknown — intent not recognized
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, command]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh

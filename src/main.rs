@@ -90,6 +90,7 @@ mod health;
 mod health_server;
 mod hitl_escalation;
 mod hooks;
+mod intent_parser;
 mod interrupt_notify;
 mod introspect_tool;
 mod job_log;
@@ -5117,13 +5118,29 @@ async fn main() -> Result<()> {
         } // end #[cfg(feature = "discord")] block
     }
 
-    // `chump orchestrate` (INFRA-598) — Opus-driven conversational loop.
+    // `chump orchestrate [<intent>]` (INFRA-598 / INFRA-798)
     //
-    // Reads CLAUDE.md doctrine into system prompt, dispatches operator natural-language
-    // intents to chump fleet/gap subcommands, and emits 4-pillar mission grade each iter.
-    // Stub mode: CHUMP_ORCHESTRATE_STUB=1 (no LLM call; keyword routing only).
+    // With no positional args: Opus-driven conversational loop (INFRA-598).
+    // With a positional arg: single-shot intent parse + command print (INFRA-798).
+    //
+    // Single-shot: chump orchestrate "list P1 gaps"
+    //   → parses intent, prints resolved chump command as JSON, emits ambient event.
+    //   → exits 0 regardless of whether intent was recognized (Unknown prints a comment).
     if args.get(1).map(String::as_str) == Some("orchestrate") {
         let repo_root = repo_path::repo_root();
+
+        // Single-shot mode when a positional text arg follows "orchestrate".
+        if let Some(text) = args.get(2) {
+            let op = intent_parser::parse_intent(text);
+            let cmd = op.to_chump_command();
+            println!(
+                "{{\"intent\":{text:?},\"command\":{cmd:?},\"kind\":\"{}\"}}",
+                op.ambient_kind()
+            );
+            intent_parser::emit_intent_event(&op, &repo_root);
+            return Ok(());
+        }
+
         match orchestrate::run(&repo_root).await {
             Ok(()) => return Ok(()),
             Err(e) => {
