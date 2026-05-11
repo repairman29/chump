@@ -189,3 +189,14 @@ PY
 
 echo "$NEW_ID"
 echo "[gap-reserve] Wrote pending_new_gap → $LEASE_FILE (session $SESSION_ID)" >&2
+
+# META-044: emit ambient ALERT when a META-* gap is reserved so high-priority
+# process changes don't sit invisibly in a namespace the fleet ignores.
+# Fleet pickup: META-* effort=xs|s with filled ACs are fleet-pickable (worker.sh).
+if [[ "$DOMAIN" == "META" ]]; then
+    _ambient="$LOCK_DIR/ambient.jsonl"
+    printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"meta_filed","gap_id":"%s","title":"%s","note":"META-* gap reserved — review for fleet pickup (effort xs|s with filled ACs are fleet-pickable per META-044)"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$SESSION_ID" "$NEW_ID" "$TITLE" \
+        >> "$_ambient" 2>/dev/null || true
+    echo "[gap-reserve] INFO: emitted meta_filed alert to ambient.jsonl (META-044)" >&2
+fi

@@ -181,7 +181,10 @@ trap 'log "interrupted; exiting loop"; exit 0' INT TERM
 # 2026-05-08: SWARM-* added — that domain belongs to chump-proprietary
 # (private repo). The public fleet picked up SWARM-007/010 and pushed
 # branches before this guard landed; closed manually as PRs #1283/#1284.
-EXCLUDE_PREFIXES_REGEX='^(EVAL-|RESEARCH-|META-|SWARM-)'
+# META-044: META-* removed from blanket exclude. The picker (_pick_and_claim_gap.py)
+# now enforces: META-* only if effort=xs|s (concrete, actionable ACs). META-* with
+# effort=m/l/xl or vague ACs remain un-picked — those need human judgment.
+EXCLUDE_PREFIXES_REGEX='^(EVAL-|RESEARCH-|SWARM-)'
 
 cd "$REPO_ROOT"
 

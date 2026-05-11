@@ -503,6 +503,10 @@ def main() -> int:
         e = (g.get("effort") or "").lower()
         if effort_filter and e not in effort_filter:
             continue
+        # META-044: META-* domain is only fleet-pickable when effort=xs|s.
+        # Larger efforts require human judgment on scope and strategy.
+        if d == "meta" and e not in ("xs", "s"):
+            continue
         # INFRA-418: skip gaps that require a different model tier.
         # If gap.required_model is not set (empty string), it's compatible with any model.
         required_model = (g.get("required_model") or "").lower()
