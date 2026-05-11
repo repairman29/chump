@@ -1391,6 +1391,26 @@ if [[ -n "$_label_pr" ]]; then
     apply_pr_parallelism_label "$_label_pr"
 fi
 
+# ── 6.7. CREDIBLE-039: pre-ship guard — refuse if gap is done+closed_pr ──────
+# If state.db says the gap is already done with a closed_pr set (and that PR
+# is not our current PR), refuse to proceed: someone else already closed it or
+# the gap was prematurely closed on a different PR.
+# Bypass: CHUMP_ALLOW_RECYCLE=1 (same env var used by --auto-fix).
+if [[ "${CHUMP_ALLOW_RECYCLE:-0}" != "1" ]] && [[ ${#GAP_IDS[@]} -gt 0 ]] && [[ -f "${MAIN_REPO:-$REPO_ROOT}/.chump/state.db" ]]; then
+    _pre_ship_db="${MAIN_REPO:-$REPO_ROOT}/.chump/state.db"
+    for _gid in "${GAP_IDS[@]}"; do
+        _existing=$(sqlite3 "$_pre_ship_db" "SELECT status, closed_pr FROM gaps WHERE id='$_gid' AND status='done' AND closed_pr IS NOT NULL AND closed_pr != '';" 2>/dev/null || true)
+        if [[ -n "$_existing" ]]; then
+            _e_status="${_existing%%|*}"
+            _e_pr="${_existing##*|}"
+            red "CREDIBLE-039: gap $_gid is already status=done with closed_pr=#$_e_pr in state.db"
+            red "  This gap was already closed — refusing to ship a second time."
+            red "  Bypass: CHUMP_ALLOW_RECYCLE=1 $0 ..."
+            exit 3
+        fi
+    done
+fi
+
 # ── 6.75. Auto-close gap on the implementation PR (INFRA-154) ────────────────
 # Before arming auto-merge, fold the gap status flip INTO the implementation PR.
 # Without this, every shipped gap needed a separate "flip status to done after

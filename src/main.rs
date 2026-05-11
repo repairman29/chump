@@ -3134,6 +3134,11 @@ async fn main() -> Result<()> {
                     .filter(|g| g.status == "open" && g.title.to_lowercase().starts_with("race-"))
                     .collect();
 
+                let done_with_closed_pr: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| g.status == "done" && g.closed_pr.is_some())
+                    .collect();
+
                 if json_out {
                     let report = serde_json::json!({
                         "p0_count": p0_count,
@@ -3144,6 +3149,7 @@ async fn main() -> Result<()> {
                         "double_encoded_depends_on": double_encoded.len(),
                         "missing_dep_refs": missing_dep_pairs.len(),
                         "open_with_closed_pr": open_with_closed_pr.len(),
+                        "done_with_closed_pr": done_with_closed_pr.len(),
                         "race_test_pollution": race_pollution.len(),
                         "p0_gaps": p0_open.iter().map(|g| {
                             let age_days = (now_secs - g.created_at) / 86400;
@@ -3203,6 +3209,16 @@ async fn main() -> Result<()> {
                         );
                     }
                     println!();
+                    println!("Done with closed_pr set: {}", done_with_closed_pr.len());
+                    for g in &done_with_closed_pr {
+                        println!(
+                            "  {} — {} (closed_pr=#{})",
+                            g.id,
+                            g.title,
+                            g.closed_pr.unwrap_or(0)
+                        );
+                    }
+                    println!();
                     println!("race-* test pollution (open): {}", race_pollution.len());
                     for g in &race_pollution {
                         println!("  {} — {}", g.id, g.title);
@@ -3225,6 +3241,12 @@ async fn main() -> Result<()> {
                     fail_reasons.push(format!(
                         "{} vague (no AC) pickable gap(s)",
                         vague_pickable.len()
+                    ));
+                }
+                if !done_with_closed_pr.is_empty() {
+                    fail_reasons.push(format!(
+                        "{} done gap(s) with closed_pr set — review closure consistency",
+                        done_with_closed_pr.len()
                     ));
                 }
                 if fail_reasons.is_empty() {

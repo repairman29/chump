@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  dev.chump.premature-closure-watch — CREDIBLE-039: LaunchAgent for
+  monitoring gap closure consistency.
+
+  Runs scripts/ci/test-gap-closure-consistency.sh --strict --emit-alert
+  every 15 minutes. Detects:
+    - done gaps whose closed_pr PR is not merged (premature closure)
+    - open gaps whose closed_pr PR is already merged (stale post-merge)
+
+  INSTALLATION (manual):
+    1. Edit paths below to match your repo
+    2. cp to ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/dev.chump.premature-closure-watch.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>dev.chump.premature-closure-watch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ci/test-gap-closure-consistency.sh --strict --emit-alert</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Run every 15 minutes (900 seconds). -->
+  <key>StartInterval</key>
+  <integer>900</integer>
+
+  <!-- INFRA-819: guard against crash-loop on repeated failures. -->
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <!-- Do NOT run at load — wait for first interval. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/logs/premature-closure-watch.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/logs/premature-closure-watch.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+  </dict>
+</dict>
+</plist>
