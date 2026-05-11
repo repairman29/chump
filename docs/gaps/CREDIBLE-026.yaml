@@ -1,0 +1,18 @@
+- id: CREDIBLE-026
+  domain: CREDIBLE
+  title: "CREDIBLE: PR scope-vs-title divergence detector — CI check that flags PRs touching files unrelated to title/body (e.g., #1444 reverted META-044 under a chore-gaps title)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/ci/test-pr-scope-honesty.sh exists and runs as a CI check on every PR"
+    - "Check parses PR title + body, extracts referenced gap IDs / scope hints (chore(gaps), fix(GAP-N), feat(GAP-N))"
+    - "Check classifies changed files into buckets: gap-yaml-only / source / scripts / tests / docs / mixed"
+    - "Check FAILS when title says 'chore(gaps)' but PR also modifies src/**, scripts/**, or deletes test files"
+    - "Check FAILS when PR deletes a file that was added in a merged PR <72h ago without an explicit 'Revert' commit"
+    - "Failure surface is a structured PR comment (not just CI red) listing the offending paths + the rule that fired"
+    - "Test fixture: replay PR #1444 against the checker — must catch the META-044 silent revert"
+    - "Test fixture: replay PR #1443 (legit feat META-044) — must NOT fire (no false positive on advertised scope)"
+    - "Emits ambient event kind=pr_scope_divergence with pr, rule_fired, paths[] when check trips"
+    - "Documented in docs/process/PR_SCOPE_HONESTY.md with allow-list patterns for legitimate cross-cutting PRs"
+

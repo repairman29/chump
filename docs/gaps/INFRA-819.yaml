@@ -1,0 +1,15 @@
+- id: INFRA-819
+  domain: INFRA
+  title: "RESILIENT: reapers self-resurrect after ENOSPC — launchd KeepAlive + transient-failure backoff so disk recovery doesn't require manual kickstart"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "All reaper launchd plists set KeepAlive={SuccessfulExit=false, Crashed=true} so launchd auto-restarts after non-zero exit"
+    - "Plists set ThrottleInterval=60 so a reaper crashing every minute does not hot-loop, but recovers within a minute of disk pressure clearing"
+    - "Each reaper's disk-pressure early-exit logs `exit_reason=disk_critical` + emits ambient kind=reaper_self_paused (not silent_agent) so the watchdog distinguishes voluntary backoff from hangs"
+    - "reaper-watchdog itself uses the same KeepAlive config — meta: the watchdog cannot be the SPOF that observed today (10h silent because it died from same /tmp pressure as its targets)"
+    - "scripts/ci/test-reaper-resurrect.sh — fill /tmp to >95% via sparse file, observe reaper exits with reaper_self_paused, release disk, assert reaper heartbeats again within ThrottleInterval+30s"
+    - "Docs: docs/process/CLAUDE_GOTCHAS.md gains a 'reaper liveness' section pointing at this gap + the recovery contract"
+    - "SLO L1-SLO-1 (silent_agent = 0/week) breach attribution updated — reaper_self_paused does NOT count against the SLO"
+
