@@ -853,6 +853,34 @@ impl GapStore {
             // outcome is deterministic when both sides detect the race
             // simultaneously.
             let winner_candidate = colliders.iter().min().map(String::as_str).unwrap_or("");
+
+            // CREDIBLE-029: emit gap_id_allocator_collision to ambient.jsonl
+            // so fleet ops can see the race in the ambient stream rather than
+            // having it silently retried. Emitted by both the winner and the
+            // loser so the event count reflects actual collision frequency.
+            let amb_path = locks_dir.join("ambient.jsonl");
+            let ts_now = unix_to_iso_full(unix_now());
+            let resolution = if session_id < winner_candidate {
+                "won_tiebreak"
+            } else {
+                "lost_tiebreak_retrying"
+            };
+            let collision_line = format!(
+                "{{\"ts\":\"{ts_now}\",\"event\":\"ALERT\",\"kind\":\"gap_id_allocator_collision\",\
+                 \"chosen_id\":\"{id}\",\"session\":\"{session_id}\",\
+                 \"conflicting_sessions\":{colliders_json},\"resolution\":\"{resolution}\",\
+                 \"attempt\":{attempt}}}\n",
+                colliders_json = serde_json::to_string(&colliders).unwrap_or_else(|_| "[]".to_string()),
+            );
+            use std::io::Write as _;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb_path)
+            {
+                let _ = f.write_all(collision_line.as_bytes());
+            }
+
             if session_id < winner_candidate {
                 // We hold the lexicographically smallest ID — we win.
                 // INFRA-322: drop the lease (same rationale as above).
