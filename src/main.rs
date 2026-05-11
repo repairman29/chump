@@ -2140,7 +2140,6 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
-
                 // ── Pillar mix from open P0/P1 gaps ─────────────────────────
                 let store_res = gap_store::GapStore::open(&repo_root);
                 let mut pillar_counts: std::collections::HashMap<&str, usize> = [
@@ -2277,9 +2276,131 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-615: starvation auto-widen.
+            // --analyze: reads ambient.jsonl for fleet_starved events in last 1h,
+            //            suggests widened FLEET_EFFORT_FILTER / PRIORITY_FILTER.
+            // --apply:   writes suggested config to ~/.chump/fleet-config.toml.
+            "auto-widen" => {
+                let do_apply = args.iter().any(|a| a == "--apply");
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+
+                // Read ambient events from the last 3600s (1h).
+                let now_secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs();
+                let horizon = now_secs.saturating_sub(3600);
+
+                let mut starve_count = 0u32;
+                if let Ok(content) = std::fs::read_to_string(&ambient_path) {
+                    for line in content.lines() {
+                        if !line.contains("fleet_starved") {
+                            continue;
+                        }
+                        // Parse ts field to check recency.
+                        let ts_secs: Option<u64> = line
+                            .split('"')
+                            .skip_while(|s| *s != "ts")
+                            .nth(2)
+                            .and_then(|ts| {
+                                // "2026-05-11T22:00:00Z" → epoch seconds (rough parse)
+                                chrono::DateTime::parse_from_rfc3339(ts)
+                                    .ok()
+                                    .map(|dt| dt.timestamp() as u64)
+                            });
+                        if ts_secs.map_or(true, |t| t >= horizon) {
+                            starve_count += 1;
+                        }
+                    }
+                }
+
+                // Derive suggestions based on current config.
+                let current_effort = std::env::var("FLEET_EFFORT_FILTER")
+                    .ok()
+                    .or_else(|| cfg("effort"))
+                    .unwrap_or_else(|| "xs,s".to_string());
+                let current_priority = std::env::var("FLEET_PRIORITY_FILTER")
+                    .ok()
+                    .or_else(|| cfg("priority_filter"))
+                    .unwrap_or_else(|| "P0,P1".to_string());
+
+                // Widen effort by appending next tier; widen priority by adding P2.
+                let suggested_effort = if current_effort.contains('m') {
+                    format!("{},l", current_effort.trim_end_matches(",l"))
+                } else if current_effort.contains('s') {
+                    format!("{},m", current_effort.trim_end_matches(",m"))
+                } else {
+                    format!("{},s,m", current_effort.trim_end_matches(",s,m"))
+                };
+                let suggested_priority = if current_priority.contains("P2") {
+                    current_priority.clone()
+                } else {
+                    format!("{},P2", current_priority)
+                };
+
+                println!("[auto-widen] fleet_starved events in last 1h: {starve_count}");
+                println!("[auto-widen] current effort filter : {current_effort}");
+                println!("[auto-widen] current priority filter: {current_priority}");
+
+                if starve_count == 0 {
+                    println!("[auto-widen] no starvation detected — no change recommended");
+                } else {
+                    println!("[auto-widen] suggested effort filter : {suggested_effort}");
+                    println!("[auto-widen] suggested priority filter: {suggested_priority}");
+                    println!("[auto-widen] reason: {starve_count} starvation event(s) in last 1h");
+
+                    if do_apply {
+                        let config_dir = std::path::Path::new(&home).join(".chump");
+                        let _ = std::fs::create_dir_all(&config_dir);
+                        let fleet_config = config_dir.join("fleet-config.toml");
+                        let toml_content = format!(
+                            "# INFRA-615: auto-widen applied by 'chump fleet auto-widen --apply'\n\
+                             # starve_events_1h = {starve_count}\n\
+                             # applied_at = \"{}\"\n\
+                             effort = \"{suggested_effort}\"\n\
+                             priority_filter = \"{suggested_priority}\"\n",
+                            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+                        );
+                        match std::fs::write(&fleet_config, &toml_content) {
+                            Ok(_) => {
+                                println!(
+                                    "[auto-widen] wrote {} → restart fleet to apply",
+                                    fleet_config.display()
+                                );
+                                // Emit ambient event.
+                                let ambient_write = repo_root.join(".chump-locks/ambient.jsonl");
+                                let event = format!(
+                                    "{{\"ts\":\"{}\",\"kind\":\"fleet_auto_widen_applied\",\
+                                     \"starve_count\":{starve_count},\
+                                     \"effort\":\"{suggested_effort}\",\
+                                     \"priority_filter\":\"{suggested_priority}\"}}\n",
+                                    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+                                );
+                                let _ = std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .create(true)
+                                    .open(&ambient_write)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        f.write_all(event.as_bytes())
+                                    });
+                            }
+                            Err(e) => {
+                                eprintln!("[auto-widen] failed to write fleet-config.toml: {e}");
+                                std::process::exit(1);
+                            }
+                        }
+                    } else {
+                        println!(
+                            "[auto-widen] run with --apply to write ~/.chump/fleet-config.toml"
+                        );
+                    }
+                }
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief>"
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen>"
                 );
                 eprintln!("  start      [--size N] [--model M] [--effort xs,s,m] [--domain D]");
                 eprintln!("  stop       [--session NAME]");
@@ -2290,6 +2411,7 @@ async fn main() -> Result<()> {
                 eprintln!("  restart    [--size N] [--session NAME]");
                 eprintln!("  audit-pids [--apply]");
                 eprintln!("  brief      [--json] [--window SECS]");
+                eprintln!("  auto-widen [--apply]  -- widen effort/priority filter on starvation");
                 std::process::exit(2);
             }
         }

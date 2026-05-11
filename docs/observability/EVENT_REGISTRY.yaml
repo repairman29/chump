@@ -55,6 +55,12 @@ events:
     trigger: N consecutive empty picks (CHUMP_STARVE_THRESHOLD)
     consumers: [fleet-brief, watchdog]
 
+  - kind: fleet_auto_widen_applied
+    emitter: src/main.rs (INFRA-615, chump fleet auto-widen --apply)
+    trigger: operator runs auto-widen with --apply after starvation detected
+    consumers: [fleet-brief, waste_tally]
+    fields_required: [starve_count, effort, priority_filter]
+
   - kind: fleet_wedge
     emitter: scripts/dispatch/worker.sh
     trigger: claude -p produced 0 stdout for full timeout window
