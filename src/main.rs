@@ -4415,6 +4415,69 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump mcp install <name> [--no-install]` (PRODUCT-062)
+    //
+    // Looks up <name> in registry/mcp-servers.toml, runs `cargo install <package>`
+    // (unless binary already on PATH or --no-install), and adds to chump-mcp.json.
+    if args.get(1).map(|s| s == "mcp").unwrap_or(false)
+        && args.get(2).map(|s| s == "install").unwrap_or(false)
+    {
+        let name = args.get(3).map(String::as_str).unwrap_or("");
+        if name.is_empty() || name.starts_with('-') {
+            eprintln!("Usage: chump mcp install <name> [--no-install]");
+            eprintln!("       (run 'chump mcp list' to see available servers)");
+            std::process::exit(2);
+        }
+        let no_install = args.iter().any(|a| a == "--no-install");
+        let repo_root = crate::repo_path::repo_root();
+
+        match mcp_discovery::install_mcp_server(&repo_root, &repo_root, name, no_install) {
+            Ok(mcp_discovery::InstallOutcome::AlreadyInstalled) => {
+                println!("Server '{name}' binary already on PATH — added to chump-mcp.json.");
+            }
+            Ok(mcp_discovery::InstallOutcome::CargoInstalled) => {
+                println!("Installed '{name}' and added to chump-mcp.json.");
+                println!("Run 'chump mcp list' to verify.");
+            }
+            Ok(mcp_discovery::InstallOutcome::ConfigOnly) => {
+                println!("Added '{name}' to chump-mcp.json (--no-install: binary not installed).");
+                println!("Install the binary manually, then run 'chump mcp list' to verify.");
+            }
+            Err(e) => {
+                eprintln!("chump mcp install: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
+    // `chump mcp remove <name>` (PRODUCT-062) — remove server from chump-mcp.json.
+    if args.get(1).map(|s| s == "mcp").unwrap_or(false)
+        && args.get(2).map(|s| s == "remove").unwrap_or(false)
+    {
+        let name = args.get(3).map(String::as_str).unwrap_or("");
+        if name.is_empty() || name.starts_with('-') {
+            eprintln!("Usage: chump mcp remove <name>");
+            std::process::exit(2);
+        }
+        let repo_root = crate::repo_path::repo_root();
+        match mcp_discovery::remove_mcp_server(&repo_root, name) {
+            Ok(true) => {
+                println!("Removed '{name}' from chump-mcp.json.");
+                println!("To uninstall the binary: cargo uninstall chump-mcp-{name}");
+            }
+            Ok(false) => {
+                eprintln!("Server '{name}' not found in chump-mcp.json.");
+                std::process::exit(1);
+            }
+            Err(e) => {
+                eprintln!("chump mcp remove: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
     // `chump mcp enable <name>` (INFRA-MCP-DISCOVERY) — add a discovered MCP server
     // to the active Chump config.
     //

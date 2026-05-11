@@ -536,6 +536,11 @@ events:
     trigger: all 5 FTUE init smoke checks passed (chump --version, init, config.toml, state.db, mcp list)
     consumers: [fleet-brief, kpi-report]
 
+  - kind: mcp_server_installed
+    emitter: src/mcp_discovery.rs::install_mcp_server
+    trigger: chump mcp install <name> completes (any outcome — already_installed, cargo_installed, config_only)
+    consumers: [fleet-brief, audit-log]
+
   - kind: activation_install
     emitter: scripts/setup/install.sh
     trigger: fresh chump install on a machine
