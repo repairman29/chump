@@ -7,6 +7,7 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use axonerai::provider::{CompletionResponse, Message, Provider, StopReason, Tool, ToolCall};
 use futures_util::StreamExt;
+use rand::RngExt;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -683,7 +684,8 @@ pub fn is_transient_error(err: &anyhow::Error) -> bool {
     // Top-level reqwest message often omits "refused"; check chain and common patterns.
     let with_chain = format!("{:?}", err);
     let combined = format!("{} {}", s, with_chain);
-    combined.contains("connection")
+    combined.contains("429")
+        || combined.contains("connection")
         || combined.contains("connection closed")
         || combined.contains("SendRequest")
         || combined.contains("timed out")
@@ -1140,6 +1142,36 @@ impl Provider for LocalOpenAIProvider {
                     self.circuit_success(&self.base_url);
                     self.record_llm_http_completion(&self.base_url);
                     return Ok(r);
+                }
+            }
+        }
+        // INFRA-784: free-tier 429 → exponential backoff with jitter, up to 3 retries.
+        if std::env::var("CHUMP_FREE_TIER_MODE").as_deref() == Ok("1") {
+            if let Some(ref e) = last_err {
+                if e.to_string().contains("429") {
+                    for attempt in 0..3 {
+                        let backoff_ms = 2000u64 * 2u64.pow(attempt);
+                        let jitter = rand::rng().random_range(0u64..1000);
+                        let total = backoff_ms + jitter;
+                        eprintln!("[free-tier] 429 rate-limited, delay {total}ms before retry (attempt {})", attempt + 1);
+                        sleep(Duration::from_millis(total)).await;
+                        let retry_result = match effective_tx {
+                            Some(tx) => self.try_streaming_request(&self.base_url, &body, tx).await,
+                            None => self.try_one_request(&self.base_url, &body).await,
+                        };
+                        match retry_result {
+                            Ok(r) => {
+                                self.circuit_success(&self.base_url);
+                                self.record_llm_http_completion(&self.base_url);
+                                return Ok(r);
+                            }
+                            Err(retry_err) => {
+                                if !retry_err.to_string().contains("429") {
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
