@@ -615,6 +615,25 @@ events:
     consumers: [fleet-brief, operator-paging]
     fields_required: [ts, pr, reason, channel]
 
+  # ── PR-stale auto-rebase (RESILIENT-006) ─────────────────────────────────
+  - kind: pr_rescue_triggered
+    emitter: scripts/coord/pr-rescue.sh
+    trigger: PR identified as rescue candidate — has auto-merge armed, CI fails on PR but passes on main HEAD, age >= PR_RESCUE_STALE_HOURS
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, pr, detail]
+
+  - kind: pr_rescue_completed
+    emitter: scripts/coord/pr-rescue.sh
+    trigger: PR branch successfully rebased onto main HEAD, force-pushed, and auto-merge re-armed
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, pr, detail]
+
+  - kind: pr_rescue_failed
+    emitter: scripts/coord/pr-rescue.sh
+    trigger: rebase failed (merge conflict or push rejected); PR left unchanged for human intervention
+    consumers: [fleet-brief, kpi-report, waste-tally]
+    fields_required: [ts, pr, detail]
+
   # ── Free-tier dispatch testing ─────────────────────────────────────────
   - kind: free_tier_e2e
     emitter: scripts/dispatch/free-tier-e2e-test.sh
