@@ -277,39 +277,79 @@ class ChumpViewSettings extends HTMLElement {
     this.#loadCascadeInfo();
   }
 
+  // PRODUCT-054: load real cascade slot data and render toggle switches.
   #loadCascadeInfo() {
     const container = this.querySelector('#cascade-slots');
-    fetch('/api/repo/context')
+    fetch('/api/cascade-status')
       .then(r => r.json())
-      .then(ctx => {
-        if (!ctx || !ctx.effective_root) {
-          container.innerHTML = '<p style="color: var(--error-color);">Unable to load cascade info</p>';
+      .then(data => {
+        if (!data || !data.slots) {
+          container.innerHTML = '<p class="cascade-empty">No cascade slots configured.</p>';
           return;
         }
-        const html = `
-          <div style="background: var(--bg-secondary); padding: 12px; border-radius: 6px;">
-            <div style="margin-bottom: 8px;"><strong>Repo Root</strong></div>
-            <div style="margin-bottom: 12px; font-family: monospace; font-size: 0.85em; color: var(--text-secondary);">
-              ${ctx.effective_root}
-            </div>
-            <div style="margin-bottom: 8px;"><strong>Active Profile</strong></div>
-            <div style="color: var(--text-secondary);">
-              ${ctx.active_profile || '(none configured)'}
-            </div>
-            ${ctx.profiles && ctx.profiles.length > 0 ? `
-              <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color);">
-                <strong>Available Profiles (${ctx.profiles.length})</strong>
-                <ul style="margin: 8px 0; padding-left: 20px;">
-                  ${ctx.profiles.map(p => `<li>${p}</li>`).join('')}
-                </ul>
+        if (data.slots.length === 0) {
+          container.innerHTML = '<p class="cascade-empty">Cascade disabled — no slots found.</p>';
+          return;
+        }
+        container.innerHTML = data.slots.map(slot => {
+          const disabled = !!slot.disabled_by_config;
+          const circuit = slot.circuit_state || 'ok';
+          const circuitBadge = circuit === 'open'
+            ? '<span class="cascade-badge cascade-badge-err">circuit open</span>'
+            : circuit === 'half_open'
+              ? '<span class="cascade-badge cascade-badge-warn">half-open</span>'
+              : '';
+          const rpm = slot.rpm_limit > 0 ? `${slot.calls_this_minute}/${slot.rpm_limit} rpm` : '';
+          const rpd = slot.rpd_limit > 0 ? `${slot.calls_today}/${slot.rpd_limit} rpd` : '';
+          const stats = [rpm, rpd].filter(Boolean).join(' · ');
+          return `
+            <div class="cascade-slot-row ${disabled ? 'cascade-slot-disabled' : ''}">
+              <div class="cascade-slot-info">
+                <span class="cascade-slot-name">${slot.name}</span>
+                ${circuitBadge}
+                ${stats ? `<span class="cascade-slot-stats">${stats}</span>` : ''}
               </div>
-            ` : ''}
-          </div>
-        `;
-        container.innerHTML = html;
+              <label class="cascade-toggle" title="${disabled ? 'Enable slot' : 'Disable slot'}">
+                <input type="checkbox" class="cascade-toggle-input"
+                  data-slot="${slot.name}"
+                  ${disabled ? '' : 'checked'}
+                  ${circuit === 'open' ? 'disabled' : ''}>
+                <span class="cascade-toggle-track"></span>
+              </label>
+            </div>`;
+        }).join('');
+        // Wire toggle events
+        container.querySelectorAll('.cascade-toggle-input').forEach(cb => {
+          cb.addEventListener('change', e => this.#onSlotToggle(e));
+        });
       })
       .catch(err => {
-        container.innerHTML = `<p style="color: var(--error-color);">Error: ${err.message}</p>`;
+        container.innerHTML = `<p style="color:var(--error-color)">Error: ${err.message}</p>`;
+      });
+  }
+
+  #onSlotToggle(e) {
+    const cb = e.target;
+    const slot = cb.dataset.slot;
+    const enabled = cb.checked;
+    cb.disabled = true;
+    fetch('/api/cascade-slot-toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot, enabled }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(() => {
+        // Refresh to reflect saved state
+        this.#loadCascadeInfo();
+      })
+      .catch(err => {
+        cb.checked = !enabled; // revert optimistic toggle
+        cb.disabled = false;
+        console.error('cascade-slot-toggle failed:', err);
       });
   }
 }

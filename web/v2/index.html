@@ -352,6 +352,68 @@
       padding: 8px 0 4px;
     }
 
+    /* ── Cascade slot toggles (PRODUCT-054) ────────────────────────────── */
+    .cascade-slot-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-bottom: 4px;
+      transition: opacity 0.15s;
+    }
+    .cascade-slot-disabled { opacity: 0.45; }
+    .cascade-slot-info { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+    .cascade-slot-name {
+      font-size: 12px;
+      font-family: "SF Mono", monospace;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+    }
+    .cascade-slot-stats { font-size: 10px; color: var(--text-secondary); }
+    .cascade-badge {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      padding: 2px 5px;
+      border-radius: 3px;
+    }
+    .cascade-badge-err  { background: rgba(255,69,58,0.15); color: var(--error-color,#ff453a); }
+    .cascade-badge-warn { background: rgba(255,159,10,0.15); color: var(--warn-color,#ff9f0a); }
+    .cascade-empty { font-size: 12px; color: var(--text-secondary); margin: 0; }
+    /* Toggle switch */
+    .cascade-toggle { position: relative; display: inline-flex; align-items: center; cursor: pointer; flex-shrink: 0; }
+    .cascade-toggle-input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .cascade-toggle-track {
+      width: 34px;
+      height: 18px;
+      background: var(--border);
+      border-radius: 9px;
+      transition: background 0.2s;
+      position: relative;
+    }
+    .cascade-toggle-track::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s;
+    }
+    .cascade-toggle-input:checked + .cascade-toggle-track { background: var(--accent,#0a84ff); }
+    .cascade-toggle-input:checked + .cascade-toggle-track::after { transform: translateX(16px); }
+    .cascade-toggle-input:disabled + .cascade-toggle-track { opacity: 0.4; cursor: not-allowed; }
+
     /* ── View: settings ─────────────────────────────────────────────────── */
     .settings-grid { padding: 16px; display: flex; flex-direction: column; gap: 1px; }
     .setting-row {

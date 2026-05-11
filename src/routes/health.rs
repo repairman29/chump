@@ -159,8 +159,102 @@ pub async fn handle_favicon() -> Redirect {
     Redirect::to("/icon.svg")
 }
 
+// ── Cascade slot config.toml helpers (PRODUCT-054) ────────────────────────
+
+fn cascade_config_path() -> std::path::PathBuf {
+    let home = std::env::var("CHUMP_HOME")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| "/tmp".into());
+    std::path::PathBuf::from(home)
+        .join(".chump")
+        .join("config.toml")
+}
+
+/// Read `[cascade_slots] disabled = [...]` from ~/.chump/config.toml.
+fn read_cascade_disabled() -> Vec<String> {
+    let path = cascade_config_path();
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    let mut in_section = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_section = trimmed == "[cascade_slots]";
+            continue;
+        }
+        if !in_section || trimmed.starts_with('#') {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix("disabled") {
+            let rest = rest
+                .trim_start_matches(|c: char| c == '=' || c.is_whitespace())
+                .trim_matches(|c: char| c == '[' || c == ']');
+            return rest
+                .split(',')
+                .map(|s| s.trim().trim_matches('"').to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+    }
+    vec![]
+}
+
+/// Write `[cascade_slots] disabled = [...]` into ~/.chump/config.toml.
+/// Creates the file / section if absent; replaces existing disabled line in place.
+fn write_cascade_disabled(disabled: &[String]) -> std::io::Result<()> {
+    let path = cascade_config_path();
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let disabled_line = if disabled.is_empty() {
+        "disabled = []".to_string()
+    } else {
+        let items: Vec<String> = disabled.iter().map(|s| format!("\"{}\"", s)).collect();
+        format!("disabled = [{}]", items.join(", "))
+    };
+
+    if content.contains("[cascade_slots]") {
+        let mut result: Vec<String> = Vec::new();
+        let mut in_section = false;
+        let mut replaced = false;
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with('[') {
+                if in_section && !replaced {
+                    result.push(disabled_line.clone());
+                    replaced = true;
+                }
+                in_section = trimmed == "[cascade_slots]";
+                result.push(line.to_string());
+                continue;
+            }
+            if in_section && trimmed.starts_with("disabled") {
+                result.push(disabled_line.clone());
+                replaced = true;
+                continue;
+            }
+            result.push(line.to_string());
+        }
+        if in_section && !replaced {
+            result.push(disabled_line.clone());
+        }
+        std::fs::write(&path, result.join("\n") + "\n")
+    } else {
+        let mut new_content = content;
+        if !new_content.ends_with('\n') {
+            new_content.push('\n');
+        }
+        new_content.push('\n');
+        new_content.push_str("[cascade_slots]\n");
+        new_content.push_str(&disabled_line);
+        new_content.push('\n');
+        std::fs::write(&path, new_content)
+    }
+}
+
 /// GET /api/cascade-status
 pub async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCode> {
+    let disabled = read_cascade_disabled();
     let cascade = match provider_cascade::cascade_for_status() {
         Some(c) => c,
         None => {
@@ -182,6 +276,7 @@ pub async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCo
                     let remaining_rpd = remaining_map_none.get(&s.name).copied();
                     serde_json::json!({
                         "name": s.name,
+                        "disabled_by_config": disabled.contains(&s.name),
                         "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
                         "rpd_limit": s.rpd_limit,
                         "remaining_rpd": remaining_rpd,
@@ -220,6 +315,7 @@ pub async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCo
             let remaining_rpd = remaining_map.get(&s.name).copied();
             serde_json::json!({
                 "name": s.name,
+                "disabled_by_config": disabled.contains(&s.name),
                 "calls_today": s.calls_today.load(std::sync::atomic::Ordering::Relaxed),
                 "rpd_limit": s.rpd_limit,
                 "remaining_rpd": remaining_rpd,
@@ -240,6 +336,45 @@ pub async fn handle_cascade_status() -> Result<Json<serde_json::Value>, StatusCo
         "enabled": true,
         "provider_summary": provider_summary,
         "total_remaining_rpd": total_remaining_rpd
+    })))
+}
+
+/// POST /api/cascade-slot-toggle — enable or disable a cascade slot, persisted to config.toml.
+/// Body: {"slot": "<name>", "enabled": true|false}
+pub async fn handle_cascade_slot_toggle(
+    axum::extract::Json(body): axum::extract::Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let slot = body
+        .get("slot")
+        .and_then(|v| v.as_str())
+        .ok_or(StatusCode::BAD_REQUEST)?
+        .to_string();
+    let enabled = body
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+
+    let mut disabled = read_cascade_disabled();
+    if enabled {
+        disabled.retain(|s| s != &slot);
+    } else if !disabled.contains(&slot) {
+        disabled.push(slot.clone());
+    }
+
+    write_cascade_disabled(&disabled).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tracing::info!(
+        slot = %slot,
+        enabled = enabled,
+        disabled_count = disabled.len(),
+        "cascade_slot_toggle: slot {} → {} (config.toml updated)",
+        slot,
+        if enabled { "enabled" } else { "disabled" }
+    );
+
+    Ok(Json(serde_json::json!({
+        "slot": slot,
+        "enabled": enabled,
+        "disabled_slots": disabled,
     })))
 }
 
