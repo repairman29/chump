@@ -25,12 +25,12 @@ Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Was
 - **INFRA-601** P1 ✅ — bandit Thompson vs UCB1 replay study (done in #1225)
 - **COG-053** P1 ✅ — subagent self-ship rate measurement (done in #1310)
 
-**Sunset** (last 5 PRs shipped, 2026-05-10):
-- #1389 — session gaps from CREDIBLE-017: commit.sh mutex fix, worktree config diag, bot-merge scope, handoff format, CONTINUAL_LEARNING.md
-- #1388 — CREDIBLE-017: standardize CLI exit codes (exit(3)→exit(1))
-- #1386 — INFRA-736: correct claude-opus-4.7 and deepseek-v3 model rates
-- #1385 — INFRA-610: `chump fleet restart` subcommand
-- #1383 — INFRA-738: auto-default to chump-local when ANTHROPIC_API_KEY unset
+**Sunset** (last 5 PRs shipped, 2026-05-11):
+- #1440 — fix(INFRA-817): backward-compat aliases traverse shadow DOM (e2e-pwa fix)
+- #1439 — feat(COG-052): `chump gap audit-ac` — AC coverage checker for closed gaps
+- #1438 — chore: file DOC-035 (README rewrite) + INFRA-818 (perf tuning FLEET_SIZE=10)
+- #1437 — fix(INFRA-816): add system deps to release-plz.yml (glib-2.0)
+- #1436 — chore(INFRA-690): delete 13 dead-code files (empty route stubs + orphans)
 
 ---
 
@@ -154,21 +154,18 @@ reports back) without human-typing each chump CLI command.
 
 ## Status (live; updated by Mission Driver)
 
-- **Updated.** 2026-05-10
-- **Week 1 (May 6–13) — OUTCOME SHIPPED.** User-facing front door complete:
-  - `chump gen <task>` shipped (INFRA-593, #1204). ✅
-  - Offline-LLM quickstart doc shipped (INFRA-591, #1216). ✅
-  - `chump fleet start/stop/status/restart` shipped (INFRA-610, #1385). ✅
-  - `chump init` lists live Ollama models (INFRA-743, #1384). ✅
-  - Free-tier dispatch wired (INFRA-733 + #1373). ✅
-  - Remaining: FTUE clean-machine CI test (ftue job failing pre-existing on main — Ollama unreachable in CI runner; not a regression).
-  - **INFRA-791 P0 blocker open**: dispatched agents receive no tools (tools_ms=0). Carried into Week 2.
+- **Updated.** 2026-05-11
+- **Week 1 (May 6–13) — OUTCOME SHIPPED.** User-facing front door complete. All gaps closed. FTUE clean-machine CI test deferred to Week 4.
 - **Week 2 (May 14–21) — COMPLETE.** EVAL-101 cognition A/B run and closed as null finding (Δ=+0.025, threshold 0.10). Result at `docs/eval/EVAL-101-cognition-ab-2026-05-10.md`.
 - **Week 3 (May 22–28) — IN PROGRESS.** INFRA-796/797/798 scoped and implemented. `chump orchestrate` loop exists with telemetry + auto-grade timer + stub/real intent parser.
+  - **INFRA-816 (release-plz glib dep)** — filed + fixed + merged (#1437). ✅
+  - **INFRA-817 (e2e-pwa flake root cause)** — filed. Alias fix merged (#1440). Test updates in PR (#1442).
+- **Week 4 (May 29–June 6) — GAPS FILED.** DOC-035 (README rewrite for demo flow) and INFRA-818 (perf tuning FLEET_SIZE=10) filed in #1438. PRODUCT-025 (PWA dashboard MVP) and INFRA-799 (FTUE CI test) pending.
 - **Pillar balance (2026-05-10):** EFFECTIVE 43% (dominant), CREDIBLE 20%, RESILIENT 13%, ZERO-WASTE 6%, MISSION 3%. 86 pickable, 107 vague (no ACs — unpickable).
+- **CI pipeline:** Zero green runs on main in last 100 before fix. Root cause: e2e-pwa flake from missing v2 backward-compat aliases (INFRA-817). Fix landed in #1440; e2e test updates in #1442.
 - **Next actions:**
-  1. Fix INFRA-791 (P0 blocker — tools not reaching agents).
-  2. Verify INFRA-593 (`chump gen`) status; promote to Week 1 close if shipped.
-  3. File Week 2 gaps (EVAL-101 scope-up, COG-053, bandit replay) before May 14.
-  4. File 4 Week 3 orchestrator gaps before May 21.
-  5. File Week 4 FTUE integration test + README rewrite gaps.
+  1. Verify PR #1442 merges + CI passes (e2e test selectors for v2 DOM).
+  2. Update ROADMAP.md with Week 3 orchestrator gaps → WEEK 3 SHIPPED.
+  3. File remaining Week 4 gaps (PRODUCT-025 PWA dashboard slices, INFRA-799 FTUE CI test).
+  4. Curate vague gaps: add ACs to 107 unpickable gaps.
+  5. Implement next pickable Rust gap (INFRA-777, INFRA-784, or CREDIBLE-019).
