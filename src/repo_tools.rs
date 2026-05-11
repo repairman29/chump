@@ -548,34 +548,64 @@ impl Tool for PatchFileTool {
         // runtime on the main thread.
         let diff_owned = diff.to_string();
         let content_for_apply = content.clone();
-        let apply_result = tokio::task::spawn_blocking(move || {
-            patch_apply::apply_unified_diff(&content_for_apply, &diff_owned)
+        let strict_result = tokio::task::spawn_blocking({
+            let d = diff_owned.clone();
+            let c = content_for_apply.clone();
+            move || patch_apply::apply_unified_diff(&c, &d)
         })
         .await
         .map_err(|e| anyhow!("patch apply task failed: {}", e))?;
 
-        match apply_result {
-            Ok(new_content) => {
-                let baseline = if test_aware::test_aware_enabled() {
-                    Some(
-                        test_aware::capture_baseline()
-                            .map_err(|e| anyhow!("test_aware baseline: {}", e))?,
-                    )
-                } else {
-                    None
-                };
-                fs::write(&path, &new_content).map_err(|e| anyhow!("write failed: {}", e))?;
-                chump_log::log_patch_file(&path.display().to_string(), diff.len(), "applied");
-                if let Some((_, _, ref failing)) = baseline {
-                    test_aware::check_regression(failing).map_err(|e| anyhow!("{}", e))?;
-                }
-                Ok(format!("Patched {} successfully.", path_str))
+        // On strict failure, try fuzzy matching (whitespace-tolerant, ±3 line drift).
+        let fuzzy_result: Option<Result<String, patch_apply::PatchApplyError>> =
+            if strict_result.is_err() {
+                tracing::info!(
+                    path = %path_str,
+                    "patch_file strict failed, attempting fuzzy fallback"
+                );
+                let d = diff_owned.clone();
+                let c = content.clone();
+                tokio::task::spawn_blocking(move || patch_apply::apply_unified_diff_fuzzy(&c, &d))
+                    .await
+                    .ok()
+            } else {
+                None
+            };
+
+        let (new_content, mode) = match (&strict_result, &fuzzy_result) {
+            (Ok(nc), _) => (nc.clone(), "applied"),
+            (_, Some(Ok(nc))) => (nc.clone(), "applied-fuzzy"),
+            _ => {
+                let e = strict_result.as_ref().unwrap_err();
+                chump_log::log_patch_file(
+                    &path.display().to_string(),
+                    diff.len(),
+                    "mismatch-fuzzy",
+                );
+                let mut msg = patch_recovery_message(&content, diff, e);
+                msg.push_str(
+                    "\n\nNote: patch_file also failed with fuzzy matching (whitespace-tolerant, ±3 line context drift). \
+                     Try using read_file to get the exact current content, then use write_file to write \
+                     the corrected version directly.",
+                );
+                return Ok(msg);
             }
-            Err(e) => {
-                chump_log::log_patch_file(&path.display().to_string(), diff.len(), "mismatch");
-                Ok(patch_recovery_message(&content, diff, &e))
-            }
+        };
+
+        let baseline = if test_aware::test_aware_enabled() {
+            Some(
+                test_aware::capture_baseline()
+                    .map_err(|e| anyhow!("test_aware baseline: {}", e))?,
+            )
+        } else {
+            None
+        };
+        fs::write(&path, &new_content).map_err(|e| anyhow!("write failed: {}", e))?;
+        chump_log::log_patch_file(&path.display().to_string(), diff.len(), mode);
+        if let Some((_, _, ref failing)) = baseline {
+            test_aware::check_regression(failing).map_err(|e| anyhow!("{}", e))?;
         }
+        Ok(format!("Patched {} successfully.", path_str))
     }
 }
 
