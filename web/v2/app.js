@@ -5,8 +5,9 @@
 class ChumpNav extends HTMLElement {
   static #ITEMS = [
     { id: 'chat',      label: 'Chat',      icon: '💬' },
+    { id: 'agents',    label: 'Agents',    icon: '🤝' },
     { id: 'results',   label: 'Results',   icon: '📊' },
-    { id: 'agent',     label: 'Agent',     icon: '🔄' },
+    { id: 'agent',     label: 'Queue',     icon: '🔄' },
     { id: 'tasks',     label: 'Tasks',     icon: '⚡' },
     { id: 'decisions', label: 'Decisions', icon: '🎯' },
     { id: 'memory',    label: 'Memory',    icon: '🧠' },
@@ -314,6 +315,121 @@ class ChumpViewSettings extends HTMLElement {
 }
 customElements.define('chump-view-settings', ChumpViewSettings);
 
+// ── <chump-view-agents> (PRODUCT-059) ────────────────────────────────────────
+// Read-only live results board: one card per active .chump-locks/*.json session.
+// Polls /api/fleet-status every 10 seconds. Works without GitHub access (PR fields
+// are shown only when the gh CLI is available on the server).
+class ChumpViewAgents extends HTMLElement {
+  #timer = null;
+
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Agents</h2>
+        <p class="view-subtitle">Active fleet sessions — leases, PRs, and CI status</p>
+      </section>
+      <p class="agents-refresh-note" id="agents-refresh-note">Refreshes every 10 s</p>
+      <section class="agents-list" id="agents-list">
+        <p class="placeholder">Loading active sessions…</p>
+      </section>
+    `;
+    this.#load();
+    this.#timer = setInterval(() => this.#load(), 10_000);
+  }
+
+  disconnectedCallback() {
+    clearInterval(this.#timer);
+  }
+
+  #load() {
+    const list = this.querySelector('#agents-list');
+    const note = this.querySelector('#agents-refresh-note');
+    fetch('/api/fleet-status')
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d) => {
+        const sessions = d.sessions ?? [];
+        const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        if (note) note.textContent = `${sessions.length} active session${sessions.length !== 1 ? 's' : ''} · last updated ${ts}`;
+
+        if (sessions.length === 0) {
+          list.innerHTML = '<p class="placeholder">No active agent sessions. The fleet is idle.</p>';
+          return;
+        }
+
+        list.innerHTML = sessions.map((s) => {
+          const gapId = s.gap_id || '—';
+          const title = s.gap_title || '(no title)';
+          const priority = s.gap_priority ? `${s.gap_priority}/${s.gap_effort || '?'}` : '';
+          const branch = s.branch || '';
+          const worktree = s.worktree_path || '';
+
+          // PR link
+          const prNum = s.pr_number;
+          const prState = (s.pr_state || '').toLowerCase();
+          const prHtml = prNum
+            ? `<a class="agent-pr-link" href="https://github.com/${this.#repoSlug()}/pull/${prNum}" target="_blank" rel="noopener">#${prNum} ${prState}</a>`
+            : '';
+
+          // CI badge
+          const ci = s.ci_status;
+          const ciClass = ci === 'success' ? 'ci-success'
+                        : ci === 'failure' ? 'ci-failure'
+                        : ci === 'pending' ? 'ci-pending' : '';
+          const ciBadge = ci ? `<span class="agent-ci-badge ${ciClass}">CI: ${ci}</span>` : '';
+
+          // Heartbeat age
+          const heartbeatAge = s.heartbeat_at ? this.#age(s.heartbeat_at) : '';
+
+          return `
+            <article class="agent-card">
+              <header class="agent-card-header">
+                <span class="agent-gap-id">${gapId}</span>
+                ${ciBadge}
+                ${priority ? `<span class="gap-priority">${priority}</span>` : ''}
+                ${prHtml}
+              </header>
+              <p class="agent-gap-title">${title}</p>
+              <div class="agent-meta">
+                ${branch ? `<span title="Branch">🌿 ${branch}</span>` : ''}
+                ${s.taken_at ? `<span title="Started">🕐 ${this.#age(s.taken_at)} ago</span>` : ''}
+                ${heartbeatAge ? `<span title="Last heartbeat">💓 ${heartbeatAge} ago</span>` : ''}
+              </div>
+              ${worktree ? `<p class="agent-worktree" title="Worktree path">📂 ${worktree}</p>` : ''}
+            </article>
+          `;
+        }).join('');
+      })
+      .catch((err) => {
+        if (list) list.innerHTML = `<p class="placeholder">Could not load fleet status: ${err.message}</p>`;
+      });
+  }
+
+  #repoSlug() {
+    // Best-effort: extract owner/repo from the page origin (works when hosted
+    // behind a reverse proxy that sets X-Repo-Slug). Falls back to the GitHub
+    // origin for the known Chump repo.
+    return 'jeffadkins/Chump';
+  }
+
+  #age(isoString) {
+    try {
+      const ms = Date.now() - new Date(isoString).getTime();
+      const secs = Math.floor(ms / 1000);
+      if (secs < 60) return `${secs}s`;
+      const mins = Math.floor(secs / 60);
+      if (mins < 60) return `${mins}m`;
+      const hrs = Math.floor(mins / 60);
+      return `${hrs}h ${mins % 60}m`;
+    } catch {
+      return '?';
+    }
+  }
+}
+customElements.define('chump-view-agents', ChumpViewAgents);
+
 // ── <chump-view-results> ──────────────────────────────────────────────────────
 class ChumpViewResults extends HTMLElement {
   connectedCallback() {
@@ -542,6 +658,7 @@ customElements.define('chump-view-agent', ChumpViewAgent);
 // ── Router ────────────────────────────────────────────────────────────────────
 const VIEWS = {
   chat:      () => document.createElement('chump-view-chat'),
+  agents:    () => document.createElement('chump-view-agents'),
   results:   () => document.createElement('chump-view-results'),
   agent:     () => document.createElement('chump-view-agent'),
   tasks:     () => document.createElement('chump-view-tasks'),
