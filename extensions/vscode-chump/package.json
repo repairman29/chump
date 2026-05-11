@@ -1,0 +1,58 @@
+{
+  "name": "vscode-chump",
+  "displayName": "Chump",
+  "description": "Chump AI coding agent — ACP stdio backend integration",
+  "version": "0.1.0",
+  "publisher": "repairman29",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["AI", "Other"],
+  "keywords": ["ai", "agent", "chump", "acp", "coding-assistant"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Chump",
+      "properties": {
+        "chump.binaryPath": {
+          "type": "string",
+          "default": "chump",
+          "description": "Path to the chump binary (default: 'chump' resolved from PATH)"
+        },
+        "chump.args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": ["--acp"],
+          "description": "Extra arguments passed to the chump binary"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "chump.reconnect",
+        "title": "Chump: Reconnect ACP backend"
+      },
+      {
+        "command": "chump.showStatus",
+        "title": "Chump: Show connection status"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/repairman29/chump"
+  },
+  "license": "MIT"
+}
