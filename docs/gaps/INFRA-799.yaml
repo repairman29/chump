@@ -1,7 +1,7 @@
 - id: INFRA-799
   domain: INFRA
   title: "EFFECTIVE: FTUE clean-machine CI test — brew install + chump init + chump gen on a fresh macOS runner (Week 4 demo gate)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -9,4 +9,7 @@
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  opened_date: '2026-05-10'
+  closed_date: '2026-05-11'
+  closed_pr: 1468
 

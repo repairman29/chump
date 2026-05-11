@@ -1,13 +1,15 @@
-name: FTUE clean-machine 2026 (INFRA-600)
+name: FTUE clean-machine 2026 (INFRA-600 / INFRA-799)
 
 # Integration test for the week-4 ROADMAP acceptance: the 5-min demo flow
-# (brew install → chump --version → chump gen → chump fleet start/status/stop)
+# (brew install → chump --version → chump init → chump gen →
+#  chump mcp list → chump fleet start/status/stop)
 # runs without operator hand-holding on a completely fresh macOS runner.
 #
 # fleet start/stop/status delegate to scripts/dispatch/ stubs so no real
 # Claude Code workers or API keys are required — the test validates CLI
 # routing and JSON output plumbing, not live agent execution.
 #
+# INFRA-799: added chump init --no-interactive + chump mcp list steps.
 # Replaces the infra-broken ftue-clean-machine.yml (INFRA-600).
 # Triggers: same cadence as the old workflow.
 
@@ -20,7 +22,10 @@ on:
       - 'src/chump_init.rs'
       - 'src/gen.rs'
       - 'src/fleet*.rs'
+      - 'src/mcp_discovery.rs'
+      - 'chump-mcp.json'
       - 'scripts/dispatch/**'
+      - 'scripts/ci/test-chump-init-clean-machine.sh'
       - '.github/workflows/ftue-clean-machine-2026.yml'
   push:
     branches: [main]
@@ -29,7 +34,10 @@ on:
       - 'src/chump_init.rs'
       - 'src/gen.rs'
       - 'src/fleet*.rs'
+      - 'src/mcp_discovery.rs'
+      - 'chump-mcp.json'
       - 'scripts/dispatch/**'
+      - 'scripts/ci/test-chump-init-clean-machine.sh'
       - '.github/workflows/ftue-clean-machine-2026.yml'
   schedule:
     - cron: '0 12 * * 1'  # weekly Monday 12:00 UTC
@@ -68,6 +76,30 @@ jobs:
           VERSION=$(chump --version)
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "chump --version: ${VERSION}"
+
+      # ── Step 2b: chump init --no-interactive (INFRA-799) ─────────────────
+      # Runs in a throwaway HOME so it doesn't mutate the runner's real ~/.chump.
+      - name: chump init --no-interactive
+        id: init
+        run: |
+          set -euo pipefail
+          FAKE_HOME="$(mktemp -d)"
+          # Run the local smoke test (covers checks 1-5 including mcp list).
+          CHUMP_BIN=chump bash scripts/ci/test-chump-init-clean-machine.sh 2>&1
+          echo "init_home=${FAKE_HOME}" >> "$GITHUB_OUTPUT"
+
+      # ── Step 2c: chump mcp list (INFRA-744 / INFRA-799) ──────────────────
+      - name: chump mcp list
+        id: mcp_list
+        run: |
+          set -euo pipefail
+          # chump-mcp.json is checked in — verify mcp list reads it.
+          OUT=$(CHUMP_BINARY_STALENESS_CHECK=0 chump mcp list 2>/dev/null)
+          echo "$OUT"
+          # Expect at least one server listed from chump-mcp.json.
+          echo "$OUT" | grep -qE "ready|MISSING|disabled" || \
+            { echo "ERROR: chump mcp list did not emit status column"; exit 1; }
+          echo "mcp list: OK"
 
       # ── Step 3: set up fixture Chump repo ────────────────────────────────
       # The fixture is a minimal git+Cargo project with stub dispatch scripts
@@ -178,6 +210,8 @@ jobs:
           echo "=== FTUE clean-machine 2026 summary ==="
           echo "brew install:  ${{ steps.install.outputs.install_seconds }}s"
           echo "chump version: ${{ steps.version.outputs.version }}"
+          echo "chump init:    ${{ steps.init.outcome }}"
+          echo "mcp list:      ${{ steps.mcp_list.outcome }}"
           echo "gen:           ${{ steps.gen.outcome }}"
           echo "fleet start:   ${{ steps.fleet_start.outcome }}"
           echo "fleet status:  ${{ steps.fleet_status.outcome }}"
