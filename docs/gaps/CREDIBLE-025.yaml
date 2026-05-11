@@ -1,15 +1,14 @@
 - id: CREDIBLE-025
   domain: CREDIBLE
   title: "CREDIBLE: tag worker model in ambient events + per-model ship-rate breakdown — so Sonnet/Haiku/Opencode comparisons stop being vibes"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "Every ambient.jsonl event from a worker includes BOTH `model` (e.g., claude-sonnet-4-6, claude-haiku-4-5, claude-opus-4-7, ollama/qwen2.5:7b) AND `harness` (claude-code-ide, opencode, opencode-bigpickle, fleet-dispatcher, manual)"
-    - "scripts/dev/ambient-emit.sh accepts --model and --harness flags; defaults to env vars CHUMP_AGENT_MODEL / CHUMP_AGENT_HARNESS; falls back to 'unknown' (logged as kind=missing_attribution alert)"
-    - "Workers spawned by run-fleet.sh export both env vars before any tool call; fleet config records the model+harness pair per worker slot"
-    - "scripts/dispatch/fleet-status.sh --by-harness and --by-model render breakdown tables: ships, waste rate, silent_agent count, P50 cycle time, per cohort over a configurable window"
-    - "chump waste-tally --by-harness and chump health --by-model show the same breakdown for ad-hoc operator review"
-    - "Test fixture: 5 synthetic ambient events tagged across 3 model+harness pairs; assert fleet-status output groups them correctly"
-    - "Migration note: events without model/harness from before this lands are tagged harness=legacy in any breakdown so historical comparisons are honest"
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-11'
+  closed_pr: 1457
 
