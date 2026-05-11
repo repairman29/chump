@@ -91,7 +91,10 @@ pub fn parse_intent(input: &str) -> IntentOp {
         return IntentOp::GapList { filter };
     }
 
-    if contains_any(&lc, &["gap show", "show gap", "what is gap", "tell me about gap"]) {
+    if contains_any(
+        &lc,
+        &["gap show", "show gap", "what is gap", "tell me about gap"],
+    ) {
         if let Some(id) = extract_gap_id(&orig_words) {
             return IntentOp::GapShow { id };
         }
@@ -106,15 +109,34 @@ pub fn parse_intent(input: &str) -> IntentOp {
         }
     }
 
-    if contains_any(&lc, &["ship gap", "mark done", "mark shipped", "close gap", "complete gap"]) {
+    if contains_any(
+        &lc,
+        &[
+            "ship gap",
+            "mark done",
+            "mark shipped",
+            "close gap",
+            "complete gap",
+        ],
+    ) {
         if let Some(id) = extract_gap_id(&orig_words) {
             return IntentOp::GapShip { id };
         }
     }
 
-    if contains_any(&lc, &["new gap", "create gap", "file gap", "reserve gap", "open a gap"]) {
-        let title = extract_remainder_after(input, &["gap", "new", "create", "file", "reserve", "open"])
-            .unwrap_or_else(|| input.to_string());
+    if contains_any(
+        &lc,
+        &[
+            "new gap",
+            "create gap",
+            "file gap",
+            "reserve gap",
+            "open a gap",
+        ],
+    ) {
+        let title =
+            extract_remainder_after(input, &["gap", "new", "create", "file", "reserve", "open"])
+                .unwrap_or_else(|| input.to_string());
         return IntentOp::GapReserve { title };
     }
 
@@ -129,23 +151,50 @@ pub fn parse_intent(input: &str) -> IntentOp {
         return IntentOp::FleetStart;
     }
 
-    if contains_any(&lc, &["fleet status", "fleet health", "how is the fleet", "fleet running"])
-        || (has_word(&lc_words, "status") && has_fleet)
+    if contains_any(
+        &lc,
+        &[
+            "fleet status",
+            "fleet health",
+            "how is the fleet",
+            "fleet running",
+        ],
+    ) || (has_word(&lc_words, "status") && has_fleet)
         || (has_word(&lc_words, "health") && has_fleet)
     {
         return IntentOp::FleetStatus;
     }
 
     // ── Reporting ─────────────────────────────────────────────────────────────
-    if contains_any(&lc, &["mission grade", "pillar grade", "grade the mission", "4 pillar", "four pillar"]) {
+    if contains_any(
+        &lc,
+        &[
+            "mission grade",
+            "pillar grade",
+            "grade the mission",
+            "4 pillar",
+            "four pillar",
+        ],
+    ) {
         return IntentOp::MissionGrade;
     }
 
-    if contains_any(&lc, &["pillar balance", "balance pillar", "pillar inventory", "rebalance"]) {
+    if contains_any(
+        &lc,
+        &[
+            "pillar balance",
+            "balance pillar",
+            "pillar inventory",
+            "rebalance",
+        ],
+    ) {
         return IntentOp::PillarBalance;
     }
 
-    if contains_any(&lc, &["waste tally", "waste rate", "wasted work", "waste report"]) {
+    if contains_any(
+        &lc,
+        &["waste tally", "waste rate", "wasted work", "waste report"],
+    ) {
         return IntentOp::WasteTally;
     }
 
@@ -156,7 +205,9 @@ pub fn parse_intent(input: &str) -> IntentOp {
         }
     }
 
-    IntentOp::Unknown { raw: input.to_string() }
+    IntentOp::Unknown {
+        raw: input.to_string(),
+    }
 }
 
 /// Returns the LLM prompt to resolve an intent when pattern matching fails.
@@ -211,9 +262,7 @@ pub fn emit_intent_event(op: &IntentOp, repo_root: &Path) {
     };
     let kind = op.ambient_kind();
     let cmd = op.to_chump_command().replace('"', "\\\"");
-    let line = format!(
-        "{{\"ts\":\"{ts}\",\"kind\":\"{kind}\",\"command\":\"{cmd}\"}}\n"
-    );
+    let line = format!("{{\"ts\":\"{ts}\",\"kind\":\"{kind}\",\"command\":\"{cmd}\"}}\n");
     let path = locks_dir.join("ambient.jsonl");
     let _ = std::fs::OpenOptions::new()
         .create(true)
@@ -270,7 +319,10 @@ fn extract_remainder_after(input: &str, skip_words: &[&str]) -> Option<String> {
     let words: Vec<&str> = input.split_whitespace().collect();
     let mut i = 0;
     while i < words.len() {
-        if skip_words.iter().any(|sw| words[i].eq_ignore_ascii_case(sw)) {
+        if skip_words
+            .iter()
+            .any(|sw| words[i].eq_ignore_ascii_case(sw))
+        {
             i += 1;
             continue;
         }
@@ -298,25 +350,43 @@ mod tests {
     #[test]
     fn gap_list_with_p1_filter() {
         let op = parse_intent("list open P1 gaps");
-        assert_eq!(op, IntentOp::GapList { filter: Some("--priority P1".to_string()) });
+        assert_eq!(
+            op,
+            IntentOp::GapList {
+                filter: Some("--priority P1".to_string())
+            }
+        );
     }
 
     #[test]
     fn gap_show_by_id() {
         let op = parse_intent("gap show INFRA-798");
-        assert_eq!(op, IntentOp::GapShow { id: "INFRA-798".to_string() });
+        assert_eq!(
+            op,
+            IntentOp::GapShow {
+                id: "INFRA-798".to_string()
+            }
+        );
     }
 
     #[test]
     fn single_gap_id_resolves_to_show() {
         let op = parse_intent("INFRA-798");
-        assert_eq!(op, IntentOp::GapShow { id: "INFRA-798".to_string() });
+        assert_eq!(
+            op,
+            IntentOp::GapShow {
+                id: "INFRA-798".to_string()
+            }
+        );
     }
 
     #[test]
     fn fleet_status_multiple_phrasings() {
         assert_eq!(parse_intent("fleet status"), IntentOp::FleetStatus);
-        assert_eq!(parse_intent("how is the fleet doing"), IntentOp::FleetStatus);
+        assert_eq!(
+            parse_intent("how is the fleet doing"),
+            IntentOp::FleetStatus
+        );
         assert_eq!(parse_intent("fleet health check"), IntentOp::FleetStatus);
     }
 
@@ -328,7 +398,10 @@ mod tests {
 
     #[test]
     fn mission_grade() {
-        assert_eq!(parse_intent("what is our mission grade?"), IntentOp::MissionGrade);
+        assert_eq!(
+            parse_intent("what is our mission grade?"),
+            IntentOp::MissionGrade
+        );
         assert_eq!(parse_intent("4 pillar report"), IntentOp::MissionGrade);
     }
 
@@ -341,18 +414,31 @@ mod tests {
     #[test]
     fn gap_claim_extracts_id() {
         let op = parse_intent("claim gap PRODUCT-056 and start working on it");
-        assert_eq!(op, IntentOp::GapClaim { id: "PRODUCT-056".to_string() });
+        assert_eq!(
+            op,
+            IntentOp::GapClaim {
+                id: "PRODUCT-056".to_string()
+            }
+        );
     }
 
     #[test]
     fn to_chump_command_round_trips() {
-        let op = IntentOp::GapList { filter: Some("--priority P0".to_string()) };
-        assert_eq!(op.to_chump_command(), "chump gap list --status open --priority P0");
+        let op = IntentOp::GapList {
+            filter: Some("--priority P0".to_string()),
+        };
+        assert_eq!(
+            op.to_chump_command(),
+            "chump gap list --status open --priority P0"
+        );
     }
 
     #[test]
     fn waste_tally() {
-        assert_eq!(parse_intent("show me the waste tally"), IntentOp::WasteTally);
+        assert_eq!(
+            parse_intent("show me the waste tally"),
+            IntentOp::WasteTally
+        );
         assert_eq!(parse_intent("what's our waste rate?"), IntentOp::WasteTally);
     }
 

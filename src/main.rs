@@ -5097,7 +5097,10 @@ async fn main() -> Result<()> {
         if let Some(text) = args.get(2) {
             let op = intent_parser::parse_intent(text);
             let cmd = op.to_chump_command();
-            println!("{{\"intent\":{text:?},\"command\":{cmd:?},\"kind\":\"{}\"}}", op.ambient_kind());
+            println!(
+                "{{\"intent\":{text:?},\"command\":{cmd:?},\"kind\":\"{}\"}}",
+                op.ambient_kind()
+            );
             intent_parser::emit_intent_event(&op, &repo_root);
             return Ok(());
         }
