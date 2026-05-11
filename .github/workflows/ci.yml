@@ -462,6 +462,11 @@ jobs:
       - name: env-var coverage — all src/ reads documented or allowlisted (DOC-026)
         run: bash scripts/ci/test-env-var-coverage.sh
 
+      - name: CLI help system consistency — all 31 commands have Usage strings (CREDIBLE-015)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-cli-help.sh
+
       # INFRA-024: standalone example workspace (not a root workspace member).
       # Locked build catches accidental drift in examples/apalis-poc/Cargo.lock.
       # Cheap (~30s) — keep it co-located with the other build-using checks.
