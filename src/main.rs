@@ -2967,11 +2967,10 @@ async fn main() -> Result<()> {
                         });
                     }
 
-                    let coverage_pct = if total_terms == 0 {
-                        100u8
-                    } else {
-                        ((total_matched * 100) / total_terms).min(100) as u8
-                    };
+                    let coverage_pct = (total_matched * 100)
+                        .checked_div(total_terms)
+                        .map(|v| v.min(100) as u8)
+                        .unwrap_or(100u8);
                     let diverged = coverage_pct < 50;
 
                     results.push(GapAcResult {
