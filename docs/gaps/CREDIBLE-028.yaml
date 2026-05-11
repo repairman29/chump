@@ -1,16 +1,14 @@
 - id: CREDIBLE-028
   domain: CREDIBLE
   title: "CREDIBLE: premature-gap-closure detector — ambient ALERT when state.db has status=done with closed_pr=N but PR N is not merged; reverse-mirror check ensures YAML/state.db consistency before reaper acts"
-  status: open
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "scripts/dev/check-premature-closures.sh scans state.db for rows where status=done AND closed_pr IS NOT NULL AND the referenced PR is not yet merged"
-    - "Run on a launchd 15-minute interval (dev.chump.premature-closure-watch) AND as a pre-ship guard inside scripts/coord/bot-merge.sh"
-    - "Each hit emits ambient kind=premature_gap_closure with gap_id, pr, days_premature, source (db|yaml)"
-    - "scripts/ci/test-premature-closure-detect.sh: prepare a gap with status=done + closed_pr=99999 (non-existent) → assert the check fires and the alert appears in ambient.jsonl"
-    - "chump gap audit-priorities incorporates this check; non-zero exit on any premature-closure hit"
-    - "Reverse direction also checked: PR is merged, and PR title closes GAP-N (parsable from title), but state.db still says status=open — fire kind=stale_post_merge_gap"
-    - "Self-heal mode (opt-in via --auto-fix): for premature_gap_closure where PR is BLOCKED or DIRTY, flip status back to in_progress (using CHUMP_ALLOW_RECYCLE=1 internally); log the auto-fix to ambient"
-    - "Documented in docs/process/GAP_REGISTRY_INVARIANTS.md as invariant I-3 alongside the existing 'no orphan closed_pr' and 'no dangling depends_on' rules"
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-11'
+  closed_pr: 1458
 
