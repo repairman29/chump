@@ -241,6 +241,47 @@ No force-pushes or branch deletions are allowed on `main`.
 
 ---
 
+## CLI help text standard (CREDIBLE-015)
+
+Every `chump` command or subcommand **must** respond to `--help` (or `help` as a positional) by:
+
+1. Printing a **Usage line** as the first output line:
+   ```
+   Usage: chump <command> [<args>] [options]
+   ```
+2. Following with a short one-line description, a blank line, then option descriptions and at least one `Example:` block.
+3. Exiting **0** (not an error code).
+
+### Template
+
+```rust
+if args.iter().any(|a| a == "--help" || a == "help") {
+    println!("Usage: chump my-cmd [--json] [--since WINDOW]");
+    println!();
+    println!("One-line description of what the command does.");
+    println!();
+    println!("Options:");
+    println!("  --json       output in JSON format");
+    println!("  --since T    time window: 24h, 7d, 60m  [default: 24h]");
+    println!();
+    println!("Example:");
+    println!("  chump my-cmd --since 7d");
+    return Ok(());
+}
+```
+
+### CI gate
+
+`scripts/ci/test-cli-help.sh` runs in fast-checks and verifies:
+
+- Every listed command has at least one `"Usage: chump <cmd>"` string in source.
+- All advertised commands appear in `print_help()`.
+- Runtime: each command's `--help` exits 0 and prints `Usage:`.
+
+Run locally: `bash scripts/ci/test-cli-help.sh`
+
+---
+
 ## Security
 
 Do not commit secrets. See [SECURITY.md](SECURITY.md) for reporting vulnerabilities.

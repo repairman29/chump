@@ -468,6 +468,17 @@ async fn main() -> Result<()> {
     // `chump funnel` (PRODUCT-015) — read .chump-locks/ambient.jsonl and print
     // the three-row activation funnel: install → first_task → return_d2.
     if args.get(1).map(String::as_str) == Some("funnel") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump funnel");
+            println!();
+            println!(
+                "Print install → first_task → return_d2 activation funnel from ambient events."
+            );
+            println!();
+            println!("Example:");
+            println!("  chump funnel");
+            return Ok(());
+        }
         activation::print_funnel();
         return Ok(());
     }
@@ -562,6 +573,20 @@ async fn main() -> Result<()> {
     // (EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE, identified by title prefix),
     // emits kind=mission_grade to ambient.jsonl, and prints to stdout.
     if args.get(1).map(String::as_str) == Some("mission-grade") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump mission-grade [--json]");
+            println!();
+            println!("Current pillar grades: EFFECTIVE / CREDIBLE / RESILIENT / ZERO-WASTE.");
+            println!("Emits kind=mission_grade to ambient.jsonl on each run.");
+            println!();
+            println!("Options:");
+            println!("  --json   output in JSON format");
+            println!();
+            println!("Example:");
+            println!("  chump mission-grade");
+            println!("  chump mission-grade --json");
+            return Ok(());
+        }
         let want_json = args.iter().any(|a| a == "--json");
         let repo_root = repo_path::repo_root();
         let report = mission_grade::build_report(&repo_root);
@@ -579,6 +604,23 @@ async fn main() -> Result<()> {
     // mission-grade, pr-stuck, version-skew, auth, and ghost-gaps.
     // Emits kind=fleet_health to ambient.jsonl on each run.
     if args.get(1).map(String::as_str) == Some("health") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump health [--json] [--watch] [--slo-check]");
+            println!();
+            println!("Composite fleet health score (0-100) rolling up fleet-status, waste-tally,");
+            println!("cost-watch, mission-grade, pr-stuck, version-skew, auth, and ghost-gaps.");
+            println!("Emits kind=fleet_health to ambient.jsonl on each run.");
+            println!();
+            println!("Options:");
+            println!("  --json       output in JSON format");
+            println!("  --watch      refresh every 30 s (clear screen between runs)");
+            println!("  --slo-check  exit non-zero if any SLO is breached");
+            println!();
+            println!("Example:");
+            println!("  chump health");
+            println!("  chump health --slo-check   # use in CI");
+            return Ok(());
+        }
         let want_json = args.iter().any(|a| a == "--json");
         let watch = args.iter().any(|a| a == "--watch");
         let slo_check = args.iter().any(|a| a == "--slo-check");
@@ -623,6 +665,20 @@ async fn main() -> Result<()> {
     // shows 🟢/🟡/🔴 progress per weekly outcome, lists implementing gaps
     // with shipped/in-flight/open counts cross-referenced against state.db.
     if args.get(1).map(String::as_str) == Some("roadmap-status") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump roadmap-status [--json]");
+            println!();
+            println!("Reads docs/ROADMAP.md and shows 🟢/🟡/🔴 progress per weekly outcome.");
+            println!("Lists implementing gaps with shipped/in-flight/open counts cross-referenced");
+            println!("against state.db.");
+            println!();
+            println!("Options:");
+            println!("  --json   output in JSON format");
+            println!();
+            println!("Example:");
+            println!("  chump roadmap-status");
+            return Ok(());
+        }
         let want_json = args.iter().any(|a| a == "--json");
         let repo_root = repo_path::repo_root();
         let report = roadmap_status::build_report(&repo_root);
@@ -638,6 +694,16 @@ async fn main() -> Result<()> {
     // dashboard combining active leases, last-24h shipped/abandoned,
     // last-24h waste tally summary, and recent fleet wedges.
     if args.get(1).map(String::as_str) == Some("fleet-status") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump fleet-status");
+            println!();
+            println!("Single-command operator dashboard combining active leases, last-24h");
+            println!("shipped/abandoned, last-24h waste tally summary, and recent fleet wedges.");
+            println!();
+            println!("Example:");
+            println!("  chump fleet-status");
+            return Ok(());
+        }
         let repo_root = repo_path::repo_root();
         let status = fleet_status::snapshot(&repo_root);
         print!("{}", status.render_text());
@@ -648,6 +714,16 @@ async fn main() -> Result<()> {
     // windows plus a forecast of hours until the open gap queue empties.
     // Helps the operator decide when to file more gaps vs let fleet idle.
     if args.get(1).map(String::as_str) == Some("fleet-velocity") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump fleet-velocity");
+            println!();
+            println!("Ships/hour over 1h/6h/24h windows plus a forecast of hours until the open");
+            println!("gap queue empties. Helps decide when to file more gaps vs let fleet idle.");
+            println!();
+            println!("Example:");
+            println!("  chump fleet-velocity");
+            return Ok(());
+        }
         let repo_root = repo_path::repo_root();
         let snap = fleet_velocity::snapshot(&repo_root);
         print!("{}", snap.render_text());
@@ -662,6 +738,24 @@ async fn main() -> Result<()> {
     // lease_overlap, edit_burst) and prints a per-kind tally with rough
     // cost estimates where measurable. No new event emissions in MVP.
     if args.get(1).map(String::as_str) == Some("waste-tally") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump waste-tally [--since WINDOW] [--json] [--by-domain] [--tokens]");
+            println!();
+            println!("Zero-Waste pillar measurement. Tallies waste events from ambient.jsonl");
+            println!("(fleet_wedge, fleet_starved, pr_stuck, silent_agent, lease_overlap, …)");
+            println!("with per-kind counts and rough cost estimates.");
+            println!();
+            println!("Options:");
+            println!("  --since T    time window: 24h, 7d, 60m, or raw seconds  [default: 24h]");
+            println!("  --json       output in JSON format");
+            println!("  --by-domain  break down waste by gap domain");
+            println!("  --tokens     include token-cost estimates");
+            println!();
+            println!("Example:");
+            println!("  chump waste-tally --since 7d");
+            println!("  chump waste-tally --window 2h   # alias accepted by fleet scaling gate");
+            return Ok(());
+        }
         let since_arg = args
             .iter()
             .position(|a| a == "--since")
@@ -812,6 +906,22 @@ async fn main() -> Result<()> {
     // --emit appends a weekly_health_digest event to ambient.jsonl.
     // --webhook POSTs to CHUMP_WEBHOOK_URL (if set).
     if args.get(1).map(String::as_str) == Some("health-digest") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump health-digest [--since WINDOW] [--json] [--emit] [--webhook]");
+            println!();
+            println!("Weekly markdown digest with P0/P1 gap counts, waste rate, ship rate,");
+            println!("and fleet wedge warnings. Suitable for team standup or operator review.");
+            println!();
+            println!("Options:");
+            println!("  --since T   time window: 7d, 14d, 24h  [default: 7d]");
+            println!("  --json      output in JSON format");
+            println!("  --emit      write event to ambient.jsonl");
+            println!("  --webhook   POST to CHUMP_WEBHOOK_URL");
+            println!();
+            println!("Example:");
+            println!("  chump health-digest --since 7d");
+            return Ok(());
+        }
         let since_arg = args
             .iter()
             .position(|a| a == "--since")
@@ -853,6 +963,21 @@ async fn main() -> Result<()> {
     // showing clippy_ok%, test_added%, and rebase_clean% pass rates.
     // Empirical basis for FLEET_MODEL routing decisions (sonnet vs haiku).
     if args.get(1).map(String::as_str) == Some("ship-quality") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump ship-quality [--since WINDOW] [--json]");
+            println!();
+            println!("Per-agent ship-quality grade: clippy_ok%, test_added%, rebase_clean%.");
+            println!("Aggregates ship_grade events from ambient.jsonl by model and agent.");
+            println!("Use for FLEET_MODEL routing decisions (sonnet vs haiku).");
+            println!();
+            println!("Options:");
+            println!("  --since T   time window: 24h, 7d, 60m  [default: 24h]");
+            println!("  --json      output in JSON format");
+            println!();
+            println!("Example:");
+            println!("  chump ship-quality --since 7d");
+            return Ok(());
+        }
         let since_arg = args
             .iter()
             .position(|a| a == "--since")
@@ -893,6 +1018,24 @@ async fn main() -> Result<()> {
     // test-coupling / real-bug / infra-broken. Output mirrors waste-tally:
     // per-class count + sample diagnostic lines.
     if args.get(1).map(String::as_str) == Some("ci-summary") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!(
+                "Usage: chump ci-summary [--since WINDOW] [--json] [--emit-alert] [--threshold N]"
+            );
+            println!();
+            println!("CI observability: reads gh run list and classifies failures as flake /");
+            println!("test-coupling / real-bug / infra-broken. Output mirrors waste-tally.");
+            println!();
+            println!("Options:");
+            println!("  --since T       time window: 24h, 7d, 60m  [default: 24h]");
+            println!("  --json          output in JSON format");
+            println!("  --emit-alert    write ambient alert if failure rate > threshold");
+            println!("  --threshold N   failure-rate % for alert trigger  [default: 10]");
+            println!();
+            println!("Example:");
+            println!("  chump ci-summary --since 7d");
+            return Ok(());
+        }
         let since_arg = args
             .iter()
             .position(|a| a == "--since")
@@ -1012,6 +1155,20 @@ async fn main() -> Result<()> {
     // snapshot to ~/.chump/sessions/<session-id>.md so the next Opus
     // orchestrator session can resume with full context via session-resume.
     if args.get(1).map(String::as_str) == Some("session-export") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump session-export [--session-id ID]");
+            println!();
+            println!("Export the current session transcript to ~/.chump/sessions/<ID>.md");
+            println!("for handoff to the next orchestrator session via 'chump session-resume'.");
+            println!();
+            println!("Options:");
+            println!("  --session-id ID   session ID to export  [default: $CHUMP_SESSION_ID]");
+            println!();
+            println!("Example:");
+            println!("  chump session-export");
+            println!("  chump session-export --session-id abc123");
+            return Ok(());
+        }
         let flag = |name: &str| -> Option<String> {
             args.iter()
                 .position(|a| a == name)
@@ -1101,6 +1258,16 @@ async fn main() -> Result<()> {
     // PRs landed today/week, median PR-open time, dispatcher backend split,
     // top 5 stale linked worktrees. Pure read aggregator over `gh` + `git`.
     if args.get(1).map(String::as_str) == Some("dashboard") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump dashboard");
+            println!();
+            println!("Print the cycle-time dashboard: active leases, gap queue depth,");
+            println!("recent ship/abandon events, and provider health.");
+            println!();
+            println!("Example:");
+            println!("  chump dashboard");
+            return Ok(());
+        }
         if let Err(e) = dashboard::print_dashboard() {
             eprintln!("chump dashboard: {e:#}");
             std::process::exit(1);
@@ -4254,6 +4421,24 @@ async fn main() -> Result<()> {
     // and emits 🔴 when today's spend exceeds the daily budget threshold.
     // --hard-cap exits 1 when over budget (blocks fleet spawn).
     if args.get(1).map(String::as_str) == Some("cost-watch") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump cost-watch [--budget USD] [--hard-cap] [--json]");
+            println!();
+            println!("Real-time inference spend and per-slot breakdown. Reads cost records");
+            println!("written by 'chump cost record-pr'. Compares against daily budget.");
+            println!();
+            println!("Options:");
+            println!(
+                "  --budget USD   daily budget in USD  [default: $5.00 or CHUMP_DAILY_BUDGET]"
+            );
+            println!("  --hard-cap     exit 1 if today's spend exceeds budget");
+            println!("  --json         output in JSON format");
+            println!();
+            println!("Example:");
+            println!("  chump cost-watch");
+            println!("  chump cost-watch --budget 10.0 --hard-cap");
+            return Ok(());
+        }
         let flag = |name: &str| -> Option<String> {
             args.iter()
                 .position(|a| a == name)
