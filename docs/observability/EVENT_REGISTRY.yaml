@@ -753,6 +753,21 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, session, harness, hint]
 
+  # ── CREDIBLE-039: closure consistency ─────────────────────────────────────
+  - kind: stale_post_merge_gap
+    emitter: scripts/ci/test-gap-closure-consistency.sh (CREDIBLE-039 reverse mode)
+    trigger: state.db has status=open + closed_pr set, but the referenced PR is
+      already merged on GitHub — gap should have been flipped to done
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, ids, note]
+
+  - kind: premature_closure_auto_fixed
+    emitter: scripts/ci/test-gap-closure-consistency.sh --auto-fix (CREDIBLE-039)
+    trigger: gap with status=done + closed_pr points to BLOCKED/DIRTY PR;
+      auto-fix flipped status back to in_progress
+    consumers: [fleet-brief]
+    fields_required: [ts, gap_id, pr, old_status, new_status, mergeable]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
