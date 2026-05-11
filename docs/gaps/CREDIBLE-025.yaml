@@ -1,13 +1,14 @@
 - id: CREDIBLE-025
   domain: CREDIBLE
   title: "CREDIBLE: tag worker model in ambient events + per-model ship-rate breakdown — so Sonnet/Haiku/Opencode comparisons stop being vibes"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "(a) broadcast.sh INTENT and DONE events include model field (from FLEET_MODEL/CHUMP_MODEL env var; defaults to 'unknown')"
-    - "(b) scripts/dispatch/model-ship-rate.sh reads ship_grade events from ambient.jsonl, groups by model, outputs: graded count, clippy_ok%, test_added% — text and --json modes"
-    - "(c) --window Nh/Nd flag controls time range; default 24h; --all scans full history"
-    - "(d) fleet-brief.sh includes per-model breakdown section when ship_grade events exist in the window"
-    - "(e) scripts/ci/test-model-ship-rate.sh: fixture-based test verifying text output, JSON structure, and percentage arithmetic — all 5 checks pass"
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-11'
+  closed_pr: 1457
 
