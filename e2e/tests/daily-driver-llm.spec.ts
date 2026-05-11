@@ -13,7 +13,7 @@ test.describe('Daily driver — LLM (PWA)', () => {
     await page.goto('/');
     await page.locator('#msg-input').fill('Reply with exactly: E2E_LLM_OK');
     await page.locator('#send-btn').click();
-    const bubbles = page.locator('.message.assistant .bubble');
+    const bubbles = page.locator('chump-chat').locator('.msg.assistant .bubble');
     await expect(bubbles.last()).toContainText('E2E_LLM_OK');
   });
 });
