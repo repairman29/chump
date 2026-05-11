@@ -49,9 +49,16 @@
   <key>WorkingDirectory</key>
   <string>/path/to/Chump</string>
 
-  <!-- Restart the daemon if it exits for any reason -->
+  <!-- INFRA-819: Conditional KeepAlive — restart ONLY on crash (non-zero exit),
+       NOT on clean exit (e.g. disk-preflight exit-0 path on graceful stop).
+       This prevents a stopped daemon from self-resurrecting unexpectedly. -->
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+    <key>Crashed</key>
+    <true/>
+  </dict>
 
   <!-- Start immediately when loaded -->
   <key>RunAtLoad</key>
@@ -70,8 +77,13 @@
     <!-- git must be on PATH for REPO_ROOT resolution inside the script. -->
   </dict>
 
-  <!-- Throttle rapid restart loops: wait 10s between restart attempts -->
+  <!-- INFRA-819: Throttle restart loops — 60s between restart attempts.
+       Under ENOSPC, the disk-preflight in heartbeat-watcher.sh exits 1;
+       launchd waits 60s before the next attempt. Without ThrottleInterval
+       (old: 10s), launchd hits crash-loop throttle and stops restarting,
+       requiring a manual 'launchctl start'. 60s is short enough that the
+       daemon resumes within a minute of disk recovery. -->
   <key>ThrottleInterval</key>
-  <integer>10</integer>
+  <integer>60</integer>
 </dict>
 </plist>
