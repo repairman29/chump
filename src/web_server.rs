@@ -2431,6 +2431,22 @@ async fn handle_gap_work(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    // RESILIENT-003: concurrent-race guard — reject second call while workflow in flight.
+    let repo_root = std::env::var("CHUMP_REPO")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_path::runtime_base());
+    if pwa_lease_active(&gap_id, &repo_root) {
+        tracing::warn!(
+            "gap-work: lease held for {} — rejecting concurrent request",
+            gap_id
+        );
+        return Ok(Json(serde_json::json!({
+            "status": "rejected",
+            "gap_id": gap_id,
+            "message": "lease held — workflow already in progress for this gap"
+        })));
+    }
+
     let gap_id_clone = gap_id.clone();
     tokio::spawn(async move {
         tracing::info!(
@@ -2496,12 +2512,46 @@ fn run_preflight_check(gap_id: &str, repo_root: &std::path::Path) -> Result<(), 
     }
 }
 
-/// Release lease for a gap (cleanup on error).
-fn cleanup_lease(gap_id: &str, repo_root: &std::path::Path) {
+/// Returns the PWA lease path for a gap.
+fn pwa_lease_path(gap_id: &str, repo_root: &std::path::Path) -> std::path::PathBuf {
     let session_id = format!("chump-pwa-{}", gap_id);
-    let lease_path = repo_root
+    repo_root
         .join(".chump-locks")
-        .join(format!("{}.json", session_id));
+        .join(format!("{}.json", session_id))
+}
+
+/// Returns true if a PWA workflow lease exists for the gap (concurrent-race guard).
+fn pwa_lease_active(gap_id: &str, repo_root: &std::path::Path) -> bool {
+    pwa_lease_path(gap_id, repo_root).exists()
+}
+
+/// Create a minimal lease file so sibling agents see the in-flight PWA workflow.
+fn create_pwa_lease(gap_id: &str, repo_root: &std::path::Path) {
+    let lease_path = pwa_lease_path(gap_id, repo_root);
+    if let Some(parent) = lease_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let expires = (chrono::Utc::now() + chrono::Duration::hours(2))
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let lease_json = format!(
+        r#"{{"session_id":"chump-pwa-{}","purpose":"pwa-gap-work","taken_at":"{}","expires_at":"{}","paths":[]}}"#,
+        gap_id, now, expires
+    );
+    if let Err(e) = std::fs::write(&lease_path, format!("{}\n", lease_json)) {
+        tracing::warn!("Failed to create PWA lease {}: {}", lease_path.display(), e);
+    } else {
+        tracing::info!(
+            "Created PWA lease for {} at {}",
+            gap_id,
+            lease_path.display()
+        );
+    }
+}
+
+/// Release lease for a gap (cleanup on error or completion).
+fn cleanup_lease(gap_id: &str, repo_root: &std::path::Path) {
+    let lease_path = pwa_lease_path(gap_id, repo_root);
     if lease_path.exists() {
         if let Err(e) = std::fs::remove_file(&lease_path) {
             tracing::warn!("Failed to cleanup lease {}: {}", lease_path.display(), e);
@@ -2581,6 +2631,10 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
     let repo_root = std::env::var("CHUMP_REPO")
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo_path::runtime_base());
+
+    // RESILIENT-003: create PWA lease immediately so sibling agents and concurrent
+    // /api/gap/work calls see the in-flight workflow.
+    create_pwa_lease(gap_id, &repo_root);
 
     // Step 0: Pre-flight validation (CLAUDE.md: never start a gap without gap-preflight.sh)
     tracing::info!("gap-work: running pre-flight validation for {}", gap_id);
@@ -2691,6 +2745,7 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
                 gap_id
             );
             emit_ambient_event(gap_id, "ship", "success");
+            cleanup_lease(gap_id, &repo_root);
             cleanup_worktree(gap_id);
             Ok(())
         }
@@ -4090,6 +4145,77 @@ mod startup_validation_tests {
         assert!(
             result.is_ok(),
             "bare CHUMP_BIN name must not fail startup validation: {result:?}"
+        );
+    }
+
+    // ── RESILIENT-003: PWA lease cleanup tests ───────────────────────────────
+    use super::{cleanup_lease, create_pwa_lease, pwa_lease_active, pwa_lease_path};
+
+    #[test]
+    fn resilient003_cleanup_lease_removes_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let lease_path = locks.join("chump-pwa-TEST-999.json");
+        std::fs::write(&lease_path, r#"{"session_id":"chump-pwa-TEST-999"}"#).unwrap();
+        assert!(lease_path.exists(), "lease file must exist before cleanup");
+
+        cleanup_lease("TEST-999", dir.path());
+        assert!(
+            !lease_path.exists(),
+            "lease file must be removed by cleanup_lease"
+        );
+    }
+
+    #[test]
+    fn resilient003_cleanup_lease_idempotent() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        // No lease file — cleanup must not panic or error.
+        cleanup_lease("TEST-998", dir.path());
+        cleanup_lease("TEST-998", dir.path()); // second call also safe
+    }
+
+    #[test]
+    fn resilient003_create_pwa_lease_creates_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+
+        assert!(
+            !pwa_lease_active("TEST-997", dir.path()),
+            "no lease before create"
+        );
+        create_pwa_lease("TEST-997", dir.path());
+        assert!(
+            pwa_lease_active("TEST-997", dir.path()),
+            "lease must exist after create"
+        );
+
+        // Verify it's valid JSON with expected fields.
+        let content = std::fs::read_to_string(pwa_lease_path("TEST-997", dir.path())).unwrap();
+        assert!(
+            content.contains("chump-pwa-TEST-997"),
+            "session_id must be present"
+        );
+        assert!(content.contains("pwa-gap-work"), "purpose must be present");
+    }
+
+    #[test]
+    fn resilient003_lease_roundtrip_create_then_cleanup() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+
+        create_pwa_lease("TEST-996", dir.path());
+        assert!(
+            pwa_lease_active("TEST-996", dir.path()),
+            "lease active after create"
+        );
+
+        cleanup_lease("TEST-996", dir.path());
+        assert!(
+            !pwa_lease_active("TEST-996", dir.path()),
+            "lease gone after cleanup"
         );
     }
 }
