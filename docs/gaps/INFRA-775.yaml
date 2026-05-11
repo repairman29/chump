@@ -1,0 +1,17 @@
+- id: INFRA-775
+  domain: INFRA
+  title: "EFFECTIVE: declarative provider_rates.yaml — rate limits, cooldowns, reset windows, model class per provider"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "docs/dispatch/provider_rates.yaml declares per-provider: rpm, rpd, tpm, cooldown_default_s, reset_window, privacy_tier, context_k, model_class"
+    - "ProviderCascade::from_env() reads provider_rates.yaml and merges with env vars (env overrides YAML)"
+    - Cascade uses YAML-declared cooldown_default_s instead of hardcoded DEFAULT_429_COOLDOWN_S
+    - Adding a new provider requires only a YAML block + API key env var
+    - chump cascade status prints merged rate table for operator inspection
+    - Existing CHUMP_PROVIDER env vars continue to work unchanged
+  opened_date: '2026-05-08'
+  closed_date: '2026-05-11'
+  closed_pr: 1450
+
