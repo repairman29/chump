@@ -2353,7 +2353,26 @@ async fn main() -> Result<()> {
                             // meta: preamble (~20k-line corruption observed 2026-04-27); a
                             // fresh build catches that and similar future serialization
                             // changes.
-                            let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
+                            //
+                            // INFRA-825 (2026-05-11): upgraded from warn to hard-fail
+                            // for this single-gap path too — PR #1444 silently reverted
+                            // META-044 because a stale binary regenerated YAMLs from a
+                            // stale state.db. CHUMP_ALLOW_STALE_DESTRUCTIVE=1 is the
+                            // audited override; otherwise the operation refuses.
+                            match version::fail_if_stale_for_destructive(
+                                &repo_root,
+                                "gap ship --update-yaml",
+                            ) {
+                                version::DestructiveStalenessOutcome::Refuse => {
+                                    return Err(anyhow::anyhow!(
+                                        "refused: chump gap ship --update-yaml on stale binary (INFRA-825). \
+                                         Rebuild with `cargo install --path . --bin chump --force` \
+                                         or override with CHUMP_ALLOW_STALE_DESTRUCTIVE=1."
+                                    ));
+                                }
+                                version::DestructiveStalenessOutcome::Proceed
+                                | version::DestructiveStalenessOutcome::OverrideAccepted => {}
+                            }
                             // INFRA-229 (post-INFRA-188 cutover, 2026-05-02):
                             // write the per-file YAML mirror at
                             // docs/gaps/<ID>.yaml instead of the deleted
@@ -2533,12 +2552,28 @@ async fn main() -> Result<()> {
                 let per_file = args.iter().any(|a| a == "--per-file");
                 let out_dir_flag = flag("--out-dir");
 
-                // INFRA-148: warn if binary is stale relative to gap_store-affecting
-                // code on HEAD. Only warn when actually writing to a file
-                // (--out PATH or --per-file) — stdout dump for piping shouldn't
-                // spam stderr unconditionally.
-                if out_path.is_some() || per_file {
+                // INFRA-148 + INFRA-825 (2026-05-11): for --per-file (true
+                // bulk regen — writes every gap's YAML) hard-fail if the
+                // binary is stale. PR #1444's silent META-044 revert was
+                // caused by exactly this code path running with a stale
+                // binary. --out PATH (single file dump) stays at warn-only
+                // since it doesn't bulk-regen the gap registry.
+                if out_path.is_some() && !per_file {
                     let _ = version::warn_if_stale_for_gap_mutation(&repo_root);
+                }
+                if per_file {
+                    match version::fail_if_stale_for_destructive(&repo_root, "gap dump --per-file")
+                    {
+                        version::DestructiveStalenessOutcome::Refuse => {
+                            return Err(anyhow::anyhow!(
+                                "refused: chump gap dump --per-file on stale binary (INFRA-825). \
+                                 Rebuild with `cargo install --path . --bin chump --force` \
+                                 or override with CHUMP_ALLOW_STALE_DESTRUCTIVE=1."
+                            ));
+                        }
+                        version::DestructiveStalenessOutcome::Proceed
+                        | version::DestructiveStalenessOutcome::OverrideAccepted => {}
+                    }
                 }
 
                 // ── INFRA-188 v0: --per-file path ────────────────────────────

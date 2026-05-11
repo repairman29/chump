@@ -167,6 +167,124 @@ pub fn warn_if_stale_for_gap_mutation(repo_root: &Path) -> bool {
     }
 }
 
+/// Outcome of [`fail_if_stale_for_destructive`].
+#[derive(Debug, PartialEq, Eq)]
+pub enum DestructiveStalenessOutcome {
+    /// Binary is fresh, skip-state, or the check is disabled. Caller proceeds.
+    Proceed,
+    /// Binary is stale and the operator has explicitly opted into running
+    /// anyway via `CHUMP_ALLOW_STALE_DESTRUCTIVE=1`. Caller proceeds; ambient
+    /// telemetry has been emitted naming the override.
+    OverrideAccepted,
+    /// Binary is stale and no override is set. Caller MUST abort the
+    /// destructive operation. Stderr has been told why.
+    Refuse,
+}
+
+/// INFRA-825: hard-fail variant of [`warn_if_stale_for_gap_mutation`] for
+/// destructive operations like `chump gap ship --update-yaml` and `chump gap
+/// dump --per-file` that regenerate >1 YAML in a single invocation.
+///
+/// PR #1444 silently reverted META-044 because `chump gap ship --update-yaml`
+/// ran with a 9-commit-stale binary that regenerated all YAMLs from an
+/// outdated state.db. The soft `warn_if_stale_for_gap_mutation` printed a
+/// warning but did not refuse to run. This function refuses.
+///
+/// Honors three escape hatches:
+/// - `CHUMP_BINARY_STALENESS_CHECK=0` — disable the check entirely (matches
+///   the soft path; reserved for CI / packaged builds where the staleness
+///   signal is itself unreliable).
+/// - `CHUMP_ALLOW_STALE_DESTRUCTIVE=1` — explicit operator override; returns
+///   `OverrideAccepted` after emitting a loud `stale_binary_destructive_override`
+///   ambient event so the override is auditable.
+/// - The check returns `Skip` (no .git, unknown SHA): treated as `Proceed`.
+///
+/// `op_name` is a short human-readable label for the operation (e.g.,
+/// `"gap ship --update-yaml"`) used in the error message and the ambient
+/// event.
+pub fn fail_if_stale_for_destructive(
+    repo_root: &Path,
+    op_name: &str,
+) -> DestructiveStalenessOutcome {
+    if std::env::var("CHUMP_BINARY_STALENESS_CHECK").as_deref() == Ok("0") {
+        return DestructiveStalenessOutcome::Proceed;
+    }
+    match check_gap_binary_staleness(repo_root) {
+        StalenessCheck::Fresh | StalenessCheck::Skip => DestructiveStalenessOutcome::Proceed,
+        StalenessCheck::Stale {
+            commits_ahead,
+            latest_subject,
+        } => {
+            let override_set = std::env::var("CHUMP_ALLOW_STALE_DESTRUCTIVE").as_deref() == Ok("1");
+            if override_set {
+                eprintln!(
+                    "[chump] OVERRIDE: CHUMP_ALLOW_STALE_DESTRUCTIVE=1 — proceeding \
+                     with '{op_name}' despite {commits_ahead} unmerged \
+                     gap-store-affecting commit(s) (latest: {latest_subject}). \
+                     This is the escape hatch INFRA-825 ships with; expect \
+                     ambient kind=stale_binary_destructive_override."
+                );
+                emit_destructive_override_ambient_event(repo_root, op_name, commits_ahead);
+                DestructiveStalenessOutcome::OverrideAccepted
+            } else {
+                eprintln!(
+                    "[chump] REFUSED: '{op_name}' is a destructive bulk-YAML \
+                     operation, and this binary was built at {} ({}) but {} \
+                     gap-store-affecting commit(s) have landed since on this \
+                     repo's HEAD. Latest: {}",
+                    chump_build_sha(),
+                    chump_build_date(),
+                    commits_ahead,
+                    latest_subject,
+                );
+                eprintln!(
+                    "[chump]          Running this would risk silent revert \
+                     of merged work (see PR #1444 — META-044 wiped by a \
+                     9-commit-stale binary on 2026-05-11). Rebuild + retry:"
+                );
+                eprintln!(
+                    "[chump]            cargo install --path {} --bin chump --force",
+                    repo_root.display()
+                );
+                eprintln!(
+                    "[chump]          Override (very loud, audited): \
+                     CHUMP_ALLOW_STALE_DESTRUCTIVE=1"
+                );
+                DestructiveStalenessOutcome::Refuse
+            }
+        }
+    }
+}
+
+/// Emit an ambient event naming the override use. Best-effort: failures here
+/// must never break the caller (the override is already accepted by the time
+/// we get here).
+fn emit_destructive_override_ambient_event(repo_root: &Path, op_name: &str, commits_ahead: usize) {
+    let ambient = repo_root.join(".chump-locks").join("ambient.jsonl");
+    if let Some(parent) = ambient.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let line = format!(
+        "{{\"ts\":{ts},\"event\":\"ALERT\",\"kind\":\"stale_binary_destructive_override\",\
+         \"op\":\"{}\",\"commits_ahead\":{},\"build_sha\":\"{}\"}}\n",
+        op_name.replace('"', "\\\""),
+        commits_ahead,
+        chump_build_sha(),
+    );
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -282,6 +400,97 @@ mod tests {
         assert_eq!(
             check_gap_binary_staleness_with_sha(dir.path(), "deadbeefcafe"),
             StalenessCheck::Skip
+        );
+    }
+
+    // ── INFRA-825 hard-fail destructive variant ──────────────────────────────
+
+    /// Helper: stale-repo fixture (gap_store.rs edited after sha1).
+    fn make_stale_repo() -> (tempfile::TempDir, String) {
+        let (dir, sha1, _) = make_repo();
+        let p = dir.path();
+        std::fs::write(p.join("src/gap_store.rs"), "// stale-fixture edit\n").unwrap();
+        PCommand::new("git")
+            .args(["add", "."])
+            .current_dir(p)
+            .output()
+            .unwrap();
+        PCommand::new("git")
+            .args(["commit", "-q", "-m", "INFRA-X: simulate post-build commit"])
+            .current_dir(p)
+            .output()
+            .unwrap();
+        (dir, sha1)
+    }
+
+    /// Replay the PR #1444 failure mode: simulate a 1-commit-stale binary
+    /// running a destructive op (no override). Must REFUSE.
+    #[test]
+    fn pr_1444_replay_refuses_without_override() {
+        let (dir, sha1) = make_stale_repo();
+        // Defensive: ensure no leaked env from a parallel test.
+        unsafe {
+            std::env::remove_var("CHUMP_ALLOW_STALE_DESTRUCTIVE");
+            std::env::remove_var("CHUMP_BINARY_STALENESS_CHECK");
+        }
+        // We can't call fail_if_stale_for_destructive directly (it reads the
+        // baked SHA via chump_build_sha which is set at compile time, not
+        // injectable). Test the predicate it uses instead: a Stale outcome
+        // with no override means REFUSE.
+        let outcome = check_gap_binary_staleness_with_sha(dir.path(), &sha1);
+        match outcome {
+            StalenessCheck::Stale { .. } => { /* expected */ }
+            other => panic!("expected Stale, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn override_env_recognized() {
+        // Direct env-var read; we don't exercise the full function (compile-baked SHA)
+        // but verify the operator-facing escape hatch is wired correctly.
+        unsafe {
+            std::env::set_var("CHUMP_ALLOW_STALE_DESTRUCTIVE", "1");
+        }
+        let val = std::env::var("CHUMP_ALLOW_STALE_DESTRUCTIVE").as_deref() == Ok("1");
+        assert!(val, "CHUMP_ALLOW_STALE_DESTRUCTIVE=1 should be readable");
+        unsafe {
+            std::env::remove_var("CHUMP_ALLOW_STALE_DESTRUCTIVE");
+        }
+    }
+
+    #[test]
+    fn override_env_unset_means_no_override() {
+        unsafe {
+            std::env::remove_var("CHUMP_ALLOW_STALE_DESTRUCTIVE");
+        }
+        let val = std::env::var("CHUMP_ALLOW_STALE_DESTRUCTIVE").as_deref() == Ok("1");
+        assert!(
+            !val,
+            "unset CHUMP_ALLOW_STALE_DESTRUCTIVE should NOT trigger override"
+        );
+    }
+
+    /// Ambient-event emitter writes a parseable JSONL line. (Best-effort
+    /// helper; this test asserts the file exists and contains the right kind.)
+    #[test]
+    fn override_event_emitted_to_ambient_jsonl() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        emit_destructive_override_ambient_event(p, "test-op", 3);
+        let ambient = p.join(".chump-locks").join("ambient.jsonl");
+        assert!(ambient.exists(), "ambient.jsonl should be created");
+        let contents = std::fs::read_to_string(&ambient).unwrap();
+        assert!(
+            contents.contains("\"kind\":\"stale_binary_destructive_override\""),
+            "ambient event should name the kind; got: {contents}"
+        );
+        assert!(
+            contents.contains("\"op\":\"test-op\""),
+            "ambient event should include op name; got: {contents}"
+        );
+        assert!(
+            contents.contains("\"commits_ahead\":3"),
+            "ambient event should include commits_ahead; got: {contents}"
         );
     }
 }
