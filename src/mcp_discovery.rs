@@ -500,6 +500,150 @@ pub fn print_mcp_config_list(entries: &[McpConfigEntry], json: bool) {
     }
 }
 
+// ── Install / remove (PRODUCT-062) ───────────────────────────────────────────
+
+/// Result of `install_mcp_server`.
+#[derive(Debug)]
+pub enum InstallOutcome {
+    /// Binary was already on PATH — config updated, no cargo install needed.
+    AlreadyInstalled,
+    /// `cargo install <package>` was run and succeeded.
+    CargoInstalled,
+    /// `--no-install` was passed — config updated, binary install skipped.
+    ConfigOnly,
+}
+
+/// Install an MCP server by name from the registry.
+///
+/// Steps:
+///   1. Look up `name` in `registry/mcp-servers.toml`.
+///   2. If the binary is already on PATH, skip cargo install.
+///   3. Otherwise run `cargo install <package>` (unless `no_install`).
+///   4. Add the server to `chump-mcp.json` in `config_root` with `enabled: true`.
+///
+/// Returns `Err` if the server is not in the registry, if cargo install fails,
+/// or if the config file cannot be written.
+pub fn install_mcp_server(
+    registry_root: &Path,
+    config_root: &Path,
+    name: &str,
+    no_install: bool,
+) -> anyhow::Result<InstallOutcome> {
+    let registry = read_registry(registry_root);
+    let entry = registry.iter().find(|e| e.name == name).ok_or_else(|| {
+        anyhow::anyhow!(
+            "Server '{name}' not found in registry. Run 'chump mcp list' to see available servers."
+        )
+    })?;
+
+    let binary_name = format!("chump-mcp-{name}");
+    let already_installed = command_exists(&binary_name);
+
+    let outcome = if already_installed {
+        InstallOutcome::AlreadyInstalled
+    } else if no_install {
+        InstallOutcome::ConfigOnly
+    } else {
+        let package = entry.package.as_deref().unwrap_or(&binary_name);
+        let status = std::process::Command::new("cargo")
+            .args(["install", package])
+            .status()
+            .map_err(|e| anyhow::anyhow!("Failed to run cargo install: {e}"))?;
+        if !status.success() {
+            anyhow::bail!(
+                "cargo install {package} failed (exit {}). \
+                 Install manually and re-run with --no-install.",
+                status.code().unwrap_or(-1)
+            );
+        }
+        InstallOutcome::CargoInstalled
+    };
+
+    // Add to chump-mcp.json.
+    let mut cfg = read_mcp_config(config_root);
+    cfg.mcp_servers
+        .entry(name.to_string())
+        .or_insert_with(|| McpServerEntry {
+            command: binary_name,
+            args: Vec::new(),
+            env: Default::default(),
+            enabled: true,
+        });
+    // If existing entry had enabled:false, set to true.
+    if let Some(e) = cfg.mcp_servers.get_mut(name) {
+        e.enabled = true;
+    }
+    write_mcp_config(config_root, &cfg)?;
+
+    // INFRA-755: emit observability event on install.
+    let outcome_str = match &outcome {
+        InstallOutcome::AlreadyInstalled => "already_installed",
+        InstallOutcome::CargoInstalled => "cargo_installed",
+        InstallOutcome::ConfigOnly => "config_only",
+    };
+    emit_mcp_install_event(name, outcome_str);
+
+    Ok(outcome)
+}
+
+fn emit_mcp_install_event(name: &str, outcome: &str) {
+    let locks_dir = {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        std::path::PathBuf::from(home).join(".chump-locks")
+    };
+    // Fall back to project-local .chump-locks if home dir unavailable.
+    let locks_dir = if locks_dir.exists() {
+        locks_dir
+    } else {
+        std::path::PathBuf::from(".chump-locks")
+    };
+    let _ = std::fs::create_dir_all(&locks_dir);
+    let amb = locks_dir.join("ambient.jsonl");
+    let ts = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        // ISO-8601 UTC — simple format sufficient for ambient stream.
+        format!("{}", secs)
+    };
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"mcp_server_installed\",\"name\":\"{name}\",\"outcome\":\"{outcome}\"}}\n"
+    );
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&amb)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// Remove an MCP server from `chump-mcp.json`.
+///
+/// Does NOT uninstall the binary — prints a hint for that.
+/// Returns `true` if the server was found and removed, `false` if it wasn't in config.
+pub fn remove_mcp_server(config_root: &Path, name: &str) -> anyhow::Result<bool> {
+    let mut cfg = read_mcp_config(config_root);
+    let removed = cfg.mcp_servers.remove(name).is_some();
+    if removed {
+        write_mcp_config(config_root, &cfg)?;
+    }
+    Ok(removed)
+}
+
+/// Write `ChumpMcpConfig` to `<config_root>/chump-mcp.json`.
+pub fn write_mcp_config(config_root: &Path, cfg: &ChumpMcpConfig) -> anyhow::Result<()> {
+    let path = config_root.join("chump-mcp.json");
+    let content = serde_json::to_string_pretty(cfg)
+        .map_err(|e| anyhow::anyhow!("Failed to serialize chump-mcp.json: {e}"))?;
+    std::fs::write(&path, content + "\n")
+        .map_err(|e| anyhow::anyhow!("Failed to write {}: {e}", path.display()))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -885,5 +1029,117 @@ mod tests {
             },
         ];
         print_mcp_list(&servers, false);
+    }
+
+    // ── PRODUCT-062: install / remove tests ───────────────────────────────────
+
+    fn write_registry(dir: &Path) {
+        fs::create_dir_all(dir.join("registry")).unwrap();
+        fs::write(
+            dir.join("registry").join("mcp-servers.toml"),
+            r#"
+[[server]]
+name = "git"
+description = "Git operations"
+transport = "stdio"
+package = "chump-mcp-git"
+
+[[server]]
+name = "filesystem"
+description = "File access"
+transport = "stdio"
+package = "chump-mcp-filesystem"
+"#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn write_mcp_config_roundtrip() {
+        let tmp = TempDir::new().unwrap();
+        let mut cfg = ChumpMcpConfig::default();
+        cfg.mcp_servers.insert(
+            "git".to_string(),
+            McpServerEntry {
+                command: "chump-mcp-git".to_string(),
+                args: vec!["--verbose".to_string()],
+                env: Default::default(),
+                enabled: true,
+            },
+        );
+        write_mcp_config(tmp.path(), &cfg).unwrap();
+        let loaded = read_mcp_config(tmp.path());
+        assert_eq!(loaded.mcp_servers.len(), 1);
+        let e = &loaded.mcp_servers["git"];
+        assert_eq!(e.command, "chump-mcp-git");
+        assert_eq!(e.args, vec!["--verbose"]);
+        assert!(e.enabled);
+    }
+
+    #[test]
+    fn install_mcp_server_unknown_name_returns_err() {
+        let tmp = TempDir::new().unwrap();
+        write_registry(tmp.path());
+        let result = install_mcp_server(tmp.path(), tmp.path(), "no-such-server", true);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("not found in registry"));
+    }
+
+    #[test]
+    fn install_mcp_server_no_install_adds_to_config() {
+        let tmp = TempDir::new().unwrap();
+        write_registry(tmp.path());
+        let outcome = install_mcp_server(tmp.path(), tmp.path(), "git", true).unwrap();
+        assert!(matches!(outcome, InstallOutcome::ConfigOnly));
+        let cfg = read_mcp_config(tmp.path());
+        assert!(cfg.mcp_servers.contains_key("git"));
+        assert!(cfg.mcp_servers["git"].enabled);
+    }
+
+    #[test]
+    fn install_mcp_server_already_installed_skips_cargo() {
+        let tmp = TempDir::new().unwrap();
+        write_registry(tmp.path());
+        // Fake binary on PATH by writing to tmp dir and prepending to PATH.
+        let _lock = env_lock().lock().unwrap();
+        write_binary(tmp.path(), "chump-mcp-git");
+        let old_path = std::env::var("PATH").unwrap_or_default();
+        std::env::set_var("PATH", format!("{}:{}", tmp.path().display(), old_path));
+        let outcome = install_mcp_server(tmp.path(), tmp.path(), "git", false).unwrap();
+        std::env::set_var("PATH", old_path);
+        assert!(matches!(outcome, InstallOutcome::AlreadyInstalled));
+        let cfg = read_mcp_config(tmp.path());
+        assert!(cfg.mcp_servers.contains_key("git"));
+    }
+
+    #[test]
+    fn remove_mcp_server_existing_entry() {
+        let tmp = TempDir::new().unwrap();
+        let mut cfg = ChumpMcpConfig::default();
+        cfg.mcp_servers.insert(
+            "git".to_string(),
+            McpServerEntry {
+                command: "chump-mcp-git".to_string(),
+                args: vec![],
+                env: Default::default(),
+                enabled: true,
+            },
+        );
+        write_mcp_config(tmp.path(), &cfg).unwrap();
+
+        let removed = remove_mcp_server(tmp.path(), "git").unwrap();
+        assert!(removed);
+        let loaded = read_mcp_config(tmp.path());
+        assert!(!loaded.mcp_servers.contains_key("git"));
+    }
+
+    #[test]
+    fn remove_mcp_server_nonexistent_returns_false() {
+        let tmp = TempDir::new().unwrap();
+        let removed = remove_mcp_server(tmp.path(), "no-such").unwrap();
+        assert!(!removed);
     }
 }

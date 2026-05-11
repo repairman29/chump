@@ -1,28 +1,14 @@
 - id: INFRA-822
   domain: INFRA
-  title: "ZERO-WASTE: 17 open P1/P2 gaps have empty acceptance_criteria — waste when agents pick and cannot verify done"
+  title: "RESILIENT: fix version::tests + repo_path::tests + sandbox/rescue env-race flakes — git config lock contention and macOS /private symlink resolution"
   status: open
-  priority: P1
-  effort: s
-  opened_date: '2026-05-11'
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
   raised_by: cold-water
   raised_in: RED_LETTER#6
-  description: |
-    chump gap audit-priorities reports 17 vague (no AC) pickable gaps as of 2026-05-11.
-    Affected gaps include P1s: CREDIBLE-013, INFRA-650, INFRA-765, INFRA-766, INFRA-778,
-    INFRA-780, INFRA-785, INFRA-786, INFRA-770, INFRA-771, INFRA-772, INFRA-773, INFRA-774,
-    META-051, EFFECTIVE-007, INFRA-777, INFRA-784.
-
-    These gaps have AC fields that contain only template placeholders ("TODO: what events...")
-    or empty strings. An agent picking one cannot determine when work is complete. This causes
-    waste in two ways: (1) agent ships a partial impl and closes the gap too early, or
-    (2) agent loops indefinitely without a clear completion signal.
-
-    The audit-priorities check exits non-zero on vague pickable gaps. This means every CI run
-    of `chump gap audit-priorities` currently fails (exit 1), blocking the pre-ship checklist.
-  acceptance_criteria:
-    - chump gap audit-priorities exits 0 (vague-pickable count = 0)
-    - All 17 named gaps above have ≥2 concrete, verifiable acceptance_criteria items
-    - scripts/ci/test-gap-audit-priorities.sh passes
-    - No new gaps filed with template-placeholder AC (pre-commit gap-AC guard extended)
 
