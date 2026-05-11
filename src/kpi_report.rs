@@ -342,6 +342,104 @@ impl LeverageSection {
     }
 }
 
+// ── Handoff self-heal rate (INFRA-773) ───────────────────────────────────────
+
+/// Tracks the Review-as-Handoff self-heal rate over the report window.
+///
+/// Self-heal rate = applied / initiated. Reviewer-error rate = (failed + timeout) / initiated.
+/// Source: ambient.jsonl kinds review_handoff_initiated / applied / failed / timeout.
+#[derive(Debug, Default)]
+pub struct HandoffRateSection {
+    pub initiated: u64,
+    pub applied: u64,
+    pub failed: u64,
+    pub timeout: u64,
+}
+
+impl HandoffRateSection {
+    pub fn self_heal_rate(&self) -> f64 {
+        if self.initiated == 0 {
+            0.0
+        } else {
+            self.applied as f64 / self.initiated as f64
+        }
+    }
+
+    pub fn reviewer_error_rate(&self) -> f64 {
+        if self.initiated == 0 {
+            0.0
+        } else {
+            (self.failed + self.timeout) as f64 / self.initiated as f64
+        }
+    }
+
+    pub fn render_text(&self) -> String {
+        if self.initiated == 0 {
+            return "Review-as-Handoff: no handoffs initiated in window.\n".to_string();
+        }
+        format!(
+            "Review-as-Handoff (INFRA-773)\n  Initiated: {}  Applied: {}  Failed: {}  Timeout: {}\n  Self-heal rate: {:.0}%  Reviewer-error rate: {:.0}%\n",
+            self.initiated,
+            self.applied,
+            self.failed,
+            self.timeout,
+            self.self_heal_rate() * 100.0,
+            self.reviewer_error_rate() * 100.0,
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"initiated":{},"applied":{},"failed":{},"timeout":{},"self_heal_rate_pct":{:.1},"reviewer_error_rate_pct":{:.1}}}"#,
+            self.initiated,
+            self.applied,
+            self.failed,
+            self.timeout,
+            self.self_heal_rate() * 100.0,
+            self.reviewer_error_rate() * 100.0,
+        )
+    }
+}
+
+/// Scan ambient.jsonl and count review_handoff_* events within the time window.
+fn build_handoff_rate_section(repo_root: &Path, window_days: u64) -> HandoffRateSection {
+    use crate::kpi_report::{extract_field, parse_iso8601_to_unix};
+
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+    let now = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    };
+    let cutoff = now.saturating_sub(window_days * 86400);
+
+    let mut section = HandoffRateSection::default();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if !kind.starts_with("review_handoff_") {
+            continue;
+        }
+        if let Some(ts_str) = extract_field(line, "ts") {
+            if let Some(unix) = parse_iso8601_to_unix(&ts_str) {
+                if unix < cutoff {
+                    continue;
+                }
+            }
+        }
+        match kind.as_str() {
+            "review_handoff_initiated" => section.initiated += 1,
+            "review_handoff_applied" => section.applied += 1,
+            "review_handoff_failed" => section.failed += 1,
+            "review_handoff_timeout" => section.timeout += 1,
+            _ => {}
+        }
+    }
+    section
+}
+
 // ── Combined KPI Report ──────────────────────────────────────────────────────
 
 /// Full KPI report wrapping all sections.
@@ -352,6 +450,7 @@ pub struct KpiReport {
     pub cost_savings: CostSavingsSection,
     pub leverage: LeverageSection,
     pub tokens_per_ship: TokensPerShipReport,
+    pub handoff_rate: HandoffRateSection,
 }
 
 impl KpiReport {
@@ -369,17 +468,20 @@ impl KpiReport {
         out.push_str(&self.leverage.render_text());
         out.push('\n');
         out.push_str(&self.tokens_per_ship.render_text());
+        out.push('\n');
+        out.push_str(&self.handoff_rate.render_text());
         out
     }
 
     pub fn render_json(&self) -> String {
         format!(
-            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"leverage":{},"tokens_per_ship":{}}}"#,
+            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{}}}"#,
             self.ship_rate.render_json(),
             self.mission_history.render_json(),
             self.cost_savings.render_json(),
             self.leverage.render_json(),
             self.tokens_per_ship.render_json(),
+            self.handoff_rate.render_json(),
         )
     }
 }
@@ -394,6 +496,7 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
         cost_savings: build_cost_savings_section(repo_root, window_days),
         leverage: build_leverage_section(repo_root),
         tokens_per_ship: build_report(repo_root, window_days),
+        handoff_rate: build_handoff_rate_section(repo_root, window_days),
     }
 }
 
@@ -1282,6 +1385,112 @@ mod tests {
         assert!(json.contains(r#""cost_savings""#));
         assert!(json.contains(r#""leverage""#));
         assert!(json.contains(r#""tokens_per_ship""#));
+        assert!(json.contains(r#""handoff_rate""#));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── INFRA-773: HandoffRateSection tests ──────────────────────────────────
+
+    fn write_ambient_handoff(root: &std::path::Path, lines: &[&str]) {
+        let locks = root.join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(locks.join("ambient.jsonl"))
+            .unwrap();
+        for line in lines {
+            writeln!(f, "{}", line).unwrap();
+        }
+    }
+
+    fn recent_ts() -> String {
+        let secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        // Approximate ISO-8601 with just the unix timestamp as string; extract_field parses it
+        format!("{secs}")
+    }
+
+    #[test]
+    fn handoff_rate_zero_when_no_events() {
+        let tmp = tempdir();
+        let section = build_handoff_rate_section(&tmp, 7);
+        assert_eq!(section.initiated, 0);
+        assert_eq!(section.self_heal_rate(), 0.0);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn handoff_rate_counts_correctly() {
+        let tmp = tempdir();
+        let ts = recent_ts();
+        write_ambient_handoff(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"review_handoff_initiated","pr":"123","reviewer_session":"s1","failure_surface":"test"}}"#
+                ),
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"review_handoff_initiated","pr":"124","reviewer_session":"s2","failure_surface":"lint"}}"#
+                ),
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"review_handoff_applied","pr":"123","author_session":"s3","handoff_comment_id":"c1"}}"#
+                ),
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"review_handoff_failed","pr":"124","author_session":"s4","failure_detail":"still red"}}"#
+                ),
+            ],
+        );
+        let section = build_handoff_rate_section(&tmp, 7);
+        assert_eq!(section.initiated, 2);
+        assert_eq!(section.applied, 1);
+        assert_eq!(section.failed, 1);
+        assert_eq!(section.timeout, 0);
+        assert!((section.self_heal_rate() - 0.5).abs() < 0.01);
+        assert!((section.reviewer_error_rate() - 0.5).abs() < 0.01);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn handoff_rate_render_text_no_handoffs() {
+        let section = HandoffRateSection::default();
+        let text = section.render_text();
+        assert!(text.contains("no handoffs initiated"));
+    }
+
+    #[test]
+    fn handoff_rate_render_text_with_data() {
+        let section = HandoffRateSection {
+            initiated: 4,
+            applied: 3,
+            failed: 1,
+            timeout: 0,
+        };
+        let text = section.render_text();
+        assert!(text.contains("Self-heal rate: 75%"));
+        assert!(text.contains("Reviewer-error rate: 25%"));
+    }
+
+    #[test]
+    fn handoff_rate_render_json() {
+        let section = HandoffRateSection {
+            initiated: 2,
+            applied: 2,
+            failed: 0,
+            timeout: 0,
+        };
+        let json = section.render_json();
+        assert!(json.contains(r#""initiated":2"#));
+        assert!(json.contains(r#""applied":2"#));
+        assert!(json.contains(r#""self_heal_rate_pct":100"#));
+    }
+
+    #[test]
+    fn waste_kinds_includes_handoff_failed_and_timeout() {
+        use crate::waste_tally::WASTE_KINDS;
+        assert!(WASTE_KINDS.contains(&"review_handoff_failed"));
+        assert!(WASTE_KINDS.contains(&"review_handoff_timeout"));
     }
 }

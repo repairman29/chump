@@ -104,6 +104,8 @@ pub const WASTE_KINDS: &[&str] = &[
     "worker_exit_timeout",          // INFRA-572 synthetic — from worker_exit exit_class=TIMEOUT
     "worker_exit_oom",              // INFRA-572 synthetic — from worker_exit exit_class=OOM_KILL
     "session_token_orphan",         // INFRA-639 synthetic — token_usage_partial with no session_end
+    "review_handoff_failed", // INFRA-773 — handoff applied but CI still red (reviewer effort wasted)
+    "review_handoff_timeout", // INFRA-773 — no author push within 15 min (reviewer effort wasted)
 ];
 
 /// Domain-level aggregate for `--by-domain` output (INFRA-574).
@@ -1071,7 +1073,8 @@ mod tests {
         // INFRA-572: +2 worker_exit synthetic (timeout + oom) = 14.
         // INFRA-639: +1 session_token_orphan (partial tokens, no session_end) = 15.
         // FLEET-050: +1 session_shipped_not_valuable (shipped but no user value) = 16.
-        assert_eq!(WASTE_KINDS.len(), 16);
+        // INFRA-773: +2 review_handoff_failed + review_handoff_timeout = 18.
+        assert_eq!(WASTE_KINDS.len(), 18);
     }
 
     #[test]
