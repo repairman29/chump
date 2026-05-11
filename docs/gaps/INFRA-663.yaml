@@ -1,9 +1,0 @@
-- id: INFRA-663
-  domain: INFRA
-  title: "RESILIENT: auto-restart fleet on critical worker.sh changes — observed 2026-05-07: fleet launched yesterday, auth-stormed at 05:00 UTC, never recovered. Fixes for that exact case (INFRA-620/622/623) had merged but running fleet predated them so it ran stale code. Need: scripts/dispatch/control.sh polls main every 15min, if scripts/dispatch/worker.sh OR scripts/dispatch/_pick_and_claim_gap.py OR src/operator_presence.rs changed in main since fleet launch → trigger graceful restart (INFRA-610). Pairs with INFRA-609 version-skew detect (already shipped) which surfaces the signal but doesn't act on it. AC: scripts/dispatch/control.sh adds critical-path watcher; emits 'kind=fleet_critical_skew' → triggers chump fleet restart; test scripts/ci/test-critical-skew-restart.sh on fixture worker.sh diff."
-  status: done
-  priority: P0
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1291
-

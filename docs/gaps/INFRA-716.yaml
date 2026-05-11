@@ -1,7 +1,0 @@
-- id: INFRA-716
-  domain: INFRA
-  title: 'PR #1299 stuck [ORPHAN] — auto-merge disarmed, no live owner'
-  status: done
-  priority: P1
-  effort: xs
-  closed_date: '2026-05-08'

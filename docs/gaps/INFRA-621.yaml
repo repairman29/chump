@@ -1,9 +1,0 @@
-- id: INFRA-621
-  domain: INFRA
-  title: "ZERO-WASTE: 'chump fleet auth-check' / launch-time auth verification — productizes the OAUTH-vs-API-key auth-mode detection. At fleet launch (run-fleet.sh) probe the auth path, validate it works with a 1-token claude --once 'ok' call, log 'kind=fleet_auth_verified' on success OR 'kind=fleet_auth_misconfigured' with operator-friendly hint ('your ANTHROPIC_API_KEY is empty + you have CLAUDE_CODE_OAUTH_TOKEN — workers will fail when token refreshes; either unset ANTHROPIC_API_KEY OR set a real key'). Saves operator from forensic debugging when fleet auth-storms. AC: scripts/dispatch/run-fleet.sh adds pre-launch auth probe; refuses to launch if probe fails (override CHUMP_FLEET_FORCE_LAUNCH=1); chump fleet doctor (INFRA-603) reports auth status; test scripts/ci/test-fleet-auth-check.sh covers 4 scenarios (OAUTH-only valid, API-key only valid, both valid, both invalid)."
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-08'
-  closed_pr: 1292
-

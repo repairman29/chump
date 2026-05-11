@@ -1,9 +1,0 @@
-- id: COG-053
-  domain: COG
-  title: "EFFECTIVE: subagent self-ship rate ~25-33% per CLAUDE.md. The cognition stack improvements (COG-041..046) are infrastructure for FUTURE gains. Direct attack: reduce hesitation/clarifying-question failure mode in subagent prompts. INFRA-515 already flipped sonnet default for fleet — this is the parallel for direct subagent dispatches via Agent tool. Update docs/process/SUBAGENT_DISPATCH.md + the standard prompt epilogue to include 'no clarifying questions' directive + auto-decide when AC is ambiguous."
-  status: done
-  priority: P1
-  effort: m
-  closed_date: '2026-05-08'
-  closed_pr: 1310
-

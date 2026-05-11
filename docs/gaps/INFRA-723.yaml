@@ -1,7 +1,0 @@
-- id: INFRA-723
-  domain: INFRA
-  title: "ZERO-WASTE: split main.rs phase 2 — extract providers/ module group (provider_bandit, provider_cascade, provider_quality, streaming_provider, local_openai, mistralrs_provider)"
-  status: open
-  priority: P2
-  effort: m
-

@@ -1,8 +1,0 @@
-- id: INFRA-714
-  domain: INFRA
-  title: 'ZERO-WASTE: wire --output-format stream-json into worker.sh so token parser gets usage data'
-  status: done
-  priority: P2
-  effort: m
-  closed_date: '2026-05-08'
-  closed_pr: 1309

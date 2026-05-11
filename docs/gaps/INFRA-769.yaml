@@ -1,9 +1,0 @@
-- id: INFRA-769
-  domain: INFRA
-  title: "EFFECTIVE: Review-as-Handoff sub-gap 1/6 — comment template + Markdown lint. Standardized 4-section template (Failure surface / Root cause / Apply this diff / Verification) closing with [handoff:apply by=<id> verified=<bool>] annotation. CI-side lint rejects malformed comments before they post. Spec: docs/architecture/REVIEW_AS_HANDOFF.md §3."
-  status: done
-  priority: P1
-  effort: s
-  closed_date: '2026-05-10'
-  closed_pr: 1427
-
