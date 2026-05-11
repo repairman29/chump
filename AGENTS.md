@@ -232,6 +232,15 @@ When the gap ships, run `chump gap ship <GAP-ID> --update-yaml` to flip
 `docs/gaps/<GAP-ID>.yaml` so the human-readable diff lands **atomically with
 the implementing PR** (one commit, not a follow-up).
 
+**Spawning subagents — always prepend the default briefing prefix (META-028).**
+Every `Agent`-tool prompt must start with the contents of
+`docs/process/SUBAGENT_DEFAULT_BRIEFING.md` (or the path returned by
+`bash scripts/lib/get-agent-briefing-prefix.sh`). The prefix includes the
+no-clarifying-questions directive, Agent-vs-SendMessage discipline, chump-doctor
+heal pattern, and manual-recovery budget. Override project-wide with
+`CHUMP_AGENT_DEFAULT_PREFIX=<path>`. Without this prefix, subagents routinely
+stall on clarifying questions or fail to self-ship.
+
 **Running a fleet of agents (INFRA-203).** The canonical multi-agent
 launcher is `scripts/dispatch/run-fleet.sh` — it spawns N tmux panes plus a
 control pane, with each worker looping pick-gap → claim → worktree →
