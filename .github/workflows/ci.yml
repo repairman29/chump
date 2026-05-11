@@ -920,6 +920,9 @@ jobs:
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
 
+      - name: gap rebalance — P0 budget + pillar floor (INFRA-635)
+        run: bash scripts/ci/test-gap-rebalance.sh
+
       - name: stale-binary destructive-op guard (INFRA-825)
         # Asserts chump gap ship --update-yaml / dump --per-file hard-fail
         # on a stale binary. PR #1444 silently reverted META-044 because
