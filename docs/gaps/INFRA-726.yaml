@@ -4,4 +4,10 @@
   status: open
   priority: P2
   effort: m
+  acceptance_criteria: |
+    Criterion 1: All module declarations are moved from main.rs into `lib.rs`
+    Criterion 2: `lib.rs` re-exports public types/functions via `pub use` for each module group
+    Criterion 3: `main.rs` depends on the crate and imports from the crate-level API rather than declaring submodules directly
+    Criterion 4: Cargo build and `cargo test` pass with no functional changes
+    Criterion 5: Binary entry point (`main`) is minimal — only argument parsing and dispatch
 

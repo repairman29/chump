@@ -4,4 +4,9 @@
   status: open
   priority: P1
   effort: s
+  acceptance_criteria: |
+    Criterion 1: Trust check verifies comment author against session-metadata `reviewer` capability, operator identity, or PR-author (self-handoff)
+    Criterion 2: Untrusted comments are treated as advisory (not applied automatically)
+    Criterion 3: Implementation follows `docs/architecture/REVIEW_AS_HANDOFF.md` §4 specification
+    Criterion 4: Test covers trusted (reviewer, operator, self) and untrusted comment scenarios
 

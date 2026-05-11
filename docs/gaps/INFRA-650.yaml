@@ -4,4 +4,10 @@
   status: open
   priority: P1
   effort: m
+  acceptance_criteria: |
+    Criterion 1: `src/fleet_resize.rs` evaluates each of the 4 conditions (queue-empty, cost-watch hard-cap, flat ship rate, autonomous-mode operator-absent) and triggers the correct resize action
+    Criterion 2: `chump fleet auto-resize` subcommand is implemented and accepts relevant flags
+    Criterion 3: Auto-resize is integrated into the INFRA-611 auto-restart daemon lifecycle
+    Criterion 4: Each resize decision emits an ambient event with `kind=fleet_resize_decision` and includes reasoning
+    Criterion 5: `scripts/ci/test-fleet-auto-prune.sh` covers every trigger condition
 
