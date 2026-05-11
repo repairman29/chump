@@ -189,3 +189,13 @@ PY
 
 echo "$NEW_ID"
 echo "[gap-reserve] Wrote pending_new_gap → $LEASE_FILE (session $SESSION_ID)" >&2
+
+# EVAL-086: stamp opened_date on new gaps so stall detection is expressible as
+# a registry query. The Rust path currently leaves opened_date=''; patch it here
+# under the same flock we already hold.
+_db="$MAIN_REPO/.chump/state.db"
+if [[ -f "$_db" ]]; then
+    _today="$(date -u +%Y-%m-%d)"
+    sqlite3 "$_db" "UPDATE gaps SET opened_date='$_today' WHERE id='$NEW_ID' AND (opened_date IS NULL OR opened_date='')" 2>/dev/null || true
+    echo "[gap-reserve] INFO: stamped opened_date=$_today on $NEW_ID" >&2
+fi
