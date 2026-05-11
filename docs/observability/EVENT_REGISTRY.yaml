@@ -111,6 +111,12 @@ events:
     consumers: [waste-tally, kpi-report]
     fields_required: [agent_id, gap_id, rc, exit_class]
 
+  - kind: cycle_stall_killed
+    emitter: scripts/dispatch/worker.sh (INFRA-705)
+    trigger: no new output bytes for CHUMP_STALL_THRESHOLD_S (default 120s) during an active cycle
+    consumers: [fleet-brief, waste_tally, watchdog]
+    fields_required: [gap_id, agent_id, idle_s]
+
   - kind: worker_cooldown
     emitter: scripts/dispatch/worker.sh (FLEET-051)
     trigger: single worker failure on a gap; per-worker cooldown written

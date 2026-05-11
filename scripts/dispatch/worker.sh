@@ -110,6 +110,9 @@ _wedge_retries=0
 _wedge_count=0
 _wedge_storm_threshold="${CHUMP_WEDGE_STORM_THRESHOLD:-5}"
 _first_output_timeout="${CHUMP_FIRST_OUTPUT_TIMEOUT_S:-120}"
+# INFRA-705: stall-detector threshold (seconds of no new output before kill).
+# Distinct from FIRST_OUTPUT_TIMEOUT: fires on mid-cycle stalls, not just zero initial output.
+_stall_threshold_default="${CHUMP_STALL_THRESHOLD_S:-120}"
 
 mkdir -p "$FLEET_LOG_DIR"
 
@@ -800,10 +803,45 @@ Operator or sibling worker can rescue this branch via:
                 ) &
                 _fo_watchdog_pid=$!
 
+                # INFRA-705: stall-detector — kills cycle if no new output for
+                # CHUMP_STALL_THRESHOLD_S consecutive seconds (default 120).
+                # Complements the first-output watchdog: that one fires on zero
+                # initial output; this one fires on mid-cycle output stalls.
+                _stall_threshold="${CHUMP_STALL_THRESHOLD_S:-120}"
+                (
+                    _sd_last_sz=0
+                    _sd_last_active=$SECONDS
+                    while kill -0 "$_claude_pid" 2>/dev/null; do
+                        sleep 10
+                        _sd_cur_sz=$(wc -c < "$cycle_log" 2>/dev/null | tr -d ' ' || echo 0)
+                        if [[ "$_sd_cur_sz" -gt "$_sd_last_sz" ]]; then
+                            _sd_last_sz=$_sd_cur_sz
+                            _sd_last_active=$SECONDS
+                        fi
+                        _sd_idle=$(( SECONDS - _sd_last_active ))
+                        if [[ $_sd_idle -ge $_stall_threshold ]]; then
+                            printf '{"ts":"%s","kind":"cycle_stall_killed","gap_id":"%s","agent_id":"%s","idle_s":%d}\n' \
+                                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                                "${GAP_ID:-unknown}" \
+                                "${AGENT_ID:-unknown}" \
+                                "$_sd_idle" \
+                                >> "${CHUMP_LOCKS_DIR:-.chump-locks}/ambient.jsonl" 2>/dev/null || true
+                            log "INFRA-705: stall-detector firing (no output for ${_sd_idle}s ≥ threshold ${_stall_threshold}s) — killing cycle"
+                            kill "-TERM" "$_claude_pid" 2>/dev/null || true
+                            sleep 2
+                            kill "-KILL" "$_claude_pid" 2>/dev/null || true
+                            break
+                        fi
+                    done
+                ) &
+                _stall_detector_pid=$!
+
                 wait "$_claude_pid" 2>/dev/null
                 rc=$?
                 kill "$_fo_watchdog_pid" 2>/dev/null || true
                 wait "$_fo_watchdog_pid" 2>/dev/null || true
+                kill "$_stall_detector_pid" 2>/dev/null || true
+                wait "$_stall_detector_pid" 2>/dev/null || true
 
                 # Check for wedge: near-empty log + timeout or clean exit.
                 _log_sz=0
