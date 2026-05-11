@@ -531,6 +531,11 @@ events:
     consumers: [fleet-brief]
 
   # ── Activation telemetry (chump-init) ─────────────────────────────────────
+  - kind: ftue_init_smoke_passed
+    emitter: scripts/ci/test-chump-init-clean-machine.sh
+    trigger: all 5 FTUE init smoke checks passed (chump --version, init, config.toml, state.db, mcp list)
+    consumers: [fleet-brief, kpi-report]
+
   - kind: activation_install
     emitter: scripts/setup/install.sh
     trigger: fresh chump install on a machine

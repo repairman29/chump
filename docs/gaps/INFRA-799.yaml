@@ -5,8 +5,7 @@
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "(a) scripts/ci/test-chump-init-clean-machine.sh: 5-check local smoke test — chump --version, chump init --no-interactive (config.toml + state.db written), chump mcp list exits 0"
+    - "(b) ftue-clean-machine-2026.yml extended with chump init --no-interactive step (id=init) and chump mcp list step (id=mcp_list); both added to run summary"
+    - "(c) workflow path triggers extended to include src/mcp_discovery.rs, chump-mcp.json, scripts/ci/test-chump-init-clean-machine.sh"
 
