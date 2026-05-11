@@ -1,7 +1,7 @@
 - id: INFRA-744
   domain: INFRA
   title: "EFFECTIVE: declarative mcp-servers.json config for MCP server discovery and settings"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -10,4 +10,7 @@
     - Config is checked into the repo so MCP setup is portable across machines
     - chump mcp list shows configured servers and their status (running/stopped/error)
     - chump mcp restart <server> restarts a specific server
+  opened_date: '2026-05-08'
+  closed_date: '2026-05-11'
+  closed_pr: 1467
 

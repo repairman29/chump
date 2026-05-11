@@ -288,6 +288,218 @@ pub fn print_mcp_list(servers: &[McpServerInfo], json: bool) {
     }
 }
 
+// ── Declarative config (INFRA-744) ───────────────────────────────────────────
+
+/// One server entry from `chump-mcp.json`.
+///
+/// Schema mirrors Claude Desktop's `claude_desktop_config.json` so the same
+/// config can be shared between Chump and Claude Desktop.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+pub struct McpServerEntry {
+    /// Executable name or absolute path.
+    pub command: String,
+    /// Arguments passed to the executable (default: empty).
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Environment variable overrides for this server.
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    /// Whether Chump should start this server (default: true).
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+/// Top-level structure of `chump-mcp.json`.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
+pub struct ChumpMcpConfig {
+    /// Map of server name → configuration.
+    #[serde(rename = "mcpServers", default)]
+    pub mcp_servers: std::collections::BTreeMap<String, McpServerEntry>,
+}
+
+/// Runtime status of a configured server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpConfigStatus {
+    /// Enabled and binary found on PATH or at the specified path.
+    Ready,
+    /// Enabled but binary not found.
+    Missing,
+    /// Disabled in config.
+    Disabled,
+}
+
+impl McpConfigStatus {
+    pub fn label(&self) -> &'static str {
+        match self {
+            McpConfigStatus::Ready => "ready",
+            McpConfigStatus::Missing => "missing",
+            McpConfigStatus::Disabled => "disabled",
+        }
+    }
+}
+
+/// A configured server with its resolved runtime status.
+#[derive(Debug, Clone)]
+pub struct McpConfigEntry {
+    pub name: String,
+    pub config: McpServerEntry,
+    pub status: McpConfigStatus,
+}
+
+/// Load `chump-mcp.json` from the project root, then overlay `~/.chump/mcp.json`
+/// (user-level overrides). Returns the merged config, or an empty config on error.
+///
+/// Resolution order (later wins for the same server name):
+///   1. `<repo_root>/chump-mcp.json` — project-level, checked into version control
+///   2. `~/.chump/mcp.json` — user-level, not checked in
+pub fn read_mcp_config(repo_root: &Path) -> ChumpMcpConfig {
+    let mut merged = ChumpMcpConfig::default();
+
+    let candidates = [
+        repo_root.join("chump-mcp.json"),
+        dirs_home()
+            .map(|h| h.join(".chump").join("mcp.json"))
+            .unwrap_or_default(),
+    ];
+
+    for path in &candidates {
+        if !path.is_file() {
+            continue;
+        }
+        let content = match std::fs::read_to_string(path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[mcp_config] WARN: cannot read {}: {e}", path.display());
+                continue;
+            }
+        };
+        match serde_json::from_str::<ChumpMcpConfig>(&content) {
+            Ok(cfg) => {
+                for (name, entry) in cfg.mcp_servers {
+                    merged.mcp_servers.insert(name, entry);
+                }
+            }
+            Err(e) => {
+                eprintln!("[mcp_config] WARN: failed to parse {}: {e}", path.display());
+            }
+        }
+    }
+
+    merged
+}
+
+/// Resolve runtime status for each entry in a `ChumpMcpConfig`.
+pub fn resolve_config_status(cfg: &ChumpMcpConfig) -> Vec<McpConfigEntry> {
+    cfg.mcp_servers
+        .iter()
+        .map(|(name, entry)| {
+            let status = if !entry.enabled {
+                McpConfigStatus::Disabled
+            } else if command_exists(&entry.command) {
+                McpConfigStatus::Ready
+            } else {
+                McpConfigStatus::Missing
+            };
+            McpConfigEntry {
+                name: name.clone(),
+                config: entry.clone(),
+                status,
+            }
+        })
+        .collect()
+}
+
+/// Check if `command` is an absolute path that exists, or is discoverable on PATH.
+fn command_exists(command: &str) -> bool {
+    let p = std::path::Path::new(command);
+    if p.is_absolute() {
+        return p.is_file();
+    }
+    // Search PATH
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            if dir.join(command).is_file() {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Print the declarative config list to stdout.
+pub fn print_mcp_config_list(entries: &[McpConfigEntry], json: bool) {
+    if json {
+        #[derive(serde::Serialize)]
+        struct Row<'a> {
+            name: &'a str,
+            command: &'a str,
+            args: &'a [String],
+            enabled: bool,
+            status: &'static str,
+        }
+        let rows: Vec<Row> = entries
+            .iter()
+            .map(|e| Row {
+                name: &e.name,
+                command: &e.config.command,
+                args: &e.config.args,
+                enabled: e.config.enabled,
+                status: e.status.label(),
+            })
+            .collect();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&rows).unwrap_or_default()
+        );
+        return;
+    }
+
+    if entries.is_empty() {
+        println!("No MCP servers configured.");
+        println!();
+        println!(
+            "Create chump-mcp.json in your project root to declare servers.\n\
+             Example:\n\
+             {{\n\
+               \"mcpServers\": {{\n\
+                 \"filesystem\": {{\n\
+                   \"command\": \"chump-mcp-filesystem\",\n\
+                   \"args\": [],\n\
+                   \"enabled\": true\n\
+                 }}\n\
+               }}\n\
+             }}"
+        );
+        return;
+    }
+
+    let col_w = entries.iter().map(|e| e.name.len()).max().unwrap_or(4) + 2;
+    for entry in entries {
+        let status_str = match &entry.status {
+            McpConfigStatus::Ready => "ready   ",
+            McpConfigStatus::Missing => "MISSING ",
+            McpConfigStatus::Disabled => "disabled",
+        };
+        let args_str = if entry.config.args.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", entry.config.args.join(" "))
+        };
+        println!(
+            "  {:<width$}  [{}]  {}{}",
+            entry.name,
+            status_str,
+            entry.config.command,
+            args_str,
+            width = col_w,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +507,106 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
     use std::sync::{Mutex, OnceLock};
     use tempfile::TempDir;
+
+    // ── INFRA-744: declarative config tests ───────────────────────────────────
+
+    #[test]
+    fn read_mcp_config_empty_dir_returns_default() {
+        let tmp = TempDir::new().unwrap();
+        let cfg = read_mcp_config(tmp.path());
+        assert!(cfg.mcp_servers.is_empty());
+    }
+
+    #[test]
+    fn read_mcp_config_parses_project_file() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("chump-mcp.json"),
+            r#"{"mcpServers":{"test-srv":{"command":"my-binary","args":["--flag"],"enabled":true}}}"#,
+        )
+        .unwrap();
+        let cfg = read_mcp_config(tmp.path());
+        assert_eq!(cfg.mcp_servers.len(), 1);
+        let entry = cfg.mcp_servers.get("test-srv").unwrap();
+        assert_eq!(entry.command, "my-binary");
+        assert_eq!(entry.args, vec!["--flag"]);
+        assert!(entry.enabled);
+    }
+
+    #[test]
+    fn read_mcp_config_defaults_enabled_to_true() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(
+            tmp.path().join("chump-mcp.json"),
+            r#"{"mcpServers":{"srv":{"command":"bin"}}}"#,
+        )
+        .unwrap();
+        let cfg = read_mcp_config(tmp.path());
+        assert!(cfg.mcp_servers["srv"].enabled);
+    }
+
+    #[test]
+    fn read_mcp_config_tolerates_malformed_json() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("chump-mcp.json"), b"not valid json").unwrap();
+        let cfg = read_mcp_config(tmp.path());
+        assert!(cfg.mcp_servers.is_empty());
+    }
+
+    #[test]
+    fn resolve_config_status_disabled_entry() {
+        let mut cfg = ChumpMcpConfig::default();
+        cfg.mcp_servers.insert(
+            "srv".to_string(),
+            McpServerEntry {
+                command: "chump-mcp-github".to_string(),
+                args: vec![],
+                env: Default::default(),
+                enabled: false,
+            },
+        );
+        let entries = resolve_config_status(&cfg);
+        assert_eq!(entries[0].status, McpConfigStatus::Disabled);
+    }
+
+    #[test]
+    fn resolve_config_status_missing_binary() {
+        let mut cfg = ChumpMcpConfig::default();
+        cfg.mcp_servers.insert(
+            "srv".to_string(),
+            McpServerEntry {
+                command: "definitely-does-not-exist-binary-xyz".to_string(),
+                args: vec![],
+                env: Default::default(),
+                enabled: true,
+            },
+        );
+        let entries = resolve_config_status(&cfg);
+        assert_eq!(entries[0].status, McpConfigStatus::Missing);
+    }
+
+    #[test]
+    fn resolve_config_status_absolute_path_found() {
+        let tmp = TempDir::new().unwrap();
+        let bin = tmp.path().join("my-server");
+        fs::write(&bin, b"#!/bin/sh\n").unwrap();
+        let mut perms = fs::metadata(&bin).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(&bin, perms).unwrap();
+
+        let mut cfg = ChumpMcpConfig::default();
+        cfg.mcp_servers.insert(
+            "srv".to_string(),
+            McpServerEntry {
+                command: bin.to_string_lossy().to_string(),
+                args: vec![],
+                env: Default::default(),
+                enabled: true,
+            },
+        );
+        let entries = resolve_config_status(&cfg);
+        assert_eq!(entries[0].status, McpConfigStatus::Ready);
+    }
 
     fn env_lock() -> &'static Mutex<()> {
         static LOCK: OnceLock<Mutex<()>> = OnceLock::new();

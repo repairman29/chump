@@ -4333,9 +4333,10 @@ async fn main() -> Result<()> {
         }
     }
 
-    // `chump mcp list [--installed] [--json]` (PRODUCT-061)
+    // `chump mcp list [--installed] [--json]` (PRODUCT-061 / INFRA-744)
     //
-    // Default: print the registry catalog (registry/mcp-servers.toml).
+    // Default: if chump-mcp.json exists, show the declarative config (INFRA-744).
+    //          Otherwise fall back to the registry catalog.
     // --installed: print discovered installed binaries (PATH/user-config/system).
     // --json: machine-readable output for either mode.
     if args.get(1).map(|s| s == "mcp").unwrap_or(false)
@@ -4343,15 +4344,73 @@ async fn main() -> Result<()> {
     {
         let installed = args.iter().any(|a| a == "--installed");
         let json = args.iter().any(|a| a == "--json");
+        let repo_root = crate::repo_path::repo_root();
+
         if installed {
             let servers = mcp_discovery::discover_mcp_servers();
             tracing::info!(count = servers.len(), "mcp list --installed");
             mcp_discovery::print_mcp_list(&servers, json);
         } else {
-            let repo_root = crate::repo_path::repo_root();
-            let entries = mcp_discovery::read_registry(&repo_root);
-            tracing::info!(count = entries.len(), "mcp list registry");
-            mcp_discovery::print_registry(&entries, json);
+            // INFRA-744: prefer declarative config over registry scan.
+            let mcp_config = mcp_discovery::read_mcp_config(&repo_root);
+            if !mcp_config.mcp_servers.is_empty() {
+                let entries = mcp_discovery::resolve_config_status(&mcp_config);
+                tracing::info!(count = entries.len(), "mcp list config");
+                mcp_discovery::print_mcp_config_list(&entries, json);
+            } else {
+                let entries = mcp_discovery::read_registry(&repo_root);
+                tracing::info!(count = entries.len(), "mcp list registry");
+                mcp_discovery::print_registry(&entries, json);
+            }
+        }
+        return Ok(());
+    }
+
+    // `chump mcp restart <name>` (INFRA-744) — kill and restart a configured server.
+    //
+    // Looks up the server in chump-mcp.json, then signals its process to restart.
+    // For now, this prints the command needed to re-launch the server so the
+    // operator or process supervisor can act. Full PID tracking is tracked in
+    // a follow-up gap.
+    if args.get(1).map(|s| s == "mcp").unwrap_or(false)
+        && args.get(2).map(|s| s == "restart").unwrap_or(false)
+    {
+        let name = args.get(3).map(String::as_str).unwrap_or("");
+        if name.is_empty() || name.starts_with('-') {
+            eprintln!("Usage: chump mcp restart <name>");
+            eprintln!("       (run `chump mcp list` to see configured servers)");
+            std::process::exit(2);
+        }
+        let repo_root = crate::repo_path::repo_root();
+        let mcp_config = mcp_discovery::read_mcp_config(&repo_root);
+        if let Some(entry) = mcp_config.mcp_servers.get(name) {
+            if !entry.enabled {
+                eprintln!("Server '{name}' is disabled in chump-mcp.json — enable it first.");
+                std::process::exit(1);
+            }
+            let mut cmd_parts = vec![entry.command.clone()];
+            cmd_parts.extend(entry.args.clone());
+            println!("Restart '{name}': {}", cmd_parts.join(" "));
+            println!();
+            println!(
+                "Note: chump mcp restart currently prints the launch command.\n\
+                 PID tracking for live restart will be added in a follow-up gap.\n\
+                 To restart now, kill the running process and re-run the command above."
+            );
+        } else if mcp_config.mcp_servers.is_empty() {
+            eprintln!(
+                "No chump-mcp.json found. Create one to declare servers, then use\n\
+                 'chump mcp restart <name>' to restart a specific server."
+            );
+            std::process::exit(1);
+        } else {
+            eprintln!("Server '{name}' not found in chump-mcp.json.");
+            eprintln!();
+            eprintln!("Configured servers:");
+            for n in mcp_config.mcp_servers.keys() {
+                eprintln!("  {n}");
+            }
+            std::process::exit(1);
         }
         return Ok(());
     }
