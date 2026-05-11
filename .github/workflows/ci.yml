@@ -353,6 +353,9 @@ jobs:
       - name: flake-autorerun harness fixture (INFRA-764)
         run: bash scripts/ci/test-flake-autorerun.sh
 
+      - name: fleet brief subcommand (INFRA-721)
+        run: CHUMP_BIN=./target/debug/chump bash scripts/ci/test-fleet-brief.sh
+
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
 
