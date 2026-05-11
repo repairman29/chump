@@ -354,7 +354,9 @@ jobs:
         run: bash scripts/ci/test-flake-autorerun.sh
 
       - name: fleet brief subcommand (INFRA-721)
-        run: CHUMP_BIN=./target/debug/chump bash scripts/ci/test-fleet-brief.sh
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-fleet-brief.sh
 
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
