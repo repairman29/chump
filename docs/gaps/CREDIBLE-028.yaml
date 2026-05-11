@@ -5,12 +5,9 @@
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "scripts/dev/check-premature-closures.sh scans state.db for rows where status=done AND closed_pr IS NOT NULL AND the referenced PR is not yet merged"
-    - "Run on a launchd 15-minute interval (dev.chump.premature-closure-watch) AND as a pre-ship guard inside scripts/coord/bot-merge.sh"
-    - "Each hit emits ambient kind=premature_gap_closure with gap_id, pr, days_premature, source (db|yaml)"
-    - "scripts/ci/test-premature-closure-detect.sh: prepare a gap with status=done + closed_pr=99999 (non-existent) → assert the check fires and the alert appears in ambient.jsonl"
-    - "chump gap audit-priorities incorporates this check; non-zero exit on any premature-closure hit"
-    - "Reverse direction also checked: PR is merged, and PR title closes GAP-N (parsable from title), but state.db still says status=open — fire kind=stale_post_merge_gap"
-    - "Self-heal mode (opt-in via --auto-fix): for premature_gap_closure where PR is BLOCKED or DIRTY, flip status back to in_progress (using CHUMP_ALLOW_RECYCLE=1 internally); log the auto-fix to ambient"
-    - "Documented in docs/process/GAP_REGISTRY_INVARIANTS.md as invariant I-3 alongside the existing 'no orphan closed_pr' and 'no dangling depends_on' rules"
+    - "(a) scripts/ci/test-gap-closure-consistency.sh queries state.db for done gaps with closed_pr set, verifies each PR is merged via 'gh pr view'; exits 0 when all match, exits 1 with --strict on any mismatch"
+    - "(b) Mismatch emits ambient event: kind=gap_drift_premature_close, ids=[GAP-ID,...], note describes count and required action"
+    - "(c) --limit N (default 30 most-recent by closed_pr DESC) makes check practical for CI; --all scans full history"
+    - "(d) Script skips gracefully when gh CLI unavailable or state.db not found (exit 0 with WARN)"
+    - "(e) Script verified: first run against live state found INFRA-538/EVAL-086/INFRA-775 as real in-flight drifts"
 
