@@ -496,10 +496,7 @@ events:
       One-shot event marking that the opus-curator wave-sequencing roadmap
       doc was (re-)published. Useful for after-the-fact "when did sequencing
       change?" reconstruction.
-<<<<<<< HEAD
-=======
 
->>>>>>> 942663a3 (feat(infra-890): network unavailability detection — net-probe.sh + ambient events)
   - kind: fleet_resize_decision
     emitter: src/main.rs (chump fleet auto-resize, INFRA-650)
     trigger: fleet auto-resize evaluated 4 conditions (queue-empty, cost-cap,
@@ -1179,3 +1176,18 @@ events:
       by production code paths
     consumers: []
     status: test-fixture
+
+  # ── INFRA-827: stale worktree pruner ─────────────────────────────────────
+  - kind: worktree_pruned
+    emitter: src/main.rs (chump fleet prune-worktrees --apply, INFRA-827)
+    trigger: a linked worktree was removed because it was older than CHUMP_WT_MAX_AGE_H
+      (default 48h) and its branch had no open GitHub PR and no uncommitted changes
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, path, branch, age_h]
+
+  - kind: worktree_prune_summary
+    emitter: src/main.rs (chump fleet prune-worktrees --apply, INFRA-827)
+    trigger: emitted once per prune-worktrees --apply run summarising total
+      pruned and skipped counts
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, pruned, skipped_active_pr, skipped_uncommitted, skipped_young]

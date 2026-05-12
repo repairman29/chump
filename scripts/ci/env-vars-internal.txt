@@ -303,3 +303,6 @@ CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL
 
 # ── INFRA-363: ──────────
 CHUMP_CASCADE_EXHAUSTED_BACKOFF_S
+
+# ── INFRA-827: prune-worktrees max age ─────────────────────────────────────
+CHUMP_WT_MAX_AGE_H
