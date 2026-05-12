@@ -397,7 +397,10 @@ fn print_help() {
     println!("  lesson-grade       lesson-learning quality score");
     println!("  ci-summary         last-N CI run outcomes");
     println!("  classify-failure   categorize a CI/PR failure for the improvement tracker");
-    println!("  kpi report         KPI scorecard across all pillars");
+    println!(
+        "  kpi report         KPI scorecard across all pillars
+  kpi report --impact  gap impact ratings (chump gap rate)"
+    );
     println!("  cost-watch  (alias: cs)  real-time inference spend + per-slot breakdown");
     println!("  cost record-pr     attach cost metadata to a merged PR");
     println!("  pr-coupling-cost   cost of PRs that move together (coupling smell)");
@@ -5334,6 +5337,58 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
 
+            // FLEET-048: operator impact rating
+            "rate" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap rate <GAP-ID> <1-5> [--comment \"text\"] [--pr N]");
+                    std::process::exit(2);
+                });
+                let rating_str = args.get(4).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap rate <GAP-ID> <1-5> [--comment \"text\"] [--pr N]");
+                    std::process::exit(2);
+                });
+                let rating: u8 = match rating_str.trim().parse::<u8>() {
+                    Ok(r) if (1..=5).contains(&r) => r,
+                    _ => {
+                        eprintln!("chump gap rate: rating must be 1-5 (got {:?})", rating_str);
+                        std::process::exit(2);
+                    }
+                };
+                let comment = flag("--comment").unwrap_or_default();
+                let pr_number: Option<i64> = flag("--pr").and_then(|s| s.parse::<i64>().ok());
+
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                let pr_json = pr_number
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "null".to_string());
+                let comment_escaped = comment.replace('\\', "\\\\").replace('"', "\\\"");
+                let event = format!(
+                    "{{\"ts\":\"{ts}\",\"kind\":\"gap_impact_rated\",\
+                     \"gap_id\":\"{gap_id}\",\"rating\":{rating},\
+                     \"comment\":\"{comment_escaped}\",\"pr_number\":{pr_json}}}\n"
+                );
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                match std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&ambient_path)
+                {
+                    Ok(mut f) => {
+                        use std::io::Write;
+                        f.write_all(event.as_bytes())
+                            .unwrap_or_else(|e| eprintln!("gap rate: write failed: {e}"));
+                    }
+                    Err(e) => {
+                        eprintln!("gap rate: could not open ambient log: {e}");
+                        std::process::exit(1);
+                    }
+                }
+                println!("rated {} → {}/5", gap_id, rating);
+                if !comment.is_empty() {
+                    println!("  comment: {}", comment);
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
@@ -5364,6 +5419,7 @@ async fn main() -> Result<()> {
                 eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check for closed gaps");
                 eprintln!("  audit-ac         --open [--json]                  # INFRA-936: warn on open gaps with empty/TODO AC");
                 eprintln!("  consolidate      [--threshold N] [--json]  # INFRA-935 near-duplicate title detection");
+                eprintln!("  rate             <GAP-ID> <1-5> [--comment text] [--pr N]  # FLEET-048 operator impact rating");
                 eprintln!("  rebalance        [--apply] [--json]  # P0 budget + pillar floor enforcement (INFRA-635)");
                 eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
                 eprintln!("  import-spec      <path> [--apply] [--dry-run] [--json]  # import gaps from markdown spec (INFRA-636)");
@@ -5524,8 +5580,20 @@ async fn main() -> Result<()> {
         let want_json = args.iter().any(|a| a == "--json");
         let want_pdf = args.iter().any(|a| a == "--pdf");
         let only_tokens = args.iter().any(|a| a == "--tokens-per-ship");
+        let want_impact = args.iter().any(|a| a == "--impact");
 
         let repo_root = repo_path::repo_root();
+
+        // FLEET-048: --impact shows gap impact ratings section only.
+        if want_impact {
+            let section = kpi_report::build_impact_section(&repo_root);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
 
         if only_tokens {
             // Backward-compat: only the tokens-per-ship section.

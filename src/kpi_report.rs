@@ -909,6 +909,146 @@ fn json_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+// ── FLEET-048: Gap impact ratings ────────────────────────────────────────────
+
+/// One operator-rated gap.
+#[derive(Debug, Clone)]
+pub struct ImpactRatingEntry {
+    pub gap_id: String,
+    pub rating: u8,
+    pub comment: String,
+    pub ts: String,
+    pub pr_number: Option<i64>,
+}
+
+/// Aggregated impact ratings section for `chump kpi report --impact`.
+#[derive(Debug, Clone, Default)]
+pub struct ImpactRatingSection {
+    pub entries: Vec<ImpactRatingEntry>,
+    pub fleet_avg: Option<f64>,
+    pub total_ratings: usize,
+}
+
+impl ImpactRatingSection {
+    pub fn render_text(&self) -> String {
+        if self.entries.is_empty() {
+            return "## Gap Impact Ratings\n\nNo ratings recorded yet.\n\
+                    Run: chump gap rate <ID> <1-5> [--comment \"text\"]\n\n"
+                .to_string();
+        }
+        let avg_str = self
+            .fleet_avg
+            .map(|a| format!("{:.2}", a))
+            .unwrap_or_else(|| "n/a".to_string());
+        let mut out = format!(
+            "## Gap Impact Ratings ({} rated, fleet avg {}/5)\n\n",
+            self.total_ratings, avg_str
+        );
+        out.push_str(&format!(
+            "{:<14} {:>6}  {}\n",
+            "Gap ID", "Rating", "Comment"
+        ));
+        out.push_str(&format!("{:-<14} {:->6}  {:-<40}\n", "", "", ""));
+        let mut sorted = self.entries.clone();
+        sorted.sort_by(|a, b| b.rating.cmp(&a.rating).then(a.gap_id.cmp(&b.gap_id)));
+        for e in &sorted {
+            let comment = if e.comment.is_empty() {
+                "(no comment)".to_string()
+            } else if e.comment.len() > 60 {
+                format!("{}…", &e.comment[..59])
+            } else {
+                e.comment.clone()
+            };
+            out.push_str(&format!("{:<14} {:>6}  {}\n", e.gap_id, e.rating, comment));
+        }
+        out.push('\n');
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let avg_str = self
+            .fleet_avg
+            .map(|a| format!("{:.2}", a))
+            .unwrap_or_else(|| "null".to_string());
+        let avg_json = if avg_str == "null" {
+            "null".to_string()
+        } else {
+            avg_str
+        };
+        let entries_json: Vec<String> = self
+            .entries
+            .iter()
+            .map(|e| {
+                let pr = e
+                    .pr_number
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "null".to_string());
+                format!(
+                    "{{\"gap_id\":\"{}\",\"rating\":{},\"comment\":\"{}\",\"ts\":\"{}\",\"pr_number\":{}}}",
+                    json_escape(&e.gap_id),
+                    e.rating,
+                    json_escape(&e.comment),
+                    json_escape(&e.ts),
+                    pr
+                )
+            })
+            .collect();
+        format!(
+            "{{\"total_ratings\":{},\"fleet_avg\":{},\"entries\":[{}]}}",
+            self.total_ratings,
+            avg_json,
+            entries_json.join(",")
+        )
+    }
+}
+
+/// Build impact rating section by scanning ambient.jsonl for `gap_impact_rated` events.
+pub fn build_impact_section(repo_root: &Path) -> ImpactRatingSection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut entries: Vec<ImpactRatingEntry> = Vec::new();
+
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_impact_rated" {
+            continue;
+        }
+        let gap_id = match extract_field(line, "gap_id") {
+            Some(g) => g,
+            None => continue,
+        };
+        let rating: u8 = match extract_int_field(line, "rating") {
+            Some(r) if (1..=5).contains(&r) => r as u8,
+            _ => continue,
+        };
+        let comment = extract_field(line, "comment").unwrap_or_default();
+        let ts = extract_field(line, "ts").unwrap_or_default();
+        let pr_number = extract_int_field(line, "pr_number").map(|n| n as i64);
+        entries.push(ImpactRatingEntry {
+            gap_id,
+            rating,
+            comment,
+            ts,
+            pr_number,
+        });
+    }
+
+    let total_ratings = entries.len();
+    let fleet_avg = if total_ratings == 0 {
+        None
+    } else {
+        let sum: u32 = entries.iter().map(|e| e.rating as u32).sum();
+        Some(sum as f64 / total_ratings as f64)
+    };
+
+    ImpactRatingSection {
+        entries,
+        fleet_avg,
+        total_ratings,
+    }
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
