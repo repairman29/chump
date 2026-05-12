@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# test-gap-closure-consistency.sh — CREDIBLE-028 + CREDIBLE-039: detect
-# premature gap closure AND stale-post-merge gaps.
+# test-gap-closure-consistency.sh — CREDIBLE-028 + CREDIBLE-039 + CREDIBLE-031:
+# detect premature gap closure AND stale-post-merge gaps.
 #
 # Forward mode (CREDIBLE-028): queries state.db for gaps with status=done and
 # closed_pr=N, then verifies each PR is actually merged on GitHub.
@@ -11,12 +11,24 @@
 # --auto-fix mode (CREDIBLE-039): for premature closures where the referenced
 # PR is BLOCKED or DIRTY, flips state.db status back to in_progress.
 #
+# CREDIBLE-031 changes:
+#   - Fail-closed when gh is unavailable (exit 1 instead of silent exit 0)
+#     unless CHUMP_GH_REQUIRED=0 explicitly opts out (e.g. offline CI).
+#   - Fixture-aware state.db lookup: CHUMP_STATE_DB env var overrides the
+#     live .chump/state.db path. Enables test isolation without touching prod.
+#
 # Usage:
 #   bash scripts/ci/test-gap-closure-consistency.sh                     # info
 #   bash scripts/ci/test-gap-closure-consistency.sh --strict            # exit 1 on drift
 #   bash scripts/ci/test-gap-closure-consistency.sh --emit-alert        # emit ambient event
 #   bash scripts/ci/test-gap-closure-consistency.sh --auto-fix          # self-heal mode
 #   bash scripts/ci/test-gap-closure-consistency.sh --reverse           # reverse-mode only
+#
+# Env:
+#   CHUMP_STATE_DB       override path to state.db (fixture-aware, CREDIBLE-031)
+#   CHUMP_GH_REQUIRED    0 = skip silently if gh unavailable; 1 = fail-closed (default 1)
+#   CHUMP_GH_PROBE_SKIP  1 = skip gh API reachability probe (for offline environments)
+#   CHUMP_GH_PROBE_TIMEOUT  seconds for gh API probe (default 10)
 #
 # Exit codes:
 #   0 — no drift found
@@ -52,14 +64,11 @@ for arg in "$@"; do
     prev_arg="$arg"
 done
 
-# ── Resolve state.db ─────────────────────────────────────────────────────────
-# CREDIBLE-051: prefer $PWD/.chump/state.db (fixture-aware) over the parent
-# repo's via git-common-dir. Order: CHUMP_STATE_DB env → $PWD/.chump/state.db
-# → git-common-dir parent (only with --use-main). Without this, the gate
-# silently reads the real repo's state.db when run from a fixture, ignoring
-# the per-invocation state and making CREDIBLE-050 force-fire tests inert.
+# ── Resolve state.db (CREDIBLE-051 + CREDIBLE-031: fixture-aware) ────────────
+# Order: CHUMP_STATE_DB env → $PWD/.chump/state.db → git-common-dir parent.
 if [[ -n "${CHUMP_STATE_DB:-}" ]]; then
     DB="$CHUMP_STATE_DB"
+    info "Using fixture state.db: $DB"
 elif [[ -f "$PWD/.chump/state.db" ]]; then
     DB="$PWD/.chump/state.db"
     MAIN_REPO="$PWD"
@@ -79,9 +88,26 @@ if [[ ! -f "$DB" ]]; then
     exit 0
 fi
 
+# ── CREDIBLE-031: fail-closed when gh unavailable ───────────────────────────
+_gh_required="${CHUMP_GH_REQUIRED:-1}"
 if ! command -v gh &>/dev/null; then
-    warn "gh CLI not found — skipping GitHub PR state check"
-    exit 0
+    if [[ "$_gh_required" == "0" ]]; then
+        warn "gh CLI not found and CHUMP_GH_REQUIRED=0 — skipping GitHub PR state check"
+        exit 0
+    fi
+    fail "gh CLI not found — cannot verify PR states. Set CHUMP_GH_REQUIRED=0 to skip in offline environments."
+fi
+
+# Probe GitHub API reachability (CREDIBLE-031 + INFRA-539 pattern)
+if [[ "${CHUMP_GH_PROBE_SKIP:-0}" != "1" ]]; then
+    _probe_timeout="${CHUMP_GH_PROBE_TIMEOUT:-10}"
+    if ! timeout "$_probe_timeout" gh api /rate_limit --silent 2>/dev/null; then
+        if [[ "$_gh_required" == "0" ]]; then
+            warn "GitHub API unreachable and CHUMP_GH_REQUIRED=0 — skipping"
+            exit 0
+        fi
+        fail "GitHub API unreachable (gh api /rate_limit timed out after ${_probe_timeout}s). Set CHUMP_GH_REQUIRED=0 to skip."
+    fi
 fi
 
 # CREDIBLE-051: track gh-API failures so a degraded GitHub does not silence
