@@ -1214,9 +1214,8 @@ impl Provider for ProviderCascade {
                     };
                     crate::precision_controller::record_model_decision(tier);
                     crate::precision_controller::record_energy_spent(est, 0);
-                    // Bandit feedback: reward this slot on success. Weighted
-                    // by latency + rough throughput so the policy prefers
-                    // fast slots all else equal.
+                    // Bandit feedback: reward this slot on success. Weighted by
+                    // latency + throughput + historical p95 + tool accuracy (INFRA-685).
                     if let Some(b) = self.bandit() {
                         let latency_s = latency_ms / 1000.0;
                         let tps = if latency_s > 0.0 {
@@ -1224,7 +1223,21 @@ impl Provider for ProviderCascade {
                         } else {
                             0.0
                         };
-                        let reward = crate::provider_bandit::compose_reward(true, latency_s, tps);
+                        let (p95_s, tool_acc) = provider_quality::get_quality_full(&slot.name)
+                            .map(|(_, _, _, p95, acc)| (p95.map(|ms| ms / 1000.0), acc))
+                            .unwrap_or((None, None));
+                        let reward = crate::provider_bandit::compose_reward_with_quality(
+                            true, latency_s, tps, p95_s, tool_acc,
+                        );
+                        tracing::debug!(
+                            target: "chump::provider_cascade",
+                            slot = %slot.name,
+                            reward,
+                            latency_ms,
+                            p95_ms = p95_s.map(|s| s * 1000.0),
+                            tool_acc,
+                            "bandit reward (INFRA-685: p95+accuracy weighted)"
+                        );
                         b.update(&slot.name, reward);
                     }
                     return Ok(r);
