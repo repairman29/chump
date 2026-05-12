@@ -1110,3 +1110,6 @@ jobs:
         run: |
           cargo build --bin chump 2>&1 | tail -3
           bash scripts/ci/test-waste-tally-domain.sh
+      - name: PWA workflow observability — request_id tracing (CREDIBLE-024)
+        run: bash scripts/ci/test-pwa-workflow-observability.sh
+
