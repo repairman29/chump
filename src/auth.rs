@@ -572,7 +572,11 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn with_env<F: FnOnce()>(vars: &[(&str, &str)], cleared: &[&str], f: F) {
-        let _guard = ENV_LOCK.lock().unwrap();
+        // Recover from poisoning so a single test panic doesn't cascade-fail
+        // every other test that tries to mutate env.
+        let _guard = ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let saved: Vec<(String, Option<String>)> = vars
             .iter()
             .map(|(k, _)| (k.to_string(), std::env::var(k).ok()))
@@ -946,7 +950,9 @@ mod tests {
         // Existing config.toml / refresh-file paths must still work when
         // env vars are unset — backwards compat for Anthropic operators.
         let tmp = tempfile::tempdir().unwrap();
-        let cfg = tmp.path().join("config.toml");
+        let chump_dir = tmp.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let cfg = chump_dir.join("config.toml");
         std::fs::write(&cfg, "[api]\nanthropic_api_key = \"sk-ant-config-test\"\n").unwrap();
 
         with_env(
