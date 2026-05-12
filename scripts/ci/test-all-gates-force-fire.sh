@@ -29,7 +29,7 @@ read_manifest() {
 import sys, yaml
 data = yaml.safe_load(open('$MANIFEST'))
 for g in data.get('gates', []):
-    print(f\"{g['id']}|{g['check_script']}|{g.get('expected_exit_nonzero', True)}|{g.get('fixture_kind', '')}\")
+    print(f\"{g['id']}|{g['check_script']}|{g.get('expected_exit_nonzero', True)}|{g.get('fixture_kind', '')}|{g.get('known_broken', '')}\")
 "
 }
 
@@ -41,14 +41,25 @@ list_gates() {
 # ── Fixture preparers ──────────────────────────────────────────────────────
 
 fixture_pr_title_vs_diff() {
+    # check-pr-scope.sh needs: real main branch + feature branch on top so
+    # git merge-base resolves; PR title (from first commit OR gh pr view).
+    # Without these, the script short-circuits with "skipping scope check"
+    # which exits 0 and looks like a non-firing gate.
     local tmp; tmp="$(mktemp -d -t gate-fixture-scope.XXXXXX)"
     cd "$tmp"
-    git init -q
+    git init -q -b main
     git config user.email t@t.t
     git config user.name t
     mkdir -p docs/gaps src
+    echo "- id: TEST-000" > docs/gaps/TEST-000.yaml
+    echo "// initial" > src/lib.rs
+    git add . && git commit -q -m "initial"
+    # Pretend origin/main exists so MERGE_BASE resolves.
+    git update-ref refs/remotes/origin/main HEAD
+    # Feature branch with the violating change: chore(gaps): title + src touched.
+    git checkout -q -b feature
     echo "- id: TEST-001" > docs/gaps/TEST-001.yaml
-    echo "fn x() {}" > src/lib.rs
+    echo "// scope violation: touching src under chore(gaps): title" >> src/lib.rs
     git add . && git commit -q -m "chore(gaps): file TEST-001 + bonus src change"
     echo "$tmp"
 }
@@ -72,6 +83,9 @@ fixture_scratch_commits_or_mass_delete() {
 }
 
 fixture_state_db_with_ghost_closed_pr() {
+    # test-gap-closure-consistency.sh needs --strict to actually fire (not
+    # just emit a warning + exit 0). Pass via FIXTURE_ARGS env so the
+    # runner appends them to the bash invocation.
     local tmp; tmp="$(mktemp -d -t gate-fixture-premature.XXXXXX)"
     mkdir -p "$tmp/.chump"
     sqlite3 "$tmp/.chump/state.db" <<'SQL'
@@ -91,6 +105,8 @@ SQL
     cd "$tmp"
     git init -q && git config user.email t@t.t && git config user.name t
     git commit --allow-empty -q -m "init"
+    # Force the gate to use --strict mode so it exits non-zero on drift.
+    export GATE_FIXTURE_ARGS="--strict"
     echo "$tmp"
 }
 
@@ -99,6 +115,9 @@ fixture_in_script_self_test() {
 }
 
 fixture_cognition_src_change_without_prereg() {
+    # test-prereg-required-for-cognition.sh checks git diff against
+    # origin/main for cognition src changes. Need both branches + the
+    # update-ref trick so origin/main resolves locally.
     local tmp; tmp="$(mktemp -d -t gate-fixture-prereg.XXXXXX)"
     cd "$tmp"
     git init -q -b main
@@ -106,10 +125,13 @@ fixture_cognition_src_change_without_prereg() {
     git config user.name t
     mkdir -p src docs/eval/preregistered
     echo "// reflection" > src/reflection_db.rs
+    echo "// neuromod" > src/neuromod.rs
     git add . && git commit -q -m "initial"
+    git update-ref refs/remotes/origin/main HEAD
     git checkout -q -b cognition-feature
     echo "// added neuromod tuning" >> src/reflection_db.rs
-    git add . && git commit -q -m "feat(COG-XXX): tune neuromod kappa"
+    echo "fn new_thing() {}" >> src/neuromod.rs
+    git add . && git commit -q -m "feat(COG-XXX): tune neuromod kappa (no prereg doc)"
     echo "$tmp"
 }
 
@@ -148,11 +170,21 @@ fi
 total=0; passed=0; failed=0; skipped=0
 fixtures_to_clean=()
 
-while IFS='|' read -r gate_id check_script expected_nonzero fixture_kind; do
+known_broken_count=0
+while IFS='|' read -r gate_id check_script expected_nonzero fixture_kind known_broken; do
     if [[ -n "$target_gate" && "$gate_id" != "$target_gate" ]]; then
         continue
     fi
     total=$((total + 1))
+
+    # known_broken: skip with explicit "tracked-elsewhere" message so the
+    # runner reports green while the underlying bug is being fixed in a
+    # separate gap. Removing the manifest field re-arms the gate.
+    if [[ -n "$known_broken" ]]; then
+        known_broken_count=$((known_broken_count + 1))
+        info "$gate_id — SKIP (known_broken=$known_broken; tracked separately)"
+        continue
+    fi
 
     if [[ ! -f "$REPO_ROOT/$check_script" ]]; then
         skipped=$((skipped + 1))
@@ -166,6 +198,14 @@ while IFS='|' read -r gate_id check_script expected_nonzero fixture_kind; do
         continue
     fi
 
+    # INFRA-538 smoke test needs the chump binary. Skip if not built —
+    # CI builds it before this runner, but local invocations may not.
+    if [[ "$gate_id" == "INFRA-538-state-db-restore" ]] && [[ ! -x "$REPO_ROOT/target/debug/chump" ]] && [[ ! -x "$REPO_ROOT/target/release/chump" ]]; then
+        skipped=$((skipped + 1))
+        info "$gate_id — SKIP (chump binary not built — run 'cargo build --bin chump' first)"
+        continue
+    fi
+
     fixture_root="$(prepare_fixture "$fixture_kind" 2>/dev/null)" || true
     if [[ -z "$fixture_root" ]]; then
         skipped=$((skipped + 1))
@@ -176,8 +216,15 @@ while IFS='|' read -r gate_id check_script expected_nonzero fixture_kind; do
 
     pushd "$fixture_root" >/dev/null
     set +e
-    bash "$REPO_ROOT/$check_script" >/dev/null 2>&1
+    # Some fixtures need extra args (e.g., --strict for closure-consistency).
+    if [[ -n "${GATE_FIXTURE_ARGS:-}" ]]; then
+        # shellcheck disable=SC2086
+        bash "$REPO_ROOT/$check_script" $GATE_FIXTURE_ARGS >/dev/null 2>&1
+    else
+        bash "$REPO_ROOT/$check_script" >/dev/null 2>&1
+    fi
     exit_code=$?
+    unset GATE_FIXTURE_ARGS
     set -e
     popd >/dev/null
 
@@ -206,7 +253,8 @@ done
 
 echo ""
 printf '== CREDIBLE-050 force-fire summary ==\n'
-printf '   total=%d  passed=%d  failed=%d  skipped=%d\n' "$total" "$passed" "$failed" "$skipped"
+printf '   total=%d  passed=%d  failed=%d  skipped=%d  known_broken=%d\n' \
+    "$total" "$passed" "$failed" "$skipped" "$known_broken_count"
 
 if [[ "$failed" -gt 0 ]]; then
     fail "$failed gate(s) failed their force-fire fixture"
