@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# refresh-model-prices.sh — INFRA-731
+# refresh-model-prices.sh — INFRA-731 / INFRA-739
 #
 # Weekly check that docs/pricing/model_rates.yaml is current with upstream.
+# INFRA-739: also validates docs/dispatch/model_registry.yaml against upstream
+# when --check-registry is passed. The registry is the unified metadata file;
+# model_rates.yaml is kept for backwards compat with session_ledger.rs.
+#
 # Reads LiteLLM's model_prices_and_context_window.json (community-maintained
 # rate card, MIT-licensed, used by half the Python LLM ecosystem) and diffs
 # the rates we care about against our committed YAML.
@@ -14,6 +18,8 @@
 #                       INFRA gap so operator picks up the audit work.
 #   --apply (DANGER)    automatically rewrite drifted rates in-place. Not
 #                       wired by default; use only after manual review.
+#   --check-registry    INFRA-739: validate docs/dispatch/model_registry.yaml
+#                       against upstream. TODO: automated fetch not yet wired.
 #
 # Tunables:
 #   CHUMP_PRICING_DRIFT_PCT  drift threshold percent (default: 5)
@@ -28,18 +34,33 @@ DRIFT_PCT="${CHUMP_PRICING_DRIFT_PCT:-5}"
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 RATES_FILE="$REPO_ROOT/docs/pricing/model_rates.yaml"
+REGISTRY_FILE="$REPO_ROOT/docs/dispatch/model_registry.yaml"
 AMBIENT_LOG="$REPO_ROOT/.chump-locks/ambient.jsonl"
 HEARTBEAT="${CHUMP_PRICING_REFRESH_HEARTBEAT:-/tmp/chump-pricing-refresh.heartbeat}"
 
 MODE="check"
+CHECK_REGISTRY=0
 for arg in "$@"; do
     case "$arg" in
         --check) MODE="check" ;;
         --refresh) MODE="refresh" ;;
         --apply) MODE="apply" ;;
+        --check-registry) CHECK_REGISTRY=1 ;;
         *) echo "unknown arg: $arg" >&2; exit 1 ;;
     esac
 done
+
+# INFRA-739: registry check stub
+if [[ "$CHECK_REGISTRY" -eq 1 ]]; then
+    if [[ ! -f "$REGISTRY_FILE" ]]; then
+        echo "FATAL: $REGISTRY_FILE not found — INFRA-739 hasn't shipped yet?" >&2
+        exit 1
+    fi
+    echo "TODO: automated fetch from Anthropic pricing page not yet wired (INFRA-739)."
+    echo "Target file: $REGISTRY_FILE"
+    echo "Manual process: update input_per_mtk/output_per_mtk in the YAML and bump last_verified."
+    exit 0
+fi
 
 echo "$(date -u +%s)" > "$HEARTBEAT"
 

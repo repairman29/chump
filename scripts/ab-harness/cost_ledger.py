@@ -28,9 +28,64 @@ from pathlib import Path
 from typing import Any
 
 
-# USD per 1M tokens. Updated 2026-04-19.
+def _load_registry_pricing() -> dict[str, dict[str, float]]:
+    """INFRA-739: Load pricing from docs/dispatch/model_registry.yaml.
+
+    Walks up from cwd to find the repo root (directory containing .git),
+    then loads model_registry.yaml. Returns a dict mapping model_id to
+    {"input": float, "output": float} per 1M tokens.
+
+    Falls back silently to an empty dict if the file is not found or
+    PyYAML is unavailable (backwards compat — caller will use hardcoded dict).
+    """
+    try:
+        import yaml
+    except ImportError:
+        return {}
+
+    # Check CHUMP_REPO_ROOT env override first.
+    repo_root_env = os.environ.get("CHUMP_REPO_ROOT")
+    candidates = []
+    if repo_root_env:
+        candidates.append(Path(repo_root_env) / "docs" / "dispatch" / "model_registry.yaml")
+
+    # Walk up from cwd to find .git root.
+    cur = Path.cwd().resolve()
+    for parent in [cur] + list(cur.parents):
+        if (parent / ".git").exists():
+            candidates.append(parent / "docs" / "dispatch" / "model_registry.yaml")
+            break
+
+    for path in candidates:
+        if path.exists():
+            try:
+                data = yaml.safe_load(path.read_text())
+                result: dict[str, dict[str, float]] = {}
+                for entry in data.get("models", []):
+                    model_id = entry.get("model_id")
+                    if not model_id:
+                        continue
+                    result[model_id] = {
+                        "input": float(entry.get("input_per_mtk", 0.0)),
+                        "output": float(entry.get("output_per_mtk", 0.0)),
+                    }
+                return result
+            except Exception:
+                pass  # malformed YAML → fall back to hardcoded
+    return {}
+
+
+# INFRA-739: Attempt to load pricing from model_registry.yaml.
+# Falls back to hardcoded dict below if the file is unavailable.
+_REGISTRY_PRICING = _load_registry_pricing()
+
+
+# Hardcoded fallback pricing table (USD per 1M tokens). Updated 2026-04-19.
 # Source: https://www.anthropic.com/pricing, https://www.together.ai/pricing
-PRICING_USD_PER_M_TOKENS: dict[str, dict[str, float]] = {
+# NOTE: model_registry.yaml is the preferred source (INFRA-739).
+# This dict is only used when the YAML file cannot be found (e.g. in CI
+# without the full repo checkout, or when PyYAML is not installed).
+_HARDCODED_PRICING_USD_PER_M_TOKENS: dict[str, dict[str, float]] = {
     # ── Anthropic ──────────────────────────────────────────────────────────
     # claude-3 family
     "claude-3-haiku-20240307":    {"input": 0.25, "output": 1.25},
@@ -70,6 +125,14 @@ PRICING_USD_PER_M_TOKENS: dict[str, dict[str, float]] = {
     "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo": {"input": 0.18, "output": 0.18},
     "mistralai/Mixtral-8x7B-Instruct-v0.1":     {"input": 0.60, "output": 0.60},
 }
+
+
+# Public pricing table: registry wins when available, otherwise fall back to
+# the hardcoded dict. Callers should use this symbol (PRICING_USD_PER_M_TOKENS)
+# for backwards compatibility.
+PRICING_USD_PER_M_TOKENS: dict[str, dict[str, float]] = (
+    _REGISTRY_PRICING if _REGISTRY_PRICING else _HARDCODED_PRICING_USD_PER_M_TOKENS
+)
 
 
 def _ledger_path() -> Path:

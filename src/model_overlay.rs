@@ -1,6 +1,10 @@
 //! COG-031 step 1: static model-shape prompt overlays for dispatched
 //! `chump --execute-gap` runs.
 //!
+//! INFRA-739: `detect_model_family()` now checks `docs/dispatch/model_registry.yaml`
+//! first (via a `OnceLock<HashMap<String, ModelFamily>>` cache), then falls back to
+//! the existing substring logic for unregistered models.
+//!
 //! ## Why
 //!
 //! COG-026 V2-V5 trials proved that Together's Instruct-family models
@@ -34,6 +38,10 @@
 //! the prompt or change the underlying task. They target the specific
 //! observed failure shapes from the COG-026 traces.
 
+use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::OnceLock;
+
 /// Coarse model-family classification driven by `OPENAI_MODEL` substring
 /// matching. Used by the dispatched-gap prompt builder to choose a per-family
 /// overlay. `Other` and `Sonnet` both get no overlay (Sonnet ships fine on
@@ -64,12 +72,91 @@ pub enum ModelFamily {
     Other,
 }
 
+// ── INFRA-739: registry-backed family lookup ───────────────────────────────
+
+/// Minimal deserialize target for the `family` field in model_registry.yaml.
+#[derive(Debug, Deserialize)]
+struct RegistryFamilyEntry {
+    model_id: String,
+    family: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct FamilyRegistry {
+    models: Vec<RegistryFamilyEntry>,
+}
+
+fn family_str_to_enum(s: &str) -> Option<ModelFamily> {
+    match s {
+        "Sonnet" => Some(ModelFamily::Sonnet),
+        "Haiku" | "Opus" | "OtherClaude" => Some(ModelFamily::OtherClaude),
+        "QwenChat" => Some(ModelFamily::QwenChat),
+        "QwenCoder" => Some(ModelFamily::QwenCoder),
+        "LlamaInstruct" => Some(ModelFamily::LlamaInstruct),
+        "DeepSeek" => Some(ModelFamily::DeepSeek),
+        "Other" => Some(ModelFamily::Other),
+        _ => None,
+    }
+}
+
+/// Cached map of model_id → [`ModelFamily`] loaded from
+/// `docs/dispatch/model_registry.yaml`. Empty on load failure — callers fall
+/// back to substring logic automatically. Loaded once via [`OnceLock`].
+fn registry_family_map() -> &'static HashMap<String, ModelFamily> {
+    static CACHE: OnceLock<HashMap<String, ModelFamily>> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let candidates = [
+            std::env::var("CHUMP_REPO_ROOT")
+                .map(|r| format!("{}/docs/dispatch/model_registry.yaml", r))
+                .ok(),
+            Some(format!(
+                "{}/docs/dispatch/model_registry.yaml",
+                env!("CARGO_MANIFEST_DIR")
+            )),
+        ];
+        for candidate in candidates.iter().flatten() {
+            if let Ok(text) = std::fs::read_to_string(candidate) {
+                match serde_yaml::from_str::<FamilyRegistry>(&text) {
+                    Ok(reg) => {
+                        return reg
+                            .models
+                            .into_iter()
+                            .filter_map(|e| {
+                                let fam = family_str_to_enum(&e.family)?;
+                                Some((e.model_id, fam))
+                            })
+                            .collect();
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            path = %candidate,
+                            error = %err,
+                            "INFRA-739: failed to parse model_registry.yaml family map"
+                        );
+                    }
+                }
+            }
+        }
+        HashMap::new()
+    })
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+
 /// Detect [`ModelFamily`] from a model ID string (typically the value of
-/// `OPENAI_MODEL`). Case-insensitive substring matching; returns the *first*
-/// family that matches. Order-of-checks favors specificity (e.g. `Coder`
+/// `OPENAI_MODEL`). INFRA-739: checks `docs/dispatch/model_registry.yaml`
+/// first (exact match), then falls back to case-insensitive substring matching
+/// for unregistered models. Order-of-checks favors specificity (e.g. `Coder`
 /// must be checked before bare `Qwen` so Qwen3-Coder routes to QwenCoder
 /// and not QwenChat).
 pub fn detect_model_family(model_id: &str) -> ModelFamily {
+    // Registry-first: exact match on model_id.
+    let map = registry_family_map();
+    if let Some(&fam) = map.get(model_id) {
+        return fam;
+    }
+
+    // Fallback: legacy substring logic for models not in the registry.
     let m = model_id.to_lowercase();
 
     // Anthropic — Sonnet first (most common baseline); other Claude bucket
