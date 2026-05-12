@@ -55,6 +55,7 @@ See [`rfcs/`](rfcs/) for draft proposals: inference backends, fleet workspace me
 | Document | Purpose |
 |----------|---------|
 | [USER_GUIDE.md](USER_GUIDE.md) | End-user guide: workflows, model recommendations, common tasks, troubleshooting (non-developer audience) |
+| [PWA_USER_GUIDE.md](PWA_USER_GUIDE.md) | PWA web interface: gap queue, dispatch, workflow monitoring, troubleshooting (EFFECTIVE-016) |
 | [EXTERNAL_GOLDEN_PATH.md](EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough for new users (the canonical first-run path) |
 | [OPERATIONS.md](OPERATIONS.md) | Run modes, env vars, heartbeats, roles |
 | [SCRIPTS_REFERENCE.md](SCRIPTS_REFERENCE.md) | Every script in `scripts/` with descriptions, flags, and key env vars |
