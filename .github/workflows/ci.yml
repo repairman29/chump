@@ -1128,3 +1128,7 @@ jobs:
         run: bash scripts/ci/test-run-fleet-cross-repo.sh
       - name: tool-call normalizer for weak LLMs (INFRA-740)
         run: bash scripts/ci/test-tool-normalize.sh
+      - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          bash scripts/ci/test-waste-tally-domain.sh
