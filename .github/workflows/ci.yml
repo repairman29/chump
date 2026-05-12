@@ -1054,3 +1054,5 @@ jobs:
         run: |
           cargo build --bin chump 2>&1 | tail -3
           bash scripts/ci/test-waste-tally-domain.sh
+      - name: fleet-brief pillar table — per-pillar pickable counts (CREDIBLE-034)
+        run: bash scripts/ci/test-fleet-brief-pillar-table.sh
