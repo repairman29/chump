@@ -1139,6 +1139,7 @@ events:
       override flags targeting a non-Chump repo
     consumers: [fleet-brief, fleet-status, opus-curator]
     fields_required: [ts, kind, repo, locks_dir, session]
+
   # ── Cognition-stack A/B experiment (META-045) ───────────────────────────────
   - kind: cognition_ab_run_start
     emitter: scripts/experiments/cognition-ab-setup.sh
@@ -1180,6 +1181,12 @@ events:
       event; emitted exactly once on restoration
     consumers: [fleet-brief, opus-curator]
     fields_required: [ts, kind, session, host]
+  # ── FLEET-048: Operator impact ratings ───────────────────────────────────
+  - kind: gap_impact_rated
+    emitter: src/main.rs (FLEET-048, chump gap rate)
+    trigger: operator rates a shipped gap 1-5 via 'chump gap rate <ID> <1-5>'
+    consumers: [kpi-report --impact]
+    fields_required: [ts, kind, gap_id, rating, comment, pr_number]
 
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
