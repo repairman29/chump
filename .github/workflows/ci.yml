@@ -1122,3 +1122,5 @@ jobs:
         run: bash scripts/ci/test-pwa-workflow-observability.sh
       - name: PWA version compatibility check (CREDIBLE-022)
         run: bash scripts/ci/test-pwa-version-compat.sh
+      - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        run: bash scripts/ci/test-run-consolidation.sh
