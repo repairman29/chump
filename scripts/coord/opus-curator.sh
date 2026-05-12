@@ -21,8 +21,18 @@ set -euo pipefail
 
 FLEET_STATE="${CHUMP_FLEET_STATE:-.chump-locks/fleet-state.json}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}"
-REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+# Resolve REPO_ROOT from this script's location to avoid INFRA-779
+# (git rev-parse --show-toplevel returns wrong path in linked worktrees on macOS).
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "$_SCRIPT_DIR/../.." && pwd)}"
 _FAST_PATH="$REPO_ROOT/scripts/coord/emergency-fast-path.sh"
+
+# INFRA-841: frequency-aware scheduling — emit kind=system_gap_tick on each run.
+_TICK_HELPER="$REPO_ROOT/scripts/coord/system-gap-tick.sh"
+if [[ -r "$_TICK_HELPER" ]]; then
+  # shellcheck source=./system-gap-tick.sh
+  source "$_TICK_HELPER"
+fi
 
 # Initialize fleet state (via emergency-fast-path.sh if available, else direct)
 init_fleet_state() {
@@ -255,6 +265,11 @@ _parse_args() {
 
 main() {
   init_fleet_state
+
+  # INFRA-841: heartbeat emission for frequency-aware scheduling audit.
+  if declare -F emit_system_gap_tick >/dev/null 2>&1; then
+    emit_system_gap_tick opus-curator
+  fi
 
   echo "[$(date -u +%H:%M:%SZ)] OPUS CURATOR RUN${_DRY_RUN:+' (dry-run)'}"
   echo ""

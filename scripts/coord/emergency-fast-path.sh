@@ -20,13 +20,23 @@
 
 set -euo pipefail
 
-REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+# Resolve REPO_ROOT from this script's location to avoid INFRA-779
+# (git rev-parse --show-toplevel returns wrong path in linked worktrees on macOS).
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${REPO_ROOT:-$(cd "$_SCRIPT_DIR/../.." && pwd)}"
 _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 _lock_dir="$(dirname "$_amb")"
 _state_file="$_lock_dir/fleet-state.json"
 _lock_file="$_lock_dir/fleet-state.lock"
 _lock_timeout="${CHUMP_FLEET_STATE_LOCK_TIMEOUT_S:-5}"
 _mutex="${CHUMP_FLEET_STATE_MUTEX:-1}"
+
+# INFRA-841: frequency-aware scheduling — emit kind=system_gap_tick on each run.
+_TICK_HELPER="$REPO_ROOT/scripts/coord/system-gap-tick.sh"
+if [[ -r "$_TICK_HELPER" ]]; then
+  # shellcheck source=./system-gap-tick.sh
+  source "$_TICK_HELPER"
+fi
 
 _emit() {
     local kind="$1"; shift
@@ -90,6 +100,13 @@ print(json.dumps(d))
 
 cmd="${1:-status}"
 shift || true
+
+# INFRA-841: heartbeat emission for `status` invocation (scheduled-task path).
+# Skip on accessor sub-commands (read/write/set-field/reset) so internal
+# callers from opus-curator don't double-count.
+if [[ "$cmd" == "status" ]] && declare -F emit_system_gap_tick >/dev/null 2>&1; then
+  emit_system_gap_tick emergency-fast-path
+fi
 
 case "$cmd" in
     read)
