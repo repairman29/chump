@@ -859,6 +859,22 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, merged_branch, stacked_pr, stacked_branch, status]
 
+  # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
+  - kind: fleet_state_lock_timeout
+    emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
+    trigger: flock(1) wait on fleet-state.lock exceeded CHUMP_FLEET_STATE_LOCK_TIMEOUT_S
+      (default 5s); script proceeds without lock (fail-open) to avoid deadlock
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, source, timeout_s, note]
+
+  - kind: curator_decision
+    emitter: scripts/coord/opus-curator.sh (INFRA-848)
+    trigger: curator completed a proactive health audit cycle and made a decision
+      (p0_demotion, gap_ac_filled, gap_filed, pr_unstick, waste_investigation,
+      or balance_restock). Emitted once per decision made.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, decision_type, reasoning, action_taken]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
