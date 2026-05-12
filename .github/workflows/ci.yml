@@ -1082,3 +1082,6 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-consolidate.sh
       - name: gap impact rating — rate CLI, ambient event, kpi --impact (FLEET-048)
         run: bash scripts/ci/test-gap-impact-rating.sh
+      - name: speculative race-loss event tracking (FLEET-035)
+        run: bash scripts/ci/test-fleet-race-loss.sh
+

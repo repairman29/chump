@@ -226,6 +226,60 @@ render_version_skew() {
   fi
 }
 
+render_race_loss() {
+  # FLEET-035: aggregate kind=speculative_race_loss events from ambient.jsonl.
+  # Shows last-24h count + gap_id breakdown + cost estimate (per-gap-count as
+  # proxy for parallel cargo-build waste minutes).
+  echo "========== speculative race losses ($(date -u +%H:%M:%SZ)) =========="
+  if [[ ! -f "$AMBIENT" ]]; then
+    echo "(no ambient stream at $AMBIENT)"
+    return 0
+  fi
+  python3 - "$AMBIENT" <<'PY'
+import json, sys, time, collections
+path = sys.argv[1]
+cutoff = time.time() - 24 * 3600
+total = 0
+per_gap = collections.Counter()
+try:
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("kind") != "speculative_race_loss":
+                continue
+            ts = rec.get("ts", "")
+            try:
+                import datetime
+                dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                if dt.timestamp() < cutoff:
+                    continue
+            except Exception:
+                continue
+            total += 1
+            per_gap[rec.get("gap_id", "?")] += 1
+except FileNotFoundError:
+    print("(ambient stream missing)")
+    raise SystemExit(0)
+print(f"total race losses (last 24h): {total}")
+if total == 0:
+    print("(no speculative race losses — fleet coordination working well)")
+    raise SystemExit(0)
+# Cost estimate: each race loss ≈ 10 min cargo build + 5 min CI = ~15 min
+est_min = total * 15
+print(f"estimated compute wasted: ~{est_min} minutes")
+print()
+print("by gap (most-raced first):")
+for g, n in per_gap.most_common(10):
+    print(f"  {g}: {n} race loss(es)")
+PY
+}
+
 render_all() {
   render_version_skew
   render_agents
@@ -233,6 +287,8 @@ render_all() {
   render_queue
   echo
   render_starvation
+  echo
+  render_race_loss
   echo
   render_ambient
 }
@@ -350,7 +406,8 @@ if [[ -n "$pane" ]]; then
     queue)      render_queue ;;
     agents)     render_agents ;;
     starvation) render_starvation ;;
-    *)          echo "[fleet-status] unknown --pane: $pane (want ambient|queue|agents|starvation)" >&2; exit 2 ;;
+    race-loss)  render_race_loss ;;
+    *)          echo "[fleet-status] unknown --pane: $pane (want ambient|queue|agents|starvation|race-loss)" >&2; exit 2 ;;
   esac
   exit 0
 fi
