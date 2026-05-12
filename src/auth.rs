@@ -266,6 +266,177 @@ pub fn fleet_doctor_validate() -> DoctorReport {
     }
 }
 
+// ── EFFECTIVE-018: pluggable per-provider credential layer ────────────────
+//
+// Sibling to the existing Anthropic-only AuthCredentials/ActiveAuth. The
+// chump-first doctrine requires non-Anthropic operators (Ollama, Groq,
+// Together, OpenAI, ...) to authenticate too. Existing Anthropic paths
+// remain backwards-compatible — this layer is additive.
+
+/// Generic per-provider credentials. Each provider has its own env-var
+/// conventions; this struct normalizes them.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Credentials {
+    /// Provider name (anthropic, openai, together, groq, cerebras, nvidia,
+    /// ollama, custom). Lowercase.
+    pub provider: String,
+    /// API key, if the provider uses one.
+    pub api_key: Option<String>,
+    /// OAuth token (Anthropic-only today; placeholder for future).
+    pub oauth_token: Option<String>,
+    /// Base URL override (e.g., http://localhost:11434 for Ollama, or a
+    /// self-hosted OpenAI-compatible endpoint).
+    pub base_url: Option<String>,
+}
+
+impl Credentials {
+    /// True when the provider has at least one credential or doesn't need
+    /// one (e.g., Ollama at localhost works with no key).
+    pub fn is_usable(&self) -> bool {
+        match self.provider.as_str() {
+            // Ollama needs no API key at localhost; just having the binary
+            // running is enough. base_url is optional.
+            "ollama" => true,
+            // Every other provider needs an api_key (or oauth for anthropic).
+            "anthropic" => {
+                self.api_key
+                    .as_deref()
+                    .is_some_and(|s| !s.trim().is_empty())
+                    || self
+                        .oauth_token
+                        .as_deref()
+                        .is_some_and(|s| !s.trim().is_empty())
+            }
+            _ => self
+                .api_key
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty()),
+        }
+    }
+}
+
+/// Returns `(api_key_env_var, oauth_env_var, base_url_env_var)` for a given
+/// provider. `None` values mean the provider doesn't use that credential
+/// type.
+fn provider_env_pattern(
+    provider: &str,
+) -> (
+    Option<&'static str>,
+    Option<&'static str>,
+    Option<&'static str>,
+) {
+    match provider {
+        "anthropic" => (
+            Some("ANTHROPIC_API_KEY"),
+            Some("CLAUDE_CODE_OAUTH_TOKEN"),
+            None,
+        ),
+        "openai" => (Some("OPENAI_API_KEY"), None, Some("OPENAI_API_BASE")),
+        "together" => (Some("TOGETHER_API_KEY"), None, Some("TOGETHER_API_BASE")),
+        "groq" => (Some("GROQ_API_KEY"), None, Some("GROQ_API_BASE")),
+        "cerebras" => (Some("CEREBRAS_API_KEY"), None, Some("CEREBRAS_API_BASE")),
+        "nvidia" => (Some("NVIDIA_API_KEY"), None, Some("NVIDIA_API_BASE")),
+        "ollama" => (None, None, Some("OLLAMA_BASE_URL")),
+        "custom" => (
+            Some("CHUMP_CUSTOM_API_KEY"),
+            None,
+            Some("CHUMP_CUSTOM_BASE_URL"),
+        ),
+        _ => (None, None, None),
+    }
+}
+
+/// Read env var, returning `None` if unset or empty after trim.
+fn env_nonempty(var: &str) -> Option<String> {
+    let val = std::env::var(var).ok()?;
+    let trimmed = val.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+/// Detect credentials for a specific provider from env vars.
+///
+/// For Anthropic, also falls back to the existing OAUTH refresh file +
+/// config.toml machinery so existing operators are unaffected.
+pub fn detect_credentials_for(provider: &str) -> Credentials {
+    let provider = provider.to_ascii_lowercase();
+    let (api_var, oauth_var, base_var) = provider_env_pattern(&provider);
+
+    let mut creds = Credentials {
+        provider: provider.clone(),
+        api_key: api_var.and_then(env_nonempty),
+        oauth_token: oauth_var.and_then(env_nonempty),
+        base_url: base_var.and_then(env_nonempty),
+    };
+
+    // Anthropic backwards-compat: if env vars miss, walk the existing
+    // refresh-file + config.toml chain (covers operator's existing setup).
+    if provider == "anthropic" && !creds.is_usable() {
+        let legacy = detect_credentials(); // existing function
+        let has_key = legacy.has_api_key();
+        let has_oauth = legacy.has_oauth();
+        if creds.api_key.is_none() && has_key {
+            creds.api_key = Some(legacy.api_key.clone());
+        }
+        if creds.oauth_token.is_none() && has_oauth {
+            creds.oauth_token = Some(legacy.oauth_token);
+        }
+    }
+
+    creds
+}
+
+/// All providers chump knows about. Used by `fleet_doctor_validate_all` to
+/// report which are configured.
+pub const KNOWN_PROVIDERS: &[&str] = &[
+    "anthropic",
+    "openai",
+    "together",
+    "groq",
+    "cerebras",
+    "nvidia",
+    "ollama",
+    "custom",
+];
+
+/// Multi-provider doctor report. Lists each provider's status.
+#[derive(Debug)]
+pub struct MultiProviderReport {
+    pub per_provider: Vec<(String, Credentials)>,
+}
+
+impl MultiProviderReport {
+    /// Count of providers with usable credentials.
+    pub fn usable_count(&self) -> usize {
+        self.per_provider
+            .iter()
+            .filter(|(_, c)| c.is_usable())
+            .count()
+    }
+
+    /// True when at least one provider is usable. Per EFFECTIVE-018 AC:
+    /// `chump fleet doctor` exits non-zero only if ALL providers fail.
+    pub fn any_usable(&self) -> bool {
+        self.usable_count() > 0
+    }
+}
+
+/// EFFECTIVE-018: validate every known provider's credential availability.
+/// Returns a report listing which providers have usable creds. Used by
+/// `chump fleet doctor` to surface which workers the operator can actually
+/// run (claude/opencode/aider all reach Anthropic; ollama-loop reaches
+/// Ollama; etc.).
+pub fn fleet_doctor_validate_all() -> MultiProviderReport {
+    let per_provider = KNOWN_PROVIDERS
+        .iter()
+        .map(|p| (p.to_string(), detect_credentials_for(p)))
+        .collect();
+    MultiProviderReport { per_provider }
+}
+
 // ── Internal helpers ───────────────────────────────────────────────────────
 
 /// Parse a JSON token file written by control.sh:
@@ -685,6 +856,150 @@ mod tests {
                 // No critical warnings (might have "both present" note, but not error warnings)
                 let has_error = report.warnings.iter().any(|w| w.contains("will fail"));
                 assert!(!has_error);
+            },
+        );
+    }
+
+    // ── EFFECTIVE-018: multi-provider credentials ──────────────────────────
+
+    #[test]
+    fn provider_env_pattern_known_providers() {
+        // Sanity: each known provider returns a non-empty pattern.
+        for p in KNOWN_PROVIDERS {
+            let pat = provider_env_pattern(p);
+            // Every provider has either api_key or base_url set.
+            assert!(
+                pat.0.is_some() || pat.2.is_some(),
+                "provider {p} has neither api_key nor base_url env-var pattern",
+            );
+        }
+    }
+
+    #[test]
+    fn detect_credentials_for_groq_reads_groq_api_key() {
+        with_env(&[("GROQ_API_KEY", "gsk-test-fixture")], &[], || {
+            let creds = detect_credentials_for("groq");
+            assert_eq!(creds.provider, "groq");
+            assert_eq!(creds.api_key.as_deref(), Some("gsk-test-fixture"));
+            assert!(creds.is_usable());
+        });
+    }
+
+    #[test]
+    fn detect_credentials_for_openai_reads_base_url_too() {
+        with_env(
+            &[
+                ("OPENAI_API_KEY", "sk-test"),
+                ("OPENAI_API_BASE", "https://api.example.com/v1"),
+            ],
+            &[],
+            || {
+                let creds = detect_credentials_for("openai");
+                assert_eq!(creds.api_key.as_deref(), Some("sk-test"));
+                assert_eq!(
+                    creds.base_url.as_deref(),
+                    Some("https://api.example.com/v1")
+                );
+                assert!(creds.is_usable());
+            },
+        );
+    }
+
+    #[test]
+    fn ollama_is_usable_without_api_key() {
+        with_env(&[], &["OLLAMA_BASE_URL"], || {
+            let creds = detect_credentials_for("ollama");
+            assert_eq!(creds.provider, "ollama");
+            assert!(creds.api_key.is_none());
+            // Per is_usable(): ollama works at localhost without a key.
+            assert!(creds.is_usable());
+        });
+    }
+
+    #[test]
+    fn ollama_carries_base_url_override_when_set() {
+        with_env(
+            &[("OLLAMA_BASE_URL", "http://192.168.1.10:11434")],
+            &[],
+            || {
+                let creds = detect_credentials_for("ollama");
+                assert_eq!(creds.base_url.as_deref(), Some("http://192.168.1.10:11434"));
+            },
+        );
+    }
+
+    #[test]
+    fn unknown_provider_returns_empty_credentials() {
+        with_env(&[], &[], || {
+            let creds = detect_credentials_for("notreal");
+            assert_eq!(creds.provider, "notreal");
+            assert!(creds.api_key.is_none());
+            assert!(creds.oauth_token.is_none());
+            assert!(creds.base_url.is_none());
+            // Not in KNOWN_PROVIDERS; falls through is_usable's default to require api_key.
+            assert!(!creds.is_usable());
+        });
+    }
+
+    #[test]
+    fn anthropic_provider_falls_back_to_legacy_chain() {
+        // Existing config.toml / refresh-file paths must still work when
+        // env vars are unset — backwards compat for Anthropic operators.
+        let tmp = tempfile::tempdir().unwrap();
+        let cfg = tmp.path().join("config.toml");
+        std::fs::write(&cfg, "[api]\nanthropic_api_key = \"sk-ant-config-test\"\n").unwrap();
+
+        with_env(
+            &[("CHUMP_HOME", tmp.path().to_str().unwrap())],
+            &[
+                "ANTHROPIC_API_KEY",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "CHUMP_OAUTH_TOKEN_FILE",
+            ],
+            || {
+                let creds = detect_credentials_for("anthropic");
+                assert_eq!(creds.provider, "anthropic");
+                assert_eq!(creds.api_key.as_deref(), Some("sk-ant-config-test"));
+                assert!(creds.is_usable());
+            },
+        );
+    }
+
+    #[test]
+    fn fleet_doctor_validate_all_lists_every_known_provider() {
+        with_env(&[], KNOWN_PROVIDERS, || {
+            let report = fleet_doctor_validate_all();
+            assert_eq!(report.per_provider.len(), KNOWN_PROVIDERS.len());
+            // Ollama always usable (no key); others depend on env.
+            let ollama = report
+                .per_provider
+                .iter()
+                .find(|(p, _)| p == "ollama")
+                .unwrap();
+            assert!(ollama.1.is_usable(), "ollama should always be usable");
+        });
+    }
+
+    #[test]
+    fn fleet_doctor_any_usable_true_when_one_provider_has_creds() {
+        with_env(
+            &[("GROQ_API_KEY", "gsk-only-groq-set")],
+            &[
+                "ANTHROPIC_API_KEY",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "OPENAI_API_KEY",
+                "TOGETHER_API_KEY",
+                "CEREBRAS_API_KEY",
+                "NVIDIA_API_KEY",
+                "CHUMP_CUSTOM_API_KEY",
+            ],
+            || {
+                let report = fleet_doctor_validate_all();
+                assert!(
+                    report.any_usable(),
+                    "GROQ_API_KEY + Ollama-localhost should make any_usable=true"
+                );
+                assert!(report.usable_count() >= 2); // groq + ollama
             },
         );
     }
