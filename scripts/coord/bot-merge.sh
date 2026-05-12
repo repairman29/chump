@@ -561,6 +561,29 @@ gh_with_backoff() {
     done
 }
 
+# ── INFRA-539: GitHub API reachability probe ──────────────────────────────────
+# Call once at startup. Exits 1 (and emits kind=github_unreachable to
+# ambient.jsonl) if gh cannot reach the API, so bot-merge halts immediately
+# rather than churning through push/PR steps that will all fail anyway.
+# Bypass: CHUMP_GH_PROBE_SKIP=1 (air-gapped tests, mocks).
+gh_api_probe() {
+    [[ "${CHUMP_GH_PROBE_SKIP:-0}" == "1" ]] && return 0
+    local ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    local timeout_s="${CHUMP_GH_PROBE_TIMEOUT:-10}"
+    local rc=0
+    set +e
+    timeout "$timeout_s" gh api /rate_limit --silent 2>/dev/null
+    rc=$?
+    set -e
+    if [[ $rc -ne 0 ]]; then
+        red "INFRA-539: GitHub API unreachable (gh api /rate_limit exit=${rc}) — halting to prevent queue churn"
+        printf '{"ts":"%s","kind":"github_unreachable","source":"bot-merge","exit_code":%d,"note":"gh api probe failed — INFRA-539"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$rc" \
+            >> "$ambient" 2>/dev/null || true
+        return 1
+    fi
+}
+
 # ── INFRA-119: health-file writer + total-budget watchdog ────────────────────
 # Call _bm_health_init once after REPO_ROOT is known. It:
 #   1. Creates .chump-locks/bot-merge-<pid>.health — read by queue-health-monitor
@@ -757,6 +780,11 @@ REMOTE="${REMOTE:-origin}"
 
 # ── INFRA-119: start health monitoring now that REPO_ROOT is set ──────────────
 _bm_health_init "$REPO_ROOT/.chump-locks"
+
+# ── INFRA-539: probe GitHub API before doing any real work ────────────────────
+if [[ "${DRY_RUN:-0}" != "1" ]]; then
+    gh_api_probe || { red "Aborting bot-merge: GitHub unreachable. Retry when connectivity is restored."; exit 1; }
+fi
 
 # ── INFRA-379: chump-doctor preflight ─────────────────────────────────────────
 # macOS Sequoia syspolicyd occasionally wedges a chump binary's inode at

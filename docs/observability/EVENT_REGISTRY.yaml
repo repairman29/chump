@@ -988,6 +988,14 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, merged_branch, stacked_pr, stacked_branch, status]
 
+  # ── INFRA-539: gh API probe ────────────────────────────────────────────────
+  - kind: github_unreachable
+    emitter: scripts/coord/bot-merge.sh, scripts/dispatch/run-fleet.sh (INFRA-539)
+    trigger: gh api /rate_limit probe fails at bot-merge startup or fleet launch,
+      indicating GitHub API is down or unreachable
+    consumers: [fleet-brief, operator-recall, watchdogs]
+    fields_required: [ts, kind, source, exit_code, note]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
