@@ -5208,6 +5208,25 @@ async fn main() -> Result<()> {
             std::process::exit(2);
         }
         config_validation::validate_config();
+        // INFRA-843: read required_model from gap registry and override
+        // FLEET_MODEL so execute_gap picks up the right model tier.
+        // Falls back to FLEET_MODEL env then default sonnet if unset.
+        {
+            let repo_root = repo_path::repo_root();
+            if let Ok(store) = gap_store::GapStore::open(&repo_root) {
+                if let Ok(Some(g)) = store.get(gap_id) {
+                    if !g.required_model.is_empty() {
+                        let prev = std::env::var("FLEET_MODEL").ok();
+                        std::env::set_var("FLEET_MODEL", &g.required_model);
+                        eprintln!(
+                            "[execute-gap] INFRA-843: required_model={} (was {:?})",
+                            g.required_model,
+                            prev.as_deref().unwrap_or("unset")
+                        );
+                    }
+                }
+            }
+        }
         match execute_gap::execute_gap(gap_id).await {
             Ok(reply) => {
                 print!("{reply}");

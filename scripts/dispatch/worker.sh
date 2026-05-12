@@ -425,8 +425,34 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         log "INFRA-471: routing gap=$GAP_ID model $FLEET_MODEL → $_resolved_model (routing.yaml)"
         FLEET_MODEL="$_resolved_model"
     fi
+
+    # INFRA-843: gap.required_model takes precedence over routing.yaml resolution.
+    # If the gap's required_model is set, use it as the model for this cycle;
+    # emit kind=model_selected so observers can verify routing correctness.
+    _gap_required_model="$(printf '%s' "$gap_json" | \
+        python3 -c "import sys,json; d=json.load(sys.stdin); g=next((x for x in d.get('gaps',[]) if x.get('id')=='$GAP_ID'),None) or next((x for x in [d] if x.get('id')=='$GAP_ID'),{}); print(g.get('required_model','') or '')" \
+        2>/dev/null || true)"
+    _model_selected_reason="fleet_model_default"
+    if [[ -n "$_gap_required_model" ]]; then
+        _model_selected_reason="gap_required_model"
+        if [[ "$_gap_required_model" != "$FLEET_MODEL" ]]; then
+            log "INFRA-843: gap=$GAP_ID required_model=$_gap_required_model (overrides FLEET_MODEL=$FLEET_MODEL)"
+            FLEET_MODEL="$_gap_required_model"
+        fi
+    fi
+    # Emit kind=model_selected for observability (INFRA-843)
+    _amb_ms="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    mkdir -p "$(dirname "$_amb_ms")" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"model_selected","gap_id":"%s","requested":"%s","actual":"%s","reason":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        "$GAP_ID" \
+        "${_gap_required_model:-}" \
+        "$FLEET_MODEL" \
+        "$_model_selected_reason" \
+        >> "$_amb_ms" 2>/dev/null || true
+
     # PRODUCT-063: export model class so provider_cascade prefers matching tier
-    export CHUMP_PREFERRED_MODEL_CLASS="${_resolved_model:-$FLEET_MODEL}"
+    export CHUMP_PREFERRED_MODEL_CLASS="${FLEET_MODEL}"
 
     # INFRA-315: clear starvation counter on a successful pick. The next
     # empty cycle starts the threshold over from zero.
