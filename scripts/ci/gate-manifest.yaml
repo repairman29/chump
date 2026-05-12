@@ -48,6 +48,11 @@ gates:
     fixture_kind: state.db-with-ghost-closed-pr
     expected_exit_nonzero: true
     motivating_incident_pr: 1433
+    # Tracked by CREDIBLE-051: gate has two bugs (state.db resolution
+    # via git-common-dir ignores fixture; gh-API failure path skips
+    # iteration + claims pass). Treated as known-broken in force-fire
+    # until CREDIBLE-051 lands. Re-enable by removing known_broken.
+    known_broken: CREDIBLE-051
 
   - id: INFRA-538-state-db-restore
     check_script: scripts/ci/test-state-db-restore.sh
@@ -66,10 +71,13 @@ gates:
     failure_class: missing-preregistration
     description: |
       PR modifies cognition src files (reflection/lessons/neuromod) but
-      no preregistration doc at docs/eval/preregistered/<GAP>.md. bot-merge
-      pre-push refuses the push.
-    fixture_kind: cognition-src-change-without-prereg
-    expected_exit_nonzero: true
+      no preregistration doc at docs/eval/preregistered/<GAP>.md. The
+      real detector lives in scripts/coord/bot-merge.sh (pre-push). The
+      test script here is a SELF-TEST of the guard logic (7 hardcoded
+      simulations of the python guard); it does not observe a fixture.
+      Treated like INFRA-538 (smoke test, expected_exit_nonzero=false).
+    fixture_kind: in-script-self-test
+    expected_exit_nonzero: false
     motivating_incident_pr: null # preventive — no prior incident
 
 # Future entries (gaps filed but not shipped yet):
