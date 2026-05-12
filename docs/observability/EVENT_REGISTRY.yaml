@@ -848,6 +848,26 @@ events:
     consumers: [fleet-brief, watchdog, kpi-report]
     fields_required: [ts, kind, feature, reason]
 
+  # ── Orchestrate conversational loop (INFRA-796) ──────────────────────────
+  - kind: orchestrate_intent
+    emitter: src/orchestrate.rs (chump orchestrate interactive loop)
+    trigger: operator types a natural-language intent; emitted once per loop iteration
+    consumers: [fleet-brief, kpi-report, cost-watch]
+    fields_required: [ts, kind, intent, status, tool_count, est_input_tokens, est_output_tokens, elapsed_ms, failure_class]
+    docs: |
+      status: "success" when all tool calls exit 0; "failure" when any tool call
+        returns an error string.
+      failure_class: "transient" (network/rate-limit/timeout) | "permanent"
+        (syntax/unknown-command) | "none" (no failures).
+      tool_count: number of TOOL: lines dispatched this iteration.
+      est_input_tokens / est_output_tokens: rough 1-token-per-4-chars estimate.
+
+  - kind: orchestrate_session_end
+    emitter: src/orchestrate.rs (chump orchestrate — "exit" or EOF)
+    trigger: operator types "exit"/"quit" or closes stdin
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, intent, status]
+
   # ── Intent parser (INFRA-798) ─────────────────────────────────────────────
   - kind: intent_parse_ok
     emitter: src/intent_parser.rs (chump orchestrate <text> single-shot mode)
