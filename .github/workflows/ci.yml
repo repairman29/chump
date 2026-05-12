@@ -924,6 +924,8 @@ jobs:
         run: bash scripts/ci/test-review-handoff-reengage.sh
       - name: worker circuit-breaker — threshold=3 pause=5min kill-switch (INFRA-826)
         run: bash scripts/ci/test-worker-circuit-breaker.sh
+      - name: worker first-output watchdog — kill switch, event emission, retry (INFRA-828)
+        run: bash scripts/ci/test-worker-first-output-watchdog.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
 

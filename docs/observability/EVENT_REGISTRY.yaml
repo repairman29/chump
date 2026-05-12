@@ -797,6 +797,14 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, inv]
 
+  - kind: worker_first_output_timeout
+    emitter: scripts/dispatch/worker.sh (INFRA-828)
+    trigger: claude subprocess produced no stdout within CHUMP_FIRST_OUTPUT_TIMEOUT_S
+      (default 120s) and all retries (CHUMP_RETRY_TIMEOUT_S, max 2) were also
+      timed out — worker killed subprocess and is moving to next cycle
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, agent_id, gap_id, elapsed_s, retries]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
