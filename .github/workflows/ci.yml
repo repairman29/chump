@@ -1066,3 +1066,7 @@ jobs:
       - name: UUID gap-ID compatibility audit — preflight+show+auto-derive (INFRA-630)
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-uuid-gap-id-compat.sh
+      - name: gap show AC rendering — numbered list + json ac_count/ac_has_todos (CREDIBLE-033)
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-show-ac-render.sh
