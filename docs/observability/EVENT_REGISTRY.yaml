@@ -455,7 +455,6 @@ events:
       action_taken is either a description of what was done or
       "identified_only" when the decision flags an issue for operator action.
 
-<<<<<<< HEAD
   - kind: system_gap_tick
     emitter: scripts/coord/system-gap-tick.sh (INFRA-841)
     trigger: a scheduled task (curator, fast-path, gardener) begins a run
@@ -476,14 +475,13 @@ events:
       One-shot event marking that the opus-curator wave-sequencing roadmap
       doc was (re-)published. Useful for after-the-fact "when did sequencing
       change?" reconstruction.
-=======
+
   - kind: fleet_resize_decision
     emitter: src/main.rs (chump fleet auto-resize, INFRA-650)
     trigger: fleet auto-resize evaluated 4 conditions (queue-empty, cost-cap,
       flat-ship-rate, operator-absent) and produced a resize recommendation
     consumers: [fleet-brief, operator-recall, opus-curator]
     fields_required: [ts, kind, trigger, current_size, recommended_size, rationale]
->>>>>>> c57da513 (feat(INFRA-650): ZERO-WASTE — fleet auto-resize: closed-loop fleet-sizing controller)
 
   - kind: gap_failed
     emitter: scripts/coord/detect-gap-failure.sh (INFRA-872)
@@ -1033,6 +1031,21 @@ events:
       active_gaps, p0_count
     consumers: [fleet-brief, kpi-report, opus-curator]
     fields_required: [ts, kind, ship_rate_24h, waste_rate_24h, cycle_time_p50_h, active_gaps, p0_count]
+
+  # ── INFRA-890: network availability events ───────────────────────────────
+  - kind: network_unavailable
+    emitter: scripts/ops/net-probe.sh
+    trigger: api.anthropic.com unreachable after CHUMP_NET_PROBE_RETRIES attempts
+      (default 3, 2s apart); fleet should pause dispatch until resolved
+    consumers: [fleet-brief, opus-curator, emergency-fast-path]
+    fields_required: [ts, kind, session, host, retries]
+
+  - kind: network_restored
+    emitter: scripts/ops/net-probe.sh
+    trigger: api.anthropic.com reachable again after a prior network_unavailable
+      event; emitted exactly once on restoration
+    consumers: [fleet-brief, opus-curator]
+    fields_required: [ts, kind, session, host]
 
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
