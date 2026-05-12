@@ -65,8 +65,14 @@ scripts/coord/bot-merge.sh --gap <YOUR-GAP-ID> --auto-merge
 scripts/dev/chump-doctor.sh
 ```
 
-**If still hung after the doctor** — fall back to manual recovery
-(INFRA-028 path, the same path that unblocked EVAL-094 in this session):
+> **STOP: wall-clock budget is `CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S` (default 900s = 15 min).**
+> If `bot-merge.sh` has been running for 15 minutes with no progress markers
+> (`▶ <stage> starting …` / `✓ <stage> done`), **do not wait** — execute
+> manual recovery NOW. Passive waiting is what stalls subagents; the doctor
+> + manual path are always faster than an indefinite hang.
+
+**If still hung after the doctor, OR if the 15-min wall-clock budget expires** —
+fall back to manual recovery (INFRA-028 path):
 
 ```bash
 # 1. Push your branch

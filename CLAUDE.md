@@ -65,6 +65,19 @@ gh pr merge <N> --auto --squash
 chump gap ship <ID> --update-yaml
 ```
 
+## Spawning subagents (META-027)
+
+When spawning via the `Agent` tool, paste the full shipping epilogue from
+`docs/process/SUBAGENT_DISPATCH.md` into every subagent prompt.
+
+**Wall-clock budget:** `CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S` (default 900s = 15 min).
+If `bot-merge.sh` has been running for 15 min without progress markers, the
+subagent **must** switch to manual recovery — passive waiting is a stall pattern.
+See the SUBAGENT_DISPATCH.md "STOP" block for the exact mandate.
+
+**Model:** always sonnet (INFRA-515). Haiku hesitates in `--dangerously-skip-permissions`
+mode and burns the slot waiting for stdin that never comes.
+
 ## Auth modes (INFRA-622)
 
 Both `ANTHROPIC_API_KEY` (API-key) and `CLAUDE_CODE_OAUTH_TOKEN` (subscription OAUTH) are first-class.
