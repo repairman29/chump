@@ -2639,8 +2639,29 @@ async fn main() -> Result<()> {
                 }
                 match store.get(&id) {
                     Ok(Some(g)) => {
+                        // CREDIBLE-033: parse AC items for rich rendering.
+                        let ac_items = gap_store::parse_json_ac_list(&g.acceptance_criteria);
+                        let ac_has_todos = ac_items.iter().any(|item| {
+                            let up = item.to_uppercase();
+                            up.contains("TODO")
+                                || item.contains("TBD")
+                                || item.contains("<fill in>")
+                        });
+
                         if json_out {
-                            println!("{}", serde_json::to_string_pretty(&g).unwrap_or_default());
+                            // Extend JSON output with ac_count + ac_has_todos (CREDIBLE-033).
+                            let mut val = serde_json::to_value(&g).unwrap_or_default();
+                            if let Some(obj) = val.as_object_mut() {
+                                obj.insert(
+                                    "ac_count".to_string(),
+                                    serde_json::Value::Number(ac_items.len().into()),
+                                );
+                                obj.insert(
+                                    "ac_has_todos".to_string(),
+                                    serde_json::Value::Bool(ac_has_todos),
+                                );
+                            }
+                            println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
                         } else {
                             println!("- id: {}", g.id);
                             println!("  domain: {}", g.domain);
@@ -2654,23 +2675,31 @@ async fn main() -> Result<()> {
                                     println!("    {}", line);
                                 }
                             }
-                            if !g.acceptance_criteria.is_empty() {
+                            if !ac_items.is_empty() {
+                                // CREDIBLE-033: numbered list, WARN prefix on vague items.
                                 println!("  acceptance_criteria:");
-                                let mut has_incomplete = false;
-                                for c in g.acceptance_criteria.split('|') {
-                                    let trimmed = c.trim();
-                                    println!("    - {}", trimmed);
-                                    // INFRA-756: flag if AC contains placeholder text
-                                    if trimmed.to_uppercase().contains("TODO")
-                                        || trimmed.contains("TBD")
-                                        || trimmed.contains("<fill in>")
-                                    {
-                                        has_incomplete = true;
+                                for (i, item) in ac_items.iter().enumerate() {
+                                    let up = item.to_uppercase();
+                                    let is_vague = up.contains("TODO")
+                                        || item.contains("TBD")
+                                        || item.contains("<fill in>");
+                                    if is_vague {
+                                        println!("    {}. WARN: {}", i + 1, item);
+                                    } else {
+                                        println!("    {}. {}", i + 1, item);
                                     }
                                 }
-                                if has_incomplete {
-                                    eprintln!("WARN: gap {}: acceptance_criteria contains incomplete placeholders (TODO/TBD/<fill in>)", g.id);
+                                if ac_has_todos {
+                                    eprintln!(
+                                        "WARN: gap {}: acceptance_criteria contains \
+                                         incomplete placeholders (TODO/TBD/<fill in>)",
+                                        g.id
+                                    );
                                 }
+                            } else if !g.acceptance_criteria.trim().is_empty() {
+                                // Fallback: raw text when not parseable as JSON list.
+                                println!("  acceptance_criteria:");
+                                println!("    1. {}", g.acceptance_criteria.trim());
                             }
                             if !g.depends_on.is_empty() {
                                 println!("  depends_on: [{}]", g.depends_on);
