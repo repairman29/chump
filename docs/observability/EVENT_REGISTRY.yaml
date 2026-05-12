@@ -193,6 +193,16 @@ events:
     trigger: oauth token file re-read with new value
     consumers: [audit-log]
 
+  - kind: credential_scrub_run
+    emitter: scripts/coord/scrub-credential-logs.sh (INFRA-871)
+    trigger: scrubber invoked with --report; summary of any leaks found
+    consumers: [audit-log, ci-gate]
+    fields_required: [ts, kind, summary]
+    docs: |
+      summary is a JSON object with {total_hits, by_path_kind}.
+      Emitted only when --report flag passed (CI gates pass --report;
+      bare invocations stay quiet to avoid noise).
+
   - kind: fleet_auto_restart_decision
     emitter: scripts/dispatch/fleet-autorestart-daemon.sh (INFRA-611)
     trigger: daemon decides to restart fleet
