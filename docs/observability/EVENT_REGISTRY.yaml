@@ -1004,6 +1004,20 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, decision_type, reasoning, action_taken]
 
+  - kind: change_approved
+    emitter: scripts/ops/change-approval.sh (INFRA-912)
+    trigger: operator approves a high-risk fleet change (scale-up, model-override,
+      routing-yaml-edit); approval token written to .chump-locks/change-approvals/
+    consumers: [operator-recall, audit-log]
+    fields_required: [ts, kind, change_id, approver, rationale]
+
+  - kind: change_rolled_back
+    emitter: scripts/ops/change-approval.sh (INFRA-912)
+    trigger: operator reverts a fleet change; fleet-state.json restored from
+      pre-change snapshot in .chump-locks/fleet-state-snapshots/
+    consumers: [operator-recall, audit-log]
+    fields_required: [ts, kind, change_id, snapshot]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
