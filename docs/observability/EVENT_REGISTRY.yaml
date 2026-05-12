@@ -338,6 +338,19 @@ events:
     consumers: [fleet-brief, fleet_resize, kpi-report, waste-tally]
     fields_required: [ts, kind]
 
+  - kind: pr_fmt_auto_fixed
+    emitter: scripts/ops/pr-fmt-shepherd.sh (INFRA-759)
+    trigger: open PR had a failing cargo fmt check; shepherd ran cargo fmt,
+      committed, and pushed the fix
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, pr, branch, commit_sha]
+
+  - kind: pr_fmt_shepherd_run
+    emitter: scripts/ops/pr-fmt-shepherd.sh (INFRA-759)
+    trigger: pr-fmt-shepherd completed a scan pass (emitted once per run)
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, scanned, fixed, skipped, errors, status]
+
   - kind: pr_stuck
     emitter: scripts/ops/stuck-pr-filer.sh (INFRA-307)
     trigger: PR BLOCKED > 4h with no progress
