@@ -58,6 +58,36 @@ pub enum WorkBackend {
     /// Used when the operator set `CHUMP_DISPATCH_BACKEND=chump-local` for
     /// cost-routing through Together/mistral.rs/Ollama instead of Anthropic.
     ExecGap,
+
+    /// EFFECTIVE-017: spawn `opencode -p <prompt>` (opencode CLI by SST).
+    /// Operator selects via `CHUMP_WORK_BACKEND=opencode`.
+    Opencode { model: String, prompt: String },
+
+    /// EFFECTIVE-017: spawn `aider --message <prompt>` (Aider).
+    /// Operator selects via `CHUMP_WORK_BACKEND=aider`.
+    Aider { model: String, prompt: String },
+}
+
+/// EFFECTIVE-017: select a `WorkBackend` from `CHUMP_WORK_BACKEND` env var.
+/// Mapping: claude/unset → Headless; opencode → Opencode; aider → Aider;
+/// chump-local/exec-gap → ExecGap; anything else → warn + fallback Headless.
+///
+/// Per the chump-first doctrine, this is the single seam where operators
+/// pick the worker binary without editing source.
+pub fn backend_from_env(model: String, prompt: String) -> WorkBackend {
+    match std::env::var("CHUMP_WORK_BACKEND").as_deref() {
+        Ok("opencode") => WorkBackend::Opencode { model, prompt },
+        Ok("aider") => WorkBackend::Aider { model, prompt },
+        Ok("chump-local") | Ok("exec-gap") => WorkBackend::ExecGap,
+        Ok("claude") | Ok("") | Err(_) => WorkBackend::Headless { model, prompt },
+        Ok(other) => {
+            eprintln!(
+                "[chump] WARNING: unknown CHUMP_WORK_BACKEND={other:?} — falling back to claude. \
+                 Supported: claude, opencode, aider, chump-local"
+            );
+            WorkBackend::Headless { model, prompt }
+        }
+    }
 }
 
 /// Options for one dispatch invocation.
@@ -199,7 +229,10 @@ impl<'a> Workspace<'a> {
                 // ledger-flip flow doesn't regress.
                 opts.repo_root.clone()
             }
-            WorkBackend::Headless { .. } | WorkBackend::ExecGap => {
+            WorkBackend::Headless { .. }
+            | WorkBackend::ExecGap
+            | WorkBackend::Opencode { .. }
+            | WorkBackend::Aider { .. } => {
                 // Fresh linked worktree off origin/main. INFRA-302 blocker
                 // (3): without this, the dispatched child runs in the main
                 // checkout on the operator's stale branch. The worktree is
@@ -296,7 +329,66 @@ fn do_work(ws: &Workspace) -> Result<()> {
         }
         WorkBackend::Headless { model, prompt } => spawn_headless(ws, model, prompt),
         WorkBackend::ExecGap => spawn_exec_gap(ws),
+        WorkBackend::Opencode { model, prompt } => spawn_opencode(ws, model, prompt),
+        WorkBackend::Aider { model, prompt } => spawn_aider(ws, model, prompt),
     }
+}
+
+/// EFFECTIVE-017 — `WorkBackend::Opencode`.
+fn spawn_opencode(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
+    let opts = ws.opts();
+    if prompt.trim().is_empty() {
+        bail!(
+            "WorkBackend::Opencode: prompt is empty (gap={})",
+            opts.gap_id
+        );
+    }
+    let mut cmd = Command::new("opencode");
+    cmd.arg("-p").arg(prompt).arg("--auto-approve");
+    if !model.is_empty() {
+        cmd.args(["--model", model]);
+    }
+    cmd.current_dir(ws.working_dir());
+    let child = cmd
+        .spawn()
+        .context("spawn `opencode -p` (is opencode CLI on PATH?)")?;
+    let status = wait_with_hang_detection(child, "opencode -p", opts.gap_id)
+        .context("waiting for opencode -p to complete")?;
+    if !status.success() {
+        bail!(
+            "opencode -p exited {} for gap {}",
+            status.code().unwrap_or(-1),
+            opts.gap_id
+        );
+    }
+    Ok(())
+}
+
+/// EFFECTIVE-017 — `WorkBackend::Aider`.
+fn spawn_aider(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
+    let opts = ws.opts();
+    if prompt.trim().is_empty() {
+        bail!("WorkBackend::Aider: prompt is empty (gap={})", opts.gap_id);
+    }
+    let mut cmd = Command::new("aider");
+    cmd.arg("--message").arg(prompt).arg("--yes");
+    if !model.is_empty() {
+        cmd.args(["--model", model]);
+    }
+    cmd.current_dir(ws.working_dir());
+    let child = cmd
+        .spawn()
+        .context("spawn `aider --message` (is aider on PATH?)")?;
+    let status = wait_with_hang_detection(child, "aider", opts.gap_id)
+        .context("waiting for aider --message to complete")?;
+    if !status.success() {
+        bail!(
+            "aider exited {} for gap {}",
+            status.code().unwrap_or(-1),
+            opts.gap_id
+        );
+    }
+    Ok(())
 }
 
 /// Phase 2 — `WorkBackend::Headless`. Spawns
