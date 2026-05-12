@@ -2631,6 +2631,128 @@ async fn handle_gap_status(
     }
 }
 
+/// GET /api/gap/{id}/status — EFFECTIVE-014: workflow phase + progress for polling.
+///
+/// Maps recent `gap_workflow_phase` events from ambient.jsonl to a structured
+/// response suitable for 2s polling from the PWA UI.
+///
+/// Response: `{status, workflow_phase, progress_pct, error}`
+async fn handle_gap_workflow_status(
+    Path(gap_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Resolve gap status from the gap store.
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let gap_status = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(gs) => gs
+            .get(&gap_id)
+            .ok()
+            .flatten()
+            .map(|g| g.status)
+            .unwrap_or_else(|| "not_found".to_string()),
+        Err(_) => "unknown".to_string(),
+    };
+
+    // If the gap is done, return immediately with 100%.
+    if gap_status == "done" {
+        return Ok(Json(serde_json::json!({
+            "status": "done",
+            "workflow_phase": "ship",
+            "progress_pct": 100,
+            "error": null,
+        })));
+    }
+
+    // Parse recent workflow phase events from ambient.jsonl.
+    let ambient_path = std::env::var("CHUMP_AMBIENT_IN_PROMPT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let base = match std::env::var("CHUMP_REPO") {
+                Ok(r) => PathBuf::from(r),
+                Err(_) => repo_path::runtime_base(),
+            };
+            base.join(".chump-locks").join("ambient.jsonl")
+        });
+
+    let (workflow_phase, progress_pct, error_msg) =
+        read_workflow_phase_from_ambient(&ambient_path, &gap_id);
+
+    Ok(Json(serde_json::json!({
+        "status": gap_status,
+        "workflow_phase": workflow_phase,
+        "progress_pct": progress_pct,
+        "error": error_msg,
+    })))
+}
+
+/// Scan ambient.jsonl for the most recent `gap_workflow_phase` events for `gap_id`.
+/// Returns (phase, progress_pct 0–100, error_msg).
+fn read_workflow_phase_from_ambient(
+    path: &std::path::Path,
+    gap_id: &str,
+) -> (Option<String>, u8, Option<String>) {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return (None, 0, None),
+    };
+
+    // Walk lines in reverse to find the most recent event for this gap.
+    let mut last_phase: Option<String> = None;
+    let mut last_status: Option<String> = None;
+
+    for line in content.lines().rev() {
+        let v: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if v.get("kind").and_then(|k| k.as_str()) != Some("gap_workflow_phase") {
+            continue;
+        }
+        if v.get("gap_id").and_then(|k| k.as_str()) != Some(gap_id) {
+            continue;
+        }
+        // First matching line (most recent) wins.
+        last_phase = v
+            .get("phase")
+            .and_then(|p| p.as_str())
+            .map(|s| s.to_string());
+        last_status = v
+            .get("status")
+            .and_then(|s| s.as_str())
+            .map(|s| s.to_string());
+        break;
+    }
+
+    let phase = last_phase.as_deref().unwrap_or("");
+    let status = last_status.as_deref().unwrap_or("");
+
+    let progress: u8 = match (phase, status) {
+        ("preflight", _) => 10,
+        ("claim", "started") => 25,
+        ("claim", "success") => 30,
+        ("execute-gap", "started") => 40,
+        ("execute-gap", "success") => 85,
+        ("ship", "started") => 90,
+        ("ship", "success") => 100,
+        _ => 0,
+    };
+
+    let error_msg = if status.contains("fail") || status.contains("error") {
+        Some(format!("{phase} {status}"))
+    } else {
+        None
+    };
+
+    (last_phase, progress, error_msg)
+}
+
 /// POST /api/gap/work/:id — Trigger Chump to autonomously work on a claimed gap.
 /// Spawns a background process to claim, work, and ship the gap.
 async fn handle_gap_work(
@@ -3050,6 +3172,7 @@ fn build_api_router() -> Router {
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
         .route("/api/gap/status/{id}", get(handle_gap_status))
+        .route("/api/gap/{id}/status", get(handle_gap_workflow_status))
         .route("/api/gap/work/{id}", post(handle_gap_work))
 }
 
