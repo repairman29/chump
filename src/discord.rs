@@ -290,6 +290,139 @@ fn mabel_status_message() -> String {
     msg
 }
 
+/// COG-054 (a): zero-cost health-check reply. Does NOT spawn the agent loop.
+/// Operator uses `!ping` from Discord to confirm the bot is reachable and to
+/// see which model and endpoint it would use, before sending a real prompt.
+fn ping_message_markdown(is_mabel: bool) -> String {
+    let bot_name = if is_mabel { "Mabel" } else { "Chump" };
+    let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "qwen2.5:14b".to_string());
+    let api_base = std::env::var("OPENAI_API_BASE")
+        .unwrap_or_else(|_| "http://localhost:11434/v1".to_string());
+    let version = env!("CARGO_PKG_VERSION");
+    format!(
+        "🏓 **{bot_name}** is here.\n\
+        • model: `{model}`\n\
+        • endpoint: `{api_base}`\n\
+        • version: `{version}`\n\n\
+        No LLM tokens were spent on this reply. Use `!help` to see all commands."
+    )
+}
+
+/// COG-054 (a): fleet-state snapshot from infra commands, formatted for Discord.
+/// Shells out to `chump gap audit-priorities --json` and `gh pr list`. Best-effort:
+/// any subprocess failure renders a degraded line rather than failing the reply.
+/// Does NOT spawn the agent loop.
+async fn fleet_snapshot_markdown() -> String {
+    use tokio::process::Command;
+
+    let gap_summary = match Command::new("chump")
+        .args(["gap", "audit-priorities", "--json"])
+        .output()
+        .await
+    {
+        Ok(out) if out.status.success() => parse_gap_audit(&String::from_utf8_lossy(&out.stdout)),
+        Ok(out) => {
+            tracing::warn!(
+                target: "discord.fleet_snapshot",
+                rc = ?out.status.code(),
+                "chump gap audit-priorities failed; reporting degraded line"
+            );
+            "gap audit unavailable".to_string()
+        }
+        Err(e) => {
+            tracing::warn!(
+                target: "discord.fleet_snapshot",
+                error = %e,
+                "could not spawn chump for gap audit"
+            );
+            "gap audit unavailable".to_string()
+        }
+    };
+
+    let pr_summary = match Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--limit",
+            "5",
+            "--json",
+            "number,title,mergeStateStatus",
+        ])
+        .output()
+        .await
+    {
+        Ok(out) if out.status.success() => parse_pr_list(&String::from_utf8_lossy(&out.stdout)),
+        Ok(out) => {
+            tracing::warn!(
+                target: "discord.fleet_snapshot",
+                rc = ?out.status.code(),
+                "gh pr list failed; reporting degraded line"
+            );
+            "PR list unavailable".to_string()
+        }
+        Err(e) => {
+            tracing::warn!(
+                target: "discord.fleet_snapshot",
+                error = %e,
+                "could not spawn gh for PR list"
+            );
+            "PR list unavailable".to_string()
+        }
+    };
+
+    format!(
+        "🚢 **Fleet snapshot** (live, no LLM call):\n\n\
+        **Gaps:** {gap_summary}\n\n\
+        **Open PRs (top 5):**\n{pr_summary}"
+    )
+}
+
+/// Extract a one-line gap audit summary from `chump gap audit-priorities --json` output.
+fn parse_gap_audit(json: &str) -> String {
+    let v: serde_json::Value = match serde_json::from_str(json) {
+        Ok(v) => v,
+        Err(_) => return "could not parse gap audit JSON".to_string(),
+    };
+    let p0 = v.get("p0_count").and_then(|x| x.as_u64()).unwrap_or(0);
+    let vague = v
+        .get("vague_pickable")
+        .and_then(|x| x.as_u64())
+        .unwrap_or(0);
+    format!("P0={p0} (budget 5), vague_pickable={vague}")
+}
+
+/// Format the gh PR list JSON as one Discord line per PR.
+fn parse_pr_list(json: &str) -> String {
+    let prs: serde_json::Value = match serde_json::from_str(json) {
+        Ok(v) => v,
+        Err(_) => return "could not parse PR list".to_string(),
+    };
+    let Some(arr) = prs.as_array() else {
+        return "PR list was not an array".to_string();
+    };
+    if arr.is_empty() {
+        return "(no open PRs)".to_string();
+    }
+    let mut out = String::new();
+    for pr in arr {
+        let num = pr.get("number").and_then(|x| x.as_u64()).unwrap_or(0);
+        let title = pr
+            .get("title")
+            .and_then(|x| x.as_str())
+            .unwrap_or("(no title)");
+        let state = pr
+            .get("mergeStateStatus")
+            .and_then(|x| x.as_str())
+            .unwrap_or("?");
+        // Truncate title to 80 chars to keep the message Discord-sized.
+        let t: String = title.chars().take(80).collect();
+        out.push_str(&format!("• #{num} [{state}] {t}\n"));
+    }
+    out
+}
+
 /// Read the most recent logs/mabel-report-*.md (by mtime). Used for on-demand `!status`.
 fn latest_mabel_report() -> Option<String> {
     let logs_dir = repo_path::runtime_base().join("logs");
@@ -911,6 +1044,22 @@ impl EventHandler for Handler {
             return;
         }
 
+        // COG-054 (a): !ping — zero-cost reachability + config snapshot.
+        let is_ping = on_demand_status == "!ping" || on_demand_status.starts_with("!ping ");
+        if is_ping {
+            let to_send = ping_message_markdown(is_mabel);
+            let _ = channel_id.say(&http, &to_send).await;
+            return;
+        }
+
+        // COG-054 (a): !fleet — live fleet snapshot from infra commands, no LLM.
+        let is_fleet = on_demand_status == "!fleet" || on_demand_status.starts_with("!fleet ");
+        if is_fleet {
+            let to_send = fleet_snapshot_markdown().await;
+            send_reply(channel_id, &http, &to_send).await;
+            return;
+        }
+
         // Help command: list available commands
         let is_help = on_demand_status == "!help"
             || on_demand_status == "help"
@@ -919,9 +1068,12 @@ impl EventHandler for Handler {
             let bot_name = if is_mabel { "Mabel" } else { "Chump" };
             let help_text = format!(
                 "**{} commands:**\n\
-                • `!status` — latest fleet report\n\
+                • `!ping` — quick reachability check; shows model + endpoint (no LLM cost)\n\
+                • `!fleet` — live snapshot: open PRs, P0 count (no LLM cost)\n\
+                • `!status` — latest fleet report (from `logs/mabel-report-*.md`)\n\
                 • `!help` — this message\n\
-                • `what are you up to?` — what I'm currently doing (sent to DMs)\n\
+                • `what are you up to?` / `what's up?` — what I'm currently doing (sent to DMs)\n\
+                • `mabel status` / `mabel explain` / `explain yourself` — same as above\n\
                 • `answer: #N <text>` — record answer to question #N (owner only)\n\n\
                 Ask me anything else and I'll reply using the AI.",
                 bot_name
@@ -1104,4 +1256,84 @@ pub async fn run(token: &str) -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("Discord run: {}", chump_log::redact(&e.to_string())))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ping_includes_bot_name_and_model() {
+        let chump_msg = ping_message_markdown(false);
+        assert!(chump_msg.contains("Chump"), "ping should name Chump bot");
+        assert!(
+            chump_msg.contains("model:"),
+            "ping should expose model line"
+        );
+        assert!(
+            chump_msg.contains("No LLM tokens"),
+            "ping must promise zero-cost"
+        );
+
+        let mabel_msg = ping_message_markdown(true);
+        assert!(mabel_msg.contains("Mabel"), "ping should name Mabel bot");
+    }
+
+    #[test]
+    fn parse_gap_audit_extracts_counts() {
+        let json = r#"{"p0_count": 3, "vague_pickable": 12, "other": "ignored"}"#;
+        let out = parse_gap_audit(json);
+        assert!(out.contains("P0=3"), "got: {out}");
+        assert!(out.contains("vague_pickable=12"), "got: {out}");
+    }
+
+    #[test]
+    fn parse_gap_audit_handles_garbage() {
+        let out = parse_gap_audit("not json at all");
+        assert!(out.contains("could not parse"), "got: {out}");
+    }
+
+    #[test]
+    fn parse_pr_list_renders_lines() {
+        let json = r#"[
+            {"number": 1543, "title": "feat(INFRA-841): something", "mergeStateStatus": "CLEAN"},
+            {"number": 1545, "title": "feat(INFRA-845): another thing", "mergeStateStatus": "BLOCKED"}
+        ]"#;
+        let out = parse_pr_list(json);
+        assert!(out.contains("#1543"), "got: {out}");
+        assert!(out.contains("[CLEAN]"), "got: {out}");
+        assert!(out.contains("#1545"), "got: {out}");
+        assert!(out.contains("[BLOCKED]"), "got: {out}");
+    }
+
+    #[test]
+    fn parse_pr_list_empty_array() {
+        let out = parse_pr_list("[]");
+        assert!(out.contains("no open PRs"), "got: {out}");
+    }
+
+    #[test]
+    fn parse_pr_list_handles_garbage() {
+        let out = parse_pr_list("garbage");
+        assert!(out.contains("could not parse"), "got: {out}");
+    }
+
+    #[test]
+    fn parse_pr_list_truncates_long_title() {
+        let very_long = "a".repeat(200);
+        let json = format!(
+            r#"[{{"number": 1, "title": "{}", "mergeStateStatus": "CLEAN"}}]"#,
+            very_long
+        );
+        let out = parse_pr_list(&json);
+        // Title should be cut to 80 chars; one line should fit in <140 chars total.
+        for line in out.lines() {
+            assert!(
+                line.chars().count() < 140,
+                "line too long ({} chars): {}",
+                line.chars().count(),
+                line
+            );
+        }
+    }
 }
