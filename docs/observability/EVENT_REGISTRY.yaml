@@ -415,6 +415,27 @@ events:
       action_taken is either a description of what was done or
       "identified_only" when the decision flags an issue for operator action.
 
+  - kind: system_gap_tick
+    emitter: scripts/coord/system-gap-tick.sh (INFRA-841)
+    trigger: a scheduled task (curator, fast-path, gardener) begins a run
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, task, run_id]
+    docs: |
+      Heartbeat emitted by scripts/coord/{opus-curator,emergency-fast-path}.sh
+      on each scheduled invocation. interval_s is included when the task is
+      declared in scripts/coord/system-gap-frequencies.yaml. task identifies
+      the scheduled-task name (opus-curator | emergency-fast-path | gap-gardener).
+
+  - kind: opus_roadmap_published
+    emitter: opus curator (META-054, ad-hoc)
+    trigger: opus curator publishes docs/ROADMAP_OPUS_SEQUENCING.md
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, gap, path]
+    docs: |
+      One-shot event marking that the opus-curator wave-sequencing roadmap
+      doc was (re-)published. Useful for after-the-fact "when did sequencing
+      change?" reconstruction.
+
   - kind: ship_grade
     emitter: scripts/ops/ship-quality-grader.sh
     trigger: per-PR ship-quality grade computed
