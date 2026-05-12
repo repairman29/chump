@@ -2277,19 +2277,255 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-827: prune stale linked worktrees (age > CHUMP_WT_MAX_AGE_H AND no open PR)
+            "prune-worktrees" => {
+                let dry_run = !args.iter().any(|a| a == "--apply");
+                let want_json = args.iter().any(|a| a == "--json");
+                let max_age_h: u64 = std::env::var("CHUMP_WT_MAX_AGE_H")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(48);
+                let max_age_secs = max_age_h * 3600;
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                let ts_now = chrono::Utc::now();
+                let ts_iso = ts_now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+                // Parse `git worktree list --porcelain` output.
+                let wt_out = std::process::Command::new("git")
+                    .args(["worktree", "list", "--porcelain"])
+                    .current_dir(&repo_root)
+                    .output()
+                    .unwrap_or_else(|e| {
+                        eprintln!("[prune-worktrees] git worktree list failed: {e}");
+                        std::process::exit(1);
+                    });
+                let wt_text = String::from_utf8_lossy(&wt_out.stdout);
+
+                // Each worktree block is separated by a blank line.
+                struct WtEntry {
+                    path: String,
+                    branch: String,
+                }
+                let mut worktrees: Vec<WtEntry> = Vec::new();
+                let mut cur_path: Option<String> = None;
+                let mut cur_branch: Option<String> = None;
+                for line in wt_text.lines() {
+                    if line.starts_with("worktree ") {
+                        cur_path = Some(line["worktree ".len()..].trim().to_string());
+                        cur_branch = None;
+                    } else if line.starts_with("branch ") {
+                        // branch refs/heads/<name>
+                        let b = line["branch ".len()..].trim().to_string();
+                        let branch_name = b.strip_prefix("refs/heads/").unwrap_or(&b).to_string();
+                        cur_branch = Some(branch_name);
+                    } else if line.is_empty() {
+                        if let (Some(p), Some(b)) = (cur_path.take(), cur_branch.take()) {
+                            worktrees.push(WtEntry { path: p, branch: b });
+                        } else {
+                            cur_path = None;
+                            cur_branch = None;
+                        }
+                    }
+                }
+                // Flush last block if file doesn't end with blank line.
+                if let (Some(p), Some(b)) = (cur_path, cur_branch) {
+                    worktrees.push(WtEntry { path: p, branch: b });
+                }
+
+                // Skip the main worktree (first entry).
+                let linked: Vec<&WtEntry> = worktrees.iter().skip(1).collect();
+
+                let mut pruned_count: u32 = 0;
+                let mut skipped_active_pr: u32 = 0;
+                let mut skipped_uncommitted: u32 = 0;
+                let mut skipped_young: u32 = 0;
+                let mut pruned_paths: Vec<String> = Vec::new();
+                let mut dry_run_candidates: Vec<String> = Vec::new();
+
+                let _now_secs = ts_now.timestamp() as u64;
+
+                for wt in &linked {
+                    let wt_path = std::path::Path::new(&wt.path);
+
+                    // Age check: use mtime of .git file inside the worktree.
+                    let git_file = wt_path.join(".git");
+                    let age_secs: u64 = git_file
+                        .metadata()
+                        .or_else(|_| wt_path.metadata())
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|mt| mt.elapsed().ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+
+                    if age_secs < max_age_secs {
+                        skipped_young += 1;
+                        continue;
+                    }
+
+                    // Uncommitted changes check.
+                    let status_out = std::process::Command::new("git")
+                        .args(["status", "--porcelain"])
+                        .current_dir(wt_path)
+                        .output()
+                        .ok();
+                    let has_dirty = status_out
+                        .as_ref()
+                        .map(|o| !o.stdout.is_empty())
+                        .unwrap_or(false);
+                    if has_dirty {
+                        skipped_uncommitted += 1;
+                        if !want_json {
+                            println!(
+                                "[prune-worktrees] KEEP (dirty) {}  branch={}",
+                                wt.path, wt.branch
+                            );
+                        }
+                        continue;
+                    }
+
+                    // Open PR check via gh CLI.
+                    let has_open_pr = std::process::Command::new("gh")
+                        .args([
+                            "pr", "list", "--head", &wt.branch, "--state", "open", "--json",
+                            "number", "--jq", "length",
+                        ])
+                        .output()
+                        .ok()
+                        .and_then(|o| {
+                            String::from_utf8_lossy(&o.stdout)
+                                .trim()
+                                .parse::<u32>()
+                                .ok()
+                        })
+                        .map(|n| n > 0)
+                        .unwrap_or(false);
+
+                    if has_open_pr {
+                        skipped_active_pr += 1;
+                        if !want_json {
+                            println!(
+                                "[prune-worktrees] KEEP (open PR) {}  branch={}",
+                                wt.path, wt.branch
+                            );
+                        }
+                        continue;
+                    }
+
+                    // Stale — eligible for pruning.
+                    let age_h = age_secs / 3600;
+                    if dry_run {
+                        dry_run_candidates.push(wt.path.clone());
+                        if !want_json {
+                            println!(
+                                "[prune-worktrees] WOULD PRUNE (age={}h)  {}  branch={}",
+                                age_h, wt.path, wt.branch
+                            );
+                        }
+                    } else {
+                        // Remove via git worktree remove --force.
+                        let rm_ok = std::process::Command::new("git")
+                            .args(["worktree", "remove", "--force", &wt.path])
+                            .current_dir(&repo_root)
+                            .status()
+                            .map(|s| s.success())
+                            .unwrap_or(false);
+                        if rm_ok {
+                            pruned_count += 1;
+                            pruned_paths.push(wt.path.clone());
+                            if !want_json {
+                                println!(
+                                    "[prune-worktrees] PRUNED (age={}h)  {}  branch={}",
+                                    age_h, wt.path, wt.branch
+                                );
+                            }
+                            // Emit ambient event per pruned worktree.
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                let branch_esc = wt.branch.replace('"', "\\\"");
+                                let path_esc = wt.path.replace('"', "\\\"");
+                                let _ = writeln!(
+                                    f,
+                                    "{{\"ts\":\"{ts_iso}\",\"kind\":\"worktree_pruned\",\
+                                     \"path\":\"{path_esc}\",\"branch\":\"{branch_esc}\",\"age_h\":{age_h}}}"
+                                );
+                            }
+                        } else {
+                            eprintln!("[prune-worktrees] WARNING: failed to remove {}", wt.path);
+                        }
+                    }
+                }
+
+                if want_json {
+                    let candidates_json = if dry_run {
+                        serde_json::to_string(&dry_run_candidates).unwrap_or_else(|_| "[]".into())
+                    } else {
+                        serde_json::to_string(&pruned_paths).unwrap_or_else(|_| "[]".into())
+                    };
+                    println!(
+                        "{{\"dry_run\":{dry_run},\"max_age_h\":{max_age_h},\
+                         \"pruned\":{pruned_count},\
+                         \"skipped_active_pr\":{skipped_active_pr},\
+                         \"skipped_uncommitted\":{skipped_uncommitted},\
+                         \"skipped_young\":{skipped_young},\
+                         \"paths\":{candidates_json}}}"
+                    );
+                } else if dry_run {
+                    println!(
+                        "[prune-worktrees] dry-run: {} stale worktrees would be pruned \
+                         (skipped: {} active-PR, {} dirty, {} young)",
+                        dry_run_candidates.len(),
+                        skipped_active_pr,
+                        skipped_uncommitted,
+                        skipped_young
+                    );
+                    println!("[prune-worktrees] re-run with --apply to remove");
+                } else {
+                    println!(
+                        "[prune-worktrees] done: pruned={pruned_count} \
+                         skipped_active_pr={skipped_active_pr} \
+                         skipped_uncommitted={skipped_uncommitted} \
+                         skipped_young={skipped_young}"
+                    );
+                }
+
+                if !dry_run && pruned_count > 0 {
+                    // Emit summary ambient event.
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open(&ambient_path)
+                    {
+                        let _ = writeln!(
+                            f,
+                            "{{\"ts\":\"{ts_iso}\",\"kind\":\"worktree_prune_summary\",\
+                             \"pruned\":{pruned_count},\"skipped_active_pr\":{skipped_active_pr},\
+                             \"skipped_uncommitted\":{skipped_uncommitted},\"skipped_young\":{skipped_young}}}"
+                        );
+                    }
+                }
+
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief>"
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|prune-worktrees>"
                 );
-                eprintln!("  start      [--size N] [--model M] [--effort xs,s,m] [--domain D]");
-                eprintln!("  stop       [--session NAME]");
-                eprintln!("  status     [--json]");
-                eprintln!("  scale      N [--session NAME]");
+                eprintln!(
+                    "  start           [--size N] [--model M] [--effort xs,s,m] [--domain D]"
+                );
+                eprintln!("  stop            [--session NAME]");
+                eprintln!("  status          [--json]");
+                eprintln!("  scale           N [--session NAME]");
                 eprintln!("  snapshot");
-                eprintln!("  restore    <snapshot-id>");
-                eprintln!("  restart    [--size N] [--session NAME]");
-                eprintln!("  audit-pids [--apply]");
-                eprintln!("  brief      [--json] [--window SECS]");
+                eprintln!("  restore         <snapshot-id>");
+                eprintln!("  restart         [--size N] [--session NAME]");
+                eprintln!("  audit-pids      [--apply]");
+                eprintln!("  brief           [--json] [--window SECS]");
+                eprintln!("  prune-worktrees [--apply] [--json]  # INFRA-827");
                 std::process::exit(2);
             }
         }

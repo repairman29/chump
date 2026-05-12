@@ -964,4 +964,6 @@ jobs:
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pwa-e2e-gap-workflow.sh
+      - name: fleet prune-worktrees — stale worktree cleanup (INFRA-827)
+        run: bash scripts/ci/test-fleet-prune-worktrees.sh
 

@@ -813,6 +813,21 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, agent_id, gap_id, elapsed_s, retries]
 
+  # ── INFRA-827: stale worktree pruner ─────────────────────────────────────
+  - kind: worktree_pruned
+    emitter: src/main.rs (chump fleet prune-worktrees --apply, INFRA-827)
+    trigger: a linked worktree was removed because it was older than CHUMP_WT_MAX_AGE_H
+      (default 48h) and its branch had no open GitHub PR and no uncommitted changes
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, path, branch, age_h]
+
+  - kind: worktree_prune_summary
+    emitter: src/main.rs (chump fleet prune-worktrees --apply, INFRA-827)
+    trigger: emitted once per prune-worktrees --apply run summarising total
+      pruned and skipped counts
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, pruned, skipped_active_pr, skipped_uncommitted, skipped_young]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
