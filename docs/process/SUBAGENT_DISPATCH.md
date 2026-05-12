@@ -120,6 +120,41 @@ The shipping epilogue is the LAST section of the prompt. Structure in order:
    don't bypass guards, don't hand-edit per-file YAMLs).
 6. **The shipping epilogue** (above) — verbatim, no edits.
 
+## Model default — always use sonnet (INFRA-515)
+
+Fleet workers default to `FLEET_MODEL=sonnet` since 2026-05-06 (INFRA-515).
+**Do not dispatch subagents on haiku.** Haiku asks clarifying questions instead
+of acting, and in `--dangerously-skip-permissions` mode there is nobody to
+answer — the agent sits idle for 600 s and is killed. Sonnet ships on the
+first attempt; haiku ships 1-in-9. The cost differential is real but the
+throughput differential is larger.
+
+When calling the `Agent` tool manually, omit `model:` (inherits the session
+default, which is sonnet for fleet sessions) or explicitly pass `"model": "sonnet"`.
+
+## Timeout rescue path — find WIP on the branch (INFRA-525)
+
+`worker.sh` now installs a `SIGALRM` trap at `FLEET_TIMEOUT_S − 30 s`. If an
+agent is killed by the fleet timeout, it first runs:
+
+```bash
+git add -A && git commit -m "WIP-<gap>: timeout-rescue" && git push -u origin <branch>
+```
+
+The work is on the remote branch even if the agent never reached `bot-merge.sh`.
+Recovery:
+
+```bash
+git fetch origin
+git checkout <branch>         # branch name is in the gap's lease JSON
+# inspect, finish, and ship normally
+scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge
+```
+
+If the branch is missing entirely, the agent was killed before the trap fired
+(rare — only possible if `SIGKILL` was used instead of `SIGTERM/SIGALRM`).
+In that case, the work is lost; re-claim and re-implement.
+
 ## Anti-patterns observed
 
 These are real failure modes from this session, not theoretical:
@@ -168,5 +203,9 @@ gap with the observed failure taxonomy rather than patching this doc further.
   heartbeat, telemetry report, stall taxonomy, scope enforcement)
 - [COG-053](../gaps/COG-053.yaml) — no-clarifying-questions directive +
   auto-decide rule (the parallel fix to INFRA-515's sonnet default)
+- [INFRA-515](../gaps/INFRA-515.yaml) — fleet-model default flipped from
+  haiku to sonnet; haiku's clarifying-question hesitation kills throughput
+- [INFRA-525](../gaps/INFRA-525.yaml) — worker.sh WIP-rescue checkpoint:
+  work is committed + pushed at T-30s before fleet timeout
 - [CLAUDE.md](../../CLAUDE.md) "Spawning subagents" subsection (added
   with this PR)
