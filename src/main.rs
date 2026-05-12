@@ -2737,9 +2737,40 @@ async fn main() -> Result<()> {
                 // sees the true state). Surfaces by name in the summary
                 // line so the operator KNOWS the filter ran.
                 let include_test_domains = args.iter().any(|a| a == "--include-test-domains");
+                // EFFECTIVE-008: --quiet suppresses all output (exit 0 on success).
+                let quiet = args.iter().any(|a| a == "--quiet");
+                // EFFECTIVE-008: --format <human|json|csv> — explicit format
+                // selector; --json and --format json are equivalent.
+                let fmt = flag("--format").unwrap_or_else(|| {
+                    if json_out {
+                        "json".to_string()
+                    } else {
+                        "human".to_string()
+                    }
+                });
+                let csv_out = fmt == "csv";
+                let json_out = json_out || fmt == "json";
                 match store.list(status_filter.as_deref()) {
                     Ok(gaps) => {
-                        if json_out {
+                        if quiet {
+                            // --quiet: no output, just verify the query ran (exit 0).
+                            return Ok(());
+                        } else if csv_out {
+                            // EFFECTIVE-008: CSV format — id,domain,status,priority,effort,title
+                            println!("id,domain,status,priority,effort,title");
+                            for g in &gaps {
+                                let dom = g.id.split('-').next().unwrap_or("?");
+                                if !include_test_domains && is_test_domain(dom) {
+                                    continue;
+                                }
+                                // Escape commas and quotes in title
+                                let title_esc = g.title.replace('"', "\"\"");
+                                println!(
+                                    "{},{},{},{},{},\"{}\"",
+                                    g.id, g.domain, g.status, g.priority, g.effort, title_esc
+                                );
+                            }
+                        } else if json_out {
                             // INFRA-431: --json output unchanged — for
                             // tooling. Filter and summary apply only to
                             // the human-readable path.

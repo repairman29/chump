@@ -29,4 +29,47 @@ chump --once --why
 
 ## `--quiet`
 
-Suppresses progress lines (`chump gap reserve`). Stdout still contains the bare gap ID.
+Suppresses all output on success; exits 0 with no stdout. Useful for scripting where you want
+to know if a command succeeded without noisy progress lines.
+
+**Supported commands:** (EFFECTIVE-008)
+
+| Command | Behavior |
+|---|---|
+| `chump gap reserve --quiet` | No output; bare gap ID is suppressed. Use `--json` instead if you need the ID. |
+| `chump gap list --quiet` | No output; exits 0 if query succeeded. |
+
+```bash
+# Scripting example: check if there are open gaps without displaying them
+if chump gap list --status open --quiet; then
+  echo "Gap store reachable"
+fi
+```
+
+## `--format`
+
+Selects the output format for commands that support multiple rendering modes.
+(EFFECTIVE-008)
+
+**Supported values:** `human` (default), `json`, `csv`
+
+**Supported commands:**
+
+| Command | Example |
+|---|---|
+| `chump gap list --format json` | JSON array of gap objects (same as `--json`) |
+| `chump gap list --format csv` | CSV with header: `id,domain,status,priority,effort,title` |
+| `chump gap list --format human` | Default human-readable `[status] ID — title (P/e)` lines |
+
+```bash
+# CSV output for spreadsheet import
+chump gap list --status open --format csv > gaps.csv
+
+# JSON for jq scripting
+chump gap list --json | jq '.[] | .id'
+# or equivalently:
+chump gap list --format json | jq '.[] | .id'
+```
+
+**Note:** `--json` and `--format json` are equivalent. `--format` takes precedence when both
+are given.
