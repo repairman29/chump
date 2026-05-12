@@ -1102,3 +1102,6 @@ jobs:
         run: bash scripts/ci/test-rollback-gap.sh
       - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
         run: bash scripts/ci/test-run-consolidation.sh
+      - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
+        run: bash scripts/ci/test-run-fleet-cross-repo.sh
+

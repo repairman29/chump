@@ -1214,6 +1214,7 @@ events:
     consumers: [fleet-brief, operator-recall, opus-curator]
     fields_required: [ts, kind, gap_id, age_days, title]
 
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
