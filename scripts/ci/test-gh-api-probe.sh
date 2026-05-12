@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# scripts/ci/test-gh-api-probe.sh — INFRA-539
+# scripts/ci/test-gh-api-probe.sh — INFRA-539 / CREDIBLE-032
 #
 # Smoke test: verifies the GitHub-unreachable probe is wired into both
-# bot-merge.sh and run-fleet.sh with the correct structure.
+# bot-merge.sh and run-fleet.sh, with CREDIBLE-032 failure-class taxonomy.
 
 set -euo pipefail
 
@@ -84,6 +84,65 @@ else
     else
         fail "bot-merge.sh should skip probe when DRY_RUN=1"
     fi
+fi
+
+# ── CREDIBLE-032: failure-class taxonomy ────────────────────────────────────
+
+# 9. bot-merge.sh emits kind=gh_missing when binary absent
+if grep -q '"gh_missing"' "$BM"; then
+    ok "bot-merge.sh emits kind=gh_missing"
+else
+    fail "bot-merge.sh missing gh_missing emit (CREDIBLE-032)"
+fi
+
+# 10. bot-merge.sh emits kind=gh_errored when API call fails
+if grep -q '"gh_errored"' "$BM"; then
+    ok "bot-merge.sh emits kind=gh_errored"
+else
+    fail "bot-merge.sh missing gh_errored emit (CREDIBLE-032)"
+fi
+
+# 11. run-fleet.sh emits kind=gh_missing
+if grep -q '"gh_missing"' "$RF"; then
+    ok "run-fleet.sh emits kind=gh_missing"
+else
+    fail "run-fleet.sh missing gh_missing emit (CREDIBLE-032)"
+fi
+
+# 12. run-fleet.sh emits kind=gh_errored
+if grep -q '"gh_errored"' "$RF"; then
+    ok "run-fleet.sh emits kind=gh_errored"
+else
+    fail "run-fleet.sh missing gh_errored emit (CREDIBLE-032)"
+fi
+
+# 13. bot-merge.sh checks `command -v gh` before API call
+if grep -q 'command -v gh' "$BM"; then
+    ok "bot-merge.sh checks for gh binary (command -v gh)"
+else
+    fail "bot-merge.sh missing binary presence check (CREDIBLE-032)"
+fi
+
+# 14. run-fleet.sh checks `command -v gh` before API call
+if grep -q 'command -v gh' "$RF"; then
+    ok "run-fleet.sh checks for gh binary (command -v gh)"
+else
+    fail "run-fleet.sh missing binary presence check (CREDIBLE-032)"
+fi
+
+# 15. EVENT_REGISTRY.yaml registers gh_missing kind
+ER="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
+if grep -q 'kind: gh_missing' "$ER"; then
+    ok "EVENT_REGISTRY.yaml: gh_missing kind registered"
+else
+    fail "EVENT_REGISTRY.yaml: gh_missing kind missing (CREDIBLE-032)"
+fi
+
+# 16. EVENT_REGISTRY.yaml registers gh_errored kind
+if grep -q 'kind: gh_errored' "$ER"; then
+    ok "EVENT_REGISTRY.yaml: gh_errored kind registered"
+else
+    fail "EVENT_REGISTRY.yaml: gh_errored kind missing (CREDIBLE-032)"
 fi
 
 echo

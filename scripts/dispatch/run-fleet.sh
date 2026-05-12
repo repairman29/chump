@@ -239,19 +239,31 @@ if tmux has-session -t "$FLEET_SESSION" 2>/dev/null; then
     exit 2
 fi
 
-# INFRA-539: probe GitHub API before spawning workers — if gh is down the
-# whole fleet will churn futile push/PR attempts. Halt early instead.
+# INFRA-539 / CREDIBLE-032: probe GitHub API before spawning workers.
+# Emits kind=gh_missing if gh binary absent, kind=gh_errored if API call fails.
+# Backward-compat: kind=github_unreachable also emitted alongside gh_errored.
 # Bypass: CHUMP_GH_PROBE_SKIP=1 (air-gapped, mock environments).
 if [[ "${CHUMP_GH_PROBE_SKIP:-0}" != "1" && "$FLEET_DRY_RUN" != "1" ]]; then
     _gh_probe_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
     mkdir -p "$(dirname "$_gh_probe_amb")" 2>/dev/null || true
+    _gh_probe_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    if ! command -v gh >/dev/null 2>&1; then
+        echo "[run-fleet] CREDIBLE-032: gh binary not found — halting fleet launch" >&2
+        printf '{"ts":"%s","kind":"gh_missing","source":"run-fleet","note":"gh binary not in PATH — CREDIBLE-032"}\n' \
+            "$_gh_probe_ts" >> "$_gh_probe_amb" 2>/dev/null || true
+        exit 1
+    fi
+
     _gh_probe_rc=0
     timeout "${CHUMP_GH_PROBE_TIMEOUT:-10}" gh api /rate_limit --silent 2>/dev/null || _gh_probe_rc=$?
     if [[ $_gh_probe_rc -ne 0 ]]; then
-        echo "[run-fleet] INFRA-539: GitHub API unreachable (exit=${_gh_probe_rc}) — halting fleet launch to prevent queue churn" >&2
-        printf '{"ts":"%s","kind":"github_unreachable","source":"run-fleet","exit_code":%d,"note":"gh api probe failed at fleet startup — INFRA-539"}\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_gh_probe_rc" \
-            >> "$_gh_probe_amb" 2>/dev/null || true
+        echo "[run-fleet] CREDIBLE-032: gh API call failed (exit=${_gh_probe_rc}) — halting fleet launch" >&2
+        printf '{"ts":"%s","kind":"gh_errored","source":"run-fleet","exit_code":%d,"note":"gh api /rate_limit failed — CREDIBLE-032"}\n' \
+            "$_gh_probe_ts" "$_gh_probe_rc" >> "$_gh_probe_amb" 2>/dev/null || true
+        # backward-compat alias
+        printf '{"ts":"%s","kind":"github_unreachable","source":"run-fleet","exit_code":%d,"note":"alias for gh_errored — CREDIBLE-032"}\n' \
+            "$_gh_probe_ts" "$_gh_probe_rc" >> "$_gh_probe_amb" 2>/dev/null || true
         exit 1
     fi
     echo "[run-fleet] INFRA-539: GitHub API reachable — proceeding"
