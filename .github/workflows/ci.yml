@@ -973,3 +973,5 @@ jobs:
             bash scripts/ci/test-pwa-e2e-gap-workflow.sh
       - name: fleet-state.json mutex — flock, kill switch, timeout event (INFRA-847)
         run: bash scripts/ci/test-fleet-state-mutex.sh
+      - name: gh-api-probe wired in bot-merge + run-fleet (INFRA-539)
+        run: bash scripts/ci/test-gh-api-probe.sh
