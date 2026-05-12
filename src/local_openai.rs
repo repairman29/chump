@@ -977,11 +977,30 @@ impl Provider for LocalOpenAIProvider {
 
         let mut complete_message: Vec<Value> = Vec::new();
 
+        // INFRA-372: Anthropic prompt caching on the static system-prompt prefix.
+        // When the endpoint is Anthropic AND CHUMP_PROMPT_CACHE != "0", the system
+        // content is serialised as an array content block with cache_control so
+        // Anthropic caches it on the first call (charged at 1.25× per-token) and
+        // serves it at 10% cost on every subsequent call.  Non-Anthropic providers
+        // receive a plain string as before.
+        let is_anthropic = self.base_url.contains("api.anthropic.com");
+        let cache_enabled = is_anthropic
+            && std::env::var("CHUMP_PROMPT_CACHE")
+                .map(|v| v != "0")
+                .unwrap_or(true);
+
         if let Some(sys_prompt) = system_prompt {
-            complete_message.push(json!({
-                "role": "system",
-                "content": sys_prompt
-            }));
+            if cache_enabled {
+                complete_message.push(json!({
+                    "role": "system",
+                    "content": [{"type": "text", "text": sys_prompt, "cache_control": {"type": "ephemeral"}}]
+                }));
+            } else {
+                complete_message.push(json!({
+                    "role": "system",
+                    "content": sys_prompt
+                }));
+            }
         }
 
         for m in &messages {
@@ -1452,6 +1471,11 @@ impl LocalOpenAIProvider {
         if !skip_auth {
             req = req.header("Authorization", format!("Bearer {}", self.api_key));
         }
+        // INFRA-372: Anthropic requires anthropic-version header for cache_control
+        // to be honoured on the OpenAI-compatible endpoint.
+        if base_url.contains("api.anthropic.com") {
+            req = req.header("anthropic-version", "2023-06-01");
+        }
         let log_timing = std::env::var("CHUMP_LOG_TIMING")
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false);
@@ -1498,6 +1522,22 @@ impl LocalOpenAIProvider {
             let inp = u.prompt_tokens.unwrap_or(0) as u64;
             let out = u.completion_tokens.unwrap_or(0) as u64;
             crate::cost_tracker::record_completion(1, inp, out);
+            // INFRA-372: log Anthropic cache token usage for telemetry / cost tracking.
+            let cache_read = u.cache_read_input_tokens.unwrap_or(0) as u64;
+            let cache_create = u.cache_creation_input_tokens.unwrap_or(0) as u64;
+            if cache_read > 0 || cache_create > 0 {
+                tracing::info!(
+                    cache_read_input_tokens = cache_read,
+                    cache_creation_input_tokens = cache_create,
+                    "INFRA-372: anthropic prompt cache"
+                );
+                if log_timing {
+                    eprintln!(
+                        "[cache] cache_read_tokens={} cache_creation_tokens={}",
+                        cache_read, cache_create
+                    );
+                }
+            }
         }
         if log_timing {
             let ms = api_start.elapsed().as_millis();
@@ -1585,6 +1625,11 @@ struct LocalOpenAIResponse {
 struct UsageInfo {
     prompt_tokens: Option<u32>,
     completion_tokens: Option<u32>,
+    // INFRA-372: Anthropic prompt-caching fields — zero/absent on non-Anthropic providers.
+    #[serde(default)]
+    cache_creation_input_tokens: Option<u32>,
+    #[serde(default)]
+    cache_read_input_tokens: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2692,5 +2737,54 @@ mod tests {
             crate::stream_events::AgentEvent::TextDelta { delta } => assert_eq!(delta, "suffix"),
             o => panic!("{:?}", o),
         }
+    }
+
+    // ── INFRA-372: prompt caching body construction ───────────────────────────
+
+    // Pure helper: builds a system message the same way complete() does,
+    // but accepts explicit flags instead of reading env vars — avoids
+    // parallel-test env-var races.
+    fn build_system_msg(is_anthropic: bool, cache_enabled: bool, sys: &str) -> Value {
+        if is_anthropic && cache_enabled {
+            json!({
+                "role": "system",
+                "content": [{"type": "text", "text": sys, "cache_control": {"type": "ephemeral"}}]
+            })
+        } else {
+            json!({"role": "system", "content": sys})
+        }
+    }
+
+    #[test]
+    fn infra372_anthropic_system_prompt_gets_cache_control() {
+        let msg = build_system_msg(true, true, "You are a helpful assistant.");
+        assert_eq!(msg["role"], "system");
+        let content = msg["content"]
+            .as_array()
+            .expect("content must be an array for Anthropic");
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(content[0]["text"], "You are a helpful assistant.");
+    }
+
+    #[test]
+    fn infra372_non_anthropic_system_prompt_plain_string() {
+        let msg = build_system_msg(false, false, "You are a helpful assistant.");
+        assert_eq!(msg["role"], "system");
+        assert!(
+            msg["content"].is_string(),
+            "non-Anthropic: content must be a plain string"
+        );
+    }
+
+    #[test]
+    fn infra372_cache_disabled_via_flag() {
+        // is_anthropic=true but cache_enabled=false (simulates CHUMP_PROMPT_CACHE=0)
+        let msg = build_system_msg(true, false, "You are a helpful assistant.");
+        assert_eq!(msg["role"], "system");
+        assert!(
+            msg["content"].is_string(),
+            "cache disabled: content must be a plain string"
+        );
     }
 }
