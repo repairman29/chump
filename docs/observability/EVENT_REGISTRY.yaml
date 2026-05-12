@@ -303,6 +303,13 @@ events:
     trigger: PR BLOCKED > 4h with no progress
     consumers: [audit-log, fleet]
 
+  - kind: stuck_pr_filing_dedup_hit
+    emitter: scripts/ops/stuck-pr-filer.sh (INFRA-855)
+    trigger: INDIVIDUAL path finds already_filed() returns true for a PR; gap
+      filing suppressed to prevent duplicate stuck-pr gaps per PR per failing check
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, pr_number, check_name]
+
   - kind: pr_blocked_long
     emitter: scripts/ops/stuck-pr-filer.sh
     trigger: pr_stuck variant for very long blocks

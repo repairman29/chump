@@ -282,7 +282,7 @@ case "\$*" in
 [{"number":888,"title":"INFRA-200: green branch with red CI","headRefName":"chump/infra-200","isDraft":false,"author":{"login":"alice"},"mergeStateStatus":"BLOCKED","autoMergeRequest":{"enabledAt":"$RECENT_TS"},"updatedAt":"$RECENT_TS"}]
 JSON
         ;;
-    "pr checks 888 --json state,completedAt")
+    "pr checks 888 --json name,state,completedAt")
         cat <<JSON
 [{"state":"FAILURE","completedAt":"$CI_OLD_TS"}]
 JSON
@@ -379,6 +379,125 @@ if [[ "$out" == *"would file"*"PR #999 stuck [BEHIND]"* ]]; then
 else
     echo "  FAIL: expected 'would file ... PR #999 stuck [BEHIND]', got:"
     echo "$out" | sed 's/^/    /'
+    exit 1
+fi
+
+# ── Test N+1: INFRA-855 — INDIVIDUAL path files one gap per PR, not per check ──
+echo "Test: INFRA-855 — INDIVIDUAL dedup: two checks on same PR → one gap"
+
+# Stub: chump records each 'gap reserve' call so we can count invocations.
+RESERVE_LOG="$TMP/reserve_855.log"
+rm -f "$RESERVE_LOG"
+_gap_seq=8550
+cat > "$TMP/bin/chump" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+    "gap list --status open --json")
+        echo '[]'
+        ;;
+    "gap reserve "*)
+        _gap_seq=\$(( _gap_seq + 1 ))
+        echo "INFRA-\$_gap_seq" | tee -a "$RESERVE_LOG"
+        ;;
+    "gap set "* | "gap set"*) exit 0 ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$TMP/bin/chump"
+
+# Two INDIVIDUAL entries for the same PR #111, different check names.
+# The filer should file exactly one gap (for the first check) and skip the second.
+cat > "$TMP/bin/gh" <<EOF
+#!/usr/bin/env bash
+OLD_TS_855="${OLD_TS}"
+case "\$*" in
+    "pr list "*)
+        cat <<JSON
+[{"number":111,"title":"INFRA-999: test gap","headRefName":"chump/infra-999","isDraft":false,"author":{"login":"alice"},"mergeStateStatus":"BLOCKED","autoMergeRequest":{"enabledAt":"\${OLD_TS_855}"},"updatedAt":"\${OLD_TS_855}"}]
+JSON
+        ;;
+    "pr checks 111"*)
+        cat <<JSON
+[
+  {"name":"test","status":"COMPLETED","conclusion":"FAILURE","startedAt":"\${OLD_TS_855}","completedAt":"\${OLD_TS_855}","detailsUrl":""},
+  {"name":"clippy","status":"COMPLETED","conclusion":"FAILURE","startedAt":"\${OLD_TS_855}","completedAt":"\${OLD_TS_855}","detailsUrl":""}
+]
+JSON
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+
+out=$(REMOTE=origin CI_FAIL_THRESHOLD_MINS=0 SHARED_BLOCKER_THRESHOLD=999 \
+    CHUMP_AMBIENT_LOG="$TMP/ambient_855.jsonl" \
+    "$SCRIPT" 2>&1 || true)
+
+reserve_count=$(wc -l < "$RESERVE_LOG" 2>/dev/null || echo 0)
+reserve_count="${reserve_count// /}"
+if [[ "$reserve_count" -eq 1 ]]; then
+    echo "  PASS: INDIVIDUAL dedup: 2 failing checks → exactly 1 gap filed (got $reserve_count)"
+else
+    echo "  FAIL: INDIVIDUAL dedup: expected 1 gap filed, got $reserve_count"
+    echo "$out" | sed 's/^/    /'
+    exit 1
+fi
+
+# ── Test N+2: INFRA-855 — stuck_pr_filing_dedup_hit event emitted ──────────────
+echo "Test: INFRA-855 — stuck_pr_filing_dedup_hit event emitted on dedup"
+if [[ -f "$TMP/ambient_855.jsonl" ]] && grep -q '"stuck_pr_filing_dedup_hit"' "$TMP/ambient_855.jsonl"; then
+    echo "  PASS: stuck_pr_filing_dedup_hit event emitted"
+else
+    echo "  FAIL: stuck_pr_filing_dedup_hit event missing from ambient.jsonl"
+    echo "  (ambient contents: $(cat "$TMP/ambient_855.jsonl" 2>/dev/null || echo '(empty)'))"
+    exit 1
+fi
+
+# ── Test N+3: INFRA-855 — EXISTING_FILINGS updated after filing ─────────────────
+echo "Test: INFRA-855 — EXISTING_FILINGS updated so second run deduplicates"
+# Stub chump so first call to 'gap list' returns empty, but gap reserve records filing.
+RESERVE_LOG2="$TMP/reserve_855b.log"
+rm -f "$RESERVE_LOG2"
+cat > "$TMP/bin/chump" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+    "gap list --status open --json") echo '[]' ;;
+    "gap reserve "*)
+        echo "INFRA-8560" | tee -a "$RESERVE_LOG2"
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$TMP/bin/chump"
+
+cat > "$TMP/bin/gh" <<EOF
+#!/usr/bin/env bash
+OLD_TS_855b="${OLD_TS}"
+case "\$*" in
+    "pr list "*)
+        cat <<JSON
+[{"number":222,"title":"INFRA-888: second test","headRefName":"chump/infra-888","isDraft":false,"author":{"login":"bob"},"mergeStateStatus":"BLOCKED","autoMergeRequest":{"enabledAt":"\${OLD_TS_855b}"},"updatedAt":"\${OLD_TS_855b}"}]
+JSON
+        ;;
+    "pr checks 222"*)
+        cat <<JSON
+[{"name":"test","status":"COMPLETED","conclusion":"FAILURE","startedAt":"\${OLD_TS_855b}","completedAt":"\${OLD_TS_855b}","detailsUrl":""},
+ {"name":"audit","status":"COMPLETED","conclusion":"FAILURE","startedAt":"\${OLD_TS_855b}","completedAt":"\${OLD_TS_855b}","detailsUrl":""}]
+JSON
+        ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+
+out2=$(REMOTE=origin CI_FAIL_THRESHOLD_MINS=0 SHARED_BLOCKER_THRESHOLD=999 \
+    "$SCRIPT" 2>&1 || true)
+cnt2=$(wc -l < "$RESERVE_LOG2" 2>/dev/null || echo 0); cnt2="${cnt2// /}"
+if [[ "$cnt2" -eq 1 ]]; then
+    echo "  PASS: two failing checks for same PR → 1 gap filed (EXISTING_FILINGS updated mid-run)"
+else
+    echo "  FAIL: expected 1 gap, got $cnt2"
+    echo "$out2" | sed 's/^/    /'
     exit 1
 fi
 
