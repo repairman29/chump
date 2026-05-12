@@ -62,8 +62,8 @@ else
 fi
 
 # 7. run-fleet.sh probe is after teardown path so FLEET_SIZE=0 still works when GitHub is down
-_teardown_line=$(grep -n '"FLEET_SIZE" = "0"' "$RF" | head -1 | cut -d: -f1)
-_probe_line=$(grep -n 'INFRA-539' "$RF" | head -1 | cut -d: -f1)
+_teardown_line=$(grep -n '"\$FLEET_SIZE" = "0"' "$RF" 2>/dev/null | head -1 | cut -d: -f1 || true)
+_probe_line=$(grep -n 'INFRA-539' "$RF" 2>/dev/null | head -1 | cut -d: -f1 || true)
 if [[ -n "$_teardown_line" && -n "$_probe_line" && "$_probe_line" -gt "$_teardown_line" ]]; then
     ok "run-fleet.sh probe is after teardown path (probe=${_probe_line} > teardown=${_teardown_line})"
 else
