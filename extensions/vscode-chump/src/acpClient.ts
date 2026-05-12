@@ -92,6 +92,15 @@ export class AcpClient extends EventEmitter {
     this._write({ jsonrpc: '2.0', method, params });
   }
 
+  /** Respond to a server-initiated JSON-RPC request. */
+  respond(id: unknown, result: unknown, error?: { code: number; message: string }): void {
+    if (error) {
+      this._write({ jsonrpc: '2.0', id, error });
+    } else {
+      this._write({ jsonrpc: '2.0', id, result });
+    }
+  }
+
   dispose(): void {
     this.proc?.stdin?.end();
     this.proc?.kill();
@@ -141,8 +150,14 @@ export class AcpClient extends EventEmitter {
           resolve(msg['result']);
         }
       } else if ('method' in msg) {
-        // Notification / server-initiated request
-        this.emit('notification', msg['method'], msg['params']);
+        const msgId = msg['id'] as (number | string | null | undefined);
+        if (msgId != null) {
+          // Server-initiated request — emit 'request' so caller can respond
+          this.emit('request', msg['method'], msgId, msg['params']);
+        } else {
+          // Notification (no id)
+          this.emit('notification', msg['method'], msg['params']);
+        }
       }
     }
   }

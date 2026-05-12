@@ -11,6 +11,7 @@
 
 import * as vscode from 'vscode';
 import { AcpClient, AcpStatus } from './acpClient';
+import { attachToolApprovalHandler } from './toolApproval';
 
 let client: AcpClient | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -52,9 +53,11 @@ async function connect(context: vscode.ExtensionContext): Promise<void> {
     console.error('[vscode-chump] ACP error:', err.message);
   });
   client.on('notification', (method: string, params: unknown) => {
-    // Slice 1: log notifications only. PRODUCT-057 will handle session/progress.
     console.debug('[vscode-chump] notification:', method, params);
   });
+
+  // Wire tool-approval quickpick + editor integration (PRODUCT-058)
+  attachToolApprovalHandler(client);
 
   context.subscriptions.push({ dispose: () => client?.dispose() });
 
