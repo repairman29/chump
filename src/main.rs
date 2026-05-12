@@ -801,7 +801,9 @@ async fn main() -> Result<()> {
     // cost estimates where measurable. No new event emissions in MVP.
     if args.get(1).map(String::as_str) == Some("waste-tally") {
         if args.iter().any(|a| a == "--help" || a == "help") {
-            println!("Usage: chump waste-tally [--since WINDOW] [--json] [--by-domain] [--tokens]");
+            println!(
+                "Usage: chump waste-tally [--since WINDOW] [--json] [--domain|--by-domain] [--tokens]"
+            );
             println!();
             println!("Zero-Waste pillar measurement. Tallies waste events from ambient.jsonl");
             println!("(fleet_wedge, fleet_starved, pr_stuck, silent_agent, lease_overlap, …)");
@@ -810,7 +812,8 @@ async fn main() -> Result<()> {
             println!("Options:");
             println!("  --since T    time window: 24h, 7d, 60m, or raw seconds  [default: 24h]");
             println!("  --json       output in JSON format");
-            println!("  --by-domain  break down waste by gap domain");
+            println!("  --domain     break down waste by gap domain (exits 1 if any domain >40%)");
+            println!("  --by-domain  alias for --domain (back-compat)");
             println!("  --tokens     include token-cost estimates");
             println!();
             println!("Example:");
@@ -825,7 +828,8 @@ async fn main() -> Result<()> {
             .cloned()
             .unwrap_or_else(|| "24h".to_string());
         let want_json = args.iter().any(|a| a == "--json");
-        let by_domain = args.iter().any(|a| a == "--by-domain");
+        // INFRA-934: --domain is the canonical flag; --by-domain remains for back-compat.
+        let by_domain = args.iter().any(|a| a == "--by-domain" || a == "--domain");
         let want_tokens = args.iter().any(|a| a == "--tokens");
 
         // Parse "24h" / "7d" / "60m" / raw seconds.
@@ -844,6 +848,14 @@ async fn main() -> Result<()> {
                 println!("{}", report.render_json());
             } else {
                 print!("{}", report.render_text());
+            }
+            // INFRA-934: exit non-zero if any single domain exceeds 40% of total token spend.
+            if let Some(breach) = report.any_domain_exceeds(40.0) {
+                eprintln!(
+                    "chump waste-tally: domain '{}' is {:.1}% of total token spend (threshold 40%)",
+                    breach.domain, breach.pct_of_total
+                );
+                std::process::exit(1);
             }
         } else {
             let report = waste_tally::build_report(&repo_root, since_secs);
