@@ -58,11 +58,17 @@
 #
 # Requirements: gh CLI authenticated, GITHUB_TOKEN in env or gh keyring, cargo.
 #
-# Exit codes:
-#   0  PR opened/updated (or already up to date)
-#   1  Pre-flight check failed (gap preflight, fmt, clippy, tests)
-#   2  Push or gh command failed
-#   3  Branch too stale to merge safely (>50 commits behind main)
+# Exit codes (RESILIENT-010 — step-specific codes for automated recovery):
+#   0   PR opened/updated (or already up to date)
+#   1   Unexpected error (set -e trap or unhandled failure)
+#   3   Branch too stale to merge safely (>50 commits behind main)
+#   10  Preflight failed (gap already done, claimed, or unavailable)
+#   11  Rebase failed (merge conflict or timeout)
+#   12  Cargo clippy failed (lint errors)
+#   13  Cargo test failed (test suite errors)
+#   14  git push failed (force-with-lease rejected or network error)
+#   15  gh pr create/update failed
+# Legacy codes kept for external callers: 2=push/gh, 4=misc abort
 
 set -euo pipefail
 
@@ -84,6 +90,21 @@ _bm_cleanup() {
 }
 trap '_bm_cleanup' EXIT
 trap '_bm_cleanup; exit 1' TERM INT
+
+# ── RESILIENT-010: step-specific failure helper ───────────────────────────────
+# Usage: _bm_fail <step-name> <exit-code> [message]
+# Emits kind=bot_merge_failure to ambient.jsonl, then exits with the given code.
+_bm_fail() {
+    local step="${1:-unknown}" code="${2:-1}" msg="${3:-}"
+    local ambient="${CHUMP_AMBIENT_LOG:-${CHUMP_REPO:-.chump-locks}/ambient.jsonl}"
+    # Fallback to .chump-locks/ambient.jsonl if CHUMP_AMBIENT_LOG unset.
+    [[ -z "${CHUMP_AMBIENT_LOG:-}" ]] && ambient=".chump-locks/ambient.jsonl"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "1970-01-01T00:00:00Z")"
+    printf '{"ts":"%s","kind":"bot_merge_failure","step":"%s","exit_code":%d,"gap_id":"%s","branch":"%s","note":"%s"}\n' \
+        "$ts" "$step" "$code" "${GAP_IDS[*]:-}" "${BRANCH:-}" "$msg" \
+        >> "$ambient" 2>/dev/null || true
+    exit "$code"
+}
 
 # ── INFRA-017: dispatched-agent identity ─────────────────────────────────────
 # When bot-merge.sh runs inside a dispatched subagent (chump-orchestrator set
@@ -907,7 +928,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
         red "Gap pre-flight failed — aborting to avoid duplicate work."
         red "The gaps are already done or claimed. Pick a different gap from docs/gaps.yaml."
-        exit 1
+        _bm_fail "preflight" 10 "gap already done or claimed"
     fi
     green "Gap pre-flight passed."
 
@@ -962,7 +983,7 @@ if [[ "$BEHIND" -gt 0 ]]; then
     if ! run_timed_hb "git rebase" 60 git rebase "${_rebase_args[@]}"; then
         red "git rebase failed or timed out — resolve conflicts or retry."
         _grade_rebase_clean="false"
-        exit 1
+        _bm_fail "rebase" 11 "merge conflict or timeout"
     fi
     _grade_rebase_clean="true"
     stage_done
@@ -975,7 +996,7 @@ if [[ "$BEHIND" -gt 0 ]]; then
         # Always run preflight here so we catch gaps completed on main while rebasing.
         if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
             red "Gap was completed on main while we rebased — nothing left to push."
-            exit 1
+            _bm_fail "preflight" 10 "gap completed on main during rebase"
         fi
     fi
 else
@@ -1103,7 +1124,7 @@ elif command -v cargo &>/dev/null; then
     if ! run_timed_hb "cargo clippy" 900 cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
         red "clippy found errors — fix them before merging."
         _grade_clippy_ok="false"
-        exit 1
+        _bm_fail "clippy" 12 "clippy lint errors"
     fi
     _grade_clippy_ok="true"
     stage_done
@@ -1118,7 +1139,7 @@ if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
         info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
         info "that is most likely OOM, not a real test failure. Try lowering"
         info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
-        exit 1
+        _bm_fail "test" 13 "test suite failure"
     fi
     stage_done
     green "Tests passed."
@@ -1350,7 +1371,7 @@ stage_start "git push $BRANCH → $REMOTE"
 export CHUMP_BOT_MERGE_IN_PROGRESS=1
 if ! run_timed_hb "git push" 120 git push "$REMOTE" "$BRANCH" --force-with-lease; then
     red "git push failed or timed out."
-    exit 2
+    _bm_fail "push" 14 "force-with-lease rejected or network error"
 fi
 stage_done
 green "Pushed."
@@ -1444,7 +1465,7 @@ EOF
             --title "$PR_TITLE" \
             --body "$_pr_body"; then
             red "gh pr create failed or timed out."
-            exit 2
+            _bm_fail "pr-create" 15 "gh pr create failed or timed out"
         fi
         _new_pr=""
         for _try in 1 2 3 4 5; do
@@ -1454,7 +1475,7 @@ EOF
         done
         if [[ -z "$_new_pr" ]]; then
             red "gh pr create reported success but no PR is visible for branch $BRANCH — refusing to exit 0."
-            exit 2
+            _bm_fail "pr-create" 15 "PR not visible after gh pr create"
         fi
         stage_done
         green "PR #$_new_pr created and verified."

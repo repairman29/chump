@@ -1127,6 +1127,14 @@ events:
     consumers: [fleet-brief, fleet-status, opus-curator]
     fields_required: [ts, kind, repo, locks_dir, session]
 
+  # ── RESILIENT-010: bot-merge.sh step-specific failure events ─────────────
+  - kind: bot_merge_failure
+    emitter: scripts/coord/bot-merge.sh (_bm_fail helper, RESILIENT-010)
+    trigger: any named phase in bot-merge.sh fails; emitted immediately before
+      the script exits with the step-specific exit code
+    consumers: [fleet-brief, opus-curator, emergency-fast-path, recovery-automation]
+    fields_required: [ts, kind, step, exit_code, gap_id, branch]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
