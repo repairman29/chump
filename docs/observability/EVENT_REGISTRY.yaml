@@ -1126,6 +1126,18 @@ events:
       override flags targeting a non-Chump repo
     consumers: [fleet-brief, fleet-status, opus-curator]
     fields_required: [ts, kind, repo, locks_dir, session]
+  # ── Cognition-stack A/B experiment (META-045) ───────────────────────────────
+  - kind: cognition_ab_run_start
+    emitter: scripts/experiments/cognition-ab-setup.sh
+    trigger: one cell of the cognition-stack A/B experiment is launched; records cell config
+    consumers: [cognition-ab-report]
+    fields_required: [ts, kind, cell, run_tag, lessons_at_spawn_n, embedding_enabled, fleet_size]
+
+  - kind: cognition_ab_comparison
+    emitter: scripts/experiments/cognition-ab-report.sh
+    trigger: comparison report generated after both cells have run; points to source log files
+    consumers: [kpi-report, meta-retrospective]
+    fields_required: [ts, kind, log_a, log_b, run_tag]
 
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
