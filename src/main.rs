@@ -4951,7 +4951,7 @@ async fn main() -> Result<()> {
                             });
                             println!("{}", serde_json::to_string_pretty(&obj).unwrap_or_default());
                         } else {
-                            println!("[dry-run] {} | {} | {}", e.priority, "INFRA", full_title);
+                            println!("[dry-run] {} | INFRA | {}", e.priority, full_title);
                             if !e.description.is_empty() {
                                 println!(
                                     "          desc: {}",
