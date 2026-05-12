@@ -508,10 +508,7 @@ events:
       One-shot event marking that the opus-curator wave-sequencing roadmap
       doc was (re-)published. Useful for after-the-fact "when did sequencing
       change?" reconstruction.
-<<<<<<< HEAD
-=======
 
->>>>>>> 942663a3 (feat(infra-890): network unavailability detection — net-probe.sh + ambient events)
   - kind: fleet_resize_decision
     emitter: src/main.rs (chump fleet auto-resize, INFRA-650)
     trigger: fleet auto-resize evaluated 4 conditions (queue-empty, cost-cap,
