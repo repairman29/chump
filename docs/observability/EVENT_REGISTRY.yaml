@@ -813,6 +813,21 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, agent_id, gap_id, elapsed_s, retries]
 
+  # ── INFRA-765: stacked PR auto-rebase ─────────────────────────────────────
+  - kind: stacked_pr_rebase_scan
+    emitter: scripts/coord/rebase-stacked-prs.sh (INFRA-765)
+    trigger: base PR merged — rebase-stacked-prs.sh scanned for open PRs with
+      base=merged_branch. stacked_count=0 means no stacked PRs found.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, merged_branch, stacked_count]
+
+  - kind: stacked_pr_rebased
+    emitter: scripts/coord/rebase-stacked-prs.sh (INFRA-765)
+    trigger: a PR stacked on a just-merged base branch was rebased onto
+      origin/main and auto-merge was re-armed. status=ok or status=failed.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, merged_branch, stacked_pr, stacked_branch, status]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
