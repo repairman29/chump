@@ -152,3 +152,35 @@ if [ "${#suggestions[@]}" -gt "0" ]; then
         echo "  • $s"
     done
 fi
+
+# CREDIBLE-034: per-pillar pickable gap table.
+# Shows how many P1 xs|s|m gaps are available per pillar — zero means the
+# pillar needs refilling before the next pick (CLAUDE.md §Mission Driver).
+_chump="${CHUMP_BIN:-$(command -v chump 2>/dev/null || echo "$REPO_ROOT/target/debug/chump")}"
+if [[ -x "$_chump" ]]; then
+    _open_gaps="$("$_chump" gap list --status open 2>/dev/null || true)"
+    _count_pillar() {
+        local tag="$1"
+        echo "$_open_gaps" \
+            | grep -E "\[open\].*${tag}" \
+            | grep -E "P1/(xs|s|m)\)" \
+            | wc -l \
+            | tr -d ' '
+    }
+    _fmt_count() {
+        local n="$1"
+        if [[ "$n" -eq 0 ]]; then echo "0 (!)"; else echo "$n"; fi
+    }
+    _p_eff=$(_count_pillar "EFFECTIVE:")
+    _p_cred=$(_count_pillar "CREDIBLE:")
+    _p_res=$(_count_pillar "RESILIENT:")
+    _p_zw=$(_count_pillar "ZERO-WASTE:")
+    echo ""
+    echo "Pillar pickable (P1 xs|s|m):"
+    printf "  %-12s %s\n" "EFFECTIVE"  "$(_fmt_count "$_p_eff")"
+    printf "  %-12s %s\n" "CREDIBLE"   "$(_fmt_count "$_p_cred")"
+    printf "  %-12s %s\n" "RESILIENT"  "$(_fmt_count "$_p_res")"
+    printf "  %-12s %s\n" "ZERO-WASTE" "$(_fmt_count "$_p_zw")"
+    unset _open_gaps _p_eff _p_cred _p_res _p_zw
+fi
+unset _chump
