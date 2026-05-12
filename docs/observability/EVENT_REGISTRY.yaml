@@ -111,6 +111,12 @@ events:
     trigger: T-30s before claude -p timeout, WIP commit pushed
     consumers: [fleet-brief]
 
+  - kind: wip_sigterm_checkpoint
+    emitter: scripts/dispatch/worker.sh (_sigterm_wip_checkpoint — INFRA-686)
+    trigger: SIGTERM/SIGINT received mid-gap; WIP commit created before exit
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, agent_id, gap_id, branch]
+
   - kind: worker_exit
     emitter: scripts/dispatch/worker.sh
     trigger: worker exits cycle (rc + classified exit_class)

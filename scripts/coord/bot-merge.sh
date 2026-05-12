@@ -1352,6 +1352,31 @@ if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
     fi
 fi
 
+# ── 4d. INFRA-686: WIP-commit squash — rebase to clean up graceful-shutdown rescues ──
+# If the top commit starts with "WIP-", it was created by the SIGTERM checkpoint.
+# Clean it up by squashing into the previous meaningful commit before shipping.
+_top_msg="$(git log -1 --format="%s" HEAD 2>/dev/null || true)"
+if [[ "$_top_msg" == WIP-* ]]; then
+    info "[INFRA-686] Top commit is a WIP rescue: '$_top_msg' — squashing into parent"
+    if [[ "${DRY_RUN:-0}" -eq 0 ]]; then
+        # Use soft reset to unstage the WIP commit, then re-commit cleanly.
+        if git reset --soft HEAD~1 2>/dev/null; then
+            _parent_msg="$(git log -1 --format="%s" HEAD 2>/dev/null || echo "chore: squash WIP rescue commit")"
+            if git commit --amend -m "$_parent_msg" --no-edit --no-verify 2>/dev/null; then
+                green "[INFRA-686] WIP commit squashed cleanly."
+            else
+                warn "[INFRA-686] WIP squash amend failed — shipping with WIP commit (not ideal)"
+                # Restore the WIP commit to avoid a dirty tree
+                git reset HEAD~1 --hard 2>/dev/null || true
+            fi
+        else
+            warn "[INFRA-686] WIP soft-reset failed — shipping as-is"
+        fi
+    else
+        info "[dry-run] would squash WIP commit '$_top_msg' into parent"
+    fi
+fi
+
 # ── 4e. INFRA-860: bot-merge mutex — prevent parallel push+merge contention ───
 # Multiple fleet workers can race to push + merge simultaneously, causing
 # `git push --force-with-lease` failures and `gh pr merge` races.  Acquire a
