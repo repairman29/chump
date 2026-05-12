@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  dev.chump.system-invariants-monitor — META-033: LaunchAgent for
+  cross-cutting health invariant assertions.
+
+  Runs scripts/ops/system-invariants-monitor.sh every 10 minutes.
+  Detects violations of INV-1 through INV-7 and emits ambient ALERT
+  kind=invariant_violation events.
+
+  INSTALLATION:
+    scripts/setup/install-system-invariants-launchd.sh
+-->
+<dict>
+  <key>Label</key>
+  <string>dev.chump.system-invariants-monitor</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/ops/system-invariants-monitor.sh</string>
+    <string>--quiet</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every 10 minutes (600 seconds). -->
+  <key>StartInterval</key>
+  <integer>600</integer>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-system-invariants-monitor.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-system-invariants-monitor.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+  </dict>
+</dict>
+</plist>
