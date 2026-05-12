@@ -1173,6 +1173,19 @@ events:
     trigger: nightly curation run (04:00 local) completes rebalance + consolidate + retention-sweep
     consumers: [fleet-brief, opus-curator, kpi-report]
     fields_required: [ts, kind, session, rebalanced, consolidated, retained, errors]
+  - kind: cost_quota_warning
+    emitter: src/cost_ledger.rs + scripts/ops/cost-enforcement.sh (INFRA-877)
+    trigger: daily spend reaches 80% of CHUMP_DAILY_BUDGET_USD; emitted before
+      each new claude -p spawn when the warning threshold is breached
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, cost_so_far_usd, limit_usd, budget_used_pct]
+
+  - kind: cost_quota_exceeded
+    emitter: src/cost_ledger.rs + scripts/ops/cost-enforcement.sh (INFRA-877)
+    trigger: daily spend reaches 100% of CHUMP_DAILY_BUDGET_USD; new spawns are
+      hard-capped until UTC midnight reset
+    consumers: [fleet-brief, operator-recall, emergency-fast-path]
+    fields_required: [ts, kind, cost_so_far_usd, limit_usd, budget_used_pct]
 
   # ── INFRA-890: network availability events ───────────────────────────────
   - kind: network_unavailable

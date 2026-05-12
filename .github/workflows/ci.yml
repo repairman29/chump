@@ -1084,4 +1084,5 @@ jobs:
         run: bash scripts/ci/test-gap-impact-rating.sh
       - name: speculative race-loss event tracking (FLEET-035)
         run: bash scripts/ci/test-fleet-race-loss.sh
-
+      - name: cost quota enforcement — warning at 80%, hard-cap at 100% (INFRA-877)
+        run: bash scripts/ci/test-cost-enforcement.sh

@@ -50,6 +50,7 @@ mod context_assembly;
 mod context_engine;
 mod context_firewall;
 mod context_window;
+mod cost_ledger;
 mod cost_tracker;
 mod cost_watch;
 mod counterfactual;
@@ -6353,10 +6354,20 @@ async fn main() -> Result<()> {
     // `--json` for machine-readable output.
     if args.iter().any(|a| a == "--doctor") {
         let report = doctor::run_all_checks().await;
+        // INFRA-877: append budget quota line to human output
         let exit_code = if args.iter().any(|a| a == "--json") {
             doctor::print_json_report(&report)
         } else {
-            doctor::print_human_report(&report)
+            let code = doctor::print_human_report(&report);
+            let quota_line = cost_ledger::doctor_line(&repo_path::repo_root());
+            println!("  cost: {quota_line}");
+            // Exit non-zero if quota exceeded (spend > 100%)
+            let quota = cost_ledger::check_quota(&repo_path::repo_root(), false);
+            if quota.is_exceeded() {
+                1
+            } else {
+                code
+            }
         };
         std::process::exit(exit_code);
     }
