@@ -1414,6 +1414,58 @@ if m:
                 continue
             fi
 
+            # ── INFRA-778: branch-diverged guard ────────────────────────────
+            # If file overlap between the handoff diff target files and the
+            # files changed in this PR branch (vs merge-base with main) is
+            # < 50%, the branch was likely recycled for unrelated work.
+            # Skip auto-apply and emit review_handoff_branch_diverged.
+            _778_overlap_pct="$(printf '%s' "$_diff_block" \
+                | python3 - "$_head_sha" "$REPO_ROOT" <<'PY778' 2>/dev/null || echo 100
+import sys, subprocess, re
+
+head_sha = sys.argv[1]
+repo    = sys.argv[2]
+diff_block = sys.stdin.read()
+
+target_files = set()
+for line in diff_block.splitlines():
+    m = re.match(r'^(?:---|\+\+\+) [ab]/(.+)$', line)
+    if m and m.group(1) != '/dev/null':
+        target_files.add(m.group(1))
+
+if not target_files:
+    print("100"); sys.exit(0)
+
+try:
+    mb = subprocess.check_output(
+        ['git', '-C', repo, 'merge-base', 'HEAD', 'origin/main'],
+        stderr=subprocess.DEVNULL, text=True).strip()
+    branch_files = set(subprocess.check_output(
+        ['git', '-C', repo, 'diff', '--name-only', mb, head_sha],
+        stderr=subprocess.DEVNULL, text=True).splitlines())
+except Exception:
+    print("100"); sys.exit(0)
+
+if not branch_files:
+    print("100"); sys.exit(0)
+
+union = target_files | branch_files
+pct   = int(len(target_files & branch_files) * 100 / len(union))
+print(str(pct))
+PY778
+)" || true
+            _778_overlap_pct="${_778_overlap_pct:-100}"
+
+            if [[ "$_778_overlap_pct" =~ ^[0-9]+$ ]] && [[ "$_778_overlap_pct" -lt 50 ]]; then
+                log "INFRA-778: branch diverged on PR #$_pr_num (file overlap ${_778_overlap_pct}%) — skipping auto-apply"
+                printf '{"ts":"%s","kind":"review_handoff_branch_diverged","pr_number":%s,"overlap_pct":%s,"agent_id":"%s","gap_id":"%s"}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pr_num" "$_778_overlap_pct" \
+                    "${AGENT_ID:-unknown}" "${GAP_ID:-unknown}" \
+                    >> "$_reh_amb" 2>/dev/null || true
+                continue
+            fi
+            # ── End INFRA-778 branch-diverged guard ──────────────────────────
+
             # Record this PR as attempted (cap at 1 per session)
             printf '%s\n' "$_pr_num" >> "$_reh_done_file" 2>/dev/null || true
 
