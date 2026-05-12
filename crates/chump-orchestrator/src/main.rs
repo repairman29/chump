@@ -295,28 +295,36 @@ fn main() -> Result<()> {
     let mut killed = 0usize;
     let mut stalled = 0usize;
     let mut ci_failed = 0usize;
+    let mut race_abandoned = 0usize;
     for (branch, outcome) in &outcomes {
         match outcome {
             DispatchOutcome::Shipped(n) => {
                 shipped += 1;
-                println!("  SHIPPED   {branch}  PR #{n}");
+                println!("  SHIPPED        {branch}  PR #{n}");
             }
             DispatchOutcome::Stalled => {
                 stalled += 1;
-                println!("  STALLED   {branch}  (no PR within soft deadline)");
+                println!("  STALLED        {branch}  (no PR within soft deadline)");
             }
             DispatchOutcome::Killed(reason) => {
                 killed += 1;
-                println!("  KILLED    {branch}  {reason}");
+                println!("  KILLED         {branch}  {reason}");
             }
             DispatchOutcome::CiFailed(n) => {
                 ci_failed += 1;
-                println!("  CI-FAILED {branch}  PR #{n}");
+                println!("  CI-FAILED      {branch}  PR #{n}");
+            }
+            DispatchOutcome::RaceAbandoned(sibling) => {
+                race_abandoned += 1;
+                match sibling {
+                    Some(n) => println!("  RACE-ABANDONED {branch}  sibling PR #{n}"),
+                    None => println!("  RACE-ABANDONED {branch}  (sibling PR unknown)"),
+                }
             }
         }
     }
     println!(
-        "shipped={shipped}  ci_failed={ci_failed}  stalled={stalled}  killed={killed}  spawn_failures={spawn_failures}"
+        "shipped={shipped}  ci_failed={ci_failed}  stalled={stalled}  killed={killed}  race_abandoned={race_abandoned}  spawn_failures={spawn_failures}"
     );
 
     if spawn_failures > 0 {

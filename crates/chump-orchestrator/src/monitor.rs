@@ -57,6 +57,10 @@ pub enum DispatchOutcome {
     /// detect CI fail (it surfaces if `gh pr list` reports it); reserved
     /// for the per-tick PR probe.
     CiFailed(u32),
+    /// INFRA-394: sibling agent won the gap race; this agent ceded gracefully.
+    /// Not a failure — it is successful coordination. Carries the sibling's
+    /// PR number when visible, otherwise `None`.
+    RaceAbandoned(Option<u32>),
 }
 
 /// One row from `gh pr list --json number,state,mergeStateStatus`. Public

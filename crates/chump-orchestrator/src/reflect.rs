@@ -31,7 +31,7 @@ pub struct DispatchReflection {
     /// Coarse domain prefix from the gap id (`"auto"`, `"eval"`, `"product"`,
     /// `"infra"`, …). Used by the synthesis layer to bucket lessons.
     pub gap_domain: String,
-    /// One of `"shipped"`, `"ci_failed"`, `"stalled"`, `"killed"`.
+    /// One of `"shipped"`, `"ci_failed"`, `"stalled"`, `"killed"`, `"race_abandoned"`.
     pub outcome: String,
     pub duration_s: u64,
     /// Other dispatched siblings still in flight when this one terminated.
@@ -96,6 +96,7 @@ pub fn outcome_str(outcome: &DispatchOutcome) -> &'static str {
         DispatchOutcome::CiFailed(_) => "ci_failed",
         DispatchOutcome::Stalled => "stalled",
         DispatchOutcome::Killed(_) => "killed",
+        DispatchOutcome::RaceAbandoned(_) => "race_abandoned",
     }
 }
 
@@ -104,6 +105,7 @@ pub fn pr_number_of(outcome: &DispatchOutcome) -> Option<u32> {
     match outcome {
         DispatchOutcome::Shipped(n) | DispatchOutcome::CiFailed(n) => Some(*n),
         DispatchOutcome::Stalled | DispatchOutcome::Killed(_) => None,
+        DispatchOutcome::RaceAbandoned(sibling_pr) => *sibling_pr,
     }
 }
 
@@ -137,7 +139,8 @@ pub fn classify_failure_cause(
     outcome: &DispatchOutcome,
     stderr_tail: &str,
 ) -> Option<&'static str> {
-    // Only failure outcomes carry a cause.
+    // Only failure outcomes carry a cause. RaceAbandoned is successful
+    // coordination — the gap was picked up by a sibling — so it returns None.
     let is_failure = matches!(
         outcome,
         DispatchOutcome::Stalled | DispatchOutcome::Killed(_) | DispatchOutcome::CiFailed(_)
@@ -328,12 +331,12 @@ impl ReflectionWriter for SqliteReflectionWriter {
         Self::ensure_schema(&conn)?;
 
         // outcome_class is the coarse success/failure bucket the synthesis
-        // layer keys off. Only "shipped" counts as success; everything else
-        // (stalled, killed, ci_failed) is a learnable failure.
-        let outcome_class = if reflection.outcome == "shipped" {
-            "success"
-        } else {
-            "failure"
+        // layer keys off. "shipped" and "race_abandoned" are both successes
+        // (the gap got picked and coordinated); everything else is a learnable
+        // failure.
+        let outcome_class = match reflection.outcome.as_str() {
+            "shipped" | "race_abandoned" => "success",
+            _ => "failure",
         };
 
         conn.execute(
@@ -360,6 +363,7 @@ impl ReflectionWriter for SqliteReflectionWriter {
         let priority = match reflection.outcome.as_str() {
             "killed" | "ci_failed" => "high",
             "stalled" => "medium",
+            // race_abandoned is informational — another agent won the race.
             _ => "low",
         };
         conn.execute(
@@ -406,6 +410,98 @@ mod tests {
         assert_eq!(outcome_str(&DispatchOutcome::CiFailed(2)), "ci_failed");
         assert_eq!(outcome_str(&DispatchOutcome::Stalled), "stalled");
         assert_eq!(outcome_str(&DispatchOutcome::Killed("x".into())), "killed");
+        assert_eq!(
+            outcome_str(&DispatchOutcome::RaceAbandoned(Some(99))),
+            "race_abandoned"
+        );
+        assert_eq!(
+            outcome_str(&DispatchOutcome::RaceAbandoned(None)),
+            "race_abandoned"
+        );
+    }
+
+    // ── INFRA-394: RaceAbandoned — successful coordination, not a failure ──
+
+    /// RaceAbandoned with a known sibling PR exposes that PR number.
+    #[test]
+    fn race_abandoned_pr_number_when_sibling_pr_known() {
+        assert_eq!(
+            pr_number_of(&DispatchOutcome::RaceAbandoned(Some(42))),
+            Some(42)
+        );
+    }
+
+    /// RaceAbandoned with no sibling PR (e.g. sibling hasn't opened one yet)
+    /// returns None — not an error, just not yet observable.
+    #[test]
+    fn race_abandoned_pr_number_none_when_sibling_pr_unknown() {
+        assert_eq!(pr_number_of(&DispatchOutcome::RaceAbandoned(None)), None);
+    }
+
+    /// RaceAbandoned is not a failure — classify_failure_cause must return None
+    /// rather than "unknown" so the dispatch-quality report doesn't inflate
+    /// the failure-cause bucket with coordination events.
+    #[test]
+    fn race_abandoned_classify_failure_cause_is_none() {
+        assert_eq!(
+            classify_failure_cause(&DispatchOutcome::RaceAbandoned(Some(7)), "anything"),
+            None
+        );
+        assert_eq!(
+            classify_failure_cause(&DispatchOutcome::RaceAbandoned(None), ""),
+            None
+        );
+    }
+
+    /// RaceAbandoned must be stored as outcome_class="success" (not "failure")
+    /// so the synthesis layer's aggregate stats don't count it as a loss.
+    #[test]
+    fn race_abandoned_written_as_success_class_to_sqlite() {
+        let tmp = std::env::temp_dir().join(format!(
+            "chump-orch-reflect-infra394-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_file(&tmp);
+        let w = SqliteReflectionWriter::at_path(tmp.clone());
+        let r = DispatchReflection {
+            gap_id: "INFRA-394".into(),
+            effort: "s".into(),
+            gap_domain: "infra".into(),
+            outcome: "race_abandoned".into(),
+            duration_s: 5,
+            parallel_siblings: 1,
+            pr_number: Some(42),
+            notes: "backend=test sibling_pr=42".into(),
+        };
+        w.write(&r).unwrap();
+
+        let conn = rusqlite::Connection::open(&tmp).unwrap();
+        let cls: String = conn
+            .query_row(
+                "SELECT outcome_class FROM chump_reflections WHERE 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            cls, "success",
+            "race_abandoned should be outcome_class=success"
+        );
+        let _ = std::fs::remove_file(&tmp);
+    }
+
+    /// The dispatch-quality report script must split the race_abandoned bucket
+    /// from shipped. Verify the constant string is stable (report's SQL matches).
+    #[test]
+    fn race_abandoned_outcome_str_is_stable_contract() {
+        // This string is also embedded in dispatch-quality-report.sh.
+        // If it ever changes here, the shell script must change too.
+        const EXPECTED: &str = "race_abandoned";
+        assert_eq!(outcome_str(&DispatchOutcome::RaceAbandoned(None)), EXPECTED);
     }
 
     #[test]

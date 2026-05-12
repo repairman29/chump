@@ -79,9 +79,10 @@ trap 'rm -f "$TMP"' EXIT
         SELECT
           CASE
             WHEN directive LIKE '%outcome=shipped%' OR directive LIKE '%outcome=success%' THEN 'shipped'
-            WHEN directive LIKE '%outcome=killed%'  THEN 'killed'
-            WHEN directive LIKE '%outcome=stalled%' THEN 'stalled'
-            WHEN directive LIKE '%outcome=failed%'  THEN 'failed'
+            WHEN directive LIKE '%outcome=race_abandoned%'                                THEN 'race_abandoned'
+            WHEN directive LIKE '%outcome=killed%'                                        THEN 'killed'
+            WHEN directive LIKE '%outcome=stalled%'                                       THEN 'stalled'
+            WHEN directive LIKE '%outcome=failed%'                                        THEN 'failed'
             ELSE 'other'
           END AS outcome,
           COUNT(*) AS n,
@@ -117,9 +118,13 @@ else:
             dur_min = 0
         print(f'| {outcome} | {n} | {pct}% | {dur_min} min |')
     shipped = next((r[1] for r in rows if r[0] == 'shipped'), 0)
-    pct = round(100 * shipped / total, 1)
+    abandoned = next((r[1] for r in rows if r[0] == 'race_abandoned'), 0)
+    # self-ship denominator excludes race_abandoned (coordinated cede is not
+    # a failure; including it would deflate the rate unfairly — INFRA-394).
+    denom = total - abandoned
+    pct = round(100 * shipped / denom, 1) if denom > 0 else 0.0
     print()
-    print(f'**Self-ship rate: {pct}%** (target ≥ 70% per META-025)')
+    print(f'**Self-ship rate: {pct}%** (target ≥ 70% per META-025; excludes {abandoned} race_abandoned)')
 "
 
     echo
@@ -177,9 +182,10 @@ else:
             ELSE 'unspecified'
           END AS backend,
           CASE
-            WHEN directive LIKE '%outcome=shipped%' THEN 'shipped'
-            WHEN directive LIKE '%outcome=killed%'  THEN 'killed'
-            WHEN directive LIKE '%outcome=stalled%' THEN 'stalled'
+            WHEN directive LIKE '%outcome=shipped%'        THEN 'shipped'
+            WHEN directive LIKE '%outcome=race_abandoned%' THEN 'race_abandoned'
+            WHEN directive LIKE '%outcome=killed%'         THEN 'killed'
+            WHEN directive LIKE '%outcome=stalled%'        THEN 'stalled'
             ELSE 'other'
           END AS outcome,
           COUNT(*) AS n
