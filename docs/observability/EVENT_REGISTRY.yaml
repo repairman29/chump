@@ -116,6 +116,13 @@ events:
     trigger: SIGTERM/SIGINT received mid-gap; WIP commit created before exit
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, agent_id, gap_id, branch]
+  # ── FLEET-035: speculative race loss tracking ─────────────────────────────
+  - kind: speculative_race_loss
+    emitter: scripts/coord/bot-merge.sh (FLEET-035, INFRA-193)
+    trigger: a speculative loser PR is closed as superseded — gap was picked by
+      two agents in parallel; one won and the other's PR is auto-closed
+    consumers: [fleet-status --pane race-loss, waste-tally]
+    fields_required: [ts, kind, session, gap_id, loser_pr, winner_pr, loser_branch]
 
   - kind: worker_exit
     emitter: scripts/dispatch/worker.sh

@@ -1936,6 +1936,14 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
                     if [[ $DRY_RUN -eq 0 ]]; then
                         gh pr close "$_lpr" --comment "$_supersede_msg" 2>/dev/null \
                             || info "  WARN: could not close PR #$_lpr (already closed? insufficient perms?)"
+                        # FLEET-035: emit speculative_race_loss event for waste tracking
+                        _rl_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                        _rl_payload="{\"ts\":\"$_rl_ts\",\"kind\":\"speculative_race_loss\",\
+\"session\":\"${SESSION_ID:-unknown}\",\"gap_id\":\"$_gid\",\
+\"loser_pr\":$_lpr,\"winner_pr\":$TARGET_PR,\"loser_branch\":\"$_lbranch\"}"
+                        _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                        mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
+                        printf '%s\n' "$_rl_payload" >> "$_amb" 2>/dev/null || true
                     else
                         info "  [dry-run] gh pr close $_lpr --comment '...'"
                     fi
