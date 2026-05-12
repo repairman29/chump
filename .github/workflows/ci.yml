@@ -795,3 +795,6 @@ jobs:
 
       - name: precommit strict replay fixture (INFRA-767)
         run: bash scripts/ci/test-precommit-strict-replay.sh
+
+      - name: subagent transcript archival — archive + inspect scripts (INFRA-399)
+        run: bash scripts/ci/test-subagent-archive.sh

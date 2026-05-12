@@ -813,6 +813,16 @@ Operator or sibling worker can rescue this branch via:
         "$FLEET_BACKEND" "${FLEET_MODEL:-default}" \
         >> "$_amb_we" 2>/dev/null || true
 
+    # ── INFRA-399: archive subagent output transcripts ────────────────────
+    # Claude Code stores Agent-tool task outputs in ephemeral /private/tmp.
+    # Archive them before they vanish (reboot / tmp cleanup) so post-mortem
+    # analysis of stalled/miscoordinated subagents is available.
+    if [[ "${CHUMP_SKIP_SUBAGENT_ARCHIVE:-0}" != "1" ]] \
+       && [[ -x "${REPO_ROOT}/scripts/dev/archive-subagent-transcripts.sh" ]]; then
+        "${REPO_ROOT}/scripts/dev/archive-subagent-transcripts.sh" \
+            --since-secs 3600 2>/dev/null || true
+    fi
+
     # ── INFRA-666: pre-ship-clippy-fix phase ──────────────────────────────
     # After claude exits cleanly (rc=0), run cargo clippy + fmt to fix any
     # auto-fixable lints BEFORE bot-merge opens the PR. Opt-out: set
