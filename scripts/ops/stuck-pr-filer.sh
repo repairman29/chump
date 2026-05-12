@@ -354,6 +354,8 @@ PYEOF
 
     [[ -z "$group_data" ]] && { info "no CI-RED deferred entries to process"; return 0; }
 
+    local _handled_prs=""  # track PRs filed this run to prevent one-gap-per-check-name duplication
+
     while IFS=$'\t' read -r _action _rest; do
         case "$_action" in
 
@@ -444,6 +446,27 @@ Suggested action:
             INDIVIDUAL)
                 local _pr_num _check_name _ci_red_mins _pr_branch _gap_ids
                 IFS=$'\t' read -r _pr_num _check_name _ci_red_mins _pr_branch _gap_ids <<<"$_rest"
+                # One gap per PR, not one per failing check name.
+                if echo " $_handled_prs " | grep -qw "$_pr_num"; then
+                    info "  PR #$_pr_num already handled this run (check '$_check_name') — skipping duplicate"
+                    local _855_amb="${CHUMP_AMBIENT_LOG:-${REAPER_LOCK_DIR:-.chump-locks}/ambient.jsonl}"
+                    printf '{"ts":"%s","kind":"stuck_pr_filing_dedup_hit","pr_number":%s,"check_name":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pr_num" "$_check_name" \
+                        >> "$_855_amb" 2>/dev/null || true
+                    SKIPPED=$((SKIPPED + 1))
+                    continue
+                fi
+                if already_filed "$_pr_num"; then
+                    info "  PR #$_pr_num already has a stuck-pr filing — skipping"
+                    # INFRA-855: emit dedup hit so watchdogs / fleet-brief can observe
+                    local _855_amb="${CHUMP_AMBIENT_LOG:-${REAPER_LOCK_DIR:-.chump-locks}/ambient.jsonl}"
+                    printf '{"ts":"%s","kind":"stuck_pr_filing_dedup_hit","pr_number":%s,"check_name":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pr_num" "$_check_name" \
+                        >> "$_855_amb" 2>/dev/null || true
+                    SKIPPED=$((SKIPPED + 1))
+                    continue
+                fi
+                _handled_prs="$_handled_prs $_pr_num"
                 local _reason="CI red for ${_ci_red_mins}m"
                 local _summary="At least one required check has been failing for ${_ci_red_mins}m (threshold ${CI_FAIL_THRESHOLD_MINS}m). Failing check: ${_check_name}."
                 local _details="Original gap(s) cited in PR title/commits: ${_gap_ids}
@@ -451,6 +474,9 @@ Branch: ${_pr_branch}
 Failing check: ${_check_name}
 Stuck class: CI-RED — ci-flake-rerun or human investigation required"
                 file_stuck_gap "$_pr_num" "$_reason" "$_summary" "$_details" "CI-RED"
+                # INFRA-855: update EXISTING_FILINGS so later already_filed() calls
+                # in this same run also see the just-filed PR (cross-check dedup).
+                EXISTING_FILINGS="$(printf '%s\n%s' "$EXISTING_FILINGS" "$_pr_num")"
                 ;;
         esac
     done <<<"$group_data"
