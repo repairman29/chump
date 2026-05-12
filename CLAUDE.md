@@ -207,5 +207,6 @@ CI gate: `scripts/ci/test-gap-audit-priorities.sh`
 ## On-demand docs (read only when you hit the failure surface)
 
 - Subagents, fleet launcher, disk hygiene, operational gotchas (binary wedge, rebase footgun, syspolicyd, etc.): [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md)
+- Subagent dispatch: model defaults, no-clarifying-questions directive, shipping epilogue, WIP-rescue: [`docs/process/SUBAGENT_DISPATCH.md`](./docs/process/SUBAGENT_DISPATCH.md)
 - Script taxonomy, canonical tool per task, entry points per directory: [`scripts/README.md`](./scripts/README.md)
 - Coordination script entry points, decision guide, full coord/ reference: [`scripts/coord/README.md`](./scripts/coord/README.md)
