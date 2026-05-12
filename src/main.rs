@@ -326,6 +326,40 @@ fn load_dotenv() {
 
 /// EFFECTIVE-009 — print grouped command reference.
 /// Shown when `chump` is run with no args, or when `chump help` / `chump --help` is used.
+// EFFECTIVE-011: expand short command aliases before routing.
+// "s" is a compound alias: "chump s <ID>" → "chump gap ship <ID>".
+fn expand_aliases(mut args: Vec<String>) -> Vec<String> {
+    if args.len() < 2 {
+        return args;
+    }
+    match args[1].as_str() {
+        "g" => {
+            args[1] = "gap".to_string();
+        }
+        "c" => {
+            args[1] = "claim".to_string();
+        }
+        "f" => {
+            args[1] = "fleet".to_string();
+        }
+        "d" => {
+            args[1] = "dispatch".to_string();
+        }
+        "h" => {
+            args[1] = "health".to_string();
+        }
+        "cs" => {
+            args[1] = "cost-watch".to_string();
+        }
+        "s" => {
+            args[1] = "gap".to_string();
+            args.insert(2, "ship".to_string());
+        }
+        _ => {}
+    }
+    args
+}
+
 fn print_help() {
     let ver = version::chump_version();
     println!("chump — gap orchestration tool  (v{ver})");
@@ -336,17 +370,18 @@ fn print_help() {
     println!("  chump --version               print version + build SHA");
     println!();
     println!("GAP MANAGEMENT");
-    println!("  gap <sub>          list, show, reserve, ship, audit-priorities …");
-    println!("  claim <GAP-ID>     atomic worktree + lease + preflight in one call");
+    println!("  gap <sub>  (alias: g)  list, show, reserve, ship, audit-priorities …");
+    println!("  claim <GAP-ID>  (alias: c)  atomic worktree + lease + preflight in one call");
+    println!("  ship <GAP-ID>   (alias: s)  shorthand for 'gap ship <GAP-ID>'");
     println!("  gen <task>         AI-driven single-shot coding task (offline-LLM)");
     println!();
     println!("FLEET");
-    println!("  fleet <sub>        worker control — up/status/down/doctor …");
-    println!("  dispatch <sub>     route/scoreboard/simulate/cost-report …");
+    println!("  fleet <sub>  (alias: f)  worker control — up/status/down/doctor …");
+    println!("  dispatch <sub>  (alias: d)  route/scoreboard/simulate/cost-report …");
     println!("  orchestrate        Opus-driven conversational loop (interactive)");
     println!();
     println!("ANALYTICS");
-    println!("  health             current gap-registry health snapshot");
+    println!("  health  (alias: h)  current gap-registry health snapshot");
     println!("  health-digest      markdown digest with P0/P1 counts + warnings");
     println!("  fleet-status       per-worker throughput + lease state");
     println!("  fleet-velocity     PRs/day and ship-rate trend");
@@ -360,7 +395,7 @@ fn print_help() {
     println!("  ci-summary         last-N CI run outcomes");
     println!("  classify-failure   categorize a CI/PR failure for the improvement tracker");
     println!("  kpi report         KPI scorecard across all pillars");
-    println!("  cost-watch         real-time inference spend + per-slot breakdown");
+    println!("  cost-watch  (alias: cs)  real-time inference spend + per-slot breakdown");
     println!("  cost record-pr     attach cost metadata to a merged PR");
     println!("  pr-coupling-cost   cost of PRs that move together (coupling smell)");
     println!("  cascade stats      per-slot hit/miss/error counts for the provider cascade");
@@ -396,6 +431,8 @@ fn print_help() {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
+    // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
+    let args = expand_aliases(args);
 
     // INFRA-148: surface the baked build SHA + date so operators can verify
     // their binary's staleness against `git log src/gap_store.rs src/main.rs`
@@ -7668,5 +7705,51 @@ mod tests {
             "expected reply to contain mock content, got: {}",
             outcome.reply
         );
+    }
+
+    // EFFECTIVE-011: alias expansion unit tests.
+    #[test]
+    fn effective_011_alias_g_expands_to_gap() {
+        let args = vec!["chump".to_string(), "g".to_string(), "list".to_string()];
+        let expanded = crate::expand_aliases(args);
+        assert_eq!(expanded, vec!["chump", "gap", "list"]);
+    }
+
+    #[test]
+    fn effective_011_alias_c_expands_to_claim() {
+        let args = vec![
+            "chump".to_string(),
+            "c".to_string(),
+            "INFRA-123".to_string(),
+        ];
+        let expanded = crate::expand_aliases(args);
+        assert_eq!(expanded, vec!["chump", "claim", "INFRA-123"]);
+    }
+
+    #[test]
+    fn effective_011_alias_s_expands_to_gap_ship() {
+        let args = vec![
+            "chump".to_string(),
+            "s".to_string(),
+            "INFRA-123".to_string(),
+        ];
+        let expanded = crate::expand_aliases(args);
+        assert_eq!(expanded, vec!["chump", "gap", "ship", "INFRA-123"]);
+    }
+
+    #[test]
+    fn effective_011_alias_f_d_h_cs_expand() {
+        let mk = |a: &str| vec!["chump".to_string(), a.to_string()];
+        assert_eq!(crate::expand_aliases(mk("f"))[1], "fleet");
+        assert_eq!(crate::expand_aliases(mk("d"))[1], "dispatch");
+        assert_eq!(crate::expand_aliases(mk("h"))[1], "health");
+        assert_eq!(crate::expand_aliases(mk("cs"))[1], "cost-watch");
+    }
+
+    #[test]
+    fn effective_011_no_alias_passthrough() {
+        let args = vec!["chump".to_string(), "gap".to_string(), "list".to_string()];
+        let expanded = crate::expand_aliases(args.clone());
+        assert_eq!(expanded, args);
     }
 }
