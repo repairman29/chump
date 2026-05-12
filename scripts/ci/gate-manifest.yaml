@@ -1,0 +1,80 @@
+# gate-manifest.yaml — CREDIBLE-050
+#
+# Each entry names a CI gate that should detect a specific failure pattern.
+# scripts/ci/test-all-gates-force-fire.sh iterates this manifest, synthesizes
+# a violating fixture for each gate, runs the gate's check script, and
+# asserts the correct outcome (exit code + ambient event kind).
+#
+# Adding a new gate:
+#   1. Add its check script under scripts/ci/check-*.sh
+#   2. Append an entry here naming the gate, script, expected exit code,
+#      and fixture-prep snippet (the bash that makes the gate fire)
+#   3. The force-fire test will exercise it on next PR
+#
+# Per CREDIBLE-050 AC: a gate that fails its own fixture cannot be flipped
+# to REQUIRED (CREDIBLE-042/043 dependent on this manifest passing).
+
+version: 1
+gates:
+  - id: CREDIBLE-026-scope-divergence
+    check_script: scripts/ci/check-pr-scope.sh
+    closing_pr: 1462
+    failure_class: pr-scope-divergence
+    description: |
+      PR title says chore(gaps): but diff also touches src/. Detector
+      should fail (non-zero) because the chore-gaps scope was violated.
+    fixture_kind: pr-title-vs-diff
+    expected_exit_nonzero: true
+    motivating_incident_pr: 1444
+
+  - id: CREDIBLE-027-mass-deletion
+    check_script: scripts/ci/check-mass-deletion.sh
+    closing_pr: 1459
+    failure_class: scratch-commit-mass-deletion
+    description: |
+      Commits titled 'first' / 'init' / 'wip' OR net diff deleting >100
+      lines from files not mentioned in PR title/body. Detector fails.
+    fixture_kind: scratch-commits-or-mass-delete
+    expected_exit_nonzero: true
+    motivating_incident_pr: 1441
+
+  - id: CREDIBLE-028-premature-closure
+    check_script: scripts/ci/test-gap-closure-consistency.sh
+    closing_pr: 1458
+    failure_class: premature-gap-closure
+    description: |
+      state.db has status=done with closed_pr=N but PR N is not yet
+      merged. Detector fires kind=gap_drift_premature_close.
+    fixture_kind: state.db-with-ghost-closed-pr
+    expected_exit_nonzero: true
+    motivating_incident_pr: 1433
+
+  - id: INFRA-538-state-db-restore
+    check_script: scripts/ci/test-state-db-restore.sh
+    closing_pr: 1504
+    failure_class: feature-test
+    description: |
+      Smoke test for `chump gap restore --from-sql`. NOT a failure
+      detector — included here so the manifest covers the full set
+      of CI gates and we can track all-gates-passing as a metric.
+    fixture_kind: in-script-self-test
+    expected_exit_nonzero: false
+
+  - id: META-043-preregistration-required
+    check_script: scripts/ci/test-prereg-required-for-cognition.sh
+    closing_pr: 1492
+    failure_class: missing-preregistration
+    description: |
+      PR modifies cognition src files (reflection/lessons/neuromod) but
+      no preregistration doc at docs/eval/preregistered/<GAP>.md. bot-merge
+      pre-push refuses the push.
+    fixture_kind: cognition-src-change-without-prereg
+    expected_exit_nonzero: true
+    motivating_incident_pr: null # preventive — no prior incident
+
+# Future entries (gaps filed but not shipped yet):
+# - CREDIBLE-029 full cross-session allocator (CREDIBLE-044 implements)
+# - INFRA-825 stale-binary hard-fail (runtime check; covered by version.rs
+#   unit tests pr_1444_replay_refuses_without_override)
+# - RESILIENT-006 pr-rescue.sh (action, not detector — exercised by
+#   integration test in #1475)
