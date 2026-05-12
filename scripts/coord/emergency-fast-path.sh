@@ -131,6 +131,15 @@ case "$cmd" in
         echo "Fleet state (mutex:$( [[ "${_mutex}" == "0" ]] && echo "OFF" || echo "ON" )):"
         echo "$state" | python3 -c "import sys,json; d=json.load(sys.stdin); [print(f'  {k}: {v}') for k,v in d.items()]" \
             2>/dev/null || echo "  (could not parse — raw: $state)"
+        # INFRA-845: invoke wedge handler on the scheduled-cron path.
+        # Best-effort — handler degrades gracefully if no wedge events present.
+        _wedge_handler="$REPO_ROOT/scripts/coord/fleet-wedge-handler.sh"
+        if [[ -x "$_wedge_handler" && "${CHUMP_WEDGE_HANDLER_DISABLE:-0}" != "1" ]]; then
+          CHUMP_AMBIENT_LOG="$_amb" \
+          CHUMP_FLEET_STATE="$_state_file" \
+          REPO_ROOT="$REPO_ROOT" \
+          bash "$_wedge_handler" 2>&1 | sed 's/^/[wedge-handler] /' || true
+        fi
         ;;
     *)
         echo "Usage: $0 {read|write <json>|set-field <key> <val>|reset|status}" >&2

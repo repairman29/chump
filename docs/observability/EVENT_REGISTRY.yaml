@@ -157,6 +157,30 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [agent_id, recent_wedges, threshold, window_h]
 
+  - kind: fleet_wedge_escalated
+    emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
+    trigger: wedge persisted past CHUMP_WEDGE_ESCALATE_S (default 1800s) since wedge_start
+    consumers: [fleet-brief, watchdog, oncall]
+    fields_required: [ts, kind, wedge_age_s, threshold_s, handler]
+
+  - kind: fleet_wedge_resolved
+    emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
+    trigger: no fleet_wedge events for CHUMP_WEDGE_CLEAR_S (default 1800s) while wedged=true
+    consumers: [fleet-brief, watchdog]
+    fields_required: [ts, kind, quiet_window_s, handler]
+
+  - kind: fleet_scale_change
+    emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845) + manual scaling per CLAUDE.md
+    trigger: fleet size adjusted up or down by handler or operator
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, from, to, rationale]
+
+  - kind: pager_notified
+    emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
+    trigger: CHUMP_PAGER_WEBHOOK set + escalation fires + POST attempted
+    consumers: [audit-log]
+    fields_required: [ts, kind, webhook, event]
+
   # ── Auth ───────────────────────────────────────────────────────────────────
   - kind: fleet_auth_storm
     emitter: scripts/dispatch/worker.sh
