@@ -774,6 +774,9 @@ Operator or sibling worker can rescue this branch via:
                 else
                     _TO="$TO"
                 fi
+                # INFRA-831: capture HEAD SHA before spawn so we can detect
+                # whether claude produced any commit before FLEET_TIMEOUT_S fired.
+                _pre_cycle_sha="$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")"
                 : > "$cycle_log"
                 (
                     cd "$wt_path" || exit 99
@@ -1238,6 +1241,51 @@ Operator or sibling worker can rescue this branch via:
                     "$_ts" "$AGENT_ID" "$GAP_ID" "$cycle_log" "$_cycle_log_size" "$FLEET_BACKEND" "${FLEET_MODEL:-default}" "$cooldown_s" "$FLEET_TIMEOUT_S" \
                     >> "$_amb" 2>/dev/null || true
             fi
+        fi
+    fi
+
+    # ── INFRA-831: timeout-no-commit rescue ──────────────────────────────────
+    # Detect rc=124 (FLEET_TIMEOUT_S exhausted) where claude produced no
+    # commit during the cycle. The INFRA-525 checkpoint watchdog fires at
+    # T-30s and commits WIP, but it may be disabled
+    # (CHUMP_TIMEOUT_CHECKPOINT_SECS=0) or the worktree may have had no
+    # staged changes. INFRA-831 fills this gap: after the cycle completes
+    # with rc=124 and no new commit, attempt a WIP rescue commit and emit
+    # kind=worker_timeout_no_commit to ambient.jsonl.
+    # Disable: CHUMP_TIMEOUT_RESCUE=0.
+    if [[ "$rc" -eq 124 ]] && [[ "${CHUMP_TIMEOUT_RESCUE:-1}" != "0" ]]; then
+        _post_cycle_sha="$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")"
+        if [[ -n "$_pre_cycle_sha" ]] && [[ "$_pre_cycle_sha" == "$_post_cycle_sha" ]]; then
+            # No new commit since cycle start — attempt rescue
+            _rescue_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            log "INFRA-831: rc=124 + no WIP commit — attempting rescue via chump-commit.sh"
+            _rescue_committed=0
+            (
+                cd "$wt_path" || exit 1
+                # Skip if nothing to commit
+                if git diff --quiet HEAD 2>/dev/null && git diff --cached --quiet 2>/dev/null; then
+                    exit 0
+                fi
+                bash scripts/coord/chump-commit.sh . \
+                    -m "WIP: timeout rescue [skip ci] (INFRA-831, ${FLEET_TIMEOUT_S:-600}s elapsed, agent=${AGENT_ID:-unknown})" \
+                    2>/dev/null
+            ) && _rescue_committed=1 || true
+            # Double-check: verify a new SHA was created regardless of exit code
+            _rescue_sha="$(git -C "$wt_path" rev-parse HEAD 2>/dev/null || echo "")"
+            if [[ -n "$_rescue_sha" ]] && [[ "$_rescue_sha" != "$_post_cycle_sha" ]]; then
+                _rescue_committed=1
+            fi
+            _amb831="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+            mkdir -p "$(dirname "$_amb831")" 2>/dev/null || true
+            printf '{"ts":"%s","session":"%s","kind":"worker_timeout_no_commit","agent_id":"%s","gap_id":"%s","timeout_s":%d,"rescue_committed":%d}\n' \
+                "$_rescue_ts" \
+                "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                "${AGENT_ID:-unknown}" \
+                "${GAP_ID:-unknown}" \
+                "${FLEET_TIMEOUT_S:-600}" \
+                "$_rescue_committed" \
+                >> "$_amb831" 2>/dev/null || true
+            log "INFRA-831: kind=worker_timeout_no_commit agent=${AGENT_ID:-unknown} gap=${GAP_ID:-unknown} timeout_s=${FLEET_TIMEOUT_S:-600} rescue_committed=$_rescue_committed"
         fi
     fi
 
