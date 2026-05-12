@@ -25,12 +25,80 @@
 
 use crate::agent_loop::ChumpAgent;
 use anyhow::{bail, Context, Result};
+use serde::Deserialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
 use std::time::Instant;
 
 const FILE_BEGIN: &str = "===FILE:";
 const FILE_END: &str = "===ENDFILE===";
+
+// ── Model registry (INFRA-739) ─────────────────────────────────────────────
+
+/// Per-model pricing entry loaded from docs/dispatch/model_registry.yaml.
+#[derive(Debug, Deserialize)]
+struct RegistryEntry {
+    model_id: String,
+    input_per_mtk: f64,
+    output_per_mtk: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelRegistry {
+    models: Vec<RegistryEntry>,
+}
+
+/// Returns a cached map of model_id → blended $/MTok rate loaded from
+/// docs/dispatch/model_registry.yaml. The registry is located relative to
+/// `CARGO_MANIFEST_DIR` (the workspace root at compile time) or via the
+/// `CHUMP_REPO_ROOT` env var at runtime. If the file cannot be found or
+/// parsed, the map is empty and callers fall back to substring matching.
+fn registry_blended_rates() -> &'static HashMap<String, f64> {
+    static CACHE: OnceLock<HashMap<String, f64>> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        // Prefer runtime env override so integration tests can point at the
+        // real repo root even when the binary runs from a temp dir.
+        let candidates = [
+            std::env::var("CHUMP_REPO_ROOT")
+                .map(|r| format!("{}/docs/dispatch/model_registry.yaml", r))
+                .ok(),
+            // compile-time path: workspace root is always CARGO_MANIFEST_DIR
+            Some(format!(
+                "{}/docs/dispatch/model_registry.yaml",
+                env!("CARGO_MANIFEST_DIR")
+            )),
+        ];
+        for candidate in candidates.iter().flatten() {
+            if let Ok(text) = std::fs::read_to_string(candidate) {
+                match serde_yaml::from_str::<ModelRegistry>(&text) {
+                    Ok(reg) => {
+                        return reg
+                            .models
+                            .into_iter()
+                            .map(|e| {
+                                // Blended rate: simple average of input + output $/MTok.
+                                let blended = (e.input_per_mtk + e.output_per_mtk) / 2.0;
+                                (e.model_id, blended)
+                            })
+                            .collect();
+                    }
+                    Err(err) => {
+                        tracing::warn!(
+                            path = %candidate,
+                            error = %err,
+                            "INFRA-739: failed to parse model_registry.yaml — falling back to substring matching"
+                        );
+                    }
+                }
+            }
+        }
+        HashMap::new()
+    })
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 pub struct GenOptions {
     pub task: String,
@@ -59,6 +127,21 @@ pub fn print_cost_summary(elapsed_secs: f64, input_chars: usize, output_chars: u
 }
 
 fn estimate_cost_usd(tokens: u64, slot: &str) -> f64 {
+    // INFRA-739: check the model registry first (exact match).
+    let rates = registry_blended_rates();
+    if let Some(&blended) = rates.get(slot) {
+        return tokens as f64 / 1_000_000.0 * blended;
+    }
+
+    // Prefix/suffix match: handles date-stamped variants not explicitly
+    // registered (e.g. "claude-sonnet-4-5-20250929" → registered "claude-sonnet-4-5").
+    for (model_id, &blended) in rates.iter() {
+        if slot.starts_with(model_id.as_str()) || model_id.starts_with(slot) {
+            return tokens as f64 / 1_000_000.0 * blended;
+        }
+    }
+
+    // Fallback: legacy substring matching for unregistered models.
     let slot_lc = slot.to_lowercase();
     // $/MTok blended (input+output averaged); offline/local models are $0
     let per_million: f64 = if slot_lc.contains("opus") {

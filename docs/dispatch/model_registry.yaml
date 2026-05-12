@@ -1,0 +1,671 @@
+# model_registry.yaml — INFRA-739 unified model metadata
+#
+# Single source of truth for pricing, capabilities, and routing metadata
+# per model. Consumed by:
+#   - src/gen.rs               estimate_cost_usd() (with OnceLock cache)
+#   - src/model_overlay.rs     detect_model_family() (registry-first lookup)
+#   - scripts/ab-harness/cost_ledger.py  PRICING_TABLE loader
+#   - scripts/dev/refresh-model-prices.sh  (target file for automated updates)
+#
+# NOTE: docs/pricing/model_rates.yaml remains the canonical file for
+# src/session_ledger.rs (INFRA-730). Do NOT break that path.
+# model_registry.yaml adds capability + routing metadata on top of pricing.
+#
+# Pricing fields (USD per 1 million tokens):
+#   input_per_mtk     — cost of 1M input tokens
+#   output_per_mtk    — cost of 1M output tokens
+#   cache_read_per_mtk — cost of 1M cache-read tokens (0.0 if no cache)
+#
+# Capability fields:
+#   context_k         — context window in thousands of tokens
+#   supports_tool_use — true if the model supports function/tool calling
+#   supports_thinking — true if the model supports extended thinking mode
+#
+# Routing fields:
+#   family            — coarse classification: Sonnet|Haiku|Opus|QwenChat|
+#                       QwenCoder|LlamaInstruct|DeepSeek|Other
+#   provider_hint     — primary provider slug (anthropic|together|groq|
+#                       nvidia|cerebras|hyperbolic|openrouter|github|gemini)
+#
+# status: active (default) | deprecated
+# free_tier: true if the model is available on a free-usage tier
+# last_verified: YYYY-MM-DD of most recent operator confirmation
+
+schema_version: 1
+last_global_verified: "2026-05-10"
+
+models:
+
+  # ── Anthropic — Sonnet ────────────────────────────────────────────────────
+  - model_id: claude-sonnet-4-5
+    input_per_mtk: 3.00
+    output_per_mtk: 15.00
+    cache_read_per_mtk: 0.30
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Sonnet
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    notes: "Production default for chump fleet workers."
+
+  - model_id: claude-sonnet-4-5-20250929
+    input_per_mtk: 3.00
+    output_per_mtk: 15.00
+    cache_read_per_mtk: 0.30
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Sonnet
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    notes: "Dated snapshot of claude-sonnet-4-5."
+
+  - model_id: claude-sonnet-4-6
+    input_per_mtk: 3.00
+    output_per_mtk: 15.00
+    cache_read_per_mtk: 0.30
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Sonnet
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-10"
+    notes: "Observed in EVAL sweeps; same pricing tier as 4-5."
+
+  - model_id: claude-sonnet-4-6-20260301
+    input_per_mtk: 3.00
+    output_per_mtk: 15.00
+    cache_read_per_mtk: 0.30
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Sonnet
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-10"
+    notes: "Dated snapshot of claude-sonnet-4-6."
+
+  # ── Anthropic — Haiku ─────────────────────────────────────────────────────
+  - model_id: claude-haiku-4-5
+    input_per_mtk: 1.00
+    output_per_mtk: 5.00
+    cache_read_per_mtk: 0.10
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Haiku
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    notes: "INFRA-369 IDE-session pin; xs/s mechanical fleet work."
+
+  - model_id: claude-haiku-4-5-20251001
+    input_per_mtk: 1.00
+    output_per_mtk: 5.00
+    cache_read_per_mtk: 0.10
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Haiku
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    notes: "Dated snapshot of claude-haiku-4-5."
+
+  - model_id: claude-haiku-3.5
+    input_per_mtk: 0.80
+    output_per_mtk: 4.00
+    cache_read_per_mtk: 0.08
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Haiku
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    status: deprecated
+    notes: "Legacy haiku. Some old chump_improvement_targets entries."
+
+  - model_id: claude-3-5-haiku-20241022
+    input_per_mtk: 1.00
+    output_per_mtk: 5.00
+    cache_read_per_mtk: 0.10
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Haiku
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    notes: "Claude 3.5 Haiku dated snapshot."
+
+  - model_id: claude-3-haiku-20240307
+    input_per_mtk: 0.25
+    output_per_mtk: 1.25
+    cache_read_per_mtk: 0.03
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Haiku
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    status: deprecated
+    notes: "Claude 3 Haiku — legacy."
+
+  # ── Anthropic — Opus ──────────────────────────────────────────────────────
+  - model_id: claude-opus-4.7
+    input_per_mtk: 5.00
+    output_per_mtk: 25.00
+    cache_read_per_mtk: 0.50
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: true
+    family: Opus
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-10"
+    notes: "Reserved for INFRA-687-class refactors. Opus 4.1 (legacy) was $15/$75; Opus 4.7 dropped to $5/$25."
+
+  - model_id: claude-opus-4-5
+    input_per_mtk: 15.00
+    output_per_mtk: 75.00
+    cache_read_per_mtk: 1.50
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: true
+    family: Opus
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    notes: "claude-opus-4-5 family."
+
+  - model_id: claude-opus-4-5-20251101
+    input_per_mtk: 15.00
+    output_per_mtk: 75.00
+    cache_read_per_mtk: 1.50
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: true
+    family: Opus
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    notes: "Dated snapshot of claude-opus-4-5."
+
+  - model_id: claude-3-sonnet-20240229
+    input_per_mtk: 3.00
+    output_per_mtk: 15.00
+    cache_read_per_mtk: 0.30
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Sonnet
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    status: deprecated
+    notes: "Claude 3 Sonnet — legacy."
+
+  - model_id: claude-3-opus-20240229
+    input_per_mtk: 15.00
+    output_per_mtk: 75.00
+    cache_read_per_mtk: 1.50
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Opus
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    status: deprecated
+    notes: "Claude 3 Opus — legacy."
+
+  - model_id: claude-3-5-sonnet-20241022
+    input_per_mtk: 3.00
+    output_per_mtk: 15.00
+    cache_read_per_mtk: 0.30
+    context_k: 200
+    supports_tool_use: true
+    supports_thinking: false
+    family: Sonnet
+    provider_hint: anthropic
+    source_url: https://www.anthropic.com/pricing
+    last_verified: "2026-05-08"
+    notes: "Claude 3.5 Sonnet dated snapshot."
+
+  # ── OpenAI ────────────────────────────────────────────────────────────────
+  - model_id: gpt-4o
+    input_per_mtk: 2.50
+    output_per_mtk: 10.00
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: Other
+    provider_hint: openai
+    source_url: https://platform.openai.com/docs/pricing
+    last_verified: "2026-05-08"
+    notes: "OpenAI GPT-4o."
+
+  - model_id: gpt-4o-mini
+    input_per_mtk: 0.15
+    output_per_mtk: 0.60
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: Other
+    provider_hint: openai
+    source_url: https://platform.openai.com/docs/pricing
+    last_verified: "2026-05-08"
+    notes: "OpenAI GPT-4o Mini."
+
+  # ── Google Gemini ─────────────────────────────────────────────────────────
+  - model_id: gemini-1.5-pro
+    input_per_mtk: 1.25
+    output_per_mtk: 5.00
+    cache_read_per_mtk: 0.00
+    context_k: 1000
+    supports_tool_use: true
+    supports_thinking: false
+    family: Other
+    provider_hint: gemini
+    source_url: https://ai.google.dev/pricing
+    last_verified: "2026-05-08"
+    status: deprecated
+    notes: "Gemini 1.5 Pro — retired per Google docs 2026-03."
+
+  - model_id: gemini-1.5-flash
+    input_per_mtk: 0.075
+    output_per_mtk: 0.30
+    cache_read_per_mtk: 0.00
+    context_k: 1000
+    supports_tool_use: true
+    supports_thinking: false
+    family: Other
+    provider_hint: gemini
+    source_url: https://ai.google.dev/pricing
+    last_verified: "2026-05-08"
+    status: deprecated
+    notes: "Gemini 1.5 Flash — retired per Google docs 2026-03."
+
+  - model_id: gemini-2.0-flash-lite
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 1000
+    supports_tool_use: true
+    supports_thinking: false
+    family: Other
+    provider_hint: gemini
+    source_url: https://ai.google.dev/pricing
+    free_tier: true
+    rpm: 15
+    rpd: 1500
+    last_verified: "2026-05-08"
+    notes: "Free-tier. Haiku-equivalent tier. May be deprecated (check availability)."
+
+  - model_id: gemini-2.5-flash
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 1000
+    supports_tool_use: true
+    supports_thinking: true
+    family: Other
+    provider_hint: gemini
+    source_url: https://ai.google.dev/pricing
+    free_tier: true
+    rpm: 10
+    rpd: 1500
+    last_verified: "2026-05-08"
+    notes: "Free-tier. Sonnet-equivalent tier. Best balanced Gemini. Confirmed 2026-05-08."
+
+  - model_id: gemini-2.5-pro
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 2000
+    supports_tool_use: true
+    supports_thinking: true
+    family: Other
+    provider_hint: gemini
+    source_url: https://ai.google.dev/pricing
+    free_tier: true
+    rpm: 5
+    rpd: 50
+    last_verified: "2026-05-08"
+    notes: "Free-tier. Opus-equivalent tier. Very low RPD (50). 2M context."
+
+  # ── Free-tier OSS (Groq / NVIDIA / Cerebras / Hyperbolic) ────────────────
+  - model_id: groq-llama-3.3-70b-versatile
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: groq
+    source_url: https://console.groq.com/docs/rate-limits
+    free_tier: true
+    rpm: 30
+    rpd: 1000
+    last_verified: "2026-05-08"
+    notes: "Free tier: 30 RPM / 1000 RPD (updated from 14400). Low RPD — good cascade fallback."
+
+  - model_id: cerebras-llama3.1-8b
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 8
+    supports_tool_use: false
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: cerebras
+    source_url: https://cloud.cerebras.ai
+    free_tier: true
+    rpm: 30
+    rpd: 14400
+    last_verified: "2026-05-08"
+    notes: "Free Personal tier. Only 8K context — too small for chump prompts."
+
+  - model_id: cerebras-qwen-3-235b
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: QwenChat
+    provider_hint: cerebras
+    source_url: https://cloud.cerebras.ai
+    free_tier: true
+    rpm: 1
+    rpd: 14400
+    last_verified: "2026-05-08"
+    notes: "Free Personal Preview. 1 RPM cap kills throughput for fleet use."
+
+  - model_id: nvidia-llama-3.3-70b
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: nvidia
+    source_url: https://build.nvidia.com
+    free_tier: true
+    rpm: 32
+    rpd: 5000
+    last_verified: "2026-05-08"
+    notes: "Free credits via NVIDIA NIM endpoint."
+
+  - model_id: hyperbolic-llama-3.3-70b
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: hyperbolic
+    source_url: https://hyperbolic.xyz
+    free_tier: true
+    rpm: 60
+    rpd: 2000
+    last_verified: "2026-05-08"
+    notes: "Free credits on signup. 480B Qwen coder also available."
+
+  # ── Together.ai (COG-026 / model_overlay.rs test models) ─────────────────
+  - model_id: Qwen/Qwen3-235B-A22B-Instruct-2507-tput
+    input_per_mtk: 0.20
+    output_per_mtk: 0.60
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: QwenChat
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "COG-026 V2/V3 trial model. Chat-Instruct; iter-cap failure mode."
+
+  - model_id: Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8
+    input_per_mtk: 0.60
+    output_per_mtk: 1.80
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: QwenCoder
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "COG-026 V5 trial model. Coder-Instruct; chatty-exit failure mode."
+
+  - model_id: Qwen/Qwen2.5-Coder-32B-Instruct
+    input_per_mtk: 0.80
+    output_per_mtk: 0.80
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: QwenCoder
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "Code-specialized. Potentially better tool-call accuracy than 70B general."
+
+  - model_id: Qwen/Qwen2.5-7B-Instruct-Turbo
+    input_per_mtk: 0.30
+    output_per_mtk: 0.30
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: QwenChat
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "Smaller Qwen2.5 chat model."
+
+  - model_id: Qwen/Qwen3-235B-A22B-fp8-tput
+    input_per_mtk: 0.20
+    output_per_mtk: 0.60
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: QwenChat
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "FP8 throughput variant of Qwen3-235B."
+
+  - model_id: meta-llama/Llama-3.3-70B-Instruct-Turbo
+    input_per_mtk: 0.88
+    output_per_mtk: 0.88
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "COG-026 V4 trial model. Same class as Groq, paid endpoint."
+
+  - model_id: meta-llama/Llama-3.1-8B-Instruct
+    input_per_mtk: 0.18
+    output_per_mtk: 0.18
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "Smaller Llama 3.1 instruct model."
+
+  - model_id: meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo
+    input_per_mtk: 0.18
+    output_per_mtk: 0.18
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "Turbo variant of Meta Llama 3.1 8B Instruct."
+
+  - model_id: meta/llama-3.3-70b-instruct
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: nvidia
+    source_url: https://build.nvidia.com
+    free_tier: true
+    last_verified: "2026-05-08"
+    notes: "NVIDIA NIM endpoint model ID."
+
+  - model_id: meta-llama/Llama-3.3-70B-Instruct-Turbo-Free
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    free_tier: true
+    last_verified: "2026-05-08"
+    notes: "Together free-tier variant. Credits exhausted as of 2026-05-02."
+
+  - model_id: mistralai/Mixtral-8x7B-Instruct-v0.1
+    input_per_mtk: 0.60
+    output_per_mtk: 0.60
+    cache_read_per_mtk: 0.00
+    context_k: 32
+    supports_tool_use: false
+    supports_thinking: false
+    family: Other
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "Mixtral MOE model via Together."
+
+  # ── Paid OSS-model serverless (Together) ─────────────────────────────────
+  - model_id: together-deepseek-v3
+    input_per_mtk: 0.25
+    output_per_mtk: 0.25
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: DeepSeek
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-10"
+    notes: "DeepSeek-V3 serverless — Tier-2 candidate. Corrected from 0.85 to 0.25 via INFRA-731."
+
+  - model_id: together-llama-3.3-70b-turbo
+    input_per_mtk: 0.88
+    output_per_mtk: 0.88
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "Same model class as Groq, paid endpoint. Reserve for Groq overflow."
+
+  - model_id: together-qwen-2.5-coder-32b
+    input_per_mtk: 0.80
+    output_per_mtk: 0.80
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: QwenCoder
+    provider_hint: together
+    source_url: https://docs.together.ai/docs/serverless-models
+    last_verified: "2026-05-08"
+    notes: "Code-specialized; better tool-call accuracy than 70B general models."
+
+  # ── DeepSeek direct ───────────────────────────────────────────────────────
+  - model_id: deepseek-ai/DeepSeek-V3
+    input_per_mtk: 0.27
+    output_per_mtk: 1.10
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: DeepSeek
+    provider_hint: together
+    source_url: https://www.deepseek.com/pricing
+    last_verified: "2026-05-08"
+    notes: "COG-026 DeepSeek V3 via Together. Speculative overlay applied."
+
+  - model_id: deepseek-ai/DeepSeek-R1
+    input_per_mtk: 0.55
+    output_per_mtk: 2.19
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: false
+    supports_thinking: true
+    family: DeepSeek
+    provider_hint: together
+    source_url: https://www.deepseek.com/pricing
+    last_verified: "2026-05-08"
+    notes: "DeepSeek R1 reasoning model. Extended thinking / chain-of-thought."
+
+  # ── OpenRouter overflow ───────────────────────────────────────────────────
+  - model_id: qwen/qwen3-coder:free
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 128
+    supports_tool_use: true
+    supports_thinking: false
+    family: QwenCoder
+    provider_hint: openrouter
+    source_url: https://openrouter.ai/api/v1
+    free_tier: true
+    rpm: 16
+    rpd: 800
+    last_verified: "2026-05-08"
+    notes: "OpenRouter :free model — availability not guaranteed."
+
+  # ── GitHub Models ─────────────────────────────────────────────────────────
+  - model_id: meta/Llama-3.3-70B-Instruct
+    input_per_mtk: 0.00
+    output_per_mtk: 0.00
+    cache_read_per_mtk: 0.00
+    context_k: 8
+    supports_tool_use: true
+    supports_thinking: false
+    family: LlamaInstruct
+    provider_hint: github
+    source_url: https://models.github.ai/inference
+    free_tier: true
+    rpm: 12
+    rpd: 120
+    last_verified: "2026-05-08"
+    notes: "GitHub Models free tier. Very low RPD (120). 8K context only."
