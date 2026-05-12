@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.gap-curate — LaunchAgent for nightly gap-store self-curation.
+
+  Runs scripts/ops/gap-curate.sh daily at 04:00 local time.
+  Performs: gap rebalance --apply, gap consolidate --apply (if available),
+  gap retention-sweep --apply (if available), then emits gap_store_curated event.
+
+  INSTALLATION (via installer script):
+    scripts/setup/install-gap-curate-launchd.sh
+
+  MANUAL INSTALLATION:
+    1. Replace /path/to/Chump with your repo path (e.g. /Users/jeff/Projects/Chump)
+    2. cp launchd/com.chump.gap-curate.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.gap-curate.plist
+    4. launchctl list | grep chump.gap-curate
+
+  LOGS:
+    stdout: /path/to/Chump/logs/gap-curate.out.log
+    stderr: /path/to/Chump/logs/gap-curate.err.log
+
+  DRY RUN (test without installing):
+    scripts/ops/gap-curate.sh --dry-run
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.gap-curate</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/gap-curate.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Run at 04:00 local time every day. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>4</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- Do NOT run at load — only at the scheduled time. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <!-- Prevent hammering if gap-curate crashes on startup. -->
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+
+  <key>StandardOutPath</key>
+  <string>/path/to/Chump/logs/gap-curate.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/path/to/Chump/logs/gap-curate.err.log</string>
+</dict>
+</plist>
