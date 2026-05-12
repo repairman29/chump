@@ -50,6 +50,7 @@ mod context_assembly;
 mod context_engine;
 mod context_firewall;
 mod context_window;
+mod cost_ledger;
 mod cost_tracker;
 mod cost_watch;
 mod counterfactual;
@@ -5792,6 +5793,61 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump cost-check [--gap-id ID] [--model MODEL]` (INFRA-877)
+    // Check daily spend against CHUMP_DAILY_BUDGET_USD and emit cost_quota_warning
+    // or cost_quota_exceeded events to ambient.jsonl.  Exit 0 = ok, 1 = warning,
+    // 2 = exceeded (spawn should be blocked).
+    if args.get(1).map(String::as_str) == Some("cost-check") {
+        let flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let gap_id = flag("--gap-id").unwrap_or_else(|| "unknown".to_string());
+        let model = flag("--model").unwrap_or_else(|| "unknown".to_string());
+        let repo_root = repo_path::repo_root();
+        let status = cost_ledger::check_quota(&repo_root, &gap_id, &model, true);
+        let pct = status.budget_used_pct();
+        let label = status.label();
+        match &status {
+            cost_ledger::QuotaStatus::Exceeded {
+                spend_usd,
+                budget_usd,
+                ..
+            } => {
+                eprintln!(
+                    "chump cost-check: EXCEEDED  ${:.4} of ${:.2} ({:.1}%)",
+                    spend_usd, budget_usd, pct
+                );
+                std::process::exit(2);
+            }
+            cost_ledger::QuotaStatus::Warning {
+                spend_usd,
+                budget_usd,
+                ..
+            } => {
+                eprintln!(
+                    "chump cost-check: WARNING   ${:.4} of ${:.2} ({:.1}%)",
+                    spend_usd, budget_usd, pct
+                );
+                std::process::exit(1);
+            }
+            cost_ledger::QuotaStatus::Ok {
+                spend_usd,
+                budget_usd,
+                ..
+            } => {
+                eprintln!(
+                    "chump cost-check: ok        ${:.4} of ${:.2} ({:.1}%)",
+                    spend_usd, budget_usd, pct
+                );
+            }
+        }
+        eprintln!("chump cost-check: status={label}  budget_used_pct={pct:.1}%");
+        return Ok(());
+    }
+
     // `chump kpi report` (INFRA-617) — exec-summary view of mission progress.
     // Sections: ship rate trend (1d/7d/30d), mission grade history, cost savings
     // vs Anthropic-only baseline, top productizations by leverage, tokens-per-ship.
@@ -6353,10 +6409,20 @@ async fn main() -> Result<()> {
     // `--json` for machine-readable output.
     if args.iter().any(|a| a == "--doctor") {
         let report = doctor::run_all_checks().await;
+        // INFRA-877: append budget quota line to human output
         let exit_code = if args.iter().any(|a| a == "--json") {
             doctor::print_json_report(&report)
         } else {
-            doctor::print_human_report(&report)
+            let code = doctor::print_human_report(&report);
+            let quota_line = cost_ledger::doctor_line(&repo_path::repo_root());
+            println!("  cost: {quota_line}");
+            // Exit non-zero if quota exceeded (spend > 100%)
+            let quota = cost_ledger::check_quota(&repo_path::repo_root(), "", "", false);
+            if quota.is_exceeded() {
+                1
+            } else {
+                code
+            }
         };
         std::process::exit(exit_code);
     }
