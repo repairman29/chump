@@ -985,6 +985,8 @@ jobs:
         run: bash scripts/ci/test-required-model.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
+      - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
+        run: bash scripts/ci/test-gap-templates.sh
       - name: per-gap performance profiling — timing wrapper, perf report, flame chart (INFRA-906)
         run: bash scripts/ci/test-gap-profiling.sh
       - name: credential lifecycle — rotation_due alert, age threshold, dry-run (INFRA-879)
