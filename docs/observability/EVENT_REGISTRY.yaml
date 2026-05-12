@@ -900,6 +900,15 @@ events:
       host: short hostname for cross-machine comparison
       Consumers: scripts/ops/gap-perf-report.sh computes p50/p95 per (gap_id,phase)
 
+  # ── INFRA-879: credential lifecycle ───────────────────────────────────────
+  - kind: credential_rotation_due
+    emitter: scripts/ops/credential-lifecycle.sh (INFRA-879)
+    trigger: a tracked credential (ANTHROPIC_API_KEY, GH_TOKEN) has exceeded the
+      rotation policy age (CHUMP_CRED_MAX_AGE_DAYS, default 90d); emitted once
+      per over-age credential per invocation of credential-lifecycle.sh
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, cred_name, age_days, max_age_days]
+
   - kind: worker_timeout_no_commit
     emitter: scripts/dispatch/worker.sh (INFRA-831)
     trigger: FLEET_TIMEOUT_S expired (rc=124) and claude produced no git commit
