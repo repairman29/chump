@@ -985,6 +985,8 @@ jobs:
         run: bash scripts/ci/test-required-model.sh
       - name: per-gap performance profiling — timing wrapper, perf report, flame chart (INFRA-906)
         run: bash scripts/ci/test-gap-profiling.sh
+      - name: credential lifecycle — rotation_due alert, age threshold, dry-run (INFRA-879)
+        run: bash scripts/ci/test-credential-lifecycle.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
 
