@@ -61,7 +61,62 @@
 
 set -euo pipefail
 
+# ── INFRA-634: CLI flag parsing (--repo, --locks-dir, --tmux-session) ────────
+# These flags make run-fleet.sh usable for non-Chump repos.
+# env vars (CHUMP_REPO, FLEET_LOCKS_DIR, FLEET_SESSION) are equivalent
+# and take lower precedence when a flag is given.
+_ARG_REPO=""
+_ARG_LOCKS_DIR=""
+_ARG_TMUX_SESSION=""
+_POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            _ARG_REPO="$2"; shift 2 ;;
+        --repo=*)
+            _ARG_REPO="${1#--repo=}"; shift ;;
+        --locks-dir)
+            _ARG_LOCKS_DIR="$2"; shift 2 ;;
+        --locks-dir=*)
+            _ARG_LOCKS_DIR="${1#--locks-dir=}"; shift ;;
+        --tmux-session)
+            _ARG_TMUX_SESSION="$2"; shift 2 ;;
+        --tmux-session=*)
+            _ARG_TMUX_SESSION="${1#--tmux-session=}"; shift ;;
+        *)
+            _POSITIONAL+=("$1"); shift ;;
+    esac
+done
+# Restore positional args (e.g. sub-commands passed by caller)
+set -- "${_POSITIONAL[@]+"${_POSITIONAL[@]}"}"
+
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+# --repo overrides git-inferred root (INFRA-634)
+if [[ -n "$_ARG_REPO" ]]; then
+    REPO_ROOT="$(cd "$_ARG_REPO" && pwd)"
+    export CHUMP_REPO="$REPO_ROOT"
+    echo "[run-fleet] INFRA-634: --repo override → REPO_ROOT=$REPO_ROOT (CHUMP_REPO exported)"
+elif [[ -n "${CHUMP_REPO:-}" ]]; then
+    REPO_ROOT="$(cd "$CHUMP_REPO" && pwd)"
+fi
+
+# --locks-dir overrides .chump-locks/ path (INFRA-634)
+FLEET_LOCKS_DIR="${_ARG_LOCKS_DIR:-${FLEET_LOCKS_DIR:-$REPO_ROOT/.chump-locks}}"
+if [[ -n "$_ARG_LOCKS_DIR" ]]; then
+    echo "[run-fleet] INFRA-634: --locks-dir override → FLEET_LOCKS_DIR=$FLEET_LOCKS_DIR"
+fi
+
+# INFRA-634: emit ambient event when cross-repo mode is activated.
+# Done early (before the main _amb_log setup) if any override flag was given.
+if [[ -n "$_ARG_REPO" || -n "$_ARG_LOCKS_DIR" || -n "$_ARG_TMUX_SESSION" ]]; then
+    _early_amb="${CHUMP_AMBIENT_LOG:-$FLEET_LOCKS_DIR/ambient.jsonl}"
+    mkdir -p "$(dirname "$_early_amb")" 2>/dev/null || true
+    _early_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","kind":"fleet_cross_repo_start","repo":"%s","locks_dir":"%s","session":"%s"}\n' \
+      "$_early_ts" "$REPO_ROOT" "$FLEET_LOCKS_DIR" "${_ARG_TMUX_SESSION:-}" \
+      >> "$_early_amb" 2>/dev/null || true
+fi
+
 SCRIPT_DIR="$REPO_ROOT/scripts/dispatch"
 # INFRA-469: route every `chump` invocation through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
@@ -114,7 +169,13 @@ FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
 FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
-FLEET_SESSION="${FLEET_SESSION:-chump-fleet}"
+# INFRA-634: --tmux-session flag overrides FLEET_SESSION env var.
+if [[ -n "$_ARG_TMUX_SESSION" ]]; then
+    FLEET_SESSION="$_ARG_TMUX_SESSION"
+    echo "[run-fleet] INFRA-634: --tmux-session override → FLEET_SESSION=$FLEET_SESSION"
+else
+    FLEET_SESSION="${FLEET_SESSION:-chump-fleet}"
+fi
 # INFRA-581: per-session PID file so teardown can cascade-kill orphaned workers.
 FLEET_PIDS_FILE="${FLEET_PIDS_FILE:-$HOME/.chump/fleet-pids-${FLEET_SESSION}.txt}"
 FLEET_DRY_RUN="${FLEET_DRY_RUN:-0}"
@@ -243,7 +304,7 @@ fi
 # whole fleet will churn futile push/PR attempts. Halt early instead.
 # Bypass: CHUMP_GH_PROBE_SKIP=1 (air-gapped, mock environments).
 if [[ "${CHUMP_GH_PROBE_SKIP:-0}" != "1" && "$FLEET_DRY_RUN" != "1" ]]; then
-    _gh_probe_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    _gh_probe_amb="${CHUMP_AMBIENT_LOG:-$FLEET_LOCKS_DIR/ambient.jsonl}"
     mkdir -p "$(dirname "$_gh_probe_amb")" 2>/dev/null || true
     _gh_probe_rc=0
     timeout "${CHUMP_GH_PROBE_TIMEOUT:-10}" gh api /rate_limit --silent 2>/dev/null || _gh_probe_rc=$?
@@ -262,7 +323,7 @@ fi
 # This catches misconfigurations early (e.g., expired OAUTH token, invalid API key)
 # and emits a clear diagnostic to ambient.jsonl.
 mkdir -p "$FLEET_LOG_DIR"
-_amb_log="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+_amb_log="${CHUMP_AMBIENT_LOG:-$FLEET_LOCKS_DIR/ambient.jsonl}"
 mkdir -p "$(dirname "$_amb_log")" 2>/dev/null || true
 
 _auth_probe_failed=0
@@ -334,7 +395,7 @@ fi
 # PID is the second-to-last dash-separated field — safe even if FLEET_SESSION
 # contains dashes because the trailing <PID>-<epoch> suffix is always numeric.
 _stale_reaped=0
-for _lease in "$REPO_ROOT/.chump-locks"/fleet-*.json; do
+for _lease in "$FLEET_LOCKS_DIR"/fleet-*.json; do
     [[ -f "$_lease" ]] || continue
     _sid="$(basename "$_lease" .json)"
     _pid="$(printf '%s' "$_sid" | rev | cut -d- -f2 | rev)"
@@ -401,7 +462,7 @@ fi
 # INFRA-620: emit fleet_auth_mode ambient event so operators can see which
 # auth path workers are using, and diagnose the subscription-token-expiry
 # failure mode (auth_storm at T+30-60min after launch).
-_amb_log="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+_amb_log="${CHUMP_AMBIENT_LOG:-$FLEET_LOCKS_DIR/ambient.jsonl}"
 mkdir -p "$(dirname "$_amb_log")" 2>/dev/null || true
 printf '{"ts":"%s","kind":"fleet_auth_mode","auth_mode":"%s","auth_path":"%s","sdk_has_refresh":"%s"}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -480,6 +541,9 @@ fi
 
 worker_env=(
     "REPO_ROOT=$REPO_ROOT"
+    # INFRA-634: propagate cross-repo overrides to workers
+    ${CHUMP_REPO:+"CHUMP_REPO=$CHUMP_REPO"}
+    "FLEET_LOCKS_DIR=$FLEET_LOCKS_DIR"
     "FLEET_LOG_DIR=$FLEET_LOG_DIR"
     "FLEET_TIMEOUT_S=$FLEET_TIMEOUT_S"
     "FLEET_PRIORITY_FILTER=$FLEET_PRIORITY_FILTER"
@@ -548,7 +612,7 @@ echo "$_sentinel_pid" >> "$FLEET_PIDS_FILE"
 if [[ -x "$SCRIPT_DIR/fleet-autorestart-daemon.sh" ]]; then
     FLEET_SESSION="$FLEET_SESSION" \
     FLEET_START_EPOCH="$FLEET_START_EPOCH" \
-    CHUMP_AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" \
+    CHUMP_AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$FLEET_LOCKS_DIR/ambient.jsonl}" \
     REPO_ROOT="$REPO_ROOT" \
     "$SCRIPT_DIR/fleet-autorestart-daemon.sh" &
     _daemon_pid=$!

@@ -1078,6 +1078,14 @@ events:
     consumers: [fleet-brief, operator-recall, opus-curator]
     fields_required: [ts, kind, gap_id, worktree_removed, branch_deleted, lease_released]
 
+  # ── INFRA-634: cross-repo fleet startup ──────────────────────────────────
+  - kind: fleet_cross_repo_start
+    emitter: scripts/dispatch/run-fleet.sh (INFRA-634)
+    trigger: run-fleet.sh launched with --repo, --locks-dir, or --tmux-session
+      override flags targeting a non-Chump repo
+    consumers: [fleet-brief, fleet-status, opus-curator]
+    fields_required: [ts, kind, repo, locks_dir, session]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
