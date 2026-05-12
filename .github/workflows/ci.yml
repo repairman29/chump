@@ -935,6 +935,8 @@ jobs:
         run: bash scripts/ci/test-bot-merge-stacked-rebase.sh
       - name: curator decision logging — kind, required fields, enum, phases (INFRA-848)
         run: bash scripts/ci/test-curator-decision-logging.sh
+      - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
+        run: bash scripts/ci/test-required-model.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
 
