@@ -1035,3 +1035,5 @@ jobs:
         run: bash scripts/ci/test-fleet-state-mutex.sh
       - name: gh-api-probe wired in bot-merge + run-fleet (INFRA-539)
         run: bash scripts/ci/test-gh-api-probe.sh
+      - name: change approval workflow — gate, approve, rollback, ambient events (INFRA-912)
+        run: bash scripts/ci/test-change-approval.sh
