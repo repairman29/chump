@@ -136,7 +136,11 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
 
             # --no-fail-fast so we surface the full failure list, not just first.
             # --quiet trims the per-test PASS lines but keeps FAILED lines.
-            if cargo test --bin chump --tests --no-fail-fast --quiet 2>&1 | tail -200; then
+            # RESILIENT-009: cd to REPO_ROOT_T so cargo test runs in the linked
+            # worktree, not the invoking shell's cwd (main checkout). Without this,
+            # GIT_DIR overrides cause tests to run against main's source tree even
+            # when pushing from a linked worktree.
+            if (cd "$REPO_ROOT_T" && cargo test --bin chump --tests --no-fail-fast --quiet) 2>&1 | tail -200; then
                 mkdir -p "$CACHE_DIR"
                 date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
                 echo "[pre-push] INFRA-761: ✓ full suite green; cached for tree $TREE_SHA" >&2
