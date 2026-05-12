@@ -1040,3 +1040,5 @@ jobs:
         run: bash scripts/ci/test-gh-api-probe.sh
       - name: change approval workflow — gate, approve, rollback, ambient events (INFRA-912)
         run: bash scripts/ci/test-change-approval.sh
+      - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        run: bash scripts/ci/test-run-consolidation.sh

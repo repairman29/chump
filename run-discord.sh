@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
+# [DEPRECATED — INFRA-691] Use './run.sh discord' instead. This shim will be removed in a future release.
 # Run the Discord bot. Loads DISCORD_TOKEN from .env if present.
+echo "[DEPRECATED] run-discord.sh: use './run.sh discord' instead" >&2
 # Enable "Message Content Intent" in Discord Developer Portal → Bot (see docs/operations/DISCORD_TROUBLESHOOTING.md).
 # Local inference: Ollama by default (no Python in agent runtime). Start Ollama and pull Qwen 2.5 14B:
 #   ollama serve && ollama pull qwen2.5:14b

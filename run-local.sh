@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
+# [DEPRECATED — INFRA-691] Use './run.sh local' instead. This shim will be removed in a future release.
 # Run Chump against local Ollama (no paid API, no Python in agent runtime).
 # Requires: Ollama installed and running; pull Qwen 2.5 14B: ollama serve && ollama pull qwen2.5:14b
 # Run from repo root, or by path: /path/to/chump-repo/run-local.sh
+echo "[DEPRECATED] run-local.sh: use './run.sh local' instead" >&2
 
 set -e
 cd "$(dirname "$0")"

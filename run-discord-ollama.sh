@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
+# [DEPRECATED — INFRA-691] Use './run.sh discord-ollama' instead. This shim will be removed in a future release.
 # Run the Discord bot against Ollama (explicit). Same as run-discord.sh default; use if you want to force Ollama and check it's up.
+echo "[DEPRECATED] run-discord-ollama.sh: use './run.sh discord-ollama' instead" >&2
 #
 # Prereqs: Ollama installed (ollama.com or brew install ollama), ollama serve, ollama pull qwen2.5:14b.
 # .env must have DISCORD_TOKEN.
