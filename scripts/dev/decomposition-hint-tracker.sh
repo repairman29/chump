@@ -99,7 +99,7 @@ with open(prjson_path) as f:
 pr_by_branch = {p["headRefName"]: p for p in prs}
 pr_by_gap = collections.defaultdict(list)
 import re as _re
-GAP_RE = _re.compile(r'\b([A-Z]+-\d{1,4})\b')
+GAP_RE = _re.compile(r'\b([A-Z]+-\d{1,4}|[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9a-f]{8})\b')
 for p in prs:
     title = p.get("title") or ""
     for gid in GAP_RE.findall(title):

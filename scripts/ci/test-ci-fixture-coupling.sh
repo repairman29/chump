@@ -32,8 +32,8 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 echo "=== INFRA-505 CI fixture-coupling lint ==="
 echo ""
 
-# Match docs/gaps/<DOMAIN>-NNN.yaml where NNN is 3+ digits.
-REAL_GAP_PATTERN='docs/gaps/[A-Z]+-[0-9]{3,}\.yaml'
+# Match docs/gaps/<DOMAIN>-NNN.yaml or docs/gaps/<uuid>--slug.yaml (INFRA-630).
+REAL_GAP_PATTERN='docs/gaps/([A-Z]+-[0-9]{3,}|[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9a-f]{8}).*\.yaml'
 
 violations=()
 
