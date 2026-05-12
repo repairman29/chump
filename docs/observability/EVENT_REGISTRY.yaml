@@ -189,6 +189,12 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, from, to, rationale]
 
+  - kind: fleet_restart
+    emitter: scripts/dispatch/run-fleet.sh (INFRA-844 --restart flag)
+    trigger: operator runs run-fleet.sh --restart; existing fleet torn down and relaunched
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, from_size, to_size, reason]
+
   - kind: pager_notified
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
     trigger: CHUMP_PAGER_WEBHOOK set + escalation fires + POST attempted
