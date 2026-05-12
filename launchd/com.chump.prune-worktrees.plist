@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.prune-worktrees — INFRA-832 LaunchAgent.
+
+  Runs "chump fleet prune-worktrees" with the apply flag at 03:00 local time daily.
+  Removes linked worktrees that are: older than CHUMP_WT_MAX_AGE_H (default 48h),
+  have no open PR, and have no uncommitted changes.
+
+  INSTALLATION (use scripts/setup/install-prune-worktrees-launchd.sh):
+    1. scripts/setup/install-prune-worktrees-launchd.sh
+    2. Verify: launchctl list | grep chump.prune-worktrees
+    3. Manual run: launchctl start com.chump.prune-worktrees
+       Logs: tail /tmp/chump-prune-worktrees.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.prune-worktrees.plist
+    rm ~/Library/LaunchAgents/com.chump.prune-worktrees.plist
+
+  Tunables:
+    CHUMP_WT_MAX_AGE_H   — worktree age threshold in hours (default: 48)
+    CHUMP_FIRST_OUTPUT_WATCHDOG=0 — disable first-output watchdog during prune
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.prune-worktrees</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>chump fleet prune-worktrees --apply</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Daily at 03:00 local time — low-traffic window, safe to remove stale trees. -->
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-prune-worktrees.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-prune-worktrees.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- Avoid hammering if launchd restarts mid-prune. -->
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+</dict>
+</plist>
