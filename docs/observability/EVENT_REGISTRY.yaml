@@ -1034,6 +1034,13 @@ events:
     consumers: [fleet-brief, kpi-report, opus-curator]
     fields_required: [ts, kind, ship_rate_24h, waste_rate_24h, cycle_time_p50_h, active_gaps, p0_count]
 
+  # ── Disk hygiene ─────────────────────────────────────────────────────────
+  - kind: tmp_cleanup
+    emitter: scripts/dev/cleanup-claude-tmp.sh
+    trigger: daily launchd job (04:00) or manual run; prunes stale /private/tmp/claude-*/ dirs
+    consumers: [fleet-brief, opus-curator]
+    fields_required: [ts, session, kind, dirs_pruned, files_removed, bytes_freed]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
