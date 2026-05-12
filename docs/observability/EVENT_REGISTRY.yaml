@@ -841,6 +841,20 @@ events:
       requested = gap.required_model or '' if not set.
       actual = FLEET_MODEL after all overrides.
 
+  # ── INFRA-906: per-gap performance profiling ──────────────────────────────
+  - kind: gap_perf_sample
+    emitter: scripts/ci/emit-gap-timing.sh (INFRA-906)
+    trigger: emitted by emit-gap-timing.sh wrapper after any timed CI phase
+      completes; records wall-clock duration and exit code for p50/p95 analysis
+    consumers: [fleet-brief, gap-perf-report]
+    fields_required: [ts, kind, gap_id, phase, duration_ms, exit_code, host]
+    docs: |
+      phase values: lint, test, build, e2e (or any custom label)
+      duration_ms: wall-clock milliseconds for the wrapped command
+      exit_code: exit status of the wrapped command (0 = success)
+      host: short hostname for cross-machine comparison
+      Consumers: scripts/ops/gap-perf-report.sh computes p50/p95 per (gap_id,phase)
+
   - kind: worker_timeout_no_commit
     emitter: scripts/dispatch/worker.sh (INFRA-831)
     trigger: FLEET_TIMEOUT_S expired (rc=124) and claude produced no git commit
