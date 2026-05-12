@@ -107,3 +107,4 @@ for pr in json.load(sys.stdin):
 echo
 log "summary: armed=$armed skipped(armed=$skipped_armed wip=$skipped_wip draft=$skipped_draft dirty=$skipped_dirty) errors=$errors"
 [[ "$DRY" -eq 1 ]] && log "(dry-run — no arms applied)"
+exit 0
