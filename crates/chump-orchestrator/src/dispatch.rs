@@ -1095,6 +1095,7 @@ mod tests {
             priority: "P1".into(),
             effort: "m".into(),
             status: "open".into(),
+            kind: String::new(),
             depends_on: None,
             closed_date: None,
         }
