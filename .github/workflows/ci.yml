@@ -1104,4 +1104,5 @@ jobs:
         run: bash scripts/ci/test-run-consolidation.sh
       - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
         run: bash scripts/ci/test-run-fleet-cross-repo.sh
-
+      - name: tool-call normalizer for weak LLMs (INFRA-740)
+        run: bash scripts/ci/test-tool-normalize.sh
