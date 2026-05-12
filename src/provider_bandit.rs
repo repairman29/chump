@@ -542,9 +542,18 @@ mod tests {
         // Happy path: success + fast latency + high throughput.
         let r = compose_reward(true, 1.0, 25.0);
         assert!((0.0..=1.0).contains(&r));
-        // Pathological: failure + slow + low throughput.
+        // Pathological observable: failure + slow + low throughput.
+        // INFRA-685 added p95_term + acc_term that default to 1.0 (best-case)
+        // when historical metrics are None, so the pure-observable pathology
+        // can still get ~0.25 reward from the historical defaults. Use the
+        // quality variant with None'd-out terms set to 0 to test the floor.
         let r2 = compose_reward(false, 100.0, 0.1);
-        assert!((0.0..0.1).contains(&r2));
+        assert!((0.0..=1.0).contains(&r2));
+        let r3 = compose_reward_with_quality(false, 100.0, 0.1, Some(100.0), Some(0.0));
+        assert!(
+            (0.0..0.1).contains(&r3),
+            "with historical pathology too: r3 = {r3}"
+        );
     }
 
     #[test]
