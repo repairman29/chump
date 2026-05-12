@@ -1805,6 +1805,23 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
             info "pr-watch.sh detached (pid $_watch_pid, log $_watch_log) — PR will auto-recover from DIRTY"
         fi
 
+        # INFRA-765: fire-and-forget rebase-stacked-prs.sh after auto-merge
+        # is armed. Monitors for this PR to merge, then rebases all open PRs
+        # that are stacked on our branch (base=BRANCH) onto origin/main and
+        # re-arms their auto-merge. Eliminates the 3-PR manual ceremony when
+        # a stacked base PR merges. Kill switch: CHUMP_AUTO_REBASE_STACKED=0.
+        if [[ "${CHUMP_AUTO_REBASE_STACKED:-1}" != "0" ]] \
+            && [[ -x "$REPO_ROOT/scripts/coord/rebase-stacked-prs.sh" ]] \
+            && [[ -n "$TARGET_PR" ]]; then
+            _stacked_log="/tmp/rebase-stacked-${TARGET_PR}-$(date +%s).log"
+            nohup "$REPO_ROOT/scripts/coord/rebase-stacked-prs.sh" \
+                "$TARGET_PR" "$BRANCH" "$REPO_ROOT" \
+                > "$_stacked_log" 2>&1 &
+            _stacked_pid=$!
+            disown "$_stacked_pid" 2>/dev/null || true
+            info "rebase-stacked-prs.sh detached (pid $_stacked_pid, log $_stacked_log) — will rebase PRs stacked on $BRANCH when it merges"
+        fi
+
         # INFRA-223: feed the chump_improvement_targets loop after every
         # shipped PR. distill-pr-skills.sh shipped in PR #712 but produces 0
         # rows in production because no scheduler fires it (Cold Water #10
