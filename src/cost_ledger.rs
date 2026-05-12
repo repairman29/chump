@@ -1,11 +1,13 @@
 //! INFRA-877: Cost quota enforcement — daily spend gate for `claude -p` spawns.
 //!
-//! Reads `CHUMP_DAILY_BUDGET_USD` (default $5.00/day) and compares against today's
-//! spend (from `ambient.jsonl` `session_end` events).
+//! Reads `CHUMP_DAILY_BUDGET_USD` and compares against today's spend
+//! (from `ambient.jsonl` `session_end` events).
 //!
 //! - At ≥ 80% of budget → emits `kind=cost_quota_warning` to ambient.jsonl.
 //! - At ≥ 100% of budget → emits `kind=cost_quota_exceeded`; spawn gated (returns `Err`).
 //! - `budget_used_pct` is surfaced in `chump fleet doctor` output.
+//!
+//! Event fields (both kinds): ts, kind, gap_id, model, cost_so_far_usd, limit_usd.
 
 use std::path::Path;
 
@@ -67,8 +69,10 @@ impl QuotaStatus {
 ///
 /// # Arguments
 /// * `repo_root` – repository root (for ambient.jsonl path)
+/// * `gap_id`    – included in emitted event payload (required by AC)
+/// * `model`     – included in emitted event payload (required by AC)
 /// * `emit`      – if true, write event to ambient.jsonl on warning/exceeded
-pub fn check_quota(repo_root: &Path, emit: bool) -> QuotaStatus {
+pub fn check_quota(repo_root: &Path, gap_id: &str, model: &str, emit: bool) -> QuotaStatus {
     let budget_usd = std::env::var("CHUMP_DAILY_BUDGET_USD")
         .ok()
         .and_then(|v| v.parse::<f64>().ok())
@@ -112,6 +116,8 @@ pub fn check_quota(repo_root: &Path, emit: bool) -> QuotaStatus {
                 emit_event(
                     repo_root,
                     "cost_quota_exceeded",
+                    gap_id,
+                    model,
                     *spend_usd,
                     *budget_usd,
                     *budget_used_pct,
@@ -125,6 +131,8 @@ pub fn check_quota(repo_root: &Path, emit: bool) -> QuotaStatus {
                 emit_event(
                     repo_root,
                     "cost_quota_warning",
+                    gap_id,
+                    model,
                     *spend_usd,
                     *budget_usd,
                     *budget_used_pct,
@@ -138,11 +146,20 @@ pub fn check_quota(repo_root: &Path, emit: bool) -> QuotaStatus {
 }
 
 /// Write a cost quota event to `ambient.jsonl`.
-fn emit_event(repo_root: &Path, kind: &str, spend_usd: f64, limit_usd: f64, pct: f64) {
+/// Fields: ts, kind, gap_id, model, cost_so_far_usd, limit_usd, budget_used_pct.
+fn emit_event(
+    repo_root: &Path,
+    kind: &str,
+    gap_id: &str,
+    model: &str,
+    spend_usd: f64,
+    limit_usd: f64,
+    pct: f64,
+) {
     let ambient = repo_root.join(".chump-locks/ambient.jsonl");
     let ts = utc_now_iso8601();
     let line = format!(
-        r#"{{"ts":"{ts}","kind":"{kind}","cost_so_far_usd":{spend_usd:.6},"limit_usd":{limit_usd:.2},"budget_used_pct":{pct:.2}}}"#,
+        r#"{{"ts":"{ts}","kind":"{kind}","gap_id":"{gap_id}","model":"{model}","cost_so_far_usd":{spend_usd:.6},"limit_usd":{limit_usd:.2},"budget_used_pct":{pct:.2}}}"#,
     );
     let _ = std::fs::create_dir_all(ambient.parent().unwrap_or(Path::new(".")));
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -156,15 +173,15 @@ fn emit_event(repo_root: &Path, kind: &str, spend_usd: f64, limit_usd: f64, pct:
 }
 
 /// Returns a one-line summary suitable for `chump fleet doctor`.
+/// Does not emit events (read-only check).
 pub fn doctor_line(repo_root: &Path) -> String {
-    let status = check_quota(repo_root, false);
+    let status = check_quota(repo_root, "", "", false);
     let pct = status.budget_used_pct();
     let label = status.label();
     format!("budget_used_pct={pct:.1}%  status={label}")
 }
 
 fn utc_now_iso8601() -> String {
-    // Reuse the same approach as cost_watch.rs — seconds since epoch.
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -180,7 +197,6 @@ fn unix_to_ymdhms(ts: u64) -> (u64, u64, u64, u64, u64, u64) {
     let ts = ts / 60;
     let h = ts % 24;
     let ts = ts / 24;
-    // Days since 1970-01-01
     let mut year = 1970u64;
     let mut days = ts;
     loop {
@@ -224,14 +240,20 @@ fn is_leap(y: u64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::io::Write;
 
-    fn write_session_end(dir: &std::path::Path, cost_usd: f64) {
+    /// Write a `session_end` event whose cost equals `target_usd`.
+    ///
+    /// Uses `CHUMP_COST_INPUT_PER_MTK=1.0` (set by the serial-env wrapper) so
+    /// cost = input_tokens / 1_000_000.  Callers must call `set_rate_env()` first.
+    fn write_spend(dir: &std::path::Path, target_usd: f64) {
         let amb = dir.join(".chump-locks/ambient.jsonl");
         let _ = std::fs::create_dir_all(amb.parent().unwrap());
         let ts = super::utc_now_iso8601();
+        let input_tokens = (target_usd * 1_000_000.0) as u64;
         let line = format!(
-            r#"{{"ts":"{ts}","kind":"session_end","model":"claude-3-haiku-20240307","input_tokens":1000,"output_tokens":500,"cache_read_tokens":0,"cost_usd":{cost_usd:.6}}}"#
+            r#"{{"ts":"{ts}","kind":"session_end","model":"test-model","input_tokens":{input_tokens},"output_tokens":0,"cache_read_tokens":0}}"#
         );
         let mut f = std::fs::OpenOptions::new()
             .create(true)
@@ -241,67 +263,162 @@ mod tests {
         writeln!(f, "{line}").unwrap();
     }
 
-    #[test]
-    fn quota_ok_at_50_pct() {
-        // Budget $10, spend $5 (50%)
-        let dir = tempfile::tempdir().unwrap();
-        std::env::set_var("CHUMP_DAILY_BUDGET_USD", "10.0");
-        write_session_end(dir.path(), 5.0);
-        let status = check_quota(dir.path(), false);
-        assert!(matches!(status, QuotaStatus::Ok { .. }), "got {:?}", status);
-        assert!((status.budget_used_pct() - 50.0).abs() < 1.0);
+    fn set_rate_env() {
+        std::env::set_var("CHUMP_COST_INPUT_PER_MTK", "1.0");
+        std::env::set_var("CHUMP_COST_OUTPUT_PER_MTK", "0.0");
+        std::env::set_var("CHUMP_COST_CACHE_READ_PER_MTK", "0.0");
+    }
+
+    fn clear_env() {
         std::env::remove_var("CHUMP_DAILY_BUDGET_USD");
+        std::env::remove_var("CHUMP_COST_INPUT_PER_MTK");
+        std::env::remove_var("CHUMP_COST_OUTPUT_PER_MTK");
+        std::env::remove_var("CHUMP_COST_CACHE_READ_PER_MTK");
     }
 
     #[test]
-    fn quota_warning_at_80_pct() {
-        // Budget $10, spend $8 (80%)
-        let dir = tempfile::tempdir().unwrap();
+    #[serial]
+    fn quota_ok_at_50_pct() {
+        set_rate_env();
         std::env::set_var("CHUMP_DAILY_BUDGET_USD", "10.0");
-        write_session_end(dir.path(), 8.0);
-        let status = check_quota(dir.path(), false);
+        let dir = tempfile::tempdir().unwrap();
+        write_spend(dir.path(), 5.0);
+        let status = check_quota(dir.path(), "INFRA-877", "test-model", false);
+        assert!(matches!(status, QuotaStatus::Ok { .. }), "got {:?}", status);
+        assert!(
+            (status.budget_used_pct() - 50.0).abs() < 1.0,
+            "pct={}",
+            status.budget_used_pct()
+        );
+        clear_env();
+    }
+
+    #[test]
+    #[serial]
+    fn quota_warning_at_80_pct() {
+        set_rate_env();
+        std::env::set_var("CHUMP_DAILY_BUDGET_USD", "10.0");
+        let dir = tempfile::tempdir().unwrap();
+        write_spend(dir.path(), 8.0);
+        let status = check_quota(dir.path(), "INFRA-877", "test-model", false);
         assert!(
             matches!(status, QuotaStatus::Warning { .. }),
             "got {:?}",
             status
         );
-        std::env::remove_var("CHUMP_DAILY_BUDGET_USD");
+        assert!(
+            (status.budget_used_pct() - 80.0).abs() < 1.0,
+            "pct={}",
+            status.budget_used_pct()
+        );
+        clear_env();
     }
 
     #[test]
-    fn quota_exceeded_at_110_pct() {
-        // Budget $10, spend $11 (110%)
-        let dir = tempfile::tempdir().unwrap();
+    #[serial]
+    fn quota_exceeded_at_100_pct() {
+        set_rate_env();
         std::env::set_var("CHUMP_DAILY_BUDGET_USD", "10.0");
-        write_session_end(dir.path(), 11.0);
-        let status = check_quota(dir.path(), false);
-        assert!(status.is_exceeded(), "got {:?}", status);
-        std::env::remove_var("CHUMP_DAILY_BUDGET_USD");
+        let dir = tempfile::tempdir().unwrap();
+        write_spend(dir.path(), 10.0);
+        let status = check_quota(dir.path(), "INFRA-877", "test-model", false);
+        assert!(
+            status.is_exceeded(),
+            "expected Exceeded at 100%, got {:?}",
+            status
+        );
+        clear_env();
     }
 
     #[test]
-    fn emit_writes_event_to_ambient() {
+    #[serial]
+    fn quota_exceeded_at_110_pct() {
+        set_rate_env();
+        std::env::set_var("CHUMP_DAILY_BUDGET_USD", "10.0");
         let dir = tempfile::tempdir().unwrap();
+        write_spend(dir.path(), 11.0);
+        let status = check_quota(dir.path(), "INFRA-877", "test-model", false);
+        assert!(
+            status.is_exceeded(),
+            "expected Exceeded at 110%, got {:?}",
+            status
+        );
+        assert!(
+            status.budget_used_pct() > 100.0,
+            "pct={}",
+            status.budget_used_pct()
+        );
+        clear_env();
+    }
+
+    #[test]
+    #[serial]
+    fn emit_warning_writes_required_fields() {
+        set_rate_env();
+        std::env::set_var("CHUMP_DAILY_BUDGET_USD", "10.0");
+        let dir = tempfile::tempdir().unwrap();
+        write_spend(dir.path(), 8.5);
+        check_quota(dir.path(), "INFRA-877", "claude-haiku", true);
+        let content = std::fs::read_to_string(dir.path().join(".chump-locks/ambient.jsonl"))
+            .unwrap_or_default();
+        assert!(
+            content.contains("cost_quota_warning"),
+            "expected warning event in: {content}"
+        );
+        assert!(
+            content.contains(r#""gap_id":"INFRA-877""#),
+            "missing gap_id: {content}"
+        );
+        assert!(
+            content.contains(r#""model":"claude-haiku""#),
+            "missing model: {content}"
+        );
+        assert!(
+            content.contains("cost_so_far_usd"),
+            "missing cost_so_far_usd: {content}"
+        );
+        assert!(
+            content.contains("limit_usd"),
+            "missing limit_usd: {content}"
+        );
+        clear_env();
+    }
+
+    #[test]
+    #[serial]
+    fn emit_exceeded_writes_required_fields() {
+        set_rate_env();
         std::env::set_var("CHUMP_DAILY_BUDGET_USD", "1.0");
-        write_session_end(dir.path(), 1.5); // 150% — exceeded
-        check_quota(dir.path(), true); // emit=true
+        let dir = tempfile::tempdir().unwrap();
+        write_spend(dir.path(), 1.5);
+        check_quota(dir.path(), "INFRA-TEST", "claude-sonnet", true);
         let content = std::fs::read_to_string(dir.path().join(".chump-locks/ambient.jsonl"))
             .unwrap_or_default();
         assert!(
             content.contains("cost_quota_exceeded"),
-            "expected event in: {content}"
+            "expected exceeded event in: {content}"
         );
-        std::env::remove_var("CHUMP_DAILY_BUDGET_USD");
+        assert!(
+            content.contains(r#""gap_id":"INFRA-TEST""#),
+            "missing gap_id: {content}"
+        );
+        assert!(
+            content.contains(r#""model":"claude-sonnet""#),
+            "missing model: {content}"
+        );
+        clear_env();
     }
 
     #[test]
+    #[serial]
     fn doctor_line_format() {
-        let dir = tempfile::tempdir().unwrap();
+        set_rate_env();
         std::env::set_var("CHUMP_DAILY_BUDGET_USD", "10.0");
-        write_session_end(dir.path(), 3.0);
+        let dir = tempfile::tempdir().unwrap();
+        write_spend(dir.path(), 3.0);
         let line = doctor_line(dir.path());
         assert!(line.contains("budget_used_pct="), "got: {line}");
         assert!(line.contains("status=ok"), "got: {line}");
-        std::env::remove_var("CHUMP_DAILY_BUDGET_USD");
+        clear_env();
     }
 }

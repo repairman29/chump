@@ -11,6 +11,7 @@
 #  7. At 110% spend: exits 1, emits cost_quota_exceeded
 #  8. --dry-run suppresses ambient write at 110%
 #  9. --json outputs JSON with budget_used_pct field
+# 10. event payload contains gap_id and model fields
 
 set -euo pipefail
 
@@ -132,16 +133,39 @@ fi
 # ── Test 9: --json outputs JSON with budget_used_pct ─────────────────────────
 AMB9="$TMP/t9.jsonl"
 write_spend "$AMB9" 6.0   # 60%
-JSON_OUT=$(CHUMP_DAILY_BUDGET_USD="$BUDGET" CHUMP_AMBIENT_LOG="$AMB9" bash "$SCRIPT" --json 2>/dev/null | grep "budget_used_pct" | head -1)
-if [[ -n "$JSON_OUT" ]]; then
-    PCT=$(echo "$JSON_OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('budget_used_pct', 'MISSING'))" 2>/dev/null || echo "FAIL")
-    if [[ "$PCT" != "MISSING" && "$PCT" != "FAIL" ]]; then
-        ok "9: --json outputs budget_used_pct=${PCT}"
-    else
-        err "9: --json output missing budget_used_pct field"
-    fi
+JSON_OUT=$(CHUMP_DAILY_BUDGET_USD="$BUDGET" CHUMP_AMBIENT_LOG="$AMB9" bash "$SCRIPT" --json 2>/dev/null)
+if python3 -c "
+import json, sys
+data = json.loads('''$JSON_OUT''')
+assert 'budget_used_pct' in data, f'missing budget_used_pct in: {data}'
+" 2>/dev/null; then
+    ok "9: --json outputs budget_used_pct"
 else
-    err "9: --json produced no output"
+    err "9: --json missing budget_used_pct (got: $JSON_OUT)"
+fi
+
+# ── Test 10: event payload contains gap_id and model fields ──────────────────
+AMB10="$TMP/t10.jsonl"
+write_spend "$AMB10" 8.5  # 85% — warning
+CHUMP_DAILY_BUDGET_USD="$BUDGET" \
+CHUMP_AMBIENT_LOG="$AMB10" \
+CHUMP_CURRENT_GAP_ID="INFRA-877" \
+CHUMP_CURRENT_MODEL="claude-haiku" \
+    bash "$SCRIPT" >/dev/null 2>&1 || true
+
+if python3 -c "
+import json
+events = [json.loads(l) for l in open('$AMB10') if l.strip()]
+e = next((x for x in events if x.get('kind') in ('cost_quota_warning','cost_quota_exceeded')), None)
+assert e is not None, 'no quota event found'
+assert e.get('gap_id') == 'INFRA-877', f'wrong gap_id: {e.get(\"gap_id\")}'
+assert e.get('model') == 'claude-haiku', f'wrong model: {e.get(\"model\")}'
+assert 'cost_so_far_usd' in e, f'missing cost_so_far_usd'
+assert 'limit_usd' in e, f'missing limit_usd'
+" 2>/dev/null; then
+    ok "10: event payload has gap_id, model, cost_so_far_usd, limit_usd"
+else
+    fail "10: event payload missing required fields (content: $(cat "$AMB10"))"
 fi
 
 echo ""

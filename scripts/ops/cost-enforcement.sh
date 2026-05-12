@@ -17,6 +17,8 @@
 #   REPO_ROOT                Repo root (default: auto-detected)
 #   CHUMP_DAILY_BUDGET_USD   Daily budget in USD (default: 5.00)
 #   CHUMP_AMBIENT_LOG        Path to ambient.jsonl
+#   CHUMP_CURRENT_GAP_ID     Gap ID of the spawner (included in event payload)
+#   CHUMP_CURRENT_MODEL      Model being spawned (included in event payload)
 #   DRY_RUN                  If "1", suppress writes and non-zero exits
 
 set -euo pipefail
@@ -41,6 +43,8 @@ done
 
 _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 HOST="${HOSTNAME:-$(hostname 2>/dev/null || echo unknown)}"
+GAP_ID="${CHUMP_CURRENT_GAP_ID:-unknown}"
+MODEL="${CHUMP_CURRENT_MODEL:-unknown}"
 
 # ── Compute today's spend from session_end events ─────────────────────────────
 SPEND_JSON=$(python3 - <<PYEOF
@@ -126,10 +130,10 @@ _emit() {
 TS="$(_ts)"
 
 if [[ "$STATUS" == "exceeded" ]]; then
-    _emit "{\"ts\":\"$TS\",\"kind\":\"cost_quota_exceeded\",\"cost_so_far_usd\":$SPEND_USD,\"limit_usd\":$BUDGET_USD,\"budget_used_pct\":$PCT,\"host\":\"$HOST\"}"
+    _emit "{\"ts\":\"$TS\",\"kind\":\"cost_quota_exceeded\",\"gap_id\":\"$GAP_ID\",\"model\":\"$MODEL\",\"cost_so_far_usd\":$SPEND_USD,\"limit_usd\":$BUDGET_USD,\"budget_used_pct\":$PCT}"
     echo "QUOTA EXCEEDED: \$${SPEND_USD} of \$${BUDGET_USD} daily budget (${PCT}%)" >&2
 elif [[ "$STATUS" == "warning" ]]; then
-    _emit "{\"ts\":\"$TS\",\"kind\":\"cost_quota_warning\",\"cost_so_far_usd\":$SPEND_USD,\"limit_usd\":$BUDGET_USD,\"budget_used_pct\":$PCT,\"host\":\"$HOST\"}"
+    _emit "{\"ts\":\"$TS\",\"kind\":\"cost_quota_warning\",\"gap_id\":\"$GAP_ID\",\"model\":\"$MODEL\",\"cost_so_far_usd\":$SPEND_USD,\"limit_usd\":$BUDGET_USD,\"budget_used_pct\":$PCT}"
     echo "QUOTA WARNING: \$${SPEND_USD} of \$${BUDGET_USD} daily budget (${PCT}%)" >&2
 fi
 
