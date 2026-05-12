@@ -185,7 +185,40 @@ print(d[(int(os.environ['IDX'])-1)%len(d)] if d else '')" 2>/dev/null || true)"
     fi
 fi
 
-trap 'log "interrupted; exiting loop"; exit 0' INT TERM
+# INFRA-686: graceful SIGTERM handler — commit WIP + push + release lease before exit.
+# Reads global vars set by the gap dispatch loop (GAP_ID, branch, wt_path).
+_sigterm_wip_checkpoint() {
+    log "SIGTERM received — running WIP checkpoint (INFRA-686)"
+    local _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    # Only act if we're mid-gap (GAP_ID and wt_path set by the loop)
+    if [[ -n "${GAP_ID:-}" && -n "${wt_path:-}" && -d "${wt_path:-/nonexistent}" ]]; then
+        local _has_changes=0
+        git -C "$wt_path" diff --quiet HEAD 2>/dev/null || _has_changes=1
+        git -C "$wt_path" diff --cached --quiet 2>/dev/null || _has_changes=1
+        [[ -n "$(git -C "$wt_path" ls-files --others --exclude-standard 2>/dev/null)" ]] && _has_changes=1
+        if [[ "$_has_changes" -eq 1 ]]; then
+            git -C "$wt_path" add -A 2>/dev/null || true
+            if git -C "$wt_path" commit -m "WIP-${GAP_ID}: sigterm-rescue (INFRA-686)" --no-verify 2>/dev/null; then
+                mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
+                printf '{"ts":"%s","kind":"wip_sigterm_checkpoint","agent_id":"%s","gap_id":"%s","branch":"%s"}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                    "$AGENT_ID" "$GAP_ID" "${branch:-}" >> "$_amb" 2>/dev/null || true
+                if git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null; then
+                    log "INFRA-686: WIP commit pushed for $GAP_ID → origin/${branch:-}"
+                else
+                    log "INFRA-686: WIP commit created but push failed for $GAP_ID (offline or no remote)"
+                fi
+            fi
+        fi
+    fi
+    # Release lease before exit
+    if [[ -n "${CHUMP_SESSION_ID:-}" ]]; then
+        rm -f "$REPO_ROOT/.chump-locks/${CHUMP_SESSION_ID}.json" 2>/dev/null || true
+    fi
+    log "interrupted; exiting loop (after WIP checkpoint)"
+    exit 0
+}
+trap '_sigterm_wip_checkpoint' INT TERM
 
 # Hard rule from CLAUDE.md: never auto-pickup these — they need human judgment.
 # 2026-05-08: SWARM-* added — that domain belongs to chump-proprietary
