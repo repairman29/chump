@@ -78,6 +78,7 @@ mod fleet;
 mod fleet_capability;
 mod fleet_db;
 mod fleet_health;
+mod fleet_resize;
 mod fleet_status;
 mod fleet_tool;
 mod fleet_velocity;
@@ -2398,20 +2399,113 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // INFRA-650: fleet auto-prune-down controller.
+            // Evaluates 4 conditions and recommends (or applies) a scale-down.
+            "auto-resize" => {
+                let apply = args.iter().any(|a| a == "--apply");
+                let as_json = args.iter().any(|a| a == "--json");
+                let current_size: u32 =
+                    std::fs::read_to_string(repo_root.join(".chump/fleet-desired-size"))
+                        .ok()
+                        .and_then(|s| s.trim().parse().ok())
+                        .unwrap_or(2);
+
+                let decision = fleet_resize::evaluate(&repo_root, current_size);
+
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+                match decision {
+                    None => {
+                        if as_json {
+                            println!("{{\"fleet_resize_decision\":\"none\",\"current_size\":{current_size}}}");
+                        } else {
+                            println!(
+                                "[fleet auto-resize] current_size={current_size} — no resize trigger fired"
+                            );
+                        }
+                    }
+                    Some(d) => {
+                        let trigger_name = format!("{:?}", d.trigger);
+                        if as_json {
+                            println!(
+                                "{{\"fleet_resize_decision\":\"resize\",\"trigger\":\"{trigger_name}\",\
+                                 \"current_size\":{current_size},\"recommended_size\":{},\"rationale\":\"{}\"}}",
+                                d.recommended_size,
+                                d.rationale.replace('"', "'")
+                            );
+                        } else {
+                            println!(
+                                "[fleet auto-resize] trigger={trigger_name} \
+                                 current={current_size} → recommended={}",
+                                d.recommended_size
+                            );
+                            println!("[fleet auto-resize] rationale: {}", d.rationale);
+                        }
+
+                        // Emit ambient event (INFRA-650 AC criterion 4).
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            let _ = writeln!(
+                                f,
+                                "{{\"ts\":\"{ts}\",\"kind\":\"fleet_resize_decision\",\
+                                 \"trigger\":\"{trigger_name}\",\"current_size\":{current_size},\
+                                 \"recommended_size\":{},\"rationale\":\"{}\"}}",
+                                d.recommended_size,
+                                d.rationale.replace('"', "'")
+                            );
+                        }
+
+                        if apply && d.recommended_size < current_size {
+                            println!(
+                                "[fleet auto-resize] --apply: scaling from {current_size} to {}",
+                                d.recommended_size
+                            );
+                            // Write desired size.
+                            let _ = std::fs::write(
+                                repo_root.join(".chump/fleet-desired-size"),
+                                format!("{}\n", d.recommended_size),
+                            );
+                            // Emit fleet_scale_change.
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                let _ = writeln!(
+                                    f,
+                                    "{{\"ts\":\"{ts}\",\"kind\":\"fleet_scale_change\",\
+                                     \"from\":{current_size},\"to\":{},\"rationale\":\"auto-resize: {trigger_name}\"}}",
+                                    d.recommended_size
+                                );
+                            }
+                        } else if !apply {
+                            println!("[fleet auto-resize] run with --apply to execute resize");
+                        }
+                    }
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen>"
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize>"
                 );
-                eprintln!("  start      [--size N] [--model M] [--effort xs,s,m] [--domain D]");
-                eprintln!("  stop       [--session NAME]");
-                eprintln!("  status     [--json]");
-                eprintln!("  scale      N [--session NAME]");
+                eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]");
+                eprintln!("  stop        [--session NAME]");
+                eprintln!("  status      [--json]");
+                eprintln!("  scale       N [--session NAME]");
                 eprintln!("  snapshot");
-                eprintln!("  restore    <snapshot-id>");
-                eprintln!("  restart    [--size N] [--session NAME]");
-                eprintln!("  audit-pids [--apply]");
-                eprintln!("  brief      [--json] [--window SECS]");
-                eprintln!("  auto-widen [--apply]  -- widen effort/priority filter on starvation");
+                eprintln!("  restore     <snapshot-id>");
+                eprintln!("  restart     [--size N] [--session NAME]");
+                eprintln!("  audit-pids  [--apply]");
+                eprintln!("  brief       [--json] [--window SECS]");
+                eprintln!("  auto-widen  [--apply]  -- widen effort/priority filter on starvation");
+                eprintln!(
+                    "  auto-resize [--apply] [--json]  -- scale down on 4 conditions (INFRA-650)"
+                );
                 std::process::exit(2);
             }
         }
