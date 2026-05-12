@@ -5250,6 +5250,93 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-935: gap consolidate — detect near-duplicate gap titles.
+            // Usage: chump gap consolidate [--dry-run] [--threshold N] [--json]
+            //   --threshold N  similarity threshold 0-100 (default 80)
+            //   --dry-run      (implied always; never mutates state.db)
+            //   --json         output pairs as JSON array
+            "consolidate" => {
+                let threshold: u32 = args
+                    .iter()
+                    .position(|a| a == "--threshold")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(80);
+                let as_json = args.iter().any(|a| a == "--json");
+
+                let all_gaps = match store.list(Some("open")) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap consolidate: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                /// Token-overlap similarity (0-100) between two titles.
+                fn title_similarity(a: &str, b: &str) -> u32 {
+                    fn tokens(s: &str) -> std::collections::HashSet<String> {
+                        s.to_lowercase()
+                            .split(|c: char| !c.is_alphanumeric())
+                            .filter(|t| t.len() >= 3)
+                            .map(String::from)
+                            .collect()
+                    }
+                    let ta = tokens(a);
+                    let tb = tokens(b);
+                    if ta.is_empty() || tb.is_empty() {
+                        return 0;
+                    }
+                    let intersection = ta.intersection(&tb).count();
+                    let union = ta.union(&tb).count();
+                    ((intersection as f64 / union as f64) * 100.0) as u32
+                }
+
+                let mut pairs: Vec<(String, String, u32)> = Vec::new();
+                for i in 0..all_gaps.len() {
+                    for j in (i + 1)..all_gaps.len() {
+                        let sim = title_similarity(&all_gaps[i].title, &all_gaps[j].title);
+                        if sim >= threshold {
+                            pairs.push((all_gaps[i].id.clone(), all_gaps[j].id.clone(), sim));
+                        }
+                    }
+                }
+                pairs.sort_by_key(|p| std::cmp::Reverse(p.2));
+
+                if as_json {
+                    let json_pairs: Vec<String> = pairs
+                        .iter()
+                        .map(|(a, b, sim)| {
+                            format!(
+                                r#"{{"gap_id_a":"{}","gap_id_b":"{}","similarity_pct":{},"suggested_action":"{}"}}"#,
+                                a, b, sim,
+                                if *sim >= 90 { "merge" } else { "review" }
+                            )
+                        })
+                        .collect();
+                    println!("[{}]", json_pairs.join(","));
+                } else {
+                    println!(
+                        "═══ Gap Consolidation (INFRA-935) ═══ threshold={}% — {} open gaps scanned",
+                        threshold,
+                        all_gaps.len()
+                    );
+                    if pairs.is_empty() {
+                        println!("  (no near-duplicate pairs found — registry clean)");
+                    } else {
+                        println!(
+                            "  {:>4}  {:>12}  {:>12}  {}",
+                            "sim%", "gap_a", "gap_b", "action"
+                        );
+                        println!("  ────  ────────────  ────────────  ──────");
+                        for (a, b, sim) in &pairs {
+                            let action = if *sim >= 90 { "merge" } else { "review" };
+                            println!("  {:>3}%  {:>12}  {:>12}  {}", sim, a, b, action);
+                        }
+                    }
+                }
+                return Ok(());
+            }
+
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
@@ -5279,6 +5366,7 @@ async fn main() -> Result<()> {
                 eprintln!("  audit-priorities [--json]   # PM health check (META-046)");
                 eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check for closed gaps");
                 eprintln!("  audit-ac         --open [--json]                  # INFRA-936: warn on open gaps with empty/TODO AC");
+                eprintln!("  consolidate      [--threshold N] [--json]  # INFRA-935 near-duplicate title detection");
                 eprintln!("  rebalance        [--apply] [--json]  # P0 budget + pillar floor enforcement (INFRA-635)");
                 eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
                 eprintln!("  import-spec      <path> [--apply] [--dry-run] [--json]  # import gaps from markdown spec (INFRA-636)");
