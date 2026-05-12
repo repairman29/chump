@@ -797,6 +797,14 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, inv]
 
+  - kind: worker_timeout_no_commit
+    emitter: scripts/dispatch/worker.sh (INFRA-831)
+    trigger: FLEET_TIMEOUT_S expired (rc=124) and claude produced no git commit
+      during the cycle; worker attempted a WIP rescue commit via chump-commit.sh
+      before releasing the lease. rescue_committed=1 means the rescue succeeded.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, agent_id, gap_id, timeout_s, rescue_committed]
+
   - kind: worker_first_output_timeout
     emitter: scripts/dispatch/worker.sh (INFRA-828)
     trigger: claude subprocess produced no stdout within CHUMP_FIRST_OUTPUT_TIMEOUT_S

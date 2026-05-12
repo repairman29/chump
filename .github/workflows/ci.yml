@@ -926,6 +926,8 @@ jobs:
         run: bash scripts/ci/test-worker-circuit-breaker.sh
       - name: worker first-output watchdog — kill switch, event emission, retry (INFRA-828)
         run: bash scripts/ci/test-worker-first-output-watchdog.sh
+      - name: worker timeout-no-commit rescue — kill switch, event emission, SHA diff (INFRA-831)
+        run: bash scripts/ci/test-worker-timeout-no-commit.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
 
