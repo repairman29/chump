@@ -4704,6 +4704,331 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-636: import gaps from a markdown spec file.
+            // Parses headings matching `### REQ-NNN — <title>` and subsections
+            // **Priority.** / **What we need.** / **Acceptance.**
+            "import-spec" => {
+                let path_arg = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap import-spec <path> [--apply] [--dry-run] [--json]");
+                    std::process::exit(2);
+                });
+                let apply = args.iter().any(|a| a == "--apply");
+                let dry_run = args.iter().any(|a| a == "--dry-run") || !apply;
+                let spec_path = std::path::Path::new(&path_arg);
+                let content = match std::fs::read_to_string(spec_path) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        eprintln!("import-spec: cannot read {path_arg}: {e}");
+                        std::process::exit(1);
+                    }
+                };
+
+                // Parse the spec: collect entries keyed by heading.
+                struct SpecEntry {
+                    req_id: String,
+                    title: String,
+                    priority: String,
+                    description: String,
+                    acceptance: String,
+                }
+
+                fn infer_pillar(title: &str) -> &'static str {
+                    let t = title.to_uppercase();
+                    if t.contains("CREDIBLE")
+                        || t.contains("OBSERV")
+                        || t.contains("METRIC")
+                        || t.contains("MEASURE")
+                    {
+                        "CREDIBLE"
+                    } else if t.contains("EFFECTIVE")
+                        || t.contains("USER")
+                        || t.contains("DASHBOARD")
+                        || t.contains("UX")
+                    {
+                        "EFFECTIVE"
+                    } else if t.contains("RESILIENT")
+                        || t.contains("RECOVER")
+                        || t.contains("FAILOVER")
+                        || t.contains("RETRY")
+                    {
+                        "RESILIENT"
+                    } else if t.contains("ZERO-WASTE")
+                        || t.contains("WASTE")
+                        || t.contains("PRUNE")
+                        || t.contains("COST")
+                    {
+                        "ZERO-WASTE"
+                    } else {
+                        "MISSION"
+                    }
+                }
+
+                fn map_priority(raw: &str) -> String {
+                    let r = raw.trim().to_uppercase();
+                    if r.starts_with("P0") || r == "CRITICAL" {
+                        return "P0".into();
+                    }
+                    if r.starts_with("P1") || r == "HIGH" {
+                        return "P1".into();
+                    }
+                    if r.starts_with("P2") || r == "MEDIUM" {
+                        return "P2".into();
+                    }
+                    if r.starts_with("P3") || r == "LOW" {
+                        return "P3".into();
+                    }
+                    "P2".into()
+                }
+
+                let mut entries: Vec<SpecEntry> = Vec::new();
+                let mut current: Option<SpecEntry> = None;
+                let mut in_section: Option<&str> = None;
+                let mut buf = String::new();
+
+                for line in content.lines() {
+                    // Detect `### REQ-NNN — title` headings
+                    if let Some(rest) = line.strip_prefix("### ") {
+                        // Flush previous entry
+                        if let Some(ref mut e) = current {
+                            match in_section {
+                                Some("desc") => e.description = buf.trim().to_string(),
+                                Some("ac") => e.acceptance = buf.trim().to_string(),
+                                _ => {}
+                            }
+                        }
+                        if let Some(e) = current.take() {
+                            entries.push(e);
+                        }
+                        buf.clear();
+                        in_section = None;
+
+                        // Parse "REQ-NNN — title" or plain title
+                        let (req_id, title) = if let Some(idx) = rest.find(" \u{2014} ") {
+                            (rest[..idx].to_string(), rest[idx + 4..].to_string())
+                        } else if let Some(idx) = rest.find(" -- ") {
+                            (rest[..idx].to_string(), rest[idx + 4..].to_string())
+                        } else {
+                            (String::new(), rest.to_string())
+                        };
+                        current = Some(SpecEntry {
+                            req_id,
+                            title,
+                            priority: "P2".into(),
+                            description: String::new(),
+                            acceptance: String::new(),
+                        });
+                    } else if line.starts_with("**Priority.**")
+                        || line.starts_with("**Priority**: ")
+                    {
+                        if let Some(ref mut e) = current {
+                            // Flush previous section
+                            match in_section {
+                                Some("desc") => e.description = buf.trim().to_string(),
+                                Some("ac") => e.acceptance = buf.trim().to_string(),
+                                _ => {}
+                            }
+                            buf.clear();
+                            in_section = Some("priority");
+                            // Priority value may be inline
+                            let raw = line
+                                .trim_start_matches("**Priority.**")
+                                .trim_start_matches("**Priority**:")
+                                .trim();
+                            if !raw.is_empty() {
+                                e.priority = map_priority(raw);
+                                in_section = None;
+                            }
+                        }
+                    } else if line.starts_with("**What we need.**")
+                        || line.starts_with("**Description.**")
+                    {
+                        if let Some(ref mut e) = current {
+                            match in_section {
+                                Some("desc") => e.description = buf.trim().to_string(),
+                                Some("ac") => e.acceptance = buf.trim().to_string(),
+                                _ => {}
+                            }
+                            buf.clear();
+                            in_section = Some("desc");
+                            let rest = line
+                                .trim_start_matches("**What we need.**")
+                                .trim_start_matches("**Description.**")
+                                .trim();
+                            if !rest.is_empty() {
+                                buf.push_str(rest);
+                                buf.push('\n');
+                            }
+                        }
+                    } else if line.starts_with("**Acceptance.**") || line.starts_with("**AC.**") {
+                        if let Some(ref mut e) = current {
+                            match in_section {
+                                Some("desc") => e.description = buf.trim().to_string(),
+                                Some("ac") => e.acceptance = buf.trim().to_string(),
+                                _ => {}
+                            }
+                            buf.clear();
+                            in_section = Some("ac");
+                            let rest = line
+                                .trim_start_matches("**Acceptance.**")
+                                .trim_start_matches("**AC.**")
+                                .trim();
+                            if !rest.is_empty() {
+                                buf.push_str(rest);
+                                buf.push('\n');
+                            }
+                        }
+                    } else if in_section.is_some() {
+                        // Accumulate section content; stop at blank separator or next heading
+                        if current.is_some() {
+                            if in_section == Some("priority") && !line.trim().is_empty() {
+                                if let Some(ref mut e) = current {
+                                    e.priority = map_priority(line.trim());
+                                }
+                                in_section = None;
+                            } else {
+                                buf.push_str(line);
+                                buf.push('\n');
+                            }
+                        }
+                    }
+                }
+                // Flush last entry
+                if let Some(ref mut e) = current {
+                    match in_section {
+                        Some("desc") => e.description = buf.trim().to_string(),
+                        Some("ac") => e.acceptance = buf.trim().to_string(),
+                        _ => {}
+                    }
+                }
+                if let Some(e) = current.take() {
+                    entries.push(e);
+                }
+
+                if entries.is_empty() {
+                    eprintln!("import-spec: no gaps found in {path_arg} (expected '### REQ-NNN — title' headings)");
+                    std::process::exit(1);
+                }
+
+                tracing::info!(
+                    path = path_arg,
+                    count = entries.len(),
+                    apply = apply,
+                    "import-spec"
+                );
+
+                let mut filed: Vec<String> = Vec::new();
+                let mut skipped: Vec<String> = Vec::new();
+
+                for e in &entries {
+                    let pillar = infer_pillar(&e.title);
+                    let full_title = if !e.req_id.is_empty() {
+                        format!("{}: {} — {}", pillar, e.req_id, e.title)
+                    } else {
+                        format!("{}: {}", pillar, e.title)
+                    };
+                    let ac_json = if e.acceptance.is_empty() {
+                        "[]".to_string()
+                    } else {
+                        let parts: Vec<&str> = e
+                            .acceptance
+                            .lines()
+                            .map(str::trim)
+                            .filter(|l| !l.is_empty())
+                            .collect();
+                        serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
+                    };
+
+                    if dry_run {
+                        if json_out {
+                            let obj = serde_json::json!({
+                                "req_id": e.req_id,
+                                "title": full_title,
+                                "priority": e.priority,
+                                "domain": "INFRA",
+                                "description": e.description,
+                                "acceptance_criteria_preview": e.acceptance,
+                                "dry_run": true,
+                            });
+                            println!("{}", serde_json::to_string_pretty(&obj).unwrap_or_default());
+                        } else {
+                            println!("[dry-run] {} | {} | {}", e.priority, "INFRA", full_title);
+                            if !e.description.is_empty() {
+                                println!(
+                                    "          desc: {}",
+                                    e.description.lines().next().unwrap_or("")
+                                );
+                            }
+                            if !e.acceptance.is_empty() {
+                                println!(
+                                    "          ac:   {}",
+                                    e.acceptance.lines().next().unwrap_or("")
+                                );
+                            }
+                        }
+                        skipped.push(full_title.clone());
+                    } else {
+                        match store.reserve("INFRA", &full_title, &e.priority, "m") {
+                            Ok(id) => {
+                                let _ = store.set_fields(
+                                    &id,
+                                    gap_store::GapFieldUpdate {
+                                        description: if e.description.is_empty() {
+                                            None
+                                        } else {
+                                            Some(e.description.clone())
+                                        },
+                                        acceptance_criteria: if ac_json == "[]" {
+                                            None
+                                        } else {
+                                            Some(ac_json)
+                                        },
+                                        ..Default::default()
+                                    },
+                                );
+                                if json_out {
+                                    let obj = serde_json::json!({"id": id, "title": full_title, "priority": e.priority});
+                                    println!(
+                                        "{}",
+                                        serde_json::to_string_pretty(&obj).unwrap_or_default()
+                                    );
+                                } else {
+                                    println!("filed {} | {} | {}", id, e.priority, full_title);
+                                }
+                                filed.push(id);
+                            }
+                            Err(err) => {
+                                eprintln!(
+                                    "import-spec: failed to reserve '{}': {err:#}",
+                                    full_title
+                                );
+                                skipped.push(full_title.clone());
+                            }
+                        }
+                    }
+                }
+
+                if !dry_run {
+                    tracing::info!(
+                        filed = filed.len(),
+                        skipped = skipped.len(),
+                        "import-spec complete"
+                    );
+                    eprintln!(
+                        "import-spec: filed {} gaps, skipped {}",
+                        filed.len(),
+                        skipped.len()
+                    );
+                    // Run rebalance after bulk import per AC (pillar floor + P0 budget).
+                    if !filed.is_empty() {
+                        let _ = std::process::Command::new(
+                            std::env::current_exe().unwrap_or_else(|_| "chump".into()),
+                        )
+                        .args(["gap", "rebalance"])
+                        .status();
+                    }
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
@@ -4734,6 +5059,7 @@ async fn main() -> Result<()> {
                 eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check");
                 eprintln!("  rebalance        [--apply] [--json]  # P0 budget + pillar floor enforcement (INFRA-635)");
                 eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
+                eprintln!("  import-spec      <path> [--apply] [--dry-run] [--json]  # import gaps from markdown spec (INFRA-636)");
                 std::process::exit(2);
             }
         }
