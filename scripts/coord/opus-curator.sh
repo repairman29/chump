@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # opus-curator.sh — INFRA-848: proactive health audit + curator decision logging
+#                   INFRA-847: fleet-state.json mutual exclusion via flock(1)
 # Runs every 10-15 min; audits gaps, pillars, waste, PRs; makes curator decisions.
 # This is the primary decision-maker for non-emergency fleet health.
 #
@@ -8,14 +9,27 @@
 #                  waste_investigation | balance_restock
 #   reasoning: human-readable explanation of why this decision was made
 #   action_taken: what was actually done (vs. just identified)
+#
+# INFRA-847: all fleet-state.json reads/writes go through emergency-fast-path.sh
+#   which wraps them in flock(1).
+# Env:
+#   CHUMP_FLEET_STATE_MUTEX=0       bypass locking (debug only; passed through)
+#   CHUMP_FLEET_STATE_LOCK_TIMEOUT_S lock wait timeout in seconds (default 5)
+#   CHUMP_CURATOR_DRY_RUN=1        skip fleet-state write (read-only audit)
 
 set -euo pipefail
 
 FLEET_STATE="${CHUMP_FLEET_STATE:-.chump-locks/fleet-state.json}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}"
+REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+_FAST_PATH="$REPO_ROOT/scripts/coord/emergency-fast-path.sh"
 
-# Initialize fleet state
+# Initialize fleet state (via emergency-fast-path.sh if available, else direct)
 init_fleet_state() {
+  if [[ -x "$_FAST_PATH" ]]; then
+    # emergency-fast-path.sh handles missing file + flock
+    return 0
+  fi
   if [[ ! -f "$FLEET_STATE" ]]; then
     mkdir -p "$(dirname "$FLEET_STATE")" 2>/dev/null || true
     cat > "$FLEET_STATE" <<'EOF'
@@ -29,6 +43,24 @@ init_fleet_state() {
   "last_fast_path_run": null
 }
 EOF
+  fi
+}
+
+# INFRA-847: fleet_state_set_field — update a top-level field via flock accessor.
+# Uses emergency-fast-path.sh when available; falls back to direct write (no flock).
+fleet_state_set_field() {
+  local key="$1" val="$2"
+  if [[ -x "$_FAST_PATH" ]]; then
+    CHUMP_AMBIENT_LOG="$AMBIENT" \
+    REPO_ROOT="$REPO_ROOT" \
+    bash "$_FAST_PATH" set-field "$key" "$val" 2>/dev/null || true
+  else
+    # Fallback: direct jq update (no flock — emergency-fast-path.sh missing)
+    if command -v jq &>/dev/null && [[ -f "$FLEET_STATE" ]]; then
+      jq --arg k "$key" --arg v "$val" '.[$k] = $v' "$FLEET_STATE" \
+        > "${FLEET_STATE}.tmp" 2>/dev/null && \
+        mv "${FLEET_STATE}.tmp" "$FLEET_STATE" 2>/dev/null || true
+    fi
   fi
 }
 
@@ -166,7 +198,7 @@ curator_decisions() {
   if command -v chump &> /dev/null; then
     _p0=$(chump gap audit-priorities --json 2>/dev/null | jq '.p0_count // 0' 2>/dev/null || echo 0)
     if [[ "${_p0:-0}" -gt 5 ]]; then
-      echo "Decision 1: P0 inflation ($p0 > 5) — demote lowest-priority P0 to P1"
+      echo "Decision 1: P0 inflation ($_p0 > 5) — demote lowest-priority P0 to P1"
       # INFRA-848: emit curator_decision with required fields
       log_curator_decision \
         "p0_demotion" \
@@ -209,10 +241,22 @@ curator_decisions() {
 # ============================================================================
 # MAIN
 # ============================================================================
+_DRY_RUN="${CHUMP_CURATOR_DRY_RUN:-0}"
+_ONCE=0
+
+_parse_args() {
+  for arg in "$@"; do
+    case "$arg" in
+      --dry-run) _DRY_RUN=1 ;;
+      --once)    _ONCE=1 ;;
+    esac
+  done
+}
+
 main() {
   init_fleet_state
 
-  echo "[$(date -u +%H:%M:%SZ)] OPUS CURATOR RUN"
+  echo "[$(date -u +%H:%M:%SZ)] OPUS CURATOR RUN${_DRY_RUN:+' (dry-run)'}"
   echo ""
   echo "=== AUDIT PHASE ==="
 
@@ -223,12 +267,12 @@ main() {
   audit_pr_stuck || true
   audit_pillar_balance || true
 
-  # Update last curator run
-  if command -v jq &> /dev/null && [[ -f "$FLEET_STATE" ]]; then
-    jq --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-      '.last_curator_run = $now' \
-      "$FLEET_STATE" > "${FLEET_STATE}.tmp" 2>/dev/null && \
-      mv "${FLEET_STATE}.tmp" "$FLEET_STATE" 2>/dev/null || true
+  # INFRA-847: update last_curator_run via fleet_state_set_field (flock-protected)
+  # Skip in dry-run mode to avoid side effects during testing.
+  if [[ "${_DRY_RUN}" != "1" ]]; then
+    fleet_state_set_field "last_curator_run" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  else
+    echo "[dry-run] would update last_curator_run via fleet_state_set_field"
   fi
 
   # Decision phase
@@ -238,4 +282,5 @@ main() {
   echo "=== CURATOR AUDIT COMPLETE ==="
 }
 
-main "$@"
+_parse_args "$@"
+main
