@@ -441,10 +441,14 @@ impl WasteDomainReport {
         )
     }
 
-    /// Returns the first domain that exceeds `threshold_pct` of total token spend.
-    /// Used by `chump waste-tally --domain` to exit non-zero on breach (INFRA-934).
+    /// Returns the first *named* domain (excluding `(unknown)`) that exceeds
+    /// `threshold_pct` of total spend. Used by `chump waste-tally --domain`
+    /// to exit non-zero on breach (INFRA-934). `(unknown)` is excluded because
+    /// it is an attribution artifact, not a real gap domain.
     pub fn any_domain_exceeds(&self, threshold_pct: f64) -> Option<&WasteDomainEntry> {
-        self.domains.iter().find(|e| e.pct_of_total > threshold_pct)
+        self.domains
+            .iter()
+            .find(|e| e.domain != "(unknown)" && e.pct_of_total > threshold_pct)
     }
 }
 
