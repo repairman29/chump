@@ -1414,11 +1414,23 @@ impl LocalOpenAIProvider {
                 let input = match serde_json::from_str(&tc.arguments) {
                     Ok(v) => v,
                     Err(e) => {
-                        eprintln!(
-                            "chump: malformed streamed tool JSON for {}: {} — args: [REDACTED]",
-                            tc.name, e
-                        );
-                        json!({})
+                        // INFRA-740: attempt lightweight normalisation before giving up.
+                        if let Some((repaired, repair_label)) =
+                            crate::tool_normalize::normalize_tool_args(&tc.arguments)
+                        {
+                            eprintln!(
+                                "chump: tool JSON repaired for {} via {} (original parse: {})",
+                                tc.name, repair_label, e
+                            );
+                            crate::tool_normalize::emit_normalize_event(&tc.name, &repair_label);
+                            repaired
+                        } else {
+                            eprintln!(
+                                "chump: malformed streamed tool JSON for {}: {} — args: [REDACTED]",
+                                tc.name, e
+                            );
+                            json!({})
+                        }
                     }
                 };
                 ToolCall {
@@ -1574,11 +1586,26 @@ impl LocalOpenAIProvider {
                     let input = match serde_json::from_str(&tc.function.arguments) {
                         Ok(v) => v,
                         Err(e) => {
-                            eprintln!(
-                                "chump: malformed tool JSON for {}: {} — args: [REDACTED]",
-                                tc.function.name, e
-                            );
-                            json!({})
+                            // INFRA-740: attempt lightweight normalisation before giving up.
+                            if let Some((repaired, repair_label)) =
+                                crate::tool_normalize::normalize_tool_args(&tc.function.arguments)
+                            {
+                                eprintln!(
+                                    "chump: tool JSON repaired for {} via {} (original parse: {})",
+                                    tc.function.name, repair_label, e
+                                );
+                                crate::tool_normalize::emit_normalize_event(
+                                    &tc.function.name,
+                                    &repair_label,
+                                );
+                                repaired
+                            } else {
+                                eprintln!(
+                                    "chump: malformed tool JSON for {}: {} — args: [REDACTED]",
+                                    tc.function.name, e
+                                );
+                                json!({})
+                            }
                         }
                     };
                     ToolCall {

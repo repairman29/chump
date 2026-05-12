@@ -193,6 +193,7 @@ mod tool_input_schema_validate;
 mod tool_input_validate;
 mod tool_inventory;
 mod tool_middleware;
+mod tool_normalize; // INFRA-740: repair malformed tool-call JSON from weak LLMs
 mod tool_policy;
 mod tool_routing;
 mod toolkit_status_tool;

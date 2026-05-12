@@ -1001,6 +1001,8 @@ jobs:
         run: bash scripts/ci/test-gap-run-now.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
+      - name: tool-call normalizer for weak LLMs (INFRA-740)
+        run: bash scripts/ci/test-tool-normalize.sh
       - name: fleet metrics snapshot — ship_rate, waste_rate, cycle_time_p50 (INFRA-900)
         run: bash scripts/ci/test-fleet-metrics-snapshot.sh
 
