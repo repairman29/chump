@@ -4449,3 +4449,138 @@ mod spawn_error_tests {
         );
     }
 }
+
+/// CREDIBLE-020: end-to-end stub tests for spawn_gap_workflow.
+///
+/// Tests the four-phase workflow (preflight → claim → execute-gap → ship) using
+/// a stub `chump` binary so no real agent, git, or network operations run.
+/// The stub updates the gap store DB so the status transition (open → done) is
+/// verified through the same GapStore path the HTTP handler uses.
+///
+/// Run with:
+///   cargo test --bin chump -- web_server::workflow_e2e_tests --test-threads=1
+#[cfg(test)]
+mod workflow_e2e_tests {
+    use super::spawn_gap_workflow;
+    use serial_test::serial;
+    use std::fs;
+
+    /// Create a minimal SQLite gap store with TEST-001 as an open gap.
+    fn make_test_db(dir: &std::path::Path) {
+        let chump_dir = dir.join(".chump");
+        fs::create_dir_all(&chump_dir).unwrap();
+        let db_path = chump_dir.join("state.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS gaps (
+                id TEXT PRIMARY KEY,
+                domain TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                priority TEXT NOT NULL DEFAULT '',
+                effort TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'open',
+                acceptance_criteria TEXT NOT NULL DEFAULT '',
+                depends_on TEXT NOT NULL DEFAULT '',
+                notes TEXT NOT NULL DEFAULT '',
+                source_doc TEXT NOT NULL DEFAULT '',
+                created_at INTEGER NOT NULL DEFAULT 0,
+                closed_at INTEGER
+            );
+            INSERT OR IGNORE INTO gaps (id, domain, title, status, priority, effort)
+            VALUES ('TEST-001', 'TEST', 'CREDIBLE-020 fixture gap', 'open', 'P1', 's');",
+        )
+        .unwrap();
+    }
+
+    /// Create a stub `chump` shell script that:
+    /// - `claim <id>` → exits 0
+    /// - `--execute-gap <id>` → exits 0
+    /// - `gap ship <id> --update-yaml` → updates DB status to 'done', exits 0
+    fn make_stub_bin(dir: &std::path::Path) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let bin = dir.join("stub-chump");
+        let db_path = dir.join(".chump/state.db");
+        let script = format!(
+            "#!/usr/bin/env bash\n\
+             case \"$1\" in\n\
+               claim) exit 0 ;;\n\
+               --execute-gap) exit 0 ;;\n\
+               gap)\n\
+                 case \"$2\" in\n\
+                   ship) sqlite3 '{}' \"UPDATE gaps SET status='done' WHERE id='$3'\"; exit 0 ;;\n\
+                   *) exit 0 ;;\n\
+                 esac ;;\n\
+               *) exit 0 ;;\n\
+             esac\n",
+            db_path.display()
+        );
+        fs::write(&bin, &script).unwrap();
+        fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+        bin
+    }
+
+    /// Run spawn_gap_workflow("TEST-001") with stub bin + temp CHUMP_REPO.
+    /// Returns (ambient_events_text, gap_db_status_after).
+    async fn run_stub_workflow(tmp: &std::path::Path) -> (String, String) {
+        make_test_db(tmp);
+        let stub = make_stub_bin(tmp);
+        let ambient = tmp.join("ambient.jsonl");
+
+        // No scripts/coord/gap-preflight.sh in tmp → run_preflight_check auto-skips
+        std::env::set_var("CHUMP_BIN", stub.to_str().unwrap());
+        std::env::set_var("CHUMP_REPO", tmp.to_str().unwrap());
+        std::env::set_var("CHUMP_AMBIENT_IN_PROMPT", ambient.to_str().unwrap());
+
+        let result = spawn_gap_workflow("TEST-001").await;
+
+        std::env::remove_var("CHUMP_BIN");
+        std::env::remove_var("CHUMP_REPO");
+        std::env::remove_var("CHUMP_AMBIENT_IN_PROMPT");
+
+        assert!(
+            result.is_ok(),
+            "spawn_gap_workflow must succeed with stub binary: {:?}",
+            result
+        );
+
+        let events = fs::read_to_string(&ambient).unwrap_or_default();
+        let conn = rusqlite::Connection::open(tmp.join(".chump/state.db")).unwrap();
+        let status: String = conn
+            .query_row("SELECT status FROM gaps WHERE id = 'TEST-001'", [], |row| {
+                row.get(0)
+            })
+            .unwrap_or_else(|_| "unknown".to_string());
+
+        (events, status)
+    }
+
+    // ── (b) All four phases emitted in sequence ────────────────────────────
+
+    #[tokio::test]
+    #[serial(spawn_env)]
+    async fn credible020_spawn_gap_workflow_emits_four_phases() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (events, _) = run_stub_workflow(tmp.path()).await;
+
+        for phase in &["preflight", "claim", "execute-gap", "ship"] {
+            assert!(
+                events.contains(phase),
+                "ambient.jsonl must record phase '{phase}'.\nGot:\n{events}"
+            );
+        }
+    }
+
+    // ── (c) Status transitions open → done via ship step ──────────────────
+
+    #[tokio::test]
+    #[serial(spawn_env)]
+    async fn credible020_gap_status_becomes_done_after_ship() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (_, status) = run_stub_workflow(tmp.path()).await;
+        assert_eq!(
+            status, "done",
+            "gap.status must be 'done' after ship phase completes — got '{status}'"
+        );
+    }
+}

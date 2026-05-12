@@ -956,4 +956,8 @@ jobs:
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-state-db-restore.sh
+      - name: PWA gap workflow e2e — 4-phase stub + status transition (CREDIBLE-020)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-pwa-e2e-gap-workflow.sh
 
