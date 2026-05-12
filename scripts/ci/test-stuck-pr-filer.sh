@@ -419,8 +419,8 @@ JSON
     "pr checks 111"*)
         cat <<JSON
 [
-  {"name":"test","status":"COMPLETED","conclusion":"FAILURE","startedAt":"\${OLD_TS_855}","completedAt":"\${OLD_TS_855}","detailsUrl":""},
-  {"name":"clippy","status":"COMPLETED","conclusion":"FAILURE","startedAt":"\${OLD_TS_855}","completedAt":"\${OLD_TS_855}","detailsUrl":""}
+  {"name":"test","state":"FAILURE","completedAt":"\${OLD_TS_855}"},
+  {"name":"clippy","state":"FAILURE","completedAt":"\${OLD_TS_855}"}
 ]
 JSON
         ;;
@@ -481,8 +481,8 @@ JSON
         ;;
     "pr checks 222"*)
         cat <<JSON
-[{"name":"test","status":"COMPLETED","conclusion":"FAILURE","startedAt":"\${OLD_TS_855b}","completedAt":"\${OLD_TS_855b}","detailsUrl":""},
- {"name":"audit","status":"COMPLETED","conclusion":"FAILURE","startedAt":"\${OLD_TS_855b}","completedAt":"\${OLD_TS_855b}","detailsUrl":""}]
+[{"name":"test","state":"FAILURE","completedAt":"\${OLD_TS_855b}"},
+ {"name":"audit","state":"FAILURE","completedAt":"\${OLD_TS_855b}"}]
 JSON
         ;;
     *) exit 0 ;;

@@ -449,15 +449,20 @@ Suggested action:
                 # One gap per PR, not one per failing check name.
                 if echo " $_handled_prs " | grep -qw "$_pr_num"; then
                     info "  PR #$_pr_num already handled this run (check '$_check_name') — skipping duplicate"
+                    local _855_amb="${CHUMP_AMBIENT_LOG:-${REAPER_LOCK_DIR:-.chump-locks}/ambient.jsonl}"
+                    printf '{"ts":"%s","kind":"stuck_pr_filing_dedup_hit","pr_number":%s,"check_name":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pr_num" "$_check_name" \
+                        >> "$_855_amb" 2>/dev/null || true
+                    SKIPPED=$((SKIPPED + 1))
                     continue
                 fi
                 if already_filed "$_pr_num"; then
                     info "  PR #$_pr_num already has a stuck-pr filing — skipping"
                     # INFRA-855: emit dedup hit so watchdogs / fleet-brief can observe
-                    local _lock_dir="${REAPER_LOCK_DIR:-.chump-locks}"
+                    local _855_amb="${CHUMP_AMBIENT_LOG:-${REAPER_LOCK_DIR:-.chump-locks}/ambient.jsonl}"
                     printf '{"ts":"%s","kind":"stuck_pr_filing_dedup_hit","pr_number":%s,"check_name":"%s"}\n' \
                         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pr_num" "$_check_name" \
-                        >> "$_lock_dir/ambient.jsonl" 2>/dev/null || true
+                        >> "$_855_amb" 2>/dev/null || true
                     SKIPPED=$((SKIPPED + 1))
                     continue
                 fi
