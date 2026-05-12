@@ -51,7 +51,10 @@ else
 fi
 
 # 4. spawn_gap_workflow takes request_id parameter
-if grep -q 'fn spawn_gap_workflow.*request_id' "$WS" 2>/dev/null; then
+# Function signature may span multiple lines (rustfmt style), so use awk to
+# capture lines between "fn spawn_gap_workflow" and the closing ")" and grep
+# for request_id within that block.
+if awk '/fn spawn_gap_workflow/,/\)/' "$WS" 2>/dev/null | grep -q 'request_id'; then
     ok "web_server.rs: spawn_gap_workflow accepts request_id"
 else
     fail "web_server.rs: spawn_gap_workflow missing request_id parameter"
