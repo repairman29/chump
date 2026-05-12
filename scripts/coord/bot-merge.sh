@@ -584,6 +584,21 @@ _bm_health_init() {
 # visible to siblings. queue-health-monitor.sh reads from the main repo path.
 # shellcheck source=../lib/repo-paths.sh
 source "$(dirname "$0")/../lib/repo-paths.sh"
+
+# INFRA-854: verify REPO_ROOT matches this script's physical location.
+# git rev-parse --show-toplevel can return a wrong worktree path on macOS
+# when gitdir back-references are corrupted. Abort loudly rather than
+# silently operating on the wrong worktree.
+_bm_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P 2>/dev/null || true)"
+_bm_expected_root="$(cd "$_bm_script_dir/../.." && pwd -P 2>/dev/null || true)"
+_bm_actual_root="$(cd "$REPO_ROOT" && pwd -P 2>/dev/null || true)"
+if [[ -n "$_bm_expected_root" && -n "$_bm_actual_root" && "$_bm_expected_root" != "$_bm_actual_root" ]]; then
+    echo "bot-merge.sh: REPO_ROOT mismatch: git says '${_bm_actual_root}', script is in '${_bm_expected_root}' — aborting to prevent wrong-worktree damage" >&2
+    echo "  Fix: run bot-merge.sh from the correct worktree, or repair the gitdir back-reference." >&2
+    exit 1
+fi
+unset _bm_script_dir _bm_expected_root _bm_actual_root
+
 cd "$REPO_ROOT"
 # INFRA-469: route every `chump` call through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"

@@ -795,3 +795,6 @@ jobs:
 
       - name: precommit strict replay fixture (INFRA-767)
         run: bash scripts/ci/test-precommit-strict-replay.sh
+
+      - name: bot-merge REPO_ROOT mismatch guard (INFRA-854)
+        run: bash scripts/ci/test-bot-merge-repo-root-guard.sh
