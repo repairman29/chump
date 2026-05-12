@@ -41,9 +41,11 @@ TIMEOUT="${CHUMP_DOCTOR_TIMEOUT:-5}"
 QUIET="${CHUMP_DOCTOR_QUIET:-0}"
 FORCE="${CHUMP_DOCTOR_FORCE:-0}"
 PROBE_CASCADE=0
+PROBE_RESOURCES=0
 for arg in "$@"; do
   case "$arg" in
-    --probe-cascade) PROBE_CASCADE=1 ;;
+    --probe-cascade)   PROBE_CASCADE=1 ;;
+    --probe-resources) PROBE_RESOURCES=1 ;;
   esac
 done
 
@@ -122,6 +124,95 @@ reap_zombies() {
   count=$(printf '%s\n' "$zombies" | wc -l | tr -d ' ')
   log "best-effort kill on $count UE-state chump zombies"
   printf '%s\n' "$zombies" | xargs -r kill -9 2>/dev/null || true
+}
+
+probe_resources() {
+  # INFRA-395: substrate-level pressure check before fleet launch.
+  # Checks disk, worktree target/ aggregate, sccache, free RAM, Claude task dir.
+  # Thresholds configurable via env vars for testing.
+  local tmp_warn_gb="${CHUMP_DOCTOR_TMP_WARN_GB:-5}"
+  local target_warn_gb="${CHUMP_DOCTOR_TARGET_WARN_GB:-50}"
+  local ram_warn_gb="${CHUMP_DOCTOR_RAM_WARN_GB:-8}"
+  local claude_warn_mb="${CHUMP_DOCTOR_CLAUDE_WARN_MB:-2048}"
+  local any_warn=0
+
+  status_line() {
+    local label="$1" value="$2" ok="$3"   # ok=0=crit, 1=warn, 2=ok
+    local icon
+    case "$ok" in
+      0) icon="🚨" ; any_warn=1 ;;
+      1) icon="⚠️ " ; any_warn=1 ;;
+      *) icon="✅" ;;
+    esac
+    printf '  %s %-30s %s\n' "$icon" "$label" "$value"
+  }
+
+  # /tmp free space
+  local tmp_avail_kb tmp_avail_gb
+  tmp_avail_kb=$(df -k /tmp 2>/dev/null | awk 'NR==2 {print $4}' || echo 0)
+  tmp_avail_gb=$((tmp_avail_kb / 1048576))
+  if [[ "$tmp_avail_gb" -lt "$tmp_warn_gb" ]]; then
+    status_line "/tmp free" "${tmp_avail_gb} GB (warn<${tmp_warn_gb})" 0
+  else
+    status_line "/tmp free" "${tmp_avail_gb} GB" 2
+  fi
+
+  # Aggregate size of worktree target/ dirs
+  local target_total_kb=0 target_total_gb
+  for _d in /tmp/chump-*/target /private/tmp/chump-*/target; do
+    [[ -d "$_d" ]] || continue
+    local _sz
+    _sz=$(du -sk "$_d" 2>/dev/null | awk '{print $1}' || echo 0)
+    target_total_kb=$((target_total_kb + _sz))
+  done
+  target_total_gb=$((target_total_kb / 1048576))
+  if [[ "$target_total_gb" -ge "$target_warn_gb" ]]; then
+    status_line "worktree target/ aggregate" "${target_total_gb} GB (warn>=${target_warn_gb})" 0
+  elif [[ "$target_total_gb" -ge "$((target_warn_gb * 3 / 4))" ]]; then
+    status_line "worktree target/ aggregate" "${target_total_gb} GB" 1
+  else
+    status_line "worktree target/ aggregate" "${target_total_gb} GB" 2
+  fi
+
+  # sccache hit rate
+  if command -v sccache &>/dev/null; then
+    local stats hits misses hit_rate=0
+    stats=$(sccache --show-stats 2>/dev/null || true)
+    hits=$(printf '%s\n' "$stats" | awk '/Cache hits/{print $NF}' | tr -d ',' | head -1)
+    misses=$(printf '%s\n' "$stats" | awk '/Cache misses/{print $NF}' | tr -d ',' | head -1)
+    hits="${hits:-0}"; misses="${misses:-0}"
+    local total=$(( hits + misses ))
+    [[ "$total" -gt 0 ]] && hit_rate=$(( hits * 100 / total ))
+    status_line "sccache hit rate" "${hit_rate}% (${hits} hits / ${total} total)" 2
+  else
+    status_line "sccache" "not installed" 1
+  fi
+
+  # Free RAM (macOS vm_stat, page size 4096)
+  local pages_free ram_free_gb=0
+  pages_free=$(vm_stat 2>/dev/null | awk '/^Pages free:/ {print $3}' | tr -d '.' || echo 0)
+  [[ -n "$pages_free" && "$pages_free" -gt 0 ]] && ram_free_gb=$((pages_free * 4096 / 1073741824))
+  if [[ "$ram_free_gb" -lt "$ram_warn_gb" ]]; then
+    status_line "free RAM" "${ram_free_gb} GB (warn<${ram_warn_gb})" 0
+  else
+    status_line "free RAM" "${ram_free_gb} GB" 2
+  fi
+
+  # Claude Code task output dir
+  local claude_dir="/private/tmp/claude-501"
+  if [[ -d "$claude_dir" ]]; then
+    local claude_mb
+    claude_mb=$(du -sm "$claude_dir" 2>/dev/null | awk '{print $1}' || echo 0)
+    if [[ "$claude_mb" -ge "$claude_warn_mb" ]]; then
+      status_line "claude task dir" "${claude_mb} MB (warn>=${claude_warn_mb})" 1
+    else
+      status_line "claude task dir" "${claude_mb} MB" 2
+    fi
+  else
+    status_line "claude task dir" "absent" 2
+  fi
+
+  return $any_warn
 }
 
 probe_cascade() {
@@ -204,6 +295,14 @@ probe_cascade() {
 }
 
 main() {
+  if [ "$PROBE_RESOURCES" = "1" ]; then
+    log "substrate resource check…"
+    probe_resources
+    local _rc=$?
+    [[ $_rc -eq 0 ]] && log "all resources OK" || log "resource warnings present — resolve before fleet launch"
+    exit $_rc
+  fi
+
   if [ "$PROBE_CASCADE" = "1" ]; then
     probe_cascade
     exit $?
