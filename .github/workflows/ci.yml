@@ -989,6 +989,8 @@ jobs:
         run: bash scripts/ci/test-gap-profiling.sh
       - name: credential lifecycle — rotation_due alert, age threshold, dry-run (INFRA-879)
         run: bash scripts/ci/test-credential-lifecycle.sh
+      - name: gap run-now — manual dispatch trigger, event schema, validation (INFRA-895)
+        run: bash scripts/ci/test-gap-run-now.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
 
