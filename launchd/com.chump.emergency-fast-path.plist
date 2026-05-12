@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.emergency-fast-path — INFRA-842 LaunchAgent.
+
+  Runs scripts/coord/emergency-fast-path.sh every 5 minutes (300s).
+  High-confidence signal detection: fleet_wedge, silent_agent_cluster.
+  Guard rail only; primary decisions handled by opus-curator (600s).
+
+  INSTALLATION (use scripts/setup/install-curator-launchd.sh):
+    1. scripts/setup/install-curator-launchd.sh
+    2. Verify: launchctl list | grep chump.emergency-fast-path
+    3. Manual run: launchctl start com.chump.emergency-fast-path
+       Logs: tail /tmp/chump-emergency-fast-path.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.emergency-fast-path.plist
+    rm ~/Library/LaunchAgents/com.chump.emergency-fast-path.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.emergency-fast-path</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>scripts/coord/emergency-fast-path.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-emergency-fast-path.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-emergency-fast-path.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

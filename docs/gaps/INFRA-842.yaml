@@ -1,0 +1,11 @@
+- id: INFRA-842
+  domain: INFRA
+  title: "INFRA: Deploy scheduled tasks for curator and fast-path"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "launchd/com.chump.opus-curator.plist: StartInterval=600s (10 min), RunAtLoad=false, StandardOutPath/ErrorPath wired to logs/"
+    - "launchd/com.chump.emergency-fast-path.plist: StartInterval=300s (5 min), RunAtLoad=false"
+    - "scripts/setup/install-curator-launchd.sh: idempotent install+load for both plists using resolve-main-worktree.sh (INFRA-451)"
+    - "scripts/ci/test-curator-launchd.sh: verifies both plists exist, labels correct, intervals correct (plistlib), scripts referenced exist"
