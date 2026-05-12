@@ -106,6 +106,7 @@ _last_heartbeat=$(date +%s)
 _heartbeat_interval=60
 
 # INFRA-823: per-worker wedge tracking for first-output watchdog and storm detection.
+# INFRA-828: CHUMP_FIRST_OUTPUT_WATCHDOG=0 disables the watchdog entirely.
 _wedge_retries=0
 _wedge_count=0
 _wedge_storm_threshold="${CHUMP_WEDGE_STORM_THRESHOLD:-5}"
@@ -790,18 +791,20 @@ Operator or sibling worker can rescue this branch via:
                 ) >"$cycle_log" 2>&1 &
                 _claude_pid=$!
 
-                # First-output watchdog: kills claude if no stdout within
-                # FIRST_OUTPUT_TIMEOUT_S. Prevents burning full FLEET_TIMEOUT_S
-                # on a wedged agent that will never produce output.
-                (
-                    sleep "$_first_output_timeout"
-                    if [ -f "$cycle_log" ] && [ "$(wc -c < "$cycle_log" 2>/dev/null || echo 0)" -lt 10 ]; then
-                        kill "-TERM" "$_claude_pid" 2>/dev/null || true
-                        sleep 2
-                        kill "-KILL" "$_claude_pid" 2>/dev/null || true
-                    fi
-                ) &
-                _fo_watchdog_pid=$!
+                # INFRA-828: First-output watchdog — kills claude if no stdout within
+                # CHUMP_FIRST_OUTPUT_TIMEOUT_S (default 120s). CHUMP_FIRST_OUTPUT_WATCHDOG=0 disables.
+                _fo_watchdog_pid=0
+                if [[ "${CHUMP_FIRST_OUTPUT_WATCHDOG:-1}" != "0" ]]; then
+                    (
+                        sleep "$_first_output_timeout"
+                        if [ -f "$cycle_log" ] && [ "$(wc -c < "$cycle_log" 2>/dev/null || echo 0)" -lt 10 ]; then
+                            kill "-TERM" "$_claude_pid" 2>/dev/null || true
+                            sleep 2
+                            kill "-KILL" "$_claude_pid" 2>/dev/null || true
+                        fi
+                    ) &
+                    _fo_watchdog_pid=$!
+                fi
 
                 # INFRA-705: stall-detector — kills cycle if no new output for
                 # CHUMP_STALL_THRESHOLD_S consecutive seconds (default 120).
@@ -838,8 +841,8 @@ Operator or sibling worker can rescue this branch via:
 
                 wait "$_claude_pid" 2>/dev/null
                 rc=$?
-                kill "$_fo_watchdog_pid" 2>/dev/null || true
-                wait "$_fo_watchdog_pid" 2>/dev/null || true
+                [[ "$_fo_watchdog_pid" -ne 0 ]] && kill "$_fo_watchdog_pid" 2>/dev/null || true
+                [[ "$_fo_watchdog_pid" -ne 0 ]] && wait "$_fo_watchdog_pid" 2>/dev/null || true
                 kill "$_stall_detector_pid" 2>/dev/null || true
                 wait "$_stall_detector_pid" 2>/dev/null || true
 
@@ -854,6 +857,16 @@ Operator or sibling worker can rescue this branch via:
                         _prompt="You appear to be stuck producing output. Start working immediately. ${_prompt}"
                         continue
                     fi
+                    # INFRA-828: retry budget exhausted — emit first-output timeout alert.
+                    _elapsed_s=$(( $(date +%s) - _cycle_start_s ))
+                    printf '{"ts":"%s","kind":"worker_first_output_timeout","agent_id":"%s","gap_id":"%s","elapsed_s":%d,"retries":%d}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                        "${AGENT_ID:-unknown}" \
+                        "${GAP_ID:-unknown}" \
+                        "$_elapsed_s" \
+                        "$_wedge_retries" \
+                        >> "${CHUMP_AMBIENT_LOG:-${CHUMP_LOCKS_DIR:-.chump-locks}/ambient.jsonl}" 2>/dev/null || true
+                    log "INFRA-828: worker_first_output_timeout after $_wedge_retries retries (${_elapsed_s}s elapsed)"
                 fi
                 break
             done
