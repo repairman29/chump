@@ -1020,9 +1020,23 @@ events:
 
   # ── INFRA-539: gh API probe ────────────────────────────────────────────────
   - kind: github_unreachable
-    emitter: scripts/coord/bot-merge.sh, scripts/dispatch/run-fleet.sh (INFRA-539)
-    trigger: gh api /rate_limit probe fails at bot-merge startup or fleet launch,
-      indicating GitHub API is down or unreachable
+    emitter: scripts/coord/bot-merge.sh, scripts/dispatch/run-fleet.sh (INFRA-539, CREDIBLE-032)
+    trigger: gh installed but api /rate_limit probe fails; backward-compat alias emitted
+      alongside gh_errored — consumers may watch either kind
+    consumers: [fleet-brief, operator-recall, watchdogs]
+    fields_required: [ts, kind, source, exit_code, note]
+
+  # ── CREDIBLE-032: gh failure-class taxonomy ───────────────────────────────
+  - kind: gh_missing
+    emitter: scripts/coord/bot-merge.sh, scripts/dispatch/run-fleet.sh (CREDIBLE-032)
+    trigger: gh CLI binary not found in PATH at probe time
+    consumers: [fleet-brief, watchdogs]
+    fields_required: [ts, kind, source, note]
+
+  - kind: gh_errored
+    emitter: scripts/coord/bot-merge.sh, scripts/dispatch/run-fleet.sh (CREDIBLE-032)
+    trigger: gh binary present but api /rate_limit call failed (auth error, rate-limit,
+      network timeout, or any non-zero exit)
     consumers: [fleet-brief, operator-recall, watchdogs]
     fields_required: [ts, kind, source, exit_code, note]
 

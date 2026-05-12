@@ -561,25 +561,39 @@ gh_with_backoff() {
     done
 }
 
-# ── INFRA-539: GitHub API reachability probe ──────────────────────────────────
-# Call once at startup. Exits 1 (and emits kind=github_unreachable to
-# ambient.jsonl) if gh cannot reach the API, so bot-merge halts immediately
-# rather than churning through push/PR steps that will all fail anyway.
+# ── INFRA-539 / CREDIBLE-032: GitHub API reachability probe ──────────────────
+# Call once at startup. Exits 1 if gh cannot reach the API, emitting one of:
+#   kind=gh_missing   — gh binary not installed
+#   kind=gh_errored   — gh installed but API call failed (auth, rate-limit, network)
+# Backward-compat: kind=github_unreachable is also emitted alongside gh_errored.
 # Bypass: CHUMP_GH_PROBE_SKIP=1 (air-gapped tests, mocks).
 gh_api_probe() {
     [[ "${CHUMP_GH_PROBE_SKIP:-0}" == "1" ]] && return 0
     local ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
     local timeout_s="${CHUMP_GH_PROBE_TIMEOUT:-10}"
-    local rc=0
+    local ts rc=0
+
+    # CREDIBLE-032: distinguish missing binary from API failure
+    if ! command -v gh >/dev/null 2>&1; then
+        ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        red "CREDIBLE-032: gh binary not found — halting (install gh CLI)"
+        printf '{"ts":"%s","kind":"gh_missing","source":"bot-merge","note":"gh binary not in PATH — CREDIBLE-032"}\n' \
+            "$ts" >> "$ambient" 2>/dev/null || true
+        return 1
+    fi
+
     set +e
     timeout "$timeout_s" gh api /rate_limit --silent 2>/dev/null
     rc=$?
     set -e
     if [[ $rc -ne 0 ]]; then
-        red "INFRA-539: GitHub API unreachable (gh api /rate_limit exit=${rc}) — halting to prevent queue churn"
-        printf '{"ts":"%s","kind":"github_unreachable","source":"bot-merge","exit_code":%d,"note":"gh api probe failed — INFRA-539"}\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$rc" \
-            >> "$ambient" 2>/dev/null || true
+        ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        red "CREDIBLE-032: gh API call failed (exit=${rc}) — halting to prevent queue churn"
+        printf '{"ts":"%s","kind":"gh_errored","source":"bot-merge","exit_code":%d,"note":"gh api /rate_limit failed — CREDIBLE-032"}\n' \
+            "$ts" "$rc" >> "$ambient" 2>/dev/null || true
+        # backward-compat alias so consumers watching github_unreachable still fire
+        printf '{"ts":"%s","kind":"github_unreachable","source":"bot-merge","exit_code":%d,"note":"alias for gh_errored — CREDIBLE-032"}\n' \
+            "$ts" "$rc" >> "$ambient" 2>/dev/null || true
         return 1
     fi
 }
