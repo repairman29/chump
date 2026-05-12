@@ -3941,14 +3941,16 @@ async fn main() -> Result<()> {
             }
             "decompose" => {
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json]");
+                    eprintln!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json] [--dry-run] [--no-description]");
                     eprintln!();
                     eprintln!(
                         "Suggests xs/s slices for a large (m/l) gap using the provider cascade."
                     );
-                    eprintln!("  --verify  Validate slices via a stronger model before filing");
-                    eprintln!("  --apply   File the suggested slices and demote the parent");
-                    eprintln!("  --json    Output suggestions as JSON");
+                    eprintln!("  --verify          Validate slices via a stronger model before filing");
+                    eprintln!("  --apply           File the suggested slices and demote the parent");
+                    eprintln!("  --json            Output suggestions as JSON");
+                    eprintln!("  --dry-run         Print the full LLM prompt without calling the LLM");
+                    eprintln!("  --no-description  Skip injecting the gap description into the prompt");
                     eprintln!();
                     eprintln!("Verify model: set CHUMP_VERIFY_API_BASE + CHUMP_VERIFY_MODEL,");
                     eprintln!("  or falls back to ANTHROPIC_API_KEY with claude-sonnet-4-6.");
@@ -3956,6 +3958,8 @@ async fn main() -> Result<()> {
                 });
                 let apply = args.iter().any(|a| a == "--apply");
                 let verify = args.iter().any(|a| a == "--verify");
+                let dry_run = args.iter().any(|a| a == "--dry-run");
+                let no_description = args.iter().any(|a| a == "--no-description");
                 let parent = match store.get(&gap_id) {
                     Ok(Some(g)) => g,
                     Ok(None) => {
@@ -3983,7 +3987,9 @@ async fn main() -> Result<()> {
                     std::process::exit(0);
                 }
 
-                eprintln!("decomposing {gap_id} ({}) via LLM...", parent.title);
+                if !dry_run {
+                    eprintln!("decomposing {gap_id} ({}) via LLM...", parent.title);
+                }
                 let provider = crate::provider_cascade::build_provider();
                 let ac_display = if parent.acceptance_criteria.trim().is_empty()
                     || parent.acceptance_criteria.trim() == "[]"
@@ -4002,6 +4008,26 @@ async fn main() -> Result<()> {
                     The depends_on field should reference other slices by their 0-based index in the array (e.g. [0] means depends on the first slice). \
                     Do not include any text outside the JSON array.".to_string();
 
+                // Build the description context block.
+                // When a filing agent writes architecture notes / rough slice
+                // plan into the description, that text is the richest signal
+                // available at claim time.  Inject it prominently — not buried
+                // inline — so the LLM treats it as primary decomposition
+                // guidance rather than incidental metadata.
+                //
+                // --no-description suppresses this for stale descriptions.
+                let description_block = if no_description || parent.description.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "\nAdditional context from filing agent:\n{}\n\n\
+                         Use this context to inform the decomposition, especially \
+                         regarding which files to touch and what the rough \
+                         implementation shape looks like.",
+                        parent.description
+                    )
+                };
+
                 let user_msg = format!(
                     "Decompose this gap into xs/s slices:\n\n\
                      ID: {}\n\
@@ -4009,26 +4035,33 @@ async fn main() -> Result<()> {
                      Title: {}\n\
                      Priority: {}\n\
                      Effort: {}\n\
-                     Description: {}\n\
                      Acceptance Criteria: {}\n\
-                     Notes: {}",
+                     Notes: {}{}",
                     parent.id,
                     parent.domain,
                     parent.title,
                     parent.priority,
                     parent.effort,
-                    if parent.description.is_empty() {
-                        "(none)"
-                    } else {
-                        &parent.description
-                    },
                     ac_display,
                     if parent.notes.is_empty() {
                         "(none)"
                     } else {
                         &parent.notes
                     },
+                    description_block,
                 );
+
+                // --dry-run: print the full prompt and exit without calling
+                // the LLM.  Lets agents inspect exactly what context is being
+                // used before committing to an LLM call.
+                if dry_run {
+                    eprintln!("=== dry-run: system prompt ===");
+                    eprintln!("{system_prompt}");
+                    eprintln!();
+                    eprintln!("=== dry-run: user message ===");
+                    eprintln!("{user_msg}");
+                    return Ok(());
+                }
 
                 let messages = vec![axonerai::provider::Message {
                     role: "user".into(),
@@ -5098,7 +5131,7 @@ async fn main() -> Result<()> {
                     "                             [--source-doc S] [--opened-date D] [--closed-date D] [--closed-pr N]"
                 );
                 eprintln!("                             [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
-                eprintln!("  decompose        <GAP-ID> [--apply] [--json]  # LLM-assisted slicing");
+                eprintln!("  decompose        <GAP-ID> [--apply] [--json] [--dry-run] [--no-description]  # LLM-assisted slicing");
                 eprintln!("  dump             [--out PATH] [--per-file [--out-dir docs/gaps/]]");
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
                 eprintln!("  restore          --from-sql  # rebuild state.db from .chump/state.sql (INFRA-538)");
