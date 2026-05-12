@@ -187,7 +187,7 @@ jobs:
   # (admin); leaving the rollup name as `test` ships the throughput win
   # without touching protection.
   test:
-    needs: [fast-checks, clippy, cargo-test]
+    needs: [fast-checks, clippy, cargo-test, pr-hygiene]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -200,10 +200,14 @@ jobs:
           # required `test` check should still pass — same behavior as the
           # pre-INFRA-213 monolith, which was also gated by `if:
           # needs.changes.outputs.code == 'true' || …`.
+          # CREDIBLE-042/043: pr-hygiene is path-filter-agnostic (runs on
+          # every PR regardless of changes), so its result counts toward
+          # the rollup unconditionally.
           fast="${{ needs.fast-checks.result }}"
           clippy="${{ needs.clippy.result }}"
           test="${{ needs.cargo-test.result }}"
-          echo "fast-checks=$fast  clippy=$clippy  cargo-test=$test"
+          hygiene="${{ needs.pr-hygiene.result }}"
+          echo "fast-checks=$fast  clippy=$clippy  cargo-test=$test  pr-hygiene=$hygiene"
           fail=0
           for r in "$fast" "$clippy" "$test"; do
             case "$r" in
@@ -211,11 +215,53 @@ jobs:
               *) fail=1 ;;
             esac
           done
+          # pr-hygiene must succeed — no skip-equivalent path. If it failed
+          # or was cancelled, the rollup is red.
+          case "$hygiene" in
+            success) ;;
+            *) fail=1 ;;
+          esac
           if [ "$fail" = "1" ]; then
             echo "::error::One or more CI shards failed (see results above)"
             exit 1
           fi
           echo "All shards green (or appropriately skipped)."
+
+  # ── PR hygiene (CREDIBLE-042/043) ─────────────────────────────────────────
+  # Runs on EVERY pull_request regardless of which paths changed. Catches the
+  # two PR-shape failure classes that produced the worst incidents in early
+  # May 2026:
+  #   - PR #1444 silent META-044 revert  →  caught by check-pr-scope.sh
+  #   - PR #1441 378k-line mass-deletion →  caught by check-mass-deletion.sh
+  # Both are rolled into the `test` required check via needs:.
+  #
+  # NOT gated by `needs.changes.outputs.code` — these checks are about the
+  # PR's *shape* (title + diff size), not its file extensions. A docs-only
+  # PR with a misleading 'feat:' title should still fail this gate.
+  #
+  # Force-fire validated: scripts/ci/test-all-gates-force-fire.sh exercises
+  # both checks against synthetic violating fixtures and asserts they fire.
+  # See scripts/ci/gate-manifest.yaml (CREDIBLE-050).
+  pr-hygiene:
+    needs: changes
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Both checkers need git history to resolve merge-base against
+          # the target branch. fetch-depth: 0 fetches all history.
+          fetch-depth: 0
+
+      - name: PR scope-vs-title divergence detector (CREDIBLE-026)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/check-pr-scope.sh
+
+      - name: Mass-deletion / scratch-commit guard (CREDIBLE-027)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/check-mass-deletion.sh
 
   # ── Shard 1: fast checks ──────────────────────────────────────────────────
   # fmt + JS self-tests + every ~30-second bash guard. No `cargo test`, no
