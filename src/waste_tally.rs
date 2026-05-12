@@ -108,11 +108,14 @@ pub const WASTE_KINDS: &[&str] = &[
     "review_handoff_timeout", // INFRA-773 — no author push within 15 min (reviewer effort wasted)
 ];
 
-/// Domain-level aggregate for `--by-domain` output (INFRA-574).
+/// Domain-level aggregate for `--by-domain` output (INFRA-574, INFRA-934).
 #[derive(Debug, Clone, Default)]
 pub struct WasteDomainEntry {
     pub domain: String,
     pub incidents: u64,
+    pub gaps_run: u64,
+    pub tokens_est: u64, // total tokens from all session_end events for this domain
+    pub pct_of_total: f64, // tokens_est / total_tokens * 100.0
     pub estimated_cost_secs: u64,
     pub cost_usd: f64,
 }
@@ -120,6 +123,8 @@ pub struct WasteDomainEntry {
 pub struct WasteDomainReport {
     pub since_seconds: u64,
     pub total_incidents: u64,
+    pub total_tokens: u64,
+    pub has_breach: bool,
     pub domains: Vec<WasteDomainEntry>,
 }
 
@@ -140,26 +145,40 @@ fn domain_from_gap_id(gap_id: Option<&str>) -> String {
     }
 }
 
-/// Build a by-domain waste report. Buckets unique (kind, entity) incidents
-/// by the gap_id prefix found on each event. Events with no gap_id land in
-/// "(unknown)". `since_secs` is the lookback window.
+/// Build a by-domain waste report. INFRA-934: scans ALL session_end events
+/// (any outcome) to compute token consumption per domain. pct_of_total is
+/// tokens-based so CI can detect when one domain dominates spend. Waste
+/// incident counts are also tracked for reference. `since_secs` is the
+/// lookback window.
 pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainReport {
-    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    // INFRA-934: honour CHUMP_AMBIENT_LOG env override (matches shell scripts).
+    let ambient = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join(".chump-locks/ambient.jsonl"));
     let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
     let now = current_unix();
     let cutoff = now.saturating_sub(since_secs);
 
     use std::collections::HashSet;
-    // domain → (entry, set of (kind, entity) pairs for incident dedup)
-    let mut by_domain: BTreeMap<String, (WasteDomainEntry, HashSet<String>)> = BTreeMap::new();
+    // domain → (entry, incident_set, gap_id_set)
+    let mut by_domain: BTreeMap<String, (WasteDomainEntry, HashSet<String>, HashSet<String>)> =
+        BTreeMap::new();
     let mut anon_seq: u64 = 0;
 
+    // Pass 1: collect waste incidents (same logic as before, unchanged).
     for line in contents.lines() {
         let is_alert = line.contains(r#""event":"ALERT""#) || line.contains(r#""kind":""#);
         let is_session_end = line.contains(r#""kind":"session_end""#);
         let is_worker_exit = line.contains(r#""kind":"worker_exit""#);
         if !is_alert && !is_session_end && !is_worker_exit {
             continue;
+        }
+        if let Some(ts) = extract_field(line, "ts") {
+            if let Some(unix) = parse_iso8601_to_unix(&ts) {
+                if unix < cutoff {
+                    continue;
+                }
+            }
         }
 
         let raw_kind = extract_field(line, "kind").unwrap_or_default();
@@ -184,17 +203,9 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
         if !WASTE_KINDS.iter().any(|&k| k == kind) {
             continue;
         }
-        if let Some(ts) = extract_field(line, "ts") {
-            if let Some(unix) = parse_iso8601_to_unix(&ts) {
-                if unix < cutoff {
-                    continue;
-                }
-            }
-        }
 
         let gap_id = extract_field(line, "gap_id");
         let domain = domain_from_gap_id(gap_id.as_deref());
-
         let cost = extract_int_field(line, "cooldown_secs")
             .or_else(|| extract_int_field(line, "elapsed_seconds"))
             .unwrap_or(0);
@@ -207,8 +218,6 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
         } else {
             0.0
         };
-
-        // Entity extraction (same logic as build_report).
         let entity = match kind.as_str() {
             "silent_agent" | "lease_expired_server" | "lease_overlap" | "edit_burst" => {
                 extract_session_from_note(line).or_else(|| extract_field(line, "gap_id"))
@@ -255,28 +264,104 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
                     ..Default::default()
                 },
                 HashSet::new(),
+                HashSet::new(),
             )
         });
         let incident_key = format!("{}:{}", kind, entity);
         bucket.0.estimated_cost_secs = bucket.0.estimated_cost_secs.saturating_add(cost);
         bucket.0.cost_usd += event_cost_usd;
         bucket.1.insert(incident_key);
+        if let Some(gid) = gap_id.as_deref() {
+            if !gid.is_empty() {
+                bucket.2.insert(gid.to_string());
+            }
+        }
+    }
+
+    // Pass 2 (INFRA-934): scan ALL session_end events (any outcome) to collect
+    // tokens_est and gaps_run per domain. This is the primary basis for pct_of_total.
+    let mut total_tokens: u64 = 0;
+    for line in contents.lines() {
+        if !line.contains(r#""kind":"session_end""#) {
+            continue;
+        }
+        if let Some(ts) = extract_field(line, "ts") {
+            if let Some(unix) = parse_iso8601_to_unix(&ts) {
+                if unix < cutoff {
+                    continue;
+                }
+            }
+        }
+        let gap_id = extract_field(line, "gap_id");
+        let domain = domain_from_gap_id(gap_id.as_deref());
+        let input = extract_int_field(line, "input_tokens").unwrap_or(0);
+        let output = extract_int_field(line, "output_tokens").unwrap_or(0);
+        let cache = extract_int_field(line, "cache_read_tokens").unwrap_or(0);
+        let tokens = input.saturating_add(output).saturating_add(cache);
+        total_tokens = total_tokens.saturating_add(tokens);
+
+        let bucket = by_domain.entry(domain.clone()).or_insert_with(|| {
+            (
+                WasteDomainEntry {
+                    domain: domain.clone(),
+                    ..Default::default()
+                },
+                HashSet::new(),
+                HashSet::new(),
+            )
+        });
+        bucket.0.tokens_est = bucket.0.tokens_est.saturating_add(tokens);
+        if let Some(gid) = gap_id.as_deref() {
+            if !gid.is_empty() {
+                bucket.2.insert(gid.to_string());
+            }
+        }
     }
 
     let mut total_incidents = 0u64;
     let mut domains: Vec<WasteDomainEntry> = by_domain
         .into_values()
-        .map(|(mut e, set)| {
-            e.incidents = set.len() as u64;
+        .map(|(mut e, incident_set, gap_set)| {
+            e.incidents = incident_set.len() as u64;
+            e.gaps_run = gap_set.len() as u64;
             total_incidents += e.incidents;
+            // pct_of_total: prefer token-based when data available, fall back to
+            // incident-based when no session_end token data exists (INFRA-934).
+            e.pct_of_total = if total_tokens > 0 {
+                (e.tokens_est as f64 / total_tokens as f64) * 100.0
+            } else {
+                // pct set in second pass below once total_incidents is known
+                0.0
+            };
             e
         })
         .collect();
-    domains.sort_by_key(|e| std::cmp::Reverse(e.incidents));
+
+    // If no token data, fill pct_of_total from incident share instead.
+    if total_tokens == 0 {
+        for e in &mut domains {
+            e.pct_of_total = if total_incidents > 0 {
+                (e.incidents as f64 / total_incidents as f64) * 100.0
+            } else {
+                0.0
+            };
+        }
+    }
+
+    // Sort by pct_of_total (tokens) descending (INFRA-934).
+    domains.sort_by(|a, b| {
+        b.pct_of_total
+            .partial_cmp(&a.pct_of_total)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let has_breach = domains.iter().any(|e| e.pct_of_total > 40.0);
 
     WasteDomainReport {
         since_seconds: since_secs,
         total_incidents,
+        total_tokens,
+        has_breach,
         domains,
     }
 }
@@ -291,19 +376,28 @@ impl WasteDomainReport {
             self.total_incidents
         ));
         if self.domains.is_empty() {
-            out.push_str("  (no waste events in window — fleet healthy)\n");
+            out.push_str("  (no session events in window)\n");
             return out;
         }
+        // INFRA-934: table with domain | gaps_run | tokens_est | pct
+        out.push_str(&format!(
+            "  {:<12}  {:>8}  {:>12}  {:>8}\n",
+            "domain", "gaps_run", "tokens_est", "pct"
+        ));
+        out.push_str(&format!(
+            "  {:<12}  {:>8}  {:>12}  {:>8}\n",
+            "────────────", "────────", "────────────", "────────"
+        ));
         for e in &self.domains {
-            if e.estimated_cost_secs > 0 {
-                let mins = e.estimated_cost_secs / 60;
-                out.push_str(&format!(
-                    "  {:>4} incidents  {:8}  ~{}m est. cost\n",
-                    e.incidents, e.domain, mins
-                ));
+            let tokens_str = if e.tokens_est > 0 {
+                format!("{}", e.tokens_est)
             } else {
-                out.push_str(&format!("  {:>4} incidents  {}\n", e.incidents, e.domain));
-            }
+                "—".to_string()
+            };
+            out.push_str(&format!(
+                "  {:<12}  {:>8}  {:>12}  {:>7.1}%\n",
+                e.domain, e.gaps_run, tokens_str, e.pct_of_total
+            ));
         }
         let total_mins: u64 = self
             .domains
@@ -326,20 +420,31 @@ impl WasteDomainReport {
             .iter()
             .map(|e| {
                 format!(
-                    r#"{{"domain":"{}","incidents":{},"estimated_cost_secs":{},"cost_usd":{:.6}}}"#,
+                    r#"{{"domain":"{}","incidents":{},"gaps_run":{},"tokens_est":{},"pct_of_total":{:.2},"estimated_cost_secs":{},"cost_usd":{:.6}}}"#,
                     json_escape(&e.domain),
                     e.incidents,
+                    e.gaps_run,
+                    e.tokens_est,
+                    e.pct_of_total,
                     e.estimated_cost_secs,
                     e.cost_usd
                 )
             })
             .collect();
         format!(
-            r#"{{"since_seconds":{},"total_incidents":{},"domains":[{}]}}"#,
+            r#"{{"since_seconds":{},"total_incidents":{},"total_tokens":{},"has_breach":{},"domains":[{}]}}"#,
             self.since_seconds,
             self.total_incidents,
+            self.total_tokens,
+            self.has_breach,
             domains_json.join(",")
         )
+    }
+
+    /// Returns the first domain that exceeds `threshold_pct` of total token spend.
+    /// Used by `chump waste-tally --domain` to exit non-zero on breach (INFRA-934).
+    pub fn any_domain_exceeds(&self, threshold_pct: f64) -> Option<&WasteDomainEntry> {
+        self.domains.iter().find(|e| e.pct_of_total > threshold_pct)
     }
 }
 
@@ -1279,16 +1384,24 @@ mod tests {
         let report = WasteDomainReport {
             since_seconds: 86400,
             total_incidents: 3,
+            total_tokens: 5000,
+            has_breach: true,
             domains: vec![
                 WasteDomainEntry {
                     domain: "INFRA".into(),
                     incidents: 2,
+                    gaps_run: 1,
+                    tokens_est: 4000,
+                    pct_of_total: 80.0,
                     estimated_cost_secs: 7200,
                     cost_usd: 0.0,
                 },
                 WasteDomainEntry {
                     domain: "COG".into(),
                     incidents: 1,
+                    gaps_run: 0,
+                    tokens_est: 1000,
+                    pct_of_total: 20.0,
                     estimated_cost_secs: 0,
                     cost_usd: 0.0,
                 },
@@ -1298,11 +1411,15 @@ mod tests {
         assert!(text.contains("by domain"), "got: {}", text);
         assert!(text.contains("INFRA"));
         assert!(text.contains("COG"));
-        assert!(text.contains("~120m est. cost"));
+        // INFRA-934: table format shows tokens_est column
+        assert!(text.contains("tokens_est"), "got: {}", text);
         let json = report.render_json();
         assert!(json.contains(r#""domain":"INFRA""#));
         assert!(json.contains(r#""incidents":2"#));
         assert!(json.contains(r#""total_incidents":3"#));
+        // INFRA-934: new fields in JSON
+        assert!(json.contains(r#""gaps_run":1"#));
+        assert!(json.contains(r#""tokens_est":4000"#));
     }
 
     #[test]
