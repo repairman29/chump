@@ -1,0 +1,11 @@
+- id: INFRA-850
+  domain: INFRA
+  title: "EFFECTIVE: Operational runbooks for fleet management"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "docs/runbooks/ directory with at least 3 runbooks: fleet-wedge.md (detect+recover), pr-stuck.md (rebase+re-arm), silent-agent.md (lease release+diagnose)"
+    - "each runbook: problem description, symptom indicators (ambient event kinds), step-by-step resolution, verification commands, escalation path"
+    - "test scripts/ci/test-operational-runbooks.sh: all 3 files exist, each has required sections (## Symptoms, ## Steps, ## Verify), event kinds referenced in each runbook are registered in EVENT_REGISTRY.yaml"
+
