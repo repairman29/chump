@@ -1,0 +1,14 @@
+- id: INFRA-855
+  domain: INFRA
+  title: "RESILIENT: stuck-pr-filer one-gap-per-PR dedup — INDIVIDUAL path fires once per failing check, not once per PR"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - stuck-pr-filer.sh INDIVIDUAL path uses already_filed() to suppress duplicate filings per-PR
+    - EXISTING_FILINGS lookup covers gaps filed in the CURRENT filer run (not just prior runs)
+    - "test: scripts/ci/test-stuck-pr-filer.sh extended to verify that two successive runs of the INDIVIDUAL path for the same PR produces exactly one gap"
+    - event kind=stuck_pr_filing_dedup_hit emitted to ambient.jsonl when a PR is skipped due to existing filing
+  closed_date: '2026-05-12'
+  closed_pr: 1531
+

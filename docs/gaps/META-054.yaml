@@ -1,15 +1,20 @@
 - id: META-054
   domain: META
-  title: "META: bulk-retag the ~95 untagged gaps with pillar prefix per 2026-05-11 audit — half the registry is invisible to pillar-balance checks"
+  title: Opus curator roadmap sequencing and wave planning
   status: open
-  priority: P2
+  priority: P0
   effort: m
   acceptance_criteria:
-    - "All open gaps whose title does not start with EFFECTIVE: / CREDIBLE: / RESILIENT: / ZERO-WASTE: / MISSION: get a pillar prefix added matching the gap's actual purpose"
-    - "scripts/dev/suggest-pillar-tag.sh — given a gap's title + description, suggest the best pillar (heuristic + chump local LLM); used in bulk-retag review"
-    - "Output of pre-audit: `chump gap list --status open --json | jq '[.[] | select(.title | test(\"^(EFFECTIVE|CREDIBLE|RESILIENT|ZERO-WASTE|MISSION):\")|not)]'` returns < 10% of open gaps (down from 44% today)"
-    - "Each retag uses CHUMP_ALLOW_GAP_REWRITE=1 (legitimate title correction) and adds a note 'pillar prefix retag via META-054'"
-    - "After retag pass: chump gap audit-priorities exits clean; pillar-mix-by-pickable shows no pillar starved (≥2) and no pillar >60%"
-    - "If a gap cannot be cleanly classified (genuinely cross-pillar or obsolete), close it with note rather than force-tag"
-    - "Documented in docs/process/GAP_PRIORITIZATION.md alongside META-046 PM-curation cadence"
+    - "Opus identifies critical-path gaps from registry: dependencies flagged with 'blocks' metadata; gates identified (e.g., INFRA-841 blocks all system gaps)"
+    - "Sequencing output: docs/ROADMAP_OPUS_SEQUENCING.md published with 4 waves (foundation → fleet health → product value → polish)"
+    - "Wave 1 (Foundation, 60-80 hrs): INFRA-841/842/843 (scheduling core), INFRA-871/872 (safety), INFRA-845 (escalation) — all must pass before wave 2"
+    - "Wave 2 (Resilience, 60-80 hrs): INFRA-861/869 (model independence core), INFRA-844-850 (fleet worker infrastructure) — enables offline operation"
+    - "Wave 3 (Fleet Health, 40-60 hrs): INFRA-856-859 (audit/dashboards), INFRA-873-881 (lifecycle management) — observability tier"
+    - "Wave 4 (Product Value, 100-150 hrs): INFRA-903-917 (product improvements) — UX/developer experience; deprioritized to P2 until foundation stable"
+    - "Opus audits all 93 gaps for hidden dependencies: if gap X blocks Y but doesn't have explicit blocks metadata, flag it in sequencing report"
+    - "Decomposition validation: Opus confirms 20 decomposed sub-gaps are properly ordered (no sub-gap depends on sibling across waves)"
+    - "Cost estimation: Opus sums effort hours per wave; flags if any wave exceeds 80% of weekly budget (assuming 40 hrs/week)"
+    - "Parallelization analysis: Opus identifies which gaps can run in parallel (independent subtrees) and recommends batch execution"
+    - "Go/no-go criteria: Opus defines success metrics for each wave (e.g., 'Wave 1 complete when curator runs successfully for 24h')"
+    - "Test procedure: Opus generates sequencing, human confirms critical path matches INFRA-789 original plan, then fleet follows wave schedule"
 
