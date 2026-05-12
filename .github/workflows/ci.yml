@@ -971,4 +971,5 @@ jobs:
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pwa-e2e-gap-workflow.sh
-
+      - name: fleet-state.json mutex — flock, kill switch, timeout event (INFRA-847)
+        run: bash scripts/ci/test-fleet-state-mutex.sh
