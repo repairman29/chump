@@ -712,6 +712,12 @@ except Exception:
     done
 fi
 
+# INFRA-919: release lease on any exit so the gap can be re-claimed after a
+# failure without hitting "lease conflict". Guards are evaluated at exit time
+# so late-set CHUMP_SESSION_ID values are captured. On successful ship, the
+# explicit rm near the end of the script fires first; the trap is a no-op there.
+trap '[[ "${DRY_RUN:-0}" -eq 0 && -n "${CHUMP_SESSION_ID:-}" ]] && rm -f "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/${CHUMP_SESSION_ID}.json" 2>/dev/null || true' EXIT
+
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$BRANCH" == "HEAD" ]]; then
     red "Detached HEAD — check out a branch first."
