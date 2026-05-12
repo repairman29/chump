@@ -36,7 +36,7 @@ Chump has two co-equal lanes:
 4. **Build and run** (first build takes 15-25 min — this is normal for Rust)
    ```bash
    cargo build
-   ./run-web.sh
+   ./run.sh web
    ```
 
 5. **Verify**
@@ -45,7 +45,7 @@ Chump has two co-equal lanes:
    ```
    Open **http://127.0.0.1:3000** in your browser.
 
-**CLI one-shot:** `./run-local.sh -- --chump "What is 2+2?"`
+**CLI one-shot:** `./run.sh local -- --chump "What is 2+2?"`
 
 **Smoke check (no model needed):** `./scripts/ci/verify-external-golden-path.sh` — verifies the build and required files.
 
@@ -147,8 +147,8 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 
 | Script | What it does |
 |--------|-------------|
-| `./run-web.sh` | Start the web PWA (default: port 3000) |
-| `./run-local.sh -- --chump "prompt"` | CLI one-shot |
+| `./run.sh web` | Start the web PWA (default: port 3000) |
+| `./run.sh local -- --chump "prompt"` | CLI one-shot |
 | `./scripts/setup/setup-local.sh` | Guided first-time setup |
 | `./scripts/ci/verify-external-golden-path.sh` | Smoke test (build + required files) |
 | `./scripts/ci/chump-preflight.sh` | Full health check (inference + API + tools) |

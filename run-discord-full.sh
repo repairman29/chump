@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
+# [DEPRECATED — INFRA-691] Use './run.sh discord-full' instead. This shim will be removed in a future release.
 # Run Chump Discord with the full tool set: vLLM-MLX (local :8000 or :8001), in-process embeddings, repo tools.
+echo "[DEPRECATED] run-discord-full.sh: use './run.sh discord-full' instead" >&2
 # Ensures vLLM is up, builds with inprocess-embed, sets CHUMP_REPO, then starts the bot.
 # Use this when .env points at http://127.0.0.1:8000/v1 or :8001/v1 and you want read_file, memory (semantic), battle_qa, etc.
 # Only one instance should run. Stop first: ./scripts/setup/stop-chump-discord.sh

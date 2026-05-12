@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
+# [DEPRECATED — INFRA-691] Use './run.sh web' instead. This shim will be removed in a future release.
 # Run the Chump Web PWA. Ensures vLLM-MLX is up when .env points at local :8000 or :8001, then starts the web server.
-# Usage: ./run-web.sh [--port 3000]
+# Usage: ./run.sh web [--port 3000]
 # Set CHUMP_HOME (or run from repo root) so web/ and logs are found. Optional: CHUMP_WEB_PORT=3001
+echo "[DEPRECATED] run-web.sh: use './run.sh web' instead" >&2
 
 set -e
 cd "$(dirname "$0")"
