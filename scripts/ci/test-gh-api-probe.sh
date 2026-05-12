@@ -74,8 +74,12 @@ fi
 if grep -q 'DRY_RUN.*gh_api_probe\|gh_api_probe.*DRY_RUN' "$BM"; then
     ok "bot-merge.sh skips probe in dry-run mode"
 else
-    # Check the block form: if DRY_RUN != 1 guard around gh_api_probe
-    if awk '/DRY_RUN.*!= .1/,/gh_api_probe/' "$BM" 2>/dev/null | grep -q 'gh_api_probe'; then
+    # Check the block form: if DRY_RUN != 1 guard around gh_api_probe.
+    # Stage awk output into a variable to avoid `awk | grep -q` failing
+    # under `set -o pipefail`: grep -q exits early on first match,
+    # SIGPIPE kills awk (exit 141), and pipefail propagates the failure.
+    _awk_out="$(awk '/DRY_RUN.*!= .1/,/gh_api_probe/' "$BM" 2>/dev/null || true)"
+    if echo "$_awk_out" | grep -q 'gh_api_probe'; then
         ok "bot-merge.sh skips probe in dry-run mode"
     else
         fail "bot-merge.sh should skip probe when DRY_RUN=1"
