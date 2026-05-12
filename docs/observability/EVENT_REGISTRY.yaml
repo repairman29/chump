@@ -1018,6 +1018,14 @@ events:
     consumers: [operator-recall, audit-log]
     fields_required: [ts, kind, change_id, snapshot]
 
+  - kind: fleet_metrics_snapshot
+    emitter: scripts/ops/fleet-metrics-snapshot.sh (INFRA-900)
+    trigger: operator runs fleet metrics snapshot (manually or via cron); reads
+      ambient.jsonl + state.db to compute ship_rate, waste_rate, cycle_time_p50,
+      active_gaps, p0_count
+    consumers: [fleet-brief, kpi-report, opus-curator]
+    fields_required: [ts, kind, ship_rate_24h, waste_rate_24h, cycle_time_p50_h, active_gaps, p0_count]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh

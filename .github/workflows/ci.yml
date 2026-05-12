@@ -995,6 +995,8 @@ jobs:
         run: bash scripts/ci/test-gap-run-now.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
+      - name: fleet metrics snapshot — ship_rate, waste_rate, cycle_time_p50 (INFRA-900)
+        run: bash scripts/ci/test-fleet-metrics-snapshot.sh
 
       - name: gap rebalance — P0 budget + pillar floor (INFRA-635)
         run: bash scripts/ci/test-gap-rebalance.sh
