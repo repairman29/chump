@@ -1056,3 +1056,7 @@ jobs:
           bash scripts/ci/test-waste-tally-domain.sh
       - name: fleet-brief pillar table — per-pillar pickable counts (CREDIBLE-034)
         run: bash scripts/ci/test-fleet-brief-pillar-table.sh
+      - name: gap audit-ac --open — warn on vague open gaps before claim (INFRA-936)
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-audit-ac-open.sh
