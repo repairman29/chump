@@ -5323,10 +5323,7 @@ async fn main() -> Result<()> {
                     if pairs.is_empty() {
                         println!("  (no near-duplicate pairs found — registry clean)");
                     } else {
-                        println!(
-                            "  {:>4}  {:>12}  {:>12}  {}",
-                            "sim%", "gap_a", "gap_b", "action"
-                        );
+                        println!("  {:>4}  {:>12}  {:>12}  action", "sim%", "gap_a", "gap_b");
                         println!("  ────  ────────────  ────────────  ──────");
                         for (a, b, sim) in &pairs {
                             let action = if *sim >= 90 { "merge" } else { "review" };
