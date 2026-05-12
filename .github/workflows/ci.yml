@@ -930,6 +930,9 @@ jobs:
       - name: gap rebalance — P0 budget + pillar floor (INFRA-635)
         run: bash scripts/ci/test-gap-rebalance.sh
 
+      - name: gap pillar-balance — pickable inventory per pillar (INFRA-604)
+        run: bash scripts/ci/test-pillar-balance.sh
+
       - name: stale-binary destructive-op guard (INFRA-825)
         # Asserts chump gap ship --update-yaml / dump --per-file hard-fail
         # on a stale binary. PR #1444 silently reverted META-044 because

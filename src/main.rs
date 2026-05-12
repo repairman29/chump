@@ -4311,6 +4311,146 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-604: pillar balance report — inventory pickable gaps per pillar,
+            // flag imbalance, optionally suggest or apply priority adjustments.
+            "pillar-balance" => {
+                let as_json = args.iter().any(|a| a == "--json");
+                let suggest = args.iter().any(|a| a == "--suggest");
+                let apply = args.iter().any(|a| a == "--apply");
+
+                tracing::info!(apply = apply, suggest = suggest, "pillar-balance invoked");
+
+                let all_gaps = match store.list(Some("open")) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap pillar-balance: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                // Pickable = P0|P1, xs|s|m effort
+                let pickable: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| {
+                        matches!(g.priority.as_str(), "P0" | "P1")
+                            && matches!(g.effort.as_str(), "xs" | "s" | "m")
+                    })
+                    .collect();
+
+                let total = pickable.len();
+
+                // Classify each gap by pillar using title keyword.
+                let pillars = ["EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE"];
+                let mut counts: std::collections::HashMap<&str, Vec<String>> =
+                    pillars.iter().map(|p| (*p, Vec::new())).collect();
+                let mut other: Vec<String> = Vec::new();
+
+                for g in &pickable {
+                    let title_up = g.title.to_uppercase();
+                    let mut assigned = false;
+                    for p in &pillars {
+                        if title_up.contains(p) {
+                            counts.entry(p).or_default().push(g.id.clone());
+                            assigned = true;
+                            break;
+                        }
+                    }
+                    if !assigned {
+                        other.push(g.id.clone());
+                    }
+                }
+
+                let mut warnings: Vec<String> = Vec::new();
+                for p in &pillars {
+                    let n = counts.get(p).map(|v| v.len()).unwrap_or(0);
+                    if n < 2 {
+                        warnings.push(format!("UNDER: {p} has only {n} pickable (floor=2)"));
+                    }
+                    if total > 0 && n * 2 > total {
+                        warnings.push(format!(
+                            "OVER: {p} is {n}/{total} (>50%) — demote P2 excess"
+                        ));
+                    }
+                }
+
+                // --suggest/--apply: promote oldest P2 gap for under-filled pillars.
+                let mut suggestions: Vec<(String, String, String)> = Vec::new(); // (gap_id, old_prio, cmd)
+                if suggest || apply {
+                    let all_open = store.list(Some("open")).unwrap_or_default();
+                    for p in &pillars {
+                        let n = counts.get(p).map(|v| v.len()).unwrap_or(0);
+                        if n < 2 {
+                            // Find oldest P2 xs/s/m gap with this pillar keyword.
+                            let candidate = all_open.iter().find(|g| {
+                                g.priority == "P2"
+                                    && matches!(g.effort.as_str(), "xs" | "s" | "m")
+                                    && g.title.to_uppercase().contains(p)
+                            });
+                            if let Some(c) = candidate {
+                                suggestions.push((
+                                    c.id.clone(),
+                                    "P2".to_string(),
+                                    format!("chump gap set {} --priority P1  # refill {}", c.id, p),
+                                ));
+                                if apply {
+                                    let _ = store.set_fields(
+                                        &c.id,
+                                        gap_store::GapFieldUpdate {
+                                            priority: Some("P1".to_string()),
+                                            ..Default::default()
+                                        },
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    if !as_json {
+                        for (id, old, cmd) in &suggestions {
+                            println!(
+                                "  {} {id} {old}→P1: {cmd}",
+                                if apply { "APPLIED" } else { "SUGGEST" },
+                            );
+                        }
+                    }
+                }
+
+                let suggestions_ids: Vec<String> =
+                    suggestions.iter().map(|(id, _, _)| id.clone()).collect();
+
+                if as_json {
+                    let counts_json: std::collections::HashMap<&str, usize> =
+                        pillars.iter().map(|p| (*p, counts[p].len())).collect();
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "total_pickable": total,
+                            "pillars": counts_json,
+                            "other": other.len(),
+                            "warnings": warnings,
+                            "suggestions": suggestions_ids,
+                        })
+                    );
+                } else {
+                    println!("[pillar-balance] pickable={total}");
+                    for p in &pillars {
+                        let n = counts[p].len();
+                        println!("  {p}: {n}");
+                    }
+                    println!("  OTHER: {}", other.len());
+                    if warnings.is_empty() {
+                        println!("✓ Balance OK");
+                    } else {
+                        for w in &warnings {
+                            println!("  WARN: {w}");
+                        }
+                    }
+                }
+
+                if !warnings.is_empty() {
+                    std::process::exit(1);
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
@@ -4340,6 +4480,7 @@ async fn main() -> Result<()> {
                 eprintln!("  audit-priorities [--json]   # PM health check (META-046)");
                 eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check");
                 eprintln!("  rebalance        [--apply] [--json]  # P0 budget + pillar floor enforcement (INFRA-635)");
+                eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
                 std::process::exit(2);
             }
         }

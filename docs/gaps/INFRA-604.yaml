@@ -1,7 +1,8 @@
 - id: INFRA-604
   domain: INFRA
   title: "EFFECTIVE: chump pillar-balance command — productize the manual iter-cadence pillar check"
-  status: open
+  status: done
+  closed_pr: 0
   priority: P1
   effort: m
   description: |
