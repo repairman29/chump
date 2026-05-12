@@ -48,11 +48,11 @@ gates:
     fixture_kind: state.db-with-ghost-closed-pr
     expected_exit_nonzero: true
     motivating_incident_pr: 1433
-    # Tracked by CREDIBLE-051: gate has two bugs (state.db resolution
-    # via git-common-dir ignores fixture; gh-API failure path skips
-    # iteration + claims pass). Treated as known-broken in force-fire
-    # until CREDIBLE-051 lands. Re-enable by removing known_broken.
-    known_broken: CREDIBLE-051
+    # Without --strict, the gate runs in info-only mode and never exits
+    # non-zero on drift. The previous fixture preparer tried to set this
+    # via `export GATE_FIXTURE_ARGS=--strict` from inside the $(prepare_fixture)
+    # subshell, but exports there never reach the parent shell.
+    fixture_args: "--strict"
 
   - id: INFRA-538-state-db-restore
     check_script: scripts/ci/test-state-db-restore.sh
