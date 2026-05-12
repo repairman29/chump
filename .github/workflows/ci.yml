@@ -983,6 +983,8 @@ jobs:
         run: bash scripts/ci/test-curator-decision-logging.sh
       - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
         run: bash scripts/ci/test-required-model.sh
+      - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
+        run: bash scripts/ci/test-gap-quality-gate.sh
       - name: per-gap performance profiling — timing wrapper, perf report, flame chart (INFRA-906)
         run: bash scripts/ci/test-gap-profiling.sh
       - name: CI failure triage classification (CREDIBLE-013)
