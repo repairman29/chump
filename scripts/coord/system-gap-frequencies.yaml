@@ -40,6 +40,16 @@ tasks:
       retention sweep (90d idle → P3). Filed as INFRA-637 follow-up.
     optional: true            # script may not exist yet
 
+  gap-failure-detector:
+    interval_s: 660           # 11 min — skewed off curator (600s)
+    script: scripts/coord/detect-gap-failure.sh
+    class: detector           # observes; INFRA-889 acts
+    description: |
+      INFRA-872. Detects stuck leases (>2h, no commit) and stuck PRs
+      (>2h, failing checks). Emits kind=gap_failed with failure-class
+      taxonomy. Auto-rollback execution is OUT OF SCOPE; consumed by
+      INFRA-889 follow-up.
+
 # Skew rules: no two tasks in the same `class` should share an interval_s
 # value, AND short-cycle tasks (interval_s <= 600) must have distinct
 # intervals so launchd jitter does not collide them on the same minute.

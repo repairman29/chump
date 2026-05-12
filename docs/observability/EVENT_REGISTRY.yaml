@@ -470,6 +470,20 @@ events:
       doc was (re-)published. Useful for after-the-fact "when did sequencing
       change?" reconstruction.
 
+  - kind: gap_failed
+    emitter: scripts/coord/detect-gap-failure.sh (INFRA-872)
+    trigger: detector classifies a stuck lease or failing PR as a gap failure
+    consumers: [fleet-brief, audit-log, auto-rollback]
+    fields_required: [ts, kind, gap_id, class, reason, recovery_action, age_s, detector]
+    docs: |
+      Failure-class taxonomy:
+        - transient    — network / rate-limit; safe to auto-retry
+        - code_quality — failing checks; needs human review
+        - stalled      — no progress on lease for >2h
+        - infra        — bot-merge or CI infra failure
+      recovery_action ∈ {auto_rollback, manual_review}. Auto-execute is
+      consumed by INFRA-889; INFRA-872 only emits.
+
   - kind: ship_grade
     emitter: scripts/ops/ship-quality-grader.sh
     trigger: per-PR ship-quality grade computed
