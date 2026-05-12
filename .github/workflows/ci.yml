@@ -1035,3 +1035,5 @@ jobs:
         run: bash scripts/ci/test-fleet-state-mutex.sh
       - name: gh-api-probe wired in bot-merge + run-fleet (INFRA-539)
         run: bash scripts/ci/test-gh-api-probe.sh
+      - name: pillar balance alerts — alert/overweight events, floor threshold, dry-run (INFRA-902)
+        run: bash scripts/ci/test-pillar-balance-alerts.sh
