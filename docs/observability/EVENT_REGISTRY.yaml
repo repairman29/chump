@@ -1034,6 +1034,13 @@ events:
     consumers: [fleet-brief, kpi-report, opus-curator]
     fields_required: [ts, kind, ship_rate_24h, waste_rate_24h, cycle_time_p50_h, active_gaps, p0_count]
 
+  - kind: gap_rollback_executed
+    emitter: scripts/ops/rollback-gap.sh (INFRA-899)
+    trigger: operator (or curator) rolls back a stalled/failed gap; lease released,
+      worktree removed, branch deleted, gap status reset to open
+    consumers: [fleet-brief, operator-recall, opus-curator]
+    fields_required: [ts, kind, gap_id, worktree_removed, branch_deleted, lease_released]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh

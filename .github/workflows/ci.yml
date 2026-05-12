@@ -998,6 +998,9 @@ jobs:
       - name: fleet metrics snapshot — ship_rate, waste_rate, cycle_time_p50 (INFRA-900)
         run: bash scripts/ci/test-fleet-metrics-snapshot.sh
 
+      - name: gap rollback — runbook, rollback-gap.sh, ambient event (INFRA-899)
+        run: bash scripts/ci/test-rollback-gap.sh
+
       - name: gap rebalance — P0 budget + pillar floor (INFRA-635)
         run: bash scripts/ci/test-gap-rebalance.sh
 
