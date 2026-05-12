@@ -368,6 +368,8 @@ fn print_help() {
     println!("  chump <command> [options]");
     println!("  chump <command> --help        show help for that command");
     println!("  chump --version               print version + build SHA");
+    println!("  chump --verbose               escalate RUST_LOG to debug");
+    println!("  chump --debug                 debug header (version, args, timestamp) + verbose");
     println!();
     println!("GAP MANAGEMENT");
     println!("  gap <sub>  (alias: g)  list, show, reserve, ship, audit-priorities …");
@@ -433,6 +435,27 @@ async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
+
+    // CREDIBLE-019: --verbose / --debug global flags (processed first so they
+    // take effect even alongside --version or --help).
+    // --verbose: escalate RUST_LOG to debug (human stderr).
+    // --debug: same as --verbose + emit a startup header with version, args, timestamp.
+    let flag_verbose = args.iter().any(|a| a == "--verbose" || a == "-v");
+    let flag_debug = args.iter().any(|a| a == "--debug");
+    if (flag_verbose || flag_debug) && std::env::var("RUST_LOG").is_err() {
+        // Safety: single-threaded; no async tasks spawned yet.
+        unsafe { std::env::set_var("RUST_LOG", "debug") };
+    }
+    if flag_debug {
+        let ts = chrono::Utc::now().format("%H:%M:%S%.3f");
+        eprintln!(
+            "[debug] chump {} ({}) started at {}",
+            version::chump_version(),
+            version::chump_build_sha(),
+            ts,
+        );
+        eprintln!("[debug] args: {:?}", &args[1..]);
+    }
 
     // INFRA-148: surface the baked build SHA + date so operators can verify
     // their binary's staleness against `git log src/gap_store.rs src/main.rs`
