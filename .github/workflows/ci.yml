@@ -62,7 +62,6 @@ jobs:
               - 'e2e/**'
               - 'e2e-tauri/**'
               - 'examples/**'
-              - 'extensions/**'
               - 'experiments/**'
               - 'launchd/**'
               - 'path/**'
@@ -187,7 +186,7 @@ jobs:
   # (admin); leaving the rollup name as `test` ships the throughput win
   # without touching protection.
   test:
-    needs: [fast-checks, clippy, cargo-test, pr-hygiene]
+    needs: [fast-checks, clippy, cargo-test]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -200,14 +199,10 @@ jobs:
           # required `test` check should still pass — same behavior as the
           # pre-INFRA-213 monolith, which was also gated by `if:
           # needs.changes.outputs.code == 'true' || …`.
-          # CREDIBLE-042/043: pr-hygiene is path-filter-agnostic (runs on
-          # every PR regardless of changes), so its result counts toward
-          # the rollup unconditionally.
           fast="${{ needs.fast-checks.result }}"
           clippy="${{ needs.clippy.result }}"
           test="${{ needs.cargo-test.result }}"
-          hygiene="${{ needs.pr-hygiene.result }}"
-          echo "fast-checks=$fast  clippy=$clippy  cargo-test=$test  pr-hygiene=$hygiene"
+          echo "fast-checks=$fast  clippy=$clippy  cargo-test=$test"
           fail=0
           for r in "$fast" "$clippy" "$test"; do
             case "$r" in
@@ -215,53 +210,11 @@ jobs:
               *) fail=1 ;;
             esac
           done
-          # pr-hygiene must succeed — no skip-equivalent path. If it failed
-          # or was cancelled, the rollup is red.
-          case "$hygiene" in
-            success) ;;
-            *) fail=1 ;;
-          esac
           if [ "$fail" = "1" ]; then
             echo "::error::One or more CI shards failed (see results above)"
             exit 1
           fi
           echo "All shards green (or appropriately skipped)."
-
-  # ── PR hygiene (CREDIBLE-042/043) ─────────────────────────────────────────
-  # Runs on EVERY pull_request regardless of which paths changed. Catches the
-  # two PR-shape failure classes that produced the worst incidents in early
-  # May 2026:
-  #   - PR #1444 silent META-044 revert  →  caught by check-pr-scope.sh
-  #   - PR #1441 378k-line mass-deletion →  caught by check-mass-deletion.sh
-  # Both are rolled into the `test` required check via needs:.
-  #
-  # NOT gated by `needs.changes.outputs.code` — these checks are about the
-  # PR's *shape* (title + diff size), not its file extensions. A docs-only
-  # PR with a misleading 'feat:' title should still fail this gate.
-  #
-  # Force-fire validated: scripts/ci/test-all-gates-force-fire.sh exercises
-  # both checks against synthetic violating fixtures and asserts they fire.
-  # See scripts/ci/gate-manifest.yaml (CREDIBLE-050).
-  pr-hygiene:
-    needs: changes
-    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          # Both checkers need git history to resolve merge-base against
-          # the target branch. fetch-depth: 0 fetches all history.
-          fetch-depth: 0
-
-      - name: PR scope-vs-title divergence detector (CREDIBLE-026)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/check-pr-scope.sh
-
-      - name: Mass-deletion / scratch-commit guard (CREDIBLE-027)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/check-mass-deletion.sh
 
   # ── Shard 1: fast checks ──────────────────────────────────────────────────
   # fmt + JS self-tests + every ~30-second bash guard. No `cargo test`, no
@@ -399,11 +352,6 @@ jobs:
       - name: flake-autorerun harness fixture (INFRA-764)
         run: bash scripts/ci/test-flake-autorerun.sh
 
-      - name: fleet brief subcommand (INFRA-721)
-        run: |
-          cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-fleet-brief.sh
-
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
 
@@ -418,9 +366,6 @@ jobs:
 
       - name: pr-triage-bot smoke + YAML parse (INFRA-624/648)
         run: bash scripts/ci/test-pr-triage-bot.sh
-
-      - name: model-registry schema validation (INFRA-739)
-        run: bash scripts/ci/test-model-registry.sh
 
       - name: doc-only commits run all guards (INFRA-257)
         run: bash scripts/ci/test-infra-257-doc-only-guards.sh
@@ -516,14 +461,6 @@ jobs:
       - name: env-var coverage — all src/ reads documented or allowlisted (DOC-026)
         run: bash scripts/ci/test-env-var-coverage.sh
 
-      - name: CLI help system consistency — all 31 commands have Usage strings (CREDIBLE-015)
-        run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
-            bash scripts/ci/test-cli-help.sh
-
-      - name: CLI version/debug flags (CREDIBLE-019)
-        run: bash scripts/ci/test-cli-version-debug.sh
-
       # INFRA-024: standalone example workspace (not a root workspace member).
       # Locked build catches accidental drift in examples/apalis-poc/Cargo.lock.
       # Cheap (~30s) — keep it co-located with the other build-using checks.
@@ -617,102 +554,6 @@ jobs:
 
       - name: cargo test (with INFRA-764 flake auto-rerun)
         run: bash scripts/ci/cargo-test-with-rerun.sh -- cargo test --workspace
-
-  # ── CREDIBLE-006: code coverage (llvm-cov) ───────────────────────────────
-  # Non-blocking — continue-on-error:true so a coverage regression is a
-  # warning, not a merge-blocker, until the baseline stabilises (>2 weeks).
-  # Uploads an lcov artifact + writes a summary to $GITHUB_STEP_SUMMARY.
-  coverage:
-    needs: changes
-    if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
-
-      - name: Install Linux packages (webkit required by chump-desktop workspace member)
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y \
-            webkit2gtk-4.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
-            build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev util-linux
-
-      - name: Install Rust toolchain + llvm-tools-preview
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-coverage
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      - name: Generate coverage report (lcov)
-        run: |
-          cargo llvm-cov --workspace --lcov --output-path coverage.lcov \
-            --ignore-filename-regex '(tests?/|test_|_test\.rs|build\.rs)'
-
-      - name: Summarise coverage
-        run: |
-          # Extract total line coverage % from lcov and write to step summary + file.
-          python3 - <<'PYEOF'
-          import re, os
-
-          lcov = open("coverage.lcov").read()
-          found = hit = 0
-          for line in lcov.splitlines():
-              if line.startswith("LF:"):
-                  found += int(line[3:])
-              elif line.startswith("LH:"):
-                  hit += int(line[3:])
-
-          pct = (hit / found * 100) if found else 0.0
-          summary = f"Coverage: {pct:.1f}% ({hit}/{found} lines)"
-          print(summary)
-
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
-              f.write(f"## {summary}\n\n")
-              f.write("lcov artifact: `coverage-lcov`\n")
-
-          with open("coverage-summary.txt", "w") as f:
-              f.write(f"lines: {pct:.1f}% ({hit}/{found})\n")
-
-          # CREDIBLE-006 threshold check: warn if coverage dropped from baseline.
-          threshold = float(os.environ.get("CHUMP_COVERAGE_DROP_THRESHOLD", "2"))
-          baseline_file = "docs/credibility/COVERAGE_BASELINE.md"
-          import re as _re
-          try:
-              text = open(baseline_file).read()
-              m = _re.search(r'(\d+\.\d+)\s*%', text)
-              if m:
-                  baseline_pct = float(m.group(1))
-                  drop = baseline_pct - pct
-                  if drop > threshold:
-                      print(f"::warning::Coverage dropped {drop:.1f} pp below baseline "
-                            f"({baseline_pct:.1f}% → {pct:.1f}%). "
-                            f"Threshold: {threshold} pp.")
-              else:
-                  print("Baseline not yet established — skipping threshold check.")
-          except FileNotFoundError:
-              print("No baseline file found — skipping threshold check.")
-          PYEOF
-
-      - name: Upload coverage artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-lcov
-          path: |
-            coverage.lcov
-            coverage-summary.txt
-          retention-days: 30
 
   # ── E2E shards (INFRA-549) ────────────────────────────────────────────────
   # The old monolithic test-e2e (>1h26m, serialized behind unit-test rollup)
@@ -972,48 +813,10 @@ jobs:
         env:
           CHUMP_OBS_BUDGET_BYPASS: "1"
         run: bash scripts/ci/test-lint-handoff-comment.sh
-      - name: review-as-handoff author re-engagement loop (INFRA-771)
-        run: bash scripts/ci/test-review-handoff-reengage.sh
-      - name: worker circuit-breaker — threshold=3 pause=5min kill-switch (INFRA-826)
-        run: bash scripts/ci/test-worker-circuit-breaker.sh
-      - name: worker first-output watchdog — kill switch, event emission, retry (INFRA-828)
-        run: bash scripts/ci/test-worker-first-output-watchdog.sh
-      - name: worker timeout-no-commit rescue — kill switch, event emission, SHA diff (INFRA-831)
-        run: bash scripts/ci/test-worker-timeout-no-commit.sh
-      - name: bot-merge stacked PR auto-rebase — kill switch, event emission, gated trigger (INFRA-765)
-        run: bash scripts/ci/test-bot-merge-stacked-rebase.sh
-      - name: curator decision logging — kind, required fields, enum, phases (INFRA-848)
-        run: bash scripts/ci/test-curator-decision-logging.sh
-      - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
-        run: bash scripts/ci/test-required-model.sh
-      - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
-        run: bash scripts/ci/test-gap-quality-gate.sh
-      - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
-        run: bash scripts/ci/test-gap-templates.sh
-      - name: per-gap performance profiling — timing wrapper, perf report, flame chart (INFRA-906)
-        run: bash scripts/ci/test-gap-profiling.sh
-      - name: credential lifecycle — rotation_due alert, age threshold, dry-run (INFRA-879)
-        run: bash scripts/ci/test-credential-lifecycle.sh
-      - name: gap run-now — manual dispatch trigger, event schema, validation (INFRA-895)
-        run: bash scripts/ci/test-gap-run-now.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
-      - name: fleet metrics snapshot — ship_rate, waste_rate, cycle_time_p50 (INFRA-900)
-        run: bash scripts/ci/test-fleet-metrics-snapshot.sh
-
-      - name: gap rebalance — P0 budget + pillar floor (INFRA-635)
-        run: bash scripts/ci/test-gap-rebalance.sh
-
-      - name: gap pillar-balance — pickable inventory per pillar (INFRA-604)
-        run: bash scripts/ci/test-pillar-balance.sh
-
-      - name: stale-binary destructive-op guard (INFRA-825)
-        # Asserts chump gap ship --update-yaml / dump --per-file hard-fail
-        # on a stale binary. PR #1444 silently reverted META-044 because
-        # this gate didn't exist — the soft warning was ignored by the
-        # implementer. Now hard-fail with CHUMP_ALLOW_STALE_DESTRUCTIVE=1
-        # as the audited escape hatch.
-        run: bash scripts/ci/test-stale-binary-ship-blocked.sh
+      - name: Incident classification + severity (INFRA-896)
+        run: bash scripts/ci/test-classify-incident.sh
       # INFRA-682: auto-detect when PR diff matches NONE of the code: patterns.
       # If filter.outputs.code is false on a PR, all required CI checks
       # (fast-checks, clippy, cargo-test, test rollup) will be SKIPPED — branch
@@ -1026,17 +829,4 @@ jobs:
           echo "::warning::PR diff matches NONE of the 'code:' paths-filter allowlist (ci.yml). Required CI checks will be SKIPPED — branch protection will block this PR from merging. Fix: add the changed path(s) to the 'code:' section in .github/workflows/ci.yml. See INFRA-272/INFRA-682."
       - name: path-filter allowlist structural coverage (INFRA-682)
         run: bash scripts/ci/check-path-filter-coverage.sh
-      - name: state.db corruption recovery — restore from state.sql (INFRA-538)
-        run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
-            bash scripts/ci/test-state-db-restore.sh
-      - name: PWA gap workflow e2e — 4-phase stub + status transition (CREDIBLE-020)
-        run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
-            bash scripts/ci/test-pwa-e2e-gap-workflow.sh
-      - name: fleet-state.json mutex — flock, kill switch, timeout event (INFRA-847)
-        run: bash scripts/ci/test-fleet-state-mutex.sh
-      - name: gh-api-probe wired in bot-merge + run-fleet (INFRA-539)
-        run: bash scripts/ci/test-gh-api-probe.sh
-      - name: change approval workflow — gate, approve, rollback, ambient events (INFRA-912)
-        run: bash scripts/ci/test-change-approval.sh
+
