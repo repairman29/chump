@@ -29,7 +29,7 @@ read_manifest() {
 import sys, yaml
 data = yaml.safe_load(open('$MANIFEST'))
 for g in data.get('gates', []):
-    print(f\"{g['id']}|{g['check_script']}|{g.get('expected_exit_nonzero', True)}|{g.get('fixture_kind', '')}|{g.get('known_broken', '')}\")
+    print(f\"{g['id']}|{g['check_script']}|{g.get('expected_exit_nonzero', True)}|{g.get('fixture_kind', '')}|{g.get('known_broken', '')}|{g.get('fixture_args', '')}\")
 "
 }
 
@@ -83,9 +83,9 @@ fixture_scratch_commits_or_mass_delete() {
 }
 
 fixture_state_db_with_ghost_closed_pr() {
-    # test-gap-closure-consistency.sh needs --strict to actually fire (not
-    # just emit a warning + exit 0). Pass via FIXTURE_ARGS env so the
-    # runner appends them to the bash invocation.
+    # Args like --strict come from the manifest's `fixture_args` field —
+    # not from `export` here (the fixture preparer runs in a $(...)
+    # subshell, so exports never reach the runner's main shell).
     local tmp; tmp="$(mktemp -d -t gate-fixture-premature.XXXXXX)"
     mkdir -p "$tmp/.chump"
     sqlite3 "$tmp/.chump/state.db" <<'SQL'
@@ -105,8 +105,6 @@ SQL
     cd "$tmp"
     git init -q && git config user.email t@t.t && git config user.name t
     git commit --allow-empty -q -m "init"
-    # Force the gate to use --strict mode so it exits non-zero on drift.
-    export GATE_FIXTURE_ARGS="--strict"
     echo "$tmp"
 }
 
@@ -171,7 +169,7 @@ total=0; passed=0; failed=0; skipped=0
 fixtures_to_clean=()
 
 known_broken_count=0
-while IFS='|' read -r gate_id check_script expected_nonzero fixture_kind known_broken; do
+while IFS='|' read -r gate_id check_script expected_nonzero fixture_kind known_broken fixture_args; do
     if [[ -n "$target_gate" && "$gate_id" != "$target_gate" ]]; then
         continue
     fi
@@ -216,15 +214,16 @@ while IFS='|' read -r gate_id check_script expected_nonzero fixture_kind known_b
 
     pushd "$fixture_root" >/dev/null
     set +e
-    # Some fixtures need extra args (e.g., --strict for closure-consistency).
-    if [[ -n "${GATE_FIXTURE_ARGS:-}" ]]; then
+    # CREDIBLE-051: per-gate fixture_args (manifest field) replaces the
+    # old GATE_FIXTURE_ARGS env-var trick. The previous setter lived inside
+    # $(prepare_fixture) — a subshell, so its export never reached here.
+    if [[ -n "$fixture_args" ]]; then
         # shellcheck disable=SC2086
-        bash "$REPO_ROOT/$check_script" $GATE_FIXTURE_ARGS >/dev/null 2>&1
+        bash "$REPO_ROOT/$check_script" $fixture_args >/dev/null 2>&1
     else
         bash "$REPO_ROOT/$check_script" >/dev/null 2>&1
     fi
     exit_code=$?
-    unset GATE_FIXTURE_ARGS
     set -e
     popd >/dev/null
 

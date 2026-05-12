@@ -53,13 +53,27 @@ for arg in "$@"; do
 done
 
 # ── Resolve state.db ─────────────────────────────────────────────────────────
-_GIT_COMMON="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo ".git")"
-if [[ "$_GIT_COMMON" == ".git" ]]; then
-    MAIN_REPO="$REPO_ROOT"
+# CREDIBLE-051: prefer $PWD/.chump/state.db (fixture-aware) over the parent
+# repo's via git-common-dir. Order: CHUMP_STATE_DB env → $PWD/.chump/state.db
+# → git-common-dir parent (only with --use-main). Without this, the gate
+# silently reads the real repo's state.db when run from a fixture, ignoring
+# the per-invocation state and making CREDIBLE-050 force-fire tests inert.
+if [[ -n "${CHUMP_STATE_DB:-}" ]]; then
+    DB="$CHUMP_STATE_DB"
+elif [[ -f "$PWD/.chump/state.db" ]]; then
+    DB="$PWD/.chump/state.db"
+    MAIN_REPO="$PWD"
 else
-    MAIN_REPO="$(cd "$_GIT_COMMON/.." 2>/dev/null && pwd || echo "$REPO_ROOT")"
+    _GIT_COMMON="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+    if [[ "$_GIT_COMMON" == ".git" ]]; then
+        MAIN_REPO="$REPO_ROOT"
+    else
+        MAIN_REPO="$(cd "$_GIT_COMMON/.." 2>/dev/null && pwd || echo "$REPO_ROOT")"
+    fi
+    DB="$MAIN_REPO/.chump/state.db"
 fi
-DB="$MAIN_REPO/.chump/state.db"
+: "${MAIN_REPO:=$REPO_ROOT}"
+
 if [[ ! -f "$DB" ]]; then
     warn "state.db not found at $DB — skipping closure consistency check"
     exit 0
@@ -69,6 +83,14 @@ if ! command -v gh &>/dev/null; then
     warn "gh CLI not found — skipping GitHub PR state check"
     exit 0
 fi
+
+# CREDIBLE-051: track gh-API failures so a degraded GitHub does not silence
+# the gate by making per-gap iterations skip + outer loop claim pass.
+# Escape hatch CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL=1 preserves the old
+# skip-on-fail behavior for legitimate offline use.
+GH_FAIL_COUNT=0
+GH_FAIL_GAPS=()
+ALLOW_GH_FAIL="${CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL:-0}"
 
 LOCK_DIR="$MAIN_REPO/.chump-locks"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
@@ -105,7 +127,17 @@ run_forward_check() {
         local pr_num="${row##*|}"
         local merged_at pr_state pr_state_raw
         merged_at="$(gh pr view "$pr_num" --json mergedAt --jq '.mergedAt' 2>/dev/null || echo "ERROR")"
-        [[ "$merged_at" == "ERROR" ]] && { warn "$gap_id: could not query PR #$pr_num — skipping"; continue; }
+        if [[ "$merged_at" == "ERROR" ]]; then
+            # CREDIBLE-051: track gh-API failures. Don't silently skip — a
+            # rate-limited or offline gh used to make this loop emit "all
+            # verified" because every iteration just `continue`d. Now we
+            # accumulate and let the outer loop decide based on
+            # ALLOW_GH_FAIL.
+            GH_FAIL_COUNT=$((GH_FAIL_COUNT + 1))
+            GH_FAIL_GAPS+=("$gap_id:#$pr_num")
+            warn "$gap_id: could not query PR #$pr_num"
+            continue
+        fi
 
         if [[ -z "$merged_at" || "$merged_at" == "null" ]]; then
             pr_state_raw="$(gh pr view "$pr_num" --json state --jq '.state' 2>/dev/null || echo "UNKNOWN")"
@@ -173,7 +205,13 @@ run_reverse_check() {
         local pr_num="${row##*|}"
         local merged_at pr_title
         merged_at="$(gh pr view "$pr_num" --json mergedAt --jq '.mergedAt' 2>/dev/null || echo "ERROR")"
-        [[ "$merged_at" == "ERROR" ]] && { warn "$gap_id: could not query PR #$pr_num — skipping"; continue; }
+        if [[ "$merged_at" == "ERROR" ]]; then
+            # CREDIBLE-051: track gh-API failures (see forward-mode comment).
+            GH_FAIL_COUNT=$((GH_FAIL_COUNT + 1))
+            GH_FAIL_GAPS+=("$gap_id:#$pr_num")
+            warn "$gap_id: could not query PR #$pr_num"
+            continue
+        fi
 
         if [[ -n "$merged_at" && "$merged_at" != "null" ]]; then
             pr_title="$(gh pr view "$pr_num" --json title --jq '.title' 2>/dev/null || echo "?")"
@@ -211,6 +249,22 @@ else
     info "Skipping forward check (--reverse mode)"
 fi
 run_reverse_check
+
+# CREDIBLE-051: gh-API failures during gap iteration are drift unless the
+# operator opts in via CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL=1. Without this,
+# a rate-limited or offline gh used to make the entire check exit 0.
+if [[ "$GH_FAIL_COUNT" -gt 0 ]]; then
+    if [[ "$ALLOW_GH_FAIL" == "1" ]]; then
+        warn "gh-API failed for $GH_FAIL_COUNT gap(s); CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL=1 set — treating as soft skip"
+    else
+        warn "gh-API failed for $GH_FAIL_COUNT gap(s) — treating as drift (set CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL=1 for offline use)"
+        if [[ "$EMIT_ALERT" -eq 1 ]]; then
+            ids_json="$(printf '"%s",' "${GH_FAIL_GAPS[@]}" | sed 's/,$//')"
+            emit_alert "gap_closure_check_gh_unavailable" '"gaps":['"$ids_json"'],"note":"gh-API failed during gap iteration"'
+        fi
+        [[ "$STRICT" -eq 1 ]] && overall_drift=1
+    fi
+fi
 
 echo ""
 if [[ "$overall_drift" -eq 0 ]]; then
