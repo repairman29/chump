@@ -290,3 +290,7 @@ CHUMP_SUBAGENT_HEARTBEAT_SECS
 # ── Tier 2: fleet auto-widen config (INFRA-615) ───────────────────────────
 FLEET_EFFORT_FILTER
 FLEET_PRIORITY_FILTER
+
+# ── CREDIBLE-051: closure-consistency check overrides ──────────────────────
+CHUMP_STATE_DB
+CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL
