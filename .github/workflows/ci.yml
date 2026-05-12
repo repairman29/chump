@@ -1062,3 +1062,7 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-audit-ac-open.sh
       - name: bot-merge.sh step-specific exit codes (RESILIENT-010)
         run: bash scripts/ci/test-bot-merge-exit-codes.sh
+
+      - name: UUID gap-ID compatibility audit — preflight+show+auto-derive (INFRA-630)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-uuid-gap-id-compat.sh

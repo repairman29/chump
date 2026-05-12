@@ -387,7 +387,18 @@ impl GapStore {
     }
 
     /// Get a single gap by ID.
+    ///
+    /// INFRA-630: if `gap_id` looks like an 8-char hex short-prefix (all
+    /// lowercase/uppercase hex digits, exactly 8 chars), fall through to a
+    /// `LIKE '<prefix>%'` query so operators can use the compact form printed
+    /// by chump-proprietary tooling (e.g. `chump gap show 8d3f2c0e`).
+    /// Returns the unique match, or None if zero or multiple rows match
+    /// (ambiguous prefix → exact ID required).
     pub fn get(&self, gap_id: &str) -> Result<Option<GapRow>> {
+        // INFRA-630: detect 8-char hex short-prefix form
+        let is_uuid_short_prefix =
+            gap_id.len() == 8 && gap_id.chars().all(|c| c.is_ascii_hexdigit());
+
         let mut stmt = self.conn.prepare(
             "SELECT id,domain,title,description,priority,effort,status,
                     acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
@@ -422,6 +433,54 @@ impl GapStore {
                 })
             })
             .optional()?;
+
+        // INFRA-630: prefix-match fallback for 8-char UUID short prefixes.
+        // Only runs when exact match returned nothing AND input looks like hex.
+        if row.is_none() && is_uuid_short_prefix {
+            let pattern = format!("{}%", gap_id.to_lowercase());
+            let mut pfx_stmt = self.conn.prepare(
+                "SELECT id,domain,title,description,priority,effort,status,
+                         acceptance_criteria,depends_on,notes,source_doc,created_at,closed_at,
+                         opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                         preferred_machine,estimated_minutes,required_model
+                  FROM gaps WHERE LOWER(id) LIKE ?1 LIMIT 2",
+            )?;
+            // Collect up to 2 rows to detect ambiguity without borrow conflicts.
+            let matches: Vec<GapRow> = pfx_stmt
+                .query_map(params![pattern], |r| {
+                    Ok(GapRow {
+                        id: r.get(0)?,
+                        domain: r.get(1)?,
+                        title: r.get(2)?,
+                        description: r.get(3)?,
+                        priority: r.get(4)?,
+                        effort: r.get(5)?,
+                        status: r.get(6)?,
+                        acceptance_criteria: r.get(7)?,
+                        depends_on: r.get(8)?,
+                        notes: r.get(9)?,
+                        source_doc: r.get(10)?,
+                        created_at: r.get(11)?,
+                        closed_at: r.get(12)?,
+                        opened_date: r.get(13)?,
+                        closed_date: r.get(14)?,
+                        closed_pr: r.get(15)?,
+                        skills_required: r.get(16)?,
+                        preferred_backend: r.get(17)?,
+                        preferred_machine: r.get(18)?,
+                        estimated_minutes: r.get(19)?,
+                        required_model: r.get(20)?,
+                    })
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            if matches.len() == 1 {
+                // Unique match — return it.
+                return Ok(Some(matches.into_iter().next().unwrap()));
+            }
+            // 0 matches → NotFound (fall through to Ok(None) below).
+            // 2 matches → ambiguous prefix; caller should pass full UUID.
+        }
+
         Ok(row)
     }
 
@@ -1124,7 +1183,32 @@ impl GapStore {
     }
 
     /// Preflight check: is the gap open and unclaimed?
+    ///
+    /// INFRA-630: accepts 8-char hex short-prefix (UUID short form) via the
+    /// same prefix-match logic as `get()`. Resolves to full ID before checking
+    /// lease table so lease lookups remain exact.
     pub fn preflight(&self, gap_id: &str) -> Result<PreflightResult> {
+        // INFRA-630: resolve short-prefix to full ID first.
+        let resolved: std::borrow::Cow<str> =
+            if gap_id.len() == 8 && gap_id.chars().all(|c| c.is_ascii_hexdigit()) {
+                let pattern = format!("{}%", gap_id.to_lowercase());
+                let full: Option<String> = self
+                    .conn
+                    .query_row(
+                        "SELECT id FROM gaps WHERE LOWER(id) LIKE ?1 LIMIT 1",
+                        params![pattern],
+                        |r| r.get(0),
+                    )
+                    .optional()?;
+                match full {
+                    Some(id) => std::borrow::Cow::Owned(id),
+                    None => std::borrow::Cow::Borrowed(gap_id),
+                }
+            } else {
+                std::borrow::Cow::Borrowed(gap_id)
+            };
+        let gap_id = resolved.as_ref();
+
         let row = self
             .conn
             .query_row(

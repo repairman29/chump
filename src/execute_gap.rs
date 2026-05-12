@@ -303,13 +303,40 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
     Ok(())
 }
 
-/// Minimal gap-id syntactic check — must match `[A-Z][A-Z0-9]+-\d+`-ish
-/// (DOMAIN-NUMBER). Fails the run early if the caller passed garbage so we
-/// don't waste a provider call building a prompt for a non-gap.
+/// Minimal gap-id syntactic check (INFRA-630). Accepts:
+///   - Classic `DOMAIN-NUMBER` form: `[A-Z][A-Z0-9]+-\d+` (e.g. INFRA-630)
+///   - Full RFC-4122 UUID: 8-4-4-4-12 lowercase hex (e.g. 8d3f2c0e-9f5b-4e1a-b2c3-d4e5f6a7b8c9)
+///   - 8-char hex short-prefix used by chump-proprietary display (e.g. 8d3f2c0e)
+///
+/// Fails the run early if the caller passed garbage so we don't waste a
+/// provider call building a prompt for a non-gap.
 fn validate_gap_id(gap_id: &str) -> Result<()> {
     if gap_id.is_empty() {
         return Err(anyhow!("gap id is empty"));
     }
+
+    // INFRA-630: accept 8-char hex short-prefix (chump-proprietary display form)
+    if gap_id.len() == 8 && gap_id.chars().all(|c| c.is_ascii_hexdigit()) {
+        tracing::debug!(gap_id, "INFRA-630: UUID short-prefix gap id accepted");
+        return Ok(());
+    }
+
+    // INFRA-630: accept full RFC-4122 UUID (8-4-4-4-12 hex groups, lowercase)
+    // Pattern: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    let parts: Vec<&str> = gap_id.split('-').collect();
+    if parts.len() == 5 {
+        let lengths = [8usize, 4, 4, 4, 12];
+        if parts
+            .iter()
+            .zip(lengths.iter())
+            .all(|(p, &len)| p.len() == len && p.chars().all(|c| c.is_ascii_hexdigit()))
+        {
+            tracing::debug!(gap_id, "INFRA-630: RFC-4122 UUID gap id accepted");
+            return Ok(());
+        }
+    }
+
+    // Classic DOMAIN-NUMBER form
     let Some((prefix, num)) = gap_id.split_once('-') else {
         return Err(anyhow!("gap id missing '-': {gap_id}"));
     };
@@ -773,6 +800,16 @@ mod tests {
         assert!(validate_gap_id("COG-025").is_ok());
         assert!(validate_gap_id("AUTO-013").is_ok());
         assert!(validate_gap_id("EVAL-031").is_ok());
+    }
+
+    #[test]
+    fn validate_gap_id_accepts_uuid_forms() {
+        // INFRA-630: full RFC-4122 UUID
+        assert!(validate_gap_id("8d3f2c0e-9f5b-4e1a-b2c3-d4e5f6a7b8c9").is_ok());
+        assert!(validate_gap_id("00000000-0000-0000-0000-000000000000").is_ok());
+        // INFRA-630: 8-char hex short-prefix (chump-proprietary display form)
+        assert!(validate_gap_id("8d3f2c0e").is_ok());
+        assert!(validate_gap_id("deadbeef").is_ok());
     }
 
     #[test]

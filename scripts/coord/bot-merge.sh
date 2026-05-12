@@ -253,14 +253,31 @@ if [[ ${#GAP_IDS[@]} -eq 0 ]]; then
     # auto-derive works for non-Chump repos with custom branch namespaces.
     # Use ${BRANCH_PREFIX:-chump} so the pattern degrades gracefully when this
     # block is eval'd in isolation (e.g. unit tests that source only this block).
-    _branch_tail=$(echo "$_branch_name" \
-        | sed -E "s,^(${BRANCH_PREFIX:-chump}|chump|claude|chore)/(file-|close-|fix-)?,," \
+    # INFRA-630: extract UUID-format gap IDs BEFORE tr strips hyphens.
+    # Supported branch patterns:
+    #   chump/8d3f2c0e-9f5b-4e1a-b2c3-d4e5f6a7b8c9-slug  (full RFC-4122 UUID)
+    #   chump/8d3f2c0e--my-slug                           (8-char short-prefix, chump-proprietary)
+    _branch_raw=$(echo "$_branch_name" \
+        | sed -E "s,^(${BRANCH_PREFIX:-chump}|chump|claude|chore)/(file-|close-|fix-)?,," )
+    # Full UUID pattern (RFC-4122: 8-4-4-4-12 hex)
+    _uuid_full=$(printf '%s' "$_branch_raw" \
+        | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' 2>/dev/null \
+        | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' ' || true)
+    # Short-prefix pattern: 8 lowercase hex chars immediately followed by --
+    _uuid_short=$(printf '%s' "$_branch_raw" \
+        | sed -n 's/^\([0-9a-f]\{8\}\)--.*$/\1/p' \
+        | tr '[:lower:]' '[:upper:]' || true)
+    _uuid_derived_gaps="${_uuid_full}${_uuid_short:+${_uuid_short} }"
+    # Fallback to standard sed-based approach for [DOMAIN]-[NUM] patterns.
+    _branch_tail=$(echo "$_branch_raw" \
         | tr '-' ' ' | tr 'a-z' 'A-Z')
     # Extract every <DOMAIN>-<NUMBER> pattern from the cleaned branch name.
     _derived_gaps=$(echo "$_branch_tail" \
         | grep -oE '[A-Z]+ [0-9]+' \
         | sed 's/ /-/' \
         | sort -u | tr '\n' ' ')
+    # Merge UUID-format + classic-format derived gaps (INFRA-630)
+    _derived_gaps="${_uuid_derived_gaps}${_derived_gaps}"
     if [[ -n "$_derived_gaps" ]]; then
         for gid in $_derived_gaps; do GAP_IDS+=("$gid"); done
         printf '\033[0;32m[bot-merge] auto-derived --gap from branch name: %s\033[0m\n' "${GAP_IDS[*]}"
@@ -1404,7 +1421,8 @@ if [[ -z "$EXISTING_PR" ]]; then
     stage_start "gh pr create"
     # Build a body from the gap IDs cited in commits since base diverged.
     COMMIT_LOG=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline 2>/dev/null | head -20)
-    COMMIT_GAP_IDS=$(echo "$COMMIT_LOG" | grep -oE '[A-Z]+-[0-9]+' | sort -u | tr '\n' ' ' || true)
+    # INFRA-630: extract both classic DOMAIN-NUMBER and RFC-4122 UUID gap IDs from commit log.
+    COMMIT_GAP_IDS=$(echo "$COMMIT_LOG" | grep -oE '[A-Z]+-[0-9]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | sort -u | tr '\n' ' ' || true)
     GAP_LINE=""
     [[ -n "$COMMIT_GAP_IDS" ]] && GAP_LINE="**Gaps addressed:** $COMMIT_GAP_IDS"
 
