@@ -1252,6 +1252,13 @@ events:
       without any commit activity; emitted once per stale gap per run
     consumers: [fleet-brief, operator-recall, opus-curator]
     fields_required: [ts, kind, gap_id, age_days, title]
+  - kind: worktree_contaminated
+    emitter: scripts/ops/worktree-contamination-check.sh (INFRA-931)
+    trigger: untracked files from a foreign gap-claim branch detected in the
+      current worktree (docs/gaps/*.yaml or scripts/ paths belonging to another
+      active gap session)
+    consumers: [fleet-brief, operator-recall, opus-curator]
+    fields_required: [ts, kind, gap_id, worktree_path, contaminated_count, example_file]
 
 
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────

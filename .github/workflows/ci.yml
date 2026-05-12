@@ -1134,4 +1134,5 @@ jobs:
           bash scripts/ci/test-waste-tally-domain.sh
       - name: PWA version compatibility check (CREDIBLE-022)
         run: bash scripts/ci/test-pwa-version-compat.sh
-
+      - name: worktree contamination check — detect foreign gap files (INFRA-931)
+        run: bash scripts/ci/test-worktree-contamination-check.sh
