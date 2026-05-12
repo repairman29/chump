@@ -402,6 +402,8 @@ fn print_help() {
         "  kpi report         KPI scorecard across all pillars
   kpi report --impact  gap impact ratings (chump gap rate)"
     );
+    println!("  kpi report --agents  per-agent throughput (ships/fails/P50)");
+    println!("  kpi report --agents --date YYYY-MM-DD  specific date");
     println!("  cost-watch  (alias: cs)  real-time inference spend + per-slot breakdown");
     println!("  cost record-pr     attach cost metadata to a merged PR");
     println!("  pr-coupling-cost   cost of PRs that move together (coupling smell)");
@@ -5871,12 +5873,26 @@ async fn main() -> Result<()> {
         let want_pdf = args.iter().any(|a| a == "--pdf");
         let only_tokens = args.iter().any(|a| a == "--tokens-per-ship");
         let want_impact = args.iter().any(|a| a == "--impact");
+        let want_agents = args.iter().any(|a| a == "--agents");
 
         let repo_root = repo_path::repo_root();
 
         // FLEET-048: --impact shows gap impact ratings section only.
         if want_impact {
             let section = kpi_report::build_impact_section(&repo_root);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
+
+        // FLEET-044: --agents shows per-agent throughput from .chump/metrics/.
+        if want_agents {
+            let date_arg = flag("--date");
+            let section =
+                kpi_report::build_agent_throughput_section(&repo_root, date_arg.as_deref());
             if want_json {
                 println!("{}", section.render_json());
             } else {

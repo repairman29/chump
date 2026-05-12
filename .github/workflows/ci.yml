@@ -1088,3 +1088,5 @@ jobs:
         run: bash scripts/ci/test-cost-enforcement.sh
       - name: gap lifecycle manager — abandoned gap detection (INFRA-870)
         run: bash scripts/ci/test-gap-lifecycle-manager.sh
+      - name: per-agent throughput tracker — tracker script + kpi report --agents (FLEET-044)
+        run: bash scripts/ci/test-agent-throughput.sh

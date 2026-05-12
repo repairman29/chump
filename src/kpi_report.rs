@@ -486,6 +486,161 @@ impl KpiReport {
     }
 }
 
+// ── Agent Throughput Section (FLEET-044) ────────────────────────────────────
+
+/// Per-agent throughput row parsed from .chump/metrics/agent-throughput-DATE.json.
+#[derive(Debug, Clone)]
+pub struct AgentThroughputRow {
+    pub agent_id: String,
+    pub ships: u64,
+    pub fails: u64,
+    pub p50_minutes_per_ship: Option<f64>,
+    pub top_fail_modes: Vec<String>,
+}
+
+#[derive(Debug, Default)]
+pub struct AgentThroughputSection {
+    pub date: String,
+    pub rows: Vec<AgentThroughputRow>,
+    pub total_ships: u64,
+    pub total_fails: u64,
+}
+
+impl AgentThroughputSection {
+    pub fn render_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str("═══ Agent Throughput ═══\n");
+        if self.date.is_empty() {
+            out.push_str(
+                "  No throughput data found. Run: scripts/ops/agent-throughput-tracker.sh\n",
+            );
+            return out;
+        }
+        out.push_str(&format!("  Date: {}\n", self.date));
+        out.push_str(&format!(
+            "  Total ships: {}  Total fails: {}\n\n",
+            self.total_ships, self.total_fails
+        ));
+        if self.rows.is_empty() {
+            out.push_str("  No agent sessions recorded.\n");
+            return out;
+        }
+        out.push_str(&format!(
+            "  {:<36} {:>6} {:>6} {:>16}  {}\n",
+            "agent_id", "ships", "fails", "P50_min/ship", "top_fail_modes"
+        ));
+        for row in &self.rows {
+            let p50 = row
+                .p50_minutes_per_ship
+                .map(|v| format!("{:.1}", v))
+                .unwrap_or_else(|| "—".to_string());
+            out.push_str(&format!(
+                "  {:<36} {:>6} {:>6} {:>16}  {}\n",
+                row.agent_id,
+                row.ships,
+                row.fails,
+                p50,
+                row.top_fail_modes.join(", ")
+            ));
+        }
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let rows_json: Vec<String> = self
+            .rows
+            .iter()
+            .map(|r| {
+                let p50 = r
+                    .p50_minutes_per_ship
+                    .map(|v| format!("{:.1}", v))
+                    .unwrap_or_else(|| "null".to_string());
+                let modes = r
+                    .top_fail_modes
+                    .iter()
+                    .map(|m| format!(r#""{}""#, json_escape(m)))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!(
+                    r#"{{"agent_id":"{}","ships":{},"fails":{},"P50_minutes_per_ship":{},"top_fail_modes":[{}]}}"#,
+                    json_escape(&r.agent_id),
+                    r.ships,
+                    r.fails,
+                    p50,
+                    modes
+                )
+            })
+            .collect();
+        format!(
+            r#"{{"date":"{}","total_ships":{},"total_fails":{},"agents":[{}]}}"#,
+            json_escape(&self.date),
+            self.total_ships,
+            self.total_fails,
+            rows_json.join(",")
+        )
+    }
+}
+
+/// Read agent throughput from .chump/metrics/agent-throughput-DATE.json.
+pub fn build_agent_throughput_section(
+    repo_root: &Path,
+    date_str: Option<&str>,
+) -> AgentThroughputSection {
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let date = date_str.unwrap_or(today.as_str());
+    let metrics_path = repo_root
+        .join(".chump/metrics")
+        .join(format!("agent-throughput-{date}.json"));
+    let content = match std::fs::read_to_string(&metrics_path) {
+        Ok(c) => c,
+        Err(_) => return AgentThroughputSection::default(),
+    };
+    let json: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return AgentThroughputSection::default(),
+    };
+    let mut section = AgentThroughputSection {
+        date: json
+            .get("date")
+            .and_then(|v| v.as_str())
+            .unwrap_or(date)
+            .to_string(),
+        total_ships: json
+            .get("total_ships")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        total_fails: json
+            .get("total_fails")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        rows: vec![],
+    };
+    if let Some(agents) = json.get("agents").and_then(|v| v.as_array()) {
+        for a in agents {
+            section.rows.push(AgentThroughputRow {
+                agent_id: a
+                    .get("agent_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?")
+                    .to_string(),
+                ships: a.get("ships").and_then(|v| v.as_u64()).unwrap_or(0),
+                fails: a.get("fails").and_then(|v| v.as_u64()).unwrap_or(0),
+                p50_minutes_per_ship: a.get("P50_minutes_per_ship").and_then(|v| v.as_f64()),
+                top_fail_modes: a
+                    .get("top_fail_modes")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| m.as_str().map(|s| s.to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+            });
+        }
+    }
+    section
+}
+
 // ── Build functions ──────────────────────────────────────────────────────────
 
 /// Build the full KPI report for the given repo.
