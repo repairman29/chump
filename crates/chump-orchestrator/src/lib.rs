@@ -40,6 +40,10 @@ pub struct Gap {
     pub effort: String,
     #[serde(default)]
     pub status: String,
+    /// Gap kind: "user" (default) or "system". System gaps are perpetual
+    /// background tasks; user gaps are one-shot work items. INFRA-930.
+    #[serde(default)]
+    pub kind: String,
     #[serde(default)]
     pub depends_on: Option<Vec<String>>,
     /// ISO date string set when the gap is shipped (e.g. "2026-05-10").
@@ -173,34 +177,45 @@ pub fn dispatch_capacity() -> usize {
 /// * `active_count` — number of currently active (live-leased) dispatches
 ///   that count against the capacity cap.
 /// * `capacity` — maximum concurrent dispatches allowed (`CHUMP_DISPATCH_CAPACITY`).
+/// * `kind_filter` — filter by gap kind: `"user"` (default), `"system"`, or `"any"`.
 ///
 /// # Selection rules (in order)
 ///
-/// 1. `status == "open"` — done/closed gaps are ineligible.
-/// 2. `live_claimed` skip — gap already has a live lease in `.chump-locks/`.
-/// 3. Dependency check — every ID in `depends_on` must be in `done_ids`.
-/// 4. Capacity cap — if `active_count >= capacity`, return `None`.
-/// 5. Sort by `priority` ASC (P1 first) then `effort` ASC (small first).
-/// 6. Return the first gap after sorting, or `None` if none are eligible.
-pub fn pick_gap<'a>(
+/// 1. `status == "open"` or `"perpetual"` — done/closed gaps are ineligible.
+/// 2. `kind` matches `kind_filter` — system gaps are perpetual, user gaps are one-shot.
+/// 3. `live_claimed` skip — gap already has a live lease in `.chump-locks/`.
+/// 4. Dependency check — every ID in `depends_on` must be in `done_ids`.
+/// 5. Capacity cap — if `active_count >= capacity`, return `None`.
+/// 6. Sort by `priority` ASC (P1 first) then `effort` ASC (small first).
+/// 7. Return the first gap after sorting, or `None` if none are eligible.
+///
+/// INFRA-930: added to fix unresolved import error in main.rs.
+pub fn pick_gap_with_kind<'a>(
     all: &'a [Gap],
     done_ids: &HashSet<String>,
     live_claimed: &HashSet<String>,
     active_count: usize,
     capacity: usize,
+    kind_filter: &str,
 ) -> Option<&'a Gap> {
-    // Rule 4: capacity gate — bail before any sorting work.
+    // Rule 5: capacity gate — bail before any sorting work.
     if active_count >= capacity {
         return None;
     }
 
     let mut eligible: Vec<&Gap> = all
         .iter()
-        // Rule 1: open only
-        .filter(|g| g.status == "open")
-        // Rule 2: not live-claimed
+        // Rule 1: open or perpetual (user gaps are "open"; system gaps are "perpetual")
+        .filter(|g| g.status == "open" || g.status == "perpetual")
+        // Rule 2: kind filter
+        .filter(|g| match kind_filter {
+            "user" => g.kind.is_empty() || g.kind == "user",
+            "system" => g.kind == "system",
+            _ => true, // "any" — no filter
+        })
+        // Rule 3: not live-claimed
         .filter(|g| !live_claimed.contains(&g.id))
-        // Rule 3: all dependencies done
+        // Rule 4: all dependencies done
         .filter(|g| {
             g.depends_on
                 .iter()
@@ -209,7 +224,7 @@ pub fn pick_gap<'a>(
         })
         .collect();
 
-    // Rule 5: sort by domain bias, then priority ASC, then effort ASC.
+    // Rule 6: sort by domain bias, then priority ASC, then effort ASC.
     //
     // FLEET-045: when >CHUMP_PICKER_BIAS_THRESHOLD (default 80%) of the last
     // CHUMP_PICKER_BIAS_WINDOW (default 10) shipped gaps belong to the INFRA
@@ -252,8 +267,20 @@ pub fn pick_gap<'a>(
         )
     });
 
-    // Rule 6: return top candidate
+    // Rule 7: return top candidate
     eligible.into_iter().next()
+}
+
+/// Backward-compatible single-gap picker — delegates to [`pick_gap_with_kind`] with
+/// `kind_filter = "user"` so existing callers are unaffected.
+pub fn pick_gap<'a>(
+    all: &'a [Gap],
+    done_ids: &HashSet<String>,
+    live_claimed: &HashSet<String>,
+    active_count: usize,
+    capacity: usize,
+) -> Option<&'a Gap> {
+    pick_gap_with_kind(all, done_ids, live_claimed, active_count, capacity, "user")
 }
 
 #[cfg(test)]
@@ -268,6 +295,7 @@ mod tests {
             priority: prio.into(),
             effort: effort.into(),
             status: status.into(),
+            kind: String::new(), // default: user gap
             depends_on: deps.map(|v| v.into_iter().map(String::from).collect()),
             closed_date: None,
         }
@@ -280,6 +308,7 @@ mod tests {
             priority: "P1".into(),
             effort: "s".into(),
             status: "done".into(),
+            kind: String::new(),
             depends_on: None,
             closed_date: Some(closed.into()),
         }

@@ -45,6 +45,7 @@ fn test_gap(id: &str) -> Gap {
         priority: "P1".into(),
         effort: "s".into(),
         status: "open".into(),
+        kind: String::new(),
         depends_on: None,
         closed_date: None,
     }
