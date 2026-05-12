@@ -3726,20 +3726,15 @@ async fn main() -> Result<()> {
             }
             "audit-ac" => {
                 // COG-052: check whether closed gaps' AC items were demonstrated in their PR diff.
-                // Usage: chump gap audit-ac [GAP-ID] [--recent N] [--json]
-                //   GAP-ID  — audit one gap; must have closed_pr set
+                // INFRA-936: --open mode scans open gaps for vague/missing/TODO AC.
+                // Usage: chump gap audit-ac [GAP-ID] [--recent N] [--open] [--json]
+                //   GAP-ID     — audit one gap; must have closed_pr set
                 //   --recent N — audit N most recently closed gaps (default 20 if no GAP-ID)
-                //   --json  — machine-readable output
+                //   --open     — INFRA-936: check open gaps for empty/TODO acceptance_criteria
+                //   --json     — machine-readable output
                 let as_json = args.iter().any(|a| a == "--json");
-                let recent_n: usize = args
-                    .iter()
-                    .position(|a| a == "--recent")
-                    .and_then(|i| args.get(i + 1))
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(20);
+                let check_open = args.iter().any(|a| a == "--open");
 
-                // Collect target gaps: either the specified one or the N most-recently closed.
-                let specific_id = args.get(3).filter(|a| !a.starts_with('-')).cloned();
                 let all_gaps = match store.list(None) {
                     Ok(g) => g,
                     Err(e) => {
@@ -3748,196 +3743,282 @@ async fn main() -> Result<()> {
                     }
                 };
 
-                let targets: Vec<&gap_store::GapRow> = if let Some(ref id) = specific_id {
-                    all_gaps
-                        .iter()
-                        .filter(|g| g.id.eq_ignore_ascii_case(id))
-                        .collect()
-                } else {
-                    let mut closed: Vec<&gap_store::GapRow> = all_gaps
-                        .iter()
-                        .filter(|g| g.status == "done" && g.closed_pr.is_some())
-                        .collect();
-                    // Most-recently closed first (use closed_at unix timestamp).
-                    closed.sort_by(|a, b| {
-                        let ta = a.closed_at.unwrap_or(a.created_at);
-                        let tb = b.closed_at.unwrap_or(b.created_at);
-                        tb.cmp(&ta)
-                    });
-                    closed.truncate(recent_n);
-                    closed
-                };
+                // ── INFRA-936: --open mode ─────────────────────────────────────────────
+                if check_open {
+                    #[derive(serde::Serialize)]
+                    struct VagueGap {
+                        id: String,
+                        title: String,
+                        reason: String, // "empty" | "todo_placeholder"
+                    }
 
-                if targets.is_empty() {
-                    eprintln!("chump gap audit-ac: no matching gaps found");
-                    std::process::exit(1);
-                }
+                    let open_gaps: Vec<&gap_store::GapRow> =
+                        all_gaps.iter().filter(|g| g.status == "open").collect();
 
-                // Common stop-words to skip when keyword-matching AC text against diffs.
-                const STOP: &[&str] = &[
-                    "the", "and", "for", "that", "this", "with", "when", "from", "not", "are",
-                    "all", "any", "each", "have", "must", "will", "but", "via", "can", "into",
-                    "also", "then", "run", "use", "set", "add", "new", "its", "may", "per", "has",
-                    "been",
-                ];
+                    let mut vague: Vec<VagueGap> = Vec::new();
+                    for gap in &open_gaps {
+                        let ac_items = gap_store::parse_json_ac_list(&gap.acceptance_criteria);
+                        let reason =
+                            if gap.acceptance_criteria.trim().is_empty() || ac_items.is_empty() {
+                                Some("empty")
+                            } else if ac_items.iter().any(|item| {
+                                let lower = item.to_lowercase();
+                                lower.contains("todo")
+                                    || lower.trim() == "tbd"
+                                    || lower.trim() == "n/a"
+                                    || lower.trim() == "tbc"
+                            }) {
+                                Some("todo_placeholder")
+                            } else {
+                                None
+                            };
 
-                #[derive(serde::Serialize)]
-                struct AcItem {
-                    text: String,
-                    matched: bool,
-                    matched_terms: Vec<String>,
-                    missing_terms: Vec<String>,
-                }
-                #[derive(serde::Serialize)]
-                struct GapAcResult {
-                    id: String,
-                    title: String,
-                    closed_pr: i64,
-                    ac_items: Vec<AcItem>,
-                    coverage_pct: u8,
-                    diverged: bool,
-                }
-
-                let mut results: Vec<GapAcResult> = Vec::new();
-
-                for gap in &targets {
-                    let pr_num = match gap.closed_pr {
-                        Some(n) => n,
-                        None => continue,
-                    };
-
-                    // Fetch PR diff via gh CLI.
-                    let diff_out = std::process::Command::new("gh")
-                        .args(["pr", "diff", &pr_num.to_string()])
-                        .output();
-                    let diff_text = match diff_out {
-                        Ok(o) if o.status.success() => {
-                            String::from_utf8_lossy(&o.stdout).to_lowercase()
+                        if let Some(r) = reason {
+                            vague.push(VagueGap {
+                                id: gap.id.clone(),
+                                title: gap.title.chars().take(80).collect(),
+                                reason: r.to_string(),
+                            });
                         }
-                        _ => {
-                            if !as_json {
-                                eprintln!(
-                                    "[audit-ac] WARN: could not fetch diff for PR #{pr_num} \
-                                     (gh not available or PR closed); skipping {}",
-                                    gap.id
-                                );
+                    }
+
+                    tracing::info!(
+                        open_checked = open_gaps.len(),
+                        vague_count = vague.len(),
+                        "infra936 audit-ac --open complete"
+                    );
+
+                    if as_json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&vague).unwrap_or_default()
+                        );
+                    } else {
+                        println!(
+                            "=== gap audit-ac --open ({} open gaps checked) ===",
+                            open_gaps.len()
+                        );
+                        println!();
+                        if vague.is_empty() {
+                            println!("All open gaps have concrete acceptance criteria.");
+                        } else {
+                            for v in &vague {
+                                println!("[{}] {}  {}", v.reason, v.id, v.title);
                             }
-                            continue;
+                            println!();
+                            println!("Vague open gaps: {}/{}", vague.len(), open_gaps.len());
                         }
+                    }
+
+                    if !vague.is_empty() {
+                        std::process::exit(1);
+                    } else {
+                        std::process::exit(0);
+                    }
+                } else {
+                    // ── existing COG-052 closed-gap AC coverage check ──────────────────────
+
+                    let recent_n: usize = args
+                        .iter()
+                        .position(|a| a == "--recent")
+                        .and_then(|i| args.get(i + 1))
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(20);
+
+                    // Collect target gaps: either the specified one or the N most-recently closed.
+                    let specific_id = args.get(3).filter(|a| !a.starts_with('-')).cloned();
+
+                    let targets: Vec<&gap_store::GapRow> = if let Some(ref id) = specific_id {
+                        all_gaps
+                            .iter()
+                            .filter(|g| g.id.eq_ignore_ascii_case(id))
+                            .collect()
+                    } else {
+                        let mut closed: Vec<&gap_store::GapRow> = all_gaps
+                            .iter()
+                            .filter(|g| g.status == "done" && g.closed_pr.is_some())
+                            .collect();
+                        // Most-recently closed first (use closed_at unix timestamp).
+                        closed.sort_by(|a, b| {
+                            let ta = a.closed_at.unwrap_or(a.created_at);
+                            let tb = b.closed_at.unwrap_or(b.created_at);
+                            tb.cmp(&ta)
+                        });
+                        closed.truncate(recent_n);
+                        closed
                     };
 
-                    let ac_items_raw: Vec<String> =
-                        gap_store::parse_json_ac_list(&gap.acceptance_criteria);
-                    let mut item_results: Vec<AcItem> = Vec::new();
-                    let mut total_terms = 0usize;
-                    let mut total_matched = 0usize;
+                    if targets.is_empty() {
+                        eprintln!("chump gap audit-ac: no matching gaps found");
+                        std::process::exit(1);
+                    }
 
-                    for ac_text in &ac_items_raw {
-                        // Extract meaningful keywords (>= 4 chars, not stop-words).
-                        let terms: Vec<String> = ac_text
-                            .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '-')
-                            .filter(|t| t.len() >= 4)
-                            .map(|t| t.to_lowercase())
-                            .filter(|t| !STOP.contains(&t.as_str()))
-                            .collect::<std::collections::HashSet<_>>()
-                            .into_iter()
-                            .collect();
+                    // Common stop-words to skip when keyword-matching AC text against diffs.
+                    const STOP: &[&str] = &[
+                        "the", "and", "for", "that", "this", "with", "when", "from", "not", "are",
+                        "all", "any", "each", "have", "must", "will", "but", "via", "can", "into",
+                        "also", "then", "run", "use", "set", "add", "new", "its", "may", "per",
+                        "has", "been",
+                    ];
 
-                        let matched_terms: Vec<String> = terms
-                            .iter()
-                            .filter(|t| diff_text.contains(t.as_str()))
-                            .cloned()
-                            .collect();
-                        let missing_terms: Vec<String> = terms
-                            .iter()
-                            .filter(|t| !diff_text.contains(t.as_str()))
-                            .cloned()
-                            .collect();
+                    #[derive(serde::Serialize)]
+                    struct AcItem {
+                        text: String,
+                        matched: bool,
+                        matched_terms: Vec<String>,
+                        missing_terms: Vec<String>,
+                    }
+                    #[derive(serde::Serialize)]
+                    struct GapAcResult {
+                        id: String,
+                        title: String,
+                        closed_pr: i64,
+                        ac_items: Vec<AcItem>,
+                        coverage_pct: u8,
+                        diverged: bool,
+                    }
 
-                        let item_matched =
-                            !terms.is_empty() && matched_terms.len() * 2 >= terms.len(); // ≥50% terms found
+                    let mut results: Vec<GapAcResult> = Vec::new();
 
-                        total_terms += terms.len();
-                        total_matched += matched_terms.len();
+                    for gap in &targets {
+                        let pr_num = match gap.closed_pr {
+                            Some(n) => n,
+                            None => continue,
+                        };
 
-                        item_results.push(AcItem {
-                            text: ac_text.clone(),
-                            matched: item_matched,
-                            matched_terms,
-                            missing_terms,
+                        // Fetch PR diff via gh CLI.
+                        let diff_out = std::process::Command::new("gh")
+                            .args(["pr", "diff", &pr_num.to_string()])
+                            .output();
+                        let diff_text = match diff_out {
+                            Ok(o) if o.status.success() => {
+                                String::from_utf8_lossy(&o.stdout).to_lowercase()
+                            }
+                            _ => {
+                                if !as_json {
+                                    eprintln!(
+                                        "[audit-ac] WARN: could not fetch diff for PR #{pr_num} \
+                                     (gh not available or PR closed); skipping {}",
+                                        gap.id
+                                    );
+                                }
+                                continue;
+                            }
+                        };
+
+                        let ac_items_raw: Vec<String> =
+                            gap_store::parse_json_ac_list(&gap.acceptance_criteria);
+                        let mut item_results: Vec<AcItem> = Vec::new();
+                        let mut total_terms = 0usize;
+                        let mut total_matched = 0usize;
+
+                        for ac_text in &ac_items_raw {
+                            // Extract meaningful keywords (>= 4 chars, not stop-words).
+                            let terms: Vec<String> = ac_text
+                                .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '-')
+                                .filter(|t| t.len() >= 4)
+                                .map(|t| t.to_lowercase())
+                                .filter(|t| !STOP.contains(&t.as_str()))
+                                .collect::<std::collections::HashSet<_>>()
+                                .into_iter()
+                                .collect();
+
+                            let matched_terms: Vec<String> = terms
+                                .iter()
+                                .filter(|t| diff_text.contains(t.as_str()))
+                                .cloned()
+                                .collect();
+                            let missing_terms: Vec<String> = terms
+                                .iter()
+                                .filter(|t| !diff_text.contains(t.as_str()))
+                                .cloned()
+                                .collect();
+
+                            let item_matched =
+                                !terms.is_empty() && matched_terms.len() * 2 >= terms.len(); // ≥50% terms found
+
+                            total_terms += terms.len();
+                            total_matched += matched_terms.len();
+
+                            item_results.push(AcItem {
+                                text: ac_text.clone(),
+                                matched: item_matched,
+                                matched_terms,
+                                missing_terms,
+                            });
+                        }
+
+                        let coverage_pct = (total_matched * 100)
+                            .checked_div(total_terms)
+                            .map(|v| v.min(100) as u8)
+                            .unwrap_or(100u8);
+                        let diverged = coverage_pct < 50;
+
+                        results.push(GapAcResult {
+                            id: gap.id.clone(),
+                            title: gap.title.chars().take(80).collect(),
+                            closed_pr: pr_num,
+                            ac_items: item_results,
+                            coverage_pct,
+                            diverged,
                         });
                     }
 
-                    let coverage_pct = (total_matched * 100)
-                        .checked_div(total_terms)
-                        .map(|v| v.min(100) as u8)
-                        .unwrap_or(100u8);
-                    let diverged = coverage_pct < 50;
-
-                    results.push(GapAcResult {
-                        id: gap.id.clone(),
-                        title: gap.title.chars().take(80).collect(),
-                        closed_pr: pr_num,
-                        ac_items: item_results,
-                        coverage_pct,
-                        diverged,
-                    });
-                }
-
-                let diverged_total = results.iter().filter(|r| r.diverged).count();
-                tracing::info!(
-                    gaps_checked = results.len(),
-                    diverged = diverged_total,
-                    "cog052 audit-ac complete"
-                );
-
-                if as_json {
-                    println!(
-                        "{}",
-                        serde_json::to_string_pretty(&results).unwrap_or_default()
+                    let diverged_total = results.iter().filter(|r| r.diverged).count();
+                    tracing::info!(
+                        gaps_checked = results.len(),
+                        diverged = diverged_total,
+                        "cog052 audit-ac complete"
                     );
-                } else {
-                    println!("=== gap audit-ac ({} gaps checked) ===", results.len());
-                    println!();
-                    let mut diverged_count = 0usize;
-                    for r in &results {
-                        let flag = if r.diverged { " *** DIVERGED" } else { "" };
+
+                    if as_json {
                         println!(
-                            "{} (PR #{}) — {}% coverage{}",
-                            r.id, r.closed_pr, r.coverage_pct, flag
+                            "{}",
+                            serde_json::to_string_pretty(&results).unwrap_or_default()
                         );
-                        if r.diverged {
-                            diverged_count += 1;
-                            for item in &r.ac_items {
-                                if !item.matched {
-                                    println!(
-                                        "  MISS: {}",
-                                        if item.text.len() > 100 {
-                                            format!("{}…", &item.text[..100])
-                                        } else {
-                                            item.text.clone()
-                                        }
-                                    );
-                                    if !item.missing_terms.is_empty() {
+                    } else {
+                        println!("=== gap audit-ac ({} gaps checked) ===", results.len());
+                        println!();
+                        let mut diverged_count = 0usize;
+                        for r in &results {
+                            let flag = if r.diverged { " *** DIVERGED" } else { "" };
+                            println!(
+                                "{} (PR #{}) — {}% coverage{}",
+                                r.id, r.closed_pr, r.coverage_pct, flag
+                            );
+                            if r.diverged {
+                                diverged_count += 1;
+                                for item in &r.ac_items {
+                                    if !item.matched {
                                         println!(
-                                            "        missing terms: {}",
-                                            item.missing_terms.join(", ")
+                                            "  MISS: {}",
+                                            if item.text.len() > 100 {
+                                                format!("{}…", &item.text[..100])
+                                            } else {
+                                                item.text.clone()
+                                            }
                                         );
+                                        if !item.missing_terms.is_empty() {
+                                            println!(
+                                                "        missing terms: {}",
+                                                item.missing_terms.join(", ")
+                                            );
+                                        }
                                     }
                                 }
                             }
                         }
+                        println!();
+                        println!(
+                            "Diverged (< 50% AC coverage in diff): {}/{}",
+                            diverged_count,
+                            results.len()
+                        );
+                        if diverged_count > 0 {
+                            std::process::exit(1);
+                        }
                     }
-                    println!();
-                    println!(
-                        "Diverged (< 50% AC coverage in diff): {}/{}",
-                        diverged_count,
-                        results.len()
-                    );
-                    if diverged_count > 0 {
-                        std::process::exit(1);
-                    }
-                }
+                } // end else (COG-052 closed-gap path)
             }
             "decompose" => {
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
@@ -5103,7 +5184,8 @@ async fn main() -> Result<()> {
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
                 eprintln!("  restore          --from-sql  # rebuild state.db from .chump/state.sql (INFRA-538)");
                 eprintln!("  audit-priorities [--json]   # PM health check (META-046)");
-                eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check");
+                eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check for closed gaps");
+                eprintln!("  audit-ac         --open [--json]                  # INFRA-936: warn on open gaps with empty/TODO AC");
                 eprintln!("  rebalance        [--apply] [--json]  # P0 budget + pillar floor enforcement (INFRA-635)");
                 eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
                 eprintln!("  import-spec      <path> [--apply] [--dry-run] [--json]  # import gaps from markdown spec (INFRA-636)");
