@@ -300,3 +300,6 @@ FLEET_PRIORITY_FILTER
 # ── CREDIBLE-051: closure-consistency check overrides ──────────────────────
 CHUMP_STATE_DB
 CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL
+
+# ── INFRA-363: ──────────
+CHUMP_CASCADE_EXHAUSTED_BACKOFF_S
