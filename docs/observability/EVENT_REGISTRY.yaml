@@ -117,6 +117,14 @@ events:
     consumers: [waste-tally, kpi-report]
     fields_required: [agent_id, gap_id, rc, exit_class]
 
+  # ── INFRA-740: tool-call normalizer ──────────────────────────────────────
+  - kind: tool_normalize
+    emitter: src/tool_normalize.rs (INFRA-740)
+    trigger: tool-call JSON argument was malformed on first parse; normalizer
+      repaired it (trailing comma, missing brace, code fence, single quotes)
+    consumers: [fleet-brief, waste_tally]
+    fields_required: [ts, kind, session, tool, repair]
+
   - kind: cycle_stall_killed
     emitter: scripts/dispatch/worker.sh (INFRA-705)
     trigger: no new output bytes for CHUMP_STALL_THRESHOLD_S (default 120s) during an active cycle
