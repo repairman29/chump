@@ -544,6 +544,12 @@ events:
     trigger: many bot-merges touching same file
     consumers: [audit-log]
 
+  - kind: bot_merge_contention_avoided
+    emitter: scripts/coord/bot-merge.sh (INFRA-860 mutex)
+    trigger: flock wait > 5s acquiring bot-merge.lock; another bot-merge was active
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, branch, wait_s]
+
   # ── Subagent / cognition ──────────────────────────────────────────────────
   - kind: subagent_budget_exceeded
     emitter: scripts/dispatch/subagent-budget-monitor.sh

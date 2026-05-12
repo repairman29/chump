@@ -1314,6 +1314,34 @@ if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
     fi
 fi
 
+# ── 4e. INFRA-860: bot-merge mutex — prevent parallel push+merge contention ───
+# Multiple fleet workers can race to push + merge simultaneously, causing
+# `git push --force-with-lease` failures and `gh pr merge` races.  Acquire a
+# per-repo file lock so only one bot-merge is in the push/PR/merge critical
+# section at a time.  Timeout = 60s; logs contention if wait > 5s.
+if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
+    _bm_lock_dir="${CHUMP_BOT_MERGE_LOCK_DIR:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}}"
+    _bm_lock_file="${_bm_lock_dir}/bot-merge.lock"
+    mkdir -p "$_bm_lock_dir" 2>/dev/null || true
+    _bm_lock_start=$(date +%s)
+    # Use flock <lockfile> form (bash 3.x compatible; lock held until script exits).
+    # We open FD 200 explicitly since {var} dynamic FD assignment requires bash 4.1+.
+    exec 200>"$_bm_lock_file" 2>/dev/null || { warn "[INFRA-860] Could not open bot-merge.lock — skipping mutex"; exec 200>/dev/null; }
+    if ! flock -w 60 200 2>/dev/null; then
+        red "[INFRA-860] bot-merge.lock: timed out waiting 60s — another bot-merge is stuck?"
+        exit 2
+    fi
+    _bm_wait=$(( $(date +%s) - _bm_lock_start ))
+    if [[ "$_bm_wait" -gt 5 ]]; then
+        info "[INFRA-860] bot-merge.lock: waited ${_bm_wait}s (contention detected)"
+        _bm_amb="${CHUMP_AMBIENT_LOG:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl}"
+        mkdir -p "$(dirname "$_bm_amb")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"bot_merge_contention_avoided","branch":"%s","wait_s":%d}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$_bm_wait" >> "$_bm_amb" 2>/dev/null || true
+    fi
+fi
+# FD 200 stays open; flock released automatically when the script process exits.
+
 # ── 5. Push ───────────────────────────────────────────────────────────────────
 stage_start "git push $BRANCH → $REMOTE"
 # INFRA-719: signal to the pre-push hook that this push is bot-merge-initiated.
