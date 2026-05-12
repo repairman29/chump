@@ -2755,6 +2755,7 @@ fn read_workflow_phase_from_ambient(
 
 /// POST /api/gap/work/:id — Trigger Chump to autonomously work on a claimed gap.
 /// Spawns a background process to claim, work, and ship the gap.
+/// CREDIBLE-024: assigns a unique request_id for tracing through all log/ambient events.
 async fn handle_gap_work(
     Path(gap_id): Path<String>,
     headers: HeaderMap,
@@ -2763,23 +2764,72 @@ async fn handle_gap_work(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    // CREDIBLE-024: unique request_id for end-to-end tracing.
+    let request_id = uuid::Uuid::new_v4()
+        .to_string()
+        .chars()
+        .take(12)
+        .collect::<String>();
+
     let gap_id_clone = gap_id.clone();
+    let rid = request_id.clone();
     tokio::spawn(async move {
         tracing::info!(
+            request_id = %rid,
             "gap-work: spawning autonomous workflow for {}",
             gap_id_clone
         );
+        emit_pwa_log(&gap_id_clone, "dispatch", "started", &rid, None);
 
-        if let Err(e) = spawn_gap_workflow(&gap_id_clone).await {
-            tracing::error!("gap-work: workflow failed for {}: {}", gap_id_clone, e);
+        if let Err(e) = spawn_gap_workflow(&gap_id_clone, &rid).await {
+            tracing::error!(
+                request_id = %rid,
+                "gap-work: workflow failed for {}: {}",
+                gap_id_clone, e
+            );
+            emit_pwa_log(
+                &gap_id_clone,
+                "dispatch",
+                &format!("FAILED ({rid})"),
+                &rid,
+                None,
+            );
         }
     });
 
     Ok(Json(serde_json::json!({
         "status": "started",
         "gap_id": gap_id,
+        "request_id": request_id,
         "message": "Autonomous workflow triggered"
     })))
+}
+
+/// CREDIBLE-024: write a structured JSON log entry to CHUMP_PWA_LOG (default /tmp/chump-pwa.log).
+fn emit_pwa_log(
+    gap_id: &str,
+    phase: &str,
+    status: &str,
+    request_id: &str,
+    duration_ms: Option<u64>,
+) {
+    let log_path =
+        std::env::var("CHUMP_PWA_LOG").unwrap_or_else(|_| "/tmp/chump-pwa.log".to_string());
+    let entry = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        "request_id": request_id,
+        "gap_id": gap_id,
+        "phase": phase,
+        "status": status,
+        "duration_ms": duration_ms,
+    });
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        let _ = writeln!(file, "{}", entry);
+    }
 }
 
 /// Emit a workflow event to ambient.jsonl for fleet observability.
@@ -2906,7 +2956,13 @@ fn configure_agent_credentials(cmd: &mut std::process::Command) {
 ///
 /// Credentials: supports explicit (GH_TOKEN, SSH_KEY_PATH env vars) or implicit (keyring).
 /// Emits to ambient.jsonl for fleet observability. Cleans up leases on error.
-async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+/// CREDIBLE-024: spawn_gap_workflow now accepts a request_id for end-to-end tracing.
+/// All log events and ambient entries include the request_id so operators can
+/// grep the PWA log by request_id to reconstruct a complete workflow trace.
+async fn spawn_gap_workflow(
+    gap_id: &str,
+    request_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     use std::process::Command;
 
     let chump_bin = std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
@@ -2915,17 +2971,27 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
         .unwrap_or_else(|_| repo_path::runtime_base());
 
     // Step 0: Pre-flight validation (CLAUDE.md: never start a gap without gap-preflight.sh)
-    tracing::info!("gap-work: running pre-flight validation for {}", gap_id);
+    tracing::info!(request_id = %request_id, "gap-work: running pre-flight validation for {}", gap_id);
     if let Err(e) = run_preflight_check(gap_id, &repo_root) {
-        tracing::warn!("gap-work: pre-flight failed: {}", e);
+        tracing::warn!(request_id = %request_id, "gap-work: pre-flight failed: {}", e);
+        emit_pwa_log(
+            gap_id,
+            "preflight",
+            &format!("FAILED ({request_id}, {e})"),
+            request_id,
+            None,
+        );
         cleanup_lease(gap_id, &repo_root);
         return Err(e.into());
     }
     emit_ambient_event(gap_id, "preflight", "passed");
+    emit_pwa_log(gap_id, "preflight", "passed", request_id, None);
 
     // Step 1: Claim the gap (CLAUDE.md rule: always work in a linked worktree)
-    tracing::info!("gap-work: claiming {} in {}", gap_id, repo_root.display());
+    tracing::info!(request_id = %request_id, "gap-work: claiming {} in {}", gap_id, repo_root.display());
     emit_ambient_event(gap_id, "claim", "started");
+    emit_pwa_log(gap_id, "claim", "started", request_id, None);
+    let t_claim = std::time::Instant::now();
 
     let mut cmd = Command::new(&chump_bin);
     cmd.arg("claim")
@@ -2936,34 +3002,45 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
 
     match cmd.status() {
         Ok(status) if status.success() => {
-            tracing::info!("gap-work: claim succeeded for {}", gap_id);
+            let ms = t_claim.elapsed().as_millis() as u64;
+            tracing::info!(request_id = %request_id, "gap-work: claim succeeded for {}", gap_id);
             emit_ambient_event(gap_id, "claim", "success");
+            emit_pwa_log(gap_id, "claim", "success", request_id, Some(ms));
         }
         Ok(status) => {
-            tracing::warn!(
-                "gap-work: claim failed for {} with status {}",
-                gap_id,
-                status
-            );
+            let ms = t_claim.elapsed().as_millis() as u64;
+            tracing::warn!(request_id = %request_id, "gap-work: claim failed for {} with status {}", gap_id, status);
             emit_ambient_event(gap_id, "claim", "failed");
+            emit_pwa_log(
+                gap_id,
+                "claim",
+                &format!("FAILED ({request_id})"),
+                request_id,
+                Some(ms),
+            );
             cleanup_lease(gap_id, &repo_root);
             return Err(format!("Claim failed: {}", status).into());
         }
         Err(e) => {
-            tracing::error!("gap-work: failed to spawn chump claim: {}", e);
+            tracing::error!(request_id = %request_id, "gap-work: failed to spawn chump claim: {}", e);
             emit_ambient_event(gap_id, "claim", "error");
+            emit_pwa_log(
+                gap_id,
+                "claim",
+                &format!("FAILED ({request_id}, {e})"),
+                request_id,
+                None,
+            );
             cleanup_lease(gap_id, &repo_root);
             return Err(Box::new(e));
         }
     }
 
     // Step 2: Spawn full agent session (execute_gap.rs)
-    // This runs multi-turn loop: work on gap → commit → push → create PR → merge
-    tracing::info!(
-        "gap-work: spawning agent session via chump --execute-gap {}",
-        gap_id
-    );
+    tracing::info!(request_id = %request_id, "gap-work: spawning agent session via chump --execute-gap {}", gap_id);
     emit_ambient_event(gap_id, "execute-gap", "started");
+    emit_pwa_log(gap_id, "execute-gap", "started", request_id, None);
+    let t_exec = std::time::Instant::now();
 
     let mut cmd = Command::new(&chump_bin);
     cmd.arg("--execute-gap")
@@ -2974,38 +3051,45 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
 
     let _agent_status = match cmd.status() {
         Ok(status) if status.success() => {
-            tracing::info!("gap-work: agent session succeeded for {}", gap_id);
+            let ms = t_exec.elapsed().as_millis() as u64;
+            tracing::info!(request_id = %request_id, "gap-work: agent session succeeded for {}", gap_id);
             emit_ambient_event(gap_id, "execute-gap", "success");
+            emit_pwa_log(gap_id, "execute-gap", "success", request_id, Some(ms));
             "success"
         }
         Ok(status) => {
-            tracing::warn!(
-                "gap-work: agent session failed for {} with status {}",
-                gap_id,
-                status
-            );
+            let ms = t_exec.elapsed().as_millis() as u64;
+            tracing::warn!(request_id = %request_id, "gap-work: agent session failed for {} with status {}", gap_id, status);
             emit_ambient_event(gap_id, "execute-gap", "failed");
-            // Soft fail: log but continue to ship phase — may have partial progress (CLAUDE.md)
-            tracing::info!(
-                "gap-work: continuing to ship phase despite agent exit code {}",
-                status
+            emit_pwa_log(
+                gap_id,
+                "execute-gap",
+                &format!("FAILED ({request_id})"),
+                request_id,
+                Some(ms),
             );
+            tracing::info!(request_id = %request_id, "gap-work: continuing to ship phase despite agent exit code {}", status);
             "partial"
         }
         Err(e) => {
-            tracing::error!("gap-work: failed to spawn agent session: {}", e);
+            tracing::error!(request_id = %request_id, "gap-work: failed to spawn agent session: {}", e);
             emit_ambient_event(gap_id, "execute-gap", "error");
-            // Still attempt ship on spawn error (may have made progress before crash)
+            emit_pwa_log(
+                gap_id,
+                "execute-gap",
+                &format!("FAILED ({request_id}, {e})"),
+                request_id,
+                None,
+            );
             "error"
         }
     };
 
-    // Step 3: Ship the gap (closes gap + syncs YAML mirror per CLAUDE.md)
-    tracing::info!(
-        "gap-work: finalizing gap {} via chump gap ship --update-yaml",
-        gap_id
-    );
+    // Step 3: Ship the gap
+    tracing::info!(request_id = %request_id, "gap-work: finalizing gap {} via chump gap ship --update-yaml", gap_id);
     emit_ambient_event(gap_id, "ship", "started");
+    emit_pwa_log(gap_id, "ship", "started", request_id, None);
+    let t_ship = std::time::Instant::now();
 
     let mut cmd = Command::new(&chump_bin);
     cmd.arg("gap")
@@ -3018,27 +3102,37 @@ async fn spawn_gap_workflow(gap_id: &str) -> Result<(), Box<dyn std::error::Erro
 
     match cmd.status() {
         Ok(status) if status.success() => {
-            tracing::info!(
-                "gap-work: ship succeeded for {} — gap closed and YAML synced",
-                gap_id
-            );
+            let ms = t_ship.elapsed().as_millis() as u64;
+            tracing::info!(request_id = %request_id, "gap-work: ship succeeded for {} — gap closed and YAML synced", gap_id);
             emit_ambient_event(gap_id, "ship", "success");
+            emit_pwa_log(gap_id, "ship", "success", request_id, Some(ms));
             cleanup_worktree(gap_id);
             Ok(())
         }
         Ok(status) => {
-            tracing::warn!(
-                "gap-work: ship failed for {} with status {}",
-                gap_id,
-                status
-            );
+            let ms = t_ship.elapsed().as_millis() as u64;
+            tracing::warn!(request_id = %request_id, "gap-work: ship failed for {} with status {}", gap_id, status);
             emit_ambient_event(gap_id, "ship", "failed");
+            emit_pwa_log(
+                gap_id,
+                "ship",
+                &format!("FAILED ({request_id})"),
+                request_id,
+                Some(ms),
+            );
             cleanup_lease(gap_id, &repo_root);
             Err(format!("Ship failed: {}", status).into())
         }
         Err(e) => {
-            tracing::error!("gap-work: failed to spawn chump gap ship: {}", e);
+            tracing::error!(request_id = %request_id, "gap-work: failed to spawn chump gap ship: {}", e);
             emit_ambient_event(gap_id, "ship", "error");
+            emit_pwa_log(
+                gap_id,
+                "ship",
+                &format!("FAILED ({request_id}, {e})"),
+                request_id,
+                None,
+            );
             cleanup_lease(gap_id, &repo_root);
             Err(Box::new(e))
         }
@@ -4655,7 +4749,7 @@ mod workflow_e2e_tests {
         std::env::set_var("CHUMP_REPO", tmp.to_str().unwrap());
         std::env::set_var("CHUMP_AMBIENT_IN_PROMPT", ambient.to_str().unwrap());
 
-        let result = spawn_gap_workflow("TEST-001").await;
+        let result = spawn_gap_workflow("TEST-001", "test-request-id").await;
 
         std::env::remove_var("CHUMP_BIN");
         std::env::remove_var("CHUMP_REPO");

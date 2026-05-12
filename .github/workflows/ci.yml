@@ -1094,3 +1094,5 @@ jobs:
         run: bash scripts/ci/test-gap-workflow-status.sh
       - name: pre-commit vacuous-guard audit (INFRA-508)
         run: bash scripts/ci/test-precommit-guard-audit.sh
+      - name: PWA workflow observability — request_id tracing (CREDIBLE-024)
+        run: bash scripts/ci/test-pwa-workflow-observability.sh
