@@ -933,6 +933,8 @@ jobs:
         run: bash scripts/ci/test-worker-timeout-no-commit.sh
       - name: bot-merge stacked PR auto-rebase — kill switch, event emission, gated trigger (INFRA-765)
         run: bash scripts/ci/test-bot-merge-stacked-rebase.sh
+      - name: curator decision logging — kind, required fields, enum, phases (INFRA-848)
+        run: bash scripts/ci/test-curator-decision-logging.sh
       - name: CI failure triage classification (CREDIBLE-013)
         run: bash scripts/ci/test-triage-test-failure.sh
 
