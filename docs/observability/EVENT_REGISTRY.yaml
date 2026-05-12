@@ -672,6 +672,13 @@ events:
     consumers: [fleet-brief, operator-paging]
     fields_required: [ts, pr, reason, channel]
 
+  - kind: review_handoff_branch_diverged
+    emitter: scripts/dispatch/worker.sh (INFRA-778 branch-diverged guard)
+    trigger: handoff comment found on PR whose branch file overlap vs merge-base is < 50%;
+      indicates branch was recycled for unrelated work; auto-apply skipped
+    consumers: [fleet-brief, operator-recall, kpi-report]
+    fields_required: [ts, kind, pr_number, overlap_pct, agent_id, gap_id]
+
   # ── PR-stale auto-rebase (RESILIENT-006) ─────────────────────────────────
   - kind: pr_rescue_triggered
     emitter: scripts/coord/pr-rescue.sh
