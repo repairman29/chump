@@ -262,6 +262,7 @@ file_stuck_gap() {
         return
     fi
     info "  filed $reserved: $title"
+    EXISTING_FILINGS="${EXISTING_FILINGS:+${EXISTING_FILINGS}$'\n'}${pr_num}"
 
     # Description: PR URL + reason + suggested action. Kept short — the next
     # agent reads the PR for details.
