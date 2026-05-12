@@ -1186,7 +1186,8 @@ if [[ "${CHUMP_DECOMP_HINT:-1}" != "0" ]]; then
     # INFRA-509: dropped docs/gaps/ from codemod pattern — post-INFRA-498 PRs
     # no longer bulk-add gap YAMLs; docs/gaps/ changes should trigger the hint.
     DECOMP_CODEMOD="$(git diff --name-only --diff-filter=AM "$DECOMP_BASE...HEAD" 2>/dev/null \
-                     | grep -cE '^(\.chump/state\.sql|Cargo\.lock|book/src/)' || echo 0)"
+                     | grep -cE '^(\.chump/state\.sql|Cargo\.lock|book/src/)' || true)"
+    DECOMP_CODEMOD="${DECOMP_CODEMOD:-0}"
     DECOMP_CODEMOD_RATIO=0
     if [[ "$DECOMP_FILES" -gt 0 ]]; then
         DECOMP_CODEMOD_RATIO=$(( DECOMP_CODEMOD * 100 / DECOMP_FILES ))
