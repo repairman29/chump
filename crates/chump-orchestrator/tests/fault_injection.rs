@@ -216,6 +216,10 @@ async fn exit_0_no_pr_monitor_reaches_terminal_outcome() {
         DispatchOutcome::CiFailed(_) => {
             panic!("exit_0_no_pr must NOT produce CiFailed — no PR was opened; got {outcome:?}")
         }
+        // RaceAbandoned requires sibling detection — not triggered in this fault path.
+        DispatchOutcome::RaceAbandoned(_) => {
+            panic!("exit_0_no_pr must NOT produce RaceAbandoned — no race logic; got {outcome:?}")
+        }
     }
 }
 
