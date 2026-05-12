@@ -89,6 +89,32 @@ fn emit_cascade_exhausted_event(slots: &[ProviderSlot], reason: &str) {
     }
 }
 
+/// INFRA-363: emit a single-field ambient event (pre-sleep or post-retry)
+/// for the cascade exhausted backoff. Best-effort like the exhausted event.
+fn emit_cascade_backoff_event(kind: &str, backoff_s: u64) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+    let session = std::env::var("CHUMP_SESSION_ID")
+        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+        .unwrap_or_else(|_| "unknown".to_string());
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"event\":\"{kind}\",\"backoff_s\":{backoff_s}}}"
+    );
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// Default OpenAI-compatible base for local Ollama when `OPENAI_API_BASE` is unset (matches OOTB wizard).
 pub const DEFAULT_OLLAMA_API_BASE: &str = "http://127.0.0.1:11434/v1";
 
@@ -900,16 +926,22 @@ impl Provider for ProviderCascade {
         }
 
         let skip_cloud = self.skip_cloud_slots_for_round_type();
-        // INFRA-352(b): wait + retry-once on cascade exhaustion.
-        // Reasoning: under fleet load, free-tier RPD windows reset on a
-        // 1-min boundary. A short sleep + retry covers transient exhaustion
-        // (multi-agent saturation that recovers within 30s) without waking
-        // the operator. Set CHUMP_CASCADE_RETRY_AFTER_EXHAUSTED_S=0 to
-        // disable (e.g. for tests that want fast-fail).
-        let retry_after_s: u64 = std::env::var("CHUMP_CASCADE_RETRY_AFTER_EXHAUSTED_S")
+        // INFRA-363: wait + retry-once on cascade exhaustion caused by
+        // rate-limit-class errors (429/413/billing-exhausted). Under fleet
+        // load, free-tier RPD windows reset on a 1-min boundary. A short
+        // sleep + retry covers transient exhaustion without waking the operator.
+        // CHUMP_CASCADE_EXHAUSTED_BACKOFF_S=0 disables; max 300s.
+        // Falls back to legacy CHUMP_CASCADE_RETRY_AFTER_EXHAUSTED_S for compat.
+        let retry_after_s: u64 = std::env::var("CHUMP_CASCADE_EXHAUSTED_BACKOFF_S")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or(30);
+            .or_else(|| {
+                std::env::var("CHUMP_CASCADE_RETRY_AFTER_EXHAUSTED_S")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+            })
+            .unwrap_or(30)
+            .min(300);
         let max_preferred_waits: u32 = std::env::var("CHUMP_CASCADE_MAX_PREFERRED_WAITS")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -1023,16 +1055,24 @@ impl Provider for ProviderCascade {
                                             e, local_slot.base_url,
                                         );
                                         emit_cascade_exhausted_event(&self.slots, &msg);
-                                        // INFRA-352(b): sleep + retry-once before final error.
+                                        // INFRA-363: sleep + retry-once before final error.
                                         if !retried && retry_after_s > 0 {
                                             tracing::warn!(
-                                                "INFRA-352: cascade exhausted (local unreachable); sleeping {}s before retry-once",
+                                                "INFRA-363: cascade exhausted (local unreachable); sleeping {}s before retry-once",
                                                 retry_after_s
+                                            );
+                                            emit_cascade_backoff_event(
+                                                "cascade_backoff_pre_sleep",
+                                                retry_after_s,
                                             );
                                             tokio::time::sleep(std::time::Duration::from_secs(
                                                 retry_after_s,
                                             ))
                                             .await;
+                                            emit_cascade_backoff_event(
+                                                "cascade_backoff_post_retry",
+                                                retry_after_s,
+                                            );
                                             retried = true;
                                             idx = 0;
                                             continue;
@@ -1045,13 +1085,21 @@ impl Provider for ProviderCascade {
                                     );
                                     if !retried && retry_after_s > 0 {
                                         tracing::warn!(
-                                            "INFRA-352: cascade exhausted (local slot failed); sleeping {}s before retry-once",
+                                            "INFRA-363: cascade exhausted (local slot failed); sleeping {}s before retry-once",
                                             retry_after_s
+                                        );
+                                        emit_cascade_backoff_event(
+                                            "cascade_backoff_pre_sleep",
+                                            retry_after_s,
                                         );
                                         tokio::time::sleep(std::time::Duration::from_secs(
                                             retry_after_s,
                                         ))
                                         .await;
+                                        emit_cascade_backoff_event(
+                                            "cascade_backoff_post_retry",
+                                            retry_after_s,
+                                        );
                                         retried = true;
                                         idx = 0;
                                         continue;
@@ -1064,14 +1112,22 @@ impl Provider for ProviderCascade {
                             let msg = "no providers available (circuit open or rate limited; \
                                        set OPENAI_API_BASE for local fallback)";
                             emit_cascade_exhausted_event(&self.slots, msg);
-                            // INFRA-352(b): sleep + retry-once before final error.
+                            // INFRA-363: sleep + retry-once before final error.
                             if !retried && retry_after_s > 0 {
                                 tracing::warn!(
-                                    "INFRA-352: cascade exhausted (no providers available); sleeping {}s before retry-once",
+                                    "INFRA-363: cascade exhausted (no providers available); sleeping {}s before retry-once",
                                     retry_after_s
+                                );
+                                emit_cascade_backoff_event(
+                                    "cascade_backoff_pre_sleep",
+                                    retry_after_s,
                                 );
                                 tokio::time::sleep(std::time::Duration::from_secs(retry_after_s))
                                     .await;
+                                emit_cascade_backoff_event(
+                                    "cascade_backoff_post_retry",
+                                    retry_after_s,
+                                );
                                 retried = true;
                                 idx = 0;
                                 continue;
