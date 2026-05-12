@@ -3178,17 +3178,28 @@ async fn main() -> Result<()> {
                 }
             }
             "set" => {
-                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!(
-                        "Usage: chump gap set <GAP-ID> [--title T] [--description D] [--priority P]"
-                    );
+                // CREDIBLE-016: unknown-flag detection — if the positional GAP-ID slot
+                // starts with "--", the operator forgot the ID or passed a bad flag.
+                let gap_set_usage = || {
+                    eprintln!("Usage: chump gap set <GAP-ID> [--title T] [--description D] [--priority P]");
                     eprintln!("                          [--effort E] [--status S] [--notes N]");
                     eprintln!("                          [--source-doc S] [--opened-date D] [--closed-date D]");
                     eprintln!("                          [--closed-pr N] [--acceptance-criteria \"a|b|c\"] [--depends-on \"X,Y\"]");
                     eprintln!("                          [--skills-required SKS] [--preferred-backend BE]");
                     eprintln!("                          [--preferred-machine MACH] [--estimated-minutes MIN] [--required-model MODEL]");
+                };
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    gap_set_usage();
                     std::process::exit(2);
                 });
+                if gap_id.starts_with("--") {
+                    eprintln!(
+                        "Error: unknown flag {:?}. Did you forget the GAP-ID?",
+                        gap_id
+                    );
+                    gap_set_usage();
+                    std::process::exit(2);
+                }
                 let acceptance_criteria = flag("--acceptance-criteria").map(|raw| {
                     let parts: Vec<&str> = raw.split('|').collect();
                     serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
