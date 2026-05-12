@@ -1066,3 +1066,5 @@ jobs:
       - name: UUID gap-ID compatibility audit — preflight+show+auto-derive (INFRA-630)
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-uuid-gap-id-compat.sh
+      - name: velocity trending — ship_rate/waste_rate 7d trend, improving/stable/degrading (INFRA-901)
+        run: bash scripts/ci/test-velocity-trending.sh
