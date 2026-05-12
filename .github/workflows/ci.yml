@@ -1086,3 +1086,5 @@ jobs:
         run: bash scripts/ci/test-fleet-race-loss.sh
       - name: cost quota enforcement — warning at 80%, hard-cap at 100% (INFRA-877)
         run: bash scripts/ci/test-cost-enforcement.sh
+      - name: gap lifecycle manager — abandoned gap detection (INFRA-870)
+        run: bash scripts/ci/test-gap-lifecycle-manager.sh

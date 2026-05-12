@@ -1207,6 +1207,12 @@ events:
     trigger: operator rates a shipped gap 1-5 via 'chump gap rate <ID> <1-5>'
     consumers: [kpi-report --impact]
     fields_required: [ts, kind, gap_id, rating, comment, pr_number]
+  - kind: gap_abandoned
+    emitter: scripts/ops/gap-lifecycle-manager.sh (INFRA-870)
+    trigger: gap has been open for more than CHUMP_LIFECYCLE_DAYS (default 90)
+      without any commit activity; emitted once per stale gap per run
+    consumers: [fleet-brief, operator-recall, opus-curator]
+    fields_required: [ts, kind, gap_id, age_days, title]
 
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
