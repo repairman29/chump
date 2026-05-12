@@ -8,10 +8,54 @@ use std::time::Duration;
 use crate::local_openai;
 use crate::provider_cascade;
 
+/// CREDIBLE-022: compute age of the installed binary in seconds since its baked build date.
+/// Returns None if the build date is "unknown" or unparseable.
+fn binary_age_secs() -> Option<u64> {
+    let build_date = crate::version::chump_build_date();
+    if build_date == "unknown" {
+        return None;
+    }
+    // build date format: "yyyy-mm-dd"
+    let parts: Vec<u32> = build_date
+        .split('-')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    use chrono::{TimeZone, Utc};
+    let build_dt = Utc
+        .with_ymd_and_hms(parts[0] as i32, parts[1], parts[2], 0, 0, 0)
+        .single()?;
+    let now = Utc::now();
+    let diff = now.signed_duration_since(build_dt);
+    if diff.num_seconds() < 0 {
+        return Some(0);
+    }
+    Some(diff.num_seconds() as u64)
+}
+
 pub async fn handle_health() -> Json<serde_json::Value> {
+    // CREDIBLE-022: version_match — compare running version to optional override env var.
+    // In normal deployments the binary IS the server so they always match; operators can
+    // set CHUMP_BINARY_VERSION to the version they expect and the endpoint reports the diff.
+    let running_version = crate::version::chump_version();
+    let expected_version = std::env::var("CHUMP_BINARY_VERSION").ok();
+    let version_match = expected_version
+        .as_deref()
+        .map(|exp| exp == running_version)
+        .unwrap_or(true);
+
+    let age_secs = binary_age_secs();
+
     Json(serde_json::json!({
         "status": "ok",
-        "service": "chump-web"
+        "service": "chump-web",
+        "binary_version": running_version,
+        "build_sha": crate::version::chump_build_sha(),
+        "build_date": crate::version::chump_build_date(),
+        "binary_age_secs": age_secs,
+        "version_match": version_match,
     }))
 }
 
