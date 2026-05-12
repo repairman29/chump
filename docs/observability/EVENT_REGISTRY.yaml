@@ -397,6 +397,17 @@ events:
     trigger: pillar bias kicks in
     consumers: [fleet-brief]
 
+  - kind: curator_decision
+    emitter: scripts/coord/opus-curator.sh (INFRA-848)
+    trigger: curator audit run produces a structured decision on fleet/gap health
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, decision_type, reasoning, action_taken]
+    docs: |
+      decision_type is one of: p0_demotion | gap_ac_filled | gap_filed |
+      pr_unstick | waste_investigation | balance_restock.
+      action_taken is either a description of what was done or
+      "identified_only" when the decision flags an issue for operator action.
+
   - kind: ship_grade
     emitter: scripts/ops/ship-quality-grader.sh
     trigger: per-PR ship-quality grade computed
