@@ -676,3 +676,264 @@ scripts/coord/gap-claim.sh <GAP-ID>
 # Bootstrap escape hatch (short-lived solo work only):
 CHUMP_ALLOW_MAIN_WORKTREE=1 scripts/coord/gap-claim.sh <GAP-ID>
 ```
+
+---
+
+<a id="worktree-path-confusion"></a>
+### worktree-path-confusion — macOS /tmp → /private/tmp symlink corrupts gitdir (INFRA-779)
+
+**Symptom:** Inside a linked worktree, `git rev-parse --show-toplevel` returns
+the wrong path (the main checkout or a sibling worktree path). Git commands
+operate on the wrong tree, silently staging or committing to the wrong branch.
+
+**Root cause:** On macOS, `/tmp` is a symlink to `/private/tmp`. When
+`git worktree add /tmp/chump-infra-NNN` is run, git records the worktree in
+`.git/worktrees/chump-infra-NNN/gitdir` as `/tmp/chump-infra-NNN/.git`. But the
+worktree's actual path on disk is `/private/tmp/chump-infra-NNN`. Concurrent
+sibling claims can overwrite each other's gitdir back-reference.
+
+**Symptoms in practice:**
+- `git status` shows another gap's files
+- `git add` stages to the wrong branch
+- `git log` shows a commit history from a different worktree
+
+**Recovery:**
+```bash
+# 1. Identify the correct worktree name:
+git worktree list | grep <gap-id>
+# 2. Repair the gitdir back-reference (INFRA-779 fix):
+echo "/private/tmp/chump-infra-NNN/.git" \
+    > /Users/<you>/Projects/Chump/.git/worktrees/chump-infra-NNN/gitdir
+# 3. Verify the fix (env vars on one line so the shell expands both before git runs):
+GIT_DIR=/Users/<you>/Projects/Chump/.git/worktrees/chump-infra-NNN GIT_WORK_TREE=/private/tmp/chump-infra-NNN git status
+# 4. Use explicit vars for all git commands in that worktree session:
+GIT_DIR=/Users/<you>/Projects/Chump/.git/worktrees/chump-infra-NNN GIT_WORK_TREE=/private/tmp/chump-infra-NNN git add <files>
+GIT_DIR=/Users/<you>/Projects/Chump/.git/worktrees/chump-infra-NNN GIT_WORK_TREE=/private/tmp/chump-infra-NNN git commit -m "..."
+```
+
+**Prevention:** `chump claim` auto-runs the gitdir repair since INFRA-779.
+If claiming manually via `gap-claim.sh`, add the repair step immediately after
+`git worktree add`.
+
+---
+
+<a id="stale-lease-cleanup"></a>
+### stale-lease-cleanup — detecting and releasing orphaned leases
+
+**Symptom:** `gap-preflight.sh` or `chump claim` reports "lease conflict" but no
+agent is actively working the gap. The lease file exists in `.chump-locks/` but
+the process that wrote it is no longer running.
+
+**Root cause:** An agent crashed, timed out, or was killed before it could call
+`chump --release`. The lease file persists because it is written atomically but
+never cleaned up.
+
+**Detecting orphaned leases:**
+```bash
+# List all active leases:
+ls .chump-locks/claim-*.json
+# For each lease, check if the holding process is alive:
+python3 -c "
+import json, os, sys
+for f in sorted(os.listdir('.chump-locks')):
+    if not f.startswith('claim-'): continue
+    d = json.loads(open('.chump-locks/' + f).read())
+    pid = int(f.split('-')[2])  # PID is encoded in filename
+    alive = os.path.exists(f'/proc/{pid}') or not os.system(f'kill -0 {pid} 2>/dev/null')
+    print(f'{\"ALIVE\" if alive else \"DEAD\":6} pid={pid} gap={d.get(\"gap_id\",\"?\")} session={d[\"session_id\"]}')
+"
+# macOS equivalent (no /proc):
+for f in .chump-locks/claim-*.json; do
+    pid=$(basename "$f" .json | cut -d- -f3)
+    if kill -0 "$pid" 2>/dev/null; then echo "ALIVE pid=$pid $f"
+    else echo "DEAD  pid=$pid $f"; fi
+done
+```
+
+**Releasing a stale lease:**
+```bash
+# Safe release (verifies session matches):
+chump --release --lease .chump-locks/claim-<gap>-<pid>-<ts>.json
+# If chump --release fails, remove manually after confirming process is dead:
+kill -0 <pid> 2>/dev/null && echo "still alive!" || rm .chump-locks/claim-<gap>-<pid>-<ts>.json
+```
+
+**When to release:**
+- Process dead (kill -0 returns nonzero) and heartbeat is stale (> 10 min old)
+- Worktree was removed with `git worktree remove --force` but lease file remains
+- CI/CD orphaned a claim after a timeout
+
+**When NOT to release:**
+- Process is still alive — the agent may be mid-commit or awaiting CI
+- You are not sure — check ambient.jsonl for recent events from that session first
+
+---
+
+<a id="event-registry-bypass"></a>
+### event-registry-bypass — bypassing the EVENT_REGISTRY pre-commit guard (INFRA-754)
+
+**Symptom:** Pre-commit hook rejects your commit with:
+```
+[event-registry] ERROR: kind 'my_new_event' appears in staged diff but is NOT registered
+[event-registry] Add an entry to docs/observability/EVENT_REGISTRY.yaml before committing.
+```
+
+**Root cause:** You added a new `"kind":"my_new_event"` literal in a script or
+Rust source, but didn't register it in the event registry. The guard is
+pattern-based: any `"kind":"X"` string literal in the staged diff triggers it.
+
+**Correct fix — always preferred:**
+1. Add an entry to `docs/observability/EVENT_REGISTRY.yaml`:
+```yaml
+  - kind: my_new_event
+    emitter: scripts/coord/my-script.sh (INFRA-NNN)
+    trigger: one-line description of when this fires
+    consumers: [fleet-brief, watchdog]
+    fields_required: [ts, kind, <other fields>]
+```
+2. Stage the YAML alongside your other changes and commit.
+
+**Bypass (test fixtures and rare cases only):**
+```bash
+# Set the bypass env var AND add a trailer to the commit body:
+CHUMP_OBS_BUDGET_BYPASS=1 git commit -m "$(cat <<'EOF'
+fix: my change
+
+Obs-Bypass-Reason: test fixture only — kind=my_test_event never emitted in production
+EOF
+)"
+```
+
+**Bypass discipline:**
+- Only bypass for test fixtures or when the kind is intentionally not registered
+- The `Obs-Bypass-Reason` trailer is mandatory — the audit log searches for it
+- Never bypass for production event kinds — register them properly instead
+- If you find yourself bypassing repeatedly for a real kind, the fix is to register it
+
+---
+
+## Fleet git worktree path confusion (INFRA-779)
+
+**Problem:** On macOS, `/tmp` is a symlink to `/private/tmp`. When a linked worktree
+is created at `/tmp/chump-<name>`, its `gitdir` back-pointer records the path as
+`/private/tmp/chump-<name>/.git`. If a concurrent sibling agent has a worktree nested
+inside the main project (e.g. `.chump/worktrees/infra-855-dedup`), git's internal
+path resolution can resolve `git rev-parse --show-toplevel` to the WRONG worktree
+directory. This causes `REPO_ROOT` to point at a sibling's tree, leading `bot-merge.sh`
+to push from the wrong branch, pre-commit hooks to operate on wrong files, and
+`state.db` lookups to hit a stale copy.
+
+**Symptoms:**
+- `bot-merge.sh` header shows wrong branch: `=== bot-merge: chump/infra-855-dedup → main ===`
+  even though the lease is for a different gap.
+- `gap-preflight.sh` says gap "not found in gap registry" but it IS in the main
+  `state.db`.
+- `git branch --show-current` from the worktree returns the correct branch, but
+  `git rev-parse --show-toplevel` returns a different worktree's path.
+
+**Recovery (per-command):**
+```bash
+# Set explicit GIT_DIR + GIT_WORK_TREE for all git operations in the worktree.
+# Replace chump-infra-918 with your worktree name.
+GIT_DIR=/Users/jeffadkins/Projects/Chump/.git/worktrees/chump-infra-918 \
+GIT_WORK_TREE=/private/tmp/chump-infra-918 \
+  git <cmd>
+
+# For bot-merge, pass env vars before the invocation:
+cd /private/tmp/chump-infra-918
+GIT_DIR=/Users/jeffadkins/Projects/Chump/.git/worktrees/chump-infra-918 \
+GIT_WORK_TREE=/private/tmp/chump-infra-918 \
+  bash scripts/coord/bot-merge.sh --gap INFRA-918 --auto-merge
+```
+
+**Prevention:**
+`chump claim` now runs `git worktree repair` after `git worktree add` to fix the
+gitdir back-pointer. If you create worktrees manually, run:
+```bash
+git -C /Users/jeffadkins/Projects/Chump worktree repair
+```
+
+**Diagnosis:**
+```bash
+# Check what git thinks the toplevel is vs what it should be:
+cd /private/tmp/chump-<name>
+git rev-parse --show-toplevel        # may return wrong path
+git rev-parse --absolute-git-dir     # should be .git/worktrees/chump-<name>
+cat $(git rev-parse --absolute-git-dir)/gitdir   # should be /private/tmp/chump-<name>/.git
+```
+
+---
+
+## Stale lease cleanup
+
+**Problem:** When `bot-merge.sh` fails mid-run (test failure, rebase conflict, OOM),
+it may leave a `.chump-locks/<session>.json` lease file behind. The next `chump claim`
+on the same gap will fail with "lease conflict" because the old lease still exists.
+
+**As of INFRA-919**, `bot-merge.sh` installs an EXIT trap that deletes the lease on
+any exit. If you are on an older `bot-merge.sh` or the trap failed, use the following:
+
+**Detecting orphaned leases:**
+```bash
+# List all active leases with their gap IDs and ages:
+ls -la .chump-locks/*.json 2>/dev/null
+# Check if the gap the lease claims is still truly open/in-progress:
+cat .chump-locks/<session>.json | python3 -m json.tool
+```
+
+**Releasing a stale lease:**
+```bash
+# Preferred — idempotent, updates ambient.jsonl:
+chump --release --lease .chump-locks/<session>.json
+
+# Manual fallback if chump is wedged:
+rm .chump-locks/<session>.json
+```
+
+**After cleanup, verify the gap can be reclaimed:**
+```bash
+scripts/coord/gap-preflight.sh <GAP-ID>   # should pass
+chump claim <GAP-ID>
+```
+
+**Preventing future orphans:** Run `chump-doctor.sh` after any failed `bot-merge.sh`
+invocation — it now reaps stale leases along with zombie processes.
+
+---
+
+## EVENT_REGISTRY pre-commit guard bypass (INFRA-755 / CHUMP_OBS_BUDGET_BYPASS)
+
+**Problem:** The observability budget guard (`INFRA-755`) blocks commits that add
+> 50 lines of feature code (`.rs/.sh/.py`) without adding at least one observability
+hook (`tracing::info!`, ambient event, or `chump_improvement_targets` lesson). This
+prevents "dark" features that can't be diagnosed from `ambient.jsonl`.
+
+**When to bypass:** Only when the new code IS itself an observability tool (e.g.
+`chump-doctor --probe-resources`), a test, or infrastructure that by design has no
+observable runtime path (e.g. build scripts, CI fixtures).
+
+**How to bypass correctly:**
+```bash
+# 1. Add a bypass reason trailer to the commit body:
+CHUMP_OBS_BUDGET_BYPASS=1 git commit -m "$(cat <<'EOF'
+feat(infra-395): chump-doctor --probe-resources substrate check
+
+<body text>
+
+Obs-Bypass-Reason: probe_resources() is itself an observability tool —
+its stderr output IS the observable signal for fleet operators.
+EOF
+)"
+
+# 2. Verify the trailer is in the commit:
+git log -1 --format="%B" | grep "Obs-Bypass-Reason"
+```
+
+**When NOT to bypass:**
+- New `claude -p` dispatch paths without a corresponding ambient event.
+- New gap-filing or claim logic without `kind=<name>` event emission.
+- Error handlers that silently swallow exceptions.
+
+In those cases, add the observability hook first, then commit normally.
+The registered event kinds are in `docs/process/EVENT_REGISTRY.md`; new
+kinds must be registered there before use (pre-commit guard enforces this).
