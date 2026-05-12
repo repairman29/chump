@@ -1146,6 +1146,12 @@ events:
       the script exits with the step-specific exit code
     consumers: [fleet-brief, opus-curator, emergency-fast-path, recovery-automation]
     fields_required: [ts, kind, step, exit_code, gap_id, branch]
+  # ── Gap store curation ───────────────────────────────────────────────────
+  - kind: gap_store_curated
+    emitter: scripts/ops/gap-curate.sh
+    trigger: nightly curation run (04:00 local) completes rebalance + consolidate + retention-sweep
+    consumers: [fleet-brief, opus-curator, kpi-report]
+    fields_required: [ts, kind, session, rebalanced, consolidated, retained, errors]
 
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
