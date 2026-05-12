@@ -4848,8 +4848,8 @@ meta:
         let (store, _dir) = test_store();
         let id1 = store.reserve("EVAL", "first", "P2", "s").unwrap();
         let id2 = store.reserve("EVAL", "second", "P2", "s").unwrap();
-        let n1: u32 = id1.split('-').last().unwrap().parse().unwrap();
-        let n2: u32 = id2.split('-').last().unwrap().parse().unwrap();
+        let n1: u32 = id1.split('-').next_back().unwrap().parse().unwrap();
+        let n2: u32 = id2.split('-').next_back().unwrap().parse().unwrap();
         assert!(n2 > n1, "IDs must increment: {id1} then {id2}");
     }
 
