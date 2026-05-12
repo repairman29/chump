@@ -192,6 +192,60 @@ template lands: N=5 fresh subagent dispatches, self-ship rate target
 If the rate still doesn't improve, the bottleneck has shifted — file a new
 gap with the observed failure taxonomy rather than patching this doc further.
 
+## Model defaults (post INFRA-515)
+
+Fleet workers default to **`sonnet`** (`FLEET_MODEL=sonnet`). This replaced
+the earlier `haiku` default — haiku's tendency to ask clarifying questions
+instead of making judgment calls was the dominant source of dispatch waste.
+
+| Context | Default model | Override |
+|---|---|---|
+| Fleet workers (`run-fleet.sh`) | `sonnet` | `FLEET_MODEL=haiku` to cut cost |
+| IDE / interactive sessions | `haiku` | — |
+| Curator / PM runs | `opus` | `CHUMP_CURATOR_MODEL=sonnet` |
+
+Cost-sensitive sweeps: `FLEET_MODEL=haiku scripts/dispatch/run-fleet.sh`.
+Opus is ~50× haiku per token — reserve for structured PM reasoning (gap
+prioritization, pillar rebalancing) where reasoning quality matters.
+
+## Timeout-checkpoint and WIP-rescue (post INFRA-525)
+
+When `claude -p` approaches `FLEET_TIMEOUT_S`, worker.sh commits any
+in-progress edits and pushes the branch before killing the process:
+
+```
+WIP-<GAP-ID>: timeout-rescue checkpoint (INFRA-525)
+```
+
+The worker emits `kind=fleet_timeout_checkpoint` (ALERT level) to
+`ambient.jsonl`. Watch for it with:
+
+```bash
+tail -f .chump-locks/ambient.jsonl | grep fleet_timeout_checkpoint
+```
+
+**Operator recovery from a WIP checkpoint:**
+
+```bash
+# 1. Find the WIP branch (check ambient.jsonl or gh pr list)
+git fetch origin
+git checkout chump/<gap-id>-claim
+
+# 2. Review partial work, continue the implementation
+
+# 3. Ship normally once complete
+scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge
+```
+
+If no PR exists yet for the branch:
+```bash
+gh pr create --head chump/<gap-id>-claim --base main --title "<title>"
+gh pr merge <N> --auto --squash
+```
+
+Opt-out of WIP checkpoints: `CHUMP_WIP_CHECKPOINT=0` — work is lost on
+timeout if set (useful for short-lived test workers only).
+
 ## See also
 
 - [META-025](../gaps/META-025.yaml) — parent gap, dispatch-quality findings
