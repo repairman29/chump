@@ -242,6 +242,29 @@ cd "$REPO_ROOT"
     log "WARN: chump-doctor failed; chump gap calls may hang"
 }
 
+# RESILIENT-001: per-worktree target-dir guard.
+# Detect when target/debug/chump is stale relative to src/main.rs.
+# Emits kind=stale_binary_detected to ambient.jsonl; continues (warn-only).
+_check_binary_freshness() {
+    local max_age_secs="${CHUMP_BINARY_MAX_AGE_SECS:-7200}"
+    local binary="$REPO_ROOT/target/debug/chump"
+    local source="$REPO_ROOT/src/main.rs"
+    [[ -f "$binary" ]] || return 0
+    [[ -f "$source" ]] || return 0
+    local bin_mtime src_mtime
+    bin_mtime=$(stat -f '%m' "$binary" 2>/dev/null || stat -c '%Y' "$binary" 2>/dev/null || echo 0)
+    src_mtime=$(stat -f '%m' "$source" 2>/dev/null || stat -c '%Y' "$source" 2>/dev/null || echo 0)
+    local age=$(( src_mtime - bin_mtime ))
+    if [[ "$age" -gt "$max_age_secs" ]]; then
+        local ambient="$REPO_ROOT/.chump-locks/ambient.jsonl"
+        local ts; ts=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")
+        printf '{"ts":"%s","kind":"stale_binary_detected","source":"worker.sh","age_secs":%s,"max_age_secs":%s,"note":"target/debug/chump is %ss behind src/main.rs; rebuild with cargo build"}\n' \
+            "$ts" "$age" "$max_age_secs" "$age" >> "$ambient" 2>/dev/null || true
+        log "WARN RESILIENT-001: target/debug/chump is ${age}s stale (threshold ${max_age_secs}s). Rebuild with: cargo build"
+    fi
+}
+_check_binary_freshness
+
 cycle=0
 while :; do
     cycle=$((cycle + 1))
