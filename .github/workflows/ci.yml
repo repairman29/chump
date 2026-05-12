@@ -1132,3 +1132,6 @@ jobs:
         run: |
           cargo build --bin chump 2>&1 | tail -3
           bash scripts/ci/test-waste-tally-domain.sh
+      - name: PWA version compatibility check (CREDIBLE-022)
+        run: bash scripts/ci/test-pwa-version-compat.sh
+
