@@ -1100,3 +1100,5 @@ jobs:
         run: bash scripts/ci/test-cli-version-debug.sh
       - name: gap rollback — runbook, rollback-gap.sh, ambient event (INFRA-899)
         run: bash scripts/ci/test-rollback-gap.sh
+      - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        run: bash scripts/ci/test-run-consolidation.sh
