@@ -1,7 +1,7 @@
 - id: INFRA-372
   domain: INFRA
   title: "EFFECTIVE: anthropic prompt caching for chump-local backend — add cache_control on CLAUDE.md+lessons+briefing prefix"
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -28,4 +28,6 @@
     - smoke test verifies 2-call cache hit rate > 0
     - provider must support Anthropic cache_control header (skip Together/Groq if not)
   opened_date: '2026-05-03'
+  closed_date: '2026-05-12'
+  closed_pr: 1527
 

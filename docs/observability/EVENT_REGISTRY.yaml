@@ -308,6 +308,12 @@ events:
     trigger: pr_stuck variant for very long blocks
     consumers: [operator-recall]
 
+  - kind: stuck_pr_filing_dedup_hit
+    emitter: scripts/ops/stuck-pr-filer.sh (INFRA-855)
+    trigger: stuck PR already has a gap filed — dedup hit, skip filing
+    consumers: [audit-log]
+    fields_required: [ts, pr]
+
   - kind: pr_repair
     emitter: scripts/ops/pr-repair-loop.sh (INFRA-727)
     trigger: PR rebase repair attempted

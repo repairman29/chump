@@ -445,6 +445,14 @@ Suggested action:
             INDIVIDUAL)
                 local _pr_num _check_name _ci_red_mins _pr_branch _gap_ids
                 IFS=$'\t' read -r _pr_num _check_name _ci_red_mins _pr_branch _gap_ids <<<"$_rest"
+                if already_filed "$_pr_num"; then
+                    info "  PR #$_pr_num already has a stuck-pr filing — skipping"
+                    local _ambient="${REAPER_LOCK_DIR:-.chump-locks}/ambient.jsonl"
+                    printf '{"kind":"stuck_pr_filing_dedup_hit","ts":"%s","pr":%s,"check":"%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_pr_num" "$_check_name" \
+                        >> "$_ambient" 2>/dev/null || true
+                    continue
+                fi
                 local _reason="CI red for ${_ci_red_mins}m"
                 local _summary="At least one required check has been failing for ${_ci_red_mins}m (threshold ${CI_FAIL_THRESHOLD_MINS}m). Failing check: ${_check_name}."
                 local _details="Original gap(s) cited in PR title/commits: ${_gap_ids}
@@ -502,7 +510,12 @@ while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE IS_DRAFT AUTHOR MSS HAS_AUTOME
         info "  → gap-filing PR, skipping"; SKIPPED=$((SKIPPED+1)); continue
     fi
     if already_filed "$PR_NUM"; then
-        info "  → already has a stuck-pr filing gap, skipping"; SKIPPED=$((SKIPPED+1)); continue
+        info "  → already has a stuck-pr filing gap, skipping"; SKIPPED=$((SKIPPED+1))
+        local _ambient="${REAPER_LOCK_DIR:-.chump-locks}/ambient.jsonl"
+        printf '{"kind":"stuck_pr_filing_dedup_hit","ts":"%s","pr":%s}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$PR_NUM" \
+            >> "$_ambient" 2>/dev/null || true
+        continue
     fi
 
     # Cross-reference original gap IDs (for the description).
