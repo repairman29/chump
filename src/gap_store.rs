@@ -4674,4 +4674,209 @@ meta:
         let merged = merge_preserve_unknown_fields(generated, existing);
         assert_eq!(merged, generated);
     }
+
+    // ── CREDIBLE-005: error-path tests ────────────────────────────────────────
+
+    #[test]
+    fn ship_nonexistent_gap_returns_err() {
+        let (store, _dir) = test_store();
+        let result = store.ship("INFRA-999", "session-x", None);
+        assert!(result.is_err(), "ship on unknown gap should fail, got Ok");
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("not found") || msg.contains("already done"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn ship_already_done_gap_returns_err() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "done-candidate", "P2", "s").unwrap();
+        store.ship(&id, "session-a", None).unwrap();
+        let second_ship = store.ship(&id, "session-b", None);
+        assert!(
+            second_ship.is_err(),
+            "shipping an already-done gap should fail"
+        );
+        let msg = format!("{:#}", second_ship.unwrap_err());
+        assert!(
+            msg.contains("not found") || msg.contains("already done"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn claim_nonexistent_gap_returns_err() {
+        let (store, _dir) = test_store();
+        let result = store.claim("INFRA-404", "session-x", "/tmp/wt", 3600);
+        assert!(result.is_err(), "claim on unknown gap should fail");
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("not found"),
+            "expected 'not found' in error: {msg}"
+        );
+    }
+
+    #[test]
+    fn claim_done_gap_returns_err() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "done-target", "P2", "s").unwrap();
+        store.ship(&id, "session-x", None).unwrap();
+        let result = store.claim(&id, "session-y", "/tmp/wt", 3600);
+        assert!(result.is_err(), "claiming a done gap should fail");
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("already done") || msg.contains("not found"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn claim_live_claimed_gap_returns_err() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "contested", "P2", "s").unwrap();
+        store.claim(&id, "session-owner", "/tmp/wt1", 3600).unwrap();
+        let result = store.claim(&id, "session-interloper", "/tmp/wt2", 3600);
+        assert!(result.is_err(), "claiming a live-claimed gap should fail");
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("live-claimed"),
+            "expected 'live-claimed' in error: {msg}"
+        );
+    }
+
+    #[test]
+    fn get_nonexistent_gap_returns_ok_none() {
+        let (store, _dir) = test_store();
+        let result = store.get("INFRA-404").unwrap();
+        assert!(result.is_none(), "get on unknown gap should return None");
+    }
+
+    #[test]
+    fn preflight_nonexistent_gap_returns_not_found() {
+        let (store, _dir) = test_store();
+        let result = store.preflight("INFRA-404").unwrap();
+        assert!(
+            matches!(result, PreflightResult::NotFound),
+            "expected NotFound, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn preflight_done_gap_returns_done() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "will-be-done", "P2", "s").unwrap();
+        store.ship(&id, "session-x", None).unwrap();
+        let result = store.preflight(&id).unwrap();
+        assert!(
+            matches!(result, PreflightResult::Done),
+            "expected Done, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn preflight_claimed_gap_returns_claimed() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "will-be-claimed", "P2", "s")
+            .unwrap();
+        store.claim(&id, "session-owner", "/tmp/wt", 3600).unwrap();
+        let result = store.preflight(&id).unwrap();
+        assert!(
+            matches!(result, PreflightResult::Claimed(_)),
+            "expected Claimed, got {result:?}"
+        );
+        if let PreflightResult::Claimed(s) = result {
+            assert_eq!(s, "session-owner");
+        }
+    }
+
+    #[test]
+    fn set_recycled_id_guard_rejects_reopening_done_gap() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "done-gap", "P2", "s").unwrap();
+        store.ship(&id, "session-x", None).unwrap();
+        let result = store.set_fields(
+            &id,
+            GapFieldUpdate {
+                status: Some("open".to_string()),
+                ..Default::default()
+            },
+        );
+        assert!(result.is_err(), "recycled-ID guard should reject reopening");
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("recycled-ID") || msg.contains("already done") || msg.contains("terminal"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn set_hijack_guard_rejects_title_rewrite() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "original-title", "P2", "s").unwrap();
+        let result = store.set_fields(
+            &id,
+            GapFieldUpdate {
+                title: Some("completely-different-title".to_string()),
+                ..Default::default()
+            },
+        );
+        assert!(result.is_err(), "hijack guard should reject title rewrite");
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("hijack") || msg.contains("title"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn dump_per_file_single_returns_err_for_unknown_gap() {
+        let (store, dir) = test_store();
+        let per_file_dir = dir.path().join("gaps");
+        std::fs::create_dir_all(&per_file_dir).unwrap();
+        let result = store.dump_per_file_single("INFRA-999", &per_file_dir);
+        assert!(
+            result.is_err() || matches!(result, Ok(false)),
+            "dump_per_file_single on unknown gap should fail or return false"
+        );
+    }
+
+    #[test]
+    fn reserve_increments_id_counter_monotonically() {
+        let (store, _dir) = test_store();
+        let id1 = store.reserve("EVAL", "first", "P2", "s").unwrap();
+        let id2 = store.reserve("EVAL", "second", "P2", "s").unwrap();
+        let n1: u32 = id1.split('-').last().unwrap().parse().unwrap();
+        let n2: u32 = id2.split('-').last().unwrap().parse().unwrap();
+        assert!(n2 > n1, "IDs must increment: {id1} then {id2}");
+    }
+
+    #[test]
+    fn list_with_status_filter_excludes_done_gaps() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "will-be-done", "P2", "s").unwrap();
+        store.ship(&id, "session-x", None).unwrap();
+        let open_gaps = store.list(Some("open")).unwrap();
+        assert!(
+            !open_gaps.iter().any(|g| g.id == id),
+            "done gap should not appear in open list"
+        );
+        let done_gaps = store.list(Some("done")).unwrap();
+        assert!(
+            done_gaps.iter().any(|g| g.id == id),
+            "done gap should appear in done list"
+        );
+    }
+
+    #[test]
+    fn ship_with_closed_pr_stamps_pr_number() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "with-pr", "P2", "s").unwrap();
+        store.ship(&id, "session-x", Some(1234)).unwrap();
+        let gap = store.get(&id).unwrap().unwrap();
+        assert_eq!(gap.closed_pr, Some(1234));
+        assert_eq!(gap.status, "done");
+    }
 }

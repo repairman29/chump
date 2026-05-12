@@ -1136,3 +1136,5 @@ jobs:
         run: bash scripts/ci/test-pwa-version-compat.sh
       - name: worktree contamination check — detect foreign gap files (INFRA-931)
         run: bash scripts/ci/test-worktree-contamination-check.sh
+      - name: error-path test coverage ≥60 assertions across gap_store (CREDIBLE-005)
+        run: bash scripts/ci/test-error-path-coverage.sh
