@@ -40,6 +40,23 @@ chump --briefing <GAP-ID>                        # MEM-007 per-gap context
 `edit_burst`, `queue_config_drift`, `pr_stuck`, `subagent_budget_exceeded`,
 `lessons_injection_active`. Full event-kind guide: [CLAUDE_GOTCHAS.md](./docs/process/CLAUDE_GOTCHAS.md).
 
+## Two-phase decomposition (don't pre-slice into sub-gaps)
+
+**At filing time**: write the rough decomposition intent into the gap *description*, not as filed sub-gaps. Sub-gaps filed in advance age badly — the codebase shifts before they're picked.
+
+Example description for a large gap:
+```
+Rough shape: (a) DB query layer in src/gap_store.rs,
+(b) CLI handler with --apply/--dry-run/--json flags (see consolidate arm as model),
+(c) ambient event registered in EVENT_REGISTRY.yaml,
+(d) CI test using synthetic state.db fixture.
+Key constraint: depends_on is stored as JSON array — use parse_json_ac_list pattern.
+```
+
+**At claim time**: run `chump gap decompose <ID>` — it reads the description as LLM context and generates sub-gaps against the *current* codebase. Use `--dry-run` to inspect the full prompt before calling the LLM; use `--no-description` if the description is stale.
+
+Never file sub-gaps manually in advance. The filing agent's context is valuable input to decompose, not a substitute for it.
+
 ## Claim before writing any code
 
 ```bash
