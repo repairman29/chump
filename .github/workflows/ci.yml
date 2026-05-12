@@ -1092,3 +1092,5 @@ jobs:
         run: bash scripts/ci/test-agent-throughput.sh
       - name: PWA gap workflow status endpoint (EFFECTIVE-014)
         run: bash scripts/ci/test-gap-workflow-status.sh
+      - name: pre-commit vacuous-guard audit (INFRA-508)
+        run: bash scripts/ci/test-precommit-guard-audit.sh
