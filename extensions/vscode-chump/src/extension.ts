@@ -12,6 +12,7 @@
 import * as vscode from 'vscode';
 import { AcpClient, AcpStatus } from './acpClient';
 import { attachToolApprovalHandler } from './toolApproval';
+import { ChatPanel } from './chatPanel';
 
 let client: AcpClient | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -24,9 +25,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
+  const chatPanel = new ChatPanel(() => client);
+
   context.subscriptions.push(
     vscode.commands.registerCommand('chump.reconnect', () => reconnect(context)),
     vscode.commands.registerCommand('chump.showStatus', showStatus),
+    vscode.commands.registerCommand('chump.openChat', () =>
+      vscode.commands.executeCommand('chump.chatView.focus')),
+    vscode.commands.registerCommand('chump.clearChat', () => chatPanel.clear()),
+    vscode.window.registerWebviewViewProvider(ChatPanel.viewType, chatPanel, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
   );
 
   await connect(context);
