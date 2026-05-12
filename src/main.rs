@@ -2309,7 +2309,7 @@ async fn main() -> Result<()> {
                                     .ok()
                                     .map(|dt| dt.timestamp() as u64)
                             });
-                        if ts_secs.map_or(true, |t| t >= horizon) {
+                        if ts_secs.is_none_or(|t| t >= horizon) {
                             starve_count += 1;
                         }
                     }
