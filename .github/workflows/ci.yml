@@ -1136,3 +1136,7 @@ jobs:
         run: bash scripts/ci/test-pwa-version-compat.sh
       - name: worktree contamination check — detect foreign gap files (INFRA-931)
         run: bash scripts/ci/test-worktree-contamination-check.sh
+      - name: PWA gap endpoint security — rate limit, CSRF, headers, timeout (CREDIBLE-023)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-pwa-security.sh
