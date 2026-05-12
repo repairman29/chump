@@ -1,0 +1,39 @@
+{
+  "date": "2026-05-12",
+  "agents": [
+    {
+      "agent_id": "claim-INFRA-001-99001-111",
+      "ships": 1,
+      "fails": 0,
+      "P50_minutes_per_ship": 30.0,
+      "top_fail_modes": []
+    },
+    {
+      "agent_id": "claim-INFRA-002-99001-222",
+      "ships": 1,
+      "fails": 0,
+      "P50_minutes_per_ship": 60.0,
+      "top_fail_modes": []
+    },
+    {
+      "agent_id": "claim-INFRA-003-99002-333",
+      "ships": 0,
+      "fails": 1,
+      "P50_minutes_per_ship": null,
+      "top_fail_modes": [
+        "abandoned"
+      ]
+    },
+    {
+      "agent_id": "claim-INFRA-004-99002-444",
+      "ships": 0,
+      "fails": 1,
+      "P50_minutes_per_ship": null,
+      "top_fail_modes": [
+        "abandoned"
+      ]
+    }
+  ],
+  "total_ships": 2,
+  "total_fails": 2
+}
