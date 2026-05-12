@@ -616,6 +616,21 @@ events:
     consumers: [fleet-brief, watchdog, kpi-report]
     fields_required: [ts, kind, feature, reason]
 
+  # ── META-033: system invariants monitor ─────────────────────────────────
+  - kind: invariant_violation
+    emitter: scripts/ops/system-invariants-monitor.sh (META-033)
+    trigger: a cross-cutting system invariant (INV-1 through INV-7) is violated
+      on a monitor tick; consecutive violations auto-file a gap
+    consumers: [fleet-brief, kpi-report, watchdog]
+    fields_required: [ts, kind, inv, details]
+
+  - kind: invariant_ok
+    emitter: scripts/ops/system-invariants-monitor.sh (META-033)
+    trigger: a system invariant passes its check on a monitor tick; used to
+      track consecutive-failure counter resets
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, inv]
+
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
     emitter: scripts/ci/test-obs-coverage-guard.sh
