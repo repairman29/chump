@@ -934,6 +934,29 @@ else
     info "Branch is up to date with $REMOTE/$BASE_BRANCH."
 fi
 
+# INFRA-920: auto-detect shell/doc-only changes and skip cargo test.
+# If all changed files vs origin/main match known-safe non-Rust patterns and
+# zero .rs files are present, set SKIP_TESTS=1 without requiring --skip-tests.
+if [[ $SKIP_TESTS -eq 0 ]]; then
+    _changed_files=$(git diff --name-only "${REMOTE}/${BASE_BRANCH}...HEAD" 2>/dev/null || true)
+    if [[ -n "$_changed_files" ]]; then
+        _rs_count=0
+        _unsafe_count=0
+        while IFS= read -r _f; do
+            [[ -z "$_f" ]] && continue
+            case "$_f" in
+                *.rs)                              _rs_count=$((_rs_count + 1)) ;;
+                scripts/*|docs/*|*.md|*.yaml|*.sh) ;;
+                *)                                 _unsafe_count=$((_unsafe_count + 1)) ;;
+            esac
+        done <<< "$_changed_files"
+        if [[ $_rs_count -eq 0 && $_unsafe_count -eq 0 ]]; then
+            SKIP_TESTS=1
+            info "[bot-merge] auto-skip: shell/doc-only change detected — skipping cargo test"
+        fi
+    fi
+fi
+
 # ── 2. cargo fmt ──────────────────────────────────────────────────────────────
 if command -v cargo &>/dev/null && ls src/**/*.rs &>/dev/null 2>&1; then
     stage_start "cargo fmt"
