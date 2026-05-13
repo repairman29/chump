@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-mass-deletion-guard.sh — CREDIBLE-027: fixture-based tests for check-mass-deletion.sh
+# test-mass-deletion-guard.sh — CREDIBLE-027 + CREDIBLE-038: fixture-based tests for check-mass-deletion.sh
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -119,5 +119,87 @@ else
     pass "Test 6: strict mode exits 1 on violation"
 fi
 
+
+# ── Test 7: chore(gaps) title + 60 docs/gaps/*.yaml → PASS (CREDIBLE-038) ───
+REPO7="$TMP/repo7"
+make_repo "$REPO7"
+mkdir -p "$REPO7/docs/gaps"
+for i in $(seq 1 60); do printf 'id: GAP-%03d\n' "$i" > "$REPO7/docs/gaps/GAP-$(printf '%03d' $i).yaml"; done
+git -C "$REPO7" add docs/
+git -C "$REPO7" commit -q -m "chore: initial"
+git -C "$REPO7" checkout -q -b feature
+# Modify all 60 gap files (simulates mass-AC additions)
+for i in $(seq 1 60); do printf 'id: GAP-%03d\nacceptance_criteria: ["done"]\n' "$i" > "$REPO7/docs/gaps/GAP-$(printf '%03d' $i).yaml"; done
+git -C "$REPO7" add docs/
+git -C "$REPO7" commit -q -m "chore(gaps): add concrete AC to 60 gaps"
+
+out="$(cd "$REPO7" && GITHUB_BASE_REF=main bash "$GUARD" --warn-only 2>&1 || true)"
+if echo "$out" | grep -q "out-of-scope\|narrow scope\|CREDIBLE-038.*title prefix"; then
+    fail "Test 7: chore(gaps) with only docs/gaps/* files should PASS rule C"
+else
+    pass "Test 7: chore(gaps) mass-AC addition (60 docs/gaps/* files) passes rule C"
+fi
+
+# ── Test 8: chore(gaps) title + docs/gaps/* AND src/* → FAIL (CREDIBLE-038) ──
+REPO8="$TMP/repo8"
+make_repo "$REPO8"
+mkdir -p "$REPO8/docs/gaps" "$REPO8/src"
+for i in $(seq 1 5); do printf 'id: GAP-%03d\n' "$i" > "$REPO8/docs/gaps/GAP-$(printf '%03d' $i).yaml"; done
+printf 'fn main() {}\n' > "$REPO8/src/main.rs"
+git -C "$REPO8" add docs/ src/
+git -C "$REPO8" commit -q -m "chore: initial"
+git -C "$REPO8" checkout -q -b feature
+for i in $(seq 1 5); do printf 'id: GAP-%03d\nacceptance_criteria: ["done"]\n' "$i" > "$REPO8/docs/gaps/GAP-$(printf '%03d' $i).yaml"; done
+printf 'fn main() { println!("changed"); }\n' > "$REPO8/src/main.rs"
+git -C "$REPO8" add docs/ src/
+git -C "$REPO8" commit -q -m "chore(gaps): add AC to gaps"
+
+out="$(cd "$REPO8" && GITHUB_BASE_REF=main bash "$GUARD" --warn-only 2>&1 || true)"
+if echo "$out" | grep -q "out-of-scope\|promises narrow scope\|title prefix.*promises"; then
+    pass "Test 8: chore(gaps) + src/* triggers rule C violation"
+else
+    fail "Test 8: should detect out-of-scope src/main.rs under chore(gaps) title: $out"
+fi
+
+# ── Test 9: docs: title + docs/** only → PASS (CREDIBLE-038) ─────────────────
+REPO9="$TMP/repo9"
+make_repo "$REPO9"
+mkdir -p "$REPO9/docs/process"
+printf 'some doc\n' > "$REPO9/docs/process/GUIDE.md"
+git -C "$REPO9" add docs/
+git -C "$REPO9" commit -q -m "chore: initial"
+git -C "$REPO9" checkout -q -b feature
+printf 'updated doc\n' > "$REPO9/docs/process/GUIDE.md"
+git -C "$REPO9" add docs/
+git -C "$REPO9" commit -q -m "docs: update process guide"
+
+out="$(cd "$REPO9" && GITHUB_BASE_REF=main bash "$GUARD" --warn-only 2>&1 || true)"
+if echo "$out" | grep -q "out-of-scope\|promises narrow scope\|title prefix.*promises"; then
+    fail "Test 9: docs: title with only docs/** should PASS rule C: $out"
+else
+    pass "Test 9: docs: title with docs/ only passes rule C"
+fi
+
+# ── Test 10: docs: title + scripts/* → FAIL (CREDIBLE-038) ──────────────────
+REPO10="$TMP/repo10"
+make_repo "$REPO10"
+mkdir -p "$REPO10/docs" "$REPO10/scripts"
+printf 'readme\n' > "$REPO10/docs/README.md"
+printf 'echo hi\n' > "$REPO10/scripts/helper.sh"
+git -C "$REPO10" add docs/ scripts/
+git -C "$REPO10" commit -q -m "chore: initial"
+git -C "$REPO10" checkout -q -b feature
+printf 'readme updated\n' > "$REPO10/docs/README.md"
+printf 'echo updated\n' > "$REPO10/scripts/helper.sh"
+git -C "$REPO10" add docs/ scripts/
+git -C "$REPO10" commit -q -m "docs: update readme"
+
+out="$(cd "$REPO10" && GITHUB_BASE_REF=main bash "$GUARD" --warn-only 2>&1 || true)"
+if echo "$out" | grep -q "out-of-scope\|promises narrow scope\|title prefix.*promises"; then
+    pass "Test 10: docs: title + scripts/* triggers rule C violation"
+else
+    fail "Test 10: should detect out-of-scope scripts/helper.sh under docs: title: $out"
+fi
+
 echo ""
-echo "All CREDIBLE-027 mass-deletion guard checks passed."
+echo "All CREDIBLE-027/CREDIBLE-038 mass-deletion guard checks passed."

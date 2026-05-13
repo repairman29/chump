@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
-# check-mass-deletion.sh — CREDIBLE-027: mass-deletion / scratch-commit guard.
+# check-mass-deletion.sh — CREDIBLE-027 + CREDIBLE-038: mass-deletion / scratch-commit guard.
 #
-# Two checks:
-#   1. Net deletions: PR diff vs base deletes >100 lines from files whose
-#      paths are NOT mentioned in the PR title/body or recent commit messages.
-#      Catches accidental mass-wipes (PR #1441: 378k lines gone).
-#
-#   2. Vague commit titles: any commit whose subject is one of the known
+# Three checks:
+#   A. Vague commit titles: any commit whose subject is one of the known
 #      scratch-commit patterns ('first', 'init', 'wip', 'unrelated change',
 #      'INFRA-X', 'edit gap_store', etc.) is flagged.
 #      Catches rogue fixture commits on production branches.
+#
+#   B. Net deletions: PR diff vs base deletes >100 lines from files whose
+#      paths are NOT mentioned in the PR title/body or recent commit messages.
+#      Catches accidental mass-wipes (PR #1441: 378k lines gone).
+#
+#   C. File-count-blast (CREDIBLE-038): PR title prefix is a narrow-scope
+#      marker (chore(gaps): or docs:) but the diff touches files OUTSIDE
+#      the expected directory for that prefix. Catches cross-cutting changes
+#      disguised under a narrow title (e.g. "chore(gaps): ..." + src/ edits).
+#
+#      Expected paths by prefix:
+#        chore(gaps): → docs/gaps/
+#        docs:        → docs/
+#
+#      Allow-list: PR label 'cross-cutting-acknowledged' bypasses rule C.
 #
 # Exit: 0 = clean, 1 = violations found (unless --warn-only).
 #
@@ -146,15 +157,77 @@ else
     pass "No mass unrelated deletions (threshold: ${THRESHOLD} lines)"
 fi
 
+# ── Check C: File-count-blast under narrow-scope title (CREDIBLE-038) ────────
+# Narrow-scope title prefixes and their expected root directories.
+NARROW_TITLE_PREFIX=""
+EXPECTED_PATH_PREFIX=""
+
+PR_TITLE_FOR_C=""
+if command -v gh &>/dev/null; then
+    PR_TITLE_FOR_C="$(gh pr view --json title -q .title 2>/dev/null || true)"
+fi
+if [[ -z "$PR_TITLE_FOR_C" ]]; then
+    PR_TITLE_FOR_C="$(git log --pretty=format:%s "${MERGE_BASE}..HEAD" 2>/dev/null | head -1 || true)"
+fi
+
+if echo "$PR_TITLE_FOR_C" | grep -qE "^chore\(gaps\):"; then
+    NARROW_TITLE_PREFIX="chore(gaps):"
+    EXPECTED_PATH_PREFIX="docs/gaps/"
+elif echo "$PR_TITLE_FOR_C" | grep -qE "^docs:"; then
+    NARROW_TITLE_PREFIX="docs:"
+    EXPECTED_PATH_PREFIX="docs/"
+fi
+
+if [[ -n "$NARROW_TITLE_PREFIX" ]]; then
+    # Check allow-list: 'cross-cutting-acknowledged' label bypasses rule C
+    CROSS_CUTTING_OK=0
+    if command -v gh &>/dev/null; then
+        LABELS="$(gh pr view --json labels -q '.labels[].name' 2>/dev/null || true)"
+        if echo "$LABELS" | grep -q "cross-cutting-acknowledged"; then
+            CROSS_CUTTING_OK=1
+        fi
+    fi
+
+    if [[ "$CROSS_CUTTING_OK" -eq 0 ]]; then
+        blast_files=()
+        while IFS= read -r filepath; do
+            [[ -z "$filepath" ]] && continue
+            # If file is NOT under the expected path → violation
+            if ! echo "$filepath" | grep -q "^${EXPECTED_PATH_PREFIX}"; then
+                blast_files+=("$filepath")
+            fi
+        done < <(git diff --name-only "${MERGE_BASE}..HEAD" 2>/dev/null || true)
+
+        if [[ ${#blast_files[@]} -gt 0 ]]; then
+            report_violation "CREDIBLE-038: title prefix '${NARROW_TITLE_PREFIX}' promises narrow scope (${EXPECTED_PATH_PREFIX}**) but diff includes ${#blast_files[@]} out-of-scope file(s):"
+            for f in "${blast_files[@]}"; do
+                fail "  $f"
+            done
+            fail "  If intentional, add PR label 'cross-cutting-acknowledged' or change the title prefix."
+            # Emit ambient event
+            local_ambient="${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}"
+            if [[ -d "$(dirname "$local_ambient")" ]] || mkdir -p "$(dirname "$local_ambient")" 2>/dev/null; then
+                ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                printf '{"ts":"%s","kind":"pr_scope_violation","rule":"file_count_blast","title_prefix":"%s","out_of_scope_count":%d}\n' \
+                    "$ts" "$NARROW_TITLE_PREFIX" "${#blast_files[@]}" >> "$local_ambient" 2>/dev/null || true
+            fi
+        else
+            pass "Rule C: all files within expected scope for title '${NARROW_TITLE_PREFIX}'"
+        fi
+    else
+        pass "Rule C bypassed: cross-cutting-acknowledged label present"
+    fi
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 if [[ "$VIOLATIONS" -eq 0 ]]; then
-    echo "CREDIBLE-027: all mass-deletion checks passed."
+    echo "CREDIBLE-027/CREDIBLE-038: all mass-deletion checks passed."
     exit 0
 elif [[ "$WARN_ONLY" -eq 1 ]]; then
-    warn "CREDIBLE-027: $VIOLATIONS violation(s) found (warn-only mode — not blocking)"
+    warn "CREDIBLE-027/CREDIBLE-038: $VIOLATIONS violation(s) found (warn-only mode — not blocking)"
     exit 0
 else
-    fail "CREDIBLE-027: $VIOLATIONS violation(s) found. Fix before pushing."
+    fail "CREDIBLE-027/CREDIBLE-038: $VIOLATIONS violation(s) found. Fix before pushing."
     exit 1
 fi

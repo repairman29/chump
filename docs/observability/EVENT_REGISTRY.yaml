@@ -1302,3 +1302,11 @@ events:
       pruned and skipped counts
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, pruned, skipped_active_pr, skipped_uncommitted, skipped_young]
+
+  # ── CREDIBLE-038: file-count-blast rule ──────────────────────────────────
+  - kind: pr_scope_violation
+    emitter: scripts/ci/check-mass-deletion.sh (CREDIBLE-038, rule C)
+    trigger: PR title prefix (chore(gaps): or docs:) promises narrow scope
+      but the diff includes files outside the expected directory for that prefix
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, rule, title_prefix, out_of_scope_count]
