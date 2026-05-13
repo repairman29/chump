@@ -122,6 +122,80 @@ else
     fail "--json behavior wrong: spike=$spike_in_json summary=$summary_in_json alert=$alert_in_err"
 fi
 
+# ── EFFECTIVE-023 tests: --domain header, --domain all summary, JSON object ──
+# Use a fresh DB with simple ALPHA/BETA rows so results are deterministic.
+DB2="$TMP/state-e023.db"
+python3 - "$DB2" <<'PYEOF'
+import sqlite3, sys
+conn = sqlite3.connect(sys.argv[1])
+conn.execute("""
+CREATE TABLE IF NOT EXISTS gaps (
+    id TEXT PRIMARY KEY, domain TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '',
+    description TEXT DEFAULT '', priority TEXT DEFAULT 'P1', effort TEXT DEFAULT 's',
+    status TEXT DEFAULT 'open', acceptance_criteria TEXT DEFAULT '',
+    depends_on TEXT DEFAULT '', notes TEXT DEFAULT '', source_doc TEXT DEFAULT '',
+    created_at INTEGER DEFAULT 0, closed_at INTEGER,
+    opened_date TEXT DEFAULT '', closed_date TEXT DEFAULT '', closed_pr INTEGER,
+    skills_required TEXT DEFAULT '', preferred_backend TEXT DEFAULT '',
+    preferred_machine TEXT DEFAULT '', estimated_minutes TEXT DEFAULT '',
+    required_model TEXT DEFAULT ''
+)
+""")
+rows = [
+    ('ALPHA-001','ALPHA','ALPHA: first open gap',  'P0','xs','open'),
+    ('ALPHA-002','ALPHA','ALPHA: second open gap', 'P1','s', 'open'),
+    ('ALPHA-003','ALPHA','ALPHA: done gap',        'P1','s', 'done'),
+    ('BETA-001', 'BETA', 'BETA: single open gap',  'P1','m', 'open'),
+    ('BETA-002', 'BETA', 'BETA: done gap',         'P2','s', 'done'),
+]
+for r in rows:
+    conn.execute("INSERT OR REPLACE INTO gaps (id,domain,title,priority,effort,status) VALUES (?,?,?,?,?,?)",r)
+conn.commit()
+PYEOF
+
+# ── Test 7 (EFFECTIVE-023): --domain <D> shows header + only that domain's rows
+echo "--- Test 7 (EFFECTIVE-023): --domain ALPHA shows header + only ALPHA rows ---"
+out7="$(CHUMP_STATE_DB="$DB2" "$CHUMP_BIN" gap list --domain ALPHA 2>/dev/null)"
+if echo "$out7" | grep -q "Domain: ALPHA"; then
+    ok "--domain ALPHA: domain header present"
+else
+    fail "--domain ALPHA: domain header missing (output: $out7)"
+fi
+non_alpha="$(echo "$out7" | grep -E "^\[" | grep -v "ALPHA-" || true)"
+if [[ -z "$non_alpha" ]]; then
+    ok "--domain ALPHA: only ALPHA rows shown"
+else
+    fail "--domain ALPHA: non-ALPHA rows appeared: $non_alpha"
+fi
+
+# ── Test 8 (EFFECTIVE-023): --domain all shows per-domain summary footer
+echo "--- Test 8 (EFFECTIVE-023): --domain all shows per-domain summary footer ---"
+out8="$(CHUMP_STATE_DB="$DB2" "$CHUMP_BIN" gap list --domain all 2>/dev/null)"
+if echo "$out8" | grep -qE "^ALPHA:.*open" && echo "$out8" | grep -qE "^BETA:.*open"; then
+    ok "--domain all: per-domain summary lines present for ALPHA and BETA"
+else
+    fail "--domain all: missing per-domain summary lines (output: $out8)"
+fi
+
+# ── Test 9 (EFFECTIVE-023): --domain <D> --json wraps in {gaps, domain_summary}
+echo "--- Test 9 (EFFECTIVE-023): --domain ALPHA --json returns object with domain_summary ---"
+out9="$(CHUMP_STATE_DB="$DB2" "$CHUMP_BIN" gap list --domain ALPHA --json 2>/dev/null)"
+check9="$(echo "$out9" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+assert isinstance(d,dict), 'not an object'
+assert 'gaps' in d and 'domain_summary' in d, 'missing keys'
+assert 'ALPHA' in d['domain_summary'], 'ALPHA not in domain_summary'
+bad=[g['id'] for g in d['gaps'] if not g['id'].startswith('ALPHA')]
+assert not bad, f'non-ALPHA in gaps: {bad}'
+print('OK')
+" 2>&1 || true)"
+if [[ "$check9" == "OK" ]]; then
+    ok "--domain ALPHA --json: {gaps, domain_summary} structure correct"
+else
+    fail "--domain ALPHA --json: structure check failed: $check9 (output: $out9)"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [ "$FAIL" -eq 0 ]

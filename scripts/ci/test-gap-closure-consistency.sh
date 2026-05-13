@@ -38,6 +38,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# shellcheck source=lib/gate-emit.sh
+source "$SCRIPT_DIR/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "CREDIBLE-028" "$*"
+
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
@@ -49,6 +53,7 @@ AUTO_FIX=0
 REVERSE=0
 LIMIT=30
 ALL=0
+USE_MAIN=0  # CREDIBLE-051: --use-main enables git-common-dir fallback; off by default
 prev_arg=""
 for arg in "$@"; do
     case "$arg" in
@@ -57,6 +62,7 @@ for arg in "$@"; do
         --auto-fix)    AUTO_FIX=1 ;;
         --reverse)     REVERSE=1 ;;
         --all)         ALL=1; LIMIT=999999 ;;
+        --use-main)    USE_MAIN=1 ;;
     esac
     if [[ "$prev_arg" == "--limit" ]]; then
         LIMIT="$arg"
@@ -65,14 +71,16 @@ for arg in "$@"; do
 done
 
 # ── Resolve state.db (CREDIBLE-051 + CREDIBLE-031: fixture-aware) ────────────
-# Order: CHUMP_STATE_DB env → $PWD/.chump/state.db → git-common-dir parent.
+# Order: CHUMP_STATE_DB env → $PWD/.chump/state.db → git-common-dir (only with --use-main).
+# Without --use-main, the git-common-dir fallback is disabled so test fixtures
+# in a tmp dir don't accidentally resolve to the live main-repo state.db.
 if [[ -n "${CHUMP_STATE_DB:-}" ]]; then
     DB="$CHUMP_STATE_DB"
     info "Using fixture state.db: $DB"
 elif [[ -f "$PWD/.chump/state.db" ]]; then
     DB="$PWD/.chump/state.db"
     MAIN_REPO="$PWD"
-else
+elif [[ "$USE_MAIN" -eq 1 ]]; then
     _GIT_COMMON="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo ".git")"
     if [[ "$_GIT_COMMON" == ".git" ]]; then
         MAIN_REPO="$REPO_ROOT"
@@ -80,6 +88,10 @@ else
         MAIN_REPO="$(cd "$_GIT_COMMON/.." 2>/dev/null && pwd || echo "$REPO_ROOT")"
     fi
     DB="$MAIN_REPO/.chump/state.db"
+else
+    # No state.db found and --use-main not set — skip gracefully.
+    warn "state.db not found at $PWD/.chump/state.db; use --use-main to fall back to main repo, or set CHUMP_STATE_DB"
+    exit 0
 fi
 : "${MAIN_REPO:=$REPO_ROOT}"
 
@@ -295,8 +307,10 @@ fi
 echo ""
 if [[ "$overall_drift" -eq 0 ]]; then
     echo "All closure consistency checks passed."
+    gate_emit_result "CREDIBLE-028" "pass" "" ""
     exit 0
 else
     echo "Closure consistency drift detected (--strict mode)."
+    gate_emit_result "CREDIBLE-028" "fail" "gap_drift_premature_close" "$overall_drift drift(s)"
     exit 1
 fi

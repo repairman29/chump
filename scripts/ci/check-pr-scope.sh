@@ -26,6 +26,10 @@
 
 set -euo pipefail
 
+# shellcheck source=lib/gate-emit.sh
+source "$(dirname "$0")/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "CREDIBLE-026" "$*"
+
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
@@ -58,15 +62,47 @@ MERGE_BASE="$(git merge-base HEAD "origin/${BASE_BRANCH}" 2>/dev/null \
     || echo "")"
 if [[ -z "$MERGE_BASE" ]]; then
     warn "Could not compute merge base against $BASE_BRANCH — skipping scope check"
+    gate_emit_result "CREDIBLE-026" "skipped" "" "no merge base for $BASE_BRANCH"
     exit 0
 fi
 
 # ── Gather PR context ─────────────────────────────────────────────────────────
-# Use first commit subject (or gh pr title if available) as PR title proxy
-PR_TITLE="$(git log --pretty=format:%s "${MERGE_BASE}..HEAD" 2>/dev/null | tail -1 || true)"
-if command -v gh &>/dev/null; then
-    _gh_title="$(gh pr view --json title --jq '.title' 2>/dev/null || true)"
-    [[ -n "$_gh_title" ]] && PR_TITLE="$_gh_title"
+# INFRA-976: title-lookup priority (highest first):
+#   1. PR_TITLE / PR_TITLE_OVERRIDE env — the canonical, always-current
+#      source; workflow can pass `env: PR_TITLE: ${{ github.event.pull_request.title }}`.
+#      Survives retitles + detached-HEAD CI checkouts.
+#   2. `gh pr view` scoped explicitly via GITHUB_REPOSITORY + GITHUB_HEAD_REF
+#      so it doesn't rely on the detached-HEAD checkout inferring a PR #.
+#   3. Bare `gh pr view` — works locally with a branch that has an open PR.
+#   4. First commit subject — last-resort fallback. WRONG for retitled PRs
+#      (the original commit may have been `chore(gaps):` while the PR title
+#      is `fix(ship_quality):` after a rebase + retitle). Only here so the
+#      gate doesn't refuse-to-run on rebase-preview / local-script contexts.
+#
+# History: 2026-05-13 PR #1648 was retitled chore(gaps): → fix(ship_quality):
+# but pr-hygiene kept reading the original commit subject because gh CLI
+# couldn't resolve a PR # from the detached-HEAD CI checkout and the
+# workflow didn't pass the title via env. Squashing the PR was the
+# only workaround.
+PR_TITLE=""
+if [[ -n "${PR_TITLE_OVERRIDE:-}" ]]; then
+    PR_TITLE="$PR_TITLE_OVERRIDE"
+elif [[ -n "${PR_TITLE_ENV:-}" ]]; then
+    PR_TITLE="$PR_TITLE_ENV"
+fi
+if [[ -z "$PR_TITLE" ]] && command -v gh &>/dev/null; then
+    if [[ -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_HEAD_REF:-}" ]]; then
+        _gh_title="$(gh pr view --repo "$GITHUB_REPOSITORY" "$GITHUB_HEAD_REF" \
+            --json title --jq '.title' 2>/dev/null || true)"
+        [[ -n "$_gh_title" ]] && PR_TITLE="$_gh_title"
+    fi
+    if [[ -z "$PR_TITLE" ]]; then
+        _gh_title="$(gh pr view --json title --jq '.title' 2>/dev/null || true)"
+        [[ -n "$_gh_title" ]] && PR_TITLE="$_gh_title"
+    fi
+fi
+if [[ -z "$PR_TITLE" ]]; then
+    PR_TITLE="$(git log --pretty=format:%s "${MERGE_BASE}..HEAD" 2>/dev/null | tail -1 || true)"
 fi
 
 # Normalize title prefix (e.g. "chore(gaps): ..." → "chore(gaps)")
@@ -225,11 +261,14 @@ fi
 echo ""
 if [[ "$VIOLATIONS" -eq 0 ]]; then
     echo "CREDIBLE-026/CREDIBLE-041: all PR scope checks passed."
+    gate_emit_result "CREDIBLE-026" "pass" "" ""
     exit 0
 elif [[ "$WARN_ONLY" -eq 1 ]]; then
     warn "CREDIBLE-026/CREDIBLE-041: $VIOLATIONS violation(s) found (warn-only — not blocking)"
+    gate_emit_result "CREDIBLE-026" "pass" "warn-only" "$VIOLATIONS violation(s) demoted to warning"
     exit 0
 else
     fail "CREDIBLE-026/CREDIBLE-041: $VIOLATIONS violation(s). Fix scope or update PR title."
+    gate_emit_result "CREDIBLE-026" "fail" "scope-violation" "$VIOLATIONS PR scope violation(s)"
     exit 1
 fi

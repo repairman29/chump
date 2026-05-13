@@ -61,7 +61,8 @@
 # Exit codes (RESILIENT-010 — step-specific codes for automated recovery):
 #   0   PR opened/updated (or already up to date)
 #   1   Unexpected error (set -e trap or unhandled failure)
-#   3   Branch too stale to merge safely (>50 commits behind main)
+#   3   Branch too stale to merge safely (>50 commits behind main at start,
+#       or >15 behind right before push — INFRA-995)
 #   10  Preflight failed (gap already done, claimed, or unavailable)
 #   11  Rebase failed (merge conflict or timeout)
 #   12  Cargo clippy failed (lint errors)
@@ -91,6 +92,13 @@ _bm_cleanup() {
     [[ -n "${_BM_HEALTH_PID:-}" ]]   && kill "$_BM_HEALTH_PID"   2>/dev/null || true
     [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
     rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" 2>/dev/null || true
+    # INFRA-1017: vacuum state.db leases row so gap-preflight doesn't report a
+    # phantom live claim after this process is killed (SIGTERM, OOM, ctrl-C).
+    if [[ -n "${CHUMP_SESSION_ID:-}" ]] && command -v sqlite3 &>/dev/null; then
+        local _db="${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db"
+        [[ -f "$_db" ]] && sqlite3 "$_db" \
+            "DELETE FROM leases WHERE session_id='${CHUMP_SESSION_ID}'" 2>/dev/null || true
+    fi
 }
 trap '_bm_cleanup' EXIT
 trap '_bm_cleanup; exit 1' TERM INT
@@ -187,6 +195,8 @@ REQUIRED_CHECKS="${BM_REQUIRED_CHECKS:-}"
 NEXT_IS_BRANCH_PREFIX=0
 NEXT_IS_PR_TEMPLATE=0
 NEXT_IS_REQUIRED_CHECKS=0
+# INFRA-996: bypass dup-PR check when the prior PR is known-closed during this run.
+FORCE_DUPLICATE=${CHUMP_FORCE_DUPLICATE:-0}
 GAP_IDS=()
 NEXT_IS_GAP=0
 # INFRA-061 (M3): --stack-on <PREV-GAP-ID> opens this PR with base=claude/<branch
@@ -226,18 +236,25 @@ for arg in "$@"; do
     case "$arg" in
         --gap)             NEXT_IS_GAP=1 ;;
         --stack-on)        NEXT_IS_STACK_ON=1 ;;
-        --auto-merge)      AUTO_MERGE=1 ;;
-        --skip-tests)      SKIP_TESTS=1 ;;
-        --fast)            FAST=1; SKIP_TESTS=1 ;;
-        --dry-run)         DRY_RUN=1 ;;
-        --speculative)     SPECULATIVE=1 ;;
-        --no-merge-driver) NO_MERGE_DRIVER=1 ;;
-        --branch-prefix)   NEXT_IS_BRANCH_PREFIX=1 ;;
-        --pr-template)     NEXT_IS_PR_TEMPLATE=1 ;;
-        --required-checks) NEXT_IS_REQUIRED_CHECKS=1 ;;
+        --auto-merge)         AUTO_MERGE=1 ;;
+        --skip-tests)         SKIP_TESTS=1 ;;
+        --fast)               FAST=1; SKIP_TESTS=1 ;;
+        --dry-run)            DRY_RUN=1 ;;
+        --speculative)        SPECULATIVE=1 ;;
+        --no-merge-driver)    NO_MERGE_DRIVER=1 ;;
+        --branch-prefix)      NEXT_IS_BRANCH_PREFIX=1 ;;
+        --pr-template)        NEXT_IS_PR_TEMPLATE=1 ;;
+        --required-checks)    NEXT_IS_REQUIRED_CHECKS=1 ;;
+        --allow-mass-delete)  ALLOW_MASS_DELETE=1 ;;  # INFRA-993 scratch-commit-guard override
+        --force-duplicate)    FORCE_DUPLICATE=1 ;;    # INFRA-996 dup-PR-guard override
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
+
+# INFRA-993: default disabled. Set --allow-mass-delete to permit a push that
+# would otherwise be blocked by the scratch-commit guard (legit large-deletion
+# PRs like archive/ rewrites).
+ALLOW_MASS_DELETE="${ALLOW_MASS_DELETE:-0}"
 
 # INFRA-237: when --gap was not given, auto-derive from the current branch
 # name. Branches following the canonical naming convention encode the gap ID
@@ -611,13 +628,21 @@ _emit_hang_alert() {
 gh_with_backoff() {
     local label=$1 timeout_secs=$2; shift 2
     local -a delays=(60 120 240)
-    local attempt=0 rc tmpout
+    local attempt=0 rc tmpout api_tag started_ms ended_ms
+    api_tag="$(chump_gh_api_tag "$@" 2>/dev/null || printf '%s' "${1:-?}")"
     while true; do
         tmpout=$(mktemp)
+        started_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
         set +e
         run_timed_hb "$label" "$timeout_secs" gh "$@" 2>&1 | tee -a "$tmpout"
         rc=${PIPESTATUS[0]}
         set -e
+        ended_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
+        # INFRA-999: log this call to ambient.jsonl for cost telemetry.
+        if declare -F chump_gh_record >/dev/null 2>&1; then
+            chump_gh_record "$api_tag" "$(( ended_ms - started_ms ))" "$rc" "bot-merge.sh" \
+                2>/dev/null || true
+        fi
         if [[ $rc -eq 0 ]]; then
             rm -f "$tmpout"; return 0
         fi
@@ -744,6 +769,9 @@ _bm_health_init() {
 # visible to siblings. queue-health-monitor.sh reads from the main repo path.
 # shellcheck source=../lib/repo-paths.sh
 source "$(dirname "$0")/../lib/repo-paths.sh"
+# shellcheck source=lib/github.sh
+# INFRA-999: chump_gh + chump_gh_record for API cost telemetry.
+source "$(dirname "$0")/lib/github.sh"
 cd "$REPO_ROOT"
 # INFRA-469: route every `chump` call through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
@@ -1456,6 +1484,117 @@ if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
     fi
 fi
 # FD 200 stays open; flock released automatically when the script process exits.
+
+# ── INFRA-995: pre-push staleness gate ───────────────────────────────────────
+# Belt-and-suspenders for the CLAUDE.md rule "rebase if your branch is more than
+# 15 commits behind main". The earlier rebase block (§1) already rebases above
+# 0 behind, but main may have moved during cargo clippy/test (often a 5-15 min
+# window). Re-fetch and refuse to push if we are now > STALE_REBASE_THRESHOLD
+# commits behind — pushing would burn a CI cycle on a stale base and then sit
+# in BEHIND state waiting on queue-driver.
+STALE_REBASE_THRESHOLD="${CHUMP_BOT_MERGE_STALE_THRESHOLD:-15}"
+if [[ $DRY_RUN -eq 0 ]]; then
+    run_timed_hb "git fetch (pre-push freshness)" 60 \
+        git fetch "$REMOTE" "$BASE_BRANCH" --quiet 2>/dev/null || true
+    BEHIND_NOW=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo 0)
+    if [[ "$BEHIND_NOW" -gt "$STALE_REBASE_THRESHOLD" ]]; then
+        red "INFRA-995: branch is $BEHIND_NOW commits behind $REMOTE/$BASE_BRANCH (threshold ${STALE_REBASE_THRESHOLD})."
+        red "  main moved while we built/tested. Pushing now would queue a stale base for CI."
+        red "  Recover: git fetch && git rebase $REMOTE/$BASE_BRANCH && rerun bot-merge."
+        _amb_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+        mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"stale_branch_blocked","branch":"%s","behind":%d,"threshold":%d,"phase":"pre-push"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$BEHIND_NOW" "$STALE_REBASE_THRESHOLD" \
+            >> "$_amb_path" 2>/dev/null || true
+        _bm_fail "stale-branch" 3 "branch $BEHIND_NOW commits behind > threshold ${STALE_REBASE_THRESHOLD}"
+    fi
+fi
+
+# ── INFRA-993: scratch-commit guard — block catastrophic-delete PRs ──────────
+# Near-miss observed 2026-05-11: PRs #1441 + #1452 each proposed +2 / -378000+
+# lines across ~1910 files (effectively deleting the entire repo). Root cause:
+# worktree corruption (INFRA-779 family). Independent of root-cause fix, this
+# is the creation-time gate: refuse to push when the diff vs origin/main shows
+# > 50000 deletions OR deletions > 100× additions. Override: --allow-mass-delete.
+if [[ "$DRY_RUN" -eq 0 && "${CHUMP_SCRATCH_GUARD_DISABLE:-0}" != "1" ]]; then
+    _sg_amb="${CHUMP_AMBIENT_LOG:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl}"
+    _sg_stats="$(git diff --shortstat "${REMOTE}/${BASE_BRANCH}..HEAD" 2>/dev/null || true)"
+    # Sample format: "5 files changed, 12 insertions(+), 3 deletions(-)"
+    # Parse with sed; default to 0 if a clause is missing.
+    _sg_files="$(printf '%s' "$_sg_stats" | sed -nE 's/.* ([0-9]+) files? changed.*/\1/p')"
+    _sg_adds="$(printf '%s' "$_sg_stats"  | sed -nE 's/.* ([0-9]+) insertions?\(\+\).*/\1/p')"
+    _sg_dels="$(printf '%s' "$_sg_stats"  | sed -nE 's/.* ([0-9]+) deletions?\(-\).*/\1/p')"
+    _sg_files="${_sg_files:-0}"
+    _sg_adds="${_sg_adds:-0}"
+    _sg_dels="${_sg_dels:-0}"
+    # Tripwire: > 50000 deletions OR deletions > 100× max(adds, 1).
+    _sg_threshold_abs="${CHUMP_SCRATCH_GUARD_MAX_DELETIONS:-50000}"
+    _sg_threshold_ratio="${CHUMP_SCRATCH_GUARD_RATIO:-100}"
+    _sg_adds_floor=$((_sg_adds > 0 ? _sg_adds : 1))
+    if [[ "$_sg_dels" -gt "$_sg_threshold_abs" ]] || \
+       [[ "$_sg_dels" -gt $(( _sg_adds_floor * _sg_threshold_ratio )) ]]; then
+        # Compose gap ID for the ambient event.
+        _sg_gap="${GAP_IDS[0]:-unknown}"
+        if [[ "$ALLOW_MASS_DELETE" == "1" ]]; then
+            yellow "scratch-commit guard: --allow-mass-delete set; permitting +${_sg_adds} / -${_sg_dels} across ${_sg_files} files"
+            mkdir -p "$(dirname "$_sg_amb")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"scratch_commit_override_used","gap_id":"%s","additions":%s,"deletions":%s,"files":%s,"threshold_abs":%s,"threshold_ratio":%s,"branch":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_sg_gap" "$_sg_adds" "$_sg_dels" "$_sg_files" "$_sg_threshold_abs" "$_sg_threshold_ratio" "$BRANCH" \
+                >> "$_sg_amb" 2>/dev/null || true
+        else
+            red "Aborting: this commit deletes ${_sg_dels} lines across ${_sg_files} files (refusing — set --allow-mass-delete to override)."
+            red "Adds: ${_sg_adds}. Threshold: > ${_sg_threshold_abs} deletions OR deletions > ${_sg_threshold_ratio}× additions."
+            red "See ambient.jsonl for the kind=scratch_commit_blocked event."
+            mkdir -p "$(dirname "$_sg_amb")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"scratch_commit_blocked","gap_id":"%s","additions":%s,"deletions":%s,"files":%s,"threshold_abs":%s,"threshold_ratio":%s,"branch":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_sg_gap" "$_sg_adds" "$_sg_dels" "$_sg_files" "$_sg_threshold_abs" "$_sg_threshold_ratio" "$BRANCH" \
+                >> "$_sg_amb" 2>/dev/null || true
+            exit 15
+        fi
+    fi
+fi
+
+# ── 4b. Duplicate-PR check (INFRA-996) ────────────────────────────────────────
+# Before pushing, verify no open PR already has this GAP-ID in its title with a
+# different head branch. Duplicate PRs waste CI, confuse reviewers, and caused
+# 3 incidents in 7 days (#1536+#1540, #1323+#1333, #1283/#1284).
+# Bypass: --force-duplicate or CHUMP_FORCE_DUPLICATE=1.
+_amb_path="${CHUMP_AMBIENT_IN_PROMPT:-${LOCK_DIR}/ambient.jsonl}"
+if [[ "${FORCE_DUPLICATE}" != "1" && ${#GAP_IDS[@]} -gt 0 ]]; then
+    _dup_found=0
+    _dup_pr_numbers=""
+    for _gid in "${GAP_IDS[@]}"; do
+        # REST-only: gh pr list uses GraphQL but falls back cleanly; we skip if
+        # rate-limited rather than blocking the push (fail-open for dup check).
+        _existing=$(gh pr list --repo "${REPO}" --state open \
+            --search "${_gid} in:title" --json number,headRefName \
+            --limit 10 2>/dev/null || true)
+        if [[ -z "$_existing" ]]; then
+            continue
+        fi
+        # Filter: exclude PRs whose head ref matches our current branch.
+        _conflicts=$(echo "$_existing" | python3 -c "
+import json,sys
+rows=json.load(sys.stdin)
+conflicts=[str(r['number']) for r in rows if r.get('headRefName','') != '${BRANCH}']
+print(' '.join(conflicts))
+" 2>/dev/null || true)
+        if [[ -n "$_conflicts" ]]; then
+            _dup_found=1
+            _dup_pr_numbers="${_dup_pr_numbers} ${_conflicts}"
+        fi
+    done
+    if [[ "$_dup_found" -eq 1 ]]; then
+        _dup_pr_numbers="${_dup_pr_numbers# }"
+        red "Duplicate PR blocked: open PR(s) already claim this gap: ${_dup_pr_numbers}"
+        red "  Use --force-duplicate to override (legitimate retry after the prior PR closed)."
+        # Emit ambient event for frequency tracking.
+        printf '{"ts":"%s","kind":"dup_pr_blocked","gap_id":"%s","existing_pr_numbers":"%s","current_branch":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_IDS[*]:-}" "$_dup_pr_numbers" "$BRANCH" \
+            >> "$_amb_path" 2>/dev/null || true
+        _bm_fail "dup-pr" 16 "duplicate PR detected for gap ${GAP_IDS[*]:-}: existing ${_dup_pr_numbers}"
+    fi
+fi
 
 # ── 5. Push ───────────────────────────────────────────────────────────────────
 stage_start "git push $BRANCH → $REMOTE"

@@ -217,6 +217,33 @@ fn git_common_dir(repo: &Path) -> Option<PathBuf> {
     }
 }
 
+/// INFRA-969 corruption guard. `git rev-parse --show-toplevel` honours
+/// `core.worktree` in `.git/config`. A stale `core.worktree` setting (set
+/// by a long-gone linked worktree, or a manual `git -c` invocation that
+/// leaked) makes git return a path that has no ancestor relationship to
+/// the CWD. Blindly trusting it routes every per-file YAML write to the
+/// ghost path. Observed today: cwd=/Users/jeffadkins/Projects/Chump,
+/// toplevel=/private/tmp/chump-infra-508 → 1,200+ YAMLs misrouted.
+///
+/// Sanity rule: a legitimate toplevel either contains CWD (CWD is in a
+/// subdirectory of the repo) or equals CWD (CWD is the repo root).
+/// If neither holds, fall through to repo_root() instead of trusting git.
+fn cwd_is_ancestor_or_equal_of_toplevel(cwd: &Path, toplevel: &Path) -> bool {
+    // Canonicalize both — necessary on macOS where /tmp ↔ /private/tmp
+    // and on systems with symlinked checkouts. Canonicalize is the only
+    // way to reliably compare paths that may share a prefix lexically
+    // (e.g. /Users vs /private/Users on some macOS setups).
+    let cwd_c = match cwd.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return false, // can't verify; treat as corrupted, fall through
+    };
+    let top_c = match toplevel.canonicalize() {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
+    cwd_c == top_c || cwd_c.starts_with(&top_c)
+}
+
 /// Worktree root for per-worktree write paths (per-file `docs/gaps/<ID>.yaml`,
 /// `.chump/.last-yaml-op` freshness marker).
 ///
@@ -263,7 +290,7 @@ pub fn worktree_root() -> PathBuf {
             let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if !s.is_empty() {
                 let pb = PathBuf::from(s);
-                if pb.is_dir() {
+                if pb.is_dir() && cwd_is_ancestor_or_equal_of_toplevel(&cwd, &pb) {
                     // INFRA-474: if CHUMP_REPO/CHUMP_HOME is explicitly set,
                     // confirm the CWD's git repo is the *same* repo (possibly a
                     // linked worktree). If they share the same git common-dir,
@@ -495,5 +522,81 @@ mod tests {
             None => std::env::remove_var("CHUMP_REPO"),
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// INFRA-969 corruption guard. If a repo's .git/config has a stale
+    /// `core.worktree` setting pointing at a path that no longer relates
+    /// to CWD, `git rev-parse --show-toplevel` returns the ghost path.
+    /// worktree_root() must NOT trust that — it should fall through to
+    /// repo_root() instead of misrouting every per-file YAML write.
+    #[test]
+    #[serial_test::serial]
+    fn worktree_root_rejects_corrupted_core_worktree() {
+        let tmp = std::env::temp_dir();
+        let real_repo = tmp.join(format!("chump-969-real-{}", uuid::Uuid::new_v4().simple()));
+        let ghost = tmp.join(format!("chump-969-ghost-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&real_repo).unwrap();
+        std::fs::create_dir_all(&ghost).unwrap();
+        assert!(Command::new("git")
+            .args(["init"])
+            .current_dir(&real_repo)
+            .status()
+            .expect("git")
+            .success());
+
+        // Corrupt: point core.worktree at the ghost dir which has no
+        // ancestor relationship to real_repo.
+        assert!(Command::new("git")
+            .args([
+                "-C",
+                &real_repo.display().to_string(),
+                "config",
+                "core.worktree",
+                &ghost.display().to_string()
+            ])
+            .status()
+            .expect("git")
+            .success());
+
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        let prev_wt = std::env::var("CHUMP_WORKTREE_ROOT").ok();
+        std::env::set_var("CHUMP_REPO", real_repo.display().to_string());
+        std::env::remove_var("CHUMP_HOME");
+        std::env::remove_var("CHUMP_WORKTREE_ROOT");
+
+        let orig_cwd = std::env::current_dir().ok();
+        std::env::set_current_dir(&real_repo).unwrap();
+
+        // git rev-parse --show-toplevel from real_repo now returns ghost
+        // (because of the corrupted core.worktree). worktree_root() must
+        // detect this and fall through to repo_root() = real_repo.
+        let result = worktree_root();
+        let canon_real = real_repo.canonicalize().unwrap();
+        let result_canon = result.canonicalize().unwrap_or(result.clone());
+        assert_eq!(
+            result_canon, canon_real,
+            "worktree_root() returned {result_canon:?} but real_repo is {canon_real:?} — \
+             corrupted core.worktree should NOT route writes to the ghost path"
+        );
+
+        // Restore env and cwd.
+        if let Some(ref cwd) = orig_cwd {
+            let _ = std::env::set_current_dir(cwd);
+        }
+        match prev_repo {
+            Some(ref s) => std::env::set_var("CHUMP_REPO", s),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
+        match prev_home {
+            Some(ref s) => std::env::set_var("CHUMP_HOME", s),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match prev_wt {
+            Some(ref s) => std::env::set_var("CHUMP_WORKTREE_ROOT", s),
+            None => std::env::remove_var("CHUMP_WORKTREE_ROOT"),
+        }
+        let _ = std::fs::remove_dir_all(&real_repo);
+        let _ = std::fs::remove_dir_all(&ghost);
     }
 }

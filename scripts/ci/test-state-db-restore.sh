@@ -11,6 +11,10 @@
 
 set -euo pipefail
 
+# shellcheck source=lib/gate-emit.sh
+source "$(dirname "$0")/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "INFRA-538" "$*"
+
 REPO_ROOT_REAL="$(cd "$(dirname "$0")/../.." && pwd)"
 CHUMP_BIN="${CHUMP_BIN:-$REPO_ROOT_REAL/target/debug/chump}"
 
@@ -142,8 +146,10 @@ fi
 echo ""
 if [[ $FAIL -eq 0 ]]; then
     echo "PASS: test-state-db-restore (${PASS}/${PASS} cases verified)"
+    gate_emit_result "INFRA-538" "pass" "" ""
     exit 0
 else
     echo "FAIL: ${FAIL} case(s) failed (${PASS} passed)"
+    gate_emit_result "INFRA-538" "fail" "smoke-test-failure" "$FAIL case(s) failed"
     exit 1
 fi

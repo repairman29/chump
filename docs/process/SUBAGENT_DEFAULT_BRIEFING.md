@@ -69,6 +69,46 @@ chump gap ship <GAP-ID> --closed-pr <PR-number> --update-yaml
 scripts/coord/bot-merge.sh --gap <YOUR-GAP-ID> --auto-merge
 ```
 
+## Fleet quality rules (opencode coaching set — 2026-05-13)
+
+Ten rules distilled from the most common failure modes in the opencode-bigpickle harness:
+
+1. **Title-vs-diff sanity check.** Read `git diff --stat origin/main..HEAD` before
+   committing. The diff must implement what the title claims and nothing else.
+
+2. **Run the gate locally before push.** `bash scripts/ci/<test-for-your-gap>.sh` must
+   exit 0 on your machine before you touch `git push` or `bot-merge.sh`.
+
+3. **No hardcoded wall-clock fixtures.** Tests must not contain literal future dates or
+   sleep durations. Use `$NOW`, env vars, or relative offsets. Hardcoded dates cause
+   CI flakes after they expire.
+
+4. **GNU-first, then BSD fallback.** Scripts must work on Linux. Use
+   `date -u +%Y-%m-%dT%H:%M:%SZ` (GNU). If macOS `date -r` is needed, guard it:
+   `command -v gdate && gdate ... || date ...`.
+
+5. **Bypass-with-why.** Every `CHUMP_*=0` or `--no-verify` bypass requires a trailer
+   explaining why: `Event-Registry-Bypass: <reason>`, `Test-Gate-Bypass: <reason>`.
+   No silent bypasses — they mask real failures.
+
+6. **No ci.yml reorder.** Never reorder existing job steps in `.github/workflows/ci.yml`
+   unless the gap explicitly targets CI structure. Step reordering invalidates the
+   `cancel-in-progress` group semantics and breaks the green-main signal.
+
+7. **Verify YAML mirror lands.** After `chump gap ship`, run `chump gap show <ID>` and
+   confirm `closed_pr:` is set and `docs/gaps/<ID>.yaml` reflects `status: done`.
+
+8. **Pillar prefix in title.** Every new gap title must start with `EFFECTIVE:`,
+   `CREDIBLE:`, `RESILIENT:`, or `ZERO-WASTE:` so `chump mission-grade` can tally it.
+
+9. **One-gap-one-PR.** One PR = one logical gap. Bundling multiple gaps into a PR
+   confuses `chump gap ship` and triggers the INFRA-996 dup-PR guard. Exception:
+   a parent gap whose AC explicitly decomposes child gaps.
+
+10. **Ambient pre-pickup.** Before claiming any gap, glance at
+    `tail -30 .chump-locks/ambient.jsonl` for `lease_overlap`, `pr_stuck`,
+    `edit_burst`. If any signal is hot, address it before picking new work.
+
 **Final report format** — reply with this structure under 250 words:
 ```
 PR number: #NNNN  (or "BLOCKED" + one-line reason)
