@@ -537,6 +537,30 @@ events:
       declared in scripts/coord/system-gap-frequencies.yaml. task identifies
       the scheduled-task name (opus-curator | emergency-fast-path | gap-gardener).
 
+  - kind: daemon_started
+    emitter: src/main.rs `chump fleet daemon` (INFRA-964)
+    trigger: chump fleet daemon process starts and parses its task config
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, tasks, mode]
+    docs: |
+      mode is "once" (--once dev/test invocation) or "loop" (long-lived
+      production daemon). tasks is a comma-separated list of declared task
+      names from scripts/coord/system-gap-frequencies.yaml. Absence of this
+      event for > 1 launchd KeepAlive cycle means the daemon failed to
+      start; investigate /tmp/chump-fleet-daemon.err.log.
+
+  - kind: daemon_tick
+    emitter: src/main.rs `chump fleet daemon` (INFRA-964)
+    trigger: each scheduled task invocation by the daemon, after it returns
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, task, interval_s, run_id, exit_code, elapsed_ms]
+    docs: |
+      Replaces the Claude-Code-hosted scheduled-tasks MCP path. exit_code is
+      the script's exit status; non-zero means the task failed (visible in
+      ambient AND in /tmp/chump-fleet-daemon.err.log). elapsed_ms is wall-clock
+      run time. Missed daemon_tick events for a known interval_s mean the
+      daemon itself is dead — check `launchctl list | grep fleet-daemon`.
+
   - kind: opus_roadmap_published
     emitter: opus curator (META-054, ad-hoc)
     trigger: opus curator publishes docs/ROADMAP_OPUS_SEQUENCING.md
