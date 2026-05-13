@@ -1428,6 +1428,13 @@ events:
     trigger: any CI gate completes (pass / fail / bypassed / skipped)
     consumers: [gate-fire-rate, fleet-brief, curator]
     fields_required: [ts, kind, gate, outcome, rule_fired, evidence, pr_or_branch]
+  # ── INFRA-1003: auto-rerun out-of-scope PR check ─────────────────────────
+  - kind: auto_rerun_out_of_scope
+    emitter: scripts/coord/auto-rerun-out-of-scope.sh (INFRA-1003)
+    trigger: PR check failed on tests with zero overlap with the PR diff; rerun
+      triggered once to distinguish environmental flake from real regression
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, pr_number, run_id, diff_paths, failing_tests]
 
   # ── RESILIENT-014: test-gate bypass audit ─────────────────────────────────
   - kind: test_gate_bypassed
