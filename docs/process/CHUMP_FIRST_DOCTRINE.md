@@ -1,8 +1,13 @@
 ---
 doc_tag: doctrine
 owner_gap: META-046
-last_audited: 2026-05-11
+last_audited: 2026-05-13
+companion_docs:
+  - docs/process/HARNESS_CONTRACT.md
 ---
+
+> **See also:** [`HARNESS_CONTRACT.md`](HARNESS_CONTRACT.md) (INFRA-1044) — the concrete technical surfaces a harness implements. This doc is the *why*; that doc is the *what*.
+
 
 # Chump-first doctrine
 
