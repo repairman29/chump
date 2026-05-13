@@ -48,19 +48,28 @@ fixture_pr_title_vs_diff() {
     local tmp; tmp="$(mktemp -d -t gate-fixture-scope.XXXXXX)"
     cd "$tmp"
     git init -q -b main
-    git config user.email t@t.t
-    git config user.name t
     mkdir -p docs/gaps src
     echo "- id: TEST-000" > docs/gaps/TEST-000.yaml
     echo "// initial" > src/lib.rs
-    git add . && git commit -q -m "initial"
+    # INFRA-1024: use env vars, not git config writes, to avoid .git/config mutation.
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git add . && \
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git commit -q -m "initial"
     # Pretend origin/main exists so MERGE_BASE resolves.
     git update-ref refs/remotes/origin/main HEAD
     # Feature branch with the violating change: chore(gaps): title + src touched.
     git checkout -q -b feature
     echo "- id: TEST-001" > docs/gaps/TEST-001.yaml
     echo "// scope violation: touching src under chore(gaps): title" >> src/lib.rs
-    git add . && git commit -q -m "chore(gaps): file TEST-001 + bonus src change"
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git add . && \
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git commit -q -m "chore(gaps): file TEST-001 + bonus src change"
     echo "$tmp"
 }
 
@@ -68,17 +77,31 @@ fixture_scratch_commits_or_mass_delete() {
     local tmp; tmp="$(mktemp -d -t gate-fixture-scratch.XXXXXX)"
     cd "$tmp"
     git init -q -b main
-    git config user.email t@t.t
-    git config user.name t
     mkdir -p src docs/gaps
     for i in $(seq 1 50); do echo "line $i" >> src/lib.rs; done
     echo "feature one" > docs/feature.md
-    git add . && git commit -q -m "initial seed"
+    # INFRA-1024: use env vars, not git config writes, to avoid .git/config mutation.
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git add . && \
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git commit -q -m "initial seed"
     git checkout -q -b scratch-disaster
     : > src/lib.rs
-    git add . && git commit -q -m "first"
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git add . && \
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git commit -q -m "first"
     rm docs/feature.md
-    git add . && git commit -q -m "unrelated change"
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git add . && \
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git commit -q -m "unrelated change"
     echo "$tmp"
 }
 
@@ -103,8 +126,11 @@ INSERT INTO gaps(id, domain, title, status, priority, effort, closed_pr)
 VALUES ('TEST-001', 'TEST', 't', 'done', 'P1', 's', 999999);
 SQL
     cd "$tmp"
-    git init -q && git config user.email t@t.t && git config user.name t
-    git commit --allow-empty -q -m "init"
+    git init -q
+    # INFRA-1024: use env vars, not git config writes, to avoid .git/config mutation.
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git commit --allow-empty -q -m "init"
     echo "$tmp"
 }
 
@@ -119,17 +145,26 @@ fixture_cognition_src_change_without_prereg() {
     local tmp; tmp="$(mktemp -d -t gate-fixture-prereg.XXXXXX)"
     cd "$tmp"
     git init -q -b main
-    git config user.email t@t.t
-    git config user.name t
     mkdir -p src docs/eval/preregistered
     echo "// reflection" > src/reflection_db.rs
     echo "// neuromod" > src/neuromod.rs
-    git add . && git commit -q -m "initial"
+    # INFRA-1024: use env vars, not git config writes, to avoid .git/config mutation.
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git add . && \
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git commit -q -m "initial"
     git update-ref refs/remotes/origin/main HEAD
     git checkout -q -b cognition-feature
     echo "// added neuromod tuning" >> src/reflection_db.rs
     echo "fn new_thing() {}" >> src/neuromod.rs
-    git add . && git commit -q -m "feat(COG-XXX): tune neuromod kappa (no prereg doc)"
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git add . && \
+    GIT_AUTHOR_EMAIL=ci@fixture.test GIT_AUTHOR_NAME=CI \
+    GIT_COMMITTER_EMAIL=ci@fixture.test GIT_COMMITTER_NAME=CI \
+        git commit -q -m "feat(COG-XXX): tune neuromod kappa (no prereg doc)"
     echo "$tmp"
 }
 

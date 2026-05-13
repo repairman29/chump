@@ -293,17 +293,20 @@ mod tests {
     fn make_repo() -> (tempfile::TempDir, String, String) {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path();
+        // INFRA-1024: use env vars, not git config writes, so no .git/config mutation escapes.
         let run = |args: &[&str]| {
             let st = PCommand::new("git")
                 .args(args)
                 .current_dir(p)
+                .env("GIT_AUTHOR_EMAIL", "ci@version.test")
+                .env("GIT_AUTHOR_NAME", "CI")
+                .env("GIT_COMMITTER_EMAIL", "ci@version.test")
+                .env("GIT_COMMITTER_NAME", "CI")
                 .output()
                 .unwrap();
             assert!(st.status.success(), "git {args:?} failed: {st:?}");
         };
         run(&["init", "-q", "-b", "main"]);
-        run(&["config", "user.email", "t@t.t"]);
-        run(&["config", "user.name", "t"]);
         std::fs::create_dir_all(p.join("src")).unwrap();
         std::fs::write(p.join("src/gap_store.rs"), "// initial\n").unwrap();
         run(&["add", "."]);

@@ -1,0 +1,13 @@
+id: INFRA-1024
+domain: INFRA
+title: "RESILIENT: test fixture leaks local git config (user.email=t@t.t) into worktrees — clobbers identity for whole session"
+status: done
+priority: P1
+effort: xs
+description: |
+  Some test in the cargo test suite is calling git config user.email t@t.t and git config user.name t WITHOUT --global, which clobbers the local .git/config of whatever repo cargo runs in. Symptom: after running cargo test, every subsequent commit hits the INFRA-787 git-identity guard and gets rejected. Fixed by converting all fixture functions to use GIT_AUTHOR_EMAIL/GIT_COMMITTER_EMAIL env vars (per-process) instead of writing to .git/config.
+acceptance_criteria: |
+  1. Find the test(s) that call git config user.email or git config user.name without --global
+  2. Convert them to use GIT_AUTHOR_EMAIL/GIT_AUTHOR_NAME env vars (per-process) or git -c (per-command)
+  3. After fix: running the cargo test suite should leave git config --local --get user.email empty on the main repo
+  4. CI gate: scripts/ci/test-fixture-git-identity.sh — verifies no sentinel email in main .git/config or linked worktrees, and no git config user.* calls in fixture scripts

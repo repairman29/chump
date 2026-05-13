@@ -1271,3 +1271,6 @@ jobs:
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-release-lease-flag.sh
+      - name: test fixture git identity leak guard — no t@t.t in repo after fixtures (INFRA-1024)
+        run: bash scripts/ci/test-fixture-git-identity.sh
+
