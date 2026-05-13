@@ -1370,3 +1370,10 @@ events:
     trigger: a stale depends_on entry pointing at a done gap was stripped
     consumers: [fleet-brief]
     fields_required: [ts, kind, gap_id, stripped_deps]
+
+  # ── RESILIENT-014: test-gate bypass audit ─────────────────────────────────
+  - kind: test_gate_bypassed
+    emitter: scripts/git-hooks/pre-push (RESILIENT-014)
+    trigger: CHUMP_TEST_GATE=0 used to skip the cargo test gate on push
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, gap_id, reason, branch, bypassed_by]
