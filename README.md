@@ -1,20 +1,25 @@
 # Chump
 
-A self-hosted AI coding agent **and** a multi-agent dispatcher, in one repo.
+**Chump is a multi-agent fleet coordinator + gap registry. Bring your own coding agent** (Claude Code, opencode, Codex CLI, Aider, goose, or manual commits).
+
 Runs on your hardware. Your keys, your data, your machine.
 
 Chump has two co-equal lanes:
 
-- **The agent** — connects to local LLMs (Ollama, vLLM, mistral.rs), keeps durable state in SQLite (tasks, episodes, memory), exposes 30+ governed tools (repo, git, GitHub, web search, scheduling), and talks through a web PWA, CLI, Discord bot, or any [ACP-compatible editor](https://agentclientprotocol.com) (Zed, JetBrains).
-- **The dispatcher** — coordinates many concurrent agent sessions on the same repo without stomping each other. File-based leases, an `ambient.jsonl` peripheral-vision stream, a SQLite gap registry, linked worktrees, and a merge-queue ship pipeline. This is how Chump does its own development — it is its own operator harness.
+- **The coordinator** — file-based leases, an `ambient.jsonl` peripheral-vision stream, a SQLite gap registry, linked worktrees, and a merge-queue ship pipeline. Coordinates many concurrent agent sessions on the same repo without stomping each other. No specific agent required; any tool that can commit code and push a branch works.
+- **The built-in agent** — optionally, Chump also ships its own agent: connects to local LLMs (Ollama, vLLM, mistral.rs), keeps durable state in SQLite (tasks, episodes, memory), exposes 30+ governed tools (repo, git, GitHub, web search, scheduling), and talks through a web PWA, CLI, Discord bot, or any [ACP-compatible editor](https://agentclientprotocol.com) (Zed, JetBrains). **This lane is optional** — you can use Chump as a pure coordinator for agents you already have.
 
 **License:** [MIT](LICENSE) · **Platform:** macOS, Linux, Windows (WSL2) · **Docs:** [repairman29.github.io/chump](https://repairman29.github.io/chump/)
 
-> **Using a local LLM? No API key?** → [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) — 5-step guide for solo devs on Ollama.
+> **No Anthropic key? No Claude Code?** Chump works with any agent that can commit code. See [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) for Ollama, or use the coordinator with your existing tool.
+>
+> **Using a local LLM?** → [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) — 5-step guide for solo devs on Ollama.
 
 ---
 
 ## Quick start
+
+> **Claude Code not required.** The `chump` CLI binary installs and works standalone — `brew install chump` (when available) gives you the coordinator, gap registry, and ship pipeline without any Anthropic dependency. You supply the agent (or commit manually).
 
 **Time estimate:** ~30 minutes (Rust compilation and model download take most of it).
 
@@ -59,9 +64,11 @@ Chump has two co-equal lanes:
 
 ---
 
-## The agent
+## The built-in agent (optional)
 
-What you get when you talk to Chump:
+Chump ships its own agent too — but you don't have to use it. If you already have a coding agent you trust, skip this section and go straight to [The coordinator](#the-coordinator).
+
+What you get when you use Chump's built-in agent:
 
 - **Local-first inference.** Default backend is Ollama; vLLM and mistral.rs work too. A provider cascade can fall back to a hosted model only when you ask it to.
 - **Persistent memory.** SQLite FTS5 + embedding-based semantic recall + a HippoRAG-inspired associative graph (confidence, expiry, provenance).
@@ -110,20 +117,30 @@ flowchart LR
 
 ---
 
-## The dispatcher
+## The coordinator
 
-Running one agent is straightforward. Running ten — on the same repo, against the same `main`, without stomping each other's commits — is the part nobody else solves. Chump's dispatcher is the operator harness it uses on itself, and the same primitives are available to anyone running multi-agent workflows.
+Running one agent is straightforward. Running ten — on the same repo, against the same `main`, without stomping each other's commits — is the part nobody else solves. Chump's coordinator is the harness it uses on itself, and the same primitives are available to any agent you bring.
+
+**What Chump provides (the coordinator layer):**
 
 | Primitive | What it does |
 |---|---|
-| **`.chump-locks/<session>.json` leases** | Lightweight file-based ownership. Each agent claims a gap and (optionally) a path set; sibling agents see the claim instantly. Auto-expiring TTL — no stale locks. |
+| **`.chump-locks/<session>.json` leases** | Lightweight file-based ownership. Each agent claims a gap and (optionally) a path set; sibling agents see the claim instantly. Auto-expiring TTL — no stale locks. Works with Claude Code, opencode, Aider, goose, or manual commits. |
 | **`ambient.jsonl` peripheral vision** | Append-only stream of session starts, file edits, commits, and `ALERT` events (lease overlaps, silent agents, edit bursts). Glance at the tail and you know what every other agent is doing. |
 | **`chump gap` SQLite registry** | Authoritative gap store at `.chump/state.db` with `reserve` / `claim` / `preflight` / `ship` subcommands. Concurrent reservations don't race; `docs/gaps.yaml` is a regenerated mirror for diff review. |
-| **Linked worktrees** | Every gap gets its own worktree under `.claude/worktrees/<codename>/` on a `claude/<codename>` branch. Clean isolation, no branch-switching cost, hourly reaper sweeps stale ones. |
+| **Linked worktrees** | Every gap gets its own isolated git worktree + branch. Clean isolation, no branch-switching cost, hourly reaper sweeps stale ones. |
 | **`scripts/coord/bot-merge.sh` ship pipeline** | Rebases on `main`, runs fmt/clippy/tests, opens the PR, and arms `gh pr merge --auto --squash` against the GitHub merge queue. The queue rebases each PR on top of `main` and re-runs CI before the atomic squash — no lost commits, no stale-base merges. |
 | **Pre-commit guards** | Every commit checks for lease collisions, stomp warnings, duplicate / hijacked / recycled gap IDs, gaps.yaml discipline, cargo-fmt, cargo-check, docs-delta, and credential patterns. Each guard fails loud with a documented bypass. |
 
-**Read the full operating procedure:** [`AGENTS.md`](AGENTS.md) (canonical, tool-agnostic) and [`CLAUDE.md`](CLAUDE.md) (Chump-specific overlay).
+**What your agent provides:**
+
+- LLM calls and inference (any backend: Ollama, Claude API, OpenAI, local Llama)
+- Tool use and code synthesis
+- Reading and writing files, running tests, opening PRs
+
+The coordinator is fully functional without any specific agent. `chump gap list`, `chump claim`, `bot-merge.sh`, and the ambient stream all work with manual commits or any coding tool.
+
+**Read the full operating procedure:** [`AGENTS.md`](AGENTS.md) (canonical, tool-agnostic operating rules for any agent) and [`CLAUDE.md`](CLAUDE.md) (Chump fleet-specific overlay for Claude Code and fleet workers).
 
 ---
 
