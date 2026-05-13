@@ -1090,3 +1090,5 @@ jobs:
         run: bash scripts/ci/test-gap-lifecycle-manager.sh
       - name: per-agent throughput tracker — tracker script + kpi report --agents (FLEET-044)
         run: bash scripts/ci/test-agent-throughput.sh
+      - name: PWA gap workflow status endpoint (EFFECTIVE-014)
+        run: bash scripts/ci/test-gap-workflow-status.sh
