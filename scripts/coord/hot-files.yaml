@@ -1,0 +1,48 @@
+# INFRA-953: hot-file declarations for bot-merge serialization.
+#
+# Files where parallel agents touching them simultaneously force expensive
+# rebase rounds. Each rebase round costs ~3k tokens (META-055 audit, 7d:
+# 84 bot_merge_hot_file events = 252k tokens = 71.5% of measured waste).
+#
+# Each file gets a flock acquired by scripts/coord/hot-file-lock.sh during
+# the rebase→push window. Locks are advisory (per-machine flock); other
+# coordination layers (GitHub merge queue labels INFRA-103) still apply.
+#
+# Adding a file: append to `serialize` if observed in ≥3 bot_merge_hot_file
+# events in a single 7d audit window.
+#
+# Read by: scripts/coord/hot-file-lock.sh, scripts/coord/bot-merge.sh
+# Validated by: scripts/ci/test-hot-files-config.sh
+
+version: 1
+
+# Files that require an exclusive bot-merge lock during the rebase→push
+# window. Touching ANY of these blocks until the lock is held.
+serialize:
+  # Top-level coordination docs — every agent reads/updates them.
+  - AGENTS.md
+  - CLAUDE.md
+
+  # Observability registry — many gaps add new event kinds.
+  - docs/observability/EVENT_REGISTRY.yaml
+
+  # CI workflow set — frequent simultaneous edits cause merge-queue thrash.
+  - .github/workflows/ci.yml
+  - .github/workflows/release-plz.yml
+
+  # Coordination scripts — fleet workers regularly extend these.
+  - scripts/coord/bot-merge.sh
+  - scripts/coord/opus-curator.sh
+
+  # Gap registry boundary — see also INFRA-103 serializing list.
+  - gaps.yaml
+  - .chump/state.db
+  - .chump/state.sql
+
+# Files that should warn but not block (INFRA-305 retained behavior).
+# Listed here so the YAML is the single source of truth; bot-merge.sh
+# can compose its existing BOT_MERGE_HOT_FILES list from this section.
+warn_only:
+  - scripts/ci/gate-manifest.yaml
+  - scripts/dispatch/picker.sh
+  - src/main.rs

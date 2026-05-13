@@ -972,6 +972,23 @@ _grade_clippy_ok="null"
 _grade_test_added="null"
 _grade_rebase_clean="null"
 
+# ── INFRA-953: hot-file lock acquisition ──────────────────────────────────────
+# If our diff touches any file in scripts/coord/hot-files.yaml `serialize:`
+# list, take a flock on each (one per file). Held until this script exits.
+# Prevents two bot-merges from racing on the same shared file, which is what
+# drives bot_merge_hot_file emissions (META-055 audit: 71.5% of token waste).
+_HF_HELPER="${REPO_ROOT}/scripts/coord/hot-file-lock.sh"
+if [[ -r "$_HF_HELPER" ]]; then
+    # shellcheck source=./hot-file-lock.sh
+    source "$_HF_HELPER"
+    if declare -F hot_file_lock_acquire >/dev/null 2>&1; then
+        if ! hot_file_lock_acquire; then
+            red "INFRA-953: failed to acquire hot-file lock(s) — aborting"
+            exit 1
+        fi
+    fi
+fi
+
 # ── 1. Fetch and rebase ───────────────────────────────────────────────────────
 stage_start "git fetch $REMOTE/$BASE_BRANCH"
 run_timed_hb "git fetch" 180 git fetch "$REMOTE" "$BASE_BRANCH" --quiet
