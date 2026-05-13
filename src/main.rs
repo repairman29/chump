@@ -5100,6 +5100,164 @@ async fn main() -> Result<()> {
 
                 return Ok(());
             }
+            "dep-clean" => {
+                let do_apply = args.iter().any(|a| a == "--apply");
+                let as_json = json_out || args.iter().any(|a| a == "--json");
+                let do_dry_run = !do_apply;
+
+                let all_open = match store.list(Some("open")) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap dep-clean: failed to list open gaps: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                // Build a lookup: gap_id -> status
+                let mut status_map: std::collections::HashMap<&str, &str> =
+                    std::collections::HashMap::new();
+                for g in &all_open {
+                    status_map.insert(g.id.as_str(), "open");
+                }
+                let all_done = match store.list(Some("done")) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap dep-clean: failed to list done gaps: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+                for g in &all_done {
+                    status_map.insert(g.id.as_str(), "done");
+                }
+
+                // Parse depends_on (stored as JSON array like ["X-1","X-2"])
+                let parse_deps = |s: &str| -> Vec<String> {
+                    if s.trim().is_empty() {
+                        return Vec::new();
+                    }
+                    serde_json::from_str::<Vec<String>>(s).unwrap_or_default()
+                };
+
+                let mut results: Vec<serde_json::Value> = Vec::new();
+                let mut found_any = false;
+
+                for g in &all_open {
+                    let deps = parse_deps(&g.depends_on);
+                    if deps.is_empty() {
+                        continue;
+                    }
+                    let stale: Vec<String> = deps
+                        .iter()
+                        .filter(|d| status_map.get(d.as_str()).copied() == Some("done"))
+                        .cloned()
+                        .collect();
+                    let clean: Vec<String> = deps
+                        .iter()
+                        .filter(|d| {
+                            let s = status_map.get(d.as_str()).copied();
+                            s != Some("done")
+                        })
+                        .cloned()
+                        .collect();
+
+                    if stale.is_empty() {
+                        if as_json {
+                            results.push(serde_json::json!({
+                                "gap_id": g.id,
+                                "stale_deps": [],
+                                "action": "skipped"
+                            }));
+                        }
+                        continue;
+                    }
+
+                    found_any = true;
+
+                    if do_apply {
+                        // Strip stale deps: keep only clean ones
+                        let new_deps =
+                            serde_json::to_string(&clean).unwrap_or_else(|_| "[]".into());
+                        let update = gap_store::GapFieldUpdate {
+                            depends_on: Some(new_deps),
+                            ..Default::default()
+                        };
+                        if let Err(e) = store.set_fields(&g.id, update) {
+                            eprintln!("chump gap dep-clean: failed to update {}: {e:#}", g.id);
+                            std::process::exit(1);
+                        }
+                        // Emit ambient event
+                        let lock_dir = repo_root.join(".chump-locks");
+                        let _ = std::fs::create_dir_all(&lock_dir);
+                        let ambient_path = if let Ok(p) = std::env::var("CHUMP_AMBIENT_IN_PROMPT") {
+                            std::path::PathBuf::from(p)
+                        } else {
+                            lock_dir.join("ambient.jsonl")
+                        };
+                        let ts =
+                            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                        let evt = serde_json::json!({
+                            "ts": ts,
+                            "kind": "dep_cleaned",
+                            "gap_id": g.id,
+                            "stripped_deps": stale,
+                        });
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write as _;
+                            let _ = writeln!(f, "{}", evt);
+                        }
+
+                        if as_json {
+                            results.push(serde_json::json!({
+                                "gap_id": g.id,
+                                "stale_deps": stale,
+                                "action": "stripped"
+                            }));
+                        } else {
+                            println!(
+                                "{} depends_on [{}] — stripped {}",
+                                g.id,
+                                stale.join(", "),
+                                clean.join(", ")
+                            );
+                        }
+                    } else {
+                        // Dry-run mode
+                        if as_json {
+                            results.push(serde_json::json!({
+                                "gap_id": g.id,
+                                "stale_deps": stale,
+                                "action": "skipped"
+                            }));
+                        } else {
+                            for sd in &stale {
+                                println!("{} depends_on {} (done) — will strip", g.id, sd);
+                            }
+                        }
+                    }
+                }
+
+                if as_json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&results).unwrap_or_default()
+                    );
+                }
+
+                if found_any && do_dry_run {
+                    eprintln!("dep-clean: found stale depends_on entries (dry-run; pass --apply to strip)");
+                    std::process::exit(1);
+                }
+
+                if !found_any && !as_json {
+                    println!("No stale depends_on entries found — all clean.");
+                }
+
+                return Ok(());
+            }
             // INFRA-635: gap rebalance — P0 budget enforcement + pillar floor check.
             // Reads state.db, identifies violations, suggests or applies corrections.
             "rebalance" => {
@@ -5896,6 +6054,7 @@ async fn main() -> Result<()> {
                 );
                 eprintln!("                             [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
                 eprintln!("  decompose        <GAP-ID> [--apply] [--json] [--dry-run] [--no-description]  # LLM-assisted slicing");
+                eprintln!("  dep-clean        [--apply] [--json]  # strip depends_on entries pointing at done gaps");
                 eprintln!("  dump             [--out PATH] [--per-file [--out-dir docs/gaps/]]");
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
                 eprintln!("  restore          --from-sql  # rebuild state.db from .chump/state.sql (INFRA-538)");
