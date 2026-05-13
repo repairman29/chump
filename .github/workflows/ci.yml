@@ -1280,3 +1280,9 @@ jobs:
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-release-lease-flag.sh
+
+      - name: chump gap list --since filter (EFFECTIVE-018)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-gap-list-since.sh

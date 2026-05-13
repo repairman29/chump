@@ -3489,8 +3489,40 @@ async fn main() -> Result<()> {
                 });
                 let csv_out = fmt == "csv";
                 let json_out = json_out || fmt == "json";
+                // EFFECTIVE-018: --since <duration> filters to gaps that had
+                // activity (opened or closed) within the given window.
+                let since_cutoff: Option<String> = flag("--since").and_then(|s| {
+                    let secs = parse_duration_to_secs(&s).unwrap_or_else(|| {
+                        eprintln!(
+                            "chump gap list: invalid --since '{}' (expected 7d, 24h, 30d…)",
+                            s
+                        );
+                        std::process::exit(2);
+                    });
+                    let cutoff_ts = unix_ts().saturating_sub(secs);
+                    use chrono::TimeZone;
+                    chrono::Utc
+                        .timestamp_opt(cutoff_ts as i64, 0)
+                        .single()
+                        .map(|dt| dt.format("%Y-%m-%d").to_string())
+                });
                 match store.list(status_filter.as_deref()) {
-                    Ok(gaps) => {
+                    Ok(all_gaps) => {
+                        // Apply --since filter before any output path.
+                        // Date strings are YYYY-MM-DD, so lexicographic >= works.
+                        let gaps: Vec<_> = if let Some(ref cutoff) = since_cutoff {
+                            all_gaps
+                                .into_iter()
+                                .filter(|g| {
+                                    (!g.opened_date.is_empty()
+                                        && g.opened_date.as_str() >= cutoff.as_str())
+                                        || (!g.closed_date.is_empty()
+                                            && g.closed_date.as_str() >= cutoff.as_str())
+                                })
+                                .collect()
+                        } else {
+                            all_gaps
+                        };
                         if quiet {
                             // --quiet: no output, just verify the query ran (exit 0).
                             return Ok(());
@@ -3549,10 +3581,17 @@ async fn main() -> Result<()> {
                                     "{}",
                                     serde_json::to_string_pretty(&obj).unwrap_or_default()
                                 );
+                            } else if let Some(ref cutoff) = since_cutoff {
+                                // EFFECTIVE-018: wrap with since_cutoff so tooling can inspect the window.
+                                let obj = serde_json::json!({
+                                    "since_cutoff": cutoff,
+                                    "gaps": gaps,
+                                });
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&obj).unwrap_or_default()
+                                );
                             } else {
-                                // INFRA-431: --json output unchanged — for
-                                // tooling. Filter and summary apply only to
-                                // the human-readable path.
                                 println!(
                                     "{}",
                                     serde_json::to_string_pretty(&gaps).unwrap_or_default()
@@ -3672,10 +3711,17 @@ async fn main() -> Result<()> {
                                     .map(|(d, n)| format!("{d}={n}"))
                                     .collect();
                                 let shown = total - filtered_count;
-                                let mut summary = format!(
-                                    "\n--- {} shown / {} total open across {} domains (top: {}) ---",
-                                    shown, total, by_domain.len(), top.join(" ")
-                                );
+                                let mut summary = if let Some(ref cutoff) = since_cutoff {
+                                    format!(
+                                        "\n--- {} shown (active since {}) / {} total across {} domains (top: {}) ---",
+                                        shown, cutoff, total, by_domain.len(), top.join(" ")
+                                    )
+                                } else {
+                                    format!(
+                                        "\n--- {} shown / {} total open across {} domains (top: {}) ---",
+                                        shown, total, by_domain.len(), top.join(" ")
+                                    )
+                                };
                                 if !filtered_domains.is_empty() {
                                     summary.push_str(&format!(
                                         "\n--- filtered out {} test-domain row(s): {} (use --include-test-domains to see) ---",
