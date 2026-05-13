@@ -896,6 +896,34 @@ REMOTE="${REMOTE:-origin}"
 # ── INFRA-119: start health monitoring now that REPO_ROOT is set ──────────────
 _bm_health_init "$REPO_ROOT/.chump-locks"
 
+# ── INFRA-1034: always tee stdout+stderr to a per-PID log file ───────────────
+# Problem observed 2026-05-13: launching bot-merge in the background with
+# `bash bot-merge.sh ... 2>&1 | tail -15 &` produces 0-byte output until the
+# script exits because the tail pipe buffers. Operator can't see progress for
+# 4+ minutes. Always-on tee removes the buffering trap and gives a stable
+# `tail -f` target regardless of how the caller redirects.
+#
+# Opt-out: CHUMP_BOT_MERGE_NO_TEE=1 (preserves prior behavior for callers that
+# want the script's stdout to flow only through their own pipe).
+if [[ "${DRY_RUN:-0}" != "1" && "${CHUMP_BOT_MERGE_NO_TEE:-0}" != "1" ]]; then
+    _BM_LOG_FILE="${REPO_ROOT}/.chump-locks/bot-merge-${_BM_PID}.log"
+    # Print BEFORE redirecting so the operator-visible message lands on the
+    # original stdout (the log file gets it too via subsequent writes).
+    info "[INFRA-1034] full log: $_BM_LOG_FILE  (tail -f to follow)"
+    # Emit a discoverable marker so fleet-brief / operator-recall / chump-
+    # ambient-glance can show "bot-merge currently running, log at X" without
+    # scanning ps. Debounced to once per script invocation by virtue of being
+    # outside the heartbeat loop.
+    _bm_amb_path="${REPO_ROOT}/.chump-locks/ambient.jsonl"
+    printf '{"ts":"%s","kind":"bot_merge_log_started","pid":%d,"log_path":"%s","branch":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_BM_PID" "$_BM_LOG_FILE" "${BRANCH:-unknown}" \
+        >> "$_bm_amb_path" 2>/dev/null || true
+    # Process substitution: every subsequent write to stdout/stderr is
+    # duplicated into the log file. tee runs in its own subprocess that
+    # exits when the script's fd 1/2 close.
+    exec > >(tee -a "$_BM_LOG_FILE") 2>&1
+fi
+
 # ── INFRA-539: probe GitHub API before doing any real work ────────────────────
 if [[ "${DRY_RUN:-0}" != "1" ]]; then
     gh_api_probe || { red "Aborting bot-merge: GitHub unreachable. Retry when connectivity is restored."; exit 1; }
