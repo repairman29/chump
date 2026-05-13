@@ -317,12 +317,116 @@ curator_decisions() {
     fi
   fi
 
-  # Decision 2: Validate AC on vague gaps
-  echo "Decision 2: Check for vague gaps; add AC if needed"
-  log_curator_decision \
-    "gap_ac_filled" \
-    "Routine check: vague gaps without acceptance_criteria block fleet pickup" \
-    "audit_phase ran chump gap audit-priorities; operator to fill AC on any vague gaps"
+  # Decision 2 (INFRA-983): gap_ac_filled — when audit_gaps shows
+  # vague_pickable > 0, find the oldest vague pickable gap and use
+  # `claude -p` to draft a concrete AC, then apply it via
+  # `chump gap set --acceptance-criteria`. The highest-leverage
+  # curator action because vague gaps block fleet pickup.
+  #
+  # Safety rails:
+  #   - Daily cap of 3 AC fills (sentinel file in .chump-locks/).
+  #   - CHUMP_CURATOR_AC_FILL_DISABLE=1 escape hatch.
+  #   - CHUMP_CURATOR_DRY_RUN=1 suppresses the LLM call.
+  #   - LLM errors fall back to identified_only with error: prefix.
+  #   - Generated AC must contain `|` separators and be >100 chars.
+  if command -v chump &>/dev/null; then
+    _vague=$(_to_int "$(chump gap audit-priorities --json 2>/dev/null | jq '.vague_pickable // 0' 2>/dev/null)")
+    _today="$(date -u +%Y-%m-%d)"
+    _marker="$(_curator_lock_dir)/curator-filled-gap_ac-${_today}.json"
+    _filled_count=0
+    if [[ -f "$_marker" ]]; then
+      _filled_count=$(python3 -c "
+import json
+try: print(json.load(open('$_marker')).get('count', 0))
+except Exception: print(0)
+" 2>/dev/null || echo 0)
+    fi
+
+    if [[ "$_vague" -le 0 ]]; then
+      echo "Decision 2: 0 vague pickable — no AC fill needed"
+    elif [[ "${CHUMP_CURATOR_AC_FILL_DISABLE:-0}" == "1" ]]; then
+      echo "Decision 2: $_vague vague pickable, but AC fill DISABLED"
+      log_curator_decision "gap_ac_filled" \
+        "$_vague vague pickable gaps" \
+        "disabled: CHUMP_CURATOR_AC_FILL_DISABLE=1"
+    elif [[ "$_filled_count" -ge 3 ]]; then
+      echo "Decision 2: $_vague vague pickable, but daily cap (3) reached"
+      log_curator_decision "gap_ac_filled" \
+        "$_vague vague but already filled $_filled_count today" \
+        "skipped: daily cap of 3 fills reached"
+    elif [[ "${_DRY_RUN:-0}" == "1" ]]; then
+      echo "Decision 2: $_vague vague pickable — [dry-run] would draft AC"
+      log_curator_decision "gap_ac_filled" \
+        "$_vague vague pickable; $_filled_count/3 filled today" \
+        "dry_run: would draft AC for oldest vague pickable"
+    else
+      # Find oldest vague pickable gap (P0/P1, xs/s/m, no deps, blank or TODO AC).
+      _target_id=$(chump gap list --status open --json 2>/dev/null | python3 -c "
+import json, sys
+try:
+    gaps = json.load(sys.stdin)
+    candidates = []
+    for g in gaps:
+        if g.get('priority') not in ('P0','P1'): continue
+        if g.get('effort') not in ('xs','s','m'): continue
+        if g.get('depends_on'): continue
+        ac = str(g.get('acceptance_criteria') or '').strip()
+        if not ac or any(p in ac for p in ('TODO','TBD','<fill in>','<placeholder>')):
+            candidates.append(g)
+    candidates.sort(key=lambda g: g.get('created_at') or 0)
+    if candidates:
+        print(candidates[0]['id'])
+except Exception:
+    pass
+" 2>/dev/null)
+
+      if [[ -z "$_target_id" ]]; then
+        echo "Decision 2: vague count > 0 but no candidate matched (P0/P1, xs/s/m, no deps)"
+        log_curator_decision "gap_ac_filled" \
+          "$_vague vague but no fillable candidate" \
+          "skipped: no P0/P1 xs/s/m vague gap without deps"
+      else
+        _target_title=$(chump gap show "$_target_id" 2>/dev/null | awk '/^[[:space:]]+title:/ {sub(/^[[:space:]]+title:[[:space:]]*/, ""); print; exit}')
+        _target_desc=$(chump gap show "$_target_id" 2>/dev/null | awk '/^[[:space:]]+description:/ {sub(/^[[:space:]]+description:[[:space:]]*/, ""); print; exit}')
+        _prompt=$(printf '%s' "You are drafting concrete acceptance criteria for a software-engineering gap.
+
+Title: ${_target_title}
+Description: ${_target_desc:-(none provided)}
+
+Output exactly 3-5 acceptance criteria separated by | (pipe character).
+Each criterion must be ONE concrete deliverable:
+ - reference a specific file path OR function name OR command
+ - be verifiable pass/fail (someone can check it)
+ - use action verbs (add, modify, assert, test, emit, document)
+
+Output ONLY the pipe-separated criteria. No 'Acceptance Criteria:' header,
+no bullets, no quotes, no preamble. ≤ 600 characters total.")
+
+        _ac=$(printf '%s\n' "$_prompt" | claude -p --bare 2>/dev/null | head -c 1500 | tr -d '\n' | tr -s ' ')
+
+        if [[ -n "$_ac" && "${#_ac}" -gt 100 && "$_ac" == *"|"* ]]; then
+          if chump gap set "$_target_id" --acceptance-criteria "$_ac" >/dev/null 2>&1; then
+            _new_count=$((_filled_count + 1))
+            printf '{"date":"%s","count":%d,"last_gap":"%s","ts":"%s"}\n' \
+              "$_today" "$_new_count" "$_target_id" \
+              "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$_marker"
+            echo "Decision 2: filled AC for $_target_id ($_new_count/3 today)"
+            log_curator_decision "gap_ac_filled" \
+              "$_vague vague pickable; drafted AC for oldest ($_target_id)" \
+              "filled $_target_id (count $_new_count/3 today)"
+          else
+            log_curator_decision "gap_ac_filled" \
+              "$_vague vague pickable" \
+              "error: chump gap set failed for $_target_id"
+          fi
+        else
+          log_curator_decision "gap_ac_filled" \
+            "$_vague vague pickable; LLM call did not produce usable AC" \
+            "error: LLM returned empty/short/malformed AC for $_target_id"
+        fi
+      fi
+    fi
+  fi
 
   # Decision 3 (INFRA-979): Pillar rebalancing — file ONE tracking gap when
   # any pillar has < 2 pickable xs/s/m gaps. Dedup: max 1 per day per pillar.
