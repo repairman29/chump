@@ -1138,3 +1138,5 @@ jobs:
         run: bash scripts/ci/test-worktree-contamination-check.sh
       - name: error-path test coverage ≥60 assertions across gap_store (CREDIBLE-005)
         run: bash scripts/ci/test-error-path-coverage.sh
+      - name: per-worktree stale binary guard — detect, emit ambient event (RESILIENT-001)
+        run: bash scripts/ci/test-per-worktree-target-guard.sh
