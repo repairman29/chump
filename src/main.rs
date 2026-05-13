@@ -3347,8 +3347,23 @@ async fn main() -> Result<()> {
                                         continue;
                                     }
                                 }
+                                // EFFECTIVE-024: done gaps append "→ #PR merged YYYY-MM-DD"
+                                let done_suffix = if g.status == "done" {
+                                    match (g.closed_pr, g.closed_date.as_str()) {
+                                        (Some(pr), d) if !d.is_empty() => {
+                                            format!(" → #{pr} merged {d}")
+                                        }
+                                        (Some(pr), _) => format!(" → #{pr} merged"),
+                                        (None, d) if !d.is_empty() => {
+                                            format!(" → merged {d}")
+                                        }
+                                        _ => String::new(),
+                                    }
+                                } else {
+                                    String::new()
+                                };
                                 println!(
-                                    "[{}] {} — {} ({}/{})",
+                                    "[{}] {} — {} ({}/{}){done_suffix}",
                                     g.status, g.id, g.title, g.priority, g.effort
                                 );
                             }
