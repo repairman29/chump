@@ -1084,6 +1084,11 @@ jobs:
           cargo build --bin chump 2>&1 | tail -2
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-show-ac-render.sh
 
+      - name: chump gap set --add-note timestamped append (EFFECTIVE-020)
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-add-note.sh
+
       - name: CLI output format consistency — --quiet/--format/--json (EFFECTIVE-008)
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-cli-output-format.sh

@@ -3518,11 +3518,12 @@ async fn main() -> Result<()> {
                 // starts with "--", the operator forgot the ID or passed a bad flag.
                 let gap_set_usage = || {
                     eprintln!("Usage: chump gap set <GAP-ID> [--title T] [--description D] [--priority P]");
-                    eprintln!("                          [--effort E] [--status S] [--notes N]");
+                    eprintln!("                          [--effort E] [--status S] [--notes N] [--add-note TEXT]");
                     eprintln!("                          [--source-doc S] [--opened-date D] [--closed-date D]");
                     eprintln!("                          [--closed-pr N] [--acceptance-criteria \"a|b|c\"] [--depends-on \"X,Y\"]");
                     eprintln!("                          [--skills-required SKS] [--preferred-backend BE]");
                     eprintln!("                          [--preferred-machine MACH] [--estimated-minutes MIN] [--required-model MODEL]");
+                    eprintln!("  Note: --add-note TEXT appends '[ISO-timestamp] TEXT' to existing notes; --notes OVERWRITES.");
                 };
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
                     gap_set_usage();
@@ -3567,6 +3568,29 @@ async fn main() -> Result<()> {
                     },
                     None => None,
                 };
+                // EFFECTIVE-020: --add-note appends a timestamped entry to the
+                // existing notes without overwriting. Format per entry:
+                //   "[YYYY-MM-DDTHH:MM:SSZ] <text>"
+                // Multiple notes are newline-separated. The --notes flag still
+                // overwrites the entire field; --add-note only appends.
+                let notes: Option<String> = if let Some(add_text) = flag("--add-note") {
+                    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                    let new_entry = format!("[{}] {}", ts, add_text);
+                    // Fetch current notes and append.
+                    let existing = match store.get(&gap_id) {
+                        Ok(Some(g)) if !g.notes.is_empty() => g.notes,
+                        _ => String::new(),
+                    };
+                    let combined = if existing.is_empty() {
+                        new_entry
+                    } else {
+                        format!("{}\n{}", existing, new_entry)
+                    };
+                    Some(combined)
+                } else {
+                    flag("--notes")
+                };
+
                 let update = gap_store::GapFieldUpdate {
                     title: flag("--title"),
                     description: flag("--description"),
@@ -3575,7 +3599,7 @@ async fn main() -> Result<()> {
                     status: flag("--status"),
                     acceptance_criteria,
                     depends_on,
-                    notes: flag("--notes"),
+                    notes,
                     source_doc: flag("--source-doc"),
                     opened_date: flag("--opened-date"),
                     closed_date: flag("--closed-date"),
