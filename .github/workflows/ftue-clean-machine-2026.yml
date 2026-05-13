@@ -55,7 +55,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # ── Step 1: brew tap + install ────────────────────────────────────────
       - name: brew tap + install chump
