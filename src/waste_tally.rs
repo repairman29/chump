@@ -25,6 +25,12 @@
 //! | `session_abandoned`     | INFRA-477/492  | session ended without shipping  |
 //! | `session_starved`       | INFRA-477/492  | session timed out (rc=124)      |
 //! | `session_shipped_not_valuable` | FLEET-050 | session shipped code with no user value |
+//! | `bot_merge_hang`        | INFRA-587      | bot-merge phase exceeded timeout — re-run is pure waste |
+//! | `bot_merge_hot_file`    | bot-merge      | sibling collision on same file — re-rebase tax           |
+//! | `pr_stuck_cluster`      | INFRA-848      | 3+ PRs stuck simultaneously — fleet-wide signal         |
+//! | `fleet_auth_fallback`   | INFRA-622      | auth path failed; retry round burns probe tokens        |
+//! | `slo_breach`            | INFRA-848      | curator detected SLO violation; downstream cost likely  |
+//! | `missing_attribution`   | ambient hook   | session has no CHUMP_AGENT_HARNESS — telemetry blind   |
 //!
 //! ## Output
 //!
@@ -141,6 +147,14 @@ pub const WASTE_KINDS: &[&str] = &[
     "session_token_orphan",         // INFRA-639 synthetic — token_usage_partial with no session_end
     "review_handoff_failed", // INFRA-773 — handoff applied but CI still red (reviewer effort wasted)
     "review_handoff_timeout", // INFRA-773 — no author push within 15 min (reviewer effort wasted)
+    // INFRA-950 expansion (2026-05-12) — kinds the ambient stream already emits
+    // but waste-tally previously ignored.
+    "bot_merge_hang", // INFRA-587 — bot-merge phase timeout; the wasted phase has to be re-run
+    "bot_merge_hot_file", // bot-merge — sibling collision on same file; rebase tax
+    "pr_stuck_cluster", // INFRA-848 — 3+ PRs stuck; correlated waste signal
+    "fleet_auth_fallback", // INFRA-622 — auth fallback path triggered; probe + retry cost
+    "slo_breach",     // INFRA-848 — curator-observed SLO breach (downstream cost)
+    "missing_attribution", // ambient hook — session lacks CHUMP_AGENT_HARNESS; observability waste
 ];
 
 /// Domain-level aggregate for `--by-domain` output (INFRA-574, INFRA-934).
@@ -243,6 +257,18 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
         let domain = domain_from_gap_id(gap_id.as_deref());
         let cost = extract_int_field(line, "cooldown_secs")
             .or_else(|| extract_int_field(line, "elapsed_seconds"))
+            // INFRA-950: explicit timeout_secs for bot_merge_hang events.
+            .or_else(|| extract_int_field(line, "timeout_secs"))
+            // INFRA-950: default-cost table for kinds without a duration field.
+            // Conservative lower-bounds; INFRA-951 will refine with tokens.
+            .or(match kind.as_str() {
+                "bot_merge_hot_file" => Some(60),
+                "fleet_auth_fallback" => Some(5),
+                "slo_breach" => Some(120),
+                "pr_stuck_cluster" => Some(300),
+                "missing_attribution" => Some(0),
+                _ => None,
+            })
             .unwrap_or(0);
         let event_cost_usd = if is_session_end_event {
             let input = extract_int_field(line, "input_tokens").unwrap_or(0);
@@ -286,6 +312,20 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
                 extract_field(line, "session_id")
                     .or_else(|| extract_field(line, "session"))
                     .or_else(|| extract_field(line, "gap_id"))
+            }
+            // INFRA-950: entity extraction for the newly classified kinds.
+            "bot_merge_hang" | "bot_merge_hot_file" => extract_field(line, "gap_id")
+                .or_else(|| extract_int_field(line, "pr").map(|n| n.to_string()))
+                .or_else(|| extract_field(line, "session")),
+            "pr_stuck_cluster" => {
+                extract_field(line, "root_cause").or_else(|| extract_field(line, "session"))
+            }
+            "fleet_auth_fallback" => {
+                extract_field(line, "failed_mode").or_else(|| extract_field(line, "fallback_mode"))
+            }
+            "slo_breach" => extract_field(line, "severity"),
+            "missing_attribution" => {
+                extract_field(line, "session").or_else(|| extract_field(line, "worktree"))
             }
             _ => extract_field(line, "session")
                 .or_else(|| extract_field(line, "reaper"))
@@ -568,6 +608,18 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
         total_in_window += 1;
         let cost = extract_int_field(line, "cooldown_secs")
             .or_else(|| extract_int_field(line, "elapsed_seconds"))
+            // INFRA-950: explicit timeout_secs for bot_merge_hang events.
+            .or_else(|| extract_int_field(line, "timeout_secs"))
+            // INFRA-950: default-cost table for kinds without a duration field.
+            // Conservative lower-bounds; INFRA-951 will refine with tokens.
+            .or(match kind.as_str() {
+                "bot_merge_hot_file" => Some(60),
+                "fleet_auth_fallback" => Some(5),
+                "slo_breach" => Some(120),
+                "pr_stuck_cluster" => Some(300),
+                "missing_attribution" => Some(0),
+                _ => None,
+            })
             .unwrap_or(0);
         // INFRA-534: token-based cost only on session_end events.
         // INFRA-641: also harvest tokens_burned for the per-class report.
@@ -633,6 +685,20 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
                 extract_field(line, "session_id")
                     .or_else(|| extract_field(line, "session"))
                     .or_else(|| extract_field(line, "gap_id"))
+            }
+            // INFRA-950: entity extraction for the newly classified kinds.
+            "bot_merge_hang" | "bot_merge_hot_file" => extract_field(line, "gap_id")
+                .or_else(|| extract_int_field(line, "pr").map(|n| n.to_string()))
+                .or_else(|| extract_field(line, "session")),
+            "pr_stuck_cluster" => {
+                extract_field(line, "root_cause").or_else(|| extract_field(line, "session"))
+            }
+            "fleet_auth_fallback" => {
+                extract_field(line, "failed_mode").or_else(|| extract_field(line, "fallback_mode"))
+            }
+            "slo_breach" => extract_field(line, "severity"),
+            "missing_attribution" => {
+                extract_field(line, "session").or_else(|| extract_field(line, "worktree"))
             }
             // queue_stuck, ambient_oversize, silent_agent's siblings:
             // fall through to the generic search.
@@ -1106,6 +1172,85 @@ mod tests {
     }
 
     #[test]
+    fn infra950_classifies_new_waste_kinds() {
+        // Each of the 6 INFRA-950 additions must (1) be classified as waste,
+        // (2) carry a non-zero cost where the kind has a meaningful one.
+        let tmp = tempdir();
+        let now_iso = chrono_now_iso();
+        let lines = [
+            format!(
+                r#"{{"kind":"bot_merge_hang","ts":"{}","gap_id":"INFRA-X","phase":"clippy","timeout_secs":300,"session":"s1"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"kind":"bot_merge_hot_file","ts":"{}","gap_id":"INFRA-Y","pr":1234,"path":"src/foo.rs","session":"s2"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"kind":"pr_stuck_cluster","ts":"{}","count":3,"root_cause":"merge_queue","session":"s3"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"kind":"fleet_auth_fallback","ts":"{}","failed_mode":"api-key","fallback_mode":"oauth"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"kind":"slo_breach","ts":"{}","severity":"high"}}"#,
+                now_iso
+            ),
+            format!(
+                r#"{{"kind":"missing_attribution","ts":"{}","session":"s6","worktree":"wt1"}}"#,
+                now_iso
+            ),
+        ];
+        let refs: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+        write_ambient(&tmp, &refs);
+
+        let report = build_report(&tmp, 86400);
+        assert_eq!(
+            report.total_events, 6,
+            "all 6 new kinds should be counted (got {})",
+            report.total_events
+        );
+
+        let by_kind: std::collections::HashMap<&str, &WasteEntry> = report
+            .entries
+            .iter()
+            .map(|e| (e.kind.as_str(), e))
+            .collect();
+
+        // bot_merge_hang carries its real timeout_secs as cost.
+        assert_eq!(
+            by_kind["bot_merge_hang"].estimated_cost_secs, 300,
+            "bot_merge_hang should pick up timeout_secs as cost"
+        );
+        // Default-cost table kinds get conservative lower bounds.
+        assert_eq!(
+            by_kind["bot_merge_hot_file"].estimated_cost_secs, 60,
+            "bot_merge_hot_file default cost"
+        );
+        assert_eq!(
+            by_kind["fleet_auth_fallback"].estimated_cost_secs, 5,
+            "fleet_auth_fallback default cost"
+        );
+        assert_eq!(
+            by_kind["slo_breach"].estimated_cost_secs, 120,
+            "slo_breach default cost"
+        );
+        assert_eq!(
+            by_kind["pr_stuck_cluster"].estimated_cost_secs, 300,
+            "pr_stuck_cluster default cost"
+        );
+        // missing_attribution is an observability gap, not direct compute waste.
+        assert_eq!(
+            by_kind["missing_attribution"].estimated_cost_secs, 0,
+            "missing_attribution has no direct compute cost"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn infra488_excludes_events_outside_window() {
         let tmp = tempdir();
         // Old timestamp — way outside any reasonable window.
@@ -1255,7 +1400,9 @@ mod tests {
         // INFRA-639: +1 session_token_orphan (partial tokens, no session_end) = 15.
         // FLEET-050: +1 session_shipped_not_valuable (shipped but no user value) = 16.
         // INFRA-773: +2 review_handoff_failed + review_handoff_timeout = 18.
-        assert_eq!(WASTE_KINDS.len(), 18);
+        // INFRA-950: +6 (bot_merge_hang, bot_merge_hot_file, pr_stuck_cluster,
+        //             fleet_auth_fallback, slo_breach, missing_attribution) = 24.
+        assert_eq!(WASTE_KINDS.len(), 24);
     }
 
     #[test]

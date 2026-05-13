@@ -597,6 +597,26 @@ events:
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, wait_s]
 
+  # INFRA-950: register kinds that the system already emits but were never
+  # captured here. waste-tally classifies these as of this gap.
+  - kind: pr_stuck_cluster
+    emitter: scripts/coord/opus-curator.sh (INFRA-848)
+    trigger: 3+ stuck PRs detected in same audit cycle; correlated stall
+    consumers: [waste-tally, fleet-brief, watchdog]
+    fields_required: [ts, kind, count]
+
+  - kind: fleet_auth_fallback
+    emitter: scripts/dispatch/worker.sh (INFRA-622)
+    trigger: primary auth path failed; fallback path used for the spawn
+    consumers: [waste-tally, audit-log]
+    fields_required: [ts, kind, failed_mode, fallback_mode]
+
+  - kind: slo_breach
+    emitter: scripts/coord/opus-curator.sh (INFRA-848)
+    trigger: curator audit detected an SLO violation (chump health --slo-check non-zero)
+    consumers: [waste-tally, fleet-brief, watchdog]
+    fields_required: [ts, kind, severity]
+
   # ── Subagent / cognition ──────────────────────────────────────────────────
   - kind: subagent_budget_exceeded
     emitter: scripts/dispatch/subagent-budget-monitor.sh
