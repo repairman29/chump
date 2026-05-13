@@ -1251,6 +1251,19 @@ mod tests {
     }
 
     #[test]
+    fn infra951_default_tokens_per_kind_returns_estimates() {
+        assert_eq!(default_tokens_per_kind("fleet_auth_fallback"), 200);
+        assert_eq!(default_tokens_per_kind("bot_merge_hot_file"), 3_000);
+        assert_eq!(default_tokens_per_kind("slo_breach"), 9_000);
+        assert_eq!(default_tokens_per_kind("pr_stuck_cluster"), 5_000);
+        assert_eq!(default_tokens_per_kind("bot_merge_hang"), 15_000);
+        assert_eq!(default_tokens_per_kind("missing_attribution"), 0);
+        assert_eq!(default_tokens_per_kind("nonsense_kind_xyz"), 0);
+        assert_eq!(default_tokens_per_kind("fleet_wedge"), 0);
+        assert_eq!(default_tokens_per_kind("session_abandoned"), 0);
+    }
+
+    #[test]
     fn infra488_excludes_events_outside_window() {
         let tmp = tempdir();
         // Old timestamp — way outside any reasonable window.
@@ -1400,7 +1413,9 @@ mod tests {
         // INFRA-639: +1 session_token_orphan (partial tokens, no session_end) = 15.
         // FLEET-050: +1 session_shipped_not_valuable (shipped but no user value) = 16.
         // INFRA-773: +2 review_handoff_failed + review_handoff_timeout = 18.
-        assert_eq!(WASTE_KINDS.len(), 18);
+        // INFRA-950: +6 (bot_merge_hang, bot_merge_hot_file, pr_stuck_cluster,
+        //             fleet_auth_fallback, slo_breach, missing_attribution) = 24.
+        assert_eq!(WASTE_KINDS.len(), 24);
     }
 
     #[test]
