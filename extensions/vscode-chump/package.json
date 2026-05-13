@@ -36,8 +36,26 @@
       {
         "command": "chump.showStatus",
         "title": "Chump: Show connection status"
+      },
+      {
+        "command": "chump.openChat",
+        "title": "Chump: Open Chat"
+      },
+      {
+        "command": "chump.clearChat",
+        "title": "Chump: Clear Chat"
       }
-    ]
+    ],
+    "views": {
+      "explorer": [
+        {
+          "type": "webview",
+          "id": "chump.chatView",
+          "name": "Chump Chat",
+          "when": "true"
+        }
+      ]
+    }
   },
   "scripts": {
     "compile": "tsc -p ./",

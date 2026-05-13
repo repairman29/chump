@@ -50,6 +50,7 @@ mod context_assembly;
 mod context_engine;
 mod context_firewall;
 mod context_window;
+mod cost_ledger;
 mod cost_tracker;
 mod cost_watch;
 mod counterfactual;
@@ -397,7 +398,12 @@ fn print_help() {
     println!("  lesson-grade       lesson-learning quality score");
     println!("  ci-summary         last-N CI run outcomes");
     println!("  classify-failure   categorize a CI/PR failure for the improvement tracker");
-    println!("  kpi report         KPI scorecard across all pillars");
+    println!(
+        "  kpi report         KPI scorecard across all pillars
+  kpi report --impact  gap impact ratings (chump gap rate)"
+    );
+    println!("  kpi report --agents  per-agent throughput (ships/fails/P50)");
+    println!("  kpi report --agents --date YYYY-MM-DD  specific date");
     println!("  cost-watch  (alias: cs)  real-time inference spend + per-slot breakdown");
     println!("  cost record-pr     attach cost metadata to a merged PR");
     println!("  pr-coupling-cost   cost of PRs that move together (coupling smell)");
@@ -2562,9 +2568,242 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-827: prune stale linked worktrees (age > CHUMP_WT_MAX_AGE_H AND no open PR)
+            "prune-worktrees" => {
+                let dry_run = !args.iter().any(|a| a == "--apply");
+                let want_json = args.iter().any(|a| a == "--json");
+                let max_age_h: u64 = std::env::var("CHUMP_WT_MAX_AGE_H")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(48);
+                let max_age_secs = max_age_h * 3600;
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                let ts_now = chrono::Utc::now();
+                let ts_iso = ts_now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+                // Parse `git worktree list --porcelain` output.
+                let wt_out = std::process::Command::new("git")
+                    .args(["worktree", "list", "--porcelain"])
+                    .current_dir(&repo_root)
+                    .output()
+                    .unwrap_or_else(|e| {
+                        eprintln!("[prune-worktrees] git worktree list failed: {e}");
+                        std::process::exit(1);
+                    });
+                let wt_text = String::from_utf8_lossy(&wt_out.stdout);
+
+                // Each worktree block is separated by a blank line.
+                struct WtEntry {
+                    path: String,
+                    branch: String,
+                }
+                let mut worktrees: Vec<WtEntry> = Vec::new();
+                let mut cur_path: Option<String> = None;
+                let mut cur_branch: Option<String> = None;
+                for line in wt_text.lines() {
+                    if line.starts_with("worktree ") {
+                        cur_path = Some(line["worktree ".len()..].trim().to_string());
+                        cur_branch = None;
+                    } else if line.starts_with("branch ") {
+                        // branch refs/heads/<name>
+                        let b = line["branch ".len()..].trim().to_string();
+                        let branch_name = b.strip_prefix("refs/heads/").unwrap_or(&b).to_string();
+                        cur_branch = Some(branch_name);
+                    } else if line.is_empty() {
+                        if let (Some(p), Some(b)) = (cur_path.take(), cur_branch.take()) {
+                            worktrees.push(WtEntry { path: p, branch: b });
+                        } else {
+                            cur_path = None;
+                            cur_branch = None;
+                        }
+                    }
+                }
+                // Flush last block if file doesn't end with blank line.
+                if let (Some(p), Some(b)) = (cur_path, cur_branch) {
+                    worktrees.push(WtEntry { path: p, branch: b });
+                }
+
+                // Skip the main worktree (first entry).
+                let linked: Vec<&WtEntry> = worktrees.iter().skip(1).collect();
+
+                let mut pruned_count: u32 = 0;
+                let mut skipped_active_pr: u32 = 0;
+                let mut skipped_uncommitted: u32 = 0;
+                let mut skipped_young: u32 = 0;
+                let mut pruned_paths: Vec<String> = Vec::new();
+                let mut dry_run_candidates: Vec<String> = Vec::new();
+
+                let _now_secs = ts_now.timestamp() as u64;
+
+                for wt in &linked {
+                    let wt_path = std::path::Path::new(&wt.path);
+
+                    // Age check: use mtime of .git file inside the worktree.
+                    let git_file = wt_path.join(".git");
+                    let age_secs: u64 = git_file
+                        .metadata()
+                        .or_else(|_| wt_path.metadata())
+                        .ok()
+                        .and_then(|m| m.modified().ok())
+                        .and_then(|mt| mt.elapsed().ok())
+                        .map(|d| d.as_secs())
+                        .unwrap_or(0);
+
+                    if age_secs < max_age_secs {
+                        skipped_young += 1;
+                        continue;
+                    }
+
+                    // Uncommitted changes check.
+                    let status_out = std::process::Command::new("git")
+                        .args(["status", "--porcelain"])
+                        .current_dir(wt_path)
+                        .output()
+                        .ok();
+                    let has_dirty = status_out
+                        .as_ref()
+                        .map(|o| !o.stdout.is_empty())
+                        .unwrap_or(false);
+                    if has_dirty {
+                        skipped_uncommitted += 1;
+                        if !want_json {
+                            println!(
+                                "[prune-worktrees] KEEP (dirty) {}  branch={}",
+                                wt.path, wt.branch
+                            );
+                        }
+                        continue;
+                    }
+
+                    // Open PR check via gh CLI.
+                    let has_open_pr = std::process::Command::new("gh")
+                        .args([
+                            "pr", "list", "--head", &wt.branch, "--state", "open", "--json",
+                            "number", "--jq", "length",
+                        ])
+                        .output()
+                        .ok()
+                        .and_then(|o| {
+                            String::from_utf8_lossy(&o.stdout)
+                                .trim()
+                                .parse::<u32>()
+                                .ok()
+                        })
+                        .map(|n| n > 0)
+                        .unwrap_or(false);
+
+                    if has_open_pr {
+                        skipped_active_pr += 1;
+                        if !want_json {
+                            println!(
+                                "[prune-worktrees] KEEP (open PR) {}  branch={}",
+                                wt.path, wt.branch
+                            );
+                        }
+                        continue;
+                    }
+
+                    // Stale — eligible for pruning.
+                    let age_h = age_secs / 3600;
+                    if dry_run {
+                        dry_run_candidates.push(wt.path.clone());
+                        if !want_json {
+                            println!(
+                                "[prune-worktrees] WOULD PRUNE (age={}h)  {}  branch={}",
+                                age_h, wt.path, wt.branch
+                            );
+                        }
+                    } else {
+                        // Remove via git worktree remove --force.
+                        let rm_ok = std::process::Command::new("git")
+                            .args(["worktree", "remove", "--force", &wt.path])
+                            .current_dir(&repo_root)
+                            .status()
+                            .map(|s| s.success())
+                            .unwrap_or(false);
+                        if rm_ok {
+                            pruned_count += 1;
+                            pruned_paths.push(wt.path.clone());
+                            if !want_json {
+                                println!(
+                                    "[prune-worktrees] PRUNED (age={}h)  {}  branch={}",
+                                    age_h, wt.path, wt.branch
+                                );
+                            }
+                            // Emit ambient event per pruned worktree.
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                let branch_esc = wt.branch.replace('"', "\\\"");
+                                let path_esc = wt.path.replace('"', "\\\"");
+                                let _ = writeln!(
+                                    f,
+                                    "{{\"ts\":\"{ts_iso}\",\"kind\":\"worktree_pruned\",\
+                                     \"path\":\"{path_esc}\",\"branch\":\"{branch_esc}\",\"age_h\":{age_h}}}"
+                                );
+                            }
+                        } else {
+                            eprintln!("[prune-worktrees] WARNING: failed to remove {}", wt.path);
+                        }
+                    }
+                }
+
+                if want_json {
+                    let candidates_json = if dry_run {
+                        serde_json::to_string(&dry_run_candidates).unwrap_or_else(|_| "[]".into())
+                    } else {
+                        serde_json::to_string(&pruned_paths).unwrap_or_else(|_| "[]".into())
+                    };
+                    println!(
+                        "{{\"dry_run\":{dry_run},\"max_age_h\":{max_age_h},\
+                         \"pruned\":{pruned_count},\
+                         \"skipped_active_pr\":{skipped_active_pr},\
+                         \"skipped_uncommitted\":{skipped_uncommitted},\
+                         \"skipped_young\":{skipped_young},\
+                         \"paths\":{candidates_json}}}"
+                    );
+                } else if dry_run {
+                    println!(
+                        "[prune-worktrees] dry-run: {} stale worktrees would be pruned \
+                         (skipped: {} active-PR, {} dirty, {} young)",
+                        dry_run_candidates.len(),
+                        skipped_active_pr,
+                        skipped_uncommitted,
+                        skipped_young
+                    );
+                    println!("[prune-worktrees] re-run with --apply to remove");
+                } else {
+                    println!(
+                        "[prune-worktrees] done: pruned={pruned_count} \
+                         skipped_active_pr={skipped_active_pr} \
+                         skipped_uncommitted={skipped_uncommitted} \
+                         skipped_young={skipped_young}"
+                    );
+                }
+
+                if !dry_run && pruned_count > 0 {
+                    // Emit summary ambient event.
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open(&ambient_path)
+                    {
+                        let _ = writeln!(
+                            f,
+                            "{{\"ts\":\"{ts_iso}\",\"kind\":\"worktree_prune_summary\",\
+                             \"pruned\":{pruned_count},\"skipped_active_pr\":{skipped_active_pr},\
+                             \"skipped_uncommitted\":{skipped_uncommitted},\"skipped_young\":{skipped_young}}}"
+                        );
+                    }
+                }
+
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize>"
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees>"
                 );
                 eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]");
                 eprintln!("  stop        [--session NAME]");
@@ -2579,6 +2818,7 @@ async fn main() -> Result<()> {
                 eprintln!(
                     "  auto-resize [--apply] [--json]  -- scale down on 4 conditions (INFRA-650)"
                 );
+                eprintln!("  prune-worktrees [--apply] [--json]  -- prune stale linked worktrees (INFRA-827)");
                 std::process::exit(2);
             }
         }
@@ -2639,8 +2879,29 @@ async fn main() -> Result<()> {
                 }
                 match store.get(&id) {
                     Ok(Some(g)) => {
+                        // CREDIBLE-033: parse AC items for rich rendering.
+                        let ac_items = gap_store::parse_json_ac_list(&g.acceptance_criteria);
+                        let ac_has_todos = ac_items.iter().any(|item| {
+                            let up = item.to_uppercase();
+                            up.contains("TODO")
+                                || item.contains("TBD")
+                                || item.contains("<fill in>")
+                        });
+
                         if json_out {
-                            println!("{}", serde_json::to_string_pretty(&g).unwrap_or_default());
+                            // Extend JSON output with ac_count + ac_has_todos (CREDIBLE-033).
+                            let mut val = serde_json::to_value(&g).unwrap_or_default();
+                            if let Some(obj) = val.as_object_mut() {
+                                obj.insert(
+                                    "ac_count".to_string(),
+                                    serde_json::Value::Number(ac_items.len().into()),
+                                );
+                                obj.insert(
+                                    "ac_has_todos".to_string(),
+                                    serde_json::Value::Bool(ac_has_todos),
+                                );
+                            }
+                            println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
                         } else {
                             println!("- id: {}", g.id);
                             println!("  domain: {}", g.domain);
@@ -2654,23 +2915,31 @@ async fn main() -> Result<()> {
                                     println!("    {}", line);
                                 }
                             }
-                            if !g.acceptance_criteria.is_empty() {
+                            if !ac_items.is_empty() {
+                                // CREDIBLE-033: numbered list, WARN prefix on vague items.
                                 println!("  acceptance_criteria:");
-                                let mut has_incomplete = false;
-                                for c in g.acceptance_criteria.split('|') {
-                                    let trimmed = c.trim();
-                                    println!("    - {}", trimmed);
-                                    // INFRA-756: flag if AC contains placeholder text
-                                    if trimmed.to_uppercase().contains("TODO")
-                                        || trimmed.contains("TBD")
-                                        || trimmed.contains("<fill in>")
-                                    {
-                                        has_incomplete = true;
+                                for (i, item) in ac_items.iter().enumerate() {
+                                    let up = item.to_uppercase();
+                                    let is_vague = up.contains("TODO")
+                                        || item.contains("TBD")
+                                        || item.contains("<fill in>");
+                                    if is_vague {
+                                        println!("    {}. WARN: {}", i + 1, item);
+                                    } else {
+                                        println!("    {}. {}", i + 1, item);
                                     }
                                 }
-                                if has_incomplete {
-                                    eprintln!("WARN: gap {}: acceptance_criteria contains incomplete placeholders (TODO/TBD/<fill in>)", g.id);
+                                if ac_has_todos {
+                                    eprintln!(
+                                        "WARN: gap {}: acceptance_criteria contains \
+                                         incomplete placeholders (TODO/TBD/<fill in>)",
+                                        g.id
+                                    );
                                 }
+                            } else if !g.acceptance_criteria.trim().is_empty() {
+                                // Fallback: raw text when not parseable as JSON list.
+                                println!("  acceptance_criteria:");
+                                println!("    1. {}", g.acceptance_criteria.trim());
                             }
                             if !g.depends_on.is_empty() {
                                 println!("  depends_on: [{}]", g.depends_on);
@@ -2708,9 +2977,40 @@ async fn main() -> Result<()> {
                 // sees the true state). Surfaces by name in the summary
                 // line so the operator KNOWS the filter ran.
                 let include_test_domains = args.iter().any(|a| a == "--include-test-domains");
+                // EFFECTIVE-008: --quiet suppresses all output (exit 0 on success).
+                let quiet = args.iter().any(|a| a == "--quiet");
+                // EFFECTIVE-008: --format <human|json|csv> — explicit format
+                // selector; --json and --format json are equivalent.
+                let fmt = flag("--format").unwrap_or_else(|| {
+                    if json_out {
+                        "json".to_string()
+                    } else {
+                        "human".to_string()
+                    }
+                });
+                let csv_out = fmt == "csv";
+                let json_out = json_out || fmt == "json";
                 match store.list(status_filter.as_deref()) {
                     Ok(gaps) => {
-                        if json_out {
+                        if quiet {
+                            // --quiet: no output, just verify the query ran (exit 0).
+                            return Ok(());
+                        } else if csv_out {
+                            // EFFECTIVE-008: CSV format — id,domain,status,priority,effort,title
+                            println!("id,domain,status,priority,effort,title");
+                            for g in &gaps {
+                                let dom = g.id.split('-').next().unwrap_or("?");
+                                if !include_test_domains && is_test_domain(dom) {
+                                    continue;
+                                }
+                                // Escape commas and quotes in title
+                                let title_esc = g.title.replace('"', "\"\"");
+                                println!(
+                                    "{},{},{},{},{},\"{}\"",
+                                    g.id, g.domain, g.status, g.priority, g.effort, title_esc
+                                );
+                            }
+                        } else if json_out {
                             // INFRA-431: --json output unchanged — for
                             // tooling. Filter and summary apply only to
                             // the human-readable path.
@@ -5190,6 +5490,142 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-935: gap consolidate — detect near-duplicate gap titles.
+            // Usage: chump gap consolidate [--dry-run] [--threshold N] [--json]
+            //   --threshold N  similarity threshold 0-100 (default 80)
+            //   --dry-run      (implied always; never mutates state.db)
+            //   --json         output pairs as JSON array
+            "consolidate" => {
+                let threshold: u32 = args
+                    .iter()
+                    .position(|a| a == "--threshold")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(80);
+                let as_json = args.iter().any(|a| a == "--json");
+
+                let all_gaps = match store.list(Some("open")) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap consolidate: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                /// Token-overlap similarity (0-100) between two titles.
+                fn title_similarity(a: &str, b: &str) -> u32 {
+                    fn tokens(s: &str) -> std::collections::HashSet<String> {
+                        s.to_lowercase()
+                            .split(|c: char| !c.is_alphanumeric())
+                            .filter(|t| t.len() >= 3)
+                            .map(String::from)
+                            .collect()
+                    }
+                    let ta = tokens(a);
+                    let tb = tokens(b);
+                    if ta.is_empty() || tb.is_empty() {
+                        return 0;
+                    }
+                    let intersection = ta.intersection(&tb).count();
+                    let union = ta.union(&tb).count();
+                    ((intersection as f64 / union as f64) * 100.0) as u32
+                }
+
+                let mut pairs: Vec<(String, String, u32)> = Vec::new();
+                for i in 0..all_gaps.len() {
+                    for j in (i + 1)..all_gaps.len() {
+                        let sim = title_similarity(&all_gaps[i].title, &all_gaps[j].title);
+                        if sim >= threshold {
+                            pairs.push((all_gaps[i].id.clone(), all_gaps[j].id.clone(), sim));
+                        }
+                    }
+                }
+                pairs.sort_by_key(|p| std::cmp::Reverse(p.2));
+
+                if as_json {
+                    let json_pairs: Vec<String> = pairs
+                        .iter()
+                        .map(|(a, b, sim)| {
+                            format!(
+                                r#"{{"gap_id_a":"{}","gap_id_b":"{}","similarity_pct":{},"suggested_action":"{}"}}"#,
+                                a, b, sim,
+                                if *sim >= 90 { "merge" } else { "review" }
+                            )
+                        })
+                        .collect();
+                    println!("[{}]", json_pairs.join(","));
+                } else {
+                    println!(
+                        "═══ Gap Consolidation (INFRA-935) ═══ threshold={}% — {} open gaps scanned",
+                        threshold,
+                        all_gaps.len()
+                    );
+                    if pairs.is_empty() {
+                        println!("  (no near-duplicate pairs found — registry clean)");
+                    } else {
+                        println!("  {:>4}  {:>12}  {:>12}  action", "sim%", "gap_a", "gap_b");
+                        println!("  ────  ────────────  ────────────  ──────");
+                        for (a, b, sim) in &pairs {
+                            let action = if *sim >= 90 { "merge" } else { "review" };
+                            println!("  {:>3}%  {:>12}  {:>12}  {}", sim, a, b, action);
+                        }
+                    }
+                }
+                return Ok(());
+            }
+
+            // FLEET-048: operator impact rating
+            "rate" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap rate <GAP-ID> <1-5> [--comment \"text\"] [--pr N]");
+                    std::process::exit(2);
+                });
+                let rating_str = args.get(4).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap rate <GAP-ID> <1-5> [--comment \"text\"] [--pr N]");
+                    std::process::exit(2);
+                });
+                let rating: u8 = match rating_str.trim().parse::<u8>() {
+                    Ok(r) if (1..=5).contains(&r) => r,
+                    _ => {
+                        eprintln!("chump gap rate: rating must be 1-5 (got {:?})", rating_str);
+                        std::process::exit(2);
+                    }
+                };
+                let comment = flag("--comment").unwrap_or_default();
+                let pr_number: Option<i64> = flag("--pr").and_then(|s| s.parse::<i64>().ok());
+
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                let pr_json = pr_number
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "null".to_string());
+                let comment_escaped = comment.replace('\\', "\\\\").replace('"', "\\\"");
+                let event = format!(
+                    "{{\"ts\":\"{ts}\",\"kind\":\"gap_impact_rated\",\
+                     \"gap_id\":\"{gap_id}\",\"rating\":{rating},\
+                     \"comment\":\"{comment_escaped}\",\"pr_number\":{pr_json}}}\n"
+                );
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                match std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&ambient_path)
+                {
+                    Ok(mut f) => {
+                        use std::io::Write;
+                        f.write_all(event.as_bytes())
+                            .unwrap_or_else(|e| eprintln!("gap rate: write failed: {e}"));
+                    }
+                    Err(e) => {
+                        eprintln!("gap rate: could not open ambient log: {e}");
+                        std::process::exit(1);
+                    }
+                }
+                println!("rated {} → {}/5", gap_id, rating);
+                if !comment.is_empty() {
+                    println!("  comment: {}", comment);
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
@@ -5219,6 +5655,8 @@ async fn main() -> Result<()> {
                 eprintln!("  audit-priorities [--json]   # PM health check (META-046)");
                 eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check for closed gaps");
                 eprintln!("  audit-ac         --open [--json]                  # INFRA-936: warn on open gaps with empty/TODO AC");
+                eprintln!("  consolidate      [--threshold N] [--json]  # INFRA-935 near-duplicate title detection");
+                eprintln!("  rate             <GAP-ID> <1-5> [--comment text] [--pr N]  # FLEET-048 operator impact rating");
                 eprintln!("  rebalance        [--apply] [--json]  # P0 budget + pillar floor enforcement (INFRA-635)");
                 eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
                 eprintln!("  import-spec      <path> [--apply] [--dry-run] [--json]  # import gaps from markdown spec (INFRA-636)");
@@ -5357,6 +5795,61 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump cost-check [--gap-id ID] [--model MODEL]` (INFRA-877)
+    // Check daily spend against CHUMP_DAILY_BUDGET_USD and emit cost_quota_warning
+    // or cost_quota_exceeded events to ambient.jsonl.  Exit 0 = ok, 1 = warning,
+    // 2 = exceeded (spawn should be blocked).
+    if args.get(1).map(String::as_str) == Some("cost-check") {
+        let flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let gap_id = flag("--gap-id").unwrap_or_else(|| "unknown".to_string());
+        let model = flag("--model").unwrap_or_else(|| "unknown".to_string());
+        let repo_root = repo_path::repo_root();
+        let status = cost_ledger::check_quota(&repo_root, &gap_id, &model, true);
+        let pct = status.budget_used_pct();
+        let label = status.label();
+        match &status {
+            cost_ledger::QuotaStatus::Exceeded {
+                spend_usd,
+                budget_usd,
+                ..
+            } => {
+                eprintln!(
+                    "chump cost-check: EXCEEDED  ${:.4} of ${:.2} ({:.1}%)",
+                    spend_usd, budget_usd, pct
+                );
+                std::process::exit(2);
+            }
+            cost_ledger::QuotaStatus::Warning {
+                spend_usd,
+                budget_usd,
+                ..
+            } => {
+                eprintln!(
+                    "chump cost-check: WARNING   ${:.4} of ${:.2} ({:.1}%)",
+                    spend_usd, budget_usd, pct
+                );
+                std::process::exit(1);
+            }
+            cost_ledger::QuotaStatus::Ok {
+                spend_usd,
+                budget_usd,
+                ..
+            } => {
+                eprintln!(
+                    "chump cost-check: ok        ${:.4} of ${:.2} ({:.1}%)",
+                    spend_usd, budget_usd, pct
+                );
+            }
+        }
+        eprintln!("chump cost-check: status={label}  budget_used_pct={pct:.1}%");
+        return Ok(());
+    }
+
     // `chump kpi report` (INFRA-617) — exec-summary view of mission progress.
     // Sections: ship rate trend (1d/7d/30d), mission grade history, cost savings
     // vs Anthropic-only baseline, top productizations by leverage, tokens-per-ship.
@@ -5379,8 +5872,34 @@ async fn main() -> Result<()> {
         let want_json = args.iter().any(|a| a == "--json");
         let want_pdf = args.iter().any(|a| a == "--pdf");
         let only_tokens = args.iter().any(|a| a == "--tokens-per-ship");
+        let want_impact = args.iter().any(|a| a == "--impact");
+        let want_agents = args.iter().any(|a| a == "--agents");
 
         let repo_root = repo_path::repo_root();
+
+        // FLEET-048: --impact shows gap impact ratings section only.
+        if want_impact {
+            let section = kpi_report::build_impact_section(&repo_root);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
+
+        // FLEET-044: --agents shows per-agent throughput from .chump/metrics/.
+        if want_agents {
+            let date_arg = flag("--date");
+            let section =
+                kpi_report::build_agent_throughput_section(&repo_root, date_arg.as_deref());
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
 
         if only_tokens {
             // Backward-compat: only the tokens-per-ship section.
@@ -5906,10 +6425,20 @@ async fn main() -> Result<()> {
     // `--json` for machine-readable output.
     if args.iter().any(|a| a == "--doctor") {
         let report = doctor::run_all_checks().await;
+        // INFRA-877: append budget quota line to human output
         let exit_code = if args.iter().any(|a| a == "--json") {
             doctor::print_json_report(&report)
         } else {
-            doctor::print_human_report(&report)
+            let code = doctor::print_human_report(&report);
+            let quota_line = cost_ledger::doctor_line(&repo_path::repo_root());
+            println!("  cost: {quota_line}");
+            // Exit non-zero if quota exceeded (spend > 100%)
+            let quota = cost_ledger::check_quota(&repo_path::repo_root(), "", "", false);
+            if quota.is_exceeded() {
+                1
+            } else {
+                code
+            }
         };
         std::process::exit(exit_code);
     }

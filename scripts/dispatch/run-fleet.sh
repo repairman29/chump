@@ -61,13 +61,16 @@
 
 set -euo pipefail
 
-# ── INFRA-634: CLI flag parsing (--repo, --locks-dir, --tmux-session) ────────
-# These flags make run-fleet.sh usable for non-Chump repos.
-# env vars (CHUMP_REPO, FLEET_LOCKS_DIR, FLEET_SESSION) are equivalent
-# and take lower precedence when a flag is given.
+# ── CLI flag parsing ──────────────────────────────────────────────────────────
+# INFRA-634: --repo, --locks-dir, --tmux-session (non-Chump repo support).
+# INFRA-844: --restart, --dry-run, --help (clean fleet reload).
+# env vars (CHUMP_REPO, FLEET_LOCKS_DIR, FLEET_SESSION, FLEET_DRY_RUN)
+# are equivalent and take lower precedence when a flag is given.
 _ARG_REPO=""
 _ARG_LOCKS_DIR=""
 _ARG_TMUX_SESSION=""
+_FLEET_RESTART=0
+_FLEET_DRY_RUN_ARG=0
 _POSITIONAL=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -83,12 +86,23 @@ while [[ $# -gt 0 ]]; do
             _ARG_TMUX_SESSION="$2"; shift 2 ;;
         --tmux-session=*)
             _ARG_TMUX_SESSION="${1#--tmux-session=}"; shift ;;
+        --restart)
+            _FLEET_RESTART=1; shift ;;
+        --dry-run)
+            _FLEET_DRY_RUN_ARG=1; shift ;;
+        --help|-h)
+            sed -n '2,/^set -/p' "$0" | sed 's/^# \?//' | head -60
+            exit 0
+            ;;
         *)
             _POSITIONAL+=("$1"); shift ;;
     esac
 done
 # Restore positional args (e.g. sub-commands passed by caller)
 set -- "${_POSITIONAL[@]+"${_POSITIONAL[@]}"}"
+if [[ "$_FLEET_DRY_RUN_ARG" -eq 1 ]]; then
+    export FLEET_DRY_RUN=1
+fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 # --repo overrides git-inferred root (INFRA-634)
@@ -247,6 +261,39 @@ if [ -z "${CARGO_TARGET_DIR:-}" ]; then
         export CARGO_TARGET_DIR="$HOME/.cache/chump-fleet-target"
     else
         export CARGO_TARGET_DIR="$REPO_ROOT/target"
+    fi
+fi
+
+# ── INFRA-844: --restart — tear down existing fleet then relaunch ─────────────
+if [[ "$_FLEET_RESTART" -eq 1 ]]; then
+    _fleet_from_size=0
+    if tmux has-session -t "$FLEET_SESSION" 2>/dev/null; then
+        # Count existing fleet-worker-N panes
+        _fleet_from_size=$(tmux list-panes -t "$FLEET_SESSION" -F '#{pane_title}' 2>/dev/null \
+            | grep -c "fleet-worker" || true)
+        echo "[run-fleet] --restart: tearing down $FLEET_SESSION ($FLEET_SIZE workers → restart)"
+        if [[ -f "$FLEET_PIDS_FILE" ]]; then
+            while IFS= read -r _pid; do
+                [[ "$_pid" =~ ^[0-9]+$ ]] || continue
+                kill -TERM "-${_pid}" 2>/dev/null || true
+                pkill -TERM -P "$_pid" 2>/dev/null || true
+                kill -TERM "$_pid" 2>/dev/null || true
+            done < "$FLEET_PIDS_FILE"
+            rm -f "$FLEET_PIDS_FILE"
+        fi
+        tmux kill-session -t "$FLEET_SESSION" 2>/dev/null || true
+        pkill -f "timeout [0-9]*s claude -p " 2>/dev/null || true
+        sleep 1  # let panes settle before relaunching
+    fi
+    _fleet_restart_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    mkdir -p "$(dirname "$_fleet_restart_amb")" 2>/dev/null || true
+    if [[ "${FLEET_DRY_RUN:-0}" != "1" ]]; then
+        printf '{"ts":"%s","kind":"fleet_restart","from_size":%d,"to_size":%d,"reason":"--restart flag"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_fleet_from_size" "$FLEET_SIZE" \
+            >> "$_fleet_restart_amb" 2>/dev/null || true
+        echo "[run-fleet] fleet_restart event emitted → ambient.jsonl"
+    else
+        echo "[run-fleet] [dry-run] would emit fleet_restart from_size=$_fleet_from_size to_size=$FLEET_SIZE"
     fi
 fi
 

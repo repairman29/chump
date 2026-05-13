@@ -8,6 +8,10 @@
 
 set -uo pipefail
 
+
+# INFRA-956: default harness to a schema-valid value (kills missing_attribution noise).
+export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
+
 REPO_ROOT="${CHUMP_REPO:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
 _chump="${HOME}/.cargo/bin/chump"

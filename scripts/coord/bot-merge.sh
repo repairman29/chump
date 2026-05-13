@@ -72,6 +72,10 @@
 
 set -euo pipefail
 
+
+# INFRA-956: default harness to a schema-valid value (kills missing_attribution noise).
+export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
+
 # ── INFRA-119: health-file globals + cleanup traps ───────────────────────────
 _BM_PID=$$
 _BM_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -512,6 +516,13 @@ run_timed() {
     python3 "$SCRIPT_DIR/bot-merge-run-timed.py" "$max_secs" -- "$@"
 }
 
+# INFRA-954: load circuit-breaker so run_timed_hb can refuse known-wedged phases.
+_CB_HELPER="$SCRIPT_DIR/bot-merge-circuit-breaker.sh"
+if [[ -r "$_CB_HELPER" ]]; then
+    # shellcheck source=./bot-merge-circuit-breaker.sh
+    source "$_CB_HELPER"
+fi
+
 __HEARTBEAT_PID=""
 heartbeat_end() {
     if [[ -n "${__HEARTBEAT_PID:-}" ]]; then
@@ -543,6 +554,18 @@ run_timed_hb() {
     if [[ $DRY_RUN -eq 1 ]]; then
         info "[dry-run] (timeout ${max_secs}s, heartbeat) $*"
         return 0
+    fi
+    # INFRA-954: refuse to enter a wedge-prone phase that has tripped the
+    # circuit-breaker (3+ bot_merge_hang events for this phase in last 1h).
+    # Re-running a wedged phase is the dominant token-bleed pattern from
+    # bot_merge_hang (META-055 audit #2, 17% of 7d waste).
+    if declare -F circuit_breaker_check >/dev/null 2>&1; then
+        if ! circuit_breaker_check "$label"; then
+            red "INFRA-954: circuit-breaker tripped on phase '$label' — refusing to run."
+            red "  Recent bot_merge_hang events suggest the underlying child process is wedged."
+            red "  Investigate, then: scripts/coord/bot-merge-circuit-breaker.sh clear"
+            return 124
+        fi
     fi
     heartbeat_begin "$label"
     set +e
@@ -972,6 +995,23 @@ _grade_clippy_ok="null"
 _grade_test_added="null"
 _grade_rebase_clean="null"
 
+# ── INFRA-953: hot-file lock acquisition ──────────────────────────────────────
+# If our diff touches any file in scripts/coord/hot-files.yaml `serialize:`
+# list, take a flock on each (one per file). Held until this script exits.
+# Prevents two bot-merges from racing on the same shared file, which is what
+# drives bot_merge_hot_file emissions (META-055 audit: 71.5% of token waste).
+_HF_HELPER="${REPO_ROOT}/scripts/coord/hot-file-lock.sh"
+if [[ -r "$_HF_HELPER" ]]; then
+    # shellcheck source=./hot-file-lock.sh
+    source "$_HF_HELPER"
+    if declare -F hot_file_lock_acquire >/dev/null 2>&1; then
+        if ! hot_file_lock_acquire; then
+            red "INFRA-953: failed to acquire hot-file lock(s) — aborting"
+            exit 1
+        fi
+    fi
+fi
+
 # ── 1. Fetch and rebase ───────────────────────────────────────────────────────
 stage_start "git fetch $REMOTE/$BASE_BRANCH"
 run_timed_hb "git fetch" 180 git fetch "$REMOTE" "$BASE_BRANCH" --quiet
@@ -1349,6 +1389,31 @@ if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
         info "Saved you the cargo cost on a race that's already settled."
         info "Bypass for genuine recovery: CHUMP_SKIP_MERGED_CHECK=1 scripts/coord/bot-merge.sh ..."
         exit 0
+    fi
+fi
+
+# ── 4d. INFRA-686: WIP-commit squash — rebase to clean up graceful-shutdown rescues ──
+# If the top commit starts with "WIP-", it was created by the SIGTERM checkpoint.
+# Clean it up by squashing into the previous meaningful commit before shipping.
+_top_msg="$(git log -1 --format="%s" HEAD 2>/dev/null || true)"
+if [[ "$_top_msg" == WIP-* ]]; then
+    info "[INFRA-686] Top commit is a WIP rescue: '$_top_msg' — squashing into parent"
+    if [[ "${DRY_RUN:-0}" -eq 0 ]]; then
+        # Use soft reset to unstage the WIP commit, then re-commit cleanly.
+        if git reset --soft HEAD~1 2>/dev/null; then
+            _parent_msg="$(git log -1 --format="%s" HEAD 2>/dev/null || echo "chore: squash WIP rescue commit")"
+            if git commit --amend -m "$_parent_msg" --no-edit --no-verify 2>/dev/null; then
+                green "[INFRA-686] WIP commit squashed cleanly."
+            else
+                warn "[INFRA-686] WIP squash amend failed — shipping with WIP commit (not ideal)"
+                # Restore the WIP commit to avoid a dirty tree
+                git reset HEAD~1 --hard 2>/dev/null || true
+            fi
+        else
+            warn "[INFRA-686] WIP soft-reset failed — shipping as-is"
+        fi
+    else
+        info "[dry-run] would squash WIP commit '$_top_msg' into parent"
     fi
 fi
 
@@ -1911,6 +1976,14 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
                     if [[ $DRY_RUN -eq 0 ]]; then
                         gh pr close "$_lpr" --comment "$_supersede_msg" 2>/dev/null \
                             || info "  WARN: could not close PR #$_lpr (already closed? insufficient perms?)"
+                        # FLEET-035: emit speculative_race_loss event for waste tracking
+                        _rl_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                        _rl_payload="{\"ts\":\"$_rl_ts\",\"kind\":\"speculative_race_loss\",\
+\"session\":\"${SESSION_ID:-unknown}\",\"gap_id\":\"$_gid\",\
+\"loser_pr\":$_lpr,\"winner_pr\":$TARGET_PR,\"loser_branch\":\"$_lbranch\"}"
+                        _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                        mkdir -p "$(dirname "$_amb")" 2>/dev/null || true
+                        printf '%s\n' "$_rl_payload" >> "$_amb" 2>/dev/null || true
                     else
                         info "  [dry-run] gh pr close $_lpr --comment '...'"
                     fi

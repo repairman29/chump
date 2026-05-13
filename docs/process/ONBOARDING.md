@@ -16,7 +16,7 @@ last_audited: 2026-04-25
 > chump` will pull a bottle (~30s-2m) and the end-to-end FTUE will
 > match the post-init number. **Honest current state: ~20m total on
 > a clean Mac, 17s post-install.** Verified via
-> `docs/FTUE-VERIFICATION-2026-04-29.md`.
+> `docs/audits/ftue-verifications/FTUE-VERIFICATION-2026-04-29.md`.
 
 ## Quick start (macOS)
 

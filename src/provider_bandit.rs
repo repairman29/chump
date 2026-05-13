@@ -273,19 +273,51 @@ impl BanditRouter {
 /// - `CHUMP_BANDIT_W_SUCCESS` / `CHUMP_BANDIT_W_LATENCY` / `CHUMP_BANDIT_W_TPS`
 /// - `CHUMP_BANDIT_LATENCY_BUDGET_S` (default 30)
 /// - `CHUMP_BANDIT_NOMINAL_TPS` (default 20)
+///
+/// Delegates to `compose_reward_with_quality` with no historical metrics.
 pub fn compose_reward(success: bool, latency_s: f64, tokens_per_sec: f64) -> f64 {
+    compose_reward_with_quality(success, latency_s, tokens_per_sec, None, None)
+}
+
+/// Extended reward signal that incorporates historical latency p95 and tool-call
+/// accuracy from `provider_quality::get_quality_full` (INFRA-685).
+///
+/// Additional weights (added on top of existing, then normalized to [0,1]):
+/// - `CHUMP_BANDIT_W_LATENCY_P95` (default 0.15) — penalizes slots with high p95 latency
+/// - `CHUMP_BANDIT_W_TOOL_ACCURACY` (default 0.20) — rewards slots with better tool-call parse accuracy
+///
+/// `latency_p95_s`: historical EMA p95 latency in seconds (None → treated as best-case 1.0 term)
+/// `tool_accuracy`: EMA tool-call accuracy 0.0..1.0 (None → treated as 1.0)
+pub fn compose_reward_with_quality(
+    success: bool,
+    latency_s: f64,
+    tokens_per_sec: f64,
+    latency_p95_s: Option<f64>,
+    tool_accuracy: Option<f64>,
+) -> f64 {
     let w_success = env_f64("CHUMP_BANDIT_W_SUCCESS", 0.5);
     let w_latency = env_f64("CHUMP_BANDIT_W_LATENCY", 0.3);
     let w_tps = env_f64("CHUMP_BANDIT_W_TPS", 0.2);
+    let w_p95 = env_f64("CHUMP_BANDIT_W_LATENCY_P95", 0.15);
+    let w_acc = env_f64("CHUMP_BANDIT_W_TOOL_ACCURACY", 0.20);
     let budget = env_f64("CHUMP_BANDIT_LATENCY_BUDGET_S", 30.0).max(1.0);
     let nominal = env_f64("CHUMP_BANDIT_NOMINAL_TPS", 20.0).max(1.0);
 
-    let success_term = if success { 1.0 } else { 0.0 };
+    let success_term = if success { 1.0_f64 } else { 0.0 };
     let latency_term = (1.0 - (latency_s / budget).clamp(0.0, 1.0)).clamp(0.0, 1.0);
     let tps_term = (tokens_per_sec / nominal).clamp(0.0, 1.0);
+    let p95_term = latency_p95_s
+        .map(|p| (1.0 - (p / budget).clamp(0.0, 1.0)).clamp(0.0, 1.0))
+        .unwrap_or(1.0);
+    let acc_term = tool_accuracy.unwrap_or(1.0).clamp(0.0, 1.0);
 
-    let total = w_success * success_term + w_latency * latency_term + w_tps * tps_term;
-    total.clamp(0.0, 1.0)
+    let total_w = (w_success + w_latency + w_tps + w_p95 + w_acc).max(f64::EPSILON);
+    let raw = w_success * success_term
+        + w_latency * latency_term
+        + w_tps * tps_term
+        + w_p95 * p95_term
+        + w_acc * acc_term;
+    (raw / total_w).clamp(0.0, 1.0)
 }
 
 fn env_f64(key: &str, default: f64) -> f64 {
@@ -510,9 +542,18 @@ mod tests {
         // Happy path: success + fast latency + high throughput.
         let r = compose_reward(true, 1.0, 25.0);
         assert!((0.0..=1.0).contains(&r));
-        // Pathological: failure + slow + low throughput.
+        // Pathological observable: failure + slow + low throughput.
+        // INFRA-685 added p95_term + acc_term that default to 1.0 (best-case)
+        // when historical metrics are None, so the pure-observable pathology
+        // can still get ~0.25 reward from the historical defaults. Use the
+        // quality variant with None'd-out terms set to 0 to test the floor.
         let r2 = compose_reward(false, 100.0, 0.1);
-        assert!((0.0..0.1).contains(&r2));
+        assert!((0.0..=1.0).contains(&r2));
+        let r3 = compose_reward_with_quality(false, 100.0, 0.1, Some(100.0), Some(0.0));
+        assert!(
+            (0.0..0.1).contains(&r3),
+            "with historical pathology too: r3 = {r3}"
+        );
     }
 
     #[test]

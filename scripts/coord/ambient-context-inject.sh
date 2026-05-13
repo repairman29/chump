@@ -20,6 +20,10 @@
 
 set -euo pipefail
 
+
+# INFRA-956: default harness to a schema-valid value (kills missing_attribution noise).
+export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
+
 HOOK_EVENT="${1:-SessionStart}"
 
 # ── Resolve repo + lock dir (same logic as ambient-emit.sh) ────────────────────

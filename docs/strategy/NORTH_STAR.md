@@ -110,3 +110,17 @@ When you are deciding what to work on, what to prioritize, what to build — mea
 4. Would this work in an air-gapped environment on a $500 machine?
 
 If the answer to all four is no, it is probably not the next thing to build.
+
+---
+
+## Status footer (2026-05-12)
+
+This document is the **founder's statement of original intent**. It will be revisited but is not rewritten on partial data.
+
+Current evidence on the cognitive-architecture bet, recorded in the spirit of [`docs/process/RESEARCH_INTEGRITY.md`](../process/RESEARCH_INTEGRITY.md):
+
+- **EVAL-101** (2026-05-10) — A/B of `CHUMP_CONSCIOUSNESS_ENABLED=1` vs `0` returned null at the 0.10 threshold (Δ=+0.025, n=20/cell, dual judges). The combined cognition stack did not measurably move agent task outcomes in this configuration. Result writeup: [`docs/eval/EVAL-101-cognition-ab-2026-05-10.md`](../eval/EVAL-101-cognition-ab-2026-05-10.md).
+- **Validated narrower finding to date** — instruction injection has tier-dependent effects: prescriptive lessons help small models on specific tasks and harm frontier models. Per-module status is in the public faculty stub at [`docs/architecture/CHUMP_FACULTY_MAP.md`](../architecture/CHUMP_FACULTY_MAP.md) (specific findings live in the private research repo per [`docs/agents/RESEARCH_PRIVACY.md`](../agents/RESEARCH_PRIVACY.md)).
+- **Follow-up.** [`docs/gaps/EVAL-102.yaml`](../gaps/EVAL-102.yaml) is filed P0 to repeat the A/B at n≥50/cell with an explicit dependency map showing which downstream gaps reopen if positive vs stay closed if null. Until EVAL-102 returns a result, the strategic framing above stands; if EVAL-102 also returns null, this document gets rewritten honestly.
+
+Read with the founder voice as historical context; read RESEARCH_INTEGRITY and the eval writeups for what we currently know.

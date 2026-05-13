@@ -154,14 +154,15 @@ reports back) without human-typing each chump CLI command.
 
 ## Status (live; updated by Mission Driver)
 
-- **Updated.** 2026-05-11
-- **Week 1 (May 6–13) — OUTCOME SHIPPED.** User-facing front door complete. All gaps closed. FTUE clean-machine CI test deferred to Week 4.
-- **Week 2 (May 14–21) — COMPLETE.** EVAL-101 cognition A/B run and closed as null finding (Δ=+0.025, threshold 0.10). Result at `docs/eval/EVAL-101-cognition-ab-2026-05-10.md`.
-- **Week 3 (May 22–28) — IN PROGRESS.** INFRA-796/797/798 scoped and implemented. `chump orchestrate` loop exists with telemetry + auto-grade timer + stub/real intent parser.
+- **Updated.** 2026-05-12
+- **Note on "Week N" labels.** Week labels are **phase markers** (Phase 1 — Front door; Phase 2 — Credible evidence; Phase 3 — Orchestrator; Phase 4 — Polish + demo). The calendar dates in parens are *target* dates from the original 30-day plan, not enforcement boundaries. Status flags (SHIPPED / WORK COMPLETE / IN PROGRESS) reflect actual milestone completion, not calendar position. A phase can be WORK COMPLETE before its target date window opens.
+- **Phase 1 / Week 1 (target May 6–13) — SHIPPED.** User-facing front door complete. All gaps closed. FTUE clean-machine CI test deferred to Phase 4.
+- **Phase 2 / Week 2 (target May 14–21) — WORK COMPLETE (early).** EVAL-101 cognition A/B run and closed as null finding (Δ=+0.025, threshold 0.10). Result at `docs/eval/EVAL-101-cognition-ab-2026-05-10.md`. **Follow-up: EVAL-102 filed P0** (see `docs/gaps/EVAL-102.yaml`) — n≥50/cell rerun with explicit dependency map for downstream gaps.
+- **Phase 3 / Week 3 (target May 22–28) — IN PROGRESS.** INFRA-796/797/798 scoped and implemented. `chump orchestrate` loop exists with telemetry + auto-grade timer + stub/real intent parser.
   - **INFRA-816 (release-plz glib dep)** — filed + fixed + merged (#1437). ✅
   - **INFRA-817 (e2e-pwa flake root cause)** — filed. Alias fix merged (#1440). Test updates in PR (#1442).
-- **Week 4 (May 29–June 6) — GAPS FILED.** DOC-035 (README rewrite for demo flow) and INFRA-818 (perf tuning FLEET_SIZE=10) filed in #1438. PRODUCT-025 (PWA dashboard MVP) and INFRA-799 (FTUE CI test) pending.
-- **Pillar balance (2026-05-10):** EFFECTIVE 43% (dominant), CREDIBLE 20%, RESILIENT 13%, ZERO-WASTE 6%, MISSION 3%. 86 pickable, 107 vague (no ACs — unpickable).
+- **Phase 4 / Week 4 (target May 29–June 6) — GAPS FILED.** DOC-035 (README rewrite for demo flow) and INFRA-818 (perf tuning FLEET_SIZE=10) filed in #1438. PRODUCT-025 (PWA dashboard MVP) and INFRA-799 (FTUE CI test) pending.
+- **Pillar balance (2026-05-12):** EFFECTIVE 43% (dominant), CREDIBLE 20%, RESILIENT 13%, ZERO-WASTE 6%, MISSION 3%. **~86 pickable, ~1 vague** (down from 107 after the 2026-05-11 P1-vague triage sprint). Auto-refresh script filed as DOC-037.
 - **CI pipeline:** Zero green runs on main in last 100 before fix. Root cause: e2e-pwa flake from missing v2 backward-compat aliases (INFRA-817). Fix landed in #1440; e2e test updates in #1442.
 - **Next actions:**
   1. Verify PR #1442 merges + CI passes (e2e test selectors for v2 DOM).

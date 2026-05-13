@@ -1,3 +1,11 @@
+> **Superseded.** This is the 2026-04 strategic roadmap (362 lines). The
+> active 30-day execution roadmap is now [`docs/ROADMAP.md`](../../ROADMAP.md).
+> Archived 2026-05-12 per the DOC-040 doc cleanup (DECISION-B + C2: keep
+> docs/strategy/ as the vision/future namespace, archive the superseded
+> 2026-04 version).
+
+---
+
 ---
 doc_tag: canonical
 owner_gap:

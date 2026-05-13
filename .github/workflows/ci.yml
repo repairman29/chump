@@ -23,6 +23,7 @@ jobs:
   # full suite always runs there.
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # path filter only; <30s in practice
     outputs:
       code: ${{ steps.filter.outputs.code }}
       e2e: ${{ steps.filter.outputs.e2e }}
@@ -190,6 +191,7 @@ jobs:
     needs: [fast-checks, clippy, cargo-test, pr-hygiene]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # rollup only — quick aggregator check
     steps:
       - name: Verify all parallel CI shards passed
         run: |
@@ -246,6 +248,7 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # CREDIBLE-026 + CREDIBLE-027 gate scripts
     steps:
       - uses: actions/checkout@v6
         with:
@@ -272,6 +275,7 @@ jobs:
   fast-checks:
     needs: changes
     if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    timeout-minutes: 15  # fmt + JS self-tests + ~30s bash guards; target wall-clock < 5 min, cap at 15m
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -540,6 +544,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     steps:
       - uses: actions/checkout@v6
 
@@ -585,6 +590,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
     steps:
       - uses: actions/checkout@v6
 
@@ -630,6 +636,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 45  # llvm-cov is slower than cargo-test alone; not required for merge
     steps:
       - uses: actions/checkout@v6
 
@@ -912,6 +919,7 @@ jobs:
   # 'audit' from branch-protection-main.json's required_status_checks.
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
     steps:
       - uses: actions/checkout@v6
 
@@ -1068,3 +1076,65 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-uuid-gap-id-compat.sh
       - name: velocity trending — ship_rate/waste_rate 7d trend, improving/stable/degrading (INFRA-901)
         run: bash scripts/ci/test-velocity-trending.sh
+      - name: gap show AC rendering — numbered list + json ac_count/ac_has_todos (CREDIBLE-033)
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-show-ac-render.sh
+
+      - name: CLI output format consistency — --quiet/--format/--json (EFFECTIVE-008)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-cli-output-format.sh
+      - name: pre-push hook cd to GIT_WORK_TREE for cargo test (RESILIENT-009)
+        run: bash scripts/ci/test-prepush-worktree-cd.sh
+      - name: gap consolidate — near-duplicate title detection (INFRA-935)
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-consolidate.sh
+      - name: gap impact rating — rate CLI, ambient event, kpi --impact (FLEET-048)
+        run: bash scripts/ci/test-gap-impact-rating.sh
+      - name: speculative race-loss event tracking (FLEET-035)
+        run: bash scripts/ci/test-fleet-race-loss.sh
+      - name: cost quota enforcement — warning at 80%, hard-cap at 100% (INFRA-877)
+        run: bash scripts/ci/test-cost-enforcement.sh
+      - name: gap lifecycle manager — abandoned gap detection (INFRA-870)
+        run: bash scripts/ci/test-gap-lifecycle-manager.sh
+      - name: per-agent throughput tracker — tracker script + kpi report --agents (FLEET-044)
+        run: bash scripts/ci/test-agent-throughput.sh
+      - name: PWA gap workflow status endpoint (EFFECTIVE-014)
+        run: bash scripts/ci/test-gap-workflow-status.sh
+      - name: pre-commit vacuous-guard audit (INFRA-508)
+        run: bash scripts/ci/test-precommit-guard-audit.sh
+      - name: PWA workflow observability — request_id tracing (CREDIBLE-024)
+        run: bash scripts/ci/test-pwa-workflow-observability.sh
+      - name: CLI version/debug flags (CREDIBLE-019)
+        run: bash scripts/ci/test-cli-version-debug.sh
+      - name: gap rollback — runbook, rollback-gap.sh, ambient event (INFRA-899)
+        run: bash scripts/ci/test-rollback-gap.sh
+      - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        run: bash scripts/ci/test-run-consolidation.sh
+      - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
+        run: bash scripts/ci/test-run-fleet-cross-repo.sh
+      - name: tool-call normalizer for weak LLMs (INFRA-740)
+        run: bash scripts/ci/test-tool-normalize.sh
+      - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          bash scripts/ci/test-waste-tally-domain.sh
+      - name: PWA workflow observability — request_id tracing (CREDIBLE-024)
+        run: bash scripts/ci/test-pwa-workflow-observability.sh
+      - name: PWA version compatibility check (CREDIBLE-022)
+        run: bash scripts/ci/test-pwa-version-compat.sh
+      - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        run: bash scripts/ci/test-run-consolidation.sh
+      - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
+        run: bash scripts/ci/test-run-fleet-cross-repo.sh
+      - name: tool-call normalizer for weak LLMs (INFRA-740)
+        run: bash scripts/ci/test-tool-normalize.sh
+      - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          bash scripts/ci/test-waste-tally-domain.sh
+      - name: PWA version compatibility check (CREDIBLE-022)
+        run: bash scripts/ci/test-pwa-version-compat.sh
+      - name: worktree contamination check — detect foreign gap files (INFRA-931)
+        run: bash scripts/ci/test-worktree-contamination-check.sh

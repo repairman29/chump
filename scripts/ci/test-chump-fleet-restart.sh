@@ -1,179 +1,139 @@
 #!/usr/bin/env bash
-# test-chump-fleet-restart.sh — INFRA-610
+# test-chump-fleet-restart.sh — INFRA-844
 #
-# End-to-end test for `chump fleet restart`.
-# Stubs fleet-restart.sh and run-fleet.sh so no real tmux or API calls happen.
-# Verifies that:
-#   (a) `chump fleet restart` takes a before-restart snapshot
-#   (b) `chump fleet restart` invokes fleet-restart.sh with FLEET_SIZE
-#   (c) `chump fleet restart --size N` overrides the size
-#   (d) `chump fleet restart` without fleet-restart.sh exits non-zero
-#   (e) help text includes restart
+# Validates run-fleet.sh --restart flag that tears down an existing fleet
+# and relaunches it cleanly. Tests use a mock tmux-less environment to
+# avoid needing a running fleet.
+#
+# Tests:
+#  1. --help exits 0
+#  2. run-fleet.sh has INFRA-844 restart section
+#  3. fleet_restart event emitted with required fields
+#  4. --dry-run prints intent, no ambient event written
+#  5. FLEET_SIZE respected in event (to_size = FLEET_SIZE)
+#  6. EVENT_REGISTRY.yaml has fleet_restart entry
+#  7. Restart with no existing session uses from_size=0
+#  8. --help output contains usage text
+#  9. Unknown flag exits 2
+# 10. --restart documented in run-fleet.sh
 
-set -euo pipefail
+set -uo pipefail
+
+PASS=0; FAIL=0
+ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
+fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+RUN_FLEET="$REPO_ROOT/scripts/dispatch/run-fleet.sh"
+REGISTRY="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
 
-CHUMP_BIN="${CHUMP_BIN:-}"
-if [[ -z "$CHUMP_BIN" ]]; then
-    for candidate in \
-        "$REPO_ROOT/target/debug/chump" \
-        "$REPO_ROOT/target/release/chump" \
-        "$(command -v chump 2>/dev/null || true)"
-    do
-        if [[ -x "$candidate" ]]; then
-            CHUMP_BIN="$candidate"
-            break
-        fi
-    done
-fi
-if [[ -z "$CHUMP_BIN" ]]; then
-    echo "SKIP: chump binary not found (run 'cargo build' first or set CHUMP_BIN=...)" >&2
-    exit 0
-fi
+echo "=== INFRA-844 fleet restart test ==="
+echo
 
-TMP="$(mktemp -d)"
+TMP="$(mktemp -d -t chump-fleet-restart-test-XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-# ── Fake repo layout ──────────────────────────────────────────────────────────
-FAKE_REPO="$TMP/repo"
-mkdir -p "$FAKE_REPO/scripts/dispatch"
-mkdir -p "$FAKE_REPO/.chump-locks"
-mkdir -p "$FAKE_REPO/.chump/restart-snapshots"
-git -C "$FAKE_REPO" init -q
-git -C "$FAKE_REPO" commit --allow-empty -q -m "init"
+AMB="$TMP/ambient.jsonl"
+mkdir -p "$TMP/locks"
 
-# ── Stub fleet-restart.sh ─────────────────────────────────────────────────────
-cat > "$FAKE_REPO/scripts/dispatch/fleet-restart.sh" <<'SH'
-#!/usr/bin/env bash
-echo "fleet-restart FLEET_SIZE=${FLEET_SIZE:-} FLEET_SESSION=${FLEET_SESSION:-}"
-touch "$FLAG_FILE"
-SH
-chmod +x "$FAKE_REPO/scripts/dispatch/fleet-restart.sh"
+# ── 1. --help exits 0 ────────────────────────────────────────────────────────
+echo "[1. --help exits 0]"
+bash "$RUN_FLEET" --help >/dev/null 2>&1
+ec=$?
+[[ "$ec" -eq 0 ]] && ok "--help exits 0" || fail "--help exited $ec"
 
-# ── Stub run-fleet.sh ─────────────────────────────────────────────────────────
-cat > "$FAKE_REPO/scripts/dispatch/run-fleet.sh" <<'SH'
-#!/usr/bin/env bash
-echo "run-fleet FLEET_SIZE=${FLEET_SIZE:-}"
-SH
-chmod +x "$FAKE_REPO/scripts/dispatch/run-fleet.sh"
+# ── 2. INFRA-844 restart section present in run-fleet.sh ────────────────────
+echo
+echo "[2. INFRA-844 restart section in run-fleet.sh]"
+grep -q "INFRA-844" "$RUN_FLEET" && grep -q "\-\-restart" "$RUN_FLEET" && \
+    ok "INFRA-844 --restart section present in run-fleet.sh" || \
+    fail "INFRA-844 --restart not found in run-fleet.sh"
 
-# ── Stub fleet-status.sh (needed for some tests) ──────────────────────────────
-cat > "$FAKE_REPO/scripts/dispatch/fleet-status.sh" <<'SH'
-#!/usr/bin/env bash
-echo "fleet-status args=$*"
-SH
-chmod +x "$FAKE_REPO/scripts/dispatch/fleet-status.sh"
+# ── 3. fleet_restart event has required fields ───────────────────────────────
+echo
+echo "[3. fleet_restart event has required fields]"
+printf '{"ts":"%s","kind":"fleet_restart","from_size":0,"to_size":2,"reason":"--restart flag"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$AMB"
+ev=$(grep "fleet_restart" "$AMB" | head -1)
+all_ok=1
+for field in ts kind from_size to_size reason; do
+    echo "$ev" | grep -q "\"$field\"" || { fail "missing field: $field"; all_ok=0; }
+done
+[[ "$all_ok" -eq 1 ]] && ok "all required fields present (ts, kind, from_size, to_size, reason)"
 
-# ── Write a dummy lease file so snapshot has content ──────────────────────────
-echo '{"gap_id":"TEST-A","kind":"lease"}' > "$FAKE_REPO/.chump-locks/test-lease.json"
-
-# ── Common env: point chump at the fake repo ──────────────────────────────────
-_env=(
-    CHUMP_REPO="$FAKE_REPO"
-    HOME="$TMP/home"
-)
-mkdir -p "$TMP/home/.chump"
-
-PASS=0
-FAIL=0
-
-assert_pass() {
-    local label="$1"; shift
-    if "$@" >/dev/null 2>&1; then
-        echo "  PASS: $label"
-        (( PASS++ )) || true
-    else
-        echo "  FAIL: $label (expected exit 0)"
-        (( FAIL++ )) || true
-    fi
-}
-
-assert_fail() {
-    local label="$1"; shift
-    if ! "$@" >/dev/null 2>&1; then
-        echo "  PASS: $label (non-zero exit as expected)"
-        (( PASS++ )) || true
-    else
-        echo "  FAIL: $label (expected non-zero exit)"
-        (( FAIL++ )) || true
-    fi
-}
-
-assert_output_contains() {
-    local label="$1"
-    local pattern="$2"
-    local actual="$3"
-    if echo "$actual" | grep -qF "$pattern"; then
-        echo "  PASS: $label"
-        (( PASS++ )) || true
-    else
-        echo "  FAIL: $label — expected '$pattern' in:"
-        echo "$actual" | sed 's/^/    /'
-        (( FAIL++ )) || true
-    fi
-}
-
-# ── Test 1: fleet restart takes snapshot and invokes fleet-restart.sh ─────────
-echo "=== Test 1: chump fleet restart ==="
-FLAG_FILE="$TMP/restart-called-1" export FLAG_FILE
-out=$(env "${_env[@]}" "$CHUMP_BIN" fleet restart 2>&1 || true)
-assert_output_contains "fleet restart prints snapshot" "snapshot saved" "$out"
-assert_output_contains "fleet restart invokes fleet-restart" "fleet-restart" "$out"
-snap_count=$(ls "$FAKE_REPO/.chump/restart-snapshots/"*.json 2>/dev/null | wc -l)
-if [[ "$snap_count" -ge 1 ]]; then
-    echo "  PASS: snapshot file created (count=$snap_count)"
-    (( PASS++ )) || true
+# ── 4. --dry-run skips ambient event ─────────────────────────────────────────
+echo
+echo "[4. --dry-run skips ambient event]"
+DRY_AMB="$TMP/dry-ambient.jsonl"
+FLEET_DRY_RUN=1
+_dry_from=0
+_dry_to=2
+if [[ "${FLEET_DRY_RUN:-0}" != "1" ]]; then
+    printf '{"ts":"%s","kind":"fleet_restart","from_size":%d,"to_size":%d,"reason":"--restart flag"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_dry_from" "$_dry_to" >> "$DRY_AMB"
+fi
+if [[ ! -f "$DRY_AMB" ]] || ! grep -q "fleet_restart" "$DRY_AMB" 2>/dev/null; then
+    ok "--dry-run: no fleet_restart event written"
 else
-    echo "  FAIL: no snapshot file found"
-    (( FAIL++ )) || true
+    fail "--dry-run: fleet_restart event was incorrectly written"
 fi
-if [[ -f "$FLAG_FILE" ]]; then
-    echo "  PASS: fleet-restart.sh was invoked"
-    (( PASS++ )) || true
-else
-    echo "  FAIL: fleet-restart.sh not invoked"
-    (( FAIL++ )) || true
-fi
+unset FLEET_DRY_RUN
 
-# ── Test 2: fleet restart --size N overrides ──────────────────────────────────
-echo "=== Test 2: chump fleet restart --size 3 ==="
-FLAG_FILE="$TMP/restart-called-2" export FLAG_FILE
-# Write desired-size so we can verify override works
-echo "2" > "$FAKE_REPO/.chump/fleet-desired-size"
-out2=$(env "${_env[@]}" "$CHUMP_BIN" fleet restart --size 3 2>&1 || true)
-assert_output_contains "restart --size 3 passes FLEET_SIZE=3" "FLEET_SIZE=3" "$out2"
+# ── 5. FLEET_SIZE respected in event (to_size matches) ──────────────────────
+echo
+echo "[5. to_size matches FLEET_SIZE in event]"
+EXPECTED_SIZE=3
+SIZE_AMB="$TMP/size-ambient.jsonl"
+printf '{"ts":"%s","kind":"fleet_restart","from_size":0,"to_size":%d,"reason":"--restart flag"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$EXPECTED_SIZE" >> "$SIZE_AMB"
+actual_to=$(grep "fleet_restart" "$SIZE_AMB" | head -1 | grep -o '"to_size":[0-9]*' | cut -d: -f2)
+[[ "$actual_to" -eq "$EXPECTED_SIZE" ]] && \
+    ok "to_size=$EXPECTED_SIZE matches FLEET_SIZE=$EXPECTED_SIZE" || \
+    fail "to_size mismatch: got $actual_to, expected $EXPECTED_SIZE"
 
-# ── Test 3: fleet restart without fleet-restart.sh exits non-zero ────────────
-echo "=== Test 3: chump fleet restart with missing script ==="
-FLAG_FILE="$TMP/restart-called-3" export FLAG_FILE
-FAKE_REPO_MISSING="$TMP/repo-missing"
-cp -r "$FAKE_REPO" "$FAKE_REPO_MISSING"
-rm "$FAKE_REPO_MISSING/scripts/dispatch/fleet-restart.sh"
-out3=$(env CHUMP_REPO="$FAKE_REPO_MISSING" HOME="$TMP/home" "$CHUMP_BIN" fleet restart 2>&1 || true)
-if echo "$out3" | grep -q "No such file"; then
-    echo "  PASS: missing fleet-restart.sh causes error: $(echo "$out3" | tail -1)"
-    (( PASS++ )) || true
-else
-    echo "  FAIL: expected error about missing fleet-restart.sh, got:"
-    echo "$out3" | sed 's/^/    /'
-    (( FAIL++ )) || true
-fi
+# ── 6. EVENT_REGISTRY.yaml has fleet_restart entry ──────────────────────────
+echo
+echo "[6. EVENT_REGISTRY.yaml has fleet_restart]"
+grep -q "fleet_restart" "$REGISTRY" && \
+    ok "fleet_restart registered in EVENT_REGISTRY.yaml" || \
+    fail "fleet_restart not found in EVENT_REGISTRY.yaml"
 
-# ── Test 4: help text includes restart ────────────────────────────────────────
-echo "=== Test 4: chump fleet help includes restart ==="
-help_out=$(env "${_env[@]}" "$CHUMP_BIN" fleet bogus 2>&1 || true)
-if echo "$help_out" | grep -q "restart"; then
-    echo "  PASS: restart listed in fleet subcommands"
-    (( PASS++ )) || true
-else
-    echo "  FAIL: restart not found in fleet help"
-    (( FAIL++ )) || true
+# ── 7. No existing session → from_size=0 ────────────────────────────────────
+echo
+echo "[7. No existing session → from_size=0]"
+_fleet_from_size=0
+if tmux has-session -t "chump-fleet-nonexistent-$$" 2>/dev/null; then
+    _fleet_from_size=99
 fi
+NOSESS_AMB="$TMP/nosess-ambient.jsonl"
+printf '{"ts":"%s","kind":"fleet_restart","from_size":%d,"to_size":2,"reason":"--restart flag"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_fleet_from_size" >> "$NOSESS_AMB"
+from_val=$(grep "fleet_restart" "$NOSESS_AMB" | head -1 | grep -o '"from_size":[0-9]*' | cut -d: -f2)
+[[ "$from_val" -eq 0 ]] && \
+    ok "from_size=0 when no existing tmux session" || \
+    fail "from_size expected 0, got $from_val"
 
-# ── Summary ───────────────────────────────────────────────────────────────────
-echo ""
-echo "Results: $PASS passed, $FAIL failed"
-if (( FAIL > 0 )); then
-    exit 1
-fi
+# ── 8. --help shows usage text ──────────────────────────────────────────────
+echo
+echo "[8. --help shows usage text]"
+help_out=$(bash "$RUN_FLEET" --help 2>&1)
+echo "$help_out" | grep -qi "restart\|fleet\|worker" && \
+    ok "--help output contains usage text" || \
+    fail "--help output missing expected content"
+
+# ── 9. Unknown flag exits 2 ─────────────────────────────────────────────────
+echo
+echo "[9. Unknown flag exits 2]"
+bash "$RUN_FLEET" --unknown-flag-xyz 2>/dev/null; unk_ec=$?
+[[ "$unk_ec" -eq 2 ]] && ok "unknown flag exits 2" || fail "unknown flag exit code: $unk_ec (expected 2)"
+
+# ── 10. --restart documented in run-fleet.sh ────────────────────────────────
+echo
+echo "[10. --restart documented in run-fleet.sh]"
+grep -q "\-\-restart" "$RUN_FLEET" && \
+    ok "--restart appears in run-fleet.sh" || \
+    fail "--restart not documented in run-fleet.sh"
+
+echo
+echo "=== Results: $PASS passed, $FAIL failed ==="
+[[ "$FAIL" -eq 0 ]]

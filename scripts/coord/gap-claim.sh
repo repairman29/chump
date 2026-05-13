@@ -43,6 +43,12 @@
 
 set -euo pipefail
 
+# INFRA-956: default harness to a schema-valid value so ambient events emit
+# meaningful attribution instead of triggering 'missing_attribution' alerts.
+# Operator-driven coord scripts default to "manual"; agents that wrap this
+# script (claude-code-ide, opencode, etc.) override before invocation.
+export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
+
 # INFRA-379: heal a wedged chump binary before any CLI call (see
 # scripts/lib/chump-preflight.sh). Silent no-op on healthy binaries.
 # shellcheck source=../lib/chump-preflight.sh

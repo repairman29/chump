@@ -63,7 +63,6 @@ pub fn should_skip_slot(slot_name: &str) -> bool {
     (sanity_fail as f64 / total as f64) > SANITY_FAIL_RATE_THRESHOLD
 }
 
-#[allow(dead_code)]
 pub fn get_quality(slot_name: &str) -> Option<(i64, i64)> {
     let conn = db_pool::get().ok()?;
     conn.query_row(
@@ -114,7 +113,6 @@ pub fn record_latency(slot_name: &str, latency_ms: f64) {
 }
 
 /// Record tool-call parse success (1.0) or failure (0.0) for accuracy EMA.
-#[allow(dead_code)]
 pub fn record_tool_call_result(slot_name: &str, success: bool) {
     if slot_name.is_empty() {
         return;

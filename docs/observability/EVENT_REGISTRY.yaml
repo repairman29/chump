@@ -111,6 +111,19 @@ events:
     trigger: T-30s before claude -p timeout, WIP commit pushed
     consumers: [fleet-brief]
 
+  - kind: wip_sigterm_checkpoint
+    emitter: scripts/dispatch/worker.sh (_sigterm_wip_checkpoint — INFRA-686)
+    trigger: SIGTERM/SIGINT received mid-gap; WIP commit created before exit
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, agent_id, gap_id, branch]
+  # ── FLEET-035: speculative race loss tracking ─────────────────────────────
+  - kind: speculative_race_loss
+    emitter: scripts/coord/bot-merge.sh (FLEET-035, INFRA-193)
+    trigger: a speculative loser PR is closed as superseded — gap was picked by
+      two agents in parallel; one won and the other's PR is auto-closed
+    consumers: [fleet-status --pane race-loss, waste-tally]
+    fields_required: [ts, kind, session, gap_id, loser_pr, winner_pr, loser_branch]
+
   - kind: worker_exit
     emitter: scripts/dispatch/worker.sh
     trigger: worker exits cycle (rc + classified exit_class)
@@ -177,11 +190,36 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [ts, kind, quiet_window_s, handler]
 
+  - kind: slo_breach
+    emitter: scripts/coord/opus-curator.sh (INFRA-848 / INFRA-955)
+    trigger: curator audit detected an SLO violation (chump health --slo-check non-zero)
+    consumers: [fleet-brief, watchdog, waste-tally]
+    fields_required: [ts, kind, severity, slo_name, detail]
+    docs: |
+      Edge-only emission per INFRA-955: fires when the active breach set
+      CHANGES (transitions into breach or between different breach sets),
+      not on every audit tick while in continuous breach. slo_name is a
+      sorted comma-separated key of breached SLO identifiers (e.g.
+      "L1-SLO-3,L2-SLO-4"). detail carries the full BREACH line(s) for
+      forensic context.
+
+  - kind: slo_recovered
+    emitter: scripts/coord/opus-curator.sh (INFRA-955)
+    trigger: curator audit transitions from breach → healthy (pairs with slo_breach edge)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, previously_breached, handler]
+
   - kind: fleet_scale_change
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845) + manual scaling per CLAUDE.md
     trigger: fleet size adjusted up or down by handler or operator
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, from, to, rationale]
+
+  - kind: fleet_restart
+    emitter: scripts/dispatch/run-fleet.sh (INFRA-844 --restart flag)
+    trigger: operator runs run-fleet.sh --restart; existing fleet torn down and relaunched
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, from_size, to_size, reason]
 
   - kind: pager_notified
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
@@ -496,6 +534,7 @@ events:
       One-shot event marking that the opus-curator wave-sequencing roadmap
       doc was (re-)published. Useful for after-the-fact "when did sequencing
       change?" reconstruction.
+
   - kind: fleet_resize_decision
     emitter: src/main.rs (chump fleet auto-resize, INFRA-650)
     trigger: fleet auto-resize evaluated 4 conditions (queue-empty, cost-cap,
@@ -557,6 +596,26 @@ events:
     trigger: flock wait > 5s acquiring bot-merge.lock; another bot-merge was active
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, wait_s]
+
+  # INFRA-950: register kinds that the system already emits but were never
+  # captured here. waste-tally classifies these as of this gap.
+  - kind: pr_stuck_cluster
+    emitter: scripts/coord/opus-curator.sh (INFRA-848)
+    trigger: 3+ stuck PRs detected in same audit cycle; correlated stall
+    consumers: [waste-tally, fleet-brief, watchdog]
+    fields_required: [ts, kind, count]
+
+  - kind: fleet_auth_fallback
+    emitter: scripts/dispatch/worker.sh (INFRA-622)
+    trigger: primary auth path failed; fallback path used for the spawn
+    consumers: [waste-tally, audit-log]
+    fields_required: [ts, kind, failed_mode, fallback_mode]
+
+  - kind: slo_breach
+    emitter: scripts/coord/opus-curator.sh (INFRA-848)
+    trigger: curator audit detected an SLO violation (chump health --slo-check non-zero)
+    consumers: [waste-tally, fleet-brief, watchdog]
+    fields_required: [ts, kind, severity]
 
   # ── Subagent / cognition ──────────────────────────────────────────────────
   - kind: subagent_budget_exceeded
@@ -1126,6 +1185,7 @@ events:
       override flags targeting a non-Chump repo
     consumers: [fleet-brief, fleet-status, opus-curator]
     fields_required: [ts, kind, repo, locks_dir, session]
+
   # ── Cognition-stack A/B experiment (META-045) ───────────────────────────────
   - kind: cognition_ab_run_start
     emitter: scripts/experiments/cognition-ab-setup.sh
@@ -1164,6 +1224,54 @@ events:
       classify trend as improving, stable, or degrading
     consumers: [fleet-brief, opus-curator, kpi-report]
     fields_required: [ts, kind, window_days, ship_rate_7d, waste_rate_7d, trend, days_sampled]
+  - kind: cost_quota_warning
+    emitter: src/cost_ledger.rs (INFRA-877)
+    trigger: daily spend reaches 80% of CHUMP_DAILY_BUDGET_USD; emitted before
+      each new claude -p spawn when the warning threshold is breached
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, gap_id, model, cost_so_far_usd, limit_usd, budget_used_pct]
+
+  - kind: cost_quota_exceeded
+    emitter: src/cost_ledger.rs (INFRA-877)
+    trigger: daily spend reaches 100% of CHUMP_DAILY_BUDGET_USD; new spawns are
+      hard-capped until UTC midnight reset
+    consumers: [fleet-brief, operator-recall, emergency-fast-path]
+    fields_required: [ts, kind, gap_id, model, cost_so_far_usd, limit_usd, budget_used_pct]
+
+  # ── INFRA-890: network availability events ───────────────────────────────
+  - kind: network_unavailable
+    emitter: scripts/ops/net-probe.sh
+    trigger: api.anthropic.com unreachable after CHUMP_NET_PROBE_RETRIES attempts
+      (default 3, 2s apart); fleet should pause dispatch until resolved
+    consumers: [fleet-brief, opus-curator, emergency-fast-path]
+    fields_required: [ts, kind, session, host, retries]
+
+  - kind: network_restored
+    emitter: scripts/ops/net-probe.sh
+    trigger: api.anthropic.com reachable again after a prior network_unavailable
+      event; emitted exactly once on restoration
+    consumers: [fleet-brief, opus-curator]
+    fields_required: [ts, kind, session, host]
+  # ── FLEET-048: Operator impact ratings ───────────────────────────────────
+  - kind: gap_impact_rated
+    emitter: src/main.rs (FLEET-048, chump gap rate)
+    trigger: operator rates a shipped gap 1-5 via 'chump gap rate <ID> <1-5>'
+    consumers: [kpi-report --impact]
+    fields_required: [ts, kind, gap_id, rating, comment, pr_number]
+  - kind: gap_abandoned
+    emitter: scripts/ops/gap-lifecycle-manager.sh (INFRA-870)
+    trigger: gap has been open for more than CHUMP_LIFECYCLE_DAYS (default 90)
+      without any commit activity; emitted once per stale gap per run
+    consumers: [fleet-brief, operator-recall, opus-curator]
+    fields_required: [ts, kind, gap_id, age_days, title]
+  - kind: worktree_contaminated
+    emitter: scripts/ops/worktree-contamination-check.sh (INFRA-931)
+    trigger: untracked files from a foreign gap-claim branch detected in the
+      current worktree (docs/gaps/*.yaml or scripts/ paths belonging to another
+      active gap session)
+    consumers: [fleet-brief, operator-recall, opus-curator]
+    fields_required: [ts, kind, gap_id, worktree_path, contaminated_count, example_file]
+
 
   # ── Test fixtures (synthetic kinds for unit-test scaffolding only) ────────
   - kind: obs_coverage_test_fixture
@@ -1172,3 +1280,18 @@ events:
       by production code paths
     consumers: []
     status: test-fixture
+
+  # ── INFRA-827: stale worktree pruner ─────────────────────────────────────
+  - kind: worktree_pruned
+    emitter: src/main.rs (chump fleet prune-worktrees --apply, INFRA-827)
+    trigger: a linked worktree was removed because it was older than CHUMP_WT_MAX_AGE_H
+      (default 48h) and its branch had no open GitHub PR and no uncommitted changes
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, path, branch, age_h]
+
+  - kind: worktree_prune_summary
+    emitter: src/main.rs (chump fleet prune-worktrees --apply, INFRA-827)
+    trigger: emitted once per prune-worktrees --apply run summarising total
+      pruned and skipped counts
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, pruned, skipped_active_pr, skipped_uncommitted, skipped_young]

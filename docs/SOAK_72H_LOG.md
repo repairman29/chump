@@ -6,7 +6,7 @@ last_audited: 2026-05-02
 # SOAK_72H_LOG.md — daily-driver soak runs
 
 This file records 72h soak runs of the Chump stack. The unchecked
-roadmap item "Overnight / 72h soak" in `docs/strategy/ROADMAP.md` (under
+roadmap item "Overnight / 72h soak" in `docs/archive/strategy-2026-04/ROADMAP-superseded.md` (under
 "Architecture vs proof") closes when at least one full 72h run completes
 with no regressions in the metrics tracked below.
 
