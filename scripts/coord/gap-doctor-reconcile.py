@@ -206,11 +206,84 @@ def reconcile_one(gid: str, yaml_data: dict, db_row: dict, dry_run: bool) -> lis
     return actions
 
 
+def check_closure_drift(db: dict, ambient_path: Path, dry_run: bool) -> int:
+    """META-059: surface gaps where status=open BUT closed_pr is set and that
+    PR is state=merged. Emits kind=gap_closure_drift to ambient.jsonl for each.
+    Uses REST (gh api repos/.../pulls/N) so this works during GraphQL exhaustion.
+
+    Returns number of drift cases found.
+    """
+    candidates = [
+        (gid, row)
+        for gid, row in db.items()
+        if row.get("status") == "open" and row.get("closed_pr")
+    ]
+    if not candidates:
+        print("closure-drift: no open gaps with closed_pr set — clean")
+        return 0
+
+    # Resolve owner/repo via gh — survives GraphQL exhaustion (gh repo view
+    # uses REST under the hood for nameWithOwner).
+    try:
+        repo = subprocess.check_output(
+            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+            text=True,
+        ).strip()
+    except subprocess.CalledProcessError:
+        print("closure-drift: cannot resolve gh repo (offline?) — skipping", file=sys.stderr)
+        return 0
+
+    drift = 0
+    ambient_path.parent.mkdir(parents=True, exist_ok=True)
+    from datetime import datetime, timezone
+
+    for gid, row in candidates:
+        pr_num = row["closed_pr"]
+        # REST endpoint — costs core bucket, NOT graphql.
+        r = subprocess.run(
+            ["gh", "api", f"repos/{repo}/pulls/{pr_num}",
+             "--jq", '"\\(.state) \\(.merged_at // \\"-\\")"'],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0:
+            print(f"  WARN {gid} PR #{pr_num}: gh api failed ({r.stderr.strip()[:60]})",
+                  file=sys.stderr)
+            continue
+        parts = r.stdout.strip().split(None, 1)
+        if len(parts) < 2:
+            continue
+        state, merged_at = parts[0], parts[1]
+        if state != "closed" or merged_at == "-":
+            continue
+        drift += 1
+        print(f"  DRIFT {gid}: status=open BUT PR #{pr_num} merged {merged_at[:10]}")
+        if not dry_run:
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            ev = {
+                "ts": ts, "kind": "gap_closure_drift",
+                "gap_id": gid, "pr_number": pr_num,
+                "merged_at": merged_at, "source": "gap-doctor-reconcile",
+            }
+            with ambient_path.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(ev, separators=(",", ":")) + "\n")
+
+    if dry_run:
+        print(f"  (dry-run — {drift} drift case(s) would emit kind=gap_closure_drift)")
+    else:
+        print(f"  emitted {drift} gap_closure_drift event(s) to {ambient_path}")
+    return drift
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="report without writing")
     ap.add_argument(
         "--limit", type=int, default=0, help="cap to first N gaps (debugging)"
+    )
+    ap.add_argument(
+        "--check-closure-drift", action="store_true",
+        help="META-059: scan open gaps with closed_pr set and emit "
+             "kind=gap_closure_drift when the PR is merged",
     )
     args = ap.parse_args()
 
@@ -221,6 +294,12 @@ def main():
     print(f"Loading state.db…")
     db = load_db()
     print(f"  {len(db)} rows")
+
+    if args.check_closure_drift:
+        ambient = REPO_ROOT / ".chump-locks" / "ambient.jsonl"
+        n = check_closure_drift(db, ambient, args.dry_run)
+        # Non-zero exit on drift so callers (cron, CI) can alert.
+        sys.exit(0 if n == 0 else 3)
 
     yaml_files = sorted(GAPS_DIR.glob("*.yaml"))
     if args.limit:

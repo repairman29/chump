@@ -1188,6 +1188,15 @@ events:
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, behind, threshold, phase]
 
+  # ── META-059: gap-closure drift detector ──────────────────────────────────
+  - kind: gap_closure_drift
+    emitter: scripts/coord/gap-doctor-reconcile.py --check-closure-drift (META-059)
+    trigger: open gap has closed_pr set AND that PR is state=merged — the
+      "OPEN-BUT-LANDED" antipattern bot-merge.sh:243 warns about but doesn't
+      catch on its own. Surfaces silent auto-close failures.
+    consumers: [fleet-brief, operator-recall, audit-priorities]
+    fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
