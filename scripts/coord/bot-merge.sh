@@ -222,18 +222,24 @@ for arg in "$@"; do
     case "$arg" in
         --gap)             NEXT_IS_GAP=1 ;;
         --stack-on)        NEXT_IS_STACK_ON=1 ;;
-        --auto-merge)      AUTO_MERGE=1 ;;
-        --skip-tests)      SKIP_TESTS=1 ;;
-        --fast)            FAST=1; SKIP_TESTS=1 ;;
-        --dry-run)         DRY_RUN=1 ;;
-        --speculative)     SPECULATIVE=1 ;;
-        --no-merge-driver) NO_MERGE_DRIVER=1 ;;
-        --branch-prefix)   NEXT_IS_BRANCH_PREFIX=1 ;;
-        --pr-template)     NEXT_IS_PR_TEMPLATE=1 ;;
-        --required-checks) NEXT_IS_REQUIRED_CHECKS=1 ;;
+        --auto-merge)         AUTO_MERGE=1 ;;
+        --skip-tests)         SKIP_TESTS=1 ;;
+        --fast)               FAST=1; SKIP_TESTS=1 ;;
+        --dry-run)            DRY_RUN=1 ;;
+        --speculative)        SPECULATIVE=1 ;;
+        --no-merge-driver)    NO_MERGE_DRIVER=1 ;;
+        --branch-prefix)      NEXT_IS_BRANCH_PREFIX=1 ;;
+        --pr-template)        NEXT_IS_PR_TEMPLATE=1 ;;
+        --required-checks)    NEXT_IS_REQUIRED_CHECKS=1 ;;
+        --allow-mass-delete)  ALLOW_MASS_DELETE=1 ;;  # INFRA-993 scratch-commit-guard override
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
+
+# INFRA-993: default disabled. Set --allow-mass-delete to permit a push that
+# would otherwise be blocked by the scratch-commit guard (legit large-deletion
+# PRs like archive/ rewrites).
+ALLOW_MASS_DELETE="${ALLOW_MASS_DELETE:-0}"
 
 # INFRA-237: when --gap was not given, auto-derive from the current branch
 # name. Branches following the canonical naming convention encode the gap ID
@@ -1486,6 +1492,50 @@ if [[ $DRY_RUN -eq 0 ]]; then
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$BEHIND_NOW" "$STALE_REBASE_THRESHOLD" \
             >> "$_amb_path" 2>/dev/null || true
         _bm_fail "stale-branch" 3 "branch $BEHIND_NOW commits behind > threshold ${STALE_REBASE_THRESHOLD}"
+    fi
+fi
+
+# ── INFRA-993: scratch-commit guard — block catastrophic-delete PRs ──────────
+# Near-miss observed 2026-05-11: PRs #1441 + #1452 each proposed +2 / -378000+
+# lines across ~1910 files (effectively deleting the entire repo). Root cause:
+# worktree corruption (INFRA-779 family). Independent of root-cause fix, this
+# is the creation-time gate: refuse to push when the diff vs origin/main shows
+# > 50000 deletions OR deletions > 100× additions. Override: --allow-mass-delete.
+if [[ "$DRY_RUN" -eq 0 && "${CHUMP_SCRATCH_GUARD_DISABLE:-0}" != "1" ]]; then
+    _sg_amb="${CHUMP_AMBIENT_LOG:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl}"
+    _sg_stats="$(git diff --shortstat "${REMOTE}/${BASE_BRANCH}..HEAD" 2>/dev/null || true)"
+    # Sample format: "5 files changed, 12 insertions(+), 3 deletions(-)"
+    # Parse with sed; default to 0 if a clause is missing.
+    _sg_files="$(printf '%s' "$_sg_stats" | sed -nE 's/.* ([0-9]+) files? changed.*/\1/p')"
+    _sg_adds="$(printf '%s' "$_sg_stats"  | sed -nE 's/.* ([0-9]+) insertions?\(\+\).*/\1/p')"
+    _sg_dels="$(printf '%s' "$_sg_stats"  | sed -nE 's/.* ([0-9]+) deletions?\(-\).*/\1/p')"
+    _sg_files="${_sg_files:-0}"
+    _sg_adds="${_sg_adds:-0}"
+    _sg_dels="${_sg_dels:-0}"
+    # Tripwire: > 50000 deletions OR deletions > 100× max(adds, 1).
+    _sg_threshold_abs="${CHUMP_SCRATCH_GUARD_MAX_DELETIONS:-50000}"
+    _sg_threshold_ratio="${CHUMP_SCRATCH_GUARD_RATIO:-100}"
+    _sg_adds_floor=$((_sg_adds > 0 ? _sg_adds : 1))
+    if [[ "$_sg_dels" -gt "$_sg_threshold_abs" ]] || \
+       [[ "$_sg_dels" -gt $(( _sg_adds_floor * _sg_threshold_ratio )) ]]; then
+        # Compose gap ID for the ambient event.
+        _sg_gap="${GAP_IDS[0]:-unknown}"
+        if [[ "$ALLOW_MASS_DELETE" == "1" ]]; then
+            yellow "scratch-commit guard: --allow-mass-delete set; permitting +${_sg_adds} / -${_sg_dels} across ${_sg_files} files"
+            mkdir -p "$(dirname "$_sg_amb")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"scratch_commit_override_used","gap_id":"%s","additions":%s,"deletions":%s,"files":%s,"threshold_abs":%s,"threshold_ratio":%s,"branch":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_sg_gap" "$_sg_adds" "$_sg_dels" "$_sg_files" "$_sg_threshold_abs" "$_sg_threshold_ratio" "$BRANCH" \
+                >> "$_sg_amb" 2>/dev/null || true
+        else
+            red "Aborting: this commit deletes ${_sg_dels} lines across ${_sg_files} files (refusing — set --allow-mass-delete to override)."
+            red "Adds: ${_sg_adds}. Threshold: > ${_sg_threshold_abs} deletions OR deletions > ${_sg_threshold_ratio}× additions."
+            red "See ambient.jsonl for the kind=scratch_commit_blocked event."
+            mkdir -p "$(dirname "$_sg_amb")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"scratch_commit_blocked","gap_id":"%s","additions":%s,"deletions":%s,"files":%s,"threshold_abs":%s,"threshold_ratio":%s,"branch":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_sg_gap" "$_sg_adds" "$_sg_dels" "$_sg_files" "$_sg_threshold_abs" "$_sg_threshold_ratio" "$BRANCH" \
+                >> "$_sg_amb" 2>/dev/null || true
+            exit 15
+        fi
     fi
 fi
 
