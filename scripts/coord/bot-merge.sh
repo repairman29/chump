@@ -1101,8 +1101,12 @@ else
 fi
 
 # INFRA-920: auto-detect shell/doc-only changes and skip cargo test.
+# INFRA-1042: when doc-only, ALSO skip cargo clippy entirely — doc PRs spend
+# 2-3 min of clippy on changes that touch zero Rust code (observed today on
+# DOC-036: 2m36s clippy for a 1-line README diff). CI clippy stays the gate.
 # If all changed files vs origin/main match known-safe non-Rust patterns and
-# zero .rs files are present, set SKIP_TESTS=1 without requiring --skip-tests.
+# zero .rs files are present, set SKIP_TESTS=1 + DOC_ONLY=1.
+DOC_ONLY=0
 if [[ $SKIP_TESTS -eq 0 ]]; then
     _changed_files=$(git diff --name-only "${REMOTE}/${BASE_BRANCH}...HEAD" 2>/dev/null || true)
     if [[ -n "$_changed_files" ]]; then
@@ -1118,7 +1122,16 @@ if [[ $SKIP_TESTS -eq 0 ]]; then
         done <<< "$_changed_files"
         if [[ $_rs_count -eq 0 && $_unsafe_count -eq 0 ]]; then
             SKIP_TESTS=1
-            info "[bot-merge] auto-skip: shell/doc-only change detected — skipping cargo test"
+            DOC_ONLY=1
+            info "[bot-merge] auto-skip: shell/doc-only diff — skipping cargo test + clippy (INFRA-920/INFRA-1042)"
+            # INFRA-1042: emit so fleet-brief / waste-tally can credit the saved cycles
+            # (clippy-skip alone saves ~2-3 min per doc PR).
+            _doc_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+            mkdir -p "$(dirname "$_doc_amb")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"bot_merge_doc_only_fastpath","branch":"%s","files_changed":%d,"saved_steps":["cargo_test","cargo_clippy"]}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${BRANCH:-unknown}" \
+                "$(echo "$_changed_files" | grep -c .)" \
+                >> "$_doc_amb" 2>/dev/null || true
         fi
     fi
 fi
@@ -1191,7 +1204,14 @@ info "cargo parallelism: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (override via env)
 # PR may briefly exist on the open-PR list before CI grades it red. Default
 # OFF (preserves human-developer fail-fast ergonomics); agents pass --fast
 # explicitly.
-if [[ $FAST -eq 1 ]]; then
+#
+# INFRA-1042: doc-only diffs (set DOC_ONLY=1 above) skip clippy entirely.
+# Zero Rust changes means zero new lints; CI clippy is the safety net.
+# Observed savings: ~2-3 min per doc PR (DOC-036 spent 2m36s on clippy for
+# a 1-line README diff before this gate landed).
+if [[ "${DOC_ONLY:-0}" -eq 1 ]]; then
+    info "[bot-merge] DOC_ONLY=1 — skipping cargo clippy entirely (INFRA-1042)"
+elif [[ $FAST -eq 1 ]]; then
     # 2026-05-07: Even in --fast mode, run `cargo clippy --workspace --fix`
     # as a cheap auto-correction pass. This catches the wave of fleet PRs
     # that ship doc-list-overindented / manual_strip / manual_split_once
