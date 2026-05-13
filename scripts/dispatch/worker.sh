@@ -252,8 +252,13 @@ _check_binary_freshness() {
     [[ -f "$binary" ]] || return 0
     [[ -f "$source" ]] || return 0
     local bin_mtime src_mtime
-    bin_mtime=$(stat -f '%m' "$binary" 2>/dev/null || stat -c '%Y' "$binary" 2>/dev/null || echo 0)
-    src_mtime=$(stat -f '%m' "$source" 2>/dev/null || stat -c '%Y' "$source" 2>/dev/null || echo 0)
+    # GNU stat (Linux) -c %Y vs BSD stat (macOS) -f %m. On Linux, `stat -f` means
+    # filesystem info and returns the mount point, not the mtime. Try GNU first;
+    # fall back to BSD; require numeric result.
+    bin_mtime=$(stat -c '%Y' "$binary" 2>/dev/null || stat -f '%m' "$binary" 2>/dev/null || echo 0)
+    src_mtime=$(stat -c '%Y' "$source" 2>/dev/null || stat -f '%m' "$source" 2>/dev/null || echo 0)
+    [[ "$bin_mtime" =~ ^[0-9]+$ ]] || return 0
+    [[ "$src_mtime" =~ ^[0-9]+$ ]] || return 0
     local age=$(( src_mtime - bin_mtime ))
     if [[ "$age" -gt "$max_age_secs" ]]; then
         local ambient="$REPO_ROOT/.chump-locks/ambient.jsonl"
