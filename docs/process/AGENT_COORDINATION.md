@@ -876,22 +876,36 @@ by flipping the check off — the drought is the signal, not the noise.
 
 ---
 
-## Identity attribution (INFRA-017)
+## Identity attribution (INFRA-017, CREDIBLE-045)
 
 Every commit on `main` is authored by one of a small set of canonical identities.
 Red Letter passes use this table to triage commits — anything outside the
 table is flagged as a potential foreign actor for human review.
 
-| Identity | Author | Email | When used | How set |
-|---|---|---|---|---|
-| Human operator | (user's `git config user.name`) | (user's configured email) | Direct shell commits from a workstation | `~/.gitconfig` |
-| Dispatched subagent | `Chump Dispatched` | `chump-dispatch@chump.bot` | Any commit from a `chump-orchestrator`-spawned subagent (both `claude` and `chump-local` backends) | `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env in `crates/chump-orchestrator/src/dispatch.rs` |
-| Ship-pipeline amend | `Chump Dispatched` | `chump-dispatch@chump.bot` | `scripts/coord/bot-merge.sh`'s `git commit --amend` (fmt auto-fix) under `CHUMP_DISPATCH_DEPTH=1` | `GIT_AUTHOR_*` in `scripts/coord/bot-merge.sh` |
-| opencode-bigpickle | `opencode-bigpickle` | `bigpickle@chump.bot` | Interactive opencode sessions operating as the bigpickle harness (Jeff's opencode variant) | `git config user.email/user.name` injected by `gap-claim.sh` when `CHUMP_AGENT_HARNESS=opencode-bigpickle` (CREDIBLE-040) |
+The attribution system is **harness-generic**: `model-ship-rate.sh` and
+`waste-tally` group `ship_grade` events by the `harness` field (any
+string), not by Anthropic-specific model names. See
+`scripts/ci/test-attribution-portable.sh` (CREDIBLE-045) for a 7-test
+fixture covering claude, opencode, aider, repairman, manual, and ollama.
 
-**Adding a new identity.** Reserve a distinct name + email, set it in the
-spawn path, and add a row to this table. Do not reuse an existing identity
-for a distinct code path — the whole point is disambiguation.
+### Canonical harness → git identity table
+
+| Harness (`CHUMP_AGENT_HARNESS`) | Author name | Email | When used | How set |
+|---|---|---|---|---|
+| `manual` (default) | (user's `git config user.name`) | (user's configured email) | Direct shell commits from a workstation, or coord scripts without a harness env var | `~/.gitconfig`; default applied by `gap-claim.sh` when `CHUMP_AGENT_HARNESS` unset (INFRA-956) |
+| `claude` | `Chump Dispatched` | `chump-dispatch@chump.bot` | Any commit from a `chump-orchestrator`-spawned Claude subagent | `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env in `crates/chump-orchestrator/src/dispatch.rs` |
+| `claude` (ship amend) | `Chump Dispatched` | `chump-dispatch@chump.bot` | `scripts/coord/bot-merge.sh`'s `git commit --amend` (fmt auto-fix) under `CHUMP_DISPATCH_DEPTH=1` | `GIT_AUTHOR_*` in `scripts/coord/bot-merge.sh` |
+| `opencode-bigpickle` | `opencode-bigpickle` | `bigpickle@chump.bot` | Interactive opencode sessions (Jeff's opencode variant) | `git config user.email/user.name` injected by `gap-claim.sh` when `CHUMP_AGENT_HARNESS=opencode-bigpickle` (CREDIBLE-040) |
+| `aider` | `aider-bot` | `aider@chump.bot` | aider-chat CLI sessions | Set `CHUMP_AGENT_HARNESS=aider`; git identity via `git config` before commit |
+| `repairman` | `repairman-bot` | `repairman@chump.bot` | Automated repairman fixer | Set `CHUMP_AGENT_HARNESS=repairman`; git identity via `GIT_AUTHOR_*` |
+| `ollama` | `ollama-local` | `ollama@chump.bot` | Local LLM via Ollama (offline dev) | Set `CHUMP_AGENT_HARNESS=ollama`; identity set in worker spawn path |
+
+**Adding a new harness.** Reserve a distinct `CHUMP_AGENT_HARNESS` value,
+email, and author name. Add a row here. Set the identity in the harness's
+spawn path (gap-claim.sh block or `GIT_AUTHOR_*` env). Do not reuse an
+existing identity for a distinct code path — the whole point is
+disambiguation. The aggregators (`model-ship-rate.sh`, `waste-tally`)
+will pick up any new harness automatically — no code changes needed.
 
 **Why this matters.** Before INFRA-017, dispatched subagents inherited the
 host developer's `user.email` — commits from a bot looked indistinguishable

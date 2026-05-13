@@ -426,6 +426,9 @@ jobs:
       - name: model-registry schema validation (INFRA-739)
         run: bash scripts/ci/test-model-registry.sh
 
+      - name: model-ship-rate generic attribution (CREDIBLE-045)
+        run: bash scripts/ci/test-attribution-portable.sh
+
       - name: doc-only commits run all guards (INFRA-257)
         run: bash scripts/ci/test-infra-257-doc-only-guards.sh
 
