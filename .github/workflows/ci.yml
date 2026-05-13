@@ -23,6 +23,7 @@ jobs:
   # full suite always runs there.
   changes:
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # path filter only; <30s in practice
     outputs:
       code: ${{ steps.filter.outputs.code }}
       e2e: ${{ steps.filter.outputs.e2e }}
@@ -190,6 +191,7 @@ jobs:
     needs: [fast-checks, clippy, cargo-test, pr-hygiene]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # rollup only — quick aggregator check
     steps:
       - name: Verify all parallel CI shards passed
         run: |
@@ -246,6 +248,7 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # CREDIBLE-026 + CREDIBLE-027 gate scripts
     steps:
       - uses: actions/checkout@v6
         with:
@@ -272,6 +275,7 @@ jobs:
   fast-checks:
     needs: changes
     if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    timeout-minutes: 15  # fmt + JS self-tests + ~30s bash guards; target wall-clock < 5 min, cap at 15m
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -540,6 +544,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     steps:
       - uses: actions/checkout@v6
 
@@ -585,6 +590,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
     steps:
       - uses: actions/checkout@v6
 
@@ -630,6 +636,7 @@ jobs:
     if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     continue-on-error: true
+    timeout-minutes: 45  # llvm-cov is slower than cargo-test alone; not required for merge
     steps:
       - uses: actions/checkout@v6
 
@@ -912,6 +919,7 @@ jobs:
   # 'audit' from branch-protection-main.json's required_status_checks.
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
     steps:
       - uses: actions/checkout@v6
 
