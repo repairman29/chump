@@ -332,6 +332,10 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
+      - name: doc-freshness audit (DOC-041, warn-only)
+        # WARN-ONLY by default — surfaces stale last_audited stamps without
+        # blocking. Promote to --strict once the long-tail cleanup is done.
+        run: bash scripts/ci/test-doc-freshness.sh
       - name: markdown intra-doc links (DOC-039)
         # Gates on links in .md files MODIFIED by this PR — prevents
         # regression without forcing a one-shot cleanup of the 492
