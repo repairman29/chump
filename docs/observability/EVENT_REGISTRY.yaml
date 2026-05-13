@@ -1158,6 +1158,15 @@ events:
     consumers: [api-cost-report]
     fields_required: [ts, kind, script, api, remaining_core, remaining_graphql, used_ms, rc]
 
+  # ── INFRA-995: pre-push staleness gate ────────────────────────────────────
+  - kind: stale_branch_blocked
+    emitter: scripts/coord/bot-merge.sh (INFRA-995)
+    trigger: branch is >CHUMP_BOT_MERGE_STALE_THRESHOLD (default 15) commits behind
+      main right before push — main moved during build/test. bot-merge.sh refuses
+      to push and exits 3 to keep CI from running on a stale base.
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, branch, behind, threshold, phase]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
