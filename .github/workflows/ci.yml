@@ -8,9 +8,13 @@ on:
   merge_group:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  # PRs and merge queue: drop redundant runs. main pushes: let each finish (artifacts, bisect).
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+  # Push to main gets a unique group per run (github.run_id) so concurrency never cancels it —
+  # we need every main push to complete for the green-main signal (ship_quality grades, bisect, regression diagnosis).
+  # PR / merge_group share a group per branch so cancel-in-progress dedupes redundant fixup pushes.
+  # Prior form used `cancel-in-progress: ${{ <expr> }}` which evaluates to the string "false" for push events,
+  # and Actions treats any non-empty string as truthy — so main runs were silently cancelled. (INFRA-1001)
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
