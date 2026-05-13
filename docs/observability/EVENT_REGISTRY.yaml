@@ -633,6 +633,27 @@ events:
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, wait_s]
 
+  - kind: scratch_commit_blocked
+    emitter: scripts/coord/bot-merge.sh (INFRA-993)
+    trigger: pre-push diff vs origin/main has > CHUMP_SCRATCH_GUARD_MAX_DELETIONS (default 50000) deletions OR deletions > CHUMP_SCRATCH_GUARD_RATIO (default 100) × additions
+    consumers: [audit-log, watchdog, oncall]
+    fields_required: [ts, kind, gap_id, additions, deletions, files, threshold_abs, threshold_ratio, branch]
+    docs: |
+      The repo-wipe protection guard. Fires when a PR would delete an
+      unreasonable fraction of the repo. Near-miss observed 2026-05-11
+      (PRs #1441, #1452 each proposing -378K lines). bot-merge.sh exits
+      with code 15 on this event.
+
+  - kind: scratch_commit_override_used
+    emitter: scripts/coord/bot-merge.sh (INFRA-993)
+    trigger: --allow-mass-delete flag set on a push that would otherwise trip the scratch-commit guard
+    consumers: [audit-log, watchdog, oncall]
+    fields_required: [ts, kind, gap_id, additions, deletions, files, threshold_abs, threshold_ratio, branch]
+    docs: |
+      Louder than scratch_commit_blocked because it records that an
+      operator deliberately overrode the safety guard. Audit-log
+      consumers should keep these as long as bot_merge_blocked events.
+
   # INFRA-950: register kinds that the system already emits but were never
   # captured here. waste-tally classifies these as of this gap.
   - kind: pr_stuck_cluster
