@@ -1996,3 +1996,9 @@ events:
     trigger: operator persists a non-secret config value via PWA POST /api/settings/{key}
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, key, value, source_before]
+  # ── INFRA-1030: bot-merge arm-ship ordering fix ────────────────────────────
+  - kind: gap_ship_post_arm_failed
+    emitter: scripts/coord/bot-merge.sh (INFRA-1030)
+    trigger: chump gap ship fails AFTER gh pr merge --auto already succeeded; auto-merge is armed, so bot-merge continues rather than aborting — this event signals the operator to manually run chump gap ship
+    consumers: [fleet-brief, curator, opus-curator]
+    fields_required: [ts, kind, gap_id, pr, rc]

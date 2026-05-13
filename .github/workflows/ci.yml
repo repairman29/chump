@@ -1517,6 +1517,8 @@ jobs:
         run: bash scripts/ci/test-known-flake-skip.sh
       - name: pr-scope PR_TITLE fallback chain (INFRA-976)
         run: bash scripts/ci/test-pr-scope-title-fallback.sh
+      - name: bot-merge arm-before-ship ordering fix (INFRA-1030)
+        run: bash scripts/ci/test-bot-merge-arm-ship-order.sh
 
       - name: pillar-balance guard at reserve time (INFRA-1152)
         run: |
