@@ -1759,6 +1759,13 @@ events:
     trigger: bot-merge.sh process over age limit but gap still open — operator review
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, pid, gap, age_s, gap_status, pr_status]
+  # ── INFRA-1033: worktree gitdir auto-repair (INFRA-779 family) ────────────
+  - kind: worktree_gitdir_repaired
+    emitter: src/atomic_claim.rs (INFRA-1033)
+    trigger: chump claim detected that .git/worktrees/<wt>/gitdir pointed at the wrong path (INFRA-779 concurrent-sibling clobber) and rewrote it to the correct canonical path
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, wt_name, was, now]
+
   # ── CREDIBLE-047: autonomous ship-rate regression ──────────────────────────
   - kind: autonomous_ship_rate_regression
     emitter: scripts/dispatch/autonomous-ship-rate.sh (CREDIBLE-047)

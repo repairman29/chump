@@ -314,6 +314,7 @@ fn verify_and_repair_gitdir(repo_root: &Path, _branch: &str, worktree_path: &Pat
         std::fs::write(&gitdir_file, format!("{expected}\n"))
             .with_context(|| format!("repairing gitdir file {}", gitdir_file.display()))?;
         emit_gitdir_repair_event(repo_root, wt_name, &recorded, &expected, attempt);
+        emit_gitdir_repaired_event(repo_root, wt_name, &recorded, &expected);
 
         if attempt < MAX_ATTEMPTS {
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -347,6 +348,82 @@ fn emit_gitdir_repair_event(repo_root: &Path, wt_name: &str, was: &str, now: &st
         use std::io::Write;
         let _ = writeln!(f, "{}", event);
     }
+}
+
+/// Emit kind=worktree_gitdir_repaired to ambient.jsonl (INFRA-1033).
+fn emit_gitdir_repaired_event(repo_root: &Path, wt_name: &str, was: &str, now: &str) {
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+
+    let ts = {
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        // Format as ISO-8601 UTC
+        let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+        format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
+    };
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"worktree_gitdir_repaired\",\"wt_name\":\"{wt_name}\",\"was\":\"{was}\",\"now\":\"{now}\"}}\n"
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// Decompose Unix epoch seconds into (year, month, day, hour, min, sec) UTC.
+/// Minimal implementation — no external date crate dependency.
+fn secs_to_ymdhms(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
+    let s = secs % 60;
+    let mi = (secs / 60) % 60;
+    let h = (secs / 3600) % 24;
+    let days = secs / 86400;
+    // Gregorian calendar from day count since 1970-01-01.
+    let mut y = 1970u32;
+    let mut rem = days;
+    loop {
+        let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+        let days_in_year = if leap { 366u64 } else { 365u64 };
+        if rem < days_in_year {
+            break;
+        }
+        rem -= days_in_year;
+        y += 1;
+    }
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let month_days = [
+        31u64,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let mut mo = 1u32;
+    for &md in &month_days {
+        if rem < md {
+            break;
+        }
+        rem -= md;
+        mo += 1;
+    }
+    (y, mo, rem as u32 + 1, h as u32, mi as u32, s as u32)
 }
 
 fn run_git(cwd: &Path, args: &[&str]) -> Result<String> {

@@ -1502,3 +1502,5 @@ jobs:
           fi
       - name: gap-preflight pre-claim duplicate sweep — worktree + open-PR scan (INFRA-1029)
         run: bash scripts/ci/test-gap-preflight-dupe-sweep.sh
+      - name: INFRA-779 gitdir auto-repair — corrupt + verify repair + ambient event (INFRA-1033)
+        run: bash scripts/ci/test-infra-779-gitdir-repair.sh
