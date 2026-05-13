@@ -24,6 +24,9 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 STALE_HOURS="${PR_RESCUE_STALE_HOURS:-4}"
+# INFRA-1016: REST-only mode — skip auto-merge arm (unavailable via REST) and
+# do an immediate merge instead. Use when GraphQL bucket is exhausted.
+REST_ONLY="${CHUMP_PR_RESCUE_REST_ONLY:-0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
@@ -40,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr) TARGET_PR="$2"; shift 2 ;;
         --repo) REPO="$2"; shift 2 ;;
+        --rest-only) REST_ONLY=1; shift ;;
         *) echo "[pr-rescue] ERROR: unknown arg: $1" >&2; exit 1 ;;
     esac
 done
@@ -74,7 +78,7 @@ if [[ -z "${REPO}" ]]; then
     exit 1
 fi
 
-log "PR rescue scan for ${REPO} (stale threshold: ${STALE_HOURS}h)."
+log "PR rescue scan for ${REPO} (stale threshold: ${STALE_HOURS}h${REST_ONLY:+, REST-only mode})."
 
 # ── Collect candidate PRs ─────────────────────────────────────────────────────
 # We want PRs that:
@@ -214,10 +218,19 @@ for PR_NUM in ${PR_NUMBERS}; do
     rm -rf "${TEMP_DIR}"
 
     if [[ ${RESCUE_OK} -eq 1 ]]; then
-        # Re-arm auto-merge
-        gh pr merge "${PR_NUM}" --repo "${REPO}" --auto --squash 2>/dev/null || true
-        log "PR #${PR_NUM}: rebased + re-armed. RESCUED."
-        emit_ambient "pr_rescue_completed" "${PR_NUM}" "branch=${PR_BRANCH}"
+        if [[ "${REST_ONLY}" == "1" ]]; then
+            # INFRA-1016: REST path — immediate merge (no auto-merge available via REST).
+            # Accepted limitation: only use this when GraphQL is exhausted and PR is
+            # already green (status checks passing). Not suitable for arming auto-merge.
+            chump_gh api -X PUT "repos/${REPO}/pulls/${PR_NUM}/merge" \
+                -f merge_method=squash 2>/dev/null || true
+            log "PR #${PR_NUM}: rebased + merged (REST-only, no auto-merge). RESCUED."
+        else
+            # Re-arm auto-merge (requires GraphQL)
+            chump_gh pr merge "${PR_NUM}" --repo "${REPO}" --auto --squash 2>/dev/null || true
+            log "PR #${PR_NUM}: rebased + re-armed. RESCUED."
+        fi
+        emit_ambient "pr_rescue_completed" "${PR_NUM}" "branch=${PR_BRANCH} rest_only=${REST_ONLY}"
         RESCUED=$((RESCUED + 1))
     else
         log "PR #${PR_NUM}: rebase failed (conflicts?). FAILED."
