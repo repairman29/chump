@@ -317,6 +317,13 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
+      - name: markdown intra-doc links (DOC-039)
+        # Gates on links in .md files MODIFIED by this PR — prevents
+        # regression without forcing a one-shot cleanup of the 492
+        # pre-existing broken links across docs/syntheses/ etc.
+        # Full-repo audit available via scripts/audit/run-all.sh.
+        run: bash scripts/ci/test-markdown-intra-doc-links.sh
+
       - name: RESEARCH-026 observer-effect harness preflight (no API)
         run: bash scripts/ci/test-research-026-preflight.sh
 
