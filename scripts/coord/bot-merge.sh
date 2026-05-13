@@ -72,6 +72,10 @@
 
 set -euo pipefail
 
+
+# INFRA-956: default harness to a schema-valid value (kills missing_attribution noise).
+export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
+
 # ── INFRA-119: health-file globals + cleanup traps ───────────────────────────
 _BM_PID=$$
 _BM_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"

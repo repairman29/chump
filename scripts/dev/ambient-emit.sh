@@ -27,6 +27,7 @@ _HARNESS="${CHUMP_AGENT_HARNESS:-unknown}"
 _HARNESS_ALERTED=false
 _HARNESS_ALERT_FILE=""
 
+
 for arg in "$@"; do
     if [[ "$arg" == "--harness" ]]; then
         _HARNESS_SPECIFIED=true

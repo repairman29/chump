@@ -25,6 +25,10 @@
 
 set -euo pipefail
 
+
+# INFRA-956: default harness to a schema-valid value (kills missing_attribution noise).
+export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
+
 # INFRA-379: heal a wedged chump binary before any CLI call (see
 # scripts/lib/chump-preflight.sh). Silent no-op on healthy binaries.
 # shellcheck source=../lib/chump-preflight.sh
