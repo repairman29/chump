@@ -1188,6 +1188,15 @@ events:
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, behind, threshold, phase]
 
+  # ── INFRA-1042: doc-only fast-path attribution ─────────────────────────────
+  - kind: bot_merge_doc_only_fastpath
+    emitter: scripts/coord/bot-merge.sh (INFRA-1042, builds on INFRA-920)
+    trigger: bot-merge auto-detects shell/doc-only diff (no .rs files) and skips
+      cargo test + cargo clippy entirely. Each emission represents ~2-3 min saved
+      vs the full pipeline (DOC-036 baseline 2m36s clippy for 1-line README).
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, branch, files_changed, saved_steps]
+
   # ── META-059: gap-closure drift detector ──────────────────────────────────
   - kind: gap_closure_drift
     emitter: scripts/coord/gap-doctor-reconcile.py --check-closure-drift (META-059)
