@@ -155,9 +155,17 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
                 # RESILIENT-012: auto-bypass if ALL failing tests are in KNOWN_FLAKES.yaml.
                 # Prevents manual Test-Gate-Bypass trailers for pre-existing main failures.
                 _CATALOG="$REPO_ROOT_T/docs/process/KNOWN_FLAKES.yaml"
+                # `|| true` defuses `set -e + pipefail`: when grep finds
+                # zero "test FOO ... FAILED" lines (compile error, panic,
+                # mock-cargo failure, etc.), the pipeline exits 1 and
+                # aborts the hook BEFORE the BLOCKED diagnostic can fire.
+                # Pre-fix: hook silently exited 1 with no diagnostic,
+                # causing scripts/ci/test-pre-push-test-gate.sh Test 4
+                # to fail "test failure should block (rc=1, out=...)"
+                # because the expected BLOCKED line never reached stdout.
                 _FAILED=$(grep -E '^test [A-Za-z_][A-Za-z0-9_:]+ \.\.\. FAILED' "$_TEST_LOG" \
                     | sed -E 's/^test ([A-Za-z_][A-Za-z0-9_:]+) .*/\1/' \
-                    | sort -u)
+                    | sort -u || true)
                 _ALL_KNOWN=1
                 _UNKNOWN_TESTS=()
                 if [[ -n "$_FAILED" && -f "$_CATALOG" ]]; then
