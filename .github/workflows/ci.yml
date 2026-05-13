@@ -1499,3 +1499,5 @@ jobs:
             echo "::error::audit-required FAIL (real=$real, stub=$stub)"
             exit 1
           fi
+      - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
+        run: bash scripts/ci/test-gap-ac-requirement.sh
