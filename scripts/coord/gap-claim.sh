@@ -520,3 +520,21 @@ fi
 if [[ -x "$REPO_ROOT/scripts/setup/install-hooks.sh" ]]; then
     "$REPO_ROOT/scripts/setup/install-hooks.sh" --quiet 2>/dev/null || true
 fi
+
+# ── CREDIBLE-040: per-harness git author identity ────────────────────────────
+# Each harness commits under a distinct identity so per-harness attribution
+# in `git log` matches ambient event tags (CREDIBLE-037) and model tags
+# (CREDIBLE-025). Canonical identity table:
+#   harness=opencode-bigpickle → bigpickle@chump.bot / opencode-bigpickle
+#   harness=fleet-dispatcher   → chump-dispatch@chump.bot / Chump Dispatched
+#   harness=claude-code-ide    → operator identity (jeffadkins1@gmail.com)
+#   harness=manual             → operator identity (unchanged)
+#
+# We only set git config when the harness is opencode-bigpickle (the others
+# already have correct identities via GIT_AUTHOR_* in bot-merge.sh or via
+# the operator's ~/.gitconfig).
+if [[ "${CHUMP_AGENT_HARNESS:-}" == "opencode-bigpickle" ]]; then
+    git config user.email "bigpickle@chump.bot" 2>/dev/null || true
+    git config user.name  "opencode-bigpickle"  2>/dev/null || true
+    printf '[gap-claim] CREDIBLE-040: git identity set to bigpickle@chump.bot for harness=opencode-bigpickle\n' >&2
+fi
