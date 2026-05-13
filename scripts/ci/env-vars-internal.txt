@@ -305,3 +305,5 @@ CHUMP_CASCADE_EXHAUSTED_BACKOFF_S
 CHUMP_WT_MAX_AGE_H
 # ── INFRA-877: cost quota tunable ──────────────────────────────────────────
 CHUMP_DAILY_BUDGET_USD
+# ── CREDIBLE-024: ──────────
+CHUMP_PWA_LOG
