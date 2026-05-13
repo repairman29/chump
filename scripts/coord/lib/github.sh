@@ -91,19 +91,67 @@ chump_gh_api_tag() {
     printf '%s %s' "$first" "$second"
 }
 
-# Read remaining core+graphql via `gh api rate_limit`. Returns "core graphql".
-# On failure returns "-1 -1" rather than blocking the wrapped call.
-# CHUMP_GH_NO_SHIM=1 bypasses the PATH shim — this is the recursive trap
-# fix: the shim itself calls chump_gh_record which calls this function,
-# and without the bypass we'd hit the shim again → infinite loop.
+# Read remaining core+graphql + graphql resets_at via `gh api rate_limit`.
+# Returns "core graphql resets_at_epoch" — third field added in INFRA-1040
+# so we can debounce graphql_exhausted emissions across calls in the same
+# reset window. On failure returns "-1 -1 0".
+# CHUMP_GH_NO_SHIM=1 bypasses the PATH shim — recursive-trap fix: the shim
+# itself calls chump_gh_record which calls this function, and without the
+# bypass we'd hit the shim again → infinite loop.
 _chump_gh_rate_remaining() {
     local out
-    out="$(CHUMP_GH_NO_SHIM=1 gh api rate_limit --jq '"\(.resources.core.remaining) \(.resources.graphql.remaining)"' 2>/dev/null || true)"
+    out="$(CHUMP_GH_NO_SHIM=1 gh api rate_limit --jq '"\(.resources.core.remaining) \(.resources.graphql.remaining) \(.resources.graphql.reset)"' 2>/dev/null || true)"
     if [[ -z "$out" ]]; then
-        printf '%s' "-1 -1"
+        printf '%s' "-1 -1 0"
         return
     fi
     printf '%s' "$out"
+}
+
+# INFRA-1040: emit kind=graphql_exhausted to ambient.jsonl when remaining_graphql
+# crosses the low-water threshold. Debounced to once per reset window so the
+# event fires on the first hit, not on every subsequent call. The flag file
+# stores the next-reset epoch; subsequent calls within the window skip emission.
+_chump_gh_maybe_emit_exhausted() {
+    local gql_rem="${1:-0}" resets_at="${2:-0}" ambient="${3:-}"
+    local threshold="${CHUMP_GH_EXHAUSTED_THRESHOLD:-100}"
+
+    # Only fire when we have a real number under threshold.
+    [[ "$gql_rem" =~ ^-?[0-9]+$ ]] || return 0
+    [[ "$gql_rem" -le "$threshold" ]] || return 0
+
+    local lock_dir
+    lock_dir="$(dirname "$ambient")"
+    local flag="$lock_dir/.graphql-exhausted-since"
+    local now
+    now="$(date +%s)"
+
+    # Debounce: if flag exists with a resets_at in the future, we're still
+    # in the same window — skip. If resets_at is past or flag missing, emit.
+    if [[ -f "$flag" ]]; then
+        local prior_reset
+        prior_reset="$(cat "$flag" 2>/dev/null | tr -d '\n')"
+        if [[ "$prior_reset" =~ ^[0-9]+$ ]] && [[ "$prior_reset" -gt "$now" ]]; then
+            return 0
+        fi
+    fi
+
+    local ts resets_iso
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [[ "$resets_at" -gt 0 ]]; then
+        resets_iso="$(date -u -r "$resets_at" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+            || python3 -c "import datetime,sys; print(datetime.datetime.utcfromtimestamp(int(sys.argv[1])).strftime('%Y-%m-%dT%H:%M:%SZ'))" "$resets_at")"
+    else
+        resets_iso="unknown"
+    fi
+
+    local source_tag="${CHUMP_GH_SCRIPT:-chump_gh}"
+    printf '{"ts":"%s","kind":"graphql_exhausted","threshold_seen":%s,"resets_at":"%s","source":"%s"}\n' \
+        "$ts" "$gql_rem" "$resets_iso" "$source_tag" \
+        >> "$ambient" 2>/dev/null || true
+
+    # Write the next-reset epoch so subsequent calls in this window skip.
+    printf '%s' "$resets_at" >"$flag" 2>/dev/null || true
 }
 
 # chump_gh_record API_TAG USED_MS RC [SCRIPT_OVERRIDE]
@@ -116,16 +164,20 @@ chump_gh_record() {
     local api_tag="${1:-?}" used_ms="${2:-0}" rc="${3:-0}" script_tag
     script_tag="${4:-${CHUMP_GH_SCRIPT:-$(basename "${BASH_SOURCE[1]:-$0}")}}"
 
-    local ts core_rem gql_rem rem ambient
+    local ts core_rem gql_rem resets_at rem ambient
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     rem="$(_chump_gh_rate_remaining)"
-    core_rem="${rem% *}"
-    gql_rem="${rem#* }"
+    # rem is "core graphql resets_at" (INFRA-1040 added third field).
+    read -r core_rem gql_rem resets_at <<<"$rem"
+    : "${resets_at:=0}"
     ambient="$(_chump_gh_ambient_path)"
     mkdir -p "$(dirname "$ambient")" 2>/dev/null || true
     printf '{"ts":"%s","kind":"github_api_call","script":"%s","api":"%s","remaining_core":%s,"remaining_graphql":%s,"used_ms":%d,"rc":%d}\n' \
         "$ts" "$script_tag" "$api_tag" "$core_rem" "$gql_rem" "$used_ms" "$rc" \
         >> "$ambient" 2>/dev/null || true
+
+    # INFRA-1040: fleet-wide signal when GraphQL bucket is exhausted.
+    _chump_gh_maybe_emit_exhausted "$gql_rem" "$resets_at" "$ambient"
 }
 
 _chump_gh_now_ms() {

@@ -1196,6 +1196,16 @@ events:
       catch on its own. Surfaces silent auto-close failures.
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
+  # ── INFRA-1040: graphql exhaustion fleet-wide signal ──────────────────────
+  - kind: graphql_exhausted
+    emitter: scripts/coord/lib/github.sh (INFRA-1040, piggyback on every chump_gh call)
+    trigger: GitHub GraphQL bucket remaining_graphql <= CHUMP_GH_EXHAUSTED_THRESHOLD
+      (default 100). Debounced to once per reset window via
+      .chump-locks/.graphql-exhausted-since. Lets every fleet agent pivot to
+      REST-only paths (INFRA-1016 / `--rest-only`) without each having to
+      discover exhaustion by hitting its own failed gh call first.
+    consumers: [chump-ambient-glance, fleet-brief, operator-recall]
+    fields_required: [ts, kind, threshold_seen, resets_at, source]
 
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
