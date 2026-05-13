@@ -212,9 +212,8 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     // (lesson-grade subcommand, META-040 audit, EVAL-099 quality eval)
     // knows which directives were surfaced for this gap+session+mode.
     // Best-effort — never blocks the briefing render.
-    let session_id = std::env::var("CHUMP_SESSION_ID")
-        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-        .unwrap_or_else(|_| "unknown".to_string());
+    let session_id =
+        crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
     let directives: Vec<String> = relevant_reflections
         .iter()
         .map(|r| r.directive.clone())

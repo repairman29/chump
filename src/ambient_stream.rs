@@ -75,16 +75,28 @@ pub fn locate_ambient(start: &Path) -> Option<PathBuf> {
 ///   3. `<worktree>/.chump-locks/.wt-session-id`
 ///   4. `<main-repo>/.chump-locks/.wt-session-id`
 ///   5. `$HOME/.chump/session_id`
-pub fn current_session_id(repo_root: &Path) -> Option<String> {
-    if let Ok(s) = std::env::var("CHUMP_SESSION_ID") {
-        if !s.is_empty() {
-            return Some(s);
+/// Resolve session ID from env vars only (no file I/O, no repo root needed).
+/// Priority: CHUMP_SESSION_ID > CLAUDE_SESSION_ID > OPENCODE_SESSION_ID.
+/// Returns None if no non-empty env var is set.
+pub fn env_session_id() -> Option<String> {
+    for var in &[
+        "CHUMP_SESSION_ID",
+        "CLAUDE_SESSION_ID",
+        "OPENCODE_SESSION_ID",
+    ] {
+        if let Ok(s) = std::env::var(var) {
+            if !s.is_empty() {
+                return Some(s);
+            }
         }
     }
-    if let Ok(s) = std::env::var("CLAUDE_SESSION_ID") {
-        if !s.is_empty() {
-            return Some(s);
-        }
+    None
+}
+
+pub fn current_session_id(repo_root: &Path) -> Option<String> {
+    // INFRA-1047: CHUMP_SESSION_ID > CLAUDE_SESSION_ID > OPENCODE_SESSION_ID > files
+    if let Some(s) = env_session_id() {
+        return Some(s);
     }
     let local = repo_root.join(".chump-locks").join(".wt-session-id");
     if let Ok(s) = fs::read_to_string(&local) {
@@ -399,5 +411,37 @@ mod tests {
         assert!(s.contains("Ambient sibling activity"));
         assert!(s.contains("INTENT for FOO-1"));
         assert!(s.contains("sibling"));
+    }
+
+    // INFRA-1047: verify env_session_id priority chain
+    #[test]
+    fn test_env_session_id_priority() {
+        // Clean slate
+        std::env::remove_var("CHUMP_SESSION_ID");
+        std::env::remove_var("CLAUDE_SESSION_ID");
+        std::env::remove_var("OPENCODE_SESSION_ID");
+
+        assert_eq!(env_session_id(), None);
+
+        // OPENCODE lowest priority
+        std::env::set_var("OPENCODE_SESSION_ID", "opencode-val");
+        assert_eq!(env_session_id(), Some("opencode-val".into()));
+
+        // CLAUDE overrides OPENCODE
+        std::env::set_var("CLAUDE_SESSION_ID", "claude-val");
+        assert_eq!(env_session_id(), Some("claude-val".into()));
+
+        // CHUMP overrides CLAUDE
+        std::env::set_var("CHUMP_SESSION_ID", "chump-val");
+        assert_eq!(env_session_id(), Some("chump-val".into()));
+
+        // Empty CHUMP falls through to CLAUDE
+        std::env::set_var("CHUMP_SESSION_ID", "");
+        assert_eq!(env_session_id(), Some("claude-val".into()));
+
+        // Cleanup
+        std::env::remove_var("CHUMP_SESSION_ID");
+        std::env::remove_var("CLAUDE_SESSION_ID");
+        std::env::remove_var("OPENCODE_SESSION_ID");
     }
 }

@@ -41,9 +41,7 @@ pub fn emit_normalize_event(tool_name: &str, repair: &str) {
     if let Some(parent) = ambient.parent() {
         let _ = fs::create_dir_all(parent);
     }
-    let session = std::env::var("CHUMP_SESSION_ID")
-        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-        .unwrap_or_else(|_| "unknown".to_string());
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
     let ts = iso_now();
     // tool_name may contain quotes — sanitize minimally
     let safe_tool = tool_name.replace('"', "'");
