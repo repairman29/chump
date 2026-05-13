@@ -1074,6 +1074,9 @@ jobs:
       - name: bot-merge.sh step-specific exit codes (RESILIENT-010)
         run: bash scripts/ci/test-bot-merge-exit-codes.sh
 
+      - name: bot-merge.sh per-phase exit codes + ambient event (RESILIENT-011)
+        run: bash scripts/ci/test-bot-merge-exit-phases.sh
+
       - name: UUID gap-ID compatibility audit — preflight+show+auto-derive (INFRA-630)
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-uuid-gap-id-compat.sh

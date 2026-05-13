@@ -97,14 +97,26 @@ trap '_bm_cleanup; exit 1' TERM INT
 
 # ── RESILIENT-010: step-specific failure helper ───────────────────────────────
 # Usage: _bm_fail <step-name> <exit-code> [message]
-# Emits kind=bot_merge_failure to ambient.jsonl, then exits with the given code.
+# Emits kind=bot_merge_phase_failure to ambient.jsonl (RESILIENT-011), exits with the given code.
+#
+# Exit code table (RESILIENT-011):
+#   0  — success
+#   1  — unexpected error (not a named phase)
+#   2  — arg-parse / usage error
+#   10 — preflight-fail  (gap already done/claimed, or post-rebase preflight)
+#   11 — rebase-fail     (merge conflict or timeout)
+#   12 — fmt-fail        (cargo fmt failed or timed out)
+#   13 — clippy-fail     (clippy lint errors)
+#   14 — test-fail       (cargo test suite failure)
+#   15 — push-fail       (force-with-lease rejected or network error)
+#   16 — pr-create-fail  (gh pr create failed or PR not visible after create)
 _bm_fail() {
     local step="${1:-unknown}" code="${2:-1}" msg="${3:-}"
     local ambient="${CHUMP_AMBIENT_LOG:-${CHUMP_REPO:-.chump-locks}/ambient.jsonl}"
     # Fallback to .chump-locks/ambient.jsonl if CHUMP_AMBIENT_LOG unset.
     [[ -z "${CHUMP_AMBIENT_LOG:-}" ]] && ambient=".chump-locks/ambient.jsonl"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "1970-01-01T00:00:00Z")"
-    printf '{"ts":"%s","kind":"bot_merge_failure","step":"%s","exit_code":%d,"gap_id":"%s","branch":"%s","note":"%s"}\n' \
+    printf '{"ts":"%s","kind":"bot_merge_phase_failure","step":"%s","exit_code":%d,"gap_id":"%s","branch":"%s","note":"%s"}\n' \
         "$ts" "$step" "$code" "${GAP_IDS[*]:-}" "${BRANCH:-}" "$msg" \
         >> "$ambient" 2>/dev/null || true
     exit "$code"
@@ -1088,7 +1100,7 @@ if command -v cargo &>/dev/null && ls src/**/*.rs &>/dev/null 2>&1; then
     stage_start "cargo fmt"
     if ! run_timed_hb "cargo fmt" 120 cargo fmt --all; then
         red "cargo fmt failed or timed out."
-        exit 1
+        _bm_fail "fmt" 12 "cargo fmt failed or timed out"
     fi
     if [[ $DRY_RUN -eq 0 ]] && ! git diff --quiet; then
         # INFRA-370 (2026-05-03): only `git commit --amend` when this branch
@@ -1181,7 +1193,7 @@ elif command -v cargo &>/dev/null; then
     if ! run_timed_hb "cargo clippy" 900 cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
         red "clippy found errors — fix them before merging."
         _grade_clippy_ok="false"
-        _bm_fail "clippy" 12 "clippy lint errors"
+        _bm_fail "clippy" 13 "clippy lint errors"
     fi
     _grade_clippy_ok="true"
     stage_done
@@ -1196,7 +1208,7 @@ if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
         info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
         info "that is most likely OOM, not a real test failure. Try lowering"
         info "CARGO_BUILD_JOBS (currently ${CARGO_BUILD_JOBS}) and retry."
-        _bm_fail "test" 13 "test suite failure"
+        _bm_fail "test" 14 "test suite failure"
     fi
     stage_done
     green "Tests passed."
@@ -1453,7 +1465,7 @@ stage_start "git push $BRANCH → $REMOTE"
 export CHUMP_BOT_MERGE_IN_PROGRESS=1
 if ! run_timed_hb "git push" 120 git push "$REMOTE" "$BRANCH" --force-with-lease; then
     red "git push failed or timed out."
-    _bm_fail "push" 14 "force-with-lease rejected or network error"
+    _bm_fail "push" 15 "force-with-lease rejected or network error"
 fi
 stage_done
 green "Pushed."
@@ -1548,7 +1560,7 @@ EOF
             --title "$PR_TITLE" \
             --body "$_pr_body"; then
             red "gh pr create failed or timed out."
-            _bm_fail "pr-create" 15 "gh pr create failed or timed out"
+            _bm_fail "pr-create" 16 "gh pr create failed or timed out"
         fi
         _new_pr=""
         for _try in 1 2 3 4 5; do
@@ -1558,7 +1570,7 @@ EOF
         done
         if [[ -z "$_new_pr" ]]; then
             red "gh pr create reported success but no PR is visible for branch $BRANCH — refusing to exit 0."
-            _bm_fail "pr-create" 15 "PR not visible after gh pr create"
+            _bm_fail "pr-create" 16 "PR not visible after gh pr create"
         fi
         stage_done
         green "PR #$_new_pr created and verified."
