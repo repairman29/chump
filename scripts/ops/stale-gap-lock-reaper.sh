@@ -95,5 +95,38 @@ for lock_file in "$LOCK_DIR"/.gap-*.lock; do
     REAPED=$((REAPED+1))
 done
 
+
+# ── INFRA-1017: sweep stale state.db leases rows ─────────────────────────────
+# Vacuum rows whose expires_at is in the past (bot-merge killed before cleanup),
+# or whose worktree path no longer exists (orphaned from a crashed session).
+STATE_DB="${CHUMP_STATE_DB:-${REPO_ROOT}/.chump/state.db}"
+DB_REAPED=0
+if [[ -f "$STATE_DB" ]] && command -v sqlite3 &>/dev/null; then
+    NOW_EPOCH="$(date +%s)"
+    while IFS='|' read -r sid gid worktree expires_at; do
+        [[ -z "$sid" ]] && continue
+        reason=""
+        if [[ "$expires_at" -lt "$NOW_EPOCH" ]]; then
+            reason="expired"
+        elif [[ -n "$worktree" && ! -d "$worktree" ]]; then
+            reason="worktree_gone"
+        fi
+        [[ -z "$reason" ]] && continue
+
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo "  WOULD REAP state.db lease ($reason): session=$sid gap=$gid"
+        else
+            sqlite3 "$STATE_DB" \
+                "DELETE FROM leases WHERE session_id='${sid}'" 2>/dev/null || true
+            echo "  REAPED state.db lease ($reason): session=$sid gap=$gid"
+            printf '{"ts":"%s","kind":"stale_gap_lock_reaped","session":"%s","gap":"%s","reason":"%s","source":"state.db"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$sid" "$gid" "$reason" \
+                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+        fi
+        DB_REAPED=$((DB_REAPED+1))
+    done < <(sqlite3 "$STATE_DB" \
+        "SELECT session_id,gap_id,worktree,expires_at FROM leases" 2>/dev/null || true)
+fi
+
 echo
-echo "stale-gap-lock-reaper: reaped=$REAPED skipped=$SKIPPED errors=$ERRORS dry_run=$DRY_RUN"
+echo "stale-gap-lock-reaper: reaped=$REAPED skipped=$SKIPPED errors=$ERRORS dry_run=$DRY_RUN db_reaped=$DB_REAPED"

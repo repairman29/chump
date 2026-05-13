@@ -91,6 +91,13 @@ _bm_cleanup() {
     [[ -n "${_BM_HEALTH_PID:-}" ]]   && kill "$_BM_HEALTH_PID"   2>/dev/null || true
     [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
     rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" 2>/dev/null || true
+    # INFRA-1017: vacuum state.db leases row so gap-preflight doesn't report a
+    # phantom live claim after this process is killed (SIGTERM, OOM, ctrl-C).
+    if [[ -n "${CHUMP_SESSION_ID:-}" ]] && command -v sqlite3 &>/dev/null; then
+        local _db="${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db"
+        [[ -f "$_db" ]] && sqlite3 "$_db" \
+            "DELETE FROM leases WHERE session_id='${CHUMP_SESSION_ID}'" 2>/dev/null || true
+    fi
 }
 trap '_bm_cleanup' EXIT
 trap '_bm_cleanup; exit 1' TERM INT
