@@ -823,6 +823,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
+    timeout-minutes: 60  # INFRA-1018: cap wall-clock; Ollama+cargo+playwright target ~30 min; 6h default caused stuck runs
     steps:
       - uses: actions/checkout@v6
 
