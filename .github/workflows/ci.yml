@@ -986,6 +986,9 @@ jobs:
           CHUMP_OBS_BUDGET_BYPASS: "1"
         run: bash scripts/ci/test-no-manual-ship-bypass.sh
 
+      - name: gap-closure-consistency fail-closed + fixture-aware DB (CREDIBLE-051)
+        run: bash scripts/ci/test-gap-closure-consistency-fixture.sh
+
       - name: worktree show-toplevel fix (INFRA-810)
         env:
           CHUMP_OBS_BUDGET_BYPASS: "1"
