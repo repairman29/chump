@@ -47,9 +47,15 @@
 schema_version: 1
 last_audit: "2026-05-08"
 
-flakes: []
+flakes:
+  - test: doctor::tests::repo_env_missing_is_warn_not_fail
+    reason: "test removes CHUMP_REPO/CHUMP_HOME and asserts check_repo_env returns Warn, but parallel tests in cargo test can set those env vars between this test's remove_var and check_repo_env call → assert fails with left=Pass right=Warn"
+    tracking_gap: INFRA-977
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+    max_reruns: 1
 
-# Currently empty — INFRA-763 just fixed the canonical case
+# INFRA-763 fixed the canonical case
 # (failure_catalog::tests::infra647_catalog_len_matches_entries).
 # Add new entries here ONLY with an open tracking_gap. Examples of what
 # would justify an entry:
