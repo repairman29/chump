@@ -633,6 +633,27 @@ events:
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, wait_s]
 
+  - kind: scratch_commit_blocked
+    emitter: scripts/coord/bot-merge.sh (INFRA-993)
+    trigger: pre-push diff vs origin/main has > CHUMP_SCRATCH_GUARD_MAX_DELETIONS (default 50000) deletions OR deletions > CHUMP_SCRATCH_GUARD_RATIO (default 100) × additions
+    consumers: [audit-log, watchdog, oncall]
+    fields_required: [ts, kind, gap_id, additions, deletions, files, threshold_abs, threshold_ratio, branch]
+    docs: |
+      The repo-wipe protection guard. Fires when a PR would delete an
+      unreasonable fraction of the repo. Near-miss observed 2026-05-11
+      (PRs #1441, #1452 each proposing -378K lines). bot-merge.sh exits
+      with code 15 on this event.
+
+  - kind: scratch_commit_override_used
+    emitter: scripts/coord/bot-merge.sh (INFRA-993)
+    trigger: --allow-mass-delete flag set on a push that would otherwise trip the scratch-commit guard
+    consumers: [audit-log, watchdog, oncall]
+    fields_required: [ts, kind, gap_id, additions, deletions, files, threshold_abs, threshold_ratio, branch]
+    docs: |
+      Louder than scratch_commit_blocked because it records that an
+      operator deliberately overrode the safety guard. Audit-log
+      consumers should keep these as long as bot_merge_blocked events.
+
   # INFRA-950: register kinds that the system already emits but were never
   # captured here. waste-tally classifies these as of this gap.
   - kind: pr_stuck_cluster
@@ -1158,6 +1179,15 @@ events:
     consumers: [api-cost-report]
     fields_required: [ts, kind, script, api, remaining_core, remaining_graphql, used_ms, rc]
 
+  # ── INFRA-995: pre-push staleness gate ────────────────────────────────────
+  - kind: stale_branch_blocked
+    emitter: scripts/coord/bot-merge.sh (INFRA-995)
+    trigger: branch is >CHUMP_BOT_MERGE_STALE_THRESHOLD (default 15) commits behind
+      main right before push — main moved during build/test. bot-merge.sh refuses
+      to push and exits 3 to keep CI from running on a stale base.
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, branch, behind, threshold, phase]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
@@ -1348,6 +1378,21 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, pruned, skipped_active_pr, skipped_uncommitted, skipped_young]
 
+  # ── RESILIENT-013: orphaned /tmp worktree reaper ─────────────────────────
+  - kind: worktree_orphan_pruned
+    emitter: scripts/ops/prune-worktrees.sh (RESILIENT-013, orphan mode)
+    trigger: a /tmp/chump-* worktree had no active lease in .chump-locks/
+      AND no open PR for its branch — safely removed
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, path, branch]
+
+  - kind: worktree_orphan_skipped
+    emitter: scripts/ops/prune-worktrees.sh (RESILIENT-013, orphan mode)
+    trigger: a /tmp/chump-* worktree was skipped because it had an active lease,
+      an open PR, or uncommitted changes
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, path, reason, branch]
+
   # ── CREDIBLE-038: file-count-blast rule ──────────────────────────────────
   - kind: pr_scope_violation
     emitter: scripts/ci/check-mass-deletion.sh (CREDIBLE-038, rule C)
@@ -1370,3 +1415,23 @@ events:
     trigger: a stale depends_on entry pointing at a done gap was stripped
     consumers: [fleet-brief]
     fields_required: [ts, kind, gap_id, stripped_deps]
+
+  # ── CREDIBLE-048: per-gate fire-rate telemetry ───────────────────────────
+  - kind: gate_check_start
+    emitter: scripts/ci/lib/gate-emit.sh (sourced by each CI gate — CREDIBLE-048)
+    trigger: any CI gate begins execution
+    consumers: [gate-fire-rate, fleet-brief]
+    fields_required: [ts, kind, gate, pr_or_branch, args]
+
+  - kind: gate_check_result
+    emitter: scripts/ci/lib/gate-emit.sh (sourced by each CI gate — CREDIBLE-048)
+    trigger: any CI gate completes (pass / fail / bypassed / skipped)
+    consumers: [gate-fire-rate, fleet-brief, curator]
+    fields_required: [ts, kind, gate, outcome, rule_fired, evidence, pr_or_branch]
+
+  # ── RESILIENT-014: test-gate bypass audit ─────────────────────────────────
+  - kind: test_gate_bypassed
+    emitter: scripts/git-hooks/pre-push (RESILIENT-014)
+    trigger: CHUMP_TEST_GATE=0 used to skip the cargo test gate on push
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, gap_id, reason, branch, bypassed_by]

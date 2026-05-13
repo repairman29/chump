@@ -87,6 +87,9 @@ pub struct GapStore {
 
 impl GapStore {
     pub fn db_path(repo_root: &Path) -> PathBuf {
+        if let Ok(p) = std::env::var("CHUMP_STATE_DB") {
+            return std::path::PathBuf::from(p);
+        }
         repo_root.join(".chump").join("state.db")
     }
 

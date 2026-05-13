@@ -11,6 +11,10 @@
 
 set -uo pipefail
 
+# shellcheck source=lib/gate-emit.sh
+source "$(dirname "$0")/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "RESILIENT-009" "$*"
+
 PASS=0; FAIL=0
 
 ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
@@ -41,4 +45,9 @@ fi
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
+if [[ "$FAIL" -eq 0 ]]; then
+    gate_emit_result "RESILIENT-009" "pass" "" ""
+else
+    gate_emit_result "RESILIENT-009" "fail" "worktree-cd-broken" "$FAIL check(s) failed"
+fi
 [[ "$FAIL" -eq 0 ]]

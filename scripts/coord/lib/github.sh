@@ -29,6 +29,44 @@
 [[ -n "${_CHUMP_GH_LIB_LOADED:-}" ]] && return 0
 _CHUMP_GH_LIB_LOADED=1
 
+# INFRA-999: capture the sourcing-script's basename so the shim can tag
+# every `gh ...` call with the right `script` field, even when bash is
+# the immediate parent of the shim subprocess (ppid walks hit the shell
+# wrapper, not the script). Caller can override by setting CHUMP_GH_SCRIPT
+# explicitly before sourcing.
+if [[ -z "${CHUMP_GH_SCRIPT:-}" ]]; then
+    # Last element of BASH_SOURCE is the outermost script. Negative
+    # indexing not universally supported (bash < 4.3); compute the index.
+    _chump_gh_last_idx=$(( ${#BASH_SOURCE[@]} - 1 ))
+    if (( _chump_gh_last_idx >= 0 )); then
+        _chump_gh_caller="${BASH_SOURCE[$_chump_gh_last_idx]:-$0}"
+    else
+        _chump_gh_caller="$0"
+    fi
+    if [[ -n "$_chump_gh_caller" && "$(basename "$_chump_gh_caller")" != "github.sh" ]]; then
+        export CHUMP_GH_SCRIPT="$(basename "$_chump_gh_caller")"
+    fi
+    unset _chump_gh_caller _chump_gh_last_idx
+fi
+
+# INFRA-999 transparent telemetry: prepend the gh shim dir to PATH so every
+# `gh ...` invocation in any script that sources this lib is auto-recorded
+# without per-call wrapping. The shim resolves the real gh by skipping its
+# own directory in PATH (no infinite recursion).
+#
+# Opt-out: export CHUMP_GH_NO_PATH_INJECT=1 before sourcing this file.
+# Per-call opt-out: CHUMP_GH_NO_SHIM=1 gh ...
+if [[ "${CHUMP_GH_NO_PATH_INJECT:-0}" != "1" ]]; then
+    _chump_gh_shim_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/gh-shim" 2>/dev/null && pwd)"
+    if [[ -n "$_chump_gh_shim_dir" && -x "$_chump_gh_shim_dir/gh" ]]; then
+        case ":$PATH:" in
+            *":$_chump_gh_shim_dir:"*) : ;;
+            *) export PATH="$_chump_gh_shim_dir:$PATH" ;;
+        esac
+    fi
+    unset _chump_gh_shim_dir
+fi
+
 _chump_gh_ambient_path() {
     if [[ -n "${CHUMP_AMBIENT_OVERRIDE:-}" ]]; then
         printf '%s' "$CHUMP_AMBIENT_OVERRIDE"
@@ -55,9 +93,12 @@ chump_gh_api_tag() {
 
 # Read remaining core+graphql via `gh api rate_limit`. Returns "core graphql".
 # On failure returns "-1 -1" rather than blocking the wrapped call.
+# CHUMP_GH_NO_SHIM=1 bypasses the PATH shim — this is the recursive trap
+# fix: the shim itself calls chump_gh_record which calls this function,
+# and without the bypass we'd hit the shim again → infinite loop.
 _chump_gh_rate_remaining() {
     local out
-    out="$(gh api rate_limit --jq '"\(.resources.core.remaining) \(.resources.graphql.remaining)"' 2>/dev/null || true)"
+    out="$(CHUMP_GH_NO_SHIM=1 gh api rate_limit --jq '"\(.resources.core.remaining) \(.resources.graphql.remaining)"' 2>/dev/null || true)"
     if [[ -z "$out" ]]; then
         printf '%s' "-1 -1"
         return
@@ -68,6 +109,10 @@ _chump_gh_rate_remaining() {
 # chump_gh_record API_TAG USED_MS RC [SCRIPT_OVERRIDE]
 chump_gh_record() {
     [[ "${CHUMP_GH_SILENT:-0}" == "1" ]] && return 0
+    # INFRA-999: when the PATH shim is doing the recording for this call,
+    # explicit chump_gh_record invocations from outer wrappers (e.g.
+    # bot-merge.sh::gh_with_backoff) must skip to avoid double-counting.
+    [[ "${CHUMP_GH_SHIM_RECORDING:-0}" == "1" ]] && return 0
     local api_tag="${1:-?}" used_ms="${2:-0}" rc="${3:-0}" script_tag
     script_tag="${4:-${CHUMP_GH_SCRIPT:-$(basename "${BASH_SOURCE[1]:-$0}")}}"
 
