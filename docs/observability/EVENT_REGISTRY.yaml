@@ -1302,3 +1302,10 @@ events:
       pruned and skipped counts
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, pruned, skipped_active_pr, skipped_uncommitted, skipped_young]
+
+  # ── INFRA-944: gap dep-clean ──────────────────────────────────────────────
+  - kind: dep_cleaned
+    emitter: src/main.rs (chump gap dep-clean --apply, INFRA-944)
+    trigger: a stale depends_on entry pointing at a done gap was stripped
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, stripped_deps]
