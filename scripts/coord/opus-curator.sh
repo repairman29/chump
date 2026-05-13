@@ -157,15 +157,26 @@ audit_slo() {
   return 1
 }
 
+# INFRA-963: coerce an arbitrarily-shaped value to a single non-negative
+# integer. jq output can be "1\n0" when `... // 0` partially succeeds before
+# a parse error triggers `|| echo 0`. The multi-line value then breaks
+# `[[ $X -gt N ]]` with "syntax error in expression". head -1 + tr fix that.
+_to_int() {
+  # shellcheck disable=SC2155
+  local v="$(printf '%s' "${1:-0}" | head -1 | tr -dc '0-9')"
+  printf '%s' "${v:-0}"
+}
+
 audit_waste() {
   # Run: chump waste-tally --window 2h
   if command -v chump &> /dev/null; then
-    WASTE_RATE=$(chump waste-tally --window 2h 2>/dev/null | jq '.waste_rate // 0' 2>/dev/null || echo 0)
+    WASTE_RATE=$(chump waste-tally --window 2h 2>/dev/null | jq -r '.waste_rate // 0' 2>/dev/null | head -1)
+    WASTE_RATE="${WASTE_RATE:-0}"
     echo "Waste rate: ${WASTE_RATE}%"
 
     if (( $(echo "$WASTE_RATE > 20" | bc -l 2>/dev/null || echo 0) )); then
       echo "  WARNING: waste rate > 20%"
-      log_ambient "waste_rate_high" '"rate":'$WASTE_RATE',"threshold":20'
+      log_ambient "waste_rate_high" '"rate":'"$WASTE_RATE"',"threshold":20'
       return 1
     fi
   fi
@@ -177,20 +188,25 @@ audit_gaps() {
   if command -v chump &> /dev/null; then
     AUDIT=$(chump gap audit-priorities --json 2>/dev/null || echo '{}')
 
-    P0_COUNT=$(echo "$AUDIT" | jq '.p0_count // 0' 2>/dev/null || echo 0)
-    VAGUE_COUNT=$(echo "$AUDIT" | jq '.vague_pickable // 0' 2>/dev/null || echo 0)
+    # INFRA-963: chump gap audit-priorities --json can emit trailing
+    # non-JSON text (warning lines). jq parses the first object then
+    # errors; `|| echo 0` then appends "0" to the partial output. The
+    # resulting multi-line value breaks integer comparisons. _to_int
+    # coerces to the first numeric line.
+    P0_COUNT=$(_to_int "$(echo "$AUDIT" | jq '.p0_count // 0' 2>/dev/null)")
+    VAGUE_COUNT=$(_to_int "$(echo "$AUDIT" | jq '.vague_pickable // 0' 2>/dev/null)")
 
     echo "P0 gaps: $P0_COUNT"
     echo "Vague pickable: $VAGUE_COUNT"
 
-    if [[ $P0_COUNT -gt 5 ]]; then
+    if [[ "$P0_COUNT" -gt 5 ]]; then
       echo "  WARNING: P0 count > 5 (inflation)"
-      log_ambient "p0_inflation" '"count":'$P0_COUNT',"threshold":5'
+      log_ambient "p0_inflation" '"count":'"$P0_COUNT"',"threshold":5'
     fi
 
-    if [[ $VAGUE_COUNT -gt 0 ]]; then
+    if [[ "$VAGUE_COUNT" -gt 0 ]]; then
       echo "  WARNING: $VAGUE_COUNT vague pickable gaps (need AC)"
-      log_ambient "vague_gaps_found" '"count":'$VAGUE_COUNT
+      log_ambient "vague_gaps_found" '"count":'"$VAGUE_COUNT"
     fi
 
     echo "$AUDIT"
@@ -221,10 +237,10 @@ audit_pillar_balance() {
   if command -v chump &> /dev/null; then
     AUDIT=$(chump gap list --status open --json 2>/dev/null || echo '[]')
 
-    EFFECTIVE=$(echo "$AUDIT" | jq '[.[] | select(.pillar == "EFFECTIVE" and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null || echo 0)
-    CREDIBLE=$(echo "$AUDIT" | jq '[.[] | select(.pillar == "CREDIBLE" and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null || echo 0)
-    RESILIENT=$(echo "$AUDIT" | jq '[.[] | select(.pillar == "RESILIENT" and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null || echo 0)
-    ZERO_WASTE=$(echo "$AUDIT" | jq '[.[] | select(.pillar == "ZERO-WASTE" and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null || echo 0)
+    EFFECTIVE=$(_to_int "$(echo "$AUDIT" | jq '[.[] | select(.pillar == "EFFECTIVE" and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null)")
+    CREDIBLE=$(_to_int "$(echo "$AUDIT" | jq '[.[] | select(.pillar == "CREDIBLE" and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null)")
+    RESILIENT=$(_to_int "$(echo "$AUDIT" | jq '[.[] | select(.pillar == "RESILIENT" and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null)")
+    ZERO_WASTE=$(_to_int "$(echo "$AUDIT" | jq '[.[] | select(.pillar == "ZERO-WASTE" and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null)")
 
     echo "Pickable by pillar: EFFECTIVE=$EFFECTIVE CREDIBLE=$CREDIBLE RESILIENT=$RESILIENT ZERO-WASTE=$ZERO_WASTE"
 
