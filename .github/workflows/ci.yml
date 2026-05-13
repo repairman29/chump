@@ -259,6 +259,11 @@ jobs:
       - name: PR scope-vs-title divergence detector (CREDIBLE-026)
         env:
           GH_TOKEN: ${{ github.token }}
+          # INFRA-976: pass current PR title via env so check-pr-scope.sh
+          # reads it directly instead of falling back to the (possibly stale)
+          # first-commit subject. github.event.pull_request.title is the
+          # live title at workflow-trigger time and refreshes on retitle.
+          PR_TITLE_ENV: ${{ github.event.pull_request.title }}
         run: bash scripts/ci/check-pr-scope.sh
 
       - name: Mass-deletion / scratch-commit guard (CREDIBLE-027)
