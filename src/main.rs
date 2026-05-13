@@ -3227,6 +3227,9 @@ async fn main() -> Result<()> {
                 // sees the true state). Surfaces by name in the summary
                 // line so the operator KNOWS the filter ran.
                 let include_test_domains = args.iter().any(|a| a == "--include-test-domains");
+                // EFFECTIVE-023: --domain <D> filters to a single domain;
+                // --domain all shows per-domain summary footer.
+                let domain_filter = flag("--domain");
                 // EFFECTIVE-008: --quiet suppresses all output (exit 0 on success).
                 let quiet = args.iter().any(|a| a == "--quiet");
                 // EFFECTIVE-008: --format <human|json|csv> — explicit format
@@ -3253,6 +3256,11 @@ async fn main() -> Result<()> {
                                 if !include_test_domains && is_test_domain(dom) {
                                     continue;
                                 }
+                                if let Some(df) = &domain_filter {
+                                    if df != "all" && dom != df.as_str() {
+                                        continue;
+                                    }
+                                }
                                 // Escape commas and quotes in title
                                 let title_esc = g.title.replace('"', "\"\"");
                                 println!(
@@ -3261,14 +3269,57 @@ async fn main() -> Result<()> {
                                 );
                             }
                         } else if json_out {
-                            // INFRA-431: --json output unchanged — for
-                            // tooling. Filter and summary apply only to
-                            // the human-readable path.
-                            println!(
-                                "{}",
-                                serde_json::to_string_pretty(&gaps).unwrap_or_default()
-                            );
+                            // EFFECTIVE-023: when --domain is set, wrap in
+                            // {gaps: [...], domain_summary: {...}} object.
+                            // Without --domain, output the plain array as before.
+                            if let Some(df) = &domain_filter {
+                                let filtered: Vec<&gap_store::GapRow> = gaps
+                                    .iter()
+                                    .filter(|g| {
+                                        let dom = g.id.split('-').next().unwrap_or("?");
+                                        df == "all" || dom == df.as_str()
+                                    })
+                                    .collect();
+                                // Build domain_summary over the filtered set.
+                                let mut ds: std::collections::BTreeMap<
+                                    String,
+                                    std::collections::BTreeMap<String, usize>,
+                                > = std::collections::BTreeMap::new();
+                                for g in &filtered {
+                                    let dom = g.id.split('-').next().unwrap_or("?").to_string();
+                                    let entry = ds.entry(dom).or_default();
+                                    let key = match g.status.as_str() {
+                                        "done" => "done",
+                                        "in_progress" => "in_progress",
+                                        _ => "open",
+                                    };
+                                    *entry.entry(key.to_string()).or_insert(0) += 1;
+                                }
+                                let obj = serde_json::json!({
+                                    "gaps": filtered,
+                                    "domain_summary": ds,
+                                });
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&obj).unwrap_or_default()
+                                );
+                            } else {
+                                // INFRA-431: --json output unchanged — for
+                                // tooling. Filter and summary apply only to
+                                // the human-readable path.
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&gaps).unwrap_or_default()
+                                );
+                            }
                         } else {
+                            // EFFECTIVE-023: when --domain <D> (not "all"),
+                            // print a "Domain: D" header and filter rows.
+                            let specific_domain = domain_filter.as_deref().filter(|d| *d != "all");
+                            if let Some(d) = specific_domain {
+                                println!("Domain: {d}");
+                            }
+
                             // Build filtered view + per-domain counts on the
                             // unfiltered set so the summary + ALERT see the
                             // truth (the SPIKE leak hid because counts were
@@ -3290,52 +3341,88 @@ async fn main() -> Result<()> {
                                     filtered_count += 1;
                                     continue;
                                 }
+                                // EFFECTIVE-023: apply domain filter.
+                                if let Some(df) = &domain_filter {
+                                    if df != "all" && dom != df.as_str() {
+                                        continue;
+                                    }
+                                }
                                 println!(
                                     "[{}] {} — {} ({}/{})",
                                     g.status, g.id, g.title, g.priority, g.effort
                                 );
                             }
-                            // Domain-population ALERT (stderr, unconditional).
-                            // The 2026-05-03 SPIKE leak (302 of 404 = 75%)
-                            // would have triggered this and saved the audit.
-                            // No env knob — the ALERT is the load-bearing
-                            // protection against future leaks.
-                            let total = gaps.len();
-                            for (dom, n) in &by_domain {
-                                // INFRA-431 rescue: clippy::manual_checked_ops
-                                // flags `if total > 0 { *n * 100 / total } else { 0 }`
-                                // because `checked_div` makes the divide-by-zero
-                                // intent explicit. Behaviour is identical.
-                                let pct = (*n * 100).checked_div(total).unwrap_or(0);
-                                if *n > 100 || pct > 50 {
-                                    eprintln!(
-                                        "ALERT: domain {} has {} gaps ({}% of total) — likely a test-fixture leak (see INFRA-428)",
-                                        dom, n, pct
-                                    );
+
+                            // EFFECTIVE-023: --domain all shows per-domain summary.
+                            if domain_filter.as_deref() == Some("all") {
+                                // Build per-status counts by domain over ALL gaps.
+                                let mut by_dom_status: std::collections::BTreeMap<
+                                    String,
+                                    (
+                                        usize,
+                                        usize,
+                                        usize,
+                                        std::collections::BTreeMap<String, usize>,
+                                    ),
+                                > = std::collections::BTreeMap::new();
+                                for g in &gaps {
+                                    let dom = g.id.split('-').next().unwrap_or("?").to_string();
+                                    let entry = by_dom_status.entry(dom).or_insert((
+                                        0,
+                                        0,
+                                        0,
+                                        std::collections::BTreeMap::new(),
+                                    ));
+                                    match g.status.as_str() {
+                                        "done" => entry.1 += 1,
+                                        "in_progress" => entry.2 += 1,
+                                        _ => {
+                                            entry.0 += 1;
+                                            *entry.3.entry(g.priority.clone()).or_insert(0) += 1;
+                                        }
+                                    }
                                 }
+                                println!();
+                                for (dom, (open, _done, _in_prog, prios)) in &by_dom_status {
+                                    let p0 = prios.get("P0").copied().unwrap_or(0);
+                                    let p1 = prios.get("P1").copied().unwrap_or(0);
+                                    println!("{dom}: {open} open (P0={p0}, P1={p1})");
+                                }
+                            } else if domain_filter.is_none() {
+                                // Default path (no --domain): existing summary line.
+                                // Domain-population ALERT (stderr, unconditional).
+                                let total = gaps.len();
+                                for (dom, n) in &by_domain {
+                                    let pct = (*n * 100).checked_div(total).unwrap_or(0);
+                                    if *n > 100 || pct > 50 {
+                                        eprintln!(
+                                            "ALERT: domain {} has {} gaps ({}% of total) — likely a test-fixture leak (see INFRA-428)",
+                                            dom, n, pct
+                                        );
+                                    }
+                                }
+                                // Summary line (stdout). Top 5 domains by count.
+                                let mut domain_pairs: Vec<(&String, &usize)> =
+                                    by_domain.iter().collect();
+                                domain_pairs.sort_by(|a, b| b.1.cmp(a.1));
+                                let top: Vec<String> = domain_pairs
+                                    .iter()
+                                    .take(5)
+                                    .map(|(d, n)| format!("{d}={n}"))
+                                    .collect();
+                                let shown = total - filtered_count;
+                                let mut summary = format!(
+                                    "\n--- {} shown / {} total open across {} domains (top: {}) ---",
+                                    shown, total, by_domain.len(), top.join(" ")
+                                );
+                                if !filtered_domains.is_empty() {
+                                    summary.push_str(&format!(
+                                        "\n--- filtered out {} test-domain row(s): {} (use --include-test-domains to see) ---",
+                                        filtered_count, filtered_domains.join(" ")
+                                    ));
+                                }
+                                println!("{summary}");
                             }
-                            // Summary line (stdout). Top 5 domains by count.
-                            let mut domain_pairs: Vec<(&String, &usize)> =
-                                by_domain.iter().collect();
-                            domain_pairs.sort_by(|a, b| b.1.cmp(a.1));
-                            let top: Vec<String> = domain_pairs
-                                .iter()
-                                .take(5)
-                                .map(|(d, n)| format!("{d}={n}"))
-                                .collect();
-                            let shown = total - filtered_count;
-                            let mut summary =
-                                format!(
-                                "\n--- {} shown / {} total open across {} domains (top: {}) ---",
-                                shown, total, by_domain.len(), top.join(" ")
-                            );
-                            if !filtered_domains.is_empty() {
-                                summary.push_str(&format!(
-                                    "\n--- filtered out {} test-domain row(s): {} (use --include-test-domains to see) ---",
-                                    filtered_count, filtered_domains.join(" ")
-                                ));
-                            }
-                            println!("{summary}");
                         }
                         return Ok(());
                     }
