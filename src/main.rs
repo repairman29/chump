@@ -3891,7 +3891,8 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-            "set" => {
+            "set" | "update" | "modify" | "edit" | "change" => {
+                // INFRA-1036: 'set' and natural-language aliases for gap mutation.
                 // CREDIBLE-016: unknown-flag detection — if the positional GAP-ID slot
                 // starts with "--", the operator forgot the ID or passed a bad flag.
                 let gap_set_usage = || {
