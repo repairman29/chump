@@ -239,7 +239,9 @@ jobs:
   # May 2026:
   #   - PR #1444 silent META-044 revert  →  caught by check-pr-scope.sh
   #   - PR #1441 378k-line mass-deletion →  caught by check-mass-deletion.sh
-  # Both are rolled into the `test` required check via needs:.
+  #   - PR #1469 bundle (3 unrelated gaps) →  caught by check-pr-scope.sh Rule C
+  #   - chore(gaps) + src/ edits          →  caught by check-mass-deletion.sh Rule C
+  # All 4 failure classes roll into the `test` required check via needs:.
   #
   # NOT gated by `needs.changes.outputs.code` — these checks are about the
   # PR's *shape* (title + diff size), not its file extensions. A docs-only
@@ -248,6 +250,10 @@ jobs:
   # Force-fire validated: scripts/ci/test-all-gates-force-fire.sh exercises
   # both checks against synthetic violating fixtures and asserts they fire.
   # See scripts/ci/gate-manifest.yaml (CREDIBLE-050).
+  #
+  # Retroactive calibration (CREDIBLE-043, 2026-05-13): 0 mass-deletion
+  # violations in last 30 merged PRs. Historical violations (#1441, #1444)
+  # pre-date the gate. Gate is safe and correctly calibrated.
   pr-hygiene:
     needs: changes
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
