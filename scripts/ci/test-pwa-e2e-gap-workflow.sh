@@ -170,9 +170,14 @@ STUB
     PORT=3849
 
     # Start server: CHUMP_BIN → stub so spawn_gap_workflow uses it; no auth (CHUMP_WEB_TOKEN="")
+    # CREDIBLE-023 added CSRF + rate-limit guards by default; both disabled here
+    # so the test can POST without holding a token. Production keeps them on
+    # via the env defaults.
     CHUMP_BIN="$STUB_BIN" \
     CHUMP_REPO="$TMP" \
     CHUMP_WEB_TOKEN="" \
+    CHUMP_CSRF_ENABLED=0 \
+    CHUMP_GAP_RATE_LIMIT=0 \
     CHUMP_AMBIENT_IN_PROMPT="$AMBIENT" \
         "$REAL_BIN" --web --port "$PORT" >"$TMP/server.log" 2>&1 &
     _WEB_PID=$!
