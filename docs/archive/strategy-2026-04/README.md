@@ -20,7 +20,7 @@ As of 2026-05-12, neither strand has a named sponsor or scheduled engagement:
 Move a doc back to `docs/strategy/` if:
 - A named external counterparty surfaces (pilot customer, sponsor, partner) and asks for the work
 - An internal experiment shows the concept needs to be the next thing built (rather than a backlog item)
-- The operator explicitly wants to resume the strand (note it in `docs/strategy/ROADMAP.md` and reactivate)
+- The operator explicitly wants to resume the strand (note it in `docs/archive/strategy-2026-04/ROADMAP-superseded.md` and reactivate)
 
 Do **not** quietly reactivate by editing the archived file in place — move it back to `docs/strategy/` with an explicit commit message naming the trigger.
 

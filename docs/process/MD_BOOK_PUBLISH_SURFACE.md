@@ -59,7 +59,7 @@ From `book/src/SUMMARY.md`:
 
 ### Contributing
 - `book/src/research-integrity.md` — **synced** from `docs/process/RESEARCH_INTEGRITY.md`
-- `book/src/roadmap.md` — **synced** from `docs/strategy/ROADMAP.md`
+- `book/src/roadmap.md` — **synced** from `docs/archive/strategy-2026-04/ROADMAP-superseded.md`
 
 ## Sync mapping (docs → book)
 
@@ -73,14 +73,14 @@ From `book/src/SUMMARY.md`:
 | `docs/architecture/RUST_INFRASTRUCTURE.md` | `book/src/rust-infrastructure.md` |
 | `docs/operations/METRICS.md` | `book/src/metrics.md` |
 | `docs/strategy/CHUMP_TO_CHAMP.md` | `book/src/chump-to-champ.md` |
-| `docs/strategy/ROADMAP.md` | `book/src/roadmap.md` |
+| `docs/archive/strategy-2026-04/ROADMAP-superseded.md` | `book/src/roadmap.md` |
 | `docs/research/consciousness-framework-paper.md` | `book/src/research-paper.md` |
 | `docs/research/RESEARCH_COMMUNITY.md` | `book/src/research-community.md` |
 | `docs/process/RESEARCH_INTEGRITY.md` | `book/src/research-integrity.md` |
 
 **Rule of thumb:** if a page is in the table above, fix content/links **in `docs/…`**, not in `book/src/…`, or the next publish will overwrite your edits.
 
-**Roadmap bulk edits:** after changing many relative targets in `docs/strategy/ROADMAP.md`, run `python3 scripts/ci/roadmap-mdbook-links.py` (rewrites links for mdBook/GitHub Pages), then `./scripts/dev/sync-book-from-docs.sh` and `mdbook build book`.
+**Roadmap bulk edits:** after changing many relative targets in `docs/archive/strategy-2026-04/ROADMAP-superseded.md`, run `python3 scripts/ci/roadmap-mdbook-links.py` (rewrites links for mdBook/GitHub Pages), then `./scripts/dev/sync-book-from-docs.sh` and `mdbook build book`.
 
 ## Local preview
 
