@@ -1140,3 +1140,5 @@ jobs:
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pwa-security.sh
+      - name: per-worktree stale binary guard — detect, emit ambient event (RESILIENT-001)
+        run: bash scripts/ci/test-per-worktree-target-guard.sh
