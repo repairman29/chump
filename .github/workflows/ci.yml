@@ -1499,3 +1499,5 @@ jobs:
             echo "::error::audit-required FAIL (real=$real, stub=$stub)"
             exit 1
           fi
+      - name: gap-preflight pre-claim duplicate sweep — worktree + open-PR scan (INFRA-1029)
+        run: bash scripts/ci/test-gap-preflight-dupe-sweep.sh

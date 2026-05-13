@@ -654,6 +654,47 @@ $SIBLING_GAP_YAML"
         fi
     fi
 
+    # ── INFRA-1029: Check 5: existing worktree directory scan ────────────────
+    if [[ -z "${CHUMP_PREFLIGHT_NO_WORKTREE_SCAN:-}" ]]; then
+        _wt_slug=$(echo "$GAP_ID" | tr '[:upper:]' '[:lower:]')
+        _wt_found=""
+        for _wt in /private/tmp/chump-*"${_wt_slug}"* /tmp/chump-*"${_wt_slug}"*; do
+            [ -d "$_wt" ] || continue
+            # Skip /tmp → /private/tmp duplicates (macOS symlink)
+            _wt_real=$(cd "$_wt" 2>/dev/null && pwd -P 2>/dev/null || echo "$_wt")
+            [[ "$_wt_real" == "$_wt_found" ]] && continue
+            _wt_found="$_wt_real"
+            info "WARN: $GAP_ID — existing worktree directory found at $_wt_real"
+            info "  If resuming work: re-attach with 'git worktree list' and re-claim."
+            info "  If stale: remove with 'git worktree remove --force $_wt_real'."
+            info "  Skip this check: CHUMP_PREFLIGHT_NO_WORKTREE_SCAN=1"
+            printf '{"ts":"%s","kind":"preflight_dupe_worktree","gap":"%s","path":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GAP_ID" "$_wt_real" \
+                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+        done
+    fi
+
+    # ── INFRA-1029: Check 6: open PR title scan (REST, no GraphQL) ───────────
+    if [[ -z "${CHUMP_PREFLIGHT_NO_PR_SCAN:-}" ]]; then
+        _nwo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
+        if [[ -n "$_nwo" ]]; then
+            _gap_lower=$(echo "$GAP_ID" | tr '[:upper:]' '[:lower:]')
+            _pr_hit=$(gh api "repos/$_nwo/pulls?state=open&per_page=100" \
+                --jq "[.[] | select(.title | ascii_downcase | contains(\"$_gap_lower\"))] | .[].number" \
+                2>/dev/null || echo "")
+            if [[ -n "$_pr_hit" ]]; then
+                _pr_list=$(echo "$_pr_hit" | tr '\n' ',' | sed 's/,$//')
+                info "WARN: $GAP_ID — open PR(s) found with this gap ID in title: #$_pr_list"
+                info "  An existing PR may already implement this gap."
+                info "  Review before claiming: gh pr view <N>"
+                info "  Skip this check: CHUMP_PREFLIGHT_NO_PR_SCAN=1"
+                printf '{"ts":"%s","kind":"preflight_dupe_pr","gap":"%s","prs":"%s"}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GAP_ID" "$_pr_list" \
+                    >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+            fi
+        fi
+    fi
+
     green "OK $GAP_ID — open and unclaimed."
 done
 
