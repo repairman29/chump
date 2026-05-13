@@ -614,6 +614,11 @@ jobs:
       - name: CLI version/debug flags (CREDIBLE-019)
         run: bash scripts/ci/test-cli-version-debug.sh
 
+      - name: CLI fleet + health + coord commands (CREDIBLE-035)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-cli-fleet-coord.sh
+
       # INFRA-024: standalone example workspace (not a root workspace member).
       # Locked build catches accidental drift in examples/apalis-poc/Cargo.lock.
       # Cheap (~30s) — keep it co-located with the other build-using checks.
