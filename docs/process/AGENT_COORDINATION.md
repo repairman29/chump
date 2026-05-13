@@ -882,11 +882,12 @@ Every commit on `main` is authored by one of a small set of canonical identities
 Red Letter passes use this table to triage commits — anything outside the
 table is flagged as a potential foreign actor for human review.
 
-| Identity | Author | Email | When used |
-|---|---|---|---|
-| Human operator | (user's `git config user.name`) | (user's configured email) | Direct shell commits from a workstation |
-| Dispatched subagent | `Chump Dispatched` | `chump-dispatch@chump.bot` | Any commit from a `chump-orchestrator`-spawned subagent (both `claude` and `chump-local` backends). Set via `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env in `crates/chump-orchestrator/src/dispatch.rs`. |
-| Ship-pipeline amend | `Chump Dispatched` | `chump-dispatch@chump.bot` | `scripts/coord/bot-merge.sh`'s `git commit --amend` (fmt auto-fix) when run under `CHUMP_DISPATCH_DEPTH=1`; inherits from the dispatched env. Falls back to the invoking user's config when run by a human. |
+| Identity | Author | Email | When used | How set |
+|---|---|---|---|---|
+| Human operator | (user's `git config user.name`) | (user's configured email) | Direct shell commits from a workstation | `~/.gitconfig` |
+| Dispatched subagent | `Chump Dispatched` | `chump-dispatch@chump.bot` | Any commit from a `chump-orchestrator`-spawned subagent (both `claude` and `chump-local` backends) | `GIT_AUTHOR_*` / `GIT_COMMITTER_*` env in `crates/chump-orchestrator/src/dispatch.rs` |
+| Ship-pipeline amend | `Chump Dispatched` | `chump-dispatch@chump.bot` | `scripts/coord/bot-merge.sh`'s `git commit --amend` (fmt auto-fix) under `CHUMP_DISPATCH_DEPTH=1` | `GIT_AUTHOR_*` in `scripts/coord/bot-merge.sh` |
+| opencode-bigpickle | `opencode-bigpickle` | `bigpickle@chump.bot` | Interactive opencode sessions operating as the bigpickle harness (Jeff's opencode variant) | `git config user.email/user.name` injected by `gap-claim.sh` when `CHUMP_AGENT_HARNESS=opencode-bigpickle` (CREDIBLE-040) |
 
 **Adding a new identity.** Reserve a distinct name + email, set it in the
 spawn path, and add a row to this table. Do not reuse an existing identity
