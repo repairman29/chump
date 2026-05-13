@@ -1216,6 +1216,15 @@ events:
     consumers: [chump-ambient-glance, fleet-brief, operator-recall]
     fields_required: [ts, kind, threshold_seen, resets_at, source]
 
+  # ── INFRA-1034: bot-merge per-PID log discoverability ─────────────────────
+  - kind: bot_merge_log_started
+    emitter: scripts/coord/bot-merge.sh (INFRA-1034)
+    trigger: bot-merge.sh sets up tee redirection to .chump-locks/bot-merge-<pid>.log.
+      One emit per script invocation; lets operator-recall / chump-ambient-glance
+      surface "bot-merge currently running, tail -f <path>" without scanning ps.
+    consumers: [chump-ambient-glance, fleet-brief, operator-recall]
+    fields_required: [ts, kind, pid, log_path, branch]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
