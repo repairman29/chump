@@ -1120,4 +1120,18 @@ jobs:
           bash scripts/ci/test-waste-tally-domain.sh
       - name: PWA workflow observability — request_id tracing (CREDIBLE-024)
         run: bash scripts/ci/test-pwa-workflow-observability.sh
+      - name: PWA version compatibility check (CREDIBLE-022)
+        run: bash scripts/ci/test-pwa-version-compat.sh
+      - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        run: bash scripts/ci/test-run-consolidation.sh
+      - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
+        run: bash scripts/ci/test-run-fleet-cross-repo.sh
+      - name: tool-call normalizer for weak LLMs (INFRA-740)
+        run: bash scripts/ci/test-tool-normalize.sh
+      - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          bash scripts/ci/test-waste-tally-domain.sh
+      - name: PWA version compatibility check (CREDIBLE-022)
+        run: bash scripts/ci/test-pwa-version-compat.sh
 

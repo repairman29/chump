@@ -3415,7 +3415,65 @@ pub fn validate_startup_env() -> Result<()> {
         );
     }
 
+    // CREDIBLE-022: binary drift check — warn when web_server.rs source is
+    // newer than the installed binary's baked build date. Only fires in dev
+    // environments where the source is present alongside the binary.
+    check_binary_drift();
+
     Ok(())
+}
+
+/// CREDIBLE-022: if running in a dev checkout and src/web_server.rs is
+/// newer than the binary's baked build date by more than 2h, emit a warning
+/// so developers know to `cargo install --force` or `cargo build`.
+fn check_binary_drift() {
+    let build_date = crate::version::chump_build_date();
+    if build_date == "unknown" {
+        return;
+    }
+    let parts: Vec<u32> = build_date
+        .split('-')
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    if parts.len() != 3 {
+        return;
+    }
+    use chrono::{TimeZone, Utc};
+    let build_dt = match Utc
+        .with_ymd_and_hms(parts[0] as i32, parts[1], parts[2], 0, 0, 0)
+        .single()
+    {
+        Some(d) => d,
+        None => return,
+    };
+    let build_epoch = build_dt.timestamp();
+
+    // Only meaningful in a dev checkout where source is present.
+    let repo_root = crate::repo_path::repo_root();
+    let ws_src = repo_root.join("src").join("web_server.rs");
+    let ws_mtime = match std::fs::metadata(&ws_src)
+        .and_then(|m| m.modified())
+        .map(|t| t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default())
+    {
+        Ok(d) => d.as_secs() as i64,
+        Err(_) => return, // source not present — production install, skip
+    };
+
+    let drift_secs = ws_mtime - build_epoch;
+    if drift_secs > 7200 {
+        let drift_hours = drift_secs / 3600;
+        let msg = format!(
+            "[web] WARNING: src/web_server.rs is {}h newer than the installed binary (built {}). \
+             Run `cargo install --force` or `cargo build` to rebuild.",
+            drift_hours, build_date
+        );
+        eprintln!("{msg}");
+        tracing::warn!(
+            drift_hours = drift_hours,
+            build_date = build_date,
+            "credible022: web_server.rs source is newer than binary; recommend rebuild"
+        );
+    }
 }
 
 /// Start the web server. Binds to 0.0.0.0:port (or the next free port if that one is in use).
