@@ -65,17 +65,22 @@ if ls "$CHUMP_BIN"/chump-* 2>/dev/null | grep -qv '\.d$'; then
     echo "  Running tests via cargo test..."
     # cargo test takes filter args as separate positional strings (substring OR-match),
     # not a single regex. Run gap_store unit tests and require zero failures.
+    # Drop --quiet — cargo test --quiet suppresses the "test result: ok. N
+    # passed" summary line we need to parse. Use full output. We need the
+    # exit code AND the count of passed tests.
     test_out=$(cd "$REPO_ROOT" && \
         GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --git-dir 2>/dev/null)" \
         GIT_WORK_TREE="$REPO_ROOT" \
-        cargo test --lib --quiet gap_store:: 2>&1 || true)
-    # Sum passed across all "test result: ok. N passed; M failed" lines
+        cargo test --lib gap_store 2>&1)
+    test_rc=$?
     passed=$(echo "$test_out" | awk -F'[ .;]+' '/test result: ok\./{for(i=1;i<=NF;i++) if($i=="passed"){print $(i-1)}}' | awk '{s+=$1} END{print s+0}')
     failed=$(echo "$test_out" | awk -F'[ .;]+' '/test result/{for(i=1;i<=NF;i++) if($i=="failed"){print $(i-1)}}' | awk '{s+=$1} END{print s+0}')
-    if [[ "$failed" -eq 0 ]] && [[ "$passed" -ge 15 ]]; then
+    if [[ "$test_rc" -eq 0 ]] && [[ "$failed" -eq 0 ]] && [[ "$passed" -ge 15 ]]; then
         ok "cargo test: gap_store error-path tests pass ($passed passed)"
     else
-        fail "cargo test: gap_store error-path tests did not all pass (passed=$passed failed=$failed)"
+        fail "cargo test: gap_store error-path tests did not all pass (rc=$test_rc passed=$passed failed=$failed)"
+        echo "  [diag] last 40 lines of cargo test output:" >&2
+        echo "$test_out" | tail -40 >&2
     fi
 else
     echo "  SKIP (live): cargo test deps not built"
