@@ -229,6 +229,13 @@ STUB
         else
             _last=$(curl -sf "http://127.0.0.1:$PORT/api/gap/status/TEST-001" 2>/dev/null || echo "(unreachable)")
             fail "Test 13 (live): gap status did not reach 'done' within 20s — last: $_last"
+            # Diagnostic dump on Test 13 failure (stub never updated DB?).
+            echo "  [diag] sqlite3 available: $(command -v sqlite3 || echo NO)" >&2
+            echo "  [diag] state.db direct query:" >&2
+            sqlite3 "$TMP/.chump/state.db" "SELECT id,status FROM gaps;" 2>&1 >&2 || true
+            echo "  [diag] stub script exists: $(test -x "$STUB_BIN" && echo YES || echo NO)" >&2
+            echo "  [diag] last 30 server log lines:" >&2
+            tail -30 "$TMP/server.log" 2>&1 >&2 || true
         fi
 
         # Verify 4 phases in ambient.jsonl
