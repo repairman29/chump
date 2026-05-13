@@ -158,7 +158,20 @@ case "\$1" in
   --execute-gap) exit 0 ;;
   gap)
     case "\$2" in
-      ship) sqlite3 "\$REPO/.chump/state.db" "UPDATE gaps SET status='done' WHERE id='\$3'"; exit 0 ;;
+      ship)
+        # Retry on SQLite busy/lock — server holds state.db open concurrently.
+        for _attempt in 1 2 3 4 5; do
+          if sqlite3 -cmd '.timeout 5000' "\$REPO/.chump/state.db" \
+              "UPDATE gaps SET status='done' WHERE id='\$3'" 2>/dev/null; then
+            exit 0
+          fi
+          sleep 0.5
+        done
+        # Final attempt with stderr visible for diagnostic
+        sqlite3 -cmd '.timeout 5000' "\$REPO/.chump/state.db" \
+            "UPDATE gaps SET status='done' WHERE id='\$3'" >&2
+        exit 0
+        ;;
       *) exit 0 ;;
     esac ;;
   *) exit 0 ;;
@@ -170,9 +183,14 @@ STUB
     PORT=3849
 
     # Start server: CHUMP_BIN → stub so spawn_gap_workflow uses it; no auth (CHUMP_WEB_TOKEN="")
+    # CREDIBLE-023 added CSRF + rate-limit guards by default. CSRF disabled
+    # here so the test can POST without holding a token. Rate-limit kept at
+    # default (10/60s) since one POST is well under cap. Note: setting
+    # CHUMP_GAP_RATE_LIMIT=0 does NOT disable — it sets max=0 → always-deny.
     CHUMP_BIN="$STUB_BIN" \
     CHUMP_REPO="$TMP" \
     CHUMP_WEB_TOKEN="" \
+    CHUMP_CSRF_ENABLED=0 \
     CHUMP_AMBIENT_IN_PROMPT="$AMBIENT" \
         "$REAL_BIN" --web --port "$PORT" >"$TMP/server.log" 2>&1 &
     _WEB_PID=$!
@@ -204,12 +222,13 @@ STUB
             fail "Test 12 (live): POST /api/gap/work/TEST-001 unexpected response: $_resp"
         fi
 
-        # Poll /api/gap/status/TEST-001 until status='done' (max 20s, 20 × 1s).
-        # Bumped from 5s to 20s: in heavily-loaded CI the mock chump workflow
-        # routinely exceeds 5s, flaking multiple PRs across May 2026 even
-        # though the underlying logic is correct.
+        # Poll /api/gap/status/TEST-001 until status='done' (max 60s, 60 × 1s).
+        # 20s wasn't enough — Test 13 still flaked on #1570/#1605 under
+        # concurrent CI load. The stub now retries on SQLite-busy and the
+        # poll budget is 60s. Underlying logic is correct; this just rides
+        # out lock contention between the stub UPDATE and gap_store reads.
         _done=0
-        for i in $(seq 1 20); do
+        for i in $(seq 1 60); do
             _st=$(curl -sf \
                 "http://127.0.0.1:$PORT/api/gap/status/TEST-001" 2>/dev/null || echo "")
             if echo "$_st" | grep -q '"done"'; then
@@ -220,10 +239,17 @@ STUB
         done
 
         if [[ "$_done" -eq 1 ]]; then
-            ok "Test 13 (live): gap status reached 'done' within 20s"
+            ok "Test 13 (live): gap status reached 'done' within 60s"
         else
             _last=$(curl -sf "http://127.0.0.1:$PORT/api/gap/status/TEST-001" 2>/dev/null || echo "(unreachable)")
-            fail "Test 13 (live): gap status did not reach 'done' within 20s — last: $_last"
+            fail "Test 13 (live): gap status did not reach 'done' within 60s — last: $_last"
+            # Diagnostic dump on Test 13 failure (stub never updated DB?).
+            echo "  [diag] sqlite3 available: $(command -v sqlite3 || echo NO)" >&2
+            echo "  [diag] state.db direct query:" >&2
+            sqlite3 "$TMP/.chump/state.db" "SELECT id,status FROM gaps;" 2>&1 >&2 || true
+            echo "  [diag] stub script exists: $(test -x "$STUB_BIN" && echo YES || echo NO)" >&2
+            echo "  [diag] last 30 server log lines:" >&2
+            tail -30 "$TMP/server.log" 2>&1 >&2 || true
         fi
 
         # Verify 4 phases in ambient.jsonl

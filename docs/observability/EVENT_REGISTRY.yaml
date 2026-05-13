@@ -1164,6 +1164,13 @@ events:
     consumers: [operator-recall, watchdog]
     fields_required: [ts, kind, spent_usd, cap_usd, pct]
 
+  # ── RESILIENT-001: stale binary detection ────────────────────────────────
+  - kind: stale_binary_detected
+    emitter: scripts/dispatch/worker.sh (RESILIENT-001)
+    trigger: worker startup detects target/debug/chump mtime > CHUMP_BINARY_MAX_AGE_SECS behind src/main.rs
+    consumers: [fleet-brief, watchdog]
+    fields_required: [ts, kind, source, age_secs, max_age_secs, note]
+
   # ── Disk hygiene ─────────────────────────────────────────────────────────
   - kind: tmp_cleanup
     emitter: scripts/dev/cleanup-claude-tmp.sh
