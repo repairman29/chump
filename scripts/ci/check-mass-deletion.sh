@@ -32,6 +32,10 @@
 
 set -euo pipefail
 
+# shellcheck source=lib/gate-emit.sh
+source "$(dirname "$0")/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "CREDIBLE-027" "$*"
+
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
@@ -223,11 +227,14 @@ fi
 echo ""
 if [[ "$VIOLATIONS" -eq 0 ]]; then
     echo "CREDIBLE-027/CREDIBLE-038: all mass-deletion checks passed."
+    gate_emit_result "CREDIBLE-027" "pass" "" ""
     exit 0
 elif [[ "$WARN_ONLY" -eq 1 ]]; then
     warn "CREDIBLE-027/CREDIBLE-038: $VIOLATIONS violation(s) found (warn-only mode — not blocking)"
+    gate_emit_result "CREDIBLE-027" "pass" "warn-only" "$VIOLATIONS violation(s) demoted to warning"
     exit 0
 else
     fail "CREDIBLE-027/CREDIBLE-038: $VIOLATIONS violation(s) found. Fix before pushing."
+    gate_emit_result "CREDIBLE-027" "fail" "mass-deletion" "$VIOLATIONS mass-deletion violation(s)"
     exit 1
 fi

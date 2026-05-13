@@ -20,8 +20,12 @@
 
 set -euo pipefail
 
+# shellcheck source=lib/gate-emit.sh
+source "$(dirname "$0")/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "CREDIBLE-029" "$*"
+
 pass() { printf '[PASS] %s\n' "$*"; }
-fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
+fail() { printf '[FAIL] %s\n' "$*" >&2; gate_emit_result "CREDIBLE-029" "fail" "collision-test-broken" "$*"; exit 1; }
 info() { printf '[INFO] %s\n' "$*"; }
 
 SKIP_CARGO=0
@@ -61,3 +65,4 @@ fi
 
 echo ""
 echo "CREDIBLE-029: all gap-ID allocator collision checks passed."
+gate_emit_result "CREDIBLE-029" "pass" "" ""
