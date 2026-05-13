@@ -24,6 +24,12 @@
 
 set -euo pipefail
 
+# INFRA-999: API cost telemetry. CHUMP_GH_SCRIPT sets the script tag in
+# the emitted ambient.jsonl `github_api_call` lines.
+# shellcheck source=lib/github.sh
+source "$(dirname "$0")/lib/github.sh"
+export CHUMP_GH_SCRIPT="queue-driver.sh"
+
 DRY_RUN=0
 MAX=1
 while [[ $# -gt 0 ]]; do
@@ -89,7 +95,7 @@ cascade_rebase_if_hot() {
     echo "queue-driver: workspace hot-file '$triggered_by' changed on main — cascade rebasing all open PRs"
 
     local all_prs
-    all_prs=$(gh pr list \
+    all_prs=$(chump_gh pr list \
         --state open \
         --limit 100 \
         --json number,isDraft \
@@ -106,7 +112,7 @@ cascade_rebase_if_hot() {
             echo "queue-driver: (dry-run) cascade would rebase PR #$pr"
             ok=$((ok + 1))
         else
-            if gh pr update-branch "$pr" 2>&1; then
+            if chump_gh pr update-branch "$pr" 2>&1; then
                 echo "queue-driver: ✓ cascade rebased PR #$pr"
                 ok=$((ok + 1))
             else
@@ -220,13 +226,13 @@ cascade_rebase_if_hot
 # Pull every open PR with auto-merge armed, sorted oldest-first by PR number.
 # Process BEHIND (cheap update-branch) and DIRTY (heavier rebase) — both block
 # the queue and both are fixable from the action runner.
-behind_candidates=$(gh pr list \
+behind_candidates=$(chump_gh pr list \
   --state open \
   --limit 50 \
   --json number,mergeStateStatus,autoMergeRequest,isDraft \
   -q '[.[] | select(.isDraft == false) | select(.autoMergeRequest != null) | select(.mergeStateStatus == "BEHIND") | .number] | sort | .[]')
 
-dirty_candidates=$(gh pr list \
+dirty_candidates=$(chump_gh pr list \
   --state open \
   --limit 50 \
   --json number,mergeStateStatus,autoMergeRequest,isDraft \
@@ -248,7 +254,7 @@ for pr in $behind_candidates; do
     echo "queue-driver: (dry-run) would refresh PR #$pr (BEHIND)"
   else
     echo "queue-driver: refreshing PR #$pr (BEHIND)"
-    if gh pr update-branch "$pr" 2>&1; then
+    if chump_gh pr update-branch "$pr" 2>&1; then
       echo "queue-driver: ✓ #$pr refreshed"
     else
       echo "queue-driver: ✗ #$pr refresh failed (may have just turned DIRTY — try next run)"

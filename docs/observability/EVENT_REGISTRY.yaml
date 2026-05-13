@@ -1149,6 +1149,15 @@ events:
     consumers: [fleet-brief, operator-recall, watchdogs]
     fields_required: [ts, kind, source, exit_code, note]
 
+  # ── INFRA-999: per-call GitHub API cost telemetry ─────────────────────────
+  - kind: github_api_call
+    emitter: scripts/coord/lib/github.sh (chump_gh, chump_gh_record)
+    trigger: any wrapped gh invocation. Records script name, 1-2 token api tag,
+      remaining_core + remaining_graphql at time of call, elapsed ms, rc.
+      Used to rank which scripts burn which rate-limit bucket (INFRA-1000).
+    consumers: [api-cost-report]
+    fields_required: [ts, kind, script, api, remaining_core, remaining_graphql, used_ms, rc]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
