@@ -1303,6 +1303,21 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, pruned, skipped_active_pr, skipped_uncommitted, skipped_young]
 
+  # ── RESILIENT-013: orphaned /tmp worktree reaper ─────────────────────────
+  - kind: worktree_orphan_pruned
+    emitter: scripts/ops/prune-worktrees.sh (RESILIENT-013, orphan mode)
+    trigger: a /tmp/chump-* worktree had no active lease in .chump-locks/
+      AND no open PR for its branch — safely removed
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, path, branch]
+
+  - kind: worktree_orphan_skipped
+    emitter: scripts/ops/prune-worktrees.sh (RESILIENT-013, orphan mode)
+    trigger: a /tmp/chump-* worktree was skipped because it had an active lease,
+      an open PR, or uncommitted changes
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, path, reason, branch]
+
   # ── CREDIBLE-038: file-count-blast rule ──────────────────────────────────
   - kind: pr_scope_violation
     emitter: scripts/ci/check-mass-deletion.sh (CREDIBLE-038, rule C)
