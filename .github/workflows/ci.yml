@@ -423,6 +423,9 @@ jobs:
       - name: git-identity sanity guard (INFRA-787)
         run: bash scripts/ci/test-git-identity-guard.sh
 
+      - name: hardcoded-date guard (INFRA-971)
+        run: bash scripts/ci/test-hardcoded-date-guard.sh
+
       - name: gap-divergence guard (INFRA-783)
         run: bash scripts/ci/test-gap-divergence-guard.sh
 
