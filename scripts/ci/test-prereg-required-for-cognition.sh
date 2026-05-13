@@ -14,6 +14,10 @@
 
 set -uo pipefail
 
+# shellcheck source=lib/gate-emit.sh
+source "$(dirname "$0")/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "META-043" "$*"
+
 PASS=0
 FAIL=0
 FAILS=()
@@ -126,6 +130,8 @@ echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [[ $FAIL -gt 0 ]]; then
     for f in "${FAILS[@]}"; do echo "  - $f"; done
+    gate_emit_result "META-043" "fail" "prereg-guard-broken" "$FAIL simulation(s) failed"
     exit 1
 fi
+gate_emit_result "META-043" "pass" "" ""
 exit 0

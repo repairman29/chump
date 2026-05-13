@@ -38,6 +38,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# shellcheck source=lib/gate-emit.sh
+source "$SCRIPT_DIR/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "CREDIBLE-028" "$*"
+
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
@@ -303,8 +307,10 @@ fi
 echo ""
 if [[ "$overall_drift" -eq 0 ]]; then
     echo "All closure consistency checks passed."
+    gate_emit_result "CREDIBLE-028" "pass" "" ""
     exit 0
 else
     echo "Closure consistency drift detected (--strict mode)."
+    gate_emit_result "CREDIBLE-028" "fail" "gap_drift_premature_close" "$overall_drift drift(s)"
     exit 1
 fi

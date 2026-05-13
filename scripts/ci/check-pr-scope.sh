@@ -26,6 +26,10 @@
 
 set -euo pipefail
 
+# shellcheck source=lib/gate-emit.sh
+source "$(dirname "$0")/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "CREDIBLE-026" "$*"
+
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
@@ -58,6 +62,7 @@ MERGE_BASE="$(git merge-base HEAD "origin/${BASE_BRANCH}" 2>/dev/null \
     || echo "")"
 if [[ -z "$MERGE_BASE" ]]; then
     warn "Could not compute merge base against $BASE_BRANCH — skipping scope check"
+    gate_emit_result "CREDIBLE-026" "skipped" "" "no merge base for $BASE_BRANCH"
     exit 0
 fi
 
@@ -256,11 +261,14 @@ fi
 echo ""
 if [[ "$VIOLATIONS" -eq 0 ]]; then
     echo "CREDIBLE-026/CREDIBLE-041: all PR scope checks passed."
+    gate_emit_result "CREDIBLE-026" "pass" "" ""
     exit 0
 elif [[ "$WARN_ONLY" -eq 1 ]]; then
     warn "CREDIBLE-026/CREDIBLE-041: $VIOLATIONS violation(s) found (warn-only — not blocking)"
+    gate_emit_result "CREDIBLE-026" "pass" "warn-only" "$VIOLATIONS violation(s) demoted to warning"
     exit 0
 else
     fail "CREDIBLE-026/CREDIBLE-041: $VIOLATIONS violation(s). Fix scope or update PR title."
+    gate_emit_result "CREDIBLE-026" "fail" "scope-violation" "$VIOLATIONS PR scope violation(s)"
     exit 1
 fi

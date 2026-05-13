@@ -1395,6 +1395,19 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, gap_id, stripped_deps]
 
+  # ── CREDIBLE-048: per-gate fire-rate telemetry ───────────────────────────
+  - kind: gate_check_start
+    emitter: scripts/ci/lib/gate-emit.sh (sourced by each CI gate — CREDIBLE-048)
+    trigger: any CI gate begins execution
+    consumers: [gate-fire-rate, fleet-brief]
+    fields_required: [ts, kind, gate, pr_or_branch, args]
+
+  - kind: gate_check_result
+    emitter: scripts/ci/lib/gate-emit.sh (sourced by each CI gate — CREDIBLE-048)
+    trigger: any CI gate completes (pass / fail / bypassed / skipped)
+    consumers: [gate-fire-rate, fleet-brief, curator]
+    fields_required: [ts, kind, gate, outcome, rule_fired, evidence, pr_or_branch]
+
   # ── RESILIENT-014: test-gate bypass audit ─────────────────────────────────
   - kind: test_gate_bypassed
     emitter: scripts/git-hooks/pre-push (RESILIENT-014)
