@@ -85,6 +85,7 @@ mod fleet_status;
 mod fleet_tool;
 mod fleet_velocity;
 mod ftue_tool;
+mod gap_ship_staleness;
 mod gap_store;
 mod gen;
 mod genai_conv;
@@ -3768,6 +3769,14 @@ async fn main() -> Result<()> {
                     eprintln!("Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]");
                     std::process::exit(2);
                 });
+                // INFRA-1007: mirror bot-merge.sh INFRA-995 pre-push staleness
+                // gate. Operators who run `chump gap ship` directly bypass
+                // bot-merge.sh entirely; without this, a ship from a 20+
+                // commits-behind branch silently lands a stale state.db row.
+                if let Err(e) = gap_ship_staleness::enforce_for_gap_ship(&worktree_root) {
+                    eprintln!("chump gap ship: {e:#}");
+                    std::process::exit(3);
+                }
                 let session_id = flag("--session")
                     .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
                     .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
