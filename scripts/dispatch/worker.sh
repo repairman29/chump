@@ -468,6 +468,22 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
 
     GAP_ID="$pick"
 
+    # INFRA-975: disk-pressure gate. After picker has identified a gap but
+    # BEFORE we commit any resources (worktree, cargo, lease), pause the
+    # worker if the filesystem is critically full. Without this gate, a
+    # runaway parallel fleet can fill /private/tmp to <1Gi (we observed
+    # this 2026-05-13) and every claim/build/test fails opaquely.
+    # shellcheck source=../lib/disk-check.sh
+    if [ -r "$REPO_ROOT/scripts/lib/disk-check.sh" ]; then
+        # shellcheck disable=SC1091
+        source "$REPO_ROOT/scripts/lib/disk-check.sh"
+        if ! chump_disk_check_pause_worker; then
+            log "worker paused on disk_critical — sleeping 5min then re-checking"
+            sleep 300
+            continue
+        fi
+    fi
+
     # FLEET-042: update heartbeat with picked gap.
     write_heartbeat "$GAP_ID"
 

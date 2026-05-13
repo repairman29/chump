@@ -54,6 +54,14 @@ export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
 # shellcheck source=../lib/chump-preflight.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chump-preflight.sh"
 
+# INFRA-975: disk-pressure gate. Abort the claim BEFORE any expensive
+# setup (worktree creation, cargo build, lease write) if the filesystem
+# is too tight to accommodate another ~5-9 GB worktree. Today 2026-05-13
+# we filled /private/tmp to 911 MB free because cleanup was manual.
+# shellcheck source=../lib/disk-check.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/disk-check.sh"
+chump_disk_check_or_abort
+
 # INFRA-590: print error + doc link, then exit 1.
 die_with_help() {
     local msg="$1" anchor="$2"

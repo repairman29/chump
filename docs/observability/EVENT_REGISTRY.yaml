@@ -184,6 +184,18 @@ events:
     consumers: [fleet-brief, watchdog, oncall]
     fields_required: [ts, kind, wedge_age_s, threshold_s, handler]
 
+  - kind: claim_aborted_disk_full
+    emitter: scripts/lib/disk-check.sh via gap-claim.sh (INFRA-975)
+    trigger: chump claim attempted but free disk < CHUMP_DISK_LOW_GB (default 5 GB)
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, free_gb, threshold_gb, path]
+
+  - kind: fleet_paused_disk_critical
+    emitter: scripts/lib/disk-check.sh via worker.sh (INFRA-975)
+    trigger: worker pre-cycle disk check found free < CHUMP_DISK_CRITICAL_GB (default 1 GB)
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, free_gb, threshold_gb, path]
+
   - kind: fleet_wedge_resolved
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
     trigger: no fleet_wedge events for CHUMP_WEDGE_CLEAR_S (default 1800s) while wedged=true
