@@ -326,6 +326,11 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
+      - name: doc-freshness audit (DOC-041, warn-only)
+        # WARN-ONLY by default — surfaces stale last_audited stamps without
+        # blocking. Promote to --strict once the long-tail cleanup is done.
+        run: bash scripts/ci/test-doc-freshness.sh
+
       - name: RESEARCH-026 observer-effect harness preflight (no API)
         run: bash scripts/ci/test-research-026-preflight.sh
 
