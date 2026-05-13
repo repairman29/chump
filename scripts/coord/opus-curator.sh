@@ -99,6 +99,48 @@ log_curator_decision() {
 }
 
 # ============================================================================
+# INFRA-979: helpers for filing curator tracking gaps with daily dedup.
+# Each decision that DETECTS an issue (pr_unstick, balance_restock,
+# waste_investigation) files ONE INFRA gap per day, then records the
+# new gap ID in action_taken. The dedup file at
+# .chump-locks/curator-filed-<decision>-YYYY-MM-DD.json prevents
+# flooding when the same condition persists across multiple 10-min
+# audit ticks.
+# ============================================================================
+
+_curator_lock_dir() {
+  printf '%s' "${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}"
+}
+
+# Returns 0 if today's dedup file exists for this decision_type, 1 otherwise.
+_curator_already_filed_today() {
+  local decision_type="$1"
+  local today; today="$(date -u +%Y-%m-%d)"
+  local marker; marker="$(_curator_lock_dir)/curator-filed-${decision_type}-${today}.json"
+  [[ -f "$marker" ]]
+}
+
+_curator_mark_filed_today() {
+  local decision_type="$1" gap_id="$2"
+  local today; today="$(date -u +%Y-%m-%d)"
+  local marker; marker="$(_curator_lock_dir)/curator-filed-${decision_type}-${today}.json"
+  mkdir -p "$(dirname "$marker")" 2>/dev/null || true
+  printf '{"decision":"%s","gap_id":"%s","ts":"%s"}\n' \
+    "$decision_type" "$gap_id" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$marker"
+}
+
+# Reserve a new gap via chump CLI. Returns the gap ID on stdout, or
+# empty string on failure. Sets AC + caller-provided body via stdin.
+_curator_file_gap() {
+  local title="$1" effort="${2:-s}"
+  local out gap_id
+  out="$(chump gap reserve --domain INFRA --title "$title" --priority P1 --effort "$effort" 2>&1)"
+  gap_id="$(printf '%s' "$out" | grep -oE 'INFRA-[0-9]+' | head -1)"
+  printf '%s' "$gap_id"
+}
+
+# ============================================================================
 # AUDIT PHASE: Gather health metrics
 # ============================================================================
 audit_slo() {
@@ -282,26 +324,109 @@ curator_decisions() {
     "Routine check: vague gaps without acceptance_criteria block fleet pickup" \
     "audit_phase ran chump gap audit-priorities; operator to fill AC on any vague gaps"
 
-  # Decision 3: Pillar rebalancing (file gap if any pillar < 2 pickable)
-  echo "Decision 3: Rebalance pillars; file gaps if any starving"
-  log_curator_decision \
-    "balance_restock" \
-    "Pillar balance check: any pillar < 2 pickable xs/s/m gaps triggers gap filing" \
-    "audit_pillar_balance ran; if imbalance detected, operator to file balance gaps"
+  # Decision 3 (INFRA-979): Pillar rebalancing — file ONE tracking gap when
+  # any pillar has < 2 pickable xs/s/m gaps. Dedup: max 1 per day per pillar.
+  if command -v chump &>/dev/null; then
+    _pillars_data="$(chump gap list --status open --json 2>/dev/null || echo '[]')"
+    for _pillar in EFFECTIVE CREDIBLE RESILIENT ZERO-WASTE; do
+      _count=$(_to_int "$(echo "$_pillars_data" | jq --arg p "$_pillar" \
+        '[.[] | select(.pillar == $p and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null)")
+      if [[ "$_count" -lt 2 ]]; then
+        if _curator_already_filed_today "balance_restock_${_pillar}"; then
+          echo "Decision 3: ${_pillar} pillar starved ($_count < 2) — already filed today, skipping"
+          continue
+        fi
+        if [[ "${_DRY_RUN:-0}" == "1" ]]; then
+          echo "Decision 3: ${_pillar} pillar starved ($_count < 2) — [dry-run] would file gap"
+          log_curator_decision \
+            "balance_restock" \
+            "${_pillar} pillar has $_count pickable; target ≥2" \
+            "dry_run: would file balance gap for ${_pillar}"
+        else
+          _today="$(date -u +%Y-%m-%d)"
+          _gap_id="$(_curator_file_gap "MISSION-${_pillar}: pillar starved — only $_count pickable xs/s/m gaps as of ${_today}" "s")"
+          if [[ -n "$_gap_id" ]]; then
+            _curator_mark_filed_today "balance_restock_${_pillar}" "$_gap_id"
+            echo "Decision 3: ${_pillar} starved → filed $_gap_id"
+            log_curator_decision \
+              "balance_restock" \
+              "${_pillar} pillar has $_count pickable; below target of 2" \
+              "filed $_gap_id (${_pillar}=$_count pickable, target ≥2)"
+          else
+            log_curator_decision "balance_restock" \
+              "${_pillar} starved at $_count" "error: chump gap reserve failed"
+          fi
+        fi
+      fi
+    done
+  fi
 
-  # Decision 4: Unblock stuck PRs
-  echo "Decision 4: Identify stuck PRs; trigger pr-unstick if needed"
-  log_curator_decision \
-    "pr_unstick" \
-    "Stuck PR scan: PRs open >2h with failing checks block fleet throughput" \
-    "audit_pr_stuck ran; if stuck PRs found, operator to rebase or fix CI"
+  # Decision 4 (INFRA-979): Stuck-PR scan — file ONE tracking gap when ≥1
+  # PR has been open >2h with failing checks. Dedup: max 1 per day.
+  if command -v gh &>/dev/null; then
+    _stuck_count=$(_to_int "$(gh pr list --state open --json number,updatedAt,statusCheckRollup \
+      --jq '[.[] | select(
+        (now - (.updatedAt | fromdateiso8601)) > 7200 and
+        (.statusCheckRollup != "SUCCESS" or .statusCheckRollup == null)
+      )] | length' 2>/dev/null)")
+    if [[ "$_stuck_count" -gt 0 ]]; then
+      if _curator_already_filed_today "pr_unstick"; then
+        echo "Decision 4: $_stuck_count stuck PR(s) — already filed today, skipping"
+      elif [[ "${_DRY_RUN:-0}" == "1" ]]; then
+        echo "Decision 4: $_stuck_count stuck PR(s) — [dry-run] would file gap"
+        log_curator_decision "pr_unstick" \
+          "$_stuck_count PR(s) open >2h with failing checks" \
+          "dry_run: would file pr_stuck_cluster gap"
+      else
+        _today="$(date -u +%Y-%m-%d)"
+        _gap_id="$(_curator_file_gap "RESILIENT: pr-stuck-cluster — ${_stuck_count} PRs blocked >2h as of ${_today}" "s")"
+        if [[ -n "$_gap_id" ]]; then
+          _curator_mark_filed_today "pr_unstick" "$_gap_id"
+          echo "Decision 4: $_stuck_count stuck PR(s) → filed $_gap_id"
+          log_curator_decision "pr_unstick" \
+            "$_stuck_count PR(s) open >2h with failing checks block fleet throughput" \
+            "filed $_gap_id ($_stuck_count stuck PRs)"
+        else
+          log_curator_decision "pr_unstick" \
+            "$_stuck_count stuck PRs" "error: chump gap reserve failed"
+        fi
+      fi
+    else
+      echo "Decision 4: 0 stuck PRs — no action needed"
+    fi
+  fi
 
-  # Decision 5: Waste rate control (if > 20%, file INFRA gap for root cause)
-  echo "Decision 5: If waste > 20%, file gap + signal scale-down"
-  log_curator_decision \
-    "waste_investigation" \
-    "Waste tally check: >20% waste rate triggers root-cause gap filing" \
-    "audit_waste ran; if waste > 20%, operator to file INFRA gap for dominant waste kind"
+  # Decision 5 (INFRA-979): Waste rate spike — file ONE tracking gap when
+  # rate > 20%. Dedup: max 1 per day.
+  if command -v chump &>/dev/null; then
+    _waste_rate=$(chump waste-tally --window 2h 2>/dev/null | jq -r '.waste_rate // 0' 2>/dev/null | head -1)
+    _waste_rate="${_waste_rate:-0}"
+    if (( $(echo "$_waste_rate > 20" | bc -l 2>/dev/null || echo 0) )); then
+      if _curator_already_filed_today "waste_investigation"; then
+        echo "Decision 5: waste rate ${_waste_rate}% — already filed today, skipping"
+      elif [[ "${_DRY_RUN:-0}" == "1" ]]; then
+        echo "Decision 5: waste rate ${_waste_rate}% — [dry-run] would file gap"
+        log_curator_decision "waste_investigation" \
+          "Waste rate ${_waste_rate}% exceeds 20% threshold" \
+          "dry_run: would file waste-spike gap"
+      else
+        _today="$(date -u +%Y-%m-%d)"
+        _gap_id="$(_curator_file_gap "ZERO-WASTE: waste-spike — ${_waste_rate}% in 2h window as of ${_today}" "s")"
+        if [[ -n "$_gap_id" ]]; then
+          _curator_mark_filed_today "waste_investigation" "$_gap_id"
+          echo "Decision 5: waste rate ${_waste_rate}% → filed $_gap_id"
+          log_curator_decision "waste_investigation" \
+            "Waste rate ${_waste_rate}% exceeds 20% threshold" \
+            "filed $_gap_id (rate=${_waste_rate}%)"
+        else
+          log_curator_decision "waste_investigation" \
+            "Waste rate ${_waste_rate}%" "error: chump gap reserve failed"
+        fi
+      fi
+    else
+      echo "Decision 5: waste rate ${_waste_rate}% ≤ 20% — no action"
+    fi
+  fi
 }
 
 # ============================================================================
