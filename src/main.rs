@@ -664,6 +664,9 @@ async fn main() -> Result<()> {
         } else {
             print!("{}", report.render_text());
         }
+        if report.any_low_grade() {
+            std::process::exit(1);
+        }
         return Ok(());
     }
 
@@ -2801,9 +2804,255 @@ async fn main() -> Result<()> {
 
                 return Ok(());
             }
+            "daemon" => {
+                // INFRA-964: long-lived chump-owned scheduler. Reads
+                // scripts/coord/system-gap-frequencies.yaml (INFRA-841) and
+                // runs each declared task at its interval_s cadence by
+                // shelling out to the task's existing script. Emits
+                // kind=daemon_tick per invocation so missed cron windows
+                // are observable instantly via ambient.jsonl.
+                //
+                // Replaces the Claude-Code-hosted scheduled-tasks MCP path,
+                // which only fires while the host UI is alive (the bug
+                // INFRA-964 was filed to capture). OS keeps this daemon
+                // alive via launchd/com.chump.fleet-daemon.plist.
+                let once = args.iter().any(|a| a == "--once");
+                let yaml_path = repo_root.join("scripts/coord/system-gap-frequencies.yaml");
+                let yaml_contents = std::fs::read_to_string(&yaml_path).map_err(|e| {
+                    anyhow::anyhow!("fleet daemon: cannot read {}: {e}", yaml_path.display())
+                })?;
+
+                // Parse the tasks: { name, interval_s, script } from the YAML.
+                // We use a minimal pure-Rust parser instead of pulling in
+                // serde_yaml to keep the binary slim (same approach as the
+                // bash hot-file-lock.sh awk parsing).
+                #[derive(Clone, Debug)]
+                struct DaemonTask {
+                    name: String,
+                    interval_s: u64,
+                    script: String,
+                    optional: bool,
+                }
+                let mut tasks: Vec<DaemonTask> = Vec::new();
+                let mut in_tasks = false;
+                let mut cur: Option<DaemonTask> = None;
+                for line in yaml_contents.lines() {
+                    if line.starts_with("tasks:") {
+                        in_tasks = true;
+                        continue;
+                    }
+                    if in_tasks
+                        && !line.starts_with(' ')
+                        && !line.starts_with('\t')
+                        && !line.trim().is_empty()
+                    {
+                        in_tasks = false;
+                    }
+                    if !in_tasks {
+                        continue;
+                    }
+                    let trimmed = line.trim_end();
+                    // Task header: two-space indent + name: + newline.
+                    if let Some(rest) = trimmed.strip_prefix("  ") {
+                        if !rest.starts_with(' ') && rest.ends_with(':') {
+                            if let Some(t) = cur.take() {
+                                tasks.push(t);
+                            }
+                            let name = rest.trim_end_matches(':').to_string();
+                            cur = Some(DaemonTask {
+                                name,
+                                interval_s: 0,
+                                script: String::new(),
+                                optional: false,
+                            });
+                            continue;
+                        }
+                    }
+                    // Fields under the current task (four-space indent).
+                    if let Some(t) = cur.as_mut() {
+                        if let Some(rest) = trimmed.strip_prefix("    interval_s:") {
+                            t.interval_s = rest
+                                .split('#')
+                                .next()
+                                .unwrap_or("")
+                                .trim()
+                                .parse()
+                                .unwrap_or(0);
+                        } else if let Some(rest) = trimmed.strip_prefix("    script:") {
+                            t.script = rest.trim().to_string();
+                        } else if let Some(rest) = trimmed.strip_prefix("    optional:") {
+                            t.optional = rest.trim().starts_with("true");
+                        }
+                    }
+                }
+                if let Some(t) = cur.take() {
+                    tasks.push(t);
+                }
+                tasks.retain(|t| t.interval_s > 0 && !t.script.is_empty());
+                // Filter out tasks whose script doesn't exist on disk when
+                // they're marked optional (e.g. gap-gardener.sh stub).
+                tasks.retain(|t| {
+                    if t.optional && !repo_root.join(&t.script).exists() {
+                        eprintln!(
+                            "[fleet daemon] skipping optional task {} — script missing: {}",
+                            t.name, t.script
+                        );
+                        false
+                    } else {
+                        true
+                    }
+                });
+
+                if tasks.is_empty() {
+                    eprintln!(
+                        "[fleet daemon] no runnable tasks in {}",
+                        yaml_path.display()
+                    );
+                    return Ok(());
+                }
+
+                // Ambient log path (mirrors scripts/coord/opus-curator.sh).
+                let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                let _ = std::fs::create_dir_all(ambient_log.parent().unwrap());
+
+                let emit_tick =
+                    |task: &DaemonTask, run_id: &str, exit_code: i32, elapsed_ms: u128| {
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let line = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"daemon_tick\",\
+                          \"task\":\"{}\",\"interval_s\":{},\"run_id\":\"{run_id}\",\
+                          \"exit_code\":{exit_code},\"elapsed_ms\":{elapsed_ms}}}\n",
+                            task.name, task.interval_s
+                        );
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_log)
+                        {
+                            use std::io::Write;
+                            let _ = f.write_all(line.as_bytes());
+                        }
+                    };
+
+                // Run a single tick: shell out to the task's script, capture
+                // exit code + elapsed time, emit ambient event. Errors are
+                // swallowed (logged) so one bad task doesn't kill the daemon.
+                async fn run_tick(
+                    task_name: String,
+                    script_rel: String,
+                    repo_root: std::path::PathBuf,
+                ) -> (i32, u128) {
+                    let script_path = repo_root.join(&script_rel);
+                    let started = std::time::Instant::now();
+                    let res = tokio::process::Command::new("bash")
+                        .arg(&script_path)
+                        .current_dir(&repo_root)
+                        .output()
+                        .await;
+                    let elapsed_ms = started.elapsed().as_millis();
+                    match res {
+                        Ok(o) => {
+                            let code = o.status.code().unwrap_or(-1);
+                            if code != 0 {
+                                eprintln!(
+                                    "[fleet daemon] {} exit={} in {}ms",
+                                    task_name, code, elapsed_ms
+                                );
+                            }
+                            (code, elapsed_ms)
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[fleet daemon] {} spawn failed: {e} ({}ms)",
+                                task_name, elapsed_ms
+                            );
+                            (-1, elapsed_ms)
+                        }
+                    }
+                }
+
+                // Emit daemon_started so observers know the daemon is alive.
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                let tasks_csv = tasks
+                    .iter()
+                    .map(|t| t.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let start_line = format!(
+                    "{{\"ts\":\"{ts}\",\"kind\":\"daemon_started\",\
+                      \"tasks\":\"{tasks_csv}\",\"mode\":\"{}\"}}\n",
+                    if once { "once" } else { "loop" }
+                );
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&ambient_log)
+                {
+                    use std::io::Write;
+                    let _ = f.write_all(start_line.as_bytes());
+                }
+
+                if once {
+                    // --once mode: run every task once, sequentially, then exit.
+                    // Used by the install script's smoke test + by CI.
+                    for t in &tasks {
+                        let run_id =
+                            format!("{}-{}", std::process::id(), chrono::Utc::now().timestamp());
+                        let (exit_code, elapsed_ms) =
+                            run_tick(t.name.clone(), t.script.clone(), repo_root.clone()).await;
+                        emit_tick(t, &run_id, exit_code, elapsed_ms);
+                    }
+                    return Ok(());
+                }
+
+                // Long-lived loop mode: one tokio interval per declared task.
+                eprintln!("[fleet daemon] starting {} tasks (loop mode)", tasks.len());
+                let mut handles = Vec::new();
+                for t in tasks {
+                    let repo_root = repo_root.clone();
+                    let ambient_log = ambient_log.clone();
+                    handles.push(tokio::spawn(async move {
+                        let mut ticker =
+                            tokio::time::interval(std::time::Duration::from_secs(t.interval_s));
+                        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                        loop {
+                            ticker.tick().await;
+                            let run_id = format!(
+                                "{}-{}",
+                                std::process::id(),
+                                chrono::Utc::now().timestamp()
+                            );
+                            let (exit_code, elapsed_ms) =
+                                run_tick(t.name.clone(), t.script.clone(), repo_root.clone()).await;
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let line = format!(
+                                "{{\"ts\":\"{ts}\",\"kind\":\"daemon_tick\",\
+                                  \"task\":\"{}\",\"interval_s\":{},\
+                                  \"run_id\":\"{run_id}\",\
+                                  \"exit_code\":{exit_code},\
+                                  \"elapsed_ms\":{elapsed_ms}}}\n",
+                                t.name, t.interval_s
+                            );
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_log)
+                            {
+                                use std::io::Write;
+                                let _ = f.write_all(line.as_bytes());
+                            }
+                        }
+                    }));
+                }
+                // Hold until any task errors out (none should under normal op).
+                for h in handles {
+                    let _ = h.await;
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees>"
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon>"
                 );
                 eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]");
                 eprintln!("  stop        [--session NAME]");
@@ -2819,6 +3068,7 @@ async fn main() -> Result<()> {
                     "  auto-resize [--apply] [--json]  -- scale down on 4 conditions (INFRA-650)"
                 );
                 eprintln!("  prune-worktrees [--apply] [--json]  -- prune stale linked worktrees (INFRA-827)");
+                eprintln!("  daemon      [--once]  -- long-lived scheduler (INFRA-964); --once runs all tasks once");
                 std::process::exit(2);
             }
         }
@@ -2977,6 +3227,9 @@ async fn main() -> Result<()> {
                 // sees the true state). Surfaces by name in the summary
                 // line so the operator KNOWS the filter ran.
                 let include_test_domains = args.iter().any(|a| a == "--include-test-domains");
+                // EFFECTIVE-023: --domain <D> filters to a single domain;
+                // --domain all shows per-domain summary footer.
+                let domain_filter = flag("--domain");
                 // EFFECTIVE-008: --quiet suppresses all output (exit 0 on success).
                 let quiet = args.iter().any(|a| a == "--quiet");
                 // EFFECTIVE-008: --format <human|json|csv> — explicit format
@@ -3003,6 +3256,11 @@ async fn main() -> Result<()> {
                                 if !include_test_domains && is_test_domain(dom) {
                                     continue;
                                 }
+                                if let Some(df) = &domain_filter {
+                                    if df != "all" && dom != df.as_str() {
+                                        continue;
+                                    }
+                                }
                                 // Escape commas and quotes in title
                                 let title_esc = g.title.replace('"', "\"\"");
                                 println!(
@@ -3011,14 +3269,57 @@ async fn main() -> Result<()> {
                                 );
                             }
                         } else if json_out {
-                            // INFRA-431: --json output unchanged — for
-                            // tooling. Filter and summary apply only to
-                            // the human-readable path.
-                            println!(
-                                "{}",
-                                serde_json::to_string_pretty(&gaps).unwrap_or_default()
-                            );
+                            // EFFECTIVE-023: when --domain is set, wrap in
+                            // {gaps: [...], domain_summary: {...}} object.
+                            // Without --domain, output the plain array as before.
+                            if let Some(df) = &domain_filter {
+                                let filtered: Vec<&gap_store::GapRow> = gaps
+                                    .iter()
+                                    .filter(|g| {
+                                        let dom = g.id.split('-').next().unwrap_or("?");
+                                        df == "all" || dom == df.as_str()
+                                    })
+                                    .collect();
+                                // Build domain_summary over the filtered set.
+                                let mut ds: std::collections::BTreeMap<
+                                    String,
+                                    std::collections::BTreeMap<String, usize>,
+                                > = std::collections::BTreeMap::new();
+                                for g in &filtered {
+                                    let dom = g.id.split('-').next().unwrap_or("?").to_string();
+                                    let entry = ds.entry(dom).or_default();
+                                    let key = match g.status.as_str() {
+                                        "done" => "done",
+                                        "in_progress" => "in_progress",
+                                        _ => "open",
+                                    };
+                                    *entry.entry(key.to_string()).or_insert(0) += 1;
+                                }
+                                let obj = serde_json::json!({
+                                    "gaps": filtered,
+                                    "domain_summary": ds,
+                                });
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&obj).unwrap_or_default()
+                                );
+                            } else {
+                                // INFRA-431: --json output unchanged — for
+                                // tooling. Filter and summary apply only to
+                                // the human-readable path.
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&gaps).unwrap_or_default()
+                                );
+                            }
                         } else {
+                            // EFFECTIVE-023: when --domain <D> (not "all"),
+                            // print a "Domain: D" header and filter rows.
+                            let specific_domain = domain_filter.as_deref().filter(|d| *d != "all");
+                            if let Some(d) = specific_domain {
+                                println!("Domain: {d}");
+                            }
+
                             // Build filtered view + per-domain counts on the
                             // unfiltered set so the summary + ALERT see the
                             // truth (the SPIKE leak hid because counts were
@@ -3040,52 +3341,103 @@ async fn main() -> Result<()> {
                                     filtered_count += 1;
                                     continue;
                                 }
+                                // EFFECTIVE-023: apply domain filter.
+                                if let Some(df) = &domain_filter {
+                                    if df != "all" && dom != df.as_str() {
+                                        continue;
+                                    }
+                                }
+                                // EFFECTIVE-024: done gaps append "→ #PR merged YYYY-MM-DD"
+                                let done_suffix = if g.status == "done" {
+                                    match (g.closed_pr, g.closed_date.as_str()) {
+                                        (Some(pr), d) if !d.is_empty() => {
+                                            format!(" → #{pr} merged {d}")
+                                        }
+                                        (Some(pr), _) => format!(" → #{pr} merged"),
+                                        (None, d) if !d.is_empty() => {
+                                            format!(" → merged {d}")
+                                        }
+                                        _ => String::new(),
+                                    }
+                                } else {
+                                    String::new()
+                                };
                                 println!(
-                                    "[{}] {} — {} ({}/{})",
+                                    "[{}] {} — {} ({}/{}){done_suffix}",
                                     g.status, g.id, g.title, g.priority, g.effort
                                 );
                             }
-                            // Domain-population ALERT (stderr, unconditional).
-                            // The 2026-05-03 SPIKE leak (302 of 404 = 75%)
-                            // would have triggered this and saved the audit.
-                            // No env knob — the ALERT is the load-bearing
-                            // protection against future leaks.
-                            let total = gaps.len();
-                            for (dom, n) in &by_domain {
-                                // INFRA-431 rescue: clippy::manual_checked_ops
-                                // flags `if total > 0 { *n * 100 / total } else { 0 }`
-                                // because `checked_div` makes the divide-by-zero
-                                // intent explicit. Behaviour is identical.
-                                let pct = (*n * 100).checked_div(total).unwrap_or(0);
-                                if *n > 100 || pct > 50 {
-                                    eprintln!(
-                                        "ALERT: domain {} has {} gaps ({}% of total) — likely a test-fixture leak (see INFRA-428)",
-                                        dom, n, pct
-                                    );
+
+                            // EFFECTIVE-023: --domain all shows per-domain summary.
+                            if domain_filter.as_deref() == Some("all") {
+                                // Build per-status counts by domain over ALL gaps.
+                                let mut by_dom_status: std::collections::BTreeMap<
+                                    String,
+                                    (
+                                        usize,
+                                        usize,
+                                        usize,
+                                        std::collections::BTreeMap<String, usize>,
+                                    ),
+                                > = std::collections::BTreeMap::new();
+                                for g in &gaps {
+                                    let dom = g.id.split('-').next().unwrap_or("?").to_string();
+                                    let entry = by_dom_status.entry(dom).or_insert((
+                                        0,
+                                        0,
+                                        0,
+                                        std::collections::BTreeMap::new(),
+                                    ));
+                                    match g.status.as_str() {
+                                        "done" => entry.1 += 1,
+                                        "in_progress" => entry.2 += 1,
+                                        _ => {
+                                            entry.0 += 1;
+                                            *entry.3.entry(g.priority.clone()).or_insert(0) += 1;
+                                        }
+                                    }
                                 }
+                                println!();
+                                for (dom, (open, _done, _in_prog, prios)) in &by_dom_status {
+                                    let p0 = prios.get("P0").copied().unwrap_or(0);
+                                    let p1 = prios.get("P1").copied().unwrap_or(0);
+                                    println!("{dom}: {open} open (P0={p0}, P1={p1})");
+                                }
+                            } else if domain_filter.is_none() {
+                                // Default path (no --domain): existing summary line.
+                                // Domain-population ALERT (stderr, unconditional).
+                                let total = gaps.len();
+                                for (dom, n) in &by_domain {
+                                    let pct = (*n * 100).checked_div(total).unwrap_or(0);
+                                    if *n > 100 || pct > 50 {
+                                        eprintln!(
+                                            "ALERT: domain {} has {} gaps ({}% of total) — likely a test-fixture leak (see INFRA-428)",
+                                            dom, n, pct
+                                        );
+                                    }
+                                }
+                                // Summary line (stdout). Top 5 domains by count.
+                                let mut domain_pairs: Vec<(&String, &usize)> =
+                                    by_domain.iter().collect();
+                                domain_pairs.sort_by(|a, b| b.1.cmp(a.1));
+                                let top: Vec<String> = domain_pairs
+                                    .iter()
+                                    .take(5)
+                                    .map(|(d, n)| format!("{d}={n}"))
+                                    .collect();
+                                let shown = total - filtered_count;
+                                let mut summary = format!(
+                                    "\n--- {} shown / {} total open across {} domains (top: {}) ---",
+                                    shown, total, by_domain.len(), top.join(" ")
+                                );
+                                if !filtered_domains.is_empty() {
+                                    summary.push_str(&format!(
+                                        "\n--- filtered out {} test-domain row(s): {} (use --include-test-domains to see) ---",
+                                        filtered_count, filtered_domains.join(" ")
+                                    ));
+                                }
+                                println!("{summary}");
                             }
-                            // Summary line (stdout). Top 5 domains by count.
-                            let mut domain_pairs: Vec<(&String, &usize)> =
-                                by_domain.iter().collect();
-                            domain_pairs.sort_by(|a, b| b.1.cmp(a.1));
-                            let top: Vec<String> = domain_pairs
-                                .iter()
-                                .take(5)
-                                .map(|(d, n)| format!("{d}={n}"))
-                                .collect();
-                            let shown = total - filtered_count;
-                            let mut summary =
-                                format!(
-                                "\n--- {} shown / {} total open across {} domains (top: {}) ---",
-                                shown, total, by_domain.len(), top.join(" ")
-                            );
-                            if !filtered_domains.is_empty() {
-                                summary.push_str(&format!(
-                                    "\n--- filtered out {} test-domain row(s): {} (use --include-test-domains to see) ---",
-                                    filtered_count, filtered_domains.join(" ")
-                                ));
-                            }
-                            println!("{summary}");
                         }
                         return Ok(());
                     }
@@ -3518,11 +3870,12 @@ async fn main() -> Result<()> {
                 // starts with "--", the operator forgot the ID or passed a bad flag.
                 let gap_set_usage = || {
                     eprintln!("Usage: chump gap set <GAP-ID> [--title T] [--description D] [--priority P]");
-                    eprintln!("                          [--effort E] [--status S] [--notes N]");
+                    eprintln!("                          [--effort E] [--status S] [--notes N] [--add-note TEXT]");
                     eprintln!("                          [--source-doc S] [--opened-date D] [--closed-date D]");
                     eprintln!("                          [--closed-pr N] [--acceptance-criteria \"a|b|c\"] [--depends-on \"X,Y\"]");
                     eprintln!("                          [--skills-required SKS] [--preferred-backend BE]");
                     eprintln!("                          [--preferred-machine MACH] [--estimated-minutes MIN] [--required-model MODEL]");
+                    eprintln!("  Note: --add-note TEXT appends '[ISO-timestamp] TEXT' to existing notes; --notes OVERWRITES.");
                 };
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
                     gap_set_usage();
@@ -3567,6 +3920,29 @@ async fn main() -> Result<()> {
                     },
                     None => None,
                 };
+                // EFFECTIVE-020: --add-note appends a timestamped entry to the
+                // existing notes without overwriting. Format per entry:
+                //   "[YYYY-MM-DDTHH:MM:SSZ] <text>"
+                // Multiple notes are newline-separated. The --notes flag still
+                // overwrites the entire field; --add-note only appends.
+                let notes: Option<String> = if let Some(add_text) = flag("--add-note") {
+                    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                    let new_entry = format!("[{}] {}", ts, add_text);
+                    // Fetch current notes and append.
+                    let existing = match store.get(&gap_id) {
+                        Ok(Some(g)) if !g.notes.is_empty() => g.notes,
+                        _ => String::new(),
+                    };
+                    let combined = if existing.is_empty() {
+                        new_entry
+                    } else {
+                        format!("{}\n{}", existing, new_entry)
+                    };
+                    Some(combined)
+                } else {
+                    flag("--notes")
+                };
+
                 let update = gap_store::GapFieldUpdate {
                     title: flag("--title"),
                     description: flag("--description"),
@@ -3575,7 +3951,7 @@ async fn main() -> Result<()> {
                     status: flag("--status"),
                     acceptance_criteria,
                     depends_on,
-                    notes: flag("--notes"),
+                    notes,
                     source_doc: flag("--source-doc"),
                     opened_date: flag("--opened-date"),
                     closed_date: flag("--closed-date"),
@@ -4853,6 +5229,164 @@ async fn main() -> Result<()> {
 
                 return Ok(());
             }
+            "dep-clean" => {
+                let do_apply = args.iter().any(|a| a == "--apply");
+                let as_json = json_out || args.iter().any(|a| a == "--json");
+                let do_dry_run = !do_apply;
+
+                let all_open = match store.list(Some("open")) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap dep-clean: failed to list open gaps: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                // Build a lookup: gap_id -> status
+                let mut status_map: std::collections::HashMap<&str, &str> =
+                    std::collections::HashMap::new();
+                for g in &all_open {
+                    status_map.insert(g.id.as_str(), "open");
+                }
+                let all_done = match store.list(Some("done")) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap dep-clean: failed to list done gaps: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+                for g in &all_done {
+                    status_map.insert(g.id.as_str(), "done");
+                }
+
+                // Parse depends_on (stored as JSON array like ["X-1","X-2"])
+                let parse_deps = |s: &str| -> Vec<String> {
+                    if s.trim().is_empty() {
+                        return Vec::new();
+                    }
+                    serde_json::from_str::<Vec<String>>(s).unwrap_or_default()
+                };
+
+                let mut results: Vec<serde_json::Value> = Vec::new();
+                let mut found_any = false;
+
+                for g in &all_open {
+                    let deps = parse_deps(&g.depends_on);
+                    if deps.is_empty() {
+                        continue;
+                    }
+                    let stale: Vec<String> = deps
+                        .iter()
+                        .filter(|d| status_map.get(d.as_str()).copied() == Some("done"))
+                        .cloned()
+                        .collect();
+                    let clean: Vec<String> = deps
+                        .iter()
+                        .filter(|d| {
+                            let s = status_map.get(d.as_str()).copied();
+                            s != Some("done")
+                        })
+                        .cloned()
+                        .collect();
+
+                    if stale.is_empty() {
+                        if as_json {
+                            results.push(serde_json::json!({
+                                "gap_id": g.id,
+                                "stale_deps": [],
+                                "action": "skipped"
+                            }));
+                        }
+                        continue;
+                    }
+
+                    found_any = true;
+
+                    if do_apply {
+                        // Strip stale deps: keep only clean ones
+                        let new_deps =
+                            serde_json::to_string(&clean).unwrap_or_else(|_| "[]".into());
+                        let update = gap_store::GapFieldUpdate {
+                            depends_on: Some(new_deps),
+                            ..Default::default()
+                        };
+                        if let Err(e) = store.set_fields(&g.id, update) {
+                            eprintln!("chump gap dep-clean: failed to update {}: {e:#}", g.id);
+                            std::process::exit(1);
+                        }
+                        // Emit ambient event
+                        let lock_dir = repo_root.join(".chump-locks");
+                        let _ = std::fs::create_dir_all(&lock_dir);
+                        let ambient_path = if let Ok(p) = std::env::var("CHUMP_AMBIENT_IN_PROMPT") {
+                            std::path::PathBuf::from(p)
+                        } else {
+                            lock_dir.join("ambient.jsonl")
+                        };
+                        let ts =
+                            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                        let evt = serde_json::json!({
+                            "ts": ts,
+                            "kind": "dep_cleaned",
+                            "gap_id": g.id,
+                            "stripped_deps": stale,
+                        });
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write as _;
+                            let _ = writeln!(f, "{}", evt);
+                        }
+
+                        if as_json {
+                            results.push(serde_json::json!({
+                                "gap_id": g.id,
+                                "stale_deps": stale,
+                                "action": "stripped"
+                            }));
+                        } else {
+                            println!(
+                                "{} depends_on [{}] — stripped {}",
+                                g.id,
+                                stale.join(", "),
+                                clean.join(", ")
+                            );
+                        }
+                    } else {
+                        // Dry-run mode
+                        if as_json {
+                            results.push(serde_json::json!({
+                                "gap_id": g.id,
+                                "stale_deps": stale,
+                                "action": "skipped"
+                            }));
+                        } else {
+                            for sd in &stale {
+                                println!("{} depends_on {} (done) — will strip", g.id, sd);
+                            }
+                        }
+                    }
+                }
+
+                if as_json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&results).unwrap_or_default()
+                    );
+                }
+
+                if found_any && do_dry_run {
+                    eprintln!("dep-clean: found stale depends_on entries (dry-run; pass --apply to strip)");
+                    std::process::exit(1);
+                }
+
+                if !found_any && !as_json {
+                    println!("No stale depends_on entries found — all clean.");
+                }
+
+                return Ok(());
+            }
             // INFRA-635: gap rebalance — P0 budget enforcement + pillar floor check.
             // Reads state.db, identifies violations, suggests or applies corrections.
             "rebalance" => {
@@ -5649,6 +6183,7 @@ async fn main() -> Result<()> {
                 );
                 eprintln!("                             [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
                 eprintln!("  decompose        <GAP-ID> [--apply] [--json] [--dry-run] [--no-description]  # LLM-assisted slicing");
+                eprintln!("  dep-clean        [--apply] [--json]  # strip depends_on entries pointing at done gaps");
                 eprintln!("  dump             [--out PATH] [--per-file [--out-dir docs/gaps/]]");
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
                 eprintln!("  restore          --from-sql  # rebuild state.db from .chump/state.sql (INFRA-538)");

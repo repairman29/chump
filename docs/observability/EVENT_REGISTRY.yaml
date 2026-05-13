@@ -184,6 +184,18 @@ events:
     consumers: [fleet-brief, watchdog, oncall]
     fields_required: [ts, kind, wedge_age_s, threshold_s, handler]
 
+  - kind: claim_aborted_disk_full
+    emitter: scripts/lib/disk-check.sh via gap-claim.sh (INFRA-975)
+    trigger: chump claim attempted but free disk < CHUMP_DISK_LOW_GB (default 5 GB)
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, free_gb, threshold_gb, path]
+
+  - kind: fleet_paused_disk_critical
+    emitter: scripts/lib/disk-check.sh via worker.sh (INFRA-975)
+    trigger: worker pre-cycle disk check found free < CHUMP_DISK_CRITICAL_GB (default 1 GB)
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, free_gb, threshold_gb, path]
+
   - kind: fleet_wedge_resolved
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
     trigger: no fleet_wedge events for CHUMP_WEDGE_CLEAR_S (default 1800s) while wedged=true
@@ -525,6 +537,30 @@ events:
       declared in scripts/coord/system-gap-frequencies.yaml. task identifies
       the scheduled-task name (opus-curator | emergency-fast-path | gap-gardener).
 
+  - kind: daemon_started
+    emitter: src/main.rs `chump fleet daemon` (INFRA-964)
+    trigger: chump fleet daemon process starts and parses its task config
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, tasks, mode]
+    docs: |
+      mode is "once" (--once dev/test invocation) or "loop" (long-lived
+      production daemon). tasks is a comma-separated list of declared task
+      names from scripts/coord/system-gap-frequencies.yaml. Absence of this
+      event for > 1 launchd KeepAlive cycle means the daemon failed to
+      start; investigate /tmp/chump-fleet-daemon.err.log.
+
+  - kind: daemon_tick
+    emitter: src/main.rs `chump fleet daemon` (INFRA-964)
+    trigger: each scheduled task invocation by the daemon, after it returns
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, task, interval_s, run_id, exit_code, elapsed_ms]
+    docs: |
+      Replaces the Claude-Code-hosted scheduled-tasks MCP path. exit_code is
+      the script's exit status; non-zero means the task failed (visible in
+      ambient AND in /tmp/chump-fleet-daemon.err.log). elapsed_ms is wall-clock
+      run time. Missed daemon_tick events for a known interval_s mean the
+      daemon itself is dead — check `launchctl list | grep fleet-daemon`.
+
   - kind: opus_roadmap_published
     emitter: opus curator (META-054, ad-hoc)
     trigger: opus curator publishes docs/ROADMAP_OPUS_SEQUENCING.md
@@ -596,6 +632,27 @@ events:
     trigger: flock wait > 5s acquiring bot-merge.lock; another bot-merge was active
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, wait_s]
+
+  - kind: scratch_commit_blocked
+    emitter: scripts/coord/bot-merge.sh (INFRA-993)
+    trigger: pre-push diff vs origin/main has > CHUMP_SCRATCH_GUARD_MAX_DELETIONS (default 50000) deletions OR deletions > CHUMP_SCRATCH_GUARD_RATIO (default 100) × additions
+    consumers: [audit-log, watchdog, oncall]
+    fields_required: [ts, kind, gap_id, additions, deletions, files, threshold_abs, threshold_ratio, branch]
+    docs: |
+      The repo-wipe protection guard. Fires when a PR would delete an
+      unreasonable fraction of the repo. Near-miss observed 2026-05-11
+      (PRs #1441, #1452 each proposing -378K lines). bot-merge.sh exits
+      with code 15 on this event.
+
+  - kind: scratch_commit_override_used
+    emitter: scripts/coord/bot-merge.sh (INFRA-993)
+    trigger: --allow-mass-delete flag set on a push that would otherwise trip the scratch-commit guard
+    consumers: [audit-log, watchdog, oncall]
+    fields_required: [ts, kind, gap_id, additions, deletions, files, threshold_abs, threshold_ratio, branch]
+    docs: |
+      Louder than scratch_commit_blocked because it records that an
+      operator deliberately overrode the safety guard. Audit-log
+      consumers should keep these as long as bot_merge_blocked events.
 
   # INFRA-950: register kinds that the system already emits but were never
   # captured here. waste-tally classifies these as of this gap.
@@ -1113,6 +1170,24 @@ events:
     consumers: [fleet-brief, operator-recall, watchdogs]
     fields_required: [ts, kind, source, exit_code, note]
 
+  # ── INFRA-999: per-call GitHub API cost telemetry ─────────────────────────
+  - kind: github_api_call
+    emitter: scripts/coord/lib/github.sh (chump_gh, chump_gh_record)
+    trigger: any wrapped gh invocation. Records script name, 1-2 token api tag,
+      remaining_core + remaining_graphql at time of call, elapsed ms, rc.
+      Used to rank which scripts burn which rate-limit bucket (INFRA-1000).
+    consumers: [api-cost-report]
+    fields_required: [ts, kind, script, api, remaining_core, remaining_graphql, used_ms, rc]
+
+  # ── INFRA-995: pre-push staleness gate ────────────────────────────────────
+  - kind: stale_branch_blocked
+    emitter: scripts/coord/bot-merge.sh (INFRA-995)
+    trigger: branch is >CHUMP_BOT_MERGE_STALE_THRESHOLD (default 15) commits behind
+      main right before push — main moved during build/test. bot-merge.sh refuses
+      to push and exits 3 to keep CI from running on a stale base.
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, branch, behind, threshold, phase]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
@@ -1303,6 +1378,21 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, pruned, skipped_active_pr, skipped_uncommitted, skipped_young]
 
+  # ── RESILIENT-013: orphaned /tmp worktree reaper ─────────────────────────
+  - kind: worktree_orphan_pruned
+    emitter: scripts/ops/prune-worktrees.sh (RESILIENT-013, orphan mode)
+    trigger: a /tmp/chump-* worktree had no active lease in .chump-locks/
+      AND no open PR for its branch — safely removed
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, path, branch]
+
+  - kind: worktree_orphan_skipped
+    emitter: scripts/ops/prune-worktrees.sh (RESILIENT-013, orphan mode)
+    trigger: a /tmp/chump-* worktree was skipped because it had an active lease,
+      an open PR, or uncommitted changes
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, path, reason, branch]
+
   # ── CREDIBLE-038: file-count-blast rule ──────────────────────────────────
   - kind: pr_scope_violation
     emitter: scripts/ci/check-mass-deletion.sh (CREDIBLE-038, rule C)
@@ -1318,3 +1408,30 @@ events:
       not depends_on-linked in .chump/state.db — indicates bundled unrelated gaps
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, gap_ids, depends_on_check_result, branch]
+
+  # ── INFRA-944: gap dep-clean ──────────────────────────────────────────────
+  - kind: dep_cleaned
+    emitter: src/main.rs (chump gap dep-clean --apply, INFRA-944)
+    trigger: a stale depends_on entry pointing at a done gap was stripped
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap_id, stripped_deps]
+
+  # ── CREDIBLE-048: per-gate fire-rate telemetry ───────────────────────────
+  - kind: gate_check_start
+    emitter: scripts/ci/lib/gate-emit.sh (sourced by each CI gate — CREDIBLE-048)
+    trigger: any CI gate begins execution
+    consumers: [gate-fire-rate, fleet-brief]
+    fields_required: [ts, kind, gate, pr_or_branch, args]
+
+  - kind: gate_check_result
+    emitter: scripts/ci/lib/gate-emit.sh (sourced by each CI gate — CREDIBLE-048)
+    trigger: any CI gate completes (pass / fail / bypassed / skipped)
+    consumers: [gate-fire-rate, fleet-brief, curator]
+    fields_required: [ts, kind, gate, outcome, rule_fired, evidence, pr_or_branch]
+
+  # ── RESILIENT-014: test-gate bypass audit ─────────────────────────────────
+  - kind: test_gate_bypassed
+    emitter: scripts/git-hooks/pre-push (RESILIENT-014)
+    trigger: CHUMP_TEST_GATE=0 used to skip the cargo test gate on push
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, gap_id, reason, branch, bypassed_by]

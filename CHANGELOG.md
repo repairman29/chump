@@ -58,7 +58,7 @@ First public release. Chump graduates from private development to an open-source
 
 - **Single-binary Rust agent** on OpenAI-compatible inference (Ollama, vLLM, mistral.rs) with SQLite + FTS5 persistence
 - **Four surfaces**: web PWA, CLI, Discord bot, Tauri desktop shell
-- **Six-module consciousness framework** (surprise tracker, memory graph, blackboard, neuromodulation, precision controller, phi proxy) with A/B testing harness
+- **Six-module consciousness framework** (surprise tracker, memory graph, blackboard, neuromodulation, precision controller, phi proxy) with A/B testing harness — _v0.1.0 historical count; the architecture grew to nine modules after release, and per-module wired-or-not status now lives in [`docs/architecture/CHUMP_FACULTY_MAP.md`](docs/architecture/CHUMP_FACULTY_MAP.md). Validated empirical results are tracked privately (see [`docs/process/RESEARCH_INTEGRITY.md`](docs/process/RESEARCH_INTEGRITY.md) for the public methodology, DOC-036)._
 - **Procedural skills system** with Bradley-Terry evolution, skill mutation, SHA-256 deterministic caching
 - **Three-way retrieval pipeline** (keyword + semantic + graph) merged by RRF with freshness decay
 - **Agent Client Protocol (ACP)** stdio server — launchable from Zed, JetBrains IDEs, and any ACP-compatible client. _(v0.1.0 shipped initialize/new/prompt/cancel; [Unreleased] rounds out the full spec — see below.)_

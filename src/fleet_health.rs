@@ -39,6 +39,14 @@ pub struct HealthSignal {
     pub detail: String,
 }
 
+/// One ambient event summary for the "Recent activity" section.
+#[derive(Debug)]
+pub struct AmbientSummary {
+    pub ts: String,
+    pub kind: String,
+    pub summary: String,
+}
+
 /// Full composite health report.
 #[derive(Debug)]
 pub struct HealthReport {
@@ -63,6 +71,7 @@ pub struct HealthReport {
     pub auth_ok: bool,
     pub commits_behind: u64,
     pub session_rescues_24h: u64,
+    pub ambient_recent: Vec<AmbientSummary>,
 }
 
 pub fn build_report(repo_root: &Path) -> HealthReport {
@@ -254,6 +263,7 @@ pub fn build_report(repo_root: &Path) -> HealthReport {
         auth_ok,
         commits_behind,
         session_rescues_24h,
+        ambient_recent: collect_ambient_recent(repo_root),
     }
 }
 
@@ -326,8 +336,20 @@ impl HealthReport {
                 )
             })
             .unwrap_or_else(|| "null".to_string());
+        let recent_json: Vec<String> = self
+            .ambient_recent
+            .iter()
+            .map(|e| {
+                format!(
+                    r#"{{"ts":"{}","kind":"{}","summary":"{}"}}"#,
+                    json_escape(&e.ts),
+                    json_escape(&e.kind),
+                    json_escape(&e.summary),
+                )
+            })
+            .collect();
         format!(
-            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"signals":[{sigs}],"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"waste_top_kind":"{wtk}","fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"budget_usd_per_day":{budget:.2},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr}}}"#,
+            r#"{{"ts":"{ts}","kind":"fleet_health","score":{score},"grade":"{grade}","worst_signal":{worst},"signals":[{sigs}],"active_leases":{al},"stale_leases":{sl},"waste_incidents_2h":{wi},"waste_top_kind":"{wtk}","fleet_wedges_2h":{fw},"pr_stuck_2h":{ps},"silent_agents_2h":{sa},"today_spend_usd":{spend:.6},"budget_usd_per_day":{budget:.2},"over_budget":{ob},"ghost_gaps":{gg},"pillars_starved":{pstar},"auth_ok":{auth},"commits_behind":{cb},"session_rescues_24h":{sr},"ambient_recent":[{recent}]}}"#,
             ts = self.ts,
             score = self.score,
             grade = self.grade,
@@ -348,6 +370,7 @@ impl HealthReport {
             auth = self.auth_ok,
             cb = self.commits_behind,
             sr = self.session_rescues_24h,
+            recent = recent_json.join(","),
         )
     }
 
@@ -413,6 +436,17 @@ impl HealthReport {
                     "    -{:>2}  {}  {}\n",
                     s.penalty, s.name, s.detail
                 ));
+            }
+        }
+        if !self.ambient_recent.is_empty() {
+            out.push_str("\n  Recent activity:\n");
+            for e in &self.ambient_recent {
+                let ts_short = e.ts.get(..19).unwrap_or(&e.ts);
+                if e.summary.is_empty() {
+                    out.push_str(&format!("    [{}] {}\n", ts_short, e.kind));
+                } else {
+                    out.push_str(&format!("    [{}] {}: {}\n", ts_short, e.kind, e.summary));
+                }
             }
         }
         out.push_str(&format!("\n  Generated: {}\n", self.ts));
@@ -491,6 +525,55 @@ fn scan_ambient_2h(repo_root: &Path, cutoff_unix: u64) -> (u64, u64, u64, u64, S
         .unwrap_or_default();
 
     (wedges, pr_stuck, silent, total_waste, top_kind)
+}
+
+const NOISE_KINDS: &[&str] = &["heartbeat", "session_start", "bash_call"];
+
+/// Collect the last ≤5 non-noise events from ambient.jsonl for display.
+fn collect_ambient_recent(repo_root: &Path) -> Vec<AmbientSummary> {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut events: Vec<AmbientSummary> = Vec::new();
+    for line in contents.lines() {
+        let kind = match extract_field(line, "kind") {
+            Some(k) => k,
+            None => continue,
+        };
+        if NOISE_KINDS.contains(&kind.as_str()) {
+            continue;
+        }
+        let ts = extract_field(line, "ts").unwrap_or_default();
+        let summary = ambient_event_summary(line, &kind);
+        events.push(AmbientSummary { ts, kind, summary });
+    }
+
+    // Take last 5 (most-recent); they are already in chronological order.
+    let start = events.len().saturating_sub(5);
+    events.split_off(start)
+}
+
+/// Extract a concise one-liner summary from an ambient event line.
+/// Picks up to 3 known key fields beyond ts/kind.
+fn ambient_event_summary(line: &str, kind: &str) -> String {
+    let key_fields: &[&str] = match kind {
+        "session_end" => &["outcome", "gap", "elapsed_seconds"],
+        "gap_claimed" | "gap_shipped" => &["gap", "worker"],
+        "fleet_wedge" | "fleet_scale_change" => &["rationale", "from", "to"],
+        "pr_stuck" | "bot_merge_phase_failure" => &["pr", "phase", "error"],
+        "alert" | "slo_breach" => &["slo", "detail", "current"],
+        "gap_store_curated" => &["rebalanced", "consolidated", "errors"],
+        _ => &["gap", "worker", "error"],
+    };
+    let mut parts: Vec<String> = Vec::new();
+    for &field in key_fields {
+        if let Some(val) = extract_field(line, field) {
+            if !val.is_empty() {
+                parts.push(format!("{}={}", field, val));
+            }
+        }
+    }
+    parts.join(" ")
 }
 
 fn scan_cost_today(repo_root: &Path, budget: f64) -> (f64, bool) {
@@ -1075,6 +1158,7 @@ mod tests {
             auth_ok: true,
             commits_behind: 0,
             session_rescues_24h: 0,
+            ambient_recent: vec![],
         };
         let json = report.render_event_json();
         assert!(json.contains(r#""kind":"fleet_health""#), "kind field");
@@ -1115,6 +1199,7 @@ mod tests {
             auth_ok: true,
             commits_behind: 0,
             session_rescues_24h: 0,
+            ambient_recent: vec![],
         };
         let text = report.render_text();
         assert!(text.contains("75/100"), "score in text");
@@ -1146,6 +1231,7 @@ mod tests {
             auth_ok: true,
             commits_behind: 0,
             session_rescues_24h: 0,
+            ambient_recent: vec![],
         };
         let json = report.render_json();
         assert!(json.starts_with('{'), "starts with {{");
@@ -1190,6 +1276,7 @@ mod tests {
             auth_ok: true,
             commits_behind: 0,
             session_rescues_24h: 0,
+            ambient_recent: vec![],
         };
         emit(&tmp, &report);
         let contents = std::fs::read_to_string(tmp.join(".chump-locks/ambient.jsonl")).unwrap();

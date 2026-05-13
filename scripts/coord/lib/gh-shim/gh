@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+# scripts/coord/lib/gh-shim/gh — INFRA-999 transparent telemetry shim
+#
+# Activated by sourcing scripts/coord/lib/github.sh — that file prepends
+# this directory to PATH so every subsequent `gh ...` invocation goes
+# through this script. Records the call (kind=github_api_call ambient
+# event) and forwards to the real gh binary.
+#
+# Resolves the real gh by searching PATH minus our own directory. This
+# avoids the infinite-recursion trap where the shim calls itself.
+#
+# Bypass: `command gh ...` (bash's `command` strips PATH-resolved scripts
+# and runs the binary; only works if no other gh shim is on PATH).
+# Or: `CHUMP_GH_NO_SHIM=1 gh ...`.
+
+set -uo pipefail
+
+if [[ "${CHUMP_GH_NO_SHIM:-0}" == "1" ]]; then
+    # Recursion guard: caller wants the raw binary. Resolve and exec.
+    SHIM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+    OLD_PATH="$PATH"
+    PATH="$(printf '%s' "$OLD_PATH" | tr ':' '\n' | grep -vFx "$SHIM_DIR" | tr '\n' ':' | sed 's/:$//')"
+    exec gh "$@"
+fi
+
+SHIM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+REPO_LIB="$(cd "$SHIM_DIR/.." && pwd)"
+
+# Source the github.sh library for the record + tag helpers. Make sure
+# this doesn't re-prepend our shim dir (the source guard inside that file
+# already handles idempotency, but we set NO_PATH_INJECT just in case).
+CHUMP_GH_NO_PATH_INJECT=1 source "$REPO_LIB/github.sh"
+
+# Find the real gh: walk PATH, skip our shim dir.
+_real_gh=""
+IFS=':' read -r -a _path_parts <<< "$PATH"
+for _p in "${_path_parts[@]}"; do
+    [[ -z "$_p" ]] && continue
+    [[ "$_p" == "$SHIM_DIR" ]] && continue
+    if [[ -x "$_p/gh" ]]; then
+        _real_gh="$_p/gh"
+        break
+    fi
+done
+
+if [[ -z "$_real_gh" ]]; then
+    echo "[chump-gh-shim] real gh not found on PATH (excluding $SHIM_DIR)" >&2
+    exit 127
+fi
+
+# Tag this call.
+api_tag="$(chump_gh_api_tag "$@" 2>/dev/null || echo "?")"
+started_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
+
+# Run real gh, preserve stdout/stderr/exit.
+# Mark that the shim is the recording path on this call — any
+# explicit chump_gh_record() call from a wrapper higher up the stack
+# (e.g. bot-merge.sh::gh_with_backoff) should skip its own emission
+# to avoid double-logging.
+export CHUMP_GH_SHIM_RECORDING=1
+"$_real_gh" "$@"
+rc=$?
+unset CHUMP_GH_SHIM_RECORDING
+
+ended_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
+
+# Best-effort record. Never blocks/fails the real call.
+if declare -F chump_gh_record >/dev/null 2>&1; then
+    # Caller-script identity: prefer CHUMP_GH_SCRIPT (env override), else
+    # walk $0 of the parent process. ps -o comm gives the basename.
+    script_tag="${CHUMP_GH_SCRIPT:-}"
+    if [[ -z "$script_tag" ]]; then
+        script_tag="$(ps -o comm= -p "$PPID" 2>/dev/null | head -1 || true)"
+        # If parent is "bash" or empty, walk one more level (script execed by shell).
+        if [[ -z "$script_tag" || "$script_tag" == "bash" || "$script_tag" == "-bash" ]]; then
+            grandparent="$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')"
+            if [[ -n "$grandparent" && "$grandparent" != "0" ]]; then
+                script_tag="$(ps -o comm= -p "$grandparent" 2>/dev/null | head -1 || true)"
+            fi
+        fi
+        script_tag="$(basename "${script_tag:-shim}")"
+    fi
+    chump_gh_record "$api_tag" "$(( ended_ms - started_ms ))" "$rc" "$script_tag" \
+        2>/dev/null || true
+fi
+
+exit $rc

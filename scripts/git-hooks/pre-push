@@ -92,6 +92,23 @@ fi
 #
 # Performance budget: 4–6 min on a clean target/. Cached re-runs are <1s.
 # -----------------------------------------------------------------------
+
+# RESILIENT-014: emit ambient audit event when the test gate is bypassed.
+if [[ "${CHUMP_TEST_GATE:-1}" == "0" ]]; then
+    _r014_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    _r014_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    _r014_gap="$(echo "$_r014_branch" | grep -oiE '[A-Za-z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]' || echo "")"
+    _r014_reason="$(git log -1 --pretty=format:%B 2>/dev/null \
+        | grep -i '^Test-Gate-Bypass:' | head -1 \
+        | sed 's/^[Tt]est-[Gg]ate-[Bb]ypass:[[:space:]]*//' || echo "")"
+    _r014_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    mkdir -p "${_r014_root}/.chump-locks" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"test_gate_bypassed","gap_id":"%s","reason":"%s","branch":"%s","bypassed_by":"CHUMP_TEST_GATE=0"}\n' \
+        "$_r014_ts" "$_r014_gap" "$_r014_reason" "$_r014_branch" \
+        >> "${_r014_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+    unset _r014_root _r014_branch _r014_gap _r014_reason _r014_ts
+fi
+
 if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
     REPO_ROOT_T="$(git rev-parse --show-toplevel)"
     CACHE_DIR="$REPO_ROOT_T/.chump-locks/test-gate-cache"

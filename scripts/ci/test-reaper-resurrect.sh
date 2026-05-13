@@ -16,6 +16,10 @@
 
 set -euo pipefail
 
+# shellcheck source=lib/gate-emit.sh
+source "$(dirname "$0")/lib/gate-emit.sh" 2>/dev/null || true
+gate_emit_start "INFRA-819" "$*"
+
 PASS=0
 FAIL=0
 FAILS=()
@@ -171,6 +175,8 @@ echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 if [[ $FAIL -gt 0 ]]; then
     for f in "${FAILS[@]}"; do echo "  - $f"; done
+    gate_emit_result "INFRA-819" "fail" "reaper-resurrect-broken" "$FAIL check(s) failed"
     exit 1
 fi
+gate_emit_result "INFRA-819" "pass" "" ""
 exit 0

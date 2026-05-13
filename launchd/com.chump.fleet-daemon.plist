@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.fleet-daemon — INFRA-964.
+
+  Long-lived chump-owned scheduler. Replaces the Claude-Code-hosted
+  scheduled-tasks MCP path which only fires while the host UI is alive.
+
+  RunAtLoad=true + KeepAlive=true → launchd ensures the daemon is
+  always alive. The daemon reads scripts/coord/system-gap-frequencies.yaml
+  (INFRA-841) for cadence and shells out to each task's script. All
+  ticks are observable in .chump-locks/ambient.jsonl as kind=daemon_tick.
+
+  INSTALLATION:
+    scripts/setup/install-chump-fleet-daemon.sh
+
+  STATUS:
+    launchctl list | grep com.chump.fleet-daemon
+    tail -F /tmp/chump-fleet-daemon.out.log
+    tail -F /tmp/chump-fleet-daemon.err.log
+    tail -F .chump-locks/ambient.jsonl | grep daemon_tick
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.fleet-daemon.plist
+    rm ~/Library/LaunchAgents/com.chump.fleet-daemon.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.fleet-daemon</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>chump fleet daemon</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-fleet-daemon.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-fleet-daemon.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- launchd will not respawn faster than ThrottleInterval seconds. -->
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+</dict>
+</plist>

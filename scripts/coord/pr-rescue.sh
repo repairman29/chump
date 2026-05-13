@@ -24,8 +24,17 @@ set -euo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 STALE_HOURS="${PR_RESCUE_STALE_HOURS:-4}"
+# INFRA-1016: REST-only mode — skip auto-merge arm (unavailable via REST) and
+# do an immediate merge instead. Use when GraphQL bucket is exhausted.
+REST_ONLY="${CHUMP_PR_RESCUE_REST_ONLY:-0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+
+# INFRA-999: API cost telemetry. CHUMP_GH_SCRIPT tags the script in
+# the emitted ambient.jsonl `github_api_call` lines.
+# shellcheck source=lib/github.sh
+source "${SCRIPT_DIR}/lib/github.sh"
+export CHUMP_GH_SCRIPT="pr-rescue.sh"
 REPO="${GITHUB_REPOSITORY:-}"
 TARGET_PR=""
 
@@ -34,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --pr) TARGET_PR="$2"; shift 2 ;;
         --repo) REPO="$2"; shift 2 ;;
+        --rest-only) REST_ONLY=1; shift ;;
         *) echo "[pr-rescue] ERROR: unknown arg: $1" >&2; exit 1 ;;
     esac
 done
@@ -68,7 +78,7 @@ if [[ -z "${REPO}" ]]; then
     exit 1
 fi
 
-log "PR rescue scan for ${REPO} (stale threshold: ${STALE_HOURS}h)."
+log "PR rescue scan for ${REPO} (stale threshold: ${STALE_HOURS}h${REST_ONLY:+, REST-only mode})."
 
 # ── Collect candidate PRs ─────────────────────────────────────────────────────
 # We want PRs that:
@@ -79,7 +89,7 @@ log "PR rescue scan for ${REPO} (stale threshold: ${STALE_HOURS}h)."
 if [[ -n "${TARGET_PR}" ]]; then
     PR_NUMBERS="${TARGET_PR}"
 else
-    PR_NUMBERS="$(gh api \
+    PR_NUMBERS="$(chump_gh api \
         "repos/${REPO}/pulls?state=open&per_page=50" \
         --jq '[.[] | select(.auto_merge != null) | .number] | .[]' \
         2>/dev/null || echo '')"
@@ -91,7 +101,7 @@ if [[ -z "${PR_NUMBERS}" ]]; then
 fi
 
 # Get main HEAD SHA once for check comparison
-MAIN_SHA="$(gh api "repos/${REPO}/git/ref/heads/main" --jq .object.sha 2>/dev/null || echo '')"
+MAIN_SHA="$(chump_gh api "repos/${REPO}/git/ref/heads/main" --jq .object.sha 2>/dev/null || echo '')"
 if [[ -z "${MAIN_SHA}" ]]; then
     log "ERROR: Could not resolve main HEAD SHA."
     exit 1
@@ -104,7 +114,7 @@ FAILED=0
 
 for PR_NUM in ${PR_NUMBERS}; do
     # ── Fetch PR metadata ─────────────────────────────────────────────────────
-    PR_META="$(gh api "repos/${REPO}/pulls/${PR_NUM}" 2>/dev/null)" || {
+    PR_META="$(chump_gh api "repos/${REPO}/pulls/${PR_NUM}" 2>/dev/null)" || {
         log "WARN: Could not fetch PR #${PR_NUM} — skipping."
         continue
     }
@@ -145,7 +155,7 @@ for PR_NUM in ${PR_NUMBERS}; do
     # Get latest commit check runs for the PR HEAD
     PR_HEAD_SHA="$(echo "${PR_META}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['head']['sha'])")"
 
-    FAILING_CHECKS="$(gh api \
+    FAILING_CHECKS="$(chump_gh api \
         "repos/${REPO}/commits/${PR_HEAD_SHA}/check-runs?per_page=50" \
         --jq '[.check_runs[] | select(.conclusion == "failure") | .name] | .[]' \
         2>/dev/null || echo '')"
@@ -157,7 +167,7 @@ for PR_NUM in ${PR_NUMBERS}; do
     fi
 
     # Check if those same check names passed on main HEAD
-    MAIN_PASSING_CHECKS="$(gh api \
+    MAIN_PASSING_CHECKS="$(chump_gh api \
         "repos/${REPO}/commits/${MAIN_SHA}/check-runs?per_page=50" \
         --jq '[.check_runs[] | select(.conclusion == "success") | .name] | .[]' \
         2>/dev/null || echo '')"
@@ -208,10 +218,19 @@ for PR_NUM in ${PR_NUMBERS}; do
     rm -rf "${TEMP_DIR}"
 
     if [[ ${RESCUE_OK} -eq 1 ]]; then
-        # Re-arm auto-merge
-        gh pr merge "${PR_NUM}" --repo "${REPO}" --auto --squash 2>/dev/null || true
-        log "PR #${PR_NUM}: rebased + re-armed. RESCUED."
-        emit_ambient "pr_rescue_completed" "${PR_NUM}" "branch=${PR_BRANCH}"
+        if [[ "${REST_ONLY}" == "1" ]]; then
+            # INFRA-1016: REST path — immediate merge (no auto-merge available via REST).
+            # Accepted limitation: only use this when GraphQL is exhausted and PR is
+            # already green (status checks passing). Not suitable for arming auto-merge.
+            chump_gh api -X PUT "repos/${REPO}/pulls/${PR_NUM}/merge" \
+                -f merge_method=squash 2>/dev/null || true
+            log "PR #${PR_NUM}: rebased + merged (REST-only, no auto-merge). RESCUED."
+        else
+            # Re-arm auto-merge (requires GraphQL)
+            chump_gh pr merge "${PR_NUM}" --repo "${REPO}" --auto --squash 2>/dev/null || true
+            log "PR #${PR_NUM}: rebased + re-armed. RESCUED."
+        fi
+        emit_ambient "pr_rescue_completed" "${PR_NUM}" "branch=${PR_BRANCH} rest_only=${REST_ONLY}"
         RESCUED=$((RESCUED + 1))
     else
         log "PR #${PR_NUM}: rebase failed (conflicts?). FAILED."
