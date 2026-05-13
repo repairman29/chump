@@ -1499,3 +1499,18 @@ events:
     trigger: day-over-day autonomous rate drops > 10 percentage points
     consumers: [fleet-brief, curator, PWA-daily-brief]
     fields_required: [ts, kind, prev_rate, curr_rate, drop_pp]
+
+  # ── CREDIBLE-052: cross-session gap-ID collision prevention ───────────────
+  - kind: gap_id_allocator_offline
+    emitter: src/gap_store.rs (reserve → external_pending_ids — CREDIBLE-052)
+    trigger: open-PR scan failed (network error or gh unavailable); reserve continues
+      with lease+DB coverage only; slight residual race risk remains
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, domain, reason]
+
+  - kind: gap_id_allocator_collision_avoided
+    emitter: src/gap_store.rs (reserve_with_external — CREDIBLE-052)
+    trigger: naive next ID (existing_max+1) was already claimed by an open PR or
+      sibling lease; allocator skipped to the next safe ID
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, domain, skipped_id]

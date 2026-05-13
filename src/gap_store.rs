@@ -785,6 +785,26 @@ impl GapStore {
                     params![n, domain_upper],
                 )?;
             }
+            // CREDIBLE-052: if the naive next ID (existing_max+1) was already
+            // taken by an open PR or sibling lease, emit a collision-avoided event
+            // so operators can see cross-session ID races in the ambient stream.
+            let naive_next = existing_max + 1;
+            if extra_used.contains(&naive_next) {
+                let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                let ts = unix_to_iso_full(unix_now());
+                let line = format!(
+                    "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_allocator_collision_avoided\",\
+                     \"domain\":\"{domain_upper}\",\"skipped_id\":\"{prefix}{naive_next:03}\"}}\n"
+                );
+                use std::io::Write as _;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&amb)
+                {
+                    let _ = f.write_all(line.as_bytes());
+                }
+            }
             // Atomically bump the counter and read the assigned number.
             self.conn.execute(
                 "UPDATE gap_counters SET next_num = next_num + 1 WHERE domain=?1",
@@ -1138,6 +1158,23 @@ impl GapStore {
                          in-flight PRs from sibling sessions. Set \
                          CHUMP_RESERVE_SCAN_OPEN_PRS=0 to silence."
                     );
+                    // CREDIBLE-052: emit gap_id_allocator_offline so operators can
+                    // see network gaps in the ambient stream.
+                    let amb = locks_dir.join("ambient.jsonl");
+                    let ts = unix_to_iso_full(unix_now());
+                    let line = format!(
+                        "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_allocator_offline\",\
+                         \"domain\":\"{domain_upper}\",\"reason\":\"{}\"}}\n",
+                        e.to_string().replace('"', "'")
+                    );
+                    use std::io::Write as _;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&amb)
+                    {
+                        let _ = f.write_all(line.as_bytes());
+                    }
                 }
             }
         }
