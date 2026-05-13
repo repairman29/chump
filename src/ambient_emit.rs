@@ -446,7 +446,6 @@ mod tests {
             ambient_override: Some(ambient.clone()),
             session_override: Some("s".into()),
             harness: Some("claude".into()),
-            ..Default::default()
         };
         emit(&args).unwrap();
         let line = std::fs::read_to_string(&ambient).unwrap();
