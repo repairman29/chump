@@ -113,6 +113,102 @@ fn agent_event_stream(
     })
 }
 
+// ── CREDIBLE-023: gap endpoint security ──────────────────────────────────────
+
+/// Simple per-IP sliding-window rate limiter for /api/gap/* endpoints.
+/// State: ip_str → (request_count, window_start).
+/// Window resets after 60s; max 10 requests per window (default).
+static GAP_RATE_LIMITER: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, (u32, std::time::Instant)>>,
+> = std::sync::OnceLock::new();
+
+fn gap_rate_limit_state(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, (u32, std::time::Instant)>> {
+    GAP_RATE_LIMITER.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Returns true if the request is within the rate limit, false if exceeded.
+/// Limit: `CHUMP_GAP_RATE_LIMIT` (default 10) requests per 60s per IP key.
+fn check_gap_rate_limit(ip_key: &str) -> bool {
+    let max_reqs: u32 = std::env::var("CHUMP_GAP_RATE_LIMIT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+    let window_secs = 60u64;
+    let mut state = match gap_rate_limit_state().lock() {
+        Ok(g) => g,
+        Err(_) => return true, // on poison, allow through
+    };
+    let entry = state
+        .entry(ip_key.to_string())
+        .or_insert((0, std::time::Instant::now()));
+    if entry.1.elapsed().as_secs() >= window_secs {
+        *entry = (1, std::time::Instant::now());
+        return true;
+    }
+    entry.0 += 1;
+    entry.0 <= max_reqs
+}
+
+/// Validate gap_id format: must match [A-Z][A-Z0-9]*-[0-9]+ (e.g. INFRA-630, FLEET-044).
+fn validate_gap_id(id: &str) -> bool {
+    if id.is_empty() || id.len() > 32 {
+        return false;
+    }
+    let mut parts = id.splitn(2, '-');
+    let prefix = match parts.next() {
+        Some(p) if !p.is_empty() => p,
+        _ => return false,
+    };
+    let suffix = match parts.next() {
+        Some(s) if !s.is_empty() => s,
+        _ => return false,
+    };
+    prefix
+        .chars()
+        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        && prefix
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_uppercase())
+            .unwrap_or(false)
+        && suffix.chars().all(|c| c.is_ascii_digit())
+}
+
+/// For state-mutating gap endpoints, require X-CSRF-Token header when
+/// CHUMP_CSRF_ENABLED=1 (default enabled in production; disabled in tests).
+fn check_csrf(headers: &HeaderMap) -> bool {
+    let enabled = std::env::var("CHUMP_CSRF_ENABLED")
+        .map(|v| v != "0")
+        .unwrap_or(true);
+    if !enabled {
+        return true;
+    }
+    headers.get("x-csrf-token").is_some()
+}
+
+/// Axum middleware: add secure response headers to all /api/gap/* responses.
+async fn gap_security_headers_middleware(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(req).await;
+    let headers = response.headers_mut();
+    headers.insert(
+        axum::http::header::HeaderName::from_static("x-frame-options"),
+        axum::http::HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        axum::http::header::HeaderName::from_static("x-content-type-options"),
+        axum::http::HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        axum::http::header::HeaderName::from_static("content-security-policy"),
+        axum::http::HeaderValue::from_static("default-src 'self'"),
+    );
+    response
+}
+
 fn check_auth(headers: &HeaderMap) -> bool {
     let required = match std::env::var("CHUMP_WEB_TOKEN") {
         Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
@@ -2524,6 +2620,23 @@ async fn handle_gap_claim(
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
+    // CREDIBLE-023: validate gap_id format
+    if !validate_gap_id(&gap_id) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    // CREDIBLE-023: CSRF token required for state-mutating POST
+    if !check_csrf(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    // CREDIBLE-023: rate limit per IP (X-Forwarded-For or "local")
+    let ip_key = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("local")
+        .to_string();
+    if !check_gap_rate_limit(&ip_key) {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
     let repo_root = match std::env::var("CHUMP_REPO") {
         Ok(r) => PathBuf::from(r),
         Err(_) => repo_path::runtime_base(),
@@ -2586,6 +2699,10 @@ async fn handle_gap_status(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
+    }
+    // CREDIBLE-023: validate gap_id format (no CSRF required for GET)
+    if !validate_gap_id(&gap_id) {
+        return Err(StatusCode::BAD_REQUEST);
     }
     let repo_root = match std::env::var("CHUMP_REPO") {
         Ok(r) => PathBuf::from(r),
@@ -2762,6 +2879,21 @@ async fn handle_gap_work(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
+    }
+    // CREDIBLE-023: validate gap_id format, CSRF, rate limit
+    if !validate_gap_id(&gap_id) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if !check_csrf(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let ip_key = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("local")
+        .to_string();
+    if !check_gap_rate_limit(&ip_key) {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
     // CREDIBLE-024: unique request_id for end-to-end tracing.
@@ -2956,6 +3088,32 @@ fn configure_agent_credentials(cmd: &mut std::process::Command) {
 ///
 /// Credentials: supports explicit (GH_TOKEN, SSH_KEY_PATH env vars) or implicit (keyring).
 /// Emits to ambient.jsonl for fleet observability. Cleans up leases on error.
+/// Run a blocking subprocess with a 5-minute timeout (CREDIBLE-023).
+/// Returns Err with a timeout message if the process exceeds the limit.
+async fn run_subprocess_with_timeout(
+    mut cmd: std::process::Command,
+) -> Result<std::process::ExitStatus, Box<dyn std::error::Error + Send + Sync>> {
+    let timeout_secs: u64 = std::env::var("CHUMP_SUBPROCESS_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(300);
+    let result = tokio::time::timeout(
+        Duration::from_secs(timeout_secs),
+        tokio::task::spawn_blocking(move || cmd.status()),
+    )
+    .await;
+    match result {
+        Ok(Ok(Ok(status))) => Ok(status),
+        Ok(Ok(Err(e))) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
+        Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
+        Err(_elapsed) => Err(format!(
+            "subprocess exceeded {}s timeout — CREDIBLE-023",
+            timeout_secs
+        )
+        .into()),
+    }
+}
+
 /// CREDIBLE-024: spawn_gap_workflow now accepts a request_id for end-to-end tracing.
 /// All log events and ambient entries include the request_id so operators can
 /// grep the PWA log by request_id to reconstruct a complete workflow trace.
@@ -3000,7 +3158,8 @@ async fn spawn_gap_workflow(
         .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
     configure_agent_credentials(&mut cmd);
 
-    match cmd.status() {
+    // CREDIBLE-023: 5-minute timeout per subprocess phase
+    match run_subprocess_with_timeout(cmd).await {
         Ok(status) if status.success() => {
             let ms = t_claim.elapsed().as_millis() as u64;
             tracing::info!(request_id = %request_id, "gap-work: claim succeeded for {}", gap_id);
@@ -3032,7 +3191,7 @@ async fn spawn_gap_workflow(
                 None,
             );
             cleanup_lease(gap_id, &repo_root);
-            return Err(Box::new(e));
+            return Err(e.to_string().into());
         }
     }
 
@@ -3049,7 +3208,8 @@ async fn spawn_gap_workflow(
         .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
     configure_agent_credentials(&mut cmd);
 
-    let _agent_status = match cmd.status() {
+    // CREDIBLE-023: 5-minute timeout per subprocess phase
+    let _agent_status = match run_subprocess_with_timeout(cmd).await {
         Ok(status) if status.success() => {
             let ms = t_exec.elapsed().as_millis() as u64;
             tracing::info!(request_id = %request_id, "gap-work: agent session succeeded for {}", gap_id);
@@ -3100,7 +3260,8 @@ async fn spawn_gap_workflow(
         .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
     configure_agent_credentials(&mut cmd);
 
-    match cmd.status() {
+    // CREDIBLE-023: 5-minute timeout per subprocess phase
+    match run_subprocess_with_timeout(cmd).await {
         Ok(status) if status.success() => {
             let ms = t_ship.elapsed().as_millis() as u64;
             tracing::info!(request_id = %request_id, "gap-work: ship succeeded for {} — gap closed and YAML synced", gap_id);
@@ -3134,7 +3295,7 @@ async fn spawn_gap_workflow(
                 None,
             );
             cleanup_lease(gap_id, &repo_root);
-            Err(Box::new(e))
+            Err(e.to_string().into())
         }
     }
 }
@@ -3268,6 +3429,8 @@ fn build_api_router() -> Router {
         .route("/api/gap/status/{id}", get(handle_gap_status))
         .route("/api/gap/{id}/status", get(handle_gap_workflow_status))
         .route("/api/gap/work/{id}", post(handle_gap_work))
+        // CREDIBLE-023: secure response headers for all /api/gap/* routes
+        .layer(axum::middleware::from_fn(gap_security_headers_middleware))
 }
 
 /// GET /skills/index.json (also /.well-known/skills/index.json) — COMP-006 skills index.

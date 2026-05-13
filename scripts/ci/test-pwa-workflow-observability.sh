@@ -108,6 +108,7 @@ TMPLOG=$(mktemp)
 trap 'rm -f "$TMPLOG"' EXIT
 
 CHUMP_WEB_PORT=$PORT CHUMP_REPO="$REPO_ROOT" CHUMP_PWA_LOG="$TMPLOG" \
+    CHUMP_WEB_TOKEN="" CHUMP_CSRF_ENABLED=0 \
     "$CHUMP" --web >/dev/null 2>&1 &
 SERVER_PID=$!
 for i in $(seq 1 20); do
