@@ -1630,3 +1630,9 @@ events:
       bot-merge runs are sharing a cargo target/ directory
     consumers: [fleet-brief, waste-tally, curator]
     fields_required: [ts, kind, session, phase, gap_id, target_dir]
+  # ── INFRA-1031: GraphQL exhaustion fallback ────────────────────────────────
+  - kind: graphql_exhausted
+    emitter: scripts/coord/bot-merge.sh (INFRA-1031)
+    trigger: gh pr create attempted while GraphQL quota = 0; REST fallback taken or failed
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, source, note]
