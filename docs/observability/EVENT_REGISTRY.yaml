@@ -489,6 +489,12 @@ events:
     trigger: bandit/priority chose a slot for a request
     consumers: [audit-log]
 
+  - kind: cascade_routed
+    emitter: src/provider_cascade.rs (INFRA-1004)
+    trigger: every successful LLM call — records which slot was chosen, its tier, and the active cascade_mode
+    fields_required: [slot, tier, cascade_mode]
+    consumers: [audit-log, fleet-brief]
+
   - kind: cascade_report
     emitter: scripts/overnight/99-cascade-consumption-report.sh
     trigger: daily provider RPD utilization summary

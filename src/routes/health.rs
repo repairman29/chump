@@ -48,6 +48,11 @@ pub async fn handle_health() -> Json<serde_json::Value> {
 
     let age_secs = binary_age_secs();
 
+    // INFRA-1004: expose active cascade routing mode so operators can confirm
+    // local-only mode is in effect without needing to read env vars.
+    let cascade = provider_cascade::ProviderCascade::from_env();
+    let cascade_mode = cascade.cascade_mode();
+
     Json(serde_json::json!({
         "status": "ok",
         "service": "chump-web",
@@ -56,6 +61,7 @@ pub async fn handle_health() -> Json<serde_json::Value> {
         "build_date": crate::version::chump_build_date(),
         "binary_age_secs": age_secs,
         "version_match": version_match,
+        "cascade_mode": cascade_mode,
     }))
 }
 
