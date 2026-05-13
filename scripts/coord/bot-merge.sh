@@ -183,6 +183,8 @@ REQUIRED_CHECKS="${BM_REQUIRED_CHECKS:-}"
 NEXT_IS_BRANCH_PREFIX=0
 NEXT_IS_PR_TEMPLATE=0
 NEXT_IS_REQUIRED_CHECKS=0
+# INFRA-996: bypass dup-PR check when the prior PR is known-closed during this run.
+FORCE_DUPLICATE=${CHUMP_FORCE_DUPLICATE:-0}
 GAP_IDS=()
 NEXT_IS_GAP=0
 # INFRA-061 (M3): --stack-on <PREV-GAP-ID> opens this PR with base=claude/<branch
@@ -232,6 +234,7 @@ for arg in "$@"; do
         --pr-template)        NEXT_IS_PR_TEMPLATE=1 ;;
         --required-checks)    NEXT_IS_REQUIRED_CHECKS=1 ;;
         --allow-mass-delete)  ALLOW_MASS_DELETE=1 ;;  # INFRA-993 scratch-commit-guard override
+        --force-duplicate)    FORCE_DUPLICATE=1 ;;    # INFRA-996 dup-PR-guard override
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -1536,6 +1539,48 @@ if [[ "$DRY_RUN" -eq 0 && "${CHUMP_SCRATCH_GUARD_DISABLE:-0}" != "1" ]]; then
                 >> "$_sg_amb" 2>/dev/null || true
             exit 15
         fi
+    fi
+fi
+
+# ── 4b. Duplicate-PR check (INFRA-996) ────────────────────────────────────────
+# Before pushing, verify no open PR already has this GAP-ID in its title with a
+# different head branch. Duplicate PRs waste CI, confuse reviewers, and caused
+# 3 incidents in 7 days (#1536+#1540, #1323+#1333, #1283/#1284).
+# Bypass: --force-duplicate or CHUMP_FORCE_DUPLICATE=1.
+_amb_path="${CHUMP_AMBIENT_IN_PROMPT:-${LOCK_DIR}/ambient.jsonl}"
+if [[ "${FORCE_DUPLICATE}" != "1" && ${#GAP_IDS[@]} -gt 0 ]]; then
+    _dup_found=0
+    _dup_pr_numbers=""
+    for _gid in "${GAP_IDS[@]}"; do
+        # REST-only: gh pr list uses GraphQL but falls back cleanly; we skip if
+        # rate-limited rather than blocking the push (fail-open for dup check).
+        _existing=$(gh pr list --repo "${REPO}" --state open \
+            --search "${_gid} in:title" --json number,headRefName \
+            --limit 10 2>/dev/null || true)
+        if [[ -z "$_existing" ]]; then
+            continue
+        fi
+        # Filter: exclude PRs whose head ref matches our current branch.
+        _conflicts=$(echo "$_existing" | python3 -c "
+import json,sys
+rows=json.load(sys.stdin)
+conflicts=[str(r['number']) for r in rows if r.get('headRefName','') != '${BRANCH}']
+print(' '.join(conflicts))
+" 2>/dev/null || true)
+        if [[ -n "$_conflicts" ]]; then
+            _dup_found=1
+            _dup_pr_numbers="${_dup_pr_numbers} ${_conflicts}"
+        fi
+    done
+    if [[ "$_dup_found" -eq 1 ]]; then
+        _dup_pr_numbers="${_dup_pr_numbers# }"
+        red "Duplicate PR blocked: open PR(s) already claim this gap: ${_dup_pr_numbers}"
+        red "  Use --force-duplicate to override (legitimate retry after the prior PR closed)."
+        # Emit ambient event for frequency tracking.
+        printf '{"ts":"%s","kind":"dup_pr_blocked","gap_id":"%s","existing_pr_numbers":"%s","current_branch":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_IDS[*]:-}" "$_dup_pr_numbers" "$BRANCH" \
+            >> "$_amb_path" 2>/dev/null || true
+        _bm_fail "dup-pr" 16 "duplicate PR detected for gap ${GAP_IDS[*]:-}: existing ${_dup_pr_numbers}"
     fi
 fi
 
