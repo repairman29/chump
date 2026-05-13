@@ -1261,4 +1261,7 @@ jobs:
         run: bash scripts/ci/test-bot-merge-watchdog.sh
       - name: autonomous ship-rate metric fixture (CREDIBLE-047)
         run: bash scripts/ci/test-autonomous-ship-rate.sh
-
+      - name: release --lease <ID> flag — named session release (INFRA-1026)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-release-lease-flag.sh
