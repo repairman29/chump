@@ -2801,9 +2801,255 @@ async fn main() -> Result<()> {
 
                 return Ok(());
             }
+            "daemon" => {
+                // INFRA-964: long-lived chump-owned scheduler. Reads
+                // scripts/coord/system-gap-frequencies.yaml (INFRA-841) and
+                // runs each declared task at its interval_s cadence by
+                // shelling out to the task's existing script. Emits
+                // kind=daemon_tick per invocation so missed cron windows
+                // are observable instantly via ambient.jsonl.
+                //
+                // Replaces the Claude-Code-hosted scheduled-tasks MCP path,
+                // which only fires while the host UI is alive (the bug
+                // INFRA-964 was filed to capture). OS keeps this daemon
+                // alive via launchd/com.chump.fleet-daemon.plist.
+                let once = args.iter().any(|a| a == "--once");
+                let yaml_path = repo_root.join("scripts/coord/system-gap-frequencies.yaml");
+                let yaml_contents = std::fs::read_to_string(&yaml_path).map_err(|e| {
+                    anyhow::anyhow!("fleet daemon: cannot read {}: {e}", yaml_path.display())
+                })?;
+
+                // Parse the tasks: { name, interval_s, script } from the YAML.
+                // We use a minimal pure-Rust parser instead of pulling in
+                // serde_yaml to keep the binary slim (same approach as the
+                // bash hot-file-lock.sh awk parsing).
+                #[derive(Clone, Debug)]
+                struct DaemonTask {
+                    name: String,
+                    interval_s: u64,
+                    script: String,
+                    optional: bool,
+                }
+                let mut tasks: Vec<DaemonTask> = Vec::new();
+                let mut in_tasks = false;
+                let mut cur: Option<DaemonTask> = None;
+                for line in yaml_contents.lines() {
+                    if line.starts_with("tasks:") {
+                        in_tasks = true;
+                        continue;
+                    }
+                    if in_tasks
+                        && !line.starts_with(' ')
+                        && !line.starts_with('\t')
+                        && !line.trim().is_empty()
+                    {
+                        in_tasks = false;
+                    }
+                    if !in_tasks {
+                        continue;
+                    }
+                    let trimmed = line.trim_end();
+                    // Task header: two-space indent + name: + newline.
+                    if let Some(rest) = trimmed.strip_prefix("  ") {
+                        if !rest.starts_with(' ') && rest.ends_with(':') {
+                            if let Some(t) = cur.take() {
+                                tasks.push(t);
+                            }
+                            let name = rest.trim_end_matches(':').to_string();
+                            cur = Some(DaemonTask {
+                                name,
+                                interval_s: 0,
+                                script: String::new(),
+                                optional: false,
+                            });
+                            continue;
+                        }
+                    }
+                    // Fields under the current task (four-space indent).
+                    if let Some(t) = cur.as_mut() {
+                        if let Some(rest) = trimmed.strip_prefix("    interval_s:") {
+                            t.interval_s = rest
+                                .split('#')
+                                .next()
+                                .unwrap_or("")
+                                .trim()
+                                .parse()
+                                .unwrap_or(0);
+                        } else if let Some(rest) = trimmed.strip_prefix("    script:") {
+                            t.script = rest.trim().to_string();
+                        } else if let Some(rest) = trimmed.strip_prefix("    optional:") {
+                            t.optional = rest.trim().starts_with("true");
+                        }
+                    }
+                }
+                if let Some(t) = cur.take() {
+                    tasks.push(t);
+                }
+                tasks.retain(|t| t.interval_s > 0 && !t.script.is_empty());
+                // Filter out tasks whose script doesn't exist on disk when
+                // they're marked optional (e.g. gap-gardener.sh stub).
+                tasks.retain(|t| {
+                    if t.optional && !repo_root.join(&t.script).exists() {
+                        eprintln!(
+                            "[fleet daemon] skipping optional task {} — script missing: {}",
+                            t.name, t.script
+                        );
+                        false
+                    } else {
+                        true
+                    }
+                });
+
+                if tasks.is_empty() {
+                    eprintln!(
+                        "[fleet daemon] no runnable tasks in {}",
+                        yaml_path.display()
+                    );
+                    return Ok(());
+                }
+
+                // Ambient log path (mirrors scripts/coord/opus-curator.sh).
+                let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                let _ = std::fs::create_dir_all(ambient_log.parent().unwrap());
+
+                let emit_tick =
+                    |task: &DaemonTask, run_id: &str, exit_code: i32, elapsed_ms: u128| {
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let line = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"daemon_tick\",\
+                          \"task\":\"{}\",\"interval_s\":{},\"run_id\":\"{run_id}\",\
+                          \"exit_code\":{exit_code},\"elapsed_ms\":{elapsed_ms}}}\n",
+                            task.name, task.interval_s
+                        );
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_log)
+                        {
+                            use std::io::Write;
+                            let _ = f.write_all(line.as_bytes());
+                        }
+                    };
+
+                // Run a single tick: shell out to the task's script, capture
+                // exit code + elapsed time, emit ambient event. Errors are
+                // swallowed (logged) so one bad task doesn't kill the daemon.
+                async fn run_tick(
+                    task_name: String,
+                    script_rel: String,
+                    repo_root: std::path::PathBuf,
+                ) -> (i32, u128) {
+                    let script_path = repo_root.join(&script_rel);
+                    let started = std::time::Instant::now();
+                    let res = tokio::process::Command::new("bash")
+                        .arg(&script_path)
+                        .current_dir(&repo_root)
+                        .output()
+                        .await;
+                    let elapsed_ms = started.elapsed().as_millis();
+                    match res {
+                        Ok(o) => {
+                            let code = o.status.code().unwrap_or(-1);
+                            if code != 0 {
+                                eprintln!(
+                                    "[fleet daemon] {} exit={} in {}ms",
+                                    task_name, code, elapsed_ms
+                                );
+                            }
+                            (code, elapsed_ms)
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "[fleet daemon] {} spawn failed: {e} ({}ms)",
+                                task_name, elapsed_ms
+                            );
+                            (-1, elapsed_ms)
+                        }
+                    }
+                }
+
+                // Emit daemon_started so observers know the daemon is alive.
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                let tasks_csv = tasks
+                    .iter()
+                    .map(|t| t.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let start_line = format!(
+                    "{{\"ts\":\"{ts}\",\"kind\":\"daemon_started\",\
+                      \"tasks\":\"{tasks_csv}\",\"mode\":\"{}\"}}\n",
+                    if once { "once" } else { "loop" }
+                );
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open(&ambient_log)
+                {
+                    use std::io::Write;
+                    let _ = f.write_all(start_line.as_bytes());
+                }
+
+                if once {
+                    // --once mode: run every task once, sequentially, then exit.
+                    // Used by the install script's smoke test + by CI.
+                    for t in &tasks {
+                        let run_id =
+                            format!("{}-{}", std::process::id(), chrono::Utc::now().timestamp());
+                        let (exit_code, elapsed_ms) =
+                            run_tick(t.name.clone(), t.script.clone(), repo_root.clone()).await;
+                        emit_tick(t, &run_id, exit_code, elapsed_ms);
+                    }
+                    return Ok(());
+                }
+
+                // Long-lived loop mode: one tokio interval per declared task.
+                eprintln!("[fleet daemon] starting {} tasks (loop mode)", tasks.len());
+                let mut handles = Vec::new();
+                for t in tasks {
+                    let repo_root = repo_root.clone();
+                    let ambient_log = ambient_log.clone();
+                    handles.push(tokio::spawn(async move {
+                        let mut ticker =
+                            tokio::time::interval(std::time::Duration::from_secs(t.interval_s));
+                        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                        loop {
+                            ticker.tick().await;
+                            let run_id = format!(
+                                "{}-{}",
+                                std::process::id(),
+                                chrono::Utc::now().timestamp()
+                            );
+                            let (exit_code, elapsed_ms) =
+                                run_tick(t.name.clone(), t.script.clone(), repo_root.clone()).await;
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let line = format!(
+                                "{{\"ts\":\"{ts}\",\"kind\":\"daemon_tick\",\
+                                  \"task\":\"{}\",\"interval_s\":{},\
+                                  \"run_id\":\"{run_id}\",\
+                                  \"exit_code\":{exit_code},\
+                                  \"elapsed_ms\":{elapsed_ms}}}\n",
+                                t.name, t.interval_s
+                            );
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_log)
+                            {
+                                use std::io::Write;
+                                let _ = f.write_all(line.as_bytes());
+                            }
+                        }
+                    }));
+                }
+                // Hold until any task errors out (none should under normal op).
+                for h in handles {
+                    let _ = h.await;
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees>"
+                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon>"
                 );
                 eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]");
                 eprintln!("  stop        [--session NAME]");
@@ -2819,6 +3065,7 @@ async fn main() -> Result<()> {
                     "  auto-resize [--apply] [--json]  -- scale down on 4 conditions (INFRA-650)"
                 );
                 eprintln!("  prune-worktrees [--apply] [--json]  -- prune stale linked worktrees (INFRA-827)");
+                eprintln!("  daemon      [--once]  -- long-lived scheduler (INFRA-964); --once runs all tasks once");
                 std::process::exit(2);
             }
         }
