@@ -80,9 +80,46 @@ gates:
     expected_exit_nonzero: false
     motivating_incident_pr: null # preventive — no prior incident
 
-# Future entries (gaps filed but not shipped yet):
-# - CREDIBLE-029 full cross-session allocator (CREDIBLE-044 implements)
-# - INFRA-825 stale-binary hard-fail (runtime check; covered by version.rs
-#   unit tests pr_1444_replay_refuses_without_override)
-# - RESILIENT-006 pr-rescue.sh (action, not detector — exercised by
-#   integration test in #1475)
+  - id: RESILIENT-009-worktree-cd
+    check_script: scripts/ci/test-prepush-worktree-cd.sh
+    closing_pr: null
+    failure_class: self-test
+    description: |
+      Verifies pre-push hook CDs into REPO_ROOT_T (the worktree) before
+      running cargo test, not the main checkout. Without this, GIT_DIR
+      overrides cause tests to run against main's source tree.
+    fixture_kind: in-script-self-test
+    expected_exit_nonzero: false
+    motivating_incident_pr: null
+
+  - id: INFRA-819-reaper-resurrect
+    check_script: scripts/ci/test-reaper-resurrect.sh
+    closing_pr: null
+    failure_class: self-test
+    description: |
+      Verifies heartbeat-watcher.sh ENOSPC resilience: disk-preflight
+      triggers exit 1 under disk pressure, enabling launchd KeepAlive
+      restart. Without this, a full disk silently kills the heartbeat
+      watcher without restart.
+    fixture_kind: in-script-self-test
+    expected_exit_nonzero: false
+    motivating_incident_pr: null
+
+  - id: CREDIBLE-029-gap-id-collision
+    check_script: scripts/ci/test-gap-id-collision.sh
+    closing_pr: null
+    failure_class: self-test
+    description: |
+      Verifies the Rust concurrent-reserve unit test and ambient-event
+      collision detection path. Requires chump binary (skipped if not built).
+    fixture_kind: in-script-self-test
+    expected_exit_nonzero: false
+    motivating_incident_pr: null
+
+# Entries intentionally excluded from manifest:
+# - INFRA-825: stale-binary hard-fail is a runtime check; covered by version.rs
+#   unit tests (pr_1444_replay_refuses_without_override).
+# - RESILIENT-006: pr-rescue.sh is an action script, not a detector; exercised
+#   by integration test in #1475.
+# - RESILIENT-008: not yet shipped (open gap — auto-YAML-flip on merge).
+# - CREDIBLE-044: extends CREDIBLE-029 full allocator — filed but not shipped.
