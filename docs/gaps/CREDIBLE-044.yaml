@@ -1,7 +1,7 @@
 - id: CREDIBLE-044
   domain: CREDIBLE
   title: "CREDIBLE: complete cross-session gap-ID allocator (followup to CREDIBLE-029 partial impl) — chump gap reserve intersects state.db gap_counters with gh pr list before issuing"
-  status: open
+  status: wont_fix
   priority: P1
   effort: s
   acceptance_criteria:
