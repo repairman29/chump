@@ -280,6 +280,52 @@ for g, n in per_gap.most_common(10):
 PY
 }
 
+# EFFECTIVE-025: show GitHub REST + GraphQL rate-limit remaining.
+# Uses `gh api rate_limit` (REST call, does NOT consume GraphQL quota).
+render_rate_limit() {
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
+    echo "GitHub API: (gh not available — rate limit unknown)"
+    return
+  fi
+  local raw
+  raw="$(gh api rate_limit 2>/dev/null || echo "")"
+  if [[ -z "$raw" ]]; then
+    echo "GitHub API: (rate_limit call failed — offline or auth issue)"
+    return
+  fi
+  local rest_rem rest_lim gql_rem gql_lim reset_ts
+  rest_rem="$(echo "$raw" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d['resources']['core']['remaining'])" 2>/dev/null || echo "?")"
+  rest_lim="$(echo "$raw" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d['resources']['core']['limit'])" 2>/dev/null || echo "5000")"
+  gql_rem="$(echo "$raw" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d['resources']['graphql']['remaining'])" 2>/dev/null || echo "?")"
+  gql_lim="$(echo "$raw" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d['resources']['graphql']['limit'])" 2>/dev/null || echo "5000")"
+  reset_ts="$(echo "$raw" | python3 -c "
+import json,sys,time
+d=json.load(sys.stdin)
+ts=max(d['resources']['core']['reset'], d['resources']['graphql']['reset'])
+print(time.strftime('%H:%M', time.gmtime(ts)))
+" 2>/dev/null || echo "??")"
+
+  local line="GitHub API: REST=${rest_rem}/${rest_lim} GraphQL=${gql_rem}/${gql_lim} (resets ${reset_ts} UTC)"
+  local warn=0
+  { [[ "$rest_rem" != "?" ]] && [[ "$rest_rem" -lt 500 ]]; } 2>/dev/null && warn=1 || true
+  { [[ "$gql_rem"  != "?" ]] && [[ "$gql_rem"  -lt 500 ]]; } 2>/dev/null && warn=1 || true
+
+  if [[ "$warn" -eq 1 ]]; then
+    # Color red on terminals; plain WARN: prefix for pipes/logs.
+    if [[ -t 1 ]]; then
+      printf '\033[31mWARN: %s\033[0m\n' "$line"
+    else
+      printf 'WARN: %s\n' "$line"
+    fi
+  else
+    echo "$line"
+  fi
+}
+
 render_all() {
   render_version_skew
   render_agents
@@ -289,6 +335,8 @@ render_all() {
   render_starvation
   echo
   render_race_loss
+  echo
+  render_rate_limit
   echo
   render_ambient
 }

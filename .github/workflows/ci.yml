@@ -1252,3 +1252,5 @@ jobs:
             bash scripts/ci/test-pwa-security.sh
       - name: per-worktree stale binary guard — detect, emit ambient event (RESILIENT-001)
         run: bash scripts/ci/test-per-worktree-target-guard.sh
+      - name: fleet-status rate-limit line format + WARN threshold (EFFECTIVE-025)
+        run: bash scripts/ci/test-fleet-status-rate-limit.sh
