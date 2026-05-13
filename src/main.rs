@@ -664,6 +664,9 @@ async fn main() -> Result<()> {
         } else {
             print!("{}", report.render_text());
         }
+        if report.any_low_grade() {
+            std::process::exit(1);
+        }
         return Ok(());
     }
 
