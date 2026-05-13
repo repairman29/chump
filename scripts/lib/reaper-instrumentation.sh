@@ -137,7 +137,15 @@ print(json.dumps({
 # either has <5% free space, emits ALERT kind=disk_critical to ambient.jsonl
 # and exits 0 — don't fail the launchd job, don't swallow the symptom.
 #
+# INFRA-973 (2026-05-13): reapers whose job IS to free disk (worktree)
+# are exempt from the early-exit. They still emit the ALERT (operator
+# visibility) but continue running, because aborting them creates a
+# deadlock — cleanup is exactly what's needed when disk is low. Without
+# this exemption the stale-worktree-reaper kept ALERTing for hours
+# while doing 0 reaping on a 100%-full disk.
+#
 # Bypass: CHUMP_SKIP_DISK_HEADROOM=1 (tests / dev only).
+# Per-reaper exempt: REAPER_FREES_DISK=1 set before calling.
 reaper_check_disk_headroom() {
     [[ "${CHUMP_SKIP_DISK_HEADROOM:-0}" == "1" ]] && return 0
     local threshold="${CHUMP_DISK_CRITICAL_PCT:-5}"
@@ -169,6 +177,12 @@ reaper_check_disk_headroom() {
     done
 
     if [[ "$triggered" -eq 1 ]]; then
+        # Reapers whose job IS to free disk must keep running on low disk.
+        if [[ "${REAPER_FREES_DISK:-0}" == "1" ]] || [[ "${REAPER_NAME:-}" == "worktree" ]]; then
+            printf '[%s] disk critically low — %s continuing because it frees disk (INFRA-973)\n' \
+                "$ts" "${REAPER_NAME:-unknown}" >&2
+            return 0
+        fi
         printf '[%s] disk critically low — %s exiting early to avoid ENOSPC heartbeat failure\n' \
             "$ts" "${REAPER_NAME:-unknown}" >&2
         exit 0

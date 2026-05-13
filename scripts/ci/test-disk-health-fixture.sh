@@ -175,4 +175,56 @@ grep -q '"kind":"disk_critical"' "$HB_AMBIENT" \
     || fail "reaper_check_disk_headroom did not emit disk_critical: $(cat "$HB_AMBIENT")"
 ok "reaper_check_disk_headroom exits 0 + emits disk_critical when disk is full"
 
+# ── Test 6: INFRA-973 worktree reaper continues despite low disk ─────────────
+# The stale-worktree-reaper's whole job is to free disk. Aborting it on
+# disk_critical creates a deadlock (cleanup is most needed when disk is low).
+FAKE_WT_REPO="$TMP/wtrepo"
+mkdir -p "$FAKE_WT_REPO/.chump-locks"
+git -C "$FAKE_WT_REPO" init -q
+WT_AMBIENT="$FAKE_WT_REPO/.chump-locks/ambient.jsonl"
+
+(
+    export PATH="$FAKE_BIN:$PATH"
+    export CHUMP_SKIP_DISK_HEADROOM=0
+    cd "$FAKE_WT_REPO"
+    # shellcheck disable=SC1090
+    source "$LIB"
+    REAPER_NAME="worktree"
+    REAPER_REPO_ROOT="$FAKE_WT_REPO"
+    REAPER_LOCK_DIR="$FAKE_WT_REPO/.chump-locks"
+    REAPER_HEARTBEAT="/tmp/chump-reaper-worktree.heartbeat"
+    REAPER_START_EPOCH="$(date +%s)"
+    reaper_check_disk_headroom
+    echo "CONTINUED"
+) > "$TMP/wt-out" 2>&1
+grep -q "CONTINUED" "$TMP/wt-out" \
+    || fail "worktree reaper aborted on disk_critical (INFRA-973 regression). out: $(cat "$TMP/wt-out")"
+grep -q '"kind":"disk_critical"' "$WT_AMBIENT" \
+    || fail "worktree reaper did not emit disk_critical ALERT (should still warn even when exempt)"
+ok "INFRA-973: REAPER_NAME=worktree continues on disk_critical (still emits ALERT)"
+
+# Test 7: REAPER_FREES_DISK=1 as generic opt-out.
+FAKE_OPT_REPO="$TMP/optrepo"
+mkdir -p "$FAKE_OPT_REPO/.chump-locks"
+git -C "$FAKE_OPT_REPO" init -q
+
+(
+    export PATH="$FAKE_BIN:$PATH"
+    export CHUMP_SKIP_DISK_HEADROOM=0
+    export REAPER_FREES_DISK=1
+    cd "$FAKE_OPT_REPO"
+    # shellcheck disable=SC1090
+    source "$LIB"
+    REAPER_NAME="some-other-reaper"
+    REAPER_REPO_ROOT="$FAKE_OPT_REPO"
+    REAPER_LOCK_DIR="$FAKE_OPT_REPO/.chump-locks"
+    REAPER_HEARTBEAT="/tmp/chump-reaper-other.heartbeat"
+    REAPER_START_EPOCH="$(date +%s)"
+    reaper_check_disk_headroom
+    echo "CONTINUED"
+) > "$TMP/opt-out" 2>&1
+grep -q "CONTINUED" "$TMP/opt-out" \
+    || fail "REAPER_FREES_DISK=1 did not exempt the early exit. out: $(cat "$TMP/opt-out")"
+ok "INFRA-973: REAPER_FREES_DISK=1 exempts the early exit (generic opt-out)"
+
 printf '\n\033[0;32mall tests passed\033[0m\n'
