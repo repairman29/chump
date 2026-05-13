@@ -1256,3 +1256,6 @@ jobs:
         run: bash scripts/ci/test-fleet-status-rate-limit.sh
       - name: bot-merge watchdog — kills done-gap procs, spares open-gap, exempt bypass (INFRA-1006)
         run: bash scripts/ci/test-bot-merge-watchdog.sh
+      - name: autonomous ship-rate metric fixture (CREDIBLE-047)
+        run: bash scripts/ci/test-autonomous-ship-rate.sh
+

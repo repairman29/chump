@@ -326,6 +326,23 @@ print(time.strftime('%H:%M', time.gmtime(ts)))
   fi
 }
 
+render_ship_rate() {
+  # CREDIBLE-047: autonomous ship rate — % of fleet PRs with zero operator touch.
+  # Read last row from metrics file if available (avoids API call in hot render path).
+  local metrics_file="${CHUMP_METRICS_DIR:-$HOME/.chump/metrics}/autonomous-ship-rate.jsonl"
+  if [[ -f "$metrics_file" ]]; then
+    local last_row; last_row="$(tail -1 "$metrics_file")"
+    local rate fleet auto date
+    rate="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'{float(d[\"autonomous_rate\"])*100:.0f}%')" 2>/dev/null || echo "?")"
+    fleet="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['fleet_filed'])" 2>/dev/null || echo "?")"
+    auto="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['autonomous'])" 2>/dev/null || echo "?")"
+    date="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['date'])" 2>/dev/null || echo "?")"
+    echo "autonomous-ship-rate: ${rate} (${auto}/${fleet} fleet PRs, as of ${date})"
+  else
+    echo "autonomous-ship-rate: (no data — run: bash scripts/dispatch/autonomous-ship-rate.sh)"
+  fi
+}
+
 render_all() {
   render_version_skew
   render_agents
@@ -338,7 +355,11 @@ render_all() {
   echo
   render_rate_limit
   echo
+  render_ship_rate
+  echo
   render_ambient
+  echo
+  render_ship_rate
 }
 
 render_json() {
