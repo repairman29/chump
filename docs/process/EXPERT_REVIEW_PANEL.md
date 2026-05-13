@@ -45,7 +45,7 @@ within a 1–4 week window depending on current product state.
 
 | Gate | Gap | Why it gates | Exit criterion |
 |------|-----|--------------|----------------|
-| **G1 — Install works today** | [PRODUCT-017](./gaps.yaml) — stopwatch clean-machine install | Research credibility means nothing if `brew install chump` is broken. UX-001 is marked `done` but hasn't been re-verified. | Fresh run in last 14 days, < 60s, committed to docs/FTUE-VERIFICATION-YYYY-MM-DD.md |
+| **G1 — Install works today** | [PRODUCT-017](./gaps.yaml) — stopwatch clean-machine install | Research credibility means nothing if `brew install chump` is broken. UX-001 is marked `done` but hasn't been re-verified. | Fresh run in last 14 days, < 60s, committed to docs/audits/ftue-verifications/FTUE-VERIFICATION-YYYY-MM-DD.md |
 | **G2 — You can show it** | [PRODUCT-016](./gaps.yaml) — 3-minute unedited demo video | If you can't record end-to-end, there's no product to review. | docs/operations/DEMO_SCRIPT.md + unedited recording committed |
 | **G3 — Users activate** | [PRODUCT-015](./gaps.yaml) — activation funnel telemetry | Research reviews key off a product worth validating. CPO sets numeric threshold (e.g. "10 non-Jeff humans activate/month"). | `chump funnel` shows CPO-set activation threshold met for ≥ 1 month |
 
