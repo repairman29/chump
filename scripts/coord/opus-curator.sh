@@ -260,16 +260,62 @@ curator_decisions() {
   echo ""
   echo "=== CURATOR DECISIONS ==="
 
-  # Decision 1: Handle P0 inflation (demote if > 5)
+  # Decision 1: Handle P0 inflation. INFRA-978 makes this REAL: when
+  # P0_COUNT > 5, find the oldest open P0 by created_at and demote it
+  # to P1 via `chump gap set --priority P1`. Single-shot per curator
+  # run (max 1 demotion per 10 min). Reversible: P0→P1, not deleted.
+  # CHUMP_CURATOR_DRY_RUN=1 suppresses the mutation.
   if command -v chump &> /dev/null; then
-    _p0=$(chump gap audit-priorities --json 2>/dev/null | jq '.p0_count // 0' 2>/dev/null || echo 0)
+    _p0=$(_to_int "$(chump gap audit-priorities --json 2>/dev/null | jq '.p0_count // 0' 2>/dev/null)")
     if [[ "${_p0:-0}" -gt 5 ]]; then
-      echo "Decision 1: P0 inflation ($_p0 > 5) — demote lowest-priority P0 to P1"
-      # INFRA-848: emit curator_decision with required fields
-      log_curator_decision \
-        "p0_demotion" \
-        "P0 count is $_p0 (> budget of 5); demoting to enforce P0 budget" \
-        "identified_only: operator should run chump gap audit-priorities to pick which to demote"
+      # Pick the oldest open P0 by created_at (deterministic, mechanical).
+      _oldest=$(chump gap list --status open --json 2>/dev/null | python3 -c "
+import json, sys
+try:
+    gaps = json.load(sys.stdin)
+    p0s = [g for g in gaps if g.get('priority') == 'P0']
+    p0s.sort(key=lambda g: g.get('created_at') or 0)
+    if p0s:
+        oldest = p0s[0]
+        # age in days from created_at unix timestamp
+        import time
+        age_days = (int(time.time()) - int(oldest.get('created_at') or 0)) // 86400
+        print(f\"{oldest['id']}|{age_days}\")
+except Exception:
+    pass
+")
+      _gap_id="${_oldest%|*}"
+      _age_days="${_oldest#*|}"
+
+      if [[ -n "$_gap_id" && "$_gap_id" != "$_oldest" ]]; then
+        if [[ "${_DRY_RUN:-0}" == "1" ]]; then
+          echo "Decision 1: P0 inflation ($_p0 > 5) — [dry-run] would demote $_gap_id (age=${_age_days}d)"
+          log_curator_decision \
+            "p0_demotion" \
+            "P0 count is $_p0 (> budget of 5); dry-run skipped mutation" \
+            "dry_run: would demote $_gap_id (age=${_age_days}d, P0→P1)"
+        else
+          if chump gap set "$_gap_id" --priority P1 >/dev/null 2>&1; then
+            echo "Decision 1: P0 inflation ($_p0 > 5) — demoted $_gap_id (age=${_age_days}d) to P1"
+            log_curator_decision \
+              "p0_demotion" \
+              "P0 count was $_p0 (> budget of 5); demoted oldest open P0" \
+              "demoted $_gap_id (P0→P1, age=${_age_days}d)"
+          else
+            echo "Decision 1: demotion of $_gap_id FAILED — chump gap set exited non-zero" >&2
+            log_curator_decision \
+              "p0_demotion" \
+              "P0 count is $_p0 (> budget of 5); attempted demotion failed" \
+              "error: chump gap set $_gap_id --priority P1 failed"
+          fi
+        fi
+      else
+        echo "Decision 1: P0 inflation ($_p0 > 5) but could not identify oldest P0 — skipped"
+        log_curator_decision \
+          "p0_demotion" \
+          "P0 count is $_p0 but JSON parse / sort failed" \
+          "identified_only: could not pick demotion target"
+      fi
     else
       echo "Decision 1: P0 count ${_p0:-0} ≤ 5 — within budget, no demotion needed"
     fi
