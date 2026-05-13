@@ -209,29 +209,80 @@ jobs:
           # CREDIBLE-042/043: pr-hygiene is path-filter-agnostic (runs on
           # every PR regardless of changes), so its result counts toward
           # the rollup unconditionally.
+          #
+          # INFRA-1002: cascade-cancel classification.  When a shard fails,
+          # GitHub Actions cancels downstream shards that haven't started yet.
+          # A cancelled shard caused by a sibling failure is NOT a separate bug
+          # — it is a cascade-cancel.  Surfacing this distinction reduces orphan
+          # PRs where agents give up thinking "2 things broke" when really ONE
+          # thing broke and ONE was collateral.
+          #
+          # Rule: result == 'cancelled' AND at least one peer == 'failure'
+          #       ⟹ cascade_cancel (benign for retry — root cause is the failure)
+          #       result == 'cancelled' AND no peer == 'failure'
+          #       ⟹ real_failure (unexpected cancel — surface to operator)
           fast="${{ needs.fast-checks.result }}"
           clippy="${{ needs.clippy.result }}"
           test="${{ needs.cargo-test.result }}"
           hygiene="${{ needs.pr-hygiene.result }}"
           echo "fast-checks=$fast  clippy=$clippy  cargo-test=$test  pr-hygiene=$hygiene"
-          fail=0
-          for r in "$fast" "$clippy" "$test"; do
-            case "$r" in
-              success|skipped) ;;
-              *) fail=1 ;;
-            esac
+
+          # Pass 1: detect whether any shard has a real failure (not cancelled).
+          any_real_failure=0
+          for r in "$fast" "$clippy" "$test" "$hygiene"; do
+            [ "$r" = "failure" ] && any_real_failure=1
           done
-          # pr-hygiene must succeed — no skip-equivalent path. If it failed
-          # or was cancelled, the rollup is red.
-          case "$hygiene" in
-            success) ;;
-            *) fail=1 ;;
-          esac
-          if [ "$fail" = "1" ]; then
-            echo "::error::One or more CI shards failed (see results above)"
+
+          # Pass 2: classify each shard.
+          real_failures="" cascade_cancels="" passed="" skipped_list=""
+          classify() {
+            local name="$1" result="$2"
+            case "$result" in
+              success)  passed="${passed:+$passed,}$name" ;;
+              skipped)  skipped_list="${skipped_list:+$skipped_list,}$name" ;;
+              failure)  real_failures="${real_failures:+$real_failures,}$name" ;;
+              cancelled)
+                if [ "$any_real_failure" = "1" ]; then
+                  cascade_cancels="${cascade_cancels:+$cascade_cancels,}$name"
+                else
+                  real_failures="${real_failures:+$real_failures,}$name"
+                fi
+                ;;
+              *) real_failures="${real_failures:+$real_failures,}$name" ;;
+            esac
+          }
+          classify "fast-checks" "$fast"
+          classify "clippy"      "$clippy"
+          classify "cargo-test"  "$test"
+          classify "pr-hygiene"  "$hygiene"
+
+          # Structured summary (visible in GHA step log + step summary).
+          echo ""
+          echo "=== INFRA-1002 shard classification ==="
+          echo "  real_failures:    [${real_failures:-none}]"
+          echo "  cascade_cancels:  [${cascade_cancels:-none}]"
+          echo "  passed:           [${passed:-none}]"
+          echo "  skipped:          [${skipped_list:-none}]"
+          echo "========================================"
+
+          # Append to GitHub step summary (shows in PR checks UI).
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            printf '### CI Shard Classification (INFRA-1002)\n' >> "$GITHUB_STEP_SUMMARY"
+            printf '| Category | Shards |\n|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
+            printf '| Real failures | `%s` |\n' "${real_failures:-none}" >> "$GITHUB_STEP_SUMMARY"
+            printf '| Cascade cancels | `%s` |\n' "${cascade_cancels:-none}" >> "$GITHUB_STEP_SUMMARY"
+            printf '| Passed | `%s` |\n' "${passed:-none}" >> "$GITHUB_STEP_SUMMARY"
+            printf '| Skipped | `%s` |\n\n' "${skipped_list:-none}" >> "$GITHUB_STEP_SUMMARY"
+            printf 'Cascade cancels are caused by the failing shard(s) — not independent bugs.\n' >> "$GITHUB_STEP_SUMMARY"
+            printf 'Fix the real failure(s) and push to re-run.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Decision: fail only on real failures.
+          if [ -n "$real_failures" ]; then
+            echo "::error::Real CI failures: [${real_failures}]${cascade_cancels:+ (cascade-cancelled: [${cascade_cancels}])}"
             exit 1
           fi
-          echo "All shards green (or appropriately skipped)."
+          echo "All shards green (or appropriately skipped / cascade-cancelled)."
 
   # ── PR hygiene (CREDIBLE-042/043) ─────────────────────────────────────────
   # Runs on EVERY pull_request regardless of which paths changed. Catches the
@@ -989,6 +1040,9 @@ jobs:
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
 # Why: primary correctness + style fence before anything lands on main.
+      - name: cascade-cancel rollup classification fixture (INFRA-1002)
+        run: bash scripts/ci/test-rollup-cascade-cancel.sh
+
       - name: bounced-PR detector fixture (INFRA-781)
         run: bash scripts/ci/test-bounced-pr-detector.sh
 

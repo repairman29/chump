@@ -937,3 +937,34 @@ git log -1 --format="%B" | grep "Obs-Bypass-Reason"
 In those cases, add the observability hook first, then commit normally.
 The registered event kinds are in `docs/process/EVENT_REGISTRY.md`; new
 kinds must be registered there before use (pre-commit guard enforces this).
+
+## CI cascade-cancel pattern (INFRA-1002)
+
+**Symptom:** CI reports `fast-checks=failure cargo-test=cancelled` and the PR check is red.
+An agent (or operator) looking at this sees "multiple things broken" when really there is
+ONE real failure (`fast-checks`) and ONE cascade-cancel (`cargo-test` was preempted by the
+earlier failure, not because anything tested by `cargo-test` is actually broken).
+
+**Why it happens:** GitHub Actions cancels downstream shards when a parallel shard fails.
+The cancelled shard's result shows as `cancelled`, not `skipped`, so it looks like a second
+independent failure.
+
+**How the rollup classifies results (INFRA-1002):**
+```
+cascade_cancel: result == 'cancelled' AND at least one peer == 'failure'
+real_failure:   result == 'failure'
+               OR result == 'cancelled' AND no peer == 'failure'
+```
+
+**What to do:**
+1. Read the rollup's `=== INFRA-1002 shard classification ===` block in the CI log.
+2. Fix only the `real_failures` list. Cascade-cancelled shards will auto-recover when
+   the real failure is fixed and you push again — they are NOT independent bugs.
+3. Do NOT assume `N cancelled` means `N bugs`. Cascade-cancels are collateral damage.
+
+**Retry scope for INFRA-1003 (auto-rerun):**
+The auto-rerun gate uses `real_failures` (not `cascade_cancels`) to decide which tests
+to rerun. A cascade-cancel is benign for retry purposes — only the root failure needs
+investigation.
+
+**Test fixture:** `scripts/ci/test-rollup-cascade-cancel.sh` (7 assertions).
