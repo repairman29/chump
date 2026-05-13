@@ -36,9 +36,9 @@ tasks:
     script: scripts/coord/gap-gardener.sh
     class: hygiene
     description: |
-      Daily gap-store hygiene: stale-lease sweep, vague-AC alerts,
-      retention sweep (90d idle → P3). Filed as INFRA-637 follow-up.
-    optional: true            # script may not exist yet
+      Daily gap-store hygiene: stale-lease sweep (expired + dead-heartbeat >4h),
+      done-gap worktree prune, vague-AC + P0-inflation alerts. Automates the
+      manual housekeeping operators were previously doing by hand (INFRA-964).
 
   gap-failure-detector:
     interval_s: 660           # 11 min — skewed off curator (600s)

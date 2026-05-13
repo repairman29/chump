@@ -31,6 +31,29 @@ PM-curation role: see **META-046**. Honest pillar-grade reports are part of the 
 Explicit SLO targets for each pillar and layer: [`docs/process/FLEET_SLOS.md`](./docs/process/FLEET_SLOS.md).
 Check current vs. target at any time: `chump health --slo-check` (exits non-zero on breach).
 
+## No manual housekeeping — productize it
+
+**If you find yourself doing any of the following by hand, STOP.**
+
+| Manual action | What to do instead |
+|---|---|
+| Releasing stale/expired leases | File or pick a gap; `gap-gardener.sh` runs daily via `chump fleet daemon` |
+| Demoting P0s to meet the ≤5 budget | `gap-gardener.sh` emits `p0_inflation_alert`; Opus curator demotes |
+| Pruning done-gap worktrees in `/private/tmp` | `chump fleet prune-worktrees --apply` or wait for daily gardener |
+| Adding ACs to vague gaps | `gap-gardener.sh` emits `vague_ac_alert`; file a gap to fix the worst offenders |
+| Fixing dep refs or double-encoded `depends_on` | `chump gap audit-priorities` is diagnostic; file a gap for the sweep |
+| Releasing zombie bot-merge.sh processes | `scripts/coord/bot-merge-watchdog.sh` (INFRA-1006) handles this |
+
+Doing housekeeping manually produces tidy output but zero leverage — the problem recurs the next session. The correct action is always to ensure the **automation** handles it. If the automation is broken, **fix the automation** (e.g. `chump fleet daemon` for the scheduler, INFRA-1006 for the watchdog) — that is the gap to ship.
+
+The `gap-gardener.sh` daily sweep (run by `chump fleet daemon`) covers:
+- Stale-lease force-release (expired or heartbeat frozen > 4h)
+- Done-gap worktree pruning
+- Vague-AC alert emission
+- P0-inflation alert emission
+
+If `gap-gardener.sh` or `chump fleet daemon` aren't running, **fix those first** before doing anything by hand.
+
 ## MANDATORY pre-flight (every session, before any work)
 
 ```bash

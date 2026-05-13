@@ -1557,3 +1557,30 @@ events:
     trigger: branch has commits since base but ALL are INFRA-472 auto-staging — refuses pr create
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, branch, commits]
+  # ── INFRA-964: gap-gardener daily hygiene ────────────────────────────────
+  - kind: gap_gardener_run
+    emitter: scripts/coord/gap-gardener.sh (run by chump fleet daemon, INFRA-964)
+    trigger: daily gardener sweep completes; summarises all actions taken
+    consumers: [fleet-brief, waste-tally, ambient-monitor]
+    fields_required: [ts, kind, leases_released, worktrees_pruned, vague_ac_alerts, p0_count]
+
+  - kind: vague_ac_alert
+    emitter: scripts/coord/gap-gardener.sh (INFRA-964)
+    trigger: an open P0/P1 gap has no acceptance_criteria — it will stall any
+      worker that claims it; one event per offending gap per gardener run
+    consumers: [fleet-brief, opus-curator]
+    fields_required: [ts, kind, gap_id, title, hint]
+
+  - kind: p0_inflation_alert
+    emitter: scripts/coord/gap-gardener.sh (INFRA-964)
+    trigger: open P0 count exceeds the CLAUDE.md cap of 5; operator should
+      demote non-critical P0s to P1
+    consumers: [fleet-brief, opus-curator]
+    fields_required: [ts, kind, count, limit, hint]
+
+  - kind: lease_force_released
+    emitter: scripts/coord/gap-gardener.sh (INFRA-964)
+    trigger: a stale lease (expired or dead-heartbeat > 4h) was force-removed
+      so the gap becomes claimable again
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, gap_id, reason, operator]

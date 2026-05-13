@@ -1280,3 +1280,8 @@ jobs:
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-release-lease-flag.sh
+      - name: fleet daemon scheduler + gap-gardener daily hygiene (INFRA-964)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          bash scripts/ci/test-chump-fleet-daemon.sh
+          bash scripts/ci/test-gap-gardener.sh
