@@ -469,6 +469,7 @@ pub fn print_json_report(report: &DoctorReport) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn summary_counts_correctly() {
@@ -527,7 +528,15 @@ mod tests {
         assert!(r.message.contains("chump"));
     }
 
+    // INFRA-977: serialize against other env-mutating tests. Without this,
+    // a parallel test (e.g. in src/tool_middleware.rs already uses bare
+    // #[serial]) calls set_var("CHUMP_REPO", ...) between this test's
+    // remove_var and the check_repo_env call, so status comes back Pass
+    // instead of Warn — observed flake on every PR in the 2026-05-13 queue
+    // (#1648/1649/1650/1651/1652). Bare #[serial] joins the same default
+    // serialization group used elsewhere in the codebase for env tests.
     #[test]
+    #[serial]
     fn repo_env_missing_is_warn_not_fail() {
         let prev_repo = std::env::var("CHUMP_REPO").ok();
         let prev_home = std::env::var("CHUMP_HOME").ok();
