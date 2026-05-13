@@ -68,13 +68,14 @@ fi
 
 # ── Gather PR context ─────────────────────────────────────────────────────────
 # INFRA-976: title-lookup priority (highest first):
-#   1. PR_TITLE / PR_TITLE_OVERRIDE env — the canonical, always-current
-#      source; workflow can pass `env: PR_TITLE: ${{ github.event.pull_request.title }}`.
-#      Survives retitles + detached-HEAD CI checkouts.
-#   2. `gh pr view` scoped explicitly via GITHUB_REPOSITORY + GITHUB_HEAD_REF
+#   1. PR_TITLE env — the canonical, always-current source; workflow passes
+#      `env: PR_TITLE: ${{ github.event.pull_request.title }}`. Survives
+#      retitles + detached-HEAD CI checkouts. PR_TITLE_OVERRIDE is an alias.
+#   2. PR_TITLE_ENV — legacy alias kept for backward compat (pre-INFRA-976).
+#   3. `gh pr view` scoped explicitly via GITHUB_REPOSITORY + GITHUB_HEAD_REF
 #      so it doesn't rely on the detached-HEAD checkout inferring a PR #.
-#   3. Bare `gh pr view` — works locally with a branch that has an open PR.
-#   4. First commit subject — last-resort fallback. WRONG for retitled PRs
+#   4. Bare `gh pr view` — works locally with a branch that has an open PR.
+#   5. First commit subject — last-resort fallback. WRONG for retitled PRs
 #      (the original commit may have been `chore(gaps):` while the PR title
 #      is `fix(ship_quality):` after a rebase + retitle). Only here so the
 #      gate doesn't refuse-to-run on rebase-preview / local-script contexts.
@@ -84,12 +85,19 @@ fi
 # couldn't resolve a PR # from the detached-HEAD CI checkout and the
 # workflow didn't pass the title via env. Squashing the PR was the
 # only workaround.
+
+# Capture PR_TITLE from environment BEFORE overwriting the local variable.
+_pr_title_from_env="${PR_TITLE:-}"
 PR_TITLE=""
 if [[ -n "${PR_TITLE_OVERRIDE:-}" ]]; then
     PR_TITLE="$PR_TITLE_OVERRIDE"
+elif [[ -n "$_pr_title_from_env" ]]; then
+    PR_TITLE="$_pr_title_from_env"
 elif [[ -n "${PR_TITLE_ENV:-}" ]]; then
+    # Legacy: pre-INFRA-976 callers passed PR_TITLE_ENV rather than PR_TITLE.
     PR_TITLE="$PR_TITLE_ENV"
 fi
+unset _pr_title_from_env
 if [[ -z "$PR_TITLE" ]] && command -v gh &>/dev/null; then
     if [[ -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_HEAD_REF:-}" ]]; then
         _gh_title="$(gh pr view --repo "$GITHUB_REPOSITORY" "$GITHUB_HEAD_REF" \
