@@ -48,12 +48,84 @@ schema_version: 1
 last_audit: "2026-05-13"
 
 flakes:
+<<<<<<< HEAD
   - test: doctor::tests::repo_env_missing_is_warn_not_fail
     reason: "test removes CHUMP_REPO/CHUMP_HOME and asserts check_repo_env returns Warn, but parallel tests in cargo test can set those env vars between this test's remove_var and check_repo_env call → assert fails with left=Pass right=Warn"
     tracking_gap: INFRA-977
     added: "2026-05-13"
     last_observed: "2026-05-13"
     max_reruns: 1
+=======
+  # version::tests failures: pre-commit gap-ID-HIJACK guard fires on race-a/race-z
+  # fixture commits inside cargo test. Tracked for fix in INFRA-849.
+  - test: "version::tests::fresh_when_baked_sha_is_at_head"
+    reason: pre-commit gap-ID-HIJACK guard fires on race-a/race-z test fixture git commits
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "version::tests::stale_when_gap_store_changed_since_baked_sha"
+    reason: same — pre-commit hook blocks test fixture commits with race-* gap IDs
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "version::tests::fresh_when_only_unrelated_files_changed_since_baked_sha"
+    reason: same — pre-commit hook blocks test fixture commits with race-* gap IDs
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "version::tests::skip_when_baked_sha_unknown"
+    reason: same — pre-commit hook blocks test fixture commits with race-* gap IDs
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "version::tests::pr_1444_replay_refuses_without_override"
+    reason: same — pre-commit hook blocks test fixture commits with race-* gap IDs
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  # repo_path::tests failures: macOS tmpdir resolves via /private/var symlink;
+  # git-repo-root detection skips it as "not a git repo root".
+  - test: "repo_path::tests::repo_profiles_list_parses_git_root"
+    reason: tmpdir /private/var/folders/... fails git-repo-root check on macOS
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "repo_path::tests::set_working_repo_from_profile_roundtrip"
+    reason: same macOS /private/var/folders/ tmpdir issue
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "repo_path::tests::worktree_root_respects_chump_repo_across_different_git_trees"
+    reason: same macOS /private/var/folders/ tmpdir issue
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "rescue_tally::tests::infra667_count_rescues_returns_zero_on_empty_repo"
+    reason: ambient.jsonl path resolution fails when test creates bare repo in worktree context
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "sandbox_tool::tests::sandbox_run_executes_in_worktree"
+    reason: test expects a specific worktree path that doesn't exist in test environment
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "ship_quality::tests::infra537_build_report_aggregates_by_model_and_agent"
+    reason: gh CLI not available in test env; ship_quality reads merged PR data from GitHub
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "ship_quality::tests::infra537_render_json_is_valid_structure"
+    reason: same gh CLI unavailability in test env
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+  - test: "ship_quality::tests::infra537_render_text_shows_per_model_table"
+    reason: same gh CLI unavailability in test env
+    tracking_gap: INFRA-849
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+>>>>>>> 3586a58c (chore: catalogue 13 pre-existing test flakes in KNOWN_FLAKES.yaml (INFRA-849))
 
   # RESILIENT-012: 11 consistent pre-push failures on main — environment-dependent
   # tests that break under parallel cargo test execution. Tracked by INFRA-1008.
