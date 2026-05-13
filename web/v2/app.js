@@ -1,6 +1,120 @@
 // Chump v2 — vanilla Web Components app shell.
 // No build step, no CDN dependencies. Air-gap safe by construction.
 
+// ── DashboardStream singleton (PRODUCT-099) ──────────────────────────────────
+// Frontend was polling /api/dashboard, /api/jobs, /api/fleet-status, /api/gap-queue
+// on 3 different setInterval timers (5/10/15s). Meanwhile the backend has been
+// shipping SSE at /api/dashboard/stream that nobody consumed. Wire it up.
+//
+// This is a tiny event bus: ONE EventSource for the whole app; views subscribe
+// via window.chumpStream.subscribe(callback). Reconnect with backoff on error.
+// Pauses when the document is hidden (battery win on phone).
+//
+// Visible status: dispatches CustomEvent('chump:stream-status', { detail: 'live'|'reconnecting'|'paused'|'offline' })
+// so any component can render a live indicator.
+class DashboardStream {
+  #es = null;
+  #subs = new Set();
+  #status = 'init';
+  #reconnectDelayMs = 1000;       // grows on failure, resets on success
+  #reconnectTimer = null;
+  #visibilityHooked = false;
+  #onlineHooked = false;
+  #lastEventAt = 0;
+  #lastPayload = null;            // replayed to late subscribers
+
+  start() {
+    if (this.#visibilityHooked === false) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+          this.#close('paused');
+        } else if (this.#status === 'paused' || this.#status === 'offline') {
+          this.#open();
+        }
+      });
+      this.#visibilityHooked = true;
+    }
+    if (this.#onlineHooked === false) {
+      window.addEventListener('offline', () => this.#close('offline'));
+      window.addEventListener('online', () => {
+        if (document.visibilityState !== 'hidden') this.#open();
+      });
+      this.#onlineHooked = true;
+    }
+    if (document.visibilityState !== 'hidden') this.#open();
+  }
+
+  subscribe(fn) {
+    this.#subs.add(fn);
+    // Replay the most recent payload so late subscribers don't wait 30s
+    // for the next dashboard tick.
+    if (this.#lastPayload) {
+      try { fn(this.#lastPayload); } catch {}
+    }
+    return () => this.#subs.delete(fn);
+  }
+
+  status() { return this.#status; }
+  lastEventAt() { return this.#lastEventAt; }
+
+  #setStatus(next) {
+    if (next === this.#status) return;
+    this.#status = next;
+    document.dispatchEvent(new CustomEvent('chump:stream-status', { detail: next }));
+  }
+
+  #open() {
+    this.#clearReconnect();
+    if (this.#es) { try { this.#es.close(); } catch {} this.#es = null; }
+    try {
+      this.#es = new EventSource('/api/dashboard/stream');
+    } catch (e) {
+      this.#scheduleReconnect();
+      return;
+    }
+    this.#setStatus('connecting');
+    this.#es.addEventListener('dashboard', (ev) => {
+      this.#lastEventAt = Date.now();
+      this.#setStatus('live');
+      this.#reconnectDelayMs = 1000;
+      let data = null;
+      try { data = JSON.parse(ev.data); } catch { return; }
+      const msg = { type: 'dashboard', data };
+      this.#lastPayload = msg;
+      this.#subs.forEach((fn) => { try { fn(msg); } catch {} });
+    });
+    this.#es.onerror = () => this.#scheduleReconnect();
+  }
+
+  #close(reason) {
+    this.#clearReconnect();
+    if (this.#es) { try { this.#es.close(); } catch {} this.#es = null; }
+    this.#setStatus(reason);
+  }
+
+  #scheduleReconnect() {
+    this.#clearReconnect();
+    if (this.#es) { try { this.#es.close(); } catch {} this.#es = null; }
+    this.#setStatus('reconnecting');
+    // Full jitter on the base delay so concurrent clients don't reconnect-stampede.
+    const jitter = Math.random() * 0.5 + 0.75; // 0.75x – 1.25x
+    const delay = Math.round(this.#reconnectDelayMs * jitter);
+    this.#reconnectDelayMs = Math.min(this.#reconnectDelayMs * 2, 30_000);
+    this.#reconnectTimer = setTimeout(() => {
+      if (document.visibilityState !== 'hidden' && navigator.onLine !== false) {
+        this.#open();
+      }
+    }, delay);
+  }
+
+  #clearReconnect() {
+    if (this.#reconnectTimer) { clearTimeout(this.#reconnectTimer); this.#reconnectTimer = null; }
+  }
+}
+
+window.chumpStream = window.chumpStream || new DashboardStream();
+window.addEventListener('DOMContentLoaded', () => window.chumpStream.start());
+
 // ── <chump-nav> ───────────────────────────────────────────────────────────────
 class ChumpNav extends HTMLElement {
   static #ITEMS = [
@@ -472,17 +586,80 @@ customElements.define('chump-view-agents', ChumpViewAgents);
 
 // ── <chump-view-results> ──────────────────────────────────────────────────────
 class ChumpViewResults extends HTMLElement {
+  #unsubscribe = null;
+
   connectedCallback() {
     this.innerHTML = `
       <section class="view-header">
         <h2>Results</h2>
-        <p class="view-subtitle">Live status and job results</p>
+        <p class="view-subtitle">Live status and job results <span id="stream-pill" class="stream-pill" style="font-size:11px;margin-left:8px;padding:2px 8px;border-radius:10px;background:var(--bg-muted, #2a2a2a);color:var(--text-secondary, #aaa);">— stream: init</span></p>
       </section>
       <section class="results-list" id="results-container">
         <p class="placeholder">Loading results…</p>
       </section>
     `;
+    // Initial fetch in parallel with SSE so the page isn't empty for 30s.
     this.#load();
+    // PRODUCT-099: subscribe to the SSE bus instead of polling.
+    if (window.chumpStream) {
+      this.#unsubscribe = window.chumpStream.subscribe((msg) => {
+        if (msg.type === 'dashboard') this.#renderFromStream(msg.data);
+      });
+      // Reflect connection status as a small live pill.
+      document.addEventListener('chump:stream-status', this.#onStatus);
+      // Late mount: paint pill from current bus status (don't wait for the
+      // next status-change event, which may never come if we're already live).
+      this.#onStatus({ detail: window.chumpStream.status() });
+    }
+  }
+
+  disconnectedCallback() {
+    if (this.#unsubscribe) { this.#unsubscribe(); this.#unsubscribe = null; }
+    document.removeEventListener('chump:stream-status', this.#onStatus);
+  }
+
+  #onStatus = (e) => {
+    const pill = this.querySelector('#stream-pill');
+    if (!pill) return;
+    const colors = {
+      live: ['#1f4d2a', '#9be3a9', '● live'],
+      connecting: ['#3a3a1a', '#e3d29b', '◌ connecting'],
+      reconnecting: ['#4d3a1a', '#e3c19b', '↻ reconnecting'],
+      paused: ['#1a2a3a', '#9bb8e3', '⏸ paused'],
+      offline: ['#4d1f1f', '#e39b9b', '⚠ offline'],
+      init: ['#2a2a2a', '#aaa', '— stream: init'],
+    };
+    const [bg, fg, label] = colors[e.detail] || colors.init;
+    pill.style.background = bg;
+    pill.style.color = fg;
+    pill.textContent = label;
+  };
+
+  #renderFromStream(dashboard) {
+    // Same render path as #load but called per SSE event; do NOT clobber the
+    // jobs list (the stream doesn't carry jobs yet — that's a separate gap).
+    if (!dashboard || !Object.keys(dashboard).length) return;
+    const card = this.querySelector('#stream-dashboard-card');
+    const html = `
+      <article id="stream-dashboard-card" class="task-card">
+        <header class="task-card-header">
+          <span class="task-status ${dashboard.ship_running ? 'running' : 'done'}">
+            ${dashboard.ship_running ? 'Active' : 'Idle'}
+          </span>
+        </header>
+        <p class="task-desc"><strong>Fleet status:</strong> ${dashboard.fleet_status ?? '?'}</p>
+        ${dashboard.last_heartbeat_iso ? `<p class="task-desc"><strong>Last heartbeat:</strong> ${dashboard.last_heartbeat_iso}</p>` : ''}
+        ${Array.isArray(dashboard.active_tasks) && dashboard.active_tasks.length > 0
+            ? `<p class="task-desc"><strong>Active tasks:</strong> ${dashboard.active_tasks.length}</p>` : ''}
+      </article>
+    `;
+    const container = this.querySelector('#results-container');
+    if (!container) return;
+    if (card) {
+      card.outerHTML = html;
+    } else {
+      container.insertAdjacentHTML('afterbegin', html);
+    }
   }
 
   #load() {
