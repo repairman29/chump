@@ -1188,6 +1188,8 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-cli-output-format.sh
       - name: pre-push hook cd to GIT_WORK_TREE for cargo test (RESILIENT-009)
         run: bash scripts/ci/test-prepush-worktree-cd.sh
+      - name: KNOWN_FLAKES auto-bypass gate — 11 pre-push flakes catalogued (RESILIENT-012)
+        run: bash scripts/ci/test-known-flakes-gate.sh
       - name: orphaned worktree reaper — prune-worktrees.sh orphan mode (RESILIENT-013)
         run: bash scripts/ci/test-orphan-worktree-prune.sh
       - name: gap consolidate — near-duplicate title detection (INFRA-935)
