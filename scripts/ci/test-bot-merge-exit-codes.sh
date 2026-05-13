@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CI gate for RESILIENT-010: bot-merge.sh step-specific exit codes.
 # Tests: each named failure step exits with the correct code and emits
-# kind=bot_merge_failure to ambient.jsonl with step and exit_code fields.
+# kind=bot_merge_phase_failure to ambient.jsonl with step and exit_code fields.
 set -euo pipefail
 
 PASS=0; FAIL=0
@@ -102,10 +102,10 @@ else
     fail "ambient.jsonl not created by _bm_fail"
 fi
 
-if [[ -f "$AMBIENT" ]] && grep -q '"kind":"bot_merge_failure"' "$AMBIENT"; then
-    ok 'ambient event has kind=bot_merge_failure'
+if [[ -f "$AMBIENT" ]] && grep -q '"kind":"bot_merge_phase_failure"' "$AMBIENT"; then
+    ok 'ambient event has kind=bot_merge_phase_failure'
 else
-    fail 'ambient event missing kind=bot_merge_failure'
+    fail 'ambient event missing kind=bot_merge_phase_failure'
 fi
 
 if [[ -f "$AMBIENT" ]] && python3 -c "
