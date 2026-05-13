@@ -63,6 +63,21 @@ last 30 merged PRs (2026-05-13):
 history; Rule C false-positives from gap IDs in descriptions are handled
 correctly when checking against `state.db` depends_on.
 
+## Automated baseline (EVAL-124)
+
+Automated FPR measurement via `scripts/ci/eval-gate-fpr-baseline.sh` run
+2026-05-13 against 30 most-recently merged PRs:
+
+| Gate | PRs | Fires | Fire rate |
+|---|---|---|---|
+| check-pr-scope.sh | 30 | 0 | 0.0% |
+| check-mass-deletion.sh | 30 | 0 | 0.0% |
+
+**Finding:** 0.0% fire rate across both gates on recent PRs — gates are
+well-calibrated with zero FP. Full per-PR results in
+[docs/eval/gate-fpr-baseline-2026-05.md](../eval/gate-fpr-baseline-2026-05.md).
+Compare with CREDIBLE-048 production telemetry to detect calibration drift.
+
 ## Bypassing
 
 | Rule | Bypass mechanism |
