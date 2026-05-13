@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-infra-779-gitdir-repair.sh — INFRA-1033
+# test-infra-779-gitdir-repair.sh — INFRA-1033 (UPDATED)
 #
-# Verifies that chump claim auto-repairs a corrupted .git/worktrees/<n>/gitdir
+# Tests gap-claim.sh INFRA-779 repair block: detects corrupted gitdir back-ref
 # back-reference (INFRA-779: concurrent sibling claims can clobber this file,
 # causing git rev-parse --show-toplevel to return the wrong path).
 #
