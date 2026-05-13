@@ -1310,6 +1310,7 @@ mod tests {
     // ── EFFECTIVE-002: provider rotation ──────────────────────────────────
 
     #[test]
+    #[serial(free_tier_env)]
     fn effective002_parse_defaults_returns_three_providers() {
         // Without CHUMP_FREE_TIER_PROVIDERS set the default list has 3 entries.
         std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
@@ -1330,6 +1331,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(free_tier_env)]
     fn effective002_parse_custom_env_overrides_defaults() {
         std::env::set_var(
             "CHUMP_FREE_TIER_PROVIDERS",
@@ -1344,6 +1346,7 @@ mod tests {
     }
 
     #[test]
+    #[serial(free_tier_env)]
     fn effective002_parse_skips_malformed_entries() {
         std::env::set_var(
             "CHUMP_FREE_TIER_PROVIDERS",
