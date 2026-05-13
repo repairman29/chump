@@ -63,14 +63,19 @@ check_test "ship_with_closed_pr_stamps_pr_number"
 CHUMP_BIN="${REPO_ROOT}/target/debug/deps"
 if ls "$CHUMP_BIN"/chump-* 2>/dev/null | grep -qv '\.d$'; then
     echo "  Running tests via cargo test..."
-    if (cd "$REPO_ROOT" && \
+    # cargo test takes filter args as separate positional strings (substring OR-match),
+    # not a single regex. Run gap_store unit tests and require zero failures.
+    test_out=$(cd "$REPO_ROOT" && \
         GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --git-dir 2>/dev/null)" \
         GIT_WORK_TREE="$REPO_ROOT" \
-        cargo test -- "ship_nonexistent_gap\|ship_already_done_gap\|claim_nonexistent_gap\|claim_done_gap\|claim_live_claimed\|get_nonexistent_gap\|preflight_nonexistent\|preflight_done_gap\|preflight_claimed_gap\|set_recycled_id\|set_hijack_guard\|dump_per_file_single_returns\|reserve_increments_id\|list_with_status_filter" \
-        2>&1 | grep -q "15 passed\|13 passed\|14 passed"); then
-        ok "cargo test: new error-path tests pass"
+        cargo test --lib --quiet gap_store:: 2>&1 || true)
+    # Sum passed across all "test result: ok. N passed; M failed" lines
+    passed=$(echo "$test_out" | awk -F'[ .;]+' '/test result: ok\./{for(i=1;i<=NF;i++) if($i=="passed"){print $(i-1)}}' | awk '{s+=$1} END{print s+0}')
+    failed=$(echo "$test_out" | awk -F'[ .;]+' '/test result/{for(i=1;i<=NF;i++) if($i=="failed"){print $(i-1)}}' | awk '{s+=$1} END{print s+0}')
+    if [[ "$failed" -eq 0 ]] && [[ "$passed" -ge 15 ]]; then
+        ok "cargo test: gap_store error-path tests pass ($passed passed)"
     else
-        fail "cargo test: new error-path tests did not all pass"
+        fail "cargo test: gap_store error-path tests did not all pass (passed=$passed failed=$failed)"
     fi
 else
     echo "  SKIP (live): cargo test deps not built"
