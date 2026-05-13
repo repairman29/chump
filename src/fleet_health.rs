@@ -261,6 +261,8 @@ pub fn emit(repo_root: &Path, report: &HealthReport) {
     let lock_dir = repo_root.join(".chump-locks");
     let _ = std::fs::create_dir_all(&lock_dir);
     let ambient = lock_dir.join("ambient.jsonl");
+    // Rotate before appending so the file never grows unbounded (INFRA-941).
+    crate::ambient_rotate::rotate_if_needed(&ambient);
     let json = report.render_event_json();
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()

@@ -16,6 +16,7 @@ mod agent_lease;
 pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
+mod ambient_rotate;
 mod ambient_stream;
 mod approval_resolver;
 mod asi_telemetry;
@@ -761,6 +762,31 @@ async fn main() -> Result<()> {
     // `chump fleet-status` (INFRA-494) — single-command operator
     // dashboard combining active leases, last-24h shipped/abandoned,
     // last-24h waste tally summary, and recent fleet wedges.
+    // `chump ambient-rotate` (INFRA-941) — rotate ambient.jsonl if over threshold.
+    if args.get(1).map(String::as_str) == Some("ambient-rotate") {
+        let repo_root = repo_path::repo_root();
+        let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+        let threshold_mb = std::env::var("CHUMP_AMBIENT_MAX_MB")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(50);
+        let size_mb = std::fs::metadata(&ambient)
+            .map(|m| m.len() / (1024 * 1024))
+            .unwrap_or(0);
+        if crate::ambient_rotate::rotate_if_needed(&ambient) {
+            println!(
+                "rotated: ambient.jsonl ({} MB) → ambient.jsonl.1 (threshold {} MB)",
+                size_mb, threshold_mb
+            );
+        } else {
+            println!(
+                "no-op: ambient.jsonl is {} MB (threshold {} MB)",
+                size_mb, threshold_mb
+            );
+        }
+        return Ok(());
+    }
+
     if args.get(1).map(String::as_str) == Some("fleet-status") {
         if args.iter().any(|a| a == "--help" || a == "help") {
             println!("Usage: chump fleet-status");
