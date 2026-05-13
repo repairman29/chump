@@ -78,6 +78,41 @@ pub struct WasteReport {
     pub total_tokens_burned: u64,
 }
 
+/// INFRA-951: default token estimate per waste kind for events that don't
+/// carry `input_tokens`/`output_tokens` (only `session_end` does).
+///
+/// These are deliberately conservative lower-bounds, sourced from rough
+/// observation of typical retry/probe patterns:
+///
+///   * `fleet_auth_fallback` — one auth probe (POST + 401 retry) ≈ 200 tokens
+///     of system-prompt overhead before the real call lands.
+///   * `bot_merge_hot_file` — rebase round runs cargo check on a few files;
+///     no LLM tokens directly, but the agent typically re-evaluates the
+///     conflict resolution (~3k tokens per round).
+///   * `slo_breach` — curator audit run is sonnet-3.7 reading state.db +
+///     ambient tail ≈ 8k input + 1k output.
+///   * `pr_stuck_cluster` — operator (or curator) triage ≈ 5k tokens.
+///   * `bot_merge_hang` — wedge implies a stalled `claude -p` call that has
+///     accumulated full system prompt + tools (~15k tokens) before timing
+///     out — input tokens were paid for but produced no useful output.
+///   * `missing_attribution` — no direct token cost; it's an observability
+///     gap that hides cost elsewhere.
+///
+/// Returns 0 when no estimate applies (kind is a session_end derivative or
+/// is otherwise observed-cost-only). Total cost is computed in USD via
+/// session_ledger::cost_usd_from_tokens at the "unknown" price tier.
+pub fn default_tokens_per_kind(kind: &str) -> u64 {
+    match kind {
+        "fleet_auth_fallback" => 200,
+        "bot_merge_hot_file" => 3_000,
+        "slo_breach" => 9_000,
+        "pr_stuck_cluster" => 5_000,
+        "bot_merge_hang" => 15_000,
+        "missing_attribution" => 0,
+        _ => 0,
+    }
+}
+
 /// The set of `kind` values we classify as waste. Order matches the
 /// taxonomy table in the module-level docs.
 ///
@@ -216,7 +251,14 @@ pub fn build_domain_report(repo_root: &Path, since_secs: u64) -> WasteDomainRepo
             let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
             crate::session_ledger::cost_usd_from_tokens(&model, input, output, cache)
         } else {
-            0.0
+            // INFRA-951: non-session_end kinds — apply default token estimate
+            // and price via the "unknown" tier so the USD column is non-zero.
+            let est_tokens = default_tokens_per_kind(&kind);
+            if est_tokens > 0 {
+                crate::session_ledger::cost_usd_from_tokens("unknown", est_tokens, 0, 0)
+            } else {
+                0.0
+            }
         };
         let entity = match kind.as_str() {
             "silent_agent" | "lease_expired_server" | "lease_overlap" | "edit_burst" => {
@@ -539,7 +581,17 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> WasteReport {
                 input.saturating_add(output).saturating_add(cache),
             )
         } else {
-            (0.0, 0u64)
+            // INFRA-951: non-session_end kinds — apply default token estimate
+            // so the cost rollup includes them. Priced at "unknown" tier.
+            let est_tokens = default_tokens_per_kind(&kind);
+            if est_tokens > 0 {
+                (
+                    crate::session_ledger::cost_usd_from_tokens("unknown", est_tokens, 0, 0),
+                    est_tokens,
+                )
+            } else {
+                (0.0, 0u64)
+            }
         };
 
         // INFRA-489: kind-aware entity extraction. The naive "first
@@ -1031,6 +1083,26 @@ mod tests {
             .unwrap();
         assert_eq!(wedge.estimated_cost_secs, 14400);
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra951_default_tokens_per_kind_returns_estimates() {
+        // INFRA-951: each of the new waste kinds has a deliberate non-zero
+        // token estimate (except missing_attribution which is observability-only).
+        // Cargo-cult prevention: assert each one explicitly rather than range.
+        assert_eq!(default_tokens_per_kind("fleet_auth_fallback"), 200);
+        assert_eq!(default_tokens_per_kind("bot_merge_hot_file"), 3_000);
+        assert_eq!(default_tokens_per_kind("slo_breach"), 9_000);
+        assert_eq!(default_tokens_per_kind("pr_stuck_cluster"), 5_000);
+        assert_eq!(default_tokens_per_kind("bot_merge_hang"), 15_000);
+        assert_eq!(default_tokens_per_kind("missing_attribution"), 0);
+
+        // Unknown kinds get zero — caller must opt-in via the table.
+        assert_eq!(default_tokens_per_kind("nonsense_kind_xyz"), 0);
+
+        // Pre-existing kinds get zero (token cost comes from session_end pass).
+        assert_eq!(default_tokens_per_kind("fleet_wedge"), 0);
+        assert_eq!(default_tokens_per_kind("session_abandoned"), 0);
     }
 
     #[test]
