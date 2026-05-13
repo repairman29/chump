@@ -7530,11 +7530,59 @@ async fn main() -> Result<()> {
 
     let release_mode = args.get(1).map(|s| s == "--release").unwrap_or(false);
     if release_mode {
-        // Release this session's lease, or a named one with --session-id=<id>.
-        let override_id = args.iter().find_map(|a| a.strip_prefix("--session-id="));
-        let target_id = override_id
-            .map(|s| s.to_string())
-            .unwrap_or_else(agent_lease::current_session_id);
+        // Release a lease by session ID.
+        //
+        // INFRA-1026: support both --lease <SESSION_ID> (space-separated) and
+        // --session-id=<SESSION_ID> (original equals-prefix form). Previously
+        // only --session-id= was parsed, so `chump --release --lease <id>`
+        // silently ignored <id> and released the current session instead.
+        //
+        // Lookup precedence: --lease <id> > --session-id=<id> > current session.
+        // When --lease or --session-id= is given and the session doesn't exist
+        // in the active lease list, exit 1 with a clear message (no silent fallback).
+        let override_id_eq = args.iter().find_map(|a| a.strip_prefix("--session-id="));
+        let override_id_lease = args.windows(2).find_map(|w| {
+            if w[0] == "--lease" {
+                Some(w[1].as_str())
+            } else {
+                None
+            }
+        });
+        let (target_id, explicit_target) = if let Some(id) = override_id_lease {
+            (id.to_string(), true)
+        } else if let Some(id) = override_id_eq {
+            (id.to_string(), true)
+        } else {
+            (agent_lease::current_session_id(), false)
+        };
+
+        // INFRA-1026: when an explicit --lease / --session-id was given and the
+        // session is not in the active list, exit 1 instead of silently deleting
+        // whatever chump_XXXXXXXXX.json might or might not exist.
+        if explicit_target {
+            let active = agent_lease::list_active();
+            if !active.iter().any(|l| l.session_id == target_id) {
+                eprintln!(
+                    "chump --release: no such session '{}' in active leases.",
+                    target_id
+                );
+                eprintln!(
+                    "  Active sessions: {}",
+                    if active.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        active
+                            .iter()
+                            .map(|l| l.session_id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
+                );
+                eprintln!("  Use 'chump --leases' to list all active sessions.");
+                std::process::exit(1);
+            }
+        }
+
         let stub = agent_lease::Lease {
             session_id: target_id.clone(),
             paths: vec![],
@@ -7549,6 +7597,11 @@ async fn main() -> Result<()> {
         match agent_lease::release(&stub) {
             Ok(()) => {
                 println!("released session_id={}", target_id);
+                tracing::info!(
+                    session_id = %target_id,
+                    explicit_target = explicit_target,
+                    "lease released via --release"
+                );
                 return Ok(());
             }
             Err(e) => {
