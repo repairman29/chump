@@ -586,6 +586,11 @@ jobs:
           export PATH="$(pwd)/target/debug:$PATH"
           bash scripts/ci/test-gap-reserve-padding.sh
 
+      - name: gap-ID cross-session collision prevention (CREDIBLE-052)
+        run: |
+          export PATH="$(pwd)/target/debug:$PATH"
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-id-cross-session.sh
+
       - name: bot-merge auto-close handshake (INFRA-154)
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
