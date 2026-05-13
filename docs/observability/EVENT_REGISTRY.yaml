@@ -1219,6 +1219,18 @@ events:
     trigger: nightly curation run (04:00 local) completes rebalance + consolidate + retention-sweep
     consumers: [fleet-brief, opus-curator, kpi-report]
     fields_required: [ts, kind, session, rebalanced, consolidated, retained, errors]
+    trigger: operator runs fleet metrics snapshot; reads ambient.jsonl + state.db
+      to compute ship_rate, waste_rate, cycle_time_p50, active_gaps, p0_count
+    consumers: [fleet-brief, kpi-report, opus-curator, velocity-trending.sh]
+    fields_required: [ts, kind, ship_rate_24h, waste_rate_24h, cycle_time_p50_h, active_gaps, p0_count]
+
+  - kind: velocity_trend_computed
+    emitter: scripts/ops/velocity-trending.sh (INFRA-901)
+    trigger: operator runs velocity-trending.sh to analyse fleet ship_rate and
+      waste_rate trends over the last N days; compares last 3d vs prior 4d to
+      classify trend as improving, stable, or degrading
+    consumers: [fleet-brief, opus-curator, kpi-report]
+    fields_required: [ts, kind, window_days, ship_rate_7d, waste_rate_7d, trend, days_sampled]
   - kind: cost_quota_warning
     emitter: src/cost_ledger.rs (INFRA-877)
     trigger: daily spend reaches 80% of CHUMP_DAILY_BUDGET_USD; emitted before
