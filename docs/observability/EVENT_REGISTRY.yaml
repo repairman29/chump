@@ -190,6 +190,25 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [ts, kind, quiet_window_s, handler]
 
+  - kind: slo_breach
+    emitter: scripts/coord/opus-curator.sh (INFRA-848 / INFRA-955)
+    trigger: curator audit detected an SLO violation (chump health --slo-check non-zero)
+    consumers: [fleet-brief, watchdog, waste-tally]
+    fields_required: [ts, kind, severity, slo_name, detail]
+    docs: |
+      Edge-only emission per INFRA-955: fires when the active breach set
+      CHANGES (transitions into breach or between different breach sets),
+      not on every audit tick while in continuous breach. slo_name is a
+      sorted comma-separated key of breached SLO identifiers (e.g.
+      "L1-SLO-3,L2-SLO-4"). detail carries the full BREACH line(s) for
+      forensic context.
+
+  - kind: slo_recovered
+    emitter: scripts/coord/opus-curator.sh (INFRA-955)
+    trigger: curator audit transitions from breach → healthy (pairs with slo_breach edge)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, previously_breached, handler]
+
   - kind: fleet_scale_change
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845) + manual scaling per CLAUDE.md
     trigger: fleet size adjusted up or down by handler or operator

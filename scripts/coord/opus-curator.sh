@@ -103,18 +103,58 @@ log_curator_decision() {
 # ============================================================================
 audit_slo() {
   # Run: chump health --slo-check
-  # Returns: exit code 0 if healthy, non-zero if breach
-  if command -v chump &> /dev/null; then
-    if chump health --slo-check 2>/dev/null; then
-      echo "SLO: healthy"
-      return 0
-    else
-      echo "SLO: BREACH"
-      log_ambient "slo_breach" '"severity":"high"'
-      return 1
-    fi
+  # INFRA-955 (META-055 #3, 7.7%): emit kind=slo_breach only on the EDGE
+  # (transition from healthy → breach), not on every audit tick while in
+  # continuous breach. Carries which SLO breached + parsed value + threshold,
+  # rather than just severity. Also emits kind=slo_recovered on the
+  # opposite edge so consumers can pair the two.
+  command -v chump &>/dev/null || return 0
+
+  local slo_output rc
+  slo_output="$(chump health --slo-check 2>&1)"
+  rc=$?
+
+  # Parse breach lines: "  ✗ BREACH  L2-SLO-4  [4 under target]  pillar balance …"
+  # Build a sorted, comma-joined name list as the change-detection key.
+  local breached_names breached_detail
+  breached_names="$(echo "$slo_output" \
+    | awk '/^[[:space:]]*✗[[:space:]]+BREACH/ {
+        for (i=1;i<=NF;i++) if ($i ~ /^L[0-9]+-SLO-[0-9]+$/) print $i
+      }' | sort -u | paste -sd, -)"
+  breached_detail="$(echo "$slo_output" \
+    | awk '/^[[:space:]]*✗[[:space:]]+BREACH/ {
+        sub(/^[[:space:]]+/, "")
+        sub(/[[:space:]]+$/, "")
+        printf "%s\\n", $0
+      }')"
+
+  # Previous active set tracked in fleet-state.json.
+  local prev_active=""
+  if command -v jq &>/dev/null && [[ -f "$FLEET_STATE" ]]; then
+    prev_active="$(jq -r '.slo_breach_active // ""' "$FLEET_STATE" 2>/dev/null || echo "")"
   fi
-  return 0
+
+  if [[ -z "$breached_names" ]]; then
+    echo "SLO: healthy"
+    # Recovery edge: previously breaching, now clean.
+    if [[ -n "$prev_active" ]]; then
+      log_ambient "slo_recovered" \
+        '"previously_breached":"'"$prev_active"'","handler":"opus-curator"'
+      fleet_state_set_field "slo_breach_active" ""
+    fi
+    return 0
+  fi
+
+  echo "SLO: BREACH ($breached_names)"
+  # Edge: emit slo_breach only if the active set CHANGED. Suppress identical
+  # continuous-breach re-emissions, which were the dominant token drain
+  # for this kind per META-055 audit.
+  if [[ "$breached_names" != "$prev_active" ]]; then
+    log_ambient "slo_breach" \
+      '"severity":"high","slo_name":"'"$breached_names"'","detail":"'"$breached_detail"'","threshold":"see-detail"'
+    fleet_state_set_field "slo_breach_active" "$breached_names"
+  fi
+  return 1
 }
 
 audit_waste() {
