@@ -599,13 +599,21 @@ _emit_hang_alert() {
 gh_with_backoff() {
     local label=$1 timeout_secs=$2; shift 2
     local -a delays=(60 120 240)
-    local attempt=0 rc tmpout
+    local attempt=0 rc tmpout api_tag started_ms ended_ms
+    api_tag="$(chump_gh_api_tag "$@" 2>/dev/null || printf '%s' "${1:-?}")"
     while true; do
         tmpout=$(mktemp)
+        started_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
         set +e
         run_timed_hb "$label" "$timeout_secs" gh "$@" 2>&1 | tee -a "$tmpout"
         rc=${PIPESTATUS[0]}
         set -e
+        ended_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
+        # INFRA-999: log this call to ambient.jsonl for cost telemetry.
+        if declare -F chump_gh_record >/dev/null 2>&1; then
+            chump_gh_record "$api_tag" "$(( ended_ms - started_ms ))" "$rc" "bot-merge.sh" \
+                2>/dev/null || true
+        fi
         if [[ $rc -eq 0 ]]; then
             rm -f "$tmpout"; return 0
         fi
@@ -732,6 +740,9 @@ _bm_health_init() {
 # visible to siblings. queue-health-monitor.sh reads from the main repo path.
 # shellcheck source=../lib/repo-paths.sh
 source "$(dirname "$0")/../lib/repo-paths.sh"
+# shellcheck source=lib/github.sh
+# INFRA-999: chump_gh + chump_gh_record for API cost telemetry.
+source "$(dirname "$0")/lib/github.sh"
 cd "$REPO_ROOT"
 # INFRA-469: route every `chump` call through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
