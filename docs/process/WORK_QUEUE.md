@@ -25,7 +25,7 @@ day each time). The system already has:
 - **`chump gap list`** — live canonical query, never drifts
 - **[`docs/gaps.yaml`](../gaps.yaml)** — regenerated human-readable mirror
 - **[`docs/audits/RED_LETTER.md`](../audits/RED_LETTER.md)** — adversarial blockers/debt
-- **[`docs/strategy/ROADMAP.md`](../strategy/ROADMAP.md)** — operational backlog
+- **[`docs/archive/strategy-2026-04/ROADMAP-superseded.md`](../archive/strategy-2026-04/ROADMAP-superseded.md)** — operational backlog
 
 A WORK_QUEUE.md that copies subsets of those is a fourth surface that adds drift,
 not signal. DOC-011 tracks the redirect.
