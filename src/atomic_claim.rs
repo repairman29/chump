@@ -322,6 +322,130 @@ fn derive_session_id(gap_id: &str) -> String {
     format!("claim-{}-{}-{}", gap_id.to_lowercase(), pid, epoch)
 }
 
+/// INFRA-965 slice 1 (INFRA-984): port the new-lease-file write from
+/// scripts/coord/gap-claim.sh into Rust. Matches the JSON schema used by
+/// gap-preflight.sh's reader exactly — session_id, paths, taken_at,
+/// expires_at, heartbeat_at, purpose, gap_id. Returns the path of the
+/// lease file written.
+///
+/// This is the simple-case write (no existing lease, no speculative
+/// flag). INFRA-985 ports the merge-existing-lease + speculative cases;
+/// INFRA-986 ports the NATS KV dual-write. Once all three land, gap-claim.sh
+/// can be deleted (INFRA-987).
+pub fn write_basic_lease(
+    lock_dir: &Path,
+    session_id: &str,
+    gap_id: &str,
+    paths_csv: Option<&str>,
+    ttl_secs: u64,
+) -> Result<PathBuf> {
+    std::fs::create_dir_all(lock_dir)
+        .with_context(|| format!("create lock dir {}", lock_dir.display()))?;
+
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let now_iso = unix_to_iso8601(now_secs);
+    let expires_iso = unix_to_iso8601(now_secs.saturating_add(ttl_secs));
+
+    let paths_list: Vec<String> = paths_csv
+        .unwrap_or("")
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // Hand-roll the JSON to match gap-claim.sh's output byte-for-byte:
+    // two-space indent, trailing newline, key order session_id → paths →
+    // taken_at → expires_at → heartbeat_at → purpose → gap_id. Using
+    // serde_json::to_string_pretty would change key order (it's BTreeMap
+    // for serde_json::Map under that path) and add subtle diffs that
+    // would break callers diffing against the existing format.
+    let mut json = String::new();
+    json.push_str("{\n");
+    json.push_str(&format!(
+        "  \"session_id\": \"{}\",\n",
+        json_escape(session_id)
+    ));
+    json.push_str("  \"paths\": [");
+    if !paths_list.is_empty() {
+        json.push('\n');
+        for (i, p) in paths_list.iter().enumerate() {
+            json.push_str(&format!("    \"{}\"", json_escape(p)));
+            if i + 1 < paths_list.len() {
+                json.push(',');
+            }
+            json.push('\n');
+        }
+        json.push_str("  ");
+    }
+    json.push_str("],\n");
+    json.push_str(&format!("  \"taken_at\": \"{}\",\n", now_iso));
+    json.push_str(&format!("  \"expires_at\": \"{}\",\n", expires_iso));
+    json.push_str(&format!("  \"heartbeat_at\": \"{}\",\n", now_iso));
+    json.push_str(&format!(
+        "  \"purpose\": \"gap:{}\",\n",
+        json_escape(gap_id)
+    ));
+    json.push_str(&format!("  \"gap_id\": \"{}\"\n", json_escape(gap_id)));
+    json.push_str("}\n");
+
+    let lease_path = lock_dir.join(format!("{}.json", session_id));
+    std::fs::write(&lease_path, json)
+        .with_context(|| format!("write lease {}", lease_path.display()))?;
+    Ok(lease_path)
+}
+
+fn unix_to_iso8601(unix: u64) -> String {
+    // Minimal RFC3339 formatter — no chrono dep required at this seam.
+    // Days-since-epoch -> Y/M/D via simple civil_from_days algorithm
+    // (Howard Hinnant). Seconds-of-day -> H:M:S directly.
+    let days = (unix / 86_400) as i64;
+    let sod = (unix % 86_400) as u32;
+    let h = sod / 3600;
+    let m = (sod % 3600) / 60;
+    let s = sod % 60;
+    let (y, mo, d) = civil_from_days(days);
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, mo, d, h, m, s)
+}
+
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    // Hinnant's civil_from_days, adapted from
+    // https://howardhinnant.github.io/date_algorithms.html
+    let z = z + 719_468;
+    let era = if z >= 0 {
+        z / 146_097
+    } else {
+        (z - 146_096) / 146_097
+    };
+    let doe = (z - era * 146_097) as u64; // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365; // [0, 399]
+    let y = (yoe as i64) + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32; // [1, 12]
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+fn json_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
 /// Step 2: ensure the gap is in state.db. If missing, attempt to seed
 /// via `chump gap import` (uses the per-file YAML mirrors as source of
 /// truth — INFRA-470 / INFRA-460 territory).
@@ -428,6 +552,139 @@ mod tests {
         assert!(s.starts_with("claim-infra-123-"));
         // claim-infra-123-<pid>-<epoch> = 4 dash-separated segments
         assert_eq!(s.matches('-').count(), 4);
+    }
+
+    #[test]
+    fn unix_to_iso8601_matches_known_values() {
+        // 2026-05-13T22:00:00Z = 1778709600
+        assert_eq!(unix_to_iso8601(1_778_709_600), "2026-05-13T22:00:00Z");
+        // Unix epoch
+        assert_eq!(unix_to_iso8601(0), "1970-01-01T00:00:00Z");
+        // 2000-01-01T00:00:00Z = 946684800 (post-leap-day-2000 reference)
+        assert_eq!(unix_to_iso8601(946_684_800), "2000-01-01T00:00:00Z");
+        // Day after leap day 2024 (leap-year math sanity)
+        // 2024-03-01T00:00:00Z = 1709251200
+        assert_eq!(unix_to_iso8601(1_709_251_200), "2024-03-01T00:00:00Z");
+    }
+
+    #[test]
+    fn json_escape_handles_metachars() {
+        assert_eq!(json_escape(r#"a"b"#), r#"a\"b"#);
+        assert_eq!(json_escape("a\\b"), "a\\\\b");
+        assert_eq!(json_escape("a\nb"), "a\\nb");
+        assert_eq!(json_escape("normal"), "normal");
+        assert_eq!(json_escape("with\u{0001}control"), "with\\u0001control");
+    }
+
+    #[test]
+    fn write_basic_lease_minimal() {
+        let tmp = std::env::temp_dir().join(format!(
+            "infra984-min-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let lease =
+            write_basic_lease(&tmp, "test-session-abc", "INFRA-999", None, 14_400).expect("write");
+
+        // File path is <lock_dir>/<session>.json
+        assert!(lease.exists());
+        assert_eq!(
+            lease.file_name().unwrap().to_str().unwrap(),
+            "test-session-abc.json"
+        );
+
+        let body = std::fs::read_to_string(&lease).unwrap();
+        // Schema key order matches gap-claim.sh — first key is session_id
+        assert!(
+            body.starts_with("{\n  \"session_id\": \"test-session-abc\","),
+            "header mismatch: {body}"
+        );
+        assert!(body.contains("\"gap_id\": \"INFRA-999\""));
+        assert!(body.contains("\"purpose\": \"gap:INFRA-999\""));
+        // Empty paths array, inline form
+        assert!(body.contains("\"paths\": [],"));
+        // Trailing newline
+        assert!(body.ends_with("}\n"));
+        // taken_at / expires_at / heartbeat_at all present and Z-suffixed
+        for key in ["taken_at", "expires_at", "heartbeat_at"] {
+            let needle = format!("\"{key}\":");
+            assert!(body.contains(&needle), "missing {key} in: {body}");
+        }
+        assert!(body.contains("Z\""));
+
+        // expires_at is 14400 seconds (4h) after taken_at
+        let taken = body
+            .split("\"taken_at\": \"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .unwrap();
+        let expires = body
+            .split("\"expires_at\": \"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .unwrap();
+        assert_ne!(taken, expires);
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn write_basic_lease_with_paths() {
+        let tmp = std::env::temp_dir().join(format!(
+            "infra984-paths-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let lease = write_basic_lease(
+            &tmp,
+            "s2",
+            "INFRA-1",
+            Some("src/foo.rs, src/bar.rs,, ,src/baz.rs"), // empty + whitespace entries dropped
+            3_600,
+        )
+        .unwrap();
+
+        let body = std::fs::read_to_string(&lease).unwrap();
+        // Multi-line paths array
+        assert!(body.contains(
+            "\"paths\": [\n    \"src/foo.rs\",\n    \"src/bar.rs\",\n    \"src/baz.rs\"\n  ],"
+        ));
+
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn write_basic_lease_json_parses_roundtrip() {
+        // Sanity check that the hand-rolled JSON is actually valid JSON
+        // — gap-preflight.sh's reader is python json.load(), so this
+        // must round-trip cleanly.
+        let tmp = std::env::temp_dir().join(format!(
+            "infra984-rt-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let lease = write_basic_lease(&tmp, "s3", "INFRA-2", Some("a.rs,b.rs"), 7_200).unwrap();
+        let body = std::fs::read_to_string(&lease).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&body).expect("valid JSON for gap-preflight reader");
+        assert_eq!(parsed["session_id"], "s3");
+        assert_eq!(parsed["gap_id"], "INFRA-2");
+        assert_eq!(parsed["purpose"], "gap:INFRA-2");
+        assert_eq!(parsed["paths"], serde_json::json!(["a.rs", "b.rs"]));
+
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     #[test]
