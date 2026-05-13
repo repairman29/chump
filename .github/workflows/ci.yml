@@ -1087,6 +1087,8 @@ jobs:
         run: bash scripts/ci/test-bot-merge-stacked-rebase.sh
       - name: curator decision logging — kind, required fields, enum, phases (INFRA-848)
         run: bash scripts/ci/test-curator-decision-logging.sh
+      - name: curator p0 demotion — real mutation, oldest P0 selected, max 1/run (INFRA-978)
+        run: bash scripts/ci/test-curator-p0-demotion.sh
       - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
         run: bash scripts/ci/test-required-model.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
