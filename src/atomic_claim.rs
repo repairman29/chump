@@ -397,6 +397,207 @@ pub fn write_basic_lease(
     Ok(lease_path)
 }
 
+/// INFRA-965 slice 2 (INFRA-985): merge-or-write public entrypoint.
+///
+/// If a lease file already exists at `<lock_dir>/<session_id>.json` (the
+/// session already holds a lease — typically from a prior claim earlier
+/// in the same shell), update it in place:
+///   - set `gap_id` to the new value
+///   - merge `paths_csv` into the existing `paths` array, preserving
+///     dedup order
+///   - preserve the existing `speculative` flag if present (caller can
+///     promote via the `speculative` arg here)
+///   - clear `pending_new_gap` if it referenced this gap_id
+///   - leave taken_at / expires_at / heartbeat_at untouched (the lease
+///     keeps its original lifetime; that's why we merge instead of
+///     overwriting)
+///
+/// If no lease file exists, falls through to `write_basic_lease` (slice 1)
+/// or its speculative variant when `speculative=true`.
+///
+/// Returns the path of the lease file.
+pub fn write_or_merge_lease(
+    lock_dir: &Path,
+    session_id: &str,
+    gap_id: &str,
+    paths_csv: Option<&str>,
+    ttl_secs: u64,
+    speculative: bool,
+) -> Result<PathBuf> {
+    let lease_path = lock_dir.join(format!("{}.json", session_id));
+    if lease_path.exists() {
+        return merge_existing_lease(&lease_path, gap_id, paths_csv, speculative);
+    }
+    if speculative {
+        write_speculative_lease(lock_dir, session_id, gap_id, paths_csv, ttl_secs)
+    } else {
+        write_basic_lease(lock_dir, session_id, gap_id, paths_csv, ttl_secs)
+    }
+}
+
+/// INFRA-985: speculative lease variant — same shape as basic but with
+/// `"speculative": true` appended. `gap-preflight.sh` reads this field to
+/// allow concurrent claims from other speculative-mode sessions on the
+/// same gap (first-to-land wins).
+pub fn write_speculative_lease(
+    lock_dir: &Path,
+    session_id: &str,
+    gap_id: &str,
+    paths_csv: Option<&str>,
+    ttl_secs: u64,
+) -> Result<PathBuf> {
+    // Re-use the basic write then rewrite with the extra key. Simpler than
+    // duplicating 60 lines of JSON-emit for one extra field.
+    let lease_path = write_basic_lease(lock_dir, session_id, gap_id, paths_csv, ttl_secs)?;
+    let body = std::fs::read_to_string(&lease_path).with_context(|| {
+        format!(
+            "read lease for speculative annotation: {}",
+            lease_path.display()
+        )
+    })?;
+    // Insert "speculative": true before the closing brace. Body ends with
+    // `  "gap_id": "..."\n}\n` — we add a comma to the gap_id line and a
+    // new speculative line.
+    let trimmed = body.trim_end_matches('\n');
+    let with_spec = trimmed
+        .strip_suffix('}')
+        .map(|s| {
+            format!(
+                "{},\n  \"speculative\": true\n}}\n",
+                s.trim_end_matches(['\n', ' '])
+            )
+        })
+        .ok_or_else(|| anyhow!("unexpected lease body shape: missing closing brace"))?;
+    std::fs::write(&lease_path, with_spec)
+        .with_context(|| format!("rewrite speculative lease: {}", lease_path.display()))?;
+    Ok(lease_path)
+}
+
+/// INFRA-985: merge new gap_id + paths into an existing lease file in
+/// place. Preserves session_id, taken_at, expires_at, heartbeat_at,
+/// speculative-flag (with optional promotion), and any extra unknown
+/// keys (forward-compat with future schema additions).
+fn merge_existing_lease(
+    lease_path: &Path,
+    gap_id: &str,
+    paths_csv: Option<&str>,
+    promote_speculative: bool,
+) -> Result<PathBuf> {
+    let body = std::fs::read_to_string(lease_path)
+        .with_context(|| format!("read existing lease {}", lease_path.display()))?;
+    let mut val: serde_json::Value = serde_json::from_str(&body)
+        .with_context(|| format!("parse existing lease {}", lease_path.display()))?;
+
+    let obj = val.as_object_mut().ok_or_else(|| {
+        anyhow!(
+            "lease {} is not a JSON object: {}",
+            lease_path.display(),
+            body
+        )
+    })?;
+
+    obj.insert(
+        "gap_id".to_string(),
+        serde_json::Value::String(gap_id.to_string()),
+    );
+
+    if promote_speculative {
+        obj.insert("speculative".to_string(), serde_json::Value::Bool(true));
+    }
+
+    // pending_new_gap cleanup: if it's an object whose "id" matches the
+    // gap we're now claiming, drop the pending pointer.
+    if let Some(pending) = obj.get("pending_new_gap") {
+        if let Some(pid) = pending.get("id").and_then(|v| v.as_str()) {
+            if pid == gap_id {
+                obj.remove("pending_new_gap");
+            }
+        }
+    }
+
+    // Merge paths.
+    let new_paths: Vec<String> = paths_csv
+        .unwrap_or("")
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let mut merged: Vec<String> = obj
+        .get("paths")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|p| p.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    for p in new_paths {
+        if !merged.contains(&p) {
+            merged.push(p);
+        }
+    }
+
+    obj.insert(
+        "paths".to_string(),
+        serde_json::Value::Array(merged.into_iter().map(serde_json::Value::String).collect()),
+    );
+
+    // Re-serialize with pretty 2-space indent + trailing newline to match
+    // the basic-write convention.
+    let mut out = serde_json::to_string_pretty(&val).with_context(|| "serialize merged lease")?;
+    out.push('\n');
+    std::fs::write(lease_path, out)
+        .with_context(|| format!("write merged lease {}", lease_path.display()))?;
+    Ok(lease_path.to_path_buf())
+}
+
+/// INFRA-985: scan a lock dir for OTHER sessions' lease files that claim
+/// the same gap_id. Returns (session_id, is_speculative) tuples. Excludes
+/// `own_session_id`. Used by the speculative-mode banner to show siblings.
+pub fn sibling_lease_holders(
+    lock_dir: &Path,
+    gap_id: &str,
+    own_session_id: &str,
+) -> Vec<(String, bool)> {
+    let mut out = Vec::new();
+    let Ok(entries) = std::fs::read_dir(lock_dir) else {
+        return out;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+            continue;
+        };
+        let sid = val
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?")
+            .to_string();
+        if sid == own_session_id {
+            continue;
+        }
+        let gid = val.get("gap_id").and_then(|v| v.as_str()).unwrap_or("");
+        if gid != gap_id {
+            continue;
+        }
+        let speculative = val
+            .get("speculative")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        out.push((sid, speculative));
+    }
+    out.sort();
+    out
+}
+
 fn unix_to_iso8601(unix: u64) -> String {
     // Minimal RFC3339 formatter — no chrono dep required at this seam.
     // Days-since-epoch -> Y/M/D via simple civil_from_days algorithm
@@ -684,6 +885,174 @@ mod tests {
         assert_eq!(parsed["purpose"], "gap:INFRA-2");
         assert_eq!(parsed["paths"], serde_json::json!(["a.rs", "b.rs"]));
 
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    // ── INFRA-985 slice 2 tests ─────────────────────────────────────────────
+
+    fn mk_test_tmp(label: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "infra985-{}-{}",
+            label,
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    #[test]
+    fn write_speculative_lease_appends_flag() {
+        let tmp = mk_test_tmp("spec");
+        let lease = write_speculative_lease(&tmp, "spec-sess", "INFRA-10", None, 3_600).unwrap();
+        let body = std::fs::read_to_string(&lease).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(parsed["speculative"], serde_json::Value::Bool(true));
+        assert_eq!(parsed["session_id"], "spec-sess");
+        assert_eq!(parsed["gap_id"], "INFRA-10");
+        // Format check: trailing newline, JSON-parses cleanly (the comma-
+        // splice into the basic-write output is fragile if wrong).
+        assert!(body.ends_with("}\n"));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn write_or_merge_existing_lease_dedups_paths() {
+        let tmp = mk_test_tmp("merge");
+        // Seed: existing lease with paths [a.rs, b.rs] for an old gap_id.
+        write_basic_lease(&tmp, "shared-sess", "INFRA-OLD", Some("a.rs,b.rs"), 7_200).unwrap();
+
+        // Now claim a NEW gap on the same session, with overlapping paths.
+        let lease = write_or_merge_lease(
+            &tmp,
+            "shared-sess",
+            "INFRA-NEW",
+            Some("b.rs, c.rs, a.rs"), // duplicates a.rs+b.rs; adds c.rs
+            7_200,
+            false,
+        )
+        .unwrap();
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&lease).unwrap()).unwrap();
+        // gap_id rewritten to new
+        assert_eq!(parsed["gap_id"], "INFRA-NEW");
+        // paths union'd, order preserved (existing first, new at end)
+        assert_eq!(
+            parsed["paths"],
+            serde_json::json!(["a.rs", "b.rs", "c.rs"]),
+            "expected union-merge dedup, got: {}",
+            parsed["paths"]
+        );
+        // session_id unchanged
+        assert_eq!(parsed["session_id"], "shared-sess");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn write_or_merge_promotes_speculative_flag() {
+        let tmp = mk_test_tmp("promote");
+        // Seed with non-speculative basic lease.
+        write_basic_lease(&tmp, "sess-p", "INFRA-A", Some("a.rs"), 7_200).unwrap();
+
+        // Merge with speculative=true should add the flag.
+        let lease = write_or_merge_lease(&tmp, "sess-p", "INFRA-B", None, 7_200, true).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&lease).unwrap()).unwrap();
+        assert_eq!(parsed["speculative"], serde_json::Value::Bool(true));
+        assert_eq!(parsed["gap_id"], "INFRA-B");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn write_or_merge_writes_new_when_no_existing() {
+        let tmp = mk_test_tmp("new");
+        // No existing lease — falls through to write_basic_lease.
+        let lease = write_or_merge_lease(&tmp, "sess-fresh", "INFRA-X", Some("x.rs"), 7_200, false)
+            .unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&lease).unwrap()).unwrap();
+        assert_eq!(parsed["session_id"], "sess-fresh");
+        assert_eq!(parsed["gap_id"], "INFRA-X");
+        // No speculative key on the basic path
+        assert!(parsed.get("speculative").is_none());
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn write_or_merge_speculative_falls_through_to_speculative_write() {
+        let tmp = mk_test_tmp("new-spec");
+        let lease = write_or_merge_lease(&tmp, "sess-spec", "INFRA-Y", None, 7_200, true).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&lease).unwrap()).unwrap();
+        assert_eq!(parsed["speculative"], serde_json::Value::Bool(true));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn merge_clears_pending_new_gap_when_id_matches() {
+        let tmp = mk_test_tmp("pending");
+        let lease_path = tmp.join("sess-pending.json");
+        // Hand-craft a lease with pending_new_gap pointing at the gap
+        // we're about to claim. gap-claim.sh writes this shape when a
+        // session is awaiting reserve completion.
+        std::fs::write(
+            &lease_path,
+            r#"{
+  "session_id": "sess-pending",
+  "paths": [],
+  "taken_at": "2026-05-13T00:00:00Z",
+  "expires_at": "2026-05-13T04:00:00Z",
+  "heartbeat_at": "2026-05-13T00:00:00Z",
+  "purpose": "reserve",
+  "gap_id": "",
+  "pending_new_gap": {"id": "INFRA-Z", "title": "tbd"}
+}
+"#,
+        )
+        .unwrap();
+
+        write_or_merge_lease(&tmp, "sess-pending", "INFRA-Z", None, 7_200, false).unwrap();
+        let parsed: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&lease_path).unwrap()).unwrap();
+        assert!(
+            parsed.get("pending_new_gap").is_none(),
+            "pending_new_gap should be cleared when its id matches the new claim; got: {}",
+            parsed
+        );
+        assert_eq!(parsed["gap_id"], "INFRA-Z");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn sibling_lease_holders_finds_others_on_same_gap() {
+        let tmp = mk_test_tmp("siblings");
+        // Three leases: two claim INFRA-Q (one speculative), one claims a
+        // different gap, plus our own.
+        write_basic_lease(&tmp, "sib1", "INFRA-Q", None, 7_200).unwrap();
+        write_speculative_lease(&tmp, "sib2", "INFRA-Q", None, 7_200).unwrap();
+        write_basic_lease(&tmp, "sib3", "INFRA-OTHER", None, 7_200).unwrap();
+        write_basic_lease(&tmp, "me", "INFRA-Q", None, 7_200).unwrap();
+
+        let siblings = sibling_lease_holders(&tmp, "INFRA-Q", "me");
+        assert_eq!(
+            siblings.len(),
+            2,
+            "expected sib1 + sib2 only; got {siblings:?}"
+        );
+        let spec_map: std::collections::HashMap<_, _> = siblings.into_iter().collect();
+        assert_eq!(spec_map.get("sib1"), Some(&false));
+        assert_eq!(spec_map.get("sib2"), Some(&true));
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn sibling_lease_holders_empty_when_no_siblings() {
+        let tmp = mk_test_tmp("alone");
+        write_basic_lease(&tmp, "me", "INFRA-SOLO", None, 7_200).unwrap();
+        assert!(sibling_lease_holders(&tmp, "INFRA-SOLO", "me").is_empty());
         std::fs::remove_dir_all(&tmp).ok();
     }
 
