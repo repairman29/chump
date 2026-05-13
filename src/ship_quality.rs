@@ -475,12 +475,7 @@ mod tests {
         }
         // GNU date fallback
         let out2 = std::process::Command::new("date")
-            .args([
-                "-u",
-                "-d",
-                &format!("@{}", unix),
-                "+%Y-%m-%dT%H:%M:%SZ",
-            ])
+            .args(["-u", "-d", &format!("@{}", unix), "+%Y-%m-%dT%H:%M:%SZ"])
             .output()
             .expect("date command must work");
         String::from_utf8_lossy(&out2.stdout).trim().to_string()
@@ -497,9 +492,15 @@ mod tests {
         let t3 = recent_iso(3480);
         // Two sonnet ships (both clippy ok, 1 test added) + one haiku ship (clippy ok, no test)
         let lines = [
-            format!(r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t1}","gap_id":"INFRA-1","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#),
-            format!(r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t2}","gap_id":"INFRA-2","model":"sonnet","agent_id":"2","clippy_ok":true,"test_added":false,"rebase_clean":null}}"#),
-            format!(r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t3}","gap_id":"INFRA-3","model":"haiku","agent_id":"1","clippy_ok":false,"test_added":false,"rebase_clean":true}}"#),
+            format!(
+                r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t1}","gap_id":"INFRA-1","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#
+            ),
+            format!(
+                r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t2}","gap_id":"INFRA-2","model":"sonnet","agent_id":"2","clippy_ok":true,"test_added":false,"rebase_clean":null}}"#
+            ),
+            format!(
+                r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t3}","gap_id":"INFRA-3","model":"haiku","agent_id":"1","clippy_ok":false,"test_added":false,"rebase_clean":true}}"#
+            ),
         ];
         std::fs::write(&amb, lines.join("\n") + "\n").unwrap();
 
@@ -540,9 +541,9 @@ mod tests {
         let amb = tmp.join(".chump-locks/ambient.jsonl");
         std::fs::create_dir_all(amb.parent().unwrap()).unwrap();
         let t1 = recent_iso(3600);
-        let lines = [
-            format!(r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t1}","gap_id":"INFRA-1","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#),
-        ];
+        let lines = [format!(
+            r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t1}","gap_id":"INFRA-1","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#
+        )];
         std::fs::write(&amb, lines.join("\n") + "\n").unwrap();
         let report = build_report(&tmp, 86400 * 7);
         let text = report.render_text();
@@ -559,7 +560,9 @@ mod tests {
         let amb = tmp.join(".chump-locks/ambient.jsonl");
         std::fs::create_dir_all(amb.parent().unwrap()).unwrap();
         let t1 = recent_iso(3600);
-        let line = format!(r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t1}","gap_id":"INFRA-1","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":false,"rebase_clean":true}}"#);
+        let line = format!(
+            r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{t1}","gap_id":"INFRA-1","model":"sonnet","agent_id":"1","clippy_ok":true,"test_added":false,"rebase_clean":true}}"#
+        );
         std::fs::write(&amb, line + "\n").unwrap();
         let report = build_report(&tmp, 86400 * 7);
         let json = report.render_json();
