@@ -61,7 +61,8 @@
 # Exit codes (RESILIENT-010 — step-specific codes for automated recovery):
 #   0   PR opened/updated (or already up to date)
 #   1   Unexpected error (set -e trap or unhandled failure)
-#   3   Branch too stale to merge safely (>50 commits behind main)
+#   3   Branch too stale to merge safely (>50 commits behind main at start,
+#       or >15 behind right before push — INFRA-995)
 #   10  Preflight failed (gap already done, claimed, or unavailable)
 #   11  Rebase failed (merge conflict or timeout)
 #   12  Cargo clippy failed (lint errors)
@@ -91,6 +92,13 @@ _bm_cleanup() {
     [[ -n "${_BM_HEALTH_PID:-}" ]]   && kill "$_BM_HEALTH_PID"   2>/dev/null || true
     [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
     rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" 2>/dev/null || true
+    # INFRA-1017: vacuum state.db leases row so gap-preflight doesn't report a
+    # phantom live claim after this process is killed (SIGTERM, OOM, ctrl-C).
+    if [[ -n "${CHUMP_SESSION_ID:-}" ]] && command -v sqlite3 &>/dev/null; then
+        local _db="${MAIN_REPO:-${REPO_ROOT:-.}}/.chump/state.db"
+        [[ -f "$_db" ]] && sqlite3 "$_db" \
+            "DELETE FROM leases WHERE session_id='${CHUMP_SESSION_ID}'" 2>/dev/null || true
+    fi
 }
 trap '_bm_cleanup' EXIT
 trap '_bm_cleanup; exit 1' TERM INT
@@ -1455,6 +1463,31 @@ if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
     fi
 fi
 # FD 200 stays open; flock released automatically when the script process exits.
+
+# ── INFRA-995: pre-push staleness gate ───────────────────────────────────────
+# Belt-and-suspenders for the CLAUDE.md rule "rebase if your branch is more than
+# 15 commits behind main". The earlier rebase block (§1) already rebases above
+# 0 behind, but main may have moved during cargo clippy/test (often a 5-15 min
+# window). Re-fetch and refuse to push if we are now > STALE_REBASE_THRESHOLD
+# commits behind — pushing would burn a CI cycle on a stale base and then sit
+# in BEHIND state waiting on queue-driver.
+STALE_REBASE_THRESHOLD="${CHUMP_BOT_MERGE_STALE_THRESHOLD:-15}"
+if [[ $DRY_RUN -eq 0 ]]; then
+    run_timed_hb "git fetch (pre-push freshness)" 60 \
+        git fetch "$REMOTE" "$BASE_BRANCH" --quiet 2>/dev/null || true
+    BEHIND_NOW=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo 0)
+    if [[ "$BEHIND_NOW" -gt "$STALE_REBASE_THRESHOLD" ]]; then
+        red "INFRA-995: branch is $BEHIND_NOW commits behind $REMOTE/$BASE_BRANCH (threshold ${STALE_REBASE_THRESHOLD})."
+        red "  main moved while we built/tested. Pushing now would queue a stale base for CI."
+        red "  Recover: git fetch && git rebase $REMOTE/$BASE_BRANCH && rerun bot-merge."
+        _amb_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+        mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"stale_branch_blocked","branch":"%s","behind":%d,"threshold":%d,"phase":"pre-push"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$BEHIND_NOW" "$STALE_REBASE_THRESHOLD" \
+            >> "$_amb_path" 2>/dev/null || true
+        _bm_fail "stale-branch" 3 "branch $BEHIND_NOW commits behind > threshold ${STALE_REBASE_THRESHOLD}"
+    fi
+fi
 
 # ── 5. Push ───────────────────────────────────────────────────────────────────
 stage_start "git push $BRANCH → $REMOTE"

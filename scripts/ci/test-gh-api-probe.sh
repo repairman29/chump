@@ -75,11 +75,12 @@ if grep -q 'DRY_RUN.*gh_api_probe\|gh_api_probe.*DRY_RUN' "$BM"; then
     ok "bot-merge.sh skips probe in dry-run mode"
 else
     # Check the block form: if DRY_RUN != 1 guard around gh_api_probe.
-    # Stage awk output into a variable to avoid `awk | grep -q` failing
-    # under `set -o pipefail`: grep -q exits early on first match,
-    # SIGPIPE kills awk (exit 141), and pipefail propagates the failure.
+    # Use bash [[ == *pattern* ]] to avoid any pipe/SIGPIPE interaction —
+    # echo | grep -q has the same broken-pipe problem as awk | grep -q
+    # because grep -q exits early on first match, SIGPIPE kills the writer,
+    # and set -o pipefail propagates exit 141.
     _awk_out="$(awk '/DRY_RUN.*!= .1/,/gh_api_probe/' "$BM" 2>/dev/null || true)"
-    if echo "$_awk_out" | grep -q 'gh_api_probe'; then
+    if [[ "$_awk_out" == *gh_api_probe* ]]; then
         ok "bot-merge.sh skips probe in dry-run mode"
     else
         fail "bot-merge.sh should skip probe when DRY_RUN=1"

@@ -1,0 +1,47 @@
+# Chump internal environment variable reference
+# These vars tune CI/fleet behavior and are not part of the public API.
+# Format: VAR_NAME=default  — description
+
+# ── Gap closure consistency (test-gap-closure-consistency.sh) ────────────────
+
+CHUMP_STATE_DB=                     # Override path to state.db for fixture isolation.
+                                    # When set, the script uses this path instead of
+                                    # $PWD/.chump/state.db or the git-common-dir root.
+                                    # Required for CREDIBLE-050 force-fire fixtures that
+                                    # inject a synthetic ghost closed_pr.
+
+CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL=0
+                                    # Set to 1 to allow the gate to exit 0 (pass) when
+                                    # gh API calls fail (rate-limit, network partition,
+                                    # offline CI). Default is fail-closed: any gh ERROR
+                                    # counts as drift and exits non-zero.
+                                    # Use: CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL=1
+                                    #      test-gap-closure-consistency.sh --use-main
+                                    # when running in an environment without GitHub access.
+                                    # (CREDIBLE-051)
+
+CHUMP_GH_REQUIRED=1                 # Set to 0 to skip GitHub PR state checks entirely
+                                    # when gh CLI is absent. Default is fail-closed.
+                                    # (CREDIBLE-031)
+
+# ── Worker / fleet ───────────────────────────────────────────────────────────
+
+CHUMP_SKIP_SUBAGENT_ARCHIVE=0       # Set to 1 to skip post-cycle subagent transcript
+                                    # archival in worker.sh. (INFRA-399)
+
+CHUMP_BINARY_MAX_AGE_SECS=7200      # Threshold (seconds) for stale-binary detection in
+                                    # worker.sh. (RESILIENT-001)
+
+CHUMP_OBS_BUDGET_BYPASS=0           # Set to 1 to bypass the observability-budget guard
+                                    # (INFRA-755) for shell/doc-only commits with no new
+                                    # Rust observable feature code.
+
+CHUMP_TEST_GATE=1                   # Set to 0 to skip local cargo test in pre-push hook.
+                                    # CI is still the authoritative gate.
+
+CHUMP_GAP_CHECK=0                   # Set to 1 to enable pre-push gap-ID validation.
+                                    # Bypasses false positives when gap IDs in commit
+                                    # bodies trigger the hook incorrectly.
+
+CHUMP_BYPASS_BOT_MERGE=0            # Set to 1 to skip bot-merge.sh coordination checks
+                                    # (e.g. when pushing manually from a worktree).

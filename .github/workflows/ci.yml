@@ -239,7 +239,9 @@ jobs:
   # May 2026:
   #   - PR #1444 silent META-044 revert  →  caught by check-pr-scope.sh
   #   - PR #1441 378k-line mass-deletion →  caught by check-mass-deletion.sh
-  # Both are rolled into the `test` required check via needs:.
+  #   - PR #1469 bundle (3 unrelated gaps) →  caught by check-pr-scope.sh Rule C
+  #   - chore(gaps) + src/ edits          →  caught by check-mass-deletion.sh Rule C
+  # All 4 failure classes roll into the `test` required check via needs:.
   #
   # NOT gated by `needs.changes.outputs.code` — these checks are about the
   # PR's *shape* (title + diff size), not its file extensions. A docs-only
@@ -248,6 +250,10 @@ jobs:
   # Force-fire validated: scripts/ci/test-all-gates-force-fire.sh exercises
   # both checks against synthetic violating fixtures and asserts they fire.
   # See scripts/ci/gate-manifest.yaml (CREDIBLE-050).
+  #
+  # Retroactive calibration (CREDIBLE-043, 2026-05-13): 0 mass-deletion
+  # violations in last 30 merged PRs. Historical violations (#1441, #1444)
+  # pre-date the gate. Gate is safe and correctly calibrated.
   pr-hygiene:
     needs: changes
     if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
@@ -330,6 +336,12 @@ jobs:
         # WARN-ONLY by default — surfaces stale last_audited stamps without
         # blocking. Promote to --strict once the long-tail cleanup is done.
         run: bash scripts/ci/test-doc-freshness.sh
+      - name: markdown intra-doc links (DOC-039)
+        # Gates on links in .md files MODIFIED by this PR — prevents
+        # regression without forcing a one-shot cleanup of the 492
+        # pre-existing broken links across docs/syntheses/ etc.
+        # Full-repo audit available via scripts/audit/run-all.sh.
+        run: bash scripts/ci/test-markdown-intra-doc-links.sh
 
       - name: RESEARCH-026 observer-effect harness preflight (no API)
         run: bash scripts/ci/test-research-026-preflight.sh
@@ -991,6 +1003,9 @@ jobs:
           CHUMP_OBS_BUDGET_BYPASS: "1"
         run: bash scripts/ci/test-no-manual-ship-bypass.sh
 
+      - name: gap-closure-consistency fail-closed + fixture-aware DB (CREDIBLE-051)
+        run: bash scripts/ci/test-gap-closure-consistency-fixture.sh
+
       - name: worktree show-toplevel fix (INFRA-810)
         env:
           CHUMP_OBS_BUDGET_BYPASS: "1"
@@ -1108,6 +1123,8 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-cli-output-format.sh
       - name: pre-push hook cd to GIT_WORK_TREE for cargo test (RESILIENT-009)
         run: bash scripts/ci/test-prepush-worktree-cd.sh
+      - name: orphaned worktree reaper — prune-worktrees.sh orphan mode (RESILIENT-013)
+        run: bash scripts/ci/test-orphan-worktree-prune.sh
       - name: gap consolidate — near-duplicate title detection (INFRA-935)
         run: |
           cargo build --bin chump 2>&1 | tail -2
