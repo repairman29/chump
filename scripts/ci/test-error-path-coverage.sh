@@ -68,11 +68,13 @@ if ls "$CHUMP_BIN"/chump-* 2>/dev/null | grep -qv '\.d$'; then
     # Drop --quiet — cargo test --quiet suppresses the "test result: ok. N
     # passed" summary line we need to parse. Use full output. We need the
     # exit code AND the count of passed tests.
-    # chump is binary-only (no [lib] target). Run tests against the main bin.
+    # chump is binary-only (no [lib] target). Filter to gap_store::tests::
+    # specifically — "gap_store" alone matches unrelated tests whose names
+    # mention gap_store (e.g. version::tests::stale_when_gap_store_*).
     test_out=$(cd "$REPO_ROOT" && \
         GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --git-dir 2>/dev/null)" \
         GIT_WORK_TREE="$REPO_ROOT" \
-        cargo test --bin chump gap_store 2>&1)
+        cargo test --bin chump gap_store::tests:: 2>&1)
     test_rc=$?
     passed=$(echo "$test_out" | awk -F'[ .;]+' '/test result: ok\./{for(i=1;i<=NF;i++) if($i=="passed"){print $(i-1)}}' | awk '{s+=$1} END{print s+0}')
     failed=$(echo "$test_out" | awk -F'[ .;]+' '/test result/{for(i=1;i<=NF;i++) if($i=="failed"){print $(i-1)}}' | awk '{s+=$1} END{print s+0}')
