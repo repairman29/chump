@@ -1254,3 +1254,5 @@ jobs:
         run: bash scripts/ci/test-per-worktree-target-guard.sh
       - name: fleet-status rate-limit line format + WARN threshold (EFFECTIVE-025)
         run: bash scripts/ci/test-fleet-status-rate-limit.sh
+      - name: bot-merge watchdog — kills done-gap procs, spares open-gap, exempt bypass (INFRA-1006)
+        run: bash scripts/ci/test-bot-merge-watchdog.sh
