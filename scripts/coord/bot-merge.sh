@@ -512,6 +512,13 @@ run_timed() {
     python3 "$SCRIPT_DIR/bot-merge-run-timed.py" "$max_secs" -- "$@"
 }
 
+# INFRA-954: load circuit-breaker so run_timed_hb can refuse known-wedged phases.
+_CB_HELPER="$SCRIPT_DIR/bot-merge-circuit-breaker.sh"
+if [[ -r "$_CB_HELPER" ]]; then
+    # shellcheck source=./bot-merge-circuit-breaker.sh
+    source "$_CB_HELPER"
+fi
+
 __HEARTBEAT_PID=""
 heartbeat_end() {
     if [[ -n "${__HEARTBEAT_PID:-}" ]]; then
@@ -543,6 +550,18 @@ run_timed_hb() {
     if [[ $DRY_RUN -eq 1 ]]; then
         info "[dry-run] (timeout ${max_secs}s, heartbeat) $*"
         return 0
+    fi
+    # INFRA-954: refuse to enter a wedge-prone phase that has tripped the
+    # circuit-breaker (3+ bot_merge_hang events for this phase in last 1h).
+    # Re-running a wedged phase is the dominant token-bleed pattern from
+    # bot_merge_hang (META-055 audit #2, 17% of 7d waste).
+    if declare -F circuit_breaker_check >/dev/null 2>&1; then
+        if ! circuit_breaker_check "$label"; then
+            red "INFRA-954: circuit-breaker tripped on phase '$label' — refusing to run."
+            red "  Recent bot_merge_hang events suggest the underlying child process is wedged."
+            red "  Investigate, then: scripts/coord/bot-merge-circuit-breaker.sh clear"
+            return 124
+        fi
     fi
     heartbeat_begin "$label"
     set +e
