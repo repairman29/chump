@@ -1310,3 +1310,11 @@ events:
       but the diff includes files outside the expected directory for that prefix
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, rule, title_prefix, out_of_scope_count]
+
+  # ── CREDIBLE-041: no-bundle-PR detector ──────────────────────────────────
+  - kind: pr_bundle_blocked
+    emitter: scripts/ci/check-pr-scope.sh (CREDIBLE-041, Rule C)
+    trigger: PR title lists multiple gap IDs (e.g. INFRA-1,INFRA-2) that are
+      not depends_on-linked in .chump/state.db — indicates bundled unrelated gaps
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, gap_ids, depends_on_check_result, branch]

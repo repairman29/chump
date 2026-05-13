@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# check-pr-scope.sh — CREDIBLE-026: PR scope-vs-title divergence detector.
+# check-pr-scope.sh — CREDIBLE-026 + CREDIBLE-041: PR scope-vs-title divergence detector.
 #
 # Checks that a PR's file changes are consistent with its title/body scope.
-# Two rules:
+# Three rules:
 #
 #   Rule A — chore(gaps) purity: a PR prefixed 'chore(gaps):' or 'docs(gaps):'
 #     must NOT modify src/**, scripts/** (non-ci), or delete test files.
@@ -12,6 +12,12 @@
 #     merged PR within 72h, where no commit in the current PR has subject
 #     starting with 'Revert', is flagged as a potential silent revert.
 #     (Lightweight proxy for PR #1444's META-044 silent revert.)
+#
+#   Rule C — no-bundle-PR (CREDIBLE-041): a PR title listing multiple gap IDs
+#     separated by ',' or '+' (e.g. "feat(INFRA-1,INFRA-2): bundle") FAILS
+#     unless those IDs are depends_on-linked in .chump/state.db.
+#     Catches PRs that bundle unrelated gaps under a single title (PR #1469).
+#     Allow-list: PR label 'intentional-bundle' bypasses Rule C.
 #
 # Exit: 0 = clean, 1 = violations found (unless --warn-only).
 #
@@ -140,6 +146,70 @@ else
     pass "Rule B: no deleted files or gh unavailable — skipping"
 fi
 
+# ── Rule C: no-bundle-PR (CREDIBLE-041) ──────────────────────────────────────
+# Extract all gap IDs (domain-NNN pattern) from the PR title, e.g.
+# "feat(INFRA-1,CREDIBLE-2+PRODUCT-3): bundle" → [INFRA-1, CREDIBLE-2, PRODUCT-3]
+_gap_ids_in_title=()
+while IFS= read -r _gid; do
+    [[ -n "$_gid" ]] && _gap_ids_in_title+=("$(echo "$_gid" | tr '[:lower:]' '[:upper:]')")
+done < <(echo "$PR_TITLE" | grep -oE '[A-Za-z]+-[0-9]+' | sort -u || true)
+
+if [[ "${#_gap_ids_in_title[@]}" -ge 2 ]]; then
+    # Check allow-list label
+    _bundle_ok=0
+    if command -v gh &>/dev/null; then
+        _labels="$(gh pr view --json labels -q '.labels[].name' 2>/dev/null || true)"
+        echo "$_labels" | grep -q "intentional-bundle" && _bundle_ok=1
+    fi
+
+    if [[ "$_bundle_ok" -eq 1 ]]; then
+        pass "Rule C: intentional-bundle label present — no-bundle check bypassed"
+    else
+        # Check depends_on linkage in state.db using sqlite3 if available
+        _state_db="${CHUMP_REPO:-$REPO_ROOT}/.chump/state.db"
+        _linked=0
+        if [[ -f "$_state_db" ]] && command -v sqlite3 &>/dev/null; then
+            # For each pair of gap IDs, check if either depends_on the other
+            for _a in "${_gap_ids_in_title[@]}"; do
+                for _b in "${_gap_ids_in_title[@]}"; do
+                    [[ "$_a" == "$_b" ]] && continue
+                    # depends_on stored as JSON array or comma-separated; use LIKE
+                    _found="$(sqlite3 "$_state_db" \
+                        "SELECT COUNT(*) FROM gaps WHERE id='$_a' AND depends_on LIKE '%$_b%';" 2>/dev/null || echo 0)"
+                    if [[ "${_found:-0}" -gt 0 ]]; then
+                        _linked=1
+                        break 2
+                    fi
+                done
+            done
+        else
+            # No state.db or sqlite3 — can't verify linkage; pass with warning
+            warn "Rule C: state.db not found or sqlite3 unavailable — skipping depends_on linkage check"
+            _linked=1
+        fi
+
+        if [[ "$_linked" -eq 0 ]]; then
+            report_violation "CREDIBLE-041 Rule C (no-bundle-PR): title lists ${#_gap_ids_in_title[@]} gap IDs (${_gap_ids_in_title[*]}) but none are depends_on-linked in state.db"
+            fail "  → Bundle PRs obscure scope. One gap per PR. If gaps are linked, set depends_on in state.db."
+            fail "  → To bypass: add PR label 'intentional-bundle' with a comment explaining why."
+            # Emit ambient event
+            _lock_dir="${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}"
+            _amb_dir="$(dirname "${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}")"
+            mkdir -p "$_amb_dir" 2>/dev/null || true
+            _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '{"ts":"%s","kind":"pr_bundle_blocked","gap_ids":[%s],"depends_on_check_result":"no_link","branch":"%s"}\n' \
+                "$_ts" \
+                "$(printf '"%s",' "${_gap_ids_in_title[@]}" | sed 's/,$//')" \
+                "$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)" \
+                >> "${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}" 2>/dev/null || true
+        else
+            pass "Rule C: gap IDs in title are depends_on-linked — bundle is intentional"
+        fi
+    fi
+else
+    pass "Rule C: single or no gap ID in title — no-bundle check N/A"
+fi
+
 # ── Emit ambient event on violation ──────────────────────────────────────────
 if [[ "$VIOLATIONS" -gt 0 ]]; then
     _lock_dir="$REPO_ROOT/.chump-locks"
@@ -154,12 +224,12 @@ fi
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
 if [[ "$VIOLATIONS" -eq 0 ]]; then
-    echo "CREDIBLE-026: all PR scope checks passed."
+    echo "CREDIBLE-026/CREDIBLE-041: all PR scope checks passed."
     exit 0
 elif [[ "$WARN_ONLY" -eq 1 ]]; then
-    warn "CREDIBLE-026: $VIOLATIONS violation(s) found (warn-only — not blocking)"
+    warn "CREDIBLE-026/CREDIBLE-041: $VIOLATIONS violation(s) found (warn-only — not blocking)"
     exit 0
 else
-    fail "CREDIBLE-026: $VIOLATIONS violation(s). Fix scope or update PR title."
+    fail "CREDIBLE-026/CREDIBLE-041: $VIOLATIONS violation(s). Fix scope or update PR title."
     exit 1
 fi
