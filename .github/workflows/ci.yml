@@ -1280,3 +1280,11 @@ jobs:
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-release-lease-flag.sh
+      - name: KNOWN_FLAKES auto-bypass gate — 11 pre-push flakes catalogued (RESILIENT-012)
+        run: bash scripts/ci/test-known-flakes-gate.sh
+      - name: fleet-status rate-limit line format + WARN threshold (EFFECTIVE-025)
+        run: bash scripts/ci/test-fleet-status-rate-limit.sh
+      - name: bot-merge watchdog — kills done-gap procs, spares open-gap, exempt bypass (INFRA-1006)
+        run: bash scripts/ci/test-bot-merge-watchdog.sh
+      - name: bot-merge arm-before-ship ordering fix (INFRA-1030)
+        run: bash scripts/ci/test-bot-merge-arm-ship-order.sh
