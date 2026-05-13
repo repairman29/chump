@@ -23,3 +23,23 @@ scripts/git-hooks/pre-commit merge=pre-commit-add-guard
 # When they do (concurrent closes on the same gap), use gap-yaml-add-line driver to
 # resolve by taking ours (the current/newer state).
 docs/gaps/*.yaml merge=gap-yaml-add-line
+
+# INFRA-949: append-only YAML registries with daily conflict pattern.
+#
+# Both files accept ADDITIVE contributions from many PRs simultaneously
+# (new ambient event kinds in EVENT_REGISTRY.yaml, new tier-2/3 env var
+# names in env-vars-internal.txt). Without a merge driver, two PRs that
+# each add a new entry produce textual conflicts even though the changes
+# don't actually conflict semantically.
+#
+# git's built-in `merge=union` resolver concatenates unique lines from
+# both sides automatically. No custom driver script needed — `union` is
+# part of git core. Verified on synthetic two-branch additive scenario
+# (2026-05-13: `git merge feat-b` after both branches appended events
+# produced the expected combined file with zero conflict markers).
+#
+# History: this conflict pattern bit five PRs today (#1597/#1605/#1609/
+# #1648/#1670) requiring manual union-merge resolution via Python regex.
+# Letting git do it once-and-for-all.
+docs/observability/EVENT_REGISTRY.yaml merge=union
+scripts/ci/env-vars-internal.txt merge=union
