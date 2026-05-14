@@ -1885,3 +1885,17 @@ if [ "${CHUMP_OPERATOR_RECOVERY:-0}" = "1" ]; then
 fi
                 echo "[pre-commit] Bypass: CHUMP_LEASE_CHECK=0 git commit ...  (or CHUMP_OPERATOR_RECOVERY=1 for full recovery mode)" >&2
                 echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ...  (or CHUMP_OPERATOR_RECOVERY=1 for full recovery mode)" >&2
+        exit 1
+    fi
+fi
+
+# 15b. Redundancy gate (META-063, 2026-05-14)
+# ------------------------------------------------------------------
+# Refuses NEW shell files in scripts/coord/ + scripts/ops/ + scripts/dispatch/
+# whose function-name shape (Jaccard >= 0.6) matches an existing sibling.
+# Strong signal the work belongs in the existing file, not a new one.
+# Bypass: Redundancy-OK: <reason> trailer, or CHUMP_REDUNDANCY_CHECK=0.
+
+REDUNDANCY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-redundancy.sh"
+if [ -x "$REDUNDANCY_HOOK" ]; then
+    if ! "$REDUNDANCY_HOOK"; then
