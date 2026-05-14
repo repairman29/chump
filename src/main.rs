@@ -3975,6 +3975,191 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // ── INFRA-1152: pillar-balance guard ─────────────────────────────────
+                // Parse proposed pillar from title prefix, then check current
+                // open-pickable distribution and warn/block overweighted pillars.
+                // Bypass: CHUMP_PILLAR_BALANCE_DISABLE=1 or --force-pillar flag.
+                let force_pillar = args.iter().any(|a| a == "--force-pillar");
+                let pillar_balance_disabled =
+                    std::env::var("CHUMP_PILLAR_BALANCE_DISABLE").as_deref() == Ok("1");
+                if !pillar_balance_disabled && !force {
+                    // Extract pillar from title prefix (e.g. "RESILIENT: ..." → "RESILIENT")
+                    let proposed_pillar = {
+                        let prefixes = [
+                            "RESILIENT",
+                            "EFFECTIVE",
+                            "CREDIBLE",
+                            "ZERO-WASTE",
+                            "MISSION",
+                        ];
+                        let title_up = title.to_uppercase();
+                        prefixes
+                            .iter()
+                            .find(|&&p| {
+                                title_up.starts_with(&format!("{}:", p))
+                                    || title_up.starts_with(&format!("{} -", p))
+                                    || title_up.starts_with(&format!("{}-", p))
+                                    // allow "ZERO-WASTE: " or "ZERO_WASTE: " spellings
+                                    || title_up.starts_with(&format!("{}:", p.replace('-', "_")))
+                            })
+                            .map(|&p| p.to_string())
+                    };
+
+                    if let Some(proposed_pillar) = proposed_pillar {
+                        // Build pillar distribution from open gaps with non-TODO ACs
+                        let all_open = store.list(Some("open")).unwrap_or_default();
+                        let mut pillar_counts: std::collections::HashMap<String, usize> =
+                            std::collections::HashMap::new();
+                        let mut total_pickable: usize = 0;
+                        for g in &all_open {
+                            // "Pickable" heuristic: has non-empty ACs that aren't all TODOs
+                            let acs = gap_store::parse_json_ac_list(&g.acceptance_criteria);
+                            let has_real_acs = !acs.is_empty()
+                                && acs.iter().any(|ac| !ac.trim_start().starts_with("TODO"));
+                            if !has_real_acs {
+                                continue;
+                            }
+                            total_pickable += 1;
+                            // Infer pillar from gap title prefix
+                            let g_up = g.title.to_uppercase();
+                            let pillar = if g_up.starts_with("EFFECTIVE") {
+                                "EFFECTIVE"
+                            } else if g_up.starts_with("CREDIBLE") {
+                                "CREDIBLE"
+                            } else if g_up.starts_with("ZERO-WASTE")
+                                || g_up.starts_with("ZERO_WASTE")
+                            {
+                                "ZERO-WASTE"
+                            } else if g_up.starts_with("RESILIENT") {
+                                "RESILIENT"
+                            } else if g_up.starts_with("MISSION") {
+                                "MISSION"
+                            } else {
+                                "UNTAGGED"
+                            };
+                            *pillar_counts.entry(pillar.to_string()).or_insert(0) += 1;
+                        }
+
+                        if total_pickable > 0 {
+                            let proposed_count =
+                                *pillar_counts.get(proposed_pillar.as_str()).unwrap_or(&0);
+                            // After this reserve, proposed count would be +1
+                            let new_count = proposed_count + 1;
+                            let new_total = total_pickable + 1;
+                            let new_ratio = new_count as f64 / new_total as f64;
+
+                            let warn_threshold: f64 = std::env::var("CHUMP_PILLAR_BALANCE_WARN")
+                                .ok()
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(0.35);
+                            let block_threshold: f64 = std::env::var("CHUMP_PILLAR_BALANCE_BLOCK")
+                                .ok()
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(0.50);
+
+                            // Find under-fed pillars (< 10%)
+                            let underfed_threshold = 0.10;
+                            let mut underfed: Vec<String> = [
+                                "EFFECTIVE",
+                                "CREDIBLE",
+                                "ZERO-WASTE",
+                                "RESILIENT",
+                                "MISSION",
+                            ]
+                            .iter()
+                            .filter(|&&p| {
+                                let cnt = *pillar_counts.get(p).unwrap_or(&0) as f64;
+                                cnt / (total_pickable as f64) < underfed_threshold
+                            })
+                            .map(|&p| p.to_string())
+                            .collect();
+                            underfed.retain(|p| p != proposed_pillar.as_str());
+
+                            if new_ratio >= block_threshold && !force_pillar {
+                                eprintln!(
+                                    "[reserve] PILLAR BLOCKED (INFRA-1152): {} would be {:.0}% of open-pickable gaps (threshold {:.0}%).",
+                                    proposed_pillar,
+                                    new_ratio * 100.0,
+                                    block_threshold * 100.0,
+                                );
+                                eprintln!(
+                                    "[reserve]   Current distribution ({} pickable gaps):",
+                                    total_pickable
+                                );
+                                let mut sorted_pillars: Vec<_> = pillar_counts.iter().collect();
+                                sorted_pillars.sort_by(|a, b| b.1.cmp(a.1));
+                                for (p, cnt) in &sorted_pillars {
+                                    eprintln!(
+                                        "[reserve]     {:12} {:3} ({:.0}%)",
+                                        p,
+                                        cnt,
+                                        (**cnt as f64) / (total_pickable as f64) * 100.0
+                                    );
+                                }
+                                if !underfed.is_empty() {
+                                    eprintln!(
+                                        "[reserve]   Under-fed pillars (< {:.0}%): {}",
+                                        underfed_threshold * 100.0,
+                                        underfed.join(", ")
+                                    );
+                                }
+                                eprintln!("[reserve]   To override: add --force-pillar, or set CHUMP_PILLAR_BALANCE_DISABLE=1");
+                                // Emit ambient event
+                                let emit_path = worktree_root.join("scripts/dev/ambient-emit.sh");
+                                if emit_path.exists() {
+                                    let _ = std::process::Command::new("bash")
+                                        .arg(&emit_path)
+                                        .arg("pillar_balance_block")
+                                        .arg(format!("pillar={proposed_pillar}"))
+                                        .arg(format!("ratio={new_ratio:.2}"))
+                                        .arg(format!("total_pickable={total_pickable}"))
+                                        .current_dir(&worktree_root)
+                                        .status();
+                                }
+                                std::process::exit(1);
+                            } else if new_ratio >= warn_threshold {
+                                eprintln!(
+                                    "[reserve] PILLAR WARN (INFRA-1152): {} will be {:.0}% of open-pickable gaps (warn at {:.0}%).",
+                                    proposed_pillar,
+                                    new_ratio * 100.0,
+                                    warn_threshold * 100.0,
+                                );
+                                eprintln!(
+                                    "[reserve]   Current distribution ({} pickable gaps):",
+                                    total_pickable
+                                );
+                                let mut sorted_pillars: Vec<_> = pillar_counts.iter().collect();
+                                sorted_pillars.sort_by(|a, b| b.1.cmp(a.1));
+                                for (p, cnt) in &sorted_pillars {
+                                    eprintln!(
+                                        "[reserve]     {:12} {:3} ({:.0}%)",
+                                        p,
+                                        cnt,
+                                        (**cnt as f64) / (total_pickable as f64) * 100.0
+                                    );
+                                }
+                                if !underfed.is_empty() {
+                                    eprintln!("[reserve]   Under-fed: {}. Consider filing an {} gap instead.", underfed.join(", "), underfed[0]);
+                                }
+                                // Emit ambient event
+                                let emit_path = worktree_root.join("scripts/dev/ambient-emit.sh");
+                                if emit_path.exists() {
+                                    let _ = std::process::Command::new("bash")
+                                        .arg(&emit_path)
+                                        .arg("pillar_balance_warn")
+                                        .arg(format!("pillar={proposed_pillar}"))
+                                        .arg(format!("ratio={new_ratio:.2}"))
+                                        .arg(format!("total_pickable={total_pickable}"))
+                                        .current_dir(&worktree_root)
+                                        .status();
+                                }
+                                // Warn only — do not exit; reserve proceeds
+                            }
+                        }
+                    }
+                }
+                // ── end INFRA-1152 ───────────────────────────────────────────────────
+
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
