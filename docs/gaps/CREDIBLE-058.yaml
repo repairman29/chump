@@ -1,0 +1,18 @@
+- id: CREDIBLE-058
+  domain: CREDIBLE
+  title: "CREDIBLE: branch-protection required-check audit + alignment with workflow job names"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Today the required status checks are named test, audit, ACP protocol smoke test (Zed / JetBrains compatible). The first two are rollups; the third is a literal job name. There s no source of truth that lets us verify these names match what the workflow actually emits. When the synthetic-green stub gap lands, names will need to change (foo → foo-required) and we ll need an audit script to catch drift.
+    
+    Rough shape: scripts/ci/audit-branch-protection.sh — uses gh api to fetch the required contexts from the main branch protection rules, fetches the job names ci.yml actually emits (parse YAML), prints any required context that does not match an emitted job. Run as a pre-commit guard when .github/workflows/ci.yml changes. Also emit a one-shot alert via ambient.jsonl kind=branch_protection_drift if a drift is detected.
+  acceptance_criteria:
+    - scripts/ci/audit-branch-protection.sh exits 0 when every required context matches an emitted job (or rollup) in ci.yml
+    - Exits non-zero with a clear message listing missing or extra contexts
+    - Wired as a pre-commit hook entry that fires only when .github/workflows/ci.yml is in the diff
+    - kind=branch_protection_drift event registered in EVENT_REGISTRY.yaml + emitted on drift
+    - Documented in docs/process/CLAUDE_GOTCHAS.md so future operators do not break required checks by renaming jobs
+  depends_on: [INFRA-1143, INFRA-1142]
+

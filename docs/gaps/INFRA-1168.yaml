@@ -1,0 +1,12 @@
+- id: INFRA-1168
+  domain: INFRA
+  title: "ZERO-WASTE: commit backlog gap YAML files from untracked main worktree (INFRA-1165/1166/1167, PRODUCT-102, orphaned YAMLs from merged PRs)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

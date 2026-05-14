@@ -1,0 +1,17 @@
+- id: INFRA-1166
+  domain: INFRA
+  title: "RESILIENT: bot-merge REST-direct merge path — when CI already green, skip GraphQL auto-merge, merge directly via REST PUT /pulls/N/merge"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - bot-merge.sh detects when all required CI checks are already green before arming auto-merge
+    - "if all checks are green, bot-merge merges directly via: gh api repos/.../pulls/N/merge -X PUT -f merge_method=squash"
+    - if checks not yet complete, falls back to current auto-merge arming (no regression)
+    - CHUMP_BOT_MERGE_REST_DIRECT=0 disables the fast path for debugging
+    - emits kind=bot_merge_rest_direct or kind=bot_merge_auto_armed to ambient.jsonl
+    - no GraphQL enablePullRequestAutoMerge call in the common green-CI path
+    - "integration test: PR with all checks passing merges via REST without GraphQL mutation"
+  notes: |
+    Root cause 2026-05-14: bot-merge always calls gh pr merge --auto --squash (GraphQL enablePullRequestAutoMerge). This hits a separate secondary rate limit. User directive: use REST PUT /pulls/N/merge when CI is already green. Related: INFRA-1113 (centralize auto-merge arming — separate from this gap).
+

@@ -1,0 +1,36 @@
+- id: INFRA-1143
+  domain: INFRA
+  title: 'RESILIENT: synthetic-green stub pattern for required CI checks — fixes skipped != passing footgun'
+  status: done
+  priority: P1
+  effort: s
+  description: 'Required status checks in branch protection block forever when their gating filter says they should skip.
+    This forced INFRA-272 to widen the code filter to ~25 patterns, defeating the point of path filtering.
+
+
+    The fix is a synthetic-green stub: every required check has TWO sibling jobs (the real heavy one, conditional on path
+    filter) and a 5-second stub (conditional on the opposite). A third rollup job depends on both and exits success if either
+    succeeded. Branch protection points at the rollup name.
+
+
+    This pattern is what GitHub Actions docs recommend for required + conditional combinations (see actions/runner discussions).
+    It is the prerequisite for the per-job-path-filter gap (sibling).
+
+
+    Rough shape per required job (clippy, cargo-test, audit, ACP, fast-checks rollup): (a) keep the existing job, add if:
+    needs.changes.outputs.<filter> == true. (b) add <job>-stub with the inverse if and a 5s echo step. (c) add <job>-required
+    with needs: [<job>, <job>-stub], if: always(), and a case-based exit. (d) update branch-protection contexts (out-of-band,
+    operator does this) to point at the -required suffix. (e) document in scripts/coord/README.md as the canonical pattern
+    for adding new required checks.
+
+    '
+  acceptance_criteria:
+  - 'ci.yml has the synthetic-green stub pattern for at least 4 required checks: clippy, cargo-test, audit, ACP protocol smoke'
+  - Each required-check rollup job (clippy-required, etc.) name is what branch protection enforces
+  - On a docs-only PR (no rust changes), clippy-stub runs in <10s and clippy-required reports success
+  - On a rust PR, clippy runs as today and clippy-required reports its result
+  - test-required rollup (used by branch protection today) refactored to use this same pattern
+  - Documented in scripts/coord/README.md under a Required-check pattern section
+  - 'Migration path documented: which branch-protection contexts need to change names and in what order'
+  - 'Validated: PR #803-class case (docs-only diff) merges in <2 min after this lands'
+  closed_date: '2026-05-14'
