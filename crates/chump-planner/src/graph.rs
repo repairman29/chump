@@ -201,6 +201,112 @@ impl DependencyGraph {
         out
     }
 
+    /// INFRA-1281: topological layer of each open gap.
+    ///
+    /// Layer 0 = no open prerequisites (foundation). Layer N = `max(layer(prereq)) + 1`
+    /// over all open Blocks-prereqs. Closed gaps are skipped — only the open
+    /// subgraph matters for the picker's tier ordering.
+    ///
+    /// Computation: BFS from open roots (no open prereqs) propagating
+    /// monotonically-increasing depth. Re-relaxation handles diamonds where
+    /// a node has two prereqs on different paths.
+    pub fn layers(&self, open_set: &HashSet<GapId>) -> HashMap<GapId, u32> {
+        let mut layer: HashMap<GapId, u32> = HashMap::new();
+        // Seed: every open gap with zero open prereqs is layer 0.
+        for id in open_set {
+            if self.open_prerequisites(id, open_set).is_empty() {
+                layer.insert(id.clone(), 0);
+            }
+        }
+        // Iterative relaxation: walk every open gap in topological order
+        // and set its layer = 1 + max(layer of open prereqs). Bounded by
+        // V iterations even with diamonds.
+        let Ok(order) = self.topo_order() else {
+            return layer;
+        };
+        for id in &order {
+            if !open_set.contains(id) {
+                continue;
+            }
+            let prereqs = self.open_prerequisites(id, open_set);
+            if prereqs.is_empty() {
+                layer.entry(id.clone()).or_insert(0);
+                continue;
+            }
+            let max_pre = prereqs
+                .iter()
+                .filter_map(|p| layer.get(p).copied())
+                .max()
+                .unwrap_or(0);
+            layer.insert(id.clone(), max_pre + 1);
+        }
+        layer
+    }
+
+    /// INFRA-1281: critical-path days from each open gap forward through its
+    /// dependent chain to a leaf, weighted by `Effort::days()`.
+    ///
+    /// For a leaf X: `cpd(X) = X.effort.days()`.
+    /// For an inner X: `cpd(X) = X.effort.days() + max(cpd(Y) for Y in open dependents)`.
+    ///
+    /// Picker semantics: a gap with a long CPD gates a long downstream chain
+    /// — picking it first compresses fleet wall-clock more than picking a
+    /// leaf with the same effort. Combined with `layer`, the picker can
+    /// enforce: "no two workers on the same layer until the foundation
+    /// layer is drained" while still preferring high-CPD work within a tier.
+    pub fn critical_path_days(
+        &self,
+        gaps: &[Gap],
+        open_set: &HashSet<GapId>,
+    ) -> HashMap<GapId, f32> {
+        let by_id: HashMap<&GapId, &Gap> = gaps.iter().map(|g| (&g.id, g)).collect();
+        let mut memo: HashMap<GapId, f32> = HashMap::new();
+        // Walk in REVERSE topological order so dependents are computed before
+        // their prereqs. petgraph's topo_order returns deps-first; reverse it.
+        let Ok(order) = self.topo_order() else {
+            return memo;
+        };
+        for id in order.iter().rev() {
+            if !open_set.contains(id) {
+                continue;
+            }
+            let Some(gap) = by_id.get(id) else { continue };
+            let self_days = gap.effort.days();
+            // dependents = open Blocks-successors of `id`
+            let dependents = self.unblocks(id, open_set);
+            // unblocks is transitive; we only want DIRECT dependents for the
+            // recurrence (otherwise we'd double-count). Recompute as direct:
+            let direct: Vec<GapId> = {
+                let Some(&idx) = self.index.get(id) else {
+                    continue;
+                };
+                let mut out = Vec::new();
+                for edge in self
+                    .graph
+                    .edges_directed(idx, petgraph::Direction::Outgoing)
+                {
+                    if *edge.weight() != Relation::Blocks {
+                        continue;
+                    }
+                    let tgt_id = &self.graph[edge.target()];
+                    if open_set.contains(tgt_id) {
+                        out.push(tgt_id.clone());
+                    }
+                }
+                out
+            };
+            // Use direct list for the recurrence; `dependents` (transitive) is
+            // available if a future caller needs it.
+            let _ = dependents; // suppress unused warning when callers don't need it
+            let max_child = direct
+                .iter()
+                .filter_map(|c| memo.get(c).copied())
+                .fold(0.0f32, |a, b| a.max(b));
+            memo.insert(id.clone(), self_days + max_child);
+        }
+        memo
+    }
+
     /// Hard successors still in `open_set` — i.e. open gaps that would
     /// become unblocked if `id` closed. Transitive closure: closing one
     /// node may unblock a chain.
@@ -312,5 +418,82 @@ mod tests {
         let gaps = vec![mk("INFRA-1", vec!["INFRA-DOES-NOT-EXIST"])];
         let g = DependencyGraph::build(&gaps);
         assert!(g.topo_order().is_ok());
+    }
+
+    // ── INFRA-1281: layer + critical_path_days helpers ──────────────────
+
+    fn mk_e(id: &str, deps: Vec<&str>, effort: Effort) -> Gap {
+        let mut g = mk(id, deps);
+        g.effort = effort;
+        g
+    }
+
+    #[test]
+    fn layers_match_fixture_dag_from_design() {
+        // Fixture from .chump-plans/INFRA-1281/01-design.md:
+        //   1 (root, no deps, effort=m)
+        //   ├── 2 (deps=[1], effort=s)
+        //   ├── 3 (deps=[1], effort=s)
+        //   │     └── 4 (deps=[3], effort=xs)
+        //   └── 5 (isolated, no deps, effort=m)
+        let gaps = vec![
+            mk_e("INFRA-1", vec![], Effort::M),
+            mk_e("INFRA-2", vec!["INFRA-1"], Effort::S),
+            mk_e("INFRA-3", vec!["INFRA-1"], Effort::S),
+            mk_e("INFRA-4", vec!["INFRA-3"], Effort::Xs),
+            mk_e("INFRA-5", vec![], Effort::M),
+        ];
+        let g = DependencyGraph::build(&gaps);
+        let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        let layers = g.layers(&open);
+        let get = |id: &str| *layers.get(&GapId(id.into())).unwrap_or(&u32::MAX);
+        assert_eq!(get("INFRA-1"), 0, "INFRA-1: root");
+        assert_eq!(get("INFRA-2"), 1, "INFRA-2: child of INFRA-1");
+        assert_eq!(get("INFRA-3"), 1, "INFRA-3: child of INFRA-1");
+        assert_eq!(get("INFRA-4"), 2, "INFRA-4: child of INFRA-3");
+        assert_eq!(get("INFRA-5"), 0, "INFRA-5: isolated root");
+    }
+
+    #[test]
+    fn critical_path_days_walks_longest_forward_chain() {
+        let gaps = vec![
+            mk_e("INFRA-1", vec![], Effort::M),       // 3.0d
+            mk_e("INFRA-2", vec!["INFRA-1"], Effort::S),  // 1.0d
+            mk_e("INFRA-3", vec!["INFRA-1"], Effort::S),  // 1.0d
+            mk_e("INFRA-4", vec!["INFRA-3"], Effort::Xs), // 0.5d
+            mk_e("INFRA-5", vec![], Effort::M),       // 3.0d
+        ];
+        let g = DependencyGraph::build(&gaps);
+        let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        let cpd = g.critical_path_days(&gaps, &open);
+        let get = |id: &str| *cpd.get(&GapId(id.into())).unwrap_or(&-1.0);
+        // Leaves (no open dependents): just self
+        assert!((get("INFRA-2") - 1.0).abs() < 1e-4, "INFRA-2 leaf: 1.0d");
+        assert!((get("INFRA-4") - 0.5).abs() < 1e-4, "INFRA-4 leaf: 0.5d");
+        assert!((get("INFRA-5") - 3.0).abs() < 1e-4, "INFRA-5 isolated: 3.0d");
+        // Inner: 3 = self(1.0) + max(cpd(4)=0.5) = 1.5
+        assert!((get("INFRA-3") - 1.5).abs() < 1e-4, "INFRA-3 = 1.0 + 0.5");
+        // Root: 1 = self(3.0) + max(cpd(2)=1.0, cpd(3)=1.5) = 4.5
+        assert!((get("INFRA-1") - 4.5).abs() < 1e-4, "INFRA-1 = 3.0 + 1.5");
+    }
+
+    #[test]
+    fn layers_skip_closed_prereqs() {
+        // INFRA-3 depends on INFRA-1, but if INFRA-1 is closed it shouldn't
+        // count as a prerequisite — INFRA-3 becomes layer 0 effectively.
+        let gaps = vec![
+            mk_e("INFRA-1", vec![], Effort::S),
+            mk_e("INFRA-2", vec!["INFRA-1"], Effort::S),
+            mk_e("INFRA-3", vec!["INFRA-1", "INFRA-2"], Effort::S),
+        ];
+        let g = DependencyGraph::build(&gaps);
+        // Close INFRA-1 — leave INFRA-2 and INFRA-3 open.
+        let mut open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        open.remove(&GapId("INFRA-1".into()));
+        let layers = g.layers(&open);
+        let get = |id: &str| *layers.get(&GapId(id.into())).unwrap_or(&u32::MAX);
+        assert_eq!(get("INFRA-2"), 0, "INFRA-2 has no OPEN prereqs after INFRA-1 closes");
+        assert_eq!(get("INFRA-3"), 1, "INFRA-3 still has open prereq INFRA-2");
+        assert_eq!(layers.get(&GapId("INFRA-1".into())), None, "closed gap not in layer map");
     }
 }
