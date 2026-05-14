@@ -62,6 +62,7 @@ pub fn rotate_if_needed(ambient_path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use std::io::Write as _;
 
     fn tempdir() -> std::path::PathBuf {
@@ -77,6 +78,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn no_rotation_below_threshold() {
         let dir = tempdir();
         let path = dir.join("ambient.jsonl");
@@ -91,6 +93,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn rotation_triggers_at_threshold() {
         let dir = tempdir();
         let path = dir.join("ambient.jsonl");
@@ -107,6 +110,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn old_slot2_pruned_on_rotation() {
         let dir = tempdir();
         let path = dir.join("ambient.jsonl");
@@ -131,6 +135,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn append_after_rotation_creates_fresh_file() {
         let dir = tempdir();
         let path = dir.join("ambient.jsonl");
