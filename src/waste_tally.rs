@@ -1873,3 +1873,429 @@ mod tests {
         }
     }
 }
+
+// ── INFRA-998: --by-close-reason categorization ───────────────────────────
+//
+// Classifies closed-not-merged PRs by their last close comment so the
+// operator can see WHICH waste class is dominant (superseded vs duplicate
+// vs scratch-commit, etc.) — each class has a distinct prevention gap.
+//
+// Patterns derived from the 2026-05-13 PR closure audit
+// (docs/syntheses/2026-05-13-fleet-unblock-pwa-cockpit.md §4).
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ClosureReason {
+    /// "gap already shipped via another path", "superseded by #N", "already in main"
+    Superseded,
+    /// duplicate-claim race (two agents picked the same gap)
+    DuplicateClaim,
+    /// stale branch with fmt/merge-conflict failures after sitting too long
+    StaleBranch,
+    /// catastrophic-delete scratch commit (the 378K-deletion class)
+    ScratchCommit,
+    /// CI failure that was never fixed before the branch went stale/closed
+    CiFailOrphan,
+    /// pre-rebase staging branch opened as a PR with no real gap work
+    StagingBranch,
+    /// fallback — close comment doesn't match any known pattern
+    Other,
+}
+
+impl ClosureReason {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ClosureReason::Superseded => "superseded",
+            ClosureReason::DuplicateClaim => "duplicate_claim",
+            ClosureReason::StaleBranch => "stale_branch",
+            ClosureReason::ScratchCommit => "scratch_commit",
+            ClosureReason::CiFailOrphan => "ci_fail_orphan",
+            ClosureReason::StagingBranch => "staging_branch",
+            ClosureReason::Other => "other",
+        }
+    }
+}
+
+/// Classify a close-comment body into one of the seven taxonomy buckets.
+///
+/// Order matters — more specific patterns are checked first so generic
+/// substrings (e.g. "stale") don't out-match a more meaningful pattern
+/// (e.g. "duplicate"). The Other bucket catches everything else.
+pub fn classify_close_reason(comment: &str) -> ClosureReason {
+    let lc = comment.to_ascii_lowercase();
+    // Scratch-commit is the most distinctive — match before anything else.
+    // Threshold "100000 deletions" or explicit phrase.
+    if lc.contains("scratch-commit")
+        || lc.contains("scratch commit")
+        || lc.contains("382,778 deletions")
+        || lc.contains("382778 deletions")
+        || lc.contains("catastrophic-delete")
+    {
+        return ClosureReason::ScratchCommit;
+    }
+    // Staging-branch — explicit phrase.
+    if lc.contains("pre-rebase staging")
+        || lc.contains("no meaningful work")
+        || lc.contains("staging-only branch")
+    {
+        return ClosureReason::StagingBranch;
+    }
+    // Duplicate-claim before "superseded" since dup language is more specific.
+    if lc.contains("duplicate") || lc.contains("same as #") || lc.contains("dup of #") {
+        return ClosureReason::DuplicateClaim;
+    }
+    // Superseded class — broad signals that work landed elsewhere.
+    if lc.contains("superseded")
+        || lc.contains("already marked done")
+        || lc.contains("already in main")
+        || lc.contains("cherry-picked")
+        || lc.contains("gap shipped via")
+        || lc.contains("commit already merged")
+    {
+        return ClosureReason::Superseded;
+    }
+    // Stale-branch: fmt/merge-conflict patterns after sitting too long.
+    if lc.contains("too stale")
+        || lc.contains("fmt failure")
+        || lc.contains("merge conflict")
+        || lc.contains("rebase failed")
+        || lc.contains("commits behind main")
+    {
+        return ClosureReason::StaleBranch;
+    }
+    // CI-fail-orphan: explicit CI failure language + abandonment phrasing.
+    if (lc.contains("ci fail") || lc.contains("ci failure") || lc.contains("e2e fail"))
+        && (lc.contains("preserve") || lc.contains("re-open") || lc.contains("never fixed"))
+    {
+        return ClosureReason::CiFailOrphan;
+    }
+    if lc.contains("audit ci failure") || lc.contains("test failure") {
+        return ClosureReason::CiFailOrphan;
+    }
+    ClosureReason::Other
+}
+
+#[derive(Debug, Clone)]
+pub struct ClosureReasonEntry {
+    pub reason: ClosureReason,
+    pub count: u64,
+    pub pr_numbers: Vec<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClosureReasonReport {
+    pub entries: Vec<ClosureReasonEntry>,
+    pub total: u64,
+    pub window_secs: u64,
+    /// True if the data fetch failed (gh CLI missing, rate limited, etc.).
+    /// Reports a single Other entry covering all PRs we couldn't classify.
+    pub fetch_failed: bool,
+}
+
+impl ClosureReasonReport {
+    pub fn render_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str(&format!(
+            "== chump waste-tally --by-close-reason (window {}s, {} PRs) ==\n\n",
+            self.window_secs, self.total
+        ));
+        if self.fetch_failed {
+            out.push_str("(WARN: gh CLI fetch failed — partial data. Set GH_TOKEN and rerun.)\n\n");
+        }
+        if self.total == 0 {
+            out.push_str("No closed-not-merged PRs in window. Either the fleet is shipping\nclean, or there's a fetch problem. Check gh auth status.\n");
+            return out;
+        }
+        out.push_str("category         count    %      sample PRs\n");
+        out.push_str("---------------- -----  -----  ----------\n");
+        for e in &self.entries {
+            let pct = if self.total > 0 {
+                (e.count as f64) * 100.0 / (self.total as f64)
+            } else {
+                0.0
+            };
+            let sample: Vec<String> = e
+                .pr_numbers
+                .iter()
+                .take(3)
+                .map(|n| format!("#{}", n))
+                .collect();
+            out.push_str(&format!(
+                "{:16} {:>5}  {:>5.1}%  {}\n",
+                e.reason.as_str(),
+                e.count,
+                pct,
+                sample.join(" ")
+            ));
+        }
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let entries: Vec<serde_json::Value> = self
+            .entries
+            .iter()
+            .map(|e| {
+                let pct = if self.total > 0 {
+                    (e.count as f64) * 100.0 / (self.total as f64)
+                } else {
+                    0.0
+                };
+                serde_json::json!({
+                    "category": e.reason.as_str(),
+                    "count": e.count,
+                    "percent": (pct * 10.0).round() / 10.0,
+                    "pr_numbers": e.pr_numbers,
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "window_secs": self.window_secs,
+            "total": self.total,
+            "fetch_failed": self.fetch_failed,
+            "categories": entries,
+        })
+        .to_string()
+    }
+
+    /// Emit `kind=waste_category_report` to ambient.jsonl. Best-effort —
+    /// silently no-ops if the file isn't writable. Called when the operator
+    /// passes `--emit-ambient` (or when a scheduled cron job runs).
+    pub fn emit_ambient(&self, repo_root: &Path) {
+        let event = serde_json::json!({
+            "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            "kind": "waste_category_report",
+            "window_secs": self.window_secs,
+            "total": self.total,
+            "by_category": self.entries.iter()
+                .map(|e| serde_json::json!({"category": e.reason.as_str(), "count": e.count}))
+                .collect::<Vec<_>>(),
+        });
+        let path = repo_root.join(".chump-locks").join("ambient.jsonl");
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            use std::io::Write;
+            let _ = writeln!(f, "{}", event);
+        }
+    }
+}
+
+/// Build the report by shelling out to `gh pr list` and `gh pr view --comments`.
+/// Slow (one gh call per closed PR) — acceptable for a weekly cron.
+pub fn build_close_reason_report(window_secs: u64) -> ClosureReasonReport {
+    let cutoff_days = ((window_secs as f64) / 86400.0).ceil().max(1.0) as u64;
+    let search = format!(
+        "is:closed -is:merged closed:>={}",
+        iso_date_n_days_ago(cutoff_days)
+    );
+    let list_out = std::process::Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--search",
+            &search,
+            "--limit",
+            "100",
+            "--state",
+            "closed",
+            "--json",
+            "number,closedAt",
+        ])
+        .output();
+    let list_json: Vec<serde_json::Value> = match list_out {
+        Ok(o) if o.status.success() => serde_json::from_slice(&o.stdout).unwrap_or_default(),
+        _ => {
+            return ClosureReasonReport {
+                entries: vec![],
+                total: 0,
+                window_secs,
+                fetch_failed: true,
+            };
+        }
+    };
+
+    let mut buckets: BTreeMap<&'static str, (ClosureReason, Vec<u64>)> = BTreeMap::new();
+    for pr_v in &list_json {
+        let n = pr_v.get("number").and_then(|v| v.as_u64()).unwrap_or(0);
+        if n == 0 {
+            continue;
+        }
+        // Fetch the last comment (cheaper than --comments which can be huge).
+        let body = fetch_last_close_comment(n).unwrap_or_default();
+        let reason = classify_close_reason(&body);
+        let key = reason.as_str();
+        buckets
+            .entry(key)
+            .or_insert_with(|| (reason, vec![]))
+            .1
+            .push(n);
+    }
+
+    let mut entries: Vec<ClosureReasonEntry> = buckets
+        .into_iter()
+        .map(|(_k, (reason, prs))| ClosureReasonEntry {
+            reason,
+            count: prs.len() as u64,
+            pr_numbers: prs,
+        })
+        .collect();
+    entries.sort_by_key(|b| std::cmp::Reverse(b.count));
+    let total = entries.iter().map(|e| e.count).sum();
+    ClosureReasonReport {
+        entries,
+        total,
+        window_secs,
+        fetch_failed: false,
+    }
+}
+
+fn fetch_last_close_comment(pr: u64) -> Option<String> {
+    let out = std::process::Command::new("gh")
+        .args(["pr", "view", &pr.to_string(), "--json", "comments"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let comments = v.get("comments")?.as_array()?;
+    // Most recent comment (sorted by createdAt ascending in gh output).
+    let last = comments.last()?;
+    Some(last.get("body")?.as_str()?.to_string())
+}
+
+fn iso_date_n_days_ago(n: u64) -> String {
+    // Shell out to date(1) for parity with the rest of this module.
+    let out = std::process::Command::new("date")
+        .args(["-u", "-v", &format!("-{}d", n), "+%Y-%m-%d"])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => {
+            // Linux date(1) doesn't support -v; try GNU syntax.
+            let alt = std::process::Command::new("date")
+                .args(["-u", "-d", &format!("{} days ago", n), "+%Y-%m-%d"])
+                .output();
+            match alt {
+                Ok(o) if o.status.success() => {
+                    String::from_utf8_lossy(&o.stdout).trim().to_string()
+                }
+                _ => "2026-01-01".to_string(),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod close_reason_tests {
+    use super::*;
+
+    #[test]
+    fn classify_superseded_synonyms() {
+        for body in &[
+            "Superseded by #1234 which landed the same fix.",
+            "gap INFRA-XXX already marked done; closing.",
+            "Cherry-picked to main as commit abc123.",
+            "Commit already merged (cherry-picked). Closing stale PR.",
+            "gap shipped via chump gap ship; branch is 175 commits behind main",
+        ] {
+            assert_eq!(
+                classify_close_reason(body),
+                ClosureReason::Superseded,
+                "body: {}",
+                body
+            );
+        }
+    }
+
+    #[test]
+    fn classify_duplicate_claim() {
+        for body in &[
+            "Duplicate of #1700",
+            "Same as #1733 (same gap)",
+            "dup of #999",
+        ] {
+            assert_eq!(classify_close_reason(body), ClosureReason::DuplicateClaim);
+        }
+    }
+
+    #[test]
+    fn classify_stale_branch() {
+        for body in &[
+            "Closing — branch is too stale, fmt failures everywhere.",
+            "Merge conflict; rebase failed; closing.",
+            "200 commits behind main — too far to rebase cleanly.",
+        ] {
+            assert_eq!(classify_close_reason(body), ClosureReason::StaleBranch);
+        }
+    }
+
+    #[test]
+    fn classify_scratch_commit() {
+        for body in &[
+            "Scratch-commit catastrophe: +2/-378,778 across 1912 files.",
+            "Detected as catastrophic-delete by the new guard.",
+            "382,778 deletions — pure scratch commit.",
+        ] {
+            assert_eq!(classify_close_reason(body), ClosureReason::ScratchCommit);
+        }
+    }
+
+    #[test]
+    fn classify_staging_branch() {
+        for body in &[
+            "Pre-rebase staging branch with no meaningful work.",
+            "Staging-only branch — guard fired.",
+            "No meaningful work; INFRA-997 caught it.",
+        ] {
+            assert_eq!(classify_close_reason(body), ClosureReason::StagingBranch);
+        }
+    }
+
+    #[test]
+    fn classify_ci_fail_orphan() {
+        let body = "Closing: audit CI failure (e2e fail). Parent gap shipped. Branch preserved; re-open with fix if content needs to land.";
+        assert_eq!(classify_close_reason(body), ClosureReason::CiFailOrphan);
+    }
+
+    #[test]
+    fn classify_other_fallback() {
+        for body in &[
+            "Closing for unrelated reasons.",
+            "operator decided not to ship this.",
+            "",
+        ] {
+            assert_eq!(classify_close_reason(body), ClosureReason::Other);
+        }
+    }
+
+    #[test]
+    fn report_renders_text_and_json() {
+        let report = ClosureReasonReport {
+            entries: vec![
+                ClosureReasonEntry {
+                    reason: ClosureReason::Superseded,
+                    count: 14,
+                    pr_numbers: vec![1614, 1616, 1655],
+                },
+                ClosureReasonEntry {
+                    reason: ClosureReason::ScratchCommit,
+                    count: 2,
+                    pr_numbers: vec![1441, 1452],
+                },
+            ],
+            total: 16,
+            window_secs: 604800,
+            fetch_failed: false,
+        };
+        let text = report.render_text();
+        assert!(text.contains("superseded"));
+        assert!(text.contains("scratch_commit"));
+        assert!(text.contains("87.5%")); // 14/16
+        let json: serde_json::Value = serde_json::from_str(&report.render_json()).unwrap();
+        assert_eq!(json["total"], 16);
+        assert_eq!(json["categories"][0]["category"], "superseded");
+    }
+}
