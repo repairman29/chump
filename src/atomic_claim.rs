@@ -337,6 +337,9 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         return Err(e.context("writing state.db leases row"));
     }
 
+    // INFRA-1240: emit gap_claimed ambient event for observability (silent_agent debugging)
+    let _ = emit_gap_claimed_event(&args.repo_root, &args.gap_id, &session_id);
+
     Ok(ClaimReport {
         gap_id: args.gap_id,
         worktree_path,
@@ -523,6 +526,31 @@ fn emit_gitdir_repaired_event(repo_root: &Path, wt_name: &str, was: &str, now: &
             use std::io::Write;
             f.write_all(line.as_bytes())
         });
+}
+
+/// INFRA-1240: Emit gap_claimed ambient event for observability.
+/// Used to debug silent_agent and lease-race issues.
+fn emit_gap_claimed_event(repo_root: &Path, gap_id: &str, session_id: &str) -> Result<()> {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"gap_claimed\",\"gap_id\":\"{gap_id}\",\"session_id\":\"{session_id}\"}}\n"
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+    Ok(())
 }
 
 /// Decompose Unix epoch seconds into (year, month, day, hour, min, sec) UTC.
