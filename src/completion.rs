@@ -7,29 +7,90 @@
 //!   fish: chump completion fish > ~/.config/fish/completions/chump.fish
 
 const TOP_LEVEL: &[&str] = &[
-    "ambient", "ambient-rotate", "cascade", "ci-summary", "claim",
-    "classify-failure", "completion", "cost", "cost-check", "cost-report",
-    "cost-watch", "dashboard", "dispatch", "emit", "fix-clippy",
-    "fleet", "fleet-status", "fleet-velocity", "funnel", "gap",
-    "gen", "health", "health-digest", "help", "init", "kpi",
-    "lesson-grade", "mission-grade", "orchestrate", "plan", "pr",
-    "pr-coupling-cost", "priority", "rebase-stuck", "record-pr",
-    "reflect-delta", "report", "roadmap-status", "route", "scoreboard",
-    "session-export", "session-resume", "session-track", "ship-quality",
-    "simulate", "stats", "triage", "waste-tally",
+    "ambient",
+    "ambient-rotate",
+    "cascade",
+    "ci-summary",
+    "claim",
+    "classify-failure",
+    "completion",
+    "cost",
+    "cost-check",
+    "cost-report",
+    "cost-watch",
+    "dashboard",
+    "dispatch",
+    "emit",
+    "fix-clippy",
+    "fleet",
+    "fleet-status",
+    "fleet-velocity",
+    "funnel",
+    "gap",
+    "gen",
+    "health",
+    "health-digest",
+    "help",
+    "init",
+    "kpi",
+    "lesson-grade",
+    "mission-grade",
+    "orchestrate",
+    "plan",
+    "pr",
+    "pr-coupling-cost",
+    "priority",
+    "rebase-stuck",
+    "record-pr",
+    "reflect-delta",
+    "report",
+    "roadmap-status",
+    "route",
+    "scoreboard",
+    "session-export",
+    "session-resume",
+    "session-track",
+    "ship-quality",
+    "simulate",
+    "stats",
+    "triage",
+    "waste-tally",
     // top-level flags
-    "--release", "--leases", "--heartbeat", "--briefing", "--help", "--version",
+    "--release",
+    "--leases",
+    "--heartbeat",
+    "--briefing",
+    "--help",
+    "--version",
 ];
 
 const GAP_SUBS: &[&str] = &[
-    "list", "show", "ship", "reserve", "import", "import-spec",
-    "claim", "preflight", "decompose", "audit-priorities", "audit-ac",
-    "set", "edit", "update",
+    "list",
+    "show",
+    "ship",
+    "reserve",
+    "import",
+    "import-spec",
+    "claim",
+    "preflight",
+    "decompose",
+    "audit-priorities",
+    "audit-ac",
+    "set",
+    "edit",
+    "update",
 ];
 
 const GAP_FLAGS: &[&str] = &[
-    "--status", "--priority", "--effort", "--domain", "--json",
-    "--update-yaml", "--closed-pr", "--force", "--dry-run",
+    "--status",
+    "--priority",
+    "--effort",
+    "--domain",
+    "--json",
+    "--update-yaml",
+    "--closed-pr",
+    "--force",
+    "--dry-run",
 ];
 
 const COMMON_FLAGS: &[&str] = &["--json", "--help", "--verbose"];
@@ -240,30 +301,33 @@ pub fn fish() -> String {
 
     // Top-level commands
     let top_with_desc: &[(&str, &str)] = &[
-        ("claim",         "Atomically claim a gap (worktree + lease + state.db)"),
-        ("completion",    "Print shell completion script"),
-        ("gap",           "Gap registry commands (list, show, ship, reserve…)"),
-        ("health",        "Fleet health score (0-100)"),
-        ("fleet-status",  "Active workers and lease state"),
-        ("fleet-velocity","Gap throughput over time"),
-        ("waste-tally",   "Waste rate by close reason"),
+        (
+            "claim",
+            "Atomically claim a gap (worktree + lease + state.db)",
+        ),
+        ("completion", "Print shell completion script"),
+        ("gap", "Gap registry commands (list, show, ship, reserve…)"),
+        ("health", "Fleet health score (0-100)"),
+        ("fleet-status", "Active workers and lease state"),
+        ("fleet-velocity", "Gap throughput over time"),
+        ("waste-tally", "Waste rate by close reason"),
         ("mission-grade", "4-pillar mission grade"),
-        ("dispatch",      "Queue and run gap workflows"),
-        ("cost",          "Cost summary"),
-        ("cost-watch",    "Live cost monitor"),
-        ("kpi",           "KPI report"),
-        ("roadmap-status","Roadmap drift analysis"),
-        ("init",          "Initialize a new chump repo"),
-        ("ambient",       "Ambient event stream query"),
-        ("lesson-grade",  "Grade lesson application for a gap"),
+        ("dispatch", "Queue and run gap workflows"),
+        ("cost", "Cost summary"),
+        ("cost-watch", "Live cost monitor"),
+        ("kpi", "KPI report"),
+        ("roadmap-status", "Roadmap drift analysis"),
+        ("init", "Initialize a new chump repo"),
+        ("ambient", "Ambient event stream query"),
+        ("lesson-grade", "Grade lesson application for a gap"),
         ("session-track", "Track agent session metadata"),
-        ("session-export","Export session events"),
-        ("simulate",      "Simulate gap workflow"),
-        ("triage",        "Interactive gap triage"),
-        ("plan",          "Planning and decomposition"),
-        ("dashboard",     "Interactive fleet dashboard"),
-        ("gen",           "Generation utilities"),
-        ("help",          "Show help"),
+        ("session-export", "Export session events"),
+        ("simulate", "Simulate gap workflow"),
+        ("triage", "Interactive gap triage"),
+        ("plan", "Planning and decomposition"),
+        ("dashboard", "Interactive fleet dashboard"),
+        ("gen", "Generation utilities"),
+        ("help", "Show help"),
     ];
 
     for (cmd, desc) in top_with_desc {
@@ -275,18 +339,18 @@ pub fn fish() -> String {
     lines.push(String::new());
     lines.push("# gap subcommands".to_string());
     let gap_subs: &[(&str, &str)] = &[
-        ("list",              "List gaps"),
-        ("show",              "Show gap details"),
-        ("ship",              "Mark gap done + update YAML"),
-        ("reserve",           "Reserve a new gap"),
-        ("import",            "Import gap YAMLs into state.db"),
-        ("claim",             "Claim a gap in state.db"),
-        ("preflight",         "Check gap is claimable"),
-        ("decompose",         "LLM-decompose gap into sub-gaps"),
-        ("audit-priorities",  "PM health audit (P0 count, vague ACs)"),
-        ("audit-ac",          "Audit acceptance criteria completeness"),
-        ("set",               "Set a gap field"),
-        ("edit",              "Edit gap description"),
+        ("list", "List gaps"),
+        ("show", "Show gap details"),
+        ("ship", "Mark gap done + update YAML"),
+        ("reserve", "Reserve a new gap"),
+        ("import", "Import gap YAMLs into state.db"),
+        ("claim", "Claim a gap in state.db"),
+        ("preflight", "Check gap is claimable"),
+        ("decompose", "LLM-decompose gap into sub-gaps"),
+        ("audit-priorities", "PM health audit (P0 count, vague ACs)"),
+        ("audit-ac", "Audit acceptance criteria completeness"),
+        ("set", "Set a gap field"),
+        ("edit", "Edit gap description"),
     ];
 
     for (sub, desc) in gap_subs {
@@ -307,11 +371,11 @@ pub fn fish() -> String {
     lines.push(String::new());
     lines.push("# claim flags".to_string());
     let claim_flags: &[(&str, &str)] = &[
-        ("paths",        "CSV of repo-relative paths"),
-        ("session",      "Session ID override"),
-        ("skip-doctor",  "Skip doctor probe"),
-        ("skip-import",  "Skip state.db import check"),
-        ("resume",       "Reset to remote tip if branch exists"),
+        ("paths", "CSV of repo-relative paths"),
+        ("session", "Session ID override"),
+        ("skip-doctor", "Skip doctor probe"),
+        ("skip-import", "Skip state.db import check"),
+        ("resume", "Reset to remote tip if branch exists"),
     ];
     for (flag, desc) in claim_flags {
         lines.push(format!(
@@ -329,10 +393,19 @@ pub fn fish() -> String {
 
     lines.push(String::new());
     lines.push("# health / waste-tally flags".to_string());
-    lines.push("complete -c chump -n '__fish_seen_subcommand_from health' -l json -d 'JSON output'".to_string());
-    lines.push("complete -c chump -n '__fish_seen_subcommand_from health' -l watch -d 'Refresh every 30s'".to_string());
+    lines.push(
+        "complete -c chump -n '__fish_seen_subcommand_from health' -l json -d 'JSON output'"
+            .to_string(),
+    );
+    lines.push(
+        "complete -c chump -n '__fish_seen_subcommand_from health' -l watch -d 'Refresh every 30s'"
+            .to_string(),
+    );
     lines.push("complete -c chump -n '__fish_seen_subcommand_from health' -l slo-check -d 'Exit non-zero on SLO breach'".to_string());
-    lines.push("complete -c chump -n '__fish_seen_subcommand_from waste-tally' -l json -d 'JSON output'".to_string());
+    lines.push(
+        "complete -c chump -n '__fish_seen_subcommand_from waste-tally' -l json -d 'JSON output'"
+            .to_string(),
+    );
     lines.push("complete -c chump -n '__fish_seen_subcommand_from waste-tally' -l by-close-reason -d 'Group by close reason'".to_string());
 
     lines.join("\n") + "\n"

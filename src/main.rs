@@ -89,6 +89,7 @@ mod ftue_tool;
 // INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
 // The rename keeps every `gap_store::*` call site compiling unchanged.
 use chump_gap_store as gap_store;
+mod completion;
 mod gen;
 mod genai_conv;
 mod git_tools;
@@ -202,7 +203,6 @@ mod tool_normalize; // INFRA-740: repair malformed tool-call JSON from weak LLMs
 mod tool_policy;
 mod tool_routing;
 mod toolkit_status_tool;
-mod completion;
 mod tracing_init;
 mod trajectory_replay;
 mod user_error_hints;
@@ -781,9 +781,18 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("completion") {
         let shell = args.get(2).map(String::as_str).unwrap_or("zsh");
         match shell {
-            "zsh"  => { print!("{}", completion::zsh());  return Ok(()); }
-            "bash" => { print!("{}", completion::bash()); return Ok(()); }
-            "fish" => { print!("{}", completion::fish()); return Ok(()); }
+            "zsh" => {
+                print!("{}", completion::zsh());
+                return Ok(());
+            }
+            "bash" => {
+                print!("{}", completion::bash());
+                return Ok(());
+            }
+            "fish" => {
+                print!("{}", completion::fish());
+                return Ok(());
+            }
             other => {
                 eprintln!("chump completion: unknown shell {other:?}");
                 eprintln!("Usage: chump completion [zsh|bash|fish]");
