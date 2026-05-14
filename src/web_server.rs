@@ -2616,7 +2616,11 @@ async fn handle_pr_detail(
         .unwrap_or_default()
         .into_iter()
         .map(|c| {
-            let name = c.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let name = c
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let conclusion = c
                 .get("conclusion")
                 .and_then(|v| v.as_str())
