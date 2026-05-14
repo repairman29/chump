@@ -250,8 +250,10 @@ if [[ $DRY_RUN -eq 0 ]] \
     if [[ -z "${CHUMP_PROVIDER_1_NAME:-}" ]]; then
         for _root in "$(git rev-parse --show-toplevel)" "$(git rev-parse --git-common-dir | xargs dirname 2>/dev/null)"; do
             if [[ -n "$_root" && -f "$_root/.env" ]]; then
+                set -a
                 # shellcheck disable=SC1091  # .env path is dynamic, not statically resolvable
-                set -a; source "$_root/.env"; set +a
+                source "$_root/.env"
+                set +a
                 [[ -n "${CHUMP_PROVIDER_1_NAME:-}" ]] && break
             fi
         done
@@ -298,6 +300,7 @@ try:
 except Exception:
     print('')
 " 2>/dev/null || echo "")
+        # shellcheck disable=SC2034  # TIER1_RAN reserved for future telemetry callers
         TIER1_RAN=1
         # Extract first APPROVE/CONCERN/ESCALATE line
         _t1_verdict_line=$(echo "$TIER1_RESPONSE" | grep -E '^(APPROVE|CONCERN|ESCALATE):' | head -1)
@@ -333,8 +336,10 @@ else
     if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
         for _root in "$(git rev-parse --show-toplevel)" "$(git rev-parse --git-common-dir | xargs dirname 2>/dev/null)"; do
             if [[ -n "$_root" && -f "$_root/.env" ]]; then
+                set -a
                 # shellcheck disable=SC1091  # .env path is dynamic, not statically resolvable
-                set -a; source "$_root/.env"; set +a
+                source "$_root/.env"
+                set +a
                 [[ -n "${ANTHROPIC_API_KEY:-}" ]] && break
             fi
         done

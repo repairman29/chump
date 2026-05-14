@@ -62,6 +62,7 @@ echo ""
 # 2c. PRs touching production src/ paths (vs docs/)
 echo "### Production src/ changes (review for test coverage)"
 echo ""
+# shellcheck disable=SC2034  # SRC_PRS unused; kept for future per-PR accumulation
 SRC_PRS=()
 for pr_num in $(echo "$PRS" | cut -d'|' -f1); do
   has_src=$(gh pr view "$pr_num" --json files --jq '.files[].path | select(startswith("src/") or startswith("crates/") and contains("/src/"))' 2>/dev/null | head -1)
