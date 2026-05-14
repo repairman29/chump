@@ -124,6 +124,7 @@ class ChumpNav extends HTMLElement {
     { id: 'agent',     label: 'Queue',     icon: '🔄' },
     { id: 'tasks',     label: 'Tasks',     icon: '⚡' },
     { id: 'decisions', label: 'Decisions', icon: '🎯' },
+    { id: 'judgment',  label: 'Judgment',  icon: '⚖️' },
     { id: 'memory',    label: 'Memory',    icon: '🧠' },
     { id: 'models',    label: 'Models',    icon: '🤖' },
     { id: 'settings',  label: 'Settings',  icon: '⚙' },
@@ -354,6 +355,78 @@ class ChumpViewDecisions extends HTMLElement {
   }
 }
 customElements.define('chump-view-decisions', ChumpViewDecisions);
+
+// ── <chump-view-judgment> (PRODUCT-079) ───────────────────────────────────────
+class ChumpViewJudgment extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Needs Your Judgment</h2>
+        <p class="view-subtitle">Gaps and events waiting on operator input</p>
+      </section>
+      <section class="task-list" id="judgment-list">
+        <p class="placeholder">Loading…</p>
+      </section>
+    `;
+    this.#load();
+  }
+
+  #load() {
+    const list = this.querySelector('#judgment-list');
+    fetch('/api/needs-judgment')
+      .then((r) => r.json())
+      .then((data) => {
+        const items = data.items ?? [];
+        if (items.length === 0) {
+          const ago = data.last_decision_ts
+            ? `Last operator decision: ${data.last_decision_ts}`
+            : 'No prior decisions recorded';
+          list.innerHTML = `<p class="placeholder">Fleet is moving without you. ${ago}</p>`;
+          return;
+        }
+        list.innerHTML = items.map((item) => `
+          <article class="task-card" data-id="${item.id}" data-type="${item.item_type}">
+            <header class="task-card-header">
+              <span class="task-status ${item.item_type}">${item.item_type}</span>
+              <span class="task-id">${item.id}</span>
+              ${item.priority ? `<span style="margin-left:auto;font-size:11px;opacity:.7">${item.priority}</span>` : ''}
+            </header>
+            <p class="task-desc">${item.summary ?? '(no summary)'}</p>
+            ${item.recommended_action ? `<p class="task-desc" style="color:var(--text-secondary);font-size:12px">${item.recommended_action}</p>` : ''}
+            <button class="judgment-ack-btn" style="margin-top:8px;padding:4px 10px;cursor:pointer;border-radius:4px;border:1px solid var(--border-color);background:transparent;color:var(--text-primary);font-size:12px"
+              data-id="${item.id}" data-type="${item.item_type}">Mark handled</button>
+          </article>
+        `).join('');
+
+        list.querySelectorAll('.judgment-ack-btn').forEach((btn) => {
+          btn.addEventListener('click', () => this.#ack(btn.dataset.id, btn.dataset.type, btn));
+        });
+      })
+      .catch(() => {
+        list.innerHTML = '<p class="placeholder">Could not load (offline or server not running).</p>';
+      });
+  }
+
+  #ack(itemId, itemType, btn) {
+    btn.disabled = true;
+    btn.textContent = 'Marking…';
+    fetch('/api/needs-judgment/ack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_type: itemType, item_id: itemId }),
+    })
+      .then(() => {
+        const card = btn.closest('article');
+        if (card) card.style.opacity = '0.4';
+        btn.textContent = 'Handled';
+      })
+      .catch(() => {
+        btn.disabled = false;
+        btn.textContent = 'Mark handled';
+      });
+  }
+}
+customElements.define('chump-view-judgment', ChumpViewJudgment);
 
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
@@ -880,6 +953,7 @@ const VIEWS = {
   agent:     () => document.createElement('chump-view-agent'),
   tasks:     () => document.createElement('chump-view-tasks'),
   decisions: () => document.createElement('chump-view-decisions'),
+  judgment:  () => document.createElement('chump-view-judgment'),
   memory:    () => document.createElement('chump-view-memory'),
   models:    () => document.createElement('chump-view-models'),
   settings:  () => document.createElement('chump-view-settings'),
