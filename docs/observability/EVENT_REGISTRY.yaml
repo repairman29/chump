@@ -1514,3 +1514,10 @@ events:
       sibling lease; allocator skipped to the next safe ID
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, domain, skipped_id]
+
+  # ── INFRA-1020: opencode identity residue audit ───────────────────────────
+  - kind: identity_residue_swept
+    emitter: scripts/ops/audit-opencode-identity-residue.sh (INFRA-1020)
+    trigger: one-shot audit finds (or confirms clean) opencode t@t.t placeholder identity in worktree configs
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, worktree, removed_email, removed_name, count]
