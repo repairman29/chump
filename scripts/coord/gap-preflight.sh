@@ -662,5 +662,28 @@ if [[ $FAILED -eq 1 ]]; then
     exit 1
 fi
 
+# INFRA-1116: refuse-on-overlapping-INTENT enforcement. Opt-in via the
+# CHUMP_CLAIM_PATHS env var (CSV of paths). When set, scan ambient.jsonl
+# for live INTENT events from other sessions touching overlapping paths
+# in the last $CHUMP_CLAIM_INTENT_WINDOW_S (default 60s); refuse the
+# claim if any overlap. Bypass: CHUMP_CLAIM_FORCE_OVERLAP=1 with reason.
+#
+# Path-undeclared claims (no CHUMP_CLAIM_PATHS) skip the gate to preserve
+# back-compat with today's mostly-undeclared callers; v1 tightens the
+# default once most agents pass --paths.
+INTENT_CHECK="$(dirname "${BASH_SOURCE[0]}")/intent-overlap-check.sh"
+if [[ -x "$INTENT_CHECK" && -n "${CHUMP_CLAIM_PATHS:-}" ]]; then
+    for GAP_ID in "$@"; do
+        if ! "$INTENT_CHECK" "$GAP_ID" "$CHUMP_CLAIM_PATHS"; then
+            rc=$?
+            if [[ "$rc" -eq 14 ]]; then
+                red "Pre-flight failed: overlapping INTENT detected for $GAP_ID."
+                red "  Coordinate with the holding session or set CHUMP_CLAIM_FORCE_OVERLAP=1 with CHUMP_CLAIM_OVERRIDE_REASON."
+                exit 14
+            fi
+        fi
+    done
+fi
+
 green "Pre-flight passed — all specified gaps are available."
 exit 0

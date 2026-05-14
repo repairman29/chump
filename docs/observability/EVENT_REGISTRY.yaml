@@ -1316,6 +1316,27 @@ events:
     consumers: [fleet-brief, operator-recall, waste-tally]
     fields_required: [ts, kind, pr, sha, class]
 
+  # ── INFRA-1116: INTENT-overlap gate at claim time ─────────────────────────
+  - kind: intent_overlap_detected
+    emitter: scripts/coord/intent-overlap-check.sh (INFRA-1116)
+    trigger: gap-preflight detected another live session's INTENT with
+      overlapping path scope to the claiming session's CHUMP_CLAIM_PATHS.
+      Preflight refuses with exit 14; operator coordinates or sets
+      CHUMP_CLAIM_FORCE_OVERLAP=1 with a reason. Surfaces silent claim
+      races (INFRA-779 family) that would otherwise produce concurrent
+      shipping of the same gap.
+    consumers: [fleet-brief, operator-recall, waste-tally]
+    fields_required: [ts, kind, session, gap, my_paths, conflicting]
+
+  - kind: intent_overlap_overridden
+    emitter: scripts/coord/intent-overlap-check.sh (INFRA-1116)
+    trigger: caller set CHUMP_CLAIM_FORCE_OVERLAP=1 to bypass an
+      overlap-detected refusal. CHUMP_CLAIM_OVERRIDE_REASON='<text>' is
+      recorded for audit. Operator-recall surfaces these so repeat-bypass
+      patterns are visible.
+    consumers: [fleet-brief, operator-recall, audit-priorities]
+    fields_required: [ts, kind, session, gap, paths, reason]
+
   # ── INFRA-1081: GitHub webhook cache ─────────────────────────────────────
   - kind: webhook_event_received
     emitter: scripts/ops/github-webhook-receiver.py (INFRA-1081)
