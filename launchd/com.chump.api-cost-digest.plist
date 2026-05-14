@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.api-cost-digest — INFRA-1077 LaunchAgent.
+
+  Runs scripts/dev/api-cost-leaderboard.sh --window 24h --emit-ambient
+  daily at 09:00 local time. Emits kind=api_cost_digest_emitted to
+  ambient.jsonl with {window_hours, total_calls, top_script, top_api,
+  total_estimated_points} so fleet-brief / operator-recall surface the
+  daily ranking without re-scanning the whole log every time.
+
+  INSTALLATION:
+    scripts/setup/install-api-cost-digest-launchd.sh
+
+  Manual run:
+    launchctl start com.chump.api-cost-digest
+    tail /tmp/chump-api-cost-digest.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.api-cost-digest.plist
+    rm ~/Library/LaunchAgents/com.chump.api-cost-digest.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.api-cost-digest</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/dev/api-cost-leaderboard.sh --window 24h --emit-ambient</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-api-cost-digest.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-api-cost-digest.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+</dict>
+</plist>

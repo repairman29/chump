@@ -1235,6 +1235,15 @@ events:
       counter. Each delay emits one event.
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, script, waited_ms, calls_in_window]
+  # ── INFRA-1077: daily API cost leaderboard digest ─────────────────────────
+  - kind: api_cost_digest_emitted
+    emitter: scripts/dev/api-cost-leaderboard.sh --emit-ambient (INFRA-1077)
+    trigger: launchd com.chump.api-cost-digest daily at 09:00 local — analyzes
+      24h of kind=github_api_call events (INFRA-999 telemetry), emits a single
+      digest with top burner identified. Lets fleet-brief surface "today's top
+      script + api" without re-scanning ambient on every consumer call.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, window_hours, total_calls, top_script, top_api, total_estimated_points]
 
   # ── INFRA-1065: chump binary auto-refresh ────────────────────────────────
   - kind: chump_binary_refreshed
