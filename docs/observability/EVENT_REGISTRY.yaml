@@ -1724,3 +1724,10 @@ events:
     trigger: operator or agent releases a lease via chump --release (with or without --lease)
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, session_id, gap_id, source]
+
+  # ── INFRA-1056: worktree gitdir back-ref repair ──────────────────────
+  - kind: worktree_gitdir_repair_fired
+    emitter: src/atomic_claim.rs verify_and_repair_gitdir (INFRA-1056)
+    trigger: chump claim detected a wrong gitdir back-ref after git worktree add and rewrote it
+    consumers: [fleet-brief, claim-race-monitor]
+    fields_required: [ts, kind, worktree, was, now, attempt]
