@@ -523,6 +523,152 @@ class ChumpAuthToast extends HTMLElement {
 }
 customElements.define('chump-auth-toast', ChumpAuthToast);
 
+// ── <chump-repo-switcher> (INFRA-992) ────────────────────────────────────────
+//
+// Surfaces multi-repo mode in the PWA header. Lets the operator switch the
+// PWA's working repo without `kill + cd + restart`.
+//
+// Backend wired in INFRA-988's vicinity:
+//   GET  /api/repo/context  → {multi_repo_enabled, effective_root, ...}
+//   POST /api/repo/working  → canonicalizes path, requires .git/, behind
+//                              CHUMP_MULTI_REPO_ENABLED=1 toggle (already in
+//                              the SETTINGS_KEYS whitelist).
+//
+// When multi_repo_enabled=false this component renders nothing — the operator
+// must first flip the toggle in /settings (and restart the PWA, since the
+// backend reads env at process-start).
+class ChumpRepoSwitcher extends HTMLElement {
+  #enabled = false;
+  #current = '';
+  #dialogOpen = false;
+
+  async connectedCallback() {
+    this.innerHTML = '';
+    await this.#refresh();
+  }
+
+  async #refresh() {
+    let ctx;
+    try {
+      const r = await fetch('/api/repo/context');
+      ctx = await r.json();
+    } catch (err) {
+      this.style.display = 'none';
+      return;
+    }
+    this.#enabled = !!ctx.multi_repo_enabled;
+    this.#current = String(ctx.effective_root || '');
+    this.#renderChip();
+  }
+
+  #renderChip() {
+    if (!this.#enabled) {
+      this.style.display = 'none';
+      this.innerHTML = '';
+      return;
+    }
+    this.style.display = 'inline-flex';
+    const last = this.#current.split('/').filter(Boolean).pop() || this.#current || '(none)';
+    this.innerHTML = `
+      <span class="repo-chip" title="${this.#esc(this.#current)}">
+        <span class="repo-chip-icon" aria-hidden="true">📁</span>
+        <span class="repo-chip-name">${this.#esc(last)}</span>
+      </span>
+      <button type="button" class="repo-switch-btn" aria-label="Switch working repo">Switch</button>
+    `;
+    const btn = this.querySelector('.repo-switch-btn');
+    if (btn) {
+      btn.addEventListener('click', () => this.#openDialog());
+    }
+  }
+
+  #openDialog() {
+    if (this.#dialogOpen) return;
+    this.#dialogOpen = true;
+    const dlg = document.createElement('div');
+    dlg.className = 'repo-dialog';
+    dlg.setAttribute('role', 'dialog');
+    dlg.setAttribute('aria-modal', 'true');
+    dlg.setAttribute('aria-label', 'Switch working repo');
+    dlg.innerHTML = `
+      <div class="repo-dialog-inner">
+        <div class="repo-dialog-head"><strong>Switch working repo</strong></div>
+        <label class="repo-dialog-label">
+          Repo root path
+          <input type="text" class="repo-dialog-path" placeholder="${this.#esc(this.#current)}" autocomplete="off">
+        </label>
+        <div class="repo-dialog-warn">
+          ⚠ In-flight workflows continue against the previous repo.
+          Only newly started tasks use the new binding.
+        </div>
+        <div class="repo-dialog-error" style="display:none"></div>
+        <div class="repo-dialog-actions">
+          <button type="button" class="repo-dialog-save">Save</button>
+          <button type="button" class="repo-dialog-cancel">Cancel</button>
+        </div>
+      </div>
+    `;
+    this.appendChild(dlg);
+    const input = dlg.querySelector('.repo-dialog-path');
+    const errDiv = dlg.querySelector('.repo-dialog-error');
+    const save = dlg.querySelector('.repo-dialog-save');
+    const cancel = dlg.querySelector('.repo-dialog-cancel');
+
+    const close = () => {
+      dlg.remove();
+      this.#dialogOpen = false;
+    };
+    cancel.addEventListener('click', close);
+    dlg.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    input.focus();
+
+    save.addEventListener('click', async () => {
+      const raw = (input.value || '').trim();
+      if (!raw) {
+        errDiv.textContent = 'Path required';
+        errDiv.style.display = 'block';
+        return;
+      }
+      save.disabled = true;
+      errDiv.style.display = 'none';
+      let resp, body;
+      try {
+        resp = await fetch('/api/repo/working', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: raw }),
+        });
+        body = await resp.json();
+      } catch (e) {
+        save.disabled = false;
+        errDiv.textContent = `Network error: ${e.message || e}`;
+        errDiv.style.display = 'block';
+        return;
+      }
+      if (resp.status === 200 && body.ok === true) {
+        // Success — reload so all views re-fetch against the new repo.
+        location.reload();
+        return;
+      }
+      save.disabled = false;
+      const msg = body && body.error
+        ? body.error
+        : `Could not switch repo (HTTP ${resp.status})`;
+      errDiv.textContent = msg;
+      errDiv.style.display = 'block';
+    });
+  }
+
+  #esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+}
+customElements.define('chump-repo-switcher', ChumpRepoSwitcher);
+
 // ── <chump-view-tasks> ────────────────────────────────────────────────────────
 class ChumpViewTasks extends HTMLElement {
   connectedCallback() {
