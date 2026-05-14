@@ -8168,27 +8168,25 @@ async fn main() -> Result<()> {
 
         // Validate explicit targets exist before acting.
         let active = agent_lease::list_active();
-        if explicit_target {
-            if !active.iter().any(|l| l.session_id == target_id) {
-                eprintln!(
-                    "chump --release: no such session '{}' in active leases.",
-                    target_id
-                );
-                eprintln!(
-                    "  Active sessions: {}",
-                    if active.is_empty() {
-                        "(none)".to_string()
-                    } else {
-                        active
-                            .iter()
-                            .map(|l| l.session_id.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    }
-                );
-                eprintln!("  Use 'chump --leases' to list all active sessions.");
-                std::process::exit(1);
-            }
+        if explicit_target && !active.iter().any(|l| l.session_id == target_id) {
+            eprintln!(
+                "chump --release: no such session '{}' in active leases.",
+                target_id
+            );
+            eprintln!(
+                "  Active sessions: {}",
+                if active.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    active
+                        .iter()
+                        .map(|l| l.session_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+            );
+            eprintln!("  Use 'chump --leases' to list all active sessions.");
+            std::process::exit(1);
         }
 
         // INFRA-1043: when no explicit --lease / --session-id, print what we're
