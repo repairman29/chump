@@ -82,9 +82,23 @@ _BM_PID=$$
 _BM_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 _BM_HEALTH_FILE=""
 _BM_STEP_FILE=""
+_BM_STEPS_FILE=""   # INFRA-1035: append-only transition log for crash recovery
+_BM_LAST_STEP_TRANSITION=""  # "start" or "done" — detect open transitions on crash
 _BM_HEALTH_PID=""
 _BM_WATCHDOG_PID=""
 _BM_CLEANUP_DONE=0
+
+# INFRA-1035: append one JSONL entry to the steps file.
+# Usage: _bm_steps_append <transition> <step> [elapsed_s]
+_bm_steps_append() {
+    [[ -z "${_BM_STEPS_FILE:-}" ]] && return 0
+    local transition="$1" step="${2:-unknown}" elapsed_s="${3:-0}"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","step":"%s","transition":"%s","elapsed_s":%s}\n' \
+        "$ts" "$step" "$transition" "$elapsed_s" \
+        >> "$_BM_STEPS_FILE" 2>/dev/null || true
+    _BM_LAST_STEP_TRANSITION="$transition"
+}
 
 _bm_cleanup() {
     [[ "$_BM_CLEANUP_DONE" == "1" ]] && return
@@ -92,6 +106,22 @@ _bm_cleanup() {
     [[ -n "${_BM_HEALTH_PID:-}" ]]   && kill "$_BM_HEALTH_PID"   2>/dev/null || true
     [[ -n "${_BM_WATCHDOG_PID:-}" ]] && kill "$_BM_WATCHDOG_PID" 2>/dev/null || true
     rm -f "${_BM_HEALTH_FILE:-}" "${_BM_STEP_FILE:-}" 2>/dev/null || true
+    # INFRA-1035: if the last transition was "start" (no matching "done"),
+    # we crashed mid-step — record that so bot-merge-recover.sh can report it.
+    if [[ -n "${_BM_STEPS_FILE:-}" && "${_BM_LAST_STEP_TRANSITION:-}" == "start" ]]; then
+        local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '{"ts":"%s","step":"%s","transition":"error","elapsed_s":0,"crashed":true}\n' \
+            "$ts" "${__STAGE_LABEL:-unknown}" \
+            >> "$_BM_STEPS_FILE" 2>/dev/null || true
+        # Emit to ambient so fleet monitors can detect bot-merge crashes.
+        local ambient=".chump-locks/ambient.jsonl"
+        [[ -n "${CHUMP_AMBIENT_LOG:-}" ]] && ambient="$CHUMP_AMBIENT_LOG"
+        printf '{"ts":"%s","kind":"bot_merge_crashed","step":"%s","pid":%d,"steps_file":"%s","note":"start without done on exit"}\n' \
+            "$ts" "${__STAGE_LABEL:-unknown}" "$_BM_PID" "${_BM_STEPS_FILE:-}" \
+            >> "$ambient" 2>/dev/null || true
+    fi
+    # NOTE: _BM_STEPS_FILE is intentionally NOT deleted here — it's the
+    # recovery artifact that bot-merge-recover.sh needs to diagnose the crash.
     # INFRA-1017: vacuum state.db leases row so gap-preflight doesn't report a
     # phantom live claim after this process is killed (SIGTERM, OOM, ctrl-C).
     if [[ -n "${CHUMP_SESSION_ID:-}" ]] && command -v sqlite3 &>/dev/null; then
@@ -520,10 +550,14 @@ stage_start() {
     info "▶ $__STAGE_LABEL starting …"
     # INFRA-119: keep step file current so the health-file writer tracks progress
     [[ -n "${_BM_STEP_FILE:-}" ]] && printf '%s' "$__STAGE_LABEL" > "$_BM_STEP_FILE" 2>/dev/null || true
+    # INFRA-1035: record transition start in the steps log
+    _bm_steps_append "start" "$__STAGE_LABEL" 0
 }
 stage_done() {
     local elapsed=$(( $(date +%s) - __STAGE_T0 ))
     info "✓ $__STAGE_LABEL done (${elapsed}s)"
+    # INFRA-1035: record transition done in the steps log
+    _bm_steps_append "done" "$__STAGE_LABEL" "$elapsed"
 }
 
 run() {
@@ -723,7 +757,11 @@ _bm_health_init() {
     mkdir -p "$lock_dir" 2>/dev/null || true
     _BM_HEALTH_FILE="${lock_dir}/bot-merge-${_BM_PID}.health"
     _BM_STEP_FILE="${lock_dir}/bot-merge-${_BM_PID}.step"
+    _BM_STEPS_FILE="${lock_dir}/bot-merge-${_BM_PID}.steps"  # INFRA-1035
     printf 'init' > "$_BM_STEP_FILE" 2>/dev/null || true
+    # INFRA-1035: seed the steps log with a session-start entry
+    printf '{"ts":"%s","step":"session","transition":"start","elapsed_s":0,"pid":%d}\n' \
+        "$_BM_STARTED_AT" "$_BM_PID" > "$_BM_STEPS_FILE" 2>/dev/null || true
     _bm_health_write
 
     # Background heartbeat: rewrite health file every 30s
@@ -760,7 +798,7 @@ _bm_health_init() {
         disown "$_BM_WATCHDOG_PID" 2>/dev/null || true
     fi
 
-    info "INFRA-119: health monitoring active (file=$(basename "$_BM_HEALTH_FILE") budget=${budget}s)"
+    info "INFRA-119: health monitoring active (file=$(basename "$_BM_HEALTH_FILE") budget=${budget}s steps=$(basename "$_BM_STEPS_FILE"))"
 }
 
 # ── Repo context ──────────────────────────────────────────────────────────────
