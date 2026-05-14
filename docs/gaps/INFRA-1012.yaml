@@ -1,0 +1,15 @@
+- id: INFRA-1012
+  domain: INFRA
+  title: "EFFECTIVE: PWA cost / token meter (wire INFRA-999 GitHub + Anthropic spend)"
+  status: open
+  priority: P1
+  effort: s
+  depends_on: [["INFRA-1009"]]
+  acceptance_criteria:
+    - "GET /api/telemetry/cost?window=session returns aggregated cost data with anthropic + github components"
+    - "Sources: GitHub from INFRA-999's github_api_call events, Anthropic from in-process cost_tracker"
+    - "React CostMeter widget shows session cost + GitHub rate-limit headroom; updates every 30s"
+    - "window=day and window=month filter session_end events from ambient.jsonl by timestamp"
+    - "per_gap_breakdown array in response: each entry has gap_id, sessions, elapsed_seconds, outcome; sorted by elapsed_seconds desc"
+    - "Test: scripts/ci/test-telemetry-cost.sh verifies endpoint structure, component wiring, and per-gap field presence"
+    - "cost-meter.js wired into web/v2/index.html as <chump-cost-meter> element"

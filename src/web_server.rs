@@ -2492,21 +2492,34 @@ async fn handle_fleet_workspace_exchange(
 /// GitHub call counts come from `.chump-locks/ambient.jsonl` events emitted
 /// by `chump_gh` (INFRA-999), Tavily credits live in cost_tracker too.
 ///
+/// Query params:
+///   ?window=session  (default) — current process lifetime only
+///   ?window=day      — last 24 hours from ambient.jsonl session_end events
+///   ?window=month    — last 30 days from ambient.jsonl session_end events
+///
 /// Returns:
 /// ```json
 /// {
 ///   "window": "session",
 ///   "session_cost_usd": 1.23,
-///   "anthropic": {"input_tokens": N, "output_tokens": N, "requests": N},
 ///   "github": {"calls": N, "remaining_core": N, "remaining_graphql": N},
-///   "tavily": {"calls": N, "credits": N},
-///   "budget": {"warn_usd": 5.0, "ceiling_usd": 10.0, "warning": null}
+///   "budget": {"warn_usd": 5.0, "ceiling_usd": 10.0, "warning": null},
+///   "per_gap_breakdown": [{"gap_id": "INFRA-5", "sessions": 2, "elapsed_seconds": 600, "outcome": "shipped"}]
 /// }
 /// ```
-async fn handle_telemetry_cost(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+#[derive(serde::Deserialize, Default)]
+struct CostQuery {
+    window: Option<String>,
+}
+
+async fn handle_telemetry_cost(
+    headers: HeaderMap,
+    Query(q): Query<CostQuery>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
+    let window = q.window.as_deref().unwrap_or("session");
     let repo_root = match std::env::var("CHUMP_REPO") {
         Ok(r) => PathBuf::from(r),
         Err(_) => repo_path::runtime_base(),
@@ -2523,39 +2536,104 @@ async fn handle_telemetry_cost(headers: HeaderMap) -> Result<Json<serde_json::Va
     let budget_warning = crate::cost_tracker::budget_warning();
     let summary_text = crate::cost_tracker::summary();
 
-    // Scan ambient.jsonl tail for github_api_call events (INFRA-999) to count
-    // GitHub calls and surface the most-recent remaining_core / remaining_graphql.
-    // Tail-only: max 1MB read so this stays sub-50ms even on large ambient files.
+    // Determine the cutoff timestamp for day/month windows.
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let cutoff_secs: u64 = match window {
+        "day" => now_secs.saturating_sub(86_400),
+        "month" => now_secs.saturating_sub(30 * 86_400),
+        _ => 0, // "session" — no ambient history filter; use in-process tracker only
+    };
+
+    // Scan ambient.jsonl for github_api_call and session_end events.
+    // Tail-only: max 2MB read so this stays sub-100ms even on large ambient files.
     let mut gh_calls: u64 = 0;
     let mut gh_remaining_core: Option<i64> = None;
     let mut gh_remaining_graphql: Option<i64> = None;
+
+    // Per-gap: gap_id → (session_count, total_elapsed_secs, last_outcome)
+    let mut gap_map: std::collections::HashMap<String, (u64, u64, String)> =
+        std::collections::HashMap::new();
+
     if let Ok(contents) = std::fs::read_to_string(&ambient) {
-        let tail = if contents.len() > 1_048_576 {
-            &contents[contents.len() - 1_048_576..]
+        let tail = if contents.len() > 2_097_152 {
+            &contents[contents.len() - 2_097_152..]
         } else {
             &contents[..]
         };
         for line in tail.lines() {
-            if !line.contains("\"kind\":\"github_api_call\"")
-                && !line.contains("\"kind\": \"github_api_call\"")
-            {
-                continue;
-            }
             let Ok(evt): Result<serde_json::Value, _> = serde_json::from_str(line) else {
                 continue;
             };
-            gh_calls += 1;
-            if let Some(n) = evt.get("remaining_core").and_then(|v| v.as_i64()) {
-                gh_remaining_core = Some(n);
-            }
-            if let Some(n) = evt.get("remaining_graphql").and_then(|v| v.as_i64()) {
-                gh_remaining_graphql = Some(n);
+            let kind = evt.get("kind").and_then(|v| v.as_str()).unwrap_or("");
+
+            if kind == "github_api_call" {
+                gh_calls += 1;
+                if let Some(n) = evt.get("remaining_core").and_then(|v| v.as_i64()) {
+                    gh_remaining_core = Some(n);
+                }
+                if let Some(n) = evt.get("remaining_graphql").and_then(|v| v.as_i64()) {
+                    gh_remaining_graphql = Some(n);
+                }
+            } else if kind == "session_end" {
+                // Filter by window cutoff when day/month requested.
+                if cutoff_secs > 0 {
+                    let ts_str = evt.get("ts").and_then(|v| v.as_str()).unwrap_or("");
+                    // Parse ISO 8601 prefix "YYYY-MM-DDTHH:MM:SSZ" → epoch seconds.
+                    let event_secs = chrono_approx_secs(ts_str);
+                    if event_secs < cutoff_secs {
+                        continue;
+                    }
+                }
+                // Support both "gap_id" (Rust emitter) and "gap" (shell emitter) fields.
+                let gap_id = evt
+                    .get("gap_id")
+                    .or_else(|| evt.get("gap"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if gap_id.is_empty() {
+                    continue;
+                }
+                let elapsed = evt
+                    .get("elapsed_seconds")
+                    .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .unwrap_or(0);
+                let outcome = evt
+                    .get("outcome")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let entry = gap_map.entry(gap_id).or_insert((0, 0, outcome.clone()));
+                entry.0 += 1;
+                entry.1 += elapsed;
+                entry.2 = outcome;
             }
         }
     }
 
+    // Build per_gap_breakdown sorted by elapsed_seconds descending (most time spent first).
+    let mut breakdown: Vec<serde_json::Value> = gap_map
+        .into_iter()
+        .map(|(gap_id, (sessions, elapsed, outcome))| {
+            serde_json::json!({
+                "gap_id": gap_id,
+                "sessions": sessions,
+                "elapsed_seconds": elapsed,
+                "outcome": outcome,
+            })
+        })
+        .collect();
+    breakdown.sort_by(|a, b| {
+        let ea = a["elapsed_seconds"].as_u64().unwrap_or(0);
+        let eb = b["elapsed_seconds"].as_u64().unwrap_or(0);
+        eb.cmp(&ea)
+    });
+
     let payload = serde_json::json!({
-        "window": "session",
+        "window": window,
         "session_cost_usd": session_cost_usd,
         "summary": summary_text,
         "github": {
@@ -2568,6 +2646,7 @@ async fn handle_telemetry_cost(headers: HeaderMap) -> Result<Json<serde_json::Va
             "ceiling_usd": cost_ceiling_usd,
             "warning": budget_warning,
         },
+        "per_gap_breakdown": breakdown,
     });
     Ok(Json(payload))
 }
@@ -2834,6 +2913,36 @@ async fn handle_ambient_stream(
             .interval(std::time::Duration::from_secs(15))
             .text("keep-alive"),
     ))
+}
+
+/// Parse the first 19 chars of an ISO 8601 timestamp ("YYYY-MM-DDTHH:MM:SS")
+/// into approximate Unix seconds. Returns 0 on parse failure.
+/// Avoids a chrono dependency by doing manual string arithmetic.
+fn chrono_approx_secs(ts: &str) -> u64 {
+    fn inner(ts: &str) -> Option<u64> {
+        let b = ts.as_bytes();
+        if b.len() < 19 {
+            return None;
+        }
+        let parse = |s: &[u8]| -> Option<u64> {
+            std::str::from_utf8(s).ok()?.parse().ok()
+        };
+        let year = parse(&b[0..4])?;
+        let month = parse(&b[5..7])?;
+        let day = parse(&b[8..10])?;
+        let hour = parse(&b[11..13])?;
+        let min = parse(&b[14..16])?;
+        let sec = parse(&b[17..19])?;
+        // Rough Gregorian since Unix epoch; good enough for 24h/30d windows.
+        let y = year as i64 - 1970;
+        let leap_days = (y / 4) - (y / 100) + (y / 400);
+        let month_days: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let days_in_year = (y.unsigned_abs() as u64) * 365 + (leap_days.unsigned_abs() as u64);
+        let days_in_months: u64 = month_days.iter().take((month as usize).saturating_sub(1)).sum();
+        let days = days_in_year + days_in_months + day - 1;
+        Some(days * 86_400 + hour * 3_600 + min * 60 + sec)
+    }
+    inner(ts).unwrap_or(0)
 }
 
 /// GET /api/fleet-status — Active agent sessions read from .chump-locks/*.json lease files.
