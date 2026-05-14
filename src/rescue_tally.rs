@@ -29,6 +29,8 @@ pub fn scan_rescues(repo_root: &Path, window_hours: u64) -> Vec<RescueCommit> {
         std::env::var("CHUMP_GIT_AUTHOR_EMAIL").unwrap_or_else(|_| "jeffadkins".to_string());
 
     let since = format!("{} hours ago", window_hours);
+    // INFRA-1057: clear inherited git env so -C routes to repo_root, not the
+    // parent shell's linked worktree when running tests from a worktree.
     let output = std::process::Command::new("git")
         .args([
             "-C",
@@ -38,6 +40,10 @@ pub fn scan_rescues(repo_root: &Path, window_hours: u64) -> Vec<RescueCommit> {
             &format!("--since={}", since),
             "--format=%H\t%ae\t%s",
         ])
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_INDEX_FILE")
         .output();
 
     let output = match output {

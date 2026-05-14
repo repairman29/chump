@@ -317,30 +317,53 @@ mod tests {
         std::env::set_var("CHUMP_REPO", tmp.to_str().unwrap());
         std::env::set_var("CHUMP_SANDBOX_ENABLED", "1");
 
+        // INFRA-1057: clear inherited git env so fixture commands target tmp.
+        // CHUMP_GIT_IDENTITY_CHECK=0 bypasses INFRA-787 for ci@chump.test sentinel.
         SysCmd::new("git")
             .arg("init")
             .current_dir(&tmp)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .output()
             .expect("git init (install git for this test)");
         fs::write(tmp.join("f.txt"), "x").unwrap();
         SysCmd::new("git")
             .args(["config", "user.email", "ci@chump.test"])
             .current_dir(&tmp)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .output()
             .unwrap();
         SysCmd::new("git")
             .args(["config", "user.name", "Test"])
             .current_dir(&tmp)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .output()
             .unwrap();
         SysCmd::new("git")
             .args(["add", "f.txt"])
             .current_dir(&tmp)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .output()
             .unwrap();
         SysCmd::new("git")
             .args(["commit", "-m", "init"])
             .current_dir(&tmp)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
+            .env("CHUMP_GIT_IDENTITY_CHECK", "0")
             .output()
             .unwrap();
 

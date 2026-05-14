@@ -412,9 +412,14 @@ mod tests {
         std::fs::create_dir_all(&repo_a).unwrap();
         std::fs::create_dir_all(&repo_b).unwrap();
         for r in [&repo_a, &repo_b] {
+            // INFRA-1057: clear inherited git env so init targets the tempdir.
             assert!(Command::new("git")
                 .args(["init"])
                 .current_dir(r)
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_COMMON_DIR")
+                .env_remove("GIT_INDEX_FILE")
                 .status()
                 .expect("git")
                 .success());
@@ -468,6 +473,10 @@ mod tests {
         let st = Command::new("git")
             .args(["init"])
             .current_dir(&dir)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .status()
             .expect("git exists for test");
         assert!(st.success(), "git init");
@@ -494,6 +503,10 @@ mod tests {
         assert!(Command::new("git")
             .args(["init"])
             .current_dir(&dir)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .status()
             .expect("git")
             .success());
@@ -537,9 +550,14 @@ mod tests {
         let ghost = tmp.join(format!("chump-969-ghost-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&real_repo).unwrap();
         std::fs::create_dir_all(&ghost).unwrap();
+        // INFRA-1057: clear inherited git env vars for all fixture git commands.
         assert!(Command::new("git")
             .args(["init"])
             .current_dir(&real_repo)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .status()
             .expect("git")
             .success());
@@ -554,6 +572,10 @@ mod tests {
                 "core.worktree",
                 &ghost.display().to_string()
             ])
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .status()
             .expect("git")
             .success());

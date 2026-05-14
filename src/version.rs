@@ -293,10 +293,18 @@ mod tests {
     fn make_repo() -> (tempfile::TempDir, String, String) {
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path();
+        // INFRA-1057: clear inherited git env so commands operate on the
+        // isolated tempdir repo, not the parent shell's linked worktree.
+        // CHUMP_GIT_IDENTITY_CHECK=0 bypasses INFRA-787 for the t@t.t fixture.
         let run = |args: &[&str]| {
             let st = PCommand::new("git")
                 .args(args)
                 .current_dir(p)
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_COMMON_DIR")
+                .env_remove("GIT_INDEX_FILE")
+                .env("CHUMP_GIT_IDENTITY_CHECK", "0")
                 .output()
                 .unwrap();
             assert!(st.status.success(), "git {args:?} failed: {st:?}");
@@ -312,6 +320,10 @@ mod tests {
             PCommand::new("git")
                 .args(["rev-parse", "--short=12", "HEAD"])
                 .current_dir(p)
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_COMMON_DIR")
+                .env_remove("GIT_INDEX_FILE")
                 .output()
                 .unwrap()
                 .stdout,
@@ -327,6 +339,10 @@ mod tests {
             PCommand::new("git")
                 .args(["rev-parse", "--short=12", "HEAD"])
                 .current_dir(p)
+                .env_remove("GIT_DIR")
+                .env_remove("GIT_WORK_TREE")
+                .env_remove("GIT_COMMON_DIR")
+                .env_remove("GIT_INDEX_FILE")
                 .output()
                 .unwrap()
                 .stdout,
@@ -366,11 +382,20 @@ mod tests {
         PCommand::new("git")
             .args(["add", "."])
             .current_dir(p)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .output()
             .unwrap();
         PCommand::new("git")
             .args(["commit", "-q", "-m", "INFRA-X: edit gap_store"])
             .current_dir(p)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
+            .env("CHUMP_GIT_IDENTITY_CHECK", "0")
             .output()
             .unwrap();
         match check_gap_binary_staleness_with_sha(p, &sha1) {
@@ -413,11 +438,20 @@ mod tests {
         PCommand::new("git")
             .args(["add", "."])
             .current_dir(p)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
             .output()
             .unwrap();
         PCommand::new("git")
             .args(["commit", "-q", "-m", "INFRA-X: simulate post-build commit"])
             .current_dir(p)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
+            .env("CHUMP_GIT_IDENTITY_CHECK", "0")
             .output()
             .unwrap();
         (dir, sha1)
