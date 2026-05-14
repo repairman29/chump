@@ -1239,14 +1239,14 @@ events:
 
   # ── INFRA-1079: chump_gh secondary rate-limit self-throttle ──────────────
   - kind: gh_self_throttled
-    emitter: scripts/coord/lib/github.sh chump_gh (INFRA-1079)
-    trigger: token-bucket sliding window across the fleet detected >=
-      CHUMP_GH_MAX_CALLS_PER_MIN (default 60) calls in the last 60s. chump_gh
-      sleeps 1s and retries; after 30s of waiting (fail-safe) it lets the call
-      through with fail_safe=true so the fleet does not deadlock on a stuck
-      counter. Each delay emits one event.
+    emitter: scripts/coord/lib/github.sh chump_gh (INFRA-1079, INFRA-1112)
+    trigger: class-specific token-bucket window detected >= cap calls in the last
+      60s. INFRA-1112 splits into mutation bucket (CHUMP_GH_MUTATION_MAX=15/min)
+      and query bucket (CHUMP_GH_QUERY_MAX=60/min). chump_gh sleeps 1s and retries;
+      after 30s of waiting (fail-safe) it lets the call through with fail_safe=true
+      so the fleet does not deadlock on a stuck counter. Each delay emits one event.
     consumers: [fleet-brief, operator-recall]
-    fields_required: [ts, kind, script, waited_ms, calls_in_window]
+    fields_required: [ts, kind, script, api_class, waited_ms, calls_in_window]
   # ── INFRA-1077: daily API cost leaderboard digest ─────────────────────────
   - kind: api_cost_digest_emitted
     emitter: scripts/dev/api-cost-leaderboard.sh --emit-ambient (INFRA-1077)
@@ -1328,6 +1328,7 @@ events:
       per cycle) and filled the column. One event per warmed row.
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, pr_number, mergeable_state]
+    fields_required: [ts, kind, script, api_class, waited_ms, calls_in_window]
 
   # ── INFRA-1065: chump binary auto-refresh ────────────────────────────────
   - kind: chump_binary_refreshed
