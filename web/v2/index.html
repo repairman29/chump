@@ -753,10 +753,63 @@
       text-align: center;
       font-weight: 600;
     }
+
+    /* ── Auth-fallback toast (INFRA-991) ─────────────────────────────────── */
+    chump-auth-toast {
+      display: none;
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      max-width: 360px;
+      background: #2a1a0e;
+      color: #ffd6a5;
+      border: 1px solid #d97706;
+      border-radius: 6px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+      padding: 12px 14px;
+      font-size: 13px;
+      z-index: 9999;
+    }
+    chump-auth-toast .auth-toast-head { font-size: 14px; margin-bottom: 6px; }
+    chump-auth-toast .auth-toast-counter {
+      font-size: 11px;
+      font-weight: normal;
+      margin-left: 8px;
+      opacity: 0.8;
+    }
+    chump-auth-toast .auth-toast-body { margin: 4px 0 10px 0; line-height: 1.4; }
+    chump-auth-toast .auth-toast-actions { display: flex; gap: 8px; }
+    chump-auth-toast .auth-toast-reenter {
+      background: #d97706;
+      color: #fff;
+      border: 0;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    chump-auth-toast .auth-toast-reenter:hover { background: #b45309; }
+    chump-auth-toast .auth-toast-dismiss {
+      background: transparent;
+      color: #ffd6a5;
+      border: 1px solid #ffd6a5;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    chump-auth-toast .auth-toast-dismiss:hover { background: rgba(255, 255, 255, 0.06); }
+    chump-auth-toast .auth-toast-reenter:focus-visible,
+    chump-auth-toast .auth-toast-dismiss:focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 2px;
+    }
   </style>
 </head>
 <body>
   <chump-doctor-banner></chump-doctor-banner>
+  <chump-auth-toast></chump-auth-toast>
   <div id="offline-banner">Offline — cached shell active</div>
 
   <header id="app-header">
