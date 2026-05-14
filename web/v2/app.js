@@ -752,7 +752,10 @@ customElements.define('chump-view-memory', ChumpViewMemory);
 // ── <chump-parallelism-governor> ─────────────────────────────────────────────
 class ChumpParallelismGovernor extends HTMLElement {
   connectedCallback() {
-    const saved = localStorage.getItem('parallelism-limit') || '4';
+    // PRODUCT-098: use namespaced prefs wrapper; falls back to legacy bare key via migration.
+    const saved = String(window.chumpPrefs?.get('parallelism-limit', null)
+      ?? localStorage.getItem('parallelism-limit')
+      ?? '4');
     this.innerHTML = `
       <label class="setting-row">
         <span class="setting-label">Parallelism Governor</span>
@@ -769,7 +772,7 @@ class ChumpParallelismGovernor extends HTMLElement {
       </label>
     `;
     this.querySelector('#parallelism-slider')?.addEventListener('change', (e) => {
-      localStorage.setItem('parallelism-limit', e.target.value);
+      window.chumpPrefs?.set('parallelism-limit', e.target.value);
       this.querySelector('#parallelism-value').textContent = e.target.value;
       document.dispatchEvent(new CustomEvent('chump:parallelism-changed', { detail: parseInt(e.target.value) }));
     });
@@ -1851,6 +1854,8 @@ document.addEventListener('chump:navigate', (e) => {
   const factory = VIEWS[e.detail] ?? VIEWS.tasks;
   main.innerHTML = '';
   main.appendChild(factory());
+  // PRODUCT-098: persist current view so refresh restores it.
+  window.chumpPrefs?.set('last-view', e.detail);
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -1865,5 +1870,13 @@ if ('serviceWorker' in navigator) {
 // Initial view.
 window.addEventListener('DOMContentLoaded', () => {
   const main = document.getElementById('main-content');
-  if (main) main.appendChild(document.createElement('chump-view-chat'));
+  // PRODUCT-098: restore last view from prefs; default to 'chat'.
+  const lastView = window.chumpPrefs?.get('last-view', 'chat') ?? 'chat';
+  const factory = VIEWS[lastView] ?? VIEWS.chat;
+  if (main) {
+    main.appendChild(factory());
+    // Sync nav highlight.
+    document.querySelector(`[data-view="${lastView}"]`)?.setAttribute('aria-current', 'page');
+    document.querySelector('[data-view="chat"]')?.removeAttribute('aria-current');
+  }
 });

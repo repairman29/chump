@@ -27,7 +27,8 @@ const FILTER_KINDS = [
 class ChumpAmbientViewer extends HTMLElement {
   #sse = null;
   #autoScroll = true;
-  #activeKind = null;
+  // PRODUCT-098: restore persisted filter kind from prefs.
+  #activeKind = window.chumpPrefs?.get('ambient-kind-filter', null) ?? null;
 
   connectedCallback() {
     this.#render();
@@ -62,8 +63,8 @@ class ChumpAmbientViewer extends HTMLElement {
       </style>
       <div class="av-wrap">
         <div class="av-chips">
-          <span class="av-chip active" data-kind="">All</span>
-          ${FILTER_KINDS.map(k => `<span class="av-chip" data-kind="${k}">${k}</span>`).join('')}
+          <span class="av-chip${!this.#activeKind ? ' active' : ''}" data-kind="">All</span>
+          ${FILTER_KINDS.map(k => `<span class="av-chip${this.#activeKind === k ? ' active' : ''}" data-kind="${k}">${k}</span>`).join('')}
           <span class="av-paused" id="av-pause-badge">⏸ paused</span>
         </div>
         <div class="av-list" id="av-list"></div>
@@ -84,6 +85,8 @@ class ChumpAmbientViewer extends HTMLElement {
         const kind = chip.dataset.kind || null;
         if (kind !== this.#activeKind) {
           this.#activeKind = kind;
+          // PRODUCT-098: persist filter choice across refreshes.
+          window.chumpPrefs?.set('ambient-kind-filter', kind ?? '');
           list.innerHTML = '';
           if (this.#sse) this.#sse.close();
           this.#connect();
