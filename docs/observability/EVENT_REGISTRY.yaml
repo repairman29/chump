@@ -2372,3 +2372,10 @@ events:
     trigger: operator persists a secret credential (Anthropic key, OAUTH token, GH token) via PWA POST /api/settings/secret/{name}, after a successful probe (or with CHUMP_SKIP_PROBE=1)
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, key, last4, probe_skipped]
+  - kind: gh_auth_token_cache_hit
+    emitter: scripts/coord/lib/gh-shim/gh (INFRA-1283)
+    trigger: gh shim intercepted 'gh auth token' and returned a cached token
+      (within CHUMP_GH_TOKEN_CACHE_TTL_S, default 300s). Skips the real gh
+      auth token call entirely — avoids ~27 redundant calls/hr.
+    consumers: [fleet-brief, api-cost-leaderboard]
+    fields_required: [ts, kind, age_s, ttl_s]
