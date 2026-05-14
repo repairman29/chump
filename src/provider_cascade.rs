@@ -17,7 +17,7 @@ use crate::local_openai::{self, LocalOpenAIProvider};
 use crate::provider_quality;
 
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
-const MAX_SLOTS: u32 = 11;
+const MAX_SLOTS: u32 = 14; // INFRA-789: slots 12-14 for Gemini 2.5 Flash Lite, 3 Flash, 3.1 Flash Lite
 
 /// INFRA-352: emit a structured ambient.jsonl event when the cascade has
 /// exhausted every slot it could try and is about to return Err to the caller.
