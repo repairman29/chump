@@ -35,6 +35,7 @@ _mutex="${CHUMP_FLEET_STATE_MUTEX:-1}"
 _TICK_HELPER="$REPO_ROOT/scripts/coord/system-gap-tick.sh"
 if [[ -r "$_TICK_HELPER" ]]; then
   # shellcheck source=./system-gap-tick.sh
+  # shellcheck disable=SC1091
   source "$_TICK_HELPER"
 fi
 
