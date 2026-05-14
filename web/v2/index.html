@@ -431,6 +431,48 @@
       margin-left: auto;
       font-family: "SF Mono", monospace;
     }
+
+    /* INFRA-1196: queue-row pillar / domain / AC / deps badges + per-row embed slots. */
+    .gap-pillar {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .gap-pillar-effective   { background: rgba(10,132,255,0.18);  color: #4aa3ff; }
+    .gap-pillar-credible    { background: rgba(204,136,0,0.18);   color: #e0aa30; }
+    .gap-pillar-resilient   { background: rgba(176,86,255,0.18);  color: #c08fff; }
+    .gap-pillar-zero-waste  { background: rgba(48,209,88,0.15);   color: var(--success); }
+    .gap-pillar-mission     { background: rgba(255,69,58,0.15);   color: var(--error); }
+    .gap-domain {
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-family: "SF Mono", monospace;
+    }
+    .gap-ac, .gap-deps {
+      font-size: 10px;
+      color: var(--text-secondary);
+      padding: 2px 4px;
+    }
+    .gap-deps { color: #d99a23; }
+    .gap-lease {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-style: italic;
+      margin-top: 2px;
+    }
+    .gap-embed {
+      margin-top: 8px;
+      min-height: 0;
+    }
+    .gap-embed:empty { display: none; }
     .gap-title {
       font-size: 13px;
       color: var(--text);

@@ -911,6 +911,16 @@ class ChumpViewAgent extends HTMLElement {
 
   disconnectedCallback() {
     clearInterval(this.#poll);
+    // INFRA-1196: stop observing for lazy-mount on view-switch + clear
+    // the gap-list so embedded components run their own disconnectedCallback
+    // (closes the EventSource in <chump-workflow-timeline>, stops the
+    // /api/pr/{n} poll in <chump-pr-card>). No leaked SSE streams.
+    if (this.#embedObserver) {
+      try { this.#embedObserver.disconnect(); } catch {}
+      this.#embedObserver = null;
+    }
+    const list = this.querySelector('#gap-list');
+    if (list) list.innerHTML = '';
   }
 
   #wireSearch() {
@@ -1001,27 +1011,7 @@ class ChumpViewAgent extends HTMLElement {
           <div class="stat-item"><span class="stat-value">${claimable}</span><span class="stat-label">Claimable</span></div>
         `;
 
-        list.innerHTML = gaps.map((g) => {
-          const badgeClass = g.preflight_status === 'claimable' ? 'badge-success' :
-                            g.preflight_status === 'blocked' ? 'badge-warn' : 'badge-error';
-          const actions = g.preflight_status === 'claimable'
-            ? `<button class="gap-claim-btn" data-gap-id="${g.id}">Claim</button>`
-            : g.preflight_status === 'blocked'
-            ? `<button class="gap-work-btn" data-gap-id="${g.id}">Work</button><button class="gap-status-btn" data-gap-id="${g.id}">Status</button>`
-            : '';
-          return `
-            <article class="gap-card">
-              <header class="gap-card-header">
-                <span class="gap-id">${g.id}</span>
-                <span class="gap-badge ${badgeClass}">${g.preflight_status || 'unknown'}</span>
-                <span class="gap-priority">${g.priority || 'P?'}/${g.effort || '?'}</span>
-              </header>
-              <p class="gap-title">${g.title || '(no title)'}</p>
-              ${g.preflight_error ? `<p class="gap-error">${g.preflight_error}</p>` : ''}
-              ${actions ? `<div class="gap-actions">${actions}</div>` : ''}
-            </article>
-          `;
-        }).join('');
+        list.innerHTML = gaps.map((g) => this.#renderRow(g)).join('');
 
         // Attach claim handlers
         list.querySelectorAll('.gap-claim-btn').forEach((btn) => {
@@ -1037,6 +1027,14 @@ class ChumpViewAgent extends HTMLElement {
         list.querySelectorAll('.gap-status-btn').forEach((btn) => {
           btn.addEventListener('click', (e) => this.#status(e.target.dataset.gapId));
         });
+
+        // INFRA-1196: lazy-mount per-row embeds (pr-card / workflow-timeline)
+        // via IntersectionObserver so off-screen rows don't pay the SSE +
+        // poll cost. Only rows that scroll into view get their components
+        // instantiated. Cleanup happens automatically when innerHTML is
+        // replaced on the next #load() — both components disconnect
+        // their EventSource / poll timer in disconnectedCallback().
+        this.#mountVisibleEmbeds(list);
       })
       .catch((err) => {
         list.innerHTML = `<p class="placeholder">Could not load gap queue: ${err.message}</p>`;
@@ -1091,7 +1089,125 @@ class ChumpViewAgent extends HTMLElement {
       });
   }
 
+  // INFRA-1196: render one queue row with the full INFRA-1197 fat shape:
+  // pillar badge, domain chip, AC count, depends-on indicator, lease
+  // holder, plus *placeholders* for the embedded components. The
+  // components mount lazily via IntersectionObserver in #mountVisibleEmbeds.
+  #renderRow(g) {
+    const badgeClass = g.preflight_status === 'claimable' ? 'badge-success' :
+                      g.preflight_status === 'blocked'   ? 'badge-warn'    :
+                                                           'badge-error';
+    const actions = g.preflight_status === 'claimable'
+      ? `<button class="gap-claim-btn" data-gap-id="${g.id}">Claim</button>`
+      : g.preflight_status === 'blocked'
+      ? `<button class="gap-work-btn" data-gap-id="${g.id}">Work</button><button class="gap-status-btn" data-gap-id="${g.id}">Status</button>`
+      : '';
+
+    // Pillar pill — colored. Falls back to nothing when no tag.
+    const pillarHtml = g.pillar
+      ? `<span class="gap-pillar gap-pillar-${g.pillar}">${g.pillar}</span>`
+      : '';
+    const domainHtml = g.domain ? `<span class="gap-domain">${g.domain}</span>` : '';
+    const acHtml = (g.acceptance_criteria_count != null && g.acceptance_criteria_count > 0)
+      ? `<span class="gap-ac" title="${g.acceptance_criteria_count} acceptance criteria">AC ${g.acceptance_criteria_count}</span>`
+      : '';
+    const depsHtml = (Array.isArray(g.depends_on) && g.depends_on.length > 0)
+      ? `<span class="gap-deps" title="depends on: ${g.depends_on.join(', ')}">↳ ${g.depends_on.length} deps</span>`
+      : '';
+
+    // Lease holder line — when the gap is claim-blocked by an active session.
+    const leaseHtml = g.assigned_session
+      ? `<p class="gap-lease" title="${g.assigned_session}">⚙ claimed by ${this.#shortSession(g.assigned_session)}</p>`
+      : '';
+
+    // Embedded slots — placeholders the IntersectionObserver fills.
+    // pr-card slot: only when closed_pr is set (a shipped gap surfaced via
+    // ?status=shipped or via search).
+    const prCardSlot = g.closed_pr
+      ? `<div class="gap-embed gap-embed-pr" data-pr-number="${g.closed_pr}" data-mounted="0"></div>`
+      : '';
+    // workflow-timeline slot: gap status indicates active work. We treat
+    // "preflight blocked because someone claimed it" as the canonical
+    // active-workflow signal — the alternative ambient-jsonl scan would
+    // require a separate API call per gap. assigned_session being set
+    // (which we surface above) is what makes blocked → active.
+    const isActiveWorkflow = g.preflight_status === 'blocked' && !!g.assigned_session;
+    const timelineSlot = isActiveWorkflow
+      ? `<div class="gap-embed gap-embed-timeline" data-gap-id="${g.id}" data-mounted="0"></div>`
+      : '';
+
+    return `
+      <article class="gap-card" data-gap-id="${g.id}">
+        <header class="gap-card-header">
+          <span class="gap-id">${g.id}</span>
+          ${pillarHtml}
+          ${domainHtml}
+          <span class="gap-badge ${badgeClass}">${g.preflight_status || 'unknown'}</span>
+          <span class="gap-priority">${g.priority || 'P?'}/${g.effort || '?'}</span>
+          ${acHtml}
+          ${depsHtml}
+        </header>
+        <p class="gap-title">${g.title || '(no title)'}</p>
+        ${leaseHtml}
+        ${g.preflight_error ? `<p class="gap-error">${g.preflight_error}</p>` : ''}
+        ${actions ? `<div class="gap-actions">${actions}</div>` : ''}
+        ${timelineSlot}
+        ${prCardSlot}
+      </article>
+    `;
+  }
+
+  #shortSession(sid) {
+    // claim-infra-1196-16242-1778775648 → infra-1196 (operator-readable).
+    const m = String(sid).match(/^claim-([a-z]+-\d+)/i);
+    return m ? m[1] : (String(sid).slice(0, 24) + '…');
+  }
+
+  // INFRA-1196: lazy-mount embedded <chump-pr-card> + <chump-workflow-timeline>
+  // for slots that scroll into view. Reduces SSE/poll cost when the queue
+  // is long. Uses one IntersectionObserver per #load() call — replaced on
+  // each refresh.
+  #mountVisibleEmbeds(list) {
+    if (this.#embedObserver) {
+      try { this.#embedObserver.disconnect(); } catch {}
+    }
+    if (typeof IntersectionObserver === 'undefined') {
+      // Fallback: mount everything (small queues, old browsers).
+      list.querySelectorAll('.gap-embed[data-mounted="0"]').forEach((el) => this.#mountEmbed(el));
+      return;
+    }
+    this.#embedObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting && entry.target.dataset.mounted === '0') {
+          this.#mountEmbed(entry.target);
+        }
+      });
+    }, { rootMargin: '200px 0px' /* pre-mount slightly before visible */ });
+    list.querySelectorAll('.gap-embed[data-mounted="0"]').forEach((el) => {
+      this.#embedObserver.observe(el);
+    });
+  }
+
+  #mountEmbed(slot) {
+    if (slot.dataset.mounted === '1') return;
+    slot.dataset.mounted = '1';
+    if (slot.classList.contains('gap-embed-pr')) {
+      const pr = slot.dataset.prNumber;
+      if (!pr) return;
+      const card = document.createElement('chump-pr-card');
+      card.setAttribute('pr-number', pr);
+      slot.appendChild(card);
+    } else if (slot.classList.contains('gap-embed-timeline')) {
+      const gid = slot.dataset.gapId;
+      if (!gid) return;
+      const tl = document.createElement('chump-workflow-timeline');
+      tl.setAttribute('gap-id', gid);
+      slot.appendChild(tl);
+    }
+  }
+
   #poll;
+  #embedObserver;
 }
 customElements.define('chump-view-agent', ChumpViewAgent);
 
