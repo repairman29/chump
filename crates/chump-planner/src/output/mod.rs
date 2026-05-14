@@ -1,8 +1,11 @@
+pub mod json;
 pub mod table;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
     Table,
+    /// INFRA-1257: machine-readable rankings for the fleet picker.
+    Json,
 }
 
 impl std::str::FromStr for Format {
@@ -10,8 +13,9 @@ impl std::str::FromStr for Format {
     fn from_str(s: &str) -> anyhow::Result<Self> {
         match s.to_ascii_lowercase().as_str() {
             "table" => Ok(Self::Table),
-            // v0.2 adds: "json", "mermaid", "markdown".
-            other => anyhow::bail!("unsupported --format {other} (v0.1 supports: table)"),
+            "json" => Ok(Self::Json),
+            // v0.2 adds: "mermaid", "markdown".
+            other => anyhow::bail!("unsupported --format {other} (supports: table, json)"),
         }
     }
 }
