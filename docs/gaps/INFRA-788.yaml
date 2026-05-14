@@ -1,9 +1,10 @@
 - id: INFRA-788
   domain: INFRA
   title: "EFFECTIVE: Gemini-first cascade — enable paid-tier billing + correct rate limits in .env"
-  status: open
+  status: done
   priority: P1
   effort: xs
+  closed_pr: 1451
   acceptance_criteria: |
     The .env declares CHUMP_PROVIDER_8_RPD=1500 for gemini-2.5-flash,
     but the actual free-tier limit is 20 RPD (confirmed 2026-05-08 via
