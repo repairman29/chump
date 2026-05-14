@@ -1484,8 +1484,9 @@ jobs:
     needs: [audit, audit-stub]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v6
       - name: Verify audit or audit-stub passed
         run: |
           real="${{ needs.audit.result }}"
