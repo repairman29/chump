@@ -116,6 +116,63 @@ def cooled_down_gaps(cooldown_dir: str, worker_id: str = "") -> set[str]:
     return cooled
 
 
+def _inbox_handoff_pick(gaps):
+    """
+    INFRA-1254 — inbox-first picker.
+
+    Before scoring candidates from the registry, check this session's inbox
+    (.chump-locks/inbox/<session>.jsonl) for an unread HANDOFF event. If
+    found AND the named gap is still status=open in the registry, return
+    that gap-id so the picker prefers explicit handoffs over the default
+    score-based pick. This is how STUCK/HANDOFF events from
+    pr-stuck-announcer (INFRA-1251) or stale-gap-lock-reaper (INFRA-1252)
+    actually translate into worker behavior.
+
+    Returns the gap-id string, or None to fall back to the score path.
+    Operator opt-out: CHUMP_IGNORE_INBOX=1.
+    """
+    if os.environ.get("CHUMP_IGNORE_INBOX", "0") == "1":
+        return None
+    session = (
+        os.environ.get("CHUMP_SESSION_ID")
+        or os.environ.get("CLAUDE_SESSION_ID")
+        or ""
+    )
+    if not session:
+        return None
+    lock_dir = os.environ.get("CHUMP_LOCK_DIR")
+    if not lock_dir:
+        repo_root = os.environ.get("CHUMP_REPO") or os.getcwd()
+        lock_dir = os.path.join(repo_root, ".chump-locks")
+    inbox_file = os.path.join(lock_dir, "inbox", f"{session}.jsonl")
+    if not os.path.isfile(inbox_file):
+        return None
+
+    by_id = {g.get("id"): g for g in gaps if isinstance(g, dict)}
+    try:
+        with open(inbox_file) as fh:
+            for raw in fh:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    evt = json.loads(raw)
+                except Exception:
+                    continue
+                if evt.get("event") != "HANDOFF":
+                    continue
+                gid = evt.get("gap") or evt.get("corr_id") or ""
+                if not gid:
+                    continue
+                g = by_id.get(gid)
+                if not g or g.get("status") != "open":
+                    continue
+                return gid
+    except Exception:
+        return None
+    return None
+
+
 def main() -> int:
     gap_file = os.environ.get("GAP_JSON_FILE")
     if not gap_file or not os.path.exists(gap_file):
@@ -124,6 +181,13 @@ def main() -> int:
         with open(gap_file) as f:
             gaps = json.load(f)
     except Exception:
+        return 0
+
+    # INFRA-1254: inbox-first picker. If this session has a pending HANDOFF
+    # for an open gap, claim that before falling through to score-based pick.
+    handoff_gid = _inbox_handoff_pick(gaps)
+    if handoff_gid:
+        print(handoff_gid)
         return 0
 
     prio_filter = [p.upper() for p in csv("FLEET_PRIORITY_FILTER")]
