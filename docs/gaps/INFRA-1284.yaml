@@ -1,19 +1,28 @@
 - id: INFRA-1284
   domain: INFRA
-  title: "ZERO-WASTE: per-caller cache adoption — migrate 6 remaining bypass sites to cache_lookup_pr/cache_lookup_checks"
-  status: open
+  title: 'ZERO-WASTE: per-caller cache adoption — migrate 6 remaining bypass sites to cache_lookup_pr/cache_lookup_checks'
+  status: done
   priority: P2
   effort: m
-  description: |
-    Diagnosis 2026-05-14: even after INFRA-1282 (shim rewrite), some callers slip through (--watch mode, custom --json shapes that the shim can't auto-translate). Per-caller migration ensures every 'gh pr view/list' in scripts/coord/ goes through cache_lookup_pr first. Slower path than INFRA-1282 but completes the migration. Ship after INFRA-1282 lands so we can measure the residual.
-  acceptance_criteria:
-    - "scripts/coord/pr-watch.sh: gh pr view replaced with cache_lookup_pr; fallback to REST gh api /pulls/N on miss (NOT GraphQL gh pr view)"
-    - "scripts/coord/bot-merge.sh: EXISTING_PR check uses cache_lookup_pr (head-ref → number lookup) instead of gh pr view BRANCH"
-    - "scripts/coord/worktree-prune.sh: gh pr list --state all --head BRANCH replaced with cache query (or REST /pulls?head=...) instead of GraphQL"
-    - "scripts/coord/opus-curator.sh: gh pr list --state open --json polling reads from .chump/github_cache.db"
-    - "scripts/coord/bounced-pr-detector.sh: gh pr list --state closed → cache query (depends on closed-PR reconcile being populated; if not, file dependency gap)"
-    - "scripts/coord/queue-driver.sh: gh pr view PR --json headRefName branch lookup → REST /pulls/N --jq .head.ref (already half-migrated)"
-    - "Measure: each script run with CHUMP_GH_DEBUG=1 confirms zero gh pr view/list calls in steady state"
-    - "Test scripts/ci/test-cache-bypass-audit.sh: greps remaining 'gh pr (view"
-    - list)' callsites in scripts/coord/; FAILS if any unmigrated caller exists
+  description: 'Diagnosis 2026-05-14: even after INFRA-1282 (shim rewrite), some callers slip through (--watch mode, custom
+    --json shapes that the shim can''t auto-translate). Per-caller migration ensures every ''gh pr view/list'' in scripts/coord/
+    goes through cache_lookup_pr first. Slower path than INFRA-1282 but completes the migration. Ship after INFRA-1282 lands
+    so we can measure the residual.
 
+    '
+  acceptance_criteria:
+  - 'scripts/coord/pr-watch.sh: gh pr view replaced with cache_lookup_pr; fallback to REST gh api /pulls/N on miss (NOT GraphQL
+    gh pr view)'
+  - 'scripts/coord/bot-merge.sh: EXISTING_PR check uses cache_lookup_pr (head-ref → number lookup) instead of gh pr view BRANCH'
+  - 'scripts/coord/worktree-prune.sh: gh pr list --state all --head BRANCH replaced with cache query (or REST /pulls?head=...)
+    instead of GraphQL'
+  - 'scripts/coord/opus-curator.sh: gh pr list --state open --json polling reads from .chump/github_cache.db'
+  - 'scripts/coord/bounced-pr-detector.sh: gh pr list --state closed → cache query (depends on closed-PR reconcile being populated;
+    if not, file dependency gap)'
+  - 'scripts/coord/queue-driver.sh: gh pr view PR --json headRefName branch lookup → REST /pulls/N --jq .head.ref (already
+    half-migrated)'
+  - 'Measure: each script run with CHUMP_GH_DEBUG=1 confirms zero gh pr view/list calls in steady state'
+  - 'Test scripts/ci/test-cache-bypass-audit.sh: greps remaining ''gh pr (view'
+  - list)' callsites in scripts/coord/; FAILS if any unmigrated caller exists
+  closed_date: '2026-05-14'
+  closed_pr: 1939

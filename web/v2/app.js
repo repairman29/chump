@@ -202,40 +202,222 @@ window.chumpStream = window.chumpStream || new DashboardStream();
 window.addEventListener('DOMContentLoaded', () => window.chumpStream.start());
 
 // ── <chump-nav> ───────────────────────────────────────────────────────────────
+// PRODUCT-106: four-cadence operator console nav per docs/design/OPERATOR_CONSOLE_V2.md.
+//
+// Replaces the prior 11-button feature-grouped nav with four workflow-grouped
+// cadence buttons (NOW / AMBIENT / LIBRARY / CONFIG). Each cadence renders a
+// sub-tab strip below the main nav containing the sub-views from the design
+// doc's canvas table.
+//
+// Back-compat: every legacy data-view name continues to resolve via the
+// CADENCE_VIEW_MAP below. Clicking a sub-tab dispatches the same
+// chump:navigate CustomEvent the router has always consumed — no view code
+// changes needed. URL deep links (?view=<id>) still work because the legacy
+// data-view IDs are the values in the map.
+//
+// Keyboard shortcuts: N / A / L / C switch cadences. Persists last cadence
+// via INFRA-1280 chumpPrefs (chump.last_cadence).
+//
+// Telemetry: kind=cadence_view_active {cadence, dwell_s} on every switch.
+const CHUMP_CADENCES = [
+  {
+    id: 'now',
+    label: 'Now',
+    icon: '⚡',
+    shortcut: 'n',
+    default_view: 'chat',
+    subtabs: [
+      { id: 'chat',          label: 'Chat',           icon: '💬' },
+      { id: 'agent',         label: 'My queue',       icon: '🔄' },
+      { id: 'notifications', label: 'Alerts',         icon: '🔔', badge: true },
+      { id: 'tasks',         label: 'Tasks',          icon: '✅' },
+    ],
+  },
+  {
+    id: 'ambient',
+    label: 'Ambient',
+    icon: '📡',
+    shortcut: 'a',
+    default_view: 'ambient',
+    subtabs: [
+      { id: 'ambient', label: 'Events',  icon: '📡' },
+      { id: 'agents',  label: 'Fleet',   icon: '🤝' },
+      { id: 'results', label: 'Ships',   icon: '📊' },
+    ],
+  },
+  {
+    id: 'library',
+    label: 'Library',
+    icon: '📚',
+    shortcut: 'l',
+    default_view: 'memory',
+    subtabs: [
+      { id: 'memory',    label: 'Memory',    icon: '🧠' },
+      { id: 'decisions', label: 'Decisions', icon: '🎯' },
+      { id: 'judgment',  label: 'Audit',     icon: '⚖️' },
+    ],
+  },
+  {
+    id: 'config',
+    label: 'Config',
+    icon: '⚙',
+    shortcut: 'c',
+    default_view: 'settings',
+    subtabs: [
+      { id: 'settings', label: 'Settings', icon: '⚙' },
+      { id: 'models',   label: 'Models',   icon: '🤖' },
+    ],
+  },
+];
+
+// Legacy view-id → cadence-id lookup so sub-tab clicks know which cadence to highlight.
+const CHUMP_VIEW_TO_CADENCE = (() => {
+  const out = {};
+  for (const cad of CHUMP_CADENCES) {
+    for (const tab of cad.subtabs) out[tab.id] = cad.id;
+  }
+  return out;
+})();
+
 class ChumpNav extends HTMLElement {
-  static #ITEMS = [
-    { id: 'chat',          label: 'Chat',      icon: '💬' },
-    { id: 'agents',        label: 'Agents',    icon: '🤝' },
-    { id: 'results',       label: 'Results',   icon: '📊' },
-    { id: 'agent',         label: 'Queue',     icon: '🔄' },
-    { id: 'tasks',         label: 'Tasks',     icon: '⚡' },
-    { id: 'decisions',     label: 'Decisions', icon: '🎯' },
-    { id: 'judgment',      label: 'Judgment',  icon: '⚖️' },
-    { id: 'ambient',       label: 'Events',    icon: '📡' },
-    { id: 'notifications', label: 'Alerts',    icon: '🔔', badge: true },
-    { id: 'memory',        label: 'Memory',    icon: '🧠' },
-    { id: 'models',        label: 'Models',    icon: '🤖' },
-    { id: 'settings',      label: 'Settings',  icon: '⚙' },
-  ];
+  #lastCadenceAt = 0;
+  #activeCadence = null;
 
   connectedCallback() {
-    this.innerHTML = ChumpNav.#ITEMS.map((item) => `
-      <button class="nav-item" data-view="${item.id}" aria-label="${item.label}">
-        <span class="nav-icon">${item.icon}${item.badge ? '<span class="notif-badge" id="notif-nav-badge" hidden>0</span>' : ''}</span>
-        <span class="nav-label">${item.label}</span>
+    // Resolve initial cadence: URL ?cadence > URL ?view→cadence map > chumpPrefs > 'now'.
+    const url = new URLSearchParams(location.search);
+    const cadenceFromUrl = url.get('cadence');
+    const viewFromUrl = url.get('view');
+    const storedCadence = window.chumpPrefs?.get('last_cadence', null);
+    const initial = (cadenceFromUrl && CHUMP_CADENCES.find(c => c.id === cadenceFromUrl)?.id)
+      || (viewFromUrl && CHUMP_VIEW_TO_CADENCE[viewFromUrl])
+      || storedCadence
+      || 'now';
+
+    this.#renderShell();
+    this.#activateCadence(initial, viewFromUrl);
+    this.#wireClicks();
+    this.#wireShortcuts();
+  }
+
+  #renderShell() {
+    this.innerHTML = `
+      <div class="nav-cadences" role="tablist" aria-label="Cadence">
+        ${CHUMP_CADENCES.map((c) => `
+          <button class="nav-cadence" role="tab"
+                  data-cadence="${c.id}"
+                  aria-label="${c.label} (${c.shortcut.toUpperCase()})"
+                  title="${c.label} — press ${c.shortcut.toUpperCase()}">
+            <span class="nav-icon">${c.icon}</span>
+            <span class="nav-label">${c.label}</span>
+          </button>
+        `).join('')}
+      </div>
+      <div class="nav-subtabs" role="tablist" aria-label="Sub-view" id="chump-nav-subtabs"></div>
+    `;
+  }
+
+  #renderSubtabs(cadenceId) {
+    const cad = CHUMP_CADENCES.find(c => c.id === cadenceId);
+    const bar = this.querySelector('#chump-nav-subtabs');
+    if (!cad || !bar) return;
+    bar.innerHTML = cad.subtabs.map(t => `
+      <button class="nav-item" role="tab"
+              data-view="${t.id}"
+              aria-label="${t.label}"
+              title="${t.label}">
+        <span class="nav-icon">${t.icon}${t.badge ? '<span class="notif-badge" id="notif-nav-badge" hidden>0</span>' : ''}</span>
+        <span class="nav-label">${t.label}</span>
       </button>
     `).join('');
+  }
 
-    this.addEventListener('click', (e) => {
+  #wireClicks() {
+    // Cadence buttons.
+    this.querySelectorAll('[data-cadence]').forEach((btn) => {
+      btn.addEventListener('click', () => this.#activateCadence(btn.dataset.cadence));
+    });
+    // Sub-tab clicks (delegated since subtabs re-render on cadence change).
+    this.querySelector('#chump-nav-subtabs')?.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-view]');
       if (!btn) return;
-      this.querySelectorAll('[data-view]').forEach((b) => b.removeAttribute('aria-current'));
-      btn.setAttribute('aria-current', 'page');
-      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: btn.dataset.view }));
+      this.#activateView(btn.dataset.view);
     });
+  }
 
-    // Default selection.
-    this.querySelector('[data-view="chat"]')?.setAttribute('aria-current', 'page');
+  #wireShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      // Ignore when typing in inputs.
+      if (e.target.matches('input, textarea, [contenteditable]')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const cad = CHUMP_CADENCES.find(c => c.shortcut === e.key.toLowerCase());
+      if (cad) {
+        e.preventDefault();
+        this.#activateCadence(cad.id);
+      }
+    });
+  }
+
+  #activateCadence(cadenceId, viewOverride = null) {
+    const cad = CHUMP_CADENCES.find(c => c.id === cadenceId);
+    if (!cad) return;
+
+    // Telemetry: emit dwell-time for the previous cadence.
+    if (this.#activeCadence && this.#activeCadence !== cadenceId && this.#lastCadenceAt) {
+      const dwell_s = Math.round((Date.now() - this.#lastCadenceAt) / 1000);
+      ChumpNav.#emitCadenceEvent(this.#activeCadence, dwell_s);
+    }
+
+    this.#activeCadence = cadenceId;
+    this.#lastCadenceAt = Date.now();
+
+    // Visual state.
+    this.querySelectorAll('[data-cadence]').forEach((b) => b.removeAttribute('aria-current'));
+    this.querySelector(`[data-cadence="${cadenceId}"]`)?.setAttribute('aria-current', 'page');
+
+    this.#renderSubtabs(cadenceId);
+
+    // Activate target view: viewOverride (URL) > cadence's default.
+    const target = viewOverride && CHUMP_VIEW_TO_CADENCE[viewOverride] === cadenceId
+      ? viewOverride
+      : cad.default_view;
+    this.#activateView(target, /* skipUrlPush */ false);
+
+    // Persist + URL update.
+    window.chumpPrefs?.set('last_cadence', cadenceId);
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('cadence', cadenceId);
+      history.replaceState(null, '', url.toString());
+    } catch {}
+  }
+
+  #activateView(viewId, skipUrlPush = false) {
+    // Update sub-tab visual state.
+    this.querySelectorAll('#chump-nav-subtabs [data-view]').forEach((b) => b.removeAttribute('aria-current'));
+    this.querySelector(`#chump-nav-subtabs [data-view="${viewId}"]`)?.setAttribute('aria-current', 'page');
+
+    // Dispatch the legacy chump:navigate event the router has always consumed.
+    document.dispatchEvent(new CustomEvent('chump:navigate', { detail: viewId }));
+
+    if (!skipUrlPush) {
+      try {
+        const url = new URL(location.href);
+        url.searchParams.set('view', viewId);
+        history.replaceState(null, '', url.toString());
+      } catch {}
+    }
+  }
+
+  static #emitCadenceEvent(cadenceId, dwell_s) {
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'cadence_view_active',
+        cadence: cadenceId,
+        dwell_s,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
   }
 }
 customElements.define('chump-nav', ChumpNav);
@@ -752,7 +934,10 @@ customElements.define('chump-view-memory', ChumpViewMemory);
 // ── <chump-parallelism-governor> ─────────────────────────────────────────────
 class ChumpParallelismGovernor extends HTMLElement {
   connectedCallback() {
-    const saved = localStorage.getItem('parallelism-limit') || '4';
+    // PRODUCT-098: use namespaced prefs wrapper; falls back to legacy bare key via migration.
+    const saved = String(window.chumpPrefs?.get('parallelism-limit', null)
+      ?? localStorage.getItem('parallelism-limit')
+      ?? '4');
     this.innerHTML = `
       <label class="setting-row">
         <span class="setting-label">Parallelism Governor</span>
@@ -769,7 +954,7 @@ class ChumpParallelismGovernor extends HTMLElement {
       </label>
     `;
     this.querySelector('#parallelism-slider')?.addEventListener('change', (e) => {
-      localStorage.setItem('parallelism-limit', e.target.value);
+      window.chumpPrefs?.set('parallelism-limit', e.target.value);
       this.querySelector('#parallelism-value').textContent = e.target.value;
       document.dispatchEvent(new CustomEvent('chump:parallelism-changed', { detail: parseInt(e.target.value) }));
     });
@@ -947,13 +1132,24 @@ class ChumpViewSettings extends HTMLElement {
           <chump-parallelism-governor></chump-parallelism-governor>
         </div>
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">API Secrets (INFRA-989)</p>
+          <div id="api-secrets" style="font-size: 0.9em;">
+            <p style="color: var(--text-muted);">Loading secrets…</p>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.8em; margin-top: 8px;">
+            Stored in <code>~/.chump/config.toml</code> [api] (chmod 600). Probed against
+            the provider before persist — bad credentials never reach disk.
+            Values are never returned by GET — only presence + last 4 chars.
+          </p>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
           <p class="setting-label" style="margin-bottom: 12px;">Operator Configuration (INFRA-988)</p>
           <div id="operator-config" style="font-size: 0.9em;">
             <p style="color: var(--text-muted);">Loading operator config…</p>
           </div>
           <p style="color: var(--text-muted); font-size: 0.8em; margin-top: 8px;">
             Stored in <code>~/.chump/config.toml</code> [settings]. Env vars override.
-            Secrets are managed separately (INFRA-989).
+            Secrets are managed separately (above).
           </p>
         </div>
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
@@ -974,6 +1170,7 @@ class ChumpViewSettings extends HTMLElement {
     `;
     this.#loadCascadeInfo();
     this.#loadOperatorConfig();
+    this.#loadApiSecrets();
     this.#wireThemeToggle();
     this.#wireResetButton();
   }
@@ -996,6 +1193,40 @@ class ChumpViewSettings extends HTMLElement {
     });
   }
 
+  // INFRA-989: render API secret slots from /api/settings/secret/{name}.
+  // GET returns {set, last4} — never the value. Replace flow opens a
+  // type=password input that POSTs to the same endpoint with probe-before-store.
+  #loadApiSecrets() {
+    const container = this.querySelector('#api-secrets');
+    if (!container) return;
+    const secrets = [
+      { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key' },
+      { key: 'CLAUDE_CODE_OAUTH_TOKEN', label: 'Claude Code OAuth token' },
+      { key: 'GH_TOKEN', label: 'GitHub token' },
+    ];
+    Promise.all(secrets.map(s =>
+      fetch(`/api/settings/secret/${encodeURIComponent(s.key)}`)
+        .then(r => r.ok ? r.json() : { set: false, last4: '' })
+        .then(data => ({ ...s, ...data }))
+        .catch(() => ({ ...s, set: false, last4: '', error: true }))
+    ))
+    .then(rows => {
+      container.innerHTML = rows.map(r => {
+        const masked = r.set ? `••••••••${r.last4}` : '<span style="color:var(--text-muted)">(not set)</span>';
+        const cls = r.set ? 'op-secret-row-set' : 'op-secret-row-unset';
+        return `
+          <div class="op-secret-row ${cls}" data-key="${r.key}" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <label style="flex:1;">${r.label}</label>
+            <code class="op-secret-mask" style="font-family:monospace;">${masked}</code>
+            <button data-action="replace" data-key="${r.key}" class="op-secret-replace">${r.set ? 'Replace' : 'Set'}</button>
+          </div>`;
+      }).join('');
+      container.querySelectorAll('[data-action="replace"]').forEach(btn => {
+        btn.addEventListener('click', e => this.#startSecretReplace(e));
+      });
+    });
+  }
+
   // INFRA-1280 Sub-gap 9: Reset-all wipes every chump.* localStorage key.
   // Confirms before nuking so accidental clicks don't surprise the operator.
   #wireResetButton() {
@@ -1006,6 +1237,68 @@ class ChumpViewSettings extends HTMLElement {
       btn.textContent = `Wiped ${wiped} keys — reloading…`;
       btn.disabled = true;
       setTimeout(() => location.reload(), 400);
+    });
+  }
+
+  // INFRA-989: open the inline replace form for a secret slot.
+  #startSecretReplace(e) {
+    const btn = e.target;
+    const key = btn.dataset.key;
+    const row = btn.closest('.op-secret-row');
+    if (!row || row.querySelector('input[type="password"]')) return;
+    // Build the replace form inline. type=password + autocomplete=off so
+    // the browser doesn't cache the value or expose it via DevTools history.
+    const form = document.createElement('div');
+    form.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;';
+    form.innerHTML = `
+      <input type="password" autocomplete="off" data-key="${key}" placeholder="Paste new value…" style="flex:1;font-family:monospace;">
+      <button data-action="save-secret" data-key="${key}">Save</button>
+      <button data-action="cancel-secret" data-key="${key}">Cancel</button>
+      <span data-role="status" style="font-size:0.85em;color:var(--text-muted);"></span>
+    `;
+    row.appendChild(form);
+    form.querySelector('[data-action="save-secret"]').addEventListener('click', ev => this.#saveSecret(ev));
+    form.querySelector('[data-action="cancel-secret"]').addEventListener('click', ev => {
+      ev.target.closest('.op-secret-row').querySelector('div').remove();
+    });
+  }
+
+  // INFRA-989: POST the secret value (probe-before-store, 422 on probe fail).
+  #saveSecret(e) {
+    const btn = e.target;
+    const key = btn.dataset.key;
+    const row = btn.closest('.op-secret-row');
+    const input = row.querySelector('input[type="password"]');
+    const status = row.querySelector('[data-role="status"]');
+    const value = input.value;
+    if (!value) { status.textContent = '(empty)'; return; }
+    btn.disabled = true;
+    status.textContent = 'probing…';
+    fetch(`/api/settings/secret/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+      body: JSON.stringify({ value }),
+    })
+    .then(r => {
+      if (r.status === 422) {
+        status.textContent = 'probe failed — not saved';
+        btn.disabled = false;
+        return null;
+      }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
+    .then(j => {
+      if (!j) return;
+      // Immediately clear the cleartext from the input/memory.
+      input.value = '';
+      status.textContent = `saved (••••${j.last4})`;
+      // Re-render the entire secrets section so the new state is reflected.
+      setTimeout(() => this.#loadApiSecrets(), 400);
+    })
+    .catch(err => {
+      status.textContent = `error: ${err.message}`;
+      btn.disabled = false;
     });
   }
 
@@ -1821,6 +2114,236 @@ class ChumpViewAgent extends HTMLElement {
 }
 customElements.define('chump-view-agent', ChumpViewAgent);
 
+// ── <chump-ambient-viewer> (INFRA-1198) ──────────────────────────────────────
+//
+// Live-tails .chump-locks/ambient.jsonl in the PWA's Events view via the
+// existing SSE endpoint (PRODUCT-091, /api/ambient/stream?kind=<X>?).
+// Renders a filtered, drillable list:
+//   - kind dropdown (top-N curated + "All") — server-side filter via ?kind=
+//   - connection indicator (● live / ○ reconnecting / ✕ error)
+//   - scrollable list, auto-pinned to bottom unless the user scrolls up
+//   - "↓ N new" pill appears while scrolled up; click jumps to bottom
+//   - click a row → expand to pretty-printed JSON drill-in
+//
+// Buffer is capped at #maxBuffer to keep DOM bounded under storm conditions.
+// EventSource errors are silenced (browser auto-reconnects); the indicator
+// flips to ○ during transient disconnects.
+class ChumpAmbientViewer extends HTMLElement {
+  #es = null;
+  #kindFilter = '';
+  #pinnedToBottom = true;
+  #buffer = [];
+  #pendingNew = 0;
+  #connState = 'connecting'; // 'live' | 'reconnecting' | 'error' | 'connecting'
+
+  static #MAX_BUFFER = 500;
+
+  // Curated kinds for the dropdown — the most operator-meaningful ones.
+  // "All" sentinel uses empty string. The list is enrichment, not authoritative;
+  // events with other kinds still flow through when filter is "All".
+  static #FILTER_OPTIONS = [
+    { value: '', label: 'All kinds' },
+    { value: 'fleet_auth_fallback',   label: 'fleet_auth_fallback' },
+    { value: 'pwa_secret_changed',    label: 'pwa_secret_changed' },
+    { value: 'pwa_doctor_check',      label: 'pwa_doctor_check' },
+    { value: 'pwa_setting_changed',   label: 'pwa_setting_changed' },
+    { value: 'auto_merge_armed',      label: 'auto_merge_armed' },
+    { value: 'bot_merge_rest_direct', label: 'bot_merge_rest_direct' },
+    { value: 'gh_secondary_limit_hit',label: 'gh_secondary_limit_hit' },
+    { value: 'pr_stuck_announced',    label: 'pr_stuck_announced' },
+    { value: 'silent_agent',          label: 'silent_agent' },
+    { value: 'lease_overlap',         label: 'lease_overlap' },
+    { value: 'edit_burst',            label: 'edit_burst' },
+  ];
+
+  connectedCallback() {
+    this.#renderShell();
+    this.#subscribe();
+  }
+
+  disconnectedCallback() {
+    if (this.#es) { this.#es.close(); this.#es = null; }
+  }
+
+  #renderShell() {
+    const options = ChumpAmbientViewer.#FILTER_OPTIONS.map(o =>
+      `<option value="${this.#esc(o.value)}">${this.#esc(o.label)}</option>`
+    ).join('');
+    this.innerHTML = `
+      <div class="amb-toolbar">
+        <label class="amb-filter-label">
+          Filter by kind:
+          <select class="amb-filter">${options}</select>
+        </label>
+        <span class="amb-state amb-state-connecting" title="connecting…">●</span>
+      </div>
+      <div class="amb-pill" style="display:none">↓ <span class="amb-pill-n">0</span> new</div>
+      <ol class="amb-list" tabindex="0" aria-label="Ambient event stream"></ol>
+    `;
+    const sel = this.querySelector('.amb-filter');
+    sel.addEventListener('change', (e) => this.#changeFilter(e.target.value));
+    const list = this.querySelector('.amb-list');
+    list.addEventListener('scroll', () => this.#onScroll());
+    const pill = this.querySelector('.amb-pill');
+    pill.addEventListener('click', () => this.#jumpToBottom());
+  }
+
+  #subscribe() {
+    if (this.#es) { this.#es.close(); this.#es = null; }
+    this.#setConn('connecting');
+    const url = this.#kindFilter
+      ? `/api/ambient/stream?kind=${encodeURIComponent(this.#kindFilter)}`
+      : '/api/ambient/stream';
+    try {
+      this.#es = new EventSource(url);
+    } catch (err) {
+      this.#setConn('error');
+      return;
+    }
+    this.#es.addEventListener('open', () => this.#setConn('live'));
+    this.#es.addEventListener('ambient', (e) => {
+      let payload;
+      try { payload = JSON.parse(e.data); } catch { return; }
+      this.#onEvent(payload);
+    });
+    this.#es.addEventListener('error', () => {
+      this.#setConn('reconnecting');
+    });
+  }
+
+  #onEvent(payload) {
+    // Re-validate against the active filter — server should already filter,
+    // but defence-in-depth for race during filter swap.
+    if (this.#kindFilter && payload.kind !== this.#kindFilter) return;
+
+    this.#buffer.push(payload);
+    if (this.#buffer.length > ChumpAmbientViewer.#MAX_BUFFER) {
+      const drop = this.#buffer.length - ChumpAmbientViewer.#MAX_BUFFER;
+      this.#buffer.splice(0, drop);
+    }
+    this.#appendRow(payload);
+    if (this.#pinnedToBottom) {
+      this.#jumpToBottom();
+    } else {
+      this.#pendingNew += 1;
+      this.#refreshPill();
+    }
+  }
+
+  #appendRow(payload) {
+    const list = this.querySelector('.amb-list');
+    if (!list) return;
+    const li = document.createElement('li');
+    li.className = 'amb-row';
+    const ts = String(payload.ts || '').slice(11, 19) || '--:--:--';
+    const kind = String(payload.kind || payload.event || 'unknown');
+    const summary = this.#summarize(payload);
+    li.innerHTML = `
+      <span class="amb-ts">${this.#esc(ts)}</span>
+      <span class="amb-kind">${this.#esc(kind)}</span>
+      <span class="amb-summary">${this.#esc(summary)}</span>
+      <pre class="amb-detail" hidden></pre>
+    `;
+    li.addEventListener('click', () => this.#toggleDetail(li, payload));
+    list.appendChild(li);
+    // Evict DOM rows beyond the buffer cap.
+    while (list.children.length > ChumpAmbientViewer.#MAX_BUFFER) {
+      list.removeChild(list.firstChild);
+    }
+  }
+
+  #summarize(p) {
+    // Pull the 2-3 most informative fields beyond ts/kind/event.
+    const skip = new Set(['ts', 'kind', 'event']);
+    const parts = [];
+    for (const [k, v] of Object.entries(p)) {
+      if (skip.has(k)) continue;
+      if (parts.length >= 3) break;
+      const valStr = typeof v === 'string' ? v : JSON.stringify(v);
+      parts.push(`${k}=${valStr}`);
+    }
+    return parts.join(' · ');
+  }
+
+  #toggleDetail(li, payload) {
+    const pre = li.querySelector('.amb-detail');
+    if (!pre) return;
+    if (pre.hidden) {
+      pre.textContent = JSON.stringify(payload, null, 2);
+      pre.hidden = false;
+    } else {
+      pre.hidden = true;
+    }
+  }
+
+  #changeFilter(kind) {
+    this.#kindFilter = kind || '';
+    this.#buffer = [];
+    this.#pendingNew = 0;
+    const list = this.querySelector('.amb-list');
+    if (list) list.innerHTML = '';
+    this.#refreshPill();
+    this.#subscribe();
+  }
+
+  #onScroll() {
+    const list = this.querySelector('.amb-list');
+    if (!list) return;
+    const atBottom = (list.scrollTop + list.clientHeight) >= (list.scrollHeight - 4);
+    this.#pinnedToBottom = atBottom;
+    if (atBottom && this.#pendingNew > 0) {
+      this.#pendingNew = 0;
+      this.#refreshPill();
+    }
+  }
+
+  #jumpToBottom() {
+    const list = this.querySelector('.amb-list');
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+    this.#pinnedToBottom = true;
+    this.#pendingNew = 0;
+    this.#refreshPill();
+  }
+
+  #refreshPill() {
+    const pill = this.querySelector('.amb-pill');
+    const n = this.querySelector('.amb-pill-n');
+    if (!pill || !n) return;
+    if (this.#pendingNew > 0) {
+      pill.style.display = 'block';
+      n.textContent = String(this.#pendingNew);
+    } else {
+      pill.style.display = 'none';
+    }
+  }
+
+  #setConn(state) {
+    this.#connState = state;
+    const el = this.querySelector('.amb-state');
+    if (!el) return;
+    el.className = `amb-state amb-state-${state}`;
+    const map = {
+      live:         { glyph: '●', title: 'live' },
+      reconnecting: { glyph: '○', title: 'reconnecting…' },
+      error:        { glyph: '✕', title: 'error' },
+      connecting:   { glyph: '●', title: 'connecting…' },
+    };
+    const m = map[state] || map.connecting;
+    el.textContent = m.glyph;
+    el.title = m.title;
+  }
+
+  #esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+}
+customElements.define('chump-ambient-viewer', ChumpAmbientViewer);
+
 // ── Router ────────────────────────────────────────────────────────────────────
 // PRODUCT-091: ambient event viewer view factory.
 function makeAmbientView() {
@@ -1854,6 +2377,8 @@ document.addEventListener('chump:navigate', (e) => {
   const factory = VIEWS[e.detail] ?? VIEWS.tasks;
   main.innerHTML = '';
   main.appendChild(factory());
+  // PRODUCT-098: persist current view so refresh restores it.
+  window.chumpPrefs?.set('last-view', e.detail);
 });
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
@@ -1868,5 +2393,13 @@ if ('serviceWorker' in navigator) {
 // Initial view.
 window.addEventListener('DOMContentLoaded', () => {
   const main = document.getElementById('main-content');
-  if (main) main.appendChild(document.createElement('chump-view-chat'));
+  // PRODUCT-098: restore last view from prefs; default to 'chat'.
+  const lastView = window.chumpPrefs?.get('last-view', 'chat') ?? 'chat';
+  const factory = VIEWS[lastView] ?? VIEWS.chat;
+  if (main) {
+    main.appendChild(factory());
+    // Sync nav highlight.
+    document.querySelector(`[data-view="${lastView}"]`)?.setAttribute('aria-current', 'page');
+    document.querySelector('[data-view="chat"]')?.removeAttribute('aria-current');
+  }
 });

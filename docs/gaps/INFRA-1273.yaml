@@ -1,7 +1,7 @@
 - id: INFRA-1273
   domain: INFRA
   title: 'A2A — post-ship retro hook: prompt agent for ''what did not fit?'' on every chump gap ship'
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -15,3 +15,5 @@
     the agent moves on and the lesson is lost.
 
     '
+  closed_date: '2026-05-14'
+  closed_pr: 1929

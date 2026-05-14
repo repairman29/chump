@@ -249,6 +249,19 @@ events:
       automated registry mutations went live for this operator.
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, note]
+  - kind: planner_rank_ran
+    emitter: scripts/setup/install-chump-planner-launchd.sh --once (INFRA-1257)
+    trigger: hourly launchd run wrote .chump-locks/gap-priority.json — fleet
+      picker consumes this file (INFRA-1258) to pick best-scored gap.
+    consumers: [picker, fleet-brief, audit-log]
+    fields_required: [ts, kind, out_file]
+  - kind: rust_first_bypass_used
+    emitter: scripts/git-hooks/pre-commit-rust-first.sh (META-064)
+    trigger: pre-commit gate matched Rust-first criteria on a new shell
+      file but commit body had 'Rust-First-Bypass:' trailer — bypass
+      logged for audit.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, files, reason]
 
   - kind: fleet_paused_disk_critical
     emitter: scripts/lib/disk-check.sh via worker.sh (INFRA-975)
@@ -1523,6 +1536,14 @@ events:
     consumers: [fleet-brief, operator-recall, scripts/dev/cache-hit-rate.sh]
     fields_required: [ts, kind, helper, target, reason]
 
+  - kind: cache_refilled
+    emitter: scripts/coord/lib/github_cache.sh (INFRA-1275)
+    trigger: cache_refresh_open_prs fetched the /pulls?state=open list via
+      REST (not GraphQL) and upserted rows into github_cache.db. Emitted once
+      per refresh cycle with the row count inserted/updated.
+    consumers: [fleet-brief, scripts/dev/cache-hit-rate.sh]
+    fields_required: [ts, kind, helper, rows, source]
+
   - kind: cache_warmed
     emitter: scripts/ops/github-cache-reconcile.sh (INFRA-1106)
     trigger: reconcile detected pr_state rows with empty mergeable_state (the
@@ -2329,3 +2350,25 @@ events:
       indexes off the commit, not the worker run).
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, event, session, worktree, agent_id, gap_id]
+  - kind: bot_merge_phase_duration
+    emitter: scripts/coord/bot-merge.sh::stage_done (INFRA-1067)
+    trigger: emitted by stage_done() after each named bot-merge phase
+      completes. Allows the fleet to accumulate a distribution of phase
+      wall-clock times and tune timeouts data-drivenly (AC 1 + AC 2 of
+      INFRA-1067). One event per stage_done() call — covers git fetch,
+      rebase, cargo fmt, cargo clippy, cargo test, push, PR create, etc.
+    consumers: [fleet-brief, ops-audit, infra-1067-timeout-tuning]
+    fields_required: [ts, kind, phase, elapsed_s, gap, branch]
+  - kind: lease_release_failed
+    emitter: src/dispatch.rs::release_with_retry (INFRA-1243)
+    trigger: chump --release subprocess failed twice in the dispatch step-5 cleanup
+      path. The lease will auto-expire via its TTL, but the failure is recorded
+      for operator visibility.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, session, gap, error]
+  # ── INFRA-989: PWA secret-input flow ─────────────────────────────────────
+  - kind: pwa_secret_changed
+    emitter: src/web_server.rs handle_secret_post (INFRA-989)
+    trigger: operator persists a secret credential (Anthropic key, OAUTH token, GH token) via PWA POST /api/settings/secret/{name}, after a successful probe (or with CHUMP_SKIP_PROBE=1)
+    consumers: [fleet-brief, audit-trail]
+    fields_required: [ts, kind, key, last4, probe_skipped]

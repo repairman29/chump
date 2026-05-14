@@ -1697,6 +1697,21 @@ if [ -x "$HARDCODED_DATE_HOOK" ]; then
     fi
 fi
 
+# 15a. Rust-first decision rule (META-064, 2026-05-14)
+# ------------------------------------------------------------------
+# Refuses NEW shell files in scripts/coord/ + scripts/dispatch/ unless
+# the commit body has 'Rust-First-Bypass: <reason>' trailer. Also blocks
+# scripts/ops/*.sh that mutate canonical state (.chump-locks, ambient,
+# state.db, docs/gaps) or exceed 200 LOC.
+# Bypass: Rust-First-Bypass: trailer OR CHUMP_RUST_FIRST_CHECK=0.
+
+RUST_FIRST_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-rust-first.sh"
+if [ -x "$RUST_FIRST_HOOK" ]; then
+    if ! "$RUST_FIRST_HOOK"; then
+        exit 1
+    fi
+fi
+
 # 16. Main-worktree config guard (INFRA-1060, 2026-05-13)
 # ------------------------------------------------------------------
 # Detects and auto-removes stray core.worktree from the main .git/config.

@@ -1,12 +1,14 @@
 - id: INFRA-1223
   domain: INFRA
   title: "ZERO-WASTE: gh pr merge --auto path uses GraphQL — swap to REST PUT /pulls/{n}/merge to dodge GraphQL secondary rate limit"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - bot-merge.sh uses REST PUT /repos/{owner}/{repo}/pulls/{pull_number}/merge instead of enablePullRequestAutoMerge GraphQL mutation
+    - secondary rate limit errors on --auto path drop to 0 in a 30-min soak with 5 concurrent workers
+    - fallback to GraphQL mutation if REST returns 405 (branch protection requires admin)
+    - "CI test scripts/ci/test-bot-merge-rest-merge.sh: mock REST endpoint, verify correct HTTP verb + payload"
+  closed_date: '2026-05-14'
+  closed_pr: 1926
 

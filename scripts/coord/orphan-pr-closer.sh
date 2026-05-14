@@ -74,7 +74,7 @@ emit() {
 }
 
 # Freshness cutoff (ISO8601).
-if cutoff=$(date -v-${FRESHNESS_MIN}M -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null); then :
+if cutoff=$(date -v-"${FRESHNESS_MIN}"M -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null); then :
 else cutoff=$(date -u -d "-${FRESHNESS_MIN} minutes" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ); fi
 
 # Fetch open non-draft PRs via REST (avoid GraphQL — see INFRA-1080 criticality).

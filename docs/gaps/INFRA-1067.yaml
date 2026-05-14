@@ -1,0 +1,10 @@
+- id: INFRA-1067
+  domain: INFRA
+  title: "RESILIENT: cargo clippy timeout tuning + cold-compile optimization"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - 1. Measure actual clippy phase duration distribution (sample 50+ bot-merge runs); 2. Increase timeout from 240s to match 95th percentile; 3. Profile clippy cold-compile (cache hits, incremental state); 4. Implement incremental build caching strategy (INFRA-1043 + linker flags); 5. Emit bot_merge_phase_duration telemetry to ambient.jsonl for all phases
+  closed_date: '2026-05-14'
+

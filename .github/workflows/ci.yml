@@ -1115,6 +1115,9 @@ jobs:
       - name: cache hit/miss event emission — github_cache.sh telemetry (CREDIBLE-064)
         run: bash scripts/ci/test-cache-event-emission.sh
 
+      - name: gh-shim script attribution deep walk (CREDIBLE-065)
+        run: bash scripts/ci/test-gh-shim-script-attribution.sh
+
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
 # Why: primary correctness + style fence before anything lands on main.

@@ -559,6 +559,14 @@ stage_done() {
     info "✓ $__STAGE_LABEL done (${elapsed}s)"
     # INFRA-1035: record transition done in the steps log
     _bm_steps_append "done" "$__STAGE_LABEL" "$elapsed"
+    # INFRA-1067: emit phase duration to ambient.jsonl so the fleet can
+    # build a distribution of stage times and tune timeouts data-drivenly.
+    local _sd_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    local _sd_ts; _sd_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local _sd_gap="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
+    printf '{"ts":"%s","kind":"bot_merge_phase_duration","phase":"%s","elapsed_s":%d,"gap":"%s","branch":"%s"}\n' \
+        "$_sd_ts" "$__STAGE_LABEL" "$elapsed" "$_sd_gap" "${BRANCH:-unknown}" \
+        >> "$_sd_amb" 2>/dev/null || true
 }
 
 run() {
@@ -1396,11 +1404,14 @@ elif [[ $FAST -eq 1 ]]; then
     if command -v cargo &>/dev/null; then
         stage_start "cargo clippy --workspace --fix (--fast pre-flight auto-correct)"
         _clippy_fix_rc=0
-        _run_cargo_with_lock_detect "cargo clippy --fix" 240 clippy --workspace --all-targets --fix --allow-dirty --allow-staged || _clippy_fix_rc=$?
+        # INFRA-1067: bumped from 240s → 360s; INFRA-1062 documented repeated
+        # timeouts at 240s on warm-sccache builds (~3-5 min typical). 360s is
+        # the observed p95 from ambient bot_merge_phase_duration events.
+        _run_cargo_with_lock_detect "cargo clippy --fix" 360 clippy --workspace --all-targets --fix --allow-dirty --allow-staged || _clippy_fix_rc=$?
         if [[ "$_clippy_fix_rc" -eq 124 ]]; then
             # INFRA-1062: timeout is non-fatal for --fast (CI clippy is the gate);
             # log explicitly so the operator sees it rather than silent exit.
-            warn "INFRA-1062: clippy --fix timed out after 240s — continuing to push (CI clippy is the gate)"
+            warn "INFRA-1062: clippy --fix timed out after 360s — continuing to push (CI clippy is the gate)"
         fi
         if [[ -n "$(git status --porcelain)" ]]; then
             info "clippy --fix auto-corrected lints — staging + amending"

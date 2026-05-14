@@ -1,0 +1,11 @@
+- id: INFRA-1261
+  domain: INFRA
+  title: "CREDIBLE: test-bot-merge-arm-ship-order.sh uses live state.db — TEST-001 fixture found as done/claimed, audit-required fails"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "1. test-bot-merge-arm-ship-order.sh sets up an isolated state.db fixture (CHUMP_REPO=tmpdir, CHUMP_HOME=tmpdir) so gap-preflight does not read live state.db\n2. OR test sets CHUMP_GAP_PREFLIGHT_SKIP=1 if the arm-ship-order test's purpose does not require real preflight behavior\n3. CI audit-required job passes on every PR (no false failures from TEST-001 conflict)\n4. No regression to other bot-merge tests"
+  closed_date: '2026-05-14'
+  closed_pr: 1940
+

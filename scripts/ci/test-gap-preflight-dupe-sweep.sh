@@ -33,6 +33,8 @@ grep -q 'pulls?state=open' "$PREFLIGHT" \
 # ── Test 3: worktree directory scan emits WARN and exits 0 ───────────────────
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+# Isolate cache DB so tests don't pollute or read from the real repo cache.
+export CHUMP_CACHE_DB="$TMP/test_cache.db"
 
 # Create a fake worktree directory for GAP-ID infra-7701
 FAKE_WT="$TMP/chump-infra-7701"
@@ -69,34 +71,40 @@ echo '{}' ; exit 0
 GHSHIM
 chmod +x "$SHIM/gh"
 
-# git shim: return open status for gap
+# git shim: return open status for gap.
+# IMPORTANT: use exact patterns that don't match 'rev-parse' (which contains
+# no listed keywords), so github_cache.sh can call git rev-parse --show-toplevel
+# for _cache_ambient_path without getting fake YAML returned.
 cat > "$SHIM/git" <<'GITSHIM'
 #!/usr/bin/env bash
 # fetch — no-op
 if [[ "$*" == *"fetch"* ]]; then exit 0; fi
-# show for gaps.yaml — return open gap
-if [[ "$*" == *"show"* ]]; then
+# ls-tree — return empty (force monolithic fallback)
+if [[ "$*" == *"ls-tree"* ]]; then exit 0; fi
+# show for gaps.yaml — return fake open gap (must come after ls-tree check)
+if [[ "$*" == *"show"*"gaps.yaml"* ]]; then
     echo "gaps:"
     echo "- id: INFRA-7701"
     echo "  status: open"
     exit 0
 fi
-# ls-tree — return empty (monolithic fallback)
-if [[ "$*" == *"ls-tree"* ]]; then exit 0; fi
 # worktree list — empty
 if [[ "$*" == *"worktree"* ]]; then exit 0; fi
-# everything else
+# everything else (including rev-parse)
 /usr/bin/git "$@"
 GITSHIM
 chmod +x "$SHIM/git"
 
 # Run preflight with fake worktree visible; expect exit 0 with WARN in output
+# CHUMP_PREFLIGHT_PR_CHECK=0 disables Check 2 so these calls don't populate
+# the shared cache DB and contaminate Test 5's cache-first PR scan.
 WT_SCAN_OUTPUT=$(
     PATH="$SHIM:$PATH" \
     REMOTE="origin" BASE="main" \
     CHUMP_SESSION_ID="test-session-$$" \
     CHUMP_LOCK_DIR="$TMP/locks" \
     CHUMP_PREFLIGHT_NO_PR_SCAN=1 \
+    CHUMP_PREFLIGHT_PR_CHECK=0 \
     bash "$PREFLIGHT" INFRA-7701 2>&1 || true
 )
 
@@ -107,6 +115,7 @@ REMOTE="origin" BASE="main" \
 CHUMP_SESSION_ID="test-session-$$" \
 CHUMP_LOCK_DIR="$TMP/locks" \
 CHUMP_PREFLIGHT_NO_PR_SCAN=1 \
+CHUMP_PREFLIGHT_PR_CHECK=0 \
 bash "$PREFLIGHT" INFRA-7701 >/dev/null 2>&1 && exit_code=0 || exit_code=$?
 
 [[ $exit_code -eq 0 ]] \
@@ -121,6 +130,7 @@ NO_WT_OUTPUT=$(
     CHUMP_LOCK_DIR="$TMP/locks" \
     CHUMP_PREFLIGHT_NO_WORKTREE_SCAN=1 \
     CHUMP_PREFLIGHT_NO_PR_SCAN=1 \
+    CHUMP_PREFLIGHT_PR_CHECK=0 \
     bash "$PREFLIGHT" INFRA-7701 2>&1 || true
 )
 
@@ -132,8 +142,11 @@ else
 fi
 
 # ── Test 5: PR title scan emits WARN when a matching open PR exists ───────────
-# Override gh shim to return a matching PR
-cat > "$SHIM/gh" <<'GHSHIM2'
+# Override gh shim to return a matching PR.
+# Use a temp file + mv for atomic replacement (avoids macOS inode-cache issue
+# where cat > existing_file can serve stale content to the next exec).
+_gh_tmp="$(mktemp "$SHIM/gh.XXXXXX")"
+cat > "$_gh_tmp" <<'GHSHIM2'
 #!/usr/bin/env bash
 if [[ "$*" == *"nameWithOwner"* ]] || [[ "$*" == *"repo view"* ]]; then
     echo "testorg/testrepo"
@@ -146,14 +159,18 @@ if [[ "$*" == *"pulls"* ]]; then
 fi
 echo '{}' ; exit 0
 GHSHIM2
-chmod +x "$SHIM/gh"
+chmod +x "$_gh_tmp"
+mv -f "$_gh_tmp" "$SHIM/gh"
 
+T5_CACHE_DB="$TMP/test_cache_t5.db"
 PR_SCAN_OUTPUT=$(
     PATH="$SHIM:$PATH" \
     REMOTE="origin" BASE="main" \
     CHUMP_SESSION_ID="test-session-$$" \
     CHUMP_LOCK_DIR="$TMP/locks" \
     CHUMP_PREFLIGHT_NO_WORKTREE_SCAN=1 \
+    CHUMP_PREFLIGHT_PR_CHECK=0 \
+    CHUMP_CACHE_DB="$T5_CACHE_DB" \
     bash "$PREFLIGHT" INFRA-7701 2>&1 || true
 )
 
@@ -170,6 +187,8 @@ REMOTE="origin" BASE="main" \
 CHUMP_SESSION_ID="test-session-$$" \
 CHUMP_LOCK_DIR="$TMP/locks" \
 CHUMP_PREFLIGHT_NO_WORKTREE_SCAN=1 \
+CHUMP_PREFLIGHT_PR_CHECK=0 \
+CHUMP_CACHE_DB="$T5_CACHE_DB" \
 bash "$PREFLIGHT" INFRA-7701 >/dev/null 2>&1 && exit_code=0 || exit_code=$?
 
 [[ $exit_code -eq 0 ]] \
@@ -184,6 +203,7 @@ NO_PR_OUTPUT=$(
     CHUMP_LOCK_DIR="$TMP/locks" \
     CHUMP_PREFLIGHT_NO_WORKTREE_SCAN=1 \
     CHUMP_PREFLIGHT_NO_PR_SCAN=1 \
+    CHUMP_PREFLIGHT_PR_CHECK=0 \
     bash "$PREFLIGHT" INFRA-7701 2>&1 || true
 )
 

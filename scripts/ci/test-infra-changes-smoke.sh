@@ -72,7 +72,8 @@ while IFS= read -r f; do
     [[ -f "$f" ]] && yaml_files+=("$f")
 done < <(find "$REPO_ROOT/.github/workflows" "$REPO_ROOT/scripts/coord" "$REPO_ROOT/scripts/dispatch" -maxdepth 3 \( -name "*.yml" -o -name "*.yaml" \) 2>/dev/null)
 
-for f in "${yaml_files[@]}"; do
+for f in "${yaml_files[@]:-}"; do
+    [[ -z "$f" ]] && continue  # macOS bash 3.2 empty-array-with-set-u guard
     if ! python3 -c "import yaml; yaml.safe_load(open('$f'))" 2>&1; then
         echo "[CREDIBLE-001 smoke] FAIL: YAML parse error in $f"
         exit 1
@@ -83,18 +84,46 @@ if [[ ${#yaml_files[@]} -gt 0 ]]; then
     echo "[CREDIBLE-001 smoke] PASS: ${#yaml_files[@]} YAML files valid"
 fi
 
-# ── Check 2: shellcheck on all .sh files ────────────────────────────────────
-echo "[CREDIBLE-001 smoke] running shellcheck..."
+# ── Check 2: shellcheck on STAGED .sh files only (INFRA-1293) ───────────────
+# Pre-INFRA-1293: this step ran shellcheck repo-wide on every commit.
+# Cascading failure: ANY broken file in scripts/coord or scripts/dispatch
+# (landed by a different PR) blocked EVERY subsequent commit through this
+# gate. Agents had to bypass with --no-verify, defeating the gate.
+#
+# Post-INFRA-1293: shellcheck only runs on files in the current commit's
+# staged set. Unrelated broken files don't block — but if your commit
+# touches a broken file, you must fix it.
+#
+# Repo-wide scan still available for periodic CI / on-demand: set
+# CHUMP_CREDIBLE_001_FULL_SCAN=1 to opt back into the old behavior.
+echo "[CREDIBLE-001 smoke] running shellcheck on staged .sh files..."
 
 if ! command -v shellcheck &>/dev/null; then
     echo "[CREDIBLE-001 smoke] WARN: shellcheck not found; skipping shell validation"
 else
     sh_files=()
-    while IFS= read -r f; do
-        [[ -f "$f" ]] && sh_files+=("$f")
-    done < <(find "$REPO_ROOT/scripts/coord" "$REPO_ROOT/scripts/dispatch" -maxdepth 2 -name "*.sh" 2>/dev/null)
+    if [[ "${CHUMP_CREDIBLE_001_FULL_SCAN:-0}" == "1" ]]; then
+        # Periodic-CI / on-demand path: full repo scan.
+        while IFS= read -r f; do
+            [[ -f "$f" ]] && sh_files+=("$f")
+        done < <(find "$REPO_ROOT/scripts/coord" "$REPO_ROOT/scripts/dispatch" -maxdepth 2 -name "*.sh" 2>/dev/null)
+    else
+        # Incremental path (default): only staged shell files in coord/ or dispatch/.
+        # The changed_files array is populated above from $@ (pre-commit args) or
+        # git diff. Filter to scripts/coord/*.sh + scripts/dispatch/*.sh that exist.
+        for f in "${changed_files[@]:-}"; do
+            [[ -z "$f" ]] && continue
+            case "$f" in
+                scripts/coord/*.sh | scripts/dispatch/*.sh)
+                    full="$REPO_ROOT/$f"
+                    [[ -f "$full" ]] && sh_files+=("$full")
+                    ;;
+            esac
+        done
+    fi
 
-    for f in "${sh_files[@]}"; do
+    for f in "${sh_files[@]:-}"; do
+        [[ -z "$f" ]] && continue
         if ! shellcheck "$f" 2>&1; then
             echo "[CREDIBLE-001 smoke] FAIL: shellcheck failed on $f"
             exit 1
@@ -103,6 +132,8 @@ else
 
     if [[ ${#sh_files[@]} -gt 0 ]]; then
         echo "[CREDIBLE-001 smoke] PASS: ${#sh_files[@]} shell scripts valid"
+    else
+        echo "[CREDIBLE-001 smoke] SKIP: no staged .sh files in scripts/coord/ or scripts/dispatch/"
     fi
 fi
 
