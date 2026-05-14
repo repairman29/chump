@@ -2572,6 +2572,101 @@ async fn handle_telemetry_cost(headers: HeaderMap) -> Result<Json<serde_json::Va
     Ok(Json(payload))
 }
 
+/// GET /api/health/pillars — 4-pillar health dashboard (PRODUCT-090).
+///
+/// Returns per-pillar grade, pickable gap count, P0 count, and SLO breach status.
+/// Grade: A=0 fleet-SLO-breaches, B=1, C=2, F=3+.
+/// pickable_count: open P0+P1 gaps with effort xs/s/m for that pillar.
+/// slo_breach: true when pillar has < 2 pickable gaps (L2-SLO-4).
+async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
+    let _ = check_auth(&headers); // unauthenticated read-only for dashboard convenience
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => std::path::PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+
+    // ── Fleet SLO breach count via chump health --slo-check --json ───────────
+    let mut fleet_breaches: u32 = 0;
+    if let Ok(out) = std::process::Command::new(
+        std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump")),
+    )
+    .args(["health", "--slo-check", "--json"])
+    .current_dir(&repo_root)
+    .output()
+    {
+        if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+            fleet_breaches = parsed
+                .get("slo_breaches")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+        }
+    }
+    let fleet_grade = match fleet_breaches {
+        0 => "A",
+        1 => "B",
+        2 => "C",
+        _ => "F",
+    };
+
+    // ── Per-pillar gap counts from gap_store ──────────────────────────────────
+    const PILLARS: &[&str] = &["EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE"];
+    let mut pillar_pickable: std::collections::HashMap<&str, u32> =
+        PILLARS.iter().map(|&p| (p, 0u32)).collect();
+    let mut pillar_p0: std::collections::HashMap<&str, u32> =
+        PILLARS.iter().map(|&p| (p, 0u32)).collect();
+
+    if let Ok(store) = crate::gap_store::GapStore::open(&repo_root) {
+        if let Ok(gaps) = store.list(Some("open")) {
+            for gap in &gaps {
+                // Pillar comes from title prefix "PILLAR: rest of title".
+                let pillar = PILLARS.iter().find(|&&p| {
+                    gap.title.starts_with(&format!("{}:", p))
+                        || gap.title.starts_with(&format!("{} ", p))
+                });
+                let Some(&pillar) = pillar else { continue };
+
+                if gap.priority == "P0" {
+                    *pillar_p0.entry(pillar).or_default() += 1;
+                }
+                // Pickable = P0+P1, effort xs/s/m.
+                if matches!(gap.priority.as_str(), "P0" | "P1")
+                    && matches!(gap.effort.as_str(), "xs" | "s" | "m")
+                {
+                    *pillar_pickable.entry(pillar).or_default() += 1;
+                }
+            }
+        }
+    }
+
+    // ── Build response ────────────────────────────────────────────────────────
+    let pillars: Vec<serde_json::Value> = PILLARS
+        .iter()
+        .map(|&p| {
+            let pickable = *pillar_pickable.get(p).unwrap_or(&0);
+            let p0_count = *pillar_p0.get(p).unwrap_or(&0);
+            let slo_breach = pickable < 2 || p0_count > 5;
+            let grade = if slo_breach || p0_count > 5 {
+                "F"
+            } else {
+                fleet_grade
+            };
+            serde_json::json!({
+                "pillar": p,
+                "grade": grade,
+                "pickable_count": pickable,
+                "p0_count": p0_count,
+                "slo_breach": slo_breach,
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({
+        "fleet_grade": fleet_grade,
+        "fleet_slo_breaches": fleet_breaches,
+        "pillars": pillars,
+    }))
+}
+
 /// GET /api/pr/{number} — Per-PR detail snapshot (INFRA-1011).
 ///
 /// Operator-facing surface for "what's happening with my PR" without leaving
@@ -4081,6 +4176,7 @@ fn build_api_router() -> Router {
         .route("/api/ambient/recent", get(handle_ambient_recent))
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
+        .route("/api/health/pillars", get(handle_health_pillars))
         .route("/api/pr/{number}", get(handle_pr_detail))
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
