@@ -1,0 +1,13 @@
+- id: INFRA-1029
+  domain: INFRA
+  title: "ZERO-WASTE: pre-claim duplicate sweep — gap-preflight scans /tmp/chump-* worktrees + open PR titles"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Three duplicate-claim incidents today (INFRA-1017, EFFECTIVE-023, INFRA-1016): I claimed gaps that another agent was already on. Pre-claim sweep today checks lock files and gap show only — it misses the two highest-signal duplicate indicators: (a) is there a /tmp worktree for this gap?, (b) is there an open PR with this gap-id in title? Both are cheap REST calls. Adding them would have saved 30+ min today and prevent operator confusion when 4 agents converge on the same hot gap.
+  acceptance_criteria:
+    - "scripts/coord/gap-preflight.sh adds two checks before declaring \"open and unclaimed\": (a) scan /private/tmp/chump-*<gap-id>* directories — if any exist, WARN with the path so the operator/agent can decide whether to resume or abort; (b) gh api repos/X/pulls?state=open + grep for <GAP-ID> in title — if any match, WARN with PR number"
+    - "both checks use REST (gh api, no graphql) and respect CHUMP_PREFLIGHT_NO_WORKTREE_SCAN=1 + CHUMP_PREFLIGHT_NO_PR_SCAN=1 escape hatches"
+    - "exit code 0 with warnings (informational), not exit 1 — operator decides"
+    - "test: create a /tmp/chump-foo-001 worktree, file gap FOO-001, run preflight, assert WARN line appears with worktree path"

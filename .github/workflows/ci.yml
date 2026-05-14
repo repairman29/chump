@@ -1484,8 +1484,9 @@ jobs:
     needs: [audit, audit-stub]
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 15
     steps:
+      - uses: actions/checkout@v6
       - name: Verify audit or audit-stub passed
         run: |
           real="${{ needs.audit.result }}"
@@ -1499,3 +1500,5 @@ jobs:
             echo "::error::audit-required FAIL (real=$real, stub=$stub)"
             exit 1
           fi
+      - name: gap-preflight pre-claim duplicate sweep — worktree + open-PR scan (INFRA-1029)
+        run: bash scripts/ci/test-gap-preflight-dupe-sweep.sh

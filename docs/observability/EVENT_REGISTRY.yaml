@@ -1834,3 +1834,15 @@ events:
       enablePullRequestAutoMerge.
     consumers: [fleet-brief]
     fields_required: [ts, kind, pr, gap]
+  # ── INFRA-1029: pre-claim duplicate sweep ────────────────────────────────
+  - kind: preflight_dupe_worktree
+    emitter: scripts/coord/gap-preflight.sh (INFRA-1029)
+    trigger: gap-preflight finds an existing /tmp/chump-* worktree directory for the gap being claimed
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, gap, path]
+
+  - kind: preflight_dupe_pr
+    emitter: scripts/coord/gap-preflight.sh (INFRA-1029)
+    trigger: gap-preflight finds an open PR whose title contains the gap ID
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, gap, prs]
