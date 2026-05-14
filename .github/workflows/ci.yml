@@ -676,6 +676,11 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-cli-fleet-coord.sh
 
+      - name: CLI integration tests by command category — 31 commands (CREDIBLE-018)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-cli-integration.sh
+
       # INFRA-024: standalone example workspace (not a root workspace member).
       # Locked build catches accidental drift in examples/apalis-poc/Cargo.lock.
       # Cheap (~30s) — keep it co-located with the other build-using checks.
