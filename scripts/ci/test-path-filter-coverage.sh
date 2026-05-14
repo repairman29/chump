@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# INFRA-507 / INFRA-272: Verify every top-level directory and key path
-# category is covered by the 'code:' or 'docs-only:' filter in ci.yml.
+# INFRA-507 / INFRA-272 / INFRA-1142: Verify every top-level directory and key
+# path category is covered by the path filters in ci.yml.
+# INFRA-1142: also verify per-job narrower filters (rust/scripts/acp/docs) exist
+# and that clippy/cargo-test/coverage if-conditions use 'rust' (not 'code').
 #
 # WHY: The 'code:' filter is an ALLOWLIST for required status checks.
 # If a PR's sole diff touches a path not in the list, required checks get
@@ -129,3 +131,73 @@ if [[ ${#errors[@]} -gt 0 ]]; then
 fi
 
 echo "All paths classified. Path-filter trap cannot recur for current repo layout."
+
+# ── INFRA-1142: per-job filter validation ─────────────────────────────────────
+echo ""
+echo "=== INFRA-1142: per-job filter checks ==="
+infra1142_fails=0
+
+check_infra1142() {
+  local label="$1" result="$2"
+  if [[ "$result" == "pass" ]]; then
+    echo "  [PASS] $label"
+    ((pass++)) || true
+  else
+    echo "  [FAIL] $label"
+    ((infra1142_fails++)) || true
+    ((fail++)) || true
+  fi
+}
+
+# Per-job outputs exist
+for output in rust scripts acp docs; do
+  if grep -q "steps.filter.outputs.${output}" "$CI_YML"; then
+    check_infra1142 "changes.outputs.${output} declared" "pass"
+  else
+    check_infra1142 "changes.outputs.${output} declared" "fail"
+  fi
+done
+
+# rust filter covers core Rust paths
+rust_section=$(extract_section "rust")
+for pattern in 'src/**' 'crates/**' 'Cargo.toml'; do
+  bare="${pattern%%\**}"; bare="${bare%/}"
+  if echo "$rust_section" | grep -qF "$bare"; then
+    check_infra1142 "rust filter includes $pattern" "pass"
+  else
+    check_infra1142 "rust filter includes $pattern" "fail"
+  fi
+done
+
+# docs filter does NOT include src/**
+docs_section=$(extract_section "docs")
+if echo "$docs_section" | grep -q "src/"; then
+  check_infra1142 "docs filter excludes src/** (docs-only skips rust CI)" "fail"
+else
+  check_infra1142 "docs filter excludes src/** (docs-only skips rust CI)" "pass"
+fi
+
+# clippy/cargo-test/coverage use 'rust' filter
+for job in clippy cargo-test coverage; do
+  if_line="$(grep -A3 "^\s*${job}:" "$CI_YML" | grep "if:" | head -1 || true)"
+  if echo "$if_line" | grep -q "outputs.rust"; then
+    check_infra1142 "${job} if-condition uses 'rust' output" "pass"
+  else
+    check_infra1142 "${job} if-condition uses 'rust' output" "fail"
+  fi
+done
+
+# fast-checks uses rust OR scripts — match the job key at 2-space indent level
+fast_if="$(awk '/^  fast-checks:/{f=1} f && /^    if:/{print; exit}' "$CI_YML" || true)"
+if echo "$fast_if" | grep -q "outputs.rust" && echo "$fast_if" | grep -q "outputs.scripts"; then
+  check_infra1142 "fast-checks if-condition uses rust || scripts" "pass"
+else
+  check_infra1142 "fast-checks if-condition uses rust || scripts" "fail"
+fi
+
+if [[ "$infra1142_fails" -gt 0 ]]; then
+  echo ""
+  echo "INFRA-1142 validation: $infra1142_fails check(s) failed. See ci.yml changes guide."
+  exit 1
+fi
+echo "INFRA-1142: per-job filter split validated."
