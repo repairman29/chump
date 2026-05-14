@@ -1049,3 +1049,37 @@ function scheduleTestAliases() {
 **Pre-commit guard:** none yet (INFRA-1066 AC #6, optional).
 If you add e2e selectors that need shadow piercing, use Playwright's `>>>` shadow-piercing
 combinator (`page.locator('chump-chat >>> #input')`) rather than relying on DOM aliases.
+
+## Branch protection alignment — renaming required checks (CREDIBLE-058)
+
+Required status checks in branch protection are NAME-based: GitHub matches the
+exact string in `branches/main/protection/required_status_checks.contexts`
+against job names emitted by `.github/workflows/*.yml`. If those drift apart,
+**every PR is blocked forever** — the required check is "expected" but no job
+ever reports a result.
+
+The trap:
+- You rename a job in ci.yml (e.g. INFRA-1143's `test` → `test-required`)
+  and forget to update branch protection.
+- Or a workflow file moves a job to a new file with a different job-id.
+- Required name in branch protection now points at nothing — PRs see
+  "expected — waiting for status to be reported" forever.
+
+**Audit script:** `scripts/ci/audit-branch-protection.sh`
+- Scans ALL `.github/workflows/*.yml` for job-ids and `name:` fields.
+- Fetches required contexts from GitHub branch protection API.
+- Fails if any required context has no matching emitter.
+- Wired as a pre-commit hook entry — fires only when a workflow file is
+  in the staged diff.
+- Bypass for offline / known-drift: `CHUMP_BRANCH_PROTECTION_AUDIT=0`.
+
+**Migration playbook (for renames like INFRA-1143):**
+1. Add the new job name to the workflow first (don't remove the old one).
+2. Let the new check report on at least one PR so GitHub knows about it.
+3. Update branch protection's required contexts to include the new name.
+4. Once new name is required and reporting, remove the old job.
+5. Remove the old name from required contexts.
+
+The audit script's failure mode is "block the commit with a clear message
+naming exactly which contexts have no emitter" — so the operator gets the
+info they need to fix it in either direction.

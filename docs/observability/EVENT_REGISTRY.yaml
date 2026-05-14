@@ -1754,3 +1754,10 @@ events:
       fleet-active time — compounding is going backwards.
     consumers: [fleet-brief, curator, operator-recall]
     fields_required: [ts, kind, week, prev_mean_leverage, curr_mean_leverage, drop_pct]
+
+  # ── CREDIBLE-058: branch-protection alignment audit ──────────────────
+  - kind: branch_protection_drift
+    emitter: scripts/ci/audit-branch-protection.sh (CREDIBLE-058)
+    trigger: required status check in branch protection has no matching job emitter across .github/workflows/*.yml
+    consumers: [fleet-brief, ci-config-drift-monitor]
+    fields_required: [ts, kind, missing_emitters, workflows_dir, branch]

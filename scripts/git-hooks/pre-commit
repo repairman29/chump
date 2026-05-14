@@ -1601,6 +1601,34 @@ if [ "${CREDIBLE_INFRA_SMOKE_BYPASS:-0}" != "1" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------
+# 9b. Branch-protection alignment audit (CREDIBLE-058, 2026-05-14)
+# ------------------------------------------------------------------
+# When .github/workflows/*.yml is in the staged diff, verify that every
+# required status check in main's branch protection still has a matching
+# job emitter. Catches the class of bug where a workflow rename leaves
+# branch protection pointing at a name no job emits → every PR blocked
+# forever. The audit is gh-online (best-effort) and skips cleanly offline.
+# Bypass: CHUMP_BRANCH_PROTECTION_AUDIT=0
+
+if [ "${CHUMP_BRANCH_PROTECTION_AUDIT:-1}" != "0" ]; then
+    BP_AUDIT="$REPO_ROOT/scripts/ci/audit-branch-protection.sh"
+    if [ -x "$BP_AUDIT" ]; then
+        STAGED_WORKFLOW_CHANGES=$(git diff --cached --name-only --diff-filter=ACMR \
+            | grep -E "^\.github/workflows/.*\.ya?ml$" || true)
+        if [ -n "$STAGED_WORKFLOW_CHANGES" ]; then
+            if ! "$BP_AUDIT"; then
+                echo "" >&2
+                echo "[pre-commit] CREDIBLE-058: branch-protection drift detected." >&2
+                echo "[pre-commit] Fix one of: (a) rename the job in the workflow, " >&2
+                echo "[pre-commit] (b) update branch-protection contexts, or" >&2
+                echo "[pre-commit] (c) bypass once: CHUMP_BRANCH_PROTECTION_AUDIT=0 git commit ..." >&2
+                exit 1
+            fi
+        fi
+    fi
+fi
+
 # 10. Event-registry guard (INFRA-754, 2026-05-08)
 # ------------------------------------------------------------------
 # Refuses any commit that introduces a new `"kind":"X"` ambient event
