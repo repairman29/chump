@@ -1,25 +1,30 @@
 - id: INFRA-816
   domain: INFRA
-  title: 'release-plz: missing glib-2.0 system dependency causes CI failure'
-  status: done
+  title: "release-plz: missing glib-2.0 system dependency causes CI failure"
+  status: open
   priority: P1
   effort: xs
-  description: "release-plz.yml CI workflow consistently fails because it runs `cargo test` \nwithout installing system dependencies\
-    \ needed by glib-sys crate (glib-2.0). \nThe main CI (ci.yml) has `sudo apt-get install libglib2.0-dev` in its setup \n\
-    steps, but release-plz.yml lacks this. Error:\n\n  pkg-config failed: Package glib-2.0 was not found in the pkg-config\
-    \ search path.\n  The system library glib-2.0 required by crate glib-sys was not found.\n\nThe release-plz workflow handles\
-    \ crate publishing (crates.io). With this \nfailure, the release pipeline is broken for any PR that touches a crate \n\
-    with glib-sys as a transitive dependency.\n\nFix: add `sudo apt-get install -y libglib2.0-dev` to the release-plz.yml\
-    \ \nsetup steps, matching the pattern used in ci.yml.\n"
+  description: |
+    release-plz.yml CI workflow consistently fails because it runs `cargo test` 
+    without installing system dependencies needed by glib-sys crate (glib-2.0). 
+    The main CI (ci.yml) has `sudo apt-get install libglib2.0-dev` in its setup 
+    steps, but release-plz.yml lacks this. Error:
+    
+      pkg-config failed: Package glib-2.0 was not found in the pkg-config search path.
+      The system library glib-2.0 required by crate glib-sys was not found.
+    
+    The release-plz workflow handles crate publishing (crates.io). With this 
+    failure, the release pipeline is broken for any PR that touches a crate 
+    with glib-sys as a transitive dependency.
+    
+    Fix: add `sudo apt-get install -y libglib2.0-dev` to the release-plz.yml 
+    setup steps, matching the pattern used in ci.yml.
   acceptance_criteria:
-  - ''
-  - ' release-plz.yml CI run passes on a PR with crate changes that transitively depend on glib-sys '
-  - ' yes '
-  - '
+    - ""
+    - " release-plz.yml CI run passes on a PR with crate changes that transitively depend on glib-sys "
+    - " yes "
+    - "\n"
+    - " apt-get install libglib2.0-dev step added to release-plz.yml setup "
+    - " yes "
+    - ""
 
-    '
-  - ' apt-get install libglib2.0-dev step added to release-plz.yml setup '
-  - ' yes '
-  - ''
-  closed_date: '2026-05-10'
-  closed_pr: 1437

@@ -1,13 +1,12 @@
 - id: INFRA-1061
   domain: INFRA
-  title: 'RESILIENT: re-fix INFRA-1042 doc-only fastpath — gate is still wrapped in ''if SKIP_TESTS==0'' in main'
-  status: done
+  title: "RESILIENT: re-fix INFRA-1042 doc-only fastpath — gate is still wrapped in 'if SKIP_TESTS==0' in main"
+  status: open
   priority: P1
   effort: xs
   acceptance_criteria:
-  - 'TODO: what events emitted on success/failure/timeout'
-  - 'TODO: how cost tracked and reported to operator'
-  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
-  - 'TODO: smoke test command to verify observability'
-  closed_date: '2026-05-13'
-  closed_pr: 1734
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

@@ -1,29 +1,31 @@
 - id: INFRA-372
   domain: INFRA
-  title: 'EFFECTIVE: anthropic prompt caching for chump-local backend — add cache_control on CLAUDE.md+lessons+briefing prefix'
-  status: done
+  title: "EFFECTIVE: anthropic prompt caching for chump-local backend — add cache_control on CLAUDE.md+lessons+briefing prefix"
+  status: open
   priority: P1
   effort: m
-  description: "Anthropic prompt caching for the chump-local backend (src/dispatch.rs path). When fleet workers run via FLEET_BACKEND=chump-local\
-    \ → chump --execute-gap → src/provider_cascade.rs, the calls hit the Anthropic API directly (Together / Cerebras / Groq\
-    \ cascade) — these support cache_control headers per the Anthropic docs.\n\nAdd cache_control: {type: 'ephemeral'} on\
-    \ the static prefix:\n  - CLAUDE.md content (if loaded)\n  - The lessons block (if CHUMP_LESSONS_AT_SPAWN_N > 0)\n  -\
-    \ The MEM-007 briefing's strategic-doc refs section (rarely changes per gap)\n\nThe dynamic suffix (gap-specific YAML,\
-    \ recent ambient, blackboard) stays uncached.\n\nAnthropic doc: cached prefix billed at 10% the cost on cache hits, 25%\
-    \ above per-token cost on first write. Break-even at 2 reads. Fleet workers do 100+ spawns/day → effectively 90% cost\
-    \ reduction on the cached portion.\n\nNOTE: This does NOT help the FLEET_BACKEND=claude path (which uses 'claude -p').\
-    \ Claude Code may already cache internally; out of our control. INFRA-371's bash-only fixes (inline briefing, tight timeout)\
-    \ handle the claude-code path; this gap handles the chump-local path.\n\nImplementation: thread cache_control through\
-    \ src/provider_cascade.rs's request builder; add a CHUMP_PROMPT_CACHE=0 bypass for A/B comparison. Smoke test exercises\
-    \ a 2-call session and verifies the second call shows cache_read_input_tokens > 0.\n"
+  description: |
+    Anthropic prompt caching for the chump-local backend (src/dispatch.rs path). When fleet workers run via FLEET_BACKEND=chump-local → chump --execute-gap → src/provider_cascade.rs, the calls hit the Anthropic API directly (Together / Cerebras / Groq cascade) — these support cache_control headers per the Anthropic docs.
+    
+    Add cache_control: {type: 'ephemeral'} on the static prefix:
+      - CLAUDE.md content (if loaded)
+      - The lessons block (if CHUMP_LESSONS_AT_SPAWN_N > 0)
+      - The MEM-007 briefing's strategic-doc refs section (rarely changes per gap)
+    
+    The dynamic suffix (gap-specific YAML, recent ambient, blackboard) stays uncached.
+    
+    Anthropic doc: cached prefix billed at 10% the cost on cache hits, 25% above per-token cost on first write. Break-even at 2 reads. Fleet workers do 100+ spawns/day → effectively 90% cost reduction on the cached portion.
+    
+    NOTE: This does NOT help the FLEET_BACKEND=claude path (which uses 'claude -p'). Claude Code may already cache internally; out of our control. INFRA-371's bash-only fixes (inline briefing, tight timeout) handle the claude-code path; this gap handles the chump-local path.
+    
+    Implementation: thread cache_control through src/provider_cascade.rs's request builder; add a CHUMP_PROMPT_CACHE=0 bypass for A/B comparison. Smoke test exercises a 2-call session and verifies the second call shows cache_read_input_tokens > 0.
   acceptance_criteria:
-  - src/provider_cascade.rs sends cache_control on static prefix sections
-  - CLAUDE.md + lessons + briefing strategic-docs are marked cacheable
-  - gap-specific YAML + ambient + blackboard remain uncached
-  - CHUMP_PROMPT_CACHE=0 disables for A/B
-  - telemetry logs cache_read_input_tokens per call
-  - smoke test verifies 2-call cache hit rate > 0
-  - provider must support Anthropic cache_control header (skip Together/Groq if not)
+    - src/provider_cascade.rs sends cache_control on static prefix sections
+    - CLAUDE.md + lessons + briefing strategic-docs are marked cacheable
+    - gap-specific YAML + ambient + blackboard remain uncached
+    - CHUMP_PROMPT_CACHE=0 disables for A/B
+    - telemetry logs cache_read_input_tokens per call
+    - smoke test verifies 2-call cache hit rate > 0
+    - provider must support Anthropic cache_control header (skip Together/Groq if not)
   opened_date: '2026-05-03'
-  closed_date: '2026-05-12'
-  closed_pr: 1527
+

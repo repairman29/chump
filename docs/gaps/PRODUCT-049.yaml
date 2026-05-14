@@ -2,12 +2,11 @@
   domain: PRODUCT
   title: "MISSION: publish Chump to JetBrains ACP Agent Registry"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - Chump is listed in the JetBrains ACP Agent Registry with correct metadata (name, description, capabilities, install instructions)
     - Registry entry points to chump --acp as the launch command
     - Entry includes supported ACP version (v1+v2) and tool capabilities
     - Install instructions cover brew tap + brew install + chump init
-  opened_date: '2026-05-08'
 

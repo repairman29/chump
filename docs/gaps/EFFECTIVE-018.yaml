@@ -1,37 +1,23 @@
 - id: EFFECTIVE-018
   domain: EFFECTIVE
-  title: 'EFFECTIVE: pluggable auth manager — generic provider-credential store instead of Anthropic-only'
-  status: done
+  title: "EFFECTIVE: pluggable auth manager — generic provider-credential store instead of Anthropic-only"
+  status: open
   priority: P1
   effort: s
-  description: 'src/auth.rs currently handles ONLY `anthropic_api_key` and
-
+  description: |
+    src/auth.rs currently handles ONLY `anthropic_api_key` and
     `claude_code_oauth_token`. The free-tier rotation work (EFFECTIVE-002)
-
     plugs in Groq/Cerebras/NVIDIA keys via env vars elsewhere, but the
-
     central auth manager is Anthropic-only. A solo dev with only an
-
-    OpenAI key (or only a Together key, or only an OLLAMA_BASE_URL) can''t
-
-    use chump''s auth-discovery path.
-
-    '
+    OpenAI key (or only a Together key, or only an OLLAMA_BASE_URL) can't
+    use chump's auth-discovery path.
   acceptance_criteria:
-  - 'src/auth.rs adds `struct Credentials { provider: String, api_key: Option<String>, oauth_token: Option<String>, base_url:
-    Option<String> }` keyed by provider name'
-  - 'Supported providers: anthropic, openai, together, groq, cerebras, nvidia, ollama (and a generic `custom` variant for
-    self-hosted)'
-  - 'Discovery order (per provider, in priority): env var (PROVIDER_API_KEY) → ~/.chump/config.toml [api] section → ~/.chump/oauth-token.json
-    → operator-set --provider flag'
-  - '`chump fleet doctor` reports which providers have credentials available; exits non-zero only if ALL providers fail (i.e.,
-    chump can use ANY backend)'
-  - 'Backwards compatible: existing ANTHROPIC_API_KEY + CLAUDE_CODE_OAUTH_TOKEN paths continue to work without config change'
-  - 'scripts/ci/test-pluggable-auth.sh: env-only fixtures for each provider; assert credentials resolve correctly per-provider'
-  - 'Test the cross-provider case: ANTHROPIC_API_KEY unset + OPENAI_API_KEY set + CHUMP_WORK_BACKEND=ollama → chump fleet
-    doctor exits 0 (ollama has no key requirement; openai is fallback)'
-  - Documented in src/auth.rs header + docs/process/CHUMP_FIRST_DOCTRINE.md as the auth side of the universal-runtime story
-  - Pairs with EFFECTIVE-017 (WorkBackend) — each backend declares which providers it can use; auth manager validates the
-    chosen backend's prerequisites
-  closed_date: '2026-05-13'
-  closed_pr: 1671
+    - "src/auth.rs adds `struct Credentials { provider: String, api_key: Option<String>, oauth_token: Option<String>, base_url: Option<String> }` keyed by provider name"
+    - "Supported providers: anthropic, openai, together, groq, cerebras, nvidia, ollama (and a generic `custom` variant for self-hosted)"
+    - "Discovery order (per provider, in priority): env var (PROVIDER_API_KEY) → ~/.chump/config.toml [api] section → ~/.chump/oauth-token.json → operator-set --provider flag"
+    - "`chump fleet doctor` reports which providers have credentials available; exits non-zero only if ALL providers fail (i.e., chump can use ANY backend)"
+    - "Backwards compatible: existing ANTHROPIC_API_KEY + CLAUDE_CODE_OAUTH_TOKEN paths continue to work without config change"
+    - "scripts/ci/test-pluggable-auth.sh: env-only fixtures for each provider; assert credentials resolve correctly per-provider"
+    - "Test the cross-provider case: ANTHROPIC_API_KEY unset + OPENAI_API_KEY set + CHUMP_WORK_BACKEND=ollama → chump fleet doctor exits 0 (ollama has no key requirement; openai is fallback)"
+    - "Documented in src/auth.rs header + docs/process/CHUMP_FIRST_DOCTRINE.md as the auth side of the universal-runtime story"
+    - "Pairs with EFFECTIVE-017 (WorkBackend) — each backend declares which providers it can use; auth manager validates the chosen backend's prerequisites"

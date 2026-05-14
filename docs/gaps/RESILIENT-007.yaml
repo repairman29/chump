@@ -1,23 +1,15 @@
 - id: RESILIENT-007
   domain: RESILIENT
-  title: 'RESILIENT: fleet dispatcher refuses to ship a gap whose acceptance_criteria contains TODO-placeholder lines — surfaces
-    the gap for AC-fix instead of bare-minimum interpretation'
-  status: done
+  title: "RESILIENT: fleet dispatcher refuses to ship a gap whose acceptance_criteria contains TODO-placeholder lines — surfaces the gap for AC-fix instead of bare-minimum interpretation"
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
-  - scripts/dispatch/worker.sh and/or _pick_and_claim_gap.py refuses to claim a gap whose state.db row has any acceptance_criterion
-    matching the regex /^TODO:/i or empty/null AC field
-  - Refusal emits ambient kind=gap_skipped_todo_ac with gap_id, ac_count, todo_count so the operator (or PM-curator role)
-    can prioritize fixing the AC
-  - scripts/coord/gap-preflight.sh gains the same check — exits non-zero with named error when a gap's AC is all-TODO; documents
-    the fix command (chump gap set <ID> --acceptance-criteria '...')
-  - 'Today PR #1457/1458/1459 (CREDIBLE-025/027/028) all shipped against AC that had been stale-binary-regen-wiped to TODO
-    placeholders. Worker saw TODO, shipped bare-minimum interpretation of title, closed. This gap stops that pattern.'
-  - Pairs with INFRA-825 (hard-fail destructive bulk-YAML ops) — INFRA-825 prevents the wipe; RESILIENT-007 catches whatever
-    wipe happened pre-INFRA-825 and refuses to ship against the resulting TODO AC
-  - 'Test: synthetic state.db with a gap whose AC is [''TODO: foo'', ''TODO: bar''] — worker pickup attempt logs kind=gap_skipped_todo_ac
-    and moves to the next gap'
-  - 'Operator override: CHUMP_DISPATCH_ALLOW_TODO_AC=1 (very loud, audited) for the rare case where the operator explicitly
-    wants to ship against TODO AC (e.g. exploratory work)'
-  - Documents the policy in scripts/dispatch/worker.sh header + AGENTS.md per-worker contract section
+    - "scripts/dispatch/worker.sh and/or _pick_and_claim_gap.py refuses to claim a gap whose state.db row has any acceptance_criterion matching the regex /^TODO:/i or empty/null AC field"
+    - "Refusal emits ambient kind=gap_skipped_todo_ac with gap_id, ac_count, todo_count so the operator (or PM-curator role) can prioritize fixing the AC"
+    - "scripts/coord/gap-preflight.sh gains the same check — exits non-zero with named error when a gap's AC is all-TODO; documents the fix command (chump gap set <ID> --acceptance-criteria '...')"
+    - "Today PR #1457/1458/1459 (CREDIBLE-025/027/028) all shipped against AC that had been stale-binary-regen-wiped to TODO placeholders. Worker saw TODO, shipped bare-minimum interpretation of title, closed. This gap stops that pattern."
+    - "Pairs with INFRA-825 (hard-fail destructive bulk-YAML ops) — INFRA-825 prevents the wipe; RESILIENT-007 catches whatever wipe happened pre-INFRA-825 and refuses to ship against the resulting TODO AC"
+    - "Test: synthetic state.db with a gap whose AC is ['TODO: foo', 'TODO: bar'] — worker pickup attempt logs kind=gap_skipped_todo_ac and moves to the next gap"
+    - "Operator override: CHUMP_DISPATCH_ALLOW_TODO_AC=1 (very loud, audited) for the rare case where the operator explicitly wants to ship against TODO AC (e.g. exploratory work)"
+    - "Documents the policy in scripts/dispatch/worker.sh header + AGENTS.md per-worker contract section"
