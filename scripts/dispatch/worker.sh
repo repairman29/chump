@@ -5,7 +5,7 @@
 #   1. git fetch + (best-effort) rebase main into a fresh worktree
 #   2. ask musher.py / chump gap list for the next pickable gap
 #      (filters: priority, domain, effort)
-#   3. claim it via gap-claim.sh (atomic flock)
+#   3. claim it via chump claim (atomic flock)
 #   4. create a worktree at .claude/worktrees/<gap-id>-<sid>
 #   5. spawn `claude -p <focused-prompt> --dangerously-skip-permissions`
 #      with FLEET_TIMEOUT_S timeout — same surface as WorkBackend::Headless
@@ -48,8 +48,8 @@ REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 # INFRA-461: derive a unique per-worker session ID so leases written by this
 # worker (or any chump/coord subprocess it invokes) DO NOT stomp the
 # operator's interactive session via the .chump-locks/.wt-session-id
-# fallback in the gap-claim.sh resolution chain. Workers run with
-# cwd=$REPO_ROOT (the main worktree); without this export, gap-claim.sh
+# fallback in the chump claim resolution chain. Workers run with
+# cwd=$REPO_ROOT (the main worktree); without this export, chump claim
 # picks up `.wt-session-id` and every fleet worker writes the lease under
 # the operator's interactive session ID — observed live 2026-05-04 with
 # multiple SWARM-* claims overwriting an active interactive INFRA-458
@@ -329,7 +329,7 @@ PY
     # INFRA-415: atomic gap picker+claimer. This picker filters candidates
     # AND claims the gap atomically before returning, preventing concurrent
     # workers from picking the same gap. Uses the same session-ID resolution
-    # as gap-claim.sh so the lease is scoped to this worker's session.
+    # as chump claim so the lease is scoped to this worker's session.
     gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
     printf '%s' "$gap_json" > "$gap_json_file"
     pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
@@ -636,7 +636,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     # INFRA-415: the atomic picker (_pick_and_claim_gap.py) already claimed
     # the gap atomically before returning the gap ID. The lease file is
     # already written in .chump-locks/<session>.json, so we skip the separate
-    # gap-claim.sh call and proceed directly to spawning the agent.
+    # chump claim call and proceed directly to spawning the agent.
 
     # ── Spawn agent (claude or chump-local) ───────────────────────────────
     cycle_log="$FLEET_LOG_DIR/agent-${AGENT_ID}-cycle${cycle}-${GAP_ID}.log"

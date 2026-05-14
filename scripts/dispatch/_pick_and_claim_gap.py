@@ -233,7 +233,7 @@ def csv(env_key: str) -> list[str]:
 
 
 def get_session_id() -> str:
-    """Resolve session ID in priority order (same as gap-claim.sh)."""
+    """Resolve session ID in priority order (same as chump claim)."""
     # Priority 1: explicit override
     if os.environ.get("CHUMP_SESSION_ID"):
         return os.environ["CHUMP_SESSION_ID"]
