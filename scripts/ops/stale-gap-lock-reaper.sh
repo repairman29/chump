@@ -246,6 +246,59 @@ except Exception:
         fi
     fi
 
+    # INFRA-1252: ghost-lease HANDOFF. If the dead session's gap branch has
+    # commits beyond origin/main, broadcast STUCK (fleet) once + delay reap
+    # by CHUMP_HANDOFF_ACK_WINDOW_S so a fresh worker can claim before we
+    # forget the work. STUCK is used instead of HANDOFF for the fleet-broadcast
+    # case because HANDOFF requires a named recipient. (When a specific
+    # recipient can be chosen — e.g. via file-scope match — a follow-up gap
+    # will switch to HANDOFF with --to.)
+    if [[ -n "$gap_id" ]] && [[ -x "$REPO_ROOT/scripts/coord/broadcast.sh" ]]; then
+        _handoff_stamp_dir="$LOCK_DIR/.handoff-pending"
+        _handoff_stamp="$_handoff_stamp_dir/$gap_id.ts"
+        _handoff_window="${CHUMP_HANDOFF_ACK_WINDOW_S:-900}"
+
+        if [[ -f "$_handoff_stamp" ]]; then
+            _hts="$(cat "$_handoff_stamp" 2>/dev/null || echo 0)"
+            _hage=$((NOW_EPOCH_CLAIM - _hts))
+            if [[ "$_hage" -lt "$_handoff_window" ]]; then
+                echo "  SKIP claim reap (HANDOFF pending ${_hage}s/${_handoff_window}s): $(basename "$claim_file")"
+                printf '{"ts":"%s","kind":"ghost_lease_handoff_pending","gap":"%s","session":"%s","age_s":%d,"window_s":%d}\n' \
+                    "$NOW_ISO" "$gap_id" "$session_id" "$_hage" "$_handoff_window" \
+                    >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+                continue
+            fi
+            rm -f "$_handoff_stamp" 2>/dev/null || true
+        else
+            _gap_lc="$(echo "$gap_id" | tr '[:upper:]' '[:lower:]')"
+            _branch="chump/${_gap_lc}-claim"
+            _repo_nwo=""
+            if command -v gh >/dev/null 2>&1; then
+                _repo_nwo="$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")"
+            fi
+            _commits_ahead=0
+            if [[ -n "$_repo_nwo" ]]; then
+                _commits_ahead="$(gh api "repos/$_repo_nwo/compare/main...$_branch" --jq '.ahead_by' 2>/dev/null || echo 0)"
+                [[ -z "$_commits_ahead" ]] && _commits_ahead=0
+            fi
+            if [[ "$_commits_ahead" -ge 1 ]]; then
+                _reason="ghost-lease (session=$session_id PID dead/TTL expired) — branch $_branch is $_commits_ahead commit(s) ahead of main. Picker: git fetch && git checkout $_branch && git rebase origin/main && push."
+                if [[ "$DRY_RUN" == "true" ]]; then
+                    echo "  WOULD HANDOFF claim (commits=$_commits_ahead): $gap_id → fleet STUCK broadcast"
+                else
+                    mkdir -p "$_handoff_stamp_dir" 2>/dev/null || true
+                    printf '%s' "$NOW_EPOCH_CLAIM" > "$_handoff_stamp"
+                    "$REPO_ROOT/scripts/coord/broadcast.sh" --corr "$gap_id" STUCK "$gap_id" "$_reason" >/dev/null 2>&1 || true
+                    printf '{"ts":"%s","kind":"ghost_lease_handoff","gap":"%s","session":"%s","commits_ahead":%d,"branch":"%s","ack_window_s":%d}\n' \
+                        "$NOW_ISO" "$gap_id" "$session_id" "$_commits_ahead" "$_branch" "$_handoff_window" \
+                        >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+                    echo "  HANDOFF claim (commits=$_commits_ahead): $gap_id → fleet (ack window ${_handoff_window}s before reap)"
+                fi
+                continue  # delay reap until ack window elapses
+            fi
+        fi
+    fi
+
     # INFRA-1208: PID-liveness check BEFORE TTL check. Sessions write 8h TTL
     # leases, but if a session crashes 30 min in, the existing TTL check
     # leaves the lease sitting for 7.5h+ — overnight accumulation of 14
