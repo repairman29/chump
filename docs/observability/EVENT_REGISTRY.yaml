@@ -255,6 +255,24 @@ events:
       picker consumes this file (INFRA-1258) to pick best-scored gap.
     consumers: [picker, fleet-brief, audit-log]
     fields_required: [ts, kind, out_file]
+
+  - kind: picker_used_priority
+    emitter: scripts/dispatch/_pick_gap.py (INFRA-1258)
+    trigger: picker successfully selected a gap from the planner-ranked
+      list at .chump-locks/gap-priority.json. Captures planner_rank so
+      we can measure how much delta vs. legacy first-fit.
+    consumers: [fleet-brief, audit-log, kpi-report]
+    fields_required: [ts, kind, gap_id, planner_rank, worker_id]
+
+  - kind: picker_priority_stale
+    emitter: scripts/dispatch/_pick_gap.py (INFRA-1258)
+    trigger: picker tried to load .chump-locks/gap-priority.json but it
+      was absent / stale / invalid; picker fell back to legacy ordering.
+      Surfacing the staleness so fleet-brief can alert when the planner
+      launchd job has been down.
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, reason, worker_id]
+
   - kind: rust_first_bypass_used
     emitter: scripts/git-hooks/pre-commit-rust-first.sh (META-064)
     trigger: pre-commit gate matched Rust-first criteria on a new shell
@@ -2379,3 +2397,10 @@ events:
     trigger: operator persists a secret credential (Anthropic key, OAUTH token, GH token) via PWA POST /api/settings/secret/{name}, after a successful probe (or with CHUMP_SKIP_PROBE=1)
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, key, last4, probe_skipped]
+  - kind: gh_auth_token_cache_hit
+    emitter: scripts/coord/lib/gh-shim/gh (INFRA-1283)
+    trigger: gh shim intercepted 'gh auth token' and returned a cached token
+      (within CHUMP_GH_TOKEN_CACHE_TTL_S, default 300s). Skips the real gh
+      auth token call entirely — avoids ~27 redundant calls/hr.
+    consumers: [fleet-brief, api-cost-leaderboard]
+    fields_required: [ts, kind, age_s, ttl_s]
