@@ -47,7 +47,10 @@ fn isolation_env(root: &Path) -> Vec<(String, String)> {
         ("CHUMP_RESERVE_NO_AUTOSTAGE".into(), "1".into()),
         ("CHUMP_RAW_YAML_LOCK".into(), "0".into()),
         ("FLEET_029_AMBIENT_GLANCE_SKIP".into(), "1".into()),
-        ("CHUMP_SESSION_ID".into(), format!("test-{}", std::process::id())),
+        (
+            "CHUMP_SESSION_ID".into(),
+            format!("test-{}", std::process::id()),
+        ),
         ("CHUMP_GAP_SHIP_SKIP_STALE_CHECK".into(), "1".into()),
     ]
 }
@@ -59,7 +62,9 @@ fn run(dir: &Path, args: &[&str]) -> Output {
     for (k, v) in isolation_env(dir) {
         cmd.env(k, v);
     }
-    cmd.args(args).output().unwrap_or_else(|e| panic!("spawn {args:?}: {e}"))
+    cmd.args(args)
+        .output()
+        .unwrap_or_else(|e| panic!("spawn {args:?}: {e}"))
 }
 
 fn stdout(o: &Output) -> String {
@@ -72,12 +77,11 @@ fn stderr(o: &Output) -> String {
 
 /// Reserve a gap and return its ID (panics if reserve fails).
 fn reserve_gap(dir: &Path, domain: &str, title: &str) -> String {
-    let out = run(dir, &["gap", "reserve", "--domain", domain, "--title", title]);
-    assert!(
-        out.status.success(),
-        "gap reserve failed: {}",
-        stderr(&out)
+    let out = run(
+        dir,
+        &["gap", "reserve", "--domain", domain, "--title", title],
     );
+    assert!(out.status.success(), "gap reserve failed: {}", stderr(&out));
     stdout(&out).trim().to_string()
 }
 
@@ -135,14 +139,20 @@ fn dispatch_table_complete_claim() {
 fn gap_reserve_valid_returns_gap_id() {
     let dir = tempfile::tempdir().unwrap();
     setup_isolated_repo(dir.path());
-    let out = run(dir.path(), &["gap", "reserve", "--domain", "INFRA", "--title", "dispatch test"]);
+    let out = run(
+        dir.path(),
+        &[
+            "gap",
+            "reserve",
+            "--domain",
+            "INFRA",
+            "--title",
+            "dispatch test",
+        ],
+    );
     assert!(out.status.success(), "reserve failed: {}", stderr(&out));
     let id = stdout(&out).trim().to_string();
-    assert!(
-        id.starts_with("INFRA-"),
-        "expected INFRA-NNN, got {:?}",
-        id
-    );
+    assert!(id.starts_with("INFRA-"), "expected INFRA-NNN, got {:?}", id);
 }
 
 #[test]
@@ -150,7 +160,12 @@ fn gap_reserve_missing_domain_exits_2() {
     let dir = tempfile::tempdir().unwrap();
     setup_isolated_repo(dir.path());
     let out = run(dir.path(), &["gap", "reserve"]);
-    assert_eq!(out.status.code(), Some(2), "expected exit 2, got {:?}", out.status);
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "expected exit 2, got {:?}",
+        out.status
+    );
     assert!(
         stderr(&out).to_ascii_lowercase().contains("usage"),
         "expected usage hint in stderr, got {:?}",
@@ -163,7 +178,11 @@ fn gap_reserve_missing_title_with_domain_flag_exits_2() {
     let dir = tempfile::tempdir().unwrap();
     setup_isolated_repo(dir.path());
     let out = run(dir.path(), &["gap", "reserve", "--domain", "INFRA"]);
-    assert_eq!(out.status.code(), Some(2), "expected exit 2 for missing --title");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "expected exit 2 for missing --title"
+    );
     assert!(
         stderr(&out).contains("--title"),
         "expected --title hint in stderr, got {:?}",
@@ -188,12 +207,19 @@ fn gap_list_json_returns_array() {
     // Seed one gap so the JSON is non-trivial.
     reserve_gap(dir.path(), "INFRA", "test-list-json");
     let out = run(dir.path(), &["gap", "list", "--json"]);
-    assert!(out.status.success(), "gap list --json failed: {}", stderr(&out));
+    assert!(
+        out.status.success(),
+        "gap list --json failed: {}",
+        stderr(&out)
+    );
     let json: serde_json::Value =
         serde_json::from_str(stdout(&out).trim()).expect("gap list --json must emit valid JSON");
     assert!(json.is_array(), "gap list --json must return a JSON array");
     let arr = json.as_array().unwrap();
-    assert!(!arr.is_empty(), "JSON array should have at least the seeded gap");
+    assert!(
+        !arr.is_empty(),
+        "JSON array should have at least the seeded gap"
+    );
 }
 
 #[test]
@@ -202,7 +228,11 @@ fn gap_list_status_filter_open() {
     setup_isolated_repo(dir.path());
     reserve_gap(dir.path(), "INFRA", "test-status-filter");
     let out = run(dir.path(), &["gap", "list", "--status", "open", "--json"]);
-    assert!(out.status.success(), "gap list --status open failed: {}", stderr(&out));
+    assert!(
+        out.status.success(),
+        "gap list --status open failed: {}",
+        stderr(&out)
+    );
     let json: serde_json::Value = serde_json::from_str(stdout(&out).trim()).unwrap();
     let arr = json.as_array().unwrap();
     for item in arr {
@@ -222,7 +252,11 @@ fn gap_show_valid_id_exits_0() {
     setup_isolated_repo(dir.path());
     let id = reserve_gap(dir.path(), "INFRA", "test-show");
     let out = run(dir.path(), &["gap", "show", &id]);
-    assert!(out.status.success(), "gap show {id} failed: {}", stderr(&out));
+    assert!(
+        out.status.success(),
+        "gap show {id} failed: {}",
+        stderr(&out)
+    );
     let out_str = stdout(&out);
     assert!(
         out_str.contains(&id),
@@ -236,10 +270,18 @@ fn gap_show_json_contains_id_field() {
     setup_isolated_repo(dir.path());
     let id = reserve_gap(dir.path(), "INFRA", "test-show-json");
     let out = run(dir.path(), &["gap", "show", &id, "--json"]);
-    assert!(out.status.success(), "gap show --json failed: {}", stderr(&out));
+    assert!(
+        out.status.success(),
+        "gap show --json failed: {}",
+        stderr(&out)
+    );
     let json: serde_json::Value =
         serde_json::from_str(stdout(&out).trim()).expect("gap show --json must emit valid JSON");
-    assert_eq!(json["id"].as_str(), Some(id.as_str()), "JSON id field must match");
+    assert_eq!(
+        json["id"].as_str(),
+        Some(id.as_str()),
+        "JSON id field must match"
+    );
 }
 
 #[test]
@@ -247,7 +289,11 @@ fn gap_show_missing_id_exits_2() {
     let dir = tempfile::tempdir().unwrap();
     setup_isolated_repo(dir.path());
     let out = run(dir.path(), &["gap", "show"]);
-    assert_eq!(out.status.code(), Some(2), "expected exit 2 for missing gap ID");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "expected exit 2 for missing gap ID"
+    );
     assert!(
         stderr(&out).to_ascii_lowercase().contains("usage"),
         "expected usage in stderr, got {:?}",
@@ -270,7 +316,11 @@ fn gap_ship_missing_id_exits_2() {
     let dir = tempfile::tempdir().unwrap();
     setup_isolated_repo(dir.path());
     let out = run(dir.path(), &["gap", "ship"]);
-    assert_eq!(out.status.code(), Some(2), "expected exit 2 for missing gap ID");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "expected exit 2 for missing gap ID"
+    );
     assert!(
         stderr(&out).to_ascii_lowercase().contains("usage"),
         "expected usage in stderr, got {:?}",
@@ -283,8 +333,15 @@ fn gap_ship_invalid_closed_pr_exits_2() {
     let dir = tempfile::tempdir().unwrap();
     setup_isolated_repo(dir.path());
     let id = reserve_gap(dir.path(), "INFRA", "test-ship-invalid");
-    let out = run(dir.path(), &["gap", "ship", &id, "--closed-pr", "not-a-number"]);
-    assert_eq!(out.status.code(), Some(2), "expected exit 2 for bad --closed-pr value");
+    let out = run(
+        dir.path(),
+        &["gap", "ship", &id, "--closed-pr", "not-a-number"],
+    );
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "expected exit 2 for bad --closed-pr value"
+    );
 }
 
 #[test]
@@ -293,7 +350,12 @@ fn gap_ship_reserved_gap_marks_done() {
     setup_isolated_repo(dir.path());
     let id = reserve_gap(dir.path(), "INFRA", "test-ship-happy");
     let out = run(dir.path(), &["gap", "ship", &id, "--closed-pr", "9999"]);
-    assert!(out.status.success(), "gap ship failed: {}\n{}", stdout(&out), stderr(&out));
+    assert!(
+        out.status.success(),
+        "gap ship failed: {}\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
     // Verify via gap show --json that status is now "done".
     let show = run(dir.path(), &["gap", "show", &id, "--json"]);
     assert!(show.status.success(), "gap show after ship failed");
@@ -317,5 +379,9 @@ fn claim_no_args_exits_2() {
     let dir = tempfile::tempdir().unwrap();
     setup_isolated_repo(dir.path());
     let out = run(dir.path(), &["claim"]);
-    assert_eq!(out.status.code(), Some(2), "expected exit 2 for `claim` with no gap ID");
+    assert_eq!(
+        out.status.code(),
+        Some(2),
+        "expected exit 2 for `claim` with no gap ID"
+    );
 }
