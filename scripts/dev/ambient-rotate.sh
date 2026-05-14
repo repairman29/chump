@@ -46,7 +46,7 @@ SIZE_BYTES="$(stat -f%z "$AMBIENT_LOG" 2>/dev/null || stat -c%s "$AMBIENT_LOG" 2
 SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
 if [[ "$SIZE_MB" -ge "$SIZE_ALERT_MB" ]]; then
     ALERT_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    ALERT_LINE="{\"event\":\"ALERT\",\"kind\":\"ambient_oversize\",\"size_mb\":${SIZE_MB},\"threshold_mb\":${SIZE_ALERT_MB},\"note\":\"ambient.jsonl exceeds threshold; rotation may be missing or schedule broken — check launchctl list | grep ambient-rotate\",\"ts\":\"${ALERT_TS}\"}"
+    ALERT_LINE="{\"ts\":\"${ALERT_TS}\",\"kind\":\"ambient_oversize\",\"event\":\"ambient_oversize\",\"size_mb\":${SIZE_MB},\"threshold_mb\":${SIZE_ALERT_MB},\"note\":\"ambient.jsonl exceeds threshold; rotation may be missing or schedule broken — check launchctl list | grep ambient-rotate\"}"
     printf '%s\n' "$ALERT_LINE" >> "$AMBIENT_LOG"
     echo "[ambient-rotate] ALERT: ambient.jsonl is ${SIZE_MB}MB (threshold ${SIZE_ALERT_MB}MB) — emitted ambient_oversize event" >&2
 fi
@@ -143,7 +143,7 @@ else
 fi
 
 # ── Build rotation summary line ───────────────────────────────────────────────
-SUMMARY_LINE="{\"event\":\"rotated\",\"kept\":${KEPT},\"archived\":${ARCHIVED},\"archive\":\"$(basename "$ARCHIVE_PATH")\",\"cutoff\":\"${CUTOFF_TS}\",\"ts\":\"${NOW_TS}\"}"
+SUMMARY_LINE="{\"ts\":\"${NOW_TS}\",\"kind\":\"rotated\",\"event\":\"rotated\",\"kept\":${KEPT},\"archived\":${ARCHIVED},\"archive\":\"$(basename "$ARCHIVE_PATH")\",\"cutoff\":\"${CUTOFF_TS}\"}"
 
 # ── Append summary to the keep file, then atomically replace the log ──────────
 printf '%s\n' "$SUMMARY_LINE" >> "$TMP_KEEP"

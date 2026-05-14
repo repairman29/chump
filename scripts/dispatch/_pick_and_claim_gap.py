@@ -215,8 +215,8 @@ def detect_and_emit_pillar_imbalance(ambient_path: str) -> None:
             try:
                 event = {
                     "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
-                    "event": "ALERT",
                     "kind": "pillar_imbalance",
+                    "event": "pillar_imbalance",
                     "dominant_pillar": pillar,
                     "percentage": round(pct, 1),
                     "message": f"{pillar} has been dominant (>{60}%) for sustained period",
@@ -666,8 +666,8 @@ def main() -> int:
                     try:
                         event = {
                             "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                            "event": "INFO",
                             "kind": "rebalance_active",
+                            "event": "rebalance_active",
                             "picked": gap_id,
                             "monopoly_domain": monopoly_domain,
                             "starved_pillars": sorted(starved_pillars),
@@ -686,8 +686,8 @@ def main() -> int:
 
             now = int(time.time())
             ambient_event = {
-                "event": "ALERT",
                 "kind": "affinity_starved",
+                "event": "affinity_starved",
                 "worker_skills": list(worker_skills),
                 "timestamp": time.strftime(
                     "%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)
