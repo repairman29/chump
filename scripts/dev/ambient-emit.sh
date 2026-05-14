@@ -120,11 +120,7 @@ for arg in "$@"; do
 done
 
 # ── Build the JSON line (CREDIBLE-037: include harness field) ─────────────────
-# INFRA-1159: dual-write both 'event' (legacy) and 'kind' (canonical per
-# EVENT_REGISTRY.yaml). Consumers can read either during migration window.
-# event: kept for backward compat (consumers like fleet-status.sh use .event)
-# kind:  canonical discriminator; consumers should prefer this field.
-JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"event\":\"${EVENT_KIND}\",\"kind\":\"${EVENT_KIND}\"${EXTRA_JSON}}"
+JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"event\":\"${EVENT_KIND}\"${EXTRA_JSON}}"
 
 # ── CREDIBLE-037: emit one-shot missing_attribution alert ─────────────────────
 if [[ "${_HARNESS_ALERTED:-false}" == "true" ]]; then
