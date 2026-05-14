@@ -651,6 +651,9 @@
     <chump-heartbeat></chump-heartbeat>
   </header>
 
+  <!-- PRODUCT-083: verb-shaped quick-actions panel — primary CTA above noun nav -->
+  <chump-quick-actions></chump-quick-actions>
+
   <div id="app-body">
     <chump-nav></chump-nav>
     <main id="main-content" role="main" aria-label="Main content"></main>
@@ -674,6 +677,7 @@
   <script src="welcome.js" type="module"></script>
   <script src="inference-profile.js" type="module"></script>
   <script src="ambient-viewer.js" type="module"></script>
+  <script src="quick-actions.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));
