@@ -178,6 +178,23 @@ except Exception:
     print('')
 " 2>/dev/null || echo "")"
 
+    # INFRA-1221: open-PR protection. If this gap has an open PR, the work
+    # is durable — leave the lease alone even if the claim is "expired" or
+    # the originating PID is dead. The PR being open is enough signal
+    # that another worker would just duplicate the work.
+    if [[ -n "$gap_id" ]] && [[ -f "$REPO_ROOT/scripts/coord/lib/gap-pr-status.sh" ]]; then
+        # shellcheck disable=SC1091
+        source "$REPO_ROOT/scripts/coord/lib/gap-pr-status.sh"
+        if gap_has_open_pr "$gap_id" 2>/dev/null; then
+            _pr_nums="$(gap_open_pr_number "$gap_id" 2>/dev/null | tr '\n' ',' | sed 's/,$//')"
+            echo "  SKIP claim reap (open PR #$_pr_nums exists for gap=$gap_id): $(basename "$claim_file")"
+            printf '{"ts":"%s","kind":"stale_gap_lock_skipped","reason":"open_pr_exists","gap":"%s","prs":"%s","lock":"%s"}\n' \
+                "$NOW_ISO" "$gap_id" "$_pr_nums" "$(basename "$claim_file")" \
+                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+            continue
+        fi
+    fi
+
     # INFRA-1208: PID-liveness check BEFORE TTL check. Sessions write 8h TTL
     # leases, but if a session crashes 30 min in, the existing TTL check
     # leaves the lease sitting for 7.5h+ — overnight accumulation of 14
