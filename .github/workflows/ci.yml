@@ -451,6 +451,9 @@ jobs:
       - name: gap-claim claim-time exclusivity race guard (INFRA-403)
         run: bash scripts/ci/test-gap-claim-race.sh
 
+      - name: shell completion subcommand source assertions (EFFECTIVE-010)
+        run: bash scripts/ci/test-effective-010-completion.sh
+
       - name: docs/gaps.yaml must not exist after INFRA-188 cutover
         run: |
           if [ -f docs/gaps.yaml ]; then

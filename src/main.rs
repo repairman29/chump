@@ -89,6 +89,7 @@ mod ftue_tool;
 // INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
 // The rename keeps every `gap_store::*` call site compiling unchanged.
 use chump_gap_store as gap_store;
+mod completion;
 mod gen;
 mod genai_conv;
 mod git_tools;
@@ -772,6 +773,35 @@ async fn main() -> Result<()> {
             Err(e) => {
                 eprintln!("chump claim: {e:#}");
                 std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump completion [zsh|bash|fish]` (EFFECTIVE-010) — print shell completion script.
+    if args.get(1).map(String::as_str) == Some("completion") {
+        let shell = args.get(2).map(String::as_str).unwrap_or("zsh");
+        match shell {
+            "zsh" => {
+                print!("{}", completion::zsh());
+                return Ok(());
+            }
+            "bash" => {
+                print!("{}", completion::bash());
+                return Ok(());
+            }
+            "fish" => {
+                print!("{}", completion::fish());
+                return Ok(());
+            }
+            other => {
+                eprintln!("chump completion: unknown shell {other:?}");
+                eprintln!("Usage: chump completion [zsh|bash|fish]");
+                eprintln!();
+                eprintln!("Install examples:");
+                eprintln!("  zsh:  chump completion zsh > $(brew --prefix)/share/zsh/site-functions/_chump");
+                eprintln!("  bash: chump completion bash >> ~/.bashrc");
+                eprintln!("  fish: chump completion fish > ~/.config/fish/completions/chump.fish");
+                std::process::exit(2);
             }
         }
     }
