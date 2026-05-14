@@ -229,14 +229,14 @@ complete -F _chump_complete chump
 }
 
 pub fn fish() -> String {
-    let mut lines = Vec::new();
-
-    lines.push("# EFFECTIVE-010: fish completion for chump".to_string());
-    lines.push("# Install: chump completion fish > ~/.config/fish/completions/chump.fish".to_string());
-    lines.push(String::new());
-    lines.push("# Disable file completions for chump by default".to_string());
-    lines.push("complete -c chump -f".to_string());
-    lines.push(String::new());
+    let mut lines = vec![
+        "# EFFECTIVE-010: fish completion for chump".to_string(),
+        "# Install: chump completion fish > ~/.config/fish/completions/chump.fish".to_string(),
+        String::new(),
+        "# Disable file completions for chump by default".to_string(),
+        "complete -c chump -f".to_string(),
+        String::new(),
+    ];
 
     // Top-level commands
     let top_with_desc: &[(&str, &str)] = &[
