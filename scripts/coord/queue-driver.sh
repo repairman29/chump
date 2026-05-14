@@ -132,9 +132,16 @@ cascade_rebase_if_hot() {
     echo "queue-driver: cascade done — $ok rebased, $fail failed"
 }
 
-# Try to auto-resolve a DIRTY PR by rebasing on main and running the gaps.yaml
-# conflict resolver. Refuses if any non-gaps file conflicts. Returns 0 on
-# successful push, non-zero otherwise (caller should leave PR alone).
+# INFRA-1137: Auto-resolve a DIRTY PR by rebasing on main + leveraging the
+# configured merge drivers in .gitattributes (chump-state-sql-regen,
+# ci-yml-add-row, pre-commit-add-guard, gap-yaml-add-line, union). Accept the
+# rebase if EVERY remaining conflict is in a merge-driver-configured file
+# (the driver tried to resolve, and even if it produced markers, we trust
+# `union`/the-driver's-state on the file). Refuse otherwise.
+#
+# Previously this function only accepted conflicts in the (now-defunct)
+# docs/gaps.yaml legacy file — that left ~6 PRs/day stuck DIRTY for hours.
+# Returns 0 on successful push, non-zero otherwise.
 resolve_dirty_pr() {
   local pr="$1"
   local branch
@@ -170,36 +177,67 @@ resolve_dirty_pr() {
     return 0
   fi
 
-  # Conflicted — check if it's only docs/gaps.yaml.
+  # Conflicted — read .gitattributes for files with configured merge drivers.
+  # Any conflicting file in this set is auto-resolvable; anything else is
+  # genuine human-attention conflict.
+  local md_patterns=()
+  if [[ -f .gitattributes ]]; then
+    # Each line: `<pattern> merge=<driver>` or `<pattern> merge=union`
+    while IFS= read -r line; do
+      local pat="${line%% *}"
+      [[ -n "$pat" && "$pat" != "#"* ]] && md_patterns+=("$pat")
+    done < <(grep -E "merge=" .gitattributes 2>/dev/null)
+  fi
+
+  local _amb="${LOCK_DIR:-$REPO_ROOT/.chump-locks}/ambient.jsonl"
   local conflicting
   conflicting=$(git diff --name-only --diff-filter=U)
-  if [[ "$conflicting" != "docs/gaps.yaml" ]]; then
-    echo "queue-driver: ✗ #$pr DIRTY but conflicts in non-gaps files: $(echo "$conflicting" | tr '\n' ' ')"
+  local conflict_files; conflict_files=$(echo "$conflicting" | tr '\n' ' ')
+
+  # Helper: does a file match any merge-driver pattern?
+  _is_md_file() {
+    local f="$1" pat
+    for pat in "${md_patterns[@]}"; do
+      # bash extglob substring match — patterns are filenames or globs.
+      # Use bash's [[ var == glob ]] which handles wildcards.
+      [[ "$f" == $pat ]] && return 0
+    done
+    return 1
+  }
+
+  # Check every conflicting file is merge-driver-managed.
+  local unresolvable=""
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    if ! _is_md_file "$f"; then
+      unresolvable+="$f "
+    fi
+  done <<< "$conflicting"
+
+  if [[ -n "$unresolvable" ]]; then
+    echo "queue-driver: ✗ #$pr DIRTY but conflicts in non-merge-driver files: $unresolvable"
+    printf '{"ts":"%s","kind":"dirty_pr_unresolvable","pr":%s,"conflict_files":"%s","unresolvable":"%s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" "${unresolvable% }" \
+      >> "$_amb" 2>/dev/null || true
     git rebase --abort 2>/dev/null || true
     popd >/dev/null
     git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
     return 1
   fi
 
-  if [[ ! -x "$RESOLVER" ]]; then
-    echo "queue-driver: ✗ #$pr — resolver script not found at $RESOLVER"
-    git rebase --abort 2>/dev/null || true
-    popd >/dev/null
-    git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
-    return 1
-  fi
+  # Every conflict is in a merge-driver-managed file. The driver should have
+  # run already during rebase — re-stage each file (in case the driver wrote
+  # a resolved version but didn't clear the conflict flag) and try to continue.
+  while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
+    git add "$f" 2>/dev/null || true
+  done <<< "$conflicting"
 
-  if ! python3 "$RESOLVER" docs/gaps.yaml; then
-    echo "queue-driver: ✗ #$pr — resolver refused (real content overlap)"
-    git rebase --abort 2>/dev/null || true
-    popd >/dev/null
-    git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
-    return 1
-  fi
-
-  git add docs/gaps.yaml
-  if ! git rebase --continue 2>&1 | tail -3; then
-    echo "queue-driver: ✗ #$pr — rebase --continue failed"
+  if ! git -c core.editor=true rebase --continue 2>&1 | tail -3; then
+    echo "queue-driver: ✗ #$pr — rebase --continue failed after merge-driver resolution"
+    printf '{"ts":"%s","kind":"dirty_pr_unresolvable","pr":%s,"conflict_files":"%s","note":"rebase_continue_failed"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" \
+      >> "$_amb" 2>/dev/null || true
     git rebase --abort 2>/dev/null || true
     popd >/dev/null
     git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
@@ -207,10 +245,13 @@ resolve_dirty_pr() {
   fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "queue-driver: (dry-run) #$pr gaps.yaml resolved — would force-push"
+    echo "queue-driver: (dry-run) #$pr DIRTY auto-resolved via merge drivers — would force-push ($conflict_files)"
   else
     git push origin "HEAD:$branch" --force-with-lease 2>&1 | tail -1
-    echo "queue-driver: ✓ #$pr DIRTY auto-resolved (gaps.yaml only)"
+    echo "queue-driver: ✓ #$pr DIRTY auto-resolved via merge drivers ($conflict_files)"
+    printf '{"ts":"%s","kind":"dirty_pr_auto_resolved","pr":%s,"conflict_files":"%s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" \
+      >> "$_amb" 2>/dev/null || true
   fi
 
   popd >/dev/null

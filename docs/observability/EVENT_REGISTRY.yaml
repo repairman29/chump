@@ -467,6 +467,18 @@ events:
     trigger: workspace-file landing → open-PR rebase sweep
     consumers: [audit-log]
 
+  - kind: dirty_pr_auto_resolved
+    emitter: scripts/coord/queue-driver.sh (INFRA-1137)
+    trigger: DIRTY PR rescued by rebase + .gitattributes merge driver resolution
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, pr, conflict_files]
+
+  - kind: dirty_pr_unresolvable
+    emitter: scripts/coord/queue-driver.sh (INFRA-1137)
+    trigger: DIRTY PR has conflicts in files with no configured merge driver — needs human or new driver
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, kind, pr, conflict_files]
+
   # ── Cost / token tracking ─────────────────────────────────────────────────
   - kind: token_usage_partial
     emitter: scripts/dispatch/_parse_token_usage.py (INFRA-639)
