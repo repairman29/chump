@@ -1329,6 +1329,7 @@ dependencies = [
  "chump-messaging",
  "chump-orchestrator",
  "chump-perception",
+ "chump-planner",
  "chump-tool-macro",
  "console-subscriber",
  "dhat",
@@ -1554,6 +1555,24 @@ name = "chump-perception"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "chump-planner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "once_cell",
+ "petgraph",
+ "regex",
+ "serde",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
