@@ -293,9 +293,48 @@ case "$EVENT" in
         printf '[broadcast] ALERT   kind=%s  %s\n' "$KIND" "$MSG"
         ;;
 
+    FEEDBACK)
+        # INFRA-1271: structured opinion / preference channel for agents.
+        # Kinds:
+        #   defect      — bug or pain-point the agent observed
+        #   proposal    — suggested improvement, may reference an existing subject
+        #   preference  — vote (+1/-1) on an existing default/policy
+        #   retro       — post-ship reflection on what fit / didn't
+        # Lands in $LOCK_DIR/feedback.jsonl (NOT session inboxes) — curator territory.
+        FB_KIND="${1:-}"
+        FB_SUBJECT="${2:-}"
+        FB_RATIONALE="${3:-}"
+        FB_VOTE="${4:-}"  # used by preference kind
+        [[ -n "$FB_KIND" && -n "$FB_SUBJECT" ]] || {
+            echo "Usage: $0 FEEDBACK <defect|proposal|preference|retro> <subject> [\"rationale\"] [+1|-1|0]" >&2
+            exit 1
+        }
+        case "$FB_KIND" in
+            defect|proposal|preference|retro) : ;;
+            *) echo "FEEDBACK kind must be one of: defect proposal preference retro (got $FB_KIND)" >&2; exit 1 ;;
+        esac
+        # corr_id: subject (gap-id or policy name), so DONE / inbox-reap lifecycle
+        # naturally clears retro entries once the gap ships.
+        CORR_ID="$(_derive_corr "$FB_SUBJECT")"
+        if [[ "$FB_KIND" == "preference" ]]; then
+            : "${FB_VOTE:=0}"
+            JSON="$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" vote "$FB_VOTE" model "$MODEL" harness "$HARNESS")"
+        else
+            JSON="$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" model "$MODEL" harness "$HARNESS")"
+        fi
+        # File-mode emit: still write to ambient.jsonl (audit trail) AND to the
+        # dedicated feedback.jsonl that the curator (INFRA-1272) reads.
+        emit_to_file "$JSON"
+        mkdir -p "$LOCK_DIR" 2>/dev/null || true
+        printf '%s\n' "$JSON" >> "$LOCK_DIR/feedback.jsonl"
+        # NATS topic: chump.events.FEEDBACK (Phase 1 keeps the type uppercase like the rest).
+        emit_to_nats FEEDBACK "kind=$FB_KIND" "subject=$FB_SUBJECT" "rationale=$FB_RATIONALE" "vote=${FB_VOTE:-0}"
+        printf '[broadcast] FEEDBACK kind=%s subject=%s\n' "$FB_KIND" "$FB_SUBJECT"
+        ;;
+
     *)
         echo "Unknown event type: $EVENT" >&2
-        echo "Valid types: INTENT HANDOFF STUCK DONE WARN ALERT" >&2
+        echo "Valid types: INTENT HANDOFF STUCK DONE WARN ALERT FEEDBACK" >&2
         exit 1
         ;;
 esac
