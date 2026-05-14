@@ -1,14 +1,13 @@
 - id: PRODUCT-059
   domain: PRODUCT
-  title: 'EFFECTIVE: PWA phase 1 — read-only live results board (leases + PRs + CI status) (PRODUCT-025 slice 1)'
-  status: done
+  title: "EFFECTIVE: PWA phase 1 — read-only live results board (leases + PRs + CI status) (PRODUCT-025 slice 1)"
+  status: open
   priority: P1
   effort: s
   depends_on: []
   acceptance_criteria:
-  - PWA route /agents shows a card per active .chump-locks/*.json session
-  - 'Each card shows: gap ID, worktree path, branch name, PR number + CI status (if any)'
-  - Data from chump backend /api/fleet-status endpoint (new) — reads lease files + gh pr view
-  - Auto-refreshes every 10 seconds via polling or SSE
-  - Works without GitHub access (shows lease data only, PR fields blank)
-  closed_date: '2026-05-11'
+    - "PWA route /agents shows a card per active .chump-locks/*.json session"
+    - "Each card shows: gap ID, worktree path, branch name, PR number + CI status (if any)"
+    - "Data from chump backend /api/fleet-status endpoint (new) — reads lease files + gh pr view"
+    - "Auto-refreshes every 10 seconds via polling or SSE"
+    - "Works without GitHub access (shows lease data only, PR fields blank)"

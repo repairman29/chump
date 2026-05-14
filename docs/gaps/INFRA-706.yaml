@@ -1,15 +1,11 @@
 - id: INFRA-706
   domain: INFRA
-  title: 'ZERO-WASTE: investigate 0-byte wedge pattern — agents stuck before producing output'
-  status: done
+  title: "ZERO-WASTE: investigate 0-byte wedge pattern — agents stuck before producing output"
+  status: open
   priority: P2
   effort: m
-  acceptance_criteria: 'Criterion 1: Root cause of the 0-byte wedge pattern is identified and documented in a research note
-
+  acceptance_criteria: |
+    Criterion 1: Root cause of the 0-byte wedge pattern is identified and documented in a research note
     Criterion 2: If a fix is discovered, a follow-up gap is filed with the fix description and reproduction steps
-
     Criterion 3: The investigation results are linked from the gap description for future reference
 
-    '
-  closed_date: '2026-05-11'
-  closed_pr: 1490

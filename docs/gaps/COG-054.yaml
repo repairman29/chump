@@ -1,29 +1,19 @@
 - id: COG-054
   domain: COG
-  title: 'MISSION: pick a real user-facing problem and ship a feature that solves it'
-  status: done
+  title: "MISSION: pick a real user-facing problem and ship a feature that solves it"
+  status: open
   priority: P1
   effort: m
-  description: 'Today the fleet ships coordination-layer fixes — necessary plumbing but not
-
+  description: |
+    Today the fleet ships coordination-layer fixes — necessary plumbing but not
     the destination. Per project_offline_local_llm_mission.md the mission is
-
     offline solo devs on local LLMs. Need to pick a concrete user-facing problem
-
     and ship a feature that moves the mission, not the meta.
-
-    '
   acceptance_criteria:
-  - Operator picks ONE of three concrete options below and the chosen sub-feature ships as a single atomic PR (no bundle)
-  - 'Option A — Discord bot ergonomics: identify the operator''s top-3 friction points in the current Discord workflow (file
-    a feedback gap or read recent ambient kind=operator_friction events), ship fixes for at least 2'
-  - 'Option B — chump --briefing pretty output: current briefing dumps raw markdown. Ship terminal-formatted output with color,
-    sections, and a single ''most-important-thing'' top-line. Verified by operator on 3 different gaps'
-  - 'Option C — chump session-track dashboard URL: session-track currently dumps stdout. Ship a static-HTML dashboard at .chump/session-dashboard.html
-    that lists active sessions, recent commits, current pickable queue. Linked from chump --briefing output'
-  - 'Whichever option ships: includes a brief ''why this moves the mission'' note in the PR body (offline-solo-dev-on-local-LLM
-    connection)'
-  - 'Does NOT count toward AC: another coord-tax fix, another META gap, another reaper hardening — those are plumbing'
-  - 'Closes when: (a) the chosen sub-PR merges and (b) operator confirms the feature actually changed their workflow'
-  closed_date: '2026-05-12'
-  closed_pr: 1576
+    - "Operator picks ONE of three concrete options below and the chosen sub-feature ships as a single atomic PR (no bundle)"
+    - "Option A — Discord bot ergonomics: identify the operator's top-3 friction points in the current Discord workflow (file a feedback gap or read recent ambient kind=operator_friction events), ship fixes for at least 2"
+    - "Option B — chump --briefing pretty output: current briefing dumps raw markdown. Ship terminal-formatted output with color, sections, and a single 'most-important-thing' top-line. Verified by operator on 3 different gaps"
+    - "Option C — chump session-track dashboard URL: session-track currently dumps stdout. Ship a static-HTML dashboard at .chump/session-dashboard.html that lists active sessions, recent commits, current pickable queue. Linked from chump --briefing output"
+    - "Whichever option ships: includes a brief 'why this moves the mission' note in the PR body (offline-solo-dev-on-local-LLM connection)"
+    - "Does NOT count toward AC: another coord-tax fix, another META gap, another reaper hardening — those are plumbing"
+    - "Closes when: (a) the chosen sub-PR merges and (b) operator confirms the feature actually changed their workflow"

@@ -1,26 +1,19 @@
 - id: INFRA-1032
   domain: INFRA
-  title: 'RESILIENT: state.db leases.worktree column write-race — sibling session path clobbers our claim'
-  status: done
+  title: "RESILIENT: state.db leases.worktree column write-race — sibling session path clobbers our claim"
+  status: in_flight
   priority: P1
   effort: s
-  closed_pr: null
+  closed_pr: ~
   depends_on: []
   acceptance_criteria:
-  - chump gap claim --worktree '' derives worktree from CWD basename when flag absent or empty
-  - gap_store::claim() warns to stderr when an existing row has a different worktree path (session_id collision detector)
-  - 'integration test: two concurrent chump gap claim calls for different gaps with the same --session, assert each leases
-    row has the correct worktree — not the other''s'
-  description: 'Today 2026-05-13: INFRA-995 lease row in state.db had worktree=/private/tmp/chump-infra-1001
-
-    (a sibling''s worktree, NOT mine). Root cause: chump gap claim ON CONFLICT(session_id) UPSERT
-
+    - "chump gap claim --worktree '' derives worktree from CWD basename when flag absent or empty"
+    - "gap_store::claim() warns to stderr when an existing row has a different worktree path (session_id collision detector)"
+    - "integration test: two concurrent chump gap claim calls for different gaps with the same --session, assert each leases row has the correct worktree — not the other's"
+  description: |
+    Today 2026-05-13: INFRA-995 lease row in state.db had worktree=/private/tmp/chump-infra-1001
+    (a sibling's worktree, NOT mine). Root cause: chump gap claim ON CONFLICT(session_id) UPSERT
     overwrites the worktree column when the same session_id claims a second gap.
 
-
     Fix: (1) derive worktree from CWD when --worktree is absent (Rust main.rs);
-
     (2) warn to stderr when existing row worktree differs (session_id collision detector in gap_store.rs).
-
-    '
-  closed_date: '2026-05-14'
