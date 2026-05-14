@@ -140,6 +140,7 @@ print(f"cache-reconcile: mode={mode} open_prs={len(prs)} drift_rows={drift_count
 # per-PR REST fetches. Each fetch is 1 REST point; bounded by env var.
 import os, subprocess
 max_fetch = int(os.environ.get("CHUMP_CACHE_RECONCILE_MAX_FETCH", "20"))
+repo_nwo = ""  # resolved lazily; shared by INFRA-1106 and INFRA-1129 blocks
 if mode == "apply" and max_fetch > 0:
     cold_rows = conn.execute(
         "SELECT number FROM pr_state "
@@ -212,4 +213,88 @@ if mode == "apply" and max_fetch > 0:
                 pass
         if warmed:
             print(f"cache-reconcile: warmed {warmed} cold rows (mergeable_state filled)")
+
+# INFRA-1129: cold-start fill — check_runs table is empty for existing pr_state
+# rows until webhook events fire for each SHA. Backfill via bounded REST fetches.
+# One REST call per SHA; bounded by CHUMP_CACHE_RECONCILE_MAX_FETCH (same cap).
+conn.executescript("""
+CREATE TABLE IF NOT EXISTS check_runs (
+    head_sha          TEXT NOT NULL,
+    name              TEXT NOT NULL,
+    status            TEXT,
+    conclusion        TEXT,
+    started_at        TEXT,
+    completed_at      TEXT,
+    fetched_at_local  TEXT NOT NULL,
+    PRIMARY KEY (head_sha, name)
+);
+CREATE INDEX IF NOT EXISTS check_runs_sha ON check_runs(head_sha);
+""")
+if mode == "apply" and max_fetch > 0:
+    cold_shas = conn.execute(
+        "SELECT DISTINCT head_sha FROM pr_state "
+        "WHERE head_sha IS NOT NULL AND head_sha != '' AND merged_at IS NULL "
+        "  AND head_sha NOT IN (SELECT DISTINCT head_sha FROM check_runs) "
+        "ORDER BY head_sha ASC LIMIT ?",
+        (max_fetch,),
+    ).fetchall()
+    if cold_shas:
+        try:
+            if not repo_nwo:
+                repo_nwo = subprocess.check_output(
+                    ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+                    text=True,
+                ).strip()
+        except Exception:
+            pass
+        cr_warmed = 0
+        for (sha,) in cold_shas:
+            if not repo_nwo:
+                break
+            try:
+                r = subprocess.run(
+                    ["gh", "api", f"repos/{repo_nwo}/commits/{sha}/check-runs",
+                     "--jq", ".check_runs"],
+                    capture_output=True, text=True, timeout=20,
+                )
+                if r.returncode != 0:
+                    continue
+                runs = json.loads(r.stdout)
+            except Exception:
+                continue
+            if not isinstance(runs, list):
+                continue
+            count = 0
+            for run in runs:
+                name = run.get("name")
+                if not name:
+                    continue
+                conn.execute(
+                    """
+                    INSERT INTO check_runs (head_sha, name, status, conclusion, started_at, completed_at, fetched_at_local)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(head_sha, name) DO UPDATE SET
+                        status           = excluded.status,
+                        conclusion       = excluded.conclusion,
+                        started_at       = excluded.started_at,
+                        completed_at     = excluded.completed_at,
+                        fetched_at_local = excluded.fetched_at_local
+                    """,
+                    (sha, name, run.get("status"), run.get("conclusion"),
+                     run.get("started_at"), run.get("completed_at"), now),
+                )
+                count += 1
+            if count:
+                conn.commit()
+                cr_warmed += 1
+                try:
+                    with open(ambient, "a", encoding="utf-8") as f:
+                        f.write(json.dumps({
+                            "ts": now, "kind": "check_runs_warmed",
+                            "head_sha": sha, "count": count,
+                        }, separators=(",", ":")) + "\n")
+                except Exception:
+                    pass
+        if cr_warmed:
+            print(f"cache-reconcile: warmed {cr_warmed} SHAs (check_runs backfilled)")
 PY

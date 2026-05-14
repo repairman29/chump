@@ -1329,6 +1329,16 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, pr_number, mergeable_state]
 
+  - kind: check_runs_warmed
+    emitter: scripts/ops/github-cache-reconcile.sh (INFRA-1129)
+    trigger: reconcile detected pr_state rows whose head_sha had no check_runs
+      entries (cold start — webhook not yet fired). Did a bounded per-SHA REST
+      fetch (GET /commits/<sha>/check-runs, max CHUMP_CACHE_RECONCILE_MAX_FETCH=20
+      per cycle) and inserted rows into the check_runs table. One event per
+      backfilled SHA.
+    consumers: [fleet-brief, operator-recall, bot-merge]
+    fields_required: [ts, kind, head_sha, count]
+
   # ── INFRA-1065: chump binary auto-refresh ────────────────────────────────
   - kind: chump_binary_refreshed
     emitter: scripts/ops/refresh-chump-binary.sh (INFRA-1065)
