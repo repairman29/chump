@@ -1,7 +1,8 @@
 - id: CREDIBLE-061
   domain: CREDIBLE
   title: "CREDIBLE: chump gap list --since <timestamp> output format audit — verify JSON mode matches ambient consumer schema"
-  status: open
+  status: done
+  closed_pr: 1885
   priority: P1
   effort: s
   acceptance_criteria:

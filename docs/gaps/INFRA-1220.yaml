@@ -1,0 +1,12 @@
+- id: INFRA-1220
+  domain: INFRA
+  title: "ZERO-WASTE — post-close cooldown: gap locked for 1h after PR force-close to prevent zombie rerolls"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
