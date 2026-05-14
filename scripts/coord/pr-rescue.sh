@@ -27,6 +27,11 @@ STALE_HOURS="${PR_RESCUE_STALE_HOURS:-4}"
 # INFRA-1016: REST-only mode — skip auto-merge arm (unavailable via REST) and
 # do an immediate merge instead. Use when GraphQL bucket is exhausted.
 REST_ONLY="${CHUMP_PR_RESCUE_REST_ONLY:-0}"
+# INFRA-1153: wall-clock timeout so pr-rescue never runs >5 min and hammers
+# the secondary GitHub rate limit. Processes that survived 335+ min were the
+# root cause of the 2026-05-13 secondary rate limit outage.
+TIMEOUT_S="${CHUMP_PR_RESCUE_TIMEOUT_S:-300}"
+_PR_RESCUE_START="$(date -u +%s)"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
@@ -116,6 +121,14 @@ SKIPPED=0
 FAILED=0
 
 for PR_NUM in ${PR_NUMBERS}; do
+    # ── INFRA-1153: wall-clock timeout guard ──────────────────────────────────
+    _elapsed=$(( $(date -u +%s) - _PR_RESCUE_START ))
+    if [[ $_elapsed -ge $TIMEOUT_S ]]; then
+        log "WARN: wall-clock timeout (${TIMEOUT_S}s) reached after ${_elapsed}s — stopping early (INFRA-1153)."
+        emit_ambient "pr_rescue_timeout" "0" "elapsed=${_elapsed}s remaining_prs_skipped=true"
+        break
+    fi
+
     # ── Fetch PR metadata (INFRA-1109 cache-first) ────────────────────────────
     # Prefer reading from .chump/github_cache.db (INFRA-1081, populated by
     # webhooks). cache_lookup_pr emits kind=cache_miss + falls back to REST
