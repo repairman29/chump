@@ -4576,6 +4576,303 @@ async fn main() -> Result<()> {
                 }
                 std::process::exit(1);
             }
+            // INFRA-942: classify every open gap by why it is non-pickable and
+            // emit a ranked action list.
+            // Reasons: false-dep | too-large | vague-ac | low-priority
+            // Actions: strip-dep | decompose | add-ac | demote
+            // --json   → machine-readable array output
+            // --apply  → execute auto-fixable actions (strip false-deps, demote P2→P3)
+            "triage" => {
+                let as_json = args.iter().any(|a| a == "--json");
+                let apply = args.iter().any(|a| a == "--apply");
+
+                let all_gaps = match store.list(None) {
+                    Ok(g) => g,
+                    Err(e) => {
+                        eprintln!("chump gap triage: {e:#}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let now_secs = unix_ts() as i64;
+
+                let status_by_id: std::collections::HashMap<&str, &str> = all_gaps
+                    .iter()
+                    .map(|g| (g.id.as_str(), g.status.as_str()))
+                    .collect();
+
+                // Set of gap IDs referenced in any depends_on — used to detect
+                // whether a large gap has been broken into sub-parts.
+                let mut dep_target_ids: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
+                for g in &all_gaps {
+                    if let Ok(serde_json::Value::Array(arr)) =
+                        serde_json::from_str::<serde_json::Value>(&g.depends_on)
+                    {
+                        for v in &arr {
+                            if let serde_json::Value::String(dep_id) = v {
+                                dep_target_ids.insert(dep_id.clone());
+                            }
+                        }
+                    }
+                }
+
+                #[derive(serde::Serialize)]
+                struct TriageItem {
+                    id: String,
+                    title: String,
+                    reason: String,
+                    recommended_action: String,
+                    detail: String,
+                }
+
+                let open_gaps: Vec<&gap_store::GapRow> =
+                    all_gaps.iter().filter(|g| g.status == "open").collect();
+
+                let mut items: Vec<TriageItem> = Vec::new();
+
+                for gap in &open_gaps {
+                    // 1. false-dep
+                    if let Ok(serde_json::Value::Array(arr)) =
+                        serde_json::from_str::<serde_json::Value>(&gap.depends_on)
+                    {
+                        for v in &arr {
+                            if let serde_json::Value::String(dep_id) = v {
+                                if status_by_id.get(dep_id.as_str()).copied() == Some("done") {
+                                    items.push(TriageItem {
+                                        id: gap.id.clone(),
+                                        title: gap.title.chars().take(70).collect(),
+                                        reason: "false-dep".to_string(),
+                                        recommended_action: "strip-dep".to_string(),
+                                        detail: format!("depends_on {} which is done", dep_id),
+                                    });
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. too-large
+                    let effort_lower = gap.effort.to_lowercase();
+                    if (effort_lower == "l" || effort_lower == "xl")
+                        && !dep_target_ids.contains(&gap.id)
+                    {
+                        items.push(TriageItem {
+                            id: gap.id.clone(),
+                            title: gap.title.chars().take(70).collect(),
+                            reason: "too-large".to_string(),
+                            recommended_action: "decompose".to_string(),
+                            detail: format!("effort={}, no sub-gaps filed yet", gap.effort),
+                        });
+                    }
+
+                    // 3. vague-ac
+                    {
+                        let ac_items = gap_store::parse_json_ac_list(&gap.acceptance_criteria);
+                        let vague_reason =
+                            if gap.acceptance_criteria.trim().is_empty() || ac_items.is_empty() {
+                                Some("empty acceptance_criteria")
+                            } else if ac_items.iter().any(|item| {
+                                let lower = item.to_lowercase();
+                                lower.contains("todo")
+                                    || lower.trim() == "tbd"
+                                    || lower.trim() == "n/a"
+                                    || lower.trim() == "tbc"
+                            }) {
+                                Some("acceptance_criteria contains TODO/TBD placeholder")
+                            } else {
+                                None
+                            };
+                        if let Some(detail) = vague_reason {
+                            items.push(TriageItem {
+                                id: gap.id.clone(),
+                                title: gap.title.chars().take(70).collect(),
+                                reason: "vague-ac".to_string(),
+                                recommended_action: "add-ac".to_string(),
+                                detail: detail.to_string(),
+                            });
+                        }
+                    }
+
+                    // 4. low-priority: P2/P3 idle >90d
+                    let age_days = (now_secs - gap.created_at) / 86400;
+                    if (gap.priority == "P2" || gap.priority == "P3") && age_days > 90 {
+                        items.push(TriageItem {
+                            id: gap.id.clone(),
+                            title: gap.title.chars().take(70).collect(),
+                            reason: "low-priority".to_string(),
+                            recommended_action: "demote".to_string(),
+                            detail: format!(
+                                "priority={}, {}d old — consider closing or demoting further",
+                                gap.priority, age_days
+                            ),
+                        });
+                    }
+                }
+
+                // --apply: execute auto-fixable actions
+                if apply {
+                    let mut applied: std::collections::HashSet<(String, String)> =
+                        std::collections::HashSet::new();
+                    for item in &items {
+                        let key = (item.id.clone(), item.reason.clone());
+                        if applied.contains(&key) {
+                            continue;
+                        }
+                        applied.insert(key);
+                        match item.reason.as_str() {
+                            "false-dep" => match store.get(&item.id) {
+                                Ok(Some(cur_gap)) => {
+                                    if let Ok(serde_json::Value::Array(arr)) =
+                                        serde_json::from_str::<serde_json::Value>(
+                                            &cur_gap.depends_on,
+                                        )
+                                    {
+                                        let remaining: Vec<String> = arr
+                                            .iter()
+                                            .filter_map(|v| {
+                                                if let serde_json::Value::String(dep_id) = v {
+                                                    if status_by_id.get(dep_id.as_str()).copied()
+                                                        != Some("done")
+                                                    {
+                                                        Some(dep_id.clone())
+                                                    } else {
+                                                        None
+                                                    }
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect();
+                                        let new_deps = serde_json::to_string(&remaining)
+                                            .unwrap_or_else(|_| "[]".to_string());
+                                        let mut update = gap_store::GapFieldUpdate::default();
+                                        update.depends_on = Some(new_deps);
+                                        match store.set_fields(&item.id, update) {
+                                            Ok(()) => eprintln!(
+                                                "triage --apply: stripped done deps from {}",
+                                                item.id
+                                            ),
+                                            Err(e) => eprintln!(
+                                                "triage --apply: strip-dep on {} failed: {e:#}",
+                                                item.id
+                                            ),
+                                        }
+                                    }
+                                }
+                                Ok(None) => {}
+                                Err(e) => {
+                                    eprintln!("triage --apply: get {} failed: {e:#}", item.id)
+                                }
+                            },
+                            "low-priority" => {
+                                if let Some(gap) = open_gaps.iter().find(|g| g.id == item.id) {
+                                    if gap.priority == "P2" {
+                                        let gap_age = (now_secs - gap.created_at) / 86400;
+                                        let mut update = gap_store::GapFieldUpdate::default();
+                                        update.priority = Some("P3".to_string());
+                                        match store.set_fields(&item.id, update) {
+                                            Ok(()) => eprintln!(
+                                                "triage --apply: demoted {} P2→P3 ({}d old)",
+                                                item.id, gap_age
+                                            ),
+                                            Err(e) => eprintln!(
+                                                "triage --apply: demote {} failed: {e:#}",
+                                                item.id
+                                            ),
+                                        }
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                // Observability — emit triage summary so fleet-brief / waste-tally
+                // can track registry health over time (INFRA-755 observability-budget).
+                let false_dep_n = items.iter().filter(|i| i.reason == "false-dep").count();
+                let too_large_n = items.iter().filter(|i| i.reason == "too-large").count();
+                let vague_ac_n = items.iter().filter(|i| i.reason == "vague-ac").count();
+                let low_pri_n = items.iter().filter(|i| i.reason == "low-priority").count();
+                tracing::info!(
+                    open_checked = open_gaps.len(),
+                    actionable = items.len(),
+                    false_dep = false_dep_n,
+                    too_large = too_large_n,
+                    vague_ac = vague_ac_n,
+                    low_priority = low_pri_n,
+                    apply_mode = apply,
+                    "infra942 gap triage complete"
+                );
+
+                if as_json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&items).unwrap_or_default()
+                    );
+                } else {
+                    println!(
+                        "=== gap triage ({} open gaps, {} actionable) ===",
+                        open_gaps.len(),
+                        items.len()
+                    );
+                    println!();
+                    if items.is_empty() {
+                        println!("All open gaps are clean — no triage needed.");
+                    } else {
+                        let col_id = items.iter().map(|i| i.id.len()).max().unwrap_or(6).max(6);
+                        let col_reason = items
+                            .iter()
+                            .map(|i| i.reason.len())
+                            .max()
+                            .unwrap_or(12)
+                            .max(12);
+                        let col_action = items
+                            .iter()
+                            .map(|i| i.recommended_action.len())
+                            .max()
+                            .unwrap_or(18)
+                            .max(18);
+                        println!(
+                            "{:<id_w$}  {:<r_w$}  {:<a_w$}  detail",
+                            "id",
+                            "reason",
+                            "recommended-action",
+                            id_w = col_id,
+                            r_w = col_reason,
+                            a_w = col_action
+                        );
+                        println!("{}", "-".repeat(col_id + col_reason + col_action + 30));
+                        for item in &items {
+                            println!(
+                                "{:<id_w$}  {:<r_w$}  {:<a_w$}  {}",
+                                item.id,
+                                item.reason,
+                                item.recommended_action,
+                                item.detail,
+                                id_w = col_id,
+                                r_w = col_reason,
+                                a_w = col_action
+                            );
+                        }
+                        println!();
+                        if apply {
+                            println!(
+                                "(--apply: false-dep strip and P2→P3 demotion executed above)"
+                            );
+                        } else {
+                            println!(
+                                "Run with --apply to auto-fix false-dep and low-priority items."
+                            );
+                            println!("Run with --json for machine-readable output.");
+                        }
+                    }
+                }
+
+                if !items.is_empty() {
+                    std::process::exit(1);
+                }
+            }
             "audit-ac" => {
                 // COG-052: check whether closed gaps' AC items were demonstrated in their PR diff.
                 // INFRA-936: --open mode scans open gaps for vague/missing/TODO AC.
@@ -6364,6 +6661,7 @@ async fn main() -> Result<()> {
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
                 eprintln!("  restore          --from-sql  # rebuild state.db from .chump/state.sql (INFRA-538)");
                 eprintln!("  audit-priorities [--json]   # PM health check (META-046)");
+                eprintln!("  triage           [--json] [--apply]  # INFRA-942: classify non-pickable open gaps by reason");
                 eprintln!("  audit-ac         [GAP-ID] [--recent N] [--json]  # COG-052 AC coverage check for closed gaps");
                 eprintln!("  audit-ac         --open [--json]                  # INFRA-936: warn on open gaps with empty/TODO AC");
                 eprintln!("  consolidate      [--threshold N] [--json]  # INFRA-935 near-duplicate title detection");
