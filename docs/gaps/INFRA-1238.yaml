@@ -1,0 +1,27 @@
+- id: INFRA-1238
+  domain: INFRA
+  title: "EFFECTIVE: chump <verb> --help broken on leaf subcommands (claim, ship, gap preflight, decompose, triage) — ship --help falls through to LLM agent"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Source: 2026-05-14 audit Part 3 finding #2 + #12.
+    
+    Reproducible UX bugs:
+      - chump claim --help → 'missing GAP-ID (saw flag --help)' exit non-zero (src/atomic_claim.rs:52)
+      - chump ship --help → falls through to LLM agent which replies 'It looks like you mentioned ship. Could you please clarify...'
+      - chump gap preflight --help → '[preflight] WARN --help — not found in state.db (run chump gap import first)'
+    Sample of 5 leaf verbs: 3 fail. Root cause: positional GAP-ID arg parsed before flag scan.
+    
+    Acceptance:
+    1. Each leaf-verb argparser in src/main.rs (and any extracted src/cmd/<verb>/ from INFRA-1231) traps -h / --help BEFORE validating positionals.
+    2. Help output is non-empty, exit 0, summarizes purpose + key flags.
+    3. scripts/ci/test-chump-subcommand-help.sh (filed as INFRA-1246) gates regression.
+    4. Smoke: chump claim --help, chump ship --help, chump gap preflight --help, chump gap decompose --help, chump gap triage --help all return exit 0 with usage strings.
+  acceptance_criteria:
+    - Each leaf-verb argparser in src/main.rs and src/atomic_claim.rs traps -h/--help BEFORE positional validation
+    - Help output non-empty, exit 0, summarizes purpose + key flags
+    - scripts/ci/test-chump-subcommand-help.sh asserts all 6 leaf verbs (chump claim, chump ship, chump gap ship, chump gap preflight, chump gap decompose, chump gap triage) return exit 0 with usage strings (no LLM fallthrough, no missing-positional error)
+    - Top-level 'chump ship' (literal, not just 's' alias) routes via expand_aliases to 'gap ship' — promised in print_help but never wired before
+    - All 6 leaf-verb --help calls pass test-chump-subcommand-help.sh
+

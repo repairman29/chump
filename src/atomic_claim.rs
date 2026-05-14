@@ -43,6 +43,23 @@ pub struct ClaimArgs {
 
 impl ClaimArgs {
     pub fn from_argv(args: &[String], repo_root: PathBuf) -> Result<Self> {
+        // INFRA-1238: trap -h / --help BEFORE positional validation so
+        // `chump claim --help` prints usage and exits 0, not "missing GAP-ID".
+        for a in args.iter().skip(1) {
+            if a == "--help" || a == "-h" {
+                println!(
+                    "Usage: chump claim <GAP-ID> [--paths CSV] [--session ID] [--no-doctor] [--no-import]\n\n\
+                     Atomic claim: fetch + verify + (doctor) + worktree + lease for <GAP-ID>.\n\n\
+                     Options:\n  \
+                       --paths CSV    Record path scope (comma-separated globs); enables overlap detection\n  \
+                       --session ID   Explicit session ID (default derived from env / pid)\n  \
+                       --no-doctor    Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
+                       --no-import    Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
+                       -h, --help     Show this help"
+                );
+                std::process::exit(0);
+            }
+        }
         // args[0] = "claim", args[1] = <GAP-ID>, then optional flags
         let gap_id = args
             .get(1)
