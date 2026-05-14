@@ -814,6 +814,11 @@ source "$(dirname "$0")/lib/github.sh"
 # shellcheck source=lib/github_cache.sh
 # INFRA-1130: cache_lookup_pr / cache_lookup_checks for zero-API CI polling.
 source "$(dirname "$0")/lib/github_cache.sh"
+# INFRA-1055: API rate-limit circuit breaker (non-fatal if missing on old branches).
+# shellcheck source=api-rate-limit-gate.sh
+_rl_gate_path="$(dirname "$0")/api-rate-limit-gate.sh"
+[[ -f "$_rl_gate_path" ]] && source "$_rl_gate_path"
+unset _rl_gate_path
 cd "$REPO_ROOT"
 # INFRA-469: route every `chump` call through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
@@ -969,6 +974,19 @@ fi
 # ── INFRA-539: probe GitHub API before doing any real work ────────────────────
 if [[ "${DRY_RUN:-0}" != "1" ]]; then
     gh_api_probe || { red "Aborting bot-merge: GitHub unreachable. Retry when connectivity is restored."; exit 1; }
+    # INFRA-1055: circuit breaker — check quota headroom before any real work.
+    # Returns 2 (exhausted) → hard stop; returns 1 (approaching) → degraded mode.
+    if declare -F rate_limit_gate >/dev/null 2>&1; then
+        _rl_gate_rc=0
+        rate_limit_gate "startup" --source "bot-merge.sh" || _rl_gate_rc=$?
+        if [[ $_rl_gate_rc -eq 2 ]]; then
+            red "INFRA-1055: REST API quota exhausted — aborting bot-merge to prevent churn (rate_limit_exhausted event emitted)."
+            exit 1
+        fi
+        # _rl_gate_rc=1 (approaching): continue in degraded mode — GraphQL-heavy
+        # optional phases will be skipped below when RL_GQL_PCT is low.
+        export _BM_RL_DEGRADED="${_rl_gate_rc:-0}"
+    fi
 fi
 
 # ── INFRA-379: chump-doctor preflight ─────────────────────────────────────────
@@ -1882,10 +1900,12 @@ EOF
     if [[ $DRY_RUN -eq 1 ]]; then
         info "[dry-run] gh pr create --base $BASE_BRANCH --title \"$PR_TITLE\" …"
     else
-        # INFRA-1031: GraphQL preflight — gh pr create uses GraphQL; if quota is 0 fall back to REST.
-        _graphql_remaining=$(gh api /rate_limit --jq '.resources.graphql.remaining' 2>/dev/null || echo 1)
-        if [[ "${_graphql_remaining:-1}" -eq 0 ]]; then
-            warn "INFRA-1031: GraphQL quota exhausted — falling back to REST gh api repos/.../pulls"
+        # INFRA-1031 + INFRA-1055: GraphQL preflight — gh pr create uses GraphQL;
+        # if quota is 0 (or low per circuit-breaker gate) fall back to REST.
+        _graphql_remaining="${RL_GQL_REMAINING:-1}"
+        if [[ "$_graphql_remaining" -le 0 ]] || \
+           { declare -F rate_limit_gate >/dev/null 2>&1 && [[ "${_BM_RL_DEGRADED:-0}" -ge 1 ]] && [[ "${RL_GQL_PCT:-100}" -le "${CHUMP_RL_GQL_WARN_PCT:-50}" ]]; }; then
+            warn "INFRA-1031/1055: GraphQL quota ${_graphql_remaining:-0} (${RL_GQL_PCT:-?}% remaining) — falling back to REST gh api repos/.../pulls"
             _repo_nwo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
             if [[ -n "$_repo_nwo" ]]; then
                 _rest_body=$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$_pr_body" 2>/dev/null || echo "\"$_pr_body\"")
