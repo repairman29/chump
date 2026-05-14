@@ -3,7 +3,7 @@
 //!
 //!   1. fetch origin/main (already done; cheap)
 //!   2. verify gap exists + is open in state.db (seed via import if missing)
-//!   3. binary health probe (chump-doctor.sh, INFRA-275 wedge prevention)
+//!   3. binary health probe (chump-binary-unwedge.sh, INFRA-275 wedge prevention)
 //!   4. derive a unique per-claim session ID
 //!   5. git worktree add to ${CHUMP_WORKTREE_BASE:-/tmp}/chump-<gap-lower>
 //!   6. shell out to gap-claim.sh inside the new worktree (with --paths)
@@ -848,7 +848,7 @@ fn run_chump_gap_import(repo_root: &Path) -> Result<()> {
 /// Step 3: chump-doctor binary health probe. Skips silently if the
 /// script isn't present (e.g. partial checkouts in tests).
 fn run_doctor_probe(repo_root: &Path) -> Result<()> {
-    let doctor = repo_root.join("scripts/dev/chump-doctor.sh");
+    let doctor = repo_root.join("scripts/dev/chump-binary-unwedge.sh");
     if !doctor.exists() {
         return Ok(()); // best-effort
     }
@@ -859,7 +859,7 @@ fn run_doctor_probe(repo_root: &Path) -> Result<()> {
         .env("CHUMP_DOCTOR_QUIET", "1")
         .current_dir(repo_root)
         .output()
-        .context("spawning chump-doctor.sh")?;
+        .context("spawning chump-binary-unwedge.sh")?;
     if !out.status.success() {
         // Don't abort — the doctor itself may exit non-zero on
         // fresh-binary "no heal needed" paths in some versions. Log

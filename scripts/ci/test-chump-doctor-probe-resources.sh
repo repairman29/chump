@@ -5,11 +5,11 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-DOCTOR="$REPO_ROOT/scripts/dev/chump-doctor.sh"
+DOCTOR="$REPO_ROOT/scripts/dev/chump-binary-unwedge.sh"
 pass() { printf 'PASS: %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
-[[ -x "$DOCTOR" ]] || fail "chump-doctor.sh missing or not executable"
+[[ -x "$DOCTOR" ]] || fail "chump-binary-unwedge.sh missing or not executable"
 
 # ── Test 1: subcommand exists and produces output ─────────────────────────────
 out=$(bash "$DOCTOR" --probe-resources 2>&1 || true)

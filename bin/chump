@@ -12,10 +12,10 @@
 #   CHUMP_REAL_BINARY    absolute path to the actual chump binary (skip PATH search)
 #   CHUMP_INTERNAL_DOCTOR=0   bypass heal logic entirely (raw pass-through)
 #   CHUMP_INTERNAL_TIMEOUT=N  wall-clock timeout in seconds (default 30)
-#   CHUMP_DOCTOR_PATH    override path to chump-doctor.sh
+#   CHUMP_DOCTOR_PATH    override path to chump-binary-unwedge.sh
 #
 # Recursion guard: sets CHUMP_SHIM_ACTIVE=1 before exec-ing the real binary so
-# a re-entrant shim invocation (e.g. chump-doctor.sh probing via `chump`) falls
+# a re-entrant shim invocation (e.g. chump-binary-unwedge.sh probing via `chump`) falls
 # through to the real binary immediately.
 
 set -euo pipefail
@@ -93,13 +93,13 @@ fi
 printf 'chump-shim: chump timed out (%ss) — syspolicyd inode wedge suspected; healing (INFRA-469)\n' \
     "$_TIMEOUT" >&2
 
-_DOCTOR="${CHUMP_DOCTOR_PATH:-$_REPO_ROOT/scripts/dev/chump-doctor.sh}"
+_DOCTOR="${CHUMP_DOCTOR_PATH:-$_REPO_ROOT/scripts/dev/chump-binary-unwedge.sh}"
 if [[ -x "$_DOCTOR" ]]; then
     CHUMP_DOCTOR_FORCE=1 CHUMP_DOCTOR_QUIET=1 bash "$_DOCTOR" >/dev/null 2>&1 || true
     # After inode-swap the binary lives at the same path with a new inode.
     # CHUMP_REAL_BINARY still points to the right path; no update needed.
 else
-    printf 'chump-shim: chump-doctor.sh not found at %s — retrying without heal\n' "$_DOCTOR" >&2
+    printf 'chump-shim: chump-binary-unwedge.sh not found at %s — retrying without heal\n' "$_DOCTOR" >&2
 fi
 
 "${_TO[@]}" "$_REAL" "$@" && _rc=0 || _rc=$?

@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # test-chump-doctor-exit-code.sh — INFRA-585
-# Verifies chump-doctor.sh exits 0 when the binary is healthy (no zombies),
+# Verifies chump-binary-unwedge.sh exits 0 when the binary is healthy (no zombies),
 # and exits non-zero when the probe times out (wedged binary).
 # This catches the false-positive WARN regression: grep returning 1 in
 # reap_zombies() with set -euo pipefail was masking a clean probe as failure.
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-DOCTOR="$REPO_ROOT/scripts/dev/chump-doctor.sh"
+DOCTOR="$REPO_ROOT/scripts/dev/chump-binary-unwedge.sh"
 pass() { printf 'PASS: %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
-[[ -x "$DOCTOR" ]] || fail "chump-doctor.sh missing or not executable"
+[[ -x "$DOCTOR" ]] || fail "chump-binary-unwedge.sh missing or not executable"
 
 TMPDIR_BASE=$(mktemp -d -t test-chump-doctor-exit-code-XXXXXX)
 trap 'rm -rf "$TMPDIR_BASE"' EXIT

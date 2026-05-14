@@ -48,12 +48,12 @@ BIN
 make_fake_doctor() {
     local log="$1"
     mkdir -p "$TMPDIR_BASE/scripts/dev"
-    cat >"$TMPDIR_BASE/scripts/dev/chump-doctor.sh" <<DOC
+    cat >"$TMPDIR_BASE/scripts/dev/chump-binary-unwedge.sh" <<DOC
 #!/usr/bin/env bash
 echo "doctor-ran" >> "$log"
 exit 0
 DOC
-    chmod +x "$TMPDIR_BASE/scripts/dev/chump-doctor.sh"
+    chmod +x "$TMPDIR_BASE/scripts/dev/chump-binary-unwedge.sh"
 }
 
 # ── Test 1: bypass (CHUMP_INTERNAL_DOCTOR=0) ─────────────────────────────────
@@ -69,7 +69,7 @@ fi
 make_healthy_chump
 OUT=$(CHUMP_REAL_BINARY="$FAKE_BIN/chump" \
       CHUMP_INTERNAL_TIMEOUT=5 \
-      CHUMP_DOCTOR_PATH="$TMPDIR_BASE/scripts/dev/chump-doctor.sh" \
+      CHUMP_DOCTOR_PATH="$TMPDIR_BASE/scripts/dev/chump-binary-unwedge.sh" \
       "$SHIM" --version 2>/dev/null)
 if [[ "$OUT" == "chump-ok" ]]; then
     ok "healthy binary: stdout passes through intact"
@@ -104,7 +104,7 @@ BIN
     # Run shim with a 2-second timeout so the test finishes quickly.
     OUT=$(CHUMP_REAL_BINARY="$FAKE_BIN/chump" \
           CHUMP_INTERNAL_TIMEOUT=2 \
-          CHUMP_DOCTOR_PATH="$TMPDIR_BASE/scripts/dev/chump-doctor.sh" \
+          CHUMP_DOCTOR_PATH="$TMPDIR_BASE/scripts/dev/chump-binary-unwedge.sh" \
           "$SHIM" --version 2>/dev/null || true)
 
     CALLS=$(cat "$COUNTER" 2>/dev/null || echo 0)
@@ -116,9 +116,9 @@ BIN
     fi
 
     if [[ -f "$DOCTOR_LOG" ]] && grep -q "doctor-ran" "$DOCTOR_LOG"; then
-        ok "wedge: chump-doctor.sh invoked between attempts"
+        ok "wedge: chump-binary-unwedge.sh invoked between attempts"
     else
-        fail "wedge: chump-doctor.sh was NOT invoked"
+        fail "wedge: chump-binary-unwedge.sh was NOT invoked"
     fi
 fi
 

@@ -178,7 +178,7 @@ See [ROADMAP_MABEL_DRIVER.md](https://github.com/repairman29/chump/blob/main/doc
 **Context:** the 2026-05-02 session ran ~10 dispatcher agents in parallel and surfaced concrete scaling-breakers: 28 stale `chump gap reserve` procs hung in uninterruptible sleep (sqlite contention + INFRA-275 syspolicyd binary wedge), thundering herd on new gaps, ID collisions when CLI was wedged, no skill-affinity for routing, no idle backpressure. This is the prioritized backlog for taking the dispatcher from "works for ~10 agents on one machine" to "works for 100+ agents across a fleet." Filed via PRs #886 (3 lessons), #898 (10 scaling gaps), #900 (3 dispatcher-routing gaps).
 
 **Tier 1 — Operational hardening (next 1–2 weeks):**
-- [x] ~~[`INFRA-275`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-275.yaml) — syspolicyd binary wedge~~ shipped via PR #889 + chump-doctor.sh (closed #906, 2026-05-03)
+- [x] ~~[`INFRA-275`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-275.yaml) — syspolicyd binary wedge~~ shipped via PR #889 + chump-binary-unwedge.sh (closed #906, 2026-05-03)
 - [x] ~~[`INFRA-301`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-301.yaml) — gap-reserve.sh timeout + chump-doctor banner~~ shipped via PR #897 (ghost-closed)
 - [x] [`INFRA-307`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-307.yaml) (P1 s) — auto-file cleanup gap when PR stuck (current session) — landed #914
 - [x] [`INFRA-308`](https://github.com/repairman29/chump/blob/main/docs/gaps/INFRA-308.yaml) (P2 s) — continuous gap-doctor reconciliation cron (auto-fix safe DB↔YAML drifts every 15min) — landed #910

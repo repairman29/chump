@@ -62,7 +62,7 @@ scripts/coord/bot-merge.sh --gap <YOUR-GAP-ID> --auto-merge
 
 ```bash
 # Heal the wedged binary (INFRA-275). Idempotent; safe to run.
-scripts/dev/chump-doctor.sh
+scripts/dev/chump-binary-unwedge.sh
 ```
 
 > **STOP: wall-clock budget is `CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S` (default 900s = 15 min).**

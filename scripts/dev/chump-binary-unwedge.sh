@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# chump-doctor.sh — INFRA-275 — heal a wedged chump binary
+# chump-binary-unwedge.sh — INFRA-275 — heal a wedged chump binary
 #
 # Symptom this fixes: every `chump gap …` invocation hangs (no output, no
 # CPU). 30+ chump processes accumulate in `ps` showing state `UE`

@@ -7,7 +7,7 @@
 #
 # Test technique: prepend a fake `chump` to PATH that just `sleep 999`s,
 # set CHUMP_GAP_RESERVE_TIMEOUT_S=2, run gap-reserve.sh and assert (a) it
-# exits non-zero, (b) the banner mentions chump-doctor.sh, (c) the banner
+# exits non-zero, (b) the banner mentions chump-binary-unwedge.sh, (c) the banner
 # warns against direct YAML writes.
 
 set -euo pipefail
@@ -89,8 +89,8 @@ if ! grep -q "timed out after 2s" "$error_file"; then
     exit 1
 fi
 
-if ! grep -q "scripts/dev/chump-doctor.sh" "$error_file"; then
-    echo "FAIL: stderr missing chump-doctor.sh remediation pointer" >&2
+if ! grep -q "scripts/dev/chump-binary-unwedge.sh" "$error_file"; then
+    echo "FAIL: stderr missing chump-binary-unwedge.sh remediation pointer" >&2
     cat "$error_file" >&2
     exit 1
 fi
