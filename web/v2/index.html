@@ -169,6 +169,60 @@
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
 
+    /* INFRA-1009: <chump-workflow-timeline gap-id="X"> live phase tracker.
+       Embeddable — no layout opinion; host UI places it where it makes
+       sense (workflow_done event embedder, agents view session row,
+       sidebar). Four phase rows + optional done banner. */
+    chump-workflow-timeline { display: block; font-size: 12px; }
+    chump-workflow-timeline .wf-timeline {
+      border: 1px solid var(--border, #2a2a2e);
+      border-radius: var(--radius-sm, 6px);
+      padding: 8px 12px;
+      background: var(--surface, transparent);
+      max-width: 520px;
+    }
+    chump-workflow-timeline .wf-header {
+      font-size: 11px;
+      color: var(--text-tertiary, var(--text-secondary));
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border, #2a2a2e);
+      margin-bottom: 6px;
+    }
+    chump-workflow-timeline .wf-phases { list-style: none; padding: 0; margin: 0; }
+    chump-workflow-timeline .wf-phase {
+      display: grid;
+      grid-template-columns: 18px 80px 70px 1fr;
+      gap: 8px;
+      align-items: baseline;
+      padding: 3px 0;
+      font-variant-numeric: tabular-nums;
+    }
+    chump-workflow-timeline .wf-phase-icon { text-align: center; font-weight: 600; }
+    chump-workflow-timeline .wf-phase-name { font-weight: 500; }
+    chump-workflow-timeline .wf-phase-dur {
+      color: var(--text-tertiary, var(--text-secondary));
+      font-size: 11px;
+    }
+    chump-workflow-timeline .wf-msg {
+      color: var(--text-secondary);
+      font-size: 11px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    chump-workflow-timeline .wf-phase-ok      .wf-phase-icon { color: #4ec170; }
+    chump-workflow-timeline .wf-phase-fail    .wf-phase-icon { color: #d65468; }
+    chump-workflow-timeline .wf-phase-pending .wf-phase-icon { color: #aab5cc; }
+    chump-workflow-timeline .wf-phase-idle    .wf-phase-icon { color: var(--text-tertiary, #777); }
+    chump-workflow-timeline .wf-done {
+      margin-top: 8px; padding-top: 6px;
+      border-top: 1px solid var(--border, #2a2a2e);
+      font-size: 11px; color: #4ec170;
+    }
+    chump-workflow-timeline .wf-timeline.error { color: var(--accent-error, #d65468); }
+
     /* ── Layout ─────────────────────────────────────────────────────────── */
     #app-body {
       flex: 1;
@@ -613,6 +667,7 @@
   <script src="app.js" type="module"></script>
   <script src="cost-meter.js" type="module"></script>
   <script src="pr-card.js" type="module"></script>
+  <script src="workflow-timeline.js" type="module"></script>
   <script src="ootb-wizard.js" type="module"></script>
   <script src="inference-profile.js" type="module"></script>
   <script>

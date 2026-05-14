@@ -3098,6 +3098,142 @@ async fn handle_gap_status(
 /// response suitable for 2s polling from the PWA UI.
 ///
 /// Response: `{status, workflow_phase, progress_pct, error}`
+/// GET /api/gap/{id}/stream — SSE workflow timeline (INFRA-1009).
+///
+/// Push-delivers `gap_workflow_phase` events from `ambient.jsonl` for the
+/// requested gap so the PWA timeline widget renders phase progression
+/// (preflight → claim → execute → ship) without 5s polling lag.
+///
+/// Event format: `event: phase\ndata: <JSON>\n\n`. The JSON carries the
+/// original ambient event verbatim (passthrough): phase / phase_status /
+/// progress_pct / message / ts / gap_id — whatever the emitter chose to
+/// include. Workflow_done is signaled by `data: {"done": true, ...}`
+/// after a `gap_workflow_phase` with `phase_status=complete` and `phase=ship`.
+///
+/// Backward-compat: `/api/gap/{id}/status` (poll) remains for one release.
+async fn handle_gap_workflow_stream(
+    Path(gap_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let ambient_path = std::env::var("CHUMP_AMBIENT_IN_PROMPT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            let base = match std::env::var("CHUMP_REPO") {
+                Ok(r) => PathBuf::from(r),
+                Err(_) => repo_path::runtime_base(),
+            };
+            base.join(".chump-locks").join("ambient.jsonl")
+        });
+
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    let gap_id_clone = gap_id.clone();
+    tokio::spawn(async move {
+        // Initial-state replay: send any matching phase events already in
+        // ambient so the client immediately sees the current state without
+        // waiting for the next emission. Tail the last 1MB only to keep
+        // initial-latency bounded.
+        let mut last_offset: u64 = 0;
+        if let Ok(meta) = tokio::fs::metadata(&ambient_path).await {
+            let size = meta.len();
+            let start = size.saturating_sub(1_048_576);
+            last_offset = start;
+        }
+
+        loop {
+            // Read new bytes since last_offset.
+            let new_lines = match read_phase_events_since(&ambient_path, last_offset, &gap_id_clone) {
+                Ok((evts, next_offset)) => {
+                    last_offset = next_offset;
+                    evts
+                }
+                Err(_) => Vec::new(),
+            };
+
+            let mut done = false;
+            for evt in new_lines {
+                let phase = evt
+                    .get("phase")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let phase_status = evt
+                    .get("phase_status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let data = serde_json::to_string(&evt).unwrap_or_default();
+                if tx
+                    .send(Ok(Event::default().event("phase").data(data)))
+                    .is_err()
+                {
+                    return; // client disconnected
+                }
+                if phase == "ship" && phase_status == "complete" {
+                    done = true;
+                }
+            }
+
+            if done {
+                let done_msg = serde_json::json!({"done": true, "gap_id": gap_id_clone});
+                let _ = tx.send(Ok(Event::default()
+                    .event("workflow_done")
+                    .data(done_msg.to_string())));
+                break;
+            }
+
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
+/// Scan ambient.jsonl from byte-offset `since`, return matching phase events
+/// and the new offset. Out-of-order writes are tolerated; the client
+/// de-dupes by (gap_id, ts, phase) if needed.
+fn read_phase_events_since(
+    path: &std::path::Path,
+    since: u64,
+    gap_id: &str,
+) -> std::io::Result<(Vec<serde_json::Value>, u64)> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut f = std::fs::File::open(path)?;
+    let size = f.metadata()?.len();
+    if size < since {
+        // File rotated/truncated; restart from 0.
+        return read_phase_events_since(path, 0, gap_id);
+    }
+    f.seek(SeekFrom::Start(since))?;
+    let mut buf = String::new();
+    f.read_to_string(&mut buf)?;
+    let mut out = Vec::new();
+    for line in buf.lines() {
+        let Ok(v): Result<serde_json::Value, _> = serde_json::from_str(line) else {
+            continue;
+        };
+        if v.get("kind").and_then(|k| k.as_str()) != Some("gap_workflow_phase") {
+            continue;
+        }
+        if v.get("gap_id").and_then(|k| k.as_str()) != Some(gap_id) {
+            continue;
+        }
+        out.push(v);
+    }
+    Ok((out, size))
+}
+
 async fn handle_gap_workflow_status(
     Path(gap_id): Path<String>,
     headers: HeaderMap,
@@ -3776,6 +3912,7 @@ fn build_api_router() -> Router {
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
         .route("/api/gap/status/{id}", get(handle_gap_status))
         .route("/api/gap/{id}/status", get(handle_gap_workflow_status))
+        .route("/api/gap/{id}/stream", get(handle_gap_workflow_stream))
         .route("/api/gap/work/{id}", post(handle_gap_work))
         // CREDIBLE-023: secure response headers for all /api/gap/* routes
         .layer(axum::middleware::from_fn(gap_security_headers_middleware))
