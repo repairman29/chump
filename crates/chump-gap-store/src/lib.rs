@@ -1224,12 +1224,13 @@ impl GapStore {
                 .optional()?;
             if let Some(ref existing) = existing_wt {
                 if !existing.is_empty() && existing != worktree {
-                    tracing::warn!(
-                        session_id,
-                        existing_worktree = existing.as_str(),
-                        new_worktree = worktree,
-                        "INFRA-1032: session_id collision — worktree clobber detected; \
-                         this session has a different worktree than the existing lease"
+                    // INFRA-693: this crate intentionally avoids the tracing
+                    // dep to keep the surface small; eprintln! is the right
+                    // shape here (single warning at a known race seam).
+                    eprintln!(
+                        "WARN: INFRA-1032: session_id={} worktree clobber detected — \
+                         existing_worktree={} new_worktree={}",
+                        session_id, existing, worktree
                     );
                 }
             }
