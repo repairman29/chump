@@ -1,12 +1,11 @@
 - id: INFRA-1269
   domain: INFRA
   title: "fix: test-bot-merge-arm-ship-order uses stale gh_with_backoff grep pattern"
-  status: open
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - test-bot-merge-arm-ship-order.sh passes in CI (audit-required green) without needing any other changes; fix is a grep pattern update from gh_with_backoff.*pr merge to auto-merge-armer.sh
+  closed_date: '2026-05-14'
+  closed_pr: 1914
 
