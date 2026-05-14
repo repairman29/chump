@@ -1821,6 +1821,236 @@ class ChumpViewAgent extends HTMLElement {
 }
 customElements.define('chump-view-agent', ChumpViewAgent);
 
+// ── <chump-ambient-viewer> (INFRA-1198) ──────────────────────────────────────
+//
+// Live-tails .chump-locks/ambient.jsonl in the PWA's Events view via the
+// existing SSE endpoint (PRODUCT-091, /api/ambient/stream?kind=<X>?).
+// Renders a filtered, drillable list:
+//   - kind dropdown (top-N curated + "All") — server-side filter via ?kind=
+//   - connection indicator (● live / ○ reconnecting / ✕ error)
+//   - scrollable list, auto-pinned to bottom unless the user scrolls up
+//   - "↓ N new" pill appears while scrolled up; click jumps to bottom
+//   - click a row → expand to pretty-printed JSON drill-in
+//
+// Buffer is capped at #maxBuffer to keep DOM bounded under storm conditions.
+// EventSource errors are silenced (browser auto-reconnects); the indicator
+// flips to ○ during transient disconnects.
+class ChumpAmbientViewer extends HTMLElement {
+  #es = null;
+  #kindFilter = '';
+  #pinnedToBottom = true;
+  #buffer = [];
+  #pendingNew = 0;
+  #connState = 'connecting'; // 'live' | 'reconnecting' | 'error' | 'connecting'
+
+  static #MAX_BUFFER = 500;
+
+  // Curated kinds for the dropdown — the most operator-meaningful ones.
+  // "All" sentinel uses empty string. The list is enrichment, not authoritative;
+  // events with other kinds still flow through when filter is "All".
+  static #FILTER_OPTIONS = [
+    { value: '', label: 'All kinds' },
+    { value: 'fleet_auth_fallback',   label: 'fleet_auth_fallback' },
+    { value: 'pwa_secret_changed',    label: 'pwa_secret_changed' },
+    { value: 'pwa_doctor_check',      label: 'pwa_doctor_check' },
+    { value: 'pwa_setting_changed',   label: 'pwa_setting_changed' },
+    { value: 'auto_merge_armed',      label: 'auto_merge_armed' },
+    { value: 'bot_merge_rest_direct', label: 'bot_merge_rest_direct' },
+    { value: 'gh_secondary_limit_hit',label: 'gh_secondary_limit_hit' },
+    { value: 'pr_stuck_announced',    label: 'pr_stuck_announced' },
+    { value: 'silent_agent',          label: 'silent_agent' },
+    { value: 'lease_overlap',         label: 'lease_overlap' },
+    { value: 'edit_burst',            label: 'edit_burst' },
+  ];
+
+  connectedCallback() {
+    this.#renderShell();
+    this.#subscribe();
+  }
+
+  disconnectedCallback() {
+    if (this.#es) { this.#es.close(); this.#es = null; }
+  }
+
+  #renderShell() {
+    const options = ChumpAmbientViewer.#FILTER_OPTIONS.map(o =>
+      `<option value="${this.#esc(o.value)}">${this.#esc(o.label)}</option>`
+    ).join('');
+    this.innerHTML = `
+      <div class="amb-toolbar">
+        <label class="amb-filter-label">
+          Filter by kind:
+          <select class="amb-filter">${options}</select>
+        </label>
+        <span class="amb-state amb-state-connecting" title="connecting…">●</span>
+      </div>
+      <div class="amb-pill" style="display:none">↓ <span class="amb-pill-n">0</span> new</div>
+      <ol class="amb-list" tabindex="0" aria-label="Ambient event stream"></ol>
+    `;
+    const sel = this.querySelector('.amb-filter');
+    sel.addEventListener('change', (e) => this.#changeFilter(e.target.value));
+    const list = this.querySelector('.amb-list');
+    list.addEventListener('scroll', () => this.#onScroll());
+    const pill = this.querySelector('.amb-pill');
+    pill.addEventListener('click', () => this.#jumpToBottom());
+  }
+
+  #subscribe() {
+    if (this.#es) { this.#es.close(); this.#es = null; }
+    this.#setConn('connecting');
+    const url = this.#kindFilter
+      ? `/api/ambient/stream?kind=${encodeURIComponent(this.#kindFilter)}`
+      : '/api/ambient/stream';
+    try {
+      this.#es = new EventSource(url);
+    } catch (err) {
+      this.#setConn('error');
+      return;
+    }
+    this.#es.addEventListener('open', () => this.#setConn('live'));
+    this.#es.addEventListener('ambient', (e) => {
+      let payload;
+      try { payload = JSON.parse(e.data); } catch { return; }
+      this.#onEvent(payload);
+    });
+    this.#es.addEventListener('error', () => {
+      this.#setConn('reconnecting');
+    });
+  }
+
+  #onEvent(payload) {
+    // Re-validate against the active filter — server should already filter,
+    // but defence-in-depth for race during filter swap.
+    if (this.#kindFilter && payload.kind !== this.#kindFilter) return;
+
+    this.#buffer.push(payload);
+    if (this.#buffer.length > ChumpAmbientViewer.#MAX_BUFFER) {
+      const drop = this.#buffer.length - ChumpAmbientViewer.#MAX_BUFFER;
+      this.#buffer.splice(0, drop);
+    }
+    this.#appendRow(payload);
+    if (this.#pinnedToBottom) {
+      this.#jumpToBottom();
+    } else {
+      this.#pendingNew += 1;
+      this.#refreshPill();
+    }
+  }
+
+  #appendRow(payload) {
+    const list = this.querySelector('.amb-list');
+    if (!list) return;
+    const li = document.createElement('li');
+    li.className = 'amb-row';
+    const ts = String(payload.ts || '').slice(11, 19) || '--:--:--';
+    const kind = String(payload.kind || payload.event || 'unknown');
+    const summary = this.#summarize(payload);
+    li.innerHTML = `
+      <span class="amb-ts">${this.#esc(ts)}</span>
+      <span class="amb-kind">${this.#esc(kind)}</span>
+      <span class="amb-summary">${this.#esc(summary)}</span>
+      <pre class="amb-detail" hidden></pre>
+    `;
+    li.addEventListener('click', () => this.#toggleDetail(li, payload));
+    list.appendChild(li);
+    // Evict DOM rows beyond the buffer cap.
+    while (list.children.length > ChumpAmbientViewer.#MAX_BUFFER) {
+      list.removeChild(list.firstChild);
+    }
+  }
+
+  #summarize(p) {
+    // Pull the 2-3 most informative fields beyond ts/kind/event.
+    const skip = new Set(['ts', 'kind', 'event']);
+    const parts = [];
+    for (const [k, v] of Object.entries(p)) {
+      if (skip.has(k)) continue;
+      if (parts.length >= 3) break;
+      const valStr = typeof v === 'string' ? v : JSON.stringify(v);
+      parts.push(`${k}=${valStr}`);
+    }
+    return parts.join(' · ');
+  }
+
+  #toggleDetail(li, payload) {
+    const pre = li.querySelector('.amb-detail');
+    if (!pre) return;
+    if (pre.hidden) {
+      pre.textContent = JSON.stringify(payload, null, 2);
+      pre.hidden = false;
+    } else {
+      pre.hidden = true;
+    }
+  }
+
+  #changeFilter(kind) {
+    this.#kindFilter = kind || '';
+    this.#buffer = [];
+    this.#pendingNew = 0;
+    const list = this.querySelector('.amb-list');
+    if (list) list.innerHTML = '';
+    this.#refreshPill();
+    this.#subscribe();
+  }
+
+  #onScroll() {
+    const list = this.querySelector('.amb-list');
+    if (!list) return;
+    const atBottom = (list.scrollTop + list.clientHeight) >= (list.scrollHeight - 4);
+    this.#pinnedToBottom = atBottom;
+    if (atBottom && this.#pendingNew > 0) {
+      this.#pendingNew = 0;
+      this.#refreshPill();
+    }
+  }
+
+  #jumpToBottom() {
+    const list = this.querySelector('.amb-list');
+    if (!list) return;
+    list.scrollTop = list.scrollHeight;
+    this.#pinnedToBottom = true;
+    this.#pendingNew = 0;
+    this.#refreshPill();
+  }
+
+  #refreshPill() {
+    const pill = this.querySelector('.amb-pill');
+    const n = this.querySelector('.amb-pill-n');
+    if (!pill || !n) return;
+    if (this.#pendingNew > 0) {
+      pill.style.display = 'block';
+      n.textContent = String(this.#pendingNew);
+    } else {
+      pill.style.display = 'none';
+    }
+  }
+
+  #setConn(state) {
+    this.#connState = state;
+    const el = this.querySelector('.amb-state');
+    if (!el) return;
+    el.className = `amb-state amb-state-${state}`;
+    const map = {
+      live:         { glyph: '●', title: 'live' },
+      reconnecting: { glyph: '○', title: 'reconnecting…' },
+      error:        { glyph: '✕', title: 'error' },
+      connecting:   { glyph: '●', title: 'connecting…' },
+    };
+    const m = map[state] || map.connecting;
+    el.textContent = m.glyph;
+    el.title = m.title;
+  }
+
+  #esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+}
+customElements.define('chump-ambient-viewer', ChumpAmbientViewer);
+
 // ── Router ────────────────────────────────────────────────────────────────────
 // PRODUCT-091: ambient event viewer view factory.
 function makeAmbientView() {
