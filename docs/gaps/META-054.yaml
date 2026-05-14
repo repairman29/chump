@@ -1,15 +1,20 @@
 - id: META-054
   domain: META
-  title: "META: bulk-retag the ~95 untagged gaps with pillar prefix per 2026-05-11 audit — half the registry is invisible to pillar-balance checks"
-  status: open
+  title: 'META: bulk-retag the ~95 untagged gaps with pillar prefix per 2026-05-11 audit — half the registry is invisible
+    to pillar-balance checks'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - "All open gaps whose title does not start with EFFECTIVE: / CREDIBLE: / RESILIENT: / ZERO-WASTE: / MISSION: get a pillar prefix added matching the gap's actual purpose"
-    - "scripts/dev/suggest-pillar-tag.sh — given a gap's title + description, suggest the best pillar (heuristic + chump local LLM); used in bulk-retag review"
-    - "Output of pre-audit: `chump gap list --status open --json | jq '[.[] | select(.title | test(\"^(EFFECTIVE|CREDIBLE|RESILIENT|ZERO-WASTE|MISSION):\")|not)]'` returns < 10% of open gaps (down from 44% today)"
-    - "Each retag uses CHUMP_ALLOW_GAP_REWRITE=1 (legitimate title correction) and adds a note 'pillar prefix retag via META-054'"
-    - "After retag pass: chump gap audit-priorities exits clean; pillar-mix-by-pickable shows no pillar starved (≥2) and no pillar >60%"
-    - "If a gap cannot be cleanly classified (genuinely cross-pillar or obsolete), close it with note rather than force-tag"
-    - "Documented in docs/process/GAP_PRIORITIZATION.md alongside META-046 PM-curation cadence"
-
+  - 'All open gaps whose title does not start with EFFECTIVE: / CREDIBLE: / RESILIENT: / ZERO-WASTE: / MISSION: get a pillar
+    prefix added matching the gap''s actual purpose'
+  - scripts/dev/suggest-pillar-tag.sh — given a gap's title + description, suggest the best pillar (heuristic + chump local
+    LLM); used in bulk-retag review
+  - 'Output of pre-audit: `chump gap list --status open --json | jq ''[.[] | select(.title | test("^(EFFECTIVE|CREDIBLE|RESILIENT|ZERO-WASTE|MISSION):")|not)]''`
+    returns < 10% of open gaps (down from 44% today)'
+  - Each retag uses CHUMP_ALLOW_GAP_REWRITE=1 (legitimate title correction) and adds a note 'pillar prefix retag via META-054'
+  - 'After retag pass: chump gap audit-priorities exits clean; pillar-mix-by-pickable shows no pillar starved (≥2) and no
+    pillar >60%'
+  - If a gap cannot be cleanly classified (genuinely cross-pillar or obsolete), close it with note rather than force-tag
+  - Documented in docs/process/GAP_PRIORITIZATION.md alongside META-046 PM-curation cadence
+  closed_date: '2026-05-12'

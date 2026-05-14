@@ -1,14 +1,20 @@
 - id: CREDIBLE-002
   domain: CREDIBLE
-  title: "CREDIBLE: pre-deploy 'is the bot autonomous?' assertion — automated test that pr-triage-bot has actually committed an auto-fix to a fixture PR before any subsequent bot-related PR can merge"
-  status: open
+  title: 'CREDIBLE: pre-deploy ''is the bot autonomous?'' assertion — automated test that pr-triage-bot has actually committed
+    an auto-fix to a fixture PR before any subsequent bot-related PR can merge'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "scripts/ci/test-bot-autonomous.sh exists and is executable"
-    - "Script creates a fixture branch with a clippy::len_zero lint, opens a PR, polls for a commit by chump-pr-triage-bot, passes if bot commits within BOT_AUTONOMOUS_WAIT_SECS (default 900s), fails if timeout"
-    - "Script cleans up fixture PR and branch on exit (pass or fail)"
-    - "Script exits 0 silently when GH_TOKEN is absent (local dev)"
-    - ".github/workflows/test-bot-autonomous.yml runs the script as a required CI check on any PR touching pr-triage-bot.yml or scripts/ci/test-bot-autonomous.sh"
-    - "Two ambient event kinds registered in EVENT_REGISTRY.yaml: bot_autonomous_check_passed and bot_autonomous_check_failed (INFRA-754)"
-    - "Emits bot_autonomous_check_passed|failed to .chump-locks/ambient.jsonl with ts, outcome, fixture_pr fields"
+  - scripts/ci/test-bot-autonomous.sh exists and is executable
+  - Script creates a fixture branch with a clippy::len_zero lint, opens a PR, polls for a commit by chump-pr-triage-bot, passes
+    if bot commits within BOT_AUTONOMOUS_WAIT_SECS (default 900s), fails if timeout
+  - Script cleans up fixture PR and branch on exit (pass or fail)
+  - Script exits 0 silently when GH_TOKEN is absent (local dev)
+  - .github/workflows/test-bot-autonomous.yml runs the script as a required CI check on any PR touching pr-triage-bot.yml
+    or scripts/ci/test-bot-autonomous.sh
+  - 'Two ambient event kinds registered in EVENT_REGISTRY.yaml: bot_autonomous_check_passed and bot_autonomous_check_failed
+    (INFRA-754)'
+  - Emits bot_autonomous_check_passed|failed to .chump-locks/ambient.jsonl with ts, outcome, fixture_pr fields
+  closed_date: '2026-05-11'
+  closed_pr: 1472

@@ -1,22 +1,28 @@
 - id: INFRA-1165
   domain: INFRA
-  title: "RESILIENT: pre-push gap-check false positives when gap is validly claimed — cross-reference lease file before rejecting"
-  status: open
+  title: 'RESILIENT: pre-push gap-check false positives when gap is validly claimed — cross-reference lease file before rejecting'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "pre-push gap-check reads .chump-locks/*.json to find the current session's lease before rejecting a push"
-    - "if the commit subject references a gap ID that matches an active non-expired lease, CHUMP_SESSION_ID is set to that lease's session_id before calling gap-preflight"
-    - "gap-preflight correctly identifies the push as coming from the claimant and allows it"
-    - "if no matching lease exists, the check still rejects (no regression on real violations)"
-    - "CHUMP_GAP_CHECK=0 remains as escape hatch but is no longer needed for normal claimed-gap workflows"
-    - "emits kind=gap_check_false_positive when gap-preflight rejects despite a matching lease"
-    - "EVENT_REGISTRY.yaml registers gap_check_false_positive"
-    - "scripts/ci/test-prepush-gap-check-own-claim.sh: 4 checks pass"
-  notes: |
-    Root cause 2026-05-14: gap-preflight.sh resolved SESSION_ID from .wt-session-id in the
-    main repo rather than from the gap's lease file. Fix: pre-push hook now scans
+  - pre-push gap-check reads .chump-locks/*.json to find the current session's lease before rejecting a push
+  - if the commit subject references a gap ID that matches an active non-expired lease, CHUMP_SESSION_ID is set to that lease's
+    session_id before calling gap-preflight
+  - gap-preflight correctly identifies the push as coming from the claimant and allows it
+  - if no matching lease exists, the check still rejects (no regression on real violations)
+  - CHUMP_GAP_CHECK=0 remains as escape hatch but is no longer needed for normal claimed-gap workflows
+  - emits kind=gap_check_false_positive when gap-preflight rejects despite a matching lease
+  - EVENT_REGISTRY.yaml registers gap_check_false_positive
+  - 'scripts/ci/test-prepush-gap-check-own-claim.sh: 4 checks pass'
+  notes: 'Root cause 2026-05-14: gap-preflight.sh resolved SESSION_ID from .wt-session-id in the
+
+    main repo rather than from the gap''s lease file. Fix: pre-push hook now scans
+
     .chump-locks/*.json for an active lease matching the gap ID and sets CHUMP_SESSION_ID
-    to that lease's session_id before running gap-preflight.
+
+    to that lease''s session_id before running gap-preflight.
+
     Workaround until merge: CHUMP_GAP_CHECK=0. Related: INFRA-1025.
 
+    '
+  closed_date: '2026-05-14'

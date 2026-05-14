@@ -1,0 +1,12 @@
+- id: CREDIBLE-061
+  domain: CREDIBLE
+  title: "CREDIBLE: chump gap list --since <timestamp> output format audit — verify JSON mode matches ambient consumer schema"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - 1. scripts/ci/test-gap-list-since-json-schema.sh asserts chump gap list --since 2026-01-01 --json outputs valid JSON with required fields (id, title, status, priority, effort, domain) for every gap
+    - 2. Any field mismatch or extra/missing key fails the test
+    - 3. Test runs without network or real state.db — uses a synthetic fixture db with 5 gaps
+    - 4. CI step added to .github/workflows/ci.yml
+

@@ -1,14 +1,25 @@
 - id: RESILIENT-010
   domain: RESILIENT
-  title: "RESILIENT: ftue CI job auto-recover when Ollama daemon is down — `error sending request for url (http://127.0.0.1:11434/v1/chat/completions) — model HTTP unreachable` flake-shipped on PR #1474 because ftue isn't required + has no daemon-restart fallback"
-  status: open
+  title: 'RESILIENT: ftue CI job auto-recover when Ollama daemon is down — `error sending request for url (http://127.0.0.1:11434/v1/chat/completions)
+    — model HTTP unreachable` flake-shipped on PR #1474 because ftue isn''t required + has no daemon-restart fallback'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - ".github/workflows/ftue.yml (or wherever the ftue job lives) probes Ollama at startup; if unreachable, attempts `brew services restart ollama` once, then re-probes; if still unreachable, marks the job as SKIPPED with a clear annotation (not FAILED — distinguishes infra-flake from real bug)"
-    - "OR: split the ftue smoke into two jobs: ftue-no-llm (just verifies chump binary + chump init + mcp list + fleet status — never touches Ollama) which is REQUIRED, and ftue-with-llm which exercises gen and is ADVISORY"
-    - "Today's specific failure: PR #1474 (INFRA-825) merged on 2026-05-11 with ftue showing FAILURE because the Ollama daemon was down on the runner. 14 required checks passed → auto-merge fired anyway. Merge history looks like we shipped broken code"
-    - "Either approach must also emit ambient kind=ci_ftue_ollama_flake with the failed-URL + the brew-restart outcome so we can audit how often this fires"
-    - "Test fixture: synthetic ftue run with Ollama-stopped at start — assert the recovery path either succeeds OR exits with SKIPPED + annotation (not FAILED)"
-    - "Per FAILURE_MODES.yaml this is the `infra-broken` class, auto_action=escalate; but with auto-recovery built into the workflow, the operator escalation isn't needed for the common case"
-    - "Pairs with INFRA-764 (flake auto-rerun) — INFRA-764 reruns the JOB; this gap fixes the underlying Ollama startup race so reruns aren't needed in the first place"
+  - .github/workflows/ftue.yml (or wherever the ftue job lives) probes Ollama at startup; if unreachable, attempts `brew services
+    restart ollama` once, then re-probes; if still unreachable, marks the job as SKIPPED with a clear annotation (not FAILED
+    — distinguishes infra-flake from real bug)
+  - 'OR: split the ftue smoke into two jobs: ftue-no-llm (just verifies chump binary + chump init + mcp list + fleet status
+    — never touches Ollama) which is REQUIRED, and ftue-with-llm which exercises gen and is ADVISORY'
+  - 'Today''s specific failure: PR #1474 (INFRA-825) merged on 2026-05-11 with ftue showing FAILURE because the Ollama daemon
+    was down on the runner. 14 required checks passed → auto-merge fired anyway. Merge history looks like we shipped broken
+    code'
+  - Either approach must also emit ambient kind=ci_ftue_ollama_flake with the failed-URL + the brew-restart outcome so we
+    can audit how often this fires
+  - 'Test fixture: synthetic ftue run with Ollama-stopped at start — assert the recovery path either succeeds OR exits with
+    SKIPPED + annotation (not FAILED)'
+  - Per FAILURE_MODES.yaml this is the `infra-broken` class, auto_action=escalate; but with auto-recovery built into the workflow,
+    the operator escalation isn't needed for the common case
+  - Pairs with INFRA-764 (flake auto-rerun) — INFRA-764 reruns the JOB; this gap fixes the underlying Ollama startup race
+    so reruns aren't needed in the first place
+  closed_date: '2026-05-12'

@@ -1,0 +1,20 @@
+- id: INFRA-1152
+  domain: INFRA
+  title: "CREDIBLE: pillar-balance guard at chump gap reserve time — refuse if pillar over-weighted, warn if under-fed"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Today's data (2026-05-14 silo retrospective): 64% of fleet output is RESILIENT + ZERO-WASTE (fleet-meta plumbing), only 15% EFFECTIVE (user-facing). CLAUDE.md Mission Driver warns about this — "Resilient and Zero-Waste pile up while Effective and Credible starve" — but enforcement is by-convention only. Mechanism: at `chump gap reserve` time compute current pillar distribution across open *pickable* gaps (picker eligibility set, not all open). If proposed pillar > 35% of open pickable, warn with distribution. If > 50%, refuse without --force-pillar. Pillar inference: parse title prefix (RESILIENT:/EFFECTIVE:/CREDIBLE:/ZERO-WASTE:/MISSION:); if absent, prompt — never silently default. Tunable: CHUMP_PILLAR_BALANCE_WARN (default 0.35), BLOCK (default 0.50), DISABLE=1 (CI). Inverse: if any pillar < 10%, suggest next gap in that pillar (under-fed warning). Don't gate on absolute count — relative distribution. Surge mode allowed via --force-pillar with audit-log emission.
+  acceptance_criteria:
+    - "`chump gap reserve` parses pillar tag from --title (regex on PILLAR: prefix); refuses if no tag and no --pillar flag"
+    - Computes open-pickable distribution (status=open, no false-dep, has AC, non-vague) per pillar
+    - Warns if proposed pillar already > CHUMP_PILLAR_BALANCE_WARN (default 0.35); shows current distribution
+    - Blocks if proposed pillar > CHUMP_PILLAR_BALANCE_BLOCK (default 0.50) without --force-pillar
+    - Suggests under-fed pillar (count < 10% of open-pickable) in same warn message
+    - CHUMP_PILLAR_BALANCE_DISABLE=1 disables check entirely (CI bypass)
+    - Emits kind=pillar_balance_warn / pillar_balance_block with distribution snapshot; EVENT_REGISTRY.yaml registers both
+    - Test scripts/ci/test-pillar-balance-guard.sh synthetic registry with 7 Resilient / 3 others — reserve another Resilient asserts block; with --force-pillar asserts allowed with pillar_balance_block event
+    - Test synthetic registry with 1 Effective / 9 others — reserve any non-Effective asserts warn mentions Effective under-fed
+  closed_pr: 1863
+

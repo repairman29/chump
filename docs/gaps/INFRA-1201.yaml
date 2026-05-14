@@ -1,16 +1,25 @@
 - id: INFRA-1201
   domain: INFRA
-  title: "RESILIENT: web/v2/index.html hot-file — merge=union driver + duplicate-script-tag pre-commit guard"
-  status: open
+  title: 'RESILIENT: web/v2/index.html hot-file — merge=union driver + duplicate-script-tag pre-commit guard'
+  status: done
   priority: P1
   effort: xs
-  description: |
-    Live break observed 2026-05-14: web/v2/index.html is a PWA append-only hot file. Each new PWA feature (PRODUCT-NNN/INFRA-1011/1013-style) adds a <script src=X.js> entry to the script-loading block + (optionally) a <chump-X></chump-X> custom-element placement before </body>. Both are append-only zones; concurrent feature PRs hit the same blocks and produce textual conflicts. 3 PRs stuck DIRTY (#1827 INFRA-1011 web_server+index, #1860 PRODUCT-090 index, plus others) for hours. Fix: mark web/v2/index.html as merge=union in .gitattributes (same proven pattern as EVENT_REGISTRY.yaml + env-vars-internal.txt). Side-effect risk (union merges line-unique entries — two PRs adding the same exact tag both land) mitigated via pre-commit guard catching duplicate <script src= and <chump-X></chump-X>.
-  acceptance_criteria:
-    - web/v2/index.html declared merge=union in .gitattributes
-    - scripts/git-hooks/pre-commit-pwa-index-uniq.sh exists, executable, rejects duplicate <script src=X.js> lines
-    - Guard rejects duplicate <chump-X></chump-X> top-level placements
-    - Guard passes on clean unique content
-    - Guard wired into scripts/git-hooks/pre-commit; bypass via CHUMP_PWA_INDEX_UNIQ_CHECK=0
-    - "Test scripts/ci/test-pwa-index-merge-driver.sh validates all of the above + end-to-end: two divergent feature branches with different <script src> additions merge cleanly via union with no conflict markers, all additions preserved"
+  description: 'Live break observed 2026-05-14: web/v2/index.html is a PWA append-only hot file. Each new PWA feature (PRODUCT-NNN/INFRA-1011/1013-style)
+    adds a <script src=X.js> entry to the script-loading block + (optionally) a <chump-X></chump-X> custom-element placement
+    before </body>. Both are append-only zones; concurrent feature PRs hit the same blocks and produce textual conflicts.
+    3 PRs stuck DIRTY (#1827 INFRA-1011 web_server+index, #1860 PRODUCT-090 index, plus others) for hours. Fix: mark web/v2/index.html
+    as merge=union in .gitattributes (same proven pattern as EVENT_REGISTRY.yaml + env-vars-internal.txt). Side-effect risk
+    (union merges line-unique entries — two PRs adding the same exact tag both land) mitigated via pre-commit guard catching
+    duplicate <script src= and <chump-X></chump-X>.
 
+    '
+  acceptance_criteria:
+  - web/v2/index.html declared merge=union in .gitattributes
+  - scripts/git-hooks/pre-commit-pwa-index-uniq.sh exists, executable, rejects duplicate <script src=X.js> lines
+  - Guard rejects duplicate <chump-X></chump-X> top-level placements
+  - Guard passes on clean unique content
+  - Guard wired into scripts/git-hooks/pre-commit; bypass via CHUMP_PWA_INDEX_UNIQ_CHECK=0
+  - 'Test scripts/ci/test-pwa-index-merge-driver.sh validates all of the above + end-to-end: two divergent feature branches
+    with different <script src> additions merge cleanly via union with no conflict markers, all additions preserved'
+  closed_date: '2026-05-14'
+  closed_pr: 1873

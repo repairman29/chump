@@ -1,18 +1,16 @@
 - id: INFRA-815
   domain: INFRA
-  title: "RESILIENT: superboring ml_dsa signing_key API break blocks cargo install --bin chump"
-  status: open
+  title: 'RESILIENT: superboring ml_dsa signing_key API break blocks cargo install --bin chump'
+  status: done
   priority: P1
   effort: s
-  description: |
-    `cargo install --path . --bin chump --force` fails with:
-      error[E0599]: no method named `signing_key` found for reference `&Box<ml_dsa::SigningKey<MlDsa44>>`
-    The `superboring` crate calls `.signing_key()` on `ml_dsa::SigningKey` which no longer
-    exists in the current ml_dsa API. This blocks `chump` binary rebuild from HEAD.
-    Fix: pin superboring or ml_dsa to a compatible version in Cargo.toml, or patch the
-    superboring call site to use the new API.
+  description: "`cargo install --path . --bin chump --force` fails with:\n  error[E0599]: no method named `signing_key` found\
+    \ for reference `&Box<ml_dsa::SigningKey<MlDsa44>>`\nThe `superboring` crate calls `.signing_key()` on `ml_dsa::SigningKey`\
+    \ which no longer\nexists in the current ml_dsa API. This blocks `chump` binary rebuild from HEAD.\nFix: pin superboring\
+    \ or ml_dsa to a compatible version in Cargo.toml, or patch the\nsuperboring call site to use the new API.\n"
   acceptance_criteria:
-    - cargo install --path . --bin chump --force completes successfully
-    - chump --version reports a binary built from a post-fix commit
-    - cargo clippy passes on main
-
+  - cargo install --path . --bin chump --force completes successfully
+  - chump --version reports a binary built from a post-fix commit
+  - cargo clippy passes on main
+  closed_date: '2026-05-10'
+  closed_pr: 1429

@@ -1,12 +1,15 @@
 - id: INFRA-636
   domain: INFRA
-  title: "EFFECTIVE: spec-to-gaps importer (chump gap import-spec)"
-  status: open
+  title: 'EFFECTIVE: spec-to-gaps importer (chump gap import-spec)'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "src/main.rs: 'chump gap import-spec <path> [--apply] [--dry-run] [--json]'"
-    - "parses headings matching '### REQ-NNN --- title'; **Priority.** / **What we need.** / **Acceptance.** subsections map to priority/description/AC"
-    - "infers pillar from title keywords (CREDIBLE/EFFECTIVE/RESILIENT/ZERO-WASTE)"
-    - "--apply files all gaps + runs rebalance; --dry-run shows what would be filed"
-    - "test scripts/ci/test-gap-import-spec.sh on fixture docs/test-fixtures/import-spec/sample-spec.md"
+  - 'src/main.rs: ''chump gap import-spec <path> [--apply] [--dry-run] [--json]'''
+  - parses headings matching '### REQ-NNN --- title'; **Priority.** / **What we need.** / **Acceptance.** subsections map
+    to priority/description/AC
+  - infers pillar from title keywords (CREDIBLE/EFFECTIVE/RESILIENT/ZERO-WASTE)
+  - --apply files all gaps + runs rebalance; --dry-run shows what would be filed
+  - test scripts/ci/test-gap-import-spec.sh on fixture docs/test-fixtures/import-spec/sample-spec.md
+  closed_date: '2026-05-12'
+  closed_pr: 1541

@@ -1,15 +1,25 @@
 - id: CREDIBLE-040
   domain: CREDIBLE
-  title: "CREDIBLE: opencode-bigpickle must commit under its own git identity (e.g. bigpickle@chump.bot), not jeffadkins1@gmail.com — restores per-harness attribution for fleet quality analysis"
-  status: open
+  title: 'CREDIBLE: opencode-bigpickle must commit under its own git identity (e.g. bigpickle@chump.bot), not jeffadkins1@gmail.com
+    — restores per-harness attribution for fleet quality analysis'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "opencode-bigpickle sessions set git user.email and user.name to a bigpickle-specific identity (suggested: bigpickle@chump.bot / opencode-bigpickle) via either (a) automated git config at session start, (b) commit-trailer enforcement in the bigpickle wrapper, or (c) per-commit `--author` flag injection"
-    - "Vanilla opencode (t@t.t) continues unchanged — that signature is already useful for distinguishing scratch-init pattern PRs like #1441"
-    - "Claude Code IDE sessions continue committing as jeffadkins1@gmail.com (the operator's real identity) — leaves the operator's own commits as-is"
-    - "Fleet dispatcher continues as chump-dispatch@chump.bot (already in use)"
-    - "Post-change: `git log --since=24h --pretty='%ae'` produces unambiguous harness attribution. Today the same email covers Claude Code IDE + opencode-bigpickle and a manual audit is required to tell them apart"
-    - "scripts/ci/test-author-attribution.sh asserts: a synthetic bigpickle commit lands with the bigpickle identity, a synthetic Claude Code IDE commit lands with jeffadkins1@gmail.com, neither overlaps"
-    - "Pairs with CREDIBLE-037 (harness-tagging in ambient events) and CREDIBLE-025 (model-tagging) so model+harness+author all line up across the three telemetry surfaces"
-    - "Updates docs/process/CANONICAL_STATE_CONTRACT.md (or AGENT_COORDINATION.md) with the per-harness identity table"
+  - 'opencode-bigpickle sessions set git user.email and user.name to a bigpickle-specific identity (suggested: bigpickle@chump.bot
+    / opencode-bigpickle) via either (a) automated git config at session start, (b) commit-trailer enforcement in the bigpickle
+    wrapper, or (c) per-commit `--author` flag injection'
+  - 'Vanilla opencode (t@t.t) continues unchanged — that signature is already useful for distinguishing scratch-init pattern
+    PRs like #1441'
+  - Claude Code IDE sessions continue committing as jeffadkins1@gmail.com (the operator's real identity) — leaves the operator's
+    own commits as-is
+  - Fleet dispatcher continues as chump-dispatch@chump.bot (already in use)
+  - 'Post-change: `git log --since=24h --pretty=''%ae''` produces unambiguous harness attribution. Today the same email covers
+    Claude Code IDE + opencode-bigpickle and a manual audit is required to tell them apart'
+  - 'scripts/ci/test-author-attribution.sh asserts: a synthetic bigpickle commit lands with the bigpickle identity, a synthetic
+    Claude Code IDE commit lands with jeffadkins1@gmail.com, neither overlaps'
+  - Pairs with CREDIBLE-037 (harness-tagging in ambient events) and CREDIBLE-025 (model-tagging) so model+harness+author all
+    line up across the three telemetry surfaces
+  - Updates docs/process/CANONICAL_STATE_CONTRACT.md (or AGENT_COORDINATION.md) with the per-harness identity table
+  closed_date: '2026-05-13'
+  closed_pr: 1659

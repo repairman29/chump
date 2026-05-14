@@ -1,12 +1,12 @@
 - id: INFRA-1140
   domain: INFRA
-  title: "RESILIENT: ~/.local/bin/gh shim points at deleted sibling worktree path; breaks any chump_gh call outside that worktree"
-  status: open
+  title: 'RESILIENT: ~/.local/bin/gh shim points at deleted sibling worktree path; breaks any chump_gh call outside that worktree'
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-14'
