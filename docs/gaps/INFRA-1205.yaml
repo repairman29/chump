@@ -1,0 +1,13 @@
+- id: INFRA-1205
+  domain: INFRA
+  title: "RESILIENT: fix ci-yml merge driver — grep -c double-output + append-only corruption"
+  status: open
+  priority: P1
+  effort: s
+  depends_on: []
+  acceptance_criteria:
+    - "grep -c double-output bug fixed: driver no longer emits [[: 0\\n0: syntax error when ancestor/ours/theirs have zero matching lines"
+    - "append-only guard: driver verifies head-N of ours/theirs matches ancestor exactly before merging; falls back (exit 1) when theirs inserted or edited mid-file content"
+    - "path-filter corruption regression: theirs with mid-file insertions (e.g., new outputs: entries) does not corrupt ours by appending garbage at EOF"
+    - "tests/ci/test-merge-driver-ci-yml.sh: 5 cases pass — driver registration, pure-add rebase, edit-conflict fallback, zero-match no-syntax-error, path-filter non-corruption"
+    - "existing CI step (ci.yml merge driver smoke, INFRA-310) picks up the new test cases automatically"
