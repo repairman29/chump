@@ -1181,7 +1181,8 @@ class ChumpViewAgents extends HTMLElement {
   #load() {
     const list = this.querySelector('#agents-list');
     const note = this.querySelector('#agents-refresh-note');
-    fetch('/api/fleet-status')
+    // PRODUCT-100: use apiFetch wrapper for visible error state + staleness tracking.
+    (window.apiFetch ? window.apiFetch('/api/fleet-status') : fetch('/api/fleet-status'))
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -1347,9 +1348,11 @@ class ChumpViewResults extends HTMLElement {
 
   #load() {
     const container = this.querySelector('#results-container');
+    // PRODUCT-100: use apiFetch for visible error state.
+    const _fetch = window.apiFetch ?? fetch;
     Promise.all([
-      fetch('/api/dashboard').then(r => r.json()).catch(() => ({})),
-      fetch('/api/jobs').then(r => r.json()).catch(() => [])
+      _fetch('/api/dashboard').then(r => r.json()).catch(() => ({})),
+      _fetch('/api/jobs').then(r => r.json()).catch(() => [])
     ]).then(([dashboard, jobs]) => {
       if (!dashboard && !jobs) {
         container.innerHTML = '<p class="placeholder">No results available (offline or server not running).</p>';
