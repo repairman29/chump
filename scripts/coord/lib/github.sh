@@ -380,7 +380,11 @@ chump_gh() {
     _chump_gh_preempt_if_low "$script_tag" "$api_tag"
     started="$(_chump_gh_now_ms)"
     set +e
-    gh "$@"
+    # INFRA-1103: signal to the PATH shim that this call is already throttled
+    # (we called _chump_gh_throttle_wait above). The env-var prefix form sets
+    # CHUMP_GH_SHIM_RECORDING=1 only for the 'gh' child process without leaking
+    # into the current shell, so subsequent non-chump_gh callers still throttle.
+    CHUMP_GH_SHIM_RECORDING=1 gh "$@"
     rc=$?
     set -e
     ended="$(_chump_gh_now_ms)"
