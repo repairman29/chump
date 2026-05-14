@@ -1,7 +1,7 @@
 - id: CREDIBLE-063
   domain: CREDIBLE
   title: Surface agent feedback counts in chump kpi report (defect/proposal/retro tallies per domain)
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -15,3 +15,5 @@
     to grep .chump-locks/ to know if agents are pushing back on a design.
 
     '
+  closed_date: '2026-05-14'
+  closed_pr: 1927

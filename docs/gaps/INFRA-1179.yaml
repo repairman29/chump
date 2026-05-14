@@ -1,7 +1,7 @@
 - id: INFRA-1179
   domain: INFRA
   title: "PR #1816 stuck [ORPHAN] — auto-merge disarmed, no live owner"
-  status: done
+  status: open
   priority: P1
   effort: xs
   description: |
@@ -25,5 +25,6 @@
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-14'
   closed_pr: 1816
 

@@ -1,21 +1,33 @@
 - id: CREDIBLE-046
   domain: CREDIBLE
-  title: "CREDIBLE: end-to-end 'chump without Anthropic' CI gate — prove the universal path works"
-  status: open
+  title: 'CREDIBLE: end-to-end ''chump without Anthropic'' CI gate — prove the universal path works'
+  status: done
   priority: P1
   effort: m
-  description: |
-    Once EFFECTIVE-017/018/019/020 ship, the chump-first claim ('universal
-    coordination platform; Claude is one backend among many') needs to be
+  description: 'Once EFFECTIVE-017/018/019/020 ship, the chump-first claim (''universal
+
+    coordination platform; Claude is one backend among many'') needs to be
+
     proven, not asserted. This gap is the CI gate that proves it on every
+
     PR: chump can boot, claim a gap, run a worker, ship a commit — without
+
     any Anthropic credentials present.
+
+    '
   acceptance_criteria:
-    - ".github/workflows/no-anthropic-smoke.yml runs on every PR: unsets ANTHROPIC_API_KEY + CLAUDE_CODE_OAUTH_TOKEN; sets CHUMP_WORK_BACKEND=ollama or =opencode; runs chump end-to-end"
-    - "Smoke test: chump fleet doctor exits 0; chump gap list works; chump claim <fixture-gap> works; the configured backend spawns a worker that produces a commit (using local Ollama, deterministic seed); chump gap ship works"
-    - "If any of these fail, the PR is BLOCKED with a clear error: 'chump-first contract violated: <step> required Anthropic credentials'"
-    - "Test fixtures live in scripts/ci/fixtures/no-anthropic/ — minimal gap that any LLM can complete (e.g., 'append a TODO comment to src/X.rs')"
-    - "Required CI check on every PR (per CREDIBLE-042 pattern of making advisory→required)"
-    - "Closes the chump-first doctrine loop: doctrine declared in CHUMP_FIRST_DOCTRINE.md, enforced by this CI gate"
-    - "Pairs with EFFECTIVE-017/018/019/020 — those are the implementation; this is the proof. Cannot ship before they ship."
-    - "Long-term: extend with one CI matrix per supported backend (claude / opencode / aider / ollama / aider-on-ollama) so backend rot is caught at PR time"
+  - '.github/workflows/no-anthropic-smoke.yml runs on every PR: unsets ANTHROPIC_API_KEY + CLAUDE_CODE_OAUTH_TOKEN; sets CHUMP_WORK_BACKEND=ollama
+    or =opencode; runs chump end-to-end'
+  - 'Smoke test: chump fleet doctor exits 0; chump gap list works; chump claim <fixture-gap> works; the configured backend
+    spawns a worker that produces a commit (using local Ollama, deterministic seed); chump gap ship works'
+  - 'If any of these fail, the PR is BLOCKED with a clear error: ''chump-first contract violated: <step> required Anthropic
+    credentials'''
+  - Test fixtures live in scripts/ci/fixtures/no-anthropic/ — minimal gap that any LLM can complete (e.g., 'append a TODO
+    comment to src/X.rs')
+  - Required CI check on every PR (per CREDIBLE-042 pattern of making advisory→required)
+  - 'Closes the chump-first doctrine loop: doctrine declared in CHUMP_FIRST_DOCTRINE.md, enforced by this CI gate'
+  - Pairs with EFFECTIVE-017/018/019/020 — those are the implementation; this is the proof. Cannot ship before they ship.
+  - 'Long-term: extend with one CI matrix per supported backend (claude / opencode / aider / ollama / aider-on-ollama) so
+    backend rot is caught at PR time'
+  closed_date: '2026-05-14'
+  closed_pr: 1922

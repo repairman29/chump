@@ -1,13 +1,19 @@
 - id: INFRA-1279
   domain: INFRA
-  title: "ZERO-WASTE: fix ci.yml merge driver silent drop on rebase"
-  status: open
+  title: 'ZERO-WASTE: fix ci.yml merge driver silent drop on rebase'
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
-    - After rebase of branch adding a ci.yml step onto main with edits in same region, step is present (grep -c 'INFRA-XXXX' returns 1)
-    - No conflict markers AND no step silently dropped — both sides' additions coexist
-    - "Fix implemented as: (a) replace ci-yml-add-row driver with union/3-way merge strategy that concatenates non-overlapping additions, OR (b) post-rebase hook that detects missing INFRA-* steps vs pre-rebase HEAD and re-inserts them with stderr warning"
-    - .gitattributes and driver config in .git/config or scripts/ updated consistently; no stale references to broken driver remain
-    - Regression test rebases synthetic branch (new ci.yml step) onto synthetic main (conflicting edit same region) and asserts step survives
-
+  - After rebase of branch adding a ci.yml step onto main with edits in same region, step is present (grep -c 'INFRA-XXXX'
+    returns 1)
+  - No conflict markers AND no step silently dropped — both sides' additions coexist
+  - 'Fix implemented as: (a) replace ci-yml-add-row driver with union/3-way merge strategy that concatenates non-overlapping
+    additions, OR (b) post-rebase hook that detects missing INFRA-* steps vs pre-rebase HEAD and re-inserts them with stderr
+    warning'
+  - .gitattributes and driver config in .git/config or scripts/ updated consistently; no stale references to broken driver
+    remain
+  - Regression test rebases synthetic branch (new ci.yml step) onto synthetic main (conflicting edit same region) and asserts
+    step survives
+  closed_date: '2026-05-14'
+  closed_pr: 1935
