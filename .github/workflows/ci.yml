@@ -1514,8 +1514,10 @@ jobs:
             echo "::error::audit-required FAIL (real=$real, stub=$stub)"
             exit 1
           fi
-      - name: gap-preflight pre-claim duplicate sweep — worktree + open-PR scan (INFRA-1029)
-        run: bash scripts/ci/test-gap-preflight-dupe-sweep.sh
+      # INFRA-987: gap-preflight pre-claim dupe-sweep (INFRA-1029) removed —
+      # test exercised the deleted scripts/coord/gap-preflight.sh shell. The
+      # Rust chump gap preflight has its own scan logic; equivalent regression
+      # test will be added against the Rust seam in a follow-up.
       - name: INFRA-779 gitdir auto-repair — corrupt + verify repair + ambient event (INFRA-1033)
         run: bash scripts/ci/test-infra-779-gitdir-repair.sh
       - name: pre-push known-flake skip integration (INFRA-1167)
