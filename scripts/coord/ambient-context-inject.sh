@@ -136,6 +136,89 @@ out_file.write_text('\n'.join(lines))
     fi
 fi
 
+# ── INFRA-1150: a2a inbox inject (SessionStart only) ─────────────────────────
+# Reads .chump-locks/inbox/<session>.jsonl via chump-inbox.sh; dedups by
+# (kind, from, gap); renders a "Pending broadcasts" block prepended to the
+# agent's context preamble. Closes Silo 4 — agent ↔ operator integration
+# burden — by surfacing peer broadcasts at session start so each agent
+# sees who is working on what.
+#
+# Bypass: CHUMP_A2A_INBOX_INJECT=0
+# Operator escape: CHUMP_A2A_COORD_DISABLE=1 (master switch from INFRA-1150 AC)
+_INBOX_INJECT_FILE=""
+if [[ "$HOOK_EVENT" == "SessionStart" ]] \
+        && [[ "${CHUMP_A2A_INBOX_INJECT:-1}" != "0" ]] \
+        && [[ "${CHUMP_A2A_COORD_DISABLE:-0}" != "1" ]]; then
+    _INBOX_CACHE_FILE="$(dirname "$AMBIENT_LOG")/inbox-inject.ts"
+    _INBOX_CACHE_STALE=1
+    if [[ -f "$_INBOX_CACHE_FILE" ]]; then
+        _INBOX_CACHE_AGE=$(( $(date +%s) - $(cat "$_INBOX_CACHE_FILE" 2>/dev/null || echo 0) ))
+        [[ "$_INBOX_CACHE_AGE" -lt 600 ]] && _INBOX_CACHE_STALE=0
+    fi
+    if [[ "$_INBOX_CACHE_STALE" == "1" ]]; then
+        _INBOX_SCRIPT="$(dirname "$0")/chump-inbox.sh"
+        if [[ -x "$_INBOX_SCRIPT" ]]; then
+            # --no-advance: peek without consuming; agent may still want to
+            # read these from its own flow. --since cursor: only new since
+            # last session start.
+            _INBOX_JSON="$("$_INBOX_SCRIPT" read --since cursor --json --no-advance 2>/dev/null || echo "[]")"
+            if [[ -n "$_INBOX_JSON" && "$_INBOX_JSON" != "[]" ]]; then
+                _INBOX_TMP="$(mktemp 2>/dev/null || echo "")"
+                if [[ -n "$_INBOX_TMP" ]]; then
+                    printf '%s' "$_INBOX_JSON" | python3 -c "
+import json, sys
+from pathlib import Path
+out_file = Path(sys.argv[1])
+try:
+    msgs = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+if not isinstance(msgs, list) or not msgs:
+    sys.exit(0)
+# Dedup by (kind, from, gap) — same broadcast from same sender about same
+# gap renders once even if repeated.
+seen = set()
+dedup = []
+for m in msgs:
+    k = (m.get('kind') or m.get('event') or '?',
+         m.get('session') or m.get('from') or '?',
+         m.get('gap') or '?')
+    if k in seen:
+        continue
+    seen.add(k)
+    dedup.append(m)
+# Cap at 10 to keep preamble readable.
+dedup = dedup[:10]
+lines = ['=== Pending broadcasts (INFRA-1150 a2a) ===']
+for m in dedup:
+    ev = m.get('kind') or m.get('event') or '?'
+    src = m.get('session') or m.get('from') or '?'
+    gap = m.get('gap') or '-'
+    note = m.get('note') or m.get('message') or ''
+    if len(note) > 80:
+        note = note[:77] + '...'
+    lines.append(f'[{ev}] {src} gap={gap} {note}')
+lines.append(f'(showing {len(dedup)} of {len(msgs)} pending; chump-inbox.sh read --since cursor to consume)')
+out_file.write_text('\n'.join(lines))
+" "$_INBOX_TMP" 2>/dev/null || true
+                    if [[ -s "$_INBOX_TMP" ]]; then
+                        _INBOX_INJECT_FILE="$_INBOX_TMP"
+                        date +%s > "$_INBOX_CACHE_FILE" 2>/dev/null || true
+                        # Emit telemetry
+                        _COUNT=$(printf '%s' "$_INBOX_JSON" | python3 -c \
+                            "import json,sys; d=json.load(sys.stdin); print(len(d) if isinstance(d,list) else 0)" 2>/dev/null || echo 0)
+                        _TS="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")"
+                        printf '{"ts":"%s","kind":"a2a_coord_inbox_consumed","source":"ambient-context-inject","messages":%s}\n' \
+                            "$_TS" "$_COUNT" >> "$AMBIENT_LOG" 2>/dev/null || true
+                    else
+                        rm -f "$_INBOX_TMP" 2>/dev/null || true
+                    fi
+                fi
+            fi
+        fi
+    fi
+fi
+
 # ── Build the digest in Python (proper JSON parsing + escaping) ───────────────
 # Write digest script to a temp file; bash 3.2 on macOS misparses single-quoted
 # heredoc bodies inside $() when they contain apostrophes (e.g. "isn't").
@@ -225,6 +308,18 @@ if _roadmap_file:
         Path(_roadmap_file).unlink(missing_ok=True)
         if _roadmap_block:
             lines_out.append(_roadmap_block)
+            lines_out.append("")
+    except Exception:
+        pass
+
+# INFRA-1150: prepend pending-broadcasts block (written to temp file by shell section above).
+_inbox_file = os.environ.get("INBOX_INJECT_FILE", "")
+if _inbox_file:
+    try:
+        _inbox_block = Path(_inbox_file).read_text().strip()
+        Path(_inbox_file).unlink(missing_ok=True)
+        if _inbox_block:
+            lines_out.append(_inbox_block)
             lines_out.append("")
     except Exception:
         pass
@@ -351,6 +446,7 @@ CONTEXT="$(
     N="$N" \
     REPO_ROOT="$REPO_ROOT" \
     ROADMAP_INJECT_FILE="$_ROADMAP_INJECT_FILE" \
+    INBOX_INJECT_FILE="$_INBOX_INJECT_FILE" \
     python3 "$_DIGEST_PY"
 )"
 rm -f "$_DIGEST_PY"

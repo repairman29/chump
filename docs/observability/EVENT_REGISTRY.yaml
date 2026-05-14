@@ -1956,6 +1956,19 @@ events:
     trigger: idempotency hit (same-week branch exists) or LLM returned NO_CHANGE
     consumers: [audit-log]
     fields_required: [ts, kind, reason]
+  # ── INFRA-1150: a2a-mailbox coord wiring for roadmap stack ─────────────────
+  - kind: a2a_coord_broadcast_sent
+    emitter: scripts/coord/roadmap-status-broadcast.sh (INFRA-1150)
+    trigger: roadmap-status detected drift and a WARN broadcast was sent --to all
+      so peer-agent inboxes pick it up at next SessionStart inject (INFRA-1146/1150)
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, source]
+  - kind: a2a_coord_inbox_consumed
+    emitter: scripts/coord/ambient-context-inject.sh (INFRA-1150)
+    trigger: SessionStart inject surfaced pending broadcasts from the agent's
+      inbox (dedup by kind+from+gap, capped at 10 messages)
+    consumers: [audit-log]
+    fields_required: [ts, kind, source, messages]
   # ── INFRA-998: PR-closure-reason categorization ───────────────────────
   - kind: waste_category_report
     emitter: src/waste_tally.rs build_close_reason_report (chump waste-tally --by-close-reason --emit-ambient)

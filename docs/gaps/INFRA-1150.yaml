@@ -1,0 +1,17 @@
+- id: INFRA-1150
+  domain: INFRA
+  title: MISSION: a2a-mailbox consumer in roadmap-status/inject/update-agent — cross-agent coordination via INFRA-1115 mailbox primitive (Silo 4)
+  status: open
+  priority: P2
+  effort: s
+  depends_on: [["INFRA-1115","INFRA-1145","INFRA-1146"]]
+  description: |
+    Closes Silo 4 (agent ↔ operator integration burden) from the 2026-05-14 silo retrospective. Today operator is only entity reading across fleet silos. INFRA-1115 (a2a mailbox primitive, shipped #1799) gives substrate for agent-to-agent comms: broadcast.sh --to <agent>, chump-inbox.sh, inbox-reap.sh. This gap wires roadmap-organization triplet (INFRA-1145/-1146/-1147) to use that substrate: (1) INFRA-1145 detects starved outcomes → broadcasts to all active sessions "MISSION-NNN starved, consider related gap on next iter"; (2) INFRA-1146 reads mailbox via chump-inbox.sh --since session_start before injecting, surfaces pending broadcasts about overlapping work; (3) INFRA-1147 weekly agent broadcasts 24h heads-up before opening proposed-update PR. Same pattern retrofitted into INFRA-1148/-1149 (similarity block → route to existing gap owner). Non-goal: replace ambient.jsonl (broadcast telemetry vs targeted comms). Cost: O(N) local NATS/mailbox reads, trivial.
+  acceptance_criteria:
+    1. INFRA-1145 emits broadcast via `broadcast.sh --to all` when starved outcomes detected; payload includes outcome anchor + suggested-pick gap IDs
+    2. INFRA-1146 SessionStart inject reads `chump-inbox.sh --since session_start` and prepends pending-broadcast block to agent context
+    3. INFRA-1147 weekly-update agent posts heads-up broadcast 24h before opening proposed-update PR; honors replies via mailbox
+    4. Each consumer surfaces deduplicated digest — if 3 broadcasts about same gap, render once
+    5. Test scripts/ci/test-a2a-roadmap-coord.sh stubs mailbox with 2 broadcasts, runs each consumer, asserts digest renders correctly + no duplicate suppression bugs
+    6. Operator escape CHUMP_A2A_COORD_DISABLE=1 disables all a2a consumption (local-only mode)
+    7. Emits kind=a2a_coord_broadcast_sent / a2a_coord_inbox_consumed for telemetry
