@@ -2087,3 +2087,15 @@ events:
       override.
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
+
+  # ── INFRA-1247: alert classifier false-positive suppression ───────────────
+  - kind: alert_classifier_suppressed
+    emitter: scripts/dev/ambient-watch.sh (INFRA-1247)
+    trigger: |
+      an alert was detected but suppressed because it matched a known false-positive
+      pattern. Current suppression rules:
+        operator_session — silent_agent skipped for chump-Chump-* IDE sessions
+        pr_closed        — pr_stuck skipped for PRs whose state is closed/merged
+      Allows measuring suppression rate and validating classifier precision.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, original_kind, reason, target_id]
