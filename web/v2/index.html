@@ -782,6 +782,99 @@
     chump-auth-toast .auth-toast-reenter {
       background: #d97706;
       color: #fff;
+    /* ── Repo switcher (INFRA-992) ────────────────────────────────────────── */
+    chump-repo-switcher {
+      display: none; /* shown only when multi_repo_enabled=true */
+      align-items: center;
+      gap: 6px;
+      position: relative;
+    }
+    chump-repo-switcher .repo-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      font-size: 12px;
+      color: #c8d4e0;
+      max-width: 220px;
+    }
+    chump-repo-switcher .repo-chip-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    chump-repo-switcher .repo-switch-btn {
+      background: #2a3a4a;
+      color: #fff;
+      border: 1px solid #3a5a7a;
+      border-radius: 4px;
+      padding: 3px 10px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    chump-repo-switcher .repo-switch-btn:hover { background: #3a4a5a; }
+    chump-repo-switcher .repo-switch-btn:focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 2px;
+    }
+    chump-repo-switcher .repo-dialog {
+      position: absolute;
+      top: 34px;
+      right: 0;
+      width: 360px;
+      background: #181818;
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 12px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      font-size: 12px;
+      color: #e0e0e0;
+    }
+    chump-repo-switcher .repo-dialog-head { font-size: 13px; margin-bottom: 8px; }
+    chump-repo-switcher .repo-dialog-label {
+      display: block;
+      margin: 4px 0 8px 0;
+    }
+    chump-repo-switcher .repo-dialog-path {
+      width: 100%;
+      margin-top: 4px;
+      padding: 6px 8px;
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      color: #fff;
+      font-family: monospace;
+    }
+    chump-repo-switcher .repo-dialog-warn {
+      background: #2a2410;
+      color: #ffd6a5;
+      border-left: 3px solid #d97706;
+      padding: 6px 8px;
+      margin: 8px 0;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    chump-repo-switcher .repo-dialog-error {
+      background: #2a1414;
+      color: #f8d7da;
+      border-left: 3px solid #d9534f;
+      padding: 6px 8px;
+      margin: 8px 0;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    chump-repo-switcher .repo-dialog-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+    chump-repo-switcher .repo-dialog-save,
+    chump-repo-switcher .repo-dialog-cancel {
       border: 0;
       border-radius: 4px;
       padding: 6px 12px;
@@ -802,6 +895,19 @@
     chump-auth-toast .auth-toast-dismiss:hover { background: rgba(255, 255, 255, 0.06); }
     chump-auth-toast .auth-toast-reenter:focus-visible,
     chump-auth-toast .auth-toast-dismiss:focus-visible {
+      cursor: pointer;
+    }
+    chump-repo-switcher .repo-dialog-save { background: #2a7a4a; color: #fff; }
+    chump-repo-switcher .repo-dialog-save:hover { background: #1f5a35; }
+    chump-repo-switcher .repo-dialog-save:disabled { background: #555; cursor: not-allowed; }
+    chump-repo-switcher .repo-dialog-cancel {
+      background: transparent;
+      border: 1px solid #555;
+      color: #ccc;
+    }
+    chump-repo-switcher .repo-dialog-cancel:hover { background: #222; }
+    chump-repo-switcher .repo-dialog-save:focus-visible,
+    chump-repo-switcher .repo-dialog-cancel:focus-visible {
       outline: 2px solid #fff;
       outline-offset: 2px;
     }
@@ -814,6 +920,7 @@
 
   <header id="app-header">
     <span id="app-title">Chump</span>
+    <chump-repo-switcher></chump-repo-switcher>
     <chump-model-picker></chump-model-picker>
     <chump-cost-meter></chump-cost-meter>
     <chump-pillar-health></chump-pillar-health>
