@@ -364,9 +364,7 @@ fn emit_subagent_heartbeat(gap_id: &str) {
         locate_ambient(&cwd).unwrap_or_else(|| cwd.join(".chump-locks").join("ambient.jsonl"));
     let _ = std::fs::create_dir_all(ambient.parent().unwrap_or(&cwd));
     let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
-    let session = std::env::var("CHUMP_SESSION_ID")
-        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-        .unwrap_or_default();
+    let session = crate::ambient_stream::env_session_id().unwrap_or_default();
     let line = format!(
         "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"subagent_heartbeat\",\
          \"gap_id\":\"{gap_id}\",\"agent_id\":\"execute_gap\"}}"

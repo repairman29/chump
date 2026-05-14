@@ -1355,9 +1355,8 @@ async fn main() -> Result<()> {
                 .position(|a| a == name)
                 .and_then(|i| args.get(i + 1).cloned())
         };
-        let session_id = std::env::var("CHUMP_SESSION_ID")
-            .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-            .unwrap_or_else(|_| "unknown".to_string());
+        let session_id =
+            crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
         let repo_root = repo_path::repo_root();
         if let Some(gap_id) = st_flag("--start") {
             session_ledger::emit_session_start(&repo_root, &session_id, &gap_id);
@@ -1433,8 +1432,7 @@ async fn main() -> Result<()> {
                 .and_then(|i| args.get(i + 1).cloned())
         };
         let session_id = flag("--session-id")
-            .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
-            .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
+            .or_else(|| crate::ambient_stream::env_session_id())
             .unwrap_or_else(|| {
                 // Fall back to a timestamp-based ID so exports are never lost.
                 format!("session-{}", unix_ts())
@@ -1504,9 +1502,8 @@ async fn main() -> Result<()> {
             eprintln!("Usage: chump reflect-delta <GAP-ID> \"<what was different>\"");
             std::process::exit(2);
         });
-        let session_id = std::env::var("CHUMP_SESSION_ID")
-            .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-            .unwrap_or_else(|_| "unknown".to_string());
+        let session_id =
+            crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
         let repo_root = repo_path::repo_root();
         reflect_delta::emit_delta_recorded(&repo_root, &session_id, &gap_id, &text);
         println!("recorded delta for {} (session={})", gap_id, session_id);
@@ -3735,9 +3732,8 @@ async fn main() -> Result<()> {
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
-                let session_id = std::env::var("CHUMP_SESSION_ID")
-                    .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-                    .unwrap_or_else(|_| format!("chump-anon-{}", unix_ts()));
+                let session_id = crate::ambient_stream::env_session_id()
+                    .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
                 if !quiet {
                     eprint!("reserving ID...");
                 }
@@ -3886,8 +3882,7 @@ async fn main() -> Result<()> {
                 }
 
                 let session_id = flag("--session")
-                    .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
-                    .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
+                    .or_else(|| crate::ambient_stream::env_session_id())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
                 let worktree = flag("--worktree").unwrap_or_default();
                 let ttl: i64 = flag("--ttl").and_then(|s| s.parse().ok()).unwrap_or(3600);
@@ -3944,8 +3939,7 @@ async fn main() -> Result<()> {
                     std::process::exit(2);
                 });
                 let session_id = flag("--session")
-                    .or_else(|| std::env::var("CLAUDE_SESSION_ID").ok())
-                    .or_else(|| std::env::var("CHUMP_SESSION_ID").ok())
+                    .or_else(|| crate::ambient_stream::env_session_id())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
                 let update_yaml = args.iter().any(|a| a == "--update-yaml");
                 let why = args.iter().any(|a| a == "--why");
@@ -5314,9 +5308,8 @@ async fn main() -> Result<()> {
                 }
 
                 if apply {
-                    let session_id = std::env::var("CHUMP_SESSION_ID")
-                        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-                        .unwrap_or_else(|_| format!("chump-anon-{}", unix_ts()));
+                    let session_id = crate::ambient_stream::env_session_id()
+                        .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
                     let mut filed_ids: Vec<String> = Vec::new();
 
                     for s in &suggestions {
