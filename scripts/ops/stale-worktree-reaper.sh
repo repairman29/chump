@@ -68,6 +68,9 @@ DRY_RUN=1
 AGE_MIN_HOURS=1
 LOG_FRESH_MIN=10
 FORCE_SKIP_PROCESS_CHECK=0
+# INFRA-1074: CHUMP_REAPER_SAFETY_CHECK=0 disables heartbeat+index safety checks
+# (for testing the reaper itself without tripping the guards).
+REAPER_SAFETY_CHECK="${CHUMP_REAPER_SAFETY_CHECK:-1}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)  DRY_RUN=1 ;;
@@ -105,6 +108,16 @@ red()   { printf '\033[0;31m%s\033[0m\n' "$*"; }
 warn()  { printf '\033[0;33m%s\033[0m\n' "$*"; }
 info()  { printf '  %s\n' "$*"; }
 log()   { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" >>"$LOG"; }
+
+# INFRA-1074: emit kind=worktree_reaper_skipped_active to ambient.jsonl
+_emit_reaper_skipped() {
+    local wt_path="$1" reason="$2"
+    local ambient="${CHUMP_AMBIENT_LOG:-$LOCKS_DIR/ambient.jsonl}"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","kind":"worktree_reaper_skipped_active","worktree":"%s","reason":"%s"}\n' \
+        "$ts" "$wt_path" "$reason" >> "$ambient" 2>/dev/null || true
+    log "SKIP_ACTIVE $wt_path reason=$reason"
+}
 
 green "=== stale-worktree-reaper (repo: $REPO_ROOT) ==="
 [[ $DRY_RUN -eq 1 ]] && info "Dry-run mode — no worktrees will be removed. Use --execute to act."
@@ -152,22 +165,38 @@ info "target/ purge: $_target_purged dir(s), $((_target_freed_kb / 1024)) MB $([
 # Collect active-lease worktree paths (so we never reap a worktree that an
 # active session is currently using). Lease JSON has a "worktree" field; we
 # also fall back to substring match on the lease filename.
+# INFRA-1074: only count leases with heartbeat_at within last 15 min (900s).
 ACTIVE_WORKTREES=""
-if [[ -d "$LOCKS_DIR" ]]; then
+_NOW_TS="$(date +%s)"
+if [[ -d "$LOCKS_DIR" && "${REAPER_SAFETY_CHECK}" == "1" ]]; then
     for lease in "$LOCKS_DIR"/*.json; do
         [[ -f "$lease" ]] || continue
-        # Try jq first; fall back to grep.
         wt=""
         if command -v jq >/dev/null 2>&1; then
             wt=$(jq -r '.worktree // empty' "$lease" 2>/dev/null || true)
         fi
-        # INFRA-325: tolerate grep no-match (most leases have no "worktree"
-        # field). Without `|| true` the grep exits 1, set -o pipefail
-        # propagates to the outer assignment, set -e aborts the whole
-        # reaper. Symptom was every cron tick exiting 1 silently.
+        # INFRA-325: tolerate grep no-match.
         [[ -z "$wt" ]] && wt=$(grep -oE '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" \
             | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)
-        [[ -n "$wt" ]] && ACTIVE_WORKTREES="$ACTIVE_WORKTREES $wt"
+        [[ -z "$wt" ]] && continue
+        # INFRA-1074: check heartbeat freshness (<=15 min).
+        hb=""
+        if command -v jq >/dev/null 2>&1; then
+            hb=$(jq -r '.heartbeat_at // .taken_at // empty' "$lease" 2>/dev/null || true)
+        fi
+        [[ -z "$hb" ]] && hb=$(grep -oE '"heartbeat_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" \
+            | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)
+        if [[ -n "$hb" ]]; then
+            hb_ts=$(date -d "$hb" +%s 2>/dev/null \
+                || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$hb" +%s 2>/dev/null \
+                || echo 0)
+            age_s=$(( _NOW_TS - hb_ts ))
+            if [[ $age_s -gt 900 ]]; then
+                info "  lease $lease: worktree=$wt but heartbeat is ${age_s}s old (>15 min) — not treating as active"
+                continue
+            fi
+        fi
+        ACTIVE_WORKTREES="$ACTIVE_WORKTREES $wt"
     done
 fi
 
@@ -239,7 +268,31 @@ process_worktree() {
 
     if is_active_lease "$wt_name"; then
         info "  active lease references this worktree — keeping"
+        _emit_reaper_skipped "$wt_path" "active_lease"
         KEPT=$((KEPT+1)); return 0
+    fi
+
+    # INFRA-1074: belt-and-suspenders — skip if .git/index was touched within 5 min.
+    # Catches in-flight sessions whose lease has no worktree field (pre-fix leases)
+    # or whose heartbeat expired but a commit is literally in progress.
+    if [[ "${REAPER_SAFETY_CHECK}" == "1" ]]; then
+        if [[ -f "$wt_path/.git" || -f "$wt_path/.git/index" ]]; then
+            local git_index="$wt_path/.git/index"
+            # For linked worktrees .git is a file pointing at the gitdir.
+            if [[ -f "$wt_path/.git" ]]; then
+                local gitdir; gitdir=$(sed 's/^gitdir: //' "$wt_path/.git" 2>/dev/null || true)
+                [[ -n "$gitdir" && -f "$gitdir/index" ]] && git_index="$gitdir/index"
+            fi
+            if [[ -f "$git_index" ]]; then
+                local idx_fresh
+                idx_fresh=$(find "$git_index" -mmin -5 2>/dev/null | head -1 || true)
+                if [[ -n "$idx_fresh" ]]; then
+                    info "  .git/index touched within 5 min — worktree is in-flight, keeping"
+                    _emit_reaper_skipped "$wt_path" "git_index_fresh"
+                    KEPT=$((KEPT+1)); return 0
+                fi
+            fi
+        fi
     fi
 
     # Process-aware safety check (INFRA-WORKTREE-REAPER-FIX, EVAL-026c).
