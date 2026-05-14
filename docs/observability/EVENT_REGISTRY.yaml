@@ -1305,6 +1305,17 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, session, unread_messages, archive]
 
+  # ── INFRA-1117: chump pr nudge auto-diagnosis + structured comment ────────
+  - kind: pr_nudged
+    emitter: scripts/coord/chump-pr-nudge.sh (INFRA-1117)
+    trigger: scripts/coord/chump-pr-nudge.sh classified a stuck PR
+      (dirty / blocked-ci / orphan-disarmed / base-modified / clean-not-merged),
+      rendered the matching template, and posted a structured comment via
+      REST. Cooldown: same (pr,sha,class) within
+      CHUMP_NUDGE_COOLDOWN_HOURS (default 24h) skipped with NOTE.
+    consumers: [fleet-brief, operator-recall, waste-tally]
+    fields_required: [ts, kind, pr, sha, class]
+
   # ── INFRA-1081: GitHub webhook cache ─────────────────────────────────────
   - kind: webhook_event_received
     emitter: scripts/ops/github-webhook-receiver.py (INFRA-1081)
