@@ -5,12 +5,18 @@
   priority: P1
   effort: s
   acceptance_criteria:
-    - pre-push gap-check reads .chump-locks/*.json to find the current session's lease before rejecting a push
-    - if the commit body references a gap ID that matches the active lease, the check passes (not rejected)
-    - if the gap ID is not in current session's lease, the check still rejects (no regression on real violations)
-    - CHUMP_GAP_CHECK=0 remains as escape hatch but no longer needed for normal claimed-gap workflows
-    - "CI test: push with commit body referencing the claimed gap ID succeeds without CHUMP_GAP_CHECK=0"
-    - emits kind=gap_check_false_positive to ambient.jsonl when a false positive is detected and suppressed
+    - "pre-push gap-check reads .chump-locks/*.json to find the current session's lease before rejecting a push"
+    - "if the commit subject references a gap ID that matches an active non-expired lease, CHUMP_SESSION_ID is set to that lease's session_id before calling gap-preflight"
+    - "gap-preflight correctly identifies the push as coming from the claimant and allows it"
+    - "if no matching lease exists, the check still rejects (no regression on real violations)"
+    - "CHUMP_GAP_CHECK=0 remains as escape hatch but is no longer needed for normal claimed-gap workflows"
+    - "emits kind=gap_check_false_positive when gap-preflight rejects despite a matching lease"
+    - "EVENT_REGISTRY.yaml registers gap_check_false_positive"
+    - "scripts/ci/test-prepush-gap-check-own-claim.sh: 4 checks pass"
   notes: |
-    Root cause 2026-05-14: pre-push hook rejects pushes when commit body mentions a gap ID but doesn't cross-reference the actual lease file. Workaround: CHUMP_GAP_CHECK=0. Related: INFRA-1025.
+    Root cause 2026-05-14: gap-preflight.sh resolved SESSION_ID from .wt-session-id in the
+    main repo rather than from the gap's lease file. Fix: pre-push hook now scans
+    .chump-locks/*.json for an active lease matching the gap ID and sets CHUMP_SESSION_ID
+    to that lease's session_id before running gap-preflight.
+    Workaround until merge: CHUMP_GAP_CHECK=0. Related: INFRA-1025.
 
