@@ -1,13 +1,30 @@
 # EVENT_REGISTRY.yaml — INFRA-754
 #
-# Canonical list of every `kind=...` value the system can emit into
-# `.chump-locks/ambient.jsonl`. Pre-commit guard refuses any new commit
-# that introduces a `"kind":"X"` literal where X is not registered here.
+# **GROUND-TRUTH CONTRACT** (INFRA-1237). This file is the contract that
+# fleet-brief, waste-tally, kpi-report, watchdogs, and every other ambient
+# consumer reads to know which `kind=X` values to expect from
+# `.chump-locks/ambient.jsonl`. Drift in either direction silently degrades
+# operator trust:
+#   - emit-without-register → consumers see kinds they don't understand and
+#     drop them; SLO dashboards under-report
+#   - register-without-emit → consumers wait for kinds that never fire;
+#     dashboards display empty rows the operator can't interpret
+#
+# Enforcement (post-INFRA-1237):
+#   - scripts/ci/test-event-registry-coverage.sh runs on every PR in
+#     fast-checks. Default mode (strict-emit) fails the build on
+#     emit-without-register. Set CHUMP_REGISTRY_GATE_MODE=strict to also
+#     fail on register-without-emit (after the orphan-reconciliation
+#     follow-up gap lands).
+#   - scripts/git-hooks/pre-commit-event-registry.sh blocks staged diffs
+#     that add a kind literal without a corresponding registry entry.
+#   - scripts/ci/event-registry-reserved.txt allow-lists kinds that are
+#     legitimately exempt from both directions (with a required `# reason:`
+#     comment per entry).
 #
 # Why: "observability before scale" needs mechanical enforcement. Without
 # this registry, every contributor adds events with their own conventions
-# and consumers (fleet-brief, waste-tally, kpi-report, watchdogs) silently
-# fail on the unknown shapes.
+# and consumers silently fail on the unknown shapes.
 #
 # ── SCHEMA FIELD CANONICAL: 'kind' (INFRA-1159) ─────────────────────────────
 # Two fields coexist in the ambient stream:
@@ -2168,3 +2185,147 @@ events:
     trigger: cargo-target-reaper.sh completed a full run (dry or execute).
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, reaped_count, bytes_freed, execute]
+
+  # ── INFRA-1237: emit-without-register reconciliation (2026-05-14) ────────
+  # 19 kinds that were fired in production but missing from the registry.
+  # Discovered by scripts/ci/test-event-registry-coverage.sh, registered here
+  # with {emitter, trigger, consumers, fields_required} derived from the actual
+  # emit-site source.
+
+  - kind: branch_reaper_pruned
+    emitter: scripts/coord/branch-reaper.sh
+    trigger: branch-reaper.sh deleted a stale remote branch (no open PR, age past threshold).
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, branch, pr, age_days, dry_run]
+
+  - kind: dup_pr_blocked
+    emitter: scripts/coord/bot-merge.sh
+    trigger: bot-merge.sh refused to create a duplicate PR for a gap that
+      already has an open PR; current branch HEAD was not used.
+    consumers: [fleet-brief, curator, waste-tally]
+    fields_required: [ts, kind, gap_id, existing_pr_numbers, current_branch]
+
+  - kind: duplicate_pr_closed
+    emitter: scripts/coord/duplicate-pr-detector.sh
+    trigger: detector found two open PRs claiming the same gap and closed the
+      loser (older or smaller) while leaving the winner intact.
+    consumers: [fleet-brief, curator, ops-audit]
+    fields_required: [ts, kind, gap, loser, winner, source]
+
+  - kind: feedback_curated
+    emitter: scripts/coord/feedback-curator.sh
+    trigger: feedback-curator.sh classified a FEEDBACK event into a curated
+      bucket (proposal / retro / opinion) per INFRA-1271.
+    consumers: [fleet-brief, feedback-report]
+    fields_required: [ts, kind, gap, bucket, source]
+
+  - kind: gap_db_auto_seeded
+    emitter: src/main.rs (chump init / first-run state.db bootstrap)
+    trigger: chump auto-created an empty .chump/state.db when a command
+      needed it but the file was missing (fresh clone or wiped state).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, path]
+
+  - kind: gate_skipped
+    emitter: scripts/coord/api-rate-limit-gate.sh
+    trigger: api-rate-limit-gate.sh let an api call proceed because remaining
+      quota was above threshold (no throttle needed). Inverse of rate_limit_*.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, source, phase, reason, rest_remaining, gql_remaining]
+
+  - kind: gh_secondary_limit_hit
+    emitter: scripts/coord/lib/github.sh (chump_gh wrapper)
+    trigger: chump_gh wrapper observed a `secondary rate limit` error and
+      backed off; emitted after retries succeed or after final failure.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, script, api, retries, total_waited_ms]
+
+  - kind: ghost_lease_handoff
+    emitter: scripts/ops/stale-gap-lock-reaper.sh
+    trigger: reaper detected a stale gap lock whose owner had committed work
+      and was about to hand the lease off to a fresh session (after ack
+      window expired).
+    consumers: [fleet-brief, ops-audit, curator]
+    fields_required: [ts, kind, gap, session, commits_ahead, branch, ack_window_s]
+
+  - kind: ghost_lease_handoff_pending
+    emitter: scripts/ops/stale-gap-lock-reaper.sh
+    trigger: reaper detected a candidate lease for handoff but is waiting on
+      the ack window before releasing.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap, session, age_s, window_s]
+
+  - kind: lint_storm
+    emitter: scripts/ops/lint-storm-detector.sh
+    trigger: detector saw >=N open PRs failing on the same clippy/eslint
+      lint within a short window; filed a follow-up gap to fix the lint
+      class once.
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, event, lint, pr_count, prs, filed_gap]
+
+  - kind: meta_filed
+    emitter: scripts/coord/gap-reserve.sh
+    trigger: gap-reserve.sh filed a META-* gap (PM/curation domain rather
+      than INFRA/CREDIBLE/etc). Distinct ambient channel so curator can
+      surface PM work separately.
+    consumers: [fleet-brief, curator, opus-curator]
+    fields_required: [ts, kind, session, event, gap_id, title, note]
+
+  - kind: pr_stuck_announced
+    emitter: scripts/coord/pr-stuck-announcer.sh
+    trigger: announcer detected an open PR stuck past its SLO (age>threshold
+      with at least one failing required check) and emitted an alert.
+    consumers: [fleet-brief, ops-audit, curator]
+    fields_required: [ts, kind, pr, gap, target, age_h, failing_check]
+
+  - kind: pre_restart
+    emitter: src/main.rs (chump fleet restart prep)
+    trigger: chump emitted a pre-restart marker before tearing down workers,
+      so observers can correlate the restart with subsequent fresh leases.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind]
+
+  - kind: rate_limit_approaching
+    emitter: scripts/coord/api-rate-limit-gate.sh
+    trigger: gate observed REST or GraphQL bucket below warning threshold
+      (default 25% remaining). Background callers should pivot to cache or
+      defer per INFRA-1080.
+    consumers: [fleet-brief, ops-audit, waste-tally]
+    fields_required: [ts, kind, source, phase, api, remaining, limit, pct]
+
+  - kind: rate_limit_exhausted
+    emitter: scripts/coord/api-rate-limit-gate.sh
+    trigger: bucket at 0; non-critical callers blocked until reset window.
+    consumers: [fleet-brief, ops-audit, waste-tally]
+    fields_required: [ts, kind, source, phase, api, remaining, limit]
+
+  - kind: session_rescue
+    emitter: src/rescue_tally.rs (INFRA-rescue-tally)
+    trigger: rescue-tally detected a commit that bears a session-rescue
+      marker (e.g. `wip_checkpoint`, `auto-recovered`). Tracks operator
+      recovery debt vs autonomous output.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, commit, subject, author]
+
+  - kind: stale_gap_lock_protected
+    emitter: scripts/ops/stale-gap-lock-reaper.sh
+    trigger: reaper considered a stale lock but kept it alive (heartbeat
+      still fresh per TTL). Records the "no-op decision" so observers can
+      distinguish silent reaper from protective reaper.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, event, lock, session, gap, heartbeat_age_s, heartbeat_ttl_s, reason]
+
+  - kind: stale_gap_lock_skipped
+    emitter: scripts/ops/stale-gap-lock-reaper.sh
+    trigger: reaper skipped a stale lock because an open PR already exists
+      for the gap (handoff would lose work).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason, gap, prs, lock]
+
+  - kind: timeout_rescue
+    emitter: scripts/dispatch/worker.sh
+    trigger: worker hit its run-timeout and committed a WIP checkpoint so
+      the next session can resume. Distinct from session_rescue (which
+      indexes off the commit, not the worker run).
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, event, session, worktree, agent_id, gap_id]

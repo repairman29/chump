@@ -1359,6 +1359,11 @@ jobs:
         run: bash scripts/ci/test-gap-ac-requirement.sh
       - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
         run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
+      - name: EVENT_REGISTRY coverage — no emit-without-register on full tree (INFRA-1237)
+        # strict-emit mode: emit-without-register FAILS; orphans warn-only.
+        # Flip to CHUMP_REGISTRY_GATE_MODE=strict once the orphan-reconciliation
+        # follow-up (INFRA-1287) lands.
+        run: CHUMP_REGISTRY_GATE_MODE=strict-emit bash scripts/ci/test-event-registry-coverage.sh
 
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path
