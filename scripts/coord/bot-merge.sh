@@ -1879,22 +1879,56 @@ EOF
     if [[ $DRY_RUN -eq 1 ]]; then
         info "[dry-run] gh pr create --base $BASE_BRANCH --title \"$PR_TITLE\" …"
     else
-        if ! gh_with_backoff "gh pr create" 120 pr create \
+        # INFRA-1031: GraphQL preflight — gh pr create uses GraphQL; if quota is 0 fall back to REST.
+        _graphql_remaining=$(gh api /rate_limit --jq '.resources.graphql.remaining' 2>/dev/null || echo 1)
+        if [[ "${_graphql_remaining:-1}" -eq 0 ]]; then
+            warn "INFRA-1031: GraphQL quota exhausted — falling back to REST gh api repos/.../pulls"
+            _repo_nwo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || echo "")
+            if [[ -n "$_repo_nwo" ]]; then
+                _rest_body=$(python3 -c "import json,sys; print(json.dumps(sys.argv[1]))" "$_pr_body" 2>/dev/null || echo "\"$_pr_body\"")
+                _rest_result=$(gh api "repos/$_repo_nwo/pulls" --method POST \
+                    --field title="$PR_TITLE" \
+                    --field base="$BASE_BRANCH" \
+                    --field head="$BRANCH" \
+                    --field body="$_pr_body" \
+                    --jq '.number' 2>/dev/null || echo "")
+                if [[ -n "$_rest_result" ]]; then
+                    printf '{"ts":"%s","kind":"graphql_exhausted","source":"bot-merge","note":"INFRA-1031 REST fallback succeeded PR #%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_rest_result" >> "${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}" 2>/dev/null || true
+                    green "PR #$_rest_result created via REST fallback (GraphQL quota was 0)."
+                else
+                    red "INFRA-1031: REST fallback also failed — GraphQL exhausted and REST failed."
+                    printf '{"ts":"%s","kind":"graphql_exhausted","source":"bot-merge","note":"INFRA-1031 REST fallback failed; branch=%s"}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" >> "${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}" 2>/dev/null || true
+                    _bm_fail "pr-create" 16 "GraphQL exhausted and REST fallback failed; retry when quota resets (gh api rate_limit)"
+                fi
+            else
+                red "INFRA-1031: GraphQL exhausted and cannot determine repo NWO for REST fallback."
+                _bm_fail "pr-create" 16 "GraphQL exhausted; retry when quota resets (gh api rate_limit)"
+            fi
+        elif ! gh_with_backoff "gh pr create" 120 pr create \
             --base "$BASE_BRANCH" \
             --title "$PR_TITLE" \
             --body "$_pr_body"; then
             red "gh pr create failed or timed out."
             _bm_fail "pr-create" 16 "gh pr create failed or timed out"
         fi
-        _new_pr=""
-        for _try in 1 2 3 4 5; do
-            _new_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
-            [[ -n "$_new_pr" ]] && break
-            sleep 2
-        done
-        if [[ -z "$_new_pr" ]]; then
-            red "gh pr create reported success but no PR is visible for branch $BRANCH — refusing to exit 0."
-            _bm_fail "pr-create" 16 "PR not visible after gh pr create"
+        # INFRA-1031: if REST fallback set the PR number, skip gh pr view (may also be GraphQL).
+        if [[ -n "${_rest_result:-}" ]]; then
+            _new_pr="$_rest_result"
+        else
+            _new_pr=""
+            for _try in 1 2 3 4 5; do
+                _new_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || \
+                          gh api "repos/$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)/pulls" \
+                              --jq "[.[] | select(.head.ref==\"$BRANCH\")] | first | .number" 2>/dev/null || echo "")
+                [[ -n "$_new_pr" ]] && break
+                sleep 2
+            done
+            if [[ -z "$_new_pr" ]]; then
+                red "gh pr create reported success but no PR is visible for branch $BRANCH — refusing to exit 0."
+                _bm_fail "pr-create" 16 "PR not visible after gh pr create"
+            fi
         fi
         stage_done
         green "PR #$_new_pr created and verified."
