@@ -4519,10 +4519,10 @@ async fn main() -> Result<()> {
                                     let marker = entry.path().join("SHIPPED_AT");
                                     if let Ok(contents) = std::fs::read_to_string(&marker) {
                                         if let Ok(ship_ts) = contents.trim().parse::<u64>() {
-                                            if now_ts.saturating_sub(ship_ts) > GRACE_SECS {
-                                                if std::fs::remove_dir_all(entry.path()).is_ok() {
-                                                    removed_count += 1;
-                                                }
+                                            if now_ts.saturating_sub(ship_ts) > GRACE_SECS
+                                                && std::fs::remove_dir_all(entry.path()).is_ok()
+                                            {
+                                                removed_count += 1;
                                             }
                                         }
                                     }
