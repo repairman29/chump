@@ -1697,4 +1697,19 @@ if [ -x "$HARDCODED_DATE_HOOK" ]; then
     fi
 fi
 
+# 16. Main-worktree config guard (INFRA-1060, 2026-05-13)
+# ------------------------------------------------------------------
+# Detects and auto-removes stray core.worktree from the main .git/config.
+# When present, this key silently redirects git ops (gap YAML writes,
+# 'git rev-parse --show-toplevel') to a /tmp/chump-* sibling worktree.
+# Auto-repair is safe: the key must never exist in the main config by design.
+# Bypass: CHUMP_MAIN_WT_CONFIG_CHECK=0
+
+MAIN_WT_CONFIG_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-main-worktree-config.sh"
+if [ -x "$MAIN_WT_CONFIG_HOOK" ]; then
+    if ! REPO_ROOT="$REPO_ROOT" "$MAIN_WT_CONFIG_HOOK"; then
+        exit 1
+    fi
+fi
+
 exit 0
