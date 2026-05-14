@@ -1,19 +1,16 @@
-//! INFRA-468 + INFRA-1025: atomic `chump claim <ID>` — single CLI call.
+//! INFRA-468: atomic `chump claim <ID>` — single CLI call that does the
+//! 6-step shell dance every session pays before writing any code:
 //!
-//! Steps (all in Rust, no shell-out to gap-claim.sh — INFRA-1025):
-//!   1. fetch origin/main
+//!   1. fetch origin/main (already done; cheap)
 //!   2. verify gap exists + is open in state.db (seed via import if missing)
 //!   3. binary health probe (chump-binary-unwedge.sh, INFRA-275 wedge prevention)
 //!   4. derive a unique per-claim session ID
 //!   5. git worktree add to ${CHUMP_WORKTREE_BASE:-/tmp}/chump-<gap-lower>
-//!   6. repair gitdir back-reference (INFRA-779)
-//!      6c. remote-branch guard (AC6: --resume resets to remote tip)
-//!   7. write lease:
-//!      7a. NATS KV dual-write (opt-in)
-//!      7b. write JSON lease file to .chump-locks/
-//!      7c. write state.db leases row
+//!   6. write lease file via Rust (INFRA-984/985/986 ported gap-claim.sh)
+//!   7. print summary + cd hint
 //!
-//! Each step rolls back prior steps on failure (no half-claim state).
+//! Replaces the hand-typed mandatory pre-flight in CLAUDE.md. Each step
+//! has an env-bypass for testing / unusual setups.
 
 use anyhow::{anyhow, bail, Context, Result};
 use std::path::{Path, PathBuf};
@@ -24,11 +21,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug)]
 pub struct ClaimArgs {
     pub gap_id: String,
-    /// CSV of repo-relative paths to declare lease scope.
+    /// CSV of repo-relative paths to declare lease scope. Optional.
     pub paths: Option<String>,
-    /// If branch already exists on the remote, reset HEAD to remote tip and continue
-    /// instead of aborting. AC6: handles already-pushed-but-unmerged branch.
-    pub resume: bool,
     /// Where to create the linked worktree. Default `/tmp`.
     pub worktree_base: PathBuf,
     /// Main repo root (the parent of `--git-common-dir`).
@@ -77,7 +71,6 @@ impl ClaimArgs {
         let mut session_id: Option<String> = None;
         let mut skip_doctor = false;
         let mut skip_import = false;
-        let mut resume = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -106,10 +99,6 @@ impl ClaimArgs {
                     skip_import = true;
                     i += 1;
                 }
-                "--resume" => {
-                    resume = true;
-                    i += 1;
-                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -130,7 +119,6 @@ impl ClaimArgs {
             session_id,
             skip_doctor,
             skip_import,
-            resume,
         })
     }
 }
@@ -243,99 +231,30 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // value deterministically as the canonicalized path of <worktree>/.git.
     verify_and_repair_gitdir(&args.repo_root, &branch, &worktree_path)?;
 
-    // Rollback helper: undo worktree + branch on failure.
-    let rollback_wt = |extra: &str| {
+    // 7. Write the lease file directly (INFRA-984/985/986 ported this to Rust).
+    let lock_dir = args.repo_root.join(".chump-locks");
+    let ttl_secs = std::env::var("CHUMP_LEASE_TTL_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(28800); // 8 hours default
+    write_or_merge_lease(
+        &lock_dir,
+        &session_id,
+        &args.gap_id,
+        args.paths.as_deref(),
+        ttl_secs,
+        false,
+    )
+    .with_context(|| {
+        // Roll back the worktree to keep the world consistent. Reuses
+        // worktree_path_str which is already validated as UTF-8 above.
         let _ = run_git(
             &args.repo_root,
             &["worktree", "remove", "--force", worktree_path_str],
         );
         let _ = run_git(&args.repo_root, &["branch", "-D", &branch]);
-        if !extra.is_empty() {
-            eprintln!("[claim] rolled back worktree: {}", extra);
-        }
-    };
-
-    // 6c. INFRA-1025 AC6: detect existing remote branch. If --resume, reset
-    // HEAD to the remote tip and continue; otherwise abort with guidance.
-    let remote_has_branch = remote_branch_exists(&args.repo_root, &args.remote, &branch);
-    if remote_has_branch {
-        if args.resume {
-            // Reset the new local branch to match the remote tip so we pick up
-            // prior work (e.g. an aborted session that already pushed commits).
-            if let Err(e) = run_git(
-                &worktree_path,
-                &["reset", "--hard", &format!("{}/{}", args.remote, branch)],
-            ) {
-                rollback_wt(&format!("reset --hard failed: {e}"));
-                bail!(
-                    "--resume: reset --hard to {}/{} failed: {}",
-                    args.remote,
-                    branch,
-                    e
-                );
-            }
-            eprintln!(
-                "[claim] --resume: reset HEAD to {}/{} (existing remote branch)",
-                args.remote, branch
-            );
-        } else {
-            rollback_wt("");
-            bail!(
-                "branch {} already exists on {}.\n  \
-                 Pass --resume to reset HEAD to the remote tip and continue from that work.\n  \
-                 Or delete the remote branch: gh api repos/OWNER/REPO/git/refs/heads/{} -X DELETE",
-                branch,
-                args.remote,
-                branch
-            );
-        }
-    }
-
-    // 7. INFRA-1025: Write lease atomically in Rust — no shell-out to gap-claim.sh.
-    // Order: NATS (cross-machine serialization) → JSON lease file → state.db row.
-    // Each step rolls back all prior steps on failure.
-
-    // 7a. NATS KV dual-write (opt-in: CHUMP_NATS_URL must be set).
-    let lock_dir = args.repo_root.join(".chump-locks");
-    let ambient_log = lock_dir.join("ambient.jsonl");
-    let nats_result = nats_dual_write(&args.gap_id, &session_id, Some(&ambient_log))?;
-    if nats_result == NatsClaimOutcome::Conflict {
-        rollback_wt("");
-        bail!(
-            "NATS KV conflict: another session holds the atomic claim for {}. \
-             Check `chump-coord claim` output.",
-            args.gap_id
-        );
-    }
-
-    // 7b. Write JSON lease file to .chump-locks/<session>.json.
-    let lease_file = match write_or_merge_lease(
-        &lock_dir,
-        &session_id,
-        &args.gap_id,
-        args.paths.as_deref(),
-        14_400, // 4h TTL
-        false,
-    ) {
-        Ok(p) => p,
-        Err(e) => {
-            rollback_wt(&format!("JSON lease write failed: {e}"));
-            return Err(e.context("writing JSON lease file (.chump-locks/)"));
-        }
-    };
-
-    // 7c. Write state.db leases row.
-    if let Err(e) = write_db_claim(
-        &args.repo_root,
-        &args.gap_id,
-        &session_id,
-        worktree_path_str,
-        14_400,
-    ) {
-        let _ = std::fs::remove_file(&lease_file);
-        rollback_wt(&format!("state.db claim failed: {e}"));
-        return Err(e.context("writing state.db leases row"));
-    }
+        "writing lease file"
+    })?;
 
     // INFRA-1240: emit gap_claimed ambient event for observability (silent_agent debugging)
     let _ = emit_gap_claimed_event(&args.repo_root, &args.gap_id, &session_id);
@@ -350,53 +269,6 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
-
-/// INFRA-1025 AC6: check whether <remote>/<branch> exists on the remote.
-/// Uses `git ls-remote --exit-code` which exits 2 when the ref is absent.
-/// Best-effort — on network error we assume absent (don't block the claim).
-fn remote_branch_exists(repo_root: &Path, remote: &str, branch: &str) -> bool {
-    let refspec = format!("refs/heads/{}", branch);
-    let out = Command::new("git")
-        .args(["ls-remote", "--exit-code", remote, &refspec])
-        .current_dir(repo_root)
-        .output();
-    match out {
-        Ok(o) => o.status.success(),
-        Err(_) => false,
-    }
-}
-
-/// INFRA-1025: write the leases row to state.db. Mirrors GapStore::claim()
-/// but without requiring a GapStore reference in this module.
-/// Best-effort when DB absent (fresh clone has no state.db yet).
-fn write_db_claim(
-    repo_root: &Path,
-    gap_id: &str,
-    session_id: &str,
-    worktree: &str,
-    ttl_secs: i64,
-) -> Result<()> {
-    let db_path = repo_root.join(".chump/state.db");
-    if !db_path.exists() {
-        return Ok(());
-    }
-    let conn = rusqlite::Connection::open(&db_path)
-        .with_context(|| format!("opening {} for lease write", db_path.display()))?;
-    let now_secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let expires_at = now_secs + ttl_secs;
-    conn.execute(
-        "INSERT INTO leases(session_id, gap_id, worktree, expires_at)
-         VALUES(?1, ?2, ?3, ?4)
-         ON CONFLICT(session_id) DO UPDATE SET gap_id=excluded.gap_id,
-             worktree=excluded.worktree, expires_at=excluded.expires_at",
-        rusqlite::params![session_id, gap_id, worktree, expires_at],
-    )
-    .with_context(|| format!("inserting lease for {} into leases table", gap_id))?;
-    Ok(())
-}
 
 /// Verify that .git/worktrees/<branch-slug>/gitdir points at <worktree_path>/.git.
 /// Repairs the file if wrong (INFRA-779: concurrent sibling claims can clobber it).
@@ -1545,7 +1417,6 @@ mod tests {
         assert_eq!(args.gap_id, "INFRA-123");
         assert!(args.paths.is_none());
         assert!(!args.skip_doctor);
-        assert!(!args.resume);
     }
 
     #[test]
@@ -1564,15 +1435,6 @@ mod tests {
         assert_eq!(args.paths.as_deref(), Some("src/,scripts/"));
         assert_eq!(args.session_id.as_deref(), Some("test-session"));
         assert!(args.skip_doctor);
-        assert!(!args.resume);
-    }
-
-    #[test]
-    fn from_argv_resume_flag() {
-        let argv: Vec<String> = vec!["claim".into(), "INFRA-300".into(), "--resume".into()];
-        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
-        assert_eq!(args.gap_id, "INFRA-300");
-        assert!(args.resume);
     }
 
     #[test]
