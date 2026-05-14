@@ -1295,6 +1295,15 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, pr_number, age_s, ttl_s]
 
+  - kind: cache_warmed
+    emitter: scripts/ops/github-cache-reconcile.sh (INFRA-1106)
+    trigger: reconcile detected pr_state rows with empty mergeable_state (the
+      bulk /pulls?state=open list omits it; GitHub computes asynchronously).
+      Did a bounded per-PR REST fetch (max CHUMP_CACHE_RECONCILE_MAX_FETCH=20
+      per cycle) and filled the column. One event per warmed row.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, pr_number, mergeable_state]
+
   # ── INFRA-1065: chump binary auto-refresh ────────────────────────────────
   - kind: chump_binary_refreshed
     emitter: scripts/ops/refresh-chump-binary.sh (INFRA-1065)
