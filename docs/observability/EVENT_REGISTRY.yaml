@@ -2043,3 +2043,20 @@ events:
       body in theirs_tail; aborts instead of writing a corrupt workflow file.
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, ours, theirs]
+  # ── INFRA-1149: reserve-time title similarity check ───────────────────────
+  - kind: gap_reserve_similarity_warn
+    emitter: src/main.rs gap reserve handler (INFRA-1149)
+    trigger: chump gap reserve detected a proposed title with Jaccard similarity
+      >= CHUMP_GAP_RESERVE_SIMILARITY_WARN (default 0.65) against an existing
+      open or recently-closed gap. Operator is prompted y/N to continue.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
+
+  - kind: gap_reserve_similarity_block
+    emitter: src/main.rs gap reserve handler (INFRA-1149)
+    trigger: chump gap reserve detected a proposed title with Jaccard similarity
+      >= CHUMP_GAP_RESERVE_SIMILARITY_BLOCK (default 0.85) against an existing
+      open or recently-closed gap. Reserve is blocked; use --force-duplicate to
+      override.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]

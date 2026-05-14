@@ -431,6 +431,134 @@ impl GapStore {
         }
     }
 
+    // ── INFRA-1149: reserve-time title similarity ─────────────────────────────
+    //
+    // Computes token-set Jaccard similarity between two gap titles.
+    // Tokenises on non-alphanumeric boundaries, lower-cases, and removes
+    // common English stopwords so "EFFECTIVE: add X for Y" doesn't score
+    // 0.6 against "CREDIBLE: add Z for W" just from shared boilerplate.
+    //
+    // Returns a value in [0.0, 1.0] where 1.0 = identical token sets.
+    pub fn title_jaccard(a: &str, b: &str) -> f64 {
+        const STOPWORDS: &[&str] = &[
+            "a",
+            "an",
+            "the",
+            "to",
+            "for",
+            "in",
+            "of",
+            "on",
+            "at",
+            "with",
+            "by",
+            "and",
+            "or",
+            "is",
+            "are",
+            "be",
+            "add",
+            "update",
+            "fix",
+            "from",
+            "into",
+            "as",
+            "via",
+            "per",
+            "when",
+            "if",
+            "so",
+            "that",
+            "this",
+            "it",
+            // pillar prefix tokens — normalize these away
+            "effective",
+            "credible",
+            "resilient",
+            "zero",
+            "waste",
+            "mission",
+        ];
+        let tokenize = |s: &str| -> std::collections::HashSet<String> {
+            s.to_lowercase()
+                .split(|c: char| !c.is_alphanumeric())
+                .filter(|t| !t.is_empty() && t.len() > 1)
+                .filter(|t| !STOPWORDS.contains(t))
+                .map(|t| t.to_string())
+                .collect()
+        };
+        let ta = tokenize(a);
+        let tb = tokenize(b);
+        if ta.is_empty() && tb.is_empty() {
+            return 1.0;
+        }
+        let intersection = ta.intersection(&tb).count();
+        let union = ta.union(&tb).count();
+        if union == 0 {
+            0.0
+        } else {
+            intersection as f64 / union as f64
+        }
+    }
+
+    /// INFRA-1149: return the top-N most similar existing gaps for a proposed
+    /// title. Searches open gaps + done gaps closed within the last `days` days.
+    /// Returns `[(gap_id, title, status, score)]` sorted descending by score,
+    /// capped at `top_n`.
+    pub fn similarity_candidates(
+        &self,
+        proposed_title: &str,
+        top_n: usize,
+        lookback_days: u32,
+    ) -> Result<Vec<(String, String, String, f64)>> {
+        // Compute cutoff date for "recently closed" window
+        let cutoff = {
+            use std::time::{SystemTime, UNIX_EPOCH};
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let days_secs = lookback_days as u64 * 86_400;
+            let cutoff_ts = now.saturating_sub(days_secs);
+            // Convert to ISO date string YYYY-MM-DD for comparison
+            let days_since_epoch = cutoff_ts / 86_400;
+            // Rough date arithmetic: good enough for 30-day window
+            let year = 1970 + days_since_epoch / 365;
+            let _ = year; // used in format below
+                          // Use chrono-free approach: just format the cutoff as days subtracted from now
+                          // We'll filter in Rust since SQLite date arithmetic varies
+            cutoff_ts
+        };
+
+        // Query open gaps + recently-closed done gaps
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, status, closed_at FROM gaps
+             WHERE status = 'open'
+                OR (status = 'done' AND closed_at IS NOT NULL AND CAST(closed_at AS INTEGER) >= ?1)
+             ORDER BY id",
+        )?;
+        let rows = stmt.query_map(params![cutoff as i64], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+
+        let mut scored: Vec<(String, String, String, f64)> = rows
+            .filter_map(|r| r.ok())
+            .map(|(id, title, status)| {
+                let score = Self::title_jaccard(proposed_title, &title);
+                (id, title, status, score)
+            })
+            .filter(|(_, _, _, score)| *score > 0.0)
+            .collect();
+
+        scored.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(top_n);
+        Ok(scored)
+    }
+
     /// Get a single gap by ID.
     ///
     /// INFRA-630: if `gap_id` looks like an 8-char hex short-prefix (all
