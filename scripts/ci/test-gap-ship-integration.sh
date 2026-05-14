@@ -44,9 +44,13 @@ status_before=$(grep '^  status: ' "$yaml_file" | awk '{print $2}' || echo "erro
 pass "Gap is open before ship"
 
 # ─ Run gap ship with test inputs ───────────────────────────────────────────────
+# CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 bypasses the "branch behind main" gate that
+# would otherwise fail in CI where the checked-out commit is thousands of commits
+# behind the live origin/main HEAD.
 CHUMP_SKIP_SUPERSEDED_CLOSE=1 \
 CHUMP_SHIP_NO_AUTOSTAGE=1 \
 CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
+CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
 $CHUMP_BIN gap ship "$TEST_GAP" --update-yaml --closed-pr 9999 \
   || fail "gap ship failed"
 pass "gap ship succeeded"
@@ -84,7 +88,7 @@ else
 fi
 
 # ─ Test idempotence: run ship again ────────────────────────────────────────────
-output=$(CHUMP_ALLOW_STALE_DESTRUCTIVE=1 $CHUMP_BIN gap ship "$TEST_GAP" --update-yaml --closed-pr 9999 2>&1 || true)
+output=$(CHUMP_ALLOW_STALE_DESTRUCTIVE=1 CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 $CHUMP_BIN gap ship "$TEST_GAP" --update-yaml --closed-pr 9999 2>&1 || true)
 if echo "$output" | grep -q "already done"; then
   pass "gap ship is idempotent (second run reports already done)"
 else
