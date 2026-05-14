@@ -513,10 +513,12 @@ $SIBLING_GAP_YAML"
             # investigate but don't block the push.
             if my_pending_reserves_gap "$GAP_ID"; then
                 info "NOTE: $GAP_ID is done on $REMOTE/$BASE but current session holds an active lease — OK (INFRA-1165)."
-                _now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
-                printf '{"ts":"%s","kind":"gap_check_false_positive","gap_id":"%s","session":"%s","note":"done on origin/main but session holds lease — push allowed"}\n' \
-                    "$_now_ts" "$GAP_ID" "${SESSION_ID:-unknown}" \
-                    >> "${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}" 2>/dev/null || true
+                # INFRA-1307: migrated from inline printf to the centralized
+                # helper. Auto-fills ts/session/worktree/harness.
+                chump ambient emit gap_check_false_positive \
+                    --gap "$GAP_ID" \
+                    --field note="done on origin/main but session holds lease — push allowed" \
+                    >/dev/null 2>&1 || true
             else
                 red "SKIP $GAP_ID — already status:done on $REMOTE/$BASE."
                 red "  The work exists. No need to re-implement. Choose a different gap."
@@ -729,9 +731,11 @@ except: print("")' 2>/dev/null)"
             info "  If resuming work: re-attach with 'git worktree list' and re-claim."
             info "  If stale: remove with 'git worktree remove --force $_wt_real'."
             info "  Skip this check: CHUMP_PREFLIGHT_NO_WORKTREE_SCAN=1"
-            printf '{"ts":"%s","kind":"preflight_dupe_worktree","gap":"%s","path":"%s"}\n' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GAP_ID" "$_wt_real" \
-                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+            # INFRA-1307: migrated from inline printf to chump ambient emit.
+            chump ambient emit preflight_dupe_worktree \
+                --gap "$GAP_ID" \
+                --field path="$_wt_real" \
+                >/dev/null 2>&1 || true
         done
     fi
 
@@ -757,9 +761,11 @@ except: print("")' 2>/dev/null)"
             info "  An existing PR may already implement this gap."
             info "  Review before claiming via the PWA queue card or the GitHub UI."
             info "  Skip this check: CHUMP_PREFLIGHT_NO_PR_SCAN=1"
-            printf '{"ts":"%s","kind":"preflight_dupe_pr","gap":"%s","prs":"%s"}\n' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GAP_ID" "$_pr_list" \
-                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+            # INFRA-1307: migrated from inline printf to chump ambient emit.
+            chump ambient emit preflight_dupe_pr \
+                --gap "$GAP_ID" \
+                --field prs="$_pr_list" \
+                >/dev/null 2>&1 || true
         fi
     fi
 
