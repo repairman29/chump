@@ -370,6 +370,11 @@ _chump_gh_preempt_if_low() {
         >> "$ambient" 2>/dev/null || true
 }
 
+# INFRA-1111: detect GitHub secondary rate-limit message in captured stderr.
+_chump_gh_is_secondary_limit() {
+    echo "${1:-}" | grep -qE 'rate limit already exceeded|You have exceeded a secondary rate limit'
+}
+
 chump_gh() {
     local api_tag started rc ended used_ms script_tag
     api_tag="$(chump_gh_api_tag "$@")"
@@ -379,14 +384,52 @@ chump_gh() {
     # INFRA-1080: pre-emptive backoff when graphql bucket is low (background only).
     _chump_gh_preempt_if_low "$script_tag" "$api_tag"
     started="$(_chump_gh_now_ms)"
-    set +e
-    # INFRA-1103: signal to the PATH shim that this call is already throttled
-    # (we called _chump_gh_throttle_wait above). The env-var prefix form sets
-    # CHUMP_GH_SHIM_RECORDING=1 only for the 'gh' child process without leaking
-    # into the current shell, so subsequent non-chump_gh callers still throttle.
-    CHUMP_GH_SHIM_RECORDING=1 gh "$@"
-    rc=$?
-    set -e
+
+    # INFRA-1111: exponential backoff on secondary rate-limit.
+    # Bypass with CHUMP_GH_NO_RETRY=1.
+    local _tmp_stderr=""
+    if [[ "${CHUMP_GH_NO_RETRY:-0}" != "1" ]]; then
+        _tmp_stderr="$(mktemp)"
+    fi
+    local _sleep_s=1 _retries=0 _total_waited_ms=0
+
+    rc=0
+    while true; do
+        set +e
+        if [[ -n "$_tmp_stderr" ]]; then
+            # INFRA-1103: CHUMP_GH_SHIM_RECORDING=1 signals to the PATH shim that
+            # this call is already throttled (_chump_gh_throttle_wait ran above).
+            CHUMP_GH_SHIM_RECORDING=1 gh "$@" 2>"$_tmp_stderr"
+            rc=$?
+            cat "$_tmp_stderr" >&2 2>/dev/null || true
+        else
+            CHUMP_GH_SHIM_RECORDING=1 gh "$@"
+            rc=$?
+        fi
+        set -e
+
+        if [[ -n "$_tmp_stderr" ]] && (( rc != 0 )); then
+            local _err
+            _err="$(cat "$_tmp_stderr" 2>/dev/null || true)"
+            if _chump_gh_is_secondary_limit "$_err" && (( _retries < 4 )); then
+                sleep "$_sleep_s"
+                _total_waited_ms=$(( _total_waited_ms + _sleep_s * 1000 ))
+                _sleep_s=$(( _sleep_s * 2 <= 30 ? _sleep_s * 2 : 30 ))
+                _retries=$(( _retries + 1 ))
+                continue
+            elif _chump_gh_is_secondary_limit "$_err" && (( _retries >= 4 )); then
+                local ambient ts
+                ambient="$(_chump_gh_ambient_path)"
+                ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                printf '{"ts":"%s","kind":"gh_secondary_limit_hit","script":"%s","api":"%s","retries":%d,"total_waited_ms":%d}\n' \
+                    "$ts" "$script_tag" "$api_tag" "$_retries" "$_total_waited_ms" \
+                    >> "$ambient" 2>/dev/null || true
+            fi
+        fi
+        break
+    done
+    [[ -n "$_tmp_stderr" ]] && rm -f "$_tmp_stderr" 2>/dev/null || true
+
     ended="$(_chump_gh_now_ms)"
     used_ms=$(( ended - started ))
     chump_gh_record "$api_tag" "$used_ms" "$rc" "$script_tag"
