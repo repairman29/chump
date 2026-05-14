@@ -1,0 +1,24 @@
+- id: INFRA-1240
+  domain: INFRA
+  title: "\"CREDIBLE: chump claim Rust path doesn't emit gap_claimed to ambient; lease_release_failed kind unregistered + unemitted\""
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Source: 2026-05-14 audit Part 2 findings #1 + #8.
+    
+    (a) chump claim Rust path (src/atomic_claim.rs) does NOT emit kind=gap_claimed to ambient. The kind IS emitted by scripts/coord/gap-claim.sh shell wrapper, but once INFRA-987 lands and the shell is gone, the canonical Rust claim entry has no claim event. Watchdogs (worker silence, lease overlap) miss claims that go through the Rust atomic path.
+    
+    (b) src/dispatch.rs:178,199 swallows lease release errors via 'let _ = release(&workspace);'. No kind=lease_release_failed exists. Leases leak silently until reaper picks them up at 900s heartbeat threshold.
+    
+    Acceptance:
+    1. atomic_claim.rs::run_claim (post-INFRA-987) emits kind=gap_claimed with fields_required: [ts, kind, gap_id, session_id, worktree, paths]. Registered in EVENT_REGISTRY.yaml.
+    2. Add kind=lease_release_failed to EVENT_REGISTRY.yaml; emit from src/dispatch.rs at release() failure points; promote 'let _ = release()' to log + emit + retry-once-then-bail.
+    3. Test: scripts/ci/test-rust-claim-emits-ambient.sh — runs 'chump claim', greps ambient.jsonl for the kind, asserts within 2s window.
+  acceptance_criteria:
+    - src/atomic_claim.rs emits kind=gap_claimed to ambient.jsonl after successful claim (mirrors gap-claim.sh behavior before INFRA-987 deletion)
+    - kind=lease_release_failed registered in EVENT_REGISTRY.yaml and emitted from src/dispatch.rs at both release callsites (replaces silent let-underscore swallow pattern)
+    - EVENT_REGISTRY.yaml registers both new kinds with proper fields_required
+    - src/dispatch.rs has zero remaining 'let _ = release()' silent-swallow patterns
+    - "scripts/ci/test-gap-claimed-event.sh static-checks: EVENT_REGISTRY entries, source emitters, no silent-swallow regression"
+

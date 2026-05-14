@@ -393,6 +393,19 @@ events:
     consumers: [audit-log, kpi-report]
     fields_required: [gap_id, closed_pr]
 
+  # ── INFRA-1240: claim + lease-release observability ────────────────────────
+  - kind: gap_claimed
+    emitter: src/atomic_claim.rs::run_claim (INFRA-1240; was emitted only by
+      gap-claim.sh shell wrapper before that script's INFRA-987 deletion)
+    trigger: chump claim succeeded — worktree created + lease written
+    consumers: [fleet-health, worker-silence-watchdog, audit-log]
+    fields_required: [ts, kind, gap, session_id, worktree, paths]
+  - kind: lease_release_failed
+    emitter: src/dispatch.rs (INFRA-1240; was previously swallowed via `let _ = release()`)
+    trigger: lease release returned Err — leak likely until reaper sweeps
+    consumers: [fleet-health, operator-recall]
+    fields_required: [ts, kind, gap, phase, error]
+
   - kind: gap_workflow_phase
     emitter: src/web_server.rs (PWA autonomous workflows)
     trigger: autonomous gap workflow transitions between phases

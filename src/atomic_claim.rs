@@ -240,6 +240,18 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         bail!("gap-claim.sh failed (rolled back worktree): {}", stderr);
     }
 
+    // INFRA-1240: emit kind=gap_claimed to ambient.jsonl. fleet_health.rs
+    // and watchdogs expect this kind; gap-claim.sh did not emit it (audit
+    // 2026-05-14 Part 2 #1) and once INFRA-987 deletes the shell wrapper,
+    // the canonical Rust path is the only emit point left.
+    emit_gap_claimed_event(
+        &args.repo_root,
+        &args.gap_id,
+        &session_id,
+        worktree_path_str,
+        args.paths.as_deref(),
+    );
+
     Ok(ClaimReport {
         gap_id: args.gap_id,
         worktree_path,
@@ -247,6 +259,39 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         session_id,
         paths: args.paths,
     })
+}
+
+/// Emit kind=gap_claimed to ambient.jsonl. Best-effort; never fails the claim.
+/// INFRA-1240: fleet_health.rs + worker-silence watchdogs depend on this kind.
+fn emit_gap_claimed_event(
+    repo_root: &Path,
+    gap_id: &str,
+    session_id: &str,
+    worktree: &str,
+    paths: Option<&str>,
+) {
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let paths_field = paths.map(json_escape).unwrap_or_default();
+    let event = format!(
+        r#"{{"ts":"{ts}","kind":"gap_claimed","gap":"{}","session_id":"{}","worktree":"{}","paths":"{}"}}"#,
+        json_escape(gap_id),
+        json_escape(session_id),
+        json_escape(worktree),
+        paths_field,
+    );
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{}", event);
+    }
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

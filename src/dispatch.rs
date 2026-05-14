@@ -175,7 +175,12 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
     if let Err(e) = do_work(&workspace) {
         // Always release before propagating the error so a failed work
         // step doesn't leave a stale lease.
-        let _ = release(&workspace);
+        // INFRA-1240: emit kind=lease_release_failed if release errors so
+        // leaks become visible instead of silently waiting on the reaper.
+        if let Err(rel_err) = release(&workspace) {
+            emit_lease_release_failed(&workspace, &rel_err.to_string(), "after_work_failure");
+            tracing::warn!(lease_release_error = %rel_err, "lease release failed after work step error");
+        }
         return Ok(DispatchOutcome {
             gap_id: opts.gap_id.to_string(),
             branch,
@@ -196,7 +201,11 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
     };
 
     // Step 5: always release the lease.
-    let _ = release(&workspace);
+    // INFRA-1240: emit kind=lease_release_failed on error (was silently swallowed).
+    if let Err(rel_err) = release(&workspace) {
+        emit_lease_release_failed(&workspace, &rel_err.to_string(), "after_ship");
+        tracing::warn!(lease_release_error = %rel_err, "lease release failed after ship");
+    }
 
     Ok(DispatchOutcome {
         gap_id: opts.gap_id.to_string(),
@@ -217,6 +226,36 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
 struct Workspace<'a> {
     opts: &'a DispatchOptions<'a>,
     working_dir: PathBuf,
+}
+
+/// INFRA-1240: emit kind=lease_release_failed to ambient.jsonl on lease
+/// release errors. Was previously swallowed via `let _ = release()`, hiding
+/// leaks until the reaper picked them up at the 900s heartbeat threshold.
+fn emit_lease_release_failed(ws: &Workspace, error: &str, phase: &str) {
+    fn esc(s: &str) -> String {
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+    }
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let gap_id = ws.opts.gap_id;
+    let event = format!(
+        r#"{{"ts":"{ts}","kind":"lease_release_failed","gap":"{}","phase":"{}","error":"{}"}}"#,
+        esc(gap_id),
+        esc(phase),
+        esc(error)
+    );
+    // Resolve repo_root for ambient.jsonl (handles INFRA-779 worktree gitdir confusion).
+    let ambient_path = ws.opts.repo_root.join(".chump-locks").join("ambient.jsonl");
+    let _ = std::fs::create_dir_all(ambient_path.parent().unwrap_or(Path::new(".")));
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{}", event);
+    }
 }
 
 impl<'a> Workspace<'a> {
