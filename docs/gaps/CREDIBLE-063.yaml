@@ -1,0 +1,17 @@
+- id: CREDIBLE-063
+  domain: CREDIBLE
+  title: Surface agent feedback counts in chump kpi report (defect/proposal/retro tallies per domain)
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+  - 'chump kpi report --feedback: per-domain counts of FEEDBACK events (defect / proposal / preference / retro) over rolling
+    7d window'
+  - Identifies top-3 subjects by feedback volume (which gaps/policies are most-discussed)
+  - 'Surfaces preference vote tallies: e.g., inbox-first-picker=+5/-1, mutation-vs-query-split=+3/0'
+  - 'Output mode: human + --json for downstream automation'
+  - 'Test: pre-populate feedback.jsonl with mixed entries, run report, assert correct tallies'
+  notes: '[2026-05-14T18:13:08Z] Without surfacing feedback in a report, the operator never sees patterns. Currently I have
+    to grep .chump-locks/ to know if agents are pushing back on a design.
+
+    '

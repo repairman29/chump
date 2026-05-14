@@ -1,0 +1,18 @@
+- id: INFRA-1272
+  domain: INFRA
+  title: 'A2A — feedback-curator routine: aggregate FEEDBACK events nightly, file gaps for recurring patterns'
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+  - 'scripts/coord/feedback-curator.sh: reads .chump-locks/feedback.jsonl (rolling 7-day window)'
+  - Groups by kind+subject; flags subjects with >= CHUMP_FEEDBACK_THRESHOLD distinct sessions (default 3)
+  - For each flagged cluster, files a new gap (domain matches subject, priority P2/effort s) with notes citing the source
+    feedback entries
+  - 'Duplicate-guard: if a gap was already filed for the same subject within 30d, just add-note instead of filing again'
+  - Runs daily via launchd; emits kind=feedback_curated with counts
+  - 'Test: pre-populate feedback.jsonl with 3 entries for same proposal-subject; run curator; assert one gap filed with citations'
+  notes: '[2026-05-14T18:13:08Z] Turning feedback events into something actionable requires aggregation. Without this, FEEDBACK
+    is just noise in a jsonl file.
+
+    '

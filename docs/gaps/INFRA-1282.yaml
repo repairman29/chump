@@ -1,0 +1,18 @@
+- id: INFRA-1282
+  domain: INFRA
+  title: "ZERO-WASTE: gh shim transparently rewrites 'gh pr view N' to REST /pulls/N + cache_lookup_pr — kills ~100 GraphQL calls/hr"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Diagnosis 2026-05-14 of throttle storms: gh pr view is the #1 GraphQL burner at 74 calls/hr. 6 caller scripts (pr-watch.sh, bot-merge.sh, worktree-prune.sh, opus-curator.sh, bounced-pr-detector.sh, queue-driver.sh) use it directly. INFRA-1107 cache exists with fresh data (31 PR rows, webhook events 3min ago) but they bypass it. Rather than migrating 6 callers one-by-one, rewrite at the shim layer: when gh sees 'pr view N', transparently translate to REST /pulls/N + cache_lookup_pr. Single PR fixes all 6 callers' GraphQL-to-REST migration. Estimated impact: kills ~100/150 GraphQL calls/hr, drops throttle events from 200/hr to <50/hr.
+  acceptance_criteria:
+    - scripts/coord/lib/gh-shim/gh detects 'gh pr view <PR-or-branch> [--json <fields>] [-q <jq>]' invocation pattern (regex on argv) BEFORE forwarding to real gh
+    - "For matched invocations: resolve PR number (numeric arg passes through; branch name resolved via REST /pulls?head=...&state=open), then call cache_lookup_pr from lib/github_cache.sh"
+    - "On cache HIT: emit kind=gh_pr_view_rewritten_cache_hit ambient event, shape the cached JSON to match what 'gh pr view' would output for the requested --json fields"
+    - "On cache MISS: fall back to gh api /repos/{owner}/{repo}/pulls/N (REST, costs 1 core call not 1 GraphQL call) and re-shape output"
+    - "Backward compat: --jq / -q post-processing still works; --watch flag still routes to real gh (poll mode bypasses cache for live data)"
+    - "Bypass: CHUMP_GH_SHIM_NO_REWRITE=1 falls through to real gh pr view (emergency / debug)"
+    - Test scripts/ci/test-gh-shim-pr-view-rewrite.sh stubs gh + cache_lookup_pr; asserts numeric arg → cache hit path; branch-name arg → REST fallback; --watch → passthrough; --json field projection produces matching JSON
+    - "Measure: api-cost-leaderboard.sh window=1h shows gh pr view count drops from 74 to <10 within 24h of ship"
+

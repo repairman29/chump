@@ -1,0 +1,31 @@
+- id: INFRA-1237
+  domain: INFRA
+  title: "CREDIBLE: EVENT_REGISTRY.yaml drift — 22 emit-without-register kinds + 88 register-without-emit orphans; pre-commit guard only checks staged diff"
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    Source: 2026-05-14 resilience+observability+UX audit, Part 2 finding #7 — top signal.
+
+    scripts/git-hooks/pre-commit-event-registry.sh:42 enforces EVENT_REGISTRY.yaml on STAGED ADDITIONS only ('git diff --cached … -- '*.rs' …'). Existing emit sites that predate INFRA-754 or were committed while the guard was bypassed never get caught. Result today:
+      - 22 emit-without-register kinds in production: dup_pr_blocked (bot-merge), gh_secondary_limit_hit (lib/github.sh), meta_filed (gap-reserve), pr_scope_divergence, session_rescue, timeout_rescue, lint_storm, … and 15 more.
+      - 88 register-without-emit orphans: adversary_alert, auto_merge_armed, branch_protection_drift, cost_budget_breach, gap_abandoned, daemon_silent, … the registry is currently aspirational doc, not ground truth.
+
+    Consumers (waste-tally, fleet-brief, kpi-report) parse these events to drive operator decisions. Registry drift degrades trust silently — operator dashboards display kinds that nobody emits and miss kinds that fire daily.
+
+    Why P0: this is the credibility floor of the whole observability layer. Until fixed, every claim about 'we emit X' from CLAUDE.md is unverified.
+  acceptance_criteria:
+    - "Audit script: scripts/ci/test-event-registry-coverage.sh performs full repo grep for kind=\"...\" literals in src/ + crates/ + scripts/; diffs against docs/observability/EVENT_REGISTRY.yaml; reports (a) emit-without-register, (b) register-without-emit; exits 1 if either count > 0 (allowlist: optional RESERVED_KINDS list for intentional aspirational kinds)"
+    - "Add test-event-registry-coverage.sh to fast-checks in .github/workflows/ci.yml so the gate is enforced on every PR (not just staged-diff pre-commit guard)"
+    - "Reconciliation Part A — emit-without-register: for each missing kind found by audit, either (a) register it in EVENT_REGISTRY.yaml with emitter/trigger/consumers, OR (b) remove the emit call if the kind is stale. Commit decisions in PR body."
+    - "Reconciliation Part B — register-without-emit: for each orphan kind, decision matrix: (i) KIND_ASPIRATIONAL: if the event is designed but not yet implemented, mark status:deprecated in EVENT_REGISTRY with target quarter (e.g. 'planned Q3 2026'), (ii) KIND_DEAD: if the event was specced but feature never shipped, remove from registry; document in PR body. (iii) KIND_IMPLEMENT_NOW: if strategic (e.g., adversary_alert, cost_budget_breach), file follow-up gap to emit it. Target: 0 register-without-emit by end of PR."
+    - "Update docs/observability/EVENT_REGISTRY.yaml header to state: 'Registry is ground truth and canonical — every kind listed here is actively emitted by the system. Deprecated kinds (status=deprecated) are listed for migration grace periods only.' Remove aspirational language."
+    - "Test verification: scripts/ci/test-event-registry-coverage.sh PASSES on a clean main (zero drift). Run before merge."
+    - "Ambient event traceability: chump fleet-brief and chump waste-tally --json now report which event kinds they actually observed in the last 24h; output includes registry reconciliation diagnostics ('kinds in registry but not observed', 'kinds observed but not in registry'). This becomes the ongoing drift detector."
+  notes: |
+    Drift root causes:
+    - Pre-commit guard only checks STAGED additions, missing pre-754 emitters and commits made with CHUMP_EVENT_REGISTRY_CHECK=0 bypasses
+    - Observer/consumer trust: waste-tally silently ignores unknown kinds instead of WARN+FAIL
+    - No enforcement on deployment; PR gate is advisory only until INFRA-1159 full migration
+
+    Success metric: zero drift detected by audit script on main for 2 consecutive weeks post-ship.

@@ -1,0 +1,17 @@
+- id: INFRA-1283
+  domain: INFRA
+  title: "ZERO-WASTE: gh shim caches 'gh auth token' for 5min — eliminates 27 redundant calls/hr"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Diagnosis 2026-05-14: gh auth token is called 27 times per hour. Each shim invocation that uses the gh CLI library indirectly calls 'gh auth token' once for authentication setup. The token is stable per session — should be cached. Trivial fix at shim layer: 5min file cache at ~/.cache/chump-gh-shim/auth-token.txt.
+  acceptance_criteria:
+    - scripts/coord/lib/gh-shim/gh detects 'gh auth token' invocation (exact match argv)
+    - On match, reads ~/.cache/chump-gh-shim/auth-token.txt if mtime within CHUMP_GH_TOKEN_CACHE_TTL_S (default 300s)
+    - "On cache hit: prints cached token to stdout, exits 0, emits kind=gh_auth_token_cache_hit"
+    - "On miss: invokes real gh auth token, writes result to cache, returns it (cache permissions 0600)"
+    - "Bypass: CHUMP_GH_NO_TOKEN_CACHE=1 forces real gh auth token call"
+    - "Test scripts/ci/test-gh-shim-auth-token-cache.sh: fresh cache → real call; subsequent within TTL → no real call; after TTL → real call again"
+    - "Measure: gh auth token in api-cost-leaderboard drops from 27/hr to <5/hr"
+
