@@ -237,6 +237,7 @@ EOF
 #   CHUMP_TWO_TIER_SLOT=name     cascade slot to use (default: groq)
 TIER1_RESPONSE=""
 TIER1_VERDICT=""
+# shellcheck disable=SC2034  # TIER1_RAN reserved for future telemetry callers
 TIER1_RAN=0
 TIER1_LOC_LIMIT="${CHUMP_TWO_TIER_LOC_LIMIT:-50}"
 TIER1_SLOT="${CHUMP_TWO_TIER_SLOT:-groq}"
@@ -249,6 +250,7 @@ if [[ $DRY_RUN -eq 0 ]] \
     if [[ -z "${CHUMP_PROVIDER_1_NAME:-}" ]]; then
         for _root in "$(git rev-parse --show-toplevel)" "$(git rev-parse --git-common-dir | xargs dirname 2>/dev/null)"; do
             if [[ -n "$_root" && -f "$_root/.env" ]]; then
+                # shellcheck disable=SC1091  # .env path is dynamic, not statically resolvable
                 set -a; source "$_root/.env"; set +a
                 [[ -n "${CHUMP_PROVIDER_1_NAME:-}" ]] && break
             fi
@@ -331,6 +333,7 @@ else
     if [[ -z "${ANTHROPIC_API_KEY:-}" ]]; then
         for _root in "$(git rev-parse --show-toplevel)" "$(git rev-parse --git-common-dir | xargs dirname 2>/dev/null)"; do
             if [[ -n "$_root" && -f "$_root/.env" ]]; then
+                # shellcheck disable=SC1091  # .env path is dynamic, not statically resolvable
                 set -a; source "$_root/.env"; set +a
                 [[ -n "${ANTHROPIC_API_KEY:-}" ]] && break
             fi
