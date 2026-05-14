@@ -102,6 +102,18 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
+# ── INFRA-1059: bail-fast on non-gap tokens ──────────────────────────────────
+# chump-commit.sh auto-lease greps commit messages for gap-IDs. If a commit
+# mentions tokens like SHA-256, P0-1, or HTTP-200, gap-claim.sh was previously
+# invoked on phantom IDs, hanging on the index mutex. Reject IDs whose leading
+# prefix is not a known gap domain — this catches SHA, P0, HTTP, UTF, etc.
+# We only check the PREFIX so test fixtures like INFRA-RACE-TEST still pass.
+_KNOWN_PREFIX_RE='^(INFRA|CREDIBLE|EFFECTIVE|RESILIENT|EVAL|COG|DOC|FLEET|META|PRODUCT|SMOKE|ACP|AGT|AUTO|COMP|FRONTIER|MEM|QUALITY|RELIABILITY|RESEARCH|SECURITY|SENSE|SWARM|UX|TEST)-'
+if ! echo "$GAP_ID" | grep -qE "$_KNOWN_PREFIX_RE"; then
+    printf '[gap-claim] skipping non-gap token: %s (does not match known domain prefix)\n' "$GAP_ID" >&2
+    exit 0
+fi
+
 # ── Paths (needed before session ID so we can detect main worktree) ───────────
 # INFRA-109: REPO_ROOT + LOCK_DIR resolved via main-repo path so leases
 # from linked worktrees land in the shared .chump-locks/ where siblings see them.

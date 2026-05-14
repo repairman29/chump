@@ -464,9 +464,22 @@ if [[ "${CHUMP_AUTO_LEASE_FROM_MSG:-1}" != "0" ]]; then
         esac
     done
     if [[ -n "$_commit_msg_text" ]]; then
+        # INFRA-1059: derive known domain prefixes from state.db to avoid
+        # matching non-gap tokens like SHA-256, P0-1, HTTP-200. Fall back to
+        # a hard-coded list if sqlite3 or state.db is unavailable.
+        _state_db="$REPO_ROOT/.chump/state.db"
+        _known_prefixes=""
+        if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$_state_db" ]]; then
+            _known_prefixes=$(sqlite3 "$_state_db" \
+                "SELECT DISTINCT substr(id,1,instr(id,'-')-1) FROM gaps;" 2>/dev/null \
+                | tr '\n' '|' | sed 's/|$//')
+        fi
+        if [[ -z "$_known_prefixes" ]]; then
+            _known_prefixes="INFRA|CREDIBLE|EFFECTIVE|RESILIENT|EVAL|COG|DOC|FLEET|META|PRODUCT|SMOKE|ACP|AGT|AUTO|COMP|FRONTIER|MEM|QUALITY|RELIABILITY|RESEARCH|SECURITY|SENSE|SWARM|UX"
+        fi
         # Extract gap-IDs (e.g. INFRA-127, RESEARCH-026) — both leading
         # "INFRA-127:" and inline "Closes INFRA-127" patterns.
-        _gap_ids=$(echo "$_commit_msg_text" | grep -oE '[A-Z]+-[0-9]+' | sort -u || true)
+        _gap_ids=$(echo "$_commit_msg_text" | grep -oE "(${_known_prefixes})-[0-9]+" | sort -u || true)
         if [[ -n "$_gap_ids" ]]; then
             _claim_script="$REPO_ROOT/scripts/coord/gap-claim.sh"
             if [[ -x "$_claim_script" ]]; then
