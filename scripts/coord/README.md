@@ -214,3 +214,34 @@ The **synthetic-green stub pattern** avoids this:
 
 **Adding a new required check:** use the `<job>-stub` + `<job>-required` template
 above. Never add a conditional job directly to branch protection without a stub.
+
+## Branch hygiene (INFRA-1058)
+
+### Automatic cleanup (recommended)
+Enable "Automatically delete head branches" in:
+  GitHub repo → Settings → General → Pull Requests
+
+When enabled, GitHub auto-deletes the head branch after every squash-merge.
+This covers all new merges; it does NOT backfill historical refs.
+
+### Manual sweep via branch-reaper.sh
+For branches whose PRs merged before the setting was enabled:
+
+```bash
+# Dry-run (safe, default): shows what would be pruned
+scripts/coord/branch-reaper.sh
+
+# Actually prune (requires --act flag):
+scripts/coord/branch-reaper.sh --act
+
+# Only prune branches closed > 14 days ago:
+scripts/coord/branch-reaper.sh --act --min-age-days 14
+
+# Skip specific branches:
+scripts/coord/branch-reaper.sh --act --keep-list my-feature,wip/research
+```
+
+Protected branches (never pruned): `main`, `master`, `develop`, `staging`,
+`production`, `release/*`, `gh-readonly-queue/*`, `release-plz-*`.
+
+Emits `kind=branch_reaper_pruned` to `ambient.jsonl` per deletion.
