@@ -1494,6 +1494,166 @@ async fn handle_repo_working(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+// ── PWA settings panel (INFRA-988) ─────────────────────────────────────────
+//
+// Non-secret operator config exposed via /api/settings. Storage tier A
+// (~/.chump/config.toml `[settings]` section) per docs/roadmap/PWA_COCKPIT_DEMO.md.
+// Secrets are explicitly out of scope (INFRA-989 owns that path).
+
+const SETTINGS_KEYS: &[&str] = &[
+    "CHUMP_AUTH_MODE",
+    "CHUMP_MULTI_REPO_ENABLED",
+    "FLEET_SIZE",
+    "FLEET_MODEL",
+    "CHUMP_ROUND_PRIVACY",
+    "CHUMP_REPO",
+];
+
+fn settings_default(key: &str) -> &'static str {
+    match key {
+        "CHUMP_AUTH_MODE" => "auto",
+        "CHUMP_MULTI_REPO_ENABLED" => "0",
+        "FLEET_SIZE" => "4",
+        "FLEET_MODEL" => "sonnet",
+        "CHUMP_ROUND_PRIVACY" => "safe",
+        "CHUMP_REPO" => "",
+        _ => "",
+    }
+}
+
+/// Resolve a settings value: env → config.toml [settings] → built-in default.
+/// Returns (value, source) where source ∈ {"env", "config", "default"}.
+fn resolve_setting(key: &str) -> (String, &'static str) {
+    if let Ok(v) = std::env::var(key) {
+        if !v.is_empty() {
+            return (v, "env");
+        }
+    }
+    if let Some(v) = crate::auth::read_config_kv("settings", key) {
+        return (v, "config");
+    }
+    (settings_default(key).to_string(), "default")
+}
+
+/// Reject requests whose Origin header is set and not localhost. Absent
+/// Origin (same-origin / non-browser) is allowed — CSRF + auth still apply.
+fn check_origin_localhost(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get("origin").and_then(|v| v.to_str().ok()) else {
+        return true;
+    };
+    let lower = origin.to_lowercase();
+    lower.starts_with("http://localhost")
+        || lower.starts_with("https://localhost")
+        || lower.starts_with("http://127.0.0.1")
+        || lower.starts_with("https://127.0.0.1")
+        || lower.starts_with("http://[::1]")
+        || lower.starts_with("https://[::1]")
+}
+
+/// Per-key value validation. Conservative — reject anything that doesn't match
+/// the expected shape so a typo can't break the fleet.
+fn validate_setting_value(key: &str, value: &str) -> bool {
+    match key {
+        "CHUMP_AUTH_MODE" => matches!(value, "auto" | "api-key" | "oauth"),
+        "CHUMP_MULTI_REPO_ENABLED" => matches!(value, "0" | "1"),
+        "FLEET_SIZE" => value
+            .parse::<u32>()
+            .ok()
+            .is_some_and(|n| (0..=64).contains(&n)),
+        "FLEET_MODEL" => matches!(value, "haiku" | "sonnet" | "opus"),
+        "CHUMP_ROUND_PRIVACY" => matches!(value, "safe" | "dogfood"),
+        "CHUMP_REPO" => value.is_empty() || value.starts_with('/'),
+        _ => false,
+    }
+}
+
+/// GET /api/settings — return all whitelisted non-secret settings with sources.
+async fn handle_settings_get(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let mut out = serde_json::Map::new();
+    for key in SETTINGS_KEYS {
+        let (value, source) = resolve_setting(key);
+        out.insert(
+            (*key).to_string(),
+            serde_json::json!({ "value": value, "source": source }),
+        );
+    }
+    tracing::debug!(target: "infra_988", "GET /api/settings served {} keys", SETTINGS_KEYS.len());
+    Ok(Json(serde_json::Value::Object(out)))
+}
+
+#[derive(serde::Deserialize)]
+struct SettingsPostBody {
+    value: String,
+}
+
+/// POST /api/settings/{key} — persist a single non-secret setting to
+/// ~/.chump/config.toml `[settings]` section. Validates the key is in the
+/// whitelist and the value passes per-key sanity checks. CSRF + auth required.
+async fn handle_settings_post(
+    axum::extract::Path(key): axum::extract::Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<SettingsPostBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if !check_csrf(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if !check_origin_localhost(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if !SETTINGS_KEYS.contains(&key.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let trimmed = body.value.trim();
+    if trimmed.contains('"') || trimmed.contains('\n') || trimmed.len() > 1024 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if !validate_setting_value(&key, trimmed) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let (_, source_before) = resolve_setting(&key);
+    crate::auth::write_config_kv("settings", &key, trimmed)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tracing::info!(
+        target: "infra_988",
+        key = %key,
+        value = %trimmed,
+        source_before = %source_before,
+        "POST /api/settings persisted to ~/.chump/config.toml [settings]"
+    );
+    emit_pwa_setting_changed(&key, trimmed, source_before);
+    Ok(Json(
+        serde_json::json!({ "ok": true, "key": key, "stored": true }),
+    ))
+}
+
+/// Best-effort write to `.chump-locks/ambient.jsonl`. Operator-visible signal
+/// that the PWA mutated config. Silently no-ops if the file cannot be opened.
+fn emit_pwa_setting_changed(key: &str, value: &str, source_before: &str) {
+    let event = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "kind": "pwa_setting_changed",
+        "key": key,
+        "value": value,
+        "source_before": source_before,
+    });
+    let path = repo_path::runtime_base()
+        .join(".chump-locks")
+        .join("ambient.jsonl");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(f, "{}", event);
+    }
+}
+
 // --- Ingest (Phase 2.2) ---
 #[derive(serde::Deserialize)]
 struct IngestBody {
@@ -4428,6 +4588,9 @@ fn build_api_router() -> Router {
         .route("/api/autopilot/stop", post(handle_autopilot_stop))
         .route("/api/repo/context", get(handle_repo_context))
         .route("/api/repo/working", post(handle_repo_working))
+        // INFRA-988: non-secret settings panel scaffolding
+        .route("/api/settings", get(handle_settings_get))
+        .route("/api/settings/{key}", post(handle_settings_post))
         .route(
             "/api/ingest",
             post(handle_ingest_json).layer(RequestBodyLimitLayer::new(

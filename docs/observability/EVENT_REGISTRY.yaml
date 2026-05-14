@@ -1976,3 +1976,10 @@ events:
       (default 50%) of open-pickable gaps; reserve blocked unless --force-pillar used
     consumers: [fleet-brief, curator, waste-tally]
     fields_required: [ts, kind, pillar, ratio, total_pickable]
+
+  # ── INFRA-988: PWA settings panel ────────────────────────────────────────
+  - kind: pwa_setting_changed
+    emitter: src/web_server.rs handle_settings_post (INFRA-988)
+    trigger: operator persists a non-secret config value via PWA POST /api/settings/{key}
+    consumers: [fleet-brief, audit-trail]
+    fields_required: [ts, kind, key, value, source_before]
