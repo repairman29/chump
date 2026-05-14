@@ -15,14 +15,15 @@ if [[ $# -eq 0 ]]; then
     exit 1
 fi
 
-# Resolve chump binary: prefer the built release binary in target/release,
-# fall back to PATH lookup.
+# Resolve chump binary: prefer release build, fall back to debug build, then PATH.
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
 if [[ -n "$REPO_ROOT" && -x "$REPO_ROOT/target/release/chump" ]]; then
     CHUMP="$REPO_ROOT/target/release/chump"
+elif [[ -n "$REPO_ROOT" && -x "$REPO_ROOT/target/debug/chump" ]]; then
+    CHUMP="$REPO_ROOT/target/debug/chump"
 else
     CHUMP="$(command -v chump 2>/dev/null)" || {
-        echo "[gap-claim] ERROR: chump binary not found on PATH and target/release/chump missing." >&2
+        echo "[gap-claim] ERROR: chump binary not found on PATH and neither target/release/chump nor target/debug/chump exists." >&2
         echo "[gap-claim] Build it with: cargo build --release" >&2
         exit 1
     }
