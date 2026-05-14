@@ -1724,3 +1724,12 @@ events:
     trigger: operator or agent releases a lease via chump --release (with or without --lease)
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, session_id, gap_id, source]
+
+  # ── CREDIBLE-049: operator-leverage ratio ─────────────────────────────────
+  - kind: leverage_regression
+    emitter: scripts/dispatch/operator-leverage.sh (CREDIBLE-049)
+    trigger: weekly aggregate leverage_ratio dropped >20% compared to prior week.
+      Signals that the fleet is requiring more operator attention per unit of
+      fleet-active time — compounding is going backwards.
+    consumers: [fleet-brief, curator, operator-recall]
+    fields_required: [ts, kind, week, prev_mean_leverage, curr_mean_leverage, drop_pct]
