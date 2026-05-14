@@ -4380,7 +4380,11 @@ async fn main() -> Result<()> {
             }
             "preflight" => {
                 // INFRA-1238: trap --help before positional validation.
-                if args.iter().skip(3).any(|a| a == "--help" || a == "-h") {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
                     println!(
                         "Usage: chump gap preflight <GAP-ID>\n\n\
                          Check whether a gap is pickable (open, unclaimed, in state.db).\n\
@@ -4389,7 +4393,7 @@ async fn main() -> Result<()> {
                     return Ok(());
                 }
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump gap preflight <GAP-ID>");
+                    println!("Usage: chump gap preflight <GAP-ID>");
                     std::process::exit(2);
                 });
                 match store.preflight(&gap_id) {
@@ -4420,7 +4424,11 @@ async fn main() -> Result<()> {
             }
             "ship" => {
                 // INFRA-1238: trap --help before positional validation.
-                if args.iter().skip(3).any(|a| a == "--help" || a == "-h") {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
                     println!(
                         "Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N] [--session ID]\n\n\
                          Mark a gap as done. Updates state.db (canonical), optionally mirrors to YAML.\n\n\
@@ -5205,7 +5213,11 @@ async fn main() -> Result<()> {
             // --apply  → execute auto-fixable actions (strip false-deps, demote P2→P3)
             "triage" => {
                 // INFRA-1238: trap --help.
-                if args.iter().skip(3).any(|a| a == "--help" || a == "-h") {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
                     println!(
                         "Usage: chump gap triage [--json] [--apply]\n\n\
                          Classify every open gap by why it is non-pickable and emit ranked action list.\n\
@@ -5805,7 +5817,11 @@ async fn main() -> Result<()> {
             }
             "decompose" => {
                 // INFRA-1238: trap --help before positional validation.
-                if args.iter().skip(3).any(|a| a == "--help" || a == "-h") {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
                     println!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json] [--dry-run] [--no-description]");
                     println!();
                     println!(
