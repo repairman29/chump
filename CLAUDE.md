@@ -167,6 +167,37 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 - **PRs are intent-atomic**, not file-count-bounded. One logical change per PR.
 - **`--no-verify` is the reason most regressions ship.** Use very sparingly.
 
+## Rust-first vs. shell-OK (META-064, 2026-05-14)
+
+When you reach for `nano scripts/coord/foo.sh`, pause and check the criteria
+below first. The codebase has shipped 16k+ LOC of "this was shell, now we
+port it to Rust" gaps in the last quarter. Most of that work could have
+been Rust from the start.
+
+**Rust-first IF *any* of these hold:**
+- Mutates canonical state: `state.db`, `.chump-locks/*.json`, `ambient.jsonl`, `docs/gaps/*.yaml`
+- Called from a hot path: `worker.sh` per-cycle, `bot-merge.sh` per-ship, every claim
+- Shares a process boundary with a Rust caller (subprocess-race candidate)
+- Will outlive 3 months (durable tooling, not exploratory)
+- > 200 LOC at first commit (size predicts maintenance compounding)
+
+**Shell is OK IF *all* of these hold:**
+- Glue between existing CLI tools (`gh` + `git` + `jq`)
+- One-shot or exploratory
+- < 200 LOC, no state mutation
+- No regression-test maintenance burden (no `scripts/ci/test-<name>.sh` sibling required)
+
+**Bypass:** when adding shell that hits the Rust-first criteria intentionally
+(e.g. a 30-line `gh + jq` glue shim that legitimately doesn't need types),
+add this trailer to the commit body:
+```
+Rust-First-Bypass: <one-sentence reason>
+```
+The pre-commit gate at `scripts/git-hooks/pre-commit-rust-first.sh` checks
+for the trailer when the criteria match; bypass goes into the audit log.
+
+Sibling rules: META-063 (no new duplicates), META-065 (auto-prioritization).
+
 ## Cache-first reads (INFRA-1081, 2026-05-14)
 
 The fleet has a **local SQLite cache** at `.chump/github_cache.db` populated by a

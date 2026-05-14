@@ -255,6 +255,13 @@ events:
       picker consumes this file (INFRA-1258) to pick best-scored gap.
     consumers: [picker, fleet-brief, audit-log]
     fields_required: [ts, kind, out_file]
+  - kind: rust_first_bypass_used
+    emitter: scripts/git-hooks/pre-commit-rust-first.sh (META-064)
+    trigger: pre-commit gate matched Rust-first criteria on a new shell
+      file but commit body had 'Rust-First-Bypass:' trailer — bypass
+      logged for audit.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, files, reason]
 
   - kind: fleet_paused_disk_critical
     emitter: scripts/lib/disk-check.sh via worker.sh (INFRA-975)
