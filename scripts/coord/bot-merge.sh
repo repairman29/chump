@@ -1128,39 +1128,48 @@ else
     info "Branch is up to date with $REMOTE/$BASE_BRANCH."
 fi
 
-# INFRA-920: auto-detect shell/doc-only changes and skip cargo test.
-# INFRA-1042: when doc-only, ALSO skip cargo clippy entirely — doc PRs spend
-# 2-3 min of clippy on changes that touch zero Rust code (observed today on
-# DOC-036: 2m36s clippy for a 1-line README diff). CI clippy stays the gate.
-# If all changed files vs origin/main match known-safe non-Rust patterns and
-# zero .rs files are present, set SKIP_TESTS=1 + DOC_ONLY=1.
+# INFRA-920 + INFRA-1042 + INFRA-1061: detect shell/doc-only diffs.
+#
+# Detection runs UNCONDITIONALLY (not gated on SKIP_TESTS) so --fast invocations
+# still get the DOC_ONLY flag — original INFRA-1042 wrapped this in
+# `if SKIP_TESTS == 0`, which silently disabled doc-only skip for every --fast
+# run since --fast pre-sets SKIP_TESTS=1. INFRA-1061 hoists the detection out
+# and uses DOC_ONLY to also skip cargo clippy entirely (CI clippy stays the
+# gate). Observed savings: ~2-3 min per doc PR (DOC-036 baseline 2m36s clippy
+# on 1-line README diff; INFRA-1038 observed clippy timing out 245s).
+#
+# wc -l replaces `grep -c .` for file-count: grep -c returns exit 1 on 0
+# matches, which propagates under set -o pipefail.
 DOC_ONLY=0
-if [[ $SKIP_TESTS -eq 0 ]]; then
-    _changed_files=$(git diff --name-only "${REMOTE}/${BASE_BRANCH}...HEAD" 2>/dev/null || true)
-    if [[ -n "$_changed_files" ]]; then
-        _rs_count=0
-        _unsafe_count=0
-        while IFS= read -r _f; do
-            [[ -z "$_f" ]] && continue
-            case "$_f" in
-                *.rs)                              _rs_count=$((_rs_count + 1)) ;;
-                scripts/*|docs/*|*.md|*.yaml|*.sh) ;;
-                *)                                 _unsafe_count=$((_unsafe_count + 1)) ;;
-            esac
-        done <<< "$_changed_files"
-        if [[ $_rs_count -eq 0 && $_unsafe_count -eq 0 ]]; then
+_changed_files=$(git diff --name-only "${REMOTE}/${BASE_BRANCH}...HEAD" 2>/dev/null || true)
+if [[ -n "$_changed_files" ]]; then
+    _rs_count=0
+    _unsafe_count=0
+    while IFS= read -r _f; do
+        [[ -z "$_f" ]] && continue
+        case "$_f" in
+            *.rs)                              _rs_count=$((_rs_count + 1)) ;;
+            scripts/*|docs/*|*.md|*.yaml|*.sh) ;;
+            *)                                 _unsafe_count=$((_unsafe_count + 1)) ;;
+        esac
+    done <<< "$_changed_files"
+    if [[ $_rs_count -eq 0 && $_unsafe_count -eq 0 ]]; then
+        DOC_ONLY=1
+        # Only flip SKIP_TESTS if the caller hadn't already (--fast / --skip-tests
+        # both pre-set it; we still log credit + emit so waste-tally sees it).
+        if [[ $SKIP_TESTS -eq 0 ]]; then
             SKIP_TESTS=1
-            DOC_ONLY=1
-            info "[bot-merge] auto-skip: shell/doc-only diff — skipping cargo test + clippy (INFRA-920/INFRA-1042)"
-            # INFRA-1042: emit so fleet-brief / waste-tally can credit the saved cycles
-            # (clippy-skip alone saves ~2-3 min per doc PR).
-            _doc_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
-            mkdir -p "$(dirname "$_doc_amb")" 2>/dev/null || true
-            printf '{"ts":"%s","kind":"bot_merge_doc_only_fastpath","branch":"%s","files_changed":%d,"saved_steps":["cargo_test","cargo_clippy"]}\n' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${BRANCH:-unknown}" \
-                "$(echo "$_changed_files" | grep -c .)" \
-                >> "$_doc_amb" 2>/dev/null || true
+            info "[bot-merge] auto-skip: shell/doc-only diff — skipping cargo test (INFRA-920)"
         fi
+        info "[bot-merge] DOC_ONLY=1 — clippy will be skipped (INFRA-1042/INFRA-1061)"
+        # Emit so fleet-brief / waste-tally credit the saved cycles.
+        _doc_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+        mkdir -p "$(dirname "$_doc_amb")" 2>/dev/null || true
+        _doc_filecount=$(printf '%s\n' "$_changed_files" | wc -l | tr -d ' ')
+        printf '{"ts":"%s","kind":"bot_merge_doc_only_fastpath","branch":"%s","files_changed":%d,"saved_steps":["cargo_test","cargo_clippy"]}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${BRANCH:-unknown}" \
+            "${_doc_filecount:-0}" \
+            >> "$_doc_amb" 2>/dev/null || true
     fi
 fi
 
