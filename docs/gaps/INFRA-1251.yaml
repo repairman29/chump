@@ -7,13 +7,11 @@
   closed_pr: 1901
   closed_date: '2026-05-14'
   acceptance_criteria:
-    1. [
-  "scripts/ops/stale-pr-reaper.sh: when a PR would be closed (dirty or required-check-failure >2h), instead first broadcasts STUCK referencing the PR + gap-id + last failing check",
-  "STUCK fires only ONCE per PR per cooldown window (CHUMP_PR_STUCK_RESEND_COOLDOWN_S, default 6h) — dedup via .chump-locks/.stuck-sent/<PR>.ts",
-  "If gap has an active lease, broadcast goes to --to <session>; otherwise fleet broadcast",
-  "PR is auto-closed only after CHUMP_PR_STUCK_ACK_WINDOW_S (default 1800s = 30min) AND no DONE for the gap landed in the window",
-  "Emits kind=pr_stuck_announced ambient event; existing close path emits kind=pr_force_closed",
-  "Test: simulate dirty PR + run reaper → expect STUCK then close after window"
-]
+    - "1. scripts/ops/stale-pr-reaper.sh: when a PR would be closed (dirty or required-check-failure >2h), instead first broadcasts STUCK referencing the PR + gap-id + last failing check"
+    - "2. STUCK fires only ONCE per PR per cooldown window (CHUMP_PR_STUCK_RESEND_COOLDOWN_S, default 6h) — dedup via .chump-locks/.stuck-sent/<PR>.ts"
+    - "3. If gap has an active lease, broadcast goes to --to <session>; otherwise fleet broadcast"
+    - "4. PR is auto-closed only after CHUMP_PR_STUCK_ACK_WINDOW_S (default 1800s = 30min) AND no DONE for the gap landed in the window"
+    - "5. Emits kind=pr_stuck_announced ambient event; existing close path emits kind=pr_force_closed"
+    - "6. Test: simulate dirty PR + run reaper — expect STUCK then close after window"
   notes: |
     [2026-05-14T16:09:41Z] Today: silent stalls (#1816 INFRA-987 sat dirty 4+ hours with no fleet-wide signal). a2a broadcast gives the fleet a chance to react before the close happens.
