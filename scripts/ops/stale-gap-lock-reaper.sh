@@ -195,11 +195,63 @@ except Exception:
         fi
     fi
 
+    # INFRA-1236: heartbeat-liveness check BEFORE PID check. The PID
+    # embedded in session_id is the bash subshell that ran `chump claim`,
+    # which exits immediately — the long-running agent (claude-code,
+    # fleet worker, etc.) has a different PID. INFRA-1208's PID check
+    # therefore over-reaps any session with a fresh heartbeat.
+    #
+    # Rule: lease is alive if heartbeat_at is fresher than
+    # CHUMP_LEASE_HEARTBEAT_TTL_S (default 600s). Falls through to PID +
+    # TTL checks only when heartbeat is stale or missing. Combined liveness:
+    #   alive == (heartbeat_fresh) OR (PID_alive) OR (TTL_not_reached)
+    # Reap only when ALL three fail.
+    heartbeat_at="$(python3 -c "
+import json
+try:
+    d = json.load(open('$claim_file'))
+    print(d.get('heartbeat_at', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+    heartbeat_ttl="${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}"
+    if [[ -n "$heartbeat_at" ]]; then
+        heartbeat_epoch="$(python3 -c "
+import datetime
+try:
+    dt = datetime.datetime.fromisoformat('$heartbeat_at'.replace('Z', '+00:00'))
+    print(int(dt.timestamp()))
+except Exception:
+    print(0)
+" 2>/dev/null || echo "0")"
+        if [[ "$heartbeat_epoch" -gt 0 ]]; then
+            heartbeat_age=$((NOW_EPOCH_CLAIM - heartbeat_epoch))
+            if [[ "$heartbeat_age" -lt "$heartbeat_ttl" ]]; then
+                # Heartbeat is fresh — lease is alive. If the PID check
+                # WOULD have reaped, emit a "protected" signal so we can
+                # tune the TTL from telemetry.
+                _maybe_dead_pid="$(printf '%s' "$session_id" | grep -oE '[0-9]+-[0-9]+$' | cut -d- -f1 2>/dev/null || echo "")"
+                if [[ -n "$_maybe_dead_pid" ]] && ! ps -p "$_maybe_dead_pid" >/dev/null 2>&1; then
+                    echo "  SKIP claim (heartbeat fresh ${heartbeat_age}s < ${heartbeat_ttl}s, pid=$_maybe_dead_pid would-reap): $(basename "$claim_file")"
+                    printf '{"ts":"%s","kind":"stale_gap_lock_protected","event":"stale_gap_lock_protected","lock":"%s","session":"%s","gap":"%s","heartbeat_age_s":%d,"heartbeat_ttl_s":%d,"reason":"heartbeat_fresh"}\n' \
+                        "$NOW_ISO" \
+                        "$(basename "$claim_file")" \
+                        "$session_id" "$gap_id" "$heartbeat_age" "$heartbeat_ttl" \
+                        >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+                else
+                    echo "  SKIP claim (heartbeat fresh ${heartbeat_age}s < ${heartbeat_ttl}s): $(basename "$claim_file")"
+                fi
+                continue
+            fi
+        fi
+    fi
+
     # INFRA-1208: PID-liveness check BEFORE TTL check. Sessions write 8h TTL
     # leases, but if a session crashes 30 min in, the existing TTL check
     # leaves the lease sitting for 7.5h+ — overnight accumulation of 14
     # dead leases observed 2026-05-14. session_id format is
-    # claim-<gap>-<PID>-<EPOCH>. If PID is dead, reap immediately.
+    # claim-<gap>-<PID>-<EPOCH>. If PID is dead AND heartbeat is stale/missing
+    # (gated above by INFRA-1236), reap.
     claim_pid="$(printf '%s' "$session_id" | grep -oE '[0-9]+-[0-9]+$' | cut -d- -f1 2>/dev/null || echo "")"
     if [[ -n "$claim_pid" ]] && ! ps -p "$claim_pid" >/dev/null 2>&1; then
         if [[ "$DRY_RUN" == "true" ]]; then
