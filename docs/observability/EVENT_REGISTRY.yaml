@@ -2036,3 +2036,10 @@ events:
     trigger: a request to /api/* arrived without (or with a wrong) Authorization Bearer token when CHUMP_WEB_TOKEN is set
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, path, reason]
+  # ── INFRA-1199: ci-yml merge driver abort ─────────────────────────────────
+  - kind: ci_yml_merge_driver_abort
+    emitter: scripts/git/merge-driver-ci-yml-add-row.sh (INFRA-1199)
+    trigger: merge driver detected an orphan '- name:' step without 'run:'/'uses:'
+      body in theirs_tail; aborts instead of writing a corrupt workflow file.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, ours, theirs]

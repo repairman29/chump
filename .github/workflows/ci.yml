@@ -1534,6 +1534,8 @@ jobs:
 
       - name: pillar health dashboard endpoint + web component (PRODUCT-090)
         run: bash scripts/ci/test-pillar-dashboard.sh
+      - name: ci-yml merge-driver orphan-step rejection (INFRA-1199)
+        run: bash scripts/ci/test-merge-driver-ci-yml-add-row.sh
       - name: pillar-balance guard at reserve time (INFRA-1152)
         run: |
           cargo build --bin chump 2>&1 | tail -3
