@@ -356,6 +356,20 @@
     .memory-text { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 
     /* ── View: agent/gap-queue ──────────────────────────────────────────── */
+    .gap-search-bar {
+      display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px;
+      border-bottom: 1px solid var(--border); align-items: center;
+    }
+    .gap-search-bar input[type=search] {
+      flex: 1 1 160px; min-width: 120px; padding: 6px 10px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--bg-input,var(--bg-surface));
+      color: var(--text); font-size: 13px;
+    }
+    .gap-search-bar select {
+      padding: 5px 8px; border-radius: var(--radius); border: 1px solid var(--border);
+      background: var(--bg-surface); color: var(--text); font-size: 12px; cursor: pointer;
+    }
+    .gap-filter-ac { font-size: 12px; display: flex; align-items: center; gap: 4px; cursor: pointer; color: var(--text-secondary); }
     .gap-queue-stats {
       display: flex;
       gap: 16px;

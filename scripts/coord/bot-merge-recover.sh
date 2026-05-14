@@ -42,7 +42,7 @@ summarize_steps_file() {
         return 2
     fi
 
-    local last_done="" last_start="" crashed=0 entry ts step transition
+    local last_done="" last_start="" crashed=0 step transition
 
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue

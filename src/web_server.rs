@@ -3170,6 +3170,122 @@ async fn handle_gap_queue(headers: HeaderMap) -> Result<Json<serde_json::Value>,
     })))
 }
 
+/// GET /api/gaps/search — PRODUCT-089: full-text + field filter over the gap registry.
+///
+/// Query params (all optional):
+///   q        — substring match against title + description (case-insensitive)
+///   domain   — exact match (e.g. INFRA, PRODUCT)
+///   status   — exact match (open / done / in_flight)
+///   priority — exact match (P0 / P1 / P2)
+///   effort   — exact match (xs / s / m / l / xl)
+///   has_ac   — "false" → only gaps with empty/TODO AC; anything else ignored
+#[derive(serde::Deserialize, Default)]
+struct GapSearchQuery {
+    q: Option<String>,
+    domain: Option<String>,
+    status: Option<String>,
+    priority: Option<String>,
+    effort: Option<String>,
+    has_ac: Option<String>,
+}
+
+async fn handle_gaps_search(
+    Query(params): Query<GapSearchQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => std::path::PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let gap_store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(Json(
+                serde_json::json!({ "total": 0, "results": [], "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let all = match gap_store.list(None) {
+        Ok(v) => v,
+        Err(e) => {
+            return Ok(Json(
+                serde_json::json!({ "total": 0, "results": [], "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let q_lower = params.q.as_deref().unwrap_or("").to_lowercase();
+    let want_missing_ac = params.has_ac.as_deref() == Some("false");
+
+    let results: Vec<_> = all
+        .into_iter()
+        .filter(|g| {
+            if let Some(d) = &params.domain {
+                if !g.domain.eq_ignore_ascii_case(d) {
+                    return false;
+                }
+            }
+            if let Some(s) = &params.status {
+                if !g.status.eq_ignore_ascii_case(s) {
+                    return false;
+                }
+            }
+            if let Some(p) = &params.priority {
+                if !g.priority.eq_ignore_ascii_case(p) {
+                    return false;
+                }
+            }
+            if let Some(e) = &params.effort {
+                if !g.effort.eq_ignore_ascii_case(e) {
+                    return false;
+                }
+            }
+            if want_missing_ac {
+                let ac = g.acceptance_criteria.trim().to_lowercase();
+                if !ac.is_empty() && !ac.starts_with("todo") {
+                    return false;
+                }
+            }
+            if !q_lower.is_empty() {
+                let hay = format!("{} {}", g.title, g.description).to_lowercase();
+                if !hay.contains(&q_lower) {
+                    return false;
+                }
+            }
+            true
+        })
+        .map(|g| {
+            let ac_count = if g.acceptance_criteria.trim().is_empty() {
+                0usize
+            } else {
+                g.acceptance_criteria
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .count()
+            };
+            serde_json::json!({
+                "id": g.id,
+                "title": g.title,
+                "domain": g.domain,
+                "status": g.status,
+                "priority": g.priority,
+                "effort": g.effort,
+                "ac_count": ac_count,
+            })
+        })
+        .collect();
+
+    let total = results.len();
+    Ok(Json(
+        serde_json::json!({ "total": total, "results": results }),
+    ))
+}
+
 /// POST /api/gap/claim/:id — Claim a gap and create a worktree for it.
 async fn handle_gap_claim(
     Path(gap_id): Path<String>,
@@ -4374,6 +4490,7 @@ fn build_api_router() -> Router {
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
         .route("/api/pr/{number}", get(handle_pr_detail))
         .route("/api/gap-queue", get(handle_gap_queue))
+        .route("/api/gaps/search", get(handle_gaps_search))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
         .route("/api/gap/status/{id}", get(handle_gap_status))
         .route("/api/gap/{id}/status", get(handle_gap_workflow_status))
