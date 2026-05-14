@@ -202,6 +202,14 @@ events:
     consumers: [fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, free_gb, threshold_gb, path]
 
+  - kind: gap_claimed
+    emitter: src/atomic_claim.rs run_claim (INFRA-1240)
+    trigger: successful gap claim via the Rust atomic path (post-INFRA-987 shell deletion)
+    consumers: [fleet-brief, silent_agent-watchdog, lease-overlap-watchdog]
+    fields_required: [ts, kind, gap_id, session_id, worktree, paths]
+    # INFRA-1240: mirrors the event previously emitted only by gap-claim.sh.
+    # Without this, silent_agent and lease_overlap watchdogs missed Rust-path claims.
+
   - kind: gap_claim_nats_conflict
     emitter: src/atomic_claim.rs nats_dual_write (INFRA-986)
     trigger: NATS KV CAS claim returned CONFLICT — another session on the
