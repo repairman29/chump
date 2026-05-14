@@ -21,7 +21,7 @@ echo
 # We count lines containing is_err(), unwrap_err(), should_panic, or assert.*Err(
 # across all src/*.rs files.
 ERR_COUNT=$(grep -rh '\.is_err()\|\.unwrap_err()\|#\[should_panic\]\|assert.*Err(' \
-    "$REPO_ROOT/src/" 2>/dev/null | wc -l | tr -d ' ')
+    "$REPO_ROOT/src/" "$REPO_ROOT/crates/" 2>/dev/null | wc -l | tr -d ' ')
 
 echo "  Error-path assertion count: $ERR_COUNT (threshold: ≥60)"
 
@@ -32,7 +32,12 @@ else
 fi
 
 # Verify specific CREDIBLE-005 tests exist in gap_store.rs
-_gs="$REPO_ROOT/src/gap_store.rs"
+# INFRA-693: gap_store.rs moved to crates/chump-gap-store/src/lib.rs.
+if [[ -f "$REPO_ROOT/crates/chump-gap-store/src/lib.rs" ]]; then
+    _gs="$REPO_ROOT/crates/chump-gap-store/src/lib.rs"
+else
+    _gs="$REPO_ROOT/src/gap_store.rs"
+fi
 
 check_test() {
     local test_name="$1"
@@ -68,13 +73,16 @@ if ls "$CHUMP_BIN"/chump-* 2>/dev/null | grep -qv '\.d$'; then
     # Drop --quiet — cargo test --quiet suppresses the "test result: ok. N
     # passed" summary line we need to parse. Use full output. We need the
     # exit code AND the count of passed tests.
-    # chump is binary-only (no [lib] target). Filter to gap_store::tests::
-    # specifically — "gap_store" alone matches unrelated tests whose names
-    # mention gap_store (e.g. version::tests::stale_when_gap_store_*).
+    # INFRA-693: gap_store extracted to crates/chump-gap-store. Use -p flag
+    # to target the library crate directly; --bin chump misses library tests.
+    _cargo_pkg_flag="-p chump-gap-store"
+    if [[ ! -f "$REPO_ROOT/crates/chump-gap-store/Cargo.toml" ]]; then
+        _cargo_pkg_flag="--bin chump"
+    fi
     test_out=$(cd "$REPO_ROOT" && \
         GIT_DIR="$(git -C "$REPO_ROOT" rev-parse --git-dir 2>/dev/null)" \
         GIT_WORK_TREE="$REPO_ROOT" \
-        cargo test --bin chump gap_store::tests:: 2>&1)
+        cargo test $_cargo_pkg_flag 2>&1)
     test_rc=$?
     passed=$(echo "$test_out" | awk -F'[ .;]+' '/test result: ok\./{for(i=1;i<=NF;i++) if($i=="passed"){print $(i-1)}}' | awk '{s+=$1} END{print s+0}')
     failed=$(echo "$test_out" | awk -F'[ .;]+' '/test result/{for(i=1;i<=NF;i++) if($i=="failed"){print $(i-1)}}' | awk '{s+=$1} END{print s+0}')

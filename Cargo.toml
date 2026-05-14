@@ -7,6 +7,7 @@ members = [
     "crates/chump-cancel-registry",
     "crates/chump-perception",
     "crates/chump-cost-tracker",
+    "crates/chump-gap-store",
     "crates/chump-messaging",
     "crates/chump-coord",
     "crates/chump-orchestrator",
@@ -97,6 +98,7 @@ chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle", version = "0.1.1" }
 chump-cancel-registry = { path = "crates/chump-cancel-registry", version = "0.1.0" }
 chump-perception = { path = "crates/chump-perception", version = "0.1.0" }
 chump-cost-tracker = { path = "crates/chump-cost-tracker", version = "0.1.0" }
+chump-gap-store = { path = "crates/chump-gap-store", version = "0.1.0" }
 chump-messaging = { path = "crates/chump-messaging", version = "0.1.0" }
 inventory = "0.3"
 axonerai = "0.1"
@@ -170,6 +172,9 @@ lto = "thin"
 wiremock = "0.6"
 serial_test = "3"
 tempfile = "3"
+# INFRA-693: enable the `test-helpers` feature so briefing/kpi_report tests
+# can keep calling `store.conn_for_test()` to seed synthetic gaps.
+chump-gap-store = { path = "crates/chump-gap-store", version = "0.1.0", features = ["test-helpers"] }
 
 ## Note: this repo previously used a local reqwest patch to force rustls.
 ## We now rely on `reqwest` with `rustls-tls` enabled in [dependencies].

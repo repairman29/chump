@@ -12,6 +12,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# INFRA-693: gap_store.rs moved to crates/chump-gap-store/src/lib.rs.
+if [[ -f "$REPO_ROOT/crates/chump-gap-store/src/lib.rs" ]]; then
+    GAP_STORE_PATH="$REPO_ROOT/crates/chump-gap-store/src/lib.rs"
+else
+    GAP_STORE_PATH="$REPO_ROOT/src/gap_store.rs"
+fi
+
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 
@@ -71,12 +78,12 @@ grep -q "gap_id_allocator_offline" "$EVENT_REG" \
 pass "Test 3: gap_id_allocator_offline registered in EVENT_REGISTRY.yaml"
 
 # ── Test 4: src/gap_store.rs emits gap_id_allocator_collision_avoided ──────────
-grep -q "gap_id_allocator_collision_avoided" "$REPO_ROOT/src/gap_store.rs" \
+grep -q "gap_id_allocator_collision_avoided" "${GAP_STORE_PATH}" \
     || fail "Test 4: gap_id_allocator_collision_avoided not found in src/gap_store.rs"
 pass "Test 4: gap_id_allocator_collision_avoided emitter present in gap_store.rs"
 
 # ── Test 5: src/gap_store.rs emits gap_id_allocator_offline ───────────────────
-grep -q "gap_id_allocator_offline" "$REPO_ROOT/src/gap_store.rs" \
+grep -q "gap_id_allocator_offline" "${GAP_STORE_PATH}" \
     || fail "Test 5: gap_id_allocator_offline not found in src/gap_store.rs"
 pass "Test 5: gap_id_allocator_offline emitter present in gap_store.rs"
 

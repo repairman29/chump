@@ -225,7 +225,10 @@ if grep -q 'INFRA-630' "$BOT_MERGE"; then
 else
   fail "INFRA-630 reference missing from bot-merge.sh"
 fi
-if grep -q 'INFRA-630' "$REPO_ROOT/src/gap_store.rs"; then
+# INFRA-693: gap_store.rs moved to crates/chump-gap-store/src/lib.rs.
+_gap_store_path="$REPO_ROOT/crates/chump-gap-store/src/lib.rs"
+[[ -f "$_gap_store_path" ]] || _gap_store_path="$REPO_ROOT/src/gap_store.rs"
+if grep -q 'INFRA-630' "$_gap_store_path"; then
   ok "INFRA-630 referenced in gap_store.rs"
 else
   fail "INFRA-630 reference missing from gap_store.rs"

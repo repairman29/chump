@@ -86,7 +86,9 @@ mod fleet_status;
 mod fleet_tool;
 mod fleet_velocity;
 mod ftue_tool;
-mod gap_store;
+// INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
+// The rename keeps every `gap_store::*` call site compiling unchanged.
+use chump_gap_store as gap_store;
 mod gen;
 mod genai_conv;
 mod git_tools;
