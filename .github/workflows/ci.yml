@@ -1328,6 +1328,8 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-gap-list-since.sh
+      - name: gap list --json schema audit — required fields present in every gap object (CREDIBLE-061)
+        run: bash scripts/ci/test-gap-list-since-json-schema.sh
       - name: bot-merge GraphQL preflight + REST fallback — fails fast, emits graphql_exhausted (INFRA-1031)
         run: bash scripts/ci/test-bot-merge-graphql-preflight.sh
       - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
