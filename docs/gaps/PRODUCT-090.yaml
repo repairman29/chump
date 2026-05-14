@@ -1,14 +1,15 @@
 - id: PRODUCT-090
   domain: PRODUCT
-  title: "CREDIBLE: PWA 4-pillar health dashboard (GET /api/health/pillars + chump-pillar-health)"
-  status: open
+  title: 'CREDIBLE: PWA 4-pillar health dashboard (GET /api/health/pillars + chump-pillar-health)'
+  status: done
   priority: P1
   effort: s
   depends_on: []
   acceptance_criteria:
-    - "GET /api/health/pillars returns fleet_grade, fleet_slo_breaches, and pillars array"
-    - "pillars array has 4 entries (EFFECTIVE, CREDIBLE, RESILIENT, ZERO-WASTE) each with grade, pickable_count, p0_count, slo_breach"
-    - "grade derived from fleet SLO breach count (A=0, B=1, C=2, F=3+); per-pillar F when slo_breach or p0_count>5"
-    - "web/v2/pillar-health.js defines <chump-pillar-health> custom element polling /api/health/pillars every 60s"
-    - "<chump-pillar-health> wired into web/v2/index.html header"
-    - "Test: scripts/ci/test-pillar-dashboard.sh verifies endpoint, route, component, and HTML wiring"
+  - GET /api/health/pillars returns fleet_grade, fleet_slo_breaches, and pillars array
+  - pillars array has 4 entries (EFFECTIVE, CREDIBLE, RESILIENT, ZERO-WASTE) each with grade, pickable_count, p0_count, slo_breach
+  - grade derived from fleet SLO breach count (A=0, B=1, C=2, F=3+); per-pillar F when slo_breach or p0_count>5
+  - web/v2/pillar-health.js defines <chump-pillar-health> custom element polling /api/health/pillars every 60s
+  - <chump-pillar-health> wired into web/v2/index.html header
+  - 'Test: scripts/ci/test-pillar-dashboard.sh verifies endpoint, route, component, and HTML wiring'
+  closed_date: '2026-05-14'

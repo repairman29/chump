@@ -1,0 +1,13 @@
+- id: INFRA-1278
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh INFRA-1166 fast path has stdin-collision bug — `python3 - <<EOF` overrides piped JSON; fast path likely never fires"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Add a test script at /tmp or scripts/ci that exercises bot-merge.sh:2298 path with sample check-runs JSON and asserts the python3 invocation correctly reads JSON, parses, and prints the expected `<incomplete> <failed> <total>` counts"
+    - "Fix: change `printf JSON "
+    - " python3 - \"$REQUIRED\" <<HEREDOC` to `python3 -c \"...\" \"$REQUIRED\" \"$JSON\"` (pass JSON via argv not stdin) so the heredoc no longer overrides the pipe (SC2259)"
+    - "Verify before the fix: in a controlled environment, simulate the INFRA-1166 path with a known-green check-runs blob and observe that the fast path is NOT taken (proves the bug); after the fix, observe that it IS taken"
+    - "If verification confirms the bug, emit a one-shot retro note: INFRA-1166 metric \"fast path fires X% of merges\" has been silently 0 since merge — any reported wins were the GraphQL fallback"
+

@@ -1,0 +1,17 @@
+- id: INFRA-1274
+  domain: INFRA
+  title: "ZERO-WASTE: CI lint gate — no new raw `gh` calls in scripts/coord|dispatch|ops outside lib/"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/ci/test-no-raw-gh-in-hot-paths.sh exists and is wired into per-PR CI matrix (path filter: scripts/**)"
+    - Script greps for `gh api`, `gh pr (list
+    - view
+    - merge
+    - comment)`, `gh search` in scripts/coord/, scripts/dispatch/, scripts/ops/ EXCLUDING scripts/coord/lib/ and EXCLUDING files matching test-*
+    - "Each hit is checked against scripts/ci/raw-gh-allowlist.txt — existing files with open migration gaps (bot-merge.sh #INFRA-1249, fleet-status.sh, pr-watch.sh, code-reviewer-agent.sh) stay allowed until their migration gap lands"
+    - New scripts NOT in the allow-list with raw `gh` calls fail CI with a message pointing at scripts/coord/lib/github_cache.sh + the CLAUDE.md cache-first section
+    - Same script wired as advisory pre-commit hook (non-blocking) so authors see it locally
+    - Test fixture scripts/ci/test-fixtures/raw-gh-violator.sh containing `gh api /repos/x/y` fails the linter; removing the line passes
+

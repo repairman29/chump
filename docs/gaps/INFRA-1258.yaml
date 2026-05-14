@@ -1,0 +1,21 @@
+- id: INFRA-1258
+  domain: INFRA
+  title: "EFFECTIVE: fleet picker (worker.sh / _pick_and_claim_gap.py / chump pick INFRA-1228) consumes .chump-locks/gap-priority.json — pick BEST gap not first-matching"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Today the fleet picker (scripts/dispatch/worker.sh + scripts/dispatch/_pick_and_claim_gap.py — or chump pick post-INFRA-1228) selects the FIRST gap matching status=open + no_deps + FLEET_DOMAIN_FILTER. No scoring. A betweenness-high P1 looks identical to a leaf P3 to the picker. Result: critical-path bottlenecks linger while leaves get shipped.
+    
+    Depends on INFRA-1257 (planner installed + producing .chump-locks/gap-priority.json).
+    
+    Acceptance:
+    1. Picker reads .chump-locks/gap-priority.json if present; pick highest-score gap that also matches the worker's filter.
+    2. Fallback: if priority file is stale (>2h old) or absent, fall back to current first-fit behavior with a warning to ambient.jsonl (kind=picker_priority_stale).
+    3. New kind=picker_used_priority emitted when scored pick succeeds; includes the rank delta vs. first-fit (so we measure 'how much would we have wasted picking the first match').
+    4. CI test: scripts/ci/test-picker-priority.sh — synthesize 3 candidate gaps with priority scores, assert highest-scored is chosen.
+    5. Source: 2026-05-14 prioritization-automation audit.
+  acceptance_criteria:
+    - "1. picker reads gap-priority.json when file exists and age < 2h; picks highest-score matching gap over first-fit\n2. picker respects layer ordering: will not claim a gap at layer N if any layer < N gap is open+unclaimed and matches worker filter (prevents two workers grabbing tier-2 siblings while tier-0 foundation sits unpicked)\n3. picker falls back to existing sort + logs WARN kind=picker_priority_stale when file absent or stale\n4. kind=picker_used_priority emitted to ambient with {file,age_s,scored,layer_enforced} fields; registered in EVENT_REGISTRY.yaml\n5. CHUMP_SKIP_LAYER_GATE=1 bypass env var available for operator override\n6. CI test scripts/ci/test-picker-priority.sh: inject fixture priority file with mixed layers, verify picker selects highest-score tier-0 gap over higher-score tier-2 gap"
+  depends_on: [INFRA-1257, INFRA-1281]
+
