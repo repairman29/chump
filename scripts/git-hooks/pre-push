@@ -163,7 +163,16 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # worktree, not the invoking shell's cwd (main checkout). Without this,
             # GIT_DIR overrides cause tests to run against main's source tree even
             # when pushing from a linked worktree.
-            if (cd "$REPO_ROOT_T" && cargo test --bin chump --tests --no-fail-fast --quiet) 2>&1 \
+            # INFRA-1138: use per-worktree target directory for the test run to
+            # prevent phantom fingerprint contamination from sibling worktrees that
+            # share the same CARGO_TARGET_DIR (set by install-sccache.sh / INFRA-481).
+            # The shared sccache (via rustc-wrapper in .cargo/config.toml) still
+            # provides cross-worktree object-code caching; only fingerprints are
+            # isolated. Per-worktree path ensures each linked worktree's test run
+            # sees only its own source file set.
+            _WT_TEST_TARGET="$REPO_ROOT_T/.cargo-test-target"
+            if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
+                cargo test --bin chump --tests --no-fail-fast --quiet) 2>&1 \
                 | tee "$_TEST_LOG" | tail -200; then
                 mkdir -p "$CACHE_DIR"
                 date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
