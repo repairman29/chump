@@ -204,6 +204,101 @@ class ChumpHeartbeat extends HTMLElement {
 }
 customElements.define('chump-heartbeat', ChumpHeartbeat);
 
+// ── <chump-doctor-banner> (INFRA-990) ───────────────────────────────────────
+//
+// Persistent banner that surfaces config-health failures from
+// GET /api/health/doctor. Renders nothing while ok=true. While ok=false,
+// renders a sticky strip listing each failure with a "Configure" button
+// linking to the settings view. Re-polls every 30s; on transition to ok=true
+// shows a one-shot "✓ Configuration green" toast and self-hides.
+//
+// Accessibility: focusable Configure button, ARIA region label. ESC does NOT
+// dismiss (AC #4) — banner is persistent until doctor goes green.
+class ChumpDoctorBanner extends HTMLElement {
+  #timer = null;
+  #lastOk = null; // null | true | false — used to detect ok=false → ok=true transition
+
+  connectedCallback() {
+    this.setAttribute('role', 'region');
+    this.setAttribute('aria-label', 'Configuration health');
+    this.style.display = 'none'; // hidden until first poll resolves to ok=false
+    this.#poll();
+    this.#timer = setInterval(() => this.#poll(), 30_000);
+  }
+
+  disconnectedCallback() {
+    if (this.#timer) {
+      clearInterval(this.#timer);
+      this.#timer = null;
+    }
+  }
+
+  async #poll() {
+    let data;
+    try {
+      const r = await fetch('/api/health/doctor', { headers: { 'Accept': 'application/json' } });
+      data = await r.json();
+    } catch (err) {
+      // Network down or endpoint missing — don't render anything; the
+      // existing offline-banner already covers the "PWA can't reach itself"
+      // case. Keep this widget silent.
+      return;
+    }
+
+    if (data.ok === true) {
+      if (this.#lastOk === false) {
+        // We just transitioned from failing → green. One-shot toast.
+        this.#renderToast();
+        setTimeout(() => { this.style.display = 'none'; this.innerHTML = ''; }, 3000);
+      } else {
+        this.style.display = 'none';
+        this.innerHTML = '';
+      }
+      this.#lastOk = true;
+      return;
+    }
+
+    this.#lastOk = false;
+    this.style.display = 'block';
+    const failures = Array.isArray(data.failures) ? data.failures : [];
+    const items = failures.map((f) => {
+      const fix = f.fix_hint ? ` — <span class="fix-hint">${this.#esc(f.fix_hint)}</span>` : '';
+      return `<li><strong>${this.#esc(f.check)}</strong>: ${this.#esc(f.message)}${fix}</li>`;
+    }).join('');
+    this.innerHTML = `
+      <div class="doctor-banner-inner">
+        <div class="doctor-banner-head">
+          <strong>Configuration needed before fleet can run</strong>
+        </div>
+        <ul class="doctor-banner-list">${items}</ul>
+        <div class="doctor-banner-actions">
+          <button type="button" class="doctor-configure" aria-label="Open settings to configure">Configure</button>
+        </div>
+      </div>
+    `;
+    const btn = this.querySelector('.doctor-configure');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+      });
+    }
+  }
+
+  #renderToast() {
+    this.style.display = 'block';
+    this.innerHTML = `<div class="doctor-banner-inner doctor-banner-toast">✓ Configuration green — fleet ready</div>`;
+  }
+
+  #esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+}
+customElements.define('chump-doctor-banner', ChumpDoctorBanner);
+
 // ── <chump-view-tasks> ────────────────────────────────────────────────────────
 class ChumpViewTasks extends HTMLElement {
   connectedCallback() {

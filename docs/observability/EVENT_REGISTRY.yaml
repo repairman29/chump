@@ -2041,6 +2041,14 @@ events:
     trigger: operator persists a non-secret config value via PWA POST /api/settings/{key}
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, key, value, source_before]
+  # ── INFRA-990: PWA first-run doctor banner ───────────────────────────────
+  - kind: pwa_doctor_check
+    emitter: src/web_server.rs handle_doctor_health (INFRA-990)
+    trigger: PWA banner polls GET /api/health/doctor; emitted on each cache miss
+      (5s tumbling-window) so observers see config-health transitions without
+      the message bodies (which can leak env paths). Counts only.
+    consumers: [fleet-brief, audit-trail]
+    fields_required: [ts, kind, ok, failure_count, warning_count]
   # ── INFRA-1030: bot-merge arm-ship ordering fix ────────────────────────────
   - kind: gap_ship_post_arm_failed
     emitter: scripts/coord/bot-merge.sh (INFRA-1030)
