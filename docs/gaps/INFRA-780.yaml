@@ -1,9 +1,10 @@
 - id: INFRA-780
   domain: INFRA
   title: "RESILIENT: PR #1356 clippy nonminimal_bool in cascade filter"
-  status: open
+  status: done
   priority: P1
   effort: xs
+  closed_pr: 1356
   acceptance_criteria: |
     PR #1356 (PRODUCT-063 claim branch) fails clippy with:
       error: this boolean expression can be simplified

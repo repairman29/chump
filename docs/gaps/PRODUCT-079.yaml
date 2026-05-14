@@ -1,9 +1,10 @@
 - id: PRODUCT-079
   domain: PRODUCT
   title: "PRODUCT: PWA 'Needs your judgment' queue — surface gaps/PRs blocked on operator input as a dedicated panel"
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_pr: 1819
   description: |
     Today the operator has to manually scan ambient.jsonl + open PR list +
     state.db to find "what's waiting on me?" This gap surfaces it as a
