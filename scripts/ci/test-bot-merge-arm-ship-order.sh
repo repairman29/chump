@@ -133,9 +133,22 @@ export CHUMP_AMBIENT_LOG="$AMBIENT"
 
 FAKE_REPO="$TMP/fake-repo"
 mkdir -p "$FAKE_REPO/.chump-locks" "$FAKE_REPO/.chump"
-touch "$FAKE_REPO/.chump/state.db"
+# INFRA-1261: seed minimal state.db so gap-preflight won't treat TEST-001 as
+# unregistered when CHUMP_GAP_PREFLIGHT_SKIP is not set. Primary guard is the
+# CHUMP_GAP_PREFLIGHT_SKIP=1 env below; this DB seed is defense-in-depth.
+sqlite3 "$FAKE_REPO/.chump/state.db" "
+CREATE TABLE IF NOT EXISTS gaps (
+    id TEXT PRIMARY KEY, domain TEXT, title TEXT, status TEXT,
+    priority TEXT, effort TEXT, depends_on TEXT, acceptance_criteria TEXT,
+    description TEXT, closed_pr INTEGER, tags TEXT
+);
+INSERT OR IGNORE INTO gaps (id,domain,title,status,priority,effort)
+    VALUES ('TEST-001','TEST','stacked test','open','P2','xs');
+" 2>/dev/null || touch "$FAKE_REPO/.chump/state.db"
 printf 'ref: refs/heads/main\n' > "$FAKE_REPO/.git" 2>/dev/null || true
 export FAKE_REPO
+# INFRA-1261: export CHUMP_STATE_DB so gap-preflight reads fixture DB, not live.
+export CHUMP_STATE_DB="$FAKE_REPO/.chump/state.db"
 
 # ── Test 1: normal flow — gh pr merge --auto appears BEFORE chump gap ship ──
 rm -f "$CALL_LOG" "$AMBIENT"
@@ -146,6 +159,7 @@ CHUMP_TEST_GATE=0 CHUMP_BYPASS_BOT_MERGE=1 CHUMP_GAP_CHECK=0 \
 CHUMP_OBS_BUDGET_BYPASS=1 CHUMP_PRE_MERGE_CHECKPOINT=0 \
 CHUMP_SPEC_ON_SPEC_CHECK=0 CHUMP_SPECULATIVE_SWEEP=0 \
 CHUMP_CODEREVIEW=0 CHUMP_AUTO_CLOSE_GAP=1 \
+CHUMP_GAP_PREFLIGHT_SKIP=1 \
 MAIN_REPO="$FAKE_REPO" \
 bash "$BOT_MERGE" \
     --gap TEST-001 \
