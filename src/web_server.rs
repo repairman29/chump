@@ -78,6 +78,10 @@ struct InjectHintRequest {
     hint: String,
     #[serde(default)]
     tool_context: Option<String>,
+    /// TTL for the hint in minutes (PRODUCT-116). Default 60. Stored in ambient event
+    /// so /api/ambient/recent?kind=operator_hint can surface the history list.
+    #[serde(default)]
+    ttl_minutes: Option<u32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -481,7 +485,31 @@ async fn handle_inject_hint(
         "operator hint injected via API: {:?}",
         &content[..content.len().min(120)]
     );
-    Ok(Json(serde_json::json!({ "ok": true, "blackboard_id": id })))
+
+    // PRODUCT-116: emit to ambient.jsonl so /api/ambient/recent?kind=operator_hint
+    // surfaces the history list in the PWA strategic-redirect composer.
+    let ttl_min = body.ttl_minutes.unwrap_or(60);
+    let hint_event = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "kind": "operator_hint",
+        "hint": &hint,
+        "ttl_minutes": ttl_min,
+        "blackboard_id": id,
+    });
+    let ambient_path = repo_path::runtime_base()
+        .join(".chump-locks")
+        .join("ambient.jsonl");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{}", hint_event);
+    }
+
+    Ok(Json(
+        serde_json::json!({ "ok": true, "blackboard_id": id, "ttl_minutes": ttl_min }),
+    ))
 }
 
 /// POST /api/policy-override — time-boxed relax of **CHUMP_TOOLS_ASK** for a web session (requires **`CHUMP_POLICY_OVERRIDE_API=1`**).
