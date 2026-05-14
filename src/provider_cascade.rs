@@ -111,6 +111,33 @@ fn emit_cascade_backoff_event(kind: &str, backoff_s: u64) {
     }
 }
 
+/// INFRA-1004: emit a `cascade_routed` ambient event on every successful slot selection.
+/// Records which slot was chosen and the active cascade mode for routing observability.
+fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+    let session = std::env::var("CHUMP_SESSION_ID")
+        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
+        .unwrap_or_else(|_| "unknown".to_string());
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"cascade_routed\",\
+         \"slot\":\"{slot_name}\",\"tier\":\"{tier}\",\"cascade_mode\":\"{cascade_mode}\"}}"
+    );
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// Default OpenAI-compatible base for local Ollama when `OPENAI_API_BASE` is unset (matches OOTB wizard).
 pub const DEFAULT_OLLAMA_API_BASE: &str = "http://127.0.0.1:11434/v1";
 
@@ -321,6 +348,10 @@ fn record_call(slot: &ProviderSlot) {
 pub struct ProviderCascade {
     pub slots: Vec<ProviderSlot>,
     _strategy: CascadeStrategy,
+    /// INFRA-1004: when true, cloud slots are refused entirely and any call
+    /// that cannot be served by a local slot returns a hard error instead of
+    /// silently falling back to cloud. Set via CHUMP_LOCAL_ONLY=1.
+    local_only: bool,
     /// Lazy-initialized bandit router. Only populated when `_strategy` is
     /// [`CascadeStrategy::Bandit`]; otherwise None. Kept inside the cascade
     /// (not a global) so each cascade instance has its own learning state
@@ -431,10 +462,28 @@ impl ProviderCascade {
                 _ => CascadeStrategy::Priority,
             })
             .unwrap_or(CascadeStrategy::Priority);
+        let local_only = std::env::var("CHUMP_LOCAL_ONLY")
+            .map(|v| v.trim() == "1")
+            .unwrap_or(false);
         Self {
             slots,
             _strategy: strategy,
+            local_only,
             bandit: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// Describes the active routing mode for observability (health endpoint, events).
+    pub fn cascade_mode(&self) -> &'static str {
+        if self.local_only {
+            return "local-only";
+        }
+        let has_local = self.slots.iter().any(|s| s.tier == ProviderTier::Local);
+        let has_cloud = self.slots.iter().any(|s| s.tier == ProviderTier::Cloud);
+        match (has_local, has_cloud) {
+            (true, true) => "preferred-local",
+            (false, true) => "paid-direct",
+            _ => "free-then-paid",
         }
     }
 
@@ -478,6 +527,10 @@ impl ProviderCascade {
             .iter()
             .enumerate()
             .filter(|(_, slot)| {
+                // INFRA-1004: in local-only mode, cloud slots are never eligible.
+                if self.local_only && slot.tier == ProviderTier::Cloud {
+                    return false;
+                }
                 (!has_cloud || slot.tier != ProviderTier::Local)
                     && min_privacy.is_none_or(|min| slot.privacy >= min)
                     && !local_openai::is_circuit_open(&slot.base_url)
@@ -578,7 +631,11 @@ impl ProviderCascade {
         let mut cloud_skipped = 0u32;
         for &i in &order {
             let slot = &self.slots[i];
-            if has_cloud && slot.tier == ProviderTier::Local {
+            // INFRA-1004: in local-only mode, never route to cloud.
+            if self.local_only && slot.tier == ProviderTier::Cloud {
+                continue;
+            }
+            if !self.local_only && has_cloud && slot.tier == ProviderTier::Local {
                 continue;
             }
             if slot.tier == ProviderTier::Cloud && cloud_skipped < skip_cloud {
@@ -963,6 +1020,10 @@ impl Provider for ProviderCascade {
                     .enumerate()
                     .skip(idx)
                     .find(|(_, slot)| {
+                        // INFRA-1004: cloud slots excluded when local_only=true.
+                        if self.local_only && slot.tier == ProviderTier::Cloud {
+                            return false;
+                        }
                         (!has_cloud || slot.tier != ProviderTier::Local)
                             && min_privacy.is_none_or(|min| slot.privacy >= min)
                             && !local_openai::is_circuit_open(&slot.base_url)
@@ -975,6 +1036,17 @@ impl Provider for ProviderCascade {
             let i = match i {
                 Some(i) => i,
                 None => {
+                    // INFRA-1004: in local-only mode the local slot was already in
+                    // the normal selection loop (cloud was never considered), so
+                    // reaching here means the local slot is also unavailable.
+                    // Return a hard error rather than silently falling back to cloud.
+                    if self.local_only {
+                        let msg = "CHUMP_LOCAL_ONLY=1: no local provider available \
+                                   (circuit open, rate-limited, or cooling down). \
+                                   Check OPENAI_API_BASE and that the local daemon is running.";
+                        emit_cascade_exhausted_event(&self.slots, msg);
+                        return Err(anyhow::anyhow!("{msg}"));
+                    }
                     if std::env::var("CHUMP_LOG_TIMING").is_ok() {
                         eprintln!("[cascade] all cloud exhausted, falling back to local");
                     }
@@ -1019,6 +1091,12 @@ impl Provider for ProviderCascade {
                                     };
                                     crate::precision_controller::record_model_decision(tier);
                                     crate::precision_controller::record_energy_spent(est, 0);
+                                    // INFRA-1004: emit routing decision to ambient stream.
+                                    emit_cascade_routed_event(
+                                        &local_slot.name,
+                                        self.cascade_mode(),
+                                        "local",
+                                    );
                                     return Ok(r);
                                 }
                                 // INFRA-347: record circuit failure on the local (Ollama) slot so
@@ -1236,6 +1314,13 @@ impl Provider for ProviderCascade {
                         );
                         b.update(&slot.name, reward);
                     }
+                    // INFRA-1004: emit routing decision to ambient stream.
+                    let tier_str = if slot.tier == ProviderTier::Cloud {
+                        "cloud"
+                    } else {
+                        "local"
+                    };
+                    emit_cascade_routed_event(&slot.name, self.cascade_mode(), tier_str);
                     return Ok(r);
                 }
                 Err(e) => {
@@ -2570,6 +2655,7 @@ mod tests {
                 ),
             ],
             _strategy: CascadeStrategy::Priority,
+            local_only: false,
             bandit: OnceLock::new(),
         };
 
@@ -2624,6 +2710,7 @@ mod tests {
                 ),
             ],
             _strategy: CascadeStrategy::Priority,
+            local_only: false,
             bandit: OnceLock::new(),
         };
 
@@ -2673,6 +2760,7 @@ mod tests {
                 ),
             ],
             _strategy: CascadeStrategy::Priority,
+            local_only: false,
             bandit: OnceLock::new(),
         };
 
@@ -2727,6 +2815,7 @@ mod tests {
                 ),
             ],
             _strategy: CascadeStrategy::Priority,
+            local_only: false,
             bandit: OnceLock::new(),
         };
 
@@ -2758,6 +2847,7 @@ mod tests {
                 0,
             )],
             _strategy: CascadeStrategy::Priority,
+            local_only: false,
             bandit: OnceLock::new(),
         };
 
@@ -2823,6 +2913,7 @@ mod tests {
                 ),
             ],
             _strategy: CascadeStrategy::TaskAware,
+            local_only: false,
             bandit: OnceLock::new(),
         };
 
@@ -2844,6 +2935,7 @@ mod tests {
         let cascade = ProviderCascade {
             slots: vec![],
             _strategy: CascadeStrategy::TaskAware,
+            local_only: false,
             bandit: OnceLock::new(),
         };
 
@@ -2908,5 +3000,133 @@ mod tests {
         assert!(PrivacyTier::Trains < PrivacyTier::Caution);
         assert!(PrivacyTier::Caution < PrivacyTier::Safe);
         assert!(PrivacyTier::Trains < PrivacyTier::Safe);
+    }
+
+    // ── INFRA-1004: local-only mode ───────────────────────────────────────
+
+    fn make_slot(name: &str, tier: ProviderTier) -> ProviderSlot {
+        let url = "http://127.0.0.1:11434/v1".to_string();
+        ProviderSlot {
+            name: name.to_string(),
+            base_url: url.clone(),
+            provider: LocalOpenAIProvider::with_fallback(
+                url,
+                None,
+                "k".to_string(),
+                "m".to_string(),
+            ),
+            priority: 1,
+            tier,
+            privacy: PrivacyTier::Safe,
+            context_k: None,
+            model_class: None,
+            rpm_limit: 0,
+            calls_this_minute: AtomicU32::new(0),
+            minute_start: Mutex::new(Instant::now()),
+            rpd_limit: 0,
+            calls_today: AtomicU32::new(0),
+            day_start: Mutex::new(Instant::now()),
+            cooldown_until: Mutex::new(None),
+        }
+    }
+
+    #[test]
+    fn cascade_local_only_cascade_mode_label() {
+        let cascade = ProviderCascade {
+            slots: vec![make_slot("local", ProviderTier::Local)],
+            _strategy: CascadeStrategy::Priority,
+            local_only: true,
+            bandit: std::sync::OnceLock::new(),
+        };
+        assert_eq!(cascade.cascade_mode(), "local-only");
+    }
+
+    #[test]
+    fn cascade_mode_labels_without_local_only() {
+        let both = ProviderCascade {
+            slots: vec![
+                make_slot("local", ProviderTier::Local),
+                make_slot("cloud", ProviderTier::Cloud),
+            ],
+            _strategy: CascadeStrategy::Priority,
+            local_only: false,
+            bandit: std::sync::OnceLock::new(),
+        };
+        assert_eq!(both.cascade_mode(), "preferred-local");
+
+        let cloud_only = ProviderCascade {
+            slots: vec![make_slot("cloud", ProviderTier::Cloud)],
+            _strategy: CascadeStrategy::Priority,
+            local_only: false,
+            bandit: std::sync::OnceLock::new(),
+        };
+        assert_eq!(cloud_only.cascade_mode(), "paid-direct");
+
+        let local_only_slots = ProviderCascade {
+            slots: vec![make_slot("local", ProviderTier::Local)],
+            _strategy: CascadeStrategy::Priority,
+            local_only: false,
+            bandit: std::sync::OnceLock::new(),
+        };
+        assert_eq!(local_only_slots.cascade_mode(), "free-then-paid");
+    }
+
+    #[test]
+    fn cascade_local_only_blocks_cloud_in_first_available_slot() {
+        // A cascade with one cloud slot and local_only=true: first_available_slot
+        // must skip the cloud slot and return None (no local available).
+        let cascade = ProviderCascade {
+            slots: vec![make_slot("cloud-slot", ProviderTier::Cloud)],
+            _strategy: CascadeStrategy::Priority,
+            local_only: true,
+            bandit: std::sync::OnceLock::new(),
+        };
+        let picked = cascade.first_available_slot(None, 0);
+        assert!(
+            picked.is_none(),
+            "local-only mode must not pick cloud slot; got index {:?}",
+            picked
+        );
+    }
+
+    #[test]
+    fn cascade_local_only_picks_local_slot() {
+        // A cascade with one local slot and local_only=true: first_available_slot
+        // must return Some(0) because the local slot is eligible.
+        let cascade = ProviderCascade {
+            slots: vec![make_slot("local-slot", ProviderTier::Local)],
+            _strategy: CascadeStrategy::Priority,
+            local_only: true,
+            bandit: std::sync::OnceLock::new(),
+        };
+        let picked = cascade.first_available_slot(None, 0);
+        assert_eq!(picked, Some(0), "local-only mode must pick the local slot");
+    }
+
+    #[test]
+    #[serial_test::serial(cascade_ambient_env)]
+    fn cascade_routed_event_emitted() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", log_path.to_string_lossy().to_string());
+
+        emit_cascade_routed_event("test-slot", "local-only", "local");
+
+        let contents = std::fs::read_to_string(&log_path).unwrap_or_default();
+        assert!(contents.contains("cascade_routed"), "event kind missing");
+        assert!(
+            contents.contains("\"slot\":\"test-slot\""),
+            "slot field missing"
+        );
+        assert!(
+            contents.contains("\"cascade_mode\":\"local-only\""),
+            "cascade_mode field missing"
+        );
+        assert!(
+            contents.contains("\"tier\":\"local\""),
+            "tier field missing"
+        );
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
     }
 }
