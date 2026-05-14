@@ -1,4 +1,6 @@
 /target
+# INFRA-1138: per-worktree test target dir (isolates fingerprints from shared CARGO_TARGET_DIR)
+/.cargo-test-target
 # Standalone example crate (not a workspace member) builds here
 examples/apalis-poc/target/
 /docs-site
