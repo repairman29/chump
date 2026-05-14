@@ -52,6 +52,7 @@ for domain in "${DOMAINS[@]}"; do
         --priority P1 \
         --effort xs \
         --title "credible-061-fixture-$(echo "$domain" | tr '[:upper:]' '[:lower:]')" \
+        --force-duplicate \
         --quiet 2>/dev/null || true
 done
 

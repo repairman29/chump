@@ -335,3 +335,7 @@ CHUMP_COORD_BIN
 CHUMP_NATS_URL
 # ── INFRA-1166: REST-direct merge fast path ──────────────────────────────
 CHUMP_BOT_MERGE_REST_DIRECT
+# ── INFRA-1149: reserve-time title similarity check ──────────────────────────
+CHUMP_GAP_RESERVE_NO_SIMILARITY
+CHUMP_GAP_RESERVE_SIMILARITY_WARN
+CHUMP_GAP_RESERVE_SIMILARITY_BLOCK

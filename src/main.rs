@@ -4005,6 +4005,97 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // ── INFRA-1149: reserve-time title similarity check ───────────────
+                // Before allocating an ID, scan open + recently-closed gaps for
+                // near-duplicate titles. Jaccard on normalized token sets.
+                // Warn at 0.65; block at 0.85. Both thresholds are tunable via env.
+                // Bypass: --force-duplicate flag or CHUMP_GAP_RESERVE_NO_SIMILARITY=1.
+                let force_duplicate = args.iter().any(|a| a == "--force-duplicate");
+                let similarity_enabled =
+                    std::env::var("CHUMP_GAP_RESERVE_NO_SIMILARITY").as_deref() != Ok("1");
+                if similarity_enabled && !force_duplicate {
+                    let warn_threshold: f64 = std::env::var("CHUMP_GAP_RESERVE_SIMILARITY_WARN")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0.65);
+                    let block_threshold: f64 = std::env::var("CHUMP_GAP_RESERVE_SIMILARITY_BLOCK")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(0.85);
+                    match store.similarity_candidates(&title, 3, 30) {
+                        Ok(candidates) if !candidates.is_empty() => {
+                            let top_score = candidates[0].3;
+                            let top_id = &candidates[0].0;
+                            if top_score >= warn_threshold {
+                                let ambient_path =
+                                    worktree_root.join(".chump-locks").join("ambient.jsonl");
+                                eprintln!();
+                                eprintln!("[reserve] INFRA-1149: title similarity check — proposed: \"{}\"", title);
+                                for (cid, ctitle, cstatus, cscore) in &candidates {
+                                    eprintln!(
+                                        "  {:.2}  {} ({}) — \"{}\"",
+                                        cscore, cid, cstatus, ctitle
+                                    );
+                                }
+                                // Emit ambient event
+                                let ts = {
+                                    use std::time::{SystemTime, UNIX_EPOCH};
+                                    SystemTime::now()
+                                        .duration_since(UNIX_EPOCH)
+                                        .map(|d| d.as_secs())
+                                        .unwrap_or(0)
+                                };
+                                if top_score >= block_threshold {
+                                    eprintln!(
+                                        "[reserve] BLOCK (score {:.2} ≥ {:.2}): high similarity to {} — use --force-duplicate to override.",
+                                        top_score, block_threshold, top_id
+                                    );
+                                    let _ = std::fs::OpenOptions::new()
+                                        .append(true)
+                                        .create(true)
+                                        .open(&ambient_path)
+                                        .and_then(|mut f| {
+                                            use std::io::Write;
+                                            writeln!(f,
+                                                r#"{{"ts":"{ts}","kind":"gap_reserve_similarity_block","proposed_title":"{title}","top_match_id":"{top_id}","top_match_score":{top_score:.3}}}"#
+                                            )
+                                        });
+                                    std::process::exit(1);
+                                } else {
+                                    eprintln!(
+                                        "[reserve] WARN (score {:.2} ≥ {:.2}): potential overlap with {} — continue? [y/N]",
+                                        top_score, warn_threshold, top_id
+                                    );
+                                    let _ = std::fs::OpenOptions::new()
+                                        .append(true)
+                                        .create(true)
+                                        .open(&ambient_path)
+                                        .and_then(|mut f| {
+                                            use std::io::Write;
+                                            writeln!(f,
+                                                r#"{{"ts":"{ts}","kind":"gap_reserve_similarity_warn","proposed_title":"{title}","top_match_id":"{top_id}","top_match_score":{top_score:.3}}}"#
+                                            )
+                                        });
+                                    // Read one line from stdin
+                                    let mut answer = String::new();
+                                    let _ = std::io::stdin().read_line(&mut answer);
+                                    if !answer.trim().eq_ignore_ascii_case("y") {
+                                        eprintln!("[reserve] Aborted. Use --force-duplicate to override the block, or CHUMP_GAP_RESERVE_NO_SIMILARITY=1 to disable.");
+                                        std::process::exit(1);
+                                    }
+                                }
+                            }
+                        }
+                        Ok(_) => {} // no candidates above threshold
+                        Err(e) => {
+                            // Non-fatal: warn but don't block filing
+                            if !quiet {
+                                eprintln!("[reserve] similarity check skipped (db error): {e}");
+                            }
+                        }
+                    }
+                }
+
                 // ── INFRA-1152: pillar-balance guard ─────────────────────────────────
                 // Parse proposed pillar from title prefix, then check current
                 // open-pickable distribution and warn/block overweighted pillars.

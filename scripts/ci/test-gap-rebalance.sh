@@ -48,7 +48,7 @@ fi
 reserve_gap() {
     local title="$1" priority="${2:-P1}" effort="${3:-xs}"
     "$BIN" gap reserve --domain INFRA --priority "$priority" --effort "$effort" \
-        --title "$title" --quiet 2>/dev/null
+        --title "$title" --quiet --force-duplicate 2>/dev/null
 }
 
 export CHUMP_HOME="$(mktemp -d)"
