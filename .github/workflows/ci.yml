@@ -1509,3 +1509,6 @@ jobs:
         run: bash scripts/ci/test-gap-preflight-dupe-sweep.sh
       - name: INFRA-779 gitdir auto-repair — corrupt + verify repair + ambient event (INFRA-1033)
         run: bash scripts/ci/test-infra-779-gitdir-repair.sh
+      - name: pre-push known-flake skip integration (INFRA-1167)
+        run: bash scripts/ci/test-known-flake-skip.sh
+
