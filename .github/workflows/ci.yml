@@ -1512,3 +1512,8 @@ jobs:
       - name: pre-push known-flake skip integration (INFRA-1167)
         run: bash scripts/ci/test-known-flake-skip.sh
 
+      - name: pillar-balance guard at reserve time (INFRA-1152)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-pillar-balance-guard.sh
