@@ -1533,6 +1533,12 @@ events:
     trigger: any named phase in bot-merge.sh fails; emitted immediately before
       the script exits with the step-specific exit code (10=preflight, 11=rebase,
       12=fmt, 13=clippy, 14=test, 15=push, 16=pr-create)
+  # ── RESILIENT-010: bot-merge.sh step-specific failure events ─────────────
+  - kind: bot_merge_failure
+    emitter: scripts/coord/bot-merge.sh (_bm_fail helper, RESILIENT-010)
+    trigger: any named phase in bot-merge.sh fails; emitted immediately before
+      the script exits with the step-specific exit code (10=preflight, 11=rebase,
+      12=fmt, 13=clippy, 14=test, 15=push, 16=pr-create)
     consumers: [fleet-brief, opus-curator, emergency-fast-path, recovery-automation]
     fields_required: [ts, kind, step, exit_code, gap_id, branch]
   - kind: bot_merge_crashed

@@ -1467,3 +1467,438 @@ jobs:
             echo "::error::audit-required FAIL (real=$real, stub=$stub)"
             exit 1
           fi
+      - name: curator p0 demotion — real mutation, oldest P0 selected, max 1/run (INFRA-978)
+        run: bash scripts/ci/test-curator-p0-demotion.sh
+
+      - name: bot-merge.sh per-phase exit codes + ambient event (RESILIENT-011)
+        run: bash scripts/ci/test-bot-merge-exit-phases.sh
+      - name: UUID gap-ID compatibility audit — preflight+show+auto-derive (INFRA-630)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-uuid-gap-id-compat.sh
+      - name: velocity trending — ship_rate/waste_rate 7d trend, improving/stable/degrading (INFRA-901)
+        run: bash scripts/ci/test-velocity-trending.sh
+      - name: gap show AC rendering — numbered list + json ac_count/ac_has_todos (CREDIBLE-033)
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-show-ac-render.sh
+
+      - name: chump gap set --add-note timestamped append (EFFECTIVE-020)
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-add-note.sh
+
+      - name: CLI output format consistency — --quiet/--format/--json (EFFECTIVE-008)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-cli-output-format.sh
+      - name: pre-push hook cd to GIT_WORK_TREE for cargo test (RESILIENT-009)
+        run: bash scripts/ci/test-prepush-worktree-cd.sh
+      - name: orphaned worktree reaper — prune-worktrees.sh orphan mode (RESILIENT-013)
+        run: bash scripts/ci/test-orphan-worktree-prune.sh
+      - name: gap consolidate — near-duplicate title detection (INFRA-935)
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-consolidate.sh
+      - name: gap impact rating — rate CLI, ambient event, kpi --impact (FLEET-048)
+        run: bash scripts/ci/test-gap-impact-rating.sh
+      - name: speculative race-loss event tracking (FLEET-035)
+        run: bash scripts/ci/test-fleet-race-loss.sh
+      - name: cost quota enforcement — warning at 80%, hard-cap at 100% (INFRA-877)
+        run: bash scripts/ci/test-cost-enforcement.sh
+      - name: gap lifecycle manager — abandoned gap detection (INFRA-870)
+        run: bash scripts/ci/test-gap-lifecycle-manager.sh
+      - name: per-agent throughput tracker — tracker script + kpi report --agents (FLEET-044)
+        run: bash scripts/ci/test-agent-throughput.sh
+      - name: PWA gap workflow status endpoint (EFFECTIVE-014)
+        run: bash scripts/ci/test-gap-workflow-status.sh
+      - name: pre-commit vacuous-guard audit (INFRA-508)
+        run: bash scripts/ci/test-precommit-guard-audit.sh
+      - name: PWA workflow observability — request_id tracing (CREDIBLE-024)
+        run: bash scripts/ci/test-pwa-workflow-observability.sh
+      - name: CLI version/debug flags (CREDIBLE-019)
+        run: bash scripts/ci/test-cli-version-debug.sh
+      - name: gap rollback — runbook, rollback-gap.sh, ambient event (INFRA-899)
+        run: bash scripts/ci/test-rollback-gap.sh
+      - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        run: bash scripts/ci/test-run-consolidation.sh
+      - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
+        run: bash scripts/ci/test-run-fleet-cross-repo.sh
+      - name: tool-call normalizer for weak LLMs (INFRA-740)
+        run: bash scripts/ci/test-tool-normalize.sh
+      - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          bash scripts/ci/test-waste-tally-domain.sh
+      - name: PWA workflow observability — request_id tracing (CREDIBLE-024)
+        run: bash scripts/ci/test-pwa-workflow-observability.sh
+      - name: PWA version compatibility check (CREDIBLE-022)
+        run: bash scripts/ci/test-pwa-version-compat.sh
+      - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        run: bash scripts/ci/test-run-consolidation.sh
+      - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
+        run: bash scripts/ci/test-run-fleet-cross-repo.sh
+      - name: tool-call normalizer for weak LLMs (INFRA-740)
+        run: bash scripts/ci/test-tool-normalize.sh
+      - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          bash scripts/ci/test-waste-tally-domain.sh
+      - name: PWA version compatibility check (CREDIBLE-022)
+        run: bash scripts/ci/test-pwa-version-compat.sh
+      - name: worktree contamination check — detect foreign gap files (INFRA-931)
+        run: bash scripts/ci/test-worktree-contamination-check.sh
+      - name: error-path test coverage ≥60 assertions across gap_store (CREDIBLE-005)
+        run: bash scripts/ci/test-error-path-coverage.sh
+      - name: PWA gap endpoint security — rate limit, CSRF, headers, timeout (CREDIBLE-023)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-pwa-security.sh
+      - name: per-worktree stale binary guard — detect, emit ambient event (RESILIENT-001)
+        run: bash scripts/ci/test-per-worktree-target-guard.sh
+  # Push to main gets a unique group per run (github.run_id) so concurrency never cancels it —
+  # we need every main push to complete for the green-main signal (ship_quality grades, bisect, regression diagnosis).
+  # PR / merge_group share a group per branch so cancel-in-progress dedupes redundant fixup pushes.
+  # Prior form used `cancel-in-progress: ${{ <expr> }}` which evaluates to the string "false" for push events,
+  # and Actions treats any non-empty string as truthy — so main runs were silently cancelled. (INFRA-1001)
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.run_id || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+    timeout-minutes: 5  # path filter only; <30s in practice
+              - 'extensions/**'
+    needs: [fast-checks, clippy, cargo-test, pr-hygiene]
+    timeout-minutes: 5  # rollup only — quick aggregator check
+          # CREDIBLE-042/043: pr-hygiene is path-filter-agnostic (runs on
+          # every PR regardless of changes), so its result counts toward
+          # the rollup unconditionally.
+          #
+          # INFRA-1002: cascade-cancel classification.  When a shard fails,
+          # GitHub Actions cancels downstream shards that haven't started yet.
+          # A cancelled shard caused by a sibling failure is NOT a separate bug
+          # — it is a cascade-cancel.  Surfacing this distinction reduces orphan
+          # PRs where agents give up thinking "2 things broke" when really ONE
+          # thing broke and ONE was collateral.
+          #
+          # Rule: result == 'cancelled' AND at least one peer == 'failure'
+          #       ⟹ cascade_cancel (benign for retry — root cause is the failure)
+          #       result == 'cancelled' AND no peer == 'failure'
+          #       ⟹ real_failure (unexpected cancel — surface to operator)
+          hygiene="${{ needs.pr-hygiene.result }}"
+          echo "fast-checks=$fast  clippy=$clippy  cargo-test=$test  pr-hygiene=$hygiene"
+
+          # Pass 1: detect whether any shard has a real failure (not cancelled).
+          any_real_failure=0
+          for r in "$fast" "$clippy" "$test" "$hygiene"; do
+            [ "$r" = "failure" ] && any_real_failure=1
+
+          # Pass 2: classify each shard.
+          real_failures="" cascade_cancels="" passed="" skipped_list=""
+          classify() {
+            local name="$1" result="$2"
+            case "$result" in
+              success)  passed="${passed:+$passed,}$name" ;;
+              skipped)  skipped_list="${skipped_list:+$skipped_list,}$name" ;;
+              failure)  real_failures="${real_failures:+$real_failures,}$name" ;;
+              cancelled)
+                if [ "$any_real_failure" = "1" ]; then
+                  cascade_cancels="${cascade_cancels:+$cascade_cancels,}$name"
+                else
+                  real_failures="${real_failures:+$real_failures,}$name"
+                fi
+                ;;
+              *) real_failures="${real_failures:+$real_failures,}$name" ;;
+            esac
+          }
+          classify "fast-checks" "$fast"
+          classify "clippy"      "$clippy"
+          classify "cargo-test"  "$test"
+          classify "pr-hygiene"  "$hygiene"
+
+          # Structured summary (visible in GHA step log + step summary).
+          echo ""
+          echo "=== INFRA-1002 shard classification ==="
+          echo "  real_failures:    [${real_failures:-none}]"
+          echo "  cascade_cancels:  [${cascade_cancels:-none}]"
+          echo "  passed:           [${passed:-none}]"
+          echo "  skipped:          [${skipped_list:-none}]"
+          echo "========================================"
+
+          # Append to GitHub step summary (shows in PR checks UI).
+          if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+            printf '### CI Shard Classification (INFRA-1002)\n' >> "$GITHUB_STEP_SUMMARY"
+            printf '| Category | Shards |\n|---|---|\n' >> "$GITHUB_STEP_SUMMARY"
+            printf '| Real failures | `%s` |\n' "${real_failures:-none}" >> "$GITHUB_STEP_SUMMARY"
+            printf '| Cascade cancels | `%s` |\n' "${cascade_cancels:-none}" >> "$GITHUB_STEP_SUMMARY"
+            printf '| Passed | `%s` |\n' "${passed:-none}" >> "$GITHUB_STEP_SUMMARY"
+            printf '| Skipped | `%s` |\n\n' "${skipped_list:-none}" >> "$GITHUB_STEP_SUMMARY"
+            printf 'Cascade cancels are caused by the failing shard(s) — not independent bugs.\n' >> "$GITHUB_STEP_SUMMARY"
+            printf 'Fix the real failure(s) and push to re-run.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # Decision: fail only on real failures.
+          if [ -n "$real_failures" ]; then
+            echo "::error::Real CI failures: [${real_failures}]${cascade_cancels:+ (cascade-cancelled: [${cascade_cancels}])}"
+          echo "All shards green (or appropriately skipped / cascade-cancelled)."
+
+  # ── PR hygiene (CREDIBLE-042/043) ─────────────────────────────────────────
+  # Runs on EVERY pull_request regardless of which paths changed. Catches the
+  # two PR-shape failure classes that produced the worst incidents in early
+  # May 2026:
+  #   - PR #1444 silent META-044 revert  →  caught by check-pr-scope.sh
+  #   - PR #1441 378k-line mass-deletion →  caught by check-mass-deletion.sh
+  #   - PR #1469 bundle (3 unrelated gaps) →  caught by check-pr-scope.sh Rule C
+  #   - chore(gaps) + src/ edits          →  caught by check-mass-deletion.sh Rule C
+  # All 4 failure classes roll into the `test` required check via needs:.
+  #
+  # NOT gated by `needs.changes.outputs.code` — these checks are about the
+  # PR's *shape* (title + diff size), not its file extensions. A docs-only
+  # PR with a misleading 'feat:' title should still fail this gate.
+  #
+  # Force-fire validated: scripts/ci/test-all-gates-force-fire.sh exercises
+  # both checks against synthetic violating fixtures and asserts they fire.
+  # See scripts/ci/gate-manifest.yaml (CREDIBLE-050).
+  #
+  # Retroactive calibration (CREDIBLE-043, 2026-05-13): 0 mass-deletion
+  # violations in last 30 merged PRs. Historical violations (#1441, #1444)
+  # pre-date the gate. Gate is safe and correctly calibrated.
+  pr-hygiene:
+    needs: changes
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10  # CREDIBLE-026 + CREDIBLE-027 gate scripts
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Both checkers need git history to resolve merge-base against
+          # the target branch. fetch-depth: 0 fetches all history.
+          fetch-depth: 0
+      - name: PR scope-vs-title divergence detector (CREDIBLE-026)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # INFRA-976: pass current PR title via env so check-pr-scope.sh
+          # reads it directly instead of falling back to the (possibly stale)
+          # first-commit subject. github.event.pull_request.title is the
+          # live title at workflow-trigger time and refreshes on retitle.
+          PR_TITLE_ENV: ${{ github.event.pull_request.title }}
+        run: bash scripts/ci/check-pr-scope.sh
+
+      - name: Mass-deletion / scratch-commit guard (CREDIBLE-027)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/check-mass-deletion.sh
+
+    timeout-minutes: 15  # fmt + JS self-tests + ~30s bash guards; target wall-clock < 5 min, cap at 15m
+      - name: doc-freshness audit (DOC-041, warn-only)
+        # WARN-ONLY by default — surfaces stale last_audited stamps without
+        # blocking. Promote to --strict once the long-tail cleanup is done.
+        run: bash scripts/ci/test-doc-freshness.sh
+      - name: markdown intra-doc links (DOC-039)
+        # Gates on links in .md files MODIFIED by this PR — prevents
+        # regression without forcing a one-shot cleanup of the 492
+        # pre-existing broken links across docs/syntheses/ etc.
+        # Full-repo audit available via scripts/audit/run-all.sh.
+        run: bash scripts/ci/test-markdown-intra-doc-links.sh
+      - name: fleet brief subcommand (INFRA-721)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-fleet-brief.sh
+
+
+      - name: model-registry schema validation (INFRA-739)
+        run: bash scripts/ci/test-model-registry.sh
+
+      - name: model-ship-rate generic attribution (CREDIBLE-045)
+        run: bash scripts/ci/test-attribution-portable.sh
+      - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
+        run: bash scripts/ci/test-run-fleet-cross-repo.sh
+
+      - name: CLI help system consistency — all 31 commands have Usage strings (CREDIBLE-015)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-cli-help.sh
+
+      - name: CLI version/debug flags (CREDIBLE-019)
+        run: bash scripts/ci/test-cli-version-debug.sh
+
+    timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
+    timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
+  # ── CREDIBLE-006: code coverage (llvm-cov) ───────────────────────────────
+  # Non-blocking — continue-on-error:true so a coverage regression is a
+  # warning, not a merge-blocker, until the baseline stabilises (>2 weeks).
+  # Uploads an lcov artifact + writes a summary to $GITHUB_STEP_SUMMARY.
+  coverage:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 45  # llvm-cov is slower than cargo-test alone; not required for merge
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+
+      - name: Install Linux packages (webkit required by chump-desktop workspace member)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            webkit2gtk-4.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev util-linux
+
+      - name: Install Rust toolchain + llvm-tools-preview
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-coverage
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Generate coverage report (lcov)
+        run: |
+          cargo llvm-cov --workspace --lcov --output-path coverage.lcov \
+            --ignore-filename-regex '(tests?/|test_|_test\.rs|build\.rs)'
+
+      - name: Summarise coverage
+        run: |
+          # Extract total line coverage % from lcov and write to step summary + file.
+          python3 - <<'PYEOF'
+          import re, os
+
+          lcov = open("coverage.lcov").read()
+          found = hit = 0
+          for line in lcov.splitlines():
+              if line.startswith("LF:"):
+                  found += int(line[3:])
+              elif line.startswith("LH:"):
+                  hit += int(line[3:])
+
+          pct = (hit / found * 100) if found else 0.0
+          summary = f"Coverage: {pct:.1f}% ({hit}/{found} lines)"
+          print(summary)
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(f"## {summary}\n\n")
+              f.write("lcov artifact: `coverage-lcov`\n")
+
+          with open("coverage-summary.txt", "w") as f:
+              f.write(f"lines: {pct:.1f}% ({hit}/{found})\n")
+
+          # CREDIBLE-006 threshold check: warn if coverage dropped from baseline.
+          threshold = float(os.environ.get("CHUMP_COVERAGE_DROP_THRESHOLD", "2"))
+          baseline_file = "docs/credibility/COVERAGE_BASELINE.md"
+          import re as _re
+          try:
+              text = open(baseline_file).read()
+              m = _re.search(r'(\d+\.\d+)\s*%', text)
+              if m:
+                  baseline_pct = float(m.group(1))
+                  drop = baseline_pct - pct
+                  if drop > threshold:
+                      print(f"::warning::Coverage dropped {drop:.1f} pp below baseline "
+                            f"({baseline_pct:.1f}% → {pct:.1f}%). "
+                            f"Threshold: {threshold} pp.")
+              else:
+                  print("Baseline not yet established — skipping threshold check.")
+          except FileNotFoundError:
+              print("No baseline file found — skipping threshold check.")
+          PYEOF
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: |
+            coverage.lcov
+            coverage-summary.txt
+          retention-days: 30
+
+    timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
+      - name: chump gap list done-format — closed-pr + closed-date (EFFECTIVE-024)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-gap-list-done-format.sh
+
+      - name: cascade-cancel rollup classification fixture (INFRA-1002)
+        run: bash scripts/ci/test-rollup-cascade-cancel.sh
+
+      - name: gap-closure-consistency fail-closed + fixture-aware DB (CREDIBLE-051)
+        run: bash scripts/ci/test-gap-closure-consistency-fixture.sh
+
+      - name: review-as-handoff author re-engagement loop (INFRA-771)
+        run: bash scripts/ci/test-review-handoff-reengage.sh
+      - name: worker circuit-breaker — threshold=3 pause=5min kill-switch (INFRA-826)
+        run: bash scripts/ci/test-worker-circuit-breaker.sh
+      - name: worker first-output watchdog — kill switch, event emission, retry (INFRA-828)
+        run: bash scripts/ci/test-worker-first-output-watchdog.sh
+      - name: worker timeout-no-commit rescue — kill switch, event emission, SHA diff (INFRA-831)
+        run: bash scripts/ci/test-worker-timeout-no-commit.sh
+      - name: bot-merge stacked PR auto-rebase — kill switch, event emission, gated trigger (INFRA-765)
+        run: bash scripts/ci/test-bot-merge-stacked-rebase.sh
+      - name: curator decision logging — kind, required fields, enum, phases (INFRA-848)
+        run: bash scripts/ci/test-curator-decision-logging.sh
+      - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
+        run: bash scripts/ci/test-required-model.sh
+      - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
+        run: bash scripts/ci/test-gap-quality-gate.sh
+      - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
+        run: bash scripts/ci/test-gap-templates.sh
+      - name: per-gap performance profiling — timing wrapper, perf report, flame chart (INFRA-906)
+        run: bash scripts/ci/test-gap-profiling.sh
+      - name: credential lifecycle — rotation_due alert, age threshold, dry-run (INFRA-879)
+        run: bash scripts/ci/test-credential-lifecycle.sh
+      - name: gap run-now — manual dispatch trigger, event schema, validation (INFRA-895)
+        run: bash scripts/ci/test-gap-run-now.sh
+      - name: tool-call normalizer for weak LLMs (INFRA-740)
+        run: bash scripts/ci/test-tool-normalize.sh
+      - name: fleet metrics snapshot — ship_rate, waste_rate, cycle_time_p50 (INFRA-900)
+        run: bash scripts/ci/test-fleet-metrics-snapshot.sh
+
+      - name: gap rollback — runbook, rollback-gap.sh, ambient event (INFRA-899)
+        run: bash scripts/ci/test-rollback-gap.sh
+
+      - name: gap rebalance — P0 budget + pillar floor (INFRA-635)
+        run: bash scripts/ci/test-gap-rebalance.sh
+
+      - name: gap pillar-balance — pickable inventory per pillar (INFRA-604)
+        run: bash scripts/ci/test-pillar-balance.sh
+
+      - name: stale-binary destructive-op guard (INFRA-825)
+        # Asserts chump gap ship --update-yaml / dump --per-file hard-fail
+        # on a stale binary. PR #1444 silently reverted META-044 because
+        # this gate didn't exist — the soft warning was ignored by the
+        # implementer. Now hard-fail with CHUMP_ALLOW_STALE_DESTRUCTIVE=1
+        # as the audited escape hatch.
+        run: bash scripts/ci/test-stale-binary-ship-blocked.sh
+      - name: state.db corruption recovery — restore from state.sql (INFRA-538)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-state-db-restore.sh
+      - name: PWA gap workflow e2e — 4-phase stub + status transition (CREDIBLE-020)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-pwa-e2e-gap-workflow.sh
+      - name: fleet-state.json mutex — flock, kill switch, timeout event (INFRA-847)
+        run: bash scripts/ci/test-fleet-state-mutex.sh
+      - name: gh-api-probe wired in bot-merge + run-fleet (INFRA-539)
+        run: bash scripts/ci/test-gh-api-probe.sh
+      - name: change approval workflow — gate, approve, rollback, ambient events (INFRA-912)
+        run: bash scripts/ci/test-change-approval.sh
+      - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        run: bash scripts/ci/test-run-consolidation.sh
+      - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          bash scripts/ci/test-waste-tally-domain.sh
+      - name: fleet-brief pillar table — per-pillar pickable counts (CREDIBLE-034)
+        run: bash scripts/ci/test-fleet-brief-pillar-table.sh
+      - name: gap audit-ac --open — warn on vague open gaps before claim (INFRA-936)
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-audit-ac-open.sh
+      - name: bot-merge.sh step-specific exit codes (RESILIENT-010)
+        run: bash scripts/ci/test-bot-merge-exit-codes.sh

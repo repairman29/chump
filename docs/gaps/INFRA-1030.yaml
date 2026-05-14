@@ -1,0 +1,14 @@
+- id: INFRA-1030
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh order bug — arm auto-merge BEFORE auto-close gap-ship (today: ship-then-arm leaves done-gap-stuck-PR if script dies between)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    Observed twice 2026-05-13: bot-merge crashed/aborted after gh pr create succeeded and after chump gap ship marked the gap done, but BEFORE gh pr merge --auto armed. Result: gap=done, PR open, no auto-merge, no operator visibility. Operator (me) had to manually arm via gh pr merge --auto. Swap the order so arming is the LAST irreversible state change.
+  acceptance_criteria:
+    - "scripts/coord/bot-merge.sh reorders the post-push flow: gh pr create → arm auto-merge (gh pr merge --auto --squash) → THEN chump gap ship --closed-pr"
+    - "today the order is gh pr create → chump gap ship → gh pr merge --auto; if the script dies between ship and arm (happened 2x 2026-05-13: INFRA-999 and INFRA-995 first attempts), gap is status=done but PR has no auto-merge and stalls"
+    - "test: bash -x scripts/coord/bot-merge.sh with SIGTERM injected after gh pr create succeeds, assert gap status stays open AND PR has auto_merge_request set (or neither — never the half-done state)"
+  closed_pr: 1719
+
