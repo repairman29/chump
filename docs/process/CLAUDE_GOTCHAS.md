@@ -968,3 +968,46 @@ to rerun. A cascade-cancel is benign for retry purposes — only the root failur
 investigation.
 
 **Test fixture:** `scripts/ci/test-rollup-cascade-cancel.sh` (7 assertions).
+
+## e2e-pwa shadow DOM traversal — `#msg-input` locator pattern (INFRA-817, INFRA-1018, INFRA-1066)
+
+**Symptom:** Five e2e-pwa Playwright tests time out waiting for `page.locator("#msg-input")`.
+Output: `Timeout 30000ms exceeded … Locator: locator('#msg-input') … waiting for element to be visible`.
+The tests are: "loads home", "navigate between views", "mobile viewport",
+"/task creates assistant reply", "New chat clears thread".
+
+**Root cause (regressed 2026-05-13, ~2h red-main):**
+`web/v2/index.html` has a V1→V2 backward-compat shim (`createTestAliases()`) that aliases
+`<chump-chat>`'s internal `#input` element to `#msg-input` at the top level so Playwright can
+find it without shadow-piercing selectors.  The shim broke when code used:
+```javascript
+viewChat.shadowRoot?.querySelector('chump-chat')  // WRONG — viewChat has NO shadow root
+```
+`<chump-view-chat>` uses **light DOM** (`this.innerHTML = '...'`), so `.shadowRoot` is always
+`null` and optional chaining short-circuits silently.  The alias never ran; `#msg-input`
+was never created; all 5 tests timed out.
+
+**Correct traversal (INFRA-1018 fix, merged a87d8e8b):**
+```javascript
+const viewChat   = document.querySelector('chump-view-chat');
+const chumpChat  = viewChat?.querySelector('chump-chat');     // light DOM child
+const input      = chumpChat?.shadowRoot?.getElementById('input'); // chump-chat HAS shadow root
+if (input && input.id !== 'msg-input') input.id = 'msg-input';
+```
+Rule: **`<chump-view-chat>` is light DOM; `<chump-chat>` is shadow DOM.**
+Always traverse light DOM to reach `<chump-chat>`, then use `.shadowRoot` for its internals.
+
+**Retry loop (also required):**
+`<chump-chat>`'s shadow root is populated in `connectedCallback()`, which fires asynchronously
+relative to `DOMContentLoaded`.  A single `DOMContentLoaded` handler may run before the
+shadow root exists.  The shim must retry every 100 ms until the alias is live:
+```javascript
+function scheduleTestAliases() {
+  if (createTestAliases()) return;
+  setTimeout(scheduleTestAliases, 100);
+}
+```
+
+**Pre-commit guard:** none yet (INFRA-1066 AC #6, optional).
+If you add e2e selectors that need shadow piercing, use Playwright's `>>>` shadow-piercing
+combinator (`page.locator('chump-chat >>> #input')`) rather than relying on DOM aliases.
