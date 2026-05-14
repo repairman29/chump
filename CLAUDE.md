@@ -237,6 +237,53 @@ Manual operator actions when you see repeated `graphql_exhausted` or
 - Background-tag the noisiest non-critical caller via `CHUMP_GH_CALL_CRITICALITY=background`.
 - If structural: file an INFRA-NEW-MIGRATE-<script>-TO-CACHE follow-up.
 
+## Push routing — opt-in (FLEET-034, 2026-05-14)
+
+Default work distribution remains **pull**: each worker polls `state.db`, picks
+the first eligible gap, and claims atomically. That model degrades past ~30
+workers (every worker performs O(open-gap) sqlite reads per cycle).
+
+**Push tier (opt-in).** When NATS is reachable, run one `chump-coord assign`
+daemon per fleet — it watches `state.db`, and for each `status:open` gap
+publishes a `WorkEnvelope` to:
+
+```
+chump.work.<priority>.<class>.<machine>
+   priority  P0 | P1 | P2 | P3
+   class     derived from gap.skills_required (runtime, coord, docs, …),
+             falling back to lowercased gap.domain. "any" if neither.
+   machine   gap.preferred_machine if set, else "any"
+```
+
+Workers run `chump-coord worker` with capability env vars:
+
+```bash
+WORKER_SKILLS=rust,sqlite,macos WORKER_MACHINE=macbook WORKER_BACKEND=claude \
+  chump-coord worker --subjects 'chump.work.>.runtime.macbook,chump.work.>.coord.>'
+```
+
+**Ack semantics.** First worker to win the existing NATS-KV atomic claim
+(`try_claim_gap`) wins the lease — that *is* the ack. Lost-race workers fall
+through and drain the next envelope. Worker death is detected via the existing
+KV TTL on the claim key (`CHUMP_GAP_CLAIM_TTL_SECS`).
+
+**Speculative override (INFRA-311).** A gap with `replicas: N` in `notes`
+publishes N envelopes for the same gap; the first N workers to ack share the
+race but only one wins the CAS — others discard.
+
+**Offline fallback.** When `CHUMP_NATS_URL` is unset or the broker is
+unreachable, **both** sides degrade cleanly: `chump-coord assign` logs the
+condition and exits 0 (a supervisor can restart it on broker recovery), and
+`chump-coord worker` exits 0 with a `falling back to pull loop` message so the
+existing `scripts/dispatch/worker.sh` PULL path takes over without manual
+intervention. **state.db remains the source of truth** in both modes — NATS
+only routes the question of *which* worker should pick *which* open gap.
+
+**Cognitive model.** The old docs implied "dispatcher dispatches"; in reality
+the system pulls when offline and pushes when a broker is available. The push
+daemon publishes hints; the pull-side atomic claim remains the authoritative
+hand-off.
+
 ## Fleet scaling gate (INFRA-518)
 
 Scaling fleet size is a deliberate stress test of prior-tier fixes. Each step-up requires the

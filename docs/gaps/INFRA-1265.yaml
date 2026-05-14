@@ -1,0 +1,12 @@
+- id: INFRA-1265
+  domain: INFRA
+  title: "CREDIBLE: chump-planner silently drops gaps whose acceptance_criteria uses numbered '1. text' YAML form when no description: block exists"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

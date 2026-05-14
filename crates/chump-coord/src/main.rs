@@ -813,6 +813,142 @@ async fn main() -> Result<()> {
             }
         }
 
+        // ── assign (FLEET-034 daemon) ────────────────────────────────────────
+        // Watches state.db and publishes routed work envelopes to
+        // chump.work.<priority>.<class>.<machine>. Exits cleanly when NATS
+        // is unreachable so workers fall back to their pull loop.
+        //
+        // Usage: chump-coord assign [--poll-secs N]
+        // Env:   CHUMP_REPO_ROOT (override repo root), CHUMP_NATS_URL
+        "assign" => {
+            use chump_coord::assign::{run_assign_daemon, DEFAULT_POLL_INTERVAL_S};
+            let mut poll_secs = DEFAULT_POLL_INTERVAL_S;
+            let mut i = 2;
+            while i < args.len() {
+                if args[i] == "--poll-secs" {
+                    i += 1;
+                    if let Some(v) = args.get(i).and_then(|s| s.parse().ok()) {
+                        poll_secs = v;
+                    }
+                }
+                i += 1;
+            }
+            let repo_root = std::env::var("CHUMP_REPO_ROOT")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::process::Command::new("git")
+                        .args(["rev-parse", "--show-toplevel"])
+                        .output()
+                        .ok()
+                        .and_then(|o| {
+                            String::from_utf8(o.stdout)
+                                .ok()
+                                .map(|s| s.trim().to_string())
+                        })
+                        .map(std::path::PathBuf::from)
+                        .unwrap_or_else(|| std::path::PathBuf::from("."))
+                });
+            run_assign_daemon(repo_root, std::time::Duration::from_secs(poll_secs)).await?;
+        }
+
+        // ── worker (FLEET-034 subscriber stub) ───────────────────────────────
+        // Subscribes to chump.work.> filtered by worker capability tags.
+        // First worker to atomically claim wins; ack-timeout (60s default)
+        // is honored implicitly because the claim is the ack.
+        //
+        // Env: WORKER_SKILLS (csv), WORKER_MACHINE, WORKER_BACKEND, CHUMP_SESSION_ID
+        // Usage: chump-coord worker [--once] [--subjects chump.work.P0.>,...]
+        "worker" => {
+            use chump_coord::assign::{worker_accepts, WorkEnvelope, WORK_SUBJECT_PREFIX};
+            use futures::StreamExt;
+
+            let once = args.iter().any(|a| a == "--once");
+            let mut subjects: Vec<String> = Vec::new();
+            let mut i = 2;
+            while i < args.len() {
+                if args[i] == "--subjects" {
+                    i += 1;
+                    if let Some(v) = args.get(i) {
+                        subjects = v.split(',').map(|s| s.trim().to_string()).collect();
+                    }
+                }
+                i += 1;
+            }
+            if subjects.is_empty() {
+                subjects.push(format!("{}.>", WORK_SUBJECT_PREFIX));
+            }
+
+            let skills: Vec<String> = std::env::var("WORKER_SKILLS")
+                .unwrap_or_default()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            let machine = std::env::var("WORKER_MACHINE").unwrap_or_default();
+            let backend = std::env::var("WORKER_BACKEND").unwrap_or_default();
+            let sess = session_id();
+
+            let client = match CoordClient::connect_or_skip().await {
+                Some(c) => c,
+                None => {
+                    eprintln!(
+                        "[chump-coord worker] NATS unavailable — falling back to pull loop (worker.sh)"
+                    );
+                    std::process::exit(0);
+                }
+            };
+
+            // Subscribe to all configured subjects.
+            let mut subs = Vec::new();
+            for s in &subjects {
+                eprintln!("[chump-coord worker] subscribing: {}", s);
+                subs.push(client.nats.subscribe(s.clone()).await?);
+            }
+            // Round-robin merge: poll each in turn.
+            'outer: loop {
+                for sub in subs.iter_mut() {
+                    let msg = match tokio::time::timeout(
+                        std::time::Duration::from_millis(500),
+                        sub.next(),
+                    )
+                    .await
+                    {
+                        Ok(Some(m)) => m,
+                        _ => continue,
+                    };
+                    let env: WorkEnvelope = match serde_json::from_slice(&msg.payload) {
+                        Ok(e) => e,
+                        Err(_) => continue,
+                    };
+                    if !worker_accepts(&env, &skills, &machine, &backend) {
+                        continue;
+                    }
+                    // Try to claim — winning the CAS is our ack.
+                    match client.try_claim_gap(&env.gap_id, &sess).await {
+                        Ok(true) => {
+                            println!(
+                                "{}\t{}\t{}\t{}",
+                                env.gap_id, env.priority, env.class, env.machine
+                            );
+                            if once {
+                                break 'outer;
+                            }
+                        }
+                        Ok(false) => {
+                            // Lost the race — another worker won.
+                        }
+                        Err(e) => {
+                            eprintln!("[chump-coord worker] claim error: {}", e);
+                        }
+                    }
+                }
+                if once {
+                    // Drained subscriptions with no claim — exit cleanly.
+                    break;
+                }
+            }
+        }
+
         // ── help / default ────────────────────────────────────────────────────
         _ => {
             eprintln!(
@@ -832,6 +968,12 @@ COMMANDS
                              complete <subtask-id> [--commit <sha-or-pr>]
                              fail     <subtask-id> --reason "..."
                              show     <subtask-id>
+  assign [--poll-secs N]     FLEET-034 push-routing daemon (watches state.db,
+                             publishes to chump.work.<priority>.<class>.<machine>;
+                             exits cleanly if NATS unreachable so workers fall back to pull)
+  worker [--once] [--subjects CSV]
+                             FLEET-034 NATS subscriber — first-ack-wins via atomic claim.
+                             Reads WORKER_SKILLS, WORKER_MACHINE, WORKER_BACKEND from env.
   help-request <sub> [args …] FLEET-010 help-seeking protocol
                              post <blocker-type> "<description>" [--parent-subtask SUBTASK-…] [--parent-gap FLEET-…] [--needed-capability "…"] [--blocking]
                                   blocker-type: timeout|missing_capability|unknown_task_class|other

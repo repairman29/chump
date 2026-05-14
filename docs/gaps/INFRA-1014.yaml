@@ -1,0 +1,19 @@
+- id: INFRA-1014
+  domain: INFRA
+  title: "CREDIBLE: PWA auth layer (CHUMP_WEB_TOKEN config + enforcement)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Today the PWA assumes localhost-only access. CHUMP_WEB_TOKEN env var exists in PWA_STARTUP.md but has no UI to configure and (verify during implementation) inconsistent enforcement. For the demo, especially if recording over a tunneled URL or showing on a non-laptop, we need: (a) clear UI to set the token via /settings (post-INFRA-988/989), (b) middleware that enforces Bearer-token on all /api/* routes when CHUMP_WEB_TOKEN is set, (c) localhost-bypass kept as default to avoid breaking dev flow, (d) prominent UI warning on /settings if CHUMP_WEB_TOKEN is unset AND bind address is not localhost (e.g. 0.0.0.0). Rough shape: (a) settings UI field with mask + Replace pattern (reuse INFRA-989's secret components), (b) src/web_server.rs middleware that checks Authorization: Bearer header against env CHUMP_WEB_TOKEN, (c) login page when token is set but missing/wrong — single input field, validates against /api/auth/check, stores token in localStorage with expiry, (d) on unbind from localhost (CHUMP_WEB_BIND or similar), warn loudly until token set.
+  acceptance_criteria:
+    - Settings UI exposes CHUMP_WEB_TOKEN field with secret-input pattern (presence-only GET, test-before-store POST)
+    - "When CHUMP_WEB_TOKEN env var set, middleware in src/web_server.rs requires Authorization: Bearer <token> on /api/* (except /api/health)"
+    - "Localhost bypass: requests from 127.0.0.1/[::1] skip the check by default (CHUMP_WEB_REQUIRE_TOKEN=1 to disable bypass)"
+    - "Missing/bad token returns 401 with WWW-Authenticate: Bearer realm header"
+    - Login page in web/v2/ accepts token, validates via POST /api/auth/check, stores in localStorage
+    - Settings page shows warning banner if CHUMP_WEB_TOKEN unset AND server bound to non-localhost address
+    - "Test: bind to 0.0.0.0 without token → warning visible; bind with token + bad Authorization → 401; with correct token → routes accessible"
+  depends_on: [INFRA-988, INFRA-989]
+  closed_date: '2026-05-14'
+

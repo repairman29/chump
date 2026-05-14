@@ -56,6 +56,7 @@
 //! - [`work_board`] — FLEET-008 shared subtask queue (post / claim / complete).
 //! - [`help_request`] — FLEET-010 help-seeking protocol (post / claim / complete).
 
+pub mod assign;
 pub mod help_request;
 pub mod work_board;
 
