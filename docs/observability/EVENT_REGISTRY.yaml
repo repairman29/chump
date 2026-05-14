@@ -1905,3 +1905,19 @@ events:
       .github/workflows/ — means auto-merge will stall on every PR until fixed
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, missing, required_count]
+
+  # ── INFRA-1186: gh-shim installer worktree-safety events ─────────────────
+  - kind: gh_shim_worktree_install_blocked
+    emitter: scripts/setup/install-gh-shim.sh (INFRA-1186)
+    trigger: installer detected that the resolved REPO_ROOT is an ephemeral path
+      (under /tmp, /private/tmp, or /var/folders) and refused to embed it in the
+      wrapper to prevent breakage when the worktree is reaped.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, ephemeral_path, script_path]
+
+  - kind: gh_shim_worktree_path_resolved
+    emitter: scripts/setup/install-gh-shim.sh (INFRA-1186)
+    trigger: installer was called from a linked worktree but resolved the canonical
+      main-checkout path via git worktree list and used that in the wrapper instead.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, worktree_path, canonical_path]

@@ -1098,6 +1098,9 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-gap-list-done-format.sh
 
+      - name: install-gh-shim worktree-safety guard (INFRA-1186)
+        run: bash scripts/ci/test-install-gh-shim-worktree-safe.sh
+
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
 # Why: primary correctness + style fence before anything lands on main.
