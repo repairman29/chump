@@ -283,11 +283,27 @@ ${details}"
     chump gap set "$reserved" --description "$desc" 2>/dev/null || \
         warn "  could not set description on $reserved (gap reserved but bare)"
 
-    # Emit ambient ALERT so any human watching the stream sees the dispatch.
+    # INFRA-1247: verify the PR is still open before emitting pr_stuck.
+    # Cross-check via cache_lookup_pr (INFRA-1081) to avoid emitting for PRs
+    # that closed between our initial scan and the emit. If the cache lookup
+    # fails (miss or binary unavailable), default to emitting (safe-side).
     local lock_dir="${REAPER_LOCK_DIR:-.chump-locks}"
     local ambient="$lock_dir/ambient.jsonl"
+    local _pr_state="open"
+    if declare -f cache_lookup_pr &>/dev/null; then
+        _pr_state=$(cache_lookup_pr "$pr_num" 2>/dev/null \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('state','open'))" \
+            2>/dev/null || echo "open")
+    fi
     local ts
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [[ "$_pr_state" != "open" ]]; then
+        # Suppressed — emit classifier event so suppression rate is measurable
+        printf '{"ts":"%s","kind":"alert_classifier_suppressed","original_kind":"pr_stuck","reason":"pr_closed","target_id":"%s"}\n' \
+            "$ts" "$pr_num" >> "$ambient" 2>/dev/null || true
+        info "  PR #$pr_num is $_pr_state — suppressed pr_stuck emit (INFRA-1247)"
+        return
+    fi
     printf '{"event":"alert","kind":"pr_stuck","ts":"%s","pr":%s,"reason":"%s","filed_gap":"%s"}\n' \
         "$ts" "$pr_num" "$reason" "$reserved" >> "$ambient" 2>/dev/null || true
 

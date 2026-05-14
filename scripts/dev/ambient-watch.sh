@@ -106,7 +106,24 @@ for i, a in enumerate(leases):
                     break
 
 # ── Check 2: silent agent ─────────────────────────────────────────────────────
+# INFRA-1247: operator IDE sessions (chump-Chump-*) are long-lived interactive
+# sessions that do not heartbeat on every tool call — they intentionally go
+# quiet between bursts. Firing silent_agent on them is a 100% false-positive
+# that desensitises operators to the alert surface. Skip them.
+import re as _re
+_OPERATOR_RE = _re.compile(r'^chump-Chump-\d+')
+
 for lease in leases:
+    session_id = lease.get("session_id", "")
+    # Skip operator IDE sessions — they don't heartbeat on every action
+    if _OPERATOR_RE.match(session_id):
+        alerts.append({
+            "kind": "alert_classifier_suppressed",
+            "original_kind": "silent_agent",
+            "reason": "operator_session",
+            "target_id": session_id,
+        })
+        continue
     heartbeat = parse_ts(lease.get("heartbeat_at", ""))
     if heartbeat is None:
         continue
@@ -114,7 +131,7 @@ for lease in leases:
     if age > stale_warn_secs:
         alerts.append({
             "kind": "silent_agent",
-            "session": lease["session_id"],
+            "session": session_id,
             "heartbeat_age_secs": int(age),
             "gap": lease.get("gap_id", ""),
         })
@@ -194,12 +211,23 @@ for a in alerts:
         count = a.get("count",0)
         window = a.get("window_secs",60)
         print(f"BURST\x1f{count}\x1f{window}")
+    elif kind == "alert_classifier_suppressed":
+        original_kind = a.get("original_kind","")
+        reason = a.get("reason","")
+        target = a.get("target_id","")
+        print(f"SUPPRESSED\x1f{original_kind}\x1f{reason}\x1f{target}")
 EMIT_PY
     fi | while IFS=$'\x1f' read -r kind rest; do
         case "$kind" in
             OVERLAP)
                 IFS=$'\x1f' read -r sessions path <<< "$rest"
                 emit_alert "lease_overlap" "overlap:${sessions}:${path}" "sessions=$sessions" "path=$path"
+                ;;
+            SUPPRESSED)
+                IFS=$'\x1f' read -r original_kind reason target <<< "$rest"
+                # Emit suppressed event once per target per daemon run (dedup by target)
+                emit_alert "alert_classifier_suppressed" "suppressed:${original_kind}:${target}" \
+                    "original_kind=$original_kind" "reason=$reason" "target_id=$target"
                 ;;
             SILENT)
                 IFS=$'\x1f' read -r session age gap <<< "$rest"
