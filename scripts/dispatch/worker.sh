@@ -78,6 +78,22 @@ IDLE_SLEEP_S="${IDLE_SLEEP_S:-60}"
 # INFRA-525: how many seconds before FLEET_TIMEOUT_S to fire the WIP checkpoint.
 CHUMP_TIMEOUT_CHECKPOINT_SECS="${CHUMP_TIMEOUT_CHECKPOINT_SECS:-30}"
 
+# INFRA-1045: harness dispatch — which AI tool drives this worker.
+# Values: claude (default) / opencode / codex / manual
+# Each harness defines HARNESS_SPAWN_PROGRAM, HARNESS_SPAWN_MODE,
+# HARNESS_GIT_EMAIL, HARNESS_GIT_NAME in scripts/dispatch/harnesses/<name>.sh.
+CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-claude}"
+export CHUMP_AGENT_HARNESS
+HARNESS_SPAWN_PROGRAM="claude"
+HARNESS_SPAWN_MODE="claude-p"
+HARNESS_GIT_EMAIL=""
+HARNESS_GIT_NAME=""
+_harness_cfg="${BASH_SOURCE[0]%/*}/harnesses/${CHUMP_AGENT_HARNESS}.sh"
+if [[ -f "$_harness_cfg" ]]; then
+    # shellcheck source=/dev/null
+    source "$_harness_cfg"
+fi
+
 # INFRA-315: poll-jitter + idle-backpressure. Without jitter, N workers
 # wake up at the same instant and stampede the same gap (observed live
 # 2026-05-02 cascade fleet run: 4 workers all picked INFRA-187 because
@@ -771,6 +787,51 @@ When done, reply with the PR number only (e.g. \"#1234\")."
             FLEET_MODEL="${FLEET_MODEL-sonnet}"
             _model_arg=()
             [[ -n "$FLEET_MODEL" ]] && _model_arg=(--model "$FLEET_MODEL")
+
+            # INFRA-1045: apply harness git identity (opencode-bigpickle, etc.)
+            if [[ -n "${HARNESS_GIT_EMAIL:-}" ]]; then
+                git -C "$wt_path" config user.email "$HARNESS_GIT_EMAIL" 2>/dev/null || true
+                git -C "$wt_path" config user.name "${HARNESS_GIT_NAME:-$CHUMP_AGENT_HARNESS}" 2>/dev/null || true
+                log "harness identity: ${HARNESS_GIT_NAME:-$CHUMP_AGENT_HARNESS} <${HARNESS_GIT_EMAIL}>"
+            fi
+
+            # INFRA-1045: dispatch non-claude harnesses before the full claude
+            # machinery (no oauth token, no token-parser FIFO, no wedge retries).
+            if [[ "${HARNESS_SPAWN_MODE:-claude-p}" != "claude-p" ]]; then
+                _rc_harness=0
+                case "${HARNESS_SPAWN_MODE}" in
+                    opencode-prompt)
+                        log "spawning ${HARNESS_SPAWN_PROGRAM:-opencode} (harness=${CHUMP_AGENT_HARNESS}, timeout ${FLEET_TIMEOUT_S}s) → $cycle_log"
+                        ( cd "$wt_path" || exit 99
+                          # shellcheck disable=SC2086
+                          $_TO "${HARNESS_SPAWN_PROGRAM:-opencode}" "${_model_arg[@]}" "$prompt"
+                        ) >"$cycle_log" 2>&1
+                        _rc_harness=$?
+                        ;;
+                    codex-prompt)
+                        log "spawning ${HARNESS_SPAWN_PROGRAM:-codex} (harness=${CHUMP_AGENT_HARNESS}, timeout ${FLEET_TIMEOUT_S}s) → $cycle_log"
+                        ( cd "$wt_path" || exit 99
+                          # shellcheck disable=SC2086
+                          $_TO "${HARNESS_SPAWN_PROGRAM:-codex}" --approval-mode auto-edit "${_model_arg[@]}" "$prompt"
+                        ) >"$cycle_log" 2>&1
+                        _rc_harness=$?
+                        ;;
+                    manual-result-file)
+                        _mrf="${CHUMP_MANUAL_RESULT:-/tmp/chump-manual-${GAP_ID}.result}"
+                        log "MANUAL HARNESS — awaiting ${_mrf}"
+                        printf '\n══ MANUAL GAP: %s ══\n%s\n══ END PROMPT ══\n' "$GAP_ID" "$prompt"
+                        rm -f "$_mrf"
+                        printf 'Create %s (write "done" or PR number) when complete.\n' "$_mrf"
+                        until [[ -f "$_mrf" ]]; do sleep 5; done
+                        _rc_harness=0
+                        ;;
+                    *)
+                        log "ERROR: unknown HARNESS_SPAWN_MODE=${HARNESS_SPAWN_MODE} for harness=${CHUMP_AGENT_HARNESS}"
+                        _rc_harness=2
+                        ;;
+                esac
+                rc=$_rc_harness
+            else
             # INFRA-620: re-read oauth token from file before each spawn so
             # subscription-mode workers don't use the stale launch-time token.
             refresh_oauth_token
@@ -999,6 +1060,7 @@ Operator or sibling worker can rescue this branch via:
                 kill "$_checkpoint_pid" 2>/dev/null || true
                 wait "$_checkpoint_pid" 2>/dev/null || true
             fi
+            fi  # INFRA-1045: end of claude-p harness block
             ;;
         chump-local)
             log "spawning chump --execute-gap $GAP_ID (timeout ${FLEET_TIMEOUT_S}s, backend=chump-local) → $cycle_log"
