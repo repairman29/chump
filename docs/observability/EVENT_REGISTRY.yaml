@@ -1009,6 +1009,12 @@ events:
     consumers: [fleet-brief, kpi-report, waste-tally]
     fields_required: [ts, pr, detail]
 
+  - kind: pr_rescue_timeout
+    emitter: scripts/coord/pr-rescue.sh (INFRA-1153)
+    trigger: wall-clock timeout (CHUMP_PR_RESCUE_TIMEOUT_S, default 300s) exceeded before all PRs processed; script exits early to avoid secondary rate-limit abuse
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, pr, detail]
+
   # ── Free-tier dispatch testing ─────────────────────────────────────────
   - kind: free_tier_e2e
     emitter: scripts/dispatch/free-tier-e2e-test.sh
