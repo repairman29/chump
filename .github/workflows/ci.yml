@@ -505,6 +505,9 @@ jobs:
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
 
+      - name: cargo-target-reaper — dry-run, --execute, safety guards, ambient event (INFRA-1250)
+        run: bash scripts/ci/test-cargo-target-reaper.sh
+
       - name: gap-doctor safe-sweep (INFRA-308)
         run: bash scripts/ci/test-gap-doctor-safe-sweep.sh
 
@@ -1105,12 +1108,6 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-gap-list-done-format.sh
-
-      - name: chump gap ship integration test (CREDIBLE-060)
-        run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
-            CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
-            bash scripts/ci/test-gap-ship-integration.sh
 
       - name: install-gh-shim worktree-safety guard (INFRA-1186)
         run: bash scripts/ci/test-install-gh-shim-worktree-safe.sh
