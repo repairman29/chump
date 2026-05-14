@@ -1,12 +1,15 @@
 - id: CREDIBLE-060
   domain: CREDIBLE
-  title: "CREDIBLE: integration smoke test for chump gap ship — status flip, YAML mirror, ambient event"
-  status: open
+  title: 'CREDIBLE: integration smoke test for chump gap ship — status flip, YAML mirror, ambient event'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "1. scripts/ci/test-gap-ship-integration.sh creates a scratch gap in a temp state.db, runs chump gap ship <ID> --update-yaml --closed-pr 9999, asserts: status=done in db, docs/gaps/<ID>.yaml written with closed_pr, SHIPPED_AT marker written to .chump-plans/<ID>/, kind=chump_plans_gc not yet emitted (7d grace), kind=gap_shipped ambient event emitted"
-    - 2. Test runs in CI without root/network — uses CHUMP_SKIP_SUPERSEDED_CLOSE=1 and CHUMP_SHIP_NO_AUTOSTAGE=1
-    - 3. CI step added to .github/workflows/ci.yml
-    - 4. Script is idempotent (run twice, second run reports gap already done)
-
+  - '1. scripts/ci/test-gap-ship-integration.sh creates a scratch gap in a temp state.db, runs chump gap ship <ID> --update-yaml
+    --closed-pr 9999, asserts: status=done in db, docs/gaps/<ID>.yaml written with closed_pr, SHIPPED_AT marker written to
+    .chump-plans/<ID>/, kind=chump_plans_gc not yet emitted (7d grace), kind=gap_shipped ambient event emitted'
+  - 2. Test runs in CI without root/network — uses CHUMP_SKIP_SUPERSEDED_CLOSE=1 and CHUMP_SHIP_NO_AUTOSTAGE=1
+  - 3. CI step added to .github/workflows/ci.yml
+  - 4. Script is idempotent (run twice, second run reports gap already done)
+  closed_date: '2026-05-14'
+  closed_pr: 1918

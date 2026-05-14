@@ -1,7 +1,7 @@
 - id: INFRA-1272
   domain: INFRA
   title: 'A2A — feedback-curator routine: aggregate FEEDBACK events nightly, file gaps for recurring patterns'
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -16,3 +16,5 @@
     is just noise in a jsonl file.
 
     '
+  closed_date: '2026-05-14'
+  closed_pr: 1925

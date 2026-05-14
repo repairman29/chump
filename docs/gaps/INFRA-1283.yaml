@@ -1,7 +1,7 @@
 - id: INFRA-1283
   domain: INFRA
   title: "ZERO-WASTE: gh shim caches 'gh auth token' for 5min — eliminates 27 redundant calls/hr"
-  status: open
+  status: done
   priority: P1
   effort: xs
   description: |
@@ -14,4 +14,6 @@
     - "Bypass: CHUMP_GH_NO_TOKEN_CACHE=1 forces real gh auth token call"
     - "Test scripts/ci/test-gh-shim-auth-token-cache.sh: fresh cache → real call; subsequent within TTL → no real call; after TTL → real call again"
     - "Measure: gh auth token in api-cost-leaderboard drops from 27/hr to <5/hr"
+  closed_date: '2026-05-14'
+  closed_pr: 1944
 

@@ -1,16 +1,20 @@
 - id: CREDIBLE-036
   domain: CREDIBLE
-  title: "CREDIBLE: CLI integration tests for product surface — chump gen, mcp list/install, session-track, waste-tally, lesson-grade (decomp of CREDIBLE-018 child 3/3)"
-  status: open
+  title: 'CREDIBLE: CLI integration tests for product surface — chump gen, mcp list/install, session-track, waste-tally, lesson-grade
+    (decomp of CREDIBLE-018 child 3/3)'
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
-    - "tests/cli_product_surface.rs covers: chump gen (with --local + --provider), chump mcp list, chump mcp install <name>, chump session-track, chump waste-tally, chump lesson-grade"
-    - "chump gen --local: mocks Ollama endpoint via test HTTP server; asserts model fallback chain works"
-    - "chump mcp list: reads fixture registry/mcp-servers.toml; asserts --installed and --json flags filter correctly"
-    - "chump waste-tally: synthesize ambient.jsonl events with known waste-incident counts; assert tally matches; test --window and --tokens flags"
-    - "chump lesson-grade: requires PR + gap; mock gh pr view via PATH-override stub"
-    - "Lower priority than CREDIBLE-034/035 because these surfaces are less load-bearing — file as P2 so the gap-family + fleet/coord tests ship first"
-    - "scripts/ci/test-cli-product-surface.sh runs all tests; per-subcommand pass/fail"
-    - "Updates docs/process/CLI_TEST_COVERAGE.md created in CREDIBLE-034 with this batch's commands"
-
+  - 'tests/cli_product_surface.rs covers: chump gen (with --local + --provider), chump mcp list, chump mcp install <name>,
+    chump session-track, chump waste-tally, chump lesson-grade'
+  - 'chump gen --local: mocks Ollama endpoint via test HTTP server; asserts model fallback chain works'
+  - 'chump mcp list: reads fixture registry/mcp-servers.toml; asserts --installed and --json flags filter correctly'
+  - 'chump waste-tally: synthesize ambient.jsonl events with known waste-incident counts; assert tally matches; test --window
+    and --tokens flags'
+  - 'chump lesson-grade: requires PR + gap; mock gh pr view via PATH-override stub'
+  - Lower priority than CREDIBLE-034/035 because these surfaces are less load-bearing — file as P2 so the gap-family + fleet/coord
+    tests ship first
+  - scripts/ci/test-cli-product-surface.sh runs all tests; per-subcommand pass/fail
+  - Updates docs/process/CLI_TEST_COVERAGE.md created in CREDIBLE-034 with this batch's commands
+  closed_date: '2026-05-14'
