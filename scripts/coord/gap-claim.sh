@@ -137,6 +137,29 @@ if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
 fi
 unset _WT_GITDIR
 
+# ── INFRA-779: gitdir back-reference repair ───────────────────────────────────
+# Concurrent `git worktree add` calls from sibling agents can clobber the
+# .git/worktrees/<name>/gitdir file, causing git rev-parse --show-toplevel to
+# return a sibling worktree path. Repair by comparing the recorded path against
+# the expected canonicalized worktree/.git path and rewriting if wrong.
+_WT_ACTUAL_TOP="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+# gap-claim.sh runs with CWD = the worktree root; use $PWD as expected toplevel.
+_WT_EXPECTED_TOP="$(pwd -P 2>/dev/null || pwd)"
+if [[ -n "$_WT_ACTUAL_TOP" && "$_WT_ACTUAL_TOP" != "$_WT_EXPECTED_TOP" ]]; then
+    _WT_GITDIR_PATH="$(git rev-parse --absolute-git-dir 2>/dev/null || true)"
+    if [[ -n "$_WT_GITDIR_PATH" && -f "$_WT_GITDIR_PATH/gitdir" ]]; then
+        _WT_EXPECTED_DOT_GIT="${_WT_EXPECTED_TOP}/.git"
+        printf '%s\n' "$_WT_EXPECTED_DOT_GIT" > "$_WT_GITDIR_PATH/gitdir"
+        printf '[gap-claim] INFRA-779: repaired gitdir back-ref (was %s → now %s)\n' \
+            "$_WT_ACTUAL_TOP" "$_WT_EXPECTED_TOP" >&2
+        _WT_NAME="$(basename "$_WT_GITDIR_PATH")"
+        printf '{"ts":"%s","kind":"worktree_gitdir_repaired","wt_name":"%s","was":"%s","now":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_WT_NAME" "$_WT_ACTUAL_TOP" "$_WT_EXPECTED_TOP" \
+            >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+    fi
+fi
+unset _WT_ACTUAL_TOP _WT_EXPECTED_TOP _WT_GITDIR_PATH _WT_EXPECTED_DOT_GIT _WT_NAME
+
 # ── Path-case guard (INFRA-WORKTREE-PATH-CASE) ───────────────────────────────
 # macOS is case-insensitive, so /Users/jeffadkins/projects/Chump and
 # /Users/jeffadkins/Projects/Chump resolve to the same directory. But

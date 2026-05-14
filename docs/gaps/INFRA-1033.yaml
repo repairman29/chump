@@ -1,0 +1,12 @@
+- id: INFRA-1033
+  domain: INFRA
+  title: "RESILIENT: verify INFRA-779 worktree gitdir auto-repair actually fires + works (today it didn't)"
+  status: done
+  priority: P1
+  effort: xs
+  description: |
+    CLAUDE.md INFRA-779 section claims chump claim auto-repairs the gitdir back-reference after git worktree add. On 2026-05-13 the repair did NOT fire on /tmp/chump-infra-999. Rust atomic_claim.rs already had verify_and_repair_gitdir() but gap-claim.sh (the shell fallback) had no equivalent. Also, no ambient event was emitted and no CI test existed.
+  acceptance_criteria:
+    - "1. integration test scripts/ci/test-infra-779-gitdir-repair.sh passes (5 assertions)"
+    - "2. gap-claim.sh has INFRA-779 bash-level repair: detects show-toplevel mismatch, rewrites .git/worktrees/<n>/gitdir, emits worktree_gitdir_repaired ambient event"
+    - "3. worktree_gitdir_repaired registered in EVENT_REGISTRY.yaml"
