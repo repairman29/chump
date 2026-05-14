@@ -103,13 +103,17 @@ try {
   }
 
   // Wait for `<chump-chat>` to upgrade and attach its shadow root.
+  // The backward-compat alias script in index.html renames shadow #input → #msg-input
+  // shortly after DOMContentLoaded (CREDIBLE-055). Accept either id so this check
+  // passes regardless of which script wins the race.
   await driver.wait(until.elementLocated(By.css('chump-chat')), 60_000);
   await driver.wait(async () => {
     const ready = await driver.executeScript(
-      `return !!document.querySelector('chump-chat')?.shadowRoot?.getElementById('input');`,
+      `const sr = document.querySelector('chump-chat')?.shadowRoot;
+       return !!(sr?.getElementById('input') || sr?.getElementById('msg-input'));`,
     );
     return ready === true;
-  }, 60_000, 'chump-chat shadow root never produced #input');
+  }, 60_000, 'chump-chat shadow root never produced #input or #msg-input');
 
   // INFRA-250 deferred-scope: full /task round-trip assertion is filed as
   // INFRA-263 (deferred from this PR). The previous (v1) round-trip stopped
