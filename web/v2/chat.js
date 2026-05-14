@@ -156,14 +156,14 @@ const CHAT_CSS = `
   }
   #input:focus { border-color: var(--accent, #0a84ff); }
   #send-btn {
-    width: 36px; height: 36px; border-radius: 50%; background: var(--accent, #0a84ff);
+    width: 44px; height: 44px; border-radius: 50%; background: var(--accent, #0a84ff);
     border: none; color: #fff; cursor: pointer; font-size: 16px;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0; transition: opacity 0.15s;
   }
   #send-btn:disabled { opacity: 0.4; cursor: default; }
   #stop-btn {
-    width: 36px; height: 36px; border-radius: 50%;
+    width: 44px; height: 44px; border-radius: 50%;
     background: var(--bg-surface, #141414);
     border: 1px solid var(--border, rgba(255,255,255,0.08));
     color: var(--text-secondary, #8a8a8e); cursor: pointer; font-size: 14px;
