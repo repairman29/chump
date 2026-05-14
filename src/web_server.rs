@@ -1713,6 +1713,230 @@ async fn handle_repo_working(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+// ── PWA secrets (INFRA-989) ────────────────────────────────────────────────
+//
+// Secret-input flow with mask + test-before-store. Mirror of the INFRA-988
+// non-secret settings panel but with hardened semantics:
+//   - GET returns presence + last4 only — never the raw value
+//   - POST probes the credential against its provider before persisting
+//   - Storage: ~/.chump/config.toml [api] section (chmod 600), shared with auth.rs
+//   - Logging: presence-only (`forwarding explicit X` pattern), never the value
+
+const SECRET_KEYS: &[&str] = &["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN"];
+
+/// Map a public key name to the [api]-section field name in
+/// ~/.chump/config.toml. Mirrors src/auth.rs detect_credentials reader.
+fn secret_config_location(key: &str) -> Option<&'static str> {
+    match key {
+        "ANTHROPIC_API_KEY" => Some("anthropic_api_key"),
+        "CLAUDE_CODE_OAUTH_TOKEN" => Some("claude_code_oauth_token"),
+        "GH_TOKEN" => Some("gh_token"),
+        _ => None,
+    }
+}
+
+/// Resolve a secret by precedence: env → config.toml → not set.
+/// Never returned over the API; used internally for masking + probe.
+fn resolve_secret(key: &str) -> Option<String> {
+    if let Ok(v) = std::env::var(key) {
+        let t = v.trim();
+        if !t.is_empty() {
+            return Some(t.to_string());
+        }
+    }
+    if let Some(field) = secret_config_location(key) {
+        if let Some(v) = crate::auth::read_config_kv("api", field) {
+            let t = v.trim().to_string();
+            if !t.is_empty() {
+                return Some(t);
+            }
+        }
+    }
+    None
+}
+
+/// Return last 4 chars of a string (or fewer if shorter), used for masked
+/// display. Empty input → "".
+fn last4_of(s: &str) -> String {
+    let trimmed = s.trim();
+    if trimmed.len() <= 4 {
+        return trimmed.to_string();
+    }
+    trimmed[trimmed.len() - 4..].to_string()
+}
+
+/// GET /api/settings/secret/{name} — presence + last4 only.
+/// CRITICAL: this endpoint MUST never return the raw value. The handler is
+/// the choke point — every internal use goes through resolve_secret().
+async fn handle_secret_get(
+    axum::extract::Path(key): axum::extract::Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if !SECRET_KEYS.contains(&key.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let resolved = resolve_secret(&key);
+    let set = resolved.is_some();
+    let last4 = resolved.as_deref().map(last4_of).unwrap_or_default();
+    tracing::debug!(target: "infra_989", key = %key, set = set, "GET /api/settings/secret");
+    Ok(Json(serde_json::json!({
+        "set": set,
+        "last4": last4,
+    })))
+}
+
+#[derive(serde::Deserialize)]
+struct SecretPostBody {
+    value: String,
+}
+
+/// POST /api/settings/secret/{name} — probe then persist.
+/// Probe is mandatory unless CHUMP_SKIP_PROBE=1 (test-only escape hatch).
+/// Returns 422 on probe failure WITHOUT writing — operator gets feedback
+/// before a bad credential silently breaks the fleet.
+async fn handle_secret_post(
+    axum::extract::Path(key): axum::extract::Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<SecretPostBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if !check_csrf(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if !check_origin_localhost(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if !SECRET_KEYS.contains(&key.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let value = body.value.trim();
+    if value.is_empty() || value.len() > 4096 || value.contains('"') || value.contains('\n') {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let skip_probe = std::env::var("CHUMP_SKIP_PROBE")
+        .map(|v| v != "0")
+        .unwrap_or(false);
+    if !skip_probe {
+        let probe_ok = probe_secret(&key, value).await;
+        if !probe_ok {
+            tracing::warn!(target: "infra_989", key = %key, "secret probe failed; not persisting");
+            return Err(StatusCode::UNPROCESSABLE_ENTITY);
+        }
+    }
+
+    let Some(field) = secret_config_location(&key) else {
+        return Err(StatusCode::BAD_REQUEST);
+    };
+    crate::auth::write_config_kv("api", field, value)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Presence-only log line — NEVER `value` here.
+    tracing::info!(
+        target: "infra_989",
+        key = %key,
+        last4 = %last4_of(value),
+        probe_skipped = skip_probe,
+        "secret persisted to ~/.chump/config.toml [api]"
+    );
+    emit_secret_changed(&key, &last4_of(value), skip_probe);
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "key": key,
+        "stored": true,
+        "last4": last4_of(value),
+    })))
+}
+
+/// Probe a credential by hitting its provider with a tiny call.
+/// Cost: one cheap API call per save. Bypassable via CHUMP_SKIP_PROBE=1
+/// in test/CI environments where outbound network would flake.
+async fn probe_secret(key: &str, value: &str) -> bool {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return false,
+    };
+    match key {
+        "ANTHROPIC_API_KEY" | "CLAUDE_CODE_OAUTH_TOKEN" => {
+            let body = serde_json::json!({
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 1,
+                "messages": [{"role": "user", "content": "x"}],
+            });
+            let resp = if key == "ANTHROPIC_API_KEY" {
+                client
+                    .post("https://api.anthropic.com/v1/messages")
+                    .header("anthropic-version", "2023-06-01")
+                    .header("x-api-key", value)
+                    .json(&body)
+                    .send()
+                    .await
+            } else {
+                client
+                    .post("https://api.anthropic.com/v1/messages")
+                    .header("anthropic-version", "2023-06-01")
+                    .header("authorization", format!("Bearer {}", value))
+                    .json(&body)
+                    .send()
+                    .await
+            };
+            match resp {
+                // 200: real success.
+                // 400: auth accepted, body rejected — still proves the key.
+                // Anything else (401, 403, 5xx, network err): fail.
+                Ok(r) => {
+                    let s = r.status();
+                    s.is_success() || s == reqwest::StatusCode::BAD_REQUEST
+                }
+                Err(_) => false,
+            }
+        }
+        "GH_TOKEN" => {
+            let resp = client
+                .get("https://api.github.com/user")
+                .header("authorization", format!("Bearer {}", value))
+                .header("user-agent", "chump-pwa")
+                .send()
+                .await;
+            match resp {
+                Ok(r) => r.status().is_success(),
+                Err(_) => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+/// Emit `kind=pwa_secret_changed` to ambient.jsonl with ONLY non-sensitive
+/// fields (key name, last4, probe-skipped flag). The raw value never leaves
+/// the handler's local scope.
+fn emit_secret_changed(key: &str, last4: &str, probe_skipped: bool) {
+    let event = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "kind": "pwa_secret_changed",
+        "key": key,
+        "last4": last4,
+        "probe_skipped": probe_skipped,
+    });
+    let path = repo_path::runtime_base()
+        .join(".chump-locks")
+        .join("ambient.jsonl");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(f, "{}", event);
+    }
+}
+
 // ── PWA settings panel (INFRA-988) ─────────────────────────────────────────
 //
 // Non-secret operator config exposed via /api/settings. Storage tier A
@@ -5292,6 +5516,11 @@ fn build_api_router() -> Router {
         // INFRA-988: non-secret settings panel scaffolding
         .route("/api/settings", get(handle_settings_get))
         .route("/api/settings/{key}", post(handle_settings_post))
+        // INFRA-989: secret-input flow (mask + test-before-store)
+        .route(
+            "/api/settings/secret/{name}",
+            get(handle_secret_get).post(handle_secret_post),
+        )
         .route(
             "/api/ingest",
             post(handle_ingest_json).layer(RequestBodyLimitLayer::new(

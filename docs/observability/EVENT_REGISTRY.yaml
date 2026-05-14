@@ -2358,3 +2358,9 @@ events:
       for operator visibility.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, session, gap, error]
+  # ── INFRA-989: PWA secret-input flow ─────────────────────────────────────
+  - kind: pwa_secret_changed
+    emitter: src/web_server.rs handle_secret_post (INFRA-989)
+    trigger: operator persists a secret credential (Anthropic key, OAUTH token, GH token) via PWA POST /api/settings/secret/{name}, after a successful probe (or with CHUMP_SKIP_PROBE=1)
+    consumers: [fleet-brief, audit-trail]
+    fields_required: [ts, kind, key, last4, probe_skipped]
