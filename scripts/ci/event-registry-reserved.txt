@@ -1,0 +1,17 @@
+# scripts/ci/event-registry-reserved.txt — INFRA-1237
+#
+# Kinds that are EXEMPT from EVENT_REGISTRY.yaml drift enforcement in
+# BOTH directions (emit-without-register AND register-without-emit).
+#
+# Use sparingly. Each entry must include a `# reason:` comment explaining
+# why this kind is reserved (planned-but-not-yet-implemented, intentionally
+# undeclared internal probe, etc.).
+#
+# Format: one kind per line, optional inline `# reason: ...` comment.
+# Blank lines and lines starting with `#` are ignored.
+#
+# Today (post-INFRA-1237 initial reconciliation): empty. All known
+# in-production emit kinds are registered. The 138 register-without-emit
+# orphans are tracked separately in a follow-up gap (INFRA-1289) for
+# implement-or-prune review per kind.
+
