@@ -80,6 +80,31 @@ that the file is not actually read from the live repo.
 Violation without a comment is a PR review blocker. See
 `scripts/ci/test-ci-fixture-coupling.sh` for the automated lint.
 
+## Redundancy prevention (META-063)
+
+Before writing a new `*.sh` under `scripts/coord/`, `scripts/ops/`, or
+`scripts/dispatch/`, **check whether existing files in the same dir
+already do most of the work.** Today's audit (2026-05-14) found:
+- 7 worktree-scanning reapers (collapse target: `scripts/lib/worktree-iter.sh`)
+- 4 stacked `gh` wrapper layers
+- 8 lease-JSON parsers reinventing the same regex
+- 6 CI tests hard-coding `src/gap_store.rs` for content greps
+
+Each of these was added as a "new" script that *looked* unique at filing
+time but ended up consolidated retroactively. The `pre-commit-redundancy.sh`
+hook catches the worst class: bash function-name shape that overlaps
+Jaccard ≥ 0.6 with an existing sibling.
+
+**Bypass:** when the overlap is intentional (e.g. a deliberate variant
+that legitimately can't extend the existing file), add to the commit
+body trailer:
+```
+Redundancy-OK: <one-sentence reason>
+```
+Logged to ambient as `kind=redundancy_bypass_used`.
+
+Sibling rules: META-064 (Rust-first), META-065 (auto-prioritization).
+
 ## Lint and format commands
 
 ```bash

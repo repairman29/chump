@@ -209,6 +209,14 @@ events:
     consumers: [fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, gap_id, session_id]
 
+  - kind: redundancy_bypass_used
+    emitter: scripts/git-hooks/pre-commit-redundancy.sh (META-063)
+    trigger: pre-commit gate detected high function-name overlap between
+      a new shell file and an existing sibling, but commit body had
+      'Redundancy-OK:' trailer — bypass logged for audit.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, files, reason]
+
   - kind: fleet_paused_disk_critical
     emitter: scripts/lib/disk-check.sh via worker.sh (INFRA-975)
     trigger: worker pre-cycle disk check found free < CHUMP_DISK_CRITICAL_GB (default 1 GB)
