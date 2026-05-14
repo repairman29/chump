@@ -208,6 +208,51 @@ else
   ok "path-filter insertion in theirs did not corrupt ours"
 fi
 
+echo "--- Test 6 (INFRA-1279): same-region pure-add — both sides append to identical position ---"
+# Regression for the silent-drop bug: when both branches append steps to the
+# exact same EOF position, git detects a textual conflict and calls the driver.
+# The driver MUST preserve BOTH steps — "fell back to manual merge" is not OK here.
+git -C "$FAKE" checkout -q main
+
+git -C "$FAKE" checkout -q -b feature-X
+cat >>"$FAKE/.github/workflows/ci.yml" <<'YAML'
+      - name: INFRA-9001-step-from-X
+        run: echo "x-step"
+YAML
+git -C "$FAKE" add .github/workflows/ci.yml
+git -C "$FAKE" commit -q -m "feature-X: add INFRA-9001 step"
+
+git -C "$FAKE" checkout -q main
+git -C "$FAKE" checkout -q -b feature-Y
+cat >>"$FAKE/.github/workflows/ci.yml" <<'YAML'
+      - name: INFRA-9002-step-from-Y
+        run: echo "y-step"
+YAML
+git -C "$FAKE" add .github/workflows/ci.yml
+git -C "$FAKE" commit -q -m "feature-Y: add INFRA-9002 step"
+
+git -C "$FAKE" checkout -q main
+git -C "$FAKE" merge -q --ff-only feature-Y
+git -C "$FAKE" branch -q -D feature-Y
+
+git -C "$FAKE" checkout -q feature-X
+set +e
+( cd "$FAKE" && git rebase main 2>&1 ) > "$TMPDIR_BASE/rebase-sameregion.out"
+RC=$?
+set -e
+
+if [[ $RC -eq 0 ]] \
+    && grep -q "INFRA-9001-step-from-X" "$FAKE/.github/workflows/ci.yml" \
+    && grep -q "INFRA-9002-step-from-Y" "$FAKE/.github/workflows/ci.yml" \
+    && ! grep -q "<<<<<<< " "$FAKE/.github/workflows/ci.yml"; then
+  ok "same-region pure-add: both steps present, no conflict markers (INFRA-1279)"
+else
+  cat "$TMPDIR_BASE/rebase-sameregion.out" >&2
+  cat "$FAKE/.github/workflows/ci.yml" >&2
+  fail "same-region pure-add: step(s) missing or conflict markers remain (INFRA-1279 regression)"
+  git -C "$FAKE" rebase --abort 2>/dev/null || true
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]
