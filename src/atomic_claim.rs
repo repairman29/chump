@@ -250,7 +250,12 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 &["reset", "--hard", &format!("{}/{}", args.remote, branch)],
             ) {
                 rollback_wt(&format!("reset --hard failed: {e}"));
-                bail!("--resume: reset --hard to {}/{} failed: {}", args.remote, branch, e);
+                bail!(
+                    "--resume: reset --hard to {}/{} failed: {}",
+                    args.remote,
+                    branch,
+                    e
+                );
             }
             eprintln!(
                 "[claim] --resume: reset HEAD to {}/{} (existing remote branch)",
@@ -262,7 +267,9 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 "branch {} already exists on {}.\n  \
                  Pass --resume to reset HEAD to the remote tip and continue from that work.\n  \
                  Or delete the remote branch: gh api repos/OWNER/REPO/git/refs/heads/{} -X DELETE",
-                branch, args.remote, branch
+                branch,
+                args.remote,
+                branch
             );
         }
     }
