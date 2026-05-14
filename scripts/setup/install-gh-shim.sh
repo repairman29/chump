@@ -71,7 +71,25 @@ if _is_ephemeral_path "$REPO_ROOT"; then
     echo "[install-gh-shim]   Wrapper would break the moment this dir is removed. Refusing to install." >&2
     echo "[install-gh-shim]   Re-run from the main repo checkout, e.g.:" >&2
     echo "[install-gh-shim]     bash /path/to/chump/scripts/setup/install-gh-shim.sh" >&2
+    # INFRA-1186: emit ambient event for the block (AC5)
+    _EMIT="$REPO_ROOT/scripts/dev/ambient-emit.sh"
+    if [ -x "$_EMIT" ] 2>/dev/null; then
+        "$_EMIT" gh_shim_worktree_install_blocked \
+            "ephemeral_path=$REPO_ROOT" \
+            "script_path=$_SCRIPT_REPO_ROOT" 2>/dev/null || true
+    fi
     exit 5
+fi
+
+# INFRA-1186 (AC5): emit ambient event when we silently upgraded from an
+# ephemeral worktree path to the canonical main-checkout path.
+if [ "$REPO_ROOT" != "$_SCRIPT_REPO_ROOT" ]; then
+    _EMIT="$REPO_ROOT/scripts/dev/ambient-emit.sh"
+    if [ -x "$_EMIT" ] 2>/dev/null; then
+        "$_EMIT" gh_shim_worktree_path_resolved \
+            "worktree_path=$_SCRIPT_REPO_ROOT" \
+            "canonical_path=$REPO_ROOT" 2>/dev/null || true
+    fi
 fi
 
 SHIM_SRC="$REPO_ROOT/scripts/coord/lib/gh-shim/gh"
