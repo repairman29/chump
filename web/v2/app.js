@@ -202,40 +202,222 @@ window.chumpStream = window.chumpStream || new DashboardStream();
 window.addEventListener('DOMContentLoaded', () => window.chumpStream.start());
 
 // ── <chump-nav> ───────────────────────────────────────────────────────────────
+// PRODUCT-106: four-cadence operator console nav per docs/design/OPERATOR_CONSOLE_V2.md.
+//
+// Replaces the prior 11-button feature-grouped nav with four workflow-grouped
+// cadence buttons (NOW / AMBIENT / LIBRARY / CONFIG). Each cadence renders a
+// sub-tab strip below the main nav containing the sub-views from the design
+// doc's canvas table.
+//
+// Back-compat: every legacy data-view name continues to resolve via the
+// CADENCE_VIEW_MAP below. Clicking a sub-tab dispatches the same
+// chump:navigate CustomEvent the router has always consumed — no view code
+// changes needed. URL deep links (?view=<id>) still work because the legacy
+// data-view IDs are the values in the map.
+//
+// Keyboard shortcuts: N / A / L / C switch cadences. Persists last cadence
+// via INFRA-1280 chumpPrefs (chump.last_cadence).
+//
+// Telemetry: kind=cadence_view_active {cadence, dwell_s} on every switch.
+const CHUMP_CADENCES = [
+  {
+    id: 'now',
+    label: 'Now',
+    icon: '⚡',
+    shortcut: 'n',
+    default_view: 'chat',
+    subtabs: [
+      { id: 'chat',          label: 'Chat',           icon: '💬' },
+      { id: 'agent',         label: 'My queue',       icon: '🔄' },
+      { id: 'notifications', label: 'Alerts',         icon: '🔔', badge: true },
+      { id: 'tasks',         label: 'Tasks',          icon: '✅' },
+    ],
+  },
+  {
+    id: 'ambient',
+    label: 'Ambient',
+    icon: '📡',
+    shortcut: 'a',
+    default_view: 'ambient',
+    subtabs: [
+      { id: 'ambient', label: 'Events',  icon: '📡' },
+      { id: 'agents',  label: 'Fleet',   icon: '🤝' },
+      { id: 'results', label: 'Ships',   icon: '📊' },
+    ],
+  },
+  {
+    id: 'library',
+    label: 'Library',
+    icon: '📚',
+    shortcut: 'l',
+    default_view: 'memory',
+    subtabs: [
+      { id: 'memory',    label: 'Memory',    icon: '🧠' },
+      { id: 'decisions', label: 'Decisions', icon: '🎯' },
+      { id: 'judgment',  label: 'Audit',     icon: '⚖️' },
+    ],
+  },
+  {
+    id: 'config',
+    label: 'Config',
+    icon: '⚙',
+    shortcut: 'c',
+    default_view: 'settings',
+    subtabs: [
+      { id: 'settings', label: 'Settings', icon: '⚙' },
+      { id: 'models',   label: 'Models',   icon: '🤖' },
+    ],
+  },
+];
+
+// Legacy view-id → cadence-id lookup so sub-tab clicks know which cadence to highlight.
+const CHUMP_VIEW_TO_CADENCE = (() => {
+  const out = {};
+  for (const cad of CHUMP_CADENCES) {
+    for (const tab of cad.subtabs) out[tab.id] = cad.id;
+  }
+  return out;
+})();
+
 class ChumpNav extends HTMLElement {
-  static #ITEMS = [
-    { id: 'chat',          label: 'Chat',      icon: '💬' },
-    { id: 'agents',        label: 'Agents',    icon: '🤝' },
-    { id: 'results',       label: 'Results',   icon: '📊' },
-    { id: 'agent',         label: 'Queue',     icon: '🔄' },
-    { id: 'tasks',         label: 'Tasks',     icon: '⚡' },
-    { id: 'decisions',     label: 'Decisions', icon: '🎯' },
-    { id: 'judgment',      label: 'Judgment',  icon: '⚖️' },
-    { id: 'ambient',       label: 'Events',    icon: '📡' },
-    { id: 'notifications', label: 'Alerts',    icon: '🔔', badge: true },
-    { id: 'memory',        label: 'Memory',    icon: '🧠' },
-    { id: 'models',        label: 'Models',    icon: '🤖' },
-    { id: 'settings',      label: 'Settings',  icon: '⚙' },
-  ];
+  #lastCadenceAt = 0;
+  #activeCadence = null;
 
   connectedCallback() {
-    this.innerHTML = ChumpNav.#ITEMS.map((item) => `
-      <button class="nav-item" data-view="${item.id}" aria-label="${item.label}">
-        <span class="nav-icon">${item.icon}${item.badge ? '<span class="notif-badge" id="notif-nav-badge" hidden>0</span>' : ''}</span>
-        <span class="nav-label">${item.label}</span>
+    // Resolve initial cadence: URL ?cadence > URL ?view→cadence map > chumpPrefs > 'now'.
+    const url = new URLSearchParams(location.search);
+    const cadenceFromUrl = url.get('cadence');
+    const viewFromUrl = url.get('view');
+    const storedCadence = window.chumpPrefs?.get('last_cadence', null);
+    const initial = (cadenceFromUrl && CHUMP_CADENCES.find(c => c.id === cadenceFromUrl)?.id)
+      || (viewFromUrl && CHUMP_VIEW_TO_CADENCE[viewFromUrl])
+      || storedCadence
+      || 'now';
+
+    this.#renderShell();
+    this.#activateCadence(initial, viewFromUrl);
+    this.#wireClicks();
+    this.#wireShortcuts();
+  }
+
+  #renderShell() {
+    this.innerHTML = `
+      <div class="nav-cadences" role="tablist" aria-label="Cadence">
+        ${CHUMP_CADENCES.map((c) => `
+          <button class="nav-cadence" role="tab"
+                  data-cadence="${c.id}"
+                  aria-label="${c.label} (${c.shortcut.toUpperCase()})"
+                  title="${c.label} — press ${c.shortcut.toUpperCase()}">
+            <span class="nav-icon">${c.icon}</span>
+            <span class="nav-label">${c.label}</span>
+          </button>
+        `).join('')}
+      </div>
+      <div class="nav-subtabs" role="tablist" aria-label="Sub-view" id="chump-nav-subtabs"></div>
+    `;
+  }
+
+  #renderSubtabs(cadenceId) {
+    const cad = CHUMP_CADENCES.find(c => c.id === cadenceId);
+    const bar = this.querySelector('#chump-nav-subtabs');
+    if (!cad || !bar) return;
+    bar.innerHTML = cad.subtabs.map(t => `
+      <button class="nav-item" role="tab"
+              data-view="${t.id}"
+              aria-label="${t.label}"
+              title="${t.label}">
+        <span class="nav-icon">${t.icon}${t.badge ? '<span class="notif-badge" id="notif-nav-badge" hidden>0</span>' : ''}</span>
+        <span class="nav-label">${t.label}</span>
       </button>
     `).join('');
+  }
 
-    this.addEventListener('click', (e) => {
+  #wireClicks() {
+    // Cadence buttons.
+    this.querySelectorAll('[data-cadence]').forEach((btn) => {
+      btn.addEventListener('click', () => this.#activateCadence(btn.dataset.cadence));
+    });
+    // Sub-tab clicks (delegated since subtabs re-render on cadence change).
+    this.querySelector('#chump-nav-subtabs')?.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-view]');
       if (!btn) return;
-      this.querySelectorAll('[data-view]').forEach((b) => b.removeAttribute('aria-current'));
-      btn.setAttribute('aria-current', 'page');
-      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: btn.dataset.view }));
+      this.#activateView(btn.dataset.view);
     });
+  }
 
-    // Default selection.
-    this.querySelector('[data-view="chat"]')?.setAttribute('aria-current', 'page');
+  #wireShortcuts() {
+    document.addEventListener('keydown', (e) => {
+      // Ignore when typing in inputs.
+      if (e.target.matches('input, textarea, [contenteditable]')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const cad = CHUMP_CADENCES.find(c => c.shortcut === e.key.toLowerCase());
+      if (cad) {
+        e.preventDefault();
+        this.#activateCadence(cad.id);
+      }
+    });
+  }
+
+  #activateCadence(cadenceId, viewOverride = null) {
+    const cad = CHUMP_CADENCES.find(c => c.id === cadenceId);
+    if (!cad) return;
+
+    // Telemetry: emit dwell-time for the previous cadence.
+    if (this.#activeCadence && this.#activeCadence !== cadenceId && this.#lastCadenceAt) {
+      const dwell_s = Math.round((Date.now() - this.#lastCadenceAt) / 1000);
+      ChumpNav.#emitCadenceEvent(this.#activeCadence, dwell_s);
+    }
+
+    this.#activeCadence = cadenceId;
+    this.#lastCadenceAt = Date.now();
+
+    // Visual state.
+    this.querySelectorAll('[data-cadence]').forEach((b) => b.removeAttribute('aria-current'));
+    this.querySelector(`[data-cadence="${cadenceId}"]`)?.setAttribute('aria-current', 'page');
+
+    this.#renderSubtabs(cadenceId);
+
+    // Activate target view: viewOverride (URL) > cadence's default.
+    const target = viewOverride && CHUMP_VIEW_TO_CADENCE[viewOverride] === cadenceId
+      ? viewOverride
+      : cad.default_view;
+    this.#activateView(target, /* skipUrlPush */ false);
+
+    // Persist + URL update.
+    window.chumpPrefs?.set('last_cadence', cadenceId);
+    try {
+      const url = new URL(location.href);
+      url.searchParams.set('cadence', cadenceId);
+      history.replaceState(null, '', url.toString());
+    } catch {}
+  }
+
+  #activateView(viewId, skipUrlPush = false) {
+    // Update sub-tab visual state.
+    this.querySelectorAll('#chump-nav-subtabs [data-view]').forEach((b) => b.removeAttribute('aria-current'));
+    this.querySelector(`#chump-nav-subtabs [data-view="${viewId}"]`)?.setAttribute('aria-current', 'page');
+
+    // Dispatch the legacy chump:navigate event the router has always consumed.
+    document.dispatchEvent(new CustomEvent('chump:navigate', { detail: viewId }));
+
+    if (!skipUrlPush) {
+      try {
+        const url = new URL(location.href);
+        url.searchParams.set('view', viewId);
+        history.replaceState(null, '', url.toString());
+      } catch {}
+    }
+  }
+
+  static #emitCadenceEvent(cadenceId, dwell_s) {
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'cadence_view_active',
+        cadence: cadenceId,
+        dwell_s,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
   }
 }
 customElements.define('chump-nav', ChumpNav);
