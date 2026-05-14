@@ -1408,6 +1408,7 @@ dependencies = [
  "async-nats",
  "bytes",
  "chrono",
+ "chump-gap-store",
  "futures",
  "serde",
  "serde_json",
