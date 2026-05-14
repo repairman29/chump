@@ -1525,6 +1525,14 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, path, reason, branch]
 
+  - kind: worktree_reaper_skipped_active
+    emitter: scripts/ops/stale-worktree-reaper.sh (_emit_reaper_skipped, INFRA-1074)
+    trigger: stale-worktree-reaper skips a worktree because an active lease
+      (heartbeat_at within 15 min) or fresh .git/index mtime (within 5 min)
+      indicates in-flight work — reaping would destroy uncommitted work
+    consumers: [fleet-brief, emergency-fast-path]
+    fields_required: [ts, kind, worktree, reason]
+
   # ── CREDIBLE-038: file-count-blast rule ──────────────────────────────────
   - kind: pr_scope_violation
     emitter: scripts/ci/check-mass-deletion.sh (CREDIBLE-038, rule C)

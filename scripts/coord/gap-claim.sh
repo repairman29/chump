@@ -372,12 +372,13 @@ EXPIRES="$(date -u -v+"${TTL_HOURS}"H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
 # inject/update the gap_id. Otherwise write a minimal standalone claim.
 if [[ -f "$LOCK_FILE" ]]; then
     # Use python3 to merge gap_id (and optional paths) into existing JSON
-    python3 - "$LOCK_FILE" "$GAP_ID" "$CLAIM_PATHS" "$SPECULATIVE" <<'PYEOF'
-import json, sys
-path, gid, paths_csv, spec = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+    python3 - "$LOCK_FILE" "$GAP_ID" "$CLAIM_PATHS" "$SPECULATIVE" "$REPO_ROOT" <<'PYEOF'
+import json, os, sys
+path, gid, paths_csv, spec, repo_root = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
 with open(path) as f:
     d = json.load(f)
 d["gap_id"] = gid
+d["worktree"] = os.path.basename(repo_root)  # INFRA-1074: reaper safety
 if spec == "1":
     d["speculative"] = True
 p = d.get("pending_new_gap")
@@ -403,9 +404,9 @@ PYEOF
     fi
 else
     # No existing lease — write a minimal standalone claim
-    python3 - "$LOCK_FILE" "$GAP_ID" "$SESSION_ID" "$NOW" "$EXPIRES" "$CLAIM_PATHS" "$SPECULATIVE" <<'PYEOF'
-import json, sys
-path, gap_id, session_id, taken_at, expires_at, paths_csv, spec = sys.argv[1:]
+    python3 - "$LOCK_FILE" "$GAP_ID" "$SESSION_ID" "$NOW" "$EXPIRES" "$CLAIM_PATHS" "$SPECULATIVE" "$REPO_ROOT" <<'PYEOF'
+import json, os, sys
+path, gap_id, session_id, taken_at, expires_at, paths_csv, spec, repo_root = sys.argv[1:]
 paths_list = [p.strip() for p in paths_csv.split(",") if p.strip()] if paths_csv else []
 d = {
     "session_id": session_id,
@@ -415,6 +416,7 @@ d = {
     "heartbeat_at": taken_at,
     "purpose": f"gap:{gap_id}",
     "gap_id": gap_id,
+    "worktree": os.path.basename(repo_root),  # INFRA-1074: reaper safety
 }
 if spec == "1":
     d["speculative"] = True
