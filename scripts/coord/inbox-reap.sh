@@ -31,6 +31,13 @@ AMBIENT="$LOCK_DIR/ambient.jsonl"
 
 GRACE_S="${CHUMP_INBOX_REAP_GRACE_S:-3600}"
 
+# INFRA-1255: live-inbox cleanup. Two new rules applied BEFORE the
+# dead-session archive sweep below:
+#   (a) DONE-matched: drop any message whose corr_id == a DONE event's
+#       corr_id that landed since the message was written.
+#   (b) TTL: drop any message older than CHUMP_INBOX_TTL_DAYS (default 7).
+TTL_DAYS="${CHUMP_INBOX_TTL_DAYS:-7}"
+
 APPLY=0
 [[ "${1:-}" == "--apply" ]] && APPLY=1
 
@@ -40,6 +47,87 @@ shopt -s nullglob
 now_epoch="$(date +%s)"
 yyyymm="$(date +%Y-%m)"
 
+# ── INFRA-1255 — live-inbox sweep (runs before the dead-session archive pass) ──
+# For each live inbox, rewrite the file dropping lines whose corr_id appears
+# in a DONE event since the message was written, or which exceed TTL_DAYS.
+inbox_reaped_messages=0
+for inbox_file in "$INBOX_DIR"/*.jsonl; do
+    [[ -f "$inbox_file" ]] || continue
+    base="$(basename "$inbox_file" .jsonl)"
+    lease_file="$LOCK_DIR/$base.json"
+    # Only sweep LIVE inboxes here; dead ones get the existing archive treatment.
+    if [[ ! -f "$lease_file" ]]; then continue; fi
+
+    python3 - "$inbox_file" "$AMBIENT" "$TTL_DAYS" "$APPLY" <<'PY' || true
+import json, sys, os, time
+inbox_path, ambient_path, ttl_days, apply_str = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4]
+apply = apply_str == "1"
+now = time.time()
+ttl_s = ttl_days * 86400
+
+# Collect DONE corr_ids from ambient (best-effort scan; missing ambient is fine)
+done_corr_ids = set()
+try:
+    with open(ambient_path) as f:
+        for line in f:
+            try:
+                e = json.loads(line)
+            except Exception:
+                continue
+            if e.get('event') == 'DONE':
+                cid = e.get('corr_id')
+                if cid:
+                    done_corr_ids.add(cid)
+except FileNotFoundError:
+    pass
+
+try:
+    with open(inbox_path) as f:
+        lines = f.readlines()
+except FileNotFoundError:
+    sys.exit(0)
+
+keep = []
+dropped_done = 0
+dropped_ttl = 0
+for raw in lines:
+    raw_strip = raw.strip()
+    if not raw_strip:
+        continue
+    try:
+        e = json.loads(raw_strip)
+    except Exception:
+        keep.append(raw_strip)
+        continue
+    # DONE-match: drop the message; the underlying work is finished.
+    if e.get('corr_id') and e['corr_id'] in done_corr_ids and e.get('event') != 'DONE':
+        dropped_done += 1
+        continue
+    # TTL
+    ts = e.get('ts', '')
+    if ts:
+        try:
+            from datetime import datetime
+            t = datetime.fromisoformat(ts.replace('Z', '+00:00')).timestamp()
+            if (now - t) > ttl_s:
+                dropped_ttl += 1
+                continue
+        except Exception:
+            pass
+    keep.append(raw_strip)
+
+if (dropped_done + dropped_ttl) == 0:
+    sys.exit(0)
+
+print(f"[inbox-reap] {os.path.basename(inbox_path).replace('.jsonl','')}: drop done={dropped_done} ttl={dropped_ttl} keep={len(keep)}", file=sys.stderr)
+if apply:
+    with open(inbox_path, 'w') as f:
+        for k in keep:
+            f.write(k + '\n')
+PY
+done
+
+# ── Original dead-session archive sweep follows ────────────────────────────────
 reaped_count=0
 for inbox_file in "$INBOX_DIR"/*.jsonl; do
     base="$(basename "$inbox_file" .jsonl)"
