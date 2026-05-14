@@ -1,17 +1,23 @@
 - id: INFRA-1271
   domain: INFRA
   title: A2A — FEEDBACK event type (preference / defect / proposal / retro) for agent self-report
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "broadcast.sh accepts new event type: FEEDBACK <kind> <subject> [\"<rationale>\"]"
-    - "Valid kinds: defect (bug an agent observed) / proposal (suggested improvement) / preference (vote on existing default) / retro (post-ship reflection)"
-    - "Schema: event=FEEDBACK, kind=<one-of-4>, subject=<gap-id-or-policy-name>, rationale=<text>, vote=+1/-1/0 (preference only), session=<id>, ts=<iso>, model=<tier>, harness=<name>"
-    - "FEEDBACK events land in dedicated .chump-locks/feedback.jsonl (NOT session inboxes — curator territory)"
-    - "Also published to NATS chump.events.feedback.* topic for external watchers"
-    - "EVENT_REGISTRY.yaml registers FEEDBACK kinds"
-    - "Test: emit 4 FEEDBACKs (one per kind), assert each appears in feedback.jsonl with correct fields"
-  notes: |
-    [2026-05-14T18:13:08Z] Today (2026-05-14): user pointed out I hardcoded inbox-first picker preference without asking the fleet. There is no channel for an agent to say 'this default fights my use case.' The six existing events are all operational state. FEEDBACK closes that gap.
+  - 'broadcast.sh accepts new event type: FEEDBACK <kind> <subject> ["<rationale>"]'
+  - 'Valid kinds: defect (bug an agent observed) / proposal (suggested improvement) / preference (vote on existing default)
+    / retro (post-ship reflection)'
+  - 'Schema: event=FEEDBACK, kind=<one-of-4>, subject=<gap-id-or-policy-name>, rationale=<text>, vote=+1/-1/0 (preference
+    only), session=<id>, ts=<iso>, model=<tier>, harness=<name>'
+  - FEEDBACK events land in dedicated .chump-locks/feedback.jsonl (NOT session inboxes — curator territory)
+  - Also published to NATS chump.events.feedback.* topic for external watchers
+  - EVENT_REGISTRY.yaml registers FEEDBACK kinds
+  - 'Test: emit 4 FEEDBACKs (one per kind), assert each appears in feedback.jsonl with correct fields'
+  notes: '[2026-05-14T18:13:08Z] Today (2026-05-14): user pointed out I hardcoded inbox-first picker preference without asking
+    the fleet. There is no channel for an agent to say ''this default fights my use case.'' The six existing events are all
+    operational state. FEEDBACK closes that gap.
 
+    '
+  closed_date: '2026-05-14'
+  closed_pr: 1923
