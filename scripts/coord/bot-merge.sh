@@ -2037,125 +2037,14 @@ if [[ "${CHUMP_ALLOW_RECYCLE:-0}" != "1" ]] && [[ ${#GAP_IDS[@]} -gt 0 ]] && [[ 
     done
 fi
 
-# ── 6.75. Auto-close gap on the implementation PR (INFRA-154) ────────────────
-# Before arming auto-merge, fold the gap status flip INTO the implementation PR.
-# Without this, every shipped gap needed a separate "flip status to done after
-# PR #N landed" follow-up commit (5+ such bot-effort PRs in the week of
-# 2026-04-22..28: #617, #623, #627, #630, #632, #634). The merge queue squashes
-# the close commit together with the implementation commit, so origin/main sees
-# one atomic closure with status=done + closed_pr=<this PR's number>.
-#
-# Disable with CHUMP_AUTO_CLOSE_GAP=0 for genuine partial-progress / split PRs
-# where the gap is NOT being fully closed by this ship.
-#
-# Skipped when:
-#   - DRY_RUN
-#   - --no-auto-merge (no PR number to attach)
-#   - GAP_IDS array is empty (--gap was not given)
-#   - TARGET_PR couldn't be determined from gh pr view
-#   - chump binary missing or `chump gap ship` fails (often: gap already done)
-if [[ $DRY_RUN -eq 0 ]] && [[ $AUTO_MERGE -eq 1 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP:-1}" != "0" ]] && [[ ${#GAP_IDS[@]} -gt 0 ]] && [[ "${CHUMP_BENCH_MODE:-0}" != "1" ]]; then
-    _autoclose_target_pr=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
-    # INFRA-526 / META-022: use $MAIN_REPO (set by repo-paths.sh at startup)
-    # as the canonical .chump/state.db target. The previous inline computation
-    # (`git rev-parse --git-common-dir | xargs -I{} realpath "{}/.."`) was
-    # fragile: when xargs receives empty input it exits 0 without running
-    # realpath, making the pipeline exit 0 with no output and bypassing the
-    # `|| pwd` fallback — resulting in CHUMP_REPO="" which caused repo_root()
-    # to fall back to CWD (the linked worktree), targeting the wrong state.db.
-    # $MAIN_REPO uses `cd && pwd` with a $REPO_ROOT fallback and is already
-    # verified by the time we reach this block.
-    _autoclose_main_repo="${MAIN_REPO:-$REPO_ROOT}"
-    # INFRA-526: pin to the canonical chump binary path so an outdated binary
-    # in $PATH (e.g., a stale symlink or a different version) doesn't silently
-    # skip the --closed-pr flag. Fall back to PATH-resolved chump if absent.
-    _autoclose_chump="chump"
-    if [[ -x "${HOME}/.cargo/bin/chump" ]]; then
-        _autoclose_chump="${HOME}/.cargo/bin/chump"
-    fi
-    info "INFRA-526: auto-close targeting state.db at $_autoclose_main_repo/.chump/state.db (binary: $_autoclose_chump)"
-    if [[ -n "$_autoclose_target_pr" ]] && command -v chump >/dev/null 2>&1; then
-        for _gid in "${GAP_IDS[@]}"; do
-            stage_start "auto-close gap $_gid via PR #$_autoclose_target_pr (INFRA-154)"
-            # Capture output so we can surface the actual error if ship fails
-            # (was '>/dev/null 2>&1' which swallowed everything — see META-017).
-            # INFRA-469: bin/chump shim handles timeout+heal+retry transparently.
-            # INFRA-587: wrapped with run_timed_hb (60s) so a hung chump binary
-            # emits a bot_merge_hang ALERT and doesn't stall the entire ship pipeline.
-            _tmpship=$(mktemp)
-            set +e
-            CHUMP_REPO="$_autoclose_main_repo" \
-            CHUMP_REAL_BINARY="$_autoclose_chump" \
-            run_timed_hb "gap ship $_gid" 60 \
-                chump gap ship "$_gid" \
-                    --closed-pr "$_autoclose_target_pr" \
-                    --update-yaml > "$_tmpship" 2>&1
-            _autoclose_rc=$?
-            set -e
-            _autoclose_err=$(cat "$_tmpship")
-            rm -f "$_tmpship"
-            if [[ $_autoclose_rc -eq 0 ]]; then
-                # INFRA-509: removed docs/gaps.yaml / docs/gaps/ git-add block.
-                # Post-INFRA-498 state.db is canonical; chump gap ship updates it
-                # in-place — no YAML files are written, so nothing needs staging.
-                # The git commit + push that followed were also dead (nothing staged).
-                green "Auto-closed $_gid (closed_pr=$_autoclose_target_pr) — squashed atomically by merge queue"
-                # INFRA-192: forward-chain notifier. When a gap closes, scan open
-                # gaps for `depends_on` containing this ID; emit gap_unblocked so
-                # sibling agents can pick up downstream immediately.
-                # Best-effort: never blocks the close path.
-                if command -v chump >/dev/null 2>&1 \
-                    && [[ -x scripts/coord/broadcast.sh ]]; then
-                    _unblocked=$(chump gap list --status open --json 2>/dev/null \
-                                | python3 -c "
-import json, sys
-gid = '$_gid'
-try:
-    data = json.load(sys.stdin)
-except Exception:
-    sys.exit(0)
-for g in data:
-    deps = g.get('depends_on') or []
-    if isinstance(deps, str):
-        deps = [d.strip() for d in deps.split(',') if d.strip()]
-    if gid in deps:
-        print(g['id'])
-" 2>/dev/null || true)
-                            if [[ -n "$_unblocked" ]]; then
-                                _unblocked_count=0
-                                while IFS= read -r _down; do
-                                    [[ -z "$_down" ]] && continue
-                                    scripts/coord/broadcast.sh ALERT \
-                                        kind=gap_unblocked \
-                                        "INFRA-192: $_gid closed (PR #$_autoclose_target_pr) — $_down newly actionable (depends_on link satisfied)" \
-                                        >/dev/null 2>&1 || true
-                                    _unblocked_count=$((_unblocked_count + 1))
-                                done <<< "$_unblocked"
-                                green "Forward-chain (INFRA-192): $_gid unblocked ${_unblocked_count} downstream gap(s); broadcast to siblings"
-                            fi
-                        fi
-            else
-                # INFRA-678: gap ship failure is fatal — abort before auto-merge arm.
-                # Previously this was a warning-only path, which let ghost gaps slip
-                # through (INFRA-664). Now we exit 1 so CI surfaces the failure
-                # visibly instead of silently shipping a gap in an unknown state.
-                red "Auto-close FAILED for $_gid (chump gap ship rc=$_autoclose_rc) — aborting auto-merge:"
-                if [[ -n "$_autoclose_err" ]]; then
-                    while IFS= read -r _line; do
-                        [[ -z "$_line" ]] && continue
-                        red "  | $_line"
-                    done <<< "$_autoclose_err"
-                fi
-                red "  YAML mirror NOT updated; gap status NOT flipped."
-                red "  Recover: chump gap ship $_gid --closed-pr $_autoclose_target_pr --update-yaml"
-                red "           (run from main repo: $_autoclose_main_repo)"
-                red "  See: docs/process/CLAUDE_GOTCHAS.md#error-missing-closed-pr"
-                exit 1
-            fi
-            stage_done
-        done
-    fi
-fi
+# ── 6.75. Auto-close gap on the implementation PR (INFRA-154 / INFRA-1030) ────
+# INFRA-1030: gap ship is now AFTER auto-merge arm (section 7 below).
+# Previous order was: gap ship → arm auto-merge. If bot-merge died between those
+# two steps, the gap was left status=done but the PR had no auto-merge → stalls.
+# New order: arm auto-merge → THEN gap ship. Worst-case on abort: gap stays
+# in_progress but PR will still merge when CI passes. Operator recovers with:
+#   chump gap ship <GAP-ID> --closed-pr <PR> --update-yaml
+# (Moved body to end of section 7, after gh pr merge --auto --squash.)
 
 # ── 7. Enable auto-merge (optional) ──────────────────────────────────────────
 if [[ $AUTO_MERGE -eq 1 ]]; then
@@ -2469,6 +2358,100 @@ RDPYEOF
                     exit 2
                 fi
             fi
+        fi
+
+        # ── INFRA-1030: Auto-close gap AFTER auto-merge arm ──────────────────────
+        # This is the LAST irreversible state change. If bot-merge dies here, the
+        # PR is already queued → will merge on green CI. Operator recovers with:
+        #   chump gap ship <GAP-ID> --closed-pr <PR> --update-yaml
+        # Old behavior (exit 1 on ship failure) moved to a WARN: PR is already
+        # armed, aborting the script here would be confusing. Emit ambient event.
+        # Disable with CHUMP_AUTO_CLOSE_GAP=0 for partial-progress PRs.
+        if [[ $DRY_RUN -eq 0 ]] && [[ "${CHUMP_AUTO_CLOSE_GAP:-1}" != "0" ]] \
+                && [[ ${#GAP_IDS[@]} -gt 0 ]] && [[ "${CHUMP_BENCH_MODE:-0}" != "1" ]] \
+                && [[ -n "$TARGET_PR" ]] && command -v chump >/dev/null 2>&1; then
+            # INFRA-526 / META-022: use $MAIN_REPO for canonical state.db.
+            _autoclose_main_repo="${MAIN_REPO:-$REPO_ROOT}"
+            # INFRA-526: pin to canonical chump binary; fall back to PATH.
+            _autoclose_chump="chump"
+            if [[ -x "${HOME}/.cargo/bin/chump" ]]; then
+                _autoclose_chump="${HOME}/.cargo/bin/chump"
+            fi
+            info "INFRA-526: auto-close targeting state.db at $_autoclose_main_repo/.chump/state.db (binary: $_autoclose_chump)"
+            for _gid in "${GAP_IDS[@]}"; do
+                stage_start "auto-close gap $_gid via PR #$TARGET_PR (INFRA-154)"
+                # INFRA-469 / INFRA-587: run_timed_hb captures output + has 60s timeout.
+                _tmpship=$(mktemp)
+                set +e
+                CHUMP_REPO="$_autoclose_main_repo" \
+                CHUMP_REAL_BINARY="$_autoclose_chump" \
+                run_timed_hb "gap ship $_gid" 60 \
+                    chump gap ship "$_gid" \
+                        --closed-pr "$TARGET_PR" \
+                        --update-yaml > "$_tmpship" 2>&1
+                _autoclose_rc=$?
+                set -e
+                _autoclose_err=$(cat "$_tmpship")
+                rm -f "$_tmpship"
+                if [[ $_autoclose_rc -eq 0 ]]; then
+                    # INFRA-509: state.db is canonical; no YAML file staging needed.
+                    green "Auto-closed $_gid (closed_pr=$TARGET_PR) — squashed atomically by merge queue"
+                    # INFRA-192: forward-chain notifier (best-effort; never blocks close path).
+                    if command -v chump >/dev/null 2>&1 \
+                        && [[ -x scripts/coord/broadcast.sh ]]; then
+                        _unblocked=$(chump gap list --status open --json 2>/dev/null \
+                                    | python3 -c "
+import json, sys
+gid = '$_gid'
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for g in data:
+    deps = g.get('depends_on') or []
+    if isinstance(deps, str):
+        deps = [d.strip() for d in deps.split(',') if d.strip()]
+    if gid in deps:
+        print(g['id'])
+" 2>/dev/null || true)
+                        if [[ -n "$_unblocked" ]]; then
+                            _unblocked_count=0
+                            while IFS= read -r _down; do
+                                [[ -z "$_down" ]] && continue
+                                scripts/coord/broadcast.sh ALERT \
+                                    kind=gap_unblocked \
+                                    "INFRA-192: $_gid closed (PR #$TARGET_PR) — $_down newly actionable (depends_on link satisfied)" \
+                                    >/dev/null 2>&1 || true
+                                _unblocked_count=$((_unblocked_count + 1))
+                            done <<< "$_unblocked"
+                            green "Forward-chain (INFRA-192): $_gid unblocked ${_unblocked_count} downstream gap(s); broadcast to siblings"
+                        fi
+                    fi
+                else
+                    # INFRA-1030: gap ship failure is WARN-only (not exit 1) because
+                    # auto-merge is already armed. Killing bot-merge here would confuse
+                    # the caller: the PR will land regardless. Emit ambient event for
+                    # curator / operator visibility; recover manually.
+                    red "Auto-close FAILED for $_gid (chump gap ship rc=$_autoclose_rc) — WARN (PR already armed, will merge):"
+                    if [[ -n "$_autoclose_err" ]]; then
+                        while IFS= read -r _line; do
+                            [[ -z "$_line" ]] && continue
+                            red "  | $_line"
+                        done <<< "$_autoclose_err"
+                    fi
+                    red "  YAML mirror NOT updated; gap status NOT flipped."
+                    red "  RECOVER: chump gap ship $_gid --closed-pr $TARGET_PR --update-yaml"
+                    red "           (run from main repo: $_autoclose_main_repo)"
+                    red "  See: docs/process/CLAUDE_GOTCHAS.md#error-missing-closed-pr"
+                    # Emit ambient event for curator pickup.
+                    _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                    _ts_ship="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                    printf '{"ts":"%s","kind":"gap_ship_post_arm_failed","gap_id":"%s","pr":%s,"rc":%s}\n' \
+                        "$_ts_ship" "$_gid" "$TARGET_PR" "$_autoclose_rc" >> "$_amb" 2>/dev/null || true
+                    # Do NOT exit 1 — continue (PR is already armed).
+                fi
+                stage_done
+            done
         fi
 
         # ── INFRA-193: speculative-execution loser sweep ─────────────────────
