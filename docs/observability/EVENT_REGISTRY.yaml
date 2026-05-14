@@ -578,9 +578,21 @@ events:
     fields_required: [ts, kind, decision_type, reasoning, action_taken]
     docs: |
       decision_type is one of: p0_demotion | gap_ac_filled | gap_filed |
-      pr_unstick | waste_investigation | balance_restock.
+      pr_unstick | waste_investigation | balance_restock | auto_decompose.
       action_taken is either a description of what was done or
       "identified_only" when the decision flags an issue for operator action.
+
+  - kind: curator_auto_decompose
+    emitter: scripts/coord/opus-curator.sh (INFRA-943)
+    trigger: curator Decision 3b fires — a pillar has 0 pickable xs/s/m gaps
+             AND an l/xl gap with no depends_on exists in that pillar
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, pillar, gap_id, sub_gaps_filed]
+    docs: |
+      Emitted when the curator calls 'chump gap decompose <gap_id> --apply'
+      to break a large gap into smaller pickable units rather than only filing
+      a fresh MISSION-* tracking gap. sub_gaps_filed is a comma-separated list
+      of newly created gap IDs. At most one per curator run (guard).
 
   - kind: system_gap_tick
     emitter: scripts/coord/system-gap-tick.sh (INFRA-841)

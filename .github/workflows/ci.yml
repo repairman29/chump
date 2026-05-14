@@ -1154,6 +1154,8 @@ jobs:
         run: bash scripts/ci/test-curator-p0-demotion.sh
       - name: curator freshness gate — skip close within active rebase window, event schema (INFRA-1195)
         run: bash scripts/ci/test-curator-freshness.sh
+      - name: curator auto-decompose — starved pillar decomposes l/xl gap, guard, dry-run (INFRA-943)
+        run: bash scripts/ci/test-curator-auto-decompose.sh
       - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
         run: bash scripts/ci/test-required-model.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)

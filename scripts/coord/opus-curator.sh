@@ -476,12 +476,52 @@ no bullets, no quotes, no preamble. ≤ 600 characters total.")
 
   # Decision 3 (INFRA-979): Pillar rebalancing — file ONE tracking gap when
   # any pillar has < 2 pickable xs/s/m gaps. Dedup: max 1 per day per pillar.
+  # Decision 3b (INFRA-943): Auto-decompose — when a pillar has 0 pickable
+  # xs/s/m gaps AND an l/xl gap with no depends_on exists, call
+  # 'chump gap decompose <smallest> --apply' to generate sub-gaps instead of
+  # only filing a new tracking gap. Guard: at most 1 decompose per curator run.
   if command -v chump &>/dev/null; then
     _pillars_data="$(chump gap list --status open --json 2>/dev/null || echo '[]')"
+    _decompose_used=0  # INFRA-943: guard — at most 1 auto-decompose per run
     for _pillar in EFFECTIVE CREDIBLE RESILIENT ZERO-WASTE; do
       _count=$(_to_int "$(echo "$_pillars_data" | jq --arg p "$_pillar" \
         '[.[] | select(.pillar == $p and .size | IN("xs","s","m") and (.depends_on | length) == 0)] | length' 2>/dev/null)")
       if [[ "$_count" -lt 2 ]]; then
+        # Decision 3b (INFRA-943): if fully empty AND l/xl candidate available,
+        # decompose instead of just filing a tracking gap.
+        if [[ "$_count" -eq 0 ]] && [[ "$_decompose_used" -eq 0 ]]; then
+          _xl_candidate="$(echo "$_pillars_data" | jq -r --arg p "$_pillar" \
+            '[.[] | select(.pillar == $p and (.size | IN("l","xl")) and (.depends_on | length) == 0)] | sort_by(.id) | .[0].id // empty' 2>/dev/null)"
+          if [[ -n "$_xl_candidate" ]]; then
+            if [[ "${_DRY_RUN:-0}" == "1" ]]; then
+              echo "Decision 3b: ${_pillar} empty, candidate=${_xl_candidate} — [dry-run] would decompose"
+              log_curator_decision \
+                "auto_decompose" \
+                "${_pillar} has 0 pickable xs/s/m; l/xl candidate=${_xl_candidate}" \
+                "dry_run: would call chump gap decompose ${_xl_candidate} --apply"
+            else
+              local _decomp_out _decomp_rc
+              _decomp_out="$(chump gap decompose "$_xl_candidate" --apply 2>&1)"
+              _decomp_rc=$?
+              if [[ $_decomp_rc -eq 0 ]]; then
+                _decompose_used=1
+                log_ambient "curator_auto_decompose" \
+                  '"pillar":"'"$_pillar"'","gap_id":"'"$_xl_candidate"'","sub_gaps_filed":"'"$(printf '%s' "$_decomp_out" | grep -oE 'INFRA-[0-9]+' | tr '\n' ',' | sed 's/,$//')"'"'
+                log_curator_decision \
+                  "auto_decompose" \
+                  "${_pillar} has 0 pickable xs/s/m; decomposed ${_xl_candidate}" \
+                  "decomposed ${_xl_candidate} → sub-gaps filed"
+                echo "Decision 3b: ${_pillar} empty → decomposed ${_xl_candidate}"
+              else
+                log_curator_decision \
+                  "auto_decompose" \
+                  "${_pillar} has 0 pickable xs/s/m; decompose ${_xl_candidate} failed" \
+                  "error: chump gap decompose exited ${_decomp_rc}"
+              fi
+            fi
+          fi
+        fi
+
         if _curator_already_filed_today "balance_restock_${_pillar}"; then
           echo "Decision 3: ${_pillar} pillar starved ($_count < 2) — already filed today, skipping"
           continue
