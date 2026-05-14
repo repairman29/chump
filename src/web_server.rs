@@ -3149,7 +3149,8 @@ async fn handle_gap_workflow_stream(
 
         loop {
             // Read new bytes since last_offset.
-            let new_lines = match read_phase_events_since(&ambient_path, last_offset, &gap_id_clone) {
+            let new_lines = match read_phase_events_since(&ambient_path, last_offset, &gap_id_clone)
+            {
                 Ok((evts, next_offset)) => {
                     last_offset = next_offset;
                     evts
