@@ -18,7 +18,7 @@ pids=()
 for ((i = 1; i <= N; i++)); do
     (
         export CHUMP_SESSION_ID="gap-reserve-conc-${i}-$$"
-        bash scripts/coord/gap-reserve.sh INFRA "concurrency smoke $i" >"$TMP/id-$i.txt"
+        bash scripts/coord/gap-reserve.sh INFRA "concurrency smoke seq$i" >"$TMP/id-$i.txt"
     ) &
     pids+=($!)
 done
