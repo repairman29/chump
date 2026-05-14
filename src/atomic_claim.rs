@@ -6,7 +6,7 @@
 //!   3. binary health probe (chump-binary-unwedge.sh, INFRA-275 wedge prevention)
 //!   4. derive a unique per-claim session ID
 //!   5. git worktree add to ${CHUMP_WORKTREE_BASE:-/tmp}/chump-<gap-lower>
-//!   6. shell out to gap-claim.sh inside the new worktree (with --paths)
+//!   6. write lease file via Rust (INFRA-984/985/986 ported gap-claim.sh)
 //!   7. print summary + cd hint
 //!
 //! Replaces the hand-typed mandatory pre-flight in CLAUDE.md. Each step
@@ -21,8 +21,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Debug)]
 pub struct ClaimArgs {
     pub gap_id: String,
-    /// CSV of repo-relative paths to declare lease scope. Optional —
-    /// passes through to gap-claim.sh's `--paths`.
+    /// CSV of repo-relative paths to declare lease scope. Optional.
     pub paths: Option<String>,
     /// Where to create the linked worktree. Default `/tmp`.
     pub worktree_base: PathBuf,
@@ -215,20 +214,21 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // value deterministically as the canonicalized path of <worktree>/.git.
     verify_and_repair_gitdir(&args.repo_root, &branch, &worktree_path)?;
 
-    // 7. Shell out to gap-claim.sh inside the new worktree.
-    let mut claim_cmd = Command::new("bash");
-    claim_cmd
-        .arg(args.repo_root.join("scripts/coord/gap-claim.sh"))
-        .arg(&args.gap_id)
-        .env("CHUMP_SESSION_ID", &session_id)
-        .current_dir(&worktree_path);
-    if let Some(p) = &args.paths {
-        claim_cmd.arg("--paths").arg(p);
-    }
-    let claim_out = claim_cmd
-        .output()
-        .with_context(|| "spawning gap-claim.sh")?;
-    if !claim_out.status.success() {
+    // 7. Write the lease file directly (INFRA-984/985/986 ported this to Rust).
+    let lock_dir = args.repo_root.join(".chump-locks");
+    let ttl_secs = std::env::var("CHUMP_LEASE_TTL_SECS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(28800); // 8 hours default
+    write_or_merge_lease(
+        &lock_dir,
+        &session_id,
+        &args.gap_id,
+        args.paths.as_deref(),
+        ttl_secs,
+        false,
+    )
+    .with_context(|| {
         // Roll back the worktree to keep the world consistent. Reuses
         // worktree_path_str which is already validated as UTF-8 above.
         let _ = run_git(
@@ -236,9 +236,8 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             &["worktree", "remove", "--force", worktree_path_str],
         );
         let _ = run_git(&args.repo_root, &["branch", "-D", &branch]);
-        let stderr = String::from_utf8_lossy(&claim_out.stderr);
-        bail!("gap-claim.sh failed (rolled back worktree): {}", stderr);
-    }
+        "writing lease file"
+    })?;
 
     Ok(ClaimReport {
         gap_id: args.gap_id,

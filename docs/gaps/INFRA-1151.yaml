@@ -1,0 +1,12 @@
+- id: INFRA-1151
+  domain: INFRA
+  title: "ZERO-WASTE: fix-forward — retrofit orphan-pr-closer.sh (#1811) to use chump ambient emit (INFRA-1048) instead of printf"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

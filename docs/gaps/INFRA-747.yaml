@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: ACP v3 MCP passthrough — spawn IDE-configured MCP servers in ACP sessions"
   status: open
-  priority: P2
+  priority: P1
   effort: m
   acceptance_criteria:
     - "ACP NewSessionRequest.mcpServers configs are forwarded to SessionMcpPool::spawn_all"
@@ -10,4 +10,5 @@
     - MCP tools from IDE-configured servers appear in the agent tool registry alongside inline tools
     - Server lifecycle (spawn, health, reap) follows the same rules as chump-native MCP servers
     - Hard cap of 16 servers per session is enforced across both native and IDE-configured servers
+  opened_date: '2026-05-08'
 

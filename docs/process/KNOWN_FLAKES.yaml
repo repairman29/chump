@@ -85,6 +85,13 @@ flakes:
     last_observed: "2026-05-13"
     max_reruns: 1
 
+  - test: repo_path::tests::worktree_root_cwd_wins_over_sibling_chump_repo
+    reason: "creates temporary git repos in /tmp; git init identity config can collide with parallel tests mutating global git config"
+    tracking_gap: INFRA-1008
+    added: "2026-05-13"
+    last_observed: "2026-05-13"
+    max_reruns: 1
+
   - test: rescue_tally::tests::infra667_count_rescues_returns_zero_on_empty_repo
     reason: "expects an empty ambient log; parallel tests append to the shared ambient.jsonl"
     tracking_gap: INFRA-1008
