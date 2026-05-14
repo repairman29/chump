@@ -1449,13 +1449,19 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, pr_number, columns]
 
+  - kind: cache_hit
+    emitter: scripts/coord/lib/github_cache.sh (CREDIBLE-064)
+    trigger: cache_lookup_pr / cache_query_behind_prs / cache_lookup_checks
+      returns data from sqlite without a REST API call.
+    consumers: [scripts/dev/cache-hit-rate.sh, fleet-brief]
+    fields_required: [ts, kind, helper, target, age_s]
+
   - kind: cache_miss
-    emitter: scripts/coord/lib/github_cache.sh cache_lookup_pr (INFRA-1081)
-    trigger: a consumer asked for a PR row that's stale by TTL
-      (CHUMP_CACHE_TTL_S default 60s). cache_lookup falls back to one REST
-      api call, writes the result back, returns the fresh row.
-    consumers: [fleet-brief, operator-recall]
-    fields_required: [ts, kind, pr_number, age_s, ttl_s]
+    emitter: scripts/coord/lib/github_cache.sh (INFRA-1081, CREDIBLE-064)
+    trigger: a cache helper found no row, a stale row (TTL expired), or
+      DB missing. Helper falls back to REST API and writes the result back.
+    consumers: [fleet-brief, operator-recall, scripts/dev/cache-hit-rate.sh]
+    fields_required: [ts, kind, helper, target, reason]
 
   - kind: cache_warmed
     emitter: scripts/ops/github-cache-reconcile.sh (INFRA-1106)
