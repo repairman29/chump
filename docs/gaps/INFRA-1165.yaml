@@ -1,0 +1,16 @@
+- id: INFRA-1165
+  domain: INFRA
+  title: "RESILIENT: pre-push gap-check false positives when gap is validly claimed — cross-reference lease file before rejecting"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - pre-push gap-check reads .chump-locks/*.json to find the current session's lease before rejecting a push
+    - if the commit body references a gap ID that matches the active lease, the check passes (not rejected)
+    - if the gap ID is not in current session's lease, the check still rejects (no regression on real violations)
+    - CHUMP_GAP_CHECK=0 remains as escape hatch but no longer needed for normal claimed-gap workflows
+    - "CI test: push with commit body referencing the claimed gap ID succeeds without CHUMP_GAP_CHECK=0"
+    - emits kind=gap_check_false_positive to ambient.jsonl when a false positive is detected and suppressed
+  notes: |
+    Root cause 2026-05-14: pre-push hook rejects pushes when commit body mentions a gap ID but doesn't cross-reference the actual lease file. Workaround: CHUMP_GAP_CHECK=0. Related: INFRA-1025.
+
