@@ -1083,14 +1083,24 @@ mod tests {
     use super::*;
 
     fn tempdir() -> std::path::PathBuf {
+        // INFRA-1070: pid+nanos can collide on platforms with sub-nanosecond
+        // SystemTime resolution (macOS clamps to microseconds, so nanos =
+        // micros*1000 and two close-together calls produce identical paths).
+        // Adding a process-local atomic counter guarantees uniqueness even
+        // when nanos repeat across parallel cargo test threads.
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+
         let mut p = std::env::temp_dir();
         p.push(format!(
-            "chump-infra488-test-{}-{}",
+            "chump-infra488-test-{}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            n
         ));
         std::fs::create_dir_all(&p).unwrap();
         p
@@ -1822,5 +1832,44 @@ mod tests {
                 }
             })
             .unwrap_or_else(|| "2026-05-05T20:00:00Z".to_string())
+    }
+
+    /// INFRA-1070 regression: exercise the tempdir() helper from many threads
+    /// to confirm the atomic counter eliminates the pid+nanos collision class.
+    /// Without the fix, 100 parallel runs would occasionally produce
+    /// duplicate paths on macOS (microsecond SystemTime resolution).
+    #[test]
+    fn infra1070_tempdir_unique_under_parallel_calls() {
+        use std::sync::Arc;
+        use std::sync::Mutex;
+        let paths = Arc::new(Mutex::new(Vec::new()));
+        let mut handles = vec![];
+        for _ in 0..8 {
+            let paths = Arc::clone(&paths);
+            handles.push(std::thread::spawn(move || {
+                let mut local = Vec::with_capacity(50);
+                for _ in 0..50 {
+                    local.push(tempdir());
+                }
+                paths.lock().unwrap().extend(local);
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        let all = paths.lock().unwrap();
+        // 8 threads × 50 calls = 400 paths; all must be unique.
+        let unique: std::collections::HashSet<_> = all.iter().collect();
+        assert_eq!(
+            unique.len(),
+            400,
+            "tempdir() returned duplicate paths under parallel calls; {} unique of {}",
+            unique.len(),
+            all.len()
+        );
+        // Cleanup.
+        for p in all.iter() {
+            let _ = std::fs::remove_dir_all(p);
+        }
     }
 }
