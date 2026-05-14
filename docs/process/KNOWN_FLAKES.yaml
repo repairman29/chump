@@ -148,6 +148,13 @@ flakes:
     last_observed: "2026-05-14"
     max_reruns: 1
 
+  - test: kpi_report::tests::infra617_leverage_counts_depends_on
+    reason: "creates a tempdir + GapStore and runs git commands; under parallel execution another test concurrently spawns a worktree, causing the git context to leak into the tempdir and the leverage section to come back empty"
+    tracking_gap: INFRA-1194
+    added: "2026-05-14"
+    last_observed: "2026-05-14"
+    max_reruns: 1
+
 # INFRA-763 fixed the canonical case
 # (failure_catalog::tests::infra647_catalog_len_matches_entries).
 # Add new entries here ONLY with an open tracking_gap. Examples of what
