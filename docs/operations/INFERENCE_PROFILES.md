@@ -365,3 +365,9 @@ Chump's OpenAI-compatible client path works without modification — SGLang expo
 ## 7. Binary and package name
 
 The Cargo package and default binary are both **`chump`**; the release artifact is **`target/release/chump`**. Older docs and scripts may still mention **`rust-agent`** for process patterns on machines that have not rebuilt yet. Prefer **`./run-discord.sh`** / **`./run-discord-full.sh`** / **`./run-web.sh`** so the correct binary is chosen.
+
+---
+
+## 8. Fleet seam: Provider trait abstraction boundary
+
+All in-process callers (CLI, Discord, PWA, agent loop) route inference requests through **`Arc<dyn Provider>`** — a trait-based abstraction that decouples the agent core from inference transport. Today, implementations are HTTP-based (Ollama, vLLM-MLX, SGLang) or in-process (mistral.rs). This trait forms the boundary for **multi-machine fleet inference**: **FLEET-014** (deferred to 2027) will replace the HTTP implementations with a **remote Provider** backed by gRPC/tonic, enabling load-balanced inference across a mesh of worker machines. The rest of the Chump codebase remains unchanged — the **Semaphore** (inference-request concurrency limiter in **`provider_cascade.rs`**) continues to gate completions, cost tracking, and cascading to cloud fallbacks the same way. This architecture lets a single-machine setup scale horizontally to a fleet without touching agent logic, tools, or routing. For now, deploy one of §1–6 per machine and point **`OPENAI_API_BASE`** at the appropriate server; once FLEET-014 lands, spin up inference-worker pods and the same Chump binary will distribute load automatically.
