@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.github-cache-reconcile — INFRA-1105 LaunchAgent.
+
+  Runs scripts/ops/github-cache-reconcile.sh every 300s (5 min). Catches
+  webhook deliveries missed by smee/receiver (network blip, daemon restart)
+  by comparing one bulk gh api repos/X/pulls?state=open call to .chump/
+  github_cache.db and emitting kind=cache_drift per row that differs.
+
+  Companion to INFRA-1081 (webhook receiver). Without this plist, drift goes
+  uncaught between operator-driven runs.
+
+  INSTALL:
+    scripts/setup/install-github-cache-reconcile-launchd.sh
+
+  MANUAL:
+    launchctl start com.chump.github-cache-reconcile
+    tail /tmp/chump-cache-reconcile.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.github-cache-reconcile.plist
+    rm ~/Library/LaunchAgents/com.chump.github-cache-reconcile.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.github-cache-reconcile</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/github-cache-reconcile.sh</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-cache-reconcile.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-cache-reconcile.err.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>
