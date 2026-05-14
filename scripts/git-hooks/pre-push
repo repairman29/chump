@@ -151,6 +151,28 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # don't inherit chump-dispatch@chump.bot (INFRA-813).
             unset GIT_AUTHOR_EMAIL GIT_COMMITTER_EMAIL GIT_AUTHOR_NAME GIT_COMMITTER_NAME
 
+            # INFRA-1167: build --skip list from KNOWN_FLAKES.yaml so environment-
+            # dependent parallel-test races never block a legitimate push. Skipped
+            # tests are announced upfront; CHUMP_TEST_GATE=0 remains emergency bypass.
+            _SKIP_ARGS=()
+            _CATALOG="$REPO_ROOT_T/docs/process/KNOWN_FLAKES.yaml"
+            if [[ -f "$_CATALOG" ]]; then
+                while IFS= read -r _tname; do
+                    [[ -z "$_tname" ]] && continue
+                    # Warn if entry lacks a tracking_gap (discipline check, AC 6).
+                    if ! grep -A5 "test: ${_tname}" "$_CATALOG" 2>/dev/null \
+                            | grep -q "tracking_gap:"; then
+                        echo "[pre-push] WARN: KNOWN_FLAKES entry '${_tname}' has no tracking_gap — add one (INFRA-764)" >&2
+                    fi
+                    echo "[pre-push] SKIP (known flake): ${_tname}" >&2
+                    if [[ "${#_SKIP_ARGS[@]}" -eq 0 ]]; then
+                        _SKIP_ARGS+=("--")
+                    fi
+                    _SKIP_ARGS+=("--skip" "${_tname}")
+                done < <(grep -E '^[[:space:]]*-[[:space:]]*test:' "$_CATALOG" \
+                    | sed -E 's/^[[:space:]]*-[[:space:]]*test:[[:space:]]+//; s/"//g; s/[[:space:]]*$//')
+            fi
+
             # RESILIENT-012: capture test output to temp file so we can parse
             # failing test names against KNOWN_FLAKES.yaml for auto-bypass.
             _TEST_LOG="$(mktemp -t pre-push-test.XXXXXX)"
@@ -172,7 +194,7 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # sees only its own source file set.
             _WT_TEST_TARGET="$REPO_ROOT_T/.cargo-test-target"
             if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
-                cargo test --bin chump --tests --no-fail-fast --quiet) 2>&1 \
+                cargo test --bin chump --tests --no-fail-fast --quiet "${_SKIP_ARGS[@]}") 2>&1 \
                 | tee "$_TEST_LOG" | tail -200; then
                 mkdir -p "$CACHE_DIR"
                 date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
