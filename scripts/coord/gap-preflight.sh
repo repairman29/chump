@@ -740,5 +740,23 @@ if [[ -x "$INTENT_CHECK" && -n "${CHUMP_CLAIM_PATHS:-}" ]]; then
     done
 fi
 
+# INFRA-1220: post-close cooldown gate. After a PR for this gap closed
+# without merging, hold off new claims for CHUMP_GAP_REROLL_COOLDOWN_S
+# (default 3600 s = 1 h). Stops the zombie-reroll pattern that hit
+# INFRA-988 three times in 12 h on 2026-05-14.
+if [[ -f "$REPO_ROOT/scripts/coord/lib/gap-cooldown.sh" ]]; then
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/scripts/coord/lib/gap-cooldown.sh"
+    for GAP_ID in "$@"; do
+        if gap_cooldown_active "$GAP_ID"; then
+            red "Pre-flight failed: $GAP_ID is in post-close cooldown."
+            gap_cooldown_status "$GAP_ID" >&2 || true
+            red "  A prior PR for this gap force-closed recently. Wait for the cooldown to expire,"
+            red "  or override with: scripts/coord/gap-cooldown.sh clear $GAP_ID --reason '...'"
+            exit 15
+        fi
+    done
+fi
+
 green "Pre-flight passed — all specified gaps are available."
 exit 0
