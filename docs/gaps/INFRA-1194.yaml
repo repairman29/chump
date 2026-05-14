@@ -1,8 +1,8 @@
 - id: INFRA-1194
-domain: INFRA
-title: "RESILIENT: fix kpi_report::infra617_leverage_counts_depends_on parallelism race under full test suite"
-priority: P2
-effort: s
-status: open
-acceptance_criteria: "Test kpi_report::tests::infra617_leverage_counts_depends_on passes reliably across 10 consecutive parallel runs at --test-threads=32; root cause identified; removed from KNOWN_FLAKES"
-description: "Under parallel test-suite execution, this test fails with 'should have leverage entries' despite passing in isolation. Likely cause: tempfile collision or global state leakage when another test spawns a worktree concurrently. The test creates its own tempdir + GapStore, but git commands inside the test may pick up the outer worktree's git context."
+  domain: INFRA
+  title: "RESILIENT: fix kpi_report::infra617_leverage_counts_depends_on parallelism race under full test suite"
+  priority: P2
+  effort: s
+  status: open
+  acceptance_criteria: "Test kpi_report::tests::infra617_leverage_counts_depends_on passes reliably across 10 consecutive parallel runs at --test-threads=32; root cause identified; removed from KNOWN_FLAKES"
+  description: "Under parallel test-suite execution, this test fails with 'should have leverage entries' despite passing in isolation. Likely cause: tempfile collision or global state leakage when another test spawns a worktree concurrently. The test creates its own tempdir + GapStore, but git commands inside the test may pick up the outer worktree's git context."
