@@ -920,6 +920,25 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, source, pr, note]
 
+  # ── Orphan-PR closer (INFRA-1139) ─────────────────────────────────────────
+  - kind: orphan_pr_candidate
+    emitter: scripts/coord/orphan-pr-closer.sh (dry-run mode)
+    trigger: open non-draft PR whose gap is status=done — eligible to close as superseded
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, pr, gap, note]
+
+  - kind: orphan_pr_closed
+    emitter: scripts/coord/orphan-pr-closer.sh --apply
+    trigger: orphan PR auto-closed because its gap is already done
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, pr, gap, note]
+
+  - kind: orphan_pr_close_failed
+    emitter: scripts/coord/orphan-pr-closer.sh --apply
+    trigger: orphan PR detected but gh PATCH /pulls/N state=closed failed — operator surface
+    consumers: [operator-recall]
+    fields_required: [ts, kind, pr, gap, note]
+
   # ── Review-as-Handoff telemetry (INFRA-773) ──────────────────────────────
   - kind: review_handoff_initiated
     emitter: src/review_handoff.rs (chump review --serve daemon)
