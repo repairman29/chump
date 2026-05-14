@@ -80,8 +80,8 @@ emit_ambient() {
 }
 
 # Compute lookback cutoff in ISO8601. macOS / GNU date both supported.
-if date -v-${LOOKBACK_HOURS}H -u +%Y-%m-%dT%H:%M:%SZ >/dev/null 2>&1; then
-    CUTOFF=$(date -v-${LOOKBACK_HOURS}H -u +%Y-%m-%dT%H:%M:%SZ)
+if date -v-"${LOOKBACK_HOURS}"H -u +%Y-%m-%dT%H:%M:%SZ >/dev/null 2>&1; then
+    CUTOFF=$(date -v-"${LOOKBACK_HOURS}"H -u +%Y-%m-%dT%H:%M:%SZ)
 else
     CUTOFF=$(date -u -d "-${LOOKBACK_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u +%Y-%m-%dT%H:%M:%SZ)
 fi

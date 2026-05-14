@@ -21,7 +21,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck disable=SC2034  # used by sourced gap-cooldown.sh
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/gap-cooldown.sh"
+source "$REPO_ROOT/scripts/coord/lib/gap-cooldown.sh"
 
 WINDOW_DESC="2h"
 DRY_RUN=0

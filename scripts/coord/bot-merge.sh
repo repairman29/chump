@@ -2294,8 +2294,12 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
                     _rd_checks_json=$(gh api "repos/$_rd_nwo/commits/$_rd_sha/check-runs" \
                         --paginate 2>/dev/null || true)
                     if [[ -n "$_rd_checks_json" ]]; then
-                        # Count incomplete and failed required checks with python3
-                        _rd_counts=$(printf '%s' "$_rd_checks_json" | python3 - "$REQUIRED_CHECKS" <<'RDPYEOF'
+                        # Count incomplete and failed required checks with python3.
+                        # INFRA-1278: use python3 -c '...' with here-string (<<<) to pass JSON
+                        # via stdin — the old form used `printf | python3 - <<HEREDOC` which
+                        # triggers SC2259: the pipe overrides the heredoc so python3 received
+                        # the JSON as its script source and crashed; the fast path never fired.
+                        _rd_counts=$(python3 -c '
 import sys, json
 required_raw = sys.argv[1] if len(sys.argv) > 1 else ""
 required_list = [r.strip() for r in required_raw.split(",") if r.strip()] if required_raw else []
@@ -2319,7 +2323,7 @@ for c in checks:
     elif conclusion != "success":
         failed += 1
 print(f"{incomplete} {failed} {total}")
-RDPYEOF
+' "$REQUIRED_CHECKS" <<< "$_rd_checks_json"
                         )
                         _rd_incomplete=$(printf '%s' "$_rd_counts" | awk '{print $1}')
                         _rd_failed=$(printf '%s' "$_rd_counts" | awk '{print $2}')
