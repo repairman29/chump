@@ -31,6 +31,8 @@ KEEP_MERGED=0
 # INFRA-1053: harness-agnostic base. Default preserves the
 # .claude/worktrees/ convention (zero behavior change for existing operators).
 WORKTREE_ROOT="${CHUMP_WORKTREE_BASE:-.claude/worktrees}"
+# INFRA-1124: CHUMP_REAPER_SAFETY_CHECK=0 disables heartbeat+index safety checks.
+REAPER_SAFETY_CHECK="${CHUMP_REAPER_SAFETY_CHECK:-1}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -58,6 +60,64 @@ if [[ -z "$MAIN_REPO" || ! -d "$MAIN_REPO/$WORKTREE_ROOT" ]]; then
     MAIN_REPO="$REPO_ROOT"
 fi
 cd "$MAIN_REPO"
+
+# INFRA-1124: emit kind=worktree_reaper_skipped_active on safety-triggered skips.
+_prune_emit_skipped() {
+    local wt_path="$1" reason="$2"
+    local ambient="${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","kind":"worktree_reaper_skipped_active","worktree":"%s","reason":"%s"}\n' \
+        "$ts" "$wt_path" "$reason" >> "$ambient" 2>/dev/null || true
+}
+
+# INFRA-1124: build set of worktrees with fresh leases (heartbeat within 15 min).
+_PRUNE_ACTIVE_WORKTREES=""
+_PRUNE_NOW_TS="$(date +%s)"
+if [[ "$REAPER_SAFETY_CHECK" == "1" && -d ".chump-locks" ]]; then
+    for _lease in .chump-locks/*.json; do
+        [[ -f "$_lease" ]] || continue
+        _wt=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$_lease" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' || true)
+        [[ -z "$_wt" ]] && continue
+        _hb=$(grep -o '"heartbeat_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$_lease" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' || true)
+        [[ -z "$_hb" ]] && _hb=$(grep -o '"taken_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$_lease" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' || true)
+        if [[ -n "$_hb" ]]; then
+            _hb_ts=$(date -d "$_hb" +%s 2>/dev/null \
+                || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$_hb" +%s 2>/dev/null \
+                || echo 0)
+            _age_s=$(( _PRUNE_NOW_TS - _hb_ts ))
+            [[ $_age_s -gt 900 ]] && continue
+        fi
+        _PRUNE_ACTIVE_WORKTREES="$_PRUNE_ACTIVE_WORKTREES $_wt"
+    done
+fi
+
+# Returns 0 if wt_dir has a fresh active lease or a fresh .git/index.
+_prune_is_inflight() {
+    local wt_dir="$1" wt_name; wt_name="$(basename "$wt_dir")"
+    [[ "$REAPER_SAFETY_CHECK" != "1" ]] && return 1
+    # Lease check
+    if [[ " $_PRUNE_ACTIVE_WORKTREES " == *" $wt_name "* \
+       || " $_PRUNE_ACTIVE_WORKTREES " == *" $wt_dir "* ]]; then
+        _prune_emit_skipped "$wt_dir" "active_lease"
+        return 0
+    fi
+    # .git/index mtime check
+    local _gi=""
+    if [[ -f "$wt_dir/.git" ]]; then
+        local _gd; _gd=$(sed 's/^gitdir: //' "$wt_dir/.git" 2>/dev/null || true)
+        [[ -n "$_gd" && -f "$_gd/index" ]] && _gi="$_gd/index"
+    elif [[ -f "$wt_dir/.git/index" ]]; then
+        _gi="$wt_dir/.git/index"
+    fi
+    if [[ -n "$_gi" ]]; then
+        local _fresh; _fresh=$(find "$_gi" -mmin -5 2>/dev/null | head -1 || true)
+        if [[ -n "$_fresh" ]]; then
+            _prune_emit_skipped "$wt_dir" "git_index_fresh"
+            return 0
+        fi
+    fi
+    return 1
+}
 
 if [[ $DRY_RUN -eq 1 ]]; then
     echo "[worktree-prune] DRY RUN (no changes will be made; pass --execute to delete)"
@@ -148,25 +208,35 @@ for wt_dir in "$WORKTREE_ROOT"/*/; do
 
     case "$pr_state" in
         MERGED)
-            action="PRUNE"
-            pruned_count=$((pruned_count + 1))
-            if [[ $DRY_RUN -eq 0 ]]; then
-                git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
-                git branch -D "$branch_short" >/dev/null 2>&1 || true
-                action="PRUNED"
+            if _prune_is_inflight "$wt_dir"; then
+                action="KEEP — in-flight (active lease or fresh .git/index)"
+                kept_count=$((kept_count + 1))
             else
-                action="WOULD PRUNE (merged PR #$pr_num)"
+                action="PRUNE"
+                pruned_count=$((pruned_count + 1))
+                if [[ $DRY_RUN -eq 0 ]]; then
+                    git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
+                    git branch -D "$branch_short" >/dev/null 2>&1 || true
+                    action="PRUNED"
+                else
+                    action="WOULD PRUNE (merged PR #$pr_num)"
+                fi
             fi
             ;;
         CLOSED)
-            action="PRUNE"
-            pruned_count=$((pruned_count + 1))
-            if [[ $DRY_RUN -eq 0 ]]; then
-                git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
-                git branch -D "$branch_short" >/dev/null 2>&1 || true
-                action="PRUNED"
+            if _prune_is_inflight "$wt_dir"; then
+                action="KEEP — in-flight (active lease or fresh .git/index)"
+                kept_count=$((kept_count + 1))
             else
-                action="WOULD PRUNE (closed PR #$pr_num)"
+                action="PRUNE"
+                pruned_count=$((pruned_count + 1))
+                if [[ $DRY_RUN -eq 0 ]]; then
+                    git worktree remove "$wt_dir" --force >/dev/null 2>&1 || true
+                    git branch -D "$branch_short" >/dev/null 2>&1 || true
+                    action="PRUNED"
+                else
+                    action="WOULD PRUNE (closed PR #$pr_num)"
+                fi
             fi
             ;;
         OPEN)
@@ -180,6 +250,9 @@ for wt_dir in "$WORKTREE_ROOT"/*/; do
                 || echo "0")
             if [[ "$ahead" -gt 0 ]]; then
                 action="KEEP — $ahead WIP commits, no PR yet"
+                kept_count=$((kept_count + 1))
+            elif _prune_is_inflight "$wt_dir"; then
+                action="KEEP — in-flight (active lease or fresh .git/index)"
                 kept_count=$((kept_count + 1))
             else
                 action="PRUNE"
