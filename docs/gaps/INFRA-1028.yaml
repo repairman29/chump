@@ -1,7 +1,7 @@
 - id: INFRA-1028
   domain: INFRA
   title: "EFFECTIVE: pre-commit/pre-push --operator-recovery umbrella + bypass-at-top-of-error"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
