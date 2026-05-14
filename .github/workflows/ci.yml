@@ -356,6 +356,8 @@ jobs:
           # reads it directly instead of falling back to the (possibly stale)
           # first-commit subject. github.event.pull_request.title is the
           # live title at workflow-trigger time and refreshes on retitle.
+          # PR_TITLE is the canonical name; PR_TITLE_ENV kept for compat.
+          PR_TITLE: ${{ github.event.pull_request.title }}
           PR_TITLE_ENV: ${{ github.event.pull_request.title }}
         run: bash scripts/ci/check-pr-scope.sh
 
@@ -1513,6 +1515,8 @@ jobs:
         run: bash scripts/ci/test-infra-779-gitdir-repair.sh
       - name: pre-push known-flake skip integration (INFRA-1167)
         run: bash scripts/ci/test-known-flake-skip.sh
+      - name: pr-scope PR_TITLE fallback chain (INFRA-976)
+        run: bash scripts/ci/test-pr-scope-title-fallback.sh
 
       - name: pillar-balance guard at reserve time (INFRA-1152)
         run: |
