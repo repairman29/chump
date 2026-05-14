@@ -419,6 +419,52 @@
       min-width: 14px; text-align: center;
       pointer-events: none;
     }
+    /* ── PRODUCT-100: status pill + toast + offline banner ─────────────── */
+    .chump-status-pill {
+      position: fixed; top: 8px; right: 12px; z-index: 9000;
+      font-size: 11px; padding: 2px 8px; border-radius: 10px;
+      background: rgba(30,30,30,0.85); backdrop-filter: blur(4px);
+      color: #ccc; pointer-events: none; user-select: none;
+      transition: color 0.3s;
+    }
+    .pill-live    { color: #6bcb77; }
+    .pill-stale   { color: #ffd93d; }
+    .pill-offline { color: #ff6b6b; }
+    .pill-paused  { color: #aaa; }
+    .pill-init    { display: none; }
+
+    #chump-toast-container {
+      position: fixed; bottom: 24px; right: 16px; z-index: 9100;
+      display: flex; flex-direction: column; gap: 8px; max-width: 360px;
+    }
+    .chump-error-toast {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 12px; border-radius: 8px;
+      background: #2a1a1a; border: 1px solid #5a2020;
+      color: #f0b0b0; font-size: 13px;
+      animation: toast-in 0.2s ease;
+    }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .toast-msg code { font-size: 11px; color: #f08080; }
+    .toast-retry, .toast-dismiss {
+      background: none; border: 1px solid #5a2020; border-radius: 4px;
+      color: #f0b0b0; cursor: pointer; padding: 2px 8px; font-size: 12px;
+      flex-shrink: 0;
+    }
+    .toast-retry:hover  { background: rgba(255,100,100,0.1); }
+    .toast-dismiss      { border: none; font-size: 16px; padding: 0 4px; }
+
+    #chump-offline-banner {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 9200;
+      background: #3a0000; color: #ffaaaa; text-align: center;
+      padding: 8px 16px; font-size: 13px; display: flex;
+      align-items: center; justify-content: center; gap: 12px;
+    }
+    #chump-offline-retry {
+      background: #5a0000; border: 1px solid #ff6b6b; border-radius: 4px;
+      color: #ffaaaa; cursor: pointer; padding: 2px 10px; font-size: 12px;
+    }
+    #chump-offline-retry:hover { background: #7a0000; }
 
     /* ── Main content ───────────────────────────────────────────────────── */
     #main-content {
@@ -1179,6 +1225,8 @@
   <chump-welcome></chump-welcome>
   <!-- PRODUCT-094: notification center — invisible singleton; manages SSE + badge -->
   <chump-notification-center></chump-notification-center>
+  <!-- PRODUCT-100: status pill + error toasts + offline banner -->
+  <chump-status-pill></chump-status-pill>
 
   <!-- INFRA-250: relative paths so the same index works in both contexts:
        (a) browser via axum sidecar at http://host/v2/ (after the / -> /v2/
@@ -1199,6 +1247,7 @@
   <script src="quick-actions.js" type="module"></script>
   <script src="pillar-health.js" type="module"></script>
   <script src="notification-center.js" type="module"></script>
+  <script src="error-ux.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));
