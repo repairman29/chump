@@ -2599,7 +2599,10 @@ async fn handle_telemetry_cost(
                 }
                 let elapsed = evt
                     .get("elapsed_seconds")
-                    .and_then(|v| v.as_u64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                    .and_then(|v| {
+                        v.as_u64()
+                            .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                    })
                     .unwrap_or(0);
                 let outcome = evt
                     .get("outcome")
@@ -2924,9 +2927,7 @@ fn chrono_approx_secs(ts: &str) -> u64 {
         if b.len() < 19 {
             return None;
         }
-        let parse = |s: &[u8]| -> Option<u64> {
-            std::str::from_utf8(s).ok()?.parse().ok()
-        };
+        let parse = |s: &[u8]| -> Option<u64> { std::str::from_utf8(s).ok()?.parse().ok() };
         let year = parse(&b[0..4])?;
         let month = parse(&b[5..7])?;
         let day = parse(&b[8..10])?;
@@ -2938,7 +2939,10 @@ fn chrono_approx_secs(ts: &str) -> u64 {
         let leap_days = (y / 4) - (y / 100) + (y / 400);
         let month_days: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
         let days_in_year = y.unsigned_abs() * 365 + leap_days.unsigned_abs();
-        let days_in_months: u64 = month_days.iter().take((month as usize).saturating_sub(1)).sum();
+        let days_in_months: u64 = month_days
+            .iter()
+            .take((month as usize).saturating_sub(1))
+            .sum();
         let days = days_in_year + days_in_months + day - 1;
         Some(days * 86_400 + hour * 3_600 + min * 60 + sec)
     }
