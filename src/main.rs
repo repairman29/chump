@@ -3317,14 +3317,31 @@ async fn main() -> Result<()> {
             // rendering. Replaces `cat docs/gaps/<ID>.yaml` now that those
             // files are deleted.
             "show" => {
-                let id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump gap show <GAP-ID>");
-                    std::process::exit(2);
-                });
+                // INFRA-1037: --brief (one-liner), default (status promoted), --field <name>
+                let id_pos = args[3..]
+                    .iter()
+                    .position(|a| !a.starts_with("--"))
+                    .map(|i| i + 3);
+                let id = id_pos
+                    .and_then(|p| args.get(p))
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        eprintln!("Usage: chump gap show <GAP-ID> [--brief|--field <name>]");
+                        std::process::exit(2);
+                    });
                 if id.starts_with("--") {
-                    eprintln!("Usage: chump gap show <GAP-ID>");
+                    eprintln!("Usage: chump gap show <GAP-ID> [--brief|--field <name>]");
                     std::process::exit(2);
                 }
+                let brief_mode = args.iter().any(|a| a == "--brief");
+                let field_mode = args.windows(2).find_map(|w| {
+                    if w[0] == "--field" {
+                        Some(w[1].clone())
+                    } else {
+                        None
+                    }
+                });
+
                 match store.get(&id) {
                     Ok(Some(g)) => {
                         // CREDIBLE-033: parse AC items for rich rendering.
@@ -3350,13 +3367,53 @@ async fn main() -> Result<()> {
                                 );
                             }
                             println!("{}", serde_json::to_string_pretty(&val).unwrap_or_default());
+                        } else if brief_mode {
+                            // --brief: one-line summary
+                            let pr_str = g.closed_pr.map(|n| format!("#{}", n)).unwrap_or_default();
+                            println!(
+                                "[{}] {} — {} {}/{} {}",
+                                g.status, g.id, g.title, g.priority, g.effort, pr_str
+                            );
+                        } else if let Some(ref field) = field_mode {
+                            // --field <name>: print just the value, script-friendly
+                            let val = match field.as_str() {
+                                "id" => g.id.clone(),
+                                "domain" => g.domain.clone(),
+                                "title" => g.title.clone(),
+                                "status" => g.status.clone(),
+                                "priority" => g.priority.clone(),
+                                "effort" => g.effort.clone(),
+                                "description" => g.description.clone(),
+                                "acceptance_criteria" => g.acceptance_criteria.clone(),
+                                "notes" => g.notes.clone(),
+                                "depends_on" => g.depends_on.clone(),
+                                "closed_date" => g.closed_date.clone(),
+                                "closed_pr" => {
+                                    g.closed_pr.map(|n| n.to_string()).unwrap_or_default()
+                                }
+                                other => {
+                                    eprintln!("chump gap show --field: unknown field '{}'", other);
+                                    std::process::exit(1);
+                                }
+                            };
+                            println!("{}", val.trim());
                         } else {
+                            // Default: status/closed_pr/closed_date promoted before description (INFRA-1037)
                             println!("- id: {}", g.id);
                             println!("  domain: {}", g.domain);
                             println!("  title: {}", g.title);
                             println!("  status: {}", g.status);
                             println!("  priority: {}", g.priority);
                             println!("  effort: {}", g.effort);
+                            if let Some(pr) = g.closed_pr {
+                                println!("  closed_pr: {}", pr);
+                            }
+                            if !g.closed_date.is_empty() {
+                                println!("  closed_date: '{}'", g.closed_date);
+                            }
+                            if !g.depends_on.is_empty() {
+                                println!("  depends_on: [{}]", g.depends_on);
+                            }
                             if !g.description.is_empty() {
                                 println!("  description: |");
                                 for line in g.description.lines() {
@@ -3388,15 +3445,6 @@ async fn main() -> Result<()> {
                                 // Fallback: raw text when not parseable as JSON list.
                                 println!("  acceptance_criteria:");
                                 println!("    1. {}", g.acceptance_criteria.trim());
-                            }
-                            if !g.depends_on.is_empty() {
-                                println!("  depends_on: [{}]", g.depends_on);
-                            }
-                            if let Some(pr) = g.closed_pr {
-                                println!("  closed_pr: {}", pr);
-                            }
-                            if !g.closed_date.is_empty() {
-                                println!("  closed_date: '{}'", g.closed_date);
                             }
                             if !g.notes.is_empty() {
                                 println!("  notes: |");
