@@ -1,7 +1,8 @@
 - id: CREDIBLE-043
   domain: CREDIBLE
   title: "CREDIBLE: make CREDIBLE-027 (scratch-commit / mass-deletion guard) a required CI check — would have blocked PR #1441's 378k-line wipe before merge"
-  status: open
+  status: done
+  closed_pr: 1664
   priority: P1
   effort: xs
   acceptance_criteria:

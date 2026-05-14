@@ -1,7 +1,8 @@
 - id: CREDIBLE-042
   domain: CREDIBLE
   title: "CREDIBLE: make CREDIBLE-026 (PR scope-vs-title detector) a required CI check on every PR, not advisory — applied retroactively would catch PR #1444 silent META-044 revert + PR #1469 bundle false-title claim"
-  status: open
+  status: done
+  closed_pr: 1663
   priority: P1
   effort: xs
   acceptance_criteria:
