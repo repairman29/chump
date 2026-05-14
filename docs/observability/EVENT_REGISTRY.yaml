@@ -840,6 +840,12 @@ events:
     trigger: periodic roadmap progress snapshot
     consumers: [fleet-brief]
 
+  - kind: roadmap_inject_applied
+    emitter: scripts/coord/ambient-context-inject.sh (INFRA-1146)
+    trigger: chump roadmap-status drift summary injected into SessionStart context
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, starved_count, untraced_p0_count]
+
   - kind: product_drought
     emitter: scripts/ops/pillar-drought-detector.sh
     trigger: PRODUCT pillar starved for N days
