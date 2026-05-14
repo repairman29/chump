@@ -154,7 +154,6 @@ flakes:
     added: "2026-05-14"
     last_observed: "2026-05-14"
     max_reruns: 1
-
 # INFRA-763 fixed the canonical case
 # (failure_catalog::tests::infra647_catalog_len_matches_entries).
 # Add new entries here ONLY with an open tracking_gap. Examples of what
