@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.binary-refresh — INFRA-1065 LaunchAgent.
+
+  Runs scripts/ops/refresh-chump-binary.sh hourly. Rebuilds ~/.cargo/bin/chump
+  when origin/main has new commits touching src/gap_store.rs or src/main.rs
+  ahead of the binary's baked SHA — preventing the INFRA-825 staleness guard
+  from firing on every `chump gap ship --update-yaml` call during fleet
+  activity (observed 8+ overrides today).
+
+  Cost: cargo install --path . --bin chump --force is ~3-5 min cold, ~30s
+  warm. Run hourly so it's there when the operator needs it, without thrashing
+  the build.
+
+  INSTALLATION:
+    scripts/setup/install-binary-refresh-launchd.sh
+    launchctl list | grep chump.binary-refresh
+
+  Manual run:
+    launchctl start com.chump.binary-refresh
+    tail /tmp/chump-binary-refresh.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.binary-refresh.plist
+    rm ~/Library/LaunchAgents/com.chump.binary-refresh.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.binary-refresh</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/refresh-chump-binary.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Every hour. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-binary-refresh.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-binary-refresh.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- Throttle so launchd can't run two refreshes overlapping. -->
+  <key>ThrottleInterval</key>
+  <integer>600</integer>
+</dict>
+</plist>
