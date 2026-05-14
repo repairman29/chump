@@ -320,7 +320,23 @@ pub fn worktree_root() -> PathBuf {
             }
         }
     }
-    repo_root()
+    // INFRA-1064: before trusting repo_root(), check if CWD itself is a linked
+    // worktree root that belongs to the same repo. When INFRA-779 gitdir
+    // back-reference corruption makes `git rev-parse --show-toplevel` return a
+    // sibling path, `cwd_is_ancestor_or_equal_of_toplevel` correctly rejects it,
+    // but repo_root() can still return that sibling via CHUMP_REPO. A linked
+    // worktree root always has a `.git` file (never a directory), so we use that
+    // as a lightweight proof that CWD is the worktree root. If CWD's git
+    // common-dir matches repo_root()'s, CWD is a valid worktree of the same repo.
+    let rr = repo_root();
+    if cwd.join(".git").is_file() {
+        let cwd_common = git_common_dir(&cwd);
+        let rr_common = git_common_dir(&rr);
+        if cwd_common.is_some() && cwd_common == rr_common {
+            return cwd;
+        }
+    }
+    rr
 }
 
 /// Normalize path: remove . and .. components so we can check it stays under root.
@@ -598,5 +614,112 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(&real_repo);
         let _ = std::fs::remove_dir_all(&ghost);
+    }
+
+    /// INFRA-1064: When CHUMP_REPO points at a sibling linked worktree (wt_b) but
+    /// the process CWD is a different linked worktree of the same repo (wt_a), and
+    /// INFRA-779 corruption makes git rev-parse --show-toplevel return wt_b's path,
+    /// worktree_root() must detect that CWD has a .git file (= wt root), confirm
+    /// the same git common-dir, and return CWD rather than CHUMP_REPO's path.
+    ///
+    /// Without corruption git already handles this via the INFRA-474 path; this
+    /// test validates the end-to-end contract (correct worktree wins) whether the
+    /// fix fires via INFRA-474 or INFRA-1064 code paths.
+    #[test]
+    #[serial_test::serial]
+    fn worktree_root_cwd_wins_over_sibling_chump_repo() {
+        let tmp = std::env::temp_dir();
+        let main_repo = tmp.join(format!("chump-1064-main-{}", uuid::Uuid::new_v4().simple()));
+        let wt_a = tmp.join(format!("chump-1064-wt-a-{}", uuid::Uuid::new_v4().simple()));
+        let wt_b = tmp.join(format!("chump-1064-wt-b-{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&main_repo).unwrap();
+        // git init + initial commit (needed for worktree add).
+        assert!(Command::new("git")
+            .args(["init"])
+            .current_dir(&main_repo)
+            .status()
+            .expect("git")
+            .success());
+        // Configure identity so commit works in any CI environment.
+        for (k, v) in [("user.email", "test@test.local"), ("user.name", "Test")] {
+            assert!(Command::new("git")
+                .args(["-C", &main_repo.display().to_string(), "config", k, v])
+                .status()
+                .expect("git")
+                .success());
+        }
+        assert!(Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "init"])
+            .current_dir(&main_repo)
+            .status()
+            .expect("git")
+            .success());
+        // Add two linked worktrees.
+        assert!(Command::new("git")
+            .args(["worktree", "add", "--detach", &wt_a.display().to_string()])
+            .current_dir(&main_repo)
+            .status()
+            .expect("git")
+            .success());
+        assert!(Command::new("git")
+            .args(["worktree", "add", "--detach", &wt_b.display().to_string()])
+            .current_dir(&main_repo)
+            .status()
+            .expect("git")
+            .success());
+
+        // Sanity: wt_a and wt_b have .git files (linked worktree markers).
+        assert!(
+            wt_a.join(".git").is_file(),
+            "wt_a should have a .git file (linked worktree)"
+        );
+        assert!(
+            wt_b.join(".git").is_file(),
+            "wt_b should have a .git file (linked worktree)"
+        );
+
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        let prev_wt = std::env::var("CHUMP_WORKTREE_ROOT").ok();
+        // Simulate INFRA-1064: CHUMP_REPO points at wt_b (sibling).
+        std::env::set_var("CHUMP_REPO", wt_b.display().to_string());
+        std::env::remove_var("CHUMP_HOME");
+        std::env::remove_var("CHUMP_WORKTREE_ROOT");
+        let orig_cwd = std::env::current_dir().ok();
+        // CWD is wt_a — the operator's actual worktree.
+        std::env::set_current_dir(&wt_a).unwrap();
+
+        let result = worktree_root();
+        let canon_a = wt_a.canonicalize().unwrap();
+        let result_canon = result.canonicalize().unwrap_or(result.clone());
+        assert_eq!(
+            result_canon, canon_a,
+            "worktree_root() should return CWD (wt_a={canon_a:?}) when CHUMP_REPO points at sibling wt_b; got {result_canon:?}"
+        );
+
+        // Restore.
+        if let Some(ref cwd) = orig_cwd {
+            let _ = std::env::set_current_dir(cwd);
+        }
+        match prev_repo {
+            Some(ref s) => std::env::set_var("CHUMP_REPO", s),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
+        match prev_home {
+            Some(ref s) => std::env::set_var("CHUMP_HOME", s),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match prev_wt {
+            Some(ref s) => std::env::set_var("CHUMP_WORKTREE_ROOT", s),
+            None => std::env::remove_var("CHUMP_WORKTREE_ROOT"),
+        }
+        // Prune worktrees before removing dirs.
+        let _ = Command::new("git")
+            .args(["worktree", "prune"])
+            .current_dir(&main_repo)
+            .status();
+        let _ = std::fs::remove_dir_all(&wt_a);
+        let _ = std::fs::remove_dir_all(&wt_b);
+        let _ = std::fs::remove_dir_all(&main_repo);
     }
 }
