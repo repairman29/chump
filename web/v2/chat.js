@@ -177,6 +177,9 @@ class ChumpChat extends HTMLElement {
   #sessionId = null;
   #abortCtrl = null;
   #model = null;
+  #input = null;
+  #sendBtn = null;
+  #stopBtn = null;
 
   constructor() {
     super();
@@ -198,18 +201,18 @@ class ChumpChat extends HTMLElement {
         <button id="send-btn" aria-label="Send">▶</button>
       </div>
     `;
-    const input = this.#shadow.getElementById('input');
-    const sendBtn = this.#shadow.getElementById('send-btn');
-    const stopBtn = this.#shadow.getElementById('stop-btn');
+    this.#input = this.#shadow.getElementById('input');
+    this.#sendBtn = this.#shadow.getElementById('send-btn');
+    this.#stopBtn = this.#shadow.getElementById('stop-btn');
 
-    sendBtn.addEventListener('click', () => this.#send());
-    stopBtn.addEventListener('click', () => this.#stop());
-    input.addEventListener('keydown', (e) => {
+    this.#sendBtn.addEventListener('click', () => this.#send());
+    this.#stopBtn.addEventListener('click', () => this.#stop());
+    this.#input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.#send(); }
     });
-    input.addEventListener('input', () => {
-      input.style.height = 'auto';
-      input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+    this.#input.addEventListener('input', () => {
+      this.#input.style.height = 'auto';
+      this.#input.style.height = Math.min(this.#input.scrollHeight, 140) + 'px';
     });
   }
 
@@ -239,16 +242,14 @@ class ChumpChat extends HTMLElement {
         }</p>
       </div>
     `;
-    const input = this.#shadow.getElementById('input');
-    const sendBtn = this.#shadow.getElementById('send-btn');
-    if (input) input.disabled = true;
-    if (sendBtn) sendBtn.disabled = true;
+    if (this.#input) this.#input.disabled = true;
+    if (this.#sendBtn) this.#sendBtn.disabled = true;
   }
 
   #send() {
-    const input = this.#shadow.getElementById('input');
-    const sendBtn = this.#shadow.getElementById('send-btn');
-    const stopBtn = this.#shadow.getElementById('stop-btn');
+    const input = this.#input;
+    const sendBtn = this.#sendBtn;
+    const stopBtn = this.#stopBtn;
     const text = input.value.trim();
     if (!text) return;
 
