@@ -411,6 +411,25 @@ events:
     consumers: [audit-log]
     fields_required: [gap_id, domain]
 
+  - kind: gap_cooldown_cleared
+    emitter: scripts/coord/lib/gap-cooldown.sh via gap_cooldown_clear() (INFRA-1220)
+    trigger: operator clears a post-close cooldown via the shell library
+    consumers: [audit-log]
+    fields_required: [ts, kind, gap, reason]
+    docs: |
+      Emitted when gap_cooldown_clear() removes the cooldown stamp for a gap.
+      reason is operator-provided and mandatory for audit trail.
+
+  - kind: gap_cooldown_cleared_cli
+    emitter: src/main.rs — chump gap clear-cooldown (INFRA-1220)
+    trigger: operator runs 'chump gap clear-cooldown <ID> --reason ...'
+    consumers: [audit-log]
+    fields_required: [ts, kind, gap_id, reason]
+    docs: |
+      Rust-side ambient event emitted by chump gap clear-cooldown after the
+      shell script completes. Pairs with gap_cooldown_cleared (shell side).
+      Both events appear together on a successful clear.
+
   - kind: gap_shipped
     emitter: chump gap ship
     trigger: gap status flipped to done

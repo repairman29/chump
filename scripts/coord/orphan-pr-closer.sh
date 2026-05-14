@@ -158,6 +158,11 @@ while IFS=$'\t' read -r pr title branch updated; do
             closed_count=$((closed_count + 1))
             echo "closed:$pr" >> "$SEEN_FILE"
             emit "orphan_pr_closed" "$pr" "$gap_id" "$reason"
+            # INFRA-1220: stamp cooldown so the gap can't be immediately re-claimed.
+            _cooldown_sh="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gap-cooldown.sh"
+            if [[ -x "$_cooldown_sh" ]]; then
+                bash "$_cooldown_sh" stamp "$gap_id" --pr "$pr" --reason "orphan_pr_closed" 2>/dev/null || true
+            fi
             if [[ "$DELETE_BRANCHES" == "1" && -n "$branch" ]]; then
                 gh api -X DELETE "repos/{owner}/{repo}/git/refs/heads/$branch" >/dev/null 2>&1 || true
             fi
