@@ -2150,6 +2150,13 @@ events:
     trigger: a request to /api/* arrived without (or with a wrong) Authorization Bearer token when CHUMP_WEB_TOKEN is set
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, path, reason]
+  # ── INFRA-1015: PWA repo init endpoint ───────────────────────────────────
+  - kind: repo_init
+    emitter: src/web_server.rs handle_repo_init (INFRA-1015)
+    trigger: POST /api/repo/init succeeded — chump state.db and git hooks
+      were installed (or confirmed already present) at the given path.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, path, already_initialized, hooks_installed, seeded_gaps]
   # ── INFRA-1199: ci-yml merge driver abort ─────────────────────────────────
   - kind: ci_yml_merge_driver_abort
     emitter: scripts/git/merge-driver-ci-yml-add-row.sh (INFRA-1199)
