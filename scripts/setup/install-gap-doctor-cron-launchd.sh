@@ -8,7 +8,7 @@
 # 8 DB-open/YAML-done, 1 YAML-only) AFTER multiple manual sync runs.
 # At fleet scale this drift is unbounded — every PR shipped via the
 # manual ship path (INFRA-028), every CLI bypass (CHUMP_RAW_YAML_LOCK=0),
-# every chump-doctor.sh recovery from a wedged binary, leaves drift
+# every chump-binary-unwedge.sh recovery from a wedged binary, leaves drift
 # the next agent inherits.
 #
 # What this installs:

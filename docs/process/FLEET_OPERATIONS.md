@@ -185,8 +185,8 @@ ps -p <PID> -o pid,ppid,etime,state,comm      # inspect the process tree
 
 **Hung Claude process (INFRA-275):** If `claude` is stuck at `_dyld_start` (macOS dynamic linker), the `syspolicyd` wedge is active:
 ```bash
-scripts/dev/chump-doctor.sh                    # heal the wedged binary
-CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-doctor.sh          # skip probe, go straight to fix
+scripts/dev/chump-binary-unwedge.sh                    # heal the wedged binary
+CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-binary-unwedge.sh          # skip probe, go straight to fix
 ```
 
 After healing, terminate the hung agent's pane and the fleet loop will spawn a replacement worker.

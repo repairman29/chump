@@ -56,18 +56,18 @@ exec /usr/bin/git "$@"
 STUB
 chmod +x "$TMP/bin/git"
 
-# Skip chump-doctor by stubbing it (it's at scripts/dev/chump-doctor.sh
+# Skip chump-doctor by stubbing it (it's at scripts/dev/chump-binary-unwedge.sh
 # which the worker invokes by absolute path; stub via PATH wouldn't work,
 # so write a sentinel that gets mounted into a fake REPO_ROOT below).
 
-# Use a fake REPO_ROOT that has a stub chump-doctor.sh.
+# Use a fake REPO_ROOT that has a stub chump-binary-unwedge.sh.
 FAKE_ROOT="$TMP/fake-repo"
 mkdir -p "$FAKE_ROOT/scripts/dev" "$FAKE_ROOT/scripts/dispatch" "$FAKE_ROOT/.chump-locks"
-cat > "$FAKE_ROOT/scripts/dev/chump-doctor.sh" <<'STUB'
+cat > "$FAKE_ROOT/scripts/dev/chump-binary-unwedge.sh" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-chmod +x "$FAKE_ROOT/scripts/dev/chump-doctor.sh"
+chmod +x "$FAKE_ROOT/scripts/dev/chump-binary-unwedge.sh"
 # _pick_gap.py needs to be present + always print empty (no candidates).
 cat > "$FAKE_ROOT/scripts/dispatch/_pick_gap.py" <<'STUB'
 #!/usr/bin/env python3

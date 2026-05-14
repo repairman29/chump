@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # test-worker-doctor-preflight.sh — INFRA-333.
 #
-# Asserts that scripts/dispatch/worker.sh runs scripts/dev/chump-doctor.sh
+# Asserts that scripts/dispatch/worker.sh runs scripts/dev/chump-binary-unwedge.sh
 # as the first action of its session-start phase, BEFORE any `chump gap`
 # invocation. This pre-empts the INFRA-275 wedged-inode hang where
 # `chump gap list` would otherwise hang indefinitely at _dyld_start.
 #
 # Strategy: spawn worker.sh in a tempdir with a synthetic REPO_ROOT
-# whose `scripts/dev/chump-doctor.sh` and a PATH-shadowed `chump` binary
+# whose `scripts/dev/chump-binary-unwedge.sh` and a PATH-shadowed `chump` binary
 # both append a line to an order log. After ~3s, kill worker.sh and
 # read the log: `doctor` must appear before `chump-gap`.
 
@@ -38,14 +38,14 @@ mkdir -p "$TMPROOT/binstub"
 ORDER_LOG="$TMPROOT/order.log"
 : > "$ORDER_LOG"
 
-# Mock chump-doctor.sh — logs "doctor" with a unix-ms timestamp, exits 0
+# Mock chump-binary-unwedge.sh — logs "doctor" with a unix-ms timestamp, exits 0
 # fast (the real one probes in <5s when healthy).
-cat > "$TMPROOT/scripts/dev/chump-doctor.sh" <<EOF
+cat > "$TMPROOT/scripts/dev/chump-binary-unwedge.sh" <<EOF
 #!/usr/bin/env bash
 printf 'doctor %s\n' "\$(date +%s%N)" >> "$ORDER_LOG"
 exit 0
 EOF
-chmod +x "$TMPROOT/scripts/dev/chump-doctor.sh"
+chmod +x "$TMPROOT/scripts/dev/chump-binary-unwedge.sh"
 
 # Mock chump on PATH — logs "chump-gap <args>" then sleeps. The worker's
 # first chump call is `chump gap list --status open --json` early in the
@@ -110,7 +110,7 @@ if [ -z "$DOCTOR_LINE" ]; then
 fi
 
 if [ -n "$CHUMP_LINE" ] && [ "$DOCTOR_LINE" -gt "$CHUMP_LINE" ]; then
-    echo "    FAIL: chump gap was invoked BEFORE chump-doctor.sh" >&2
+    echo "    FAIL: chump gap was invoked BEFORE chump-binary-unwedge.sh" >&2
     echo "    doctor at line $DOCTOR_LINE, chump-gap at line $CHUMP_LINE" >&2
     echo "--- order log ---" >&2
     cat "$ORDER_LOG" >&2

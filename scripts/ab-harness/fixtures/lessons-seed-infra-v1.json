@@ -22,7 +22,7 @@
       "scope": "infra"
     },
     {
-      "directive": "When chump gap commands hang with no output and `ps` shows accumulating processes in state UE, the binary is wedged at _dyld_start due to macOS Sequoia syspolicyd inode-pending-decision state (INFRA-275, 2026-05-02). Direct sqlite3 queries against .chump/state.db work instantly — proof the DB is fine and the binary is the bottleneck. Heal: run scripts/dev/chump-doctor.sh — it replaces the wedged inode with a fresh copy. DO NOT fall back to writing docs/gaps/<ID>.yaml directly: concurrent siblings each scanning the filesystem for 'next free ID' produce silent collisions (INFRA-301).",
+      "directive": "When chump gap commands hang with no output and `ps` shows accumulating processes in state UE, the binary is wedged at _dyld_start due to macOS Sequoia syspolicyd inode-pending-decision state (INFRA-275, 2026-05-02). Direct sqlite3 queries against .chump/state.db work instantly — proof the DB is fine and the binary is the bottleneck. Heal: run scripts/dev/chump-binary-unwedge.sh — it replaces the wedged inode with a fresh copy. DO NOT fall back to writing docs/gaps/<ID>.yaml directly: concurrent siblings each scanning the filesystem for 'next free ID' produce silent collisions (INFRA-301).",
       "priority": "high",
       "scope": "infra"
     },
@@ -32,7 +32,7 @@
       "scope": "infra"
     },
     {
-      "directive": "When a chump CLI invocation hangs OR exits non-zero in a coordination script (gap-reserve.sh, gap-claim.sh, bot-merge.sh), fail loud and STOP. Do NOT silently fall back to filesystem scans for 'next free ID' or any other YAML-write workaround. INFRA-301 (2026-05-02) was filed because trace logs caught a sibling running `for n in 301 302 303; do [ -f docs/gaps/INFRA-$n.yaml ] || ...; done` after chump hung — concurrent siblings each picking the same ID is a silent-collision hazard. Run scripts/dev/chump-doctor.sh; if still hung, file a gap and stop the cycle.",
+      "directive": "When a chump CLI invocation hangs OR exits non-zero in a coordination script (gap-reserve.sh, gap-claim.sh, bot-merge.sh), fail loud and STOP. Do NOT silently fall back to filesystem scans for 'next free ID' or any other YAML-write workaround. INFRA-301 (2026-05-02) was filed because trace logs caught a sibling running `for n in 301 302 303; do [ -f docs/gaps/INFRA-$n.yaml ] || ...; done` after chump hung — concurrent siblings each picking the same ID is a silent-collision hazard. Run scripts/dev/chump-binary-unwedge.sh; if still hung, file a gap and stop the cycle.",
       "priority": "high",
       "scope": "infra"
     },

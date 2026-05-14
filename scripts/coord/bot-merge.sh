@@ -1022,17 +1022,17 @@ fi
 # any one of them hanging stalls the whole pipeline for 30+ minutes before
 # the operator notices.
 #
-# chump-doctor.sh probes (5s timeout) and self-heals by replacing the wedged
+# chump-binary-unwedge.sh probes (5s timeout) and self-heals by replacing the wedged
 # inode. Idempotent — exit 0 if healthy, exit 0 after heal, exit 1 only on
 # hard failure (rebuild needed). Run BEFORE any chump call so wedge is
 # caught upfront, not midstream.
 #
 # Bypass: CHUMP_DOCTOR_SKIP=1 (cron-side, or for the chump-doctor PR itself).
 if [[ "${CHUMP_DOCTOR_SKIP:-0}" != "1" ]] \
-        && [[ -x "$REPO_ROOT/scripts/dev/chump-doctor.sh" ]]; then
-    if ! bash "$REPO_ROOT/scripts/dev/chump-doctor.sh" >/dev/null 2>&1; then
+        && [[ -x "$REPO_ROOT/scripts/dev/chump-binary-unwedge.sh" ]]; then
+    if ! bash "$REPO_ROOT/scripts/dev/chump-binary-unwedge.sh" >/dev/null 2>&1; then
         # See: docs/process/CLAUDE_GOTCHAS.md#error-binary-wedge
-        die_with_help "chump binary is wedged and could not self-heal — every subsequent chump call will hang. Run: CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-doctor.sh" "error-binary-wedge"
+        die_with_help "chump binary is wedged and could not self-heal — every subsequent chump call will hang. Run: CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-binary-unwedge.sh" "error-binary-wedge"
     fi
 fi
 

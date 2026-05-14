@@ -213,7 +213,7 @@ else:
         );
     ")
     if [[ -n "$stall_pct" ]] && python3 -c "import sys; sys.exit(0 if float('$stall_pct') > 50.0 else 1)"; then
-        echo "- 🚨 Stall rate is ${stall_pct}% (>50% threshold) — investigate INFRA-275 / INFRA-301 health, run \`scripts/dev/chump-doctor.sh\` on dispatcher hosts."
+        echo "- 🚨 Stall rate is ${stall_pct}% (>50% threshold) — investigate INFRA-275 / INFRA-301 health, run \`scripts/dev/chump-binary-unwedge.sh\` on dispatcher hosts."
     elif [[ -n "$stall_pct" ]] && python3 -c "import sys; sys.exit(0 if float('$stall_pct') > 30.0 else 1)"; then
         echo "- ⚠️  Stall rate is ${stall_pct}% (above META-025 target of <30%). Review INFRA-332 shipping-epilogue adoption."
     else

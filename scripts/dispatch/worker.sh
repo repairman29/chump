@@ -254,7 +254,7 @@ cd "$REPO_ROOT"
 # gap list` invocation below doesn't hang at _dyld_start. Failure is
 # logged but non-fatal: the loop will surface the real problem on the
 # first `chump gap` call if the heal didn't work.
-"$REPO_ROOT/scripts/dev/chump-doctor.sh" >&2 || {
+"$REPO_ROOT/scripts/dev/chump-binary-unwedge.sh" >&2 || {
     log "WARN: chump-doctor failed; chump gap calls may hang"
 }
 
