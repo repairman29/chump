@@ -81,6 +81,7 @@ echo "--- Test 4: gap ship ---"
 CHUMP_SKIP_SUPERSEDED_CLOSE=1 \
 CHUMP_SHIP_NO_AUTOSTAGE=1 \
 CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
+CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 \
 "$CHUMP_BIN" gap ship "$gap_id" --update-yaml --closed-pr 9999 \
     || fail "gap ship failed"
 grep -q "status: done" "$yaml_path" || fail "YAML status not 'done' after ship"
