@@ -1754,3 +1754,9 @@ events:
       fleet-active time — compounding is going backwards.
     consumers: [fleet-brief, curator, operator-recall]
     fields_required: [ts, kind, week, prev_mean_leverage, curr_mean_leverage, drop_pct]
+  # ── PRODUCT-079: needs-judgment panel ─────────────────────────────────────
+  - kind: operator_acknowledged
+    emitter: src/web_server.rs handle_needs_judgment_ack (PRODUCT-079)
+    trigger: operator marks a gap/event as handled via the Judgment panel
+    consumers: [fleet-brief, needs-judgment-panel]
+    fields_required: [ts, kind, item_type, item_id]

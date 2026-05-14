@@ -1906,6 +1906,169 @@ async fn handle_cos_decisions(
     Ok(Json(serde_json::json!({ "decisions": list })))
 }
 
+// --- PRODUCT-079: Needs-Judgment queue ---
+
+#[derive(serde::Deserialize)]
+struct AckBody {
+    item_type: String,
+    item_id: String,
+}
+
+async fn handle_needs_judgment(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let repo_root = std::env::var("CHUMP_REPO")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| repo_path::runtime_base());
+
+    let db_path = repo_root.join(".chump/state.db");
+    let ambient_path = std::env::var("CHUMP_AMBIENT_IN_PROMPT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join(".chump-locks/ambient.jsonl"));
+
+    let mut items: Vec<serde_json::Value> = Vec::new();
+    let mut last_decision_ago: Option<String> = None;
+
+    // Source 1 — gaps whose notes or AC mention operator input needed.
+    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+        let query = "SELECT id, title, notes, priority FROM gaps \
+                     WHERE status='open' AND (notes LIKE '%operator%' OR notes LIKE '%judgment%' \
+                           OR acceptance_criteria LIKE '%operator decides%') \
+                     ORDER BY priority, id LIMIT 20";
+        if let Ok(mut stmt) = conn.prepare(query) {
+            let rows = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            });
+            if let Ok(rows) = rows {
+                for row in rows.flatten() {
+                    items.push(serde_json::json!({
+                        "item_type": "gap",
+                        "id": row.0,
+                        "summary": row.1,
+                        "detail": row.2.lines().next().unwrap_or("").trim(),
+                        "priority": row.3,
+                        "recommended_action": "review gap and decide"
+                    }));
+                }
+            }
+        }
+
+        // Track last decision time for empty-state message.
+        let ack_q = "SELECT ts FROM operator_acks ORDER BY ts DESC LIMIT 1";
+        if let Ok(ts) = conn.query_row(ack_q, [], |r| r.get::<_, String>(0)) {
+            last_decision_ago = Some(ts);
+        }
+    }
+
+    // Source 2 — ambient events: operator_recall and pr_needs_owner_action.
+    if let Ok(content) = std::fs::read_to_string(&ambient_path) {
+        for line in content.lines().rev().take(500) {
+            let v: serde_json::Value = match serde_json::from_str(line) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let kind = match v.get("kind").and_then(|k| k.as_str()) {
+                Some(k) => k,
+                None => continue,
+            };
+            if kind == "operator_recall" || kind == "pr_needs_owner_action" {
+                let id = v
+                    .get("gap_id")
+                    .or_else(|| v.get("pr"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let ts = v
+                    .get("ts")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let already = items.iter().any(|i| {
+                    i.get("id").and_then(|x| x.as_str()) == Some(&id)
+                        && i.get("item_type").and_then(|x| x.as_str()) == Some("event")
+                });
+                if !already {
+                    items.push(serde_json::json!({
+                        "item_type": "event",
+                        "id": id,
+                        "summary": v.get("message").and_then(|m| m.as_str()).unwrap_or(kind),
+                        "age": ts,
+                        "recommended_action": if kind == "pr_needs_owner_action" {
+                            "check PR and unblock"
+                        } else {
+                            "recall and decide"
+                        }
+                    }));
+                }
+                if items.len() >= 50 {
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(Json(serde_json::json!({
+        "items": items,
+        "count": items.len(),
+        "last_decision_ts": last_decision_ago,
+    })))
+}
+
+async fn handle_needs_judgment_ack(
+    headers: HeaderMap,
+    Json(body): Json<AckBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let repo_root = std::env::var("CHUMP_REPO")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| repo_path::runtime_base());
+
+    let ambient_path = std::env::var("CHUMP_AMBIENT_IN_PROMPT")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join(".chump-locks/ambient.jsonl"));
+
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let event = serde_json::json!({
+        "ts": ts,
+        "kind": "operator_acknowledged",
+        "item_type": body.item_type,
+        "item_id": body.item_id,
+    });
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{}", event);
+    }
+
+    // Persist ack to state.db so we can show "last decision N ago".
+    let db_path = repo_root.join(".chump/state.db");
+    if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+        let _ = conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS operator_acks \
+             (ts TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL);",
+        );
+        let _ = conn.execute(
+            "INSERT INTO operator_acks (ts, item_type, item_id) VALUES (?1, ?2, ?3)",
+            rusqlite::params![ts, body.item_type, body.item_id],
+        );
+    }
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 // --- iOS Shortcuts (Phase 5) ---
 #[derive(serde::Deserialize)]
 struct ShortcutTaskBody {
@@ -3403,6 +3566,8 @@ fn build_api_router() -> Router {
         .route("/api/push/unsubscribe", post(handle_push_unsubscribe))
         .route("/api/tool-approval-audit", get(handle_tool_approval_audit))
         .route("/api/cos/decisions", get(handle_cos_decisions))
+        .route("/api/needs-judgment", get(handle_needs_judgment))
+        .route("/api/needs-judgment/ack", post(handle_needs_judgment_ack))
         .route("/api/shortcut/task", post(handle_shortcut_task))
         .route(
             "/api/shortcut/capture",
@@ -4177,6 +4342,22 @@ mod api_battle_tests {
         let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(v.get("entries").and_then(|e| e.as_array()).is_some());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn api_needs_judgment_ok() {
+        let mut app = build_api_router();
+        let req = Request::builder()
+            .uri("/api/needs-judgment")
+            .body(Body::empty())
+            .unwrap();
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(v.get("items").and_then(|e| e.as_array()).is_some());
+        assert!(v.get("count").is_some());
     }
 
     #[tokio::test]
