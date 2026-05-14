@@ -1,0 +1,17 @@
+- id: INFRA-693
+  domain: INFRA
+  title: "ZERO-WASTE: extract gap_store.rs to standalone crate — 4421 lines, zero crate imports, self-contained"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - extract src/gap_store.rs (4421 LOC, zero internal deps on chump types) into crates/chump-gap-store
+    - root crate adds it as path dep
+    - cargo test --workspace passes
+    - chump binary unchanged
+    - crate Cargo.toml has version + license + description ready for crates.io
+  notes: |
+    DESIGN NOTE (Opus): extract is mostly mechanical BUT mind these surfaces — (1) gap_store.rs imports crate-internal types like AmbientWriter / ChumpError; replace with re-exports from a narrower 'chump-types' crate OR mark as private deps. (2) the SQL schema strings are hardcoded; either keep them in chump-gap-store OR move to a shared chump-schema crate. (3) preserve INFRA-188 invariants: per-file YAML mirror writes happen in this module — make sure they still work post-extraction. (4) update Cargo.toml workspace [dependencies] to include the new crate. Test plan: cargo test --workspace passes + chump binary unchanged + scripts/ci/test-gap-store-roundtrip.sh added.
+  opened_date: '2026-05-08'
+  closed_date: '2026-05-14'
+
