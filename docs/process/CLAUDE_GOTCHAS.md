@@ -1098,3 +1098,23 @@ function scheduleTestAliases() {
 **Pre-commit guard:** none yet (INFRA-1066 AC #6, optional).
 If you add e2e selectors that need shadow piercing, use Playwright's `>>>` shadow-piercing
 combinator (`page.locator('chump-chat >>> #input')`) rather than relying on DOM aliases.
+
+## Parallel-ship: two PRs for the same gap (CREDIBLE-066, 2026-05-14)
+
+When two sessions race to claim and ship the same gap, the resulting two PRs interact with the gate machinery in non-obvious ways.
+
+**How GitHub closes the losing PR:**  
+If the losing PR's head branch is deleted (e.g., `chump claim` cleanup path deletes the old branch via `gh api .../git/refs/heads/... -X DELETE`), GitHub closes the PR automatically within ~1s. The `issues/{n}/events` API shows `event=closed`, `actor=<repo-owner-via-token>`, and `closed_by=null` — **indistinguishable from a manual operator close.**
+
+**Which gates fire:**
+
+| Gate | When it fires | Does it catch parallel-ship? |
+|---|---|---|
+| INFRA-1219 (pr-create dedup) | At `gh pr create` time | Yes — if the first PR is still open when the second is created |
+| INFRA-1139 (orphan-pr-closer) | On a schedule (cron-like) | Yes — if gap becomes `done` while the losing PR is still open |
+| INFRA-1220 (cooldown stamp) | When orphan-pr-closer closes a PR | No — branch-deletion close bypasses the stamp |
+
+**What to do:**  
+- If you delete a branch that backs a PR: expect GitHub to close the PR silently. Check `gh pr view <N> --json state` to confirm.
+- If you reclaim a gap that had an open PR: let `chump claim` handle branch cleanup; it stamps the cooldown when it detects an existing PR for the gap. Do not manually delete branches without checking for associated open PRs first.
+- The dedup gate (INFRA-1219) is the strongest protection: it fires synchronously at `pr create` time and blocks before a second PR exists.
