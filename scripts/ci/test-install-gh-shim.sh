@@ -44,8 +44,11 @@ bash "$INSTALLER" --dir "$INSTALL_DIR" >/dev/null 2>&1 \
 [ -x "$INSTALL_DIR/gh" ] || fail "wrapper not installed at $INSTALL_DIR/gh"
 grep -q 'CHUMP_GH_WRAPPER_VERSION=' "$INSTALL_DIR/gh" \
     || fail "wrapper missing marker line"
-grep -qF "exec \"$SHIM_SRC\"" "$INSTALL_DIR/gh" \
-    || fail "wrapper does not exec the repo shim"
+# Wrapper must exec SOMETHING that ends in scripts/coord/lib/gh-shim/gh.
+# After INFRA-1185 the path resolves to the canonical main-repo location
+# (not necessarily $SHIM_SRC if we're running inside a linked worktree).
+grep -qE 'exec "[^"]+/scripts/coord/lib/gh-shim/gh"' "$INSTALL_DIR/gh" \
+    || fail "wrapper does not exec a path ending in scripts/coord/lib/gh-shim/gh"
 ok "install creates wrapper at \$INSTALL_DIR/gh"
 
 # ── Test 2: idempotent — re-run is fine ──────────────────────────────────────
@@ -70,7 +73,7 @@ ok "installer refuses to clobber a non-chump gh"
 AMBIENT="$TMP/ambient.jsonl"
 LOCK_DIR="$(dirname "$AMBIENT")"
 NOW=$(python3 -c "import time;print(time.time())")
-python3 -c "import json; json.dump([${NOW}, ${NOW}, ${NOW}], open('$LOCK_DIR/.gh-throttle-window','w'))"
+python3 -c "import json; json.dump([${NOW}, ${NOW}, ${NOW}], open('$LOCK_DIR/.gh-throttle-window.query','w'))"
 # Invoke via PATH lookup (the whole point of the wrapper).
 CHUMP_GH_MAX_CALLS_PER_MIN=3 \
 CHUMP_AMBIENT_OVERRIDE="$AMBIENT" \
@@ -94,5 +97,44 @@ bash "$INSTALLER" --dir "$TMP/foreign-bin" --uninstall >/dev/null 2>&1 \
 [ -f "$TMP/foreign-bin/gh" ] || fail "--uninstall removed a NON-chump gh!"
 ok "--uninstall does not touch non-chump files"
 
+# ── Test 7: INFRA-1185 — installer refuses to point at an ephemeral path ─────
+# Simulate post-checkout in a linked worktree under /private/tmp: the wrapper
+# must NOT end up pointing there, because the worktree disappears after the
+# rebase script that triggered the hook removes it.
+EPH_REPO="/private/tmp/wt-ephemeral-test-$$"
+mkdir -p "$EPH_REPO/scripts/setup" "$EPH_REPO/scripts/coord/lib/gh-shim"
+cp "$INSTALLER" "$EPH_REPO/scripts/setup/install-gh-shim.sh"
+cp "$SHIM_SRC"  "$EPH_REPO/scripts/coord/lib/gh-shim/gh"
+# Run the installer from the ephemeral location.
+out=$(bash "$EPH_REPO/scripts/setup/install-gh-shim.sh" --dir "$INSTALL_DIR" 2>&1)
+rc=$?
+rm -rf "$EPH_REPO"
+# Two acceptable outcomes:
+#   A) Installer refuses with exit 5 because git couldn't find a non-ephemeral main repo.
+#   B) Installer succeeds because `git worktree list --porcelain` resolved to a real
+#      non-ephemeral main repo (CI runner case), in which case the wrapper must
+#      point at that path, NOT at $EPH_REPO.
+if [ "$rc" -eq 5 ]; then
+    ok "INFRA-1185: refuses to install from ephemeral path (no main repo resolution available)"
+elif [ "$rc" -eq 0 ] && [ -f "$INSTALL_DIR/gh" ]; then
+    if grep -qF "$EPH_REPO" "$INSTALL_DIR/gh"; then
+        fail "INFRA-1185: wrapper points at ephemeral path $EPH_REPO — would break when worktree is removed"
+    fi
+    ok "INFRA-1185: from ephemeral path, wrapper resolved to non-ephemeral main repo"
+else
+    fail "INFRA-1185: unexpected installer behavior rc=$rc out=$out"
+fi
+
+# ── Test 8: INFRA-1185 — main-repo invocation still points at main ──────────
+# Re-install from the real main checkout; wrapper must NOT have an ephemeral path.
+bash "$INSTALLER" --dir "$INSTALL_DIR" >/dev/null 2>&1 \
+    || fail "main-repo re-install returned non-zero"
+case "$(grep '^exec ' "$INSTALL_DIR/gh")" in
+    *'/private/tmp/'*|*'/tmp/'*|*'/var/folders/'*)
+        fail "INFRA-1185: main-repo install pointed at ephemeral path"
+        ;;
+esac
+ok "INFRA-1185: main-repo install points at canonical path"
+
 echo
-echo "All INFRA-1136 install-gh-shim tests passed."
+echo "All INFRA-1136/1185 install-gh-shim tests passed."

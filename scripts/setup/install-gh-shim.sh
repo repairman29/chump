@@ -23,7 +23,57 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && cd .. && pwd -P)"
+_SCRIPT_REPO_ROOT="$(cd "$(dirname "$0")/.." && cd .. && pwd -P)"
+
+# INFRA-1185: the wrapper at ~/.local/bin/gh must point at the CANONICAL
+# main-repo shim, not at an ephemeral linked worktree. install-hooks.sh
+# fires from every post-checkout hook (including `git worktree add
+# /private/tmp/rb-1830`); without this resolution, the wrapper gets
+# repointed to a path that disappears the moment the temp worktree is
+# pruned, breaking every interactive `gh` call until the operator
+# manually re-runs the installer.
+#
+# Strategy: ask git which worktree is the main one. `git worktree list
+# --porcelain` lists the main worktree first. Fall back to
+# _SCRIPT_REPO_ROOT only if git can't tell us (out-of-tree invocation).
+_MAIN_REPO_ROOT=""
+if command -v git >/dev/null 2>&1; then
+    # Note: do NOT pipe into awk with `exit` here — set -o pipefail + SIGPIPE
+    # propagates as a non-zero rc and aborts the installer. Use a tempfile.
+    _wt_list_tmp="$(mktemp 2>/dev/null || echo /tmp/chump-wt-list.$$)"
+    if (cd "$_SCRIPT_REPO_ROOT" 2>/dev/null && \
+        git worktree list --porcelain 2>/dev/null) > "$_wt_list_tmp"; then
+        _MAIN_REPO_ROOT="$(awk '$1 == "worktree" {print $2; exit}' "$_wt_list_tmp")"
+    fi
+    rm -f "$_wt_list_tmp"
+    unset _wt_list_tmp
+fi
+
+# Reject ephemeral paths even if explicitly requested. /private/tmp, /tmp,
+# and macOS-pattern /var/folders/.../T/ all denote temp dirs whose contents
+# vanish under us.
+_is_ephemeral_path() {
+    case "$1" in
+        /tmp/*|/private/tmp/*|/var/folders/*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+if [ -n "$_MAIN_REPO_ROOT" ] && [ -d "$_MAIN_REPO_ROOT/scripts/coord/lib/gh-shim" ] \
+   && ! _is_ephemeral_path "$_MAIN_REPO_ROOT"; then
+    REPO_ROOT="$_MAIN_REPO_ROOT"
+else
+    REPO_ROOT="$_SCRIPT_REPO_ROOT"
+fi
+
+if _is_ephemeral_path "$REPO_ROOT"; then
+    echo "[install-gh-shim] ERROR: resolved REPO_ROOT '$REPO_ROOT' is on an ephemeral path." >&2
+    echo "[install-gh-shim]   Wrapper would break the moment this dir is removed. Refusing to install." >&2
+    echo "[install-gh-shim]   Re-run from the main repo checkout, e.g.:" >&2
+    echo "[install-gh-shim]     bash /path/to/chump/scripts/setup/install-gh-shim.sh" >&2
+    exit 5
+fi
+
 SHIM_SRC="$REPO_ROOT/scripts/coord/lib/gh-shim/gh"
 
 INSTALL_DIR="${CHUMP_GH_SHIM_DIR:-$HOME/.local/bin}"
