@@ -175,7 +175,12 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
     if let Err(e) = do_work(&workspace) {
         // Always release before propagating the error so a failed work
         // step doesn't leave a stale lease.
-        let _ = release(&workspace);
+        // INFRA-1243: log + emit ambient event on release failure instead of swallowing.
+        if let Err(rel_err) = release(&workspace) {
+            let reason = format!("work-failed path: {rel_err:#}");
+            eprintln!("[dispatch] WARNING: lease release failed after work error: {reason}");
+            emit_lease_release_failed(opts.gap_id, &reason);
+        }
         return Ok(DispatchOutcome {
             gap_id: opts.gap_id.to_string(),
             branch,
@@ -196,7 +201,12 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
     };
 
     // Step 5: always release the lease.
-    let _ = release(&workspace);
+    // INFRA-1243: log + emit ambient event on release failure instead of swallowing.
+    if let Err(rel_err) = release(&workspace) {
+        let reason = format!("post-ship path: {rel_err:#}");
+        eprintln!("[dispatch] WARNING: lease release failed after ship: {reason}");
+        emit_lease_release_failed(opts.gap_id, &reason);
+    }
 
     Ok(DispatchOutcome {
         gap_id: opts.gap_id.to_string(),
@@ -554,6 +564,46 @@ fn emit_hang_alert(process_name: &str, gap_id: &str, timeout_secs: u64) {
     }
 }
 
+/// Emit `kind=lease_release_failed` to ambient.jsonl.
+///
+/// Best-effort: never panics or propagates errors — a failed emit is preferable
+/// to a crash inside the already-failing release path. (INFRA-1243)
+fn emit_lease_release_failed(gap_id: &str, reason: &str) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
+    let worktree = repo_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    // Minimal JSON escaping for the reason field (may contain error text).
+    let reason_escaped = reason.replace('\\', "\\\\").replace('"', "\\\"");
+    let gap_escaped = gap_id.replace('"', "\\\"");
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"lease_release_failed\",\
+         \"session\":\"{session}\",\"worktree\":\"{worktree}\",\
+         \"gap_id\":\"{gap_escaped}\",\"reason\":\"{reason_escaped}\"}}"
+    );
+
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{line}");
+    }
+}
+
 /// Find the `chump` binary. Tries the in-tree `target/release` and
 /// `target/debug` first (so `chump dispatch` always re-uses the same binary
 /// the user is invoking), then `$HOME/.local/bin/chump` (the cargo-install
@@ -720,11 +770,19 @@ fn release(ws: &Workspace) -> Result<()> {
     // INFRA-302 blocker (3): release from the worktree so the same
     // session-ID resolution that wrote the lease (under
     // `<worktree>/.chump-locks/`) sees it for cleanup.
-    let _ = Command::new(&chump)
+    // INFRA-1243: capture exit status instead of silently discarding it.
+    let result = Command::new(&chump)
         .arg("--release")
         .current_dir(ws.working_dir())
         .status();
-    Ok(())
+    match result {
+        Err(e) => Err(anyhow::anyhow!("chump --release failed to spawn: {e}")),
+        Ok(s) if !s.success() => Err(anyhow::anyhow!(
+            "chump --release exited with status {}",
+            s.code().unwrap_or(-1)
+        )),
+        Ok(_) => Ok(()),
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

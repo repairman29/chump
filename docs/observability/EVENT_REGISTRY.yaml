@@ -380,6 +380,14 @@ events:
     trigger: two sessions claim same files
     consumers: [fleet-brief]
 
+  - kind: lease_release_failed
+    emitter: src/dispatch.rs
+    trigger: chump --release exited non-zero or failed to spawn after work/ship step
+    fields_required: [ts, kind, session, worktree, gap_id, reason]
+    consumers: [fleet-brief, waste-tally]
+    # INFRA-1243: surfaced so operator can detect silent lease leaks before
+    # the 900s reaper cycle. gap_id + session uniquely identify the stuck lease.
+
   # ── PR / gap lifecycle ─────────────────────────────────────────────────────
   - kind: gap_reserved
     emitter: chump gap reserve
