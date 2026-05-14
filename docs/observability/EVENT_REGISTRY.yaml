@@ -344,6 +344,12 @@ events:
     consumers: [audit-log]
     fields_required: [gap_id, pr_number]
 
+  - kind: curator_skip_active_rebase
+    emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1195)
+    trigger: reaper skipped closing a stale PR because it was updated within the freshness window (active rebase/force-push detected)
+    consumers: [audit-log, operator-recall]
+    fields_required: [ts, kind, pr, gap, age_minutes, reason]
+
   - kind: daemon_silent
     emitter: scripts/ops/reaper-heartbeat-watchdog.sh (INFRA-683)
     trigger: pr-watch.sh / distill-pr-skills.sh missed heartbeat
