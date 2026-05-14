@@ -68,13 +68,6 @@ pub fn locate_ambient(start: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Resolve the current session ID using the same priority chain as
-/// `scripts/coord/gap-claim.sh`:
-///   1. `CHUMP_SESSION_ID` (explicit override)
-///   2. `CLAUDE_SESSION_ID` (Claude Code SDK)
-///   3. `<worktree>/.chump-locks/.wt-session-id`
-///   4. `<main-repo>/.chump-locks/.wt-session-id`
-///   5. `$HOME/.chump/session_id`
 /// Resolve session ID from env vars only (no file I/O, no repo root needed).
 /// Priority: CHUMP_SESSION_ID > CLAUDE_SESSION_ID > OPENCODE_SESSION_ID.
 /// Returns None if no non-empty env var is set.
