@@ -211,7 +211,7 @@ SKIP_TESTS=0
 FAST=0
 DRY_RUN=0
 NO_MERGE_DRIVER=0
-# INFRA-193: speculative execution opt-in. With --speculative, gap-claim.sh
+# INFRA-193: speculative execution opt-in. With --speculative, chump claim
 # writes `"speculative": true` into the lease and gap-preflight.sh allows
 # concurrent claims by other speculative-mode sessions on the same gap.
 # After auto-merge is armed for our PR, the post-arm sweep below scans for
@@ -895,7 +895,7 @@ export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-chump-dispatch@chump.bot}"
 # If not set, try to infer it from an existing gap lease file so the preflight
 # recognises our own claim at ship time (the claim may have been written by a
 # different shell with a different default session ID — e.g. CHUMP_SESSION_ID
-# set explicitly during gap-claim.sh vs. ~/.chump/session_id at bot-merge time).
+# set explicitly during chump claim vs. ~/.chump/session_id at bot-merge time).
 #
 # INFRA-045 (2026-04-24): also match pending_new_gap.id, not just gap_id.
 # For new gaps reserved via gap-reserve.sh, the caller's lease has a
@@ -1141,12 +1141,12 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     [[ "$SPECULATIVE" == "1" ]] && _claim_extra="--speculative"
     for gid in "${GAP_IDS[@]}"; do
         if [[ $DRY_RUN -eq 0 ]]; then
-            "$SCRIPT_DIR/gap-claim.sh" "$gid" $_claim_extra
+            chump claim "$gid" $_claim_extra
             # INFRA-492: emit session_start so INFRA-477's cost ledger
             # gets data. Best-effort — silent on chump fail.
             chump session-track --start "$gid" >/dev/null 2>&1 || true
         else
-            info "[dry-run] gap-claim.sh $gid $_claim_extra"
+            info "[dry-run] chump claim $gid $_claim_extra"
         fi
     done
 fi

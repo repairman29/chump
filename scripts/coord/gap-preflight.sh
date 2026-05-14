@@ -58,7 +58,7 @@ source "$(dirname "$0")/../lib/repo-paths.sh"
 
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 if [[ -z "$SESSION_ID" ]]; then
-    # Prefer the worktree-scoped session ID cached by gap-claim.sh over the
+    # Prefer the worktree-scoped session ID cached by chump claim over the
     # machine-scoped $HOME/.chump/session_id — avoids false "already claimed"
     # positives when multiple sessions share the machine ID.
     _WT_CACHE="$LOCK_DIR/.wt-session-id"
@@ -142,7 +142,7 @@ fi
 
 # True when this session's lease already reserves gap_id via pending_new_gap (INFRA-021).
 # INFRA-344: also accepts when gap_id is set directly in the lease (post-claim, after
-# gap-claim.sh removes pending_new_gap and writes gap_id instead).
+# chump claim removes pending_new_gap and writes gap_id instead).
 my_pending_reserves_gap() {
     local gap_id="$1"
     [[ -n "$SESSION_ID" ]] || return 1
@@ -154,7 +154,7 @@ import json, sys
 try:
     d = json.load(open(sys.argv[1]))
     p = d.get("pending_new_gap") or {}
-    # pre-claim: pending_new_gap.id matches; post-claim: gap_id matches (gap-claim.sh
+    # pre-claim: pending_new_gap.id matches; post-claim: gap_id matches (chump claim
     # moves pending_new_gap → gap_id, so the session still owns this gap — INFRA-344)
     if p.get("id") == sys.argv[2] or d.get("gap_id") == sys.argv[2]:
         sys.exit(0)
@@ -168,7 +168,7 @@ PYEOF
 # Used as a defense-in-depth check for filing-style PRs: the gap is reserved locally
 # (chump gap reserve wrote it to state.db) but not yet on origin/main.  This catches
 # the case where the session-ID path doesn't line up (e.g. a different chump-anon-*
-# lease owns the pending_new_gap but the current session already ran gap-claim.sh
+# lease owns the pending_new_gap but the current session already ran chump claim
 # under its own ID).
 gap_locally_open() {
     local gap_id="$1"
@@ -235,7 +235,7 @@ for fname in os.listdir(lock_dir):
     if isinstance(p, dict) and p.get("id") == gap_id:
         held = True
         # INFRA-322: distinguish "real claim" from "reserve-transaction artifact".
-        # A real claim sets gap_id (via gap-claim.sh); a chump-anon-* lease
+        # A real claim sets gap_id (via chump claim); a chump-anon-* lease
         # with ONLY pending_new_gap is the transient artifact that
         # `chump gap reserve` leaves behind for ~1 hour. Those should not
         # block a real session from claiming the same gap (the reserve
@@ -574,7 +574,7 @@ $SIBLING_GAP_YAML"
 
     # ── Check 1.6: NATS KV cross-machine lease (FLEET-032 Phase 1) ───────────
     # FLEET-032 Phase 1: dual-write pattern for cross-machine visibility.
-    # gap-claim.sh writes to BOTH:
+    # chump claim writes to BOTH:
     #   1. .chump-locks/<session>.json (same-machine, file-based)
     #   2. NATS KV (cross-machine, atomic via chump-coord)
     #
