@@ -80,6 +80,42 @@ struct InjectHintRequest {
     tool_context: Option<String>,
 }
 
+/// INFRA-1296: A2A — POST /api/broadcast.
+///
+/// Operator-facing entry point for emitting any a2a event (INTENT / HANDOFF
+/// / STUCK / DONE / WARN / ALERT / FEEDBACK) from the PWA. Shells out to
+/// `scripts/coord/broadcast.sh` rather than reimplementing schema in Rust:
+/// the shell is the canonical entry point, so this layer stays a thin
+/// HTTP-to-CLI adapter.
+#[derive(serde::Deserialize)]
+struct BroadcastRequest {
+    /// One of: INTENT HANDOFF STUCK DONE WARN ALERT FEEDBACK.
+    event: String,
+    /// Optional event sub-kind (FEEDBACK kinds: defect/proposal/preference/retro;
+    /// ALERT kinds: any free-form). Required for FEEDBACK + ALERT.
+    #[serde(default)]
+    kind: Option<String>,
+    /// Subject — gap-id (INTENT/HANDOFF/STUCK/DONE) OR policy name (FEEDBACK/WARN/ALERT).
+    #[serde(default)]
+    subject: Option<String>,
+    /// Free-text rationale / reason / message body.
+    #[serde(default)]
+    rationale: Option<String>,
+    /// Targeted recipient session-id or operator-id (or glob like fleet-worker-*).
+    #[serde(default)]
+    recipient: Option<String>,
+    /// For FEEDBACK preference: +1 / -1 / 0.
+    #[serde(default)]
+    vote: Option<String>,
+    /// INFRA-1299 hook (future): urgency now / hours / digest. Accepted now
+    /// for forward-compat; not yet routed by the reach classifier.
+    #[serde(default)]
+    urgency: Option<String>,
+    /// For HANDOFF positional 2 — back-compat with broadcast.sh CLI shape.
+    #[serde(default)]
+    to_session: Option<String>,
+}
+
 #[derive(serde::Deserialize)]
 struct PolicyOverrideRegisterBody {
     session_id: String,
@@ -482,6 +518,141 @@ async fn handle_inject_hint(
         &content[..content.len().min(120)]
     );
     Ok(Json(serde_json::json!({ "ok": true, "blackboard_id": id })))
+}
+
+/// INFRA-1296: POST /api/broadcast — emit any a2a event from the PWA.
+///
+/// Validates required fields per event type, then shells out to
+/// `scripts/coord/broadcast.sh`. Returns 400 on schema violation, 500 on
+/// broadcast.sh failure, 200 with the event JSON on success.
+async fn handle_broadcast(
+    headers: HeaderMap,
+    Json(body): Json<BroadcastRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+
+    let event = body.event.trim().to_uppercase();
+    let valid_events = [
+        "INTENT", "HANDOFF", "STUCK", "DONE", "WARN", "ALERT", "FEEDBACK",
+    ];
+    if !valid_events.contains(&event.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "invalid event '{}'; valid: {}",
+                event,
+                valid_events.join(" ")
+            ),
+        ));
+    }
+
+    // Per-event required-field validation.
+    let subject_required = matches!(
+        event.as_str(),
+        "INTENT" | "HANDOFF" | "STUCK" | "DONE" | "FEEDBACK"
+    );
+    if subject_required && body.subject.as_deref().unwrap_or("").trim().is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("event {} requires non-empty subject", event),
+        ));
+    }
+    if event == "HANDOFF"
+        && body.to_session.as_deref().unwrap_or("").trim().is_empty()
+        && body.recipient.as_deref().unwrap_or("").trim().is_empty()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "HANDOFF requires to_session or recipient".to_string(),
+        ));
+    }
+    if (event == "FEEDBACK" || event == "ALERT")
+        && body.kind.as_deref().unwrap_or("").trim().is_empty()
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("event {} requires kind", event),
+        ));
+    }
+
+    // Build the broadcast.sh CLI argv.
+    let repo_root = crate::repo_path::runtime_base();
+    let script = repo_root.join("scripts/coord/broadcast.sh");
+    if !script.exists() {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("broadcast.sh missing at {}", script.display()),
+        ));
+    }
+
+    let mut cmd = std::process::Command::new("bash");
+    cmd.arg(&script);
+    // Optional --to flag honored by broadcast.sh for any event.
+    if let Some(recipient) = body
+        .recipient
+        .as_deref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        cmd.args(["--to", recipient]);
+    }
+    cmd.arg(&event);
+
+    match event.as_str() {
+        "INTENT" | "DONE" => {
+            cmd.arg(body.subject.as_deref().unwrap_or(""));
+            if let Some(r) = body.rationale.as_deref() {
+                cmd.arg(r);
+            }
+        }
+        "HANDOFF" => {
+            cmd.arg(body.subject.as_deref().unwrap_or(""));
+            let dst = body
+                .to_session
+                .as_deref()
+                .or(body.recipient.as_deref())
+                .unwrap_or("");
+            cmd.arg(dst);
+        }
+        "STUCK" => {
+            cmd.arg(body.subject.as_deref().unwrap_or(""));
+            cmd.arg(body.rationale.as_deref().unwrap_or(""));
+        }
+        "WARN" => {
+            cmd.arg(body.rationale.as_deref().unwrap_or(""));
+        }
+        "ALERT" => {
+            cmd.arg(format!("kind={}", body.kind.as_deref().unwrap_or("")));
+            cmd.arg(body.rationale.as_deref().unwrap_or(""));
+        }
+        "FEEDBACK" => {
+            cmd.arg(body.kind.as_deref().unwrap_or(""));
+            cmd.arg(body.subject.as_deref().unwrap_or(""));
+            cmd.arg(body.rationale.as_deref().unwrap_or(""));
+            if let Some(v) = body.vote.as_deref().filter(|s| !s.is_empty()) {
+                cmd.arg(v);
+            }
+        }
+        _ => unreachable!(),
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("spawn: {e}")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("broadcast.sh exit {}: {}", output.status, stderr),
+        ));
+    }
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "event": event,
+        "stdout": String::from_utf8_lossy(&output.stdout).trim(),
+    })))
 }
 
 /// POST /api/policy-override — time-boxed relax of **CHUMP_TOOLS_ASK** for a web session (requires **`CHUMP_POLICY_OVERRIDE_API=1`**).
@@ -5473,6 +5644,8 @@ fn build_api_router() -> Router {
         .route("/api/stop", post(handle_stop))
         .route("/api/tts", get(handle_tts))
         .route("/api/inject-hint", post(handle_inject_hint))
+        // INFRA-1296: A2A — operator emits any a2a event from PWA.
+        .route("/api/broadcast", post(handle_broadcast))
         .route("/api/approve", post(handle_approve))
         .route(
             "/api/policy-override",
