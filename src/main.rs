@@ -1776,6 +1776,30 @@ async fn main() -> Result<()> {
                 let domain = flag("--domain")
                     .or_else(|| cfg("domain"))
                     .unwrap_or_default();
+
+                // INFRA-1052: harness selection — pair harness with model so the
+                // operator can run `chump fleet start --harness opencode --model sonnet`
+                // and have workers spawn opencode-flavored agents. CLAUDE.md INFRA-AUTH
+                // precedence applies: CLI flag > env > config.toml > default. The
+                // dispatcher half (INFRA-1045) reads FLEET_HARNESS in worker.sh.
+                const KNOWN_HARNESSES: &[&str] = &["claude", "opencode", "codex", "manual"];
+                let harness = flag("--harness")
+                    .or_else(|| {
+                        std::env::var("CHUMP_AGENT_HARNESS")
+                            .ok()
+                            .filter(|v| !v.is_empty())
+                    })
+                    .or_else(|| cfg("harness"))
+                    .unwrap_or_else(|| "claude".to_string());
+                if !KNOWN_HARNESSES.contains(&harness.as_str()) {
+                    eprintln!(
+                        "chump fleet start: unknown --harness '{harness}'. Known: {}",
+                        KNOWN_HARNESSES.join(", ")
+                    );
+                    eprintln!("  (Add a new harness to scripts/dispatch/harnesses/<name>.sh per INFRA-1045.)");
+                    std::process::exit(2);
+                }
+
                 // Persist last-used config for `chump fleet restart`.
                 let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
                 let last_config = std::path::Path::new(&home).join(".chump/last-fleet-config.json");
@@ -1787,6 +1811,7 @@ async fn main() -> Result<()> {
                     serde_json::to_string_pretty(&serde_json::json!({
                         "size": size,
                         "model": model,
+                        "harness": harness,
                         "effort": effort,
                         "domain": domain,
                         "session": flag("--session").or_else(|| cfg("session")).unwrap_or_else(|| "chump-fleet".to_string()),
@@ -1799,6 +1824,7 @@ async fn main() -> Result<()> {
                     .arg(&run_fleet_sh)
                     .env("FLEET_SIZE", &size)
                     .env("FLEET_MODEL", &model)
+                    .env("FLEET_HARNESS", &harness)
                     .env("FLEET_EFFORT_FILTER", &effort)
                     .env("FLEET_DOMAIN_FILTER", &domain)
                     .status()
