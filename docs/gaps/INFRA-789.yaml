@@ -1,7 +1,8 @@
 - id: INFRA-789
   domain: INFRA
   title: "EFFECTIVE: add Gemini 2.5 Flash Lite + Gemini 3 Flash to cascade — higher free RPD budget"
-  status: open
+  status: done
+  closed_pr: 1881
   priority: P1
   effort: xs
   acceptance_criteria: |
