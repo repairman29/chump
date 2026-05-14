@@ -1225,6 +1225,24 @@ events:
     consumers: [chump-ambient-glance, fleet-brief, operator-recall]
     fields_required: [ts, kind, pid, log_path, branch]
 
+  # ── INFRA-1065: chump binary auto-refresh ────────────────────────────────
+  - kind: chump_binary_refreshed
+    emitter: scripts/ops/refresh-chump-binary.sh (INFRA-1065)
+    trigger: hourly LaunchAgent detected origin/main has gap-store-affecting
+      commits ahead of ~/.cargo/bin/chump's baked SHA; ran cargo install --path
+      and the rebuild succeeded. Removes the daily friction of needing
+      CHUMP_ALLOW_STALE_DESTRUCTIVE=1 on every gap-mutation call.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, baked_sha_before, commits_ahead, elapsed_s]
+
+  - kind: chump_binary_refresh_failed
+    emitter: scripts/ops/refresh-chump-binary.sh (INFRA-1065)
+    trigger: cargo install --path . --bin chump --force exited non-zero. Operator
+      action needed — INFRA-825 staleness warnings will continue until the next
+      successful refresh.
+    consumers: [fleet-brief, operator-recall, watchdogs]
+    fields_required: [ts, kind, baked_sha, commits_ahead, elapsed_s, rc]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
