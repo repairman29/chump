@@ -293,20 +293,29 @@
       overflow: hidden;
     }
 
-    /* ── Sidebar nav ────────────────────────────────────────────────────── */
+    /* ── Sidebar nav (PRODUCT-106 cadence rework) ──────────────────────── */
+    /* Side rail = 4 cadence buttons (NOW / AMBIENT / LIBRARY / CONFIG).
+       Sub-tab strip lives below or to the right of the cadence rail
+       depending on viewport. See docs/design/OPERATOR_CONSOLE_V2.md §canvas. */
     chump-nav {
       width: var(--nav-width);
       padding-left: var(--safe-left);
       border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      align-items: center;
+      align-items: stretch;
       padding-top: 8px;
       gap: 4px;
       flex-shrink: 0;
       overflow-y: auto;
     }
-    chump-nav .nav-item {
+    chump-nav .nav-cadences {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 0 8px;
+    }
+    chump-nav .nav-cadence {
       width: 48px;
       height: 48px;
       border: none;
@@ -319,19 +328,87 @@
       align-items: center;
       justify-content: center;
       gap: 2px;
+      transition: background 0.15s, color 0.15s, border-left-color 0.15s;
+      touch-action: manipulation;
+      border-left: 3px solid transparent;
+      font-weight: 600;
+    }
+    chump-nav .nav-cadence:hover {
+      background: var(--bg-elevated);
+      color: var(--text);
+    }
+    chump-nav .nav-cadence[aria-current="page"] {
+      background: var(--accent-dim);
+      color: var(--accent);
+      border-left-color: var(--accent);
+    }
+    /* Sub-tab strip — sits directly below the cadence buttons. */
+    chump-nav .nav-subtabs {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 8px;
+      border-top: 1px solid var(--border);
+      margin-top: 8px;
+    }
+    chump-nav .nav-subtabs:empty { display: none; }
+    chump-nav .nav-item {
+      width: 48px;
+      height: 40px;
+      border: none;
+      background: transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1px;
       transition: background 0.15s, color 0.15s;
       touch-action: manipulation;
+      opacity: 0.85;
     }
     chump-nav .nav-item:hover {
       background: var(--bg-elevated);
       color: var(--text);
+      opacity: 1;
     }
     chump-nav .nav-item[aria-current="page"] {
-      background: var(--accent-dim);
+      background: var(--bg-elevated);
       color: var(--accent);
+      opacity: 1;
     }
-    chump-nav .nav-icon { font-size: 18px; line-height: 1; position: relative; }
+    chump-nav .nav-icon { font-size: 16px; line-height: 1; position: relative; }
+    chump-nav .nav-cadence .nav-icon { font-size: 20px; }
     chump-nav .nav-label { font-size: 9px; letter-spacing: 0.3px; text-transform: uppercase; }
+
+    /* Mobile: ≤640px → cadences become a horizontal top strip + sub-tabs below it. */
+    @media (max-width: 640px) {
+      chump-nav {
+        width: 100%;
+        height: auto;
+        flex-direction: column;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+        padding: 4px 0;
+      }
+      chump-nav .nav-cadences {
+        flex-direction: row;
+        justify-content: space-around;
+        padding: 0 4px;
+      }
+      chump-nav .nav-cadence { flex: 1; max-width: 80px; height: 44px; border-left: none; border-bottom: 3px solid transparent; }
+      chump-nav .nav-cadence[aria-current="page"] { border-left-color: transparent; border-bottom-color: var(--accent); }
+      chump-nav .nav-subtabs {
+        flex-direction: row;
+        justify-content: space-around;
+        border-top: 1px solid var(--border);
+        margin-top: 4px;
+        padding: 4px;
+      }
+      chump-nav .nav-item { flex: 1; max-width: 80px; height: 36px; }
+    }
 
     /* PRODUCT-094: notification badge on the nav bell icon */
     .notif-badge {
