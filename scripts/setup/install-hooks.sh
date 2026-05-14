@@ -100,3 +100,15 @@ if [ -x "$REPO_ROOT/scripts/setup/install-merge-drivers.sh" ]; then
     log "Installing INFRA-310 merge drivers ..."
     bash "$REPO_ROOT/scripts/setup/install-merge-drivers.sh" 2>&1 | sed 's/^/  /'
 fi
+
+# INFRA-1136: install the gh wrapper into ~/.local/bin so interactive shells
+# also go through the INFRA-1079/1103 throttle (without this, bare `gh` from
+# Claude/operator sessions bypasses the throttle and burns the GraphQL bucket).
+# Failure is non-fatal — the user's PATH may not include ~/.local/bin, in
+# which case the installer logs a warning and exits 4. Hooks themselves
+# already installed at this point; the gh wrapper is an extra layer.
+if [ -x "$REPO_ROOT/scripts/setup/install-gh-shim.sh" ]; then
+    log ""
+    log "Installing INFRA-1136 gh wrapper ..."
+    CHUMP_GH_INSTALL_QUIET=$QUIET bash "$REPO_ROOT/scripts/setup/install-gh-shim.sh" 2>&1 | sed 's/^/  /' || true
+fi

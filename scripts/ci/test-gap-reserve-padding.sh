@@ -66,6 +66,7 @@ reserve_in_sandbox() {
         cd "$sandbox"
         export PATH="$sandbox/bin:$PATH"
         CHUMP_GAP_RESERVE_SKIP_PR=1 \
+        CHUMP_RESERVE_SCAN_OPEN_PRS=0 \
         CHUMP_SESSION_ID="test-pad-$$" \
         CHUMP_ALLOW_MAIN_WORKTREE=1 \
         CHUMP_LOCK_DIR="$sandbox/.chump-locks" \
