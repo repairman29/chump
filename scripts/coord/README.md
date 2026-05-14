@@ -105,6 +105,47 @@ These three are often confused because all three touch the gap store:
 | `queue-driver.sh` | Drive the gap pick loop (used by worker.sh in dispatch/) |
 | `check-worktree-config.sh` | Verify worktree config.worktree is healthy (INFRA-810) |
 
+## Cache lib (`lib/github_cache.sh`) — INFRA-1081 / INFRA-1107
+
+Local SQLite cache at `.chump/github_cache.db` populated by the webhook
+receiver. **Every script that reads PR state should source this lib and
+use cache_lookup_* helpers first; fall back to direct `gh api` only on
+miss.** Cache miss is one REST call (cheap, REST core bucket stays
+healthy when GraphQL exhausts).
+
+| Function | Returns | Replaces |
+|---|---|---|
+| `cache_lookup_pr <number>` | JSON of `gh api repos/X/pulls/N` shape | `gh pr view --json …` / `gh api …/pulls/N` |
+| `cache_query_behind_prs` | newline-separated PR numbers (mergeable_state=BEHIND, AM armed) | `gh pr list --json mergeStateStatus -q …` |
+| `cache_lookup_checks <head_sha>` | tab-separated `name\tstatus\tconclusion` per check | `gh api repos/X/commits/<sha>/check-runs` |
+
+```bash
+source "$(dirname "$0")/lib/github_cache.sh"
+PR_META="$(cache_lookup_pr 1234)"          # 0 API calls if cache warm
+BEHIND="$(cache_query_behind_prs)"         # 0 API calls always (sqlite)
+CHECKS="$(cache_lookup_checks "$sha")"     # 0 API calls if INFRA-1107 cache has the SHA
+```
+
+**Already-migrated consumers:**
+- `queue-driver.sh` BEHIND scan (INFRA-1081)
+- `chump-ambient-glance.sh --check-prs` overlap scan (INFRA-1108)
+- `pr-rescue.sh` per-PR meta loop (INFRA-1109)
+
+**Pending consumers** (open gaps): `bot-merge.sh` per-PR check-runs
+(INFRA-1130), `ghost-gap-reaper.sh` and other N+1 callers (INFRA-1082).
+
+**Operator setup** (one-time, see `scripts/setup/install-webhook-receiver-launchd.sh`):
+GitHub webhook → smee.io → local Python receiver → SQLite cache. The
+`com.chump.github-cache-reconcile.plist` LaunchAgent reconciles every
+5 min to catch missed deliveries (INFRA-1105).
+
+## Auth-tier map (INFRA-1078)
+
+See [`AUTH_AUDIT.md`](AUTH_AUDIT.md) (regenerate via
+`scripts/ci/auth-tier-audit.sh`). As of last audit: 7 APP_TOKEN /
+218 PAT / 27 GITHUB_TOKEN callsites — 218 PAT callsites represent a
+2.5× quota migration opportunity. Each is a follow-up gap candidate.
+
 ## Ephemeral vs permanent branches in bot-merge.sh
 
 bot-merge.sh has **no separate staging branches** — there is exactly one
