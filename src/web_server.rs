@@ -265,6 +265,127 @@ fn check_auth(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
+/// INFRA-1014: routes that bypass auth even when CHUMP_WEB_TOKEN is set.
+/// Health is intentionally public (uptime checks, load balancers).
+/// Auth-check is the endpoint clients use to verify their token, so it
+/// must be reachable without one.
+const AUTH_BYPASS_PATHS: &[&str] = &["/api/health", "/api/auth/check"];
+
+/// INFRA-1014: axum middleware enforcing CHUMP_WEB_TOKEN on /api/* routes.
+///
+/// Replaces the per-handler `check_auth` pattern for new routes (existing
+/// handlers keep their inline `check_auth` calls as defence-in-depth;
+/// remove on a future cleanup pass).
+///
+/// Behaviour:
+///   - When CHUMP_WEB_TOKEN env unset/empty: allows all requests (today's
+///     default, unchanged). Operator gets a startup warning if so.
+///   - When CHUMP_WEB_TOKEN env set: requires Authorization: Bearer <token>
+///     match on every /api/* path EXCEPT those in AUTH_BYPASS_PATHS.
+///   - On rejection: returns 401 with `WWW-Authenticate: Bearer realm="chump"`
+///     header so browsers know to prompt.
+pub(crate) async fn auth_middleware(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let required = match std::env::var("CHUMP_WEB_TOKEN") {
+        Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
+        _ => return next.run(req).await,
+    };
+
+    let path = req.uri().path();
+    if AUTH_BYPASS_PATHS.contains(&path) {
+        return next.run(req).await;
+    }
+
+    let presented = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(|t| t.trim().to_string());
+
+    if presented.as_deref() == Some(required.as_str()) {
+        return next.run(req).await;
+    }
+
+    // Best-effort ambient log so operators see auth-fail bursts.
+    let reason = if presented.is_some() {
+        "bad_token"
+    } else {
+        "missing_token"
+    };
+    emit_auth_unauthorized(path, reason);
+
+    let body = serde_json::json!({
+        "error": "unauthorized",
+        "reason": reason,
+        "hint": "Set Authorization: Bearer <CHUMP_WEB_TOKEN> on the request",
+    });
+    (
+        StatusCode::UNAUTHORIZED,
+        [(
+            axum::http::header::WWW_AUTHENTICATE,
+            "Bearer realm=\"chump\"",
+        )],
+        Json(body),
+    )
+        .into_response()
+}
+
+/// Best-effort log of unauthorized API access attempts.
+fn emit_auth_unauthorized(path: &str, reason: &str) {
+    let event = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "kind": "web_auth_unauthorized",
+        "path": path,
+        "reason": reason,
+    });
+    let log_path = repo_path::runtime_base()
+        .join(".chump-locks")
+        .join("ambient.jsonl");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+    {
+        let _ = writeln!(f, "{}", event);
+    }
+}
+
+/// POST /api/auth/check — verify a token without committing to a real call.
+/// Body: {"token": "..."} — returns {"valid": bool, "required": bool}.
+/// Used by the PWA login flow to drive the entry modal without burning a real
+/// /api/* call's auth check.
+async fn handle_auth_check(
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let required = std::env::var("CHUMP_WEB_TOKEN")
+        .ok()
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
+
+    let Some(req_token) = required else {
+        // Token not configured server-side; any caller is "valid" by virtue
+        // of no requirement. Useful for client to discover the mode.
+        return Ok(Json(serde_json::json!({
+            "valid": true,
+            "required": false,
+        })));
+    };
+
+    let presented = body
+        .get("token")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string());
+
+    let valid = presented.as_deref() == Some(req_token.as_str());
+    Ok(Json(serde_json::json!({
+        "valid": valid,
+        "required": true,
+    })))
+}
+
 fn pwa_static_dir() -> PathBuf {
     std::env::var("CHUMP_WEB_STATIC_DIR")
         .ok()
@@ -4951,6 +5072,9 @@ fn build_api_router() -> Router {
         .route("/api/autopilot/stop", post(handle_autopilot_stop))
         .route("/api/repo/context", get(handle_repo_context))
         .route("/api/repo/working", post(handle_repo_working))
+        // INFRA-1014: token-verify endpoint (bypasses auth middleware itself
+        // so the login modal can call it without yet having the token).
+        .route("/api/auth/check", post(handle_auth_check))
         // INFRA-988: non-secret settings panel scaffolding
         .route("/api/settings", get(handle_settings_get))
         .route("/api/settings/{key}", post(handle_settings_post))
@@ -5249,11 +5373,28 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     }
 
     let api = build_api_router();
+    // INFRA-1014: enforce CHUMP_WEB_TOKEN on /api/* (except health + auth-check).
+    // Middleware no-ops when the env is unset (today's default) so this is a
+    // strict addition — existing deployments without the env see no behavior
+    // change.
+    let api = api.layer(axum::middleware::from_fn(auth_middleware));
     let api = if crate::env_flags::chump_web_http_trace() {
         api.layer(TraceLayer::new_for_http())
     } else {
         api
     };
+
+    // INFRA-1014: startup warning. The server binds 0.0.0.0 by default, so an
+    // unset CHUMP_WEB_TOKEN means anyone on the LAN can call /api/*. Operator
+    // gets one loud line per boot.
+    match std::env::var("CHUMP_WEB_TOKEN") {
+        Ok(t) if !t.trim().is_empty() => {
+            eprintln!("[web] CHUMP_WEB_TOKEN set — /api/* requires Bearer auth (INFRA-1014).");
+        }
+        _ => {
+            eprintln!("[web] WARNING: CHUMP_WEB_TOKEN unset. Server binds 0.0.0.0 — anyone on the local network can reach /api/*. Set CHUMP_WEB_TOKEN before exposing this PWA over a tunnel or shared Wi-Fi. (INFRA-1014)");
+        }
+    }
     // Tauri loads the PWA from tauri.localhost but calls the sidecar on 127.0.0.1 — browsers treat
     // that as cross-origin; without CORS headers the fetch succeeds opaquely and SSE body is empty.
     let cors = CorsLayer::new()

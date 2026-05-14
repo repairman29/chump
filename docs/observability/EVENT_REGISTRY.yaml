@@ -2011,3 +2011,10 @@ events:
       invocation; operator=true distinguishes human recovery from agent shortcuts
     consumers: [fleet-brief, curator, ops-audit]
     fields_required: [ts, kind, guard_name, bypasses, operator]
+
+  # ── INFRA-1014: PWA auth middleware ──────────────────────────────────────
+  - kind: web_auth_unauthorized
+    emitter: src/web_server.rs auth_middleware (INFRA-1014)
+    trigger: a request to /api/* arrived without (or with a wrong) Authorization Bearer token when CHUMP_WEB_TOKEN is set
+    consumers: [fleet-brief, audit-trail]
+    fields_required: [ts, kind, path, reason]
