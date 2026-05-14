@@ -334,7 +334,54 @@ for line in reversed(lines):
 PYEOF
 }
 
+# ── INFRA-1069: hot-file serialize list helpers ───────────────────────────────
+# Read hot-files.yaml serialize: list.  Cached on first call.
+_HF_YAML="${CHUMP_HOT_FILES_YAML:-$REPO_ROOT/scripts/coord/hot-files.yaml}"
+_HF_SERIALIZE_CACHE=""
+
+_hf_load_serialize() {
+    [[ -r "$_HF_YAML" ]] || return 0
+    _HF_SERIALIZE_CACHE="$(awk '
+        /^serialize:/ { in_s=1; next }
+        /^[a-zA-Z]/ && !/^serialize:/ { in_s=0 }
+        in_s && /^[[:space:]]+- / {
+            sub(/^[[:space:]]+- /, "")
+            sub(/[[:space:]]+#.*$/, "")
+            sub(/[[:space:]]+$/, "")
+            if (length > 0) print
+        }
+    ' "$_HF_YAML")"
+}
+
+# Returns 0 (true) if the given file path matches a serializing hot file.
+_hf_is_serializing() {
+    local file="$1"
+    [[ -n "$_HF_SERIALIZE_CACHE" ]] || _hf_load_serialize
+    [[ -n "$_HF_SERIALIZE_CACHE" ]] || return 1
+    while IFS= read -r hot; do
+        [[ -z "$hot" ]] && continue
+        # Exact match OR file is under a serialized directory prefix.
+        if [[ "$file" == "$hot" || "$file" == "$hot/"* ]]; then
+            return 0
+        fi
+    done <<< "$_HF_SERIALIZE_CACHE"
+    return 1
+}
+
+# Emit kind=hot_file_contention to ambient.jsonl.
+_emit_hot_file_contention() {
+    local gap_id="$1" pr_ref="$2" hot_file="$3"
+    local ambient="$LOCK_DIR/ambient.jsonl"
+    printf '{"ts":"%s","kind":"hot_file_contention","gap_id":"%s","pr":"%s","file":"%s","note":"preflight blocked: serializing hot file already claimed by open PR"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$gap_id" "$pr_ref" "$hot_file" \
+        >> "$ambient" 2>/dev/null || true
+}
+
 # ── Check 4: open PR file-scope overlap ──────────────────────────────────────
+# Returns one of:
+#   "HOT:#<N> (<branch>)|<file>"   — overlap on a serializing hot file (BLOCK)
+#   "#<N> (<branch>)"              — generic overlap (WARN)
+#   ""                             — no overlap
 check_pr_conflict() {
     local gap_id="$1"
     local likely
@@ -352,8 +399,24 @@ check_pr_conflict() {
         for gf in "${gfiles[@]}"; do
             prefix="${gf%%\**}"
             if echo "$prfiles" | grep -q "$prefix"; then
-                echo "#$prnum ($prbranch)"
-                return
+                # INFRA-1069: check if any overlapping file is in the serialize list.
+                local hot_file=""
+                if [[ "${CHUMP_HOT_FILE_PREFLIGHT_CHECK:-1}" != "0" ]]; then
+                    local _pf
+                    while IFS= read -r _pf; do
+                        [[ -z "$_pf" ]] && continue
+                        if [[ "$_pf" == "$prefix"* ]] && _hf_is_serializing "$_pf"; then
+                            hot_file="$_pf"
+                            break
+                        fi
+                    done < <(echo "$prfiles" | tr ',' '\n')
+                fi
+                if [[ -n "$hot_file" ]]; then
+                    printf 'HOT:#%s (%s)|%s\n' "$prnum" "$prbranch" "$hot_file"
+                else
+                    printf '#%s (%s)\n' "$prnum" "$prbranch"
+                fi
+                return 0
             fi
         done
     done <<< "$PR_DATA"
@@ -571,10 +634,24 @@ $SIBLING_GAP_YAML"
     # ── Check 4: open PR file-scope overlap ───────────────────────────────
     PR_CONFLICT="$(check_pr_conflict "$GAP_ID")"
     if [[ -n "$PR_CONFLICT" ]]; then
-        info "WARN: $GAP_ID — open PR $PR_CONFLICT touches the same file domain."
-        info "  Domain: $(_gap_files "$GAP_ID")"
-        info "  Merge or coordinate with that PR before starting to reduce conflict risk."
-        # Non-fatal: warn but don't block — PR may be in a different code path.
+        if [[ "$PR_CONFLICT" == HOT:* ]]; then
+            # INFRA-1069: serializing hot file — BLOCK to prevent expensive rebase rounds.
+            _pr_ref="${PR_CONFLICT#HOT:}"
+            _pr_ref="${_pr_ref%%|*}"
+            _hot_f="${PR_CONFLICT##*|}"
+            red "BLOCK $GAP_ID — open PR $_pr_ref holds a serializing hot file: '$_hot_f'"
+            red "  This file is in hot-files.yaml serialize: list — parallel PRs touching it"
+            red "  force N-1 expensive rebase rounds (INFRA-1069 audit: up to 6 concurrent)."
+            red "  Wait for $_pr_ref to land, or coordinate with its author."
+            red "  Bypass: CHUMP_HOT_FILE_PREFLIGHT_CHECK=0 (use only if paths are disjoint)"
+            _emit_hot_file_contention "$GAP_ID" "$_pr_ref" "$_hot_f"
+            FAILED=1
+        else
+            info "WARN: $GAP_ID — open PR $PR_CONFLICT touches the same file domain."
+            info "  Domain: $(_gap_files "$GAP_ID")"
+            info "  Merge or coordinate with that PR before starting to reduce conflict risk."
+            # Non-fatal: warn but don't block — PR may be in a different code path.
+        fi
     fi
 
     green "OK $GAP_ID — open and unclaimed."
