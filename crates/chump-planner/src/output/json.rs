@@ -22,12 +22,22 @@
 //!       "effort": "m",
 //!       "title": "...",
 //!       "unblocks_count": 3,
+//!       "layer": 0,
+//!       "critical_path_days": 4.5,
 //!       "prerequisites": []
 //!     },
 //!     ...
 //!   ]
 //! }
 //! ```
+//!
+//! Field semantics (INFRA-1281):
+//!   - `layer`: 0 = no OPEN prerequisites (foundation). N = max(layer of
+//!     open prereqs) + 1. Picker uses this to enforce tier ordering —
+//!     drain layer 0 before workers race onto layer 1+ siblings.
+//!   - `critical_path_days`: longest forward chain of `Effort::days()`
+//!     from this gap through all transitive open dependents to a leaf.
+//!     Highlights gaps that gate the longest wall-clock chain.
 
 use crate::plan::PlanItem;
 use crate::score::Weights;
@@ -108,6 +118,12 @@ pub fn render_json<W: Write>(
             writer,
             "      \"unblocks_count\": {},",
             item.score.unblocks_count
+        )?;
+        writeln!(writer, "      \"layer\": {},", item.layer)?;
+        writeln!(
+            writer,
+            "      \"critical_path_days\": {:.4},",
+            item.critical_path_days
         )?;
         writeln!(writer, "      \"prerequisites\": [{}]", prereqs)?;
         writeln!(writer, "    }}{}", comma)?;
