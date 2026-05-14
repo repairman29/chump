@@ -1,7 +1,7 @@
 - id: CREDIBLE-054
   domain: CREDIBLE
   title: "CREDIBLE: pre-commit hook enforces acceptance_criteria on all gaps"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
