@@ -811,6 +811,9 @@ source "$(dirname "$0")/../lib/repo-paths.sh"
 # shellcheck source=lib/github.sh
 # INFRA-999: chump_gh + chump_gh_record for API cost telemetry.
 source "$(dirname "$0")/lib/github.sh"
+# shellcheck source=lib/github_cache.sh
+# INFRA-1130: cache_lookup_pr / cache_lookup_checks for zero-API CI polling.
+source "$(dirname "$0")/lib/github_cache.sh"
 cd "$REPO_ROOT"
 # INFRA-469: route every `chump` call through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
@@ -2155,7 +2158,27 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
         # INFRA-632: when --required-checks is set, only flag failures for
         # checks whose name matches one of the comma-separated entries.
         # When unset, any FAILURE/ERROR check blocks auto-merge (original behaviour).
-        _all_failing=$(gh pr checks "$TARGET_PR" 2>/dev/null | grep -E "FAILURE|ERROR" || true)
+        # INFRA-1130: prefer SQLite cache over live API; fall back on miss.
+        _all_failing=""
+        _ci_cache_used=0
+        _ci_head_sha=""
+        if _ci_pr_json="$(cache_lookup_pr "$TARGET_PR" --max-age-s 120 2>/dev/null)"; then
+            _ci_head_sha="$(printf '%s' "$_ci_pr_json" | \
+                python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('head',{}).get('sha',''))" 2>/dev/null || true)"
+        fi
+        if [[ -n "$_ci_head_sha" ]]; then
+            _ci_checks_cache="$(cache_lookup_checks "$_ci_head_sha" 2>/dev/null || true)"
+            if [[ -n "$_ci_checks_cache" ]]; then
+                _ci_cache_used=1
+                # tab-separated name\tstatus\tconclusion — filter failing conclusions
+                _all_failing="$(printf '%s\n' "$_ci_checks_cache" | \
+                    awk -F'\t' 'toupper($3) ~ /FAILURE|ERROR|TIMED_OUT|CANCELLED/ {print $1 "\t" toupper($3)}')"
+            fi
+        fi
+        if [[ $_ci_cache_used -eq 0 ]]; then
+            info "INFRA-1130: cache miss for PR #$TARGET_PR — falling back to live API"
+            _all_failing=$(gh pr checks "$TARGET_PR" 2>/dev/null | grep -E "FAILURE|ERROR" || true)
+        fi
         if [[ -n "$REQUIRED_CHECKS" && -n "$_all_failing" ]]; then
             _ci_status=""
             IFS=',' read -ra _req_list <<< "$REQUIRED_CHECKS"
