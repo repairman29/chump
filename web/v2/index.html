@@ -122,6 +122,120 @@
       color: var(--text-secondary);
     }
 
+    /* PRODUCT-109: <chump-tool-approval-tray> persistent banner above main
+       content when approvals are pending. Hidden by default; visible + sticky
+       when shell is unhidden. See docs/design/OPERATOR_CONSOLE_V2.md
+       (archetype 3) for rationale. */
+    chump-tool-approval-tray { display: block; }
+    chump-tool-approval-tray .tat-shell[hidden] { display: none; }
+    chump-tool-approval-tray .tat-shell {
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border);
+      border-left: 3px solid var(--warn, #ff9f0a);
+      padding: 10px 14px;
+      max-height: 40vh;
+      overflow-y: auto;
+      position: relative;
+      z-index: 9;
+    }
+    chump-tool-approval-tray .tat-header {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    chump-tool-approval-tray .tat-count {
+      display: inline-flex; align-items: center; justify-content: center;
+      min-width: 22px; height: 22px; padding: 0 8px;
+      background: var(--warn, #ff9f0a); color: #000;
+      border-radius: 11px;
+      font-size: 11px; font-weight: 700;
+    }
+    chump-tool-approval-tray .tat-title { flex: 1; text-transform: uppercase; letter-spacing: 0.04em; }
+    chump-tool-approval-tray .tat-batch { display: flex; gap: 6px; }
+    chump-tool-approval-tray .tat-batch-btn {
+      background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+      padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 11px;
+    }
+    chump-tool-approval-tray .tat-batch-btn:hover { color: var(--text); border-color: var(--text-secondary); }
+    chump-tool-approval-tray .tat-list {
+      list-style: none; padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    chump-tool-approval-tray .tat-row {
+      background: var(--bg-surface, var(--bg));
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      display: flex; flex-direction: column; gap: 4px;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    chump-tool-approval-tray .tat-row:focus {
+      outline: 2px solid var(--accent); outline-offset: 1px;
+    }
+    chump-tool-approval-tray .tat-row-main {
+      display: flex; align-items: baseline; gap: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+    chump-tool-approval-tray .tat-tool { font-weight: 600; color: var(--text-primary, var(--text)); }
+    chump-tool-approval-tray .tat-risk {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 1px 6px; border-radius: 3px;
+    }
+    chump-tool-approval-tray .tat-risk-low    { background: rgba(48,209,88,0.18); color: var(--success); }
+    chump-tool-approval-tray .tat-risk-medium { background: rgba(255,159,10,0.18); color: var(--warn); }
+    chump-tool-approval-tray .tat-risk-high   { background: rgba(255,69,58,0.22); color: var(--error); }
+    chump-tool-approval-tray .tat-risk-unknown { background: var(--bg-elevated); color: var(--text-secondary); }
+    chump-tool-approval-tray .tat-countdown {
+      margin-left: auto; font-size: 11px; color: var(--text-secondary);
+    }
+    chump-tool-approval-tray .tat-reason {
+      font-size: 12px; color: var(--text-secondary); line-height: 1.4;
+    }
+    chump-tool-approval-tray .tat-args {
+      font-size: 11px; color: var(--text-secondary);
+      overflow-x: auto; white-space: nowrap;
+    }
+    chump-tool-approval-tray .tat-args code {
+      font-family: "SF Mono", ui-monospace, monospace;
+    }
+    chump-tool-approval-tray .tat-actions { display: flex; gap: 6px; }
+    chump-tool-approval-tray .tat-btn {
+      padding: 5px 12px; border-radius: var(--radius-sm);
+      border: 1px solid transparent; cursor: pointer; font-size: 12px; font-weight: 500;
+    }
+    chump-tool-approval-tray .tat-approve {
+      background: var(--success, #30d158); color: #000;
+    }
+    chump-tool-approval-tray .tat-approve:hover { filter: brightness(1.1); }
+    chump-tool-approval-tray .tat-deny {
+      background: transparent; border-color: var(--border); color: var(--text-secondary);
+    }
+    chump-tool-approval-tray .tat-deny:hover { color: var(--error); border-color: var(--error); }
+    chump-tool-approval-tray .tat-row-pending { opacity: 0.5; pointer-events: none; }
+    chump-tool-approval-tray .tat-row-expired {
+      opacity: 0.45;
+      border-color: var(--text-secondary);
+      background: var(--bg-elevated);
+    }
+    chump-tool-approval-tray .tat-row-error {
+      border-color: var(--error);
+    }
+    chump-tool-approval-tray .tat-error-banner {
+      font-size: 11px; color: var(--error);
+      padding: 4px 0;
+    }
+    /* Mobile: stack tat-row-main fields */
+    @media (max-width: 640px) {
+      chump-tool-approval-tray .tat-shell { max-height: 50vh; }
+      chump-tool-approval-tray .tat-row-main {
+        flex-direction: column; align-items: flex-start; gap: 2px;
+      }
+      chump-tool-approval-tray .tat-countdown { margin-left: 0; }
+      chump-tool-approval-tray .tat-actions { flex-direction: row; }
+      chump-tool-approval-tray .tat-btn { flex: 1; min-height: 36px; }
+    }
+
     /* INFRA-1012: <chump-cost-meter> sits between model picker and heartbeat
        in the header. 4 row figures + optional budget warning banner. */
     chump-cost-meter .cost-meter {
@@ -1214,6 +1328,10 @@
 
   <!-- PRODUCT-083: verb-shaped quick-actions panel — primary CTA above noun nav -->
   <chump-quick-actions></chump-quick-actions>
+
+  <!-- PRODUCT-109: persistent tool-approval tray. Hidden when list is empty;
+       sticky-banner above main-content when approvals are pending. -->
+  <chump-tool-approval-tray></chump-tool-approval-tray>
 
   <div id="app-body">
     <chump-nav></chump-nav>

@@ -23,6 +23,56 @@ if [[ "${CHUMP_GH_NO_SHIM:-0}" == "1" ]]; then
     exec gh "$@"
 fi
 
+# ── INFRA-1283: gh auth token cache (5-min TTL) ───────────────────────────────
+# 'gh auth token' is called ~27×/hr across the fleet — the token is stable
+# per session and can be cached. Intercept exact-match 'gh auth token' before
+# loading github.sh (avoids 27 heavyweight source operations per hour too).
+# Bypass: CHUMP_GH_NO_TOKEN_CACHE=1
+if [[ $# -eq 2 && "$1" == "auth" && "$2" == "token" && \
+      "${CHUMP_GH_NO_TOKEN_CACHE:-0}" != "1" ]]; then
+    _tc_dir="${HOME:-/tmp}/.cache/chump-gh-shim"
+    _tc_file="$_tc_dir/auth-token.txt"
+    _tc_ttl="${CHUMP_GH_TOKEN_CACHE_TTL_S:-300}"
+
+    if [[ -f "$_tc_file" ]]; then
+        _tc_now=$(date +%s 2>/dev/null || echo 0)
+        _tc_mtime=$(stat -f %m "$_tc_file" 2>/dev/null || \
+                    stat -c %Y "$_tc_file" 2>/dev/null || echo 0)
+        _tc_age=$(( _tc_now - _tc_mtime ))
+        if [[ "$_tc_age" -lt "$_tc_ttl" ]]; then
+            cat "$_tc_file"
+            _tc_amb="${CHUMP_AMBIENT_LOG:-}"
+            if [[ -n "$_tc_amb" ]]; then
+                printf '{"ts":"%s","kind":"gh_auth_token_cache_hit","age_s":%s,"ttl_s":%s}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo '?')" \
+                    "$_tc_age" "$_tc_ttl" >> "$_tc_amb" 2>/dev/null || true
+            fi
+            exit 0
+        fi
+    fi
+
+    # Cache miss — find real gh, fetch token, write cache, return it.
+    _tc_shim_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+    _tc_real_gh=""
+    IFS=':' read -r -a _tc_path_parts <<< "$PATH"
+    for _tc_p in "${_tc_path_parts[@]}"; do
+        [[ -z "$_tc_p" || "$_tc_p" == "$_tc_shim_dir" ]] && continue
+        if [[ -x "$_tc_p/gh" ]]; then _tc_real_gh="$_tc_p/gh"; break; fi
+    done
+
+    if [[ -n "$_tc_real_gh" ]]; then
+        _tc_token=$("$_tc_real_gh" auth token 2>/dev/null || true)
+        if [[ -n "$_tc_token" ]]; then
+            mkdir -p "$_tc_dir" 2>/dev/null || true
+            printf '%s\n' "$_tc_token" > "$_tc_file" 2>/dev/null || true
+            chmod 0600 "$_tc_file" 2>/dev/null || true
+            printf '%s\n' "$_tc_token"
+            exit 0
+        fi
+    fi
+    # Caching failed — fall through to normal shim path for real gh auth token.
+fi
+
 SHIM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 REPO_LIB="$(cd "$SHIM_DIR/.." && pwd)"
 
