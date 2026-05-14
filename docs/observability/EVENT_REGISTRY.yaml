@@ -493,6 +493,12 @@ events:
     consumers: [operator-recall, fleet-brief]
     fields_required: [ts, kind, pr, conflict_files]
 
+  - kind: dirty_pr_push_failed
+    emitter: scripts/coord/queue-driver.sh (INFRA-1141)
+    trigger: force-with-lease push failed after clean rebase or dirty auto-resolve — stale lease or remote changed
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, kind, pr, phase, error]
+
   # ── Cost / token tracking ─────────────────────────────────────────────────
   - kind: token_usage_partial
     emitter: scripts/dispatch/_parse_token_usage.py (INFRA-639)

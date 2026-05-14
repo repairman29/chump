@@ -169,7 +169,20 @@ resolve_dirty_pr() {
     if [[ "$DRY_RUN" -eq 1 ]]; then
       echo "queue-driver: (dry-run) #$pr clean rebase — would force-push"
     else
-      git push origin "HEAD:$branch" --force-with-lease 2>&1 | tail -1
+      git fetch origin "$branch" --quiet 2>/dev/null || true
+      local _push_out
+      _push_out=$(git push origin "HEAD:$branch" --force-with-lease 2>&1)
+      local _push_rc=$?
+      echo "$_push_out" | tail -1
+      if [[ $_push_rc -ne 0 ]]; then
+        echo "queue-driver: ✗ #$pr push failed after clean rebase"
+        printf '{"ts":"%s","kind":"dirty_pr_push_failed","pr":%s,"phase":"clean_rebase","error":"%s"}\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$(echo "$_push_out" | tail -1 | sed 's/"/\\"/g')" \
+          >> "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/ambient.jsonl" 2>/dev/null || true
+        popd >/dev/null
+        git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+        return 1
+      fi
       echo "queue-driver: ✓ #$pr clean rebase pushed"
     fi
     popd >/dev/null
@@ -247,7 +260,21 @@ resolve_dirty_pr() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "queue-driver: (dry-run) #$pr DIRTY auto-resolved via merge drivers — would force-push ($conflict_files)"
   else
-    git push origin "HEAD:$branch" --force-with-lease 2>&1 | tail -1
+    git fetch origin "$branch" --quiet 2>/dev/null || true
+    local _push_out
+    _push_out=$(git push origin "HEAD:$branch" --force-with-lease 2>&1)
+    local _push_rc=$?
+    echo "$_push_out" | tail -1
+    if [[ $_push_rc -ne 0 ]]; then
+      echo "queue-driver: ✗ #$pr push failed after dirty auto-resolve"
+      printf '{"ts":"%s","kind":"dirty_pr_push_failed","pr":%s,"conflict_files":"%s","phase":"dirty_resolve","error":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" "$(echo "$_push_out" | tail -1 | sed 's/"/\\"/g')" \
+        >> "$_amb" 2>/dev/null || true
+      git rebase --abort 2>/dev/null || true
+      popd >/dev/null
+      git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
+      return 1
+    fi
     echo "queue-driver: ✓ #$pr DIRTY auto-resolved via merge drivers ($conflict_files)"
     printf '{"ts":"%s","kind":"dirty_pr_auto_resolved","pr":%s,"conflict_files":"%s"}\n' \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" \
