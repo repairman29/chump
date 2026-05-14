@@ -267,6 +267,15 @@ class ChumpChat extends HTMLElement {
     let currentToolCard = null;
 
     const parser = createSseBlockParser(({ event, data }) => {
+      // PRODUCT-109: re-broadcast tool_approval_request to the document-level
+      // CustomEvent the <chump-tool-approval-tray> listens for. Decouples the
+      // producer (chat SSE consumer) from the consumer (tray) so any future
+      // SSE source can feed approvals into the same tray.
+      if (event === 'tool_approval_request') {
+        try {
+          document.dispatchEvent(new CustomEvent('chump:tool_approval', { detail: data }));
+        } catch {}
+      }
       if (event === 'web_session_ready' && data.session_id) {
         this.#sessionId = data.session_id;
       } else if (event === 'thinking' || event === 'model_call_start') {
