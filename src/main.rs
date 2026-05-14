@@ -362,6 +362,13 @@ fn expand_aliases(mut args: Vec<String>) -> Vec<String> {
             args[1] = "gap".to_string();
             args.insert(2, "ship".to_string());
         }
+        // INFRA-1238: top-level `chump ship` (literal, not alias-s) was
+        // promised in print_help but never wired — fell through to the
+        // LLM agent loop. Mirror the `s` expansion.
+        "ship" => {
+            args[1] = "gap".to_string();
+            args.insert(2, "ship".to_string());
+        }
         _ => {}
     }
     args
@@ -4485,8 +4492,21 @@ async fn main() -> Result<()> {
                 }
             }
             "preflight" => {
+                // INFRA-1238: trap --help before positional validation.
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap preflight <GAP-ID>\n\n\
+                         Check whether a gap is pickable (open, unclaimed, in state.db).\n\
+                         Exits 0 if pickable, 1 if blocked, 2 on usage error."
+                    );
+                    return Ok(());
+                }
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
-                    eprintln!("Usage: chump gap preflight <GAP-ID>");
+                    println!("Usage: chump gap preflight <GAP-ID>");
                     std::process::exit(2);
                 });
                 match store.preflight(&gap_id) {
@@ -4516,6 +4536,24 @@ async fn main() -> Result<()> {
                 }
             }
             "ship" => {
+                // INFRA-1238: trap --help before positional validation.
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N] [--session ID]\n\n\
+                         Mark a gap as done. Updates state.db (canonical), optionally mirrors to YAML.\n\n\
+                         Options:\n  \
+                           --update-yaml      Mirror status flip to docs/gaps/<ID>.yaml (destructive bulk-YAML; INFRA-825 staleness guard applies)\n  \
+                           --closed-pr N      Stamp PR number on the row (required by INFRA-107 closed_pr integrity guard for YAML mirror)\n  \
+                           --session ID       Session ID to record on the ship event (default derived)\n  \
+                           --why              Print explanation alongside the flip\n  \
+                           -h, --help         Show this help"
+                    );
+                    return Ok(());
+                }
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
                     eprintln!("Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]");
                     std::process::exit(2);
@@ -5334,6 +5372,23 @@ async fn main() -> Result<()> {
             // --json   → machine-readable array output
             // --apply  → execute auto-fixable actions (strip false-deps, demote P2→P3)
             "triage" => {
+                // INFRA-1238: trap --help.
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap triage [--json] [--apply]\n\n\
+                         Classify every open gap by why it is non-pickable and emit ranked action list.\n\
+                         Reasons: too-large, false-dep, vague-ac, low-priority.\n\n\
+                         Options:\n  \
+                           --json    Emit JSON; default is a human table\n  \
+                           --apply   Execute recommended actions (decompose/strip-dep/add-ac/demote); default is dry-run\n  \
+                           -h, --help  Show this help"
+                    );
+                    return Ok(());
+                }
                 let as_json = args.iter().any(|a| a == "--json");
                 let apply = args.iter().any(|a| a == "--apply");
 
@@ -5921,6 +5976,31 @@ async fn main() -> Result<()> {
                 } // end else (COG-052 closed-gap path)
             }
             "decompose" => {
+                // INFRA-1238: trap --help before positional validation.
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json] [--dry-run] [--no-description]");
+                    println!();
+                    println!(
+                        "Suggests xs/s slices for a large (m/l) gap using the provider cascade."
+                    );
+                    println!(
+                        "  --verify          Validate slices via a stronger model before filing"
+                    );
+                    println!("  --apply           File the suggested slices and demote the parent");
+                    println!("  --json            Output suggestions as JSON");
+                    println!(
+                        "  --dry-run         Print the full LLM prompt without calling the LLM"
+                    );
+                    println!(
+                        "  --no-description  Skip injecting the gap description into the prompt"
+                    );
+                    println!("  -h, --help        Show this help");
+                    return Ok(());
+                }
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
                     eprintln!("Usage: chump gap decompose <GAP-ID> [--apply] [--verify] [--json] [--dry-run] [--no-description]");
                     eprintln!();
