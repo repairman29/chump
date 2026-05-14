@@ -1,0 +1,19 @@
+- id: INFRA-1111
+  domain: INFRA
+  title: ZERO-WASTE — chump_gh exponential backoff on 'rate limit already exceeded' response
+  status: in_flight
+  priority: P1
+  effort: s
+  closed_pr: ~
+  depends_on: []
+  acceptance_criteria:
+    - "scripts/coord/lib/github.sh chump_gh detects secondary-rate-limit (stderr contains \"rate limit already exceeded\" or \"You have exceeded a secondary rate limit\")"
+    - "On detection: sleep with exponential backoff (1s, 2s, 4s, 8s, max 30s), then retry; up to 4 retries"
+    - "After retry exhaustion: emit kind=gh_secondary_limit_hit with {script, api, retries, total_waited_ms} and return non-zero"
+    - "Per-script bypass via CHUMP_GH_NO_RETRY=1"
+    - "Unit test: 7/7 pass (scripts/ci/test-infra-1111-gh-backoff.sh)"
+  description: |
+    Today: when secondary rate-limit fires, scripts immediately retry — burning
+    budget faster. Need detection + cooldown. Pairs with INFRA-1103 (throttle
+    prevents most hits) — this catches the residual that slip through (e.g.,
+    bursts from sibling sessions before throttle window updates).
