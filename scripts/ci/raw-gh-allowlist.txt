@@ -1,0 +1,33 @@
+# INFRA-1274: Allow-list of scripts that pre-date the cache-first mandate and
+# have open migration gaps.  DO NOT ADD NEW ENTRIES without filing a migration gap.
+# Once a migration gap ships, remove the entry here.
+#
+# Format: relative path from repo root (no leading slash)
+# Comments (#) and blank lines are ignored.
+
+# Coordination scripts (scripts/coord/)
+scripts/coord/auto-merge-armer.sh         # migration gap: INFRA-1249
+scripts/coord/bot-merge.sh                # migration gap: INFRA-1249
+scripts/coord/bot-shipped-audit.sh        # migration gap: INFRA-1249
+scripts/coord/branch-reaper.sh            # migration gap: INFRA-1249
+scripts/coord/close-superseded-prs.sh     # migration gap: INFRA-1249
+scripts/coord/code-reviewer-agent.sh      # migration gap: INFRA-1249
+scripts/coord/demo-pr-worktree.sh         # migration gap: INFRA-1249
+scripts/coord/duplicate-pr-detector.sh    # migration gap: INFRA-1249
+scripts/coord/orphan-pr-closer.sh         # migration gap: INFRA-1249
+scripts/coord/pr-stuck-announcer.sh       # migration gap: INFRA-1249
+scripts/coord/pr-watch.sh                 # migration gap: INFRA-1249
+scripts/coord/rebase-stacked-prs.sh       # migration gap: INFRA-1249
+
+# Dispatch scripts (scripts/dispatch/)
+scripts/dispatch/control.sh               # migration gap: INFRA-1249
+scripts/dispatch/fleet-status.sh          # migration gap: INFRA-1249
+scripts/dispatch/worker.sh                # migration gap: INFRA-1249
+
+# Ops scripts (scripts/ops/)
+scripts/ops/ci-summary-rerun.sh           # migration gap: INFRA-1249
+scripts/ops/distill-pr-skills.sh          # migration gap: INFRA-1249
+scripts/ops/pr-blocked-watch.sh           # migration gap: INFRA-1249
+scripts/ops/pr-repair-rebase.sh           # migration gap: INFRA-1249
+scripts/ops/pr-watch-shepherd.sh          # migration gap: INFRA-1249
+scripts/ops/stale-pr-reaper.sh            # migration gap: INFRA-1249
