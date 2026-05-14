@@ -1,12 +1,18 @@
 - id: INFRA-1219
   domain: INFRA
   title: "ZERO-WASTE — gh pr create dedup gate: refuse to open if open PR exists for gap-ID"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - scripts/coord/pr-create-gate.sh wraps gh pr create (or runs before it via bot-merge wiring)
+    - Before creating PR, scans gh pr list --state open via REST and matches the gap-ID exactly (word-boundary)
+    - "If any open PR for the same gap-ID exists: REFUSE pr-create, exit 19 with clear message identifying the existing PR"
+    - "Per-PR opt-out: CHUMP_PR_DEDUP_BYPASS=1 + --justification '<reason>' both required; justification audit-logged"
+    - "Test: 12 assertions including word-boundary discipline, bypass flow, ambient event shape; all via PATH-stubbed gh"
+    - "Test: existing closed-not-merged PR cooldown deferred to INFRA-1220 (scripts/coord/cooldown-scanner.sh)"
+  notes: |
+    [2026-05-14T15:15:06Z] Today: 57 of 79 closed-not-merged PRs (last 14d) were duplicates that shipped via another PR. Highest-leverage fix in the chain. Catches the 80% case where two agents race to ship the same gap.
+  closed_date: '2026-05-14'
+  closed_pr: 1888
 
