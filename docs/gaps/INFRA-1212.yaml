@@ -1,0 +1,29 @@
+- id: INFRA-1212
+  domain: INFRA
+  title: "ZERO-WASTE: add scripts/lib/lease.sh (or chump lease list --json) — 8 shell scripts reinvent .chump-locks JSON parsing"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Redundancy audit (2026-05-14) finding #6: 8 shell scripts independently parse .chump-locks/*.json lease files. Schema drift waiting to happen — every time the lease shape grows a field (paths, worktree_path, pending_new_gap, speculative…) some scripts pick it up and others don't.
+    
+    Sites (shell readers):
+      scripts/coord/worktree-prune.sh:77, scripts/ops/active-target-reaper.sh:86, scripts/ops/stale-worktree-reaper.sh:103-112, scripts/ops/prune-worktrees.sh:37-38, scripts/ops/queue-health-monitor.sh:61, scripts/coord/stale-gap-worktree-reaper.sh:23, scripts/ops/subagent-budget-reaper.sh, scripts/ops/stale-gap-lock-reaper.sh
+    Rust readers (already share types):
+      crates/chump-agent-lease/src/lib.rs, crates/chump-coord/src/work_board.rs, crates/chump-gap-store/src/lib.rs, src/atomic_claim.rs
+    
+    Acceptance (choose one):
+    A) scripts/lib/lease.sh exposing: lease_iter, lease_field <path> <field>, lease_is_expired <path>, lease_heartbeat_age_s <path>.
+       All 8 scripts above migrated to call these.
+    B) chump lease list --json + chump lease get <session> --field <name> — Rust CLI, shell consumes via jq.
+    Either path replaces 8 ad-hoc jq/grep loops with one canonical reader.
+    
+    Source: redundancy audit 2026-05-14 finding #6.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-14'
+  closed_pr: 1889
+

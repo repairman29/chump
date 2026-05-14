@@ -1,0 +1,27 @@
+- id: INFRA-1218
+  domain: INFRA
+  title: "EFFECTIVE: rename scripts/dev/chump-doctor.sh -> chump-binary-unwedge.sh (name collides with chump --doctor Rust subcommand); merge scripts/dev/fleet-status.sh into scripts/dispatch/fleet-status.sh --once"
+  status: done
+  priority: P3
+  effort: s
+  description: |
+    Redundancy audit (2026-05-14) finding #5: name collisions + dupes in fleet-health entry points.
+    
+    Issues:
+    1. scripts/dev/chump-doctor.sh (wedge-recovery for inode-busy chump binary, INFRA-275) shares its name with the Rust chump --doctor subcommand (config checks). Operators confuse the two.
+    2. scripts/dispatch/fleet-status.sh (tmux dashboard) AND scripts/dev/fleet-status.sh (single-pane snapshot) — two different files, same name.
+    3. chump health + chump fleet doctor both build reports via src/fleet_health.rs.
+    
+    Acceptance:
+    1. Rename scripts/dev/chump-doctor.sh -> scripts/dev/chump-binary-unwedge.sh; update callers (only ~3 sources).
+    2. Merge scripts/dev/fleet-status.sh into scripts/dispatch/fleet-status.sh --once flag (already partly there at line 17).
+    3. Doc the layering in docs/process/CLAUDE_GOTCHAS.md: shell fleet-status.sh = operator tmux dashboard; Rust chump health = report engine; Rust chump fleet doctor = fix-it; chump-binary-unwedge.sh = the wedge recovery.
+    4. Source: redundancy audit 2026-05-14 finding #5.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-14'
+  closed_pr: 1886
+
