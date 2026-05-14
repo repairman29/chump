@@ -142,6 +142,84 @@ Never poll a check loop in a tight `while`. If you find yourself doing
 "let me just check one more time," stop — you're rate-limiting your own
 session, and someone else's PR is starving for review.
 
+## Cache-first reads (INFRA-1081, 2026-05-14)
+
+The fleet has a **local SQLite cache** at `.chump/github_cache.db` populated
+by a webhook receiver (`scripts/ops/github-webhook-receiver.py`). Every
+script that wants PR state should **read from the cache first**, fall back
+to direct `gh api` only on miss.
+
+Source the helper lib then call the cache helpers:
+
+```bash
+source "$(dirname "$0")/lib/github_cache.sh"
+
+# PR state — replaces gh pr view
+cache_lookup_pr "<number>"            # returns JSON; falls back to REST on miss
+
+# BEHIND scan — replaces gh pr list with mergeStateStatus filter
+cache_query_behind_prs                # one PR number per line
+
+# Per-PR check status — replaces gh api repos/X/commits/SHA/check-runs
+cache_lookup_checks "<head_sha>"      # tab-separated name\tstatus\tconclusion
+```
+
+**Already-migrated callers:** `queue-driver.sh` (BEHIND scan),
+`chump-ambient-glance.sh --check-prs` (overlap scan via bot-merge),
+`pr-rescue.sh` (per-PR meta loop).
+**Next consumers** (open gaps): `bot-merge.sh` per-PR check-runs polling,
+`ghost-gap-reaper.sh`, others identified by the API cost leaderboard
+(`scripts/dev/api-cost-leaderboard.sh`).
+
+**When in doubt:** read from cache. Cache miss is one cheap REST call;
+polling GraphQL is the costly path.
+
+## Call criticality (INFRA-1080, 2026-05-14)
+
+`chump_gh` (the gh wrapper in `scripts/coord/lib/github.sh`) classifies each
+call as **critical** (default) or **background**. Background calls are
+preempted when `remaining_graphql < CHUMP_GH_BACKOFF_THRESHOLD%` (default
+10%) so critical-path operations never starve.
+
+```bash
+# Default — proceeds even when bucket is tight
+chump_gh pr merge "$PR" --auto --squash
+
+# Tag as background — yields to critical callers when graphql is low
+CHUMP_GH_CALL_CRITICALITY=background chump_gh pr list ...
+```
+
+| Critical (default) | Background (opt-in) |
+|---|---|
+| `gh pr create` / `gh pr merge` | label updates |
+| `gh pr update-branch` | overlap scans |
+| ship-blocking REST writes | dashboard refreshes |
+| operator-initiated rescue | cache reconcile per-PR fetches |
+
+Without criticality tags a background dashboard poll can starve a
+ship-blocking merge. With them, the merge fires, the poll waits.
+
+## GraphQL exhaustion handling (INFRA-1040 / INFRA-1079)
+
+Automated:
+
+- **Secondary rate-limit self-throttle** — `chump_gh` caps fleet calls to
+  `CHUMP_GH_MAX_CALLS_PER_MIN` (default 60) via a shared sliding window.
+  Per-script override: `CHUMP_GH_THROTTLE_<UPPERCASE_SCRIPT>=N`.
+- **Exhaustion signal** — first call to see `remaining_graphql ≤ 100` emits
+  `kind=graphql_exhausted` to `.chump-locks/ambient.jsonl` (debounced once
+  per reset window). Every agent watching ambient pivots to REST-only paths
+  simultaneously.
+
+When you see repeated `kind=graphql_exhausted` or `kind=gh_self_throttled`
+in ambient:
+
+1. Run `scripts/dev/api-cost-leaderboard.sh --window 1h` to find the burner.
+2. Background-tag the noisiest non-critical caller via
+   `CHUMP_GH_CALL_CRITICALITY=background`.
+3. If structural, file a follow-up gap migrating that caller to
+   `cache_lookup_*` helpers.
+
 ## Where to find docs
 
 | Doc | Purpose |
