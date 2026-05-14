@@ -1934,6 +1934,28 @@ events:
       untraced P0/P1 gaps not referenced in any ROADMAP week.
     consumers: [fleet-brief, ci-failure-digest, operator-recall]
     fields_required: [ts, kind, starved_outcomes, untraced_p0]
+
+  # ── INFRA-1147: weekly roadmap-update LLM agent ────────────────────────────
+  - kind: roadmap_update_proposal_cost
+    emitter: scripts/auto-docs/roadmap-update-agent.py (INFRA-1147)
+    trigger: every LLM call (haiku by default, sonnet --high-fidelity)
+    consumers: [api-cost-leaderboard, fleet-brief]
+    fields_required: [ts, kind, model, input_tokens, output_tokens, usd]
+  - kind: roadmap_update_proposal_opened
+    emitter: scripts/auto-docs/roadmap-update-agent.py (INFRA-1147)
+    trigger: successful LLM proposal → PR opened (never auto-merged)
+    consumers: [audit-log, operator-recall]
+    fields_required: [ts, kind, branch, url, model, usd]
+  - kind: roadmap_update_proposal_failed
+    emitter: scripts/auto-docs/roadmap-update-agent.py (INFRA-1147)
+    trigger: LLM/parse/PR failure — no half-baked PR opened
+    consumers: [operator-recall]
+    fields_required: [ts, kind, reason]
+  - kind: roadmap_update_proposal_skipped
+    emitter: scripts/auto-docs/roadmap-update-agent.py (INFRA-1147)
+    trigger: idempotency hit (same-week branch exists) or LLM returned NO_CHANGE
+    consumers: [audit-log]
+    fields_required: [ts, kind, reason]
   # ── INFRA-998: PR-closure-reason categorization ───────────────────────
   - kind: waste_category_report
     emitter: src/waste_tally.rs build_close_reason_report (chump waste-tally --by-close-reason --emit-ambient)

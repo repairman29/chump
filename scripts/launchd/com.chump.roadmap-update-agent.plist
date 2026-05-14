@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.roadmap-update-agent</string>
+
+  <!-- INFRA-1147: weekly LLM-driven roadmap-update agent.
+       Runs Sunday 09:00 local. Reads ROADMAP.md + recent ship log +
+       shipped gaps, calls Claude (haiku default), opens a PR for
+       operator review. Never auto-merges. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/opt/homebrew/bin/python3.12 /Users/jeffadkins/Projects/Chump/scripts/auto-docs/roadmap-update-agent.py</string>
+  </array>
+
+  <!-- Sunday 09:00 local -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>9</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-roadmap-update-agent.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-roadmap-update-agent.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/Users/jeffadkins/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+</dict>
+</plist>
