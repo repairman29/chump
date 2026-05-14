@@ -105,6 +105,11 @@ while IFS=$'\t' read -r pr title branch updated; do
 
     [[ -z "$gap_id" ]] && continue
 
+    # Operator escape hatch: "orphan-pr-closer-skip" in title disables for this PR.
+    if echo "$title" | grep -qF 'orphan-pr-closer-skip'; then
+        continue
+    fi
+
     # Skip if already seen.
     if grep -qxF "closed:$pr" "$SEEN_FILE" 2>/dev/null; then
         continue
