@@ -125,6 +125,7 @@ class ChumpNav extends HTMLElement {
     { id: 'tasks',     label: 'Tasks',     icon: '⚡' },
     { id: 'decisions', label: 'Decisions', icon: '🎯' },
     { id: 'judgment',  label: 'Judgment',  icon: '⚖️' },
+    { id: 'ambient',   label: 'Events',    icon: '📡' },
     { id: 'memory',    label: 'Memory',    icon: '🧠' },
     { id: 'models',    label: 'Models',    icon: '🤖' },
     { id: 'settings',  label: 'Settings',  icon: '⚙' },
@@ -946,6 +947,17 @@ class ChumpViewAgent extends HTMLElement {
 customElements.define('chump-view-agent', ChumpViewAgent);
 
 // ── Router ────────────────────────────────────────────────────────────────────
+// PRODUCT-091: ambient event viewer view factory.
+function makeAmbientView() {
+  const el = document.createElement('div');
+  el.className = 'view-panel';
+  el.innerHTML = `
+    <h2 class="view-title">Ambient Events</h2>
+    <p class="view-subtitle">Real-time tail of .chump-locks/ambient.jsonl — fleet activity stream</p>
+    <chump-ambient-viewer></chump-ambient-viewer>`;
+  return el;
+}
+
 const VIEWS = {
   chat:      () => document.createElement('chump-view-chat'),
   agents:    () => document.createElement('chump-view-agents'),
@@ -954,6 +966,7 @@ const VIEWS = {
   tasks:     () => document.createElement('chump-view-tasks'),
   decisions: () => document.createElement('chump-view-decisions'),
   judgment:  () => document.createElement('chump-view-judgment'),
+  ambient:   makeAmbientView,
   memory:    () => document.createElement('chump-view-memory'),
   models:    () => document.createElement('chump-view-models'),
   settings:  () => document.createElement('chump-view-settings'),
