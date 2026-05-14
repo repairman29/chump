@@ -1,0 +1,17 @@
+- id: INFRA-1145
+  domain: INFRA
+  title: "EFFECTIVE: chump roadmap-status — gap↔milestone audit (drift, starved outcomes, untraced gaps)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Extends existing src/main.rs roadmap_status handler (INFRA-606); zero parallel-tooling"
+    - "Adds starved_outcomes top-level field to --json output: weeks with zero in-flight + zero shipped"
+    - "Adds untraced_p0 top-level field: open P0/P1 gap IDs not referenced in any ROADMAP outcome"
+    - "Adds pillar_coverage top-level field: per-pillar pickable counts"
+    - "--exit-on-drift flag exits non-zero if starved_outcomes or untraced_p0 non-empty"
+    - "--top-starved N flag limits starved_outcomes output for inject use case"
+    - "Backward-compat: default human output unchanged; --json shape adds keys only"
+    - "Test scripts/ci/test-roadmap-status-drift.sh: 13 checks pass"
+    - "EVENT_REGISTRY.yaml registers kind=roadmap_drift_detected"
+  closed_pr: null
