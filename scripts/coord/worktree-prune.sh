@@ -190,6 +190,7 @@ for wt_dir in "$WORKTREE_ROOT"/*/; do
     # untracked files that aren't gitignored)
     has_changes=$(cd "$wt_dir" 2>/dev/null && \
         { git status --porcelain 2>/dev/null | grep -v "^??" | head -1; } || echo "")
+    # shellcheck disable=SC2034  # reserved for future prune-on-untracked logic
     untracked_unignored=$(cd "$wt_dir" 2>/dev/null && \
         { git status --porcelain --untracked-files=normal 2>/dev/null | grep "^??" | head -1; } || echo "")
 
