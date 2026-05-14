@@ -1,0 +1,17 @@
+- id: INFRA-1252
+  domain: INFRA
+  title: A2A — stale-gap-lock-reaper emits HANDOFF for ghost-lease w/ commits before reap
+  status: done
+  priority: P1
+  effort: s
+  closed_pr: 1907
+  closed_date: '2026-05-14'
+  acceptance_criteria:
+    - "scripts/ops/stale-gap-lock-reaper.sh: when ghost-lease detected (PID dead OR TTL expired) AND the gap branch has commits beyond origin/main, broadcast HANDOFF before reaping"
+    - "Recipient selection: prefer the most-recent toucher of the expected file scope (queried via git log -1 --name-only on the gap branch); fall back to fleet broadcast"
+    - "HANDOFF includes branch-name and last-commit-sha so picker can resume"
+    - "Reaping is delayed by CHUMP_HANDOFF_ACK_WINDOW_S (default 900s = 15min). If a new claim appears for the gap within the window, suppress the reap"
+    - "Emits kind=ghost_lease_handoff event"
+    - "Test: stamp a fake ghost lease with commits, run reaper -> expect HANDOFF + delayed reap"
+  notes: |
+    [2026-05-14T16:09:41Z] Today INFRA-1208 PID-liveness check ships immediate reaps. INFRA-1252 adds the warm-handoff path so unfinished work transitions to a new owner instead of going to /dev/null.

@@ -1,0 +1,13 @@
+- id: INFRA-1254
+  domain: INFRA
+  title: A2A — chump claim consumes own inbox first (HANDOFF takes priority over picker)
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\n  \"chump claim (Rust) OR scripts/coord/gap-claim.sh: BEFORE picking a fresh gap from the registry, read this session inbox (.chump-locks/inbox/<session>.jsonl)\",\n  \"If inbox contains an unread HANDOFF (no later ACK), claim that gap-id instead of the picker default\",\n  \"Multiple pending HANDOFFs: pick oldest by ts\",\n  \"Operator opt-out: CHUMP_IGNORE_INBOX=1 (rare; for diagnostic claims)\",\n  \"Successful inbox-driven claim emits a corresponding ACK event so the sender can clear\",\n  \"Test: stage HANDOFF in inbox, run claim with no --gap arg → expect that gap-id claimed\"\n]"
+  notes: |
+    [2026-05-14T16:09:42Z] Today HANDOFFs sit in inboxes and only fire when an operator reads them. Inbox-aware claim makes the fleet self-routing.
+  closed_date: '2026-05-14'
+  closed_pr: 1911
+
