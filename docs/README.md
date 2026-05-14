@@ -74,6 +74,7 @@ See [`rfcs/`](rfcs/) for draft proposals: inference backends, fleet workspace me
 | Document | Purpose |
 |----------|---------|
 | [ACP.md](architecture/ACP.md) | Agent Client Protocol — editor integration (Zed, JetBrains) |
+| [ACP_CAPABILITY_COMPARISON.md](architecture/ACP_CAPABILITY_COMPARISON.md) | ACP capability comparison vs other registry agents (audited 2026-05-13) |
 | [DISCORD_CONFIG.md](howto/DISCORD_CONFIG.md) | Discord bot setup and configuration |
 | [DISCORD_TROUBLESHOOTING.md](operations/DISCORD_TROUBLESHOOTING.md) | Discord won't start / won't reply / DMs-only — fix guide |
 | [A2A_DISCORD.md](process/A2A_DISCORD.md) | Agent-to-agent Discord messaging |

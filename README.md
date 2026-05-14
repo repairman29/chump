@@ -186,6 +186,7 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 | [`docs/process/EXTERNAL_GOLDEN_PATH.md`](docs/process/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
 | [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) | System architecture reference |
 | [`docs/architecture/ACP.md`](docs/architecture/ACP.md) | Agent Client Protocol adapter |
+| [`docs/architecture/ACP_CAPABILITY_COMPARISON.md`](docs/architecture/ACP_CAPABILITY_COMPARISON.md) | ACP capability comparison vs other agents in the registry |
 | [`docs/process/AGENT_COORDINATION.md`](docs/process/AGENT_COORDINATION.md) | Dispatcher internals — leases, branches, failure modes, pre-commit spec |
 | [`docs/strategy/CHUMP_TO_CHAMP.md`](docs/strategy/CHUMP_TO_CHAMP.md) | Chump-to-Champ roadmap — cognitive architecture vision and frontier direction |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | PR checklist and quality bar |
