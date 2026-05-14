@@ -1367,6 +1367,12 @@ jobs:
         # Flip to CHUMP_REGISTRY_GATE_MODE=strict once the orphan-reconciliation
         # follow-up (INFRA-1287) lands.
         run: CHUMP_REGISTRY_GATE_MODE=strict-emit bash scripts/ci/test-event-registry-coverage.sh
+      - name: no-inline-ambient-printf — Phase-1 dry-up (INFRA-1307)
+        # Refuses net-new files in scripts/coord|dispatch|ops/ + src/ + crates/
+        # that write inline to ambient.jsonl. New emit sites should call
+        # `chump ambient emit <kind> [--field k=v]...` (shipped via INFRA-1048).
+        # Allowlist: scripts/ci/ambient-emit-allowlist.txt (17 existing sites).
+        run: BASE_REF=origin/main bash scripts/ci/test-no-inline-ambient-printf.sh
 
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path
