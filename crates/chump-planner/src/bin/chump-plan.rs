@@ -8,7 +8,9 @@
 
 use anyhow::{Context, Result};
 use chump_planner::{
-    build_plan, collect_reconcile, load_gaps_dir, output::table, score::TelemetryInputs,
+    build_plan, collect_reconcile, load_gaps_dir,
+    output::{json as out_json, table, Format},
+    score::TelemetryInputs,
     DependencyGraph, PlanRequest, Weights,
 };
 use clap::Parser;
@@ -57,7 +59,7 @@ struct Args {
 
 fn main() -> Result<()> {
     let args = Args::parse();
-    let _format: chump_planner::output::Format = args.format.parse()?;
+    let format: Format = args.format.parse()?;
 
     let gaps = load_gaps_dir(&args.gaps)
         .with_context(|| format!("loading gaps from {}", args.gaps.display()))?;
@@ -104,8 +106,20 @@ fn main() -> Result<()> {
     let plan = build_plan(&gaps, &graph, &req, &telemetry, today, &weights);
     let reconcile = collect_reconcile(&gaps);
 
-    let out = table::render(&plan, &reconcile);
-    print!("{out}");
+    match format {
+        Format::Table => {
+            let out = table::render(&plan, &reconcile);
+            print!("{out}");
+        }
+        Format::Json => {
+            // INFRA-1257: stable JSON for the fleet picker. Writes the same
+            // ranking the table would render, plus generation metadata.
+            let stdout = std::io::stdout();
+            let mut handle = stdout.lock();
+            out_json::render_json(&plan, &weights, &mut handle)
+                .context("rendering --format json")?;
+        }
+    }
 
     if reconcile.breaches(args.reconcile_threshold) {
         eprintln!(

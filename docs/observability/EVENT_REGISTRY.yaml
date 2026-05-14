@@ -249,6 +249,12 @@ events:
       automated registry mutations went live for this operator.
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, note]
+  - kind: planner_rank_ran
+    emitter: scripts/setup/install-chump-planner-launchd.sh --once (INFRA-1257)
+    trigger: hourly launchd run wrote .chump-locks/gap-priority.json — fleet
+      picker consumes this file (INFRA-1258) to pick best-scored gap.
+    consumers: [picker, fleet-brief, audit-log]
+    fields_required: [ts, kind, out_file]
 
   - kind: fleet_paused_disk_critical
     emitter: scripts/lib/disk-check.sh via worker.sh (INFRA-975)
