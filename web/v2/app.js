@@ -460,9 +460,85 @@ class ChumpViewSettings extends HTMLElement {
           <p class="setting-label" style="margin-bottom: 12px;">Fleet Control</p>
           <chump-parallelism-governor></chump-parallelism-governor>
         </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">Operator Configuration (INFRA-988)</p>
+          <div id="operator-config" style="font-size: 0.9em;">
+            <p style="color: var(--text-muted);">Loading operator config…</p>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.8em; margin-top: 8px;">
+            Stored in <code>~/.chump/config.toml</code> [settings]. Env vars override.
+            Secrets are managed separately (INFRA-989).
+          </p>
+        </div>
       </section>
     `;
     this.#loadCascadeInfo();
+    this.#loadOperatorConfig();
+  }
+
+  // INFRA-988: render non-secret config fields from /api/settings.
+  // Each field shows value + source badge (env / config / default).
+  #loadOperatorConfig() {
+    const container = this.querySelector('#operator-config');
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(data => {
+        const fields = [
+          { key: 'CHUMP_AUTH_MODE', label: 'Auth mode', options: ['auto', 'api-key', 'oauth'] },
+          { key: 'CHUMP_MULTI_REPO_ENABLED', label: 'Multi-repo', options: ['0', '1'] },
+          { key: 'FLEET_SIZE', label: 'Fleet size', type: 'number', min: 0, max: 64 },
+          { key: 'FLEET_MODEL', label: 'Fleet model', options: ['haiku', 'sonnet', 'opus'] },
+          { key: 'CHUMP_ROUND_PRIVACY', label: 'Round privacy', options: ['safe', 'dogfood'] },
+          { key: 'CHUMP_REPO', label: 'Working repo path', type: 'text' },
+        ];
+        container.innerHTML = fields.map(f => {
+          const entry = data[f.key] || { value: '', source: 'default' };
+          const badge = `<span class="op-config-badge op-config-badge-${entry.source}">${entry.source}</span>`;
+          const envLocked = entry.source === 'env';
+          const lockedAttr = envLocked ? 'disabled title="Set via env var — unset env to edit via PWA"' : '';
+          let input;
+          if (f.options) {
+            input = `<select data-key="${f.key}" ${lockedAttr}>${f.options.map(o => `<option value="${o}" ${o === entry.value ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+          } else {
+            const min = f.min != null ? `min="${f.min}"` : '';
+            const max = f.max != null ? `max="${f.max}"` : '';
+            input = `<input type="${f.type}" data-key="${f.key}" value="${entry.value}" ${min} ${max} ${lockedAttr}>`;
+          }
+          return `
+            <div class="op-config-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <label style="flex:1;">${f.label}</label>
+              ${input}
+              ${badge}
+            </div>`;
+        }).join('');
+        container.querySelectorAll('[data-key]').forEach(el => {
+          el.addEventListener('change', e => this.#onConfigChange(e));
+        });
+      })
+      .catch(err => {
+        container.innerHTML = `<p style="color:var(--error-color)">Error loading config: ${err.message}</p>`;
+      });
+  }
+
+  #onConfigChange(e) {
+    const el = e.target;
+    const key = el.dataset.key;
+    const value = el.value;
+    el.disabled = true;
+    fetch(`/api/settings/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+      body: JSON.stringify({ value }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(() => this.#loadOperatorConfig())
+      .catch(err => {
+        console.error(`settings POST ${key} failed:`, err);
+        el.disabled = false;
+      });
   }
 
   // PRODUCT-054: load real cascade slot data and render toggle switches.
