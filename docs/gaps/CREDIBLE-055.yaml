@@ -1,0 +1,34 @@
+- id: CREDIBLE-055
+  domain: CREDIBLE
+  title: "CREDIBLE: tauri-cowork-e2e shadow-DOM #input wait times out on every PR — fresh regression"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Root cause confirmed: shadow root structure vs e2e selector mismatch identified"
+    - Fix either side (selector OR shadow-DOM markup) so the timeout no longer fires
+    - tauri-cowork-e2e passes green on a fresh PR after the fix
+    - "Optional: promote to required check on main once stable, so future regressions can't merge silently"
+  notes: |
+    Surfaced 2026-05-13 during INFRA-1021 ship + PR-queue audit. tauri-cowork-e2e job fails on most open PRs with:
+    
+      TimeoutError: chump-chat shadow root never produced #input
+      Wait timed out after 60187ms
+      (e2e-tauri/node_modules/selenium-webdriver/lib/webdriver.js:929)
+    
+    Pattern: PRs going back at least 3-4 days have this failure baseline. The job is NOT a required check on main (only test/audit/ACP smoke are required) so it doesn't block merge — but it makes every PR's mergeable_state report 'blocked' or 'unstable' and produces noise in pr-queue audits.
+    
+    Working theory: the chump-chat web component's shadow root layout changed (or never had the right structure) such that querying for #input via shadow-DOM traversal fails. INFRA-1066 (just merged as PR #1735) added a CLAUDE_GOTCHAS.md note about shadow-DOM traversal — possibly related context.
+    
+    INFRA-263 (closed 2026-05-11 P1-vague triage) referred to this job for v2 chump-chat but was closed as obsolete-vague. The current failure is a fresh regression deserving its own gap.
+    
+    Diagnostic links:
+    - Example failing run: https://github.com/repairman29/chump/actions/runs/25833323055/job/75902890390
+    - Log shows web_server starts cleanly, PWA serves, then 60s wait for shadow.#input fails
+    
+    Suggested next steps (for whoever picks this up):
+    1. Inspect web/components/chump-chat.js shadowRoot structure — is there an #input element?
+    2. If renamed, fix the e2e selector OR add the #input id back
+    3. If structural, update e2e-tauri/run.mjs to traverse the new path
+  closed_date: '2026-05-14'
+

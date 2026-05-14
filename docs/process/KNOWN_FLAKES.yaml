@@ -141,6 +141,13 @@ flakes:
     last_observed: "2026-05-14"
     max_reruns: 1
 
+  - test: atomic_claim::tests::nats_dual_write_conflict_emits_ambient_event
+    reason: "spawns a coord-shim subprocess and reads back ambient.jsonl; under high parallel load the subprocess may exit before the parent reads the file, or the OS file-system write is not yet visible (write-buffer flush race)"
+    tracking_gap: INFRA-1193
+    added: "2026-05-14"
+    last_observed: "2026-05-14"
+    max_reruns: 1
+
 # INFRA-763 fixed the canonical case
 # (failure_catalog::tests::infra647_catalog_len_matches_entries).
 # Add new entries here ONLY with an open tracking_gap. Examples of what
