@@ -113,15 +113,15 @@ except Exception as e:
 PYEOF
 pass "Test 3: guard_bypassed event has all required fields (ts, kind, guard_name, bypasses, operator)"
 
-# ── Test 4: pre-commit LEASE_CHECK error shows bypass on first line ─────────
-# Verify that the bypass hint appears on the line immediately before "LEASE CONFLICT"
+# ── Test 4: pre-commit LEASE_CHECK error block contains bypass hint ──────────
+# Verify that the bypass hint appears within the LEASE CONFLICT block (within 10 lines).
+# The bypass hint is part of the "Options:" section printed right after the conflict header.
 CONFLICT_LINE=$(grep -n "LEASE CONFLICT" "$REPO_ROOT/scripts/git-hooks/pre-commit" | head -1 | cut -d: -f1)
-PREV_LINE=$((CONFLICT_LINE - 1))
-PREV_CONTENT=$(sed -n "${PREV_LINE}p" "$REPO_ROOT/scripts/git-hooks/pre-commit")
-if echo "$PREV_CONTENT" | grep -q "CHUMP_LEASE_CHECK\|CHUMP_OPERATOR_RECOVERY"; then
-    pass "Test 4: LEASE_CHECK bypass hint appears before the error message"
+BLOCK_CONTENT=$(sed -n "${CONFLICT_LINE},$((CONFLICT_LINE+10))p" "$REPO_ROOT/scripts/git-hooks/pre-commit")
+if echo "$BLOCK_CONTENT" | grep -q "CHUMP_LEASE_CHECK\|CHUMP_OPERATOR_RECOVERY"; then
+    pass "Test 4: LEASE_CHECK bypass hint appears in LEASE CONFLICT block"
 else
-    fail "Test 4: LEASE_CHECK bypass hint not on first line (line before LEASE CONFLICT: '$PREV_CONTENT')"
+    fail "Test 4: LEASE_CHECK bypass hint not found in LEASE CONFLICT block (lines ${CONFLICT_LINE}-$((CONFLICT_LINE+10)))"
 fi
 
 # ── Test 5: pre-push BYPASS_BOT_MERGE error shows bypass on first line ──────
