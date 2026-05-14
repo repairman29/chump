@@ -422,6 +422,249 @@ class ChumpNav extends HTMLElement {
 }
 customElements.define('chump-nav', ChumpNav);
 
+// ── <chump-tool-approval-tray> (PRODUCT-109) ────────────────────────────────
+// Persistent tray that catches every tool_approval_request SSE event in one
+// place — pulls tool approvals OUT of the chat scroll so they survive when
+// the operator scrolls away or switches views.
+//
+// Listener contract:
+//   - Receives document-level `chump:tool_approval` CustomEvent {detail: payload}
+//     dispatched by chat.js (and any other future SSE source).
+//   - Payload shape (matches src/stream_events.rs AgentEvent::ToolApprovalRequest):
+//     { request_id, tool_name, tool_input, risk_level, reason, expires_at_secs }
+//   - On APPROVE/DENY click → POST /api/approve {request_id, allowed} (handler
+//     already exists at src/web_server.rs handle_approve).
+//
+// Multi-tab safety: uses BroadcastChannel('chump-tool-approval') to dedup
+// across tabs. Approving in one tab dismisses the row in all tabs.
+//
+// Expired-deny-by-default: when expires_at_secs has passed without decision,
+// the tray auto-POSTs allowed=false and shows the row dimmed with
+// "(expired)" for 30s before removing.
+//
+// A11y: list is role='log' aria-live='polite'; each row is role='listitem'
+// with aria-keyshortcuts on APPROVE/DENY (a/d). The tray itself is hidden
+// (display:none) when list is empty so it doesn't take vertical space.
+class ChumpToolApprovalTray extends HTMLElement {
+  #pending = new Map(); // request_id → {payload, received_at, status}
+  #channel = null;
+  #tickTimer = null;
+  #focusedRow = null;
+
+  connectedCallback() {
+    this.innerHTML = `
+      <div class="tat-shell" role="log" aria-live="polite" aria-label="Pending tool approvals" hidden>
+        <div class="tat-header">
+          <span class="tat-count" id="tat-count">0</span>
+          <span class="tat-title">pending tool approvals</span>
+          <div class="tat-batch">
+            <button type="button" class="tat-batch-btn tat-approve-all" aria-label="Approve all pending tool requests">Approve all</button>
+            <button type="button" class="tat-batch-btn tat-deny-all" aria-label="Deny all pending tool requests">Deny all</button>
+          </div>
+        </div>
+        <ul class="tat-list" id="tat-list"></ul>
+      </div>
+    `;
+    document.addEventListener('chump:tool_approval', (e) => this.#onIncoming(e.detail));
+    this.querySelector('.tat-approve-all')?.addEventListener('click', () => this.#decideAll(true));
+    this.querySelector('.tat-deny-all')?.addEventListener('click', () => this.#decideAll(false));
+    this.querySelector('#tat-list')?.addEventListener('click', (e) => this.#onListClick(e));
+
+    // Multi-tab dedup channel — peer tab approves/denies, we drop the row.
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        this.#channel = new BroadcastChannel('chump-tool-approval');
+        this.#channel.addEventListener('message', (e) => {
+          const m = e.data;
+          if (m?.kind === 'decided' && m.request_id && this.#pending.has(m.request_id)) {
+            this.#pending.delete(m.request_id);
+            this.#render();
+          }
+        });
+      } catch {}
+    }
+
+    // 1s tick to refresh countdowns + auto-deny expired.
+    this.#tickTimer = setInterval(() => this.#tick(), 1000);
+  }
+
+  disconnectedCallback() {
+    if (this.#tickTimer) clearInterval(this.#tickTimer);
+    try { this.#channel?.close(); } catch {}
+  }
+
+  #onIncoming(payload) {
+    if (!payload?.request_id) return;
+    if (this.#pending.has(payload.request_id)) return; // dedup same tab
+    this.#pending.set(payload.request_id, {
+      payload,
+      received_at: Date.now(),
+      status: 'open',
+    });
+    this.#render();
+  }
+
+  #render() {
+    const shell = this.querySelector('.tat-shell');
+    const list = this.querySelector('#tat-list');
+    const count = this.querySelector('#tat-count');
+    if (!shell || !list || !count) return;
+    const rows = Array.from(this.#pending.values()).sort((a, b) => a.received_at - b.received_at);
+    count.textContent = String(rows.length);
+    shell.hidden = rows.length === 0;
+    list.innerHTML = rows.map((r) => this.#renderRow(r)).join('');
+  }
+
+  #renderRow(row) {
+    const p = row.payload;
+    const reqId = String(p.request_id || '').replace(/[<>&"]/g, '');
+    const tool = String(p.tool_name || 'unknown');
+    const risk = String(p.risk_level || '').toLowerCase();
+    const reason = String(p.reason || '');
+    const argsPreview = ChumpToolApprovalTray.#truncate(JSON.stringify(p.tool_input ?? {}), 180);
+    const expiresIn = ChumpToolApprovalTray.#expiresInSecs(p.expires_at_secs);
+    const expiredClass = row.status === 'expired' ? 'tat-row-expired' : '';
+    const riskClass = `tat-risk-${risk || 'unknown'}`;
+    return `
+      <li class="tat-row ${riskClass} ${expiredClass}" role="listitem"
+          data-request-id="${reqId}" tabindex="0">
+        <div class="tat-row-main">
+          <span class="tat-tool">${tool}</span>
+          <span class="tat-risk">${risk || 'unknown'}</span>
+          <span class="tat-countdown" data-countdown="${reqId}">${ChumpToolApprovalTray.#fmtCountdown(expiresIn)}</span>
+        </div>
+        ${reason ? `<div class="tat-reason">${ChumpToolApprovalTray.#esc(reason)}</div>` : ''}
+        <div class="tat-args"><code>${ChumpToolApprovalTray.#esc(argsPreview)}</code></div>
+        <div class="tat-actions">
+          <button type="button" class="tat-btn tat-approve" data-action="approve" data-req="${reqId}"
+                  aria-keyshortcuts="a" title="Approve (a)">Approve</button>
+          <button type="button" class="tat-btn tat-deny" data-action="deny" data-req="${reqId}"
+                  aria-keyshortcuts="d" title="Deny (d)">Deny</button>
+        </div>
+      </li>
+    `;
+  }
+
+  #onListClick(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const reqId = btn.dataset.req;
+    const allowed = btn.dataset.action === 'approve';
+    this.#decide(reqId, allowed);
+  }
+
+  #decideAll(allowed) {
+    const ids = Array.from(this.#pending.keys());
+    if (!ids.length) return;
+    if (!confirm(`${allowed ? 'Approve' : 'Deny'} ${ids.length} pending tool request${ids.length === 1 ? '' : 's'}?`)) return;
+    ids.forEach((id) => this.#decide(id, allowed, /* skipConfirm */ true));
+  }
+
+  #decide(requestId, allowed) {
+    const row = this.#pending.get(requestId);
+    if (!row) return;
+    // Optimistic UI: dim immediately so the operator sees feedback.
+    const li = this.querySelector(`.tat-row[data-request-id="${requestId}"]`);
+    if (li) li.classList.add('tat-row-pending');
+
+    fetch('/api/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: requestId, allowed }),
+    }).then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      this.#pending.delete(requestId);
+      this.#broadcast({ kind: 'decided', request_id: requestId, allowed });
+      this.#emitTelemetry({ action: allowed ? 'approved' : 'denied', tool: row.payload?.tool_name, mode: 'single' });
+      this.#render();
+    }).catch((err) => {
+      if (li) {
+        li.classList.remove('tat-row-pending');
+        li.classList.add('tat-row-error');
+        const banner = document.createElement('div');
+        banner.className = 'tat-error-banner';
+        banner.textContent = `Failed: ${err.message}. Retry below.`;
+        li.appendChild(banner);
+      }
+    });
+  }
+
+  #tick() {
+    if (this.#pending.size === 0) return;
+    const now = Math.floor(Date.now() / 1000);
+    let dirty = false;
+    for (const [reqId, row] of this.#pending) {
+      const expiresAt = Number(row.payload.expires_at_secs ?? 0);
+      const remaining = expiresAt - now;
+      // Update the countdown text in-place (no full re-render — keeps focus).
+      const span = this.querySelector(`[data-countdown="${reqId}"]`);
+      if (span) span.textContent = ChumpToolApprovalTray.#fmtCountdown(remaining);
+      if (remaining <= 0 && row.status === 'open') {
+        // Auto-deny expired requests.
+        row.status = 'expired';
+        const li = this.querySelector(`.tat-row[data-request-id="${reqId}"]`);
+        if (li) li.classList.add('tat-row-expired');
+        fetch('/api/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ request_id: reqId, allowed: false }),
+        }).then(() => {
+          this.#broadcast({ kind: 'decided', request_id: reqId, allowed: false, reason: 'expired' });
+          this.#emitTelemetry({ action: 'auto-denied', tool: row.payload?.tool_name, mode: 'expired' });
+          // Hold the dimmed row for 30s so the operator sees the auto-deny.
+          setTimeout(() => {
+            this.#pending.delete(reqId);
+            this.#render();
+          }, 30000);
+        }).catch(() => { /* will retry next tick if still pending */ });
+        dirty = true;
+      }
+    }
+    if (dirty) this.#render();
+  }
+
+  #broadcast(msg) {
+    try { this.#channel?.postMessage(msg); } catch {}
+  }
+
+  #emitTelemetry(fields) {
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'tool_approval_tray_action',
+        ts: new Date().toISOString(),
+        ...fields,
+      }));
+    } catch {}
+  }
+
+  // ── helpers ──
+  static #expiresInSecs(expiresAt) {
+    const n = Number(expiresAt ?? 0);
+    if (!n) return null;
+    return n - Math.floor(Date.now() / 1000);
+  }
+
+  static #fmtCountdown(secs) {
+    if (secs == null) return '—';
+    if (secs <= 0) return 'expired';
+    if (secs < 60) return `${secs}s`;
+    const m = Math.floor(secs / 60);
+    return `${m}m ${secs % 60}s`;
+  }
+
+  static #truncate(s, max) {
+    if (!s) return '';
+    return s.length > max ? s.slice(0, max - 1) + '…' : s;
+  }
+
+  static #esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+}
+customElements.define('chump-tool-approval-tray', ChumpToolApprovalTray);
+
 // ── <chump-model-indicator> ───────────────────────────────────────────────────
 class ChumpModelIndicator extends HTMLElement {
   connectedCallback() {
