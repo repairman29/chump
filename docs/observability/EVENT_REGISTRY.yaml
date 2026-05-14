@@ -1891,3 +1891,10 @@ events:
       error spam from _bm_health_init.
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, gap, worktree_path]
+  # ── CREDIBLE-058: branch-protection / workflow-job alignment ─────────────
+  - kind: branch_protection_drift
+    emitter: scripts/ci/audit-branch-protection.sh (CREDIBLE-058)
+    trigger: a required status-check context has no matching workflow job name in
+      .github/workflows/ — means auto-merge will stall on every PR until fixed
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, missing, required_count]
