@@ -1712,6 +1712,30 @@ if [ -x "$MAIN_WT_CONFIG_HOOK" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------
+# 17. Branch-protection / workflow-job alignment audit (CREDIBLE-058)
+# ------------------------------------------------------------------
+# Fires ONLY when .github/workflows/ci.yml (or other workflow files) are
+# staged. Checks that every required status-check context defined in
+# branch protection has a matching job name in the staged workflow YAML.
+# Drift here stalls every PR until the mismatch is fixed.
+# Bypass: CHUMP_BRANCH_PROTECTION_AUDIT=0
+if [ "${CHUMP_BRANCH_PROTECTION_AUDIT:-1}" != "0" ]; then
+    if git diff --cached --name-only | grep -qE '^\.github/workflows/'; then
+        _BP_AUDIT="$REPO_ROOT/scripts/ci/audit-branch-protection.sh"
+        if [ -x "$_BP_AUDIT" ]; then
+            if ! CHUMP_AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" \
+                 bash "$_BP_AUDIT" --baseline --check-staged 2>&1; then
+                echo "[pre-commit] Branch-protection drift detected (CREDIBLE-058)" >&2
+                echo "[pre-commit] Rename the workflow job to match the required context, or" >&2
+                echo "[pre-commit] update branch protection + run audit-branch-protection.sh --update-baseline" >&2
+                echo "[pre-commit] Bypass: CHUMP_BRANCH_PROTECTION_AUDIT=0 git commit ..." >&2
+                exit 1
+            fi
+        fi
+    fi
+fi
+
 exit 0
 # 11. Acceptance-criteria enforcement (CREDIBLE-054): refuse commits that
 #     add or modify gaps without a non-empty `acceptance_criteria:` list.
