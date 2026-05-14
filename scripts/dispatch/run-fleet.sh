@@ -205,6 +205,9 @@ fi
 # INFRA-459: default model is haiku — cost-efficient for xs/s/m fleet gaps.
 # Override via FLEET_MODEL=sonnet for harder tasks.
 FLEET_MODEL="${FLEET_MODEL:-sonnet}"
+# INFRA-1052: harness tag written to CHUMP_AGENT_HARNESS in each worker env.
+# Valid: claude, opencode, codex, manual. Default keeps legacy "fleet-dispatcher".
+FLEET_HARNESS="${FLEET_HARNESS:-fleet-dispatcher}"
 # INFRA-371: token-burn defaults applied to every fleet worker unless
 # the caller overrides. These cut per-spawn token cost without losing
 # capability — workers can still re-enable for harder workloads.
@@ -623,8 +626,9 @@ worker_env=(
     "FLEET_INLINE_BRIEFING=$FLEET_INLINE_BRIEFING"
     "CHUMP_LESSONS_AT_SPAWN_N=$CHUMP_LESSONS_AT_SPAWN_N"
     "CHUMP_AMBIENT_INSTALL_SKIP=$CHUMP_AMBIENT_INSTALL_SKIP"
-    # CREDIBLE-037: harness attribution for fleet-dispatcher workers
-    "CHUMP_AGENT_HARNESS=fleet-dispatcher"
+    # INFRA-1052: harness attribution — FLEET_HARNESS set by `chump fleet start --harness`;
+    # defaults to "fleet-dispatcher" for back-compat when not specified.
+    "CHUMP_AGENT_HARNESS=${FLEET_HARNESS:-fleet-dispatcher}"
     # INFRA-417 API keys — only added when actually set in the launcher
     # env (so we don't pollute panes with empty values that would mask a
     # legitimately-set system-level key).
