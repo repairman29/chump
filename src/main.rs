@@ -4121,6 +4121,24 @@ async fn main() -> Result<()> {
                                 "shipped {gap_id} — why: status flipped to done{pr_note}, session={session_id}"
                             );
                         }
+                        // INFRA-994: auto-close orphaned PRs whose title still
+                        // references this gap ID. Runs close-superseded-prs.sh
+                        // in the background so it doesn't block the ship command.
+                        // CHUMP_SKIP_SUPERSEDED_CLOSE=1 disables (e.g. in tests
+                        // that don't want real gh calls).
+                        if std::env::var("CHUMP_SKIP_SUPERSEDED_CLOSE").as_deref() != Ok("1") {
+                            let helper = worktree_root
+                                .join("scripts")
+                                .join("coord")
+                                .join("close-superseded-prs.sh");
+                            if helper.exists() {
+                                let _ = std::process::Command::new("bash")
+                                    .arg(&helper)
+                                    .arg(&gap_id)
+                                    .current_dir(&worktree_root)
+                                    .spawn(); // fire-and-forget
+                            }
+                        }
                         if update_yaml {
                             // INFRA-148: warn if this binary predates the most recent
                             // gap_store-affecting commit on the repo's HEAD before mutating

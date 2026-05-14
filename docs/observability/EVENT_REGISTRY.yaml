@@ -409,6 +409,13 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, scanned, fixed, skipped, errors, status]
 
+  - kind: pr_auto_closed_superseded
+    emitter: scripts/coord/close-superseded-prs.sh (INFRA-994)
+    trigger: chump gap ship detects an open PR whose gap is already done; PR has
+      no unique commits not in main (git cherry check passes)
+    consumers: [audit-log, waste-tally]
+    fields_required: [ts, kind, gap_id, pr, title, merged_via]
+
   - kind: pr_stuck
     emitter: scripts/ops/stuck-pr-filer.sh (INFRA-307)
     trigger: PR BLOCKED > 4h with no progress
