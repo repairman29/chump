@@ -174,8 +174,8 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
     // it; Headless / ExecGap = spawn the work-doing process and wait.
     if let Err(e) = do_work(&workspace) {
         // Always release before propagating the error so a failed work
-        // step doesn't leave a stale lease.
-        let _ = release(&workspace);
+        // step doesn't leave a stale lease. INFRA-1243: use retry+emit path.
+        release_with_retry(&workspace)?;
         return Ok(DispatchOutcome {
             gap_id: opts.gap_id.to_string(),
             branch,
@@ -195,8 +195,8 @@ pub fn run(opts: DispatchOptions) -> Result<DispatchOutcome> {
         },
     };
 
-    // Step 5: always release the lease.
-    let _ = release(&workspace);
+    // Step 5: always release the lease. INFRA-1243: retry+emit on failure.
+    release_with_retry(&workspace)?;
 
     Ok(DispatchOutcome {
         gap_id: opts.gap_id.to_string(),
@@ -710,8 +710,8 @@ fn current_pr_number(repo_root: &Path) -> Result<u64> {
         .with_context(|| format!("parse PR# from {s:?}"))
 }
 
-/// Best-effort lease cleanup. Lease files have a TTL so a missed release
-/// auto-recovers; we never bail on failure here.
+/// Attempt one `chump --release` subprocess call. Returns an error if the
+/// subprocess fails to spawn or exits non-zero.
 fn release(ws: &Workspace) -> Result<()> {
     let opts = ws.opts();
     // Re-use [`resolve_chump_binary`] so we honor the same precedence as
@@ -720,11 +720,74 @@ fn release(ws: &Workspace) -> Result<()> {
     // INFRA-302 blocker (3): release from the worktree so the same
     // session-ID resolution that wrote the lease (under
     // `<worktree>/.chump-locks/`) sees it for cleanup.
-    let _ = Command::new(&chump)
+    let status = Command::new(&chump)
         .arg("--release")
         .current_dir(ws.working_dir())
-        .status();
+        .status()
+        .with_context(|| format!("spawning chump --release (binary: {})", chump.display()))?;
+    if !status.success() {
+        bail!("chump --release exited with {}", status);
+    }
     Ok(())
+}
+
+/// Release the lease with one retry on transient failure. On second failure:
+/// - emits `kind=lease_release_failed` to ambient.jsonl (INFRA-1243)
+/// - logs via `tracing::error!`
+/// - propagates via `bail!` so the dispatch caller sees the failure
+///
+/// Lease files carry a TTL so a missed release auto-recovers; this function
+/// makes the gap deliberate and observable rather than silently lost.
+fn release_with_retry(ws: &Workspace) -> Result<()> {
+    match release(ws) {
+        Ok(()) => return Ok(()),
+        Err(e) => {
+            eprintln!("[dispatch] WARNING: lease release failed (attempt 1/2), retrying: {e:#}");
+        }
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    match release(ws) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            let msg = format!("{e:#}");
+            emit_lease_release_failed(ws.opts().gap_id, &msg);
+            tracing::error!(
+                gap_id = ws.opts().gap_id,
+                error = %e,
+                "lease release failed after 2 attempts — lease may persist until TTL"
+            );
+            bail!("lease release failed after 2 attempts: {e:#}");
+        }
+    }
+}
+
+/// Emit a `lease_release_failed` event to ambient.jsonl (INFRA-1243).
+fn emit_lease_release_failed(gap_id: &str, error: &str) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    // Escape the error string for JSON (replace backslash and quote).
+    let error_escaped = error.replace('\\', "\\\\").replace('"', "\\\"");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\
+         \"kind\":\"lease_release_failed\",\"gap\":\"{gap_id}\",\
+         \"error\":\"{error_escaped}\"}}"
+    );
+
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{}", line);
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -1101,5 +1164,111 @@ mod tests {
         let ws = ws_with_dir(&opts, PathBuf::from("/working"));
         assert_eq!(ws.opts().gap_id, "INFRA-191");
         assert_eq!(ws.working_dir(), PathBuf::from("/working"));
+    }
+
+    // ── INFRA-1243: release_with_retry error handling ────────────────────────
+
+    /// Serializes tests that mutate CHUMP_AMBIENT_LOG in this module.
+    static RELEASE_AMBIENT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// When the `chump --release` subprocess fails twice, `release_with_retry`
+    /// must:
+    ///   (a) return an Err (not swallow it),
+    ///   (b) emit a `lease_release_failed` line to the ambient log.
+    ///
+    /// We exercise this by placing a mock `chump` binary at
+    /// `<tmp>/target/release/chump` that always exits 1 — `resolve_chump_binary`
+    /// finds it before falling back to PATH, so the real chump is never called.
+    #[test]
+    fn release_with_retry_emits_ambient_event_and_propagates_on_double_failure() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let _guard = RELEASE_AMBIENT_LOCK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let dir = tmp.path();
+
+        // Fake chump binary that always exits 1.
+        let target_dir = dir.join("target/release");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let fake_chump = target_dir.join("chump");
+        std::fs::write(&fake_chump, "#!/usr/bin/env bash\nexit 1\n").unwrap();
+        let mut perms = std::fs::metadata(&fake_chump).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake_chump, perms).unwrap();
+
+        // Point ambient log at a temp file so we can inspect it.
+        let ambient = dir.join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", ambient.to_string_lossy().as_ref());
+
+        let opts = DispatchOptions {
+            gap_id: "INFRA-1243-TEST",
+            work: WorkBackend::Interactive,
+            auto_merge: false,
+            skip_tests: true,
+            paths: None,
+            repo_root: dir.to_path_buf(),
+        };
+        let ws = ws_with_dir(&opts, dir.to_path_buf());
+
+        let err = release_with_retry(&ws).unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("failed after 2 attempts"),
+            "expected '2 attempts' in error message, got: {msg}"
+        );
+
+        let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+        assert!(
+            contents.contains("lease_release_failed"),
+            "expected 'lease_release_failed' event in ambient log, got: {contents}"
+        );
+        assert!(
+            contents.contains("INFRA-1243-TEST"),
+            "expected gap_id in ambient event, got: {contents}"
+        );
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+    }
+
+    /// Single `release()` call must propagate a non-zero exit status as Err
+    /// rather than silently succeeding.
+    #[test]
+    fn release_returns_err_on_nonzero_exit() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let dir = tmp.path();
+
+        let target_dir = dir.join("target/release");
+        std::fs::create_dir_all(&target_dir).unwrap();
+        let fake_chump = target_dir.join("chump");
+        std::fs::write(&fake_chump, "#!/usr/bin/env bash\nexit 2\n").unwrap();
+        let mut perms = std::fs::metadata(&fake_chump).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&fake_chump, perms).unwrap();
+
+        let opts = DispatchOptions {
+            gap_id: "INFRA-1243-UNIT",
+            work: WorkBackend::Interactive,
+            auto_merge: false,
+            skip_tests: true,
+            paths: None,
+            repo_root: dir.to_path_buf(),
+        };
+        let ws = ws_with_dir(&opts, dir.to_path_buf());
+
+        let result = release(&ws);
+        assert!(
+            result.is_err(),
+            "release() must return Err on non-zero exit, got Ok"
+        );
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("chump --release exited with"),
+            "expected exit-status error, got: {msg}"
+        );
     }
 }

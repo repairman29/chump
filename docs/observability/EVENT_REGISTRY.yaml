@@ -2338,3 +2338,10 @@ events:
       rebase, cargo fmt, cargo clippy, cargo test, push, PR create, etc.
     consumers: [fleet-brief, ops-audit, infra-1067-timeout-tuning]
     fields_required: [ts, kind, phase, elapsed_s, gap, branch]
+  - kind: lease_release_failed
+    emitter: src/dispatch.rs::release_with_retry (INFRA-1243)
+    trigger: chump --release subprocess failed twice in the dispatch step-5 cleanup
+      path. The lease will auto-expire via its TTL, but the failure is recorded
+      for operator visibility.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, session, gap, error]
