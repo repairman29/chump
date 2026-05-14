@@ -1591,7 +1591,7 @@ _PREREG_DISPATCH_PATTERN='scripts/dispatch/'
 if [[ "${CHUMP_NO_PREREG:-0}" != "1" ]] && [[ -n "${GAP_ID:-}" ]]; then
     _prereg_base="${CHUMP_BASE_REF:-${REMOTE}/${BASE_BRANCH}}"
     _cognition_touched=$(git diff --name-only --diff-filter=ACM "${_prereg_base}...HEAD" 2>/dev/null \
-        | grep -cE "^(${_PREREG_COGNITION_PATTERN}|${_PREREG_DISPATCH_PATTERN})" || echo 0)
+        | grep -cE "^(${_PREREG_COGNITION_PATTERN}|${_PREREG_DISPATCH_PATTERN})" || true)
     if [[ "${_cognition_touched:-0}" -gt 0 ]]; then
         _prereg_doc="docs/eval/preregistered/${GAP_ID}.md"
         if [[ ! -f "$REPO_ROOT/${_prereg_doc}" ]]; then
