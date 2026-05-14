@@ -149,6 +149,7 @@ session, and someone else's PR is starving for review.
 | [`docs/architecture/ARCHITECTURE.md`](./docs/architecture/ARCHITECTURE.md) | System map: crates, data flow, key types |
 | [`docs/process/AGENT_COORDINATION.md`](./docs/process/AGENT_COORDINATION.md) | Lease system, branch model, failure modes |
 | [`docs/architecture/TEAM_OF_AGENTS.md`](./docs/architecture/TEAM_OF_AGENTS.md) | Multi-agent design and roles |
+| [`docs/design/A2A_ROADMAP.md`](./docs/design/A2A_ROADMAP.md) | Frontier a2a roadmap — six layers (NATS-primary, RPC, capability discovery, shared KV, deliberation, signed provenance) sequenced from today's primitives to world-class fleet coordination (META-061) |
 | [`docs/research/RESEARCH_PLAN_2026Q3.md`](./docs/research/RESEARCH_PLAN_2026Q3.md) | Current research/roadmap direction |
 | [`docs/research/RESEARCH_EXECUTION_LANES.md`](./docs/research/RESEARCH_EXECUTION_LANES.md) | Lane A vs Lane B research ops + weekly cadence |
 | [`docs/eval/batches/README.md`](./docs/eval/batches/README.md) | Committed audit trail for each paid (Lane B) sweep |
