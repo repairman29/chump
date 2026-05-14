@@ -62,7 +62,7 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_REPO", &root_a_str),
                 ("CHUMP_HOME", &root_a_str),
             ])
-            .args(["gap", "reserve", "--domain", "INFRA", "--title", "race-a"])
+            .args(["gap", "reserve", "--domain", "INFRA", "--title", "race-a", "--force-duplicate"])
             .current_dir(&root_a)
             .output()
             .expect("chump gap reserve session-a")
@@ -84,7 +84,7 @@ fn two_concurrent_reserves_return_distinct_ids() {
                 ("CHUMP_REPO", &root_b_str),
                 ("CHUMP_HOME", &root_b_str),
             ])
-            .args(["gap", "reserve", "--domain", "INFRA", "--title", "race-z"])
+            .args(["gap", "reserve", "--domain", "INFRA", "--title", "race-z", "--force-duplicate"])
             .current_dir(&root_b)
             .output()
             .expect("chump gap reserve session-z")
