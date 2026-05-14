@@ -121,14 +121,18 @@ test.describe('PWA mobile viewport', () => {
 });
 
 test.describe('Chat /task path (tolerates slow local Ollama)', () => {
+  // INFRA-1072: `test.skip()` inside beforeAll is unreliable in current
+  // Playwright — the tests still execute and time out for 5min each instead
+  // of skipping cleanly. Probe Ollama once in beforeAll and use the proven
+  // conditional `test.skip(condition, reason)` form at the top of each test.
+  let ollamaAvailable = false;
+
   test.beforeAll(async () => {
-    const available = await ensureOllamaOrSkip();
-    if (!available) {
-      test.skip();
-    }
+    ollamaAvailable = await ensureOllamaOrSkip();
   });
 
   test('/task creates assistant reply in thread', async ({ page }) => {
+    test.skip(!ollamaAvailable, 'Ollama not available — LLM-dependent test cannot run');
     const title = `pw-task-${Date.now()}`;
     await page.goto('/');
     await page.locator('#msg-input').fill(`/task ${title}`);
@@ -139,6 +143,7 @@ test.describe('Chat /task path (tolerates slow local Ollama)', () => {
   });
 
   test('New chat clears thread after a quick reply', async ({ page }) => {
+    test.skip(!ollamaAvailable, 'Ollama not available — LLM-dependent test cannot run');
     await page.goto('/');
     await page.locator('#msg-input').fill(`/task nt-${Date.now()}`);
     await page.locator('#send-btn').click();
