@@ -223,20 +223,36 @@ resolve_dirty_pr() {
 # that don't have auto-merge armed but still need rebasing.
 cascade_rebase_if_hot
 
-# Pull every open PR with auto-merge armed, sorted oldest-first by PR number.
-# Process BEHIND (cheap update-branch) and DIRTY (heavier rebase) — both block
-# the queue and both are fixable from the action runner.
-behind_candidates=$(chump_gh pr list \
-  --state open \
-  --limit 50 \
-  --json number,mergeStateStatus,autoMergeRequest,isDraft \
-  -q '[.[] | select(.isDraft == false) | select(.autoMergeRequest != null) | select(.mergeStateStatus == "BEHIND") | .number] | sort | .[]')
+# INFRA-1081: prefer reading BEHIND PRs from .chump/github_cache.db (populated
+# by github-webhook-receiver.py + reconcile). Avoids burning GraphQL on every
+# 5-min cron tick. Falls back to direct gh pr list when cache is empty (first
+# run, after cache nuke, or smee/webhook receiver down).
+behind_candidates=""
+dirty_candidates=""
+if [[ -f "$(dirname "$0")/lib/github_cache.sh" ]]; then
+    # shellcheck source=lib/github_cache.sh
+    source "$(dirname "$0")/lib/github_cache.sh"
+    behind_candidates="$(cache_query_behind_prs)"
+    # DIRTY rows are also in the cache — same shape, different mergeable_state.
+    dirty_candidates="$(sqlite3 "$(_cache_db_path)" \
+        "SELECT number FROM pr_state \
+         WHERE mergeable_state='DIRTY' AND auto_merge_enabled=1 AND merged_at IS NULL \
+         ORDER BY number ASC" 2>/dev/null || true)"
+fi
+# Fallback: cache empty (or library missing) → one direct gh pr list call.
+if [[ -z "$behind_candidates" && -z "$dirty_candidates" ]]; then
+    behind_candidates=$(chump_gh pr list \
+      --state open \
+      --limit 50 \
+      --json number,mergeStateStatus,autoMergeRequest,isDraft \
+      -q '[.[] | select(.isDraft == false) | select(.autoMergeRequest != null) | select(.mergeStateStatus == "BEHIND") | .number] | sort | .[]')
 
-dirty_candidates=$(chump_gh pr list \
-  --state open \
-  --limit 50 \
-  --json number,mergeStateStatus,autoMergeRequest,isDraft \
-  -q '[.[] | select(.isDraft == false) | select(.autoMergeRequest != null) | select(.mergeStateStatus == "DIRTY") | .number] | sort | .[]')
+    dirty_candidates=$(chump_gh pr list \
+      --state open \
+      --limit 50 \
+      --json number,mergeStateStatus,autoMergeRequest,isDraft \
+      -q '[.[] | select(.isDraft == false) | select(.autoMergeRequest != null) | select(.mergeStateStatus == "DIRTY") | .number] | sort | .[]')
+fi
 
 if [[ -z "$behind_candidates" && -z "$dirty_candidates" ]]; then
   echo "queue-driver: no BEHIND or DIRTY auto-merge PRs — nothing to do"

@@ -1236,6 +1236,39 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, script, waited_ms, calls_in_window]
 
+  # ── INFRA-1081: GitHub webhook cache ─────────────────────────────────────
+  - kind: webhook_event_received
+    emitter: scripts/ops/github-webhook-receiver.py (INFRA-1081)
+    trigger: a validated GitHub webhook (HMAC-SHA256 pass) was processed.
+      Receiver upserts pr_state in .chump/github_cache.db. Consumers
+      (queue-driver, etc.) read from cache instead of polling.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, event_type, action, pr_number]
+
+  - kind: webhook_event_rejected
+    emitter: scripts/ops/github-webhook-receiver.py (INFRA-1081)
+    trigger: webhook delivery failed HMAC-SHA256 validation or arrived
+      malformed. Receiver returned 401/400. Either operator's secret is wrong,
+      smee/webhook misconfigured, or an unauthorized POST hit the local port.
+    consumers: [fleet-brief, operator-recall, watchdogs]
+    fields_required: [ts, kind, reason, source_ip]
+
+  - kind: cache_drift
+    emitter: scripts/ops/github-cache-reconcile.sh (INFRA-1081)
+    trigger: periodic reconcile (every 5 min) found a pr_state row whose
+      columns differ from a single gh api pulls?state=open call. Catches
+      missed webhook deliveries.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, pr_number, columns]
+
+  - kind: cache_miss
+    emitter: scripts/coord/lib/github_cache.sh cache_lookup_pr (INFRA-1081)
+    trigger: a consumer asked for a PR row that's stale by TTL
+      (CHUMP_CACHE_TTL_S default 60s). cache_lookup falls back to one REST
+      api call, writes the result back, returns the fresh row.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, pr_number, age_s, ttl_s]
+
   # ── INFRA-1065: chump binary auto-refresh ────────────────────────────────
   - kind: chump_binary_refreshed
     emitter: scripts/ops/refresh-chump-binary.sh (INFRA-1065)
