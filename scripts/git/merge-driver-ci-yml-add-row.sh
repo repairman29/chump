@@ -6,9 +6,21 @@
 # both edits are pure additions and can be safely merged by appending.
 #
 # Algorithm:
-#   1. Detect if both branches only added steps (pure-add scenario)
-#   2. If yes, extract new steps from theirs and append to ours
-#   3. If either branch edited existing steps, refuse the merge
+#   1. Detect if BOTH branches only appended steps after a common prefix
+#      (pure-append scenario: first N lines of ours/theirs == ancestor exactly)
+#   2. If yes, append theirs' tail to ours
+#   3. If either branch edited existing steps or inserted in the middle, refuse (exit 1)
+#
+# Bugs fixed (INFRA-1205):
+#   - grep -c exits 1 on 0 matches; "|| echo 0" inside $() also fires, producing
+#     "0\n0" in the variable and "[[ 0\n0 -lt N ]]" syntax error.  Fixed by
+#     putting the fallback assignment outside the subshell: $(…) || var=0
+#   - grep lacked -E; "(name|uses)" was treated as a BRE literal, never matching.
+#   - Naive "diff | grep '^+'" extracted ALL added lines anywhere in theirs and
+#     appended them to the end of ours, corrupting files when theirs had edits
+#     outside the tail (path-filter additions, duplicate if: lines, etc.).
+#     Fixed: verify pure-append by comparing head-N of ours/theirs to ancestor,
+#     then take only the tail beyond ancestor line-count.
 
 set -euo pipefail
 
@@ -23,32 +35,34 @@ if [[ ! -f "$ANCESTOR" ]] || [[ ! -f "$OURS" ]] || [[ ! -f "$THEIRS" ]]; then
   exit 1
 fi
 
-# Count step/job entries (lines starting with '- name:' or '- uses:').
-ancestor_count=$(grep -c '^\s*-\s\+(name|uses):' "$ANCESTOR" || echo 0)
-ours_count=$(grep -c '^\s*-\s\+(name|uses):' "$OURS" || echo 0)
-theirs_count=$(grep -c '^\s*-\s\+(name|uses):' "$THEIRS" || echo 0)
+ancestor_lines=$(wc -l < "$ANCESTOR")
+ours_lines=$(wc -l < "$OURS")
+theirs_lines=$(wc -l < "$THEIRS")
 
-# Pure-add scenario: ours and theirs both >= ancestor (added, didn't delete/edit).
-if [[ $ours_count -lt $ancestor_count ]] || [[ $theirs_count -lt $ancestor_count ]]; then
+# Both branches must have at least as many lines as ancestor (no deletions).
+if [[ $ours_lines -lt $ancestor_lines ]] || [[ $theirs_lines -lt $ancestor_lines ]]; then
   exit 1
 fi
 
-# Read ours content first (before truncating MERGE_FILE).
-ours_content=$(<"$OURS")
+# Pure-append check: the first ancestor_lines of ours and theirs must be
+# identical to ancestor.  Any insertion or edit in the shared prefix means we
+# can't safely auto-merge — fall back to the standard 3-way merge (exit 1).
+if ! diff -q <(head -n "$ancestor_lines" "$OURS")   "$ANCESTOR" > /dev/null 2>&1; then
+  exit 1
+fi
+if ! diff -q <(head -n "$ancestor_lines" "$THEIRS") "$ANCESTOR" > /dev/null 2>&1; then
+  exit 1
+fi
 
-# Extract new lines from theirs (not in ancestor).
-new_lines=$(diff -u "$ANCESTOR" "$THEIRS" 2>/dev/null | grep '^+' | grep -v '^+++' || true)
+# Extract the lines theirs appended beyond the shared ancestor prefix.
+theirs_tail=$(tail -n +"$((ancestor_lines + 1))" "$THEIRS")
 
-if [[ -z "$new_lines" ]]; then
-  # Theirs didn't add anything new. Use ours as-is.
-  echo "$ours_content" > "$MERGE_FILE"
+if [[ -z "$theirs_tail" ]]; then
+  # Theirs appended nothing; keep ours as-is.
   exit 0
 fi
 
-# Append theirs' new lines to ours.
-{
-  echo "$ours_content"
-  echo "$new_lines" | sed 's/^+//'
-} > "$MERGE_FILE"
+# Safe to merge: append theirs' new steps to ours.
+printf '%s\n%s\n' "$(cat "$OURS")" "$theirs_tail" > "$MERGE_FILE"
 
 exit 0

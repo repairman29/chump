@@ -151,6 +151,63 @@ else
   git -C "$FAKE" rebase --abort 2>/dev/null || true
 fi
 
+echo "--- Test 4 (INFRA-1205): zero-match grep — no syntax error ---"
+# When ancestor/ours/theirs have no '- name:' lines the old code produced
+# "[[: 0\n0: syntax error" because grep -c exits 1 on 0 matches and
+# "|| echo 0" fired inside the subshell, capturing "0\n0".
+ANON="$TMPDIR_BASE/anon_ancestor.yml"
+OURS_U="$TMPDIR_BASE/anon_ours.yml"
+THRS_U="$TMPDIR_BASE/anon_theirs.yml"
+printf 'name: CI\n' > "$ANON"
+printf 'name: CI\n' > "$OURS_U"
+printf 'name: CI\n' > "$THRS_U"
+SYNTAX_ERR=$( bash "$DRIVER_SCRIPT" "$ANON" "$OURS_U" "$THRS_U" 2>&1 || true )
+if echo "$SYNTAX_ERR" | grep -q "syntax error"; then
+  fail "grep -c double-output bug still present — syntax error emitted"
+else
+  ok "zero-match grep: no syntax error"
+fi
+
+echo "--- Test 5 (INFRA-1205): path-filter insertion must not corrupt ours ---"
+# The real failure mode from PRs 1689/1754: theirs had path-filter additions
+# (new outputs: lines) inserted mid-file.  The old driver appended ALL diff '+'
+# lines to ours, dumping the path-filter block at EOF.
+ANON5="$TMPDIR_BASE/pf_ancestor.yml"
+OURS5="$TMPDIR_BASE/pf_ours.yml"
+THRS5="$TMPDIR_BASE/pf_theirs.yml"
+cat > "$ANON5" <<'YML'
+jobs:
+  changes:
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      - name: existing
+        run: echo hi
+YML
+# ours only appended a step
+cp "$ANON5" "$OURS5"
+printf '      - name: ours step\n        run: echo ours\n' >> "$OURS5"
+# theirs inserted a new output AND appended a step (mixed change)
+cat > "$THRS5" <<'YML'
+jobs:
+  changes:
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+    steps:
+      - name: existing
+        run: echo hi
+      - name: theirs step
+        run: echo theirs
+YML
+cp "$OURS5" "$OURS5.before"
+bash "$DRIVER_SCRIPT" "$ANON5" "$OURS5" "$THRS5" || true
+if grep -q "scripts:" "$OURS5"; then
+  fail "path-filter line was appended to ours — corruption bug still present"
+else
+  ok "path-filter insertion in theirs did not corrupt ours"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]
