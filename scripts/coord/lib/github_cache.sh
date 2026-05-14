@@ -43,12 +43,28 @@ _cache_db_path() {
 # rows. Empty stdout if the cache is empty or the DB doesn't exist yet.
 cache_query_behind_prs() {
     local db; db="$(_cache_db_path)"
-    [[ -f "$db" ]] || return 0
-    sqlite3 "$db" "SELECT number FROM pr_state \
+    local amb; amb="$(_cache_ambient_path)"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [[ ! -f "$db" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_behind_prs","target":"behind_prs","reason":"db_not_found"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+        return 0
+    fi
+    local result
+    result="$(sqlite3 "$db" "SELECT number FROM pr_state \
         WHERE mergeable_state = 'BEHIND' \
           AND auto_merge_enabled = 1 \
           AND merged_at IS NULL \
-        ORDER BY number ASC" 2>/dev/null || true
+        ORDER BY number ASC" 2>/dev/null || true)"
+    if [[ -z "$result" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_query_behind_prs","target":"behind_prs","reason":"no_rows"}\n' \
+            "$ts" >> "$amb" 2>/dev/null || true
+    else
+        local count; count="$(printf '%s\n' "$result" | wc -l | tr -d ' ')"
+        printf '{"ts":"%s","kind":"cache_hit","helper":"cache_query_behind_prs","target":"behind_prs","age_s":0,"count":%s}\n' \
+            "$ts" "$count" >> "$amb" 2>/dev/null || true
+        printf '%s\n' "$result"
+    fi
 }
 
 # cache_lookup_pr <number> [--max-age-s N]
@@ -76,8 +92,12 @@ cache_lookup_pr() {
         "SELECT raw_payload_json, \
                 CAST((strftime('%s','now') - strftime('%s', fetched_at_local)) AS INTEGER) AS age \
          FROM pr_state WHERE number = $number" 2>/dev/null || true)"
+    local amb; amb="$(_cache_ambient_path)"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     if [[ -z "$row" ]]; then
-        # Pure cache miss — fetch via REST.
+        # Pure cache miss — emit event + fetch via REST.
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_lookup_pr","target":"%s","reason":"not_found"}\n' \
+            "$ts" "$number" >> "$amb" 2>/dev/null || true
         _cache_fetch_and_store "$number"
         return 0
     fi
@@ -86,16 +106,16 @@ cache_lookup_pr() {
     age="${row##*|}"
     local payload="${row%|*}"
     if [[ "$age" =~ ^[0-9]+$ ]] && [[ "$age" -lt "$ttl" ]]; then
-        # Fresh — emit on stdout, rc=0.
+        # Fresh — emit cache_hit event + return on stdout, rc=0.
+        printf '{"ts":"%s","kind":"cache_hit","helper":"cache_lookup_pr","target":"%s","age_s":%s}\n' \
+            "$ts" "$number" "$age" >> "$amb" 2>/dev/null || true
         printf '%s' "$payload"
         return 0
     fi
 
     # Stale — emit cache_miss event + re-fetch.
-    local amb; amb="$(_cache_ambient_path)"
-    printf '{"ts":"%s","kind":"cache_miss","pr_number":%s,"age_s":%s,"ttl_s":%s}\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$number" "$age" "$ttl" \
-        >> "$amb" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"cache_miss","helper":"cache_lookup_pr","target":"%s","reason":"stale","age_s":%s,"ttl_s":%s}\n' \
+        "$ts" "$number" "$age" "$ttl" >> "$amb" 2>/dev/null || true
     _cache_fetch_and_store "$number"
 }
 
@@ -179,8 +199,24 @@ _cache_ambient_path() {
 cache_lookup_checks() {
     local sha="${1:?cache_lookup_checks <head_sha>}"
     local db; db="$(_cache_db_path)"
-    [[ -f "$db" ]] || return 0
-    sqlite3 -separator $'\t' "$db" \
+    local amb; amb="$(_cache_ambient_path)"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [[ ! -f "$db" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_lookup_checks","target":"%s","reason":"db_not_found"}\n' \
+            "$ts" "$sha" >> "$amb" 2>/dev/null || true
+        return 0
+    fi
+    local result
+    result="$(sqlite3 -separator $'\t' "$db" \
         "SELECT name, COALESCE(status,''), COALESCE(conclusion,'') \
-         FROM check_runs WHERE head_sha = '$sha' ORDER BY name" 2>/dev/null || true
+         FROM check_runs WHERE head_sha = '$sha' ORDER BY name" 2>/dev/null || true)"
+    if [[ -z "$result" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_lookup_checks","target":"%s","reason":"no_rows"}\n' \
+            "$ts" "$sha" >> "$amb" 2>/dev/null || true
+    else
+        local count; count="$(printf '%s\n' "$result" | wc -l | tr -d ' ')"
+        printf '{"ts":"%s","kind":"cache_hit","helper":"cache_lookup_checks","target":"%s","age_s":0,"count":%s}\n' \
+            "$ts" "$sha" "$count" >> "$amb" 2>/dev/null || true
+        printf '%s\n' "$result"
+    fi
 }

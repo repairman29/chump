@@ -1115,6 +1115,9 @@ jobs:
       - name: install-gh-shim worktree-safety guard (INFRA-1186)
         run: bash scripts/ci/test-install-gh-shim-worktree-safe.sh
 
+      - name: cache hit/miss event emission — github_cache.sh telemetry (CREDIBLE-064)
+        run: bash scripts/ci/test-cache-event-emission.sh
+
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
 # Why: primary correctness + style fence before anything lands on main.
