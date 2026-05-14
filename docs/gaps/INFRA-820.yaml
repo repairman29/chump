@@ -1,11 +1,11 @@
 - id: INFRA-820
   domain: INFRA
   title: "ZERO-WASTE: pillar starvation — only 1 ZERO-WASTE and 4 CREDIBLE gap pickable at P0/P1; refill both pools"
-  status: open
+  status: done
   priority: P1
   effort: s
   opened_date: '2026-05-11'
-  verified_date: '2026-05-14'
+  closed_pr: 1859
   verified_note: "Pool verified 2026-05-14: ZERO-WASTE=10 pickable, CREDIBLE=28 pickable; audit-priorities exits 0."
   raised_by: cold-water
   raised_in: RED_LETTER#6
