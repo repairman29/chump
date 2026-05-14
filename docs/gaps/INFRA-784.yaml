@@ -1,9 +1,10 @@
 - id: INFRA-784
   domain: INFRA
   title: "RESILIENT: free-tier agent loop inter-request delay — prevent RPM exhaustion on Cerebras/Groq"
-  status: open
+  status: done
   priority: P1
   effort: xs
+  closed_pr: 1447
   acceptance_criteria: |
     Free-tier providers (Cerebras, Groq, Gemini) have tight RPM limits
     (10-30 RPM). The agent loop fires API calls as fast as tools return,
