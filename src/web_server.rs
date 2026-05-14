@@ -4850,6 +4850,99 @@ async fn handle_get_logs(
     })))
 }
 
+/// GET /docs/*path — INFRA-1303: serve repo docs/ directory over HTTP.
+///
+/// Reads the requested path from `<repo_root>/docs/` and returns its contents.
+/// Only `.md`, `.txt`, `.yaml`, `.yml`, `.json`, `.toml` files are served.
+/// Path traversal (../) is rejected with 400. Missing files return 404.
+/// No auth required — docs are non-sensitive read-only content.
+async fn handle_docs_file(Path(path): Path<String>) -> impl axum::response::IntoResponse {
+    use axum::http::{header, StatusCode};
+
+    // Reject path traversal attempts.
+    if path.contains("..") || path.contains('\0') {
+        return (
+            StatusCode::BAD_REQUEST,
+            [(header::CONTENT_TYPE, "text/plain")],
+            "invalid path".to_string(),
+        )
+            .into_response();
+    }
+
+    // Only serve safe text file extensions.
+    let allowed_ext = [".md", ".txt", ".yaml", ".yml", ".json", ".toml"];
+    if !allowed_ext.iter().any(|ext| path.ends_with(ext)) {
+        return (
+            StatusCode::FORBIDDEN,
+            [(header::CONTENT_TYPE, "text/plain")],
+            "only text/doc files served".to_string(),
+        )
+            .into_response();
+    }
+
+    let repo_root = crate::repo_path::repo_root();
+    let target = repo_root.join("docs").join(&path);
+
+    // Canonicalize to confirm the file is still inside docs/.
+    let docs_root = match repo_root.join("docs").canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                [(header::CONTENT_TYPE, "text/plain")],
+                "docs dir not found".to_string(),
+            )
+                .into_response()
+        }
+    };
+    let canonical = match target.canonicalize() {
+        Ok(p) => p,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                [(header::CONTENT_TYPE, "text/plain")],
+                format!("not found: {path}"),
+            )
+                .into_response()
+        }
+    };
+    if !canonical.starts_with(&docs_root) {
+        return (
+            StatusCode::BAD_REQUEST,
+            [(header::CONTENT_TYPE, "text/plain")],
+            "path outside docs/".to_string(),
+        )
+            .into_response();
+    }
+
+    let content = match std::fs::read_to_string(&canonical) {
+        Ok(s) => s,
+        Err(_) => {
+            return (
+                StatusCode::NOT_FOUND,
+                [(header::CONTENT_TYPE, "text/plain")],
+                format!("not found: {path}"),
+            )
+                .into_response()
+        }
+    };
+
+    let content_type = if path.ends_with(".json") {
+        "application/json"
+    } else if path.ends_with(".yaml") || path.ends_with(".yml") {
+        "text/yaml"
+    } else {
+        "text/plain; charset=utf-8" // .md, .txt, .toml — raw text
+    };
+
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, content_type)],
+        content,
+    )
+        .into_response()
+}
+
 /// POST /api/gap/work/{id}/retry?from_phase=<phase> — INFRA-1013: retry workflow from a phase.
 ///
 /// Tracks consecutive failures per (gap_id, phase). After 3 failures, returns 409 with
@@ -5593,6 +5686,9 @@ fn build_api_router() -> Router {
         .route("/api/gap/work/{id}", post(handle_gap_work))
         .route("/api/gap/work/{id}/retry", post(handle_gap_work_retry))
         .route("/api/logs/{request_id}", get(handle_get_logs))
+        // INFRA-1303: serve repo docs/ directory as /docs/* — markdown files
+        // readable in browser and linkable from within the PWA.
+        .route("/docs/{*path}", get(handle_docs_file))
         // CREDIBLE-023: secure response headers for all /api/gap/* routes
         .layer(axum::middleware::from_fn(gap_security_headers_middleware))
 }
