@@ -1866,6 +1866,15 @@ if [[ -z "$EXISTING_PR" && "${CHUMP_ALLOW_STAGING_ONLY_PR:-0}" != "1" ]]; then
 fi
 
 if [[ -z "$EXISTING_PR" ]]; then
+    # INFRA-1219: dedup gate — refuse if an open PR already exists for the
+    # same gap-ID in title. Catches the 80% case where two agents race to
+    # ship the same gap (57 of 79 closed-not-merged PRs in 14d were dups).
+    _DEDUP_GATE="$REPO_ROOT/scripts/coord/pr-create-gate.sh"
+    if [[ -x "$_DEDUP_GATE" && -n "${GAP_ID:-}" && "${CHUMP_PR_DEDUP_DISABLE:-0}" != "1" ]]; then
+        if ! "$_DEDUP_GATE" "$GAP_ID"; then
+            _bm_fail "pr-create" 19 "INFRA-1219 dedup gate refused — open PR already exists for $GAP_ID"
+        fi
+    fi
     stage_start "gh pr create"
     # Build a body from the gap IDs cited in commits since base diverged.
     COMMIT_LOG=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline 2>/dev/null | head -20)
