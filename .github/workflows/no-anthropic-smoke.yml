@@ -1,0 +1,53 @@
+# no-anthropic-smoke.yml — CREDIBLE-046
+#
+# Proves chump's coordination layer is Anthropic-independent on every PR.
+# This enforces the "chump-first" doctrine: Claude is one LLM backend among
+# many — the coordination substrate (gap management, state.db, YAML mirrors,
+# ambient events) must work without any Anthropic credentials present.
+#
+# What is verified:
+#   • chump gap list    — reads state.db, zero API calls
+#   • chump gap reserve — writes state.db + YAML, zero API calls
+#   • chump gap show    — reads state, zero API calls
+#   • chump gap ship    — flips status, mirrors YAML, zero API calls
+#
+# Intentionally does NOT test worker spawn (requires a running Ollama/opencode
+# backend not available in GitHub-hosted runners). That tier is covered by the
+# local e2e suite.
+
+name: no-anthropic-smoke
+
+on:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  no-anthropic-smoke:
+    name: chump-first contract — coordination layer works without Anthropic
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+      # Hard-unset Anthropic credentials for this entire job.
+      ANTHROPIC_API_KEY: ""
+      CLAUDE_CODE_OAUTH_TOKEN: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build chump binary
+        run: cargo build --bin chump 2>&1 | tail -5
+
+      - name: chump-first smoke — gap list/reserve/ship without Anthropic (CREDIBLE-046)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+          CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
+          CHUMP_SKIP_SUPERSEDED_CLOSE=1 \
+          CHUMP_SHIP_NO_AUTOSTAGE=1 \
+            bash scripts/ci/test-no-anthropic-smoke.sh
