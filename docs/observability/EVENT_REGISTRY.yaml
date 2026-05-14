@@ -1807,6 +1807,24 @@ events:
     trigger: branch has commits since base but ALL are INFRA-472 auto-staging — refuses pr create
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, branch, commits]
+
+  # ── INFRA-1219: PR create dedup gate ───────────────────────────────────────
+  - kind: pr_dedup_blocked
+    emitter: scripts/coord/pr-create-gate.sh (INFRA-1219)
+    trigger: an open PR already exists for the same gap-ID; gh pr create refused
+    consumers: [fleet-brief, waste-tally, operator-recall]
+    fields_required: [ts, kind, source, gap, dup_kind, dup_pr]
+  - kind: pr_dedup_bypassed
+    emitter: scripts/coord/pr-create-gate.sh (INFRA-1219)
+    trigger: CHUMP_PR_DEDUP_BYPASS=1 with --justification; PR creation proceeds
+      despite an existing duplicate (audit-logged with justification)
+    consumers: [audit-log, operator-recall]
+    fields_required: [ts, kind, source, gap, dup_kind, dup_pr, justification]
+  - kind: pr_dedup_bypass_rejected
+    emitter: scripts/coord/pr-create-gate.sh (INFRA-1219)
+    trigger: bypass env var set but no --justification supplied; gate still refuses
+    consumers: [operator-recall]
+    fields_required: [ts, kind, source, gap, dup_kind, dup_pr, reason]
   # ── INFRA-1063: cargo build-dir lock contention telemetry ─────────────────
   - kind: cargo_lock_wait
     emitter: scripts/coord/bot-merge.sh (_run_cargo_with_lock_detect — INFRA-1063)
