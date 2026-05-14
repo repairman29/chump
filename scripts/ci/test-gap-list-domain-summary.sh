@@ -43,15 +43,16 @@ export CHUMP_WORKTREE_ROOT="$TMP"
 export CHUMP_BINARY_STALENESS_CHECK=0
 
 # Seed: 3 INFRA + 1 META + 5 SPIKE rows. SPIKE = 5/9 = 55% of total — over
-# the 50% threshold, so the ALERT must fire. Use --force to bypass any
-# title-similarity overlap warning (the titles intentionally repeat shape
-# across rows for the leak-fixture analog).
+# the 50% threshold, so the ALERT must fire. Use --force to bypass the
+# FLEET-029 ambient overlap check and --force-duplicate (INFRA-1149) to bypass
+# the title-similarity check (the titles intentionally repeat shape across rows
+# for the leak-fixture analog).
 for i in 1 2 3; do
-    "$CHUMP_BIN" gap reserve --domain INFRA --title "isolated-test-fixture-row-$i-$$" --priority P2 --effort xs --force >/dev/null 2>&1
+    "$CHUMP_BIN" gap reserve --domain INFRA --title "isolated-test-fixture-row-$i-$$" --priority P2 --effort xs --force --force-duplicate >/dev/null 2>&1
 done
-"$CHUMP_BIN" gap reserve --domain META --title "isolated-meta-fixture-$$" --priority P2 --effort xs --force >/dev/null 2>&1
+"$CHUMP_BIN" gap reserve --domain META --title "isolated-meta-fixture-$$" --priority P2 --effort xs --force --force-duplicate >/dev/null 2>&1
 for i in 1 2 3 4 5; do
-    "$CHUMP_BIN" gap reserve --domain SPIKE --title "spike-test-$i-$$" --priority P2 --effort xs --force >/dev/null 2>&1
+    "$CHUMP_BIN" gap reserve --domain SPIKE --title "spike-test-$i-$$" --priority P2 --effort xs --force --force-duplicate >/dev/null 2>&1
 done
 
 # ── Test 1: SPIKE hidden by default ─────────────────────────────────────────
