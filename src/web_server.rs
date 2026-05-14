@@ -2665,6 +2665,177 @@ async fn handle_pr_detail(
     Ok(Json(payload))
 }
 
+// ── PRODUCT-091: ambient event viewer endpoints ───────────────────────────────
+
+fn ambient_log_path() -> PathBuf {
+    std::env::var("CHUMP_AMBIENT_LOG")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| {
+            repo_path::runtime_base()
+                .join(".chump-locks")
+                .join("ambient.jsonl")
+        })
+}
+
+/// GET /api/ambient/recent?n=100&kind=fleet_wedge — returns last N ambient events.
+/// Optional `kind` param filters to a specific event kind.
+/// PRODUCT-091.
+async fn handle_ambient_recent(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let n: usize = params
+        .get("n")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100)
+        .min(1000);
+    let kind_filter: Option<String> = params.get("kind").cloned();
+
+    let path = ambient_log_path();
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let events: Vec<serde_json::Value> = content
+        .lines()
+        .rev()
+        .filter_map(|line| {
+            let v: serde_json::Value = serde_json::from_str(line).ok()?;
+            if let Some(ref k) = kind_filter {
+                let event_kind = v
+                    .get("kind")
+                    .or_else(|| v.get("event"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("");
+                if event_kind != k.as_str() {
+                    return None;
+                }
+            }
+            Some(v)
+        })
+        .take(n)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
+    Ok(Json(
+        serde_json::json!({ "events": events, "count": events.len() }),
+    ))
+}
+
+/// GET /api/ambient/stream — SSE endpoint that tails ambient.jsonl and emits new events.
+/// Polls every 500ms for new lines. Sends existing last-50 events on connect, then live tail.
+/// PRODUCT-091.
+async fn handle_ambient_stream(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let kind_filter: Option<String> = params.get("kind").cloned();
+
+    let path = ambient_log_path();
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+
+    tokio::spawn(async move {
+        // Seed: send the last 50 lines from existing file content.
+        let seed_content = std::fs::read_to_string(&path).unwrap_or_default();
+        let seed_lines: Vec<&str> = seed_content
+            .lines()
+            .rev()
+            .take(50)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        let mut file_offset: u64 = seed_content.len() as u64;
+
+        for line in &seed_lines {
+            if line.is_empty() {
+                continue;
+            }
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                if let Some(ref k) = kind_filter {
+                    let ek = v
+                        .get("kind")
+                        .or_else(|| v.get("event"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("");
+                    if ek != k.as_str() {
+                        continue;
+                    }
+                }
+                let data = line.to_string();
+                if tx
+                    .send(Ok(Event::default().event("ambient").data(data)))
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        }
+
+        // Tail: poll for new lines appended after seed.
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let Ok(mut file) = std::fs::File::open(&path) else {
+                continue;
+            };
+            let new_len = file.metadata().map(|m| m.len()).unwrap_or(file_offset);
+            if new_len <= file_offset {
+                continue;
+            }
+
+            use std::io::{Read, Seek, SeekFrom};
+            if file.seek(SeekFrom::Start(file_offset)).is_err() {
+                continue;
+            }
+            let mut buf = String::new();
+            if file.read_to_string(&mut buf).is_err() {
+                continue;
+            }
+            file_offset = new_len;
+
+            for line in buf.lines() {
+                if line.is_empty() {
+                    continue;
+                }
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                    if let Some(ref k) = kind_filter {
+                        let ek = v
+                            .get("kind")
+                            .or_else(|| v.get("event"))
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("");
+                        if ek != k.as_str() {
+                            continue;
+                        }
+                    }
+                    let data = line.to_string();
+                    if tx
+                        .send(Ok(Event::default().event("ambient").data(data)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
 /// GET /api/fleet-status — Active agent sessions read from .chump-locks/*.json lease files.
 /// Returns `{sessions: [{session_id, gap_id, gap_title, gap_priority, gap_effort, branch,
 ///   worktree_path, taken_at, expires_at, heartbeat_at, pr_number, pr_state, ci_status}],
@@ -3906,6 +4077,8 @@ fn build_api_router() -> Router {
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),
         )
+        .route("/api/ambient/stream", get(handle_ambient_stream))
+        .route("/api/ambient/recent", get(handle_ambient_recent))
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
         .route("/api/pr/{number}", get(handle_pr_detail))
