@@ -864,6 +864,42 @@ cat $(git rev-parse --absolute-git-dir)/gitdir   # should be /private/tmp/chump-
 
 ---
 
+## cargo test must not inherit parent shell git env (INFRA-1057)
+
+**Problem:** When `cargo test --bin chump --tests` is run from a linked `/tmp/` worktree,
+tests that spawn git subprocesses (e.g. `make_repo()`, `scan_rescues()`, git init fixtures)
+inherit `GIT_DIR` / `GIT_WORK_TREE` / `GIT_COMMON_DIR` / `GIT_INDEX_FILE` from the parent
+shell. This causes those git calls to operate on the main repo's `.git/config` instead of
+the isolated tempdir, producing config-lock errors, identity-guard failures, or wrong
+results (e.g. rescue-tally counting commits from the main repo instead of 0).
+
+**Rule:** Any test or production function that spawns a git subprocess with `Command::new("git")`
+and intends to operate on a specific directory must clear the four git env vars:
+
+```rust
+Command::new("git")
+    .args(...)
+    .current_dir(&some_tempdir)
+    .env_remove("GIT_DIR")
+    .env_remove("GIT_WORK_TREE")
+    .env_remove("GIT_COMMON_DIR")
+    .env_remove("GIT_INDEX_FILE")
+    // Only for commits using t@t.t / ci@chump.test fixture identities:
+    .env("CHUMP_GIT_IDENTITY_CHECK", "0")
+    .output()
+```
+
+**CI gate:** `scripts/ci/test-cargo-tests-from-worktree.sh` spawns a fresh linked
+worktree and runs the targeted test modules; it must pass on every PR.
+
+**Symptoms of missing env_remove:**
+- `git init` locks `/Users/.../Projects/Chump/.git/config` instead of the tempdir
+- `rescue_tally::infra667_count_rescues_returns_zero_on_empty_repo` returns non-zero
+- version tests fail with "git config failed" or INFRA-787 identity guard error
+- Tests pass in isolation but fail when run from a linked `/tmp/` worktree
+
+---
+
 ## Stale lease cleanup
 
 **Problem:** When `bot-merge.sh` fails mid-run (test failure, rebase conflict, OOM),
