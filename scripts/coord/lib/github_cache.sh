@@ -170,3 +170,17 @@ _cache_ambient_path() {
     root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
     printf '%s/.chump-locks/ambient.jsonl' "$root"
 }
+
+# INFRA-1107: cache_lookup_checks <head_sha>
+#   stdout: tab-separated lines `<name>\t<status>\t<conclusion>` per cached
+#           check_run for the given head SHA. Empty on miss.
+#   Used by bot-merge to read CI status from sqlite instead of polling
+#   `gh api repos/X/commits/SHA/check-runs`.
+cache_lookup_checks() {
+    local sha="${1:?cache_lookup_checks <head_sha>}"
+    local db; db="$(_cache_db_path)"
+    [[ -f "$db" ]] || return 0
+    sqlite3 -separator $'\t' "$db" \
+        "SELECT name, COALESCE(status,''), COALESCE(conclusion,'') \
+         FROM check_runs WHERE head_sha = '$sha' ORDER BY name" 2>/dev/null || true
+}

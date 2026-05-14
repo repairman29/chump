@@ -59,7 +59,7 @@ PORT = int(os.environ.get("CHUMP_WEBHOOK_PORT", "9097"))
 
 
 def _ensure_schema(conn: sqlite3.Connection) -> None:
-    """Create pr_state table + index if missing. Idempotent."""
+    """Create pr_state + check_runs tables + indexes if missing. Idempotent."""
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS pr_state (
@@ -80,9 +80,54 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS pr_state_behind_armed
             ON pr_state(mergeable_state, auto_merge_enabled);
+
+        -- INFRA-1107: per (head_sha, check_name) CI status, populated by
+        -- check_suite.completed + workflow_run.completed webhook events.
+        -- Unlocks bot-merge's per-PR check_runs polling.
+        CREATE TABLE IF NOT EXISTS check_runs (
+            head_sha          TEXT NOT NULL,
+            name              TEXT NOT NULL,
+            status            TEXT,
+            conclusion        TEXT,
+            started_at        TEXT,
+            completed_at      TEXT,
+            fetched_at_local  TEXT NOT NULL,
+            PRIMARY KEY (head_sha, name)
+        );
+        CREATE INDEX IF NOT EXISTS check_runs_sha
+            ON check_runs(head_sha);
         """
     )
     conn.commit()
+
+
+def _upsert_check_runs(conn: sqlite3.Connection, head_sha: str, runs: list) -> int:
+    """INFRA-1107: write/update check_runs rows for a given head SHA."""
+    if not head_sha or not runs:
+        return 0
+    now = _now_iso()
+    n = 0
+    for r in runs:
+        name = r.get("name") or r.get("check_run", {}).get("name")
+        if not name:
+            continue
+        conn.execute(
+            """
+            INSERT INTO check_runs (head_sha, name, status, conclusion, started_at, completed_at, fetched_at_local)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(head_sha, name) DO UPDATE SET
+                status           = excluded.status,
+                conclusion       = excluded.conclusion,
+                started_at       = excluded.started_at,
+                completed_at     = excluded.completed_at,
+                fetched_at_local = excluded.fetched_at_local
+            """,
+            (head_sha, name, r.get("status"), r.get("conclusion"),
+             r.get("started_at"), r.get("completed_at"), now),
+        )
+        n += 1
+    conn.commit()
+    return n
 
 
 def _emit_ambient(event: dict) -> None:
@@ -255,12 +300,41 @@ class Handler(BaseHTTPRequestHandler):
                             (_now_iso(), pr.get("number")),
                         )
                     conn.commit()
+                    # INFRA-1107: cache check_runs per head SHA so bot-merge can
+                    # read CI status from sqlite instead of polling gh api.
+                    # The check_suite payload's `check_runs` URL points at a list;
+                    # the workflow_run payload has `jobs` with similar shape. For
+                    # check_suite, we use the head_sha + the workflow conclusion
+                    # as a single check-row (named after the workflow).
+                    head_sha = suite.get("head_sha") or suite.get("head_commit", {}).get("id")
+                    runs_to_cache = []
+                    if event_type == "check_suite":
+                        # check_suite payload has aggregate status/conclusion;
+                        # use the workflow name(s) as check_run names.
+                        name = suite.get("app", {}).get("slug") or "check_suite"
+                        runs_to_cache.append({
+                            "name": name,
+                            "status": suite.get("status"),
+                            "conclusion": suite.get("conclusion"),
+                            "started_at": suite.get("created_at"),
+                            "completed_at": suite.get("updated_at"),
+                        })
+                    elif event_type == "workflow_run":
+                        runs_to_cache.append({
+                            "name": suite.get("name") or "workflow_run",
+                            "status": suite.get("status"),
+                            "conclusion": suite.get("conclusion"),
+                            "started_at": suite.get("run_started_at"),
+                            "completed_at": suite.get("updated_at"),
+                        })
+                    cached_n = _upsert_check_runs(conn, head_sha or "", runs_to_cache)
                     _emit_ambient({
                         "ts": _now_iso(),
                         "kind": "webhook_event_received",
                         "event_type": event_type,
                         "action": payload.get("action"),
                         "pr_number": None,
+                        "check_runs_cached": cached_n,
                     })
                 elif event_type == "push":
                     if payload.get("ref") == "refs/heads/main":
