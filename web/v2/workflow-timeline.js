@@ -23,12 +23,16 @@ const PHASES = [
   { id: 'ship', label: 'Ship' },
 ];
 
+// INFRA-1013: max consecutive retries per phase before button is disabled.
+const MAX_RETRIES = 3;
+
 class ChumpWorkflowTimeline extends HTMLElement {
   static get observedAttributes() { return ['gap-id']; }
   #es = null;
-  #phases = new Map();   // phase_id → { status, started_at, ended_at, message, exit_code }
+  #phases = new Map();   // phase_id → { status, started_at, ended_at, message, exit_code, stdout_tail }
   #tickTimer = null;
   #doneInfo = null;
+  #retryCounts = new Map(); // phase_id → retry count
 
   connectedCallback() {
     this.#render();
@@ -46,6 +50,7 @@ class ChumpWorkflowTimeline extends HTMLElement {
     if (name === 'gap-id' && oldV !== newV) {
       this.#close();
       this.#phases.clear();
+      this.#retryCounts.clear();
       this.#doneInfo = null;
       this.#connect();
     }
@@ -92,6 +97,7 @@ class ChumpWorkflowTimeline extends HTMLElement {
       status,
       message: evt.message || prev.message,
       exit_code: evt.exit_code ?? prev.exit_code,
+      stdout_tail: evt.stdout_tail ?? prev.stdout_tail,
     };
     if (status === 'done' || status === 'failed') {
       next.ended_at = evt.ts || new Date().toISOString();
@@ -99,6 +105,36 @@ class ChumpWorkflowTimeline extends HTMLElement {
     if (!prev.started_at) next.started_at = evt.ts || new Date().toISOString();
     this.#phases.set(id, next);
     this.#renderRows();
+  }
+
+  // INFRA-1013: trigger retry from a phase via POST /api/gap/work/{id}/retry?from_phase=<p>
+  async #retryPhase(phaseId) {
+    const gap = this.getAttribute('gap-id');
+    if (!gap) return;
+    const count = (this.#retryCounts.get(phaseId) || 0) + 1;
+    this.#retryCounts.set(phaseId, count);
+    this.#renderRows(); // update button state immediately
+    try {
+      const resp = await fetch(
+        `/api/gap/work/${encodeURIComponent(gap)}/retry?from_phase=${encodeURIComponent(phaseId)}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } }
+      );
+      const body = await resp.json();
+      if (body.status === 'max_retries_exceeded') {
+        // Show "manual intervention" state — button already disabled from count check
+        const state = this.#phases.get(phaseId) || {};
+        this.#phases.set(phaseId, { ...state, message: 'Max retries exceeded — manual intervention required' });
+        this.#renderRows();
+      } else {
+        // Retry started — reset phase to running to show progress
+        const state = this.#phases.get(phaseId) || {};
+        this.#phases.set(phaseId, { ...state, status: 'running', ended_at: undefined });
+        this.#renderRows();
+        if (!this.#es) this.#connect(); // re-subscribe to stream if closed
+      }
+    } catch (e) {
+      console.error('[workflow-timeline] retry failed:', e);
+    }
   }
 
   #durationLabel(p) {
@@ -151,14 +187,40 @@ class ChumpWorkflowTimeline extends HTMLElement {
     const ic = this.#iconFor(status);
     const dur = state ? this.#durationLabel(state) : '';
     const msg = state?.message ? `<span class="wf-msg">${this.#esc(state.message).slice(0, 120)}</span>` : '';
+
+    // INFRA-1013: retry controls for failed phases
+    let failureExtra = '';
+    if (status === 'failed') {
+      const gap = this.getAttribute('gap-id') || '';
+      const retryCount = this.#retryCounts.get(p.id) || 0;
+      const exhausted = retryCount >= MAX_RETRIES;
+      const retryBtn = exhausted
+        ? `<button class="wf-retry" disabled title="Manual intervention recommended after ${MAX_RETRIES} retries">Retry (exhausted)</button>`
+        : `<button class="wf-retry" data-phase="${this.#esc(p.id)}" onclick="this.closest('chump-workflow-timeline').retryPhase('${this.#esc(p.id)}')">Retry phase</button>`;
+      const stdoutSection = state?.stdout_tail
+        ? `<details class="wf-stdout"><summary>Last output</summary><pre>${this.#esc(state.stdout_tail)}</pre></details>`
+        : '';
+      const requestId = state?.request_id || '';
+      const logLink = requestId
+        ? `<a class="wf-log-link" href="/api/logs/${encodeURIComponent(requestId)}" target="_blank">View full log</a>`
+        : '';
+      failureExtra = `<div class="wf-fail-actions">${retryBtn}${logLink}</div>${stdoutSection}`;
+    }
+
     return `
       <li class="wf-phase wf-phase-${ic.kind}">
         <span class="wf-phase-icon">${ic.icon}</span>
         <span class="wf-phase-name">${p.label}</span>
         <span class="wf-phase-dur">${dur}</span>
         ${msg}
+        ${failureExtra}
       </li>
     `;
+  }
+
+  // Public method for inline onclick handlers
+  retryPhase(phaseId) {
+    this.#retryPhase(phaseId);
   }
 
   #showError(msg) {
