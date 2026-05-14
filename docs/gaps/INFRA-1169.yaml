@@ -1,0 +1,13 @@
+- id: INFRA-1169
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh detects missing worktree before health-tmp loop spam (exit code 144 on reaped worktree)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "bot-merge.sh checks worktree dir exists immediately after REPO_ROOT is set; exits 17 with clean single-message error if missing"
+    - "Emits kind=bot_merge_aborted_no_worktree via chump ambient emit with gap and worktree_path fields"
+    - "EVENT_REGISTRY.yaml registers bot_merge_aborted_no_worktree"
+    - "bot-merge.sh checks target gap status before proceeding; exits 0 cleanly if gap already status=done"
+    - "scripts/ci/test-bot-merge-preflight.sh: 3 checks pass (exit-17 guard, clean output, registry)"
+  closed_pr: null
