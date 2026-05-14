@@ -4943,6 +4943,33 @@ async fn handle_docs_file(Path(path): Path<String>) -> impl axum::response::Into
         .into_response()
 }
 
+/// GET /api/docs — EFFECTIVE-012: serve OpenAPI 3.0 spec for client discovery.
+///
+/// Reads `docs/api/openapi.yaml` relative to the repo root and returns it with
+/// `Content-Type: application/yaml`. No auth required (read-only public spec).
+/// Validated by `openapi-generator validate`.
+async fn handle_api_docs() -> impl axum::response::IntoResponse {
+    use axum::http::{header, StatusCode};
+
+    let repo_root = crate::repo_path::repo_root();
+    let spec_path = repo_root.join("docs").join("api").join("openapi.yaml");
+
+    match std::fs::read_to_string(&spec_path) {
+        Ok(content) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/yaml")],
+            content,
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/plain")],
+            "openapi.yaml not found — ensure docs/api/openapi.yaml exists in the repo".to_string(),
+        )
+            .into_response(),
+    }
+}
+
 /// POST /api/gap/work/{id}/retry?from_phase=<phase> — INFRA-1013: retry workflow from a phase.
 ///
 /// Tracks consecutive failures per (gap_id, phase). After 3 failures, returns 409 with
@@ -5686,6 +5713,8 @@ fn build_api_router() -> Router {
         .route("/api/gap/work/{id}", post(handle_gap_work))
         .route("/api/gap/work/{id}/retry", post(handle_gap_work_retry))
         .route("/api/logs/{request_id}", get(handle_get_logs))
+        // EFFECTIVE-012: serve OpenAPI spec for client discovery.
+        .route("/api/docs", get(handle_api_docs))
         // INFRA-1303: serve repo docs/ directory as /docs/* — markdown files
         // readable in browser and linkable from within the PWA.
         .route("/docs/{*path}", get(handle_docs_file))
