@@ -43,3 +43,19 @@ docs/gaps/*.yaml merge=gap-yaml-add-line
 # Letting git do it once-and-for-all.
 docs/observability/EVENT_REGISTRY.yaml merge=union
 scripts/ci/env-vars-internal.txt merge=union
+
+# INFRA-1201: web/v2/index.html is a PWA append-only hot file. Each new PWA
+# feature (PRODUCT-NNN / INFRA-1011/1013-style) adds a <script src="X.js">
+# entry to the script-loading block + (optionally) a <chump-X></chump-X>
+# custom-element placement before the closing </body>. Both are append-only
+# zones; concurrent feature PRs hit the same blocks and produce textual
+# conflicts even though the additions don't actually overlap semantically.
+#
+# As of 2026-05-14 hot-file audit: 3 simultaneous PRs (#1827 INFRA-1011,
+# #1860 PRODUCT-090, plus others) were stuck DIRTY for hours on this file.
+#
+# git's built-in `merge=union` concatenates unique lines from both sides.
+# Same approach already validated for EVENT_REGISTRY.yaml + env-vars-internal.txt.
+# Risk mitigation: pre-commit/duplicate-script-tag guard (INFRA-1201) catches
+# the rare case where two PRs add THE SAME <script src="X.js"> independently.
+web/v2/index.html merge=union

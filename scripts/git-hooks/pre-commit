@@ -1713,6 +1713,23 @@ if [ -x "$MAIN_WT_CONFIG_HOOK" ]; then
 fi
 
 # ------------------------------------------------------------------
+# 17a. PWA index.html uniqueness guard (INFRA-1201, 2026-05-14)
+# ------------------------------------------------------------------
+# web/v2/index.html is marked merge=union in .gitattributes so concurrent
+# PWA-feature PRs auto-merge their script-tag + custom-element additions.
+# Side-effect: identical lines from two PRs both land. This guard catches
+# duplicate <script src="X.js"> and <chump-X></chump-X> placement lines.
+# Bypass: CHUMP_PWA_INDEX_UNIQ_CHECK=0
+if [ "${CHUMP_PWA_INDEX_UNIQ_CHECK:-1}" != "0" ]; then
+    PWA_UNIQ_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-pwa-index-uniq.sh"
+    if [ -x "$PWA_UNIQ_HOOK" ]; then
+        if ! "$PWA_UNIQ_HOOK"; then
+            exit 1
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 17. Branch-protection / workflow-job alignment audit (CREDIBLE-058)
 # ------------------------------------------------------------------
 # Fires ONLY when .github/workflows/ci.yml (or other workflow files) are
