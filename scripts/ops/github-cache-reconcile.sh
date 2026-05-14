@@ -23,7 +23,7 @@ REPO="$(resolve_main_worktree "$0")"
 cd "$REPO" || exit 1
 
 CACHE_DB="${CHUMP_CACHE_DB:-$REPO/.chump/github_cache.db}"
-AMBIENT="$REPO/.chump-locks/ambient.jsonl"
+AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
 MODE="apply"
 case "${1:-}" in
     --check) MODE="check" ;;
@@ -41,10 +41,15 @@ if [[ -z "$REPO_NWO" ]]; then
 fi
 
 PRS_JSON="$(gh api "repos/$REPO_NWO/pulls?state=open&per_page=100" 2>/dev/null)"
-if [[ -z "$PRS_JSON" || "$PRS_JSON" == "[]" ]]; then
-    echo "cache-reconcile: no open PRs"
+if [[ -z "$PRS_JSON" ]]; then
+    # API call failed entirely — bail (different from "no open PRs").
+    echo "cache-reconcile: gh api returned empty — exit"
     exit 0
 fi
+# INFRA-1106: don't early-exit on PRS_JSON=="[]" — the cold-start block in
+# the python heredoc still has work to do (warming pr_state rows whose
+# mergeable_state is empty, even when the bulk list returns no rows).
+[[ "$PRS_JSON" == "[]" ]] && PRS_JSON="[]"
 
 DRIFT_COUNT=0
 python3 - "$CACHE_DB" "$AMBIENT" "$MODE" "$PRS_JSON" <<'PY'
@@ -129,4 +134,82 @@ for pr in prs:
             conn.commit()
 
 print(f"cache-reconcile: mode={mode} open_prs={len(prs)} drift_rows={drift_count}")
+
+# INFRA-1106: cold-start fill — bulk /pulls?state=open omits mergeable_state
+# (GitHub computes it asynchronously). For rows where it's empty, do bounded
+# per-PR REST fetches. Each fetch is 1 REST point; bounded by env var.
+import os, subprocess
+max_fetch = int(os.environ.get("CHUMP_CACHE_RECONCILE_MAX_FETCH", "20"))
+if mode == "apply" and max_fetch > 0:
+    cold_rows = conn.execute(
+        "SELECT number FROM pr_state "
+        "WHERE (mergeable_state IS NULL OR mergeable_state = '') "
+        "  AND merged_at IS NULL "
+        "ORDER BY number ASC LIMIT ?",
+        (max_fetch,),
+    ).fetchall()
+    if cold_rows:
+        try:
+            repo_nwo = subprocess.check_output(
+                ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+                text=True,
+            ).strip()
+        except Exception:
+            repo_nwo = ""
+        warmed = 0
+        for (cold_n,) in cold_rows:
+            if not repo_nwo:
+                break
+            try:
+                r = subprocess.run(
+                    ["gh", "api", f"repos/{repo_nwo}/pulls/{cold_n}"],
+                    capture_output=True, text=True, timeout=20,
+                )
+                if r.returncode != 0:
+                    continue
+                pr_full = json.loads(r.stdout)
+            except Exception:
+                continue
+            api_ms = pr_full.get("mergeable_state")
+            if not api_ms:
+                continue
+            conn.execute("""
+            INSERT INTO pr_state VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(number) DO UPDATE SET
+                mergeable_state=excluded.mergeable_state,
+                head_sha=excluded.head_sha,
+                auto_merge_enabled=excluded.auto_merge_enabled,
+                draft=excluded.draft,
+                merged_at=excluded.merged_at,
+                updated_at_api=excluded.updated_at_api,
+                fetched_at_local=excluded.fetched_at_local,
+                raw_payload_json=excluded.raw_payload_json
+            """, (
+                cold_n,
+                (pr_full.get("head") or {}).get("ref"),
+                (pr_full.get("head") or {}).get("sha"),
+                (pr_full.get("base") or {}).get("ref"),
+                (pr_full.get("base") or {}).get("sha"),
+                api_ms,
+                1 if pr_full.get("auto_merge") else 0,
+                1 if pr_full.get("draft") else 0,
+                pr_full.get("merged_at"),
+                pr_full.get("title"),
+                (pr_full.get("user") or {}).get("login"),
+                pr_full.get("updated_at") or now,
+                now,
+                json.dumps(pr_full),
+            ))
+            conn.commit()
+            warmed += 1
+            try:
+                with open(ambient, "a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "ts": now, "kind": "cache_warmed",
+                        "pr_number": cold_n, "mergeable_state": api_ms,
+                    }, separators=(",", ":")) + "\n")
+            except Exception:
+                pass
+        if warmed:
+            print(f"cache-reconcile: warmed {warmed} cold rows (mergeable_state filled)")
 PY
