@@ -99,5 +99,49 @@ grep -q 'kind: gh_self_throttled' "$REPO_ROOT/docs/observability/EVENT_REGISTRY.
     || fail "EVENT_REGISTRY missing gh_self_throttled"
 ok "EVENT_REGISTRY registers gh_self_throttled"
 
+# ── Test 6: INFRA-1103 — shim path enforces the same throttle ───────────────
+# Bare `gh ...` goes through scripts/coord/lib/gh-shim/gh, which records
+# telemetry. Before INFRA-1103 it skipped the throttle entirely — every
+# fleet script that called `gh` directly bypassed the cap. Verify the shim
+# now calls _chump_gh_throttle_wait the same way chump_gh() does.
+rm -f "$CHUMP_AMBIENT_OVERRIDE"
+python3 -c "import json,time; n=time.time(); json.dump([n,n,n], open('$LOCK_DIR/.gh-throttle-window','w'))"
+# Put the shim dir on PATH ahead of the fake gh, then invoke `gh` — the
+# shim resolves the fake as the real gh and forwards.  Limit=3 with a
+# 3-entry pre-filled window means the throttle MUST fire.
+SHIM_DIR="$REPO_ROOT/scripts/coord/lib/gh-shim"
+[[ -x "$SHIM_DIR/gh" ]] || fail "shim binary missing at $SHIM_DIR/gh"
+CHUMP_GH_MAX_CALLS_PER_MIN=3 \
+CHUMP_AMBIENT_OVERRIDE="$CHUMP_AMBIENT_OVERRIDE" \
+CHUMP_GH_SCRIPT="test-harness" \
+PATH="$SHIM_DIR:$TMP/fakebin:$PATH" \
+timeout 4 bash -c 'gh api rate_limit >/dev/null 2>&1' || true
+sleep 0.3
+[[ -f "$CHUMP_AMBIENT_OVERRIDE" ]] || fail "INFRA-1103: shim invocation produced no ambient event"
+grep -q '"kind":"gh_self_throttled"' "$CHUMP_AMBIENT_OVERRIDE" \
+    || fail "INFRA-1103: shim path did not invoke throttle: $(cat "$CHUMP_AMBIENT_OVERRIDE")"
+ok "INFRA-1103: bare gh via shim invokes _chump_gh_throttle_wait"
+
+# ── Test 7: INFRA-1103 — nested chump_gh → shim does not double-throttle ────
+# When chump_gh() throttles, then execs `gh "$@"` which lands in the shim,
+# the shim must SKIP the throttle (CHUMP_GH_SHIM_RECORDING=1 sentinel set
+# by chump_gh before invoking real gh). Otherwise the sliding window is
+# corrupted and observed call density is inflated.
+rm -f "$CHUMP_AMBIENT_OVERRIDE"
+python3 -c "import json,time; n=time.time(); json.dump([n,n,n,n,n], open('$LOCK_DIR/.gh-throttle-window','w'))"
+# Manually simulate the chump_gh contract: it sets CHUMP_GH_SHIM_RECORDING
+# right before exec'ing real gh. Run the shim directly with that env set
+# and a pre-filled-to-limit window — it must NOT add an entry or sleep.
+CHUMP_GH_MAX_CALLS_PER_MIN=5 \
+CHUMP_GH_SHIM_RECORDING=1 \
+CHUMP_AMBIENT_OVERRIDE="$CHUMP_AMBIENT_OVERRIDE" \
+PATH="$SHIM_DIR:$TMP/fakebin:$PATH" \
+timeout 3 bash -c 'gh api rate_limit >/dev/null 2>&1'
+if [[ -f "$CHUMP_AMBIENT_OVERRIDE" ]]; then
+    grep -q '"kind":"gh_self_throttled"' "$CHUMP_AMBIENT_OVERRIDE" \
+        && fail "INFRA-1103: shim double-throttled when CHUMP_GH_SHIM_RECORDING=1"
+fi
+ok "INFRA-1103: shim skips throttle when CHUMP_GH_SHIM_RECORDING=1 (no double-wait)"
+
 echo
-echo "All INFRA-1079 gh-self-throttle tests passed."
+echo "All INFRA-1079/1103 gh-self-throttle tests passed."
