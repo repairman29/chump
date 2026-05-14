@@ -68,18 +68,19 @@ else
     ok "test-duplicate-id-guard.sh removed"
 fi
 
-# ── 6. Line count reduced (must be ≤ 1750 after audit) ────────────────────
-# Threshold: file was ~1860 before audit; after removing duplicate-ID
-# guard block + comment header the file is ~1680. 1750 leaves headroom for
-# new guards (e.g. INFRA-1060 main-worktree-config check added ~15 lines)
-# while still catching a regression of the full guard block.
+# ── 6. Line count reduced (must be ≤ 1850 after audit) ────────────────────
+# Threshold: file was ~1860 before INFRA-508 audit; after removing duplicate-ID
+# guard block + comment header the file was ~1680. Headroom raised over time:
+#   1700 → 1750: INFRA-1060 main-worktree-config check added ~15 lines
+#   1750 → 1850: CREDIBLE-054 AC enforcement guard added ~79 lines
+# 1850 leaves headroom for 2-3 more small guards without breaching.
 echo
 echo "[6. Pre-commit line count reduced by audit]"
 COUNT=$(wc -l < "$HOOK" | tr -d ' ')
-if [ "$COUNT" -le 1750 ]; then
-    ok "pre-commit is $COUNT lines (≤ 1750 — duplicate-ID guard deleted)"
+if [ "$COUNT" -le 1850 ]; then
+    ok "pre-commit is $COUNT lines (≤ 1850 — duplicate-ID guard deleted)"
 else
-    fail "pre-commit is $COUNT lines (expected ≤ 1750 after vacuous guard removal)"
+    fail "pre-commit is $COUNT lines (expected ≤ 1850 after vacuous guard removal)"
 fi
 
 echo

@@ -1,0 +1,11 @@
+- id: CREDIBLE-054
+  domain: CREDIBLE
+  title: "CREDIBLE: pre-commit hook enforces acceptance_criteria on all gaps"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/git-hooks/pre-commit detects docs/gaps/*.yaml changes and rejects any gap YAML without a non-empty acceptance_criteria list (≥1 item)"
+    - "Error message names the gap ID and directs to docs/FEEDBACK_GAPS_ALWAYS_HAVE_AC.md"
+    - "CHUMP_AC_CHECK=0 bypass suppresses the check (for rare in-flight cases)"
+    - "CI gate scripts/ci/test-gap-ac-requirement.sh: 5 assertions covering reject-without-AC, accept-with-AC, bypass, error-message content, and no existing gaps missing AC"
