@@ -80,6 +80,36 @@
       color: var(--text-secondary);
     }
 
+    /* INFRA-1012: <chump-cost-meter> sits between model picker and heartbeat
+       in the header. 4 row figures + optional budget warning banner. */
+    chump-cost-meter .cost-meter {
+      display: inline-grid;
+      grid-template-columns: repeat(4, minmax(0, auto));
+      gap: 0 12px;
+      align-items: baseline;
+      padding-bottom: 9px;
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+    chump-cost-meter .cost-meter.loading { opacity: 0.5; }
+    chump-cost-meter .cost-meter.warn .cost-meter-value { color: var(--accent-warn, #cc8800); }
+    chump-cost-meter .cost-meter.red .cost-meter-value { color: var(--accent-error, #cc3344); }
+    chump-cost-meter .cost-meter-row { display: flex; gap: 4px; align-items: baseline; }
+    chump-cost-meter .cost-meter-label {
+      color: var(--text-tertiary, var(--text-secondary));
+      text-transform: uppercase;
+      font-size: 9px;
+      letter-spacing: 0.04em;
+    }
+    chump-cost-meter .cost-meter-value { color: var(--text-primary); font-weight: 500; }
+    chump-cost-meter .cost-meter-warn {
+      grid-column: 1 / -1;
+      font-size: 10px;
+      color: var(--accent-warn, #cc8800);
+      padding-top: 2px;
+    }
+
     /* ── Layout ─────────────────────────────────────────────────────────── */
     #app-body {
       flex: 1;
@@ -504,6 +534,7 @@
   <header id="app-header">
     <span id="app-title">Chump</span>
     <chump-model-picker></chump-model-picker>
+    <chump-cost-meter></chump-cost-meter>
     <chump-heartbeat></chump-heartbeat>
   </header>
 
@@ -521,6 +552,7 @@
            is web/v2 itself, so absolute /v2/* paths would 404. -->
   <script src="chat.js" type="module"></script>
   <script src="app.js" type="module"></script>
+  <script src="cost-meter.js" type="module"></script>
   <script src="ootb-wizard.js" type="module"></script>
   <script src="inference-profile.js" type="module"></script>
   <script>

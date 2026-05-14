@@ -2321,6 +2321,94 @@ async fn handle_fleet_workspace_exchange(
     Ok(Json(my_bb))
 }
 
+/// GET /api/telemetry/cost — Operator-visible fleet spend (INFRA-1012).
+///
+/// Aggregates three cost sources into a single JSON response so the PWA can
+/// show "what is this fleet actually costing me." All numbers are honest
+/// best-effort: Anthropic is tracked per-call in `chump_cost_tracker`,
+/// GitHub call counts come from `.chump-locks/ambient.jsonl` events emitted
+/// by `chump_gh` (INFRA-999), Tavily credits live in cost_tracker too.
+///
+/// Returns:
+/// ```json
+/// {
+///   "window": "session",
+///   "session_cost_usd": 1.23,
+///   "anthropic": {"input_tokens": N, "output_tokens": N, "requests": N},
+///   "github": {"calls": N, "remaining_core": N, "remaining_graphql": N},
+///   "tavily": {"calls": N, "credits": N},
+///   "budget": {"warn_usd": 5.0, "ceiling_usd": 10.0, "warning": null}
+/// }
+/// ```
+async fn handle_telemetry_cost(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let lock_dir = std::env::var("CHUMP_LOCK_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join(".chump-locks"));
+    let ambient = lock_dir.join("ambient.jsonl");
+
+    // Session cost & budget — pulled directly from in-process accounting.
+    let session_cost_usd = crate::cost_tracker::session_cost_usd();
+    let cost_warn_usd = crate::cost_tracker::cost_warn_usd();
+    let cost_ceiling_usd = crate::cost_tracker::cost_ceiling_usd();
+    let budget_warning = crate::cost_tracker::budget_warning();
+    let summary_text = crate::cost_tracker::summary();
+
+    // Scan ambient.jsonl tail for github_api_call events (INFRA-999) to count
+    // GitHub calls and surface the most-recent remaining_core / remaining_graphql.
+    // Tail-only: max 1MB read so this stays sub-50ms even on large ambient files.
+    let mut gh_calls: u64 = 0;
+    let mut gh_remaining_core: Option<i64> = None;
+    let mut gh_remaining_graphql: Option<i64> = None;
+    if let Ok(contents) = std::fs::read_to_string(&ambient) {
+        let tail = if contents.len() > 1_048_576 {
+            &contents[contents.len() - 1_048_576..]
+        } else {
+            &contents[..]
+        };
+        for line in tail.lines() {
+            if !line.contains("\"kind\":\"github_api_call\"")
+                && !line.contains("\"kind\": \"github_api_call\"")
+            {
+                continue;
+            }
+            let Ok(evt): Result<serde_json::Value, _> = serde_json::from_str(line) else {
+                continue;
+            };
+            gh_calls += 1;
+            if let Some(n) = evt.get("remaining_core").and_then(|v| v.as_i64()) {
+                gh_remaining_core = Some(n);
+            }
+            if let Some(n) = evt.get("remaining_graphql").and_then(|v| v.as_i64()) {
+                gh_remaining_graphql = Some(n);
+            }
+        }
+    }
+
+    let payload = serde_json::json!({
+        "window": "session",
+        "session_cost_usd": session_cost_usd,
+        "summary": summary_text,
+        "github": {
+            "calls": gh_calls,
+            "remaining_core": gh_remaining_core,
+            "remaining_graphql": gh_remaining_graphql,
+        },
+        "budget": {
+            "warn_usd": cost_warn_usd,
+            "ceiling_usd": cost_ceiling_usd,
+            "warning": budget_warning,
+        },
+    });
+    Ok(Json(payload))
+}
+
 /// GET /api/fleet-status — Active agent sessions read from .chump-locks/*.json lease files.
 /// Returns `{sessions: [{session_id, gap_id, gap_title, gap_priority, gap_effort, branch,
 ///   worktree_path, taken_at, expires_at, heartbeat_at, pr_number, pr_state, ci_status}],
@@ -3424,6 +3512,7 @@ fn build_api_router() -> Router {
             post(handle_fleet_workspace_exchange),
         )
         .route("/api/fleet-status", get(handle_fleet_status))
+        .route("/api/telemetry/cost", get(handle_telemetry_cost))
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
         .route("/api/gap/status/{id}", get(handle_gap_status))
