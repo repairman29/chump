@@ -1,0 +1,19 @@
+- id: INFRA-1015
+  domain: INFRA
+  title: "EFFECTIVE: chump init flow from PWA (fresh-repo onboarding)"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Demo scene 5: when the operator picks a repo path that lacks .chump/state.db, the PWA should offer to initialize it — not error out. chump init exists as a CLI command. We need a web-facing equivalent. Rough shape: (a) the first-run wizard (INFRA-990) detects 'no state.db' and offers 'Initialize Chump in this repo' as a sub-step, (b) new POST /api/repo/init endpoint that wraps chump init subprocess call (creates .chump/, state.db, default gap registry mirror, installs hooks via scripts/setup/install-hooks.sh), (c) post-init, optionally seed 1-3 starter gaps (e.g. 'add a /health endpoint to this server') from a built-in template list — provides immediate work for the demo, (d) safety: refuse to init if the path is outside operator-blessed dirs (default: home dir tree) unless CHUMP_INIT_ANYWHERE=1, (e) confirmation dialog before running — 'This will create .chump/ and install pre-commit hooks. Continue?'
+  acceptance_criteria:
+    - POST /api/repo/init {path} validates path is within allowed parent dirs, runs chump init in that path, returns success/failure with stderr on failure
+    - Wizard (INFRA-990) detects missing state.db and surfaces 'Initialize this repo' step with confirmation dialog
+    - Post-init, optional checkbox 'Seed 3 starter gaps' adds template gaps to the registry
+    - Hooks installed via scripts/setup/install-hooks.sh after init
+    - "Refuses paths outside CHUMP_INIT_ALLOWED_ROOTS (default: /Users/jeffadkins tree); CHUMP_INIT_ANYWHERE=1 bypasses"
+    - "Test: point at empty /tmp/test-repo, verify /api/repo/init creates state.db + hooks; verify second call is idempotent (succeeds without overwriting)"
+  depends_on: [INFRA-990]
+  closed_date: '2026-05-14'
+  closed_pr: 1936
+

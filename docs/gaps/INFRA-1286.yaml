@@ -1,0 +1,26 @@
+- id: INFRA-1286
+  domain: INFRA
+  title: "EFFECTIVE: opus-curator roadmap_drift decision arm — read docs/ROADMAP.md milestones + cross-ref open P0/P1 gaps; META-065 follow-up"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    META-065 layer 3 — roadmap milestone <-> gap-registry coupling. The curator (scripts/coord/opus-curator.sh) has 5 mutation arms today (p0_demotion, gap_ac_filled, slo_breach, vague_pickable_alert, pillar_rebalance_recommended). META-065 PR added two operator hooks (CHUMP_CURATOR_PAUSE, curator_auto_exec_armed sentinel) but DEFERRED the 'roadmap_drift' decision arm to this gap because it's its own work.
+    
+    Acceptance:
+    1. Parse docs/ROADMAP.md to extract a structured list of (milestone, status, target_date, owning_gaps). Format TBD; consult docs/ROADMAP.md current shape.
+    2. Cross-reference open P0/P1 gaps in state.db against owning_gaps lists. Surface:
+       - 'P0 gap X is not on any milestone' (gap looks important but isn't strategically anchored)
+       - 'milestone Y has 0 pickable P0/P1 progress' (milestone is starving)
+    3. When drift exceeds threshold (default: > 3 unanchored P0/P1 OR > 1 starving milestone), auto-file a META-NEW gap with the diagnosis; rate-limited via .chump-locks/curator-decisions/<date>.jsonl daily sentinel.
+    4. Emit kind=roadmap_drift_detected on threshold-cross (register in EVENT_REGISTRY).
+    5. CHUMP_CURATOR_ROADMAP_CHECK=0 escape hatch.
+    6. Test: scripts/ci/test-curator-roadmap-drift.sh — synthesize ROADMAP.md + state.db; assert drift detection + auto-file + dedup.
+    
+    Source: META-065 (PR #NNNN) layer 3 deferred to keep that PR scoped.
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

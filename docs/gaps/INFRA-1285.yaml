@@ -1,0 +1,21 @@
+- id: INFRA-1285
+  domain: INFRA
+  title: "CREDIBLE: chump gap show --yaml emits invalid YAML for titled gaps (colon in title) and numbered AC (1. [...] format)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Observed 2026-05-14 across multiple sessions: chump gap show --yaml produces invalid YAML in two cases:
+    1. Titles containing colons (e.g. "RESILIENT: PWA...") emit unquoted: title: RESILIENT: PWA... which is invalid YAML.
+    2. Numbered acceptance_criteria (1. text) emit as: acceptance_criteria:\n  1. "text"\n  2. "text" — invalid YAML list.
+       The 1. [...] JSON-array blob variant also occurs.
+    Root cause: Rust serde_yaml serializer not quoting strings containing colons; AC list serialized as numbered mapping.
+    Impact: chump gap reserve reads combined registry and fails when any per-file YAML is malformed. Also breaks downstream
+    YAML consumers. Workaround 2026-05-14: manually rewrite YAML for affected gaps (INFRA-1237, INFRA-1251, INFRA-990, INFRA-1252).
+  acceptance_criteria:
+    - "chump gap show --yaml: titles containing colons are always emitted with YAML quoting (e.g. title: \"RESILIENT: foo\")"
+    - "chump gap show --yaml: acceptance_criteria is always a YAML list (- \"item\"), never a numbered mapping (1. \"item\") or JSON blob"
+    - "Test: scripts/ci/test-gap-show-yaml-validity.sh — for fixture gaps with colons in title and numbered AC, assert yaml.safe_load(chump gap show --yaml) succeeds and AC is a list"
+    - "Regression: existing gaps with valid YAML output are unchanged (no double-quoting or escaped content added)"
+    - "chump gap show --yaml output passes python3 -c 'import yaml,sys; yaml.safe_load(sys.stdin)' for all gap shapes"
+
