@@ -1852,3 +1852,10 @@ events:
     trigger: gap-preflight finds an open PR whose title contains the gap ID
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, gap, prs]
+  # ── INFRA-1165: pre-push gap-check false positive suppressed ─────────────
+  - kind: gap_check_false_positive
+    emitter: scripts/coord/gap-preflight.sh (INFRA-1165)
+    trigger: gap ID is done on origin/main but current session holds an active lease
+      for it — push allowed with warning instead of rejected
+    consumers: [operator-recall, fleet-brief]
+    fields_required: [ts, kind, gap_id, session]

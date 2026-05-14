@@ -475,10 +475,24 @@ $SIBLING_GAP_YAML"
     if [[ -n "$GAPS_YAML" ]]; then
         STATUS="$(gap_status "$GAP_ID")"
         if [[ "$STATUS" == "done" ]]; then
-            red "SKIP $GAP_ID — already status:done on $REMOTE/$BASE."
-            red "  The work exists. No need to re-implement. Choose a different gap."
-            FAILED=1
-            continue
+            # INFRA-1165: before rejecting, cross-reference the current session's
+            # lease file. If the session has an active lease for this gap, the
+            # push is from the worker that claimed it — allow it even if origin/main
+            # already shows the gap as done (race: another worker shipped it first).
+            # Emit kind=gap_check_false_positive to ambient so the operator can
+            # investigate but don't block the push.
+            if my_pending_reserves_gap "$GAP_ID"; then
+                info "NOTE: $GAP_ID is done on $REMOTE/$BASE but current session holds an active lease — OK (INFRA-1165)."
+                _now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
+                printf '{"ts":"%s","kind":"gap_check_false_positive","gap_id":"%s","session":"%s","note":"done on origin/main but session holds lease — push allowed"}\n' \
+                    "$_now_ts" "$GAP_ID" "${SESSION_ID:-unknown}" \
+                    >> "${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}" 2>/dev/null || true
+            else
+                red "SKIP $GAP_ID — already status:done on $REMOTE/$BASE."
+                red "  The work exists. No need to re-implement. Choose a different gap."
+                FAILED=1
+                continue
+            fi
         fi
     fi
     if [[ -z "$STATUS" ]]; then
