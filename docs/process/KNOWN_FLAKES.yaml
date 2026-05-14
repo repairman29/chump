@@ -134,6 +134,13 @@ flakes:
     last_observed: "2026-05-13"
     max_reruns: 1
 
+  - test: skill_hub::tests::default_registries_reads_env
+    reason: "calls std::env::set_var/remove_var without #[serial_test::serial]; parallel tests reading CHUMP_SKILL_REGISTRIES race with the set/remove sequence"
+    tracking_gap: INFRA-1192
+    added: "2026-05-14"
+    last_observed: "2026-05-14"
+    max_reruns: 1
+
 # INFRA-763 fixed the canonical case
 # (failure_catalog::tests::infra647_catalog_len_matches_entries).
 # Add new entries here ONLY with an open tracking_gap. Examples of what
