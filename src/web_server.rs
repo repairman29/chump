@@ -269,7 +269,11 @@ fn check_auth(headers: &HeaderMap) -> bool {
 /// Health is intentionally public (uptime checks, load balancers).
 /// Auth-check is the endpoint clients use to verify their token, so it
 /// must be reachable without one.
-const AUTH_BYPASS_PATHS: &[&str] = &["/api/health", "/api/auth/check"];
+const AUTH_BYPASS_PATHS: &[&str] = &[
+    "/api/health",
+    "/api/health/doctor", // INFRA-990: doctor banner pre-config surface
+    "/api/auth/check",
+];
 
 /// INFRA-1014: axum middleware enforcing CHUMP_WEB_TOKEN on /api/* routes.
 ///
@@ -3085,6 +3089,99 @@ async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
     }))
 }
 
+/// GET /api/health/doctor — config-health probe for the first-run banner (INFRA-990).
+///
+/// Calls `doctor::run_all_checks()` in-process and reshapes the report into the
+/// compact contract the PWA banner consumes. Unauthenticated by design — this
+/// is precisely the "you're not configured yet" surface, so requiring auth
+/// would be circular.
+///
+/// Status code is always 200; the JSON `ok` field carries truthiness so load
+/// balancer probes don't flap on a misconfig.
+async fn handle_doctor_health(headers: HeaderMap) -> Json<serde_json::Value> {
+    let _ = check_auth(&headers); // unauthenticated read-only
+
+    // In-process 5s tumbling-window cache to soften the 30s banner-poll rate
+    // against the 11-check doctor pipeline. Bounded by a Mutex'd Option since
+    // the surface is single-process.
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+    static CACHE: Mutex<Option<(Instant, serde_json::Value)>> = Mutex::new(None);
+    const TTL: Duration = Duration::from_secs(5);
+
+    if let Ok(guard) = CACHE.lock() {
+        if let Some((ts, payload)) = guard.as_ref() {
+            if ts.elapsed() < TTL {
+                return Json(payload.clone());
+            }
+        }
+    }
+
+    let report = crate::doctor::run_all_checks().await;
+    let failures: Vec<serde_json::Value> = report
+        .checks
+        .iter()
+        .filter(|c| matches!(c.status, crate::doctor::CheckStatus::Fail))
+        .map(|c| {
+            serde_json::json!({
+                "check": c.name,
+                "message": c.message,
+                "fix_hint": c.fix_hint,
+            })
+        })
+        .collect();
+    let warnings: Vec<serde_json::Value> = report
+        .checks
+        .iter()
+        .filter(|c| matches!(c.status, crate::doctor::CheckStatus::Warn))
+        .map(|c| {
+            serde_json::json!({
+                "check": c.name,
+                "message": c.message,
+                "fix_hint": c.fix_hint,
+            })
+        })
+        .collect();
+    let ok = failures.is_empty();
+
+    // Emit a presence-only ambient event for observability (INFRA-754).
+    // Body carries counts only — no failure messages (those can leak env paths
+    // or hostnames). The /api endpoint itself returns the full detail.
+    {
+        let ev = serde_json::json!({
+            "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            "kind": "pwa_doctor_check",
+            "ok": ok,
+            "failure_count": failures.len(),
+            "warning_count": warnings.len(),
+        });
+        let path = repo_path::runtime_base()
+            .join(".chump-locks")
+            .join("ambient.jsonl");
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            let _ = writeln!(f, "{}", ev);
+        }
+    }
+
+    let payload = serde_json::json!({
+        "ok": ok,
+        "failures": failures,
+        "warnings": warnings,
+        "summary": report.summary_line(),
+        "ts": chrono::Utc::now().to_rfc3339(),
+    });
+
+    if let Ok(mut guard) = CACHE.lock() {
+        *guard = Some((Instant::now(), payload.clone()));
+    }
+
+    Json(payload)
+}
+
 /// GET /api/pr/{number} — Per-PR detail snapshot (INFRA-1011).
 ///
 /// Operator-facing surface for "what's happening with my PR" without leaving
@@ -5139,6 +5236,7 @@ fn build_api_router() -> Router {
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
         .route("/api/health/pillars", get(handle_health_pillars))
+        .route("/api/health/doctor", get(handle_doctor_health))
         .route("/api/pr/{number}", get(handle_pr_detail))
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gaps/search", get(handle_gaps_search))
