@@ -1,7 +1,8 @@
 - id: INFRA-1007
   domain: INFRA
   title: "RESILIENT: mirror INFRA-995 pre-push staleness gate in chump gap ship Rust path"
-  status: in_flight
+  status: done
+  closed_pr: 1765
   priority: P2
   effort: s
   acceptance_criteria:
