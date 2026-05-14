@@ -1,13 +1,12 @@
-id: INFRA-1113
-domain: INFRA
-title: "ZERO-WASTE — centralize auto-merge arming via single queue-driver owner"
-status: done
-priority: P1
-effort: m
-acceptance_criteria:
-  - "New script scripts/coord/auto-merge-armer.sh: one process arms PRs with backoff, skips already-armed PRs, enforces CHUMP_AUTO_MERGE_SPACING_S (default 5s) between successive calls"
-  - "bot-merge.sh removes its inline gh_with_backoff pr merge --auto call; delegates to auto-merge-armer.sh"
-  - "pr-rescue.sh removes its inline chump_gh pr merge --auto call; delegates to auto-merge-armer.sh"
-  - "auto_merge_armed and auto_merge_arm_failed events registered in EVENT_REGISTRY.yaml"
-  - "scripts/ci/test-auto-merge-armer.sh verifies all delegation wiring and event registry entries"
-closed_pr: null
+- id: INFRA-1113
+  domain: INFRA
+  title: "ZERO-WASTE — centralize auto-merge arming via single queue-driver owner"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "New script scripts/coord/auto-merge-armer.sh: one process arms PRs with backoff, skips already-armed PRs, enforces CHUMP_AUTO_MERGE_SPACING_S (default 5s) between successive calls"
+    - "bot-merge.sh removes its inline gh_with_backoff pr merge --auto call; delegates to auto-merge-armer.sh"
+    - "pr-rescue.sh removes its inline chump_gh pr merge --auto call; delegates to auto-merge-armer.sh"
+    - "auto_merge_armed and auto_merge_arm_failed events registered in EVENT_REGISTRY.yaml"
+    - "scripts/ci/test-auto-merge-armer.sh verifies all delegation wiring and event registry entries"
