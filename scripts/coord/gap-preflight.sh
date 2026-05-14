@@ -42,6 +42,14 @@ if [[ $# -eq 0 ]]; then
     exit 0
 fi
 
+# INFRA-1261: allow tests that don't need real preflight behavior to skip cleanly.
+# Set CHUMP_GAP_PREFLIGHT_SKIP=1 in test environments where the gap-id is a fixture
+# (e.g. TEST-001) that is not in the local state.db and real preflight would fail.
+if [[ "${CHUMP_GAP_PREFLIGHT_SKIP:-0}" == "1" ]]; then
+    echo "[gap-preflight] SKIP: CHUMP_GAP_PREFLIGHT_SKIP=1 — bypass requested by caller." >&2
+    exit 0
+fi
+
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
 # INFRA-109: resolve REPO_ROOT + LOCK_DIR via main-repo path (linked worktree safe).
