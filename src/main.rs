@@ -2547,10 +2547,32 @@ async fn main() -> Result<()> {
                 let auto_fixed = count_kind("flake_rerun_queued") + count_kind("lint_auto_fix");
                 let manual_rescues = count_kind("manual_rescue");
                 let fleet_wedges = count_kind("fleet_wedge");
-                let silent_agents = count_kind("silent_agent");
-                let pr_stuck = count_kind("pr_stuck");
-                // Alerts are counted over last 30 min regardless of the main window
+                // INFRA-1247: silent_agent and pr_stuck are surfaced below as
+                // "investigate now" operator-action prompts. They must count
+                // over the same 30 min window as `alerts(30m)` — not the 24h
+                // main window — otherwise the brief shows 24h totals
+                // (e.g. 27 silent_agents, 18 pr_stuck) as if they were current
+                // alerts, conditioning the operator to ignore the prompts
+                // entirely. Before this fix the same healthy fleet that
+                // emitted 1 actual recent event in 30 min showed "27 events"
+                // because old events from earlier in the day were still in
+                // the 24h window.
                 let alert_cutoff = now_ts - 30 * 60;
+                let count_kind_recent = |kind: &str| -> usize {
+                    events
+                        .iter()
+                        .filter(|e| {
+                            e.get("kind").and_then(|v| v.as_str()) == Some(kind)
+                                && e.get("ts")
+                                    .and_then(|v| v.as_str())
+                                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                                    .map(|dt| dt.timestamp() >= alert_cutoff)
+                                    .unwrap_or(false)
+                        })
+                        .count()
+                };
+                let silent_agents = count_kind_recent("silent_agent");
+                let pr_stuck = count_kind_recent("pr_stuck");
                 let alerts: usize = events
                     .iter()
                     .filter(|e| {
