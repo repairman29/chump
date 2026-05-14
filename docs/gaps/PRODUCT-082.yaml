@@ -1,22 +1,33 @@
 - id: PRODUCT-082
   domain: PRODUCT
-  title: "PRODUCT: PWA first-run welcome + 60s orientation — answer 'what do I do here?' before showing fleet plumbing"
-  status: open
+  title: 'PRODUCT: PWA first-run welcome + 60s orientation — answer ''what do I do here?'' before showing fleet plumbing'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Today PWA cold-open lands on default view with no orientation. Solo dev
-    who's never used chump sees 8 noun views (chat/agent/models/...) with
-    no sense of journey. ootb-wizard.js exists but isn't wired as the
+  description: 'Today PWA cold-open lands on default view with no orientation. Solo dev
+
+    who''s never used chump sees 8 noun views (chat/agent/models/...) with
+
+    no sense of journey. ootb-wizard.js exists but isn''t wired as the
+
     first-run.
+
+    '
   acceptance_criteria:
-    - "First PWA visit (detected via localStorage chump_first_visit unset) triggers welcome modal/page at /welcome before any other view loads"
-    - "Welcome content: (1) one-paragraph 'what chump is' framing — coordination platform for solo devs, not a chat bot; (2) 3-step quick-start: 'set your repo', 'pick a gap from queue', 'watch it ship'; (3) link to docs/process/CHUMP_FIRST_DOCTRINE.md for philosophy; (4) 'I've used chump before' button to skip"
-    - "Quick-start step 1 (set repo) auto-detects CHUMP_REPO env var; offers to set if unset; falls back to repo where the PWA is being served from"
-    - "Quick-start step 2 (pick a gap) renders top 3 pickable gaps from chump gap list --status open with concrete-AC + small-effort filter; one-click claim"
-    - "Quick-start step 3 (watch it ship) opens the live /agents results board scoped to the just-claimed gap"
-    - "ootb-wizard.js (existing file) is the basis; refactor to be invoked from welcome flow"
-    - "localStorage.chump_first_visit_completed set on finishing the 3 steps OR clicking skip; never re-prompts"
-    - "Operator-mode escape: ?welcome=force query param re-triggers for testing/demo"
-    - "scripts/ci/test-pwa-welcome.sh: assert first-visit triggers, second-visit does not, ?welcome=force overrides"
-    - "Pairs with PRODUCT-087 (local-only onboarding) — Welcome is the universal entry; local-only is the offline-Ollama variant of step 1"
+  - First PWA visit (detected via localStorage chump_first_visit unset) triggers welcome modal/page at /welcome before any
+    other view loads
+  - 'Welcome content: (1) one-paragraph ''what chump is'' framing — coordination platform for solo devs, not a chat bot; (2)
+    3-step quick-start: ''set your repo'', ''pick a gap from queue'', ''watch it ship''; (3) link to docs/process/CHUMP_FIRST_DOCTRINE.md
+    for philosophy; (4) ''I''ve used chump before'' button to skip'
+  - Quick-start step 1 (set repo) auto-detects CHUMP_REPO env var; offers to set if unset; falls back to repo where the PWA
+    is being served from
+  - Quick-start step 2 (pick a gap) renders top 3 pickable gaps from chump gap list --status open with concrete-AC + small-effort
+    filter; one-click claim
+  - Quick-start step 3 (watch it ship) opens the live /agents results board scoped to the just-claimed gap
+  - ootb-wizard.js (existing file) is the basis; refactor to be invoked from welcome flow
+  - localStorage.chump_first_visit_completed set on finishing the 3 steps OR clicking skip; never re-prompts
+  - 'Operator-mode escape: ?welcome=force query param re-triggers for testing/demo'
+  - 'scripts/ci/test-pwa-welcome.sh: assert first-visit triggers, second-visit does not, ?welcome=force overrides'
+  - Pairs with PRODUCT-087 (local-only onboarding) — Welcome is the universal entry; local-only is the offline-Ollama variant
+    of step 1
+  closed_date: '2026-05-14'

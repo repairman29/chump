@@ -1,11 +1,13 @@
 - id: INFRA-901
   domain: INFRA
-  title: "CREDIBLE: Velocity + quality trending"
-  status: open
+  title: 'CREDIBLE: Velocity + quality trending'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "1. scripts/ops/velocity-trending.sh reads the last 7d of fleet_metrics_snapshot events from ambient.jsonl and prints a text table of ship_rate and waste_rate per day. 2. Emits kind=velocity_trend_computed with fields: window_days, ship_rate_7d, waste_rate_7d, trend (improving"
-    - stable
-    - "degrading based on last 3d vs prior 4d). 3. scripts/ci/test-velocity-trending.sh: 6+ tests with synthetic fixture data."
-
+  - '1. scripts/ops/velocity-trending.sh reads the last 7d of fleet_metrics_snapshot events from ambient.jsonl and prints
+    a text table of ship_rate and waste_rate per day. 2. Emits kind=velocity_trend_computed with fields: window_days, ship_rate_7d,
+    waste_rate_7d, trend (improving'
+  - stable
+  - 'degrading based on last 3d vs prior 4d). 3. scripts/ci/test-velocity-trending.sh: 6+ tests with synthetic fixture data.'
+  closed_date: '2026-05-12'

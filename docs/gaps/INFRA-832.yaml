@@ -1,12 +1,12 @@
 - id: INFRA-832
   domain: INFRA
-  title: "ZERO-WASTE: chump fleet prune-worktrees launchd integration — schedule daily cleanup at 3am via launchd plist"
-  status: open
+  title: 'ZERO-WASTE: chump fleet prune-worktrees launchd integration — schedule daily cleanup at 3am via launchd plist'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "launchd/com.chump.prune-worktrees.plist runs chump fleet prune-worktrees --apply at 03:00 daily"
-    - scripts/setup/install-prune-worktrees-launchd.sh installs and loads the plist
-    - uninstall removes cleanly
-    - "test scripts/ci/test-prune-worktrees-launchd.sh: plist exists, install script present, cron-expression correct"
-
+  - launchd/com.chump.prune-worktrees.plist runs chump fleet prune-worktrees --apply at 03:00 daily
+  - scripts/setup/install-prune-worktrees-launchd.sh installs and loads the plist
+  - uninstall removes cleanly
+  - 'test scripts/ci/test-prune-worktrees-launchd.sh: plist exists, install script present, cron-expression correct'
+  closed_date: '2026-05-12'

@@ -1,12 +1,13 @@
 - id: INFRA-920
   domain: INFRA
-  title: "RESILIENT: bot-merge auto-detect shell/doc-only changes and apply --skip-tests without manual flag"
-  status: open
+  title: 'RESILIENT: bot-merge auto-detect shell/doc-only changes and apply --skip-tests without manual flag'
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
-
+  - 'TODO: what events emitted on success/failure/timeout'
+  - 'TODO: how cost tracked and reported to operator'
+  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
+  - 'TODO: smoke test command to verify observability'
+  closed_date: '2026-05-12'
+  closed_pr: 1551

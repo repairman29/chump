@@ -1,11 +1,22 @@
 - id: INFRA-650
   domain: INFRA
-  title: "ZERO-WASTE: fleet auto-prune-down — scale fleet smaller when over-resourced. Triggers (any): (a) queue empty + 0 in-flight work for 30min (tear down completely until next gap filed), (b) cost-watch (INFRA-608) hard-cap at 80% with N hours left in day (tighten to FLEET_SIZE/2), (c) ship rate flat despite N workers for 60min (scale to N-1, observe), (d) autonomous-mode (INFRA-625) operator-absent >24h (free-tier-only + minimum size). Inverse of INFRA-518 expansion gate (which scales UP). Together they form a closed-loop fleet-sizing controller. AC: src/fleet_resize.rs evaluates 4 conditions; chump fleet auto-resize subcommand; integrated into INFRA-611 auto-restart daemon; emits 'kind=fleet_resize_decision' ambient with reasoning; test scripts/ci/test-fleet-auto-prune.sh covers each trigger."
-  status: open
+  title: 'ZERO-WASTE: fleet auto-prune-down — scale fleet smaller when over-resourced. Triggers (any): (a) queue empty + 0
+    in-flight work for 30min (tear down completely until next gap filed), (b) cost-watch (INFRA-608) hard-cap at 80% with
+    N hours left in day (tighten to FLEET_SIZE/2), (c) ship rate flat despite N workers for 60min (scale to N-1, observe),
+    (d) autonomous-mode (INFRA-625) operator-absent >24h (free-tier-only + minimum size). Inverse of INFRA-518 expansion gate
+    (which scales UP). Together they form a closed-loop fleet-sizing controller. AC: src/fleet_resize.rs evaluates 4 conditions;
+    chump fleet auto-resize subcommand; integrated into INFRA-611 auto-restart daemon; emits ''kind=fleet_resize_decision''
+    ambient with reasoning; test scripts/ci/test-fleet-auto-prune.sh covers each trigger.'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "src/fleet_resize.rs evaluates 4 conditions: queue-empty (30 min), cost-cap (80% at <4h left), flat-ship-rate (no merge in 60 min), operator-absent (>24h autonomous mode)"
-    - "chump fleet auto-resize subcommand: --apply writes fleet-desired-size + emits fleet_resize_decision and fleet_scale_change to ambient.jsonl; --json for machine-readable output"
-    - "fleet_resize_decision registered in EVENT_REGISTRY.yaml with fields_required: ts, kind, trigger, current_size, recommended_size, rationale"
-    - "scripts/ci/test-fleet-auto-prune.sh covers every trigger condition (10 tests)"
+  - 'src/fleet_resize.rs evaluates 4 conditions: queue-empty (30 min), cost-cap (80% at <4h left), flat-ship-rate (no merge
+    in 60 min), operator-absent (>24h autonomous mode)'
+  - 'chump fleet auto-resize subcommand: --apply writes fleet-desired-size + emits fleet_resize_decision and fleet_scale_change
+    to ambient.jsonl; --json for machine-readable output'
+  - 'fleet_resize_decision registered in EVENT_REGISTRY.yaml with fields_required: ts, kind, trigger, current_size, recommended_size,
+    rationale'
+  - scripts/ci/test-fleet-auto-prune.sh covers every trigger condition (10 tests)
+  closed_date: '2026-05-12'
+  closed_pr: 1547

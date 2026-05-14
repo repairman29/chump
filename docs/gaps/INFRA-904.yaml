@@ -1,9 +1,12 @@
 - id: INFRA-904
   domain: INFRA
-  title: "CREDIBLE: Gap quality validation gate"
-  status: open
+  title: 'CREDIBLE: Gap quality validation gate'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "1. scripts/ci/validate-gap-quality.sh runs on every PR that touches docs/gaps/*.yaml; checks: non-empty acceptance_criteria, no TODO/TBD placeholders, priority in P0-P3, effort in xs/s/m/l/xl, domain non-empty. 2. Exits non-zero if any gap fails; prints specific violations. 3. .github/workflows/ci.yml: add as required check in fast-checks job. 4. scripts/ci/test-gap-quality-gate.sh: 8+ tests with fixture gaps (valid, TODO-AC, missing-field)."
-
+  - '1. scripts/ci/validate-gap-quality.sh runs on every PR that touches docs/gaps/*.yaml; checks: non-empty acceptance_criteria,
+    no TODO/TBD placeholders, priority in P0-P3, effort in xs/s/m/l/xl, domain non-empty. 2. Exits non-zero if any gap fails;
+    prints specific violations. 3. .github/workflows/ci.yml: add as required check in fast-checks job. 4. scripts/ci/test-gap-quality-gate.sh:
+    8+ tests with fixture gaps (valid, TODO-AC, missing-field).'
+  closed_date: '2026-05-12'

@@ -1,16 +1,20 @@
 - id: INFRA-1167
   domain: INFRA
-  title: "RESILIENT: pre-push test gate skips KNOWN_FLAKES.yaml — integrate known-flake list into cargo test invocation to eliminate CHUMP_TEST_GATE=0 workaround"
-  status: open
+  title: 'RESILIENT: pre-push test gate skips KNOWN_FLAKES.yaml — integrate known-flake list into cargo test invocation to
+    eliminate CHUMP_TEST_GATE=0 workaround'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - scripts/git-hooks/pre-push reads KNOWN_FLAKES.yaml to build a --skip list before invoking cargo test
-    - "each entry in KNOWN_FLAKES.yaml under 'tests:' produces a --skip <test_name> argument"
-    - CHUMP_TEST_GATE=0 remains as full bypass escape hatch for emergency use only
-    - "when a test is skipped via known-flake list, pre-push prints: SKIP (known flake): <test_name>"
-    - "CI test: verify pre-push passes without CHUMP_TEST_GATE=0 when commit triggers known-flake test"
-    - "KNOWN_FLAKES.yaml entries without 'filed_gap:' cause a warning but not a failure"
-  notes: |
-    Root cause 2026-05-14: pre-push test gate has no known-flake integration, so flaky tests (repo_path::*, version::*) require CHUMP_TEST_GATE=0 on almost every push. INFRA-1138 fixed phantom fingerprint; this gap fixes known-flake skip. Related: INFRA-1008.
+  - scripts/git-hooks/pre-push reads KNOWN_FLAKES.yaml to build a --skip list before invoking cargo test
+  - each entry in KNOWN_FLAKES.yaml under 'tests:' produces a --skip <test_name> argument
+  - CHUMP_TEST_GATE=0 remains as full bypass escape hatch for emergency use only
+  - 'when a test is skipped via known-flake list, pre-push prints: SKIP (known flake): <test_name>'
+  - 'CI test: verify pre-push passes without CHUMP_TEST_GATE=0 when commit triggers known-flake test'
+  - KNOWN_FLAKES.yaml entries without 'filed_gap:' cause a warning but not a failure
+  notes: 'Root cause 2026-05-14: pre-push test gate has no known-flake integration, so flaky tests (repo_path::*, version::*)
+    require CHUMP_TEST_GATE=0 on almost every push. INFRA-1138 fixed phantom fingerprint; this gap fixes known-flake skip.
+    Related: INFRA-1008.
 
+    '
+  closed_date: '2026-05-14'

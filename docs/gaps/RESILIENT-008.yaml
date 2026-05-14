@@ -1,14 +1,19 @@
 - id: RESILIENT-008
   domain: RESILIENT
-  title: "RESILIENT: bot-merge.sh auto-close hook calls chump gap ship --update-yaml on the merged-gap, automatically flipping YAML status=done on the PR branch — would have saved #1433's 17h stall"
-  status: open
+  title: 'RESILIENT: bot-merge.sh auto-close hook calls chump gap ship --update-yaml on the merged-gap, automatically flipping
+    YAML status=done on the PR branch — would have saved #1433''s 17h stall'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "scripts/coord/bot-merge.sh's pre-push step automatically runs `chump gap ship <GAP-ID> --update-yaml` (gated by INFRA-825 hard-fail to avoid stale-binary stomp) so the PR branch carries the status=done flip BEFORE gap-status-check CI runs"
-    - "When --gap <GAP-ID> is set on bot-merge.sh AND state.db status is in_progress/open, do the YAML flip. When already done, skip (avoid double-flip)"
-    - "Test fixture replays #1433: state.db.INFRA-538 status=done + closed_pr=1433 + YAML on branch says status=open → bot-merge.sh detects + flips YAML + commits as `chore(<GAP>): flip YAML status=done — auto-close hook (RESILIENT-008)` before push"
-    - "Refuses to flip when CREDIBLE-028 premature-closure check fires (would create worse drift)"
-    - "Emits ambient kind=auto_yaml_status_flip with gap_id, pr, branch"
-    - "Pairs with CREDIBLE-028: CREDIBLE-028 prevents status=done before PR merges; RESILIENT-008 prevents the gap-status-check stall after merge"
-    - "Documented in bot-merge.sh header + CLAUDE.md ship-pipeline section"
+  - scripts/coord/bot-merge.sh's pre-push step automatically runs `chump gap ship <GAP-ID> --update-yaml` (gated by INFRA-825
+    hard-fail to avoid stale-binary stomp) so the PR branch carries the status=done flip BEFORE gap-status-check CI runs
+  - When --gap <GAP-ID> is set on bot-merge.sh AND state.db status is in_progress/open, do the YAML flip. When already done,
+    skip (avoid double-flip)
+  - 'Test fixture replays #1433: state.db.INFRA-538 status=done + closed_pr=1433 + YAML on branch says status=open → bot-merge.sh
+    detects + flips YAML + commits as `chore(<GAP>): flip YAML status=done — auto-close hook (RESILIENT-008)` before push'
+  - Refuses to flip when CREDIBLE-028 premature-closure check fires (would create worse drift)
+  - Emits ambient kind=auto_yaml_status_flip with gap_id, pr, branch
+  - 'Pairs with CREDIBLE-028: CREDIBLE-028 prevents status=done before PR merges; RESILIENT-008 prevents the gap-status-check
+    stall after merge'
+  - Documented in bot-merge.sh header + CLAUDE.md ship-pipeline section

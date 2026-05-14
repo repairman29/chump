@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.reap-stale-leases — INFRA-1208 LaunchAgent.
+
+  Runs stale-lease-reaper.sh with --execute flag every 60 minutes.
+  Safely removes expired claim session leases from completed gaps:
+    - expires_at is in the past (lease TTL exceeded)
+    - Gap status is done/shipped/closed (not in progress)
+    - Companion to com.chump.reap-stale-worktrees
+
+  INSTALLATION (use scripts/setup/install-reap-stale-leases-launchd.sh):
+    1. scripts/setup/install-reap-stale-leases-launchd.sh
+    2. Verify: launchctl list | grep chump.reap-stale-leases
+    3. Manual run: launchctl start com.chump.reap-stale-leases
+       Logs: tail /tmp/chump-reap-stale-leases.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.reap-stale-leases.plist
+    rm ~/Library/LaunchAgents/com.chump.reap-stale-leases.plist
+
+  Emits ambient events for each action (deleted, skipped_*, error) for fleet observability.
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.reap-stale-leases</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /path/to/Chump && bash scripts/coord/stale-lease-reaper.sh --execute</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Run every 60 minutes. -->
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Minute</key>
+    <integer>7</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-reap-stale-leases.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-reap-stale-leases.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <!-- Avoid hammering if launchd restarts mid-reap. -->
+  <key>ThrottleInterval</key>
+  <integer>300</integer>
+</dict>
+</plist>

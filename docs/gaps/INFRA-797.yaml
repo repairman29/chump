@@ -1,17 +1,19 @@
 - id: INFRA-797
   domain: INFRA
-  title: "CREDIBLE: mission auto-grader — emit 4-pillar scorecard to ambient every 30 min unprompted, no operator prompt required"
-  status: open
+  title: 'CREDIBLE: mission auto-grader — emit 4-pillar scorecard to ambient every 30 min unprompted, no operator prompt required'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Background timer task spawned by chump orchestrate that emits `kind=mission_grade`
+  description: 'Background timer task spawned by chump orchestrate that emits `kind=mission_grade`
+
     events to ambient.jsonl every 30 minutes, regardless of operator input activity.
+
     Ensures downstream tooling always has a recent scorecard snapshot.
+
+    '
   pr: 1421
   acceptance_criteria:
-    - background tokio task emits kind=mission_grade to ambient.jsonl every 1800s
-    - timer runs independently of operator input (no prompt required to trigger)
-    - startup still emits an initial grade immediately
-    - "auto-merge queue, session exit, or LLM errors do not cancel the timer task"
-
+  - background tokio task emits kind=mission_grade to ambient.jsonl every 1800s
+  - timer runs independently of operator input (no prompt required to trigger)
+  - startup still emits an initial grade immediately
+  - auto-merge queue, session exit, or LLM errors do not cancel the timer task

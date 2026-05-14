@@ -1,13 +1,16 @@
 - id: CREDIBLE-026
   domain: CREDIBLE
-  title: "CREDIBLE: PR scope-vs-title divergence detector — CI check that flags PRs touching files unrelated to title/body (e.g., #1444 reverted META-044 under a chore-gaps title)"
-  status: open
+  title: 'CREDIBLE: PR scope-vs-title divergence detector — CI check that flags PRs touching files unrelated to title/body
+    (e.g., #1444 reverted META-044 under a chore-gaps title)'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "(a) Rule A: PR titled chore(gaps)/docs(gaps) must not modify src/**, crates/**/*.rs, or scripts/coord|dispatch|dev|setup/**; exit 1 on violation"
-    - "(b) Rule B: PR that deletes files recently modified on origin/main (within 72h) without a 'Revert'-prefixed commit is flagged as potential silent revert"
-    - "(c) --warn-only exits 0 even with violations; default strict mode exits 1"
-    - "(d) REPO_ROOT from 'git rev-parse --show-toplevel' so fixture tests work correctly"
-    - "(e) scripts/ci/test-pr-scope-honesty.sh: 6-case fixture suite — all pass"
-
+  - '(a) Rule A: PR titled chore(gaps)/docs(gaps) must not modify src/**, crates/**/*.rs, or scripts/coord|dispatch|dev|setup/**;
+    exit 1 on violation'
+  - '(b) Rule B: PR that deletes files recently modified on origin/main (within 72h) without a ''Revert''-prefixed commit
+    is flagged as potential silent revert'
+  - (c) --warn-only exits 0 even with violations; default strict mode exits 1
+  - (d) REPO_ROOT from 'git rev-parse --show-toplevel' so fixture tests work correctly
+  - '(e) scripts/ci/test-pr-scope-honesty.sh: 6-case fixture suite — all pass'
+  closed_date: '2026-05-11'

@@ -1,22 +1,38 @@
 - id: CREDIBLE-050
   domain: CREDIBLE
-  title: "CREDIBLE: force-fire-fixture for each shipped gate — prove the gate catches its named failure pattern; 9 of 10 today's gates have fired 0 times"
-  status: open
+  title: 'CREDIBLE: force-fire-fixture for each shipped gate — prove the gate catches its named failure pattern; 9 of 10 today''s
+    gates have fired 0 times'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Per 2026-05-11 three-questions research Q2: 9 of 10 named gates
-    shipped today have fired 0 times in ambient.jsonl. We don't know if
-    they don't work or if their triggering conditions haven't happened.
+  description: 'Per 2026-05-11 three-questions research Q2: 9 of 10 named gates
+
+    shipped today have fired 0 times in ambient.jsonl. We don''t know if
+
+    they don''t work or if their triggering conditions haven''t happened.
+
     This gap forces each gate against a synthetic violating PR and
+
     asserts the correct ambient event appears.
+
+    '
   acceptance_criteria:
-    - "scripts/ci/test-all-gates-force-fire.sh exists; iterates each named gate from a manifest"
-    - "Per gate: synthesize a fixture PR with the exact violation the gate is built to catch; run the gate's check script; assert correct ambient kind=X event emitted; assert exit code matches policy (fail-closed/warn-only)"
-    - "Manifest: scripts/ci/gate-manifest.yaml listing each gate, its check script, its expected ambient event kind, its fixture description"
-    - "Fixtures for the 10 today-shipped gates: CREDIBLE-026 (chore-gaps + src diff), CREDIBLE-027 (>100 deletions in chore-titled PR + scratch-commit subjects), CREDIBLE-028 (state.db status=done with unmerged PR), INFRA-825 (stale binary on destructive op), CREDIBLE-029 (concurrent ID reserve), RESILIENT-006 (stale-vs-main MERGEABLE PR), RESILIENT-008 (post-merge YAML status flip), RESILIENT-009 (worktree gitdir mismatch), INFRA-819 (reaper post-ENOSPC restart)"
-    - "Runs as a required CI check on any PR modifying scripts/ci/check-* or gate workflow files — ensures gate refactors don't silently break the gate"
-    - "Fixture output: pass/fail per gate + which gates fired correctly + which gates failed to fire"
-    - "If a gate fails to fire on its own fixture: ambient kind=gate_dead_code with gate_name; operator decides whether to fix or remove"
-    - "Pairs with CREDIBLE-048 (fire-rate telemetry) — together: CREDIBLE-050 proves gates fire correctly under known violation; CREDIBLE-048 measures how often they fire in production"
-    - "Required by CREDIBLE-042/043 (flip gates to required) — a gate that fails its own fixture can't be flipped to required"
+  - scripts/ci/test-all-gates-force-fire.sh exists; iterates each named gate from a manifest
+  - 'Per gate: synthesize a fixture PR with the exact violation the gate is built to catch; run the gate''s check script;
+    assert correct ambient kind=X event emitted; assert exit code matches policy (fail-closed/warn-only)'
+  - 'Manifest: scripts/ci/gate-manifest.yaml listing each gate, its check script, its expected ambient event kind, its fixture
+    description'
+  - 'Fixtures for the 10 today-shipped gates: CREDIBLE-026 (chore-gaps + src diff), CREDIBLE-027 (>100 deletions in chore-titled
+    PR + scratch-commit subjects), CREDIBLE-028 (state.db status=done with unmerged PR), INFRA-825 (stale binary on destructive
+    op), CREDIBLE-029 (concurrent ID reserve), RESILIENT-006 (stale-vs-main MERGEABLE PR), RESILIENT-008 (post-merge YAML
+    status flip), RESILIENT-009 (worktree gitdir mismatch), INFRA-819 (reaper post-ENOSPC restart)'
+  - Runs as a required CI check on any PR modifying scripts/ci/check-* or gate workflow files — ensures gate refactors don't
+    silently break the gate
+  - 'Fixture output: pass/fail per gate + which gates fired correctly + which gates failed to fire'
+  - 'If a gate fails to fire on its own fixture: ambient kind=gate_dead_code with gate_name; operator decides whether to fix
+    or remove'
+  - 'Pairs with CREDIBLE-048 (fire-rate telemetry) — together: CREDIBLE-050 proves gates fire correctly under known violation;
+    CREDIBLE-048 measures how often they fire in production'
+  - Required by CREDIBLE-042/043 (flip gates to required) — a gate that fails its own fixture can't be flipped to required
+  closed_date: '2026-05-13'
+  closed_pr: 1701
