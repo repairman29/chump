@@ -130,7 +130,9 @@ info "----"
 info "target/ purge pass (frozen worktrees only)…"
 _target_purged=0
 _target_freed_kb=0
-for wt in "$REPO_ROOT"/.claude/worktrees/*/; do
+# INFRA-1053: harness-agnostic base. Default keeps .claude/worktrees/.
+_REAPER_WT_BASE="${CHUMP_WORKTREE_BASE:-$REPO_ROOT/.claude/worktrees}"
+for wt in "$_REAPER_WT_BASE"/*/; do
     [[ -d "$wt" ]] || continue
     [[ -f "$wt/.bot-merge-shipped" ]] || continue
     [[ -d "$wt/target" ]] || continue
@@ -195,10 +197,18 @@ process_worktree() {
     local wt_path="$1" wt_branch="$2"
     [[ -z "$wt_path" ]] && return 0
 
-    # Only consider worktrees under .claude/worktrees/ (never the main repo).
+    # Only consider worktrees under the worktree-base (never the main repo).
+    # INFRA-1053: the legacy .claude/worktrees/ check is preserved; additionally
+    # accept anything under CHUMP_WORKTREE_BASE when configured.
     case "$wt_path" in
         */\.claude/worktrees/*) ;;
-        *) return 0 ;;
+        *)
+            if [[ -n "${CHUMP_WORKTREE_BASE:-}" && "$wt_path" == "${CHUMP_WORKTREE_BASE%/}/"* ]]; then
+                :
+            else
+                return 0
+            fi
+            ;;
     esac
 
     local wt_name; wt_name=$(basename "$wt_path")

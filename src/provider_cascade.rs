@@ -33,9 +33,7 @@ fn emit_cascade_exhausted_event(slots: &[ProviderSlot], reason: &str) {
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
 
-    let session = std::env::var("CHUMP_SESSION_ID")
-        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-        .unwrap_or_else(|_| "unknown".to_string());
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
 
     let worktree = repo_root
         .file_name()
@@ -98,9 +96,7 @@ fn emit_cascade_backoff_event(kind: &str, backoff_s: u64) {
     let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
-    let session = std::env::var("CHUMP_SESSION_ID")
-        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-        .unwrap_or_else(|_| "unknown".to_string());
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let line = format!(
         "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"event\":\"{kind}\",\"backoff_s\":{backoff_s}}}"

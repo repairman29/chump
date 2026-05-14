@@ -256,9 +256,7 @@ pub fn emit_ambient_alert(alert: &AdversaryAlert) {
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
 
-    let session = std::env::var("CHUMP_SESSION_ID")
-        .or_else(|_| std::env::var("CLAUDE_SESSION_ID"))
-        .unwrap_or_else(|_| "unknown".to_string());
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
 
     let worktree = repo_root
         .file_name()

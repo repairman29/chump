@@ -25,12 +25,12 @@ Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Was
 - **INFRA-601** P1 ✅ — bandit Thompson vs UCB1 replay study (done in #1225)
 - **COG-053** P1 ✅ — subagent self-ship rate measurement (done in #1310)
 
-**Sunset** (last 5 PRs shipped, 2026-05-11):
-- #1440 — fix(INFRA-817): backward-compat aliases traverse shadow DOM (e2e-pwa fix)
-- #1439 — feat(COG-052): `chump gap audit-ac` — AC coverage checker for closed gaps
-- #1438 — chore: file DOC-035 (README rewrite) + INFRA-818 (perf tuning FLEET_SIZE=10)
-- #1437 — fix(INFRA-816): add system deps to release-plz.yml (glib-2.0)
-- #1436 — chore(INFRA-690): delete 13 dead-code files (empty route stubs + orphans)
+**Sunset** (last 5 meaningful PRs shipped, 2026-05-13):
+- #1758 — fix(INFRA-1071): RESILIENT — `#[serial]` on ambient_rotate env-mutating tests (cargo test race)
+- #1755 — fix(INFRA-1064): RESILIENT — `worktree_root()` returns CWD when CHUMP_REPO points at sibling
+- #1753 — feat(INFRA-1063): ZERO-WASTE — per-worktree CARGO_TARGET_DIR + `cargo_lock_wait` telemetry
+- #1750 — docs(DOC-047): MISSION — harness-agnostic framing in README + AGENTS.md
+- #1741 — fix(INFRA-1018): CREDIBLE — repair `#msg-input` alias (shadowRoot bug) blocking e2e-pwa
 
 ---
 
@@ -154,19 +154,24 @@ reports back) without human-typing each chump CLI command.
 
 ## Status (live; updated by Mission Driver)
 
-- **Updated.** 2026-05-12
+- **Updated.** 2026-05-13
 - **Note on "Week N" labels.** Week labels are **phase markers** (Phase 1 — Front door; Phase 2 — Credible evidence; Phase 3 — Orchestrator; Phase 4 — Polish + demo). The calendar dates in parens are *target* dates from the original 30-day plan, not enforcement boundaries. Status flags (SHIPPED / WORK COMPLETE / IN PROGRESS) reflect actual milestone completion, not calendar position. A phase can be WORK COMPLETE before its target date window opens.
 - **Phase 1 / Week 1 (target May 6–13) — SHIPPED.** User-facing front door complete. All gaps closed. FTUE clean-machine CI test deferred to Phase 4.
-- **Phase 2 / Week 2 (target May 14–21) — WORK COMPLETE (early).** EVAL-101 cognition A/B run and closed as null finding (Δ=+0.025, threshold 0.10). Result at `docs/eval/EVAL-101-cognition-ab-2026-05-10.md`. **Follow-up: EVAL-102 filed P0** (see `docs/gaps/EVAL-102.yaml`) — n≥50/cell rerun with explicit dependency map for downstream gaps.
+- **Phase 2 / Week 2 (target May 14–21) — WORK COMPLETE (early).** EVAL-101 cognition A/B run and closed as null finding (Δ=+0.025, threshold 0.10). Result at `docs/eval/EVAL-101-cognition-ab-2026-05-10.md`. **Follow-up: EVAL-102 filed P1** (see `docs/gaps/EVAL-102.yaml`) — n≥50/cell rerun with explicit dependency map for downstream gaps.
 - **Phase 3 / Week 3 (target May 22–28) — IN PROGRESS.** INFRA-796/797/798 scoped and implemented. `chump orchestrate` loop exists with telemetry + auto-grade timer + stub/real intent parser.
   - **INFRA-816 (release-plz glib dep)** — filed + fixed + merged (#1437). ✅
-  - **INFRA-817 (e2e-pwa flake root cause)** — filed. Alias fix merged (#1440). Test updates in PR (#1442).
-- **Phase 4 / Week 4 (target May 29–June 6) — GAPS FILED.** DOC-035 (README rewrite for demo flow) and INFRA-818 (perf tuning FLEET_SIZE=10) filed in #1438. PRODUCT-025 (PWA dashboard MVP) and INFRA-799 (FTUE CI test) pending.
-- **Pillar balance (2026-05-12):** EFFECTIVE 43% (dominant), CREDIBLE 20%, RESILIENT 13%, ZERO-WASTE 6%, MISSION 3%. **~86 pickable, ~1 vague** (down from 107 after the 2026-05-11 P1-vague triage sprint). Auto-refresh script filed as DOC-037.
-- **CI pipeline:** Zero green runs on main in last 100 before fix. Root cause: e2e-pwa flake from missing v2 backward-compat aliases (INFRA-817). Fix landed in #1440; e2e test updates in #1442.
+  - **INFRA-1018 / INFRA-1066 (e2e-pwa `#msg-input` flake)** — root cause fixed and documented. Alias shim now correctly walks light DOM to `<chump-view-chat>` then shadow DOM into `<chump-chat>`. ✅ (#1741, #1735)
+- **Phase 4 / Week 4 (target May 29–June 6) — GAPS FILED.** DOC-035 (README rewrite for demo flow) and INFRA-818 (perf tuning FLEET_SIZE=10) filed. PRODUCT-025 (PWA dashboard MVP) and INFRA-799 (FTUE CI test) pending.
+- **Pillar balance (2026-05-13):** EFFECTIVE, CREDIBLE, RESILIENT, ZERO-WASTE — all 4 pillars pickable (each ≥2 xs/s P1 gaps open). Recent sprint emphasis: coordinator reliability (RESILIENT + ZERO-WASTE); next: EFFECTIVE user-facing and CREDIBLE measurement gaps.
+- **What changed this week (2026-05-07 → 2026-05-13):**
+  - **Coordinator robustness sprint (RESILIENT/ZERO-WASTE):** Per-worktree `CARGO_TARGET_DIR` eliminates parallel bot-merge lock contention (#1753); `cargo_lock_wait` telemetry added. `worktree_root()` now detects stale `core.worktree` in `.git/config` (#1755). `#[serial]` annotations on all env-mutating tests (#1758, INFRA-977/1071). Fleet coordinator now CREDIBLE-035: CLI integration tests for `chump health`, `fleet status`, `claim/release`, `--briefing`, auth modes (#1749).
+  - **Harness-agnostic framing (MISSION):** README and AGENTS.md rewritten to lead with "fleet coordinator + gap registry, bring your own agent" — Claude Code, opencode, Codex CLI, Aider, goose, or manual commits all first-class (#1750).
+  - **e2e-pwa green-main restoration (CREDIBLE):** Fixed shadowRoot traversal bug in `createTestAliases()` — `<chump-view-chat>` is light DOM, `<chump-chat>` is shadow DOM. Documented in `CLAUDE_GOTCHAS.md` (#1741, #1735).
+  - **Gap registry hygiene:** INFRA-980/981/982 stale stuck-PR gaps closed; INFRA-1064/1066/1071 done.
+- **CI pipeline:** e2e-pwa fix in main (#1741). `tauri-cowork-e2e` failing on all PRs (pre-existing, not regressions from this sprint).
+- **SLO status (from fleet-state.json):** L1-SLO-1 (silent_agent), L2-SLO-2 (ship rate), L2-SLO-5, L3-SLO-1 breached. Priority: reduce silent leases (many stale from crashed sessions) and check ship rate.
 - **Next actions:**
-  1. Verify PR #1442 merges + CI passes (e2e test selectors for v2 DOM).
-  2. Update ROADMAP.md with Week 3 orchestrator gaps → WEEK 3 SHIPPED.
-  3. File remaining Week 4 gaps (PRODUCT-025 PWA dashboard slices, INFRA-799 FTUE CI test).
-  4. Curate vague gaps: add ACs to 107 unpickable gaps.
-  5. Implement next pickable Rust gap (INFRA-777, INFRA-784, or CREDIBLE-019).
+  1. Arm auto-merge for open PRs (rate limit resets 2026-05-14T01:36Z; PRs #1735, #1753, #1755, #1758 waiting).
+  2. Rebuild + reinstall `chump` binary (staleness warning: built at 78339bcfc, 7 commits behind HEAD).
+  3. Pick next EFFECTIVE or CREDIBLE gap (CREDIBLE-037, INFRA-1052 — both leased by active sessions).
+  4. Run `chump gap audit-priorities` to check P0 count and vague gaps.

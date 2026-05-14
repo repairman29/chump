@@ -57,7 +57,9 @@ if command -v git >/dev/null 2>&1; then
         esac
     fi
 fi
-WORKTREES_DIR="$REPO/.claude/worktrees"
+# INFRA-1053: harness-agnostic base. Default keeps the .claude/worktrees/
+# convention so reaping behavior is unchanged for existing operators.
+WORKTREES_DIR="${CHUMP_WORKTREE_BASE:-$REPO/.claude/worktrees}"
 
 AGE_SECONDS=$((AGE_DAYS * 86400))
 NOW=$(date +%s)
