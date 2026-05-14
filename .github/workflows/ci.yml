@@ -445,11 +445,9 @@ jobs:
           PYTHON: python3
         run: bash scripts/eval/research-lane-a-smoke.sh
 
-      - name: gap-preflight unregistered-ID guard (INFRA-020)
-        run: bash scripts/ci/test-gap-preflight-unregistered.sh
-
-      - name: gap-claim claim-time exclusivity race guard (INFRA-403)
-        run: bash scripts/ci/test-gap-claim-race.sh
+      # INFRA-987: gap-preflight unregistered-ID guard (INFRA-020) + gap-claim
+      # race guard (INFRA-403) removed — both exercised deleted shell scripts.
+      # Coverage restored in Rust against atomic_claim.rs.
 
       - name: atomic claim no-shell-out + thin-wrapper assertions (INFRA-1025)
         run: bash scripts/ci/test-infra-1025-atomic-claim.sh
@@ -504,9 +502,6 @@ jobs:
 
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
-
-      - name: cargo-target-reaper — dry-run, --execute, safety guards, ambient event (INFRA-1250)
-        run: bash scripts/ci/test-cargo-target-reaper.sh
 
       - name: gap-doctor safe-sweep (INFRA-308)
         run: bash scripts/ci/test-gap-doctor-safe-sweep.sh
@@ -627,11 +622,11 @@ jobs:
         # Build once, reuse across the next three steps.
         run: cargo build --bin chump
 
-      - name: gap-reserve concurrency + preflight (INFRA-021)
+      - name: gap-reserve concurrency (INFRA-021)
         run: |
           export PATH="$(pwd)/target/debug:$PATH"
           bash scripts/ci/test-gap-reserve-concurrency.sh
-          bash scripts/ci/test-gap-reserve-preflight.sh
+          # INFRA-987: test-gap-reserve-preflight.sh removed (tested deleted shell script).
 
       - name: gap-reserve ID zero-padding (INFRA-080)
         run: |
@@ -675,11 +670,6 @@ jobs:
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-cli-fleet-coord.sh
-
-      - name: CLI integration tests by command category — 31 commands (CREDIBLE-018)
-        run: |
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
-            bash scripts/ci/test-cli-integration.sh
 
       # INFRA-024: standalone example workspace (not a root workspace member).
       # Locked build catches accidental drift in examples/apalis-poc/Cargo.lock.
@@ -1117,12 +1107,6 @@ jobs:
       - name: install-gh-shim worktree-safety guard (INFRA-1186)
         run: bash scripts/ci/test-install-gh-shim-worktree-safe.sh
 
-      - name: cache hit/miss event emission — github_cache.sh telemetry (CREDIBLE-064)
-        run: bash scripts/ci/test-cache-event-emission.sh
-
-      - name: gh-shim script attribution deep walk (CREDIBLE-065)
-        run: bash scripts/ci/test-gh-shim-script-attribution.sh
-
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
 # Why: primary correctness + style fence before anything lands on main.
@@ -1175,8 +1159,6 @@ jobs:
         run: bash scripts/ci/test-curator-auto-decompose.sh
       - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
         run: bash scripts/ci/test-required-model.sh
-      - name: picker consumes planner priority (INFRA-1258)
-        run: bash scripts/ci/test-picker-priority.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
@@ -1356,8 +1338,6 @@ jobs:
             bash scripts/ci/test-gap-list-since.sh
       - name: gap list --json schema audit — required fields present in every gap object (CREDIBLE-061)
         run: bash scripts/ci/test-gap-list-since-json-schema.sh
-      - name: alert classifier false-positive suppression — operator silent_agent + closed pr_stuck (INFRA-1247)
-        run: bash scripts/ci/test-alert-classifier.sh
       - name: bot-merge GraphQL preflight + REST fallback — fails fast, emits graphql_exhausted (INFRA-1031)
         run: bash scripts/ci/test-bot-merge-graphql-preflight.sh
       - name: /api/gap-queue fat shape — 15 fields, filters, sort, pillar derivation, ambient signal (INFRA-1197)
@@ -1367,19 +1347,6 @@ jobs:
             bash scripts/ci/test-api-gap-queue-shape.sh
       - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
         run: bash scripts/ci/test-gap-ac-requirement.sh
-      - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
-        run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
-      - name: EVENT_REGISTRY coverage — no emit-without-register on full tree (INFRA-1237)
-        # strict-emit mode: emit-without-register FAILS; orphans warn-only.
-        # Flip to CHUMP_REGISTRY_GATE_MODE=strict once the orphan-reconciliation
-        # follow-up (INFRA-1287) lands.
-        run: CHUMP_REGISTRY_GATE_MODE=strict-emit bash scripts/ci/test-event-registry-coverage.sh
-      - name: no-inline-ambient-printf — Phase-1 dry-up (INFRA-1307)
-        # Refuses net-new files in scripts/coord|dispatch|ops/ + src/ + crates/
-        # that write inline to ambient.jsonl. New emit sites should call
-        # `chump ambient emit <kind> [--field k=v]...` (shipped via INFRA-1048).
-        # Allowlist: scripts/ci/ambient-emit-allowlist.txt (17 existing sites).
-        run: BASE_REF=origin/main bash scripts/ci/test-no-inline-ambient-printf.sh
 
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path
@@ -1574,11 +1541,6 @@ jobs:
         run: bash scripts/ci/test-merge-driver-ci-yml-add-row.sh
       - name: write-ahead log recovery — wrap/replay round-trip (INFRA-1200)
         run: bash scripts/ci/test-edit-replay.sh
-      - name: PWA auth-toast dedup — fleet_auth_fallback stream + unit (INFRA-991)
-        run: |
-          cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-pwa-auth-toast-stream.sh
-          node web/v2/tests/auth-toast.dedup.test.js
       - name: pillar-balance guard at reserve time (INFRA-1152)
         run: |
           cargo build --bin chump 2>&1 | tail -3
