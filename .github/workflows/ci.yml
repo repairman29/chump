@@ -1170,6 +1170,8 @@ jobs:
         run: bash scripts/ci/test-curator-auto-decompose.sh
       - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
         run: bash scripts/ci/test-required-model.sh
+      - name: picker consumes planner priority (INFRA-1258)
+        run: bash scripts/ci/test-picker-priority.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)

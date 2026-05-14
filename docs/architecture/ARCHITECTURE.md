@@ -63,6 +63,12 @@ The split was driven by JetBrains during integration testing — the monolith ha
 
 When `CHUMP_DELEGATE=1`, delegate tool runs summarize, extract, classify (message routing), and validate (output quality guard) via a worker (same or smaller model). `CHUMP_WORKER_API_BASE` / `CHUMP_WORKER_MODEL` for separate worker. diff_review uses same worker with code-review prompt. read_file and run_cli use tool-side intelligence (auto-summary for files over CHUMP_READ_FILE_MAX_CHARS; middle-trim for long CLI output).
 
+## A2A two-way operator communications
+
+Bidirectional operator ↔ fleet messaging layer. Operator identity (`operator-<machine-id>`, persisted across browser tabs), urgency/severity schema (`now | hours | digest`), reach hierarchy (inbox → toast → push → Discord → digest), and operator filter rules (`.chump/operator-rules.yaml`). Built on the `correlation_id` reply contract from INFRA-1255 so every INTENT→STUCK→HANDOFF→DONE chain is traceable and auto-reaped from the inbox.
+
+Implementation chain: INFRA-1296 (POST /api/broadcast), INFRA-1297 (stable identity), INFRA-1298 (inbox API), INFRA-1299 (urgency fields + reach-classifier), INFRA-1300 (filter rules), INFRA-1301 (Web Push), INFRA-1302 (digest cron), PRODUCT-103..105 (PWA components). Full spec: [A2A_TWO_WAY_COMMS.md](A2A_TWO_WAY_COMMS.md).
+
 ## ACP adapter
 
 `src/acp.rs` (types) and `src/acp_server.rs` (JSON-RPC stdio server). Launched via `chump --acp` or `chump acp`. Makes Chump discoverable from any [Agent Client Protocol](https://agentclientprotocol.com) client (Zed, JetBrains IDEs, ACP Registry members). Full V1 spec: initialize + session/{new, load, list, prompt, cancel, set_mode, set_config_option, request_permission, update} + fs/{read, write}_text_file + terminal/{create, output, wait_for_exit, kill, release}. 79 unit tests. See [ACP.md](ACP.md) for method-level details.
