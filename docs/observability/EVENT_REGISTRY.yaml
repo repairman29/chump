@@ -209,6 +209,22 @@ events:
     consumers: [fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, gap_id, session_id]
 
+  - kind: curator_paused
+    emitter: scripts/coord/opus-curator.sh (META-065)
+    trigger: operator set CHUMP_CURATOR_PAUSE=1 to short-circuit the
+      curator run; logged so audit shows when mutations were disabled
+      and for how long.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, reason]
+
+  - kind: curator_auto_exec_armed
+    emitter: scripts/coord/opus-curator.sh (META-065)
+    trigger: first curator run after launchd install (sentinel absent at
+      .chump-locks/curator-armed.sentinel) — captures the moment
+      automated registry mutations went live for this operator.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, note]
+
   - kind: fleet_paused_disk_critical
     emitter: scripts/lib/disk-check.sh via worker.sh (INFRA-975)
     trigger: worker pre-cycle disk check found free < CHUMP_DISK_CRITICAL_GB (default 1 GB)

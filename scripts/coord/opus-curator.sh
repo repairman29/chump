@@ -635,11 +635,40 @@ _parse_args() {
 }
 
 main() {
+  # META-065: operator panic-button. CHUMP_CURATOR_PAUSE=1 short-circuits
+  # the whole run with a single ambient emit so the operator can disable
+  # the curator instantly when the fleet is on fire — no need to launchctl
+  # bootout the plist.
+  if [[ "${CHUMP_CURATOR_PAUSE:-0}" == "1" ]]; then
+    echo "[$(date -u +%H:%M:%SZ)] OPUS CURATOR PAUSED (CHUMP_CURATOR_PAUSE=1) — skipping run"
+    local _ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    if [[ -d "$(dirname "$_ambient")" ]]; then
+      printf '{"ts":"%s","kind":"curator_paused","reason":"CHUMP_CURATOR_PAUSE=1"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_ambient" 2>/dev/null || true
+    fi
+    exit 0
+  fi
+
   init_fleet_state
 
   # INFRA-841: heartbeat emission for frequency-aware scheduling audit.
   if declare -F emit_system_gap_tick >/dev/null 2>&1; then
     emit_system_gap_tick opus-curator
+  fi
+
+  # META-065: first-time-armed sentinel. When the curator runs for the
+  # first time after install (sentinel absent), emit
+  # kind=curator_auto_exec_armed so the operator's audit trail records
+  # the moment automated mutations went live.
+  local _sentinel="${REPO_ROOT:-.}/.chump-locks/curator-armed.sentinel"
+  if [[ ! -f "$_sentinel" ]]; then
+    local _ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    if [[ -d "$(dirname "$_ambient")" ]]; then
+      printf '{"ts":"%s","kind":"curator_auto_exec_armed","note":"first run after launchd install"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_ambient" 2>/dev/null || true
+    fi
+    mkdir -p "$(dirname "$_sentinel")" 2>/dev/null || true
+    date -u +%Y-%m-%dT%H:%M:%SZ > "$_sentinel" 2>/dev/null || true
   fi
 
   echo "[$(date -u +%H:%M:%SZ)] OPUS CURATOR RUN${_DRY_RUN:+' (dry-run)'}"

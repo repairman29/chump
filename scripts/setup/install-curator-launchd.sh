@@ -51,8 +51,11 @@ install_plist() {
   <string>${REPO}</string>
   <key>StartInterval</key>
   <integer>${interval}</integer>
+  <!-- META-065: RunAtLoad=true so the first run fires on install,
+       creating the .chump-locks/curator-armed.sentinel + emitting
+       kind=curator_auto_exec_armed for audit. -->
   <key>RunAtLoad</key>
-  <false/>
+  <true/>
   <key>StandardOutPath</key>
   <string>/tmp/${logname}.out.log</string>
   <key>StandardErrorPath</key>
