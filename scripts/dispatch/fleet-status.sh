@@ -28,6 +28,11 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT"
+# INFRA-1055: API rate-limit circuit breaker (non-fatal if missing).
+# shellcheck source=../coord/api-rate-limit-gate.sh
+_rl_gate_path="$REPO_ROOT/scripts/coord/api-rate-limit-gate.sh"
+[[ -f "$_rl_gate_path" ]] && source "$_rl_gate_path"
+unset _rl_gate_path
 
 # Resolve the canonical lock dir + ambient stream.
 #
@@ -280,42 +285,53 @@ for g, n in per_gap.most_common(10):
 PY
 }
 
-# EFFECTIVE-025: show GitHub REST + GraphQL rate-limit remaining.
+# EFFECTIVE-025 + INFRA-1055: show GitHub REST + GraphQL rate-limit remaining.
 # Uses `gh api rate_limit` (REST call, does NOT consume GraphQL quota).
+# Emits rate_limit_approaching / rate_limit_exhausted ambient events when
+# thresholds are crossed (via api-rate-limit-gate.sh if available).
 render_rate_limit() {
   if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
     echo "GitHub API: (gh not available — rate limit unknown)"
     return
   fi
-  local raw
-  raw="$(gh api rate_limit 2>/dev/null || echo "")"
-  if [[ -z "$raw" ]]; then
-    echo "GitHub API: (rate_limit call failed — offline or auth issue)"
-    return
+
+  # INFRA-1055: use gate snapshot if available (avoids duplicate /rate_limit call).
+  local rest_rem rest_lim gql_rem gql_lim
+  if declare -F rate_limit_snapshot >/dev/null 2>&1; then
+    rate_limit_snapshot --source "fleet-status.sh" 2>/dev/null || true
+    rest_rem="$RL_REST_REMAINING"; rest_lim="$RL_REST_LIMIT"
+    gql_rem="$RL_GQL_REMAINING";  gql_lim="$RL_GQL_LIMIT"
+    # Emit threshold events so operator-facing dashboard triggers ambient alerts.
+    rate_limit_gate "fleet-status" --source "fleet-status.sh" >/dev/null 2>&1 || true
+  else
+    local raw
+    raw="$(gh api rate_limit 2>/dev/null || echo "")"
+    if [[ -z "$raw" ]]; then
+      echo "GitHub API: (rate_limit call failed — offline or auth issue)"
+      return
+    fi
+    rest_rem="$(echo "$raw" | python3 -c \
+      "import json,sys; d=json.load(sys.stdin); print(d['resources']['core']['remaining'])" 2>/dev/null || echo "?")"
+    rest_lim="$(echo "$raw" | python3 -c \
+      "import json,sys; d=json.load(sys.stdin); print(d['resources']['core']['limit'])" 2>/dev/null || echo "5000")"
+    gql_rem="$(echo "$raw" | python3 -c \
+      "import json,sys; d=json.load(sys.stdin); print(d['resources']['graphql']['remaining'])" 2>/dev/null || echo "?")"
+    gql_lim="$(echo "$raw" | python3 -c \
+      "import json,sys; d=json.load(sys.stdin); print(d['resources']['graphql']['limit'])" 2>/dev/null || echo "5000")"
   fi
-  local rest_rem rest_lim gql_rem gql_lim reset_ts
-  rest_rem="$(echo "$raw" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d['resources']['core']['remaining'])" 2>/dev/null || echo "?")"
-  rest_lim="$(echo "$raw" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d['resources']['core']['limit'])" 2>/dev/null || echo "5000")"
-  gql_rem="$(echo "$raw" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d['resources']['graphql']['remaining'])" 2>/dev/null || echo "?")"
-  gql_lim="$(echo "$raw" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d['resources']['graphql']['limit'])" 2>/dev/null || echo "5000")"
-  reset_ts="$(echo "$raw" | python3 -c "
-import json,sys,time
-d=json.load(sys.stdin)
-ts=max(d['resources']['core']['reset'], d['resources']['graphql']['reset'])
-print(time.strftime('%H:%M', time.gmtime(ts)))
-" 2>/dev/null || echo "??")"
+
+  local reset_ts
+  reset_ts="$(gh api rate_limit --jq '
+    (.resources.core.reset | . as $c | (.resources.graphql.reset | . as $g |
+    if $c > $g then $c else $g end)) | strftime("%H:%M")
+  ' 2>/dev/null || echo "??")"
 
   local line="GitHub API: REST=${rest_rem}/${rest_lim} GraphQL=${gql_rem}/${gql_lim} (resets ${reset_ts} UTC)"
   local warn=0
-  { [[ "$rest_rem" != "?" ]] && [[ "$rest_rem" -lt 500 ]]; } 2>/dev/null && warn=1 || true
-  { [[ "$gql_rem"  != "?" ]] && [[ "$gql_rem"  -lt 500 ]]; } 2>/dev/null && warn=1 || true
+  { [[ "$rest_rem" != "?" ]] && [[ "$rest_rem" -lt 1000 ]]; } 2>/dev/null && warn=1 || true
+  { [[ "$gql_rem"  != "?" ]] && [[ "$gql_rem"  -lt 2500 ]]; } 2>/dev/null && warn=1 || true
 
   if [[ "$warn" -eq 1 ]]; then
-    # Color red on terminals; plain WARN: prefix for pipes/logs.
     if [[ -t 1 ]]; then
       printf '\033[31mWARN: %s\033[0m\n' "$line"
     else
