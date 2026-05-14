@@ -1325,6 +1325,7 @@ dependencies = [
  "chump-agent-lease",
  "chump-cancel-registry",
  "chump-cost-tracker",
+ "chump-gap-store",
  "chump-mcp-lifecycle",
  "chump-messaging",
  "chump-orchestrator",
@@ -1434,6 +1435,20 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-single-instance",
  "tokio",
+]
+
+[[package]]
+name = "chump-gap-store"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "serial_test",
+ "tempfile",
 ]
 
 [[package]]

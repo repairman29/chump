@@ -97,7 +97,7 @@ impl GapStore {
     /// must use the typed methods (`get`, `reserve`, etc.). This exists so
     /// briefing-module tests (INFRA-760) can seed synthetic gaps directly
     /// without re-implementing the reserve() flow.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-helpers"))]
     pub fn conn_for_test(&self) -> &Connection {
         &self.conn
     }
