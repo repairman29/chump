@@ -167,6 +167,76 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 - **PRs are intent-atomic**, not file-count-bounded. One logical change per PR.
 - **`--no-verify` is the reason most regressions ship.** Use very sparingly.
 
+## Cache-first reads (INFRA-1081, 2026-05-14)
+
+The fleet has a **local SQLite cache** at `.chump/github_cache.db` populated by a
+**webhook receiver** (`scripts/ops/github-webhook-receiver.py`). Every fleet
+script that wants PR state should **read from the cache first**, fall back to
+direct `gh api` only on miss.
+
+```bash
+source "$(dirname "$0")/lib/github_cache.sh"
+
+# PR state — replaces gh pr view
+cache_lookup_pr "<number>"           # returns JSON; falls back to REST on miss
+
+# BEHIND scan — replaces gh pr list with mergeStateStatus filter
+cache_query_behind_prs               # returns one number per line
+
+# Per-PR check status — replaces gh api repos/X/commits/SHA/check-runs
+cache_lookup_checks "<head_sha>"     # returns `name\tstatus\tconclusion` per check
+```
+
+**Already migrated:** queue-driver.sh (BEHIND scan), bot-merge.sh FLEET-029
+overlap scan via chump-ambient-glance.sh, pr-rescue.sh per-PR meta fetch.
+**Next consumers** (filed as gaps): bot-merge per-PR check-runs polling
+(INFRA-1130), ghost-gap-reaper (INFRA-1082 audit).
+
+**When in doubt:** read from cache. Cache miss is cheap (1 REST call, REST
+core bucket stays healthy during GraphQL exhaustion). Polling GraphQL is the
+costly path.
+
+## Call criticality (INFRA-1080, 2026-05-14)
+
+`chump_gh` now classifies each call as **critical** (default) or **background**.
+Background calls get preempted when `remaining_graphql < 10%` so critical-path
+operations never starve.
+
+```bash
+# Default — proceeds even when bucket is tight
+chump_gh pr merge "$PR" --auto --squash
+
+# Tag as background — yields the bucket to critical callers
+CHUMP_GH_CALL_CRITICALITY=background chump_gh pr list ...
+```
+
+| Critical (default) | Background (opt-in) |
+|---|---|
+| `gh pr create` / `gh pr merge` | label edits |
+| `gh pr update-branch` | overlap scans |
+| ship-blocking REST writes | dashboard refreshes |
+| operator-initiated rescue | cache reconcile per-PR fetches |
+
+**Why it matters:** GraphQL exhaustion is multiple-times-per-day during fleet
+peaks. Without criticality tags, a background dashboard poll can starve a
+ship-blocking merge. With them, the merge fires, the poll waits.
+
+## GraphQL exhaustion handling (INFRA-1040 / INFRA-1079)
+
+Automated:
+- **Secondary rate-limit self-throttle** — `chump_gh` caps to
+  `CHUMP_GH_MAX_CALLS_PER_MIN` (default 60) across the fleet via a shared
+  sliding window. Per-script override: `CHUMP_GH_THROTTLE_<UPPERCASE_SCRIPT>=N`.
+- **Exhaustion signal** — first call to see `remaining_graphql ≤ 100` emits
+  `kind=graphql_exhausted` to `ambient.jsonl` (debounced once per reset window).
+  Every fleet agent reading ambient pivots to REST-only paths simultaneously.
+
+Manual operator actions when you see repeated `graphql_exhausted` or
+`gh_self_throttled` events:
+- Run `scripts/dev/api-cost-leaderboard.sh --window 1h` to find the burner.
+- Background-tag the noisiest non-critical caller via `CHUMP_GH_CALL_CRITICALITY=background`.
+- If structural: file an INFRA-NEW-MIGRATE-<script>-TO-CACHE follow-up.
+
 ## Fleet scaling gate (INFRA-518)
 
 Scaling fleet size is a deliberate stress test of prior-tier fixes. Each step-up requires the
