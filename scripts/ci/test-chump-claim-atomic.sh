@@ -32,8 +32,9 @@ git -C "$FAKE" config user.email t@t.com
 git -C "$FAKE" config user.name t
 git -C "$FAKE" config commit.gpgsign false 2>/dev/null || true
 
-# Copy the dependencies the atomic claim needs
-cp "$REPO_ROOT/scripts/coord/gap-claim.sh" "$FAKE/scripts/coord/"
+# Copy the dependencies the atomic claim needs.
+# INFRA-1025: gap-claim.sh is now a thin wrapper — no longer needs to be
+# copied into the fake repo. The chump binary handles everything in Rust.
 cp "$REPO_ROOT/scripts/coord/gap-preflight.sh" "$FAKE/scripts/coord/" 2>/dev/null || true
 cp -r "$REPO_ROOT/scripts/lib/." "$FAKE/scripts/lib/"
 cp -r "$REPO_ROOT/scripts/git-hooks/." "$FAKE/scripts/git-hooks/" 2>/dev/null || true
