@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # install-syspolicyd-doctor-launchd.sh — INFRA-675: install 30-min launchd
-# agent that runs scripts/dev/chump-doctor.sh to auto-heal a wedged chump
+# agent that runs scripts/dev/chump-binary-unwedge.sh to auto-heal a wedged chump
 # binary before fleet workers see a hung 'chump gap …' call.
 #
 # Root cause (macOS Sequoia): syspolicyd gets a binary's inode into a wedged
 # pending-decision state, causing every subsequent launch to hang at _dyld_start.
 # Without this heartbeat, the wedge silently starves the fleet for hours.
 #
-# chump-doctor.sh exit codes (both acceptable for launchd):
+# chump-binary-unwedge.sh exit codes (both acceptable for launchd):
 #   0 — probe OK (binary healthy) OR probe-fail + heal applied + post-heal OK
 #   1 — post-heal probe still timed out (operator action needed)
 #
@@ -38,7 +38,7 @@ cat >"$DEST" <<EOF
   <array>
     <string>/bin/bash</string>
     <string>-lc</string>
-    <string>cd "$REPO" && CHUMP_DOCTOR_QUIET=1 bash scripts/dev/chump-doctor.sh</string>
+    <string>cd "$REPO" && CHUMP_DOCTOR_QUIET=1 bash scripts/dev/chump-binary-unwedge.sh</string>
   </array>
   <!-- Every 30 minutes (1800s). Probes chump binary health; replaces wedged
        inode so workers are never silently starved by syspolicyd. -->

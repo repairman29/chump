@@ -44,7 +44,7 @@ The canonical executable infrastructure. Examples in Chump:
 - `scripts/coord/bot-merge.sh` — the ship pipeline
 - `chump gap` subcommands (Rust binary)
 - `scripts/git-hooks/pre-commit` — commit-time guards
-- `scripts/dev/chump-doctor.sh` — INFRA-275 binary heal
+- `scripts/dev/chump-binary-unwedge.sh` — INFRA-275 binary heal
 
 Tier 1 is the highest-leverage tier per unit of effort because it's
 **deterministic**: an agent invokes the script, the script runs the
@@ -69,7 +69,7 @@ Tier 2 has two properties that limit its agent-quality leverage:
    (c) context budget allows. Any of those failing → the doc isn't read.
 
 2. **No execution semantics.** Even when read, Tier 2 is descriptive.
-   "When chump --version hangs, run scripts/dev/chump-doctor.sh" is a
+   "When chump --version hangs, run scripts/dev/chump-binary-unwedge.sh" is a
    *suggestion* in Tier 2 form. The agent has to remember it AND choose
    to apply it AND not have it crowded out by the next 50 things they
    read.

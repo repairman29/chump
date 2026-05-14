@@ -33,7 +33,7 @@ Load it via: `cat "$(scripts/lib/get-agent-briefing-prefix.sh)"` or override wit
 If `chump gap …` or `bot-merge.sh` hangs > 30s (no output, no progress):
 
 ```bash
-scripts/dev/chump-doctor.sh   # heals wedged binary; idempotent; safe
+scripts/dev/chump-binary-unwedge.sh   # heals wedged binary; idempotent; safe
 ```
 
 ## Falsifying-condition discipline

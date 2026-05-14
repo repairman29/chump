@@ -7,7 +7,7 @@ scripts/coord/bot-merge.sh --gap <YOUR-GAP-ID> --auto-merge
 
 **If `bot-merge.sh` hangs > 30s** (no output):
 ```bash
-scripts/dev/chump-doctor.sh  # Heal INFRA-275 binary wedge (idempotent)
+scripts/dev/chump-binary-unwedge.sh  # Heal INFRA-275 binary wedge (idempotent)
 ```
 
 **If still hung — manual recovery:**

@@ -20,8 +20,8 @@ if ! grep -q "scripts/coord/bot-merge.sh --gap" "$EPILOGUE_FILE"; then
 fi
 
 # Check for chump-doctor heal
-if ! grep -q "scripts/dev/chump-doctor.sh" "$EPILOGUE_FILE"; then
-  echo "FAIL: chump-doctor.sh heal command not found"
+if ! grep -q "scripts/dev/chump-binary-unwedge.sh" "$EPILOGUE_FILE"; then
+  echo "FAIL: chump-binary-unwedge.sh heal command not found"
   exit 1
 fi
 

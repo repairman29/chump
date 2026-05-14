@@ -105,7 +105,6 @@ circuit_breaker_clear() {
 
 # Print one line per known wedge-prone phase with current count + status.
 circuit_breaker_status() {
-  local phases=(cargo clippy cargo test cargo fmt git push git fetch gh pr create)
   # The phase names in run_timed_hb labels collapse multi-word into single
   # tokens via the "label" string; just iterate the distinct prefixes here.
   local distinct=("cargo clippy --workspace --all-targets" "cargo test" "cargo fmt" "git push" "git fetch" "gh pr create")

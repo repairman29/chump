@@ -1022,17 +1022,17 @@ fi
 # any one of them hanging stalls the whole pipeline for 30+ minutes before
 # the operator notices.
 #
-# chump-doctor.sh probes (5s timeout) and self-heals by replacing the wedged
+# chump-binary-unwedge.sh probes (5s timeout) and self-heals by replacing the wedged
 # inode. Idempotent — exit 0 if healthy, exit 0 after heal, exit 1 only on
 # hard failure (rebuild needed). Run BEFORE any chump call so wedge is
 # caught upfront, not midstream.
 #
 # Bypass: CHUMP_DOCTOR_SKIP=1 (cron-side, or for the chump-doctor PR itself).
 if [[ "${CHUMP_DOCTOR_SKIP:-0}" != "1" ]] \
-        && [[ -x "$REPO_ROOT/scripts/dev/chump-doctor.sh" ]]; then
-    if ! bash "$REPO_ROOT/scripts/dev/chump-doctor.sh" >/dev/null 2>&1; then
+        && [[ -x "$REPO_ROOT/scripts/dev/chump-binary-unwedge.sh" ]]; then
+    if ! bash "$REPO_ROOT/scripts/dev/chump-binary-unwedge.sh" >/dev/null 2>&1; then
         # See: docs/process/CLAUDE_GOTCHAS.md#error-binary-wedge
-        die_with_help "chump binary is wedged and could not self-heal — every subsequent chump call will hang. Run: CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-doctor.sh" "error-binary-wedge"
+        die_with_help "chump binary is wedged and could not self-heal — every subsequent chump call will hang. Run: CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-binary-unwedge.sh" "error-binary-wedge"
     fi
 fi
 
@@ -1873,6 +1873,18 @@ if [[ -z "$EXISTING_PR" ]]; then
     COMMIT_GAP_IDS=$(echo "$COMMIT_LOG" | grep -oE '[A-Z]+-[0-9]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | sort -u | tr '\n' ' ' || true)
     GAP_LINE=""
     [[ -n "$COMMIT_GAP_IDS" ]] && GAP_LINE="**Gaps addressed:** $COMMIT_GAP_IDS"
+
+    # INFRA-1219: dedup gate — refuse if another open PR cites the same gap.
+    # Audit 2026-05-14: 57 of 79 closed-not-merged PRs in last 14d were
+    # this pattern (parallel work; second PR loses, CI compute wasted).
+    if [[ -n "$COMMIT_GAP_IDS" ]] && [[ -f "$REPO_ROOT/scripts/coord/lib/pr-dedup.sh" ]]; then
+        # shellcheck disable=SC1091
+        source "$REPO_ROOT/scripts/coord/lib/pr-dedup.sh"
+        # shellcheck disable=SC2086  # word-splitting is intended for the gap-id list
+        if ! check_pr_dedup "$BRANCH" $COMMIT_GAP_IDS; then
+            _bm_fail "pr-create" 16 "INFRA-1219: refusing to open duplicate PR; another open PR exists for one of these gap IDs"
+        fi
+    fi
 
     # INFRA-501: PR title is public — ensure the last commit subject complies with
     # docs/agents/RESEARCH_PRIVACY.md § "PR title and commit subject hygiene".

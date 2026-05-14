@@ -27,12 +27,12 @@ cargo test --bin chump --quiet \
 # Also verify the chump-doctor --probe-cascade subcommand works syntactically.
 # We don't actually probe (would hit network); just check the help/exit path.
 echo "verifying chump-doctor --probe-cascade flag is recognized…"
-if ! grep -q -- "--probe-cascade" "$REPO_ROOT/scripts/dev/chump-doctor.sh"; then
-    echo "FAIL: chump-doctor.sh missing --probe-cascade flag" >&2
+if ! grep -q -- "--probe-cascade" "$REPO_ROOT/scripts/dev/chump-binary-unwedge.sh"; then
+    echo "FAIL: chump-binary-unwedge.sh missing --probe-cascade flag" >&2
     exit 1
 fi
-if ! grep -q "probe_cascade()" "$REPO_ROOT/scripts/dev/chump-doctor.sh"; then
-    echo "FAIL: chump-doctor.sh missing probe_cascade() function" >&2
+if ! grep -q "probe_cascade()" "$REPO_ROOT/scripts/dev/chump-binary-unwedge.sh"; then
+    echo "FAIL: chump-binary-unwedge.sh missing probe_cascade() function" >&2
     exit 1
 fi
 

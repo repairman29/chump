@@ -356,6 +356,8 @@ jobs:
           # reads it directly instead of falling back to the (possibly stale)
           # first-commit subject. github.event.pull_request.title is the
           # live title at workflow-trigger time and refreshes on retitle.
+          # PR_TITLE is the canonical name; PR_TITLE_ENV kept for compat.
+          PR_TITLE: ${{ github.event.pull_request.title }}
           PR_TITLE_ENV: ${{ github.event.pull_request.title }}
         run: bash scripts/ci/check-pr-scope.sh
 
@@ -1328,6 +1330,8 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-gap-list-since.sh
+      - name: gap list --json schema audit — required fields present in every gap object (CREDIBLE-061)
+        run: bash scripts/ci/test-gap-list-since-json-schema.sh
       - name: bot-merge GraphQL preflight + REST fallback — fails fast, emits graphql_exhausted (INFRA-1031)
         run: bash scripts/ci/test-bot-merge-graphql-preflight.sh
       - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
@@ -1513,7 +1517,11 @@ jobs:
         run: bash scripts/ci/test-infra-779-gitdir-repair.sh
       - name: pre-push known-flake skip integration (INFRA-1167)
         run: bash scripts/ci/test-known-flake-skip.sh
+      - name: pr-scope PR_TITLE fallback chain (INFRA-976)
+        run: bash scripts/ci/test-pr-scope-title-fallback.sh
 
+      - name: pillar health dashboard endpoint + web component (PRODUCT-090)
+        run: bash scripts/ci/test-pillar-dashboard.sh
       - name: pillar-balance guard at reserve time (INFRA-1152)
         run: |
           cargo build --bin chump 2>&1 | tail -3

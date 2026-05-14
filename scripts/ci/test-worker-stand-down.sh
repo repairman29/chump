@@ -58,11 +58,11 @@ chmod +x "$TMP/bin/git"
 # Use a fake REPO_ROOT.
 FAKE_ROOT="$TMP/fake-repo"
 mkdir -p "$FAKE_ROOT/scripts/dev" "$FAKE_ROOT/scripts/dispatch" "$FAKE_ROOT/.chump-locks"
-cat > "$FAKE_ROOT/scripts/dev/chump-doctor.sh" <<'STUB'
+cat > "$FAKE_ROOT/scripts/dev/chump-binary-unwedge.sh" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-chmod +x "$FAKE_ROOT/scripts/dev/chump-doctor.sh"
+chmod +x "$FAKE_ROOT/scripts/dev/chump-binary-unwedge.sh"
 
 # Stub the picker to always return empty.
 cat > "$FAKE_ROOT/scripts/dispatch/_pick_and_claim_gap.py" <<'STUB'

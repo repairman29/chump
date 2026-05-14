@@ -144,7 +144,7 @@ if [[ "$RESERVE_RC" -ne 0 ]] || [[ -z "$NEW_ID" ]]; then
             echo "[gap-reserve] ERROR: \`chump gap reserve\` returned empty output"
         fi
         echo
-        echo "  HEAL: scripts/dev/chump-doctor.sh"
+        echo "  HEAL: scripts/dev/chump-binary-unwedge.sh"
         echo "        (probes the binary, replaces wedged inode with fresh copy)"
         echo
         echo "  DO NOT fall back to writing docs/gaps/<ID>.yaml directly."

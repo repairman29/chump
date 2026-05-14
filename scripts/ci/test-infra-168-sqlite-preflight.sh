@@ -31,7 +31,7 @@ export CHUMP_AMBIENT_GLANCE=0
 # `flock` may not be installed. We don't need the lease's pending_new_gap —
 # the whole point of this test is that state.db alone is sufficient.
 RID="$(chump gap reserve --domain TEST168 --title "INFRA-168 sqlite preflight regression" 2>/dev/null)" || {
-    echo "skip: chump gap reserve failed (binary may be wedged — run scripts/dev/chump-doctor.sh)"
+    echo "skip: chump gap reserve failed (binary may be wedged — run scripts/dev/chump-binary-unwedge.sh)"
     exit 0
 }
 RID="$(echo "$RID" | tr -d '\r\n')"

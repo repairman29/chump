@@ -1494,6 +1494,166 @@ async fn handle_repo_working(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+// ── PWA settings panel (INFRA-988) ─────────────────────────────────────────
+//
+// Non-secret operator config exposed via /api/settings. Storage tier A
+// (~/.chump/config.toml `[settings]` section) per docs/roadmap/PWA_COCKPIT_DEMO.md.
+// Secrets are explicitly out of scope (INFRA-989 owns that path).
+
+const SETTINGS_KEYS: &[&str] = &[
+    "CHUMP_AUTH_MODE",
+    "CHUMP_MULTI_REPO_ENABLED",
+    "FLEET_SIZE",
+    "FLEET_MODEL",
+    "CHUMP_ROUND_PRIVACY",
+    "CHUMP_REPO",
+];
+
+fn settings_default(key: &str) -> &'static str {
+    match key {
+        "CHUMP_AUTH_MODE" => "auto",
+        "CHUMP_MULTI_REPO_ENABLED" => "0",
+        "FLEET_SIZE" => "4",
+        "FLEET_MODEL" => "sonnet",
+        "CHUMP_ROUND_PRIVACY" => "safe",
+        "CHUMP_REPO" => "",
+        _ => "",
+    }
+}
+
+/// Resolve a settings value: env → config.toml [settings] → built-in default.
+/// Returns (value, source) where source ∈ {"env", "config", "default"}.
+fn resolve_setting(key: &str) -> (String, &'static str) {
+    if let Ok(v) = std::env::var(key) {
+        if !v.is_empty() {
+            return (v, "env");
+        }
+    }
+    if let Some(v) = crate::auth::read_config_kv("settings", key) {
+        return (v, "config");
+    }
+    (settings_default(key).to_string(), "default")
+}
+
+/// Reject requests whose Origin header is set and not localhost. Absent
+/// Origin (same-origin / non-browser) is allowed — CSRF + auth still apply.
+fn check_origin_localhost(headers: &HeaderMap) -> bool {
+    let Some(origin) = headers.get("origin").and_then(|v| v.to_str().ok()) else {
+        return true;
+    };
+    let lower = origin.to_lowercase();
+    lower.starts_with("http://localhost")
+        || lower.starts_with("https://localhost")
+        || lower.starts_with("http://127.0.0.1")
+        || lower.starts_with("https://127.0.0.1")
+        || lower.starts_with("http://[::1]")
+        || lower.starts_with("https://[::1]")
+}
+
+/// Per-key value validation. Conservative — reject anything that doesn't match
+/// the expected shape so a typo can't break the fleet.
+fn validate_setting_value(key: &str, value: &str) -> bool {
+    match key {
+        "CHUMP_AUTH_MODE" => matches!(value, "auto" | "api-key" | "oauth"),
+        "CHUMP_MULTI_REPO_ENABLED" => matches!(value, "0" | "1"),
+        "FLEET_SIZE" => value
+            .parse::<u32>()
+            .ok()
+            .is_some_and(|n| (0..=64).contains(&n)),
+        "FLEET_MODEL" => matches!(value, "haiku" | "sonnet" | "opus"),
+        "CHUMP_ROUND_PRIVACY" => matches!(value, "safe" | "dogfood"),
+        "CHUMP_REPO" => value.is_empty() || value.starts_with('/'),
+        _ => false,
+    }
+}
+
+/// GET /api/settings — return all whitelisted non-secret settings with sources.
+async fn handle_settings_get(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let mut out = serde_json::Map::new();
+    for key in SETTINGS_KEYS {
+        let (value, source) = resolve_setting(key);
+        out.insert(
+            (*key).to_string(),
+            serde_json::json!({ "value": value, "source": source }),
+        );
+    }
+    tracing::debug!(target: "infra_988", "GET /api/settings served {} keys", SETTINGS_KEYS.len());
+    Ok(Json(serde_json::Value::Object(out)))
+}
+
+#[derive(serde::Deserialize)]
+struct SettingsPostBody {
+    value: String,
+}
+
+/// POST /api/settings/{key} — persist a single non-secret setting to
+/// ~/.chump/config.toml `[settings]` section. Validates the key is in the
+/// whitelist and the value passes per-key sanity checks. CSRF + auth required.
+async fn handle_settings_post(
+    axum::extract::Path(key): axum::extract::Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<SettingsPostBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if !check_csrf(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if !check_origin_localhost(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    if !SETTINGS_KEYS.contains(&key.as_str()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let trimmed = body.value.trim();
+    if trimmed.contains('"') || trimmed.contains('\n') || trimmed.len() > 1024 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if !validate_setting_value(&key, trimmed) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let (_, source_before) = resolve_setting(&key);
+    crate::auth::write_config_kv("settings", &key, trimmed)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    tracing::info!(
+        target: "infra_988",
+        key = %key,
+        value = %trimmed,
+        source_before = %source_before,
+        "POST /api/settings persisted to ~/.chump/config.toml [settings]"
+    );
+    emit_pwa_setting_changed(&key, trimmed, source_before);
+    Ok(Json(
+        serde_json::json!({ "ok": true, "key": key, "stored": true }),
+    ))
+}
+
+/// Best-effort write to `.chump-locks/ambient.jsonl`. Operator-visible signal
+/// that the PWA mutated config. Silently no-ops if the file cannot be opened.
+fn emit_pwa_setting_changed(key: &str, value: &str, source_before: &str) {
+    let event = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "kind": "pwa_setting_changed",
+        "key": key,
+        "value": value,
+        "source_before": source_before,
+    });
+    let path = repo_path::runtime_base()
+        .join(".chump-locks")
+        .join("ambient.jsonl");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(f, "{}", event);
+    }
+}
+
 // --- Ingest (Phase 2.2) ---
 #[derive(serde::Deserialize)]
 struct IngestBody {
@@ -2615,6 +2775,101 @@ async fn handle_telemetry_cost(headers: HeaderMap) -> Result<Json<serde_json::Va
     Ok(Json(payload))
 }
 
+/// GET /api/health/pillars — 4-pillar health dashboard (PRODUCT-090).
+///
+/// Returns per-pillar grade, pickable gap count, P0 count, and SLO breach status.
+/// Grade: A=0 fleet-SLO-breaches, B=1, C=2, F=3+.
+/// pickable_count: open P0+P1 gaps with effort xs/s/m for that pillar.
+/// slo_breach: true when pillar has < 2 pickable gaps (L2-SLO-4).
+async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
+    let _ = check_auth(&headers); // unauthenticated read-only for dashboard convenience
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => std::path::PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+
+    // ── Fleet SLO breach count via chump health --slo-check --json ───────────
+    let mut fleet_breaches: u32 = 0;
+    if let Ok(out) = std::process::Command::new(
+        std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump")),
+    )
+    .args(["health", "--slo-check", "--json"])
+    .current_dir(&repo_root)
+    .output()
+    {
+        if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+            fleet_breaches = parsed
+                .get("slo_breaches")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+        }
+    }
+    let fleet_grade = match fleet_breaches {
+        0 => "A",
+        1 => "B",
+        2 => "C",
+        _ => "F",
+    };
+
+    // ── Per-pillar gap counts from gap_store ──────────────────────────────────
+    const PILLARS: &[&str] = &["EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE"];
+    let mut pillar_pickable: std::collections::HashMap<&str, u32> =
+        PILLARS.iter().map(|&p| (p, 0u32)).collect();
+    let mut pillar_p0: std::collections::HashMap<&str, u32> =
+        PILLARS.iter().map(|&p| (p, 0u32)).collect();
+
+    if let Ok(store) = crate::gap_store::GapStore::open(&repo_root) {
+        if let Ok(gaps) = store.list(Some("open")) {
+            for gap in &gaps {
+                // Pillar comes from title prefix "PILLAR: rest of title".
+                let pillar = PILLARS.iter().find(|&&p| {
+                    gap.title.starts_with(&format!("{}:", p))
+                        || gap.title.starts_with(&format!("{} ", p))
+                });
+                let Some(&pillar) = pillar else { continue };
+
+                if gap.priority == "P0" {
+                    *pillar_p0.entry(pillar).or_default() += 1;
+                }
+                // Pickable = P0+P1, effort xs/s/m.
+                if matches!(gap.priority.as_str(), "P0" | "P1")
+                    && matches!(gap.effort.as_str(), "xs" | "s" | "m")
+                {
+                    *pillar_pickable.entry(pillar).or_default() += 1;
+                }
+            }
+        }
+    }
+
+    // ── Build response ────────────────────────────────────────────────────────
+    let pillars: Vec<serde_json::Value> = PILLARS
+        .iter()
+        .map(|&p| {
+            let pickable = *pillar_pickable.get(p).unwrap_or(&0);
+            let p0_count = *pillar_p0.get(p).unwrap_or(&0);
+            let slo_breach = pickable < 2 || p0_count > 5;
+            let grade = if slo_breach || p0_count > 5 {
+                "F"
+            } else {
+                fleet_grade
+            };
+            serde_json::json!({
+                "pillar": p,
+                "grade": grade,
+                "pickable_count": pickable,
+                "p0_count": p0_count,
+                "slo_breach": slo_breach,
+            })
+        })
+        .collect();
+
+    Json(serde_json::json!({
+        "fleet_grade": fleet_grade,
+        "fleet_slo_breaches": fleet_breaches,
+        "pillars": pillars,
+    }))
+}
+
 /// GET /api/pr/{number} — Per-PR detail snapshot (INFRA-1011).
 ///
 /// Operator-facing surface for "what's happening with my PR" without leaving
@@ -3168,6 +3423,122 @@ async fn handle_gap_queue(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         "count": result_gaps.len(),
         "claimable_count": claimable_count
     })))
+}
+
+/// GET /api/gaps/search — PRODUCT-089: full-text + field filter over the gap registry.
+///
+/// Query params (all optional):
+///   q        — substring match against title + description (case-insensitive)
+///   domain   — exact match (e.g. INFRA, PRODUCT)
+///   status   — exact match (open / done / in_flight)
+///   priority — exact match (P0 / P1 / P2)
+///   effort   — exact match (xs / s / m / l / xl)
+///   has_ac   — "false" → only gaps with empty/TODO AC; anything else ignored
+#[derive(serde::Deserialize, Default)]
+struct GapSearchQuery {
+    q: Option<String>,
+    domain: Option<String>,
+    status: Option<String>,
+    priority: Option<String>,
+    effort: Option<String>,
+    has_ac: Option<String>,
+}
+
+async fn handle_gaps_search(
+    Query(params): Query<GapSearchQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => std::path::PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+    let gap_store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            return Ok(Json(
+                serde_json::json!({ "total": 0, "results": [], "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let all = match gap_store.list(None) {
+        Ok(v) => v,
+        Err(e) => {
+            return Ok(Json(
+                serde_json::json!({ "total": 0, "results": [], "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let q_lower = params.q.as_deref().unwrap_or("").to_lowercase();
+    let want_missing_ac = params.has_ac.as_deref() == Some("false");
+
+    let results: Vec<_> = all
+        .into_iter()
+        .filter(|g| {
+            if let Some(d) = &params.domain {
+                if !g.domain.eq_ignore_ascii_case(d) {
+                    return false;
+                }
+            }
+            if let Some(s) = &params.status {
+                if !g.status.eq_ignore_ascii_case(s) {
+                    return false;
+                }
+            }
+            if let Some(p) = &params.priority {
+                if !g.priority.eq_ignore_ascii_case(p) {
+                    return false;
+                }
+            }
+            if let Some(e) = &params.effort {
+                if !g.effort.eq_ignore_ascii_case(e) {
+                    return false;
+                }
+            }
+            if want_missing_ac {
+                let ac = g.acceptance_criteria.trim().to_lowercase();
+                if !ac.is_empty() && !ac.starts_with("todo") {
+                    return false;
+                }
+            }
+            if !q_lower.is_empty() {
+                let hay = format!("{} {}", g.title, g.description).to_lowercase();
+                if !hay.contains(&q_lower) {
+                    return false;
+                }
+            }
+            true
+        })
+        .map(|g| {
+            let ac_count = if g.acceptance_criteria.trim().is_empty() {
+                0usize
+            } else {
+                g.acceptance_criteria
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .count()
+            };
+            serde_json::json!({
+                "id": g.id,
+                "title": g.title,
+                "domain": g.domain,
+                "status": g.status,
+                "priority": g.priority,
+                "effort": g.effort,
+                "ac_count": ac_count,
+            })
+        })
+        .collect();
+
+    let total = results.len();
+    Ok(Json(
+        serde_json::json!({ "total": total, "results": results }),
+    ))
 }
 
 /// POST /api/gap/claim/:id — Claim a gap and create a worktree for it.
@@ -4312,6 +4683,9 @@ fn build_api_router() -> Router {
         .route("/api/autopilot/stop", post(handle_autopilot_stop))
         .route("/api/repo/context", get(handle_repo_context))
         .route("/api/repo/working", post(handle_repo_working))
+        // INFRA-988: non-secret settings panel scaffolding
+        .route("/api/settings", get(handle_settings_get))
+        .route("/api/settings/{key}", post(handle_settings_post))
         .route(
             "/api/ingest",
             post(handle_ingest_json).layer(RequestBodyLimitLayer::new(
@@ -4372,8 +4746,10 @@ fn build_api_router() -> Router {
         .route("/api/ambient/recent", get(handle_ambient_recent))
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
+        .route("/api/health/pillars", get(handle_health_pillars))
         .route("/api/pr/{number}", get(handle_pr_detail))
         .route("/api/gap-queue", get(handle_gap_queue))
+        .route("/api/gaps/search", get(handle_gaps_search))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
         .route("/api/gap/status/{id}", get(handle_gap_status))
         .route("/api/gap/{id}/status", get(handle_gap_workflow_status))

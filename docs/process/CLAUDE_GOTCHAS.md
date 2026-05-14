@@ -72,8 +72,8 @@ the filesystem will pick the same "next free" ID and collide. Heal
 instead with:
 
 ```bash
-scripts/dev/chump-doctor.sh           # probes + replaces wedged inode
-CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-doctor.sh   # skip probe, just heal
+scripts/dev/chump-binary-unwedge.sh           # probes + replaces wedged inode
+CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-binary-unwedge.sh   # skip probe, just heal
 ```
 
 The doctor moves the wedged binary aside as
@@ -429,7 +429,7 @@ the INFRA-275 syspolicyd binary wedge.
 1. **Every Agent-tool prompt MUST include the standard shipping
    epilogue.** Verbatim copy from
    [`scripts/dispatch/subagent-shipping-epilogue.md`](scripts/dispatch/subagent-shipping-epilogue.md).
-   The epilogue covers: bot-merge canonical path, `chump-doctor.sh`
+   The epilogue covers: bot-merge canonical path, `chump-binary-unwedge.sh`
    heal, manual `git push + gh pr create + gh pr merge` fall-back path,
    forbidden anti-patterns (silent YAML fallback, `--no-verify`),
    and the final-report format. Full context and anti-patterns are in
@@ -594,6 +594,21 @@ rm .chump/state.db
 chump gap import   # seeds a fresh state.db from docs/gaps/*.yaml
 ```
 
+## Doctor / health / fleet-status — which entry point does what (INFRA-1218)
+
+Four similarly-named entry points; pick the right one for the symptom:
+
+| Tool | Purpose | When to use |
+|---|---|---|
+| `scripts/dev/chump-binary-unwedge.sh` | Heal the wedged-inode `_dyld_start` hang (INFRA-275) | `chump gap …` hangs, `ps` shows `UE` processes |
+| `chump --doctor` (Rust subcommand) | Config + environment sanity report | Setup verification, "is my env wired right" |
+| `chump fleet doctor` (Rust subcommand) | Fleet-wide health report — agents, leases, queue | Operator daily check / dashboards |
+| `chump health` (Rust subcommand) | SLO-style metrics digest, fleet pillar grades | KPI / pillar-balance review |
+| `scripts/dispatch/fleet-status.sh` | Operator-facing tmux dashboard (panes) | Interactive monitoring |
+| `scripts/dispatch/fleet-status.sh --once` | Single-pane snapshot to stdout | CI / unattended loops / `scripts/dev/fleet-status.sh` is a shim for this |
+
+The `chump-doctor` *concept* (env vars like `CHUMP_DOCTOR_SKIP`, the heal pattern, the binary-probe preflight) is still named `chump-doctor` everywhere — INFRA-1218 only renamed the script *file* from `chump-doctor.sh` to `chump-binary-unwedge.sh` to disambiguate the filename from `chump --doctor`. The Rust subcommand and the wedge-recovery script have different jobs; their names should reflect that.
+
 ## Known error classes — self-help index (INFRA-590)
 
 Scripts append `See: docs/process/CLAUDE_GOTCHAS.md#<anchor>` to high-frequency
@@ -611,8 +626,8 @@ pending-decision queue; every subsequent launch of the same inode blocks behind 
 
 **Recovery:**
 ```bash
-scripts/dev/chump-doctor.sh                     # probe + replace wedged inode (preferred)
-CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-doctor.sh  # skip probe, just heal
+scripts/dev/chump-binary-unwedge.sh                     # probe + replace wedged inode (preferred)
+CHUMP_DOCTOR_FORCE=1 scripts/dev/chump-binary-unwedge.sh  # skip probe, just heal
 # Nuclear (needs sudo): sudo kill syspolicyd
 ```
 The doctor moves the wedged binary to `~/.cargo/bin/chump.wedged-inode-<n>` and copies
@@ -935,7 +950,7 @@ scripts/coord/gap-preflight.sh <GAP-ID>   # should pass
 chump claim <GAP-ID>
 ```
 
-**Preventing future orphans:** Run `chump-doctor.sh` after any failed `bot-merge.sh`
+**Preventing future orphans:** Run `chump-binary-unwedge.sh` after any failed `bot-merge.sh`
 invocation — it now reaps stale leases along with zombie processes.
 
 ---

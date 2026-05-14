@@ -506,11 +506,105 @@ fn parse_toml_kv(line: &str) -> Option<(&str, &str)> {
     Some((k, v))
 }
 
-fn chump_config_path() -> PathBuf {
+pub(crate) fn chump_config_path() -> PathBuf {
     let home = std::env::var("CHUMP_HOME")
         .or_else(|_| std::env::var("HOME"))
         .unwrap_or_else(|_| "/tmp".into());
     PathBuf::from(home).join(".chump").join("config.toml")
+}
+
+/// Read a single `key = "value"` from a named section of ~/.chump/config.toml.
+/// Returns `None` if the file is missing, the section absent, or the key
+/// not set. Used by INFRA-988 for non-secret settings stored under `[settings]`.
+pub(crate) fn read_config_kv(section: &str, key: &str) -> Option<String> {
+    let path = chump_config_path();
+    let content = std::fs::read_to_string(&path).ok()?;
+    let target_section = format!("[{}]", section);
+    let mut in_section = false;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            in_section = trimmed == target_section;
+            continue;
+        }
+        if !in_section || trimmed.starts_with('#') || trimmed.is_empty() {
+            continue;
+        }
+        if let Some((k, v)) = parse_toml_kv(trimmed) {
+            if k == key {
+                return Some(v.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// Upsert `key = "value"` in a named section of ~/.chump/config.toml.
+/// Creates the file (with `chmod 600` on Unix) and section if absent.
+/// Used by INFRA-988 for the PWA settings panel — never writes secrets
+/// (the secret-flow gap INFRA-989 owns that path separately).
+pub(crate) fn write_config_kv(section: &str, key: &str, value: &str) -> std::io::Result<()> {
+    let path = chump_config_path();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let existing = std::fs::read_to_string(&path).unwrap_or_default();
+    let target_section = format!("[{}]", section);
+
+    let mut out = String::new();
+    let mut in_section = false;
+    let mut written = false;
+    let mut section_seen = false;
+
+    for line in existing.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with('[') {
+            if in_section && !written {
+                out.push_str(&format!("{} = \"{}\"\n", key, value));
+                written = true;
+            }
+            in_section = trimmed == target_section;
+            if in_section {
+                section_seen = true;
+            }
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        if in_section && !written {
+            if let Some((k, _)) = parse_toml_kv(trimmed) {
+                if k == key {
+                    out.push_str(&format!("{} = \"{}\"\n", key, value));
+                    written = true;
+                    continue;
+                }
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    if !written {
+        if !section_seen {
+            if !out.is_empty() && !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(&format!("\n{}\n", target_section));
+        }
+        out.push_str(&format!("{} = \"{}\"\n", key, value));
+    }
+
+    std::fs::write(&path, out)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&path)?.permissions();
+        perms.set_mode(0o600);
+        std::fs::set_permissions(&path, perms)?;
+    }
+
+    Ok(())
 }
 
 fn chrono_ts() -> String {

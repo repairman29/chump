@@ -460,9 +460,85 @@ class ChumpViewSettings extends HTMLElement {
           <p class="setting-label" style="margin-bottom: 12px;">Fleet Control</p>
           <chump-parallelism-governor></chump-parallelism-governor>
         </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">Operator Configuration (INFRA-988)</p>
+          <div id="operator-config" style="font-size: 0.9em;">
+            <p style="color: var(--text-muted);">Loading operator config…</p>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.8em; margin-top: 8px;">
+            Stored in <code>~/.chump/config.toml</code> [settings]. Env vars override.
+            Secrets are managed separately (INFRA-989).
+          </p>
+        </div>
       </section>
     `;
     this.#loadCascadeInfo();
+    this.#loadOperatorConfig();
+  }
+
+  // INFRA-988: render non-secret config fields from /api/settings.
+  // Each field shows value + source badge (env / config / default).
+  #loadOperatorConfig() {
+    const container = this.querySelector('#operator-config');
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then(data => {
+        const fields = [
+          { key: 'CHUMP_AUTH_MODE', label: 'Auth mode', options: ['auto', 'api-key', 'oauth'] },
+          { key: 'CHUMP_MULTI_REPO_ENABLED', label: 'Multi-repo', options: ['0', '1'] },
+          { key: 'FLEET_SIZE', label: 'Fleet size', type: 'number', min: 0, max: 64 },
+          { key: 'FLEET_MODEL', label: 'Fleet model', options: ['haiku', 'sonnet', 'opus'] },
+          { key: 'CHUMP_ROUND_PRIVACY', label: 'Round privacy', options: ['safe', 'dogfood'] },
+          { key: 'CHUMP_REPO', label: 'Working repo path', type: 'text' },
+        ];
+        container.innerHTML = fields.map(f => {
+          const entry = data[f.key] || { value: '', source: 'default' };
+          const badge = `<span class="op-config-badge op-config-badge-${entry.source}">${entry.source}</span>`;
+          const envLocked = entry.source === 'env';
+          const lockedAttr = envLocked ? 'disabled title="Set via env var — unset env to edit via PWA"' : '';
+          let input;
+          if (f.options) {
+            input = `<select data-key="${f.key}" ${lockedAttr}>${f.options.map(o => `<option value="${o}" ${o === entry.value ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+          } else {
+            const min = f.min != null ? `min="${f.min}"` : '';
+            const max = f.max != null ? `max="${f.max}"` : '';
+            input = `<input type="${f.type}" data-key="${f.key}" value="${entry.value}" ${min} ${max} ${lockedAttr}>`;
+          }
+          return `
+            <div class="op-config-row" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <label style="flex:1;">${f.label}</label>
+              ${input}
+              ${badge}
+            </div>`;
+        }).join('');
+        container.querySelectorAll('[data-key]').forEach(el => {
+          el.addEventListener('change', e => this.#onConfigChange(e));
+        });
+      })
+      .catch(err => {
+        container.innerHTML = `<p style="color:var(--error-color)">Error loading config: ${err.message}</p>`;
+      });
+  }
+
+  #onConfigChange(e) {
+    const el = e.target;
+    const key = el.dataset.key;
+    const value = el.value;
+    el.disabled = true;
+    fetch(`/api/settings/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+      body: JSON.stringify({ value }),
+    })
+      .then(r => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then(() => this.#loadOperatorConfig())
+      .catch(err => {
+        console.error(`settings POST ${key} failed:`, err);
+        el.disabled = false;
+      });
   }
 
   // PRODUCT-054: load real cascade slot data and render toggle switches.
@@ -807,6 +883,13 @@ class ChumpViewAgent extends HTMLElement {
         <h2>Gap Queue</h2>
         <p class="view-subtitle">Fleet orchestrator — claim and work gaps autonomously</p>
       </section>
+      <section class="gap-search-bar" id="gap-search-bar">
+        <input type="search" id="gap-search-input" placeholder="Search gaps…" autocomplete="off" />
+        <select id="gap-filter-status"><option value="">All statuses</option><option value="open">open</option><option value="done">done</option><option value="in_flight">in_flight</option></select>
+        <select id="gap-filter-priority"><option value="">All priorities</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option></select>
+        <select id="gap-filter-effort"><option value="">All efforts</option><option value="xs">xs</option><option value="s">s</option><option value="m">m</option><option value="l">l</option><option value="xl">xl</option></select>
+        <label class="gap-filter-ac"><input type="checkbox" id="gap-filter-has-ac" /> Missing AC</label>
+      </section>
       <section class="gap-queue-stats" id="gap-stats">
         <div class="stat-item">
           <span class="stat-value">—</span>
@@ -821,6 +904,7 @@ class ChumpViewAgent extends HTMLElement {
         <p class="placeholder">Loading gap queue…</p>
       </section>
     `;
+    this.#wireSearch();
     this.#load();
     this.#poll = setInterval(() => this.#load(), 5000);
   }
@@ -829,7 +913,67 @@ class ChumpViewAgent extends HTMLElement {
     clearInterval(this.#poll);
   }
 
+  #wireSearch() {
+    let debounce = null;
+    const trigger = () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => this.#search(), 300);
+    };
+    this.querySelector('#gap-search-input')?.addEventListener('input', trigger);
+    this.querySelector('#gap-filter-status')?.addEventListener('change', trigger);
+    this.querySelector('#gap-filter-priority')?.addEventListener('change', trigger);
+    this.querySelector('#gap-filter-effort')?.addEventListener('change', trigger);
+    this.querySelector('#gap-filter-has-ac')?.addEventListener('change', trigger);
+  }
+
+  #searchActive() {
+    const q = this.querySelector('#gap-search-input')?.value || '';
+    const status = this.querySelector('#gap-filter-status')?.value || '';
+    const priority = this.querySelector('#gap-filter-priority')?.value || '';
+    const effort = this.querySelector('#gap-filter-effort')?.value || '';
+    const hasAc = this.querySelector('#gap-filter-has-ac')?.checked;
+    return q || status || priority || effort || hasAc;
+  }
+
+  #search() {
+    const list = this.querySelector('#gap-list');
+    const q = this.querySelector('#gap-search-input')?.value || '';
+    const status = this.querySelector('#gap-filter-status')?.value || '';
+    const priority = this.querySelector('#gap-filter-priority')?.value || '';
+    const effort = this.querySelector('#gap-filter-effort')?.value || '';
+    const hasAc = this.querySelector('#gap-filter-has-ac')?.checked;
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (status) params.set('status', status);
+    if (priority) params.set('priority', priority);
+    if (effort) params.set('effort', effort);
+    if (hasAc) params.set('has_ac', 'false');
+    fetch(`/api/gaps/search?${params}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const results = d.results ?? [];
+        if (results.length === 0) {
+          list.innerHTML = '<p class="placeholder">No gaps match your search.</p>';
+          return;
+        }
+        list.innerHTML = results.map((g) => `
+          <article class="gap-card">
+            <header class="gap-card-header">
+              <span class="gap-id">${g.id}</span>
+              <span class="gap-badge">${g.status || '?'}</span>
+              <span class="gap-priority">${g.priority || 'P?'}/${g.effort || '?'}</span>
+            </header>
+            <p class="gap-title">${g.title || '(no title)'}</p>
+          </article>
+        `).join('');
+      })
+      .catch((err) => {
+        list.innerHTML = `<p class="placeholder">Search failed: ${err.message}</p>`;
+      });
+  }
+
   #load() {
+    if (this.#searchActive()) return; // don't stomp search results with poll
     const list = this.querySelector('#gap-list');
     const stats = this.querySelector('#gap-stats');
     fetch('/api/gap-queue')

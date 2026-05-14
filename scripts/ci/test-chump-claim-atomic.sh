@@ -64,7 +64,7 @@ git -C "$FAKE" commit -q -m "seed gap" --no-verify || true
 WT_BASE="$TMPDIR_BASE/worktrees"
 mkdir -p "$WT_BASE"
 
-# Run from inside the fake repo. --skip-doctor (no chump-doctor.sh in fake)
+# Run from inside the fake repo. --skip-doctor (no chump-binary-unwedge.sh in fake)
 # and --skip-import (gap is already in DB) keep this hermetic.
 CLAIM_OUT=$(
     cd "$FAKE"
