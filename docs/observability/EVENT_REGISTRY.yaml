@@ -1236,6 +1236,17 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, script, waited_ms, calls_in_window]
 
+  # ── INFRA-1080: chump_gh pre-emptive backoff for low-GraphQL background calls
+  - kind: gh_preempted
+    emitter: scripts/coord/lib/github.sh chump_gh (INFRA-1080)
+    trigger: a background call (CHUMP_GH_CALL_CRITICALITY=background) hit
+      chump_gh when remaining_graphql is below CHUMP_GH_BACKOFF_THRESHOLD %
+      of the limit (default 10 %). The helper sleeps min(60s, time_to_reset)
+      then re-checks. Critical calls are never preempted. Logs before / after
+      remaining-percent so consumers see how much the wait helped.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, script, api, waited_s, remaining_percent_before, remaining_percent_after]
+
   # ── INFRA-1065: chump binary auto-refresh ────────────────────────────────
   - kind: chump_binary_refreshed
     emitter: scripts/ops/refresh-chump-binary.sh (INFRA-1065)
