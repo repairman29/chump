@@ -299,12 +299,85 @@ PY
     done
 }
 
+# ── INFRA-1080: pre-emptive backoff when GraphQL bucket runs low ─────────────
+# INFRA-1040 already broadcasts kind=graphql_exhausted when remaining hits 0,
+# but by then the next call already failed. This helper delays *background*
+# calls when remaining is < CHUMP_GH_BACKOFF_THRESHOLD percent of the limit,
+# so we never hit 0 in the first place.
+#
+# Classification (per-call):
+#   CHUMP_GH_CALL_CRITICALITY=critical (default) — always proceed, never delayed
+#   CHUMP_GH_CALL_CRITICALITY=background       — delayed when graphql tight
+#
+# Algorithm:
+#   1. read remaining_graphql from rate_limit (free endpoint)
+#   2. if background AND remaining < threshold percent:
+#        sleep min(60, time_to_reset); re-check; max 1 retry
+#   3. critical OR sufficient remaining: proceed
+#
+# Each delay emits kind=gh_preempted with {script, api, waited_s,
+# remaining_percent_before, remaining_percent_after}.
+_chump_gh_preempt_if_low() {
+    local script_tag="${1:-?}"
+    local api_tag="${2:-?}"
+    local criticality="${CHUMP_GH_CALL_CRITICALITY:-critical}"
+    # Critical calls are never preempted.
+    [[ "$criticality" == "critical" ]] && return 0
+    [[ "${CHUMP_GH_NO_PREEMPT:-0}" == "1" ]] && return 0
+
+    local threshold_pct="${CHUMP_GH_BACKOFF_THRESHOLD:-10}"
+    # Read remaining + reset
+    local rem; rem="$(_chump_gh_rate_remaining)"
+    local core_rem gql_rem resets_at
+    read -r core_rem gql_rem resets_at <<<"$rem"
+    : "${resets_at:=0}"
+
+    # If we can't determine remaining, don't preempt (fail-open).
+    [[ "$gql_rem" =~ ^-?[0-9]+$ ]] || return 0
+    [[ "$gql_rem" -lt 0 ]] && return 0
+
+    # 5000 is GitHub's GraphQL limit per token; matches rate_limit.graphql.limit.
+    local limit=5000
+    local pct=$(( gql_rem * 100 / limit ))
+    [[ "$pct" -ge "$threshold_pct" ]] && return 0   # sufficient remaining, proceed
+
+    # Below threshold + background → sleep
+    local pct_before="$pct"
+    local now sleep_for
+    now="$(date +%s)"
+    if [[ "$resets_at" -gt "$now" ]]; then
+        sleep_for=$(( resets_at - now ))
+    else
+        sleep_for=60
+    fi
+    [[ "$sleep_for" -gt 60 ]] && sleep_for=60   # cap single sleep at 60s
+
+    sleep "$sleep_for"
+
+    # Re-check after sleep
+    rem="$(_chump_gh_rate_remaining)"
+    read -r core_rem gql_rem resets_at <<<"$rem"
+    : "${gql_rem:=-1}"
+    local pct_after=0
+    if [[ "$gql_rem" =~ ^[0-9]+$ ]]; then
+        pct_after=$(( gql_rem * 100 / limit ))
+    fi
+
+    local ambient; ambient="$(_chump_gh_ambient_path)"
+    mkdir -p "$(dirname "$ambient")" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"gh_preempted","script":"%s","api":"%s","waited_s":%d,"remaining_percent_before":%d,"remaining_percent_after":%d}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$script_tag" "$api_tag" "$sleep_for" "$pct_before" "$pct_after" \
+        >> "$ambient" 2>/dev/null || true
+}
+
 chump_gh() {
     local api_tag started rc ended used_ms script_tag
     api_tag="$(chump_gh_api_tag "$@")"
     script_tag="${CHUMP_GH_SCRIPT:-$(basename "${BASH_SOURCE[1]:-$0}")}"
     # INFRA-1079: pre-call throttle to avoid secondary rate-limit.
     _chump_gh_throttle_wait "$script_tag"
+    # INFRA-1080: pre-emptive backoff when graphql bucket is low (background only).
+    _chump_gh_preempt_if_low "$script_tag" "$api_tag"
     started="$(_chump_gh_now_ms)"
     set +e
     gh "$@"
