@@ -191,9 +191,120 @@ _chump_gh_now_ms() {
     printf '%d' "$(( ns / 1000000 ))"
 }
 
+# ── INFRA-1079: per-script secondary rate-limit self-throttle ────────────────
+# GitHub's SECONDARY rate-limit fires on rapid-fire density (calls/sec) in
+# short windows, independent of the primary bucket. Observed today: 6× hits
+# of "rate limit already exceeded" with primary GraphQL at 4000+/5000.
+#
+# Strategy: token-bucket window across the fleet via a shared lock file.
+# All chump_gh callers in this fleet session share one bucket
+# (.chump-locks/.gh-throttle-window — JSON list of recent call timestamps).
+# Limit: CHUMP_GH_MAX_CALLS_PER_MIN (default 60), with per-script overrides
+# via CHUMP_GH_THROTTLE_<SCRIPT> for bursty callers.
+#
+# Algorithm:
+#   1. Acquire flock on .gh-throttle.lock
+#   2. Read window file; drop entries older than 60s
+#   3. If len(window) >= limit: sleep 1s, release lock, retry (max 30s total)
+#   4. Otherwise: append `now` to window, release, proceed
+#
+# Fail-safe: after 30s waited, let the call through (don't deadlock the fleet
+# on a runaway throttle counter). Emit kind=gh_self_throttled at every delay.
+_chump_gh_throttle_wait() {
+    local script_tag="${1:-?}"
+    local limit="${CHUMP_GH_MAX_CALLS_PER_MIN:-60}"
+    # Per-script override: take the UPPERCASE basename, replace non-alnum with _
+    local override_var
+    override_var="CHUMP_GH_THROTTLE_$(echo "$script_tag" | tr 'a-z' 'A-Z' | tr -c 'A-Z0-9' '_')"
+    override_var="${override_var%_}"
+    local override="${!override_var:-}"
+    if [[ -n "$override" && "$override" =~ ^[0-9]+$ ]]; then
+        limit="$override"
+    fi
+
+    [[ "$limit" -le 0 ]] && return 0   # disabled
+    [[ "${CHUMP_GH_NO_THROTTLE:-0}" == "1" ]] && return 0
+
+    local lock_dir="$(dirname "$(_chump_gh_ambient_path)")"
+    local lock_file="$lock_dir/.gh-throttle.lock"
+    local window_file="$lock_dir/.gh-throttle-window"
+    mkdir -p "$lock_dir" 2>/dev/null || true
+
+    local started_wait
+    started_wait="$(date +%s)"
+    local total_wait_ms=0
+
+    while true; do
+        # Try to acquire the lock with a short timeout. flock is not strictly
+        # required; we use it for safety. If unavailable (e.g. no flock(1) on
+        # macOS by default), fall through without it — worst case: small
+        # over-counting due to race, harmless.
+        (
+            if command -v flock >/dev/null 2>&1; then
+                flock -w 2 200 || exit 1
+            fi
+            python3 - "$window_file" "$limit" "$total_wait_ms" "$script_tag" <<'PY' || exit $?
+import json, os, sys, time
+
+wf, limit, waited_ms_so_far, script = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), sys.argv[4]
+now = time.time()
+window_secs = 60
+
+# Read existing window
+entries = []
+if os.path.exists(wf):
+    try:
+        with open(wf) as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            entries = [e for e in data if isinstance(e, (int, float)) and (now - e) < window_secs]
+    except Exception:
+        entries = []
+
+if len(entries) < limit:
+    entries.append(now)
+    try:
+        with open(wf, "w") as f:
+            json.dump(entries[-(limit + 10):], f)
+    except Exception:
+        pass
+    sys.exit(0)  # OK — proceed
+
+# At limit. Caller should sleep + retry.
+sys.exit(7)
+PY
+        ) 200>"$lock_file"
+        rc=$?
+        if [[ "$rc" -eq 0 ]]; then
+            return 0
+        fi
+
+        # Bucket full — sleep 1s and retry.
+        local now_epoch; now_epoch="$(date +%s)"
+        if [[ $(( now_epoch - started_wait )) -ge 30 ]]; then
+            # Fail-safe: let the call through after 30s.
+            local ambient; ambient="$(_chump_gh_ambient_path)"
+            printf '{"ts":"%s","kind":"gh_self_throttled","script":"%s","waited_ms":30000,"calls_in_window":-1,"fail_safe":true}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$script_tag" \
+                >> "$ambient" 2>/dev/null || true
+            return 0
+        fi
+        sleep 1
+        total_wait_ms=$(( total_wait_ms + 1000 ))
+        # Emit one event per delay (debounce-light — operator wants to see this).
+        local ambient; ambient="$(_chump_gh_ambient_path)"
+        printf '{"ts":"%s","kind":"gh_self_throttled","script":"%s","waited_ms":%d,"calls_in_window":%d}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$script_tag" "$total_wait_ms" "$limit" \
+            >> "$ambient" 2>/dev/null || true
+    done
+}
+
 chump_gh() {
-    local api_tag started rc ended used_ms
+    local api_tag started rc ended used_ms script_tag
     api_tag="$(chump_gh_api_tag "$@")"
+    script_tag="${CHUMP_GH_SCRIPT:-$(basename "${BASH_SOURCE[1]:-$0}")}"
+    # INFRA-1079: pre-call throttle to avoid secondary rate-limit.
+    _chump_gh_throttle_wait "$script_tag"
     started="$(_chump_gh_now_ms)"
     set +e
     gh "$@"
@@ -201,7 +312,6 @@ chump_gh() {
     set -e
     ended="$(_chump_gh_now_ms)"
     used_ms=$(( ended - started ))
-    chump_gh_record "$api_tag" "$used_ms" "$rc" \
-        "${CHUMP_GH_SCRIPT:-$(basename "${BASH_SOURCE[1]:-$0}")}"
+    chump_gh_record "$api_tag" "$used_ms" "$rc" "$script_tag"
     return "$rc"
 }
