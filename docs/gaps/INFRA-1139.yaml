@@ -1,0 +1,39 @@
+- id: INFRA-1139
+  domain: INFRA
+  title: "RESILIENT: auto-close open PRs whose gap is already marked done (inverse of bounced-pr-detector)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Today's evidence (2026-05-14): PR #1736 (INFRA-1024) sat open DIRTY for ~7 h
+    against main. INFRA-1024 gap was already status=done; the functionally-
+    equivalent fix had landed via INFRA-1057 (#1778). The rebase loop wedged
+    every 5 min trying to re-resolve a semantic conflict for a branch that
+    should have been closed at gap-ship time. Cost: ~6 wasted queue-driver
+    runs + operator attention to close manually.
+
+    This is the inverse of bounced-pr-detector.sh (INFRA-781):
+    - bounced-pr-detector: PR closed unmerged → gap still open (work lost).
+    - orphan-pr-closer:    gap marked done   → PR still open (branch eats CI).
+
+    Rough shape: (a) scripts/coord/orphan-pr-closer.sh, REST-only (INFRA-1080
+    critical background work), dry-run by default with --apply, (b) extract gap
+    ID from PR title or branch name, (c) call `chump gap show <id>`, act only if
+    status=done, (d) freshness gate skips PRs updated in last 30 min so we don't
+    race a merging PR, (e) idempotency via .chump-locks/orphan-pr-seen.txt, (f)
+    operator escape hatch: "orphan-pr-closer-skip" token in PR title.
+
+    Follow-up: structural integration into `chump gap ship` so the moment a gap
+    is marked done, any other open PRs for it are closed atomically. Sweeper
+    here covers the gap while the structural fix is built.
+  acceptance_criteria:
+    - "scripts/coord/orphan-pr-closer.sh exists, executable, dry-run by default; --apply required for destructive action"
+    - "Only acts on PRs whose extracted gap ID has status=done in `chump gap show`"
+    - "Freshness gate: CHUMP_ORPHAN_PR_FRESHNESS_MIN (default 30 min) — skip PRs updated within window"
+    - "Idempotency: writes to .chump-locks/orphan-pr-seen.txt; second run does not re-process closed PRs"
+    - "Emits kind=orphan_pr_candidate in dry-run, kind=orphan_pr_closed on successful close, kind=orphan_pr_close_failed on PATCH failure"
+    - "EVENT_REGISTRY.yaml registers all 3 kinds with fields_required [ts, kind, pr, gap, note]"
+    - "REST-only — uses `gh api repos/{owner}/{repo}/pulls?state=open`; no `gh pr list/view` (INFRA-1080 critical-tier discipline)"
+    - "Operator escape hatch: skip any PR whose title contains 'orphan-pr-closer-skip'"
+    - "Bypass: CHUMP_ORPHAN_PR_CLOSER=0 disables entirely"
+    - "Test scripts/ci/test-orphan-pr-closer.sh asserts all safety defaults + ambient kinds registered + REST-only discipline"
