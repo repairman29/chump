@@ -2186,6 +2186,14 @@ events:
       the message bodies (which can leak env paths). Counts only.
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, ok, failure_count, warning_count]
+  # ── PRODUCT-116: strategic-redirect composer ─────────────────────────────────
+  - kind: operator_hint
+    emitter: src/web_server.rs handle_inject_hint (PRODUCT-116)
+    trigger: operator POSTs to /api/inject-hint via PWA strategic-redirect composer;
+      emitted after the hint is written to the blackboard so the history list
+      (/api/ambient/recent?kind=operator_hint) can surface recent directives.
+    consumers: [fleet-brief, ambient-viewer, hint-composer-history]
+    fields_required: [ts, kind, hint, ttl_minutes, blackboard_id]
   # ── INFRA-1030: bot-merge arm-ship ordering fix ────────────────────────────
   - kind: gap_ship_post_arm_failed
     emitter: scripts/coord/bot-merge.sh (INFRA-1030)

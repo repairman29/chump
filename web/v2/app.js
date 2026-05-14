@@ -1955,6 +1955,7 @@ class ChumpViewAgent extends HTMLElement {
         <h2>Gap Queue</h2>
         <p class="view-subtitle">Fleet orchestrator — claim and work gaps autonomously</p>
       </section>
+      <chump-hint-composer></chump-hint-composer>
       <section class="gap-search-bar" id="gap-search-bar">
         <input type="search" id="gap-search-input" placeholder="Search gaps…" autocomplete="off" />
         <select id="gap-filter-status"><option value="">All statuses</option><option value="open">open</option><option value="done">done</option><option value="in_flight">in_flight</option></select>
@@ -2440,6 +2441,158 @@ class ChumpViewAgent extends HTMLElement {
   #embedObserver;
 }
 customElements.define('chump-view-agent', ChumpViewAgent);
+
+// ── <chump-hint-composer> (PRODUCT-116) ──────────────────────────────────────
+//
+// Strategic-redirect composer: a chat-style input wired to POST /api/inject-hint.
+// Operator types a directive ('focus on Effective today', 'pause Resilient work',
+// etc.) and selects a TTL preset (15min / 1hr / 4hr / 24hr). On submit the hint
+// is posted to the blackboard with high urgency + goal_relevance so it surfaces
+// in the next agent turn's context (FLEET-022 already injects operator_hint events
+// at SessionStart). History below shows the last 10 hints from ambient.jsonl.
+class ChumpHintComposer extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="hint-composer" aria-label="Strategic redirect composer">
+        <h3 class="hint-composer-heading">Strategic redirect</h3>
+        <p class="hint-composer-desc">Inject a priority directive — agents will pick it up at next session start.</p>
+        <div class="hint-input-row">
+          <input type="text" id="hint-text" class="hint-text-input" maxlength="500"
+            placeholder="e.g. focus on Effective today, pause Resilient work…"
+            autocomplete="off" aria-label="Hint text" />
+          <button type="button" id="hint-submit" class="hint-submit-btn">Inject</button>
+        </div>
+        <div class="hint-ttl-row" role="group" aria-label="TTL preset">
+          <span class="hint-ttl-label">Expires in:</span>
+          <button type="button" class="hint-ttl-btn" data-minutes="15">15 min</button>
+          <button type="button" class="hint-ttl-btn hint-ttl-selected" data-minutes="60">1 hr</button>
+          <button type="button" class="hint-ttl-btn" data-minutes="240">4 hr</button>
+          <button type="button" class="hint-ttl-btn" data-minutes="1440">24 hr</button>
+        </div>
+        <p class="hint-status" id="hint-status" aria-live="polite"></p>
+        <section class="hint-history" aria-label="Recent hints">
+          <h4 class="hint-history-heading">Recent hints</h4>
+          <ul class="hint-history-list" id="hint-history-list">
+            <li class="hint-history-empty">Loading…</li>
+          </ul>
+        </section>
+      </section>
+    `;
+    this.#selectedTtl = 60;
+    this.#wireEvents();
+    this.#loadHistory();
+  }
+
+  disconnectedCallback() {
+    if (this.#historyTimer) clearInterval(this.#historyTimer);
+  }
+
+  #selectedTtl = 60;
+  #historyTimer = null;
+
+  #wireEvents() {
+    // TTL preset selection
+    this.querySelectorAll('.hint-ttl-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.querySelectorAll('.hint-ttl-btn').forEach((b) => b.classList.remove('hint-ttl-selected'));
+        btn.classList.add('hint-ttl-selected');
+        this.#selectedTtl = parseInt(btn.dataset.minutes, 10);
+      });
+    });
+
+    // Submit on button click
+    const submitBtn = this.querySelector('#hint-submit');
+    const textInput = this.querySelector('#hint-text');
+    submitBtn?.addEventListener('click', () => this.#submit());
+
+    // Submit on Enter
+    textInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.#submit(); }
+    });
+
+    // Refresh history every 30s
+    this.#historyTimer = setInterval(() => this.#loadHistory(), 30_000);
+  }
+
+  #submit() {
+    const textInput = this.querySelector('#hint-text');
+    const statusEl = this.querySelector('#hint-status');
+    const submitBtn = this.querySelector('#hint-submit');
+    const hint = textInput?.value?.trim();
+    if (!hint) { if (statusEl) statusEl.textContent = 'Hint cannot be empty.'; return; }
+
+    if (submitBtn) submitBtn.disabled = true;
+    if (statusEl) statusEl.textContent = 'Injecting…';
+
+    fetch('/api/inject-hint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hint, ttl_minutes: this.#selectedTtl }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (submitBtn) submitBtn.disabled = false;
+        if (d.ok) {
+          if (textInput) textInput.value = '';
+          if (statusEl) statusEl.textContent = `✓ Injected (TTL ${this.#selectedTtl} min). Agents will pick up at next session start.`;
+          this.#loadHistory();
+        } else {
+          if (statusEl) statusEl.textContent = `Inject failed: ${d.error ?? 'unknown error'}`;
+        }
+      })
+      .catch((err) => {
+        if (submitBtn) submitBtn.disabled = false;
+        if (statusEl) statusEl.textContent = `Error: ${err.message}`;
+      });
+  }
+
+  // AC: fetch recent hints from /api/ambient/recent?kind=operator_hint, show list
+  // with TTL countdown (expires_at derived from ts + ttl_minutes).
+  #loadHistory() {
+    fetch('/api/ambient/recent?kind=operator_hint&n=10')
+      .then((r) => r.json())
+      .then((d) => {
+        const events = (d.events ?? []).slice().reverse(); // newest first
+        const list = this.querySelector('#hint-history-list');
+        if (!list) return;
+        if (events.length === 0) {
+          list.innerHTML = '<li class="hint-history-empty">No hints yet.</li>';
+          return;
+        }
+        list.innerHTML = events.map((ev) => {
+          const hint = ev.hint ?? ev.text ?? '(no text)';
+          const ttl = ev.ttl_minutes ?? 60;
+          const ts = ev.ts ?? '';
+          const expiresAt = ts ? new Date(new Date(ts).getTime() + ttl * 60 * 1000) : null;
+          const remaining = expiresAt ? this.#ttlLabel(expiresAt) : `${ttl} min`;
+          return `<li class="hint-history-item">
+            <span class="hint-history-text">${this.#esc(hint)}</span>
+            <span class="hint-history-ttl">${remaining}</span>
+          </li>`;
+        }).join('');
+      })
+      .catch(() => {
+        const list = this.querySelector('#hint-history-list');
+        if (list) list.innerHTML = '<li class="hint-history-empty">Could not load history.</li>';
+      });
+  }
+
+  #ttlLabel(expiresAt) {
+    const diffMs = expiresAt - Date.now();
+    if (diffMs <= 0) return 'expired';
+    const mins = Math.floor(diffMs / 60_000);
+    if (mins < 60) return `${mins} min left`;
+    const hrs = Math.floor(mins / 60);
+    return `${hrs} hr left`;
+  }
+
+  #esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+}
+customElements.define('chump-hint-composer', ChumpHintComposer);
 
 // ── <chump-ambient-viewer> (INFRA-1198) ──────────────────────────────────────
 //
