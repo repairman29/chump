@@ -1987,6 +1987,21 @@ events:
       inbox (dedup by kind+from+gap, capped at 10 messages)
     consumers: [audit-log]
     fields_required: [ts, kind, source, messages]
+  # ── INFRA-1200: write-ahead log (WAL) events ──────────────────────────
+  - kind: chump_plan_patch_saved
+    emitter: scripts/coord/chump-edit-wrap.sh (INFRA-1200)
+    trigger: agent writes a substantive file edit to .chump-plans/<gap-id>/ before
+      applying to the /tmp worktree; provides replay-on-reap durability.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, gap, seq, relpath]
+
+  - kind: chump_plans_gc
+    emitter: src/main.rs gap ship handler (INFRA-1200)
+    trigger: chump gap ship cleans up .chump-plans/<gap-id>/ directories whose
+      SHIPPED_AT marker is older than the 7-day grace period.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, gap, removed_count]
+
   # ── INFRA-998: PR-closure-reason categorization ───────────────────────
   - kind: waste_category_report
     emitter: src/waste_tally.rs build_close_reason_report (chump waste-tally --by-close-reason --emit-ambient)
