@@ -387,6 +387,15 @@ jobs:
         # WARN-ONLY by default — surfaces stale last_audited stamps without
         # blocking. Promote to --strict once the long-tail cleanup is done.
         run: bash scripts/ci/test-doc-freshness.sh
+
+      - name: no-claude-leak audit (INFRA-1051, warn-only, changed-only)
+        # Prevents NEW Claude-specific references from leaking into product-
+        # layer code (src/, scripts/coord/, scripts/dispatch/, scripts/ops/).
+        # Today's baseline: 580 mentions across 357 files; cleanup is INFRA-1053.
+        # Allowlist: CLAUDE.md, .claude/, CLAUDE_GOTCHAS.md, scripts/dispatch/harnesses/.
+        # Per-line opt-out: `# chump-harness-ok: claude-mention`.
+        # Promote to --strict once INFRA-1053 backfill closes the long-tail.
+        run: bash scripts/ci/test-no-claude-leak.sh
       - name: markdown intra-doc links (DOC-039)
         # Gates on links in .md files MODIFIED by this PR — prevents
         # regression without forcing a one-shot cleanup of the 492

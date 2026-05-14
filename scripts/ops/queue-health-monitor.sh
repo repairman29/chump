@@ -259,7 +259,10 @@ shopt -u nullglob
 say "checking worktrees for size > ${WORKTREE_MAX_GB} GB..."
 WT_PARENT_NEW="$MAIN_REPO/.chump/worktrees"
 WT_PARENT_OLD="$MAIN_REPO/.claude/worktrees"
-for parent in "$WT_PARENT_NEW" "$WT_PARENT_OLD"; do
+# INFRA-1053: also scan the harness-agnostic base when configured.
+WT_PARENT_ENV="${CHUMP_WORKTREE_BASE:-}"
+for parent in "$WT_PARENT_NEW" "$WT_PARENT_OLD" "$WT_PARENT_ENV"; do
+    [[ -n "$parent" ]] || continue
     [[ -d "$parent" ]] || continue
     for wt in "$parent"/*/; do
         [[ -d "$wt" ]] || continue

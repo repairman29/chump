@@ -546,7 +546,8 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
         sid="$(date +%Y%m%d-%H%M%S)"
         gap_lower="$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')"
         wt_name="${gap_lower}-fleet-${AGENT_ID}-${sid}"
-        wt_path="$REPO_ROOT/.claude/worktrees/$wt_name"
+        # INFRA-1053: honor CHUMP_WORKTREE_BASE for harness-agnostic placement.
+        wt_path="${CHUMP_WORKTREE_BASE:-$REPO_ROOT/.claude/worktrees}/$wt_name"
         branch="chump/${wt_name}"
         printf 'WOULD claim %s and spawn claude in %s\n' "$GAP_ID" "$wt_path"
         printf 'branch: %s\n' "$branch"
@@ -599,7 +600,8 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     sid="$(date +%Y%m%d-%H%M%S)"
     gap_lower="$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')"
     wt_name="${gap_lower}-fleet-${AGENT_ID}-${sid}"
-    wt_path="$REPO_ROOT/.claude/worktrees/$wt_name"
+    # INFRA-1053: honor CHUMP_WORKTREE_BASE for harness-agnostic placement.
+    wt_path="${CHUMP_WORKTREE_BASE:-$REPO_ROOT/.claude/worktrees}/$wt_name"
     branch="chump/${wt_name}"
 
     log "creating worktree $wt_path on branch $branch"

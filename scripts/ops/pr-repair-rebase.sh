@@ -127,7 +127,8 @@ while IFS='|' read -r pr_num branch created_at has_auto_merge; do
 
     # Create ephemeral worktree for the rebase
     _wt_name="pr-repair-${pr_num}"
-    _wt_path="$REPO_ROOT/.claude/worktrees/$_wt_name"
+    # INFRA-1053: harness-agnostic base. Default keeps .claude/worktrees/.
+    _wt_path="${CHUMP_WORKTREE_BASE:-$REPO_ROOT/.claude/worktrees}/$_wt_name"
 
     # Clean up any leftover worktree from a prior run
     if [[ -d "$_wt_path" ]]; then
