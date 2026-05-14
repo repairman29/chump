@@ -218,8 +218,25 @@ cache_query_behind_prs               # returns one number per line
 cache_lookup_checks "<head_sha>"     # returns `name\tstatus\tconclusion` per check
 ```
 
+Additional helpers (INFRA-1275):
+
+```bash
+# List open PRs — replaces gh pr list with mergeStateStatus=BEHIND filter off
+cache_query_open_prs                 # returns `number\ttitle\thead_ref` per row
+
+# Title-substring search — replaces gh pr list --search
+cache_query_open_prs_by_title "X"    # same shape, filtered by LOWER(title) LIKE
+
+# Per-PR file list — replaces gh api repos/X/pulls/N/files
+cache_lookup_pr_files "<number>"     # background-tagged REST under the hood
+
+# Bulk refill — call once on cold cache, REST not GraphQL
+cache_refresh_open_prs               # writes up to 100 open PRs into pr_state
+```
+
 **Already migrated:** queue-driver.sh (BEHIND scan), bot-merge.sh FLEET-029
-overlap scan via chump-ambient-glance.sh, pr-rescue.sh per-PR meta fetch.
+overlap scan, pr-rescue.sh per-PR meta fetch, chump-ambient-glance.sh
+(INFRA-1275), gap-preflight.sh (INFRA-1275).
 **Next consumers** (filed as gaps): bot-merge per-PR check-runs polling
 (INFRA-1130), ghost-gap-reaper (INFRA-1082 audit).
 

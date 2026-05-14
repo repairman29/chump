@@ -1536,6 +1536,14 @@ events:
     consumers: [fleet-brief, operator-recall, scripts/dev/cache-hit-rate.sh]
     fields_required: [ts, kind, helper, target, reason]
 
+  - kind: cache_refilled
+    emitter: scripts/coord/lib/github_cache.sh (INFRA-1275)
+    trigger: cache_refresh_open_prs fetched the /pulls?state=open list via
+      REST (not GraphQL) and upserted rows into github_cache.db. Emitted once
+      per refresh cycle with the row count inserted/updated.
+    consumers: [fleet-brief, scripts/dev/cache-hit-rate.sh]
+    fields_required: [ts, kind, helper, rows, source]
+
   - kind: cache_warmed
     emitter: scripts/ops/github-cache-reconcile.sh (INFRA-1106)
     trigger: reconcile detected pr_state rows with empty mergeable_state (the
