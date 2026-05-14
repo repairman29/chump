@@ -52,6 +52,39 @@ fi
 api_tag="$(chump_gh_api_tag "$@" 2>/dev/null || echo "?")"
 started_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
 
+# INFRA-1103: route every bare `gh` invocation through the same throttle
+# that chump_gh() uses. Closes the bypass identified during the 2026-05-13
+# secondary-rate-limit incident: INFRA-1079 added _chump_gh_throttle_wait,
+# but only the chump_gh function called it — bare `gh ...` via the shim
+# was recorded for telemetry but never throttled.
+#
+# Skip when CHUMP_GH_SHIM_RECORDING is already set: that means chump_gh()
+# higher up the stack already throttled, and this exec is the downstream
+# `gh "$@"` it issued. Double-waiting would inflate latency and corrupt
+# the sliding window. (The same env var is used to skip double-record.)
+if [[ "${CHUMP_GH_SHIM_RECORDING:-}" != "1" ]]; then
+    # Caller-script identity, same resolution as the record path below.
+    _shim_script_tag="${CHUMP_GH_SCRIPT:-}"
+    if [[ -z "$_shim_script_tag" ]]; then
+        _shim_script_tag="$(ps -o comm= -p "$PPID" 2>/dev/null | head -1 || true)"
+        if [[ -z "$_shim_script_tag" || "$_shim_script_tag" == "bash" || "$_shim_script_tag" == "-bash" ]]; then
+            _shim_gp="$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')"
+            if [[ -n "$_shim_gp" && "$_shim_gp" != "0" ]]; then
+                _shim_script_tag="$(ps -o comm= -p "$_shim_gp" 2>/dev/null | head -1 || true)"
+            fi
+            unset _shim_gp
+        fi
+        _shim_script_tag="$(basename "${_shim_script_tag:-shim}")"
+    fi
+    if declare -F _chump_gh_throttle_wait >/dev/null 2>&1; then
+        _chump_gh_throttle_wait "$_shim_script_tag" 2>/dev/null || true
+    fi
+    if declare -F _chump_gh_preempt_if_low >/dev/null 2>&1; then
+        _chump_gh_preempt_if_low "$_shim_script_tag" "$api_tag" 2>/dev/null || true
+    fi
+    unset _shim_script_tag
+fi
+
 # Run real gh, preserve stdout/stderr/exit.
 # Mark that the shim is the recording path on this call — any
 # explicit chump_gh_record() call from a wrapper higher up the stack
