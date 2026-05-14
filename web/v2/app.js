@@ -1875,8 +1875,12 @@ window.addEventListener('DOMContentLoaded', () => {
   const factory = VIEWS[lastView] ?? VIEWS.chat;
   if (main) {
     main.appendChild(factory());
-    // Sync nav highlight.
-    document.querySelector(`[data-view="${lastView}"]`)?.setAttribute('aria-current', 'page');
-    document.querySelector('[data-view="chat"]')?.removeAttribute('aria-current');
+    // Sync nav highlight: clear default chat highlight, then set the restored view.
+    // Guard: only remove chat highlight if we're restoring a different view.
+    if (lastView !== 'chat') {
+      document.querySelector('[data-view="chat"]')?.removeAttribute('aria-current');
+      document.querySelector(`[data-view="${lastView}"]`)?.setAttribute('aria-current', 'page');
+    }
+    // If lastView === 'chat', the HTML's default aria-current on chat is already correct.
   }
 });
