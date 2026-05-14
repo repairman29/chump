@@ -2342,13 +2342,100 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
                 done
             fi
 
-            stage_start "gh pr merge #$TARGET_PR --auto --squash"
-            if ! gh_with_backoff "gh pr merge" 120 pr merge "$TARGET_PR" --auto --squash; then
-                red "gh pr merge failed or timed out."
-                exit 2
+            # ── INFRA-1166: REST-direct fast path ────────────────────────────────
+            # When all required CI checks are already completed and green, skip
+            # GraphQL enablePullRequestAutoMerge and merge immediately via REST
+            # PUT /pulls/N/merge. This avoids the separate GraphQL secondary rate
+            # limit that has caused "API rate limit already exceeded" errors even
+            # when REST quota was healthy. Disable with CHUMP_BOT_MERGE_REST_DIRECT=0.
+            _rest_direct_merged=0
+            _rd_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+            if [[ "${CHUMP_BOT_MERGE_REST_DIRECT:-1}" != "0" && $DRY_RUN -eq 0 ]]; then
+                stage_start "INFRA-1166: REST-direct fast path (check all CI green)"
+                _rd_nwo=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
+                _rd_sha=$(gh api "repos/$_rd_nwo/pulls/$TARGET_PR" --jq '.head.sha' 2>/dev/null || true)
+                if [[ -n "$_rd_nwo" && -n "$_rd_sha" ]]; then
+                    _rd_checks_json=$(gh api "repos/$_rd_nwo/commits/$_rd_sha/check-runs" \
+                        --paginate 2>/dev/null || true)
+                    if [[ -n "$_rd_checks_json" ]]; then
+                        # Count incomplete and failed required checks with python3
+                        _rd_counts=$(printf '%s' "$_rd_checks_json" | python3 - "$REQUIRED_CHECKS" <<'RDPYEOF'
+import sys, json
+required_raw = sys.argv[1] if len(sys.argv) > 1 else ""
+required_list = [r.strip() for r in required_raw.split(",") if r.strip()] if required_raw else []
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    print("0 0 0"); sys.exit(0)
+checks = data.get("check_runs", [])
+incomplete = failed = total = 0
+for c in checks:
+    conclusion = (c.get("conclusion") or "").lower()
+    if conclusion in ("skipped", "neutral", "cancelled"):
+        continue
+    name = c.get("name", "")
+    if required_list and not any(r in name for r in required_list):
+        continue
+    total += 1
+    status = (c.get("status") or "").lower()
+    if status != "completed":
+        incomplete += 1
+    elif conclusion != "success":
+        failed += 1
+print(f"{incomplete} {failed} {total}")
+RDPYEOF
+                        )
+                        _rd_incomplete=$(printf '%s' "$_rd_counts" | awk '{print $1}')
+                        _rd_failed=$(printf '%s' "$_rd_counts" | awk '{print $2}')
+                        _rd_total=$(printf '%s' "$_rd_counts" | awk '{print $3}')
+                        if [[ "${_rd_total:-0}" -gt 0 && \
+                              "${_rd_incomplete:-1}" -eq 0 && \
+                              "${_rd_failed:-1}" -eq 0 ]]; then
+                            info "INFRA-1166: all $_rd_total required checks green — merging via REST PUT (no GraphQL)"
+                            _rd_commit_title=$(gh api "repos/$_rd_nwo/pulls/$TARGET_PR" \
+                                --jq '.title' 2>/dev/null || echo "Merge PR #$TARGET_PR")
+                            _rd_gap_str="${GAP_IDS[*]:-}"
+                            if gh api "repos/$_rd_nwo/pulls/$TARGET_PR/merge" \
+                                    -X PUT \
+                                    -f merge_method=squash \
+                                    -f "commit_title=${_rd_commit_title}" \
+                                    2>/dev/null; then
+                                _rest_direct_merged=1
+                                green "INFRA-1166: REST-direct merge succeeded — PR #$TARGET_PR merged (no GraphQL)."
+                                mkdir -p "$(dirname "$_rd_amb")" 2>/dev/null || true
+                                printf '{"ts":"%s","kind":"bot_merge_rest_direct","pr":%s,"gap":"%s","sha":"%s","checks_verified":%s,"note":"INFRA-1166 all-checks-green fast path"}\n' \
+                                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                                    "$TARGET_PR" "$_rd_gap_str" "$_rd_sha" "$_rd_total" \
+                                    >> "$_rd_amb" 2>/dev/null || true
+                            else
+                                info "INFRA-1166: REST PUT merge failed (guard/review requirement?) — falling back to auto-merge arm."
+                            fi
+                        else
+                            info "INFRA-1166: checks not all green (incomplete=${_rd_incomplete:-?}, failed=${_rd_failed:-?}, total=${_rd_total:-0}) — using auto-merge arm."
+                        fi
+                    else
+                        info "INFRA-1166: no check-runs data returned — using auto-merge arm."
+                    fi
+                else
+                    info "INFRA-1166: could not determine NWO/SHA — using auto-merge arm."
+                fi
+                stage_done
             fi
-            stage_done
-            green "Auto-merge enabled — PR will land when CI passes."
+
+            if [[ $_rest_direct_merged -eq 0 ]]; then
+                stage_start "gh pr merge #$TARGET_PR --auto --squash"
+                if ! gh_with_backoff "gh pr merge" 120 pr merge "$TARGET_PR" --auto --squash; then
+                    red "gh pr merge failed or timed out."
+                    exit 2
+                fi
+                stage_done
+                green "Auto-merge enabled — PR will land when CI passes."
+                mkdir -p "$(dirname "$_rd_amb")" 2>/dev/null || true
+                printf '{"ts":"%s","kind":"bot_merge_auto_armed","pr":%s,"gap":"%s","note":"GraphQL auto-merge armed (REST-direct path was not eligible)"}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                    "$TARGET_PR" "${GAP_IDS[*]:-}" \
+                    >> "$_rd_amb" 2>/dev/null || true
+            fi
         fi
 
         # ── INFRA-193: speculative-execution loser sweep ─────────────────────
