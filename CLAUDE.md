@@ -40,7 +40,7 @@ bash scripts/setup/install-ambient-hooks.sh 2>&1 | tail -2  # FLEET-023, idempot
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 chump-coord watch &                              # FLEET-006 (skip if NATS unavailable)
 chump gap list --status open                     # canonical .chump/state.db
-scripts/coord/gap-preflight.sh <GAP-ID>          # exits 1 if not pickable — stop if so
+chump gap preflight <GAP-ID>                     # exits 1 if not pickable — stop if so
 chump --briefing <GAP-ID>                        # MEM-007 per-gap context
 ```
 
@@ -69,12 +69,10 @@ Never file sub-gaps manually in advance. The filing agent's context is valuable 
 
 ```bash
 chump claim <GAP-ID> [--paths CSV]   # atomic: fetch + verify + doctor + worktree + lease
-# fallback if broken:
-scripts/coord/gap-claim.sh <GAP-ID>                       # existing gap
 chump gap reserve --domain INFRA --title "short title"    # new gap
 ```
 
-If preflight fails, **stop** — do not bypass.
+Run `chump gap preflight <GAP-ID>` first to verify pickability. If preflight fails, **stop** — do not bypass.
 
 ## Ship pipeline (always)
 
@@ -156,9 +154,9 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 - **`proprietary/` — NEVER commit here.** Private sibling repo; stray copies must not be staged or referenced.
 - **Default model: haiku for IDE sessions, sonnet for fleet workers.** Cost-sensitive sweeps: `FLEET_MODEL=haiku`. Opus is ~50× haiku per token.
 - **Never push directly to `main`.** See [AGENTS.md → Naming conventions](./AGENTS.md#naming-conventions-infra-186-2026-05-01).
-- **Always work in a linked worktree** — `gap-claim.sh` refuses the main checkout.
+- **Always work in a linked worktree** — `chump claim` refuses the main checkout.
 - **Linked worktree git path confusion (INFRA-779):** On macOS, `/tmp` → `/private/tmp` symlink plus concurrent sibling claims can corrupt a worktree's gitdir back-reference, causing `git rev-parse --show-toplevel` to return the wrong path. Recovery: `GIT_DIR=/Users/jeffadkins/Projects/Chump/.git/worktrees/<wt-name> GIT_WORK_TREE=/private/tmp/<wt-name> git <cmd>`. Prevention: `chump claim` now auto-repairs the gitdir after `git worktree add`.
-- **Never start a gap without `gap-preflight.sh` first.**
+- **Never start a gap without `chump gap preflight <GAP-ID>` first.**
 - **Never leave a lease behind** — `chump --release` or delete `.chump-locks/<session>.json`.
 - **Commit often** (every 30 min) — use `scripts/coord/chump-commit.sh <files> -m "msg"`, not bare `git commit`.
 - **Mutate gaps via `chump gap …` only** — `.chump/state.db` is canonical. Use `chump gap show <ID>` to inspect.
