@@ -2141,7 +2141,7 @@ pub fn build_close_reason_report(window_secs: u64) -> ClosureReasonReport {
             pr_numbers: prs,
         })
         .collect();
-    entries.sort_by(|a, b| b.count.cmp(&a.count));
+    entries.sort_by_key(|b| std::cmp::Reverse(b.count));
     let total = entries.iter().map(|e| e.count).sum();
     ClosureReasonReport {
         entries,
