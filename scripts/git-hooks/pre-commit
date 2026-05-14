@@ -1844,3 +1844,29 @@ PYEOF_AC_ENFORCEMENT
             echo "[pre-commit]   acceptance_criteria:" >&2
             echo "[pre-commit]     - \"gap property: specific testable claim\"" >&2
             echo "[pre-commit] Bypass (rare): CHUMP_AC_CHECK=0 git commit ..." >&2
+
+# ------------------------------------------------------------------
+# INFRA-1028: operator-recovery umbrella
+# CHUMP_OPERATOR_RECOVERY=1 enables the bypass set for human-supervised
+# manual recovery (e.g. after GraphQL exhaustion, orphaned leases, or
+# worktree state corruption). Does NOT bypass footgun guards (no-verify,
+# force-push-to-protected, hook-skip). Emits guard_bypassed once per
+# hook invocation so recovery sessions are auditable in ambient.jsonl.
+# ------------------------------------------------------------------
+if [ "${CHUMP_OPERATOR_RECOVERY:-0}" = "1" ]; then
+    export CHUMP_BYPASS_BOT_MERGE=1
+    export CHUMP_GAP_CHECK=0
+    export CHUMP_ALLOW_UNREGISTERED_GAP=1
+    export CHUMP_ALLOW_REUSE_BRANCH=1
+    export CHUMP_ALLOW_GAP_REWRITE=1
+    export CHUMP_GAPS_LOCK=0
+    export CHUMP_STOMP_WARN=0
+    _or_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _or_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    mkdir -p "${_or_root}/.chump-locks" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"guard_bypassed","guard_name":"operator_recovery_umbrella","bypasses":["CHUMP_BYPASS_BOT_MERGE","CHUMP_GAP_CHECK","CHUMP_ALLOW_UNREGISTERED_GAP","CHUMP_GAPS_LOCK","CHUMP_STOMP_WARN"],"operator":true}\n' \
+        "$_or_ts" >> "${_or_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+    unset _or_ts _or_root
+fi
+                echo "[pre-commit] Bypass: CHUMP_LEASE_CHECK=0 git commit ...  (or CHUMP_OPERATOR_RECOVERY=1 for full recovery mode)" >&2
+                echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ...  (or CHUMP_OPERATOR_RECOVERY=1 for full recovery mode)" >&2

@@ -1519,6 +1519,8 @@ jobs:
         run: bash scripts/ci/test-pr-scope-title-fallback.sh
       - name: bot-merge arm-before-ship ordering fix (INFRA-1030)
         run: bash scripts/ci/test-bot-merge-arm-ship-order.sh
+      - name: operator-recovery umbrella — CHUMP_OPERATOR_RECOVERY=1 bypass set + audit event (INFRA-1028)
+        run: bash scripts/ci/test-operator-recovery.sh
 
       - name: pillar-balance guard at reserve time (INFRA-1152)
         run: |
