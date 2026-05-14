@@ -162,3 +162,55 @@ exit code 16 and `kind=staging_only_pr_blocked` is emitted to
 ambient.jsonl. The original waste case (PR #1655, 2026-05-13) shipped
 exactly this pattern as an empty PR; this guard prevents recurrence.
 Bypass when intentional: `CHUMP_ALLOW_STAGING_ONLY_PR=1`.
+
+## Required-check stub pattern (INFRA-1143)
+
+GitHub Actions does not distinguish "skipped" from "failed" in branch
+protection. If a required status check skips (because the path filter says
+no code changed), the merge is blocked forever.
+
+The **synthetic-green stub pattern** avoids this:
+
+```
+# For each required check <job>:
+<job>:                # real job, gated by path filter
+  if: needs.changes.outputs.code == 'true' || push || merge_group
+  ...
+
+<job>-stub:           # fast stub, runs when real job is skipped
+  if: needs.changes.outputs.code != 'true' && pull_request
+  steps:
+    - run: echo "<job> skipped — no code changes. Stub satisfies branch protection."
+
+<job>-required:       # rollup — branch protection points at THIS name
+  needs: [<job>, <job>-stub]
+  if: always()
+  steps:
+    - run: |
+        real="${{ needs.<job>.result }}"
+        stub="${{ needs.<job>-stub.result }}"
+        if [[ "$real" == "success" || "$stub" == "success" ]]; then
+          echo "PASS"
+        elif [[ "$real" == "skipped" && "$stub" == "skipped" ]]; then
+          echo "both skipped (push/merge_group — OK)"
+        else
+          exit 1
+        fi
+```
+
+**Jobs with this pattern (as of INFRA-1143):**
+- `clippy` / `clippy-stub` / `clippy-required`
+- `cargo-test` / `cargo-test-stub` / `cargo-test-required`
+- `fast-checks` / `fast-checks-stub` / `fast-checks-required`
+- `audit` / `audit-stub` / `audit-required`
+
+**Branch protection migration (operator action):**
+1. Merge INFRA-1143 PR (stubs + rollups land in main).
+2. Admin: add `clippy-required`, `cargo-test-required`, `fast-checks-required`,
+   `audit-required` to branch protection required status checks.
+3. Admin: remove old `test` and `audit` required checks (keep overlap if
+   open PRs need both).
+4. INFRA-1142 (follow-up): narrow the `code` filter to Rust-only paths.
+
+**Adding a new required check:** use the `<job>-stub` + `<job>-required` template
+above. Never add a conditional job directly to branch protection without a stub.
