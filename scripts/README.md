@@ -117,6 +117,25 @@ Long-running or cron-scheduled background processes. Most are managed via launch
 | `stale-pr-reaper.sh` | Close PRs that have been superseded |
 | `stuck-pr-filer.sh` | File a gap when a PR is stuck >4h with no activity |
 
+### Fleet garbage collection (INFRA-974 / INFRA-1038 disposition)
+
+There is no `chump fleet gc` subcommand. Fleet "garbage" is collected by
+three specialists that each run on their own launchd schedule:
+
+| Garbage | Collector | Schedule |
+|---|---|---|
+| Stale linked worktrees | `chump fleet prune-worktrees --apply` via `com.chump.prune-worktrees.plist` | daily 03:00 |
+| Expired `.chump-locks/` lease files + state.db rows | `scripts/ops/stale-gap-lock-reaper.sh --execute` via `com.chump.stale-gap-lock-reaper.plist` (INFRA-676/INFRA-1017) | every 5 min |
+| `.chump-locks/ambient.jsonl` size | INFRA-941 in-process auto-rotate at 50 MB threshold | continuous |
+
+If you want a single operator-friendly entry-point, alias your shell:
+`alias chump-gc='chump fleet prune-worktrees --apply && bash scripts/ops/stale-gap-lock-reaper.sh --execute'`.
+
+INFRA-974 closed as obsolete — the original ask ("scheduled `chump fleet gc`
+every 30 min") is already covered by the three specialists above. A unified
+subcommand would be operator-convenience-only and is left for a follow-up
+gap if the three-call pattern becomes friction.
+
 ---
 
 ## `dispatch/` — Fleet worker management {#dispatch}

@@ -1216,6 +1216,15 @@ events:
     consumers: [chump-ambient-glance, fleet-brief, operator-recall]
     fields_required: [ts, kind, threshold_seen, resets_at, source]
 
+  # ── INFRA-1034: bot-merge per-PID log discoverability ─────────────────────
+  - kind: bot_merge_log_started
+    emitter: scripts/coord/bot-merge.sh (INFRA-1034)
+    trigger: bot-merge.sh sets up tee redirection to .chump-locks/bot-merge-<pid>.log.
+      One emit per script invocation; lets operator-recall / chump-ambient-glance
+      surface "bot-merge currently running, tail -f <path>" without scanning ps.
+    consumers: [chump-ambient-glance, fleet-brief, operator-recall]
+    fields_required: [ts, kind, pid, log_path, branch]
+
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
     emitter: scripts/coord/emergency-fast-path.sh, scripts/dispatch/opus-curator.sh (INFRA-847)
@@ -1490,3 +1499,25 @@ events:
     trigger: day-over-day autonomous rate drops > 10 percentage points
     consumers: [fleet-brief, curator, PWA-daily-brief]
     fields_required: [ts, kind, prev_rate, curr_rate, drop_pp]
+
+  # ── CREDIBLE-052: cross-session gap-ID collision prevention ───────────────
+  - kind: gap_id_allocator_offline
+    emitter: src/gap_store.rs (reserve → external_pending_ids — CREDIBLE-052)
+    trigger: open-PR scan failed (network error or gh unavailable); reserve continues
+      with lease+DB coverage only; slight residual race risk remains
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, domain, reason]
+
+  - kind: gap_id_allocator_collision_avoided
+    emitter: src/gap_store.rs (reserve_with_external — CREDIBLE-052)
+    trigger: naive next ID (existing_max+1) was already claimed by an open PR or
+      sibling lease; allocator skipped to the next safe ID
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, domain, skipped_id]
+
+  # ── INFRA-1020: opencode identity residue audit ───────────────────────────
+  - kind: identity_residue_swept
+    emitter: scripts/ops/audit-opencode-identity-residue.sh (INFRA-1020)
+    trigger: one-shot audit finds (or confirms clean) opencode t@t.t placeholder identity in worktree configs
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, worktree, removed_email, removed_name, count]
