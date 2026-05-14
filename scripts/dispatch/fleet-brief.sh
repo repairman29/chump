@@ -29,45 +29,71 @@ AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 now_epoch=$(date +%s)
 day_ago=$((now_epoch - 86400))
 four_h_ago=$((now_epoch - 14400))
-since_iso=$(date -u -r $day_ago +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$day_ago" +%Y-%m-%dT%H:%M:%SZ)
 
-# ── 24h ship metrics (from gh) ───────────────────────────────────────────
-ships_24h=$(gh pr list --state merged --search "merged:>=$since_iso" --json number 2>/dev/null | jq 'length' 2>/dev/null || echo "?")
+# INFRA-1148: git log replaces gh pr list (GraphQL) for all ship counts and
+# pillar mix. Zero API calls — always reliable, always fast (<50ms).
+# Commit subjects follow `type(DOMAIN-NNN): PILLAR — ...` convention.
+_git_log_24h() { git -C "$MAIN_REPO" log --format="%s" --after="24 hours ago" origin/main 2>/dev/null || true; }
+_git_log_6h()  { git -C "$MAIN_REPO" log --format="%s" --after="6 hours ago"  origin/main 2>/dev/null || true; }
+
+_subjects_24h="$(_git_log_24h)"
+_subjects_6h="$(_git_log_6h)"
+
+ships_24h=$(echo "$_subjects_24h" | grep -c . 2>/dev/null || echo 0)
+ships_6h=$(echo "$_subjects_6h"  | grep -c . 2>/dev/null || echo 0)
+[[ -z "$_subjects_24h" ]] && ships_24h=0
+[[ -z "$_subjects_6h"  ]] && ships_6h=0
 rate_per_hr=$(awk "BEGIN{printf \"%.1f\", ($ships_24h)/24}" 2>/dev/null)
 
-# Pillar mix: PR titles don't carry pillar prefix consistently, so look up
-# each gap_id in state.db and match its title's pillar tag. Fall back to
-# domain-bucket if no pillar tag.
+# ── Classify pillar + domain from commit subjects (24h) ──────────────────
+# Subjects: fix(INFRA-1141): RESILIENT — ...,  feat(DOC-048): CREDIBLE — ...
+# Pillar tag appears after ): in the subject; domain is from gap prefix.
 p_resilient=0; p_effective=0; p_credible=0; p_zerowaste=0; p_mission=0; p_other=0
 d_infra=0; d_fleet=0; d_doc=0; d_credible=0; d_cog=0; d_product=0; d_other=0
-while IFS= read -r pr_title; do
-    # Extract gap-id (e.g. "INFRA-669" from "INFRA-669: pr-triage-bot ...")
-    gap_id=$(echo "$pr_title" | grep -oE '^[A-Z]+-[0-9]+' | head -1)
-    domain=$(echo "$gap_id" | cut -d- -f1)
+while IFS= read -r subj; do
+    [[ -z "$subj" ]] && continue
+    # Extract domain from gap id inside parens: fix(INFRA-1141) → INFRA
+    domain=$(echo "$subj" | grep -oE '\(([A-Z]+-[0-9]+)\)' | head -1 | tr -d '()')
+    domain="${domain%%-*}"
     case "$domain" in
-        INFRA) d_infra=$((d_infra + 1)) ;;
-        FLEET) d_fleet=$((d_fleet + 1)) ;;
-        DOC) d_doc=$((d_doc + 1)) ;;
+        INFRA)    d_infra=$((d_infra + 1)) ;;
+        FLEET)    d_fleet=$((d_fleet + 1)) ;;
+        DOC)      d_doc=$((d_doc + 1)) ;;
         CREDIBLE) d_credible=$((d_credible + 1)) ;;
-        COG) d_cog=$((d_cog + 1)) ;;
-        PRODUCT) d_product=$((d_product + 1)) ;;
-        *) d_other=$((d_other + 1)) ;;
+        COG)      d_cog=$((d_cog + 1)) ;;
+        PRODUCT)  d_product=$((d_product + 1)) ;;
+        *)        d_other=$((d_other + 1)) ;;
     esac
-    # Pillar from gap state.db title
-    if [ -n "$gap_id" ]; then
-        gap_title=$(chump gap show "$gap_id" 2>/dev/null | awk '/^  title:/{sub(/^  title: /,""); print; exit}')
-        case "$gap_title" in
-            *"RESILIENT:"*)    p_resilient=$((p_resilient + 1)) ;;
-            *"EFFECTIVE:"*)    p_effective=$((p_effective + 1)) ;;
-            *"CREDIBLE:"*)     p_credible=$((p_credible + 1)) ;;
-            *"ZERO-WASTE:"*)   p_zerowaste=$((p_zerowaste + 1)) ;;
-            *"MISSION:"*)      p_mission=$((p_mission + 1)) ;;
-            *)                 p_other=$((p_other + 1)) ;;
-        esac
-    else
-        p_other=$((p_other + 1))
-    fi
-done < <(gh pr list --state merged --search "merged:>=$since_iso" --json title -q '.[].title' 2>/dev/null)
+    case "$subj" in
+        *"RESILIENT"*)  p_resilient=$((p_resilient + 1)) ;;
+        *"EFFECTIVE"*)  p_effective=$((p_effective + 1)) ;;
+        *"CREDIBLE"*)   p_credible=$((p_credible + 1)) ;;
+        *"ZERO-WASTE"*) p_zerowaste=$((p_zerowaste + 1)) ;;
+        *"MISSION"*)    p_mission=$((p_mission + 1)) ;;
+        *)              p_other=$((p_other + 1)) ;;
+    esac
+done <<< "$_subjects_24h"
+
+# ── 6h pillar breakdown (for the 'Shipped last 6h' table) ────────────────
+s6_resilient=0; s6_effective=0; s6_credible=0; s6_zerowaste=0; s6_mission=0; s6_other=0
+while IFS= read -r subj; do
+    [[ -z "$subj" ]] && continue
+    case "$subj" in
+        *"RESILIENT"*)  s6_resilient=$((s6_resilient + 1)) ;;
+        *"EFFECTIVE"*)  s6_effective=$((s6_effective + 1)) ;;
+        *"CREDIBLE"*)   s6_credible=$((s6_credible + 1)) ;;
+        *"ZERO-WASTE"*) s6_zerowaste=$((s6_zerowaste + 1)) ;;
+        *"MISSION"*)    s6_mission=$((s6_mission + 1)) ;;
+        *)              s6_other=$((s6_other + 1)) ;;
+    esac
+done <<< "$_subjects_6h"
+
+# ── Overlap clusters: top-level dirs touched by ≥3 ships (last 6h) ───────
+_overlap_clusters=""
+_overlap_raw=$(git -C "$MAIN_REPO" log --name-only --format="" --after="6 hours ago" origin/main 2>/dev/null \
+    | sed 's|/.*||' | grep -v '^$' | sort | uniq -c | sort -rn \
+    | awk '$1>=3 {print $1, $2}' || true)
+[[ -n "$_overlap_raw" ]] && _overlap_clusters="$_overlap_raw"
 
 # ── Open PR stalls (BLOCKED > 4h) ────────────────────────────────────────
 stalls_4h=()
@@ -113,7 +139,7 @@ fi
 
 # ── Render ───────────────────────────────────────────────────────────────
 echo "═══ Fleet brief (last 24h) ═══"
-echo "Ships: $ships_24h (≈${rate_per_hr}/hr)"
+echo "Ships: $ships_24h (≈${rate_per_hr}/hr) | last 6h: $ships_6h"
 pmix=""
 [ "$p_resilient" -gt 0 ] && pmix="${pmix} RESILIENT=$p_resilient"
 [ "$p_effective" -gt 0 ] && pmix="${pmix} EFFECTIVE=$p_effective"
@@ -136,6 +162,27 @@ stalls_str=""
 echo "Stalls > 4h: ${#stalls_4h[@]}${stalls_str}"
 echo "Auto-fixed: lint=$auto_lint_fixes flake-rerun=$auto_flake_reruns"
 echo "Manual rescues: $manual_rescues"
+
+# ── Shipped last 6h grouped by pillar ────────────────────────────────────
+if [[ "$ships_6h" -gt 0 ]]; then
+    echo ""
+    echo "Shipped last 6h ($ships_6h total):"
+    [ "$s6_resilient" -gt 0 ] && printf "  %-12s %d\n" "RESILIENT"  "$s6_resilient"
+    [ "$s6_effective" -gt 0 ] && printf "  %-12s %d\n" "EFFECTIVE"  "$s6_effective"
+    [ "$s6_credible"  -gt 0 ] && printf "  %-12s %d\n" "CREDIBLE"   "$s6_credible"
+    [ "$s6_zerowaste" -gt 0 ] && printf "  %-12s %d\n" "ZERO-WASTE" "$s6_zerowaste"
+    [ "$s6_mission"   -gt 0 ] && printf "  %-12s %d\n" "MISSION"    "$s6_mission"
+    [ "$s6_other"     -gt 0 ] && printf "  %-12s %d\n" "OTHER"      "$s6_other"
+fi
+
+# ── Overlap clusters ──────────────────────────────────────────────────────
+if [[ -n "$_overlap_clusters" ]]; then
+    echo ""
+    echo "Overlap clusters (≥3 ships in 6h, same top-level dir):"
+    while IFS= read -r cl; do
+        echo "  $cl"
+    done <<< "$_overlap_clusters"
+fi
 # CREDIBLE-025: per-model ship breakdown (from ship_grade events).
 _model_rate_script="$REPO_ROOT/scripts/dispatch/model-ship-rate.sh"
 if [[ -x "$_model_rate_script" ]]; then
