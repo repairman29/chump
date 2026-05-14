@@ -298,6 +298,11 @@ FLEET_PRIORITY_FILTER
 # Set by `chump fleet start --harness <claude|opencode|codex|manual>`; read by
 # run-fleet.sh and forwarded to each worker's CHUMP_AGENT_HARNESS env.
 FLEET_HARNESS
+# Read by `chump fleet start` as a fallback when no --harness flag is given
+# (CLI > env > config.toml > default "claude"). Also written into each
+# fleet worker's env by run-fleet.sh; consumed by waste_tally for
+# missing_attribution detection.
+CHUMP_AGENT_HARNESS
 
 # ── CREDIBLE-051: closure-consistency check overrides ──────────────────────
 CHUMP_STATE_DB
