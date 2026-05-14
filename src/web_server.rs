@@ -1722,11 +1722,7 @@ async fn handle_repo_working(
 //   - Storage: ~/.chump/config.toml [api] section (chmod 600), shared with auth.rs
 //   - Logging: presence-only (`forwarding explicit X` pattern), never the value
 
-const SECRET_KEYS: &[&str] = &[
-    "ANTHROPIC_API_KEY",
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "GH_TOKEN",
-];
+const SECRET_KEYS: &[&str] = &["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN"];
 
 /// Map a public key name to the [api]-section field name in
 /// ~/.chump/config.toml. Mirrors src/auth.rs detect_credentials reader.
@@ -5521,7 +5517,10 @@ fn build_api_router() -> Router {
         .route("/api/settings", get(handle_settings_get))
         .route("/api/settings/{key}", post(handle_settings_post))
         // INFRA-989: secret-input flow (mask + test-before-store)
-        .route("/api/settings/secret/{name}", get(handle_secret_get).post(handle_secret_post))
+        .route(
+            "/api/settings/secret/{name}",
+            get(handle_secret_get).post(handle_secret_post),
+        )
         .route(
             "/api/ingest",
             post(handle_ingest_json).layer(RequestBodyLimitLayer::new(
