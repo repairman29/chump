@@ -45,115 +45,27 @@
 #   to ambient.jsonl per INFRA-754 registry.
 
 schema_version: 1
-last_audit: "2026-05-13"
+last_audit: "2026-05-14"
 
 flakes:
-  - test: doctor::tests::repo_env_missing_is_warn_not_fail
-    reason: "test removes CHUMP_REPO/CHUMP_HOME and asserts check_repo_env returns Warn, but parallel tests in cargo test can set those env vars between this test's remove_var and check_repo_env call → assert fails with left=Pass right=Warn"
-    tracking_gap: INFRA-977
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
+  # INFRA-977 (2026-05-13 → done 2026-05-14): doctor::tests::repo_env_missing_is_warn_not_fail
+  # removed — fixed via #[serial_test::serial] in PR #1653; passes reliably.
 
-  # RESILIENT-012: 11 consistent pre-push failures on main — environment-dependent
-  # tests that break under parallel cargo test execution. Tracked by INFRA-1008.
-  - test: diff_review_tool::tests::diff_review_empty_diff_returns_message
-    reason: "depends on git diff output in the test worktree; parallel tests mutate git state, causing diff_review to see unexpected content"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
+  # INFRA-1008 (2026-05-14): all 11 RESILIENT-012 entries removed.
+  # Root cause was fixed by adding #[serial_test::serial] annotations and
+  # tempfile::TempDir isolation (git env cleared via env_remove in all commands).
+  # Verified passing reliably across 3 consecutive runs at --test-threads=16.
+  # diff_review_tool, repo_path (3 tests), rescue_tally, sandbox_tool,
+  # version (5 tests) — all green.
 
-  - test: repo_path::tests::repo_profiles_list_parses_git_root
-    reason: "reads CHUMP_REPO env var which parallel tests may have mutated between set and read"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
+  # INFRA-1192 (2026-05-14): skill_hub::tests::default_registries_reads_env removed.
+  # Already has #[serial_test::serial] at src/skill_hub.rs; passes reliably.
 
-  - test: repo_path::tests::set_working_repo_from_profile_roundtrip
-    reason: "mutates and reads back profile state; collides with parallel repo_path tests under cargo test --tests"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
+  # INFRA-1193 (2026-05-14): atomic_claim::tests::nats_dual_write_conflict_emits_ambient_event removed.
+  # Passes reliably at --test-threads=16; subprocess/file-read race resolved.
 
-  - test: repo_path::tests::worktree_root_respects_chump_repo_across_different_git_trees
-    reason: "depends on CHUMP_REPO pointing at a valid git tree; parallel tests can reset it"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
-
-  - test: rescue_tally::tests::infra667_count_rescues_returns_zero_on_empty_repo
-    reason: "expects an empty ambient log; parallel tests append to the shared ambient.jsonl"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
-
-  - test: sandbox_tool::tests::sandbox_run_executes_in_worktree
-    reason: "creates a git worktree at a temp path; conflicts when parallel tests also create worktrees in the same repo"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
-
-  - test: version::tests::fresh_when_baked_sha_is_at_head
-    reason: "baked SHA is set at compile time; if HEAD has moved since last build, the SHA comparison is stale"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
-
-  - test: version::tests::skip_when_baked_sha_unknown
-    reason: "relies on BAKED_SHA being the sentinel 'unknown'; CI build environment may bake a real SHA"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
-
-  - test: version::tests::fresh_when_only_unrelated_files_changed_since_baked_sha
-    reason: "uses git log since baked SHA; baked SHA may be ahead of or equal to current HEAD in pre-push context"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
-
-  - test: version::tests::stale_when_gap_store_changed_since_baked_sha
-    reason: "same baked-SHA staleness as other version tests; git log query unreliable when SHA not in current branch history"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
-
-  - test: version::tests::pr_1444_replay_refuses_without_override
-    reason: "regression test for pr_1444 requires exact git history including that PR's commit; breaks on branches that diverge from main"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
-
-  - test: skill_hub::tests::default_registries_reads_env
-    reason: "calls std::env::set_var/remove_var without #[serial_test::serial]; parallel tests reading CHUMP_SKILL_REGISTRIES race with the set/remove sequence"
-    tracking_gap: INFRA-1192
-    added: "2026-05-14"
-    last_observed: "2026-05-14"
-    max_reruns: 1
-
-  - test: atomic_claim::tests::nats_dual_write_conflict_emits_ambient_event
-    reason: "spawns a coord-shim subprocess and reads back ambient.jsonl; under high parallel load the subprocess may exit before the parent reads the file, or the OS file-system write is not yet visible (write-buffer flush race)"
-    tracking_gap: INFRA-1193
-    added: "2026-05-14"
-    last_observed: "2026-05-14"
-    max_reruns: 1
-
-  - test: kpi_report::tests::infra617_leverage_counts_depends_on
-    reason: "creates a tempdir + GapStore and runs git commands; under parallel execution another test concurrently spawns a worktree, causing the git context to leak into the tempdir and the leverage section to come back empty"
-    tracking_gap: INFRA-1194
-    added: "2026-05-14"
-    last_observed: "2026-05-14"
-    max_reruns: 1
+  # INFRA-1194 (2026-05-14): kpi_report::tests::infra617_leverage_counts_depends_on removed.
+  # Passes reliably at --test-threads=16; git context leak fixed.
 # INFRA-763 fixed the canonical case
 # (failure_catalog::tests::infra647_catalog_len_matches_entries).
 # Add new entries here ONLY with an open tracking_gap. Examples of what
