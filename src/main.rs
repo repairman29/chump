@@ -3654,6 +3654,19 @@ async fn main() -> Result<()> {
                                     println!("    {}", line);
                                 }
                             }
+                            // INFRA-1220: show cooldown status if active.
+                            let cooldown_file = repo_root
+                                .join(".chump-locks/.gap-cooldown")
+                                .join(format!("{}.json", g.id));
+                            if cooldown_file.exists() {
+                                let script = repo_root.join("scripts/coord/gap-cooldown.sh");
+                                let _ = std::process::Command::new("bash")
+                                    .arg(&script)
+                                    .arg("status")
+                                    .arg(&g.id)
+                                    .env("CHUMP_LOCK_DIR", repo_root.join(".chump-locks"))
+                                    .status();
+                            }
                         }
                         return Ok(());
                     }
@@ -7463,6 +7476,61 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // INFRA-1220: operator override to clear a post-close cooldown.
+            // Usage: chump gap clear-cooldown <GAP-ID> --reason "text"
+            "clear-cooldown" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap clear-cooldown <GAP-ID> --reason \"reason\"");
+                    std::process::exit(2);
+                });
+                let reason = flag("--reason").unwrap_or_else(|| {
+                    eprintln!("chump gap clear-cooldown: --reason is required (audit trail)");
+                    std::process::exit(2);
+                });
+                // Invoke the shell script so cooldown logic stays in one place.
+                let script = repo_root.join("scripts/coord/gap-cooldown.sh");
+                let status = std::process::Command::new("bash")
+                    .arg(&script)
+                    .arg("clear")
+                    .arg(&gap_id)
+                    .arg("--reason")
+                    .arg(&reason)
+                    .env("CHUMP_LOCK_DIR", repo_root.join(".chump-locks"))
+                    .status();
+                match status {
+                    Ok(s) if s.success() => {
+                        println!("cooldown cleared for {} (reason: {})", gap_id, reason);
+                        // INFRA-755: emit ambient event for auditability.
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let reason_esc = reason.replace('\\', "\\\\").replace('"', "\\\"");
+                        let event = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"gap_cooldown_cleared_cli\",\
+                             \"gap_id\":\"{gap_id}\",\"reason\":\"{reason_esc}\"}}\n"
+                        );
+                        let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write;
+                            let _ = f.write_all(event.as_bytes());
+                        }
+                    }
+                    Ok(s) => {
+                        eprintln!(
+                            "gap clear-cooldown: script exited {}",
+                            s.code().unwrap_or(-1)
+                        );
+                        std::process::exit(1);
+                    }
+                    Err(e) => {
+                        eprintln!("gap clear-cooldown: failed to run script: {e}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!("chump gap <subcommand> [options]");
                 eprintln!("  list             [--status open|done] [--json]");
@@ -7499,6 +7567,7 @@ async fn main() -> Result<()> {
                 eprintln!("  rebalance        [--apply] [--json]  # P0 budget + pillar floor enforcement (INFRA-635)");
                 eprintln!("  pillar-balance   [--suggest] [--apply] [--json]  # pillar inventory (INFRA-604)");
                 eprintln!("  import-spec      <path> [--apply] [--dry-run] [--json]  # import gaps from markdown spec (INFRA-636)");
+                eprintln!("  clear-cooldown   <GAP-ID> --reason \"text\"  # INFRA-1220: operator override for post-close cooldown");
                 std::process::exit(2);
             }
         }
