@@ -32,6 +32,10 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       e2e: ${{ steps.filter.outputs.e2e }}
       tauri: ${{ steps.filter.outputs.tauri }}
+      rust: ${{ steps.filter.outputs.rust }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+      acp: ${{ steps.filter.outputs.acp }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -95,6 +99,34 @@ jobs:
               - 'desktop/**'
               - 'e2e-tauri/**'
               - '.github/workflows/ci.yml'
+            rust:
+              - 'src/**'
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'chump-tool-macro/**'
+              - 'build.rs'
+              - 'tests/**'
+              - 'wasm/**'
+            scripts:
+              - 'scripts/**'
+              - '.github/workflows/**'
+              - 'bin/**'
+              - 'launchd/**'
+              - 'config/**'
+              - '.release-plz.toml'
+            acp:
+              - 'src/acp.rs'
+              - 'src/acp_server.rs'
+              - 'crates/chump-tool-macro/**'
+            docs:
+              - 'docs/**'
+              - 'book/**'
+              - '*.md'
+              - 'CONTRIBUTING.md'
+              - 'CODE_OF_CONDUCT.md'
+              - 'CHANGELOG.md'
+              - 'SECURITY.md'
 
   # ── Tauri Cowork E2E ───────────────────────────────────────────────────────
   # Only runs when desktop / src / e2e-tauri files change. Skipped on
@@ -340,7 +372,7 @@ jobs:
   # Target wall-clock: < 5 min.
   fast-checks:
     needs: changes
-    if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     timeout-minutes: 15  # fmt + JS self-tests + ~30s bash guards; target wall-clock < 5 min, cap at 15m
     runs-on: ubuntu-latest
     steps:
@@ -644,7 +676,7 @@ jobs:
   # and fast-checks. Target wall-clock: 3-5 min.
   clippy:
     needs: changes
-    if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     steps:
@@ -690,7 +722,7 @@ jobs:
   # Target wall-clock: 5-8 min.
   cargo-test:
     needs: changes
-    if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
     steps:
@@ -735,7 +767,7 @@ jobs:
   # Uploads an lcov artifact + writes a summary to $GITHUB_STEP_SUMMARY.
   coverage:
     needs: changes
-    if: needs.changes.outputs.code == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 45  # llvm-cov is slower than cargo-test alone; not required for merge
