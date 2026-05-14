@@ -69,8 +69,11 @@ fi
 
 # ── Test 2: Ephemeral REPO_ROOT triggers exit 5 ────────────────────────────
 echo "--- Test 2: installer exits 5 when resolved path is ephemeral ---"
-# Must be under /tmp or /private/tmp to match _is_ephemeral_path patterns.
-FAKE_WT="/private/tmp/chump-infra-1186-fake-wt-$$"
+# Use /tmp which is ephemeral on both Linux and macOS.
+# (On macOS, /tmp is a symlink to /private/tmp; the installer's pwd -P resolves
+# that to /private/tmp/* which also matches _is_ephemeral_path. /private/tmp
+# does not exist on Linux.)
+FAKE_WT="/tmp/chump-infra-1186-fake-wt-$$"
 mkdir -p "$FAKE_WT/scripts/setup" "$FAKE_WT/scripts/coord/lib/gh-shim"
 trap 'rm -rf "$FAKE_WT"' EXIT
 # Copy the installer and create a fake (non-executable-path-resolving) shim
@@ -112,13 +115,16 @@ else
     fail "installer exited $exit2 — unexpected exit code"
 fi
 
-# ── Test 3: Verify wrapper does NOT reference $TMP if install succeeded ───────
-echo "--- Test 3: installed wrapper never references a /tmp path ---"
+# ── Test 3: Verify exec target in wrapper is NOT an ephemeral /tmp path ──────
+# The install dir ($TMP/bin1) may itself be under /tmp on Linux — that's fine.
+# What must NOT be ephemeral is the shim exec target embedded in the wrapper.
+echo "--- Test 3: exec target in wrapper does not reference an ephemeral /tmp path ---"
 if [ -f "$INSTALL_DIR1/gh" ]; then
-    if grep -q "/tmp/" "$INSTALL_DIR1/gh"; then
-        fail "wrapper from Test 1 references /tmp/"
+    exec_line="$(grep '^exec ' "$INSTALL_DIR1/gh" 2>/dev/null | head -1)"
+    if echo "$exec_line" | grep -qE '/(private/)?tmp/'; then
+        fail "exec line in wrapper targets ephemeral /tmp path: $exec_line"
     else
-        ok "wrapper from Test 1 has no /tmp/ reference"
+        ok "exec line in wrapper targets non-ephemeral path"
     fi
 else
     ok "(wrapper not written — skipping content check)"
