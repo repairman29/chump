@@ -1,7 +1,8 @@
 - id: CREDIBLE-048
   domain: CREDIBLE
   title: "CREDIBLE: per-gate fire-rate telemetry — each CI gate records fire count + TP/FP classification + bypassed-via-allowlist count"
-  status: open
+  status: done
+  closed_pr: 1706
   priority: P1
   effort: s
   description: |

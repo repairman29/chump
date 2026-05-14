@@ -1,7 +1,8 @@
 - id: CREDIBLE-041
   domain: CREDIBLE
   title: "CREDIBLE: no-bundle-PR policy — CI fails any PR whose title lists multiple unrelated gap IDs (e.g. PR #1469 'feat(effective-009,eval-086,infra-825): bundle'); enforced via CREDIBLE-026 scope-divergence detector extension"
-  status: open
+  status: done
+  closed_pr: 1662
   priority: P1
   effort: xs
   acceptance_criteria:

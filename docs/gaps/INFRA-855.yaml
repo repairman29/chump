@@ -1,7 +1,8 @@
 - id: INFRA-855
   domain: INFRA
   title: "RESILIENT: stuck-pr-filer one-gap-per-PR dedup — INDIVIDUAL path fires once per failing check, not once per PR"
-  status: open
+  status: done
+  closed_pr: 1531
   priority: P1
   effort: xs
   acceptance_criteria:

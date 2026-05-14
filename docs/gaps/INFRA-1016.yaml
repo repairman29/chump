@@ -1,7 +1,8 @@
 - id: INFRA-1016
   domain: INFRA
   title: "RESILIENT: pr-rescue --rest-only mode (survives GraphQL exhaustion)"
-  status: open
+  status: done
+  closed_pr: 1685
   priority: P1
   effort: xs
   description: |
