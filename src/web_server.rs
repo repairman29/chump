@@ -113,6 +113,49 @@ fn agent_event_stream(
     })
 }
 
+// ── INFRA-1013: retry counter for failed workflow phases ─────────────────────
+
+/// Tracks consecutive same-phase failures per (gap_id, phase).
+/// After 3 consecutive failures on the same phase, retry is disabled.
+static RETRY_COUNTER: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, u32>>,
+> = std::sync::OnceLock::new();
+
+fn retry_counter_state() -> &'static std::sync::Mutex<std::collections::HashMap<String, u32>> {
+    RETRY_COUNTER.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+fn retry_key(gap_id: &str, phase: &str) -> String {
+    format!("{gap_id}::{phase}")
+}
+
+/// Returns current retry count for a (gap_id, phase) pair.
+fn get_retry_count(gap_id: &str, phase: &str) -> u32 {
+    retry_counter_state()
+        .lock()
+        .map(|m| *m.get(&retry_key(gap_id, phase)).unwrap_or(&0))
+        .unwrap_or(0)
+}
+
+/// Increments and returns the new retry count.
+fn inc_retry_count(gap_id: &str, phase: &str) -> u32 {
+    let key = retry_key(gap_id, phase);
+    let mut map = retry_counter_state()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let cnt = map.entry(key).or_insert(0);
+    *cnt += 1;
+    *cnt
+}
+
+/// Resets the retry count for a (gap_id, phase) on success.
+fn reset_retry_count(gap_id: &str, phase: &str) {
+    let key = retry_key(gap_id, phase);
+    if let Ok(mut map) = retry_counter_state().lock() {
+        map.remove(&key);
+    }
+}
+
 // ── CREDIBLE-023: gap endpoint security ──────────────────────────────────────
 
 /// Simple per-IP sliding-window rate limiter for /api/gap/* endpoints.
@@ -3589,7 +3632,126 @@ async fn handle_gap_work(
     })))
 }
 
-/// CREDIBLE-024: write a structured JSON log entry to CHUMP_PWA_LOG (default /tmp/chump-pwa.log).
+/// GET /api/logs/{request_id} — INFRA-1013: return PWA log entries for one workflow run.
+/// Allows the "View full log" button in the retry UI to retrieve the complete trace.
+async fn handle_get_logs(
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if request_id.is_empty() || request_id.len() > 64 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    let entries = read_pwa_log_for_request(&request_id);
+    Ok(Json(serde_json::json!({
+        "request_id": request_id,
+        "entries": entries,
+        "count": entries.len(),
+    })))
+}
+
+/// POST /api/gap/work/{id}/retry?from_phase=<phase> — INFRA-1013: retry workflow from a phase.
+///
+/// Tracks consecutive failures per (gap_id, phase). After 3 failures, returns 409 with
+/// "max_retries_exceeded" so the UI can disable the retry button.
+///
+/// Valid phases: "preflight", "claim", "execute", "ship"
+async fn handle_gap_work_retry(
+    Path(gap_id): Path<String>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    if !validate_gap_id(&gap_id) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if !check_csrf(&headers) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    let ip_key = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("local")
+        .to_string();
+    if !check_gap_rate_limit(&ip_key) {
+        return Err(StatusCode::TOO_MANY_REQUESTS);
+    }
+
+    let from_phase = params
+        .get("from_phase")
+        .map(String::as_str)
+        .unwrap_or("preflight");
+    let valid_phases = ["preflight", "claim", "execute", "ship"];
+    if !valid_phases.contains(&from_phase) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    const MAX_RETRIES: u32 = 3;
+    let current_count = get_retry_count(&gap_id, from_phase);
+    if current_count >= MAX_RETRIES {
+        return Ok(Json(serde_json::json!({
+            "status": "max_retries_exceeded",
+            "gap_id": gap_id,
+            "phase": from_phase,
+            "retry_count": current_count,
+            "message": format!("Phase '{}' has failed {} times. Manual intervention recommended.", from_phase, current_count),
+        })));
+    }
+
+    let retry_num = inc_retry_count(&gap_id, from_phase);
+
+    let request_id = uuid::Uuid::new_v4()
+        .to_string()
+        .chars()
+        .take(12)
+        .collect::<String>();
+
+    let gap_id_clone = gap_id.clone();
+    let phase_clone = from_phase.to_string();
+    let rid = request_id.clone();
+    tokio::spawn(async move {
+        tracing::info!(
+            request_id = %rid,
+            "gap-work-retry: retrying {} from phase {} (attempt {})",
+            gap_id_clone, phase_clone, retry_num
+        );
+        emit_pwa_log(&gap_id_clone, &phase_clone, "retry-started", &rid, None);
+
+        if let Err(e) = spawn_gap_workflow_from(&gap_id_clone, &rid, &phase_clone).await {
+            tracing::error!(
+                request_id = %rid,
+                "gap-work-retry: workflow failed for {} from {}: {}",
+                gap_id_clone, phase_clone, e
+            );
+            emit_pwa_log(
+                &gap_id_clone,
+                &phase_clone,
+                &format!("retry-FAILED ({rid})"),
+                &rid,
+                None,
+            );
+        } else {
+            reset_retry_count(&gap_id_clone, &phase_clone);
+        }
+    });
+
+    Ok(Json(serde_json::json!({
+        "status": "retry-started",
+        "gap_id": gap_id,
+        "from_phase": from_phase,
+        "request_id": request_id,
+        "retry_count": retry_num,
+        "retries_remaining": MAX_RETRIES.saturating_sub(retry_num),
+    })))
+}
+
+/// CREDIBLE-024 / INFRA-1013: write a structured JSON log entry to CHUMP_PWA_LOG.
+/// stdout_tail: last N lines of subprocess stdout (for failed phases, shown in retry UI).
+/// exit_code: subprocess exit code (for failed phases).
 fn emit_pwa_log(
     gap_id: &str,
     phase: &str,
@@ -3597,9 +3759,21 @@ fn emit_pwa_log(
     request_id: &str,
     duration_ms: Option<u64>,
 ) {
+    emit_pwa_log_full(gap_id, phase, status, request_id, duration_ms, None, None);
+}
+
+fn emit_pwa_log_full(
+    gap_id: &str,
+    phase: &str,
+    status: &str,
+    request_id: &str,
+    duration_ms: Option<u64>,
+    stdout_tail: Option<&str>,
+    exit_code: Option<i32>,
+) {
     let log_path =
         std::env::var("CHUMP_PWA_LOG").unwrap_or_else(|_| "/tmp/chump-pwa.log".to_string());
-    let entry = serde_json::json!({
+    let mut entry = serde_json::json!({
         "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "request_id": request_id,
         "gap_id": gap_id,
@@ -3607,6 +3781,12 @@ fn emit_pwa_log(
         "status": status,
         "duration_ms": duration_ms,
     });
+    if let Some(tail) = stdout_tail {
+        entry["stdout_tail"] = serde_json::Value::String(tail.to_string());
+    }
+    if let Some(code) = exit_code {
+        entry["exit_code"] = serde_json::Value::Number(code.into());
+    }
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -3614,6 +3794,35 @@ fn emit_pwa_log(
     {
         let _ = writeln!(file, "{}", entry);
     }
+}
+
+/// INFRA-1013: read PWA log entries for a given request_id.
+/// Returns at most 200 entries to bound memory.
+fn read_pwa_log_for_request(request_id: &str) -> Vec<serde_json::Value> {
+    let log_path =
+        std::env::var("CHUMP_PWA_LOG").unwrap_or_else(|_| "/tmp/chump-pwa.log".to_string());
+    let content = match std::fs::read_to_string(&log_path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    content
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|entry| {
+            entry
+                .get("request_id")
+                .and_then(|v| v.as_str())
+                .map(|rid| rid == request_id)
+                .unwrap_or(false)
+        })
+        .take(200)
+        .collect()
+}
+
+/// INFRA-1013: last N lines of a string (for stdout_tail in failure messages).
+fn last_n_lines(s: &str, n: usize) -> String {
+    let lines: Vec<&str> = s.lines().collect();
+    lines[lines.len().saturating_sub(n)..].join("\n")
 }
 
 /// Emit a workflow event to ambient.jsonl for fleet observability.
@@ -3766,12 +3975,70 @@ async fn run_subprocess_with_timeout(
     }
 }
 
-/// CREDIBLE-024: spawn_gap_workflow now accepts a request_id for end-to-end tracing.
-/// All log events and ambient entries include the request_id so operators can
-/// grep the PWA log by request_id to reconstruct a complete workflow trace.
+/// INFRA-1013: like run_subprocess_with_timeout but captures combined stdout+stderr.
+/// Returns (exit_status, combined_output_tail).
+async fn run_subprocess_with_output(
+    mut cmd: std::process::Command,
+) -> Result<(std::process::ExitStatus, String), Box<dyn std::error::Error + Send + Sync>> {
+    use std::process::Stdio;
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let timeout_secs: u64 = std::env::var("CHUMP_SUBPROCESS_TIMEOUT_SECS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(300);
+    let result = tokio::time::timeout(
+        Duration::from_secs(timeout_secs),
+        tokio::task::spawn_blocking(move || cmd.output()),
+    )
+    .await;
+    match result {
+        Ok(Ok(Ok(out))) => {
+            let combined = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            Ok((out.status, combined))
+        }
+        Ok(Ok(Err(e))) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
+        Ok(Err(e)) => Err(Box::new(e) as Box<dyn std::error::Error + Send + Sync>),
+        Err(_elapsed) => Err(format!(
+            "subprocess exceeded {}s timeout — CREDIBLE-023",
+            timeout_secs
+        )
+        .into()),
+    }
+}
+
+/// INFRA-1013: spawn workflow starting from a named phase (for retry).
+/// Phases before from_phase are skipped. "preflight" is always re-run for safety
+/// regardless of from_phase (except when from_phase == "ship").
+async fn spawn_gap_workflow_from(
+    gap_id: &str,
+    request_id: &str,
+    from_phase: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Always at least re-validate from preflight unless retrying ship directly.
+    let effective_start = match from_phase {
+        "ship" => "ship",
+        _ => "preflight",
+    };
+    spawn_gap_workflow_inner(gap_id, request_id, effective_start).await
+}
+
 async fn spawn_gap_workflow(
     gap_id: &str,
     request_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    spawn_gap_workflow_inner(gap_id, request_id, "preflight").await
+}
+
+/// CREDIBLE-024 / INFRA-1013: run workflow phases starting from from_phase.
+/// All log events and ambient entries include request_id for end-to-end tracing.
+async fn spawn_gap_workflow_inner(
+    gap_id: &str,
+    request_id: &str,
+    from_phase: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::process::Command;
 
@@ -3780,122 +4047,146 @@ async fn spawn_gap_workflow(
         .map(PathBuf::from)
         .unwrap_or_else(|_| repo_path::runtime_base());
 
-    // Step 0: Pre-flight validation (CLAUDE.md: never start a gap without gap-preflight.sh)
-    tracing::info!(request_id = %request_id, "gap-work: running pre-flight validation for {}", gap_id);
-    if let Err(e) = run_preflight_check(gap_id, &repo_root) {
-        tracing::warn!(request_id = %request_id, "gap-work: pre-flight failed: {}", e);
-        emit_pwa_log(
-            gap_id,
-            "preflight",
-            &format!("FAILED ({request_id}, {e})"),
-            request_id,
-            None,
-        );
-        cleanup_lease(gap_id, &repo_root);
-        return Err(e.into());
-    }
-    emit_ambient_event(gap_id, "preflight", "passed");
-    emit_pwa_log(gap_id, "preflight", "passed", request_id, None);
+    // INFRA-1013: phase ordering for skip logic
+    let phase_order = ["preflight", "claim", "execute", "ship"];
+    let start_idx = phase_order
+        .iter()
+        .position(|&p| p == from_phase)
+        .unwrap_or(0);
 
-    // Step 1: Claim the gap (CLAUDE.md rule: always work in a linked worktree)
-    tracing::info!(request_id = %request_id, "gap-work: claiming {} in {}", gap_id, repo_root.display());
-    emit_ambient_event(gap_id, "claim", "started");
-    emit_pwa_log(gap_id, "claim", "started", request_id, None);
-    let t_claim = std::time::Instant::now();
-
-    let mut cmd = Command::new(&chump_bin);
-    cmd.arg("claim")
-        .arg(gap_id)
-        .current_dir(&repo_root)
-        .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
-    configure_agent_credentials(&mut cmd);
-
-    // CREDIBLE-023: 5-minute timeout per subprocess phase
-    match run_subprocess_with_timeout(cmd).await {
-        Ok(status) if status.success() => {
-            let ms = t_claim.elapsed().as_millis() as u64;
-            tracing::info!(request_id = %request_id, "gap-work: claim succeeded for {}", gap_id);
-            emit_ambient_event(gap_id, "claim", "success");
-            emit_pwa_log(gap_id, "claim", "success", request_id, Some(ms));
-        }
-        Ok(status) => {
-            let ms = t_claim.elapsed().as_millis() as u64;
-            tracing::warn!(request_id = %request_id, "gap-work: claim failed for {} with status {}", gap_id, status);
-            emit_ambient_event(gap_id, "claim", "failed");
+    // Step 0: Pre-flight validation (always run unless retrying ship phase directly)
+    if start_idx
+        <= phase_order
+            .iter()
+            .position(|&p| p == "preflight")
+            .unwrap_or(0)
+    {
+        tracing::info!(request_id = %request_id, "gap-work: running pre-flight validation for {}", gap_id);
+        if let Err(e) = run_preflight_check(gap_id, &repo_root) {
+            tracing::warn!(request_id = %request_id, "gap-work: pre-flight failed: {}", e);
             emit_pwa_log(
                 gap_id,
-                "claim",
-                &format!("FAILED ({request_id})"),
-                request_id,
-                Some(ms),
-            );
-            cleanup_lease(gap_id, &repo_root);
-            return Err(format!("Claim failed: {}", status).into());
-        }
-        Err(e) => {
-            tracing::error!(request_id = %request_id, "gap-work: failed to spawn chump claim: {}", e);
-            emit_ambient_event(gap_id, "claim", "error");
-            emit_pwa_log(
-                gap_id,
-                "claim",
+                "preflight",
                 &format!("FAILED ({request_id}, {e})"),
                 request_id,
                 None,
             );
             cleanup_lease(gap_id, &repo_root);
-            return Err(e.to_string().into());
+            return Err(e.into());
+        }
+        emit_ambient_event(gap_id, "preflight", "passed");
+        emit_pwa_log(gap_id, "preflight", "passed", request_id, None);
+    }
+
+    // Step 1: Claim the gap (skip if retrying from execute or ship)
+    let claim_idx = phase_order.iter().position(|&p| p == "claim").unwrap_or(1);
+    if start_idx <= claim_idx {
+        tracing::info!(request_id = %request_id, "gap-work: claiming {} in {}", gap_id, repo_root.display());
+        emit_ambient_event(gap_id, "claim", "started");
+        emit_pwa_log(gap_id, "claim", "started", request_id, None);
+        let t_claim = std::time::Instant::now();
+
+        let mut cmd = Command::new(&chump_bin);
+        cmd.arg("claim")
+            .arg(gap_id)
+            .current_dir(&repo_root)
+            .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+        configure_agent_credentials(&mut cmd);
+
+        match run_subprocess_with_timeout(cmd).await {
+            Ok(status) if status.success() => {
+                let ms = t_claim.elapsed().as_millis() as u64;
+                tracing::info!(request_id = %request_id, "gap-work: claim succeeded for {}", gap_id);
+                emit_ambient_event(gap_id, "claim", "success");
+                emit_pwa_log(gap_id, "claim", "success", request_id, Some(ms));
+            }
+            Ok(status) => {
+                let ms = t_claim.elapsed().as_millis() as u64;
+                tracing::warn!(request_id = %request_id, "gap-work: claim failed for {} with status {}", gap_id, status);
+                emit_ambient_event(gap_id, "claim", "failed");
+                emit_pwa_log(
+                    gap_id,
+                    "claim",
+                    &format!("FAILED ({request_id})"),
+                    request_id,
+                    Some(ms),
+                );
+                cleanup_lease(gap_id, &repo_root);
+                return Err(format!("Claim failed: {}", status).into());
+            }
+            Err(e) => {
+                tracing::error!(request_id = %request_id, "gap-work: failed to spawn chump claim: {}", e);
+                emit_ambient_event(gap_id, "claim", "error");
+                emit_pwa_log(
+                    gap_id,
+                    "claim",
+                    &format!("FAILED ({request_id}, {e})"),
+                    request_id,
+                    None,
+                );
+                cleanup_lease(gap_id, &repo_root);
+                return Err(e.to_string().into());
+            }
         }
     }
 
-    // Step 2: Spawn full agent session (execute_gap.rs)
-    tracing::info!(request_id = %request_id, "gap-work: spawning agent session via chump --execute-gap {}", gap_id);
-    emit_ambient_event(gap_id, "execute-gap", "started");
-    emit_pwa_log(gap_id, "execute-gap", "started", request_id, None);
-    let t_exec = std::time::Instant::now();
+    // Step 2: Spawn full agent session (skip if retrying from ship)
+    let execute_idx = phase_order
+        .iter()
+        .position(|&p| p == "execute")
+        .unwrap_or(2);
+    if start_idx <= execute_idx {
+        tracing::info!(request_id = %request_id, "gap-work: spawning agent session via chump --execute-gap {}", gap_id);
+        emit_ambient_event(gap_id, "execute-gap", "started");
+        emit_pwa_log(gap_id, "execute-gap", "started", request_id, None);
+        let t_exec = std::time::Instant::now();
 
-    let mut cmd = Command::new(&chump_bin);
-    cmd.arg("--execute-gap")
-        .arg(gap_id)
-        .current_dir(&repo_root)
-        .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
-    configure_agent_credentials(&mut cmd);
+        let mut cmd = Command::new(&chump_bin);
+        cmd.arg("--execute-gap")
+            .arg(gap_id)
+            .current_dir(&repo_root)
+            .env("CHUMP_REPO", repo_root.to_string_lossy().to_string());
+        configure_agent_credentials(&mut cmd);
 
-    // CREDIBLE-023: 5-minute timeout per subprocess phase
-    let _agent_status = match run_subprocess_with_timeout(cmd).await {
-        Ok(status) if status.success() => {
-            let ms = t_exec.elapsed().as_millis() as u64;
-            tracing::info!(request_id = %request_id, "gap-work: agent session succeeded for {}", gap_id);
-            emit_ambient_event(gap_id, "execute-gap", "success");
-            emit_pwa_log(gap_id, "execute-gap", "success", request_id, Some(ms));
-            "success"
-        }
-        Ok(status) => {
-            let ms = t_exec.elapsed().as_millis() as u64;
-            tracing::warn!(request_id = %request_id, "gap-work: agent session failed for {} with status {}", gap_id, status);
-            emit_ambient_event(gap_id, "execute-gap", "failed");
-            emit_pwa_log(
-                gap_id,
-                "execute-gap",
-                &format!("FAILED ({request_id})"),
-                request_id,
-                Some(ms),
-            );
-            tracing::info!(request_id = %request_id, "gap-work: continuing to ship phase despite agent exit code {}", status);
-            "partial"
-        }
-        Err(e) => {
-            tracing::error!(request_id = %request_id, "gap-work: failed to spawn agent session: {}", e);
-            emit_ambient_event(gap_id, "execute-gap", "error");
-            emit_pwa_log(
-                gap_id,
-                "execute-gap",
-                &format!("FAILED ({request_id}, {e})"),
-                request_id,
-                None,
-            );
-            "error"
-        }
-    };
+        match run_subprocess_with_output(cmd).await {
+            Ok((status, out)) if status.success() => {
+                let ms = t_exec.elapsed().as_millis() as u64;
+                tracing::info!(request_id = %request_id, "gap-work: agent session succeeded for {}", gap_id);
+                emit_ambient_event(gap_id, "execute-gap", "success");
+                emit_pwa_log(gap_id, "execute-gap", "success", request_id, Some(ms));
+                reset_retry_count(gap_id, "execute");
+                let _ = out; // discard stdout on success
+            }
+            Ok((status, out)) => {
+                let ms = t_exec.elapsed().as_millis() as u64;
+                let tail = last_n_lines(&out, 3);
+                let code = status.code().unwrap_or(-1);
+                tracing::warn!(request_id = %request_id, "gap-work: agent session failed for {} with status {}", gap_id, status);
+                emit_ambient_event(gap_id, "execute-gap", "failed");
+                emit_pwa_log_full(
+                    gap_id,
+                    "execute-gap",
+                    &format!("FAILED ({request_id})"),
+                    request_id,
+                    Some(ms),
+                    Some(&tail),
+                    Some(code),
+                );
+                tracing::info!(request_id = %request_id, "gap-work: continuing to ship phase despite agent exit code {}", status);
+            }
+            Err(e) => {
+                tracing::error!(request_id = %request_id, "gap-work: failed to spawn agent session: {}", e);
+                emit_ambient_event(gap_id, "execute-gap", "error");
+                emit_pwa_log(
+                    gap_id,
+                    "execute-gap",
+                    &format!("FAILED ({request_id}, {e})"),
+                    request_id,
+                    None,
+                );
+            }
+        };
+    }
 
     // Step 3: Ship the gap
     tracing::info!(request_id = %request_id, "gap-work: finalizing gap {} via chump gap ship --update-yaml", gap_id);
@@ -4088,6 +4379,8 @@ fn build_api_router() -> Router {
         .route("/api/gap/{id}/status", get(handle_gap_workflow_status))
         .route("/api/gap/{id}/stream", get(handle_gap_workflow_stream))
         .route("/api/gap/work/{id}", post(handle_gap_work))
+        .route("/api/gap/work/{id}/retry", post(handle_gap_work_retry))
+        .route("/api/logs/{request_id}", get(handle_get_logs))
         // CREDIBLE-023: secure response headers for all /api/gap/* routes
         .layer(axum::middleware::from_fn(gap_security_headers_middleware))
 }

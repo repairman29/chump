@@ -222,6 +222,27 @@
       font-size: 11px; color: #4ec170;
     }
     chump-workflow-timeline .wf-timeline.error { color: var(--accent-error, #d65468); }
+    /* INFRA-1013: retry/log controls on failed phase cards */
+    chump-workflow-timeline .wf-fail-actions {
+      display: flex; gap: 6px; align-items: center; margin-top: 4px;
+    }
+    chump-workflow-timeline .wf-retry {
+      font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer;
+      background: #d65468; color: #fff; border: none;
+    }
+    chump-workflow-timeline .wf-retry:disabled {
+      background: #555; color: #999; cursor: not-allowed;
+    }
+    chump-workflow-timeline .wf-log-link {
+      font-size: 10px; color: var(--text-secondary, #aab5cc);
+    }
+    chump-workflow-timeline .wf-stdout {
+      margin-top: 4px; font-size: 10px;
+    }
+    chump-workflow-timeline .wf-stdout pre {
+      background: var(--bg-tertiary, #1a1a1e); padding: 4px 6px; border-radius: 3px;
+      white-space: pre-wrap; word-break: break-all; max-height: 80px; overflow: auto;
+    }
 
     /* ── Layout ─────────────────────────────────────────────────────────── */
     #app-body {
