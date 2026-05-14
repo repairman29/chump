@@ -9,6 +9,18 @@
 # and consumers (fleet-brief, waste-tally, kpi-report, watchdogs) silently
 # fail on the unknown shapes.
 #
+# ── SCHEMA FIELD CANONICAL: 'kind' (INFRA-1159) ─────────────────────────────
+# Two fields coexist in the ambient stream:
+#   event: (legacy)  — written by scripts/dev/ambient-emit.sh before INFRA-1159.
+#                       Still present (dual-write bridge) for backward compat.
+#   kind:  (canonical) — the discriminator field this registry describes.
+#                       Prefer 'kind' in ALL consumers and new emitters.
+#
+# Migration timeline: dual-write (event + kind) until INFRA-1159 consumers are
+# fully migrated; remove 'event' field in a follow-up gap when all .event
+# selectors are confirmed gone from scripts/ and src/.
+# ─────────────────────────────────────────────────────────────────────────────
+#
 # Adding a new event:
 #   1. Add an entry below with: kind, emitter, consumers, trigger, fields_required
 #   2. Update the consumer code to parse the event

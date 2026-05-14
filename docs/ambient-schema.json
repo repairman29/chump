@@ -2,9 +2,15 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/repairman29/chump/blob/main/docs/ambient-schema.json",
   "title": "Chump ambient.jsonl event schema",
-  "description": "Schema for every line written to .chump-locks/ambient.jsonl. Validated at emit time by scripts/dev/ambient-emit.sh (INFRA-101). The 2026-04-26 audit found INTENT rows had reordered keys + a nonstandard shape — this schema is the canonical contract going forward. The five base fields (ts, session, worktree, harness, event) are required for every event; per-event-kind extensions are listed below in oneOf.",
+  "description": "Schema for every line written to .chump-locks/ambient.jsonl. Validated at emit time by scripts/dev/ambient-emit.sh (INFRA-101). The 2026-04-26 audit found INTENT rows had reordered keys + a nonstandard shape \u2014 this schema is the canonical contract going forward. The five base fields (ts, session, worktree, harness, event) are required for every event; per-event-kind extensions are listed below in oneOf.",
   "type": "object",
-  "required": ["ts", "session", "worktree", "harness", "event"],
+  "required": [
+    "ts",
+    "session",
+    "worktree",
+    "harness",
+    "event"
+  ],
   "properties": {
     "ts": {
       "type": "string",
@@ -24,7 +30,14 @@
     },
     "harness": {
       "type": "string",
-      "enum": ["opencode", "opencode-bigpickle", "fleet-dispatcher", "claude-code-ide", "manual", "unknown"],
+      "enum": [
+        "opencode",
+        "opencode-bigpickle",
+        "fleet-dispatcher",
+        "claude-code-ide",
+        "manual",
+        "unknown"
+      ],
       "description": "Agent harness identity (CREDIBLE-037). Set via CHUMP_AGENT_HARNESS env var or --harness flag. Values: opencode / opencode-bigpickle / fleet-dispatcher / claude-code-ide / manual / unknown."
     },
     "event": {
@@ -41,89 +54,188 @@
         "gen_smoke_results"
       ],
       "description": "One of the well-known event kinds. Adding a new kind requires a new entry here AND a new branch in the oneOf below."
+    },
+    "kind": {
+      "type": "string",
+      "description": "INFRA-1159: canonical discriminator field; dual-written alongside 'event' by ambient-emit.sh"
     }
   },
   "oneOf": [
     {
       "title": "session_start / session_end",
       "properties": {
-        "event": { "enum": ["session_start", "session_end"] }
+        "event": {
+          "enum": [
+            "session_start",
+            "session_end"
+          ]
+        }
       },
       "additionalProperties": true
     },
     {
       "title": "file_edit",
       "properties": {
-        "event": { "const": "file_edit" },
-        "path": { "type": "string", "minLength": 1 }
+        "event": {
+          "const": "file_edit"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
       },
-      "required": ["path"]
+      "required": [
+        "path"
+      ]
     },
     {
       "title": "commit",
       "properties": {
-        "event": { "const": "commit" },
-        "sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
-        "msg": { "type": "string" },
-        "gap": { "type": "string" }
+        "event": {
+          "const": "commit"
+        },
+        "sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "msg": {
+          "type": "string"
+        },
+        "gap": {
+          "type": "string"
+        }
       },
-      "required": ["sha", "msg"]
+      "required": [
+        "sha",
+        "msg"
+      ]
     },
     {
       "title": "bash_call",
       "properties": {
-        "event": { "const": "bash_call" },
-        "cmd": { "type": "string", "minLength": 1 }
+        "event": {
+          "const": "bash_call"
+        },
+        "cmd": {
+          "type": "string",
+          "minLength": 1
+        }
       },
-      "required": ["cmd"]
+      "required": [
+        "cmd"
+      ]
     },
     {
       "title": "INTENT",
       "description": "Pre-INFRA-101 INTENT writers used a different key order; this schema accepts that legacy shape but requires the same base fields.",
       "properties": {
-        "event": { "const": "INTENT" },
-        "gap": { "type": "string", "minLength": 1 },
-        "files": { "type": "string" }
+        "event": {
+          "const": "INTENT"
+        },
+        "gap": {
+          "type": "string",
+          "minLength": 1
+        },
+        "files": {
+          "type": "string"
+        }
       },
-      "required": ["gap"]
+      "required": [
+        "gap"
+      ]
     },
     {
       "title": "ALERT",
       "properties": {
-        "event": { "const": "ALERT" },
-        "kind": { "type": "string", "minLength": 1 },
-        "note": { "type": "string" },
-        "subkind": { "type": "string" },
-        "sessions": { "type": "string" },
-        "path": { "type": "string" },
-        "msg": { "type": "string" }
+        "event": {
+          "const": "ALERT"
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "type": "string"
+        },
+        "subkind": {
+          "type": "string"
+        },
+        "sessions": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "msg": {
+          "type": "string"
+        }
       },
-      "required": ["kind"]
+      "required": [
+        "kind"
+      ]
     },
     {
       "title": "gen_smoke_results",
       "description": "Emitted by scripts/qa/test-chump-gen-fixtures.sh (INFRA-594) after running the 10-fixture chump-gen smoke suite.",
       "properties": {
-        "event": { "const": "gen_smoke_results" },
-        "pass_count": { "type": "string", "pattern": "^[0-9]+$" },
-        "fail_count": { "type": "string", "pattern": "^[0-9]+$" },
-        "total": { "type": "string", "pattern": "^[0-9]+$" },
-        "pass_rate": { "type": "string", "pattern": "^[0-9]+$" },
-        "elapsed_ms": { "type": "string", "pattern": "^[0-9]+$" },
-        "gap": { "type": "string" }
+        "event": {
+          "const": "gen_smoke_results"
+        },
+        "pass_count": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "fail_count": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "total": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "pass_rate": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "elapsed_ms": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "gap": {
+          "type": "string"
+        }
       },
-      "required": ["pass_count", "fail_count", "total"]
+      "required": [
+        "pass_count",
+        "fail_count",
+        "total"
+      ]
     },
     {
       "title": "fleet_queue_depth",
       "description": "Emitted every 60s by control.sh (INFRA-558). pickable_count matches the active fleet filter set; p0_count and oldest_p0_age_days are fleet-wide P0 stats regardless of filter.",
       "properties": {
-        "event": { "const": "fleet_queue_depth" },
-        "pickable_count": { "type": "string", "pattern": "^[0-9]+$" },
-        "p0_count": { "type": "string", "pattern": "^[0-9]+$" },
-        "oldest_p0_age_days": { "type": "string", "pattern": "^[0-9]+$" }
+        "event": {
+          "const": "fleet_queue_depth"
+        },
+        "pickable_count": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "p0_count": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "oldest_p0_age_days": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        }
       },
-      "required": ["pickable_count", "p0_count", "oldest_p0_age_days"]
+      "required": [
+        "pickable_count",
+        "p0_count",
+        "oldest_p0_age_days"
+      ]
     }
   ]
 }
