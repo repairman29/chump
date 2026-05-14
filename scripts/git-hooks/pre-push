@@ -470,8 +470,62 @@ while read -r local_ref local_sha remote_ref remote_sha; do
 
     echo "[pre-push] Checking gap status for: $(echo $GAP_IDS | tr '\n' ' ')" >&2
 
+    # INFRA-1165: resolve our own session ID from the lease file so gap-preflight
+    # can correctly identify that this push belongs to the gap's claimant.
+    # Without this, gap-preflight falls back to the machine-global session ID
+    # which doesn't match the claim-infra-NNN-PID-TS lease, producing a false
+    # "already claimed by another session" rejection.
+    _LOCK_DIR="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+    if [[ "$_LOCK_DIR" == ".git" ]]; then
+        _LOCK_DIR="$REPO_ROOT/.chump-locks"
+    else
+        _LOCK_DIR="$(cd "$_LOCK_DIR/.." 2>/dev/null && pwd || echo "$REPO_ROOT")/.chump-locks"
+    fi
+    _OWN_SESSION=""
+    if [[ -d "$_LOCK_DIR" ]]; then
+        _OWN_SESSION="$(python3 - "$_LOCK_DIR" $GAP_IDS <<'PYEOF' 2>/dev/null
+import json, os, sys
+from datetime import datetime, timezone
+lock_dir = sys.argv[1]
+gap_ids = set(sys.argv[2:])
+now = datetime.now(timezone.utc)
+for fname in os.listdir(lock_dir):
+    if not fname.endswith(".json"):
+        continue
+    try:
+        d = json.load(open(os.path.join(lock_dir, fname)))
+    except Exception:
+        continue
+    if d.get("gap_id") not in gap_ids:
+        continue
+    try:
+        exp = datetime.fromisoformat(d.get("expires_at", "").rstrip("Z")).replace(tzinfo=timezone.utc)
+        if (exp - now).total_seconds() <= 0:
+            continue  # expired
+    except Exception:
+        continue
+    sid = d.get("session_id", "")
+    if sid:
+        print(sid)
+        break
+PYEOF
+)"
+    fi
+
     # shellcheck disable=SC2086
-    if ! "$PREFLIGHT" $GAP_IDS; then
+    if ! CHUMP_SESSION_ID="${_OWN_SESSION:-}" "$PREFLIGHT" $GAP_IDS; then
+        # If we detected a session that matches this push, surface that as a
+        # false positive and emit an ambient event for observability (INFRA-1165).
+        if [[ -n "$_OWN_SESSION" ]]; then
+            echo "[pre-push] WARN: gap-preflight rejected push despite matching lease '$_OWN_SESSION'." >&2
+            echo "[pre-push]   This may be a gap-preflight bug — consider filing a follow-up gap." >&2
+            _AMBIENT_EMIT="$REPO_ROOT/scripts/dev/ambient-emit.sh"
+            if [[ -x "$_AMBIENT_EMIT" ]]; then
+                "$_AMBIENT_EMIT" gap_check_false_positive \
+                    "gap_ids=$(echo "$GAP_IDS" | tr '\n' ',')" \
+                    "session=$_OWN_SESSION" 2>/dev/null || true
+            fi
+        fi
         echo "[pre-push] Push blocked: one or more gaps already done or claimed." >&2
         echo "[pre-push] This branch's work may already be on main." >&2
         echo "[pre-push] Run: git show origin/main:docs/gaps.yaml | grep -A8 'id: GAP-XYZ'" >&2

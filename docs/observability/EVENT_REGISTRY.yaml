@@ -1859,3 +1859,12 @@ events:
       for it — push allowed with warning instead of rejected
     consumers: [operator-recall, fleet-brief]
     fields_required: [ts, kind, gap_id, session]
+
+  # ── INFRA-1165: pre-push gap-check false positive detection ──────────────
+  - kind: gap_check_false_positive
+    emitter: scripts/git-hooks/pre-push INFRA-1165
+    trigger: pre-push gap-check detected that gap-preflight rejected a push even
+      though the push session holds a valid lease for the gap — indicating a
+      session-ID mismatch false positive rather than a real conflict.
+    consumers: [fleet-brief, ambient-context-inject]
+    fields_required: [ts, kind, gap_ids, session]
