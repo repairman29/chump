@@ -743,6 +743,139 @@ fn run_doctor_probe(repo_root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// INFRA-986: outcome of an attempted NATS KV dual-write.
+#[derive(Debug, PartialEq, Eq)]
+pub enum NatsClaimOutcome {
+    /// CHUMP_NATS_URL unset OR chump-coord binary missing — no NATS attempt.
+    /// File-based lease should proceed as the only mechanism.
+    Skipped,
+    /// chump-coord exit 0 — atomic CAS won (or NATS reachable + key absent).
+    Claimed,
+    /// chump-coord exit 1 — another session holds the claim. Caller MUST
+    /// abort: do not write the file-based lease, do not create the worktree.
+    Conflict,
+}
+
+/// INFRA-986: port of the FLEET-032 NATS KV dual-write block from
+/// scripts/coord/gap-claim.sh. Shells out to the `chump-coord` binary
+/// (transitional: future iterations will call the chump-coord crate
+/// directly once gap_claim is a stable library entry point — see
+/// INFRA-478). Returns the outcome so the caller can decide what to do.
+///
+/// Discovery:
+///   * `CHUMP_NATS_URL` must be set, otherwise skip (single-machine mode).
+///   * `chump-coord` must be on PATH (or pointed at by `CHUMP_COORD_BIN`).
+///     Both gates skip cleanly — NATS is opt-in.
+///
+/// On `Conflict`, emits a `gap_claim_nats_conflict` event to
+/// `ambient_log_path` (or `.chump-locks/ambient.jsonl` if None). The
+/// emitter is intentionally a one-line append: keep the ambient stream
+/// the source of truth for cross-machine visibility, no other side
+/// effect.
+pub fn nats_dual_write(
+    gap_id: &str,
+    session_id: &str,
+    ambient_log_path: Option<&Path>,
+) -> Result<NatsClaimOutcome> {
+    let nats_url = std::env::var("CHUMP_NATS_URL").unwrap_or_default();
+    if nats_url.is_empty() {
+        return Ok(NatsClaimOutcome::Skipped);
+    }
+    let coord_bin = match resolve_coord_bin() {
+        Some(p) => p,
+        None => return Ok(NatsClaimOutcome::Skipped),
+    };
+    nats_dual_write_with_bin(&coord_bin, gap_id, session_id, ambient_log_path)
+}
+
+/// Test seam: caller-supplied chump-coord path. Production callers go
+/// through `nats_dual_write` (above) which honors `CHUMP_NATS_URL` +
+/// PATH discovery.
+pub(crate) fn nats_dual_write_with_bin(
+    coord_bin: &Path,
+    gap_id: &str,
+    session_id: &str,
+    ambient_log_path: Option<&Path>,
+) -> Result<NatsClaimOutcome> {
+    let out = Command::new(coord_bin)
+        .args(["claim", gap_id])
+        .env("CHUMP_SESSION_ID", session_id)
+        .output()
+        .with_context(|| format!("spawning {} claim {}", coord_bin.display(), gap_id))?;
+
+    if out.status.success() {
+        return Ok(NatsClaimOutcome::Claimed);
+    }
+    let code = out.status.code().unwrap_or(-1);
+    if code == 1 {
+        emit_nats_conflict_event(ambient_log_path, gap_id, session_id);
+        return Ok(NatsClaimOutcome::Conflict);
+    }
+    // Any other exit (NATS server unreachable, network blip, transient
+    // chump-coord error) is treated like Skipped: do NOT block the claim
+    // on infrastructure that's opt-in. Mirrors the shell behavior — the
+    // `if !chump-coord claim …` branch only fires on rc=1 conflict; any
+    // other failure (rc=2+, signal, no stdout) is silently tolerated.
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !stderr.trim().is_empty() {
+        eprintln!(
+            "[atomic_claim] chump-coord returned rc={} for gap {}: {}",
+            code,
+            gap_id,
+            stderr.trim()
+        );
+    }
+    Ok(NatsClaimOutcome::Skipped)
+}
+
+fn resolve_coord_bin() -> Option<PathBuf> {
+    if let Ok(explicit) = std::env::var("CHUMP_COORD_BIN") {
+        if !explicit.is_empty() {
+            let p = PathBuf::from(explicit);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    // Walk PATH.
+    let path = std::env::var_os("PATH")?;
+    for dir in std::env::split_paths(&path) {
+        let cand = dir.join("chump-coord");
+        if cand.is_file() {
+            return Some(cand);
+        }
+    }
+    None
+}
+
+fn emit_nats_conflict_event(ambient_log_path: Option<&Path>, gap_id: &str, session_id: &str) {
+    let target = ambient_log_path
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| PathBuf::from(".chump-locks/ambient.jsonl"));
+    // Best-effort: ambient append must never break the claim flow.
+    if let Some(parent) = target.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"gap_claim_nats_conflict\",\"gap_id\":\"{gid}\",\"session_id\":\"{sid}\"}}\n",
+        ts = unix_to_iso8601(now),
+        gid = json_escape(gap_id),
+        sid = json_escape(session_id),
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&target)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1151,5 +1284,113 @@ mod tests {
         // Must remain unchanged.
         let after = std::fs::read_to_string(&gitdir_file).unwrap();
         assert_eq!(after.trim(), canonical_str);
+    }
+
+    // ── INFRA-986 NATS dual-write tests ─────────────────────────────────────
+
+    /// Write an executable bash shim at `path` that exits with `rc` and
+    /// writes `stderr_msg` to stderr.
+    fn write_coord_shim(path: &Path, rc: i32, stderr_msg: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        let body = format!(
+            "#!/usr/bin/env bash\n>&2 printf '%s\\n' \"{}\"\nexit {}\n",
+            stderr_msg.replace('"', "\\\""),
+            rc
+        );
+        std::fs::write(path, body).unwrap();
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    #[test]
+    fn nats_dual_write_skipped_when_nats_url_unset() {
+        // Belt-and-braces: temporarily clear CHUMP_NATS_URL.
+        let saved = std::env::var("CHUMP_NATS_URL").ok();
+        std::env::remove_var("CHUMP_NATS_URL");
+
+        let outcome = nats_dual_write("INFRA-986", "test-sess", None).unwrap();
+        assert_eq!(outcome, NatsClaimOutcome::Skipped);
+
+        if let Some(v) = saved {
+            std::env::set_var("CHUMP_NATS_URL", v);
+        }
+    }
+
+    #[test]
+    fn nats_dual_write_conflict_emits_ambient_event() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-shim");
+        write_coord_shim(&shim, 1, "CONFLICT: another session holds claim");
+        let amb = tmp.path().join("ambient.jsonl");
+
+        let outcome =
+            nats_dual_write_with_bin(&shim, "INFRA-986", "test-sess", Some(&amb)).unwrap();
+        assert_eq!(outcome, NatsClaimOutcome::Conflict);
+
+        let body = std::fs::read_to_string(&amb).expect("ambient must exist after conflict");
+        assert!(
+            body.contains("\"kind\":\"gap_claim_nats_conflict\""),
+            "missing kind in: {body}"
+        );
+        assert!(body.contains("\"gap_id\":\"INFRA-986\""));
+        assert!(body.contains("\"session_id\":\"test-sess\""));
+        // Must be valid JSON (one event per line)
+        for line in body.lines() {
+            let _: serde_json::Value =
+                serde_json::from_str(line).unwrap_or_else(|e| panic!("bad json '{line}': {e}"));
+        }
+    }
+
+    #[test]
+    fn nats_dual_write_success_no_ambient_event() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-shim");
+        write_coord_shim(&shim, 0, "");
+        let amb = tmp.path().join("ambient.jsonl");
+
+        let outcome =
+            nats_dual_write_with_bin(&shim, "INFRA-986", "test-sess", Some(&amb)).unwrap();
+        assert_eq!(outcome, NatsClaimOutcome::Claimed);
+        // On success we must NOT pollute ambient.
+        assert!(!amb.exists(), "ambient should not be written on success");
+    }
+
+    #[test]
+    fn nats_dual_write_transient_error_treated_as_skipped() {
+        // Mirrors shell behavior: any rc != 0 && rc != 1 is "infra hiccup,
+        // not a conflict" — file lease should proceed.
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-shim");
+        write_coord_shim(&shim, 42, "transient NATS error");
+        let amb = tmp.path().join("ambient.jsonl");
+
+        let outcome =
+            nats_dual_write_with_bin(&shim, "INFRA-986", "test-sess", Some(&amb)).unwrap();
+        assert_eq!(outcome, NatsClaimOutcome::Skipped);
+        assert!(
+            !amb.exists(),
+            "transient error must not look like a conflict"
+        );
+    }
+
+    #[test]
+    fn resolve_coord_bin_honors_explicit_env() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = tmp.path().join("chump-coord");
+        std::fs::write(&fake, b"#!/bin/sh\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        let mut p = std::fs::metadata(&fake).unwrap().permissions();
+        p.set_mode(0o755);
+        std::fs::set_permissions(&fake, p).unwrap();
+
+        let saved = std::env::var("CHUMP_COORD_BIN").ok();
+        std::env::set_var("CHUMP_COORD_BIN", &fake);
+        let resolved = resolve_coord_bin();
+        assert_eq!(resolved.as_deref(), Some(fake.as_path()));
+        match saved {
+            Some(v) => std::env::set_var("CHUMP_COORD_BIN", v),
+            None => std::env::remove_var("CHUMP_COORD_BIN"),
+        }
     }
 }

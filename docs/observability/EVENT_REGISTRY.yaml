@@ -190,6 +190,13 @@ events:
     consumers: [fleet-brief, audit-log, watchdog]
     fields_required: [ts, kind, free_gb, threshold_gb, path]
 
+  - kind: gap_claim_nats_conflict
+    emitter: src/atomic_claim.rs nats_dual_write (INFRA-986)
+    trigger: NATS KV CAS claim returned CONFLICT — another session on the
+      fleet (possibly cross-machine) holds the atomic claim on this gap
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, gap_id, session_id]
+
   - kind: fleet_paused_disk_critical
     emitter: scripts/lib/disk-check.sh via worker.sh (INFRA-975)
     trigger: worker pre-cycle disk check found free < CHUMP_DISK_CRITICAL_GB (default 1 GB)
