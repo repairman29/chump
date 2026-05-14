@@ -2572,6 +2572,99 @@ async fn handle_telemetry_cost(headers: HeaderMap) -> Result<Json<serde_json::Va
     Ok(Json(payload))
 }
 
+/// GET /api/pr/{number} — Per-PR detail snapshot (INFRA-1011).
+///
+/// Operator-facing surface for "what's happening with my PR" without leaving
+/// the PWA. Pulls a focused subset of GitHub state — state, mergeStateStatus,
+/// auto-merge, per-check rollup — so the PRCard widget can render real-time
+/// merge readiness + per-check status with deep links to failing job logs.
+///
+/// Best-effort: when gh is unavailable or rate-limited, returns 503 with a
+/// reason; widget treats this as "transient, retry on next poll." No
+/// GraphQL — single `gh pr view --json …` call which is REST under the hood.
+async fn handle_pr_detail(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let out = std::process::Command::new("gh")
+        .args([
+            "pr",
+            "view",
+            &number.to_string(),
+            "--json",
+            "number,state,title,url,mergeStateStatus,autoMergeRequest,statusCheckRollup,mergedAt,headRefOid,baseRefName",
+        ])
+        .output()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if !out.status.success() {
+        // gh exited non-zero — return 503 so the widget keeps polling.
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    let raw: serde_json::Value =
+        serde_json::from_slice(&out.stdout).map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    // Re-shape per AC: caller wants a stable, narrow contract that's easy
+    // to render. Don't pass through the entire gh JSON blob (avoid coupling
+    // the widget to gh's verbose field set).
+    let checks: Vec<serde_json::Value> = raw
+        .get("statusCheckRollup")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|c| {
+            let name = c
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let conclusion = c
+                .get("conclusion")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let status = c
+                .get("status")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            // `detailsUrl` or `link` is gh's canonical job-log deep link.
+            let link = c
+                .get("detailsUrl")
+                .or_else(|| c.get("targetUrl"))
+                .or_else(|| c.get("link"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            serde_json::json!({
+                "name": name,
+                "conclusion": conclusion,
+                "status": status,
+                "link": link,
+            })
+        })
+        .collect();
+
+    let payload = serde_json::json!({
+        "number": raw.get("number"),
+        "title": raw.get("title"),
+        "url": raw.get("url"),
+        "state": raw.get("state"),
+        "merge_state_status": raw.get("mergeStateStatus"),
+        "auto_merge": raw.get("autoMergeRequest").is_some()
+            && !raw.get("autoMergeRequest").map(|v| v.is_null()).unwrap_or(true),
+        "auto_merge_method": raw
+            .get("autoMergeRequest")
+            .and_then(|v| v.get("mergeMethod"))
+            .and_then(|v| v.as_str()),
+        "head_sha": raw.get("headRefOid"),
+        "base_branch": raw.get("baseRefName"),
+        "merged_at": raw.get("mergedAt"),
+        "checks": checks,
+    });
+    Ok(Json(payload))
+}
+
 /// GET /api/fleet-status — Active agent sessions read from .chump-locks/*.json lease files.
 /// Returns `{sessions: [{session_id, gap_id, gap_title, gap_priority, gap_effort, branch,
 ///   worktree_path, taken_at, expires_at, heartbeat_at, pr_number, pr_state, ci_status}],
@@ -3678,6 +3771,7 @@ fn build_api_router() -> Router {
         )
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
+        .route("/api/pr/{number}", get(handle_pr_detail))
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
         .route("/api/gap/status/{id}", get(handle_gap_status))
