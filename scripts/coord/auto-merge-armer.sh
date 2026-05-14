@@ -65,11 +65,86 @@ emit_ambient() {
         >> "${LOCKS_DIR}/ambient.jsonl" 2>/dev/null || true
 }
 
+# INFRA-1223: try REST PUT /pulls/N/merge first when all required checks are
+# already green. REST PUT lives on a different rate-limit lane than the
+# GraphQL `enablePullRequestAutoMerge` mutation, so it bypasses the
+# secondary mutation gag entirely. Returns 0 on REST-direct success, 1 if
+# the PR isn't yet mergeable-now (so the caller should fall through to the
+# GraphQL arm path). Disable with CHUMP_AUTO_MERGE_REST_DIRECT=0.
+rest_direct_merge_if_green() {
+    local pr_num="$1"
+    [[ "${CHUMP_AUTO_MERGE_REST_DIRECT:-1}" == "0" ]] && return 1
+
+    local sha checks_json incomplete failed total commit_title
+    sha="$(chump_gh api "repos/${REPO}/pulls/${pr_num}" --jq '.head.sha' 2>/dev/null || true)"
+    [[ -z "${sha}" ]] && return 1
+
+    checks_json="$(chump_gh api "repos/${REPO}/commits/${sha}/check-runs" --paginate 2>/dev/null || true)"
+    [[ -z "${checks_json}" ]] && return 1
+
+    # Count incomplete/failed required checks. We treat all non-skipped/
+    # neutral/cancelled checks as required at this layer — same heuristic
+    # as bot-merge.sh INFRA-1166. Pass the JSON via $1 not stdin to avoid
+    # the `python3 - <<HEREDOC` stdin-collision footgun (SC2259).
+    local counts
+    counts="$(python3 -c '
+import sys, json
+try:
+    data = json.loads(sys.argv[1])
+except Exception:
+    print("0 0 0"); sys.exit(0)
+checks = data.get("check_runs", [])
+incomplete = failed = total = 0
+for c in checks:
+    conclusion = (c.get("conclusion") or "").lower()
+    if conclusion in ("skipped", "neutral", "cancelled"):
+        continue
+    total += 1
+    status = (c.get("status") or "").lower()
+    if status != "completed":
+        incomplete += 1
+    elif conclusion != "success":
+        failed += 1
+print(f"{incomplete} {failed} {total}")
+' "${checks_json}")"
+    incomplete="$(printf '%s' "${counts}" | awk '{print $1}')"
+    failed="$(printf '%s' "${counts}" | awk '{print $2}')"
+    total="$(printf '%s' "${counts}" | awk '{print $3}')"
+
+    [[ "${total:-0}" -gt 0 ]] || return 1
+    [[ "${incomplete:-1}" -eq 0 ]] || return 1
+    [[ "${failed:-1}" -eq 0 ]] || return 1
+
+    commit_title="$(chump_gh api "repos/${REPO}/pulls/${pr_num}" --jq '.title' 2>/dev/null || echo "Merge PR #${pr_num}")"
+
+    echo "[auto-merge-armer] PR #${pr_num}: all ${total} checks green — trying REST PUT (no GraphQL)" >&2
+    if chump_gh api "repos/${REPO}/pulls/${pr_num}/merge" \
+            -X PUT \
+            -f merge_method=squash \
+            -f "commit_title=${commit_title}" \
+            >/dev/null 2>&1; then
+        emit_ambient "auto_merge_rest_direct" "${pr_num}" \
+            "script=auto-merge-armer.sh checks=${total}"
+        echo "[auto-merge-armer] PR #${pr_num}: REST-direct merge succeeded (no GraphQL)" >&2
+        return 0
+    fi
+    # REST PUT failed (often 405 — branch protection requires admin). Fall
+    # through to GraphQL arm so we still queue the merge.
+    return 1
+}
+
 # Arm with secondary-rate-limit-aware retry (mirrors gh_with_backoff in bot-merge.sh).
+# INFRA-1223: tries REST-direct path first before the GraphQL arm.
 arm_with_retry() {
     local pr_num="$1"
     local -a delays=(60 120 240)
     local attempt=0 rc tmpout
+
+    # INFRA-1223: REST-direct fast path. If all checks are green, merge now
+    # via REST PUT — bypasses the GraphQL mutation entirely.
+    if rest_direct_merge_if_green "${pr_num}"; then
+        return 0
+    fi
 
     while true; do
         tmpout="$(mktemp)"
