@@ -716,9 +716,47 @@
       padding: 5px;
     }
     body.offline #offline-banner { display: block; }
+
+    /* ── Doctor banner (INFRA-990) ───────────────────────────────────────── */
+    chump-doctor-banner {
+      display: none;
+      background: #2a1a1a;
+      color: #f8d7da;
+      border-bottom: 2px solid #d9534f;
+      font-size: 13px;
+      padding: 10px 16px;
+    }
+    chump-doctor-banner .doctor-banner-head { font-size: 14px; margin-bottom: 6px; }
+    chump-doctor-banner .doctor-banner-list { margin: 4px 0 8px 18px; padding: 0; }
+    chump-doctor-banner .doctor-banner-list li { margin: 2px 0; line-height: 1.4; }
+    chump-doctor-banner .fix-hint { color: #ffd6a5; font-style: italic; }
+    chump-doctor-banner .doctor-banner-actions { margin-top: 4px; }
+    chump-doctor-banner .doctor-configure {
+      background: #d9534f;
+      color: #fff;
+      border: 0;
+      border-radius: 4px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    chump-doctor-banner .doctor-configure:hover { background: #c9302c; }
+    chump-doctor-banner .doctor-configure:focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 2px;
+    }
+    chump-doctor-banner .doctor-banner-toast {
+      background: #1f3a1f;
+      color: #c8f7c5;
+      border-bottom-color: #5cb85c;
+      text-align: center;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
+  <chump-doctor-banner></chump-doctor-banner>
   <div id="offline-banner">Offline — cached shell active</div>
 
   <header id="app-header">
