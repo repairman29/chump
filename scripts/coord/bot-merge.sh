@@ -452,6 +452,7 @@ fi
 green()  { printf '\033[0;32m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
 red()    { printf '\033[0;31m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
 yellow() { printf '\033[0;33m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
+warn()   { yellow "$*"; }
 info()   { printf '[bot-merge %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
 # INFRA-590: print error + doc link, then exit 1.
@@ -1347,14 +1348,18 @@ elif [[ $FAST -eq 1 ]]; then
     # we still let CI be the gate (no -D warnings).
     if command -v cargo &>/dev/null; then
         stage_start "cargo clippy --workspace --fix (--fast pre-flight auto-correct)"
-        _run_cargo_with_lock_detect "cargo clippy --fix" 240 clippy --workspace --all-targets --fix --allow-dirty --allow-staged || true
-        if ! git diff --quiet || git diff --cached --quiet 2>&1 | grep -q .; then
-            if [[ -n "$(git status --porcelain)" ]]; then
-                info "clippy --fix auto-corrected lints — staging + amending"
-                git add -A
-                git commit --amend --no-edit --no-verify >/dev/null 2>&1 || \
-                    git commit --no-verify -m "chore: cargo clippy --fix (auto from bot-merge.sh --fast pre-flight, INFRA-624 follow-up)"
-            fi
+        _clippy_fix_rc=0
+        _run_cargo_with_lock_detect "cargo clippy --fix" 240 clippy --workspace --all-targets --fix --allow-dirty --allow-staged || _clippy_fix_rc=$?
+        if [[ "$_clippy_fix_rc" -eq 124 ]]; then
+            # INFRA-1062: timeout is non-fatal for --fast (CI clippy is the gate);
+            # log explicitly so the operator sees it rather than silent exit.
+            warn "INFRA-1062: clippy --fix timed out after 240s — continuing to push (CI clippy is the gate)"
+        fi
+        if [[ -n "$(git status --porcelain)" ]]; then
+            info "clippy --fix auto-corrected lints — staging + amending"
+            git add -A
+            git commit --amend --no-edit --no-verify >/dev/null 2>&1 || \
+                git commit --no-verify -m "chore: cargo clippy --fix (auto from bot-merge.sh --fast pre-flight, INFRA-624 follow-up)" || true
         fi
         stage_done
         green "clippy --fix pre-flight done."
@@ -1614,7 +1619,10 @@ if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
     _bm_lock_start=$(date +%s)
     # Use flock <lockfile> form (bash 3.x compatible; lock held until script exits).
     # We open FD 200 explicitly since {var} dynamic FD assignment requires bash 4.1+.
-    exec 200>"$_bm_lock_file" 2>/dev/null || { warn "[INFRA-860] Could not open bot-merge.lock — skipping mutex"; exec 200>/dev/null; }
+    # INFRA-1062: do NOT include 2>/dev/null on an `exec FD>file` call — bash
+    # applies all redirections to the shell permanently, which would silence
+    # ALL subsequent stderr output and hide set -e exits as "silent" failures.
+    exec 200>"$_bm_lock_file" || { warn "[INFRA-860] Could not open bot-merge.lock — skipping mutex"; exec 200>/dev/null; }
     if ! flock -w 60 200 2>/dev/null; then
         red "[INFRA-860] bot-merge.lock: timed out waiting 60s — another bot-merge is stuck?"
         exit 2
