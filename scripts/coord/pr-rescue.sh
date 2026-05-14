@@ -252,8 +252,9 @@ for PR_NUM in ${PR_NUMBERS}; do
                 -f merge_method=squash 2>/dev/null || true
             log "PR #${PR_NUM}: rebased + merged (REST-only, no auto-merge). RESCUED."
         else
-            # Re-arm auto-merge (requires GraphQL)
-            chump_gh pr merge "${PR_NUM}" --repo "${REPO}" --auto --squash 2>/dev/null || true
+            # INFRA-1113: delegate to centralized armer (5s spacing, retry on rate-limit).
+            bash "${SCRIPT_DIR}/auto-merge-armer.sh" --pr "${PR_NUM}" --repo "${REPO}" \
+                2>/dev/null || true
             log "PR #${PR_NUM}: rebased + re-armed. RESCUED."
         fi
         emit_ambient "pr_rescue_completed" "${PR_NUM}" "branch=${PR_BRANCH} rest_only=${REST_ONLY}"

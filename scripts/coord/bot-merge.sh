@@ -2423,18 +2423,13 @@ RDPYEOF
             fi
 
             if [[ $_rest_direct_merged -eq 0 ]]; then
-                stage_start "gh pr merge #$TARGET_PR --auto --squash"
-                if ! gh_with_backoff "gh pr merge" 120 pr merge "$TARGET_PR" --auto --squash; then
-                    red "gh pr merge failed or timed out."
+                # INFRA-1113: delegate to centralized armer to enforce 5s spacing
+                # between successive gh pr merge --auto calls across all callers.
+                stage_start "auto-merge-armer.sh --pr $TARGET_PR"
+                if ! "$SCRIPT_DIR/auto-merge-armer.sh" --pr "$TARGET_PR"; then
+                    red "auto-merge-armer failed (see above)."
                     exit 2
                 fi
-                stage_done
-                green "Auto-merge enabled — PR will land when CI passes."
-                mkdir -p "$(dirname "$_rd_amb")" 2>/dev/null || true
-                printf '{"ts":"%s","kind":"bot_merge_auto_armed","pr":%s,"gap":"%s","note":"GraphQL auto-merge armed (REST-direct path was not eligible)"}\n' \
-                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                    "$TARGET_PR" "${GAP_IDS[*]:-}" \
-                    >> "$_rd_amb" 2>/dev/null || true
             fi
         fi
 

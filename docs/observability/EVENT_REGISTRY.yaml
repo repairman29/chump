@@ -1027,6 +1027,19 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, pr, detail]
 
+  # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
+  - kind: auto_merge_armed
+    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1113)
+    trigger: gh pr merge --auto succeeded for a PR; spacing enforced to avoid secondary rate limits
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, pr, detail]
+
+  - kind: auto_merge_arm_failed
+    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1113)
+    trigger: gh pr merge --auto failed after retries; PR left unarmed
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, pr, detail]
+
   # ── Free-tier dispatch testing ─────────────────────────────────────────
   - kind: free_tier_e2e
     emitter: scripts/dispatch/free-tier-e2e-test.sh
