@@ -1786,3 +1786,10 @@ events:
     trigger: operator marks a gap/event as handled via the Judgment panel
     consumers: [fleet-brief, needs-judgment-panel]
     fields_required: [ts, kind, item_type, item_id]
+
+  # ── INFRA-1056: worktree gitdir back-ref repair ──────────────────────
+  - kind: worktree_gitdir_repair_fired
+    emitter: src/atomic_claim.rs verify_and_repair_gitdir (INFRA-1056)
+    trigger: chump claim detected a wrong gitdir back-ref after git worktree add and rewrote it
+    consumers: [fleet-brief, claim-race-monitor]
+    fields_required: [ts, kind, worktree, was, now, attempt]

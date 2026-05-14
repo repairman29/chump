@@ -253,6 +253,12 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
 
 /// Verify that .git/worktrees/<branch-slug>/gitdir points at <worktree_path>/.git.
 /// Repairs the file if wrong (INFRA-779: concurrent sibling claims can clobber it).
+///
+/// INFRA-1056 hardening:
+///   - Retry up to 3 times with short backoff if the back-ref is wrong AFTER
+///     repair (i.e. a sibling claim re-clobbered it between our write and read).
+///   - Emit `kind=worktree_gitdir_repair_fired` to ambient.jsonl so operators
+///     can see if/when the race is still happening in the wild.
 fn verify_and_repair_gitdir(repo_root: &Path, _branch: &str, worktree_path: &Path) -> Result<()> {
     // The worktrees entry name is the last component of the branch slug
     // (git uses the worktree directory name, not the branch name).
@@ -281,20 +287,66 @@ fn verify_and_repair_gitdir(repo_root: &Path, _branch: &str, worktree_path: &Pat
         return Ok(());
     }
 
-    let recorded = std::fs::read_to_string(&gitdir_file)
-        .unwrap_or_default()
-        .trim()
-        .to_string();
+    // Retry loop: INFRA-1056. The race window is the time between our read-
+    // back-ref and any concurrent sibling claim's write. 3 attempts × 50ms
+    // covers the realistic worst case without blocking the claim path.
+    const MAX_ATTEMPTS: usize = 3;
+    let mut last_recorded = String::new();
+    for attempt in 1..=MAX_ATTEMPTS {
+        let recorded = std::fs::read_to_string(&gitdir_file)
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        last_recorded = recorded.clone();
 
-    if recorded != expected {
+        if recorded == expected {
+            if attempt > 1 {
+                eprintln!(
+                    "[claim] INFRA-1056: gitdir back-ref converged on attempt {attempt} for {wt_name}"
+                );
+            }
+            return Ok(());
+        }
+
         eprintln!(
-            "[claim] INFRA-779: gitdir mismatch for {wt_name} — repairing\n  was: {recorded}\n  now: {expected}"
+            "[claim] INFRA-1056 (attempt {attempt}/{MAX_ATTEMPTS}): gitdir mismatch for {wt_name} — repairing\n  was: {recorded}\n  now: {expected}"
         );
         std::fs::write(&gitdir_file, format!("{expected}\n"))
             .with_context(|| format!("repairing gitdir file {}", gitdir_file.display()))?;
+        emit_gitdir_repair_event(repo_root, wt_name, &recorded, &expected, attempt);
+
+        if attempt < MAX_ATTEMPTS {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
 
-    Ok(())
+    // We attempted 3 repairs and the back-ref still doesn't match. Concurrent
+    // sibling activity is overwhelming the repair path. Surface this loudly
+    // — the operator needs to know the race is unresolved for this claim.
+    bail!(
+        "INFRA-1056: gitdir back-ref for {wt_name} did not converge after {MAX_ATTEMPTS} repair attempts\n  expected: {expected}\n  last seen: {last_recorded}\n  Concurrent sibling claims are overwhelming the repair path; release leases and retry."
+    );
+}
+
+/// Emit `kind=worktree_gitdir_repair_fired` to ambient.jsonl. Best-effort —
+/// silently no-ops if the file isn't writable. Lets operators measure
+/// whether the INFRA-779 race is still firing in production.
+fn emit_gitdir_repair_event(repo_root: &Path, wt_name: &str, was: &str, now: &str, attempt: usize) {
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let event = format!(
+        r#"{{"ts":"{ts}","kind":"worktree_gitdir_repair_fired","worktree":"{wt_name}","was":"{}","now":"{}","attempt":{attempt}}}"#,
+        json_escape(was),
+        json_escape(now),
+    );
+    let path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{}", event);
+    }
 }
 
 fn run_git(cwd: &Path, args: &[&str]) -> Result<String> {
