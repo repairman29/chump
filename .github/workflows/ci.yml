@@ -445,11 +445,9 @@ jobs:
           PYTHON: python3
         run: bash scripts/eval/research-lane-a-smoke.sh
 
-      - name: gap-preflight unregistered-ID guard (INFRA-020)
-        run: bash scripts/ci/test-gap-preflight-unregistered.sh
-
-      - name: gap-claim claim-time exclusivity race guard (INFRA-403)
-        run: bash scripts/ci/test-gap-claim-race.sh
+      # INFRA-987: gap-preflight unregistered-ID guard (INFRA-020) + gap-claim
+      # race guard (INFRA-403) removed — both exercised deleted shell scripts.
+      # Coverage will be restored in Rust against atomic_claim.rs.
 
       - name: docs/gaps.yaml must not exist after INFRA-188 cutover
         run: |
@@ -618,11 +616,11 @@ jobs:
         # Build once, reuse across the next three steps.
         run: cargo build --bin chump
 
-      - name: gap-reserve concurrency + preflight (INFRA-021)
+      - name: gap-reserve concurrency (INFRA-021)
         run: |
           export PATH="$(pwd)/target/debug:$PATH"
           bash scripts/ci/test-gap-reserve-concurrency.sh
-          bash scripts/ci/test-gap-reserve-preflight.sh
+          # INFRA-987: test-gap-reserve-preflight.sh removed.
 
       - name: gap-reserve ID zero-padding (INFRA-080)
         run: |
