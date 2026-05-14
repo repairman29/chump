@@ -998,6 +998,8 @@
            redirect from INFRA-254) where /v2/chat.js resolves correctly
            against the page URL, and (b) Tauri webview where frontendDist
            is web/v2 itself, so absolute /v2/* paths would 404. -->
+  <!-- PRODUCT-098: prefs.js must load first so window.chumpPrefs is available to other modules -->
+  <script src="prefs.js" type="module"></script>
   <script src="chat.js" type="module"></script>
   <script src="app.js" type="module"></script>
   <script src="cost-meter.js" type="module"></script>
