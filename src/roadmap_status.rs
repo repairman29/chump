@@ -163,10 +163,8 @@ pub fn build_report(repo_root: &Path) -> RoadmapStatusReport {
         // INFRA-1145: untraced_p0 — open P0/P1 gaps not in any ROADMAP week.
         for row in &all_open {
             let priority = row.priority.as_str();
-            if priority == "P0" || priority == "P1" {
-                if !all_roadmap_ids.contains(&row.id) {
-                    untraced_p0.push(row.id.clone());
-                }
+            if (priority == "P0" || priority == "P1") && !all_roadmap_ids.contains(&row.id) {
+                untraced_p0.push(row.id.clone());
             }
         }
 
