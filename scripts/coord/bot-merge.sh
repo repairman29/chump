@@ -819,6 +819,32 @@ source "$(dirname "$0")/lib/github_cache.sh"
 _rl_gate_path="$(dirname "$0")/api-rate-limit-gate.sh"
 [[ -f "$_rl_gate_path" ]] && source "$_rl_gate_path"
 unset _rl_gate_path
+# INFRA-1169: fail fast if the worktree has been reaped before we emit health
+# files or create any files — prevents the 15-line No-such-file-or-directory
+# spam from _bm_health_init trying to write .chump-locks/*.health.tmp.
+if [[ ! -d "$REPO_ROOT" ]]; then
+    echo "[bot-merge] ERROR: worktree '$REPO_ROOT' no longer exists (reaped?)." >&2
+    echo "[bot-merge]   This bot-merge was triggered after the worktree was pruned." >&2
+    echo "[bot-merge]   Re-claim the gap or ship from main checkout if still needed." >&2
+    _bm_emit_path="$(command -v chump 2>/dev/null || true)"
+    if [[ -n "$_bm_emit_path" ]]; then
+        "$_bm_emit_path" ambient emit bot_merge_aborted_no_worktree \
+            "gap=${GAP_IDS[*]:-unknown}" "worktree_path=$REPO_ROOT" 2>/dev/null || true
+    fi
+    exit 17
+fi
+# Also check if the gap is already shipped — exit cleanly to avoid wasted CI.
+if command -v chump >/dev/null 2>&1 && [[ ${#GAP_IDS[@]} -gt 0 ]]; then
+    for _gid in "${GAP_IDS[@]}"; do
+        _status="$(chump gap show "$_gid" 2>/dev/null | grep -E '^\s+status:' | awk '{print $2}' || true)"
+        if [[ "$_status" == "done" ]]; then
+            _closed="$(chump gap show "$_gid" 2>/dev/null | grep -E 'closed_pr:' | awk '{print $2}' || true)"
+            echo "[bot-merge] $_gid already shipped (closed_pr=${_closed:-unknown}) — nothing to do." >&2
+            exit 0
+        fi
+    done
+fi
+
 cd "$REPO_ROOT"
 # INFRA-469: route every `chump` call through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
