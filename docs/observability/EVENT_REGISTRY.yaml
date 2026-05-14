@@ -1799,3 +1799,20 @@ events:
     trigger: chump claim detected a wrong gitdir back-ref after git worktree add and rewrote it
     consumers: [fleet-brief, claim-race-monitor]
     fields_required: [ts, kind, worktree, was, now, attempt]
+
+  # ── INFRA-1166: REST-direct merge fast path ───────────────────────────────
+  - kind: bot_merge_rest_direct
+    emitter: scripts/coord/bot-merge.sh INFRA-1166 REST-direct fast path
+    trigger: bot-merge.sh confirmed all required CI checks already green and merged
+      PR via REST PUT /pulls/N/merge instead of GraphQL enablePullRequestAutoMerge.
+      Eliminates GraphQL secondary rate limit errors in green-CI fast path.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, pr, gap, sha, checks_verified]
+
+  - kind: bot_merge_auto_armed
+    emitter: scripts/coord/bot-merge.sh INFRA-1166 auto-merge fallback
+    trigger: bot-merge.sh could not use the REST-direct path (checks still running
+      or REST PUT failed) and fell back to arming GitHub auto-merge via GraphQL
+      enablePullRequestAutoMerge.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, pr, gap]
