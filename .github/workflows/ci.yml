@@ -1106,6 +1106,12 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-gap-list-done-format.sh
 
+      - name: chump gap ship integration test (CREDIBLE-060)
+        run: |
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            CHUMP_ALLOW_STALE_DESTRUCTIVE=1 \
+            bash scripts/ci/test-gap-ship-integration.sh
+
       - name: install-gh-shim worktree-safety guard (INFRA-1186)
         run: bash scripts/ci/test-install-gh-shim-worktree-safe.sh
 
