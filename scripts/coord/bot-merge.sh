@@ -2406,6 +2406,23 @@ RDPYEOF
                     # INFRA-509: state.db is canonical; no YAML file staging needed.
                     green "Auto-closed $_gid (closed_pr=$TARGET_PR) — squashed atomically by merge queue"
 
+                    # INFRA-1253: emit DONE a2a event with corr_id=gap-id. INFRA-1255
+                    # inbox-reap will clear any matching STUCK/HANDOFF/INTENT from
+                    # session inboxes — closes the lifecycle loop. Also clear any
+                    # INFRA-1220 cooldown stamp (work shipped, cooldown is moot).
+                    if [[ -x scripts/coord/broadcast.sh ]]; then
+                        _bm_sha="${_rd_sha:-${_new_pr_sha:-}}"
+                        CHUMP_CORR_ID="$_gid" scripts/coord/broadcast.sh \
+                            DONE "$_gid" "${_bm_sha:-}" >/dev/null 2>&1 || true
+                    fi
+                    if [[ -x scripts/coord/gap-cooldown.sh ]]; then
+                        scripts/coord/gap-cooldown.sh clear "$_gid" \
+                            --reason "INFRA-1253: cleared by bot-merge after gap shipped (PR #$TARGET_PR)" \
+                            >/dev/null 2>&1 || true
+                    fi
+                    # Also remove any INFRA-1252 handoff-pending stamp — work landed.
+                    rm -f "$LOCK_DIR/.handoff-pending/$_gid.ts" 2>/dev/null || true
+
                     # INFRA-1273: post-ship retro prompt. Right after a successful
                     # close — while the friction is fresh in the agent's working
                     # memory — emit a structured one-liner inviting the agent to
