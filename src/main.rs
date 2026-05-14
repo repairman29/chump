@@ -3556,6 +3556,15 @@ async fn main() -> Result<()> {
                         .single()
                         .map(|dt| dt.format("%Y-%m-%d").to_string())
                 });
+                // INFRA-821: auto-seed state.db on fresh clone before listing.
+                let seeded = store.auto_seed_if_empty();
+                if seeded > 0 {
+                    tracing::info!(
+                        kind = "gap_db_auto_seeded",
+                        imported = seeded,
+                        "state.db was empty on open — auto-imported from docs/gaps/"
+                    );
+                }
                 match store.list(status_filter.as_deref()) {
                     Ok(all_gaps) => {
                         // Apply --since filter before any output path.
@@ -4533,10 +4542,36 @@ async fn main() -> Result<()> {
             }
             "import" => {
                 let yaml_path = flag("--yaml").unwrap_or_else(|| "docs/gaps.yaml".into());
-                let root = if std::path::Path::new(&yaml_path).is_absolute() {
-                    std::path::PathBuf::from("/")
-                } else {
-                    repo_root.clone()
+                // INFRA-821: derive repo root from --yaml path. When the user passes
+                // an absolute path (e.g. /abs/repo/docs/gaps.yaml), strip the trailing
+                // docs/gaps.yaml or docs/gaps component to recover the repo root instead
+                // of using "/" which causes 0-inserted silently.
+                let root = {
+                    let p = std::path::Path::new(&yaml_path);
+                    if p.is_absolute() {
+                        // Strip known suffixes to recover repo root.
+                        let stripped = yaml_path
+                            .strip_suffix("/docs/gaps.yaml")
+                            .or_else(|| yaml_path.strip_suffix("/docs/gaps"))
+                            .map(std::path::PathBuf::from);
+                        if let Some(r) = stripped {
+                            r
+                        } else if p.is_dir() {
+                            // Treat the absolute path itself as the repo root.
+                            p.to_path_buf()
+                        } else {
+                            eprintln!(
+                                "chump gap import: cannot derive repo root from --yaml {:?}.\n\
+                                 Expected path ending in docs/gaps.yaml or docs/gaps/.\n\
+                                 Hint: omit --yaml to import from current repo root ({}).",
+                                yaml_path,
+                                repo_root.display()
+                            );
+                            std::process::exit(1);
+                        }
+                    } else {
+                        repo_root.clone()
+                    }
                 };
                 match store.import_from_yaml(&root) {
                     Ok((ins, skip, backfilled)) => {

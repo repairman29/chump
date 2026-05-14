@@ -339,6 +339,48 @@ impl GapStore {
 // ────────────────────────── gap commands ──────────────────────────
 
 impl GapStore {
+    /// Total row count across all statuses. Used to detect an empty-on-clone DB.
+    pub fn gap_count(&self) -> Result<i64> {
+        self.conn
+            .query_row("SELECT COUNT(*) FROM gaps", [], |r| r.get(0))
+            .map_err(anyhow::Error::from)
+    }
+
+    /// If the DB has zero rows and docs/gaps/ contains YAML files, auto-import.
+    /// Returns the number of gaps imported (0 if DB was already populated or no
+    /// YAML files were found). Silently skips on any error so callers don't break.
+    pub fn auto_seed_if_empty(&self) -> usize {
+        if self.gap_count().unwrap_or(1) > 0 {
+            return 0;
+        }
+        let gaps_dir = self.repo_root.join("docs").join("gaps");
+        let has_yaml = std::fs::read_dir(&gaps_dir)
+            .ok()
+            .map(|d| {
+                d.flatten().any(|e| {
+                    e.path()
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s == "yaml")
+                        .unwrap_or(false)
+                })
+            })
+            .unwrap_or(false);
+        if !has_yaml {
+            return 0;
+        }
+        eprintln!("[gap-list] state.db is empty — auto-importing from docs/gaps/ (INFRA-821)");
+        match self.import_from_yaml(&self.repo_root.clone()) {
+            Ok((ins, _, _)) => {
+                if ins > 0 {
+                    eprintln!("[gap-list] imported {} gap(s) — re-run to list", ins);
+                }
+                ins
+            }
+            Err(_) => 0,
+        }
+    }
+
     /// List gaps, optionally filtered by status.
     pub fn list(&self, status_filter: Option<&str>) -> Result<Vec<GapRow>> {
         let make_row = |row: &rusqlite::Row<'_>| {
