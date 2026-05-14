@@ -187,7 +187,10 @@ if hook == "SessionStart":
         except Exception:
             pass
     # Fallback: legacy fleet-brief.sh
-    if not brief_out:
+    # INFRA-1148: CHUMP_FLEET_BRIEF_INJECT=0 disables the fleet brief block only
+    # (CHUMP_AMBIENT_INJECT=0 disables the entire inject; this is narrower).
+    fleet_brief_enabled = os.environ.get("CHUMP_FLEET_BRIEF_INJECT", "1") != "0"
+    if not brief_out and fleet_brief_enabled:
         brief_script = os.path.join(repo_root, "scripts", "dispatch", "fleet-brief.sh")
         if os.path.exists(brief_script) and os.access(brief_script, os.X_OK):
             try:
