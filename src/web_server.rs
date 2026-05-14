@@ -2937,7 +2937,7 @@ fn chrono_approx_secs(ts: &str) -> u64 {
         let y = year as i64 - 1970;
         let leap_days = (y / 4) - (y / 100) + (y / 400);
         let month_days: [u64; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        let days_in_year = (y.unsigned_abs() as u64) * 365 + (leap_days.unsigned_abs() as u64);
+        let days_in_year = y.unsigned_abs() * 365 + leap_days.unsigned_abs();
         let days_in_months: u64 = month_days.iter().take((month as usize).saturating_sub(1)).sum();
         let days = days_in_year + days_in_months + day - 1;
         Some(days * 86_400 + hour * 3_600 + min * 60 + sec)
