@@ -1,0 +1,16 @@
+- id: INFRA-1146
+  domain: INFRA
+  title: "EFFECTIVE: session-start roadmap drift inject — surface starved outcomes at agent boot"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "ambient-context-inject.sh injects roadmap drift summary block at SessionStart (not PreToolUse)"
+    - "CHUMP_ROADMAP_INJECT=0 suppresses the inject without breaking hook"
+    - "Cache file (roadmap-inject.ts) prevents re-querying within 10-min TTL"
+    - "Graceful no-op when chump binary absent; never blocks SessionStart"
+    - "roadmap_inject_applied emitted to ambient.jsonl with starved_count and untraced_p0_count fields"
+    - "EVENT_REGISTRY.yaml registers kind=roadmap_inject_applied"
+    - "All 7 checks in scripts/ci/test-roadmap-inject.sh pass"
+    - "bash 3.2 compatible (macOS): Python digest script written to temp file, not inline heredoc in subshell"
+  closed_pr: 1841

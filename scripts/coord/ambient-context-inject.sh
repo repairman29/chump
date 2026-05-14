@@ -80,15 +80,67 @@ fi
 [[ "${CHUMP_AMBIENT_INJECT:-1}" == "0" ]] && emit_empty
 [[ ! -f "$AMBIENT_LOG" ]] && emit_empty
 
+# ── INFRA-1146: roadmap drift inject (SessionStart only) ─────────────────────
+# Write inject block to a temp file so multi-line content doesn't confuse the
+# Python heredoc env-var quoting within CONTEXT="$(...)".
+_ROADMAP_INJECT_FILE=""
+if [[ "$HOOK_EVENT" == "SessionStart" ]] \
+        && [[ "${CHUMP_ROADMAP_INJECT:-1}" != "0" ]]; then
+    _CACHE_FILE="$(dirname "$AMBIENT_LOG")/roadmap-inject.ts"
+    _CACHE_STALE=1
+    if [[ -f "$_CACHE_FILE" ]]; then
+        _CACHE_AGE=$(( $(date +%s) - $(cat "$_CACHE_FILE" 2>/dev/null || echo 0) ))
+        [[ "$_CACHE_AGE" -lt 600 ]] && _CACHE_STALE=0
+    fi
+    if [[ "$_CACHE_STALE" == "1" ]]; then
+        _CHUMP_BIN="${CHUMP_BIN:-$(command -v chump 2>/dev/null || echo "")}"
+        if [[ -n "$_CHUMP_BIN" && -x "$_CHUMP_BIN" ]]; then
+            _ROADMAP_JSON="$("$_CHUMP_BIN" roadmap-status --json --top-starved 3 2>/dev/null || echo "")"
+            if [[ -n "$_ROADMAP_JSON" ]]; then
+                _INJECT_TMP="$(mktemp 2>/dev/null || echo "")"
+                if [[ -n "$_INJECT_TMP" ]]; then
+                    printf '%s' "$_ROADMAP_JSON" | python3 -c "
+import json, sys
+from pathlib import Path
+data = json.load(sys.stdin)
+out_file = Path(sys.argv[1])
+s = data.get('starved_outcomes', [])
+u = data.get('untraced_p0', [])
+cov = data.get('pillar_coverage', {})
+lines = ['=== Roadmap Drift (INFRA-1146) ===']
+lines.append('starved_outcomes=' + (','.join(str(x) for x in s[:3]) or 'none'))
+lines.append('untraced_p0=' + (','.join(str(x) for x in u[:5]) or 'none'))
+lines.append('pillar_coverage: EFFECTIVE={e} CREDIBLE={c} RESILIENT={r} ZERO-WASTE={z}'.format(
+    e=cov.get('effective',0), c=cov.get('credible',0),
+    r=cov.get('resilient',0), z=cov.get('zero_waste',0)))
+lines.append('Run: chump roadmap-status --exit-on-drift  # CI gate')
+out_file.write_text('\n'.join(lines))
+" "$_INJECT_TMP" 2>/dev/null || true
+                    if [[ -s "$_INJECT_TMP" ]]; then
+                        _ROADMAP_INJECT_FILE="$_INJECT_TMP"
+                        date +%s > "$_CACHE_FILE" 2>/dev/null || true
+                        # Emit ambient event
+                        _SC=$(printf '%s' "$_ROADMAP_JSON" | python3 -c \
+                            "import json,sys; d=json.load(sys.stdin); print(len(d.get('starved_outcomes',[])))" 2>/dev/null || echo 0)
+                        _UC=$(printf '%s' "$_ROADMAP_JSON" | python3 -c \
+                            "import json,sys; d=json.load(sys.stdin); print(len(d.get('untraced_p0',[])))" 2>/dev/null || echo 0)
+                        _TS="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")"
+                        printf '{"ts":"%s","kind":"roadmap_inject_applied","starved_count":%s,"untraced_p0_count":%s}\n' \
+                            "$_TS" "$_SC" "$_UC" >> "$AMBIENT_LOG" 2>/dev/null || true
+                    else
+                        rm -f "$_INJECT_TMP" 2>/dev/null || true
+                    fi
+                fi
+            fi
+        fi
+    fi
+fi
+
 # ── Build the digest in Python (proper JSON parsing + escaping) ───────────────
-CONTEXT="$(
-    AMBIENT_LOG="$AMBIENT_LOG" \
-    LOCK_DIR="$LOCK_DIR" \
-    SESSION_ID="$SESSION_ID" \
-    HOOK_EVENT="$HOOK_EVENT" \
-    N="$N" \
-    REPO_ROOT="$REPO_ROOT" \
-    python3 - <<'PY'
+# Write digest script to a temp file; bash 3.2 on macOS misparses single-quoted
+# heredoc bodies inside $() when they contain apostrophes (e.g. "isn't").
+_DIGEST_PY="$(mktemp /tmp/chump-ambient-digest-XXXXXX.py)"
+cat > "$_DIGEST_PY" << 'PY'
 import json, os, sys, time
 from pathlib import Path
 from datetime import datetime, timezone
@@ -164,6 +216,18 @@ for e in events:
 
 # Render compact context block
 lines_out = []
+
+# INFRA-1146: prepend roadmap drift block (written to temp file by shell section above).
+_roadmap_file = os.environ.get("ROADMAP_INJECT_FILE", "")
+if _roadmap_file:
+    try:
+        _roadmap_block = Path(_roadmap_file).read_text().strip()
+        Path(_roadmap_file).unlink(missing_ok=True)
+        if _roadmap_block:
+            lines_out.append(_roadmap_block)
+            lines_out.append("")
+    except Exception:
+        pass
 
 # INFRA-721: SessionStart only — operator-facing fleet brief at the top.
 # Prefer `chump fleet brief` (INFRA-721 Rust subcommand); fall back to the
@@ -278,7 +342,18 @@ out = {
 }
 sys.stdout.write(json.dumps(out))
 PY
+
+CONTEXT="$(
+    AMBIENT_LOG="$AMBIENT_LOG" \
+    LOCK_DIR="$LOCK_DIR" \
+    SESSION_ID="$SESSION_ID" \
+    HOOK_EVENT="$HOOK_EVENT" \
+    N="$N" \
+    REPO_ROOT="$REPO_ROOT" \
+    ROADMAP_INJECT_FILE="$_ROADMAP_INJECT_FILE" \
+    python3 "$_DIGEST_PY"
 )"
+rm -f "$_DIGEST_PY"
 
 if [[ "${CHUMP_AMBIENT_DEBUG:-0}" == "1" ]]; then
     printf '%s\n' "$CONTEXT" >&2
