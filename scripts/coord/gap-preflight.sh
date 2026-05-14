@@ -566,13 +566,12 @@ $SIBLING_GAP_YAML"
         # (single call, not GraphQL). autoMergeRequest is fetched via REST
         # cache_lookup_pr only if we found a candidate (saves a round-trip
         # when no match).
-        local _cache_lib2="$(dirname "$0")/lib/github_cache.sh"
+        _cache_lib2="$(dirname "$0")/lib/github_cache.sh"
         if [[ -f "$_cache_lib2" ]] && ! declare -F cache_query_open_prs_by_title >/dev/null 2>&1; then
             # shellcheck source=lib/github_cache.sh
             source "$_cache_lib2"
         fi
         _PR_QUERY=""
-        local _row
         _row="$(cache_query_open_prs_by_title "$GAP_ID" 2>/dev/null | head -1 || true)"
         if [[ -z "$_row" ]] && declare -F cache_refresh_open_prs >/dev/null 2>&1; then
             cache_refresh_open_prs >/dev/null 2>&1 || true
@@ -742,7 +741,7 @@ except: print("")' 2>/dev/null)"
     # The previous direct `gh api repos/X/pulls?state=open&per_page=100` is
     # gone; this path now hits the cache for >95% of preflight invocations.
     if [[ -z "${CHUMP_PREFLIGHT_NO_PR_SCAN:-}" ]]; then
-        local _cache_lib3="$(dirname "$0")/lib/github_cache.sh"
+        _cache_lib3="$(dirname "$0")/lib/github_cache.sh"
         if [[ -f "$_cache_lib3" ]] && ! declare -F cache_query_open_prs_by_title >/dev/null 2>&1; then
             # shellcheck source=lib/github_cache.sh
             source "$_cache_lib3"
