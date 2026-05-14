@@ -62,6 +62,14 @@ MODEL="${FLEET_MODEL:-${CHUMP_MODEL:-unknown}}"
 # CREDIBLE-037: include harness attribution in all events so per-harness stats are attributable.
 HARNESS="${CHUMP_AGENT_HARNESS:-unknown}"
 
+# INFRA-1255: correlation_id ties INTENT/STUCK/HANDOFF (the "request" side)
+# to DONE/ACK (the "response" side). When events share a corr_id, inbox-reap
+# can clear the inbox on completion. Default precedence:
+#   --corr <id>  >  gap-id (when applicable)  >  current branch  >  ts
+# Callers can pass --corr to override; otherwise the per-event handler
+# auto-derives. Set CHUMP_CORR_ID in env to force across nested calls.
+CORR_ID_OVERRIDE="${CHUMP_CORR_ID:-}"
+
 # ── Build JSON payload ────────────────────────────────────────────────────────
 build_json() {
     python3 -c "import json,sys; print(json.dumps(dict(zip(sys.argv[1::2],sys.argv[2::2]))))" "$@"
@@ -154,18 +162,42 @@ if [[ $# -lt 1 ]]; then
 fi
 
 # INFRA-1115: optional --to <recipient> targets the inbox(es) named.
+# INFRA-1255: optional --corr <id> sets correlation_id explicitly.
+# Both flags can appear in either order before the event-type positional.
 TO=""
-if [[ "${1:-}" == "--to" ]]; then
-    TO="${2:-}"
-    if [[ -z "$TO" ]]; then
-        echo "Usage: $0 --to <recipient> EVENT [args...]" >&2
-        exit 1
-    fi
-    shift 2
-fi
+CORR_FLAG=""
+while :; do
+    case "${1:-}" in
+        --to)
+            TO="${2:-}"
+            [[ -z "$TO" ]] && { echo "Usage: $0 --to <recipient> EVENT [args...]" >&2; exit 1; }
+            shift 2
+            ;;
+        --corr)
+            CORR_FLAG="${2:-}"
+            [[ -z "$CORR_FLAG" ]] && { echo "Usage: $0 --corr <id> EVENT [args...]" >&2; exit 1; }
+            shift 2
+            ;;
+        *) break ;;
+    esac
+done
 
 EVENT="$1"
 shift
+
+# INFRA-1255: corr_id derivation. Precedence: --corr flag > env > gap-id (set
+# per-event below) > branch name > ts. Per-event handlers set CORR_ID after
+# they parse their own gap argument.
+_derive_corr() {
+    local from_gap="${1:-}"
+    if [[ -n "$CORR_FLAG" ]]; then echo "$CORR_FLAG"; return; fi
+    if [[ -n "$CORR_ID_OVERRIDE" ]]; then echo "$CORR_ID_OVERRIDE"; return; fi
+    if [[ -n "$from_gap" ]]; then echo "$from_gap"; return; fi
+    local br
+    br="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
+    if [[ -n "$br" && "$br" != "HEAD" ]]; then echo "branch:$br"; return; fi
+    echo "ts:$TS"
+}
 
 case "$EVENT" in
 
@@ -173,10 +205,11 @@ case "$EVENT" in
         GAP="${1:-}"
         FILES="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 INTENT <gap-id> [files]" >&2; exit 1; }
+        CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event INTENT session "$SESSION_ID" ts "$TS" gap "$GAP" files "$FILES" to "$TO" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event INTENT session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" files "$FILES" to "$TO" model "$MODEL" harness "$HARNESS")"
         else
-            JSON="$(build_json event INTENT session "$SESSION_ID" ts "$TS" gap "$GAP" files "$FILES" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event INTENT session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" files "$FILES" model "$MODEL" harness "$HARNESS")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -191,7 +224,8 @@ case "$EVENT" in
         # used as both the JSON "to" field AND the inbox target.
         EFFECTIVE_TO="${TO:-$POS_TO}"
         [[ -n "$GAP" && -n "$EFFECTIVE_TO" ]] || { echo "Usage: $0 [--to <recipient>] HANDOFF <gap-id> [<to-session>]" >&2; exit 1; }
-        JSON="$(build_json event HANDOFF session "$SESSION_ID" ts "$TS" gap "$GAP" to "$EFFECTIVE_TO")"
+        CORR_ID="$(_derive_corr "$GAP")"
+        JSON="$(build_json event HANDOFF session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" to "$EFFECTIVE_TO")"
         emit_to_file "$JSON"
         emit_to_inbox "$EFFECTIVE_TO" "$JSON"
         emit_to_nats HANDOFF "gap=$GAP" "to=$EFFECTIVE_TO"
@@ -201,10 +235,11 @@ case "$EVENT" in
     STUCK)
         GAP="${1:-}"; REASON="${2:-unspecified}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 STUCK <gap-id> \"<reason>\"" >&2; exit 1; }
+        CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event STUCK session "$SESSION_ID" ts "$TS" gap "$GAP" reason "$REASON" to "$TO")"
+            JSON="$(build_json event STUCK session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" reason "$REASON" to "$TO")"
         else
-            JSON="$(build_json event STUCK session "$SESSION_ID" ts "$TS" gap "$GAP" reason "$REASON")"
+            JSON="$(build_json event STUCK session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" reason "$REASON")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -215,10 +250,11 @@ case "$EVENT" in
     DONE)
         GAP="${1:-}"; COMMIT="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 DONE <gap-id> [commit-sha]" >&2; exit 1; }
+        CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event DONE session "$SESSION_ID" ts "$TS" gap "$GAP" commit "$COMMIT" to "$TO" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event DONE session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" commit "$COMMIT" to "$TO" model "$MODEL" harness "$HARNESS")"
         else
-            JSON="$(build_json event DONE session "$SESSION_ID" ts "$TS" gap "$GAP" commit "$COMMIT" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event DONE session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" commit "$COMMIT" model "$MODEL" harness "$HARNESS")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -229,10 +265,11 @@ case "$EVENT" in
     WARN)
         MSG="${1:-}"
         [[ -n "$MSG" ]] || { echo "Usage: $0 WARN \"<message>\"" >&2; exit 1; }
+        CORR_ID="$(_derive_corr "")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event WARN session "$SESSION_ID" ts "$TS" reason "$MSG" to "$TO")"
+            JSON="$(build_json event WARN session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" reason "$MSG" to "$TO")"
         else
-            JSON="$(build_json event WARN session "$SESSION_ID" ts "$TS" reason "$MSG")"
+            JSON="$(build_json event WARN session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" reason "$MSG")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -244,10 +281,11 @@ case "$EVENT" in
         KIND_ARG="${1:-}"; MSG="${2:-}"
         KIND="${KIND_ARG#kind=}"
         [[ -n "$KIND" ]] || { echo "Usage: $0 ALERT kind=<kind> \"<message>\"" >&2; exit 1; }
+        CORR_ID="$(_derive_corr "")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event ALERT session "$SESSION_ID" ts "$TS" kind "$KIND" reason "$MSG" to "$TO")"
+            JSON="$(build_json event ALERT session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" kind "$KIND" reason "$MSG" to "$TO")"
         else
-            JSON="$(build_json event ALERT session "$SESSION_ID" ts "$TS" kind "$KIND" reason "$MSG")"
+            JSON="$(build_json event ALERT session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" kind "$KIND" reason "$MSG")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
