@@ -4026,7 +4026,15 @@ async fn main() -> Result<()> {
                 let session_id = flag("--session")
                     .or_else(|| crate::ambient_stream::env_session_id())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
-                let worktree = flag("--worktree").unwrap_or_default();
+                // INFRA-1032: derive worktree from CWD basename when --worktree absent/empty
+                let worktree = flag("--worktree")
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| {
+                        std::env::current_dir()
+                            .ok()
+                            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+                            .unwrap_or_default()
+                    });
                 let ttl: i64 = flag("--ttl").and_then(|s| s.parse().ok()).unwrap_or(3600);
                 match store.claim(&gap_id, &session_id, &worktree, ttl) {
                     Ok(()) => {

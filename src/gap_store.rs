@@ -1212,6 +1212,28 @@ impl GapStore {
         if let Some(other) = live_claim {
             bail!("gap {} is live-claimed by session {}", gap_id, other);
         }
+        // INFRA-1032: warn when this session already has a lease with a different worktree path
+        if !worktree.is_empty() {
+            let existing_wt: Option<String> = self
+                .conn
+                .query_row(
+                    "SELECT worktree FROM leases WHERE session_id=?1",
+                    params![session_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(ref existing) = existing_wt {
+                if !existing.is_empty() && existing != worktree {
+                    tracing::warn!(
+                        session_id,
+                        existing_worktree = existing.as_str(),
+                        new_worktree = worktree,
+                        "INFRA-1032: session_id collision — worktree clobber detected; \
+                         this session has a different worktree than the existing lease"
+                    );
+                }
+            }
+        }
         self.conn.execute(
             "INSERT INTO leases(session_id,gap_id,worktree,expires_at)
              VALUES(?1,?2,?3,?4)
