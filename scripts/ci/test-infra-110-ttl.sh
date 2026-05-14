@@ -20,7 +20,12 @@ set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 SHELL_SRC="$REPO_ROOT/scripts/coord/gap-reserve.sh"
-RUST_SRC="$REPO_ROOT/src/gap_store.rs"
+# INFRA-693: gap_store.rs moved to crates/chump-gap-store/src/lib.rs.
+if [[ -f "$REPO_ROOT/crates/chump-gap-store/src/lib.rs" ]]; then
+    RUST_SRC="$REPO_ROOT/crates/chump-gap-store/src/lib.rs"
+else
+    RUST_SRC="$REPO_ROOT/src/gap_store.rs"
+fi
 
 fail=0
 

@@ -40,7 +40,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 MAIN_RS="$REPO_ROOT/src/main.rs"
-GAP_STORE_RS="$REPO_ROOT/src/gap_store.rs"
+# INFRA-693: gap_store.rs moved to crates/chump-gap-store/src/lib.rs.
+if [[ -f "$REPO_ROOT/crates/chump-gap-store/src/lib.rs" ]]; then
+    GAP_STORE_RS="$REPO_ROOT/crates/chump-gap-store/src/lib.rs"
+else
+    GAP_STORE_RS="$REPO_ROOT/src/gap_store.rs"
+fi
 GAPS_DIR="$REPO_ROOT/docs/gaps"
 
 # ── Test 1: src/main.rs `gap set` usage advertises --closed-pr ──────────────
