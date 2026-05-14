@@ -1,6 +1,92 @@
 // Chump v2 — vanilla Web Components app shell.
 // No build step, no CDN dependencies. Air-gap safe by construction.
 
+// ── chumpPrefs: localStorage namespace + try/catch wrapper (INFRA-1280) ─────
+// Every PWA preference lives under the `chump.*` localStorage namespace.
+// Schema doc: docs/api/PWA_STATE_SCHEMA.md. Each consumer reads/writes via
+// this helper, so:
+//   - corruption never breaks the UI (try/catch + default fallback)
+//   - every write emits kind=pwa_pref_changed for telemetry / adoption signal
+//   - one place to grep for every persisted preference
+//
+// Privacy: no PII (no API tokens, no user content). session_ids + gap_ids OK.
+window.chumpPrefs = window.chumpPrefs || (() => {
+  const NS = 'chump.';
+  function k(key) { return key.startsWith(NS) ? key : NS + key; }
+  function emit(key, valueClass) {
+    // Best-effort ambient signal via a sendBeacon-style fetch; never block.
+    try {
+      const ts = new Date().toISOString();
+      // The /api/ambient/emit endpoint may not exist on every binary; fail silent.
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'pwa_pref_changed', key, value_class: valueClass, ts,
+      }));
+    } catch {}
+  }
+  return {
+    /** Read a JSON-serialised pref. Returns `fallback` on miss or parse error. */
+    get(key, fallback = null) {
+      try {
+        const raw = localStorage.getItem(k(key));
+        if (raw == null) return fallback;
+        return JSON.parse(raw);
+      } catch {
+        return fallback;
+      }
+    },
+    /** Write a pref. Stringifies to JSON. Emits telemetry. */
+    set(key, value) {
+      try {
+        localStorage.setItem(k(key), JSON.stringify(value));
+        const cls = value == null ? 'null'
+                  : typeof value === 'boolean' ? 'bool'
+                  : typeof value === 'number'  ? 'number'
+                  : Array.isArray(value)       ? 'array'
+                  : typeof value === 'object'  ? 'object'
+                                               : 'string';
+        emit(k(key), cls);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    /** Remove a single pref. */
+    del(key) {
+      try { localStorage.removeItem(k(key)); return true; } catch { return false; }
+    },
+    /** Wipe ALL chump.* prefs. Used by Settings → Reset all preferences. */
+    resetAll() {
+      try {
+        const keys = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(NS)) keys.push(key);
+        }
+        keys.forEach(key => localStorage.removeItem(key));
+        emit('*', 'reset_all');
+        return keys.length;
+      } catch { return 0; }
+    },
+  };
+})();
+
+// ── Theme: apply persisted theme BEFORE first paint (avoid flash) ───────────
+(() => {
+  const t = window.chumpPrefs.get('theme', 'system');
+  function effectiveTheme(pref) {
+    if (pref === 'light' || pref === 'dark' || pref === 'high-contrast') return pref;
+    // 'system' → follow OS
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', effectiveTheme(t));
+  // React to OS theme changes when in system mode.
+  window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (window.chumpPrefs.get('theme', 'system') === 'system') {
+      document.documentElement.setAttribute('data-theme', effectiveTheme('system'));
+    }
+  });
+})();
+
 // ── DashboardStream singleton (PRODUCT-099) ──────────────────────────────────
 // Frontend was polling /api/dashboard, /api/jobs, /api/fleet-status, /api/gap-queue
 // on 3 different setInterval timers (5/10/15s). Meanwhile the backend has been
@@ -684,6 +770,26 @@ class ChumpViewSettings extends HTMLElement {
           <span class="setting-value">Service Worker active — shell cached</span>
         </label>
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">Appearance (INFRA-1280 Sub-gap 4)</p>
+          <div id="theme-toggle" role="radiogroup" aria-label="Theme">
+            <label style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;">
+              <input type="radio" name="chump-theme" value="system"> System
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;">
+              <input type="radio" name="chump-theme" value="light"> Light
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:6px;margin-right:14px;">
+              <input type="radio" name="chump-theme" value="dark"> Dark
+            </label>
+            <label style="display:inline-flex;align-items:center;gap:6px;">
+              <input type="radio" name="chump-theme" value="high-contrast"> High contrast
+            </label>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.8em; margin-top: 6px;">
+            Default: System (follows OS prefers-color-scheme).
+          </p>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
           <p class="setting-label" style="margin-bottom: 12px;">Inference Settings</p>
           <div id="cascade-slots" style="margin-bottom: 16px; font-size: 0.9em; color: var(--text-muted);">
             <p>Loading cascade slot info…</p>
@@ -703,10 +809,57 @@ class ChumpViewSettings extends HTMLElement {
             Secrets are managed separately (INFRA-989).
           </p>
         </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">PWA Preferences (INFRA-1280)</p>
+          <p style="color: var(--text-muted); font-size: 0.85em; margin-bottom: 8px;">
+            Theme + queue filters + (future) sidecar / cost thresholds / stream pause are persisted
+            under the <code>chump.*</code> localStorage namespace. Schema:
+            <code>docs/api/PWA_STATE_SCHEMA.md</code>.
+          </p>
+          <button type="button" id="chump-prefs-reset" class="chump-prefs-reset" aria-label="Reset all PWA preferences" style="padding:6px 12px;border:1px solid var(--accent-error,#cc3344);background:transparent;color:var(--accent-error,#cc3344);border-radius:6px;cursor:pointer;font-size:0.9em;">
+            Reset all preferences
+          </button>
+          <p style="color: var(--text-muted); font-size: 0.75em; margin-top: 6px;">
+            Wipes every <code>chump.*</code> key from localStorage and reloads.
+          </p>
+        </div>
       </section>
     `;
     this.#loadCascadeInfo();
     this.#loadOperatorConfig();
+    this.#wireThemeToggle();
+    this.#wireResetButton();
+  }
+
+  // INFRA-1280 Sub-gap 4: theme toggle (System/Light/Dark/High-contrast).
+  // Reads stored pref, checks the right radio, persists changes, repaints.
+  #wireThemeToggle() {
+    const current = window.chumpPrefs.get('theme', 'system');
+    const radios = this.querySelectorAll('input[name="chump-theme"]');
+    radios.forEach(r => {
+      if (r.value === current) r.checked = true;
+      r.addEventListener('change', (e) => {
+        const v = e.target.value;
+        window.chumpPrefs.set('theme', v);
+        const effective = (v === 'system')
+          ? (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+          : v;
+        document.documentElement.setAttribute('data-theme', effective);
+      });
+    });
+  }
+
+  // INFRA-1280 Sub-gap 9: Reset-all wipes every chump.* localStorage key.
+  // Confirms before nuking so accidental clicks don't surprise the operator.
+  #wireResetButton() {
+    const btn = this.querySelector('#chump-prefs-reset');
+    btn?.addEventListener('click', () => {
+      if (!confirm('Reset ALL PWA preferences (theme, queue filters, etc.)?\n\nThis will reload the page.')) return;
+      const wiped = window.chumpPrefs.resetAll();
+      btn.textContent = `Wiped ${wiped} keys — reloading…`;
+      btn.disabled = true;
+      setTimeout(() => location.reload(), 400);
+    });
   }
 
   // INFRA-988: render non-secret config fields from /api/settings.
@@ -1122,6 +1275,7 @@ class ChumpViewAgent extends HTMLElement {
         <select id="gap-filter-priority"><option value="">All priorities</option><option value="P0">P0</option><option value="P1">P1</option><option value="P2">P2</option></select>
         <select id="gap-filter-effort"><option value="">All efforts</option><option value="xs">xs</option><option value="s">s</option><option value="m">m</option><option value="l">l</option><option value="xl">xl</option></select>
         <label class="gap-filter-ac"><input type="checkbox" id="gap-filter-has-ac" /> Missing AC</label>
+        <button id="gap-filter-clear" type="button" class="gap-filter-clear" aria-label="Clear all filters" title="Clear all filters">Clear</button>
       </section>
       <section class="gap-queue-stats" id="gap-stats">
         <div class="stat-item">
@@ -1138,8 +1292,74 @@ class ChumpViewAgent extends HTMLElement {
       </section>
     `;
     this.#wireSearch();
+    this.#restoreFilters();
     this.#load();
     this.#poll = setInterval(() => this.#load(), 5000);
+  }
+
+  // INFRA-1280 Sub-gap 2: persist + restore queue filter state across reload.
+  // Order of precedence on mount: URL query params > localStorage > defaults.
+  // Any change writes back to localStorage. URL is updated via replaceState
+  // (no history pollution per filter keystroke).
+  #restoreFilters() {
+    const url = new URLSearchParams(location.search);
+    const stored = window.chumpPrefs.get('queue.filters', {});
+    const get = (key) => url.get(key) ?? stored[key] ?? '';
+    const qInput = this.querySelector('#gap-search-input');
+    const statusSel = this.querySelector('#gap-filter-status');
+    const prioritySel = this.querySelector('#gap-filter-priority');
+    const effortSel = this.querySelector('#gap-filter-effort');
+    const hasAcCb = this.querySelector('#gap-filter-has-ac');
+    if (qInput) qInput.value = get('q');
+    if (statusSel) statusSel.value = get('status');
+    if (prioritySel) prioritySel.value = get('priority');
+    if (effortSel) effortSel.value = get('effort');
+    if (hasAcCb) {
+      const stored_ac = stored.has_ac;
+      const url_ac = url.get('has_ac');
+      hasAcCb.checked = (url_ac === 'false') || stored_ac === true;
+    }
+    if (this.#searchActive()) {
+      // Re-run with restored filters.
+      this.#persistFilters();
+      this.#search();
+    }
+  }
+
+  #persistFilters() {
+    const q = this.querySelector('#gap-search-input')?.value || '';
+    const status = this.querySelector('#gap-filter-status')?.value || '';
+    const priority = this.querySelector('#gap-filter-priority')?.value || '';
+    const effort = this.querySelector('#gap-filter-effort')?.value || '';
+    const has_ac = !!this.querySelector('#gap-filter-has-ac')?.checked;
+    const filters = { q, status, priority, effort, has_ac };
+    window.chumpPrefs.set('queue.filters', filters);
+    // Reflect in URL (replaceState — don't bloat history).
+    try {
+      const url = new URL(location.href);
+      for (const [k, v] of Object.entries({ q, status, priority, effort })) {
+        if (v) url.searchParams.set(k, v); else url.searchParams.delete(k);
+      }
+      if (has_ac) url.searchParams.set('has_ac', 'false'); else url.searchParams.delete('has_ac');
+      history.replaceState(null, '', url.toString());
+    } catch {}
+  }
+
+  /** Clear all filters + storage + URL — wired to the "Clear" button. */
+  #clearFilters() {
+    const qInput = this.querySelector('#gap-search-input');
+    if (qInput) qInput.value = '';
+    ['#gap-filter-status', '#gap-filter-priority', '#gap-filter-effort']
+      .forEach(sel => { const el = this.querySelector(sel); if (el) el.value = ''; });
+    const hasAcCb = this.querySelector('#gap-filter-has-ac');
+    if (hasAcCb) hasAcCb.checked = false;
+    window.chumpPrefs.del('queue.filters');
+    try {
+      const url = new URL(location.href);
+      ['q', 'status', 'priority', 'effort', 'has_ac'].forEach(k => url.searchParams.delete(k));
+      history.replaceState(null, '', url.toString());
+    } catch {}
+    this.#load();
   }
 
   disconnectedCallback() {
@@ -1159,14 +1379,21 @@ class ChumpViewAgent extends HTMLElement {
   #wireSearch() {
     let debounce = null;
     const trigger = () => {
+      // INFRA-1280: persist on every change. Search itself stays debounced.
+      this.#persistFilters();
       clearTimeout(debounce);
-      debounce = setTimeout(() => this.#search(), 300);
+      debounce = setTimeout(() => {
+        if (this.#searchActive()) this.#search();
+        else this.#load();   // empty filters → fall back to /api/gap-queue
+      }, 300);
     };
     this.querySelector('#gap-search-input')?.addEventListener('input', trigger);
     this.querySelector('#gap-filter-status')?.addEventListener('change', trigger);
     this.querySelector('#gap-filter-priority')?.addEventListener('change', trigger);
     this.querySelector('#gap-filter-effort')?.addEventListener('change', trigger);
     this.querySelector('#gap-filter-has-ac')?.addEventListener('change', trigger);
+    // INFRA-1280 Sub-gap 2: explicit Clear button for one-click reset.
+    this.querySelector('#gap-filter-clear')?.addEventListener('click', () => this.#clearFilters());
   }
 
   #searchActive() {

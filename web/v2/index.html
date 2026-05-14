@@ -33,6 +33,48 @@
       --safe-left:     env(safe-area-inset-left, 0px);
     }
 
+    /* INFRA-1280 Sub-gap 4: light theme override via [data-theme="light"] on <html>. */
+    html[data-theme="light"] {
+      --bg:            #fafafa;
+      --bg-surface:    #ffffff;
+      --bg-elevated:   #f0f0f0;
+      --text:          #1a1a1a;
+      --text-secondary:#4a4a4f;
+      --accent:        #0a84ff;
+      --accent-dim:    rgba(10, 132, 255, 0.10);
+      --border:        rgba(0,0,0,0.10);
+      --success:       #1f8a3a;
+      --warn:          #c87a00;
+      --error:         #c8281c;
+    }
+
+    /* INFRA-1280 Sub-gap 4: WCAG-AAA high-contrast variant. */
+    html[data-theme="high-contrast"] {
+      --bg:            #000000;
+      --bg-surface:    #000000;
+      --bg-elevated:   #1a1a1a;
+      --text:          #ffffff;
+      --text-secondary:#e0e0e0;
+      --accent:        #66c2ff;
+      --accent-dim:    rgba(102, 194, 255, 0.30);
+      --border:        rgba(255,255,255,0.40);
+      --success:       #6ef07a;
+      --warn:          #ffd166;
+      --error:         #ff8a80;
+    }
+
+    /* INFRA-1280 Sub-gap 2: gap-queue Clear button. */
+    .gap-filter-clear {
+      padding: 4px 10px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .gap-filter-clear:hover { color: var(--text); border-color: var(--text-secondary); }
+
     /* ── Reset ──────────────────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
