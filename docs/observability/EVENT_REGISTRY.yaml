@@ -1268,6 +1268,25 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, script, api, waited_s, remaining_percent_before, remaining_percent_after]
 
+  # ── INFRA-1115: a2a mailbox primitive ─────────────────────────────────────
+  - kind: inbox_advance
+    emitter: scripts/coord/chump-inbox.sh (INFRA-1115)
+    trigger: a session ran `chump-inbox.sh read` and the cursor was advanced
+      past one or more new messages. Emitted once per read; the count tells
+      auditors how many messages the recipient consumed in this read.
+    consumers: [fleet-brief, operator-recall, waste-tally]
+    fields_required: [ts, kind, session, messages_read, new_offset]
+
+  - kind: inbox_archived
+    emitter: scripts/coord/inbox-reap.sh (INFRA-1115)
+    trigger: reaper detected a dead session (lease expired past grace
+      window) with an unread inbox. The inbox was gzip-archived to
+      .chump-locks/inbox-archive/<session>/<yyyy-mm>.jsonl.gz and the live
+      inbox file deleted. Operator-recall surfaces this in case the
+      original recipient's work was time-sensitive.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, session, unread_messages, archive]
+
   # ── INFRA-1081: GitHub webhook cache ─────────────────────────────────────
   - kind: webhook_event_received
     emitter: scripts/ops/github-webhook-receiver.py (INFRA-1081)
