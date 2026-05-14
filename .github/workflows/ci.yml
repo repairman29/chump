@@ -1548,6 +1548,11 @@ jobs:
         run: bash scripts/ci/test-merge-driver-ci-yml-add-row.sh
       - name: write-ahead log recovery — wrap/replay round-trip (INFRA-1200)
         run: bash scripts/ci/test-edit-replay.sh
+      - name: PWA auth-toast dedup — fleet_auth_fallback stream + unit (INFRA-991)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-pwa-auth-toast-stream.sh
+          node web/v2/tests/auth-toast.dedup.test.js
       - name: pillar-balance guard at reserve time (INFRA-1152)
         run: |
           cargo build --bin chump 2>&1 | tail -3

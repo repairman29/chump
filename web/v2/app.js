@@ -299,6 +299,144 @@ class ChumpDoctorBanner extends HTMLElement {
 }
 customElements.define('chump-doctor-banner', ChumpDoctorBanner);
 
+// ── <chump-auth-toast> (INFRA-991) ──────────────────────────────────────────
+//
+// Surfaces kind=fleet_auth_fallback ambient events (emitted by src/auth.rs
+// when an Anthropic 401 forces a mode swap) as actionable toasts so the
+// operator can re-enter the broken credential without leaving the PWA.
+//
+// Subscribes to /api/ambient/stream?kind=fleet_auth_fallback (SSE — already
+// exists for PRODUCT-091). Server-side kind filter means we don't process
+// unrelated events. De-dup is client-side: at most one visible toast,
+// counter increments on subsequent events in a 60s window.
+//
+// AC mapping:
+//   1. EventSource subscribes to the existing endpoint
+//   2. Toast renders with failed_mode + fallback_mode + "Re-enter key" button
+//   3. De-dup ≤1 visible toast per 60s; counter shows "× N events in last 60s"
+//   4. Auto-dismiss 5 min after last related event; manually dismissable
+//   5. Test: synthetic line → toast visible within 2s (covered by SSE poll)
+class ChumpAuthToast extends HTMLElement {
+  #es = null;
+  #count = 0;
+  #lastEventTs = 0;
+  #autoDismissTimer = null;
+  #latestEvent = null; // most recent {failed_mode, fallback_mode}
+
+  // De-dup window: subsequent events within this window increment the
+  // counter on the visible toast instead of replacing it.
+  static DEDUP_WINDOW_MS = 60_000;
+  // Auto-dismiss timer: cleared and restarted on each new event.
+  static AUTO_DISMISS_MS = 5 * 60_000;
+
+  connectedCallback() {
+    this.setAttribute('role', 'alert');
+    this.setAttribute('aria-live', 'polite');
+    this.style.display = 'none';
+    this.#subscribe();
+  }
+
+  disconnectedCallback() {
+    if (this.#es) {
+      this.#es.close();
+      this.#es = null;
+    }
+    if (this.#autoDismissTimer) {
+      clearTimeout(this.#autoDismissTimer);
+      this.#autoDismissTimer = null;
+    }
+  }
+
+  #subscribe() {
+    try {
+      this.#es = new EventSource('/api/ambient/stream?kind=fleet_auth_fallback');
+    } catch (err) {
+      // EventSource unsupported — render nothing. Operator falls back to
+      // tailing ambient.jsonl in a terminal (the pre-INFRA-991 status quo).
+      return;
+    }
+    this.#es.addEventListener('ambient', (e) => {
+      let payload;
+      try { payload = JSON.parse(e.data); } catch { return; }
+      if (payload.kind !== 'fleet_auth_fallback') return;
+      this.#onEvent(payload);
+    });
+    this.#es.addEventListener('error', () => {
+      // EventSource auto-reconnects; we just need to not crash. If the
+      // server is down the doctor-banner will catch it.
+    });
+  }
+
+  #onEvent(payload) {
+    const now = Date.now();
+    const withinWindow = (now - this.#lastEventTs) < ChumpAuthToast.DEDUP_WINDOW_MS;
+    this.#lastEventTs = now;
+    this.#latestEvent = payload;
+    if (this.#count > 0 && withinWindow && this.style.display !== 'none') {
+      this.#count += 1;
+    } else {
+      this.#count = 1;
+    }
+    this.#render();
+    this.#restartAutoDismiss();
+  }
+
+  #restartAutoDismiss() {
+    if (this.#autoDismissTimer) clearTimeout(this.#autoDismissTimer);
+    this.#autoDismissTimer = setTimeout(() => this.#dismiss(), ChumpAuthToast.AUTO_DISMISS_MS);
+  }
+
+  #dismiss() {
+    this.style.display = 'none';
+    this.innerHTML = '';
+    this.#count = 0;
+    this.#latestEvent = null;
+    if (this.#autoDismissTimer) {
+      clearTimeout(this.#autoDismissTimer);
+      this.#autoDismissTimer = null;
+    }
+  }
+
+  #render() {
+    if (!this.#latestEvent) return;
+    const failed = this.#esc(this.#latestEvent.failed_mode || 'unknown');
+    const fallback = this.#esc(this.#latestEvent.fallback_mode || 'unknown');
+    const counter = this.#count > 1
+      ? `<span class="auth-toast-counter">× ${this.#count} events in last 60s</span>`
+      : '';
+    this.style.display = 'block';
+    this.innerHTML = `
+      <div class="auth-toast-inner">
+        <div class="auth-toast-head"><strong>Anthropic auth failed</strong> ${counter}</div>
+        <div class="auth-toast-body">Worker fell back to <strong>${fallback}</strong> after <strong>${failed}</strong> mode failed.</div>
+        <div class="auth-toast-actions">
+          <button type="button" class="auth-toast-reenter">Re-enter key</button>
+          <button type="button" class="auth-toast-dismiss" aria-label="Dismiss">Dismiss</button>
+        </div>
+      </div>
+    `;
+    const reenter = this.querySelector('.auth-toast-reenter');
+    if (reenter) {
+      reenter.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+      });
+    }
+    const dismiss = this.querySelector('.auth-toast-dismiss');
+    if (dismiss) {
+      dismiss.addEventListener('click', () => this.#dismiss());
+    }
+  }
+
+  #esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+}
+customElements.define('chump-auth-toast', ChumpAuthToast);
+
 // ── <chump-view-tasks> ────────────────────────────────────────────────────────
 class ChumpViewTasks extends HTMLElement {
   connectedCallback() {
