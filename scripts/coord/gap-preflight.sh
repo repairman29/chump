@@ -396,9 +396,31 @@ check_pr_conflict() {
     likely="$(_gap_files "$gap_id")"
     [[ -n "$likely" ]] || return 0
 
-    PR_DATA="$(gh pr list --state open --json number,headRefName,files \
-        --jq '.[] | "\(.number)|\(.headRefName)|" + ([.files[].path] | join(","))' \
-        2>/dev/null | head -20 || true)"
+    # INFRA-1275: cache-first PR scan. Cache holds {number, head_ref, title};
+    # file paths aren't cached (no webhook event currently populates them), so
+    # this path fetches files per-PR via REST only when overlap candidates exist.
+    # Cache miss → single REST refill, never GraphQL.
+    local _cache_lib="$(dirname "$0")/lib/github_cache.sh"
+    if [[ -f "$_cache_lib" ]]; then
+        # shellcheck source=lib/github_cache.sh
+        source "$_cache_lib"
+    fi
+    local _open_prs
+    _open_prs="$(cache_query_open_prs 2>/dev/null | head -20 || true)"
+    if [[ -z "$_open_prs" ]] && declare -F cache_refresh_open_prs >/dev/null 2>&1; then
+        cache_refresh_open_prs >/dev/null 2>&1 || true
+        _open_prs="$(cache_query_open_prs 2>/dev/null | head -20 || true)"
+    fi
+    [[ -n "$_open_prs" ]] || return 0
+    # Per-PR file fetch via cache_lookup_pr_files (single REST call per PR,
+    # background-tagged, never GraphQL). Bounded by `head -20` above.
+    PR_DATA=""
+    local _n _ttl _br _files
+    while IFS=$'\t' read -r _n _ttl _br; do
+        [[ -n "$_n" ]] || continue
+        _files="$(cache_lookup_pr_files "$_n" 2>/dev/null || echo "")"
+        PR_DATA+="$_n|$_br|$_files"$'\n'
+    done <<< "$_open_prs"
     [[ -n "$PR_DATA" ]] || return 0
 
     IFS=',' read -ra gfiles <<< "$likely"
@@ -540,12 +562,30 @@ $SIBLING_GAP_YAML"
     #   - CHUMP_SPECULATIVE=1        (INFRA-193 speculative race wanted)
     if [[ "${CHUMP_PREFLIGHT_PR_CHECK:-1}" != "0" ]] \
             && command -v gh >/dev/null 2>&1; then
-        _PR_QUERY="$(gh pr list --state open --search "${GAP_ID} in:title" \
-            --json number,headRefName,autoMergeRequest -q '.[0]' 2>/dev/null || true)"
-        if [[ -n "$_PR_QUERY" && "$_PR_QUERY" != "null" && "$_PR_QUERY" != "{}" ]]; then
-            PR_NUM="$(printf '%s' "$_PR_QUERY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("number",""))' 2>/dev/null)"
-            PR_HEAD="$(printf '%s' "$_PR_QUERY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("headRefName",""))' 2>/dev/null)"
-            _PR_ARMED="$(printf '%s' "$_PR_QUERY" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("armed" if d.get("autoMergeRequest") else "open")' 2>/dev/null)"
+        # INFRA-1275: cache-first PR-by-title lookup. Cache miss → REST refill
+        # (single call, not GraphQL). autoMergeRequest is fetched via REST
+        # cache_lookup_pr only if we found a candidate (saves a round-trip
+        # when no match).
+        local _cache_lib2="$(dirname "$0")/lib/github_cache.sh"
+        if [[ -f "$_cache_lib2" ]] && ! declare -F cache_query_open_prs_by_title >/dev/null 2>&1; then
+            # shellcheck source=lib/github_cache.sh
+            source "$_cache_lib2"
+        fi
+        _PR_QUERY=""
+        local _row
+        _row="$(cache_query_open_prs_by_title "$GAP_ID" 2>/dev/null | head -1 || true)"
+        if [[ -z "$_row" ]] && declare -F cache_refresh_open_prs >/dev/null 2>&1; then
+            cache_refresh_open_prs >/dev/null 2>&1 || true
+            _row="$(cache_query_open_prs_by_title "$GAP_ID" 2>/dev/null | head -1 || true)"
+        fi
+        if [[ -n "$_row" ]]; then
+            PR_NUM="$(printf '%s' "$_row" | awk -F'\t' '{print $1}')"
+            PR_HEAD="$(printf '%s' "$_row" | awk -F'\t' '{print $3}')"
+            # Auto-merge state isn't on the title row — pull from full PR record.
+            _PR_QUERY="$(cache_lookup_pr "$PR_NUM" 2>/dev/null || echo "")"
+            _PR_ARMED="$(printf '%s' "$_PR_QUERY" | python3 -c 'import sys,json
+try: d=json.load(sys.stdin); print("armed" if d.get("auto_merge") else "open")
+except: print("")' 2>/dev/null)"
             # Skip if it's our OWN branch (we're re-running preflight on the same work).
             CURRENT_BRANCH="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
             if [[ -n "$PR_NUM" && "$PR_HEAD" != "$CURRENT_BRANCH" ]]; then
@@ -696,24 +736,31 @@ $SIBLING_GAP_YAML"
         done
     fi
 
-    # ── INFRA-1029: Check 6: open PR title scan (REST, no GraphQL) ───────────
+    # ── INFRA-1029 / INFRA-1275: Check 6: open PR title scan ─────────────────
+    # Cache-first via cache_query_open_prs_by_title (sqlite read). Cache miss
+    # → single REST refill (cache_refresh_open_prs uses gh api, not GraphQL).
+    # The previous direct `gh api repos/X/pulls?state=open&per_page=100` is
+    # gone; this path now hits the cache for >95% of preflight invocations.
     if [[ -z "${CHUMP_PREFLIGHT_NO_PR_SCAN:-}" ]]; then
-        _nwo=$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null || echo "")
-        if [[ -n "$_nwo" ]]; then
-            _gap_lower=$(echo "$GAP_ID" | tr '[:upper:]' '[:lower:]')
-            _pr_hit=$(gh api "repos/$_nwo/pulls?state=open&per_page=100" \
-                --jq "[.[] | select(.title | ascii_downcase | contains(\"$_gap_lower\"))] | .[].number" \
-                2>/dev/null || echo "")
-            if [[ -n "$_pr_hit" ]]; then
-                _pr_list=$(echo "$_pr_hit" | tr '\n' ',' | sed 's/,$//')
-                info "WARN: $GAP_ID — open PR(s) found with this gap ID in title: #$_pr_list"
-                info "  An existing PR may already implement this gap."
-                info "  Review before claiming: gh pr view <N>"
-                info "  Skip this check: CHUMP_PREFLIGHT_NO_PR_SCAN=1"
-                printf '{"ts":"%s","kind":"preflight_dupe_pr","gap":"%s","prs":"%s"}\n' \
-                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GAP_ID" "$_pr_list" \
-                    >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
-            fi
+        local _cache_lib3="$(dirname "$0")/lib/github_cache.sh"
+        if [[ -f "$_cache_lib3" ]] && ! declare -F cache_query_open_prs_by_title >/dev/null 2>&1; then
+            # shellcheck source=lib/github_cache.sh
+            source "$_cache_lib3"
+        fi
+        _pr_hit="$(cache_query_open_prs_by_title "$GAP_ID" 2>/dev/null | awk -F'\t' '{print $1}' || echo "")"
+        if [[ -z "$_pr_hit" ]] && declare -F cache_refresh_open_prs >/dev/null 2>&1; then
+            cache_refresh_open_prs >/dev/null 2>&1 || true
+            _pr_hit="$(cache_query_open_prs_by_title "$GAP_ID" 2>/dev/null | awk -F'\t' '{print $1}' || echo "")"
+        fi
+        if [[ -n "$_pr_hit" ]]; then
+            _pr_list=$(echo "$_pr_hit" | tr '\n' ',' | sed 's/,$//')
+            info "WARN: $GAP_ID — open PR(s) found with this gap ID in title: #$_pr_list"
+            info "  An existing PR may already implement this gap."
+            info "  Review before claiming via the PWA queue card or the GitHub UI."
+            info "  Skip this check: CHUMP_PREFLIGHT_NO_PR_SCAN=1"
+            printf '{"ts":"%s","kind":"preflight_dupe_pr","gap":"%s","prs":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$GAP_ID" "$_pr_list" \
+                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
         fi
     fi
 

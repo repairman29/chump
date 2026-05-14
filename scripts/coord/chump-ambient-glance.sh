@@ -104,24 +104,24 @@ fi
 # INFRA-1081). Falls back to gh pr list when cache is empty.
 if [[ "${CHECK_PRS}" == "1" ]]; then
   MATCHES=""
-  # Cache-first path
+  # INFRA-1275: cache-first path via shared helper, REST-fallback (never GraphQL).
+  # Replaces the prior inline sqlite + `gh pr list` GraphQL call.
   CACHE_LIB="$(dirname "$0")/lib/github_cache.sh"
-  CACHE_DB="${CHUMP_CACHE_DB:-$(git rev-parse --show-toplevel 2>/dev/null)/.chump/github_cache.db}"
-  if [[ -f "$CACHE_LIB" && -f "$CACHE_DB" && -n "${TITLE}" ]]; then
-    # SQL LIKE with case-sensitive substring match (matches contains() semantics).
-    MATCHES=$(sqlite3 -separator ' ' "$CACHE_DB" \
-      "SELECT number, title FROM pr_state \
-       WHERE merged_at IS NULL AND title LIKE '%${TITLE//\'/}%' \
-       ORDER BY number" 2>/dev/null || true)
+  if [[ -f "$CACHE_LIB" && -n "${TITLE}" ]]; then
+    # shellcheck source=lib/github_cache.sh
+    source "$CACHE_LIB"
+    # Cache lookup: returns `<number>\t<title>\t<head_ref>` per matching row.
+    MATCHES=$(cache_query_open_prs_by_title "${TITLE}" 2>/dev/null | awk -F'\t' '{printf "%s %s\n", $1, $2}' || true)
     if [[ -n "$MATCHES" ]]; then
-      printf '[INFO] FLEET-029 cache hit: read overlap candidates from .chump/github_cache.db (INFRA-1108)\n' >&2
+      printf '[INFO] FLEET-029 cache hit: read overlap candidates via cache_query_open_prs_by_title (INFRA-1275)\n' >&2
+    else
+      # Cold cache → single REST refill (gh api, NOT gh pr list — REST not GraphQL).
+      # Background-tagged so it yields to ship-blocking calls per INFRA-1080.
+      if cache_refresh_open_prs >/dev/null 2>&1; then
+        MATCHES=$(cache_query_open_prs_by_title "${TITLE}" 2>/dev/null | awk -F'\t' '{printf "%s %s\n", $1, $2}' || true)
+        [[ -n "$MATCHES" ]] && printf '[INFO] FLEET-029 cold-cache refilled via REST (INFRA-1275)\n' >&2
+      fi
     fi
-  fi
-  # Fallback to gh pr list when cache empty (cold start) or returned nothing.
-  if [[ -z "$MATCHES" ]] && command -v gh &>/dev/null && [[ -n "${TITLE}" ]]; then
-    MATCHES=$(gh pr list --state open --limit 50 --json number,title --jq \
-      ".[] | select(.title | contains(\"${TITLE}\")) | \"\(.number) \(.title)\"" 2>/dev/null || echo "")
-    [[ -n "$MATCHES" ]] && printf '[INFO] FLEET-029 fallback: queried gh pr list (cache empty)\n' >&2
   fi
   if [[ -n "${MATCHES}" ]]; then
     FOUND_OVERLAP=1
