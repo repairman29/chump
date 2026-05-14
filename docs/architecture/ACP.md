@@ -165,6 +165,7 @@ cargo test -- acp
 
 - [src/acp.rs](../src/acp.rs) — type definitions
 - [src/acp_server.rs](../src/acp_server.rs) — JSON-RPC stdio server
+- [ACP_CAPABILITY_COMPARISON.md](ACP_CAPABILITY_COMPARISON.md) — capability matrix vs other ACP registry agents
 - [Agent Client Protocol spec](https://agentclientprotocol.com)
 - [ACP Registry](https://jetbrains.com/acp)
 - [Zed's ACP docs](https://zed.dev/acp)
