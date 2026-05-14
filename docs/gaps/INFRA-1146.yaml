@@ -1,7 +1,7 @@
 - id: INFRA-1146
   domain: INFRA
   title: "EFFECTIVE: session-start roadmap drift inject — surface starved outcomes at agent boot"
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -13,4 +13,4 @@
     - "EVENT_REGISTRY.yaml registers kind=roadmap_inject_applied"
     - "All 7 checks in scripts/ci/test-roadmap-inject.sh pass"
     - "bash 3.2 compatible (macOS): Python digest script written to temp file, not inline heredoc in subshell"
-  closed_pr: null
+  closed_pr: 1841
