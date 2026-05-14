@@ -118,7 +118,10 @@ while IFS='|' read -r _pr_num _branch _title; do
 
     if [[ "$_rebased" -eq 1 ]]; then
         log "  PR #$_pr_num rebased onto main — re-arming auto-merge"
-        gh pr merge "$_pr_num" --auto --squash 2>/dev/null || \
+        # INFRA-1223: route through centralized armer to inherit 5s spacing +
+        # secondary-rate-limit backoff. Loops over stacked PRs without the
+        # armer's enforcement risk gagging the operator's user account.
+        "${REPO_ROOT}/scripts/coord/auto-merge-armer.sh" --pr "$_pr_num" 2>/dev/null || \
             log "  WARN: could not re-arm auto-merge on PR #$_pr_num (already armed?)"
 
         emit '{"ts":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","kind":"stacked_pr_rebased","merged_branch":"'"$MERGED_BRANCH"'","stacked_pr":'"$_pr_num"',"stacked_branch":"'"$_branch"'","status":"ok"}'

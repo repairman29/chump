@@ -84,7 +84,10 @@ while IFS=$'\t' read -r num title is_draft merge_st has_auto; do
         continue
     fi
 
-    if gh pr merge "$num" --auto --squash >/dev/null 2>&1; then
+    # INFRA-1223: route through centralized armer so we inherit 5s spacing +
+    # 60/120/240s secondary-rate-limit backoff. Sweeping in a loop without
+    # the armer is the dominant agent-blowout failure mode.
+    if "${REPO_ROOT}/scripts/coord/auto-merge-armer.sh" --pr "$num" >/dev/null 2>&1; then
         log "  PR#$num ARMED — '$title'"
         armed=$((armed + 1))
     else

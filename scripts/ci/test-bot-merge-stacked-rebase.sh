@@ -174,8 +174,8 @@ else
     fail "rebase-stacked-prs.sh missing PR state polling — trigger must be gated on merge event"
 fi
 
-# 16. Script re-arms auto-merge after rebase
-if grep -q 'auto.*squash\|--auto.*merge\|gh pr merge.*auto' "$REBASE_STACKED"; then
+# 16. Script re-arms auto-merge after rebase (either direct gh pr merge or via auto-merge-armer.sh)
+if grep -q 'auto.*squash\|--auto.*merge\|gh pr merge.*auto\|auto-merge-armer' "$REBASE_STACKED"; then
     ok "rebase-stacked-prs.sh re-arms auto-merge after rebase"
 else
     fail "rebase-stacked-prs.sh does not re-arm auto-merge"

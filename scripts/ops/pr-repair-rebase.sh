@@ -166,9 +166,12 @@ while IFS='|' read -r pr_num branch created_at has_auto_merge; do
             log "  OK: rebased and pushed $branch — CI will re-run"
             repaired=$((repaired + 1))
 
-            # Arm auto-merge if not already armed
+            # Arm auto-merge if not already armed.
+            # INFRA-1223: route through centralized armer (5s spacing +
+            # secondary-rate-limit backoff). Repair loops are a common
+            # path to user-account mutation-limit penalties.
             if [[ "$has_auto_merge" == "false" ]]; then
-                gh pr merge "$pr_num" --auto --squash 2>/dev/null || true
+                "${REPO_ROOT}/scripts/coord/auto-merge-armer.sh" --pr "$pr_num" 2>/dev/null || true
                 log "  armed auto-merge on #$pr_num"
             fi
         else

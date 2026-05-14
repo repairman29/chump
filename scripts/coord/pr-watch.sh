@@ -189,7 +189,10 @@ attempt_recovery() {
     if ! CHUMP_GAP_CHECK=0 git push --force-with-lease origin "$BRANCH" >/dev/null 2>&1; then
         say "force-push rejected (someone else pushed?) — re-arming and waiting"
     fi
-    gh pr merge "$PR" --auto --squash >/dev/null 2>&1
+    # INFRA-1223: route through centralized armer (5s spacing + 60/120/240s
+    # backoff on secondary rate limit). Per-poll re-arms otherwise risk
+    # tripping the mutation abuse heuristic.
+    "$(dirname "${BASH_SOURCE[0]}")/auto-merge-armer.sh" --pr "$PR" >/dev/null 2>&1 || true
     say "auto-recovered ✓"
     rm -f /tmp/pr-watch-rebase-$$.log
     return 0
