@@ -2405,6 +2405,20 @@ RDPYEOF
                 if [[ $_autoclose_rc -eq 0 ]]; then
                     # INFRA-509: state.db is canonical; no YAML file staging needed.
                     green "Auto-closed $_gid (closed_pr=$TARGET_PR) — squashed atomically by merge queue"
+
+                    # INFRA-1273: post-ship retro prompt. Right after a successful
+                    # close — while the friction is fresh in the agent's working
+                    # memory — emit a structured one-liner inviting the agent to
+                    # log a retro via the INFRA-1271 FEEDBACK channel. The format
+                    # is stable so harnesses (claude-code, opencode, etc.) can
+                    # detect + surface it to the agent.
+                    # Per-session opt-out: CHUMP_NO_RETRO_PROMPT=1.
+                    if [[ "${CHUMP_NO_RETRO_PROMPT:-0}" != "1" ]]; then
+                        printf '[retro-prompt:INFRA-1273] Anything that did not fit while shipping %s? Log it:\n' "$_gid"
+                        printf '  scripts/coord/broadcast.sh FEEDBACK retro %s "<one-liner>"\n' "$_gid"
+                        printf '  (kinds: defect | proposal | preference[+1/-1] | retro)\n'
+                    fi
+
                     # INFRA-192: forward-chain notifier (best-effort; never blocks close path).
                     if command -v chump >/dev/null 2>&1 \
                         && [[ -x scripts/coord/broadcast.sh ]]; then
