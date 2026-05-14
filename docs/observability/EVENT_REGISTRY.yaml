@@ -1355,6 +1355,12 @@ events:
       12=fmt, 13=clippy, 14=test, 15=push, 16=pr-create)
     consumers: [fleet-brief, opus-curator, emergency-fast-path, recovery-automation]
     fields_required: [ts, kind, step, exit_code, gap_id, branch]
+  - kind: bot_merge_crashed
+    emitter: scripts/coord/bot-merge.sh (_bm_cleanup trap, INFRA-1035)
+    trigger: bot-merge exits with an open step transition (SIGTERM, OOM, or
+      set-e failure) — the step's stage_start had no matching stage_done
+    consumers: [fleet-brief, emergency-fast-path]
+    fields_required: [ts, kind, step, pid, steps_file]
   # ── Gap store curation ───────────────────────────────────────────────────
   - kind: gap_store_curated
     emitter: scripts/ops/gap-curate.sh
