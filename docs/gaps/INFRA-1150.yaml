@@ -1,6 +1,6 @@
 - id: INFRA-1150
   domain: INFRA
-  title: MISSION: a2a-mailbox consumer in roadmap-status/inject/update-agent — cross-agent coordination via INFRA-1115 mailbox primitive (Silo 4)
+  title: "MISSION: a2a-mailbox consumer in roadmap-status/inject/update-agent — cross-agent coordination via INFRA-1115 mailbox primitive (Silo 4)"
   status: open
   priority: P2
   effort: s
