@@ -1108,9 +1108,16 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
 
     // Last 5 episodes (summary, detail, happened_at) so the UI can show "what Chump just did".
     // If episodes are absent or all older than 24h, synthesize from the ship log so "Recent" always shows activity.
-    let db_episodes: Vec<serde_json::Value> = episode_db::episode_recent(None, 5)
+    //
+    // INFRA-1206: filter out CI-fixture episodes (summary starting with
+    // "test episode") so the dashboard doesn't show merge-driver test
+    // pollution as if it were real activity. Hide-only — the underlying
+    // store keeps them for debugging; we just don't surface them.
+    let db_episodes: Vec<serde_json::Value> = episode_db::episode_recent(None, 20)
         .unwrap_or_default()
         .into_iter()
+        .filter(|e| !is_fixture_episode_summary(&e.summary))
+        .take(5)
         .map(|e| {
             serde_json::json!({
                 "summary": e.summary,
@@ -1190,13 +1197,22 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         .unwrap_or(0);
 
     // Last heartbeat time: newest timestamp line in the ship log.
+    //
+    // INFRA-1206: the field name is `_iso` but historically we just returned
+    // whatever string was inside the brackets — which is usually a unix
+    // epoch like "1773953115". Format epoch values as proper ISO-8601 UTC
+    // so the contract matches the field name. ISO-formatted bracket
+    // contents pass through unchanged.
     let last_heartbeat_iso: Option<String> = ship_lines.iter().rev().find_map(|l| {
         let t = l.trim();
         // Lines start with "[UNIX_TS]" or an ISO timestamp prefix.
         let ts_part = t.trim_start_matches('[').split(']').next()?.trim();
-        if ts_part.parse::<u64>().is_ok()
-            || (ts_part.len() >= 10 && ts_part.chars().next()?.is_ascii_digit())
-        {
+        if let Ok(epoch) = ts_part.parse::<i64>() {
+            // Epoch integer — convert to ISO-8601 UTC.
+            return Some(epoch_to_iso8601(epoch));
+        }
+        if ts_part.len() >= 10 && ts_part.chars().next()?.is_ascii_digit() {
+            // Already looks like an ISO timestamp prefix — pass through.
             Some(ts_part.to_string())
         } else {
             None
@@ -1227,6 +1243,23 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         "red"
     };
 
+    // INFRA-1206: surface WHY the color was chosen so the operator can drill
+    // in. Short human-readable reason; null only when truly all-green.
+    let fleet_status_reason: Option<String> = match fleet_status {
+        "green" => None,
+        "yellow" => Some(if ship_running {
+            "ship heartbeat running but no completed round in 2h".to_string()
+        } else {
+            "no active ship heartbeat (last round within 2h still recent)".to_string()
+        }),
+        "red" => Some(if !ship_running && last_round_secs.is_none() {
+            "no ship heartbeat AND no completed rounds on record".to_string()
+        } else {
+            "no ship heartbeat AND no completed rounds in 2h".to_string()
+        }),
+        _ => None,
+    };
+
     // Task throughput stats (AUTO-002): expose open/in_progress/done/done_today counts.
     let task_throughput = task_db::task_stats()
         .map(|s| {
@@ -1254,8 +1287,54 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         "timestamp_secs": timestamp_secs,
         "last_heartbeat_iso": last_heartbeat_iso,
         "fleet_status": fleet_status,
+        "fleet_status_reason": fleet_status_reason,
         "task_throughput": task_throughput,
     })))
+}
+
+/// INFRA-1206: return true if a dashboard episode summary looks like a
+/// CI test fixture (so we hide it from the operator view).
+fn is_fixture_episode_summary(summary: &str) -> bool {
+    let s = summary.trim().to_ascii_lowercase();
+    s.starts_with("test episode")
+}
+
+/// INFRA-1206: format a unix-epoch integer as ISO-8601 UTC.
+///
+/// Mirrors the helper in ambient_emit::current_iso8601 but takes an
+/// arbitrary epoch — used to repair `last_heartbeat_iso` payloads that
+/// were leaking raw epochs into the JSON response.
+fn epoch_to_iso8601(epoch: i64) -> String {
+    if epoch < 0 {
+        return format!("{}", epoch);
+    }
+    let secs = epoch as u64;
+    // Civil-from-days routine — same algorithm as ambient_emit, kept inline
+    // to avoid a cross-module import for a 4-line function.
+    let days = (secs / 86400) as i64;
+    let rem = (secs % 86400) as u32;
+    let (y, m, d) = civil_from_unix_days(days);
+    let h = rem / 3600;
+    let mi = (rem % 3600) / 60;
+    let se = rem % 60;
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, h, mi, se)
+}
+
+/// Howard Hinnant's date algorithm: shift days-since-Unix-epoch to civil
+/// (year, month, day). Same as the helper inside ambient_emit; kept local
+/// to avoid leaking a `pub` from there.
+fn civil_from_unix_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z.rem_euclid(146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
 }
 
 /// GET /api/dashboard/stream — SSE stream that pushes fresh dashboard data
@@ -1308,14 +1387,28 @@ async fn handle_dashboard_stream(
         } else {
             "red"
         };
+        // INFRA-1206: epoch → ISO-8601 (mirrors the /api/dashboard fix).
         let last_heartbeat_iso: Option<String> = ship_log_content.lines().rev().find_map(|l| {
             let ts = l.trim().trim_start_matches('[').split(']').next()?.trim();
-            if ts.parse::<u64>().is_ok() {
-                Some(ts.to_string())
-            } else {
-                None
+            if let Ok(epoch) = ts.parse::<i64>() {
+                return Some(epoch_to_iso8601(epoch));
             }
+            None
         });
+        let fleet_status_reason: Option<String> = match fleet_status {
+            "green" => None,
+            "yellow" => Some(if ship_running {
+                "ship heartbeat running but no completed round in 2h".to_string()
+            } else {
+                "no active ship heartbeat (last round within 2h still recent)".to_string()
+            }),
+            "red" => Some(if !ship_running && last_round_secs.is_none() {
+                "no ship heartbeat AND no completed rounds on record".to_string()
+            } else {
+                "no ship heartbeat AND no completed rounds in 2h".to_string()
+            }),
+            _ => None,
+        };
         let active_tasks: Vec<serde_json::Value> = crate::task_db::task_list(Some("in_progress"))
             .unwrap_or_default()
             .into_iter()
@@ -1325,6 +1418,7 @@ async fn handle_dashboard_stream(
         serde_json::to_string(&serde_json::json!({
             "ship_running": ship_running,
             "fleet_status": fleet_status,
+            "fleet_status_reason": fleet_status_reason,
             "last_heartbeat_iso": last_heartbeat_iso,
             "active_tasks": active_tasks,
             "timestamp_secs": now_secs,
