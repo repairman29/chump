@@ -1518,6 +1518,8 @@ jobs:
       - name: pr-scope PR_TITLE fallback chain (INFRA-976)
         run: bash scripts/ci/test-pr-scope-title-fallback.sh
 
+      - name: pillar health dashboard endpoint + web component (PRODUCT-090)
+        run: bash scripts/ci/test-pillar-dashboard.sh
       - name: pillar-balance guard at reserve time (INFRA-1152)
         run: |
           cargo build --bin chump 2>&1 | tail -3
