@@ -128,5 +128,69 @@ if [[ -f "$STATE_DB" ]] && command -v sqlite3 &>/dev/null; then
         "SELECT session_id,gap_id,worktree,expires_at FROM leases" 2>/dev/null || true)
 fi
 
+# ── INFRA-1164: sweep expired claim-*.json lease files ───────────────────────
+# claim-*.json files are written by gap-claim.sh when a session claims a gap.
+# They include an expires_at field. Sessions that crash or are killed without
+# releasing leave orphaned claim files. This sweep reaps any claim file whose
+# expires_at is in the past.
+CLAIM_REAPED=0
+NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+NOW_EPOCH_CLAIM="$(date -u +%s)"
+
+for claim_file in "$LOCK_DIR"/claim-*.json; do
+    [[ -e "$claim_file" ]] || continue
+    # Parse expires_at from JSON
+    expires_at="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$claim_file'))
+    print(d.get('expires_at', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+    [[ -z "$expires_at" ]] && continue
+
+    # Convert ISO timestamp to epoch
+    expires_epoch="$(python3 -c "
+import datetime
+try:
+    dt = datetime.datetime.fromisoformat('$expires_at'.replace('Z', '+00:00'))
+    print(int(dt.timestamp()))
+except Exception:
+    print(0)
+" 2>/dev/null || echo "0")"
+
+    if [[ "$expires_epoch" -gt 0 && "$expires_epoch" -lt "$NOW_EPOCH_CLAIM" ]]; then
+        gap_id="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$claim_file'))
+    print(d.get('gap_id', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+        session_id="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$claim_file'))
+    print(d.get('session_id', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo "  WOULD REAP claim (expired $expires_at): $(basename "$claim_file") [gap=$gap_id]"
+        else
+            rm -f "$claim_file"
+            echo "  REAPED claim (expired $expires_at): $(basename "$claim_file") [gap=$gap_id]"
+            printf '{"ts":"%s","kind":"stale_gap_lock_reaped","event":"stale_gap_lock_reaped","lock":"%s","session":"%s","gap":"%s","reason":"expired","source":"claim_file"}\n' \
+                "$NOW_ISO" \
+                "$(basename "$claim_file")" \
+                "$session_id" "$gap_id" \
+                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+        fi
+        CLAIM_REAPED=$((CLAIM_REAPED+1))
+    fi
+done
+
 echo
-echo "stale-gap-lock-reaper: reaped=$REAPED skipped=$SKIPPED errors=$ERRORS dry_run=$DRY_RUN db_reaped=$DB_REAPED"
+echo "stale-gap-lock-reaper: reaped=$REAPED skipped=$SKIPPED errors=$ERRORS dry_run=$DRY_RUN db_reaped=$DB_REAPED claim_reaped=$CLAIM_REAPED"
