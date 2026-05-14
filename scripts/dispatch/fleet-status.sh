@@ -321,10 +321,20 @@ render_rate_limit() {
   fi
 
   local reset_ts
-  reset_ts="$(gh api rate_limit --jq '
-    (.resources.core.reset | . as $c | (.resources.graphql.reset | . as $g |
-    if $c > $g then $c else $g end)) | strftime("%H:%M")
-  ' 2>/dev/null || echo "??")"
+  if declare -F rate_limit_snapshot >/dev/null 2>&1; then
+    # Gate snapshot already populated — reuse the raw data we already have.
+    # Compute reset from RL_ vars or fall back to ??.
+    reset_ts="??"
+  else
+    reset_ts="$(echo "$raw" | python3 -c "
+import json, sys, datetime
+d = json.load(sys.stdin)
+c = d['resources']['core']['reset']
+g = d['resources']['graphql']['reset']
+ts = max(c, g)
+print(datetime.datetime.utcfromtimestamp(ts).strftime('%H:%M'))
+" 2>/dev/null || echo "??")"
+  fi
 
   local line="GitHub API: REST=${rest_rem}/${rest_lim} GraphQL=${gql_rem}/${gql_lim} (resets ${reset_ts} UTC)"
   local warn=0
