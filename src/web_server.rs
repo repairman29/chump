@@ -3357,7 +3357,11 @@ async fn handle_pr_detail(
     Ok(Json(payload))
 }
 
-// ── PRODUCT-091: ambient event viewer endpoints ───────────────────────────────
+// ── PRODUCT-091 / PRODUCT-094: ambient event viewer + notification center endpoints ──────────
+// PRODUCT-094: /api/ambient/stream is consumed by notification-center.js for
+// fleet_wedge, pr_stuck, gap_shipped, needs_judgment events → in-app badge +
+// notification panel + localStorage persistence. No additional server endpoints
+// required; the existing SSE stream covers all notification kinds.
 
 fn ambient_log_path() -> PathBuf {
     std::env::var("CHUMP_AMBIENT_LOG")

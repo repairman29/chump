@@ -330,8 +330,18 @@
       background: var(--accent-dim);
       color: var(--accent);
     }
-    chump-nav .nav-icon { font-size: 18px; line-height: 1; }
+    chump-nav .nav-icon { font-size: 18px; line-height: 1; position: relative; }
     chump-nav .nav-label { font-size: 9px; letter-spacing: 0.3px; text-transform: uppercase; }
+
+    /* PRODUCT-094: notification badge on the nav bell icon */
+    .notif-badge {
+      position: absolute; top: -5px; right: -8px;
+      background: #ff3b30; color: #fff;
+      font-size: 9px; font-weight: 700; line-height: 1;
+      padding: 2px 4px; border-radius: 8px;
+      min-width: 14px; text-align: center;
+      pointer-events: none;
+    }
 
     /* ── Main content ───────────────────────────────────────────────────── */
     #main-content {
@@ -980,6 +990,8 @@
   <chump-ootb-wizard></chump-ootb-wizard>
   <!-- PRODUCT-082: universal first-run welcome (non-Tauri) -->
   <chump-welcome></chump-welcome>
+  <!-- PRODUCT-094: notification center — invisible singleton; manages SSE + badge -->
+  <chump-notification-center></chump-notification-center>
 
   <!-- INFRA-250: relative paths so the same index works in both contexts:
        (a) browser via axum sidecar at http://host/v2/ (after the / -> /v2/
@@ -997,6 +1009,7 @@
   <script src="ambient-viewer.js" type="module"></script>
   <script src="quick-actions.js" type="module"></script>
   <script src="pillar-health.js" type="module"></script>
+  <script src="notification-center.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));

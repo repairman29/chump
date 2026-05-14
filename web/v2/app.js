@@ -204,23 +204,24 @@ window.addEventListener('DOMContentLoaded', () => window.chumpStream.start());
 // ── <chump-nav> ───────────────────────────────────────────────────────────────
 class ChumpNav extends HTMLElement {
   static #ITEMS = [
-    { id: 'chat',      label: 'Chat',      icon: '💬' },
-    { id: 'agents',    label: 'Agents',    icon: '🤝' },
-    { id: 'results',   label: 'Results',   icon: '📊' },
-    { id: 'agent',     label: 'Queue',     icon: '🔄' },
-    { id: 'tasks',     label: 'Tasks',     icon: '⚡' },
-    { id: 'decisions', label: 'Decisions', icon: '🎯' },
-    { id: 'judgment',  label: 'Judgment',  icon: '⚖️' },
-    { id: 'ambient',   label: 'Events',    icon: '📡' },
-    { id: 'memory',    label: 'Memory',    icon: '🧠' },
-    { id: 'models',    label: 'Models',    icon: '🤖' },
-    { id: 'settings',  label: 'Settings',  icon: '⚙' },
+    { id: 'chat',          label: 'Chat',      icon: '💬' },
+    { id: 'agents',        label: 'Agents',    icon: '🤝' },
+    { id: 'results',       label: 'Results',   icon: '📊' },
+    { id: 'agent',         label: 'Queue',     icon: '🔄' },
+    { id: 'tasks',         label: 'Tasks',     icon: '⚡' },
+    { id: 'decisions',     label: 'Decisions', icon: '🎯' },
+    { id: 'judgment',      label: 'Judgment',  icon: '⚖️' },
+    { id: 'ambient',       label: 'Events',    icon: '📡' },
+    { id: 'notifications', label: 'Alerts',    icon: '🔔', badge: true },
+    { id: 'memory',        label: 'Memory',    icon: '🧠' },
+    { id: 'models',        label: 'Models',    icon: '🤖' },
+    { id: 'settings',      label: 'Settings',  icon: '⚙' },
   ];
 
   connectedCallback() {
     this.innerHTML = ChumpNav.#ITEMS.map((item) => `
       <button class="nav-item" data-view="${item.id}" aria-label="${item.label}">
-        <span class="nav-icon">${item.icon}</span>
+        <span class="nav-icon">${item.icon}${item.badge ? '<span class="notif-badge" id="notif-nav-badge" hidden>0</span>' : ''}</span>
         <span class="nav-label">${item.label}</span>
       </button>
     `).join('');
@@ -1830,17 +1831,18 @@ function makeAmbientView() {
 }
 
 const VIEWS = {
-  chat:      () => document.createElement('chump-view-chat'),
-  agents:    () => document.createElement('chump-view-agents'),
-  results:   () => document.createElement('chump-view-results'),
-  agent:     () => document.createElement('chump-view-agent'),
-  tasks:     () => document.createElement('chump-view-tasks'),
-  decisions: () => document.createElement('chump-view-decisions'),
-  judgment:  () => document.createElement('chump-view-judgment'),
-  ambient:   makeAmbientView,
-  memory:    () => document.createElement('chump-view-memory'),
-  models:    () => document.createElement('chump-view-models'),
-  settings:  () => document.createElement('chump-view-settings'),
+  chat:          () => document.createElement('chump-view-chat'),
+  agents:        () => document.createElement('chump-view-agents'),
+  results:       () => document.createElement('chump-view-results'),
+  agent:         () => document.createElement('chump-view-agent'),
+  tasks:         () => document.createElement('chump-view-tasks'),
+  decisions:     () => document.createElement('chump-view-decisions'),
+  judgment:      () => document.createElement('chump-view-judgment'),
+  ambient:       makeAmbientView,
+  notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
+  memory:        () => document.createElement('chump-view-memory'),
+  models:        () => document.createElement('chump-view-models'),
+  settings:      () => document.createElement('chump-view-settings'),
 };
 
 document.addEventListener('chump:navigate', (e) => {
