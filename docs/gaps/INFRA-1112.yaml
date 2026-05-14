@@ -1,0 +1,22 @@
+- id: INFRA-1112
+  domain: INFRA
+  title: "ZERO-WASTE — separate mutation budget in chump_gh throttle (writes get tighter cap)"
+  status: in_flight
+  priority: P1
+  effort: s
+  closed_pr: ~
+  depends_on: []
+  acceptance_criteria:
+    - "_chump_gh_classify_call reads gh argv to classify call as mutation vs query"
+    - "Mutations: pr merge/create/review/comment/edit; issue create/close/edit/comment; api -X POST/PATCH/PUT/DELETE"
+    - "Default mutation cap: 15/min (CHUMP_GH_MUTATION_MAX=15). Default query cap: 60/min (CHUMP_GH_QUERY_MAX=60)"
+    - "Separate window files: .gh-throttle-window.mutation + .gh-throttle-window.query"
+    - "Emit kind=gh_self_throttled gains api_class: mutation|query field"
+  description: |
+    GitHub secondary rate limit is dramatically tighter on mutations than reads.
+    Single 60/min cap is too loose for mutations (causes pr merge cascade failures)
+    and too tight for reads (wastes throughput on innocuous polling).
+
+    _chump_gh_classify_call() inspects gh argv to detect write operations.
+    _chump_gh_throttle_wait() accepts api_class param; uses class-specific
+    window file and cap. chump_gh() classifies before throttling.

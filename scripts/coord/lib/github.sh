@@ -197,23 +197,74 @@ _chump_gh_now_ms() {
 # of "rate limit already exceeded" with primary GraphQL at 4000+/5000.
 #
 # Strategy: token-bucket window across the fleet via a shared lock file.
-# All chump_gh callers in this fleet session share one bucket
-# (.chump-locks/.gh-throttle-window — JSON list of recent call timestamps).
-# Limit: CHUMP_GH_MAX_CALLS_PER_MIN (default 60), with per-script overrides
-# via CHUMP_GH_THROTTLE_<SCRIPT> for bursty callers.
+# INFRA-1112: split into two buckets — mutations (writes) get a tighter cap.
+#   Mutations: .gh-throttle-window.mutation  CHUMP_GH_MUTATION_MAX (def 15/min)
+#   Queries:   .gh-throttle-window.query     CHUMP_GH_QUERY_MAX    (def 60/min)
+# Per-script override: CHUMP_GH_THROTTLE_<SCRIPT> still applies after class cap.
 #
 # Algorithm:
-#   1. Acquire flock on .gh-throttle.lock
-#   2. Read window file; drop entries older than 60s
-#   3. If len(window) >= limit: sleep 1s, release lock, retry (max 30s total)
-#   4. Otherwise: append `now` to window, release, proceed
+#   1. Classify call as mutation or query
+#   2. Acquire flock on .gh-throttle.lock
+#   3. Read class-specific window file; drop entries older than 60s
+#   4. If len(window) >= limit: sleep 1s, release lock, retry (max 30s total)
+#   5. Otherwise: append `now` to window, release, proceed
 #
 # Fail-safe: after 30s waited, let the call through (don't deadlock the fleet
 # on a runaway throttle counter). Emit kind=gh_self_throttled at every delay.
+
+# INFRA-1112: classify a gh invocation as "mutation" or "query".
+# Mutations are writes that GitHub secondary-limits far more aggressively.
+_chump_gh_classify_call() {
+    local subcmd="${1:-}" flag2="${2:-}"
+    case "$subcmd" in
+        pr)
+            case "$flag2" in
+                merge|create|review|comment|edit|close|reopen) echo mutation; return ;;
+            esac
+            ;;
+        issue)
+            case "$flag2" in
+                create|close|reopen|edit|comment|pin|unpin) echo mutation; return ;;
+            esac
+            ;;
+        release)
+            case "$flag2" in
+                create|delete|edit|upload) echo mutation; return ;;
+            esac
+            ;;
+        api)
+            # Scan argv for -X/--method followed by POST/PATCH/PUT/DELETE
+            local _saw_method=0 _upper
+            for _a in "$@"; do
+                if [[ "$_saw_method" -eq 1 ]]; then
+                    _upper="$(echo "$_a" | tr '[:lower:]' '[:upper:]')"
+                    case "$_upper" in POST|PATCH|PUT|DELETE) echo mutation; return ;; esac
+                    _saw_method=0
+                fi
+                [[ "$_a" == "-X" || "$_a" == "--method" ]] && _saw_method=1
+            done
+            # --method=POST form
+            for _a in "$@"; do
+                _upper="$(echo "$_a" | tr '[:lower:]' '[:upper:]')"
+                [[ "$_upper" =~ ^--METHOD=(POST|PATCH|PUT|DELETE)$ ]] && { echo mutation; return; }
+            done
+            ;;
+    esac
+    echo query
+}
+
 _chump_gh_throttle_wait() {
     local script_tag="${1:-?}"
-    local limit="${CHUMP_GH_MAX_CALLS_PER_MIN:-60}"
-    # Per-script override: take the UPPERCASE basename, replace non-alnum with _
+    local api_class="${2:-query}"  # INFRA-1112: "mutation" or "query"
+
+    # INFRA-1112: class-specific cap and window file
+    local limit
+    if [[ "$api_class" == "mutation" ]]; then
+        limit="${CHUMP_GH_MUTATION_MAX:-15}"
+    else
+        limit="${CHUMP_GH_QUERY_MAX:-${CHUMP_GH_MAX_CALLS_PER_MIN:-60}}"
+    fi
+    # Per-script override still applies (takes precedence over class default)
     local override_var
     override_var="CHUMP_GH_THROTTLE_$(echo "$script_tag" | tr 'a-z' 'A-Z' | tr -c 'A-Z0-9' '_')"
     override_var="${override_var%_}"
@@ -227,7 +278,7 @@ _chump_gh_throttle_wait() {
 
     local lock_dir="$(dirname "$(_chump_gh_ambient_path)")"
     local lock_file="$lock_dir/.gh-throttle.lock"
-    local window_file="$lock_dir/.gh-throttle-window"
+    local window_file="$lock_dir/.gh-throttle-window.${api_class}"
     mkdir -p "$lock_dir" 2>/dev/null || true
 
     local started_wait
@@ -284,8 +335,8 @@ PY
         if [[ $(( now_epoch - started_wait )) -ge 30 ]]; then
             # Fail-safe: let the call through after 30s.
             local ambient; ambient="$(_chump_gh_ambient_path)"
-            printf '{"ts":"%s","kind":"gh_self_throttled","script":"%s","waited_ms":30000,"calls_in_window":-1,"fail_safe":true}\n' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$script_tag" \
+            printf '{"ts":"%s","kind":"gh_self_throttled","script":"%s","api_class":"%s","waited_ms":30000,"calls_in_window":-1,"fail_safe":true}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$script_tag" "$api_class" \
                 >> "$ambient" 2>/dev/null || true
             return 0
         fi
@@ -293,8 +344,8 @@ PY
         total_wait_ms=$(( total_wait_ms + 1000 ))
         # Emit one event per delay (debounce-light — operator wants to see this).
         local ambient; ambient="$(_chump_gh_ambient_path)"
-        printf '{"ts":"%s","kind":"gh_self_throttled","script":"%s","waited_ms":%d,"calls_in_window":%d}\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$script_tag" "$total_wait_ms" "$limit" \
+        printf '{"ts":"%s","kind":"gh_self_throttled","script":"%s","api_class":"%s","waited_ms":%d,"calls_in_window":%d}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$script_tag" "$api_class" "$total_wait_ms" "$limit" \
             >> "$ambient" 2>/dev/null || true
     done
 }
@@ -376,11 +427,13 @@ _chump_gh_is_secondary_limit() {
 }
 
 chump_gh() {
-    local api_tag started rc ended used_ms script_tag
+    local api_tag started rc ended used_ms script_tag api_class
     api_tag="$(chump_gh_api_tag "$@")"
     script_tag="${CHUMP_GH_SCRIPT:-$(basename "${BASH_SOURCE[1]:-$0}")}"
+    # INFRA-1112: classify before throttle so mutations get the tighter cap.
+    api_class="$(_chump_gh_classify_call "$@")"
     # INFRA-1079: pre-call throttle to avoid secondary rate-limit.
-    _chump_gh_throttle_wait "$script_tag"
+    _chump_gh_throttle_wait "$script_tag" "$api_class"
     # INFRA-1080: pre-emptive backoff when graphql bucket is low (background only).
     _chump_gh_preempt_if_low "$script_tag" "$api_tag"
     started="$(_chump_gh_now_ms)"
