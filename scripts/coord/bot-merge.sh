@@ -1228,6 +1228,56 @@ fi
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
 info "cargo parallelism: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (override via env)"
 
+# INFRA-1063: per-worktree CARGO_TARGET_DIR to eliminate cargo build-dir lock
+# contention when multiple bot-merge runs execute in parallel across
+# /tmp/chump-*/ worktrees.  Without this, all worktrees resolve to the same
+# shared target/ (either $CARGO_HOME/registry or the root workspace target/),
+# causing "Blocking waiting for file lock on build directory" timeouts (observed:
+# two parallel clippy runs each waited 240 s in 2026-05-13).
+#
+# Strategy: option (a) — per-worktree target dir.
+#   - If CARGO_TARGET_DIR is already set externally (e.g. CI), respect it.
+#   - Otherwise, pin it to <worktree>/target/ so each gap gets its own build
+#     cache.  The dir is under /tmp/ and cleaned up when the worktree is reaped.
+#   - When the wait exceeds 60 s, cargo emits "Blocking waiting for file lock"
+#     to stderr; we capture that and emit kind=cargo_lock_wait to ambient.jsonl.
+if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+    export CARGO_TARGET_DIR="${REPO_ROOT}/target"
+    info "INFRA-1063: CARGO_TARGET_DIR pinned to ${CARGO_TARGET_DIR} (per-worktree isolation)"
+else
+    info "INFRA-1063: CARGO_TARGET_DIR already set to ${CARGO_TARGET_DIR} (respecting caller)"
+fi
+
+# INFRA-1063 AC #5: wrapper for cargo invocations that detects build-dir lock
+# contention.  Cargo emits "Blocking waiting for file lock on build directory"
+# to stderr when it cannot acquire the lock; we tee output to a temp file,
+# scan for that message after the run, and emit kind=cargo_lock_wait to
+# ambient.jsonl so the fleet can observe and measure the cost.
+#
+# Usage: _run_cargo_with_lock_detect <label> <timeout_secs> <cargo subcommand...>
+# Returns the exit code of the underlying cargo invocation.
+_run_cargo_with_lock_detect() {
+    local label="$1" timeout_secs="$2"; shift 2
+    local _tmpout _rc
+    _tmpout="$(mktemp)"
+    set +e
+    run_timed_hb "$label" "$timeout_secs" cargo "$@" 2>&1 | tee -a "$_tmpout"
+    _rc=${PIPESTATUS[0]}
+    set -e
+    if grep -q "Blocking waiting for file lock on build directory" "$_tmpout" 2>/dev/null; then
+        local _ambient _now _gap_label
+        _ambient="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+        _now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        _gap_label="${GAP_IDS[0]:-none}"
+        printf '{"ts":"%s","session":"bot-merge-%d","kind":"cargo_lock_wait","phase":"%s","gap_id":"%s","target_dir":"%s","note":"cargo build-dir lock contention detected; CARGO_TARGET_DIR per-worktree isolation may not be active (INFRA-1063)"}\n' \
+            "$_now" "$_BM_PID" "$label" "$_gap_label" "${CARGO_TARGET_DIR:-?}" \
+            >> "$_ambient" 2>/dev/null || true
+        warn "INFRA-1063: cargo build-dir lock wait detected on phase '${label}' — cargo_lock_wait emitted to ambient stream"
+    fi
+    rm -f "$_tmpout"
+    return "$_rc"
+}
+
 # ── 3. cargo clippy ───────────────────────────────────────────────────────────
 # Timeout 900s: cold workspace clippy is ~8 min on chump as of 2026-04-28.
 #
@@ -1259,7 +1309,7 @@ elif [[ $FAST -eq 1 ]]; then
     # we still let CI be the gate (no -D warnings).
     if command -v cargo &>/dev/null; then
         stage_start "cargo clippy --workspace --fix (--fast pre-flight auto-correct)"
-        run_timed_hb "cargo clippy --fix" 240 cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged 2>&1 || true
+        _run_cargo_with_lock_detect "cargo clippy --fix" 240 clippy --workspace --all-targets --fix --allow-dirty --allow-staged || true
         if ! git diff --quiet || git diff --cached --quiet 2>&1 | grep -q .; then
             if [[ -n "$(git status --porcelain)" ]]; then
                 info "clippy --fix auto-corrected lints — staging + amending"
@@ -1275,7 +1325,7 @@ elif [[ $FAST -eq 1 ]]; then
     fi
 elif command -v cargo &>/dev/null; then
     stage_start "cargo clippy --workspace --all-targets"
-    if ! run_timed_hb "cargo clippy" 900 cargo clippy --workspace --all-targets -- -D warnings 2>&1; then
+    if ! _run_cargo_with_lock_detect "cargo clippy" 900 clippy --workspace --all-targets -- -D warnings; then
         red "clippy found errors — fix them before merging."
         _grade_clippy_ok="false"
         _bm_fail "clippy" 13 "clippy lint errors"
@@ -1288,7 +1338,7 @@ fi
 # ── 4. cargo test ─────────────────────────────────────────────────────────────
 if [[ $SKIP_TESTS -eq 0 ]] && command -v cargo &>/dev/null; then
     stage_start "cargo test --bin chump --tests"
-    if ! run_timed_hb "cargo test" 1200 cargo test --bin chump --tests 2>&1; then
+    if ! _run_cargo_with_lock_detect "cargo test" 1200 test --bin chump --tests; then
         red "Tests failed — fix them before merging."
         info "If you saw 'signal: 15, SIGTERM' across multiple rustc processes,"
         info "that is most likely OOM, not a real test failure. Try lowering"
