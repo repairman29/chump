@@ -160,19 +160,50 @@ def _mark_open_prs_stale(conn: sqlite3.Connection) -> int:
     return cur.rowcount
 
 
+# INFRA-1110: process-lifetime counters for /health endpoint.
+_health_started_at = _now_iso()
+_health_events_received_total = 0
+_health_last_event_at: str | None = None
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "ChumpWebhookReceiver/1.0"
 
     def log_message(self, format: str, *args) -> None:  # type: ignore[override]
         log.info("%s - %s", self.address_string(), format % args)
 
-    def _respond(self, status: int, body: str = "") -> None:
+    def _respond(self, status: int, body: str = "", content_type: str = "text/plain; charset=utf-8") -> None:
         self.send_response(status)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         if body:
             self.wfile.write(body.encode("utf-8"))
+
+    def do_GET(self) -> None:  # noqa: N802
+        # INFRA-1110: /health for operator liveness probe.
+        if self.path == "/health":
+            from datetime import timedelta
+            stale_threshold_s = 24 * 3600
+            status_ok = True
+            if _health_last_event_at:
+                try:
+                    last = datetime.strptime(_health_last_event_at, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                    if (datetime.now(timezone.utc) - last).total_seconds() > stale_threshold_s:
+                        status_ok = False
+                except Exception:
+                    pass
+            body = json.dumps({
+                "status": "ok" if status_ok else "stale",
+                "pid": os.getpid(),
+                "started_at": _health_started_at,
+                "events_received_total": _health_events_received_total,
+                "last_event_at": _health_last_event_at,
+                "cache_db_path": str(CACHE_DB),
+            }, indent=2) + "\n"
+            self._respond(200 if status_ok else 503, body, content_type="application/json")
+            return
+        self._respond(404, "not found\n")
 
     def do_POST(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler convention)
         if self.path != "/webhook":
@@ -244,6 +275,10 @@ class Handler(BaseHTTPRequestHandler):
                         })
                 # Unknown event types: 200 OK, no DB write — GitHub retries forever
                 # on non-2xx, so don't fail.
+            # INFRA-1110: bump counters AFTER successful processing.
+            global _health_events_received_total, _health_last_event_at
+            _health_events_received_total += 1
+            _health_last_event_at = _now_iso()
         except Exception as e:
             log.error("DB write failed: %s", e)
             self._respond(500, "internal\n")
