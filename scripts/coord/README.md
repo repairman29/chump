@@ -104,3 +104,20 @@ These three are often confused because all three touch the gap store:
 | `musher.sh` / `musher.py` | Batch-apply a set of gap updates; rarely used |
 | `queue-driver.sh` | Drive the gap pick loop (used by worker.sh in dispatch/) |
 | `check-worktree-config.sh` | Verify worktree config.worktree is healthy (INFRA-810) |
+
+## Ephemeral vs permanent branches in bot-merge.sh
+
+bot-merge.sh has **no separate staging branches** — there is exactly one
+branch per gap (`chump/<gap>-claim`) and it is the PR head. The
+INFRA-472 auto-stage step (around lines 1002-1029) commits any uncommitted
+scoped edits onto that same branch with the subject prefix
+`auto: bot-merge pre-rebase staging`. These commits are PR commits, not
+staging branches — there is no separate ref to clean up.
+
+**INFRA-997 guard:** if every commit on the gap-claim branch since
+`origin/main` has that exact auto-staging subject (i.e., the operator
+ran bot-merge with no real gap work), `gh pr create` is refused with
+exit code 16 and `kind=staging_only_pr_blocked` is emitted to
+ambient.jsonl. The original waste case (PR #1655, 2026-05-13) shipped
+exactly this pattern as an empty PR; this guard prevents recurrence.
+Bypass when intentional: `CHUMP_ALLOW_STAGING_ONLY_PR=1`.

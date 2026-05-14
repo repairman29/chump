@@ -1690,6 +1690,38 @@ fi
 # ── 6. Open or update PR ─────────────────────────────────────────────────────
 EXISTING_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
 
+# INFRA-997: refuse to open a PR when the branch's commits since divergence
+# are ONLY auto-staging commits from INFRA-472. These are mechanical commits
+# bot-merge.sh creates pre-rebase to stash uncommitted scoped edits; they
+# carry no gap work. PR #1655 (2026-05-13) shipped exactly this pattern — a
+# pre-rebase staging branch with no meaningful work, immediately closed as
+# duplicate. Guard prevents that waste class. To bypass when legitimate
+# (rare — operator confirms staging IS the work): CHUMP_ALLOW_STAGING_ONLY_PR=1.
+if [[ -z "$EXISTING_PR" && "${CHUMP_ALLOW_STAGING_ONLY_PR:-0}" != "1" ]]; then
+    _commit_subjects=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --pretty=format:'%s' 2>/dev/null)
+    _total_commits=$(echo "$_commit_subjects" | grep -cE '.')
+    _staging_commits=$(echo "$_commit_subjects" | grep -cE '^auto: bot-merge pre-rebase staging' || true)
+    if [[ "$_total_commits" -gt 0 && "$_total_commits" -eq "$_staging_commits" ]]; then
+        red "INFRA-997: refusing to gh pr create — branch $BRANCH has $_total_commits commit(s) since $BASE_BRANCH"
+        red "          and ALL of them are auto-staging commits from INFRA-472."
+        red "          A PR with only mechanical staging carries no gap work."
+        red ""
+        red "  Commits on this branch:"
+        echo "$_commit_subjects" | sed 's/^/    /' >&2
+        red ""
+        red "  Most likely cause: bot-merge.sh ran without any gap commits being landed first."
+        red "  Recovery: do the actual gap work, commit it, then re-run bot-merge.sh."
+        red "  Bypass (rare; operator confirmed): CHUMP_ALLOW_STAGING_ONLY_PR=1"
+        # Best-effort ambient event so the operator can see this fired
+        _ambient_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+        if [[ -w "$(dirname "$_ambient_path")" ]] 2>/dev/null; then
+            printf '{"ts":"%s","kind":"staging_only_pr_blocked","branch":"%s","commits":%d}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$_total_commits" >> "$_ambient_path"
+        fi
+        _bm_fail "pr-create" 16 "staging-only branch — refused to open empty PR (INFRA-997)"
+    fi
+fi
+
 if [[ -z "$EXISTING_PR" ]]; then
     stage_start "gh pr create"
     # Build a body from the gap IDs cited in commits since base diverged.
