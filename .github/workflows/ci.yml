@@ -1325,6 +1325,8 @@ jobs:
             bash scripts/ci/test-gap-list-since.sh
       - name: bot-merge GraphQL preflight + REST fallback — fails fast, emits graphql_exhausted (INFRA-1031)
         run: bash scripts/ci/test-bot-merge-graphql-preflight.sh
+      - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
+        run: bash scripts/ci/test-gap-ac-requirement.sh
 
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path

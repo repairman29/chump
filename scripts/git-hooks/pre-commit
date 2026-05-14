@@ -1713,3 +1713,93 @@ if [ -x "$MAIN_WT_CONFIG_HOOK" ]; then
 fi
 
 exit 0
+# 11. Acceptance-criteria enforcement (CREDIBLE-054): refuse commits that
+#     add or modify gaps without a non-empty `acceptance_criteria:` list.
+#     Unpickable gaps (no AC) waste fleet cycles. Bypass: CHUMP_AC_CHECK=0.
+            exit 1
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
+# 3d. Acceptance-criteria enforcement (CREDIBLE-054): reject gaps without
+#     a non-empty acceptance_criteria field. Unpickable gaps waste fleet
+#     cycles; this forces AC definition at commit time.
+#     Bypass: CHUMP_AC_CHECK=0
+# ------------------------------------------------------------------
+if [ "${CHUMP_AC_CHECK:-1}" != "0" ]; then
+    if git diff --cached --name-only --diff-filter=ACM | grep -qE '^docs/gaps(\.yaml|/[^/]+\.yaml)$'; then
+        _vague_gaps=$(python3 - <<'PYEOF_AC_ENFORCEMENT'
+import re, subprocess, sys
+
+def staged_text(path):
+    try:
+        return subprocess.check_output(
+            ["git", "show", f":0:{path}"], stderr=subprocess.DEVNULL
+        ).decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+
+def check_acs(text):
+    """Return [gid] for gaps with missing or empty acceptance_criteria."""
+    vague = []
+    cur_id = None
+    in_acs = False
+    has_acs_key = False
+    ac_item_count = 0
+    for line in text.splitlines():
+        id_m = re.match(r"^-?\s*id:\s*([A-Z][A-Z0-9_-]+)", line)
+        if id_m:
+            # Before moving to new gap, check if previous gap had ACs
+            if cur_id is not None and (has_acs_key is False or ac_item_count == 0):
+                vague.append(cur_id)
+            cur_id = id_m.group(1)
+            has_acs_key = False
+            in_acs = False
+            ac_item_count = 0
+            continue
+        if cur_id is None:
+            continue
+        # Look for the acceptance_criteria: key
+        if re.match(r"^\s+acceptance_criteria\s*:", line):
+            has_acs_key = True
+            in_acs = True
+            continue
+        if in_acs:
+            # New top-level key (not starting with -) → end of ACs
+            if re.match(r"^\s+[a-z_]+\s*:", line) and not line.strip().startswith("-"):
+                in_acs = False
+                continue
+            # Count list items (lines starting with -)
+            if line.strip().startswith("- "):
+                ac_item_count += 1
+    # Check the last gap in the file
+    if cur_id is not None and (has_acs_key is False or ac_item_count == 0):
+        vague.append(cur_id)
+    return vague
+
+staged_paths = [p for p in subprocess.check_output(
+    ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+    stderr=subprocess.DEVNULL
+).decode().splitlines()
+    if re.match(r"^docs/gaps(/[^/]+\.yaml|\.yaml)$", p)]
+
+vague_gaps = []
+for path in staged_paths:
+    txt = staged_text(path)
+    if txt:
+        vague_gaps.extend(check_acs(txt))
+
+print("\n".join(vague_gaps))
+PYEOF_AC_ENFORCEMENT
+)
+        if [ -n "$_vague_gaps" ]; then
+            echo "[pre-commit] ACCEPTANCE CRITERIA REQUIRED (CREDIBLE-054) — gap(s) lack acceptance_criteria:" >&2
+            echo "$_vague_gaps" | sed 's/^/  /' >&2
+            echo "" >&2
+            echo "[pre-commit] Every gap must have a non-empty 'acceptance_criteria:' list with ≥1 item." >&2
+            echo "[pre-commit] See: docs/FEEDBACK_GAPS_ALWAYS_HAVE_AC.md" >&2
+            echo "[pre-commit] Example:" >&2
+            echo "[pre-commit]   acceptance_criteria:" >&2
+            echo "[pre-commit]     - \"gap property: specific testable claim\"" >&2
+            echo "[pre-commit] Bypass (rare): CHUMP_AC_CHECK=0 git commit ..." >&2
