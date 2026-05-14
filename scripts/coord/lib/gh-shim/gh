@@ -116,6 +116,39 @@ if [[ "${CHUMP_GH_SHIM_RECORDING:-}" != "1" ]]; then
     unset _shim_script_tag
 fi
 
+# INFRA-1282: gh pr view → REST + cache rewrite.
+#
+# 'gh pr view' is GraphQL. The chump fleet polls hot PRs heavily via
+# pr-watch.sh, bot-merge.sh existing-PR check, queue-driver branch lookup
+# (74 calls/hr in 2026-05-14 throttle audit). Rewriting at the shim
+# layer migrates all 6+ callers to REST + cache with ONE change.
+#
+# Pattern: gh pr view <PR-or-branch> [--json FIELDS] [-q/--jq EXPR]
+# Falls through to real gh on: --watch, --comments, --web, unsupported
+# --json fields, branch-name target not in cache, no --json (human table).
+#
+# Bypass: CHUMP_GH_SHIM_NO_REWRITE=1 forces real gh pr view.
+if [[ "${CHUMP_GH_SHIM_NO_REWRITE:-0}" != "1" ]] \
+        && [[ "${1:-}" == "pr" ]] && [[ "${2:-}" == "view" ]]; then
+    _translator="$SHIM_DIR/pr-view-translate.py"
+    if [[ -x "$_translator" ]] && command -v python3.12 >/dev/null 2>&1; then
+        # Shift past "pr" "view"; pass remaining args.
+        python3.12 "$_translator" "${@:3}"
+        _rc=$?
+        if [[ "$_rc" == "0" ]]; then
+            # Translation succeeded — record as a synthetic call and exit.
+            ended_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
+            if declare -F chump_gh_record >/dev/null 2>&1; then
+                chump_gh_record "pr view [translated]" "$(( ended_ms - started_ms ))" 0 "$script_tag" \
+                    2>/dev/null || true
+            fi
+            exit 0
+        fi
+        # rc=2 → fall through; rc=3 → PR not found, also fall through so
+        # real gh produces the canonical error message.
+    fi
+fi
+
 # Run real gh, preserve stdout/stderr/exit.
 # Mark that the shim is the recording path on this call — any
 # explicit chump_gh_record() call from a wrapper higher up the stack
