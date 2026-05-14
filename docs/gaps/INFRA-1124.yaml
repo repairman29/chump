@@ -1,13 +1,12 @@
 - id: INFRA-1124
   domain: INFRA
-  title: 'RESILIENT: extend INFRA-1074 safety to active-target-reaper.sh + worktree-prune.sh (cc4d4038 only fixed stale-worktree-reaper.sh)'
-  status: done
+  title: "RESILIENT: extend INFRA-1074 safety to active-target-reaper.sh + worktree-prune.sh (cc4d4038 only fixed stale-worktree-reaper.sh)"
+  status: open
   priority: P2
   effort: m
   acceptance_criteria:
-  - 'TODO: what events emitted on success/failure/timeout'
-  - 'TODO: how cost tracked and reported to operator'
-  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
-  - 'TODO: smoke test command to verify observability'
-  closed_date: '2026-05-14'
-  closed_pr: 1801
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

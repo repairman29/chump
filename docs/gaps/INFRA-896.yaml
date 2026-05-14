@@ -1,13 +1,8 @@
 - id: INFRA-896
   domain: INFRA
-  title: 'INFRA: Incident classification + severity'
-  status: done
+  title: "INFRA: Incident classification + severity"
+  status: open
   priority: P1
   effort: xs
   acceptance_criteria:
-  - - 'scripts/ops/classify-incident.sh: reads ambient.jsonl tail, classifies incident by kind (fleet_wedge=P0, silent_agent=P1,
-      pr_stuck=P2, cascade_backoff=P3), emits kind=incident_classified to ambient.jsonl with fields: severity, trigger_kind,
-      count, window_s. EVENT_REGISTRY.yaml: incident_classified entry. Test: scripts/ci/test-classify-incident.sh — at least
-      5 tests covering: severity mapping, aggregation window, multiple triggers, dedup.'
-  closed_date: '2026-05-12'
-  closed_pr: 1592
+    - ["scripts/ops/classify-incident.sh: reads ambient.jsonl tail, classifies incident by kind (fleet_wedge=P0, silent_agent=P1, pr_stuck=P2, cascade_backoff=P3), emits kind=incident_classified to ambient.jsonl with fields: severity, trigger_kind, count, window_s. EVENT_REGISTRY.yaml: incident_classified entry. Test: scripts/ci/test-classify-incident.sh — at least 5 tests covering: severity mapping, aggregation window, multiple triggers, dedup."]

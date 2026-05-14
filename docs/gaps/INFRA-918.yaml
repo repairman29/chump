@@ -1,13 +1,12 @@
 - id: INFRA-918
   domain: INFRA
-  title: 'RESILIENT: bot-merge rebase-before-test — run cargo test on rebased branch, not pre-rebase stale state'
-  status: done
+  title: "RESILIENT: bot-merge rebase-before-test — run cargo test on rebased branch, not pre-rebase stale state"
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
-  - 'TODO: what events emitted on success/failure/timeout'
-  - 'TODO: how cost tracked and reported to operator'
-  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
-  - 'TODO: smoke test command to verify observability'
-  closed_date: '2026-05-12'
-  closed_pr: 1539
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

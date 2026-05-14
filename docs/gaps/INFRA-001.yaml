@@ -1,12 +1,12 @@
 - id: INFRA-001
   domain: INFRA
   title: race-a
-  status: done
+  status: open
   priority: P2
   effort: m
   acceptance_criteria:
-  - 'TODO: what events emitted on success/failure/timeout'
-  - 'TODO: how cost tracked and reported to operator'
-  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
-  - 'TODO: smoke test command to verify observability'
-  closed_date: '2026-04-18'
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

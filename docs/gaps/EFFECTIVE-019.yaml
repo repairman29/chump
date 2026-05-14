@@ -1,36 +1,23 @@
 - id: EFFECTIVE-019
   domain: EFFECTIVE
-  title: 'EFFECTIVE: scripts/coord/* sweep — replace claude-specific patterns with worker-agnostic equivalents (1499 references)'
-  status: done
+  title: "EFFECTIVE: scripts/coord/* sweep — replace claude-specific patterns with worker-agnostic equivalents (1499 references)"
+  status: open
   priority: P1
   effort: m
-  description: 'scripts/coord/ has 1499 references to `claude` across bot-merge.sh,
-
+  description: |
+    scripts/coord/ has 1499 references to `claude` across bot-merge.sh,
     gap-gardener.py, code-reviewer-agent.sh, gap-architect.py,
-
-    worktree-prune.sh, README.md. Many are legitimate (the operator''s
-
+    worktree-prune.sh, README.md. Many are legitimate (the operator's
     current CLI is `claude`), but many bake `claude -p` / `.claude/...`
-
     paths / Claude-specific log greps into the coordination layer.
-
     This sweep extracts those into a single `CHUMP_WORKER_CMD` env-var
-
     abstraction so the coord layer works with any worker.
-
-    '
   acceptance_criteria:
-  - 'Audit each script in scripts/coord/ for `claude` references; categorize each as: (a) legitimate Claude-default fallback,
-    (b) worker-spawn path that should use CHUMP_WORKER_CMD (default=claude), (c) attribution check that should accept any
-    agent (handled by CREDIBLE-045), (d) Claude-flavored doc string'
-  - Refactor (b)-class refs to use CHUMP_WORKER_CMD env var (set by EFFECTIVE-017's WorkBackend selection)
-  - Refactor (c)-class refs per CREDIBLE-045
-  - Refactor (a)-class refs to read `default-claude` from .chump/config.toml fallback chain (so non-Claude users override
-    via config, not source edit)
-  - Refactor (d)-class doc strings to use neutral language; preserve Claude-specific tips as `(if using Claude:)` sub-bullets
-  - 'After sweep: `grep -c claude scripts/coord/ -r` < 200 (down from 1499). Remaining refs all legitimate Claude-default-fallback
-    or docs'
-  - 'scripts/ci/test-coord-portable.sh: simulated non-Claude environment (CHUMP_WORKER_CMD=opencode, no ANTHROPIC_API_KEY);
-    assert bot-merge.sh / gap-gardener.py / etc. complete their happy paths'
-  - Sister gap to EFFECTIVE-017 (src/dispatch.rs Rust side) — together they cover the worker abstraction in both Rust binary
-    and shell coord layer
+    - "Audit each script in scripts/coord/ for `claude` references; categorize each as: (a) legitimate Claude-default fallback, (b) worker-spawn path that should use CHUMP_WORKER_CMD (default=claude), (c) attribution check that should accept any agent (handled by CREDIBLE-045), (d) Claude-flavored doc string"
+    - "Refactor (b)-class refs to use CHUMP_WORKER_CMD env var (set by EFFECTIVE-017's WorkBackend selection)"
+    - "Refactor (c)-class refs per CREDIBLE-045"
+    - "Refactor (a)-class refs to read `default-claude` from .chump/config.toml fallback chain (so non-Claude users override via config, not source edit)"
+    - "Refactor (d)-class doc strings to use neutral language; preserve Claude-specific tips as `(if using Claude:)` sub-bullets"
+    - "After sweep: `grep -c claude scripts/coord/ -r` < 200 (down from 1499). Remaining refs all legitimate Claude-default-fallback or docs"
+    - "scripts/ci/test-coord-portable.sh: simulated non-Claude environment (CHUMP_WORKER_CMD=opencode, no ANTHROPIC_API_KEY); assert bot-merge.sh / gap-gardener.py / etc. complete their happy paths"
+    - "Sister gap to EFFECTIVE-017 (src/dispatch.rs Rust side) — together they cover the worker abstraction in both Rust binary and shell coord layer"
