@@ -1,13 +1,30 @@
 # EVENT_REGISTRY.yaml — INFRA-754
 #
-# Canonical list of every `kind=...` value the system can emit into
-# `.chump-locks/ambient.jsonl`. Pre-commit guard refuses any new commit
-# that introduces a `"kind":"X"` literal where X is not registered here.
+# **GROUND-TRUTH CONTRACT** (INFRA-1237). This file is the contract that
+# fleet-brief, waste-tally, kpi-report, watchdogs, and every other ambient
+# consumer reads to know which `kind=X` values to expect from
+# `.chump-locks/ambient.jsonl`. Drift in either direction silently degrades
+# operator trust:
+#   - emit-without-register → consumers see kinds they don't understand and
+#     drop them; SLO dashboards under-report
+#   - register-without-emit → consumers wait for kinds that never fire;
+#     dashboards display empty rows the operator can't interpret
+#
+# Enforcement (post-INFRA-1237):
+#   - scripts/ci/test-event-registry-coverage.sh runs on every PR in
+#     fast-checks. Default mode (strict-emit) fails the build on
+#     emit-without-register. Set CHUMP_REGISTRY_GATE_MODE=strict to also
+#     fail on register-without-emit (after the orphan-reconciliation
+#     follow-up gap lands).
+#   - scripts/git-hooks/pre-commit-event-registry.sh blocks staged diffs
+#     that add a kind literal without a corresponding registry entry.
+#   - scripts/ci/event-registry-reserved.txt allow-lists kinds that are
+#     legitimately exempt from both directions (with a required `# reason:`
+#     comment per entry).
 #
 # Why: "observability before scale" needs mechanical enforcement. Without
 # this registry, every contributor adds events with their own conventions
-# and consumers (fleet-brief, waste-tally, kpi-report, watchdogs) silently
-# fail on the unknown shapes.
+# and consumers silently fail on the unknown shapes.
 #
 # ── SCHEMA FIELD CANONICAL: 'kind' (INFRA-1159) ─────────────────────────────
 # Two fields coexist in the ambient stream:
