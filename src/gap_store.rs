@@ -2430,28 +2430,54 @@ fn parse_iso_to_unix(s: &str) -> Option<i64> {
     Some(days * 86400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64)
 }
 
-/// INFRA-100: shell out to `gh pr list --state open --json title --jq '.[].title'`
-/// and return the titles. Returns Err on any failure (gh missing, no auth,
-/// network down) so the caller can degrade gracefully.
+/// INFRA-1039: use REST endpoint (gh api repos/{nwo}/pulls) instead of GraphQL
+/// (gh pr list) so the scan works even when GraphQL quota is exhausted.
+/// Returns Err on any failure so the caller can degrade gracefully.
 fn list_open_pr_titles() -> Result<Vec<String>> {
-    let output = std::process::Command::new("gh")
+    // Resolve the repo nameWithOwner via REST (never touches GraphQL).
+    let nwo_out = std::process::Command::new("gh")
         .args([
-            "pr",
-            "list",
-            "--state",
-            "open",
+            "repo",
+            "view",
             "--json",
-            "title",
+            "nameWithOwner",
             "--jq",
-            ".[].title",
-            "--limit",
-            "200",
+            ".nameWithOwner",
         ])
         .output()
-        .with_context(|| "spawning gh pr list")?;
+        .with_context(|| "spawning gh repo view")?;
+    if !nwo_out.status.success() {
+        bail!(
+            "gh repo view failed: {}",
+            String::from_utf8_lossy(&nwo_out.stderr)
+        );
+    }
+    let nwo = String::from_utf8_lossy(&nwo_out.stdout).trim().to_string();
+    if nwo.is_empty() {
+        bail!("gh repo view returned empty nameWithOwner");
+    }
+
+    // Fetch open PRs via REST (core bucket; unaffected by GraphQL exhaustion).
+    let endpoint = format!("repos/{nwo}/pulls");
+    let output = std::process::Command::new("gh")
+        .args([
+            "api",
+            &endpoint,
+            "--method",
+            "GET",
+            "-f",
+            "state=open",
+            "-f",
+            "per_page=100",
+            "--jq",
+            ".[].title",
+            "--paginate",
+        ])
+        .output()
+        .with_context(|| format!("spawning gh api {endpoint}"))?;
     if !output.status.success() {
         bail!(
-            "gh pr list failed: {}",
+            "gh api {endpoint} failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
     }
