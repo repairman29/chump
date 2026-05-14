@@ -1293,3 +1293,5 @@ jobs:
             bash scripts/ci/test-gap-list-since.sh
       - name: bot-merge GraphQL preflight + REST fallback — fails fast, emits graphql_exhausted (INFRA-1031)
         run: bash scripts/ci/test-bot-merge-graphql-preflight.sh
+      - name: operator-recovery umbrella — CHUMP_OPERATOR_RECOVERY=1 bypass set + audit event (INFRA-1028)
+        run: bash scripts/ci/test-operator-recovery.sh

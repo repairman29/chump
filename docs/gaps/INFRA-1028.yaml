@@ -1,0 +1,12 @@
+- id: INFRA-1028
+  domain: INFRA
+  title: "EFFECTIVE: pre-commit/pre-push --operator-recovery umbrella + bypass-at-top-of-error"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "scripts/git-hooks/pre-commit and scripts/git-hooks/pre-push honor CHUMP_OPERATOR_RECOVERY=1 that sets the recovery bypass set: CHUMP_BYPASS_BOT_MERGE, CHUMP_GAP_CHECK=0, CHUMP_ALLOW_UNREGISTERED_GAP, CHUMP_ALLOW_REUSE_BRANCH, CHUMP_ALLOW_GAP_REWRITE, CHUMP_GAPS_LOCK=0, CHUMP_STOMP_WARN=0, CHUMP_TEST_GATE=0"
+    - "guard error messages move the suggested bypass to the FIRST line of the error block for LEASE_CHECK and BYPASS_BOT_MERGE guards"
+    - "each hook emits kind=guard_bypassed to ambient.jsonl when CHUMP_OPERATOR_RECOVERY=1, with guard_name, bypasses[], operator=true"
+    - "kind=guard_bypassed registered in EVENT_REGISTRY.yaml"
+    - "CI gate scripts/ci/test-operator-recovery.sh passes (7/7 assertions)"

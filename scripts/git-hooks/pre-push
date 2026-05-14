@@ -48,6 +48,26 @@ REMOTE="$1"
 # $2 is the remote URL; unused here.
 
 # -----------------------------------------------------------------------
+# INFRA-1028: operator-recovery umbrella
+# CHUMP_OPERATOR_RECOVERY=1 enables the bypass set for human-supervised
+# manual recovery. Emits guard_bypassed to ambient.jsonl for audit trail.
+# -----------------------------------------------------------------------
+if [ "${CHUMP_OPERATOR_RECOVERY:-0}" = "1" ]; then
+    export CHUMP_BYPASS_BOT_MERGE=1
+    export CHUMP_GAP_CHECK=0
+    export CHUMP_ALLOW_UNREGISTERED_GAP=1
+    export CHUMP_ALLOW_REUSE_BRANCH=1
+    export CHUMP_ALLOW_GAP_REWRITE=1
+    export CHUMP_TEST_GATE=0
+    _or_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _or_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    mkdir -p "${_or_root}/.chump-locks" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"guard_bypassed","guard_name":"operator_recovery_umbrella","bypasses":["CHUMP_BYPASS_BOT_MERGE","CHUMP_GAP_CHECK","CHUMP_TEST_GATE","CHUMP_ALLOW_UNREGISTERED_GAP"],"operator":true}\n' \
+        "$_or_ts" >> "${_or_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+    unset _or_ts _or_root
+fi
+
+# -----------------------------------------------------------------------
 # Guard 0: cargo fmt --check (INFRA-749)
 #
 # Fleet workers can bypass the pre-commit hook (--no-verify) or skip
@@ -292,16 +312,13 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         && [[ "$branch" =~ ^chump/[a-zA-Z]+-[0-9]+ ]] \
         && [[ "${CHUMP_BOT_MERGE_IN_PROGRESS:-0}" != "1" ]] \
         && [[ "${CHUMP_BYPASS_BOT_MERGE:-0}" != "1" ]]; then
-        echo "" >&2
+        echo "[pre-push] Bypass: CHUMP_BYPASS_BOT_MERGE=1 git push  (or CHUMP_OPERATOR_RECOVERY=1 for full recovery mode)" >&2
         echo "[pre-push] BLOCKED (INFRA-719): direct push of gap branch '$branch' to a new PR." >&2
         echo "[pre-push] Use bot-merge.sh to ship gap branches — it wires gap-ship-fatal" >&2
         echo "[pre-push] (INFRA-678) and the auto-close hook (INFRA-154)." >&2
         echo "" >&2
         echo "[pre-push] Ship command:" >&2
         echo "[pre-push]   scripts/coord/bot-merge.sh --gap <GAP-ID> --auto-merge" >&2
-        echo "" >&2
-        echo "[pre-push] Bypass (use with comment explaining why):" >&2
-        echo "[pre-push]   CHUMP_BYPASS_BOT_MERGE=1 git push" >&2
         echo "" >&2
         exit 1
     fi
