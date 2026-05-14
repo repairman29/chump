@@ -950,13 +950,24 @@ class ChumpViewSettings extends HTMLElement {
           <chump-parallelism-governor></chump-parallelism-governor>
         </div>
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">API Secrets (INFRA-989)</p>
+          <div id="api-secrets" style="font-size: 0.9em;">
+            <p style="color: var(--text-muted);">Loading secrets…</p>
+          </div>
+          <p style="color: var(--text-muted); font-size: 0.8em; margin-top: 8px;">
+            Stored in <code>~/.chump/config.toml</code> [api] (chmod 600). Probed against
+            the provider before persist — bad credentials never reach disk.
+            Values are never returned by GET — only presence + last 4 chars.
+          </p>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
           <p class="setting-label" style="margin-bottom: 12px;">Operator Configuration (INFRA-988)</p>
           <div id="operator-config" style="font-size: 0.9em;">
             <p style="color: var(--text-muted);">Loading operator config…</p>
           </div>
           <p style="color: var(--text-muted); font-size: 0.8em; margin-top: 8px;">
             Stored in <code>~/.chump/config.toml</code> [settings]. Env vars override.
-            Secrets are managed separately (INFRA-989).
+            Secrets are managed separately (above).
           </p>
         </div>
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
@@ -977,6 +988,7 @@ class ChumpViewSettings extends HTMLElement {
     `;
     this.#loadCascadeInfo();
     this.#loadOperatorConfig();
+    this.#loadApiSecrets();
     this.#wireThemeToggle();
     this.#wireResetButton();
   }
@@ -999,6 +1011,40 @@ class ChumpViewSettings extends HTMLElement {
     });
   }
 
+  // INFRA-989: render API secret slots from /api/settings/secret/{name}.
+  // GET returns {set, last4} — never the value. Replace flow opens a
+  // type=password input that POSTs to the same endpoint with probe-before-store.
+  #loadApiSecrets() {
+    const container = this.querySelector('#api-secrets');
+    if (!container) return;
+    const secrets = [
+      { key: 'ANTHROPIC_API_KEY', label: 'Anthropic API key' },
+      { key: 'CLAUDE_CODE_OAUTH_TOKEN', label: 'Claude Code OAuth token' },
+      { key: 'GH_TOKEN', label: 'GitHub token' },
+    ];
+    Promise.all(secrets.map(s =>
+      fetch(`/api/settings/secret/${encodeURIComponent(s.key)}`)
+        .then(r => r.ok ? r.json() : { set: false, last4: '' })
+        .then(data => ({ ...s, ...data }))
+        .catch(() => ({ ...s, set: false, last4: '', error: true }))
+    ))
+    .then(rows => {
+      container.innerHTML = rows.map(r => {
+        const masked = r.set ? `••••••••${r.last4}` : '<span style="color:var(--text-muted)">(not set)</span>';
+        const cls = r.set ? 'op-secret-row-set' : 'op-secret-row-unset';
+        return `
+          <div class="op-secret-row ${cls}" data-key="${r.key}" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <label style="flex:1;">${r.label}</label>
+            <code class="op-secret-mask" style="font-family:monospace;">${masked}</code>
+            <button data-action="replace" data-key="${r.key}" class="op-secret-replace">${r.set ? 'Replace' : 'Set'}</button>
+          </div>`;
+      }).join('');
+      container.querySelectorAll('[data-action="replace"]').forEach(btn => {
+        btn.addEventListener('click', e => this.#startSecretReplace(e));
+      });
+    });
+  }
+
   // INFRA-1280 Sub-gap 9: Reset-all wipes every chump.* localStorage key.
   // Confirms before nuking so accidental clicks don't surprise the operator.
   #wireResetButton() {
@@ -1009,6 +1055,68 @@ class ChumpViewSettings extends HTMLElement {
       btn.textContent = `Wiped ${wiped} keys — reloading…`;
       btn.disabled = true;
       setTimeout(() => location.reload(), 400);
+    });
+  }
+
+  // INFRA-989: open the inline replace form for a secret slot.
+  #startSecretReplace(e) {
+    const btn = e.target;
+    const key = btn.dataset.key;
+    const row = btn.closest('.op-secret-row');
+    if (!row || row.querySelector('input[type="password"]')) return;
+    // Build the replace form inline. type=password + autocomplete=off so
+    // the browser doesn't cache the value or expose it via DevTools history.
+    const form = document.createElement('div');
+    form.style.cssText = 'display:flex;align-items:center;gap:6px;flex:1;';
+    form.innerHTML = `
+      <input type="password" autocomplete="off" data-key="${key}" placeholder="Paste new value…" style="flex:1;font-family:monospace;">
+      <button data-action="save-secret" data-key="${key}">Save</button>
+      <button data-action="cancel-secret" data-key="${key}">Cancel</button>
+      <span data-role="status" style="font-size:0.85em;color:var(--text-muted);"></span>
+    `;
+    row.appendChild(form);
+    form.querySelector('[data-action="save-secret"]').addEventListener('click', ev => this.#saveSecret(ev));
+    form.querySelector('[data-action="cancel-secret"]').addEventListener('click', ev => {
+      ev.target.closest('.op-secret-row').querySelector('div').remove();
+    });
+  }
+
+  // INFRA-989: POST the secret value (probe-before-store, 422 on probe fail).
+  #saveSecret(e) {
+    const btn = e.target;
+    const key = btn.dataset.key;
+    const row = btn.closest('.op-secret-row');
+    const input = row.querySelector('input[type="password"]');
+    const status = row.querySelector('[data-role="status"]');
+    const value = input.value;
+    if (!value) { status.textContent = '(empty)'; return; }
+    btn.disabled = true;
+    status.textContent = 'probing…';
+    fetch(`/api/settings/secret/${encodeURIComponent(key)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': 'pwa' },
+      body: JSON.stringify({ value }),
+    })
+    .then(r => {
+      if (r.status === 422) {
+        status.textContent = 'probe failed — not saved';
+        btn.disabled = false;
+        return null;
+      }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    })
+    .then(j => {
+      if (!j) return;
+      // Immediately clear the cleartext from the input/memory.
+      input.value = '';
+      status.textContent = `saved (••••${j.last4})`;
+      // Re-render the entire secrets section so the new state is reflected.
+      setTimeout(() => this.#loadApiSecrets(), 400);
+    })
+    .catch(err => {
+      status.textContent = `error: ${err.message}`;
+      btn.disabled = false;
     });
   }
 
