@@ -1,4 +1,5 @@
 //! INFRA-606: roadmap-status — reads docs/ROADMAP.md, shows progress against weekly outcomes.
+//! INFRA-1145: adds starved_outcomes, untraced_p0, pillar_coverage, --exit-on-drift, --top-starved.
 //!
 //! `chump roadmap-status [--json]` parses docs/ROADMAP.md for Week N outcomes + gap refs,
 //! cross-references against the gap registry (state.db), and emits a 🟢/🟡/🔴 progress table.
@@ -21,10 +22,25 @@ pub struct WeekOutcome {
     pub gaps: Vec<RoadmapGap>,
 }
 
+/// INFRA-1145: per-pillar count of open (pickable) gaps.
+#[derive(Debug, Default, Clone)]
+pub struct PillarCoverage {
+    pub effective: usize,
+    pub credible: usize,
+    pub resilient: usize,
+    pub zero_waste: usize,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct RoadmapStatusReport {
     pub weeks: Vec<WeekOutcome>,
     pub ts: String,
+    /// INFRA-1145: week numbers where zero gaps are shipped or in-flight.
+    pub starved_outcomes: Vec<u32>,
+    /// INFRA-1145: open P0/P1 gap IDs not referenced in any ROADMAP week.
+    pub untraced_p0: Vec<String>,
+    /// INFRA-1145: per-pillar open gap counts.
+    pub pillar_coverage: PillarCoverage,
 }
 
 pub fn parse_roadmap(content: &str) -> Vec<WeekOutcome> {
@@ -114,6 +130,9 @@ pub fn build_report(repo_root: &Path) -> RoadmapStatusReport {
     let content = std::fs::read_to_string(&roadmap_path).unwrap_or_default();
     let mut weeks = parse_roadmap(&content);
 
+    let mut untraced_p0: Vec<String> = Vec::new();
+    let mut pillar_coverage = PillarCoverage::default();
+
     if let Ok(gs) = crate::gap_store::GapStore::open(repo_root) {
         let all_open = gs.list(Some("open")).unwrap_or_default();
         let all_done = gs.list(Some("done")).unwrap_or_default();
@@ -132,11 +151,56 @@ pub fn build_report(repo_root: &Path) -> RoadmapStatusReport {
                 // gaps not found in either list stay "open" (conservative)
             }
         }
+
+        // INFRA-1145: collect all gap IDs referenced in the roadmap.
+        let all_roadmap_ids: std::collections::HashSet<String> = weeks
+            .iter()
+            .flat_map(|w| w.gaps.iter())
+            .filter(|g| !g.is_placeholder)
+            .map(|g| g.id.clone())
+            .collect();
+
+        // INFRA-1145: untraced_p0 — open P0/P1 gaps not in any ROADMAP week.
+        for row in &all_open {
+            let priority = row.priority.as_str();
+            if (priority == "P0" || priority == "P1") && !all_roadmap_ids.contains(&row.id) {
+                untraced_p0.push(row.id.clone());
+            }
+        }
+
+        // INFRA-1145: pillar_coverage — count open gaps by pillar tag in title.
+        for row in &all_open {
+            let title = row.title.as_str();
+            if title.contains("EFFECTIVE") {
+                pillar_coverage.effective += 1;
+            } else if title.contains("CREDIBLE") {
+                pillar_coverage.credible += 1;
+            } else if title.contains("RESILIENT") {
+                pillar_coverage.resilient += 1;
+            } else if title.contains("ZERO-WASTE") {
+                pillar_coverage.zero_waste += 1;
+            }
+        }
     }
+
+    // INFRA-1145: starved_outcomes — weeks where zero gaps are shipped or in-flight.
+    let starved_outcomes: Vec<u32> = weeks
+        .iter()
+        .filter(|w| {
+            !w.gaps.is_empty()
+                && w.gaps
+                    .iter()
+                    .all(|g| g.status != "shipped" && g.status != "in_flight")
+        })
+        .map(|w| w.week)
+        .collect();
 
     RoadmapStatusReport {
         weeks,
         ts: current_iso8601(),
+        starved_outcomes,
+        untraced_p0,
+        pillar_coverage,
     }
 }
 
@@ -158,7 +222,16 @@ fn outcome_status_icon(week: &WeekOutcome) -> &'static str {
 }
 
 impl RoadmapStatusReport {
+    /// Returns true when drift is detected (starved outcomes or untraced P0/P1 gaps).
+    pub fn has_drift(&self) -> bool {
+        !self.starved_outcomes.is_empty() || !self.untraced_p0.is_empty()
+    }
+
     pub fn render_text(&self) -> String {
+        self.render_text_with_opts(usize::MAX)
+    }
+
+    pub fn render_text_with_opts(&self, top_starved: usize) -> String {
         let mut out = String::new();
         out.push_str("═══ Roadmap Status ═══\n\n");
 
@@ -212,11 +285,60 @@ impl RoadmapStatusReport {
             out.push('\n');
         }
 
+        // INFRA-1145: drift analysis section
+        out.push_str("─── Drift Analysis (INFRA-1145) ───\n");
+
+        let shown_starved: Vec<_> = self.starved_outcomes.iter().take(top_starved).collect();
+        if shown_starved.is_empty() {
+            out.push_str(
+                "  \u{2705} No starved outcomes (all weeks have \u{2265}1 shipped/in-flight gap)\n",
+            );
+        } else {
+            out.push_str(&format!(
+                "  \u{26a0}\u{fe0f}  Starved outcomes: {} week(s) with zero progress\n",
+                self.starved_outcomes.len()
+            ));
+            for w in &shown_starved {
+                out.push_str(&format!("     Week {}\n", w));
+            }
+            if self.starved_outcomes.len() > top_starved {
+                out.push_str(&format!(
+                    "     \u{2026} {} more (use --top-starved to adjust)\n",
+                    self.starved_outcomes.len() - top_starved
+                ));
+            }
+        }
+
+        if self.untraced_p0.is_empty() {
+            out.push_str(
+                "  \u{2705} No untraced P0/P1 gaps (all P0/P1 appear in ROADMAP outcomes)\n",
+            );
+        } else {
+            out.push_str(&format!(
+                "  \u{26a0}\u{fe0f}  Untraced P0/P1 gaps: {} not in any ROADMAP week\n",
+                self.untraced_p0.len()
+            ));
+            for id in &self.untraced_p0 {
+                out.push_str(&format!("     {}\n", id));
+            }
+        }
+
+        let pc = &self.pillar_coverage;
+        out.push_str(&format!(
+            "  Pillar coverage (open): EFFECTIVE={} CREDIBLE={} RESILIENT={} ZERO-WASTE={}\n",
+            pc.effective, pc.credible, pc.resilient, pc.zero_waste
+        ));
+
+        out.push('\n');
         out.push_str(&format!("Generated: {}\n", self.ts));
         out
     }
 
     pub fn render_json(&self) -> String {
+        self.render_json_with_opts(usize::MAX)
+    }
+
+    pub fn render_json_with_opts(&self, top_starved: usize) -> String {
         let mut weeks_json: Vec<String> = Vec::new();
         for week in &self.weeks {
             let icon = outcome_status_icon(week);
@@ -254,10 +376,36 @@ impl RoadmapStatusReport {
             ));
         }
 
+        // INFRA-1145: new fields
+        let starved_json: Vec<String> = self
+            .starved_outcomes
+            .iter()
+            .take(top_starved)
+            .map(|w| w.to_string())
+            .collect();
+
+        let untraced_json: Vec<String> = self
+            .untraced_p0
+            .iter()
+            .map(|id| format!(r#""{id}""#))
+            .collect();
+
+        let pc = &self.pillar_coverage;
+        let pillar_json = format!(
+            r#"{{"effective":{e},"credible":{c},"resilient":{r},"zero_waste":{z}}}"#,
+            e = pc.effective,
+            c = pc.credible,
+            r = pc.resilient,
+            z = pc.zero_waste,
+        );
+
         format!(
-            r#"{{"ts":"{ts}","kind":"roadmap_status","weeks":[{weeks}]}}"#,
+            r#"{{"ts":"{ts}","kind":"roadmap_status","weeks":[{weeks}],"starved_outcomes":[{starved}],"untraced_p0":[{untraced}],"pillar_coverage":{pillar}}}"#,
             ts = self.ts,
             weeks = weeks_json.join(","),
+            starved = starved_json.join(","),
+            untraced = untraced_json.join(","),
+            pillar = pillar_json,
         )
     }
 }
@@ -391,12 +539,17 @@ mod tests {
     fn test_render_json_required_fields() {
         let report = RoadmapStatusReport {
             weeks: vec![],
-            ts: "2026-05-06T17:00:00Z".to_string(),
+            ts: "2026-05-06T17:00:00Z".to_string(), // chump-fmt: time-bomb-ok
+            ..Default::default()
         };
         let json = report.render_json();
         assert!(json.contains(r#""kind":"roadmap_status""#));
         assert!(json.contains(r#""weeks""#));
         assert!(json.contains(r#""ts""#));
+        // INFRA-1145: new required fields
+        assert!(json.contains(r#""starved_outcomes""#));
+        assert!(json.contains(r#""untraced_p0""#));
+        assert!(json.contains(r#""pillar_coverage""#));
     }
 
     #[test]
@@ -404,7 +557,8 @@ mod tests {
         let weeks = parse_roadmap(FIXTURE);
         let report = RoadmapStatusReport {
             weeks,
-            ts: "2026-05-06T17:00:00Z".to_string(),
+            ts: "2026-05-06T17:00:00Z".to_string(), // chump-fmt: time-bomb-ok
+            ..Default::default()
         };
         let text = report.render_text();
         assert!(text.contains("Week 1"));
@@ -416,12 +570,99 @@ mod tests {
         let weeks = parse_roadmap(FIXTURE);
         let report = RoadmapStatusReport {
             weeks,
-            ts: "2026-05-06T17:00:00Z".to_string(),
+            ts: "2026-05-06T17:00:00Z".to_string(), // chump-fmt: time-bomb-ok
+            ..Default::default()
         };
         let text = report.render_text();
         assert!(
             text.contains("not-filed") || text.contains("not_filed") || text.contains("not filed")
         );
+    }
+
+    // INFRA-1145: tests for new drift analysis fields
+    #[test]
+    fn test_starved_outcomes_all_open() {
+        let week = WeekOutcome {
+            week: 5,
+            week_title: "test".to_string(),
+            outcome: "some outcome".to_string(),
+            gaps: vec![RoadmapGap {
+                id: "INFRA-1".to_string(),
+                is_placeholder: false,
+                status: "open".to_string(),
+                closed_pr: None,
+            }],
+        };
+        let report = RoadmapStatusReport {
+            weeks: vec![week],
+            ts: "2026-05-06T17:00:00Z".to_string(), // chump-fmt: time-bomb-ok
+            starved_outcomes: vec![5],
+            ..Default::default()
+        };
+        assert!(report.has_drift());
+        let json = report.render_json();
+        assert!(json.contains(r#""starved_outcomes":[5]"#));
+        let text = report.render_text();
+        assert!(text.contains("Starved") || text.contains("starved"));
+    }
+
+    #[test]
+    fn test_no_drift_all_shipped() {
+        let report = RoadmapStatusReport {
+            weeks: vec![],
+            ts: "2026-05-06T17:00:00Z".to_string(), // chump-fmt: time-bomb-ok
+            starved_outcomes: vec![],
+            untraced_p0: vec![],
+            pillar_coverage: PillarCoverage::default(),
+        };
+        assert!(!report.has_drift());
+    }
+
+    #[test]
+    fn test_untraced_p0_in_json() {
+        let report = RoadmapStatusReport {
+            weeks: vec![],
+            ts: "2026-05-06T17:00:00Z".to_string(), // chump-fmt: time-bomb-ok
+            untraced_p0: vec!["INFRA-999".to_string()],
+            ..Default::default()
+        };
+        assert!(report.has_drift());
+        let json = report.render_json();
+        assert!(json.contains(r#""untraced_p0":["INFRA-999"]"#));
+    }
+
+    #[test]
+    fn test_top_starved_limits_output() {
+        let report = RoadmapStatusReport {
+            weeks: vec![],
+            ts: "2026-05-06T17:00:00Z".to_string(), // chump-fmt: time-bomb-ok
+            starved_outcomes: vec![1, 2, 3, 4, 5],
+            ..Default::default()
+        };
+        // With top_starved=2, JSON should only show 2 entries
+        let json = report.render_json_with_opts(2);
+        // Should show [1,2] not [1,2,3,4,5]
+        assert!(json.contains(r#""starved_outcomes":[1,2]"#));
+    }
+
+    #[test]
+    fn test_pillar_coverage_in_json() {
+        let report = RoadmapStatusReport {
+            weeks: vec![],
+            ts: "2026-05-06T17:00:00Z".to_string(), // chump-fmt: time-bomb-ok
+            pillar_coverage: PillarCoverage {
+                effective: 5,
+                credible: 3,
+                resilient: 7,
+                zero_waste: 2,
+            },
+            ..Default::default()
+        };
+        let json = report.render_json();
+        assert!(json.contains(r#""effective":5"#));
+        assert!(json.contains(r#""credible":3"#));
+        assert!(json.contains(r#""resilient":7"#));
+        assert!(json.contains(r#""zero_waste":2"#));
     }
 
     #[test]

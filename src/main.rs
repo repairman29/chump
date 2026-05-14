@@ -924,31 +924,96 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // `chump roadmap-status [--json]` (INFRA-606) — reads docs/ROADMAP.md,
-    // shows 🟢/🟡/🔴 progress per weekly outcome, lists implementing gaps
-    // with shipped/in-flight/open counts cross-referenced against state.db.
+    // `chump roadmap-status [--json] [--exit-on-drift] [--top-starved N]`
+    // INFRA-606: reads docs/ROADMAP.md, shows 🟢/🟡/🔴 progress per weekly outcome.
+    // INFRA-1145: adds starved_outcomes, untraced_p0, pillar_coverage, --exit-on-drift.
     if args.get(1).map(String::as_str) == Some("roadmap-status") {
         if args.iter().any(|a| a == "--help" || a == "help") {
-            println!("Usage: chump roadmap-status [--json]");
+            println!("Usage: chump roadmap-status [--json] [--exit-on-drift] [--top-starved N]");
             println!();
             println!("Reads docs/ROADMAP.md and shows 🟢/🟡/🔴 progress per weekly outcome.");
             println!("Lists implementing gaps with shipped/in-flight/open counts cross-referenced");
             println!("against state.db.");
             println!();
             println!("Options:");
-            println!("  --json   output in JSON format");
+            println!("  --json            output in JSON format");
+            println!("  --exit-on-drift   exit 1 if starved outcomes or untraced P0/P1 gaps found");
+            println!(
+                "  --top-starved N   limit starved_outcomes output to N entries (default: all)"
+            );
             println!();
-            println!("Example:");
+            println!("Exit codes:");
+            println!("  0 — no drift detected (or --exit-on-drift not set)");
+            println!("  1 — drift detected when --exit-on-drift is set");
+            println!();
+            println!("Examples:");
             println!("  chump roadmap-status");
+            println!("  chump roadmap-status --json | jq .starved_outcomes");
+            println!("  chump roadmap-status --exit-on-drift  # CI gate");
             return Ok(());
         }
         let want_json = args.iter().any(|a| a == "--json");
+        let exit_on_drift = args.iter().any(|a| a == "--exit-on-drift");
+
+        // Parse --top-starved N
+        let top_starved: usize = args
+            .windows(2)
+            .find(|w| w[0] == "--top-starved")
+            .and_then(|w| w[1].parse::<usize>().ok())
+            .unwrap_or(usize::MAX);
+
         let repo_root = repo_path::repo_root();
         let report = roadmap_status::build_report(&repo_root);
+
+        // INFRA-1145: emit ambient event when drift detected and --exit-on-drift set
+        if exit_on_drift && report.has_drift() {
+            let lock_dir = repo_root.join(".chump-locks");
+            let ambient = lock_dir.join("ambient.jsonl");
+            if let Ok(ts_out) = std::process::Command::new("date")
+                .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
+                .output()
+            {
+                let ts_str = String::from_utf8_lossy(&ts_out.stdout).trim().to_string();
+                let starved_json: Vec<String> = report
+                    .starved_outcomes
+                    .iter()
+                    .map(|w| w.to_string())
+                    .collect();
+                let untraced_json: Vec<String> = report
+                    .untraced_p0
+                    .iter()
+                    .map(|id| format!(r#""{id}""#))
+                    .collect();
+                let event = format!(
+                    r#"{{"ts":"{ts}","kind":"roadmap_drift_detected","starved_outcomes":[{s}],"untraced_p0":[{u}]}}"#,
+                    ts = ts_str,
+                    s = starved_json.join(","),
+                    u = untraced_json.join(","),
+                );
+                let _ = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&ambient)
+                    .and_then(|mut f| {
+                        use std::io::Write;
+                        writeln!(f, "{}", event)
+                    });
+            }
+        }
+
         if want_json {
-            println!("{}", report.render_json());
+            println!("{}", report.render_json_with_opts(top_starved));
         } else {
-            print!("{}", report.render_text());
+            print!("{}", report.render_text_with_opts(top_starved));
+        }
+
+        if exit_on_drift && report.has_drift() {
+            eprintln!(
+                "[roadmap-status] DRIFT: {} starved outcome(s), {} untraced P0/P1 gap(s)",
+                report.starved_outcomes.len(),
+                report.untraced_p0.len()
+            );
+            std::process::exit(1);
         }
         return Ok(());
     }

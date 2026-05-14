@@ -1921,3 +1921,10 @@ events:
       main-checkout path via git worktree list and used that in the wrapper instead.
     consumers: [fleet-brief]
     fields_required: [ts, kind, worktree_path, canonical_path]
+  # ── INFRA-1145: roadmap-status drift detection ─────────────────────────────
+  - kind: roadmap_drift_detected
+    emitter: src/main.rs roadmap-status --exit-on-drift handler (INFRA-1145)
+    trigger: chump roadmap-status --exit-on-drift detects starved outcomes or
+      untraced P0/P1 gaps not referenced in any ROADMAP week.
+    consumers: [fleet-brief, ci-failure-digest, operator-recall]
+    fields_required: [ts, kind, starved_outcomes, untraced_p0]
