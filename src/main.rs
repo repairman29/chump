@@ -16,6 +16,7 @@ mod agent_lease;
 pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
+mod ambient_emit;
 mod ambient_rotate;
 mod ambient_stream;
 mod approval_resolver;
@@ -653,6 +654,53 @@ async fn main() -> Result<()> {
         }
         let b = briefing::build_briefing(gap_id);
         print!("{}", briefing::render_markdown(&b));
+        return Ok(());
+    }
+
+    // `chump ambient emit <kind> [...]` (INFRA-1048) — harness-agnostic
+    // event-write CLI. Replaces the Claude-Code-specific PreToolUse hook
+    // shell+python+flock chain for non-Claude harnesses. See
+    // docs/process/AGENT_API.md §3 for the contract; specced via INFRA-1050.
+    if args.get(1).map(String::as_str) == Some("ambient")
+        && args.get(2).map(String::as_str) == Some("emit")
+    {
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            println!(
+                "Usage: chump ambient emit <kind> [--gap GAP-ID] [--source NAME] \\\n         [--harness NAME] [--field key=value]..."
+            );
+            println!();
+            println!(
+                "Write one event line to .chump-locks/ambient.jsonl. Auto-fills ts (RFC3339 UTC),"
+            );
+            println!("session (CHUMP_SESSION_ID > CLAUDE_SESSION_ID > worktree cache > derived),");
+            println!(
+                "worktree (basename of repo root), and harness (--harness > CHUMP_AGENT_HARNESS > 'unknown')."
+            );
+            println!();
+            println!("Examples:");
+            println!("  chump ambient emit file_edit --gap INFRA-1048 --field path=src/main.rs");
+            println!("  chump ambient emit commit --field sha=abc1234 --field msg='fix: x'");
+            return Ok(());
+        }
+        // Slice off args[0] (binary name) so from_argv sees
+        // ["ambient", "emit", <kind>, ...flags].
+        let parsed = match ambient_emit::EmitArgs::from_argv(&args[1..]) {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("chump ambient emit: {e:#}");
+                eprintln!("Run `chump ambient emit --help` for usage.");
+                std::process::exit(2);
+            }
+        };
+        let path = match ambient_emit::emit(&parsed) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("chump ambient emit: {e:#}");
+                std::process::exit(1);
+            }
+        };
+        // Stderr so stdout stays clean for chained commands (e.g. backtick capture).
+        eprintln!("[ambient] wrote {} ({})", parsed.kind, path.display());
         return Ok(());
     }
 
