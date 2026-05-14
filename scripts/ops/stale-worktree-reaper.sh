@@ -166,38 +166,27 @@ info "target/ purge: $_target_purged dir(s), $((_target_freed_kb / 1024)) MB $([
 # active session is currently using). Lease JSON has a "worktree" field; we
 # also fall back to substring match on the lease filename.
 # INFRA-1074: only count leases with heartbeat_at within last 15 min (900s).
+# INFRA-1212: lease parsing moved to scripts/lib/lease.sh (single canonical
+# reader for all 8 reaper / scanner / driver scripts). Behavior unchanged:
+# 15-min freshness threshold per INFRA-1074, fallback chain heartbeat_at >
+# taken_at, grep fallback when jq absent — all handled by the lib.
+# shellcheck source=../lib/lease.sh
+source "$REPO_ROOT/scripts/lib/lease.sh"
+
 ACTIVE_WORKTREES=""
-_NOW_TS="$(date +%s)"
 if [[ -d "$LOCKS_DIR" && "${REAPER_SAFETY_CHECK}" == "1" ]]; then
-    for lease in "$LOCKS_DIR"/*.json; do
+    while IFS= read -r lease; do
         [[ -f "$lease" ]] || continue
-        wt=""
-        if command -v jq >/dev/null 2>&1; then
-            wt=$(jq -r '.worktree // empty' "$lease" 2>/dev/null || true)
-        fi
-        # INFRA-325: tolerate grep no-match.
-        [[ -z "$wt" ]] && wt=$(grep -oE '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" \
-            | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)
+        wt="$(lease_worktree "$lease")"
         [[ -z "$wt" ]] && continue
-        # INFRA-1074: check heartbeat freshness (<=15 min).
-        hb=""
-        if command -v jq >/dev/null 2>&1; then
-            hb=$(jq -r '.heartbeat_at // .taken_at // empty' "$lease" 2>/dev/null || true)
-        fi
-        [[ -z "$hb" ]] && hb=$(grep -oE '"heartbeat_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" \
-            | head -1 | sed -E 's/.*"([^"]+)"$/\1/' || true)
-        if [[ -n "$hb" ]]; then
-            hb_ts=$(date -d "$hb" +%s 2>/dev/null \
-                || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$hb" +%s 2>/dev/null \
-                || echo 0)
-            age_s=$(( _NOW_TS - hb_ts ))
-            if [[ $age_s -gt 900 ]]; then
-                info "  lease $lease: worktree=$wt but heartbeat is ${age_s}s old (>15 min) — not treating as active"
-                continue
-            fi
+        # INFRA-1074: skip leases with heartbeat > 15 min stale.
+        if ! lease_is_fresh "$lease" 900; then
+            age_s="$(lease_heartbeat_age_s "$lease")"
+            info "  lease $lease: worktree=$wt but heartbeat is ${age_s}s old (>15 min) — not treating as active"
+            continue
         fi
         ACTIVE_WORKTREES="$ACTIVE_WORKTREES $wt"
-    done
+    done < <(lease_iter --repo "$REPO_ROOT")
 fi
 
 is_active_lease() {
