@@ -76,6 +76,13 @@
 #     scale" — consumers must be able to discover every emitter from one
 #     place. Bypass: CHUMP_EVENT_REGISTRY_CHECK=0 (with reason trailer).
 #
+# 15. Hardcoded-date guard (INFRA-971, 2026-05-13): refuse staged src/*.rs
+#     additions that place a hardcoded YYYY-MM-DD literal inside a #[test]
+#     or #[cfg(test)] block. Rolling-window fixtures expire when today slides
+#     past the literal (root cause: infra537 trio on 2026-05-13). Bypass:
+#     append `// chump-fmt: time-bomb-ok` to the line, or
+#     CHUMP_HARDCODED_DATE_CHECK=0 (with Hardcoded-Date-Bypass: trailer).
+#
 # Install once: `./scripts/setup/install-hooks.sh`
 # Skip for one commit: `git commit --no-verify` (use sparingly — also
 # skips the lease check, which defeats the coordination system).
@@ -1672,6 +1679,20 @@ fi
 GIT_IDENTITY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-git-identity.sh"
 if [ -x "$GIT_IDENTITY_HOOK" ]; then
     if ! "$GIT_IDENTITY_HOOK"; then
+        exit 1
+    fi
+fi
+
+# 15. Hardcoded-date guard (INFRA-971, 2026-05-13)
+# ------------------------------------------------------------------
+# Refuses staged src/*.rs additions with hardcoded YYYY-MM-DD inside
+# #[test]/#[cfg(test)] blocks — rolling-window fixtures expire when
+# today slides past the literal (root cause: infra537 on 2026-05-13).
+# Bypass: `// chump-fmt: time-bomb-ok` or CHUMP_HARDCODED_DATE_CHECK=0.
+
+HARDCODED_DATE_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-hardcoded-dates.sh"
+if [ -x "$HARDCODED_DATE_HOOK" ]; then
+    if ! "$HARDCODED_DATE_HOOK"; then
         exit 1
     fi
 fi

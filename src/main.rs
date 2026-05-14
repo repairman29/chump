@@ -438,6 +438,147 @@ fn print_help() {
     println!("  scripts/README.md  script taxonomy and entry points");
 }
 
+/// `chump plan` subcommand (INFRA-1021).
+///
+/// Thin wrapper around chump-planner library — keeps main.rs free of the
+/// scoring/graph internals so the planner can evolve independently. Errors
+/// bubble up via Result; reconciliation-gate breach maps to exit code 2.
+fn run_plan_subcommand(args: &[String]) -> Result<()> {
+    use chump_planner::output::table;
+    use chump_planner::score::TelemetryInputs;
+    use chump_planner::{
+        build_plan, collect_reconcile, load_gaps_dir, DependencyGraph, PlanRequest, Weights,
+    };
+
+    if args.iter().any(|a| a == "--help" || a == "help") {
+        println!("Usage: chump plan [OPTIONS]");
+        println!();
+        println!("Rank the open gap backlog and recommend the next N to dispatch.");
+        println!("v0.1: structured depends_on hard edges only, table output,");
+        println!("reconciliation gate. --explain / --graph / --json arrive in v0.2.");
+        println!();
+        println!("OPTIONS:");
+        println!("  --gaps PATH             Gaps directory (default: docs/gaps)");
+        println!("  --agents N              Plan for N concurrent agents (default: 5)");
+        println!("  --pillar DOMAIN         Filter to a single domain");
+        println!("  --max-effort SIZE       Skip gaps larger than this (xs/s/m/l/xl)");
+        println!("  --no-pillar-cap         Disable the running pillar-share cap");
+        println!("  --include-blocked       Include gaps with open prerequisites");
+        println!("  --reconcile-threshold N Exit non-zero when status:open+closed_pr backlog > N");
+        println!("                          (default 10)");
+        return Ok(());
+    }
+
+    let mut gaps_path = std::path::PathBuf::from("docs/gaps");
+    let mut agents: usize = 5;
+    let mut pillar: Option<String> = None;
+    let mut max_effort: Option<String> = None;
+    let mut no_pillar_cap = false;
+    let mut include_blocked = false;
+    let mut reconcile_threshold: usize = 10;
+
+    let mut it = args.iter().skip(2);
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--gaps" => {
+                gaps_path = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--gaps needs a value"))?
+                    .into();
+            }
+            "--agents" => {
+                agents = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--agents needs a value"))?
+                    .parse()?;
+            }
+            "--pillar" => {
+                pillar = Some(
+                    it.next()
+                        .ok_or_else(|| anyhow::anyhow!("--pillar needs a value"))?
+                        .clone(),
+                );
+            }
+            "--max-effort" => {
+                max_effort = Some(
+                    it.next()
+                        .ok_or_else(|| anyhow::anyhow!("--max-effort needs a value"))?
+                        .clone(),
+                );
+            }
+            "--no-pillar-cap" => no_pillar_cap = true,
+            "--include-blocked" => include_blocked = true,
+            "--reconcile-threshold" => {
+                reconcile_threshold = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--reconcile-threshold needs a value"))?
+                    .parse()?;
+            }
+            "--format" => {
+                // v0.1 supports only table; accept it explicitly so the v0.2
+                // wiring (--format json|mermaid|markdown) lands as a small diff.
+                let v = it
+                    .next()
+                    .ok_or_else(|| anyhow::anyhow!("--format needs a value"))?;
+                if v != "table" {
+                    anyhow::bail!("v0.1 only supports --format table; got {v}");
+                }
+            }
+            other => anyhow::bail!("unknown arg {other} (see chump plan --help)"),
+        }
+    }
+
+    let gaps = load_gaps_dir(&gaps_path)
+        .map_err(|e| anyhow::anyhow!("loading gaps from {}: {e}", gaps_path.display()))?;
+    let graph = DependencyGraph::build(&gaps);
+
+    if let Err(cycle) = graph.topo_order() {
+        eprintln!(
+            "warning: dependency cycle detected ({} members, identity {}): {:?}",
+            cycle.gaps.len(),
+            &cycle.identity()[..16],
+            cycle.gaps.iter().map(|g| g.0.as_str()).collect::<Vec<_>>(),
+        );
+    }
+
+    let pillar_filter = match pillar.as_deref() {
+        Some(s) => Some(<chump_planner::Domain as std::str::FromStr>::from_str(s)?),
+        None => None,
+    };
+    let max_effort_val = match max_effort.as_deref() {
+        Some(s) => Some(<chump_planner::Effort as std::str::FromStr>::from_str(s)?),
+        None => None,
+    };
+
+    let req = PlanRequest {
+        agents,
+        pillar_filter,
+        max_effort: max_effort_val,
+        respect_pillar_cap: !no_pillar_cap,
+        include_blocked,
+    };
+
+    let weights = Weights::default();
+    let telemetry = TelemetryInputs::default();
+    let today = chrono::Utc::now().date_naive();
+
+    let plan = build_plan(&gaps, &graph, &req, &telemetry, today, &weights);
+    let reconcile = collect_reconcile(&gaps);
+
+    print!("{}", table::render(&plan, &reconcile));
+
+    if reconcile.breaches(reconcile_threshold) {
+        eprintln!(
+            "error: reconciliation backlog {} exceeds threshold {} — run scripts/coord/gap-doctor-reconcile.py",
+            reconcile.count(),
+            reconcile_threshold
+        );
+        std::process::exit(2);
+    }
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -805,6 +946,14 @@ async fn main() -> Result<()> {
         let status = fleet_status::snapshot(&repo_root);
         print!("{}", status.render_text());
         return Ok(());
+    }
+
+    // `chump plan` (INFRA-1021) — rank the open gap backlog and recommend the
+    // next N to dispatch. Library implementation lives in crates/chump-planner;
+    // v0.1 supports --format table and --reconcile-threshold; --explain,
+    // --graph, json and mermaid are v0.2.
+    if args.get(1).map(String::as_str) == Some("plan") {
+        return run_plan_subcommand(&args);
     }
 
     // `chump fleet-velocity` (INFRA-566) — ships/hour over 1h/6h/24h
@@ -3891,7 +4040,8 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-            "set" => {
+            "set" | "update" | "modify" | "edit" | "change" => {
+                // INFRA-1036: 'set' and natural-language aliases for gap mutation.
                 // CREDIBLE-016: unknown-flag detection — if the positional GAP-ID slot
                 // starts with "--", the operator forgot the ID or passed a bad flag.
                 let gap_set_usage = || {
@@ -7529,11 +7679,59 @@ async fn main() -> Result<()> {
 
     let release_mode = args.get(1).map(|s| s == "--release").unwrap_or(false);
     if release_mode {
-        // Release this session's lease, or a named one with --session-id=<id>.
-        let override_id = args.iter().find_map(|a| a.strip_prefix("--session-id="));
-        let target_id = override_id
-            .map(|s| s.to_string())
-            .unwrap_or_else(agent_lease::current_session_id);
+        // Release a lease by session ID.
+        //
+        // INFRA-1026: support both --lease <SESSION_ID> (space-separated) and
+        // --session-id=<SESSION_ID> (original equals-prefix form). Previously
+        // only --session-id= was parsed, so `chump --release --lease <id>`
+        // silently ignored <id> and released the current session instead.
+        //
+        // Lookup precedence: --lease <id> > --session-id=<id> > current session.
+        // When --lease or --session-id= is given and the session doesn't exist
+        // in the active lease list, exit 1 with a clear message (no silent fallback).
+        let override_id_eq = args.iter().find_map(|a| a.strip_prefix("--session-id="));
+        let override_id_lease = args.windows(2).find_map(|w| {
+            if w[0] == "--lease" {
+                Some(w[1].as_str())
+            } else {
+                None
+            }
+        });
+        let (target_id, explicit_target) = if let Some(id) = override_id_lease {
+            (id.to_string(), true)
+        } else if let Some(id) = override_id_eq {
+            (id.to_string(), true)
+        } else {
+            (agent_lease::current_session_id(), false)
+        };
+
+        // INFRA-1026: when an explicit --lease / --session-id was given and the
+        // session is not in the active list, exit 1 instead of silently deleting
+        // whatever chump_XXXXXXXXX.json might or might not exist.
+        if explicit_target {
+            let active = agent_lease::list_active();
+            if !active.iter().any(|l| l.session_id == target_id) {
+                eprintln!(
+                    "chump --release: no such session '{}' in active leases.",
+                    target_id
+                );
+                eprintln!(
+                    "  Active sessions: {}",
+                    if active.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        active
+                            .iter()
+                            .map(|l| l.session_id.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
+                );
+                eprintln!("  Use 'chump --leases' to list all active sessions.");
+                std::process::exit(1);
+            }
+        }
+
         let stub = agent_lease::Lease {
             session_id: target_id.clone(),
             paths: vec![],
@@ -7548,6 +7746,11 @@ async fn main() -> Result<()> {
         match agent_lease::release(&stub) {
             Ok(()) => {
                 println!("released session_id={}", target_id);
+                tracing::info!(
+                    session_id = %target_id,
+                    explicit_target = explicit_target,
+                    "lease released via --release"
+                );
                 return Ok(());
             }
             Err(e) => {

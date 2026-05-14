@@ -280,6 +280,69 @@ for g, n in per_gap.most_common(10):
 PY
 }
 
+# EFFECTIVE-025: show GitHub REST + GraphQL rate-limit remaining.
+# Uses `gh api rate_limit` (REST call, does NOT consume GraphQL quota).
+render_rate_limit() {
+  if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
+    echo "GitHub API: (gh not available — rate limit unknown)"
+    return
+  fi
+  local raw
+  raw="$(gh api rate_limit 2>/dev/null || echo "")"
+  if [[ -z "$raw" ]]; then
+    echo "GitHub API: (rate_limit call failed — offline or auth issue)"
+    return
+  fi
+  local rest_rem rest_lim gql_rem gql_lim reset_ts
+  rest_rem="$(echo "$raw" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d['resources']['core']['remaining'])" 2>/dev/null || echo "?")"
+  rest_lim="$(echo "$raw" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d['resources']['core']['limit'])" 2>/dev/null || echo "5000")"
+  gql_rem="$(echo "$raw" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d['resources']['graphql']['remaining'])" 2>/dev/null || echo "?")"
+  gql_lim="$(echo "$raw" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d['resources']['graphql']['limit'])" 2>/dev/null || echo "5000")"
+  reset_ts="$(echo "$raw" | python3 -c "
+import json,sys,time
+d=json.load(sys.stdin)
+ts=max(d['resources']['core']['reset'], d['resources']['graphql']['reset'])
+print(time.strftime('%H:%M', time.gmtime(ts)))
+" 2>/dev/null || echo "??")"
+
+  local line="GitHub API: REST=${rest_rem}/${rest_lim} GraphQL=${gql_rem}/${gql_lim} (resets ${reset_ts} UTC)"
+  local warn=0
+  { [[ "$rest_rem" != "?" ]] && [[ "$rest_rem" -lt 500 ]]; } 2>/dev/null && warn=1 || true
+  { [[ "$gql_rem"  != "?" ]] && [[ "$gql_rem"  -lt 500 ]]; } 2>/dev/null && warn=1 || true
+
+  if [[ "$warn" -eq 1 ]]; then
+    # Color red on terminals; plain WARN: prefix for pipes/logs.
+    if [[ -t 1 ]]; then
+      printf '\033[31mWARN: %s\033[0m\n' "$line"
+    else
+      printf 'WARN: %s\n' "$line"
+    fi
+  else
+    echo "$line"
+  fi
+}
+
+render_ship_rate() {
+  # CREDIBLE-047: autonomous ship rate — % of fleet PRs with zero operator touch.
+  # Read last row from metrics file if available (avoids API call in hot render path).
+  local metrics_file="${CHUMP_METRICS_DIR:-$HOME/.chump/metrics}/autonomous-ship-rate.jsonl"
+  if [[ -f "$metrics_file" ]]; then
+    local last_row; last_row="$(tail -1 "$metrics_file")"
+    local rate fleet auto date
+    rate="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'{float(d[\"autonomous_rate\"])*100:.0f}%')" 2>/dev/null || echo "?")"
+    fleet="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['fleet_filed'])" 2>/dev/null || echo "?")"
+    auto="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['autonomous'])" 2>/dev/null || echo "?")"
+    date="$(echo "$last_row" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['date'])" 2>/dev/null || echo "?")"
+    echo "autonomous-ship-rate: ${rate} (${auto}/${fleet} fleet PRs, as of ${date})"
+  else
+    echo "autonomous-ship-rate: (no data — run: bash scripts/dispatch/autonomous-ship-rate.sh)"
+  fi
+}
+
 render_all() {
   render_version_skew
   render_agents
@@ -290,7 +353,13 @@ render_all() {
   echo
   render_race_loss
   echo
+  render_rate_limit
+  echo
+  render_ship_rate
+  echo
   render_ambient
+  echo
+  render_ship_rate
 }
 
 render_json() {

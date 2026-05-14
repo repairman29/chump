@@ -529,15 +529,25 @@
     if (!navigator.onLine) document.body.classList.add('offline');
 
     // V1->V2 backward-compat aliases for e2e tests.
-    // Traverses into shadow roots since querySelector can't pierce them.
+    // INFRA-1018 fix: chump-view-chat uses light DOM (innerHTML), NOT a shadow
+    // root.  The previous code used viewChat.shadowRoot?.querySelector which
+    // always returned undefined/null — #msg-input was never aliased, causing
+    // all PWA shell e2e tests to time out waiting for the locator.
     function createTestAliases() {
-      // #msg-input <- chump-chat's #input (inside shadow DOM)
+      let aliased = false;
+
+      // #msg-input <- chump-chat's #input.
+      // <chump-view-chat> sets this.innerHTML = '<chump-chat …>' → light DOM.
+      // <chump-chat> attaches a shadow root → getElementById works there.
       const viewChat = document.querySelector('chump-view-chat');
       if (viewChat) {
-        const chumpChat = viewChat.shadowRoot?.querySelector('chump-chat');
+        const chumpChat = viewChat.querySelector('chump-chat'); // light DOM, NOT shadowRoot
         if (chumpChat) {
           const input = chumpChat.shadowRoot?.getElementById('input');
-          if (input && input.id !== 'msg-input') input.id = 'msg-input';
+          if (input) {
+            if (input.id !== 'msg-input') input.id = 'msg-input';
+            aliased = true;
+          }
         }
       }
 
@@ -548,16 +558,22 @@
       // #settings-btn <- nav settings button (light DOM)
       const settingsNav = document.querySelector('[data-view="settings"]');
       if (settingsNav && !settingsNav.id) settingsNav.id = 'settings-btn';
+
+      return aliased;
+    }
+
+    // Retry until #msg-input alias is established.  Module scripts are deferred
+    // and custom-element upgrades happen asynchronously; a single DOMContentLoaded
+    // callback may fire before connectedCallback() populates the shadow root.
+    function scheduleTestAliases() {
+      if (createTestAliases()) return; // done — alias is live
+      setTimeout(scheduleTestAliases, 100); // retry every 100 ms
     }
 
     if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        createTestAliases();
-        setTimeout(createTestAliases, 500);
-      });
+      document.addEventListener('DOMContentLoaded', scheduleTestAliases);
     } else {
-      createTestAliases();
-      setTimeout(createTestAliases, 500);
+      scheduleTestAliases();
     }
   </script>
 </body>

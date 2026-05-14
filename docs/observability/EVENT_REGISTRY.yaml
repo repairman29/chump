@@ -1188,6 +1188,15 @@ events:
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, behind, threshold, phase]
 
+  # ── INFRA-1042: doc-only fast-path attribution ─────────────────────────────
+  - kind: bot_merge_doc_only_fastpath
+    emitter: scripts/coord/bot-merge.sh (INFRA-1042, builds on INFRA-920)
+    trigger: bot-merge auto-detects shell/doc-only diff (no .rs files) and skips
+      cargo test + cargo clippy entirely. Each emission represents ~2-3 min saved
+      vs the full pipeline (DOC-036 baseline 2m36s clippy for 1-line README).
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, branch, files_changed, saved_steps]
+
   # ── META-059: gap-closure drift detector ──────────────────────────────────
   - kind: gap_closure_drift
     emitter: scripts/coord/gap-doctor-reconcile.py --check-closure-drift (META-059)
@@ -1196,6 +1205,25 @@ events:
       catch on its own. Surfaces silent auto-close failures.
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
+  # ── INFRA-1040: graphql exhaustion fleet-wide signal ──────────────────────
+  - kind: graphql_exhausted
+    emitter: scripts/coord/lib/github.sh (INFRA-1040, piggyback on every chump_gh call)
+    trigger: GitHub GraphQL bucket remaining_graphql <= CHUMP_GH_EXHAUSTED_THRESHOLD
+      (default 100). Debounced to once per reset window via
+      .chump-locks/.graphql-exhausted-since. Lets every fleet agent pivot to
+      REST-only paths (INFRA-1016 / `--rest-only`) without each having to
+      discover exhaustion by hitting its own failed gh call first.
+    consumers: [chump-ambient-glance, fleet-brief, operator-recall]
+    fields_required: [ts, kind, threshold_seen, resets_at, source]
+
+  # ── INFRA-1034: bot-merge per-PID log discoverability ─────────────────────
+  - kind: bot_merge_log_started
+    emitter: scripts/coord/bot-merge.sh (INFRA-1034)
+    trigger: bot-merge.sh sets up tee redirection to .chump-locks/bot-merge-<pid>.log.
+      One emit per script invocation; lets operator-recall / chump-ambient-glance
+      surface "bot-merge currently running, tail -f <path>" without scanning ps.
+    consumers: [chump-ambient-glance, fleet-brief, operator-recall]
+    fields_required: [ts, kind, pid, log_path, branch]
 
   # ── INFRA-847: fleet-state.json mutex ─────────────────────────────────────
   - kind: fleet_state_lock_timeout
@@ -1438,6 +1466,13 @@ events:
     trigger: any CI gate completes (pass / fail / bypassed / skipped)
     consumers: [gate-fire-rate, fleet-brief, curator]
     fields_required: [ts, kind, gate, outcome, rule_fired, evidence, pr_or_branch]
+  # ── INFRA-1003: auto-rerun out-of-scope PR check ─────────────────────────
+  - kind: auto_rerun_out_of_scope
+    emitter: scripts/coord/auto-rerun-out-of-scope.sh (INFRA-1003)
+    trigger: PR check failed on tests with zero overlap with the PR diff; rerun
+      triggered once to distinguish environmental flake from real regression
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, pr_number, run_id, diff_paths, failing_tests]
 
   # ── RESILIENT-014: test-gate bypass audit ─────────────────────────────────
   - kind: test_gate_bypassed
@@ -1445,3 +1480,44 @@ events:
     trigger: CHUMP_TEST_GATE=0 used to skip the cargo test gate on push
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, gap_id, reason, branch, bypassed_by]
+
+  # ── INFRA-1006: bot-merge watchdog ────────────────────────────────────────
+  - kind: bot_merge_watchdog_killed
+    emitter: scripts/coord/bot-merge-watchdog.sh (INFRA-1006)
+    trigger: bot-merge.sh process older than CHUMP_BOT_MERGE_MAX_AGE_S with done/merged gap killed
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, pid, gap, age_s, gap_status, pr_status]
+
+  - kind: bot_merge_watchdog_stuck
+    emitter: scripts/coord/bot-merge-watchdog.sh (INFRA-1006)
+    trigger: bot-merge.sh process over age limit but gap still open — operator review
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, pid, gap, age_s, gap_status, pr_status]
+  # ── CREDIBLE-047: autonomous ship-rate regression ──────────────────────────
+  - kind: autonomous_ship_rate_regression
+    emitter: scripts/dispatch/autonomous-ship-rate.sh (CREDIBLE-047)
+    trigger: day-over-day autonomous rate drops > 10 percentage points
+    consumers: [fleet-brief, curator, PWA-daily-brief]
+    fields_required: [ts, kind, prev_rate, curr_rate, drop_pp]
+
+  # ── CREDIBLE-052: cross-session gap-ID collision prevention ───────────────
+  - kind: gap_id_allocator_offline
+    emitter: src/gap_store.rs (reserve → external_pending_ids — CREDIBLE-052)
+    trigger: open-PR scan failed (network error or gh unavailable); reserve continues
+      with lease+DB coverage only; slight residual race risk remains
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, domain, reason]
+
+  - kind: gap_id_allocator_collision_avoided
+    emitter: src/gap_store.rs (reserve_with_external — CREDIBLE-052)
+    trigger: naive next ID (existing_max+1) was already claimed by an open PR or
+      sibling lease; allocator skipped to the next safe ID
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, domain, skipped_id]
+
+  # ── INFRA-1020: opencode identity residue audit ───────────────────────────
+  - kind: identity_residue_swept
+    emitter: scripts/ops/audit-opencode-identity-residue.sh (INFRA-1020)
+    trigger: one-shot audit finds (or confirms clean) opencode t@t.t placeholder identity in worktree configs
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, worktree, removed_email, removed_name, count]

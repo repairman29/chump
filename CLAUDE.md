@@ -1,5 +1,13 @@
 # Claude Code — Chump session rules (hot overlay)
 
+> **Canonical agent rules live in [`AGENTS.md`](./AGENTS.md)** (Linux Foundation AGENTS.md spec). This file is the **Claude-Code-specific overlay** — Chump session flow + Claude-Code-only mechanics (subagent spawning, OAUTH token paths, `.claude/` directory conventions).
+>
+> A non-Claude harness (opencode-bigpickle, codex, manual, etc.) reads `AGENTS.md` + the two contract specs (links activate once #1718 + #1721 land):
+> - `docs/process/HARNESS_CONTRACT.md` (INFRA-1044) — what Chump needs FROM the agent (file tools, shell, git, gh)
+> - `docs/process/AGENT_API.md` (INFRA-1050) — what Chump gives TO the agent (`--briefing`, `--execute-gap`, `ambient emit`, `health`)
+>
+> Read order for Claude Code sessions: `AGENTS.md` first, then this file. (INFRA-1046)
+
 ## Mission
 Build agents that are **Credible**, **Effective**, **Resilient**, and **Zero-Waste**.
 Full pillar definitions and coordination docs: [`AGENTS.md`](./AGENTS.md) + [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md).
@@ -82,7 +90,9 @@ gh pr merge <N> --auto --squash
 chump gap ship <ID> --update-yaml
 ```
 
-## Spawning subagents (META-027)
+## Spawning subagents (META-027) — Claude-Code-only
+
+> Uses Claude Code's `Agent` tool. Non-Claude harnesses parallelize via the fleet (multiple workers) — see harness contract doc §Out-of-scope.
 
 When spawning via the `Agent` tool, paste the full shipping epilogue from
 `docs/process/SUBAGENT_DISPATCH.md` into every subagent prompt.
@@ -95,7 +105,9 @@ See the SUBAGENT_DISPATCH.md "STOP" block for the exact mandate.
 **Model:** always sonnet (INFRA-515). Haiku hesitates in `--dangerously-skip-permissions`
 mode and burns the slot waiting for stdin that never comes.
 
-## Auth modes (INFRA-622)
+## Auth modes (INFRA-622) — Claude-Code-specific OAUTH path
+
+> `ANTHROPIC_API_KEY` is the universal path any harness uses to call Anthropic. `CLAUDE_CODE_OAUTH_TOKEN` is Claude Code's subscription-OAUTH path. Non-Claude harnesses calling Anthropic use the API key only.
 
 Both `ANTHROPIC_API_KEY` (API-key) and `CLAUDE_CODE_OAUTH_TOKEN` (subscription OAUTH) are first-class.
 

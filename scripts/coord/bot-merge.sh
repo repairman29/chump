@@ -896,6 +896,34 @@ REMOTE="${REMOTE:-origin}"
 # ── INFRA-119: start health monitoring now that REPO_ROOT is set ──────────────
 _bm_health_init "$REPO_ROOT/.chump-locks"
 
+# ── INFRA-1034: always tee stdout+stderr to a per-PID log file ───────────────
+# Problem observed 2026-05-13: launching bot-merge in the background with
+# `bash bot-merge.sh ... 2>&1 | tail -15 &` produces 0-byte output until the
+# script exits because the tail pipe buffers. Operator can't see progress for
+# 4+ minutes. Always-on tee removes the buffering trap and gives a stable
+# `tail -f` target regardless of how the caller redirects.
+#
+# Opt-out: CHUMP_BOT_MERGE_NO_TEE=1 (preserves prior behavior for callers that
+# want the script's stdout to flow only through their own pipe).
+if [[ "${DRY_RUN:-0}" != "1" && "${CHUMP_BOT_MERGE_NO_TEE:-0}" != "1" ]]; then
+    _BM_LOG_FILE="${REPO_ROOT}/.chump-locks/bot-merge-${_BM_PID}.log"
+    # Print BEFORE redirecting so the operator-visible message lands on the
+    # original stdout (the log file gets it too via subsequent writes).
+    info "[INFRA-1034] full log: $_BM_LOG_FILE  (tail -f to follow)"
+    # Emit a discoverable marker so fleet-brief / operator-recall / chump-
+    # ambient-glance can show "bot-merge currently running, log at X" without
+    # scanning ps. Debounced to once per script invocation by virtue of being
+    # outside the heartbeat loop.
+    _bm_amb_path="${REPO_ROOT}/.chump-locks/ambient.jsonl"
+    printf '{"ts":"%s","kind":"bot_merge_log_started","pid":%d,"log_path":"%s","branch":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_BM_PID" "$_BM_LOG_FILE" "${BRANCH:-unknown}" \
+        >> "$_bm_amb_path" 2>/dev/null || true
+    # Process substitution: every subsequent write to stdout/stderr is
+    # duplicated into the log file. tee runs in its own subprocess that
+    # exits when the script's fd 1/2 close.
+    exec > >(tee -a "$_BM_LOG_FILE") 2>&1
+fi
+
 # ── INFRA-539: probe GitHub API before doing any real work ────────────────────
 if [[ "${DRY_RUN:-0}" != "1" ]]; then
     gh_api_probe || { red "Aborting bot-merge: GitHub unreachable. Retry when connectivity is restored."; exit 1; }
@@ -1100,26 +1128,48 @@ else
     info "Branch is up to date with $REMOTE/$BASE_BRANCH."
 fi
 
-# INFRA-920: auto-detect shell/doc-only changes and skip cargo test.
-# If all changed files vs origin/main match known-safe non-Rust patterns and
-# zero .rs files are present, set SKIP_TESTS=1 without requiring --skip-tests.
-if [[ $SKIP_TESTS -eq 0 ]]; then
-    _changed_files=$(git diff --name-only "${REMOTE}/${BASE_BRANCH}...HEAD" 2>/dev/null || true)
-    if [[ -n "$_changed_files" ]]; then
-        _rs_count=0
-        _unsafe_count=0
-        while IFS= read -r _f; do
-            [[ -z "$_f" ]] && continue
-            case "$_f" in
-                *.rs)                              _rs_count=$((_rs_count + 1)) ;;
-                scripts/*|docs/*|*.md|*.yaml|*.sh) ;;
-                *)                                 _unsafe_count=$((_unsafe_count + 1)) ;;
-            esac
-        done <<< "$_changed_files"
-        if [[ $_rs_count -eq 0 && $_unsafe_count -eq 0 ]]; then
+# INFRA-920 + INFRA-1042 + INFRA-1061: detect shell/doc-only diffs.
+#
+# Detection runs UNCONDITIONALLY (not gated on SKIP_TESTS) so --fast invocations
+# still get the DOC_ONLY flag — original INFRA-1042 wrapped this in
+# `if SKIP_TESTS == 0`, which silently disabled doc-only skip for every --fast
+# run since --fast pre-sets SKIP_TESTS=1. INFRA-1061 hoists the detection out
+# and uses DOC_ONLY to also skip cargo clippy entirely (CI clippy stays the
+# gate). Observed savings: ~2-3 min per doc PR (DOC-036 baseline 2m36s clippy
+# on 1-line README diff; INFRA-1038 observed clippy timing out 245s).
+#
+# wc -l replaces `grep -c .` for file-count: grep -c returns exit 1 on 0
+# matches, which propagates under set -o pipefail.
+DOC_ONLY=0
+_changed_files=$(git diff --name-only "${REMOTE}/${BASE_BRANCH}...HEAD" 2>/dev/null || true)
+if [[ -n "$_changed_files" ]]; then
+    _rs_count=0
+    _unsafe_count=0
+    while IFS= read -r _f; do
+        [[ -z "$_f" ]] && continue
+        case "$_f" in
+            *.rs)                              _rs_count=$((_rs_count + 1)) ;;
+            scripts/*|docs/*|*.md|*.yaml|*.sh) ;;
+            *)                                 _unsafe_count=$((_unsafe_count + 1)) ;;
+        esac
+    done <<< "$_changed_files"
+    if [[ $_rs_count -eq 0 && $_unsafe_count -eq 0 ]]; then
+        DOC_ONLY=1
+        # Only flip SKIP_TESTS if the caller hadn't already (--fast / --skip-tests
+        # both pre-set it; we still log credit + emit so waste-tally sees it).
+        if [[ $SKIP_TESTS -eq 0 ]]; then
             SKIP_TESTS=1
-            info "[bot-merge] auto-skip: shell/doc-only change detected — skipping cargo test"
+            info "[bot-merge] auto-skip: shell/doc-only diff — skipping cargo test (INFRA-920)"
         fi
+        info "[bot-merge] DOC_ONLY=1 — clippy will be skipped (INFRA-1042/INFRA-1061)"
+        # Emit so fleet-brief / waste-tally credit the saved cycles.
+        _doc_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+        mkdir -p "$(dirname "$_doc_amb")" 2>/dev/null || true
+        _doc_filecount=$(printf '%s\n' "$_changed_files" | wc -l | tr -d ' ')
+        printf '{"ts":"%s","kind":"bot_merge_doc_only_fastpath","branch":"%s","files_changed":%d,"saved_steps":["cargo_test","cargo_clippy"]}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${BRANCH:-unknown}" \
+            "${_doc_filecount:-0}" \
+            >> "$_doc_amb" 2>/dev/null || true
     fi
 fi
 
@@ -1191,7 +1241,14 @@ info "cargo parallelism: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (override via env)
 # PR may briefly exist on the open-PR list before CI grades it red. Default
 # OFF (preserves human-developer fail-fast ergonomics); agents pass --fast
 # explicitly.
-if [[ $FAST -eq 1 ]]; then
+#
+# INFRA-1042: doc-only diffs (set DOC_ONLY=1 above) skip clippy entirely.
+# Zero Rust changes means zero new lints; CI clippy is the safety net.
+# Observed savings: ~2-3 min per doc PR (DOC-036 spent 2m36s on clippy for
+# a 1-line README diff before this gate landed).
+if [[ "${DOC_ONLY:-0}" -eq 1 ]]; then
+    info "[bot-merge] DOC_ONLY=1 — skipping cargo clippy entirely (INFRA-1042)"
+elif [[ $FAST -eq 1 ]]; then
     # 2026-05-07: Even in --fast mode, run `cargo clippy --workspace --fix`
     # as a cheap auto-correction pass. This catches the wave of fleet PRs
     # that ship doc-list-overindented / manual_strip / manual_split_once

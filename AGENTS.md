@@ -3,26 +3,31 @@
 This file follows the [AGENTS.md](https://aaif.io/) cross-tool convention adopted
 by the Agentic AI Foundation (Linux Foundation, Dec 2025) as one of three founding
 projects (alongside MCP and goose). It is the **canonical, tool-agnostic** entry
-point for any agent (Claude Code, goose, Aider, Cursor, generic LLM coding tools)
-working in this repo.
+point for **any agent** working in this repo — Claude Code, opencode, Codex CLI,
+Aider, Cursor, goose, or a human committing directly.
 
-> **Companion file:** [`CLAUDE.md`](./CLAUDE.md) is the Chump-specific overlay
-> for Claude Code and Chump-internal agents. It adds the lease/coordination
-> rules, the `chump-commit.sh` wrapper, the commit-time guards, and other
-> mechanics that are unique to this repo's multi-agent dispatcher and not
-> portable to other projects. Read **AGENTS.md first**, then `CLAUDE.md` for
-> Chump-specific operating procedure.
+> **Harness-specific addenda:**
+> - [`CLAUDE.md`](./CLAUDE.md) — overlay for Claude Code and Chump fleet workers.
+>   Adds lease / coordination rules, `chump-commit.sh`, commit-time guards,
+>   ambient stream discipline, and Chump fleet mechanics. Read AGENTS.md first,
+>   then CLAUDE.md if you are a Claude Code session or a Chump fleet worker.
+> - Other harnesses (opencode, Aider, goose): follow AGENTS.md; CLAUDE.md rules
+>   do not apply unless you are running inside the Chump fleet dispatcher.
 
 ---
 
 ## Project overview
 
-**Chump** is a Rust-based multi-agent dispatcher and coordination harness for
-Claude Code (and increasingly other agent frameworks). It runs many concurrent
-agent sessions against a shared codebase using lease-based file ownership, a
-NATS-backed coordination bus, and a per-gap "briefing" memory system. The
-workspace ships a `chump` CLI binary, several supporting crates, and a docs/
-ledger that drives autonomous gap-picking.
+**Chump** is a Rust-based multi-agent fleet coordinator and gap registry.
+It coordinates many concurrent agent sessions — from any coding tool — against a
+shared codebase, using lease-based file ownership, a coordination event stream
+(`ambient.jsonl`), and a per-gap "briefing" memory system. The workspace ships a
+`chump` CLI binary (the coordinator), an optional built-in agent (Ollama/vLLM
+backend), several supporting crates, and a docs/ ledger that drives autonomous
+gap-picking.
+
+Chump's own development is done by the fleet — Claude Code, opencode, and
+manual operator commits all interop through the same coordinator primitives.
 
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for the 4-pillar mission and active thrusts,
 [`docs/architecture/ARCHITECTURE.md`](./docs/architecture/ARCHITECTURE.md) for the system map,
