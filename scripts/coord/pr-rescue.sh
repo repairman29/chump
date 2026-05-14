@@ -34,6 +34,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 # the emitted ambient.jsonl `github_api_call` lines.
 # shellcheck source=lib/github.sh
 source "${SCRIPT_DIR}/lib/github.sh"
+# INFRA-1109: cache-first per-PR meta lookup via INFRA-1081 cache.
+# shellcheck source=lib/github_cache.sh
+[[ -f "${SCRIPT_DIR}/lib/github_cache.sh" ]] && source "${SCRIPT_DIR}/lib/github_cache.sh"
 export CHUMP_GH_SCRIPT="pr-rescue.sh"
 REPO="${GITHUB_REPOSITORY:-}"
 TARGET_PR=""
@@ -113,11 +116,21 @@ SKIPPED=0
 FAILED=0
 
 for PR_NUM in ${PR_NUMBERS}; do
-    # ── Fetch PR metadata ─────────────────────────────────────────────────────
-    PR_META="$(chump_gh api "repos/${REPO}/pulls/${PR_NUM}" 2>/dev/null)" || {
-        log "WARN: Could not fetch PR #${PR_NUM} — skipping."
-        continue
-    }
+    # ── Fetch PR metadata (INFRA-1109 cache-first) ────────────────────────────
+    # Prefer reading from .chump/github_cache.db (INFRA-1081, populated by
+    # webhooks). cache_lookup_pr emits kind=cache_miss + falls back to REST
+    # when stale/missing — zero API calls when cache is warm, one when cold.
+    PR_META=""
+    if declare -F cache_lookup_pr >/dev/null 2>&1; then
+        PR_META="$(cache_lookup_pr "${PR_NUM}" 2>/dev/null)"
+    fi
+    if [[ -z "$PR_META" ]]; then
+        # Cache lib not loaded or cache empty + REST fallback failed.
+        PR_META="$(chump_gh api "repos/${REPO}/pulls/${PR_NUM}" 2>/dev/null)" || {
+            log "WARN: Could not fetch PR #${PR_NUM} — skipping."
+            continue
+        }
+    fi
 
     PR_STATE="$(echo "${PR_META}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['state'])")"
     MERGEABLE="$(echo "${PR_META}" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('mergeable','') or '')")"
