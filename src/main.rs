@@ -4589,6 +4589,53 @@ async fn main() -> Result<()> {
                                 "shipped {gap_id} — why: status flipped to done{pr_note}, session={session_id}"
                             );
                         }
+                        // INFRA-1200: write-ahead log cleanup. On ship, stamp
+                        // .chump-plans/<gap-id>/SHIPPED_AT so the 7-day GC pass
+                        // can find and remove stale patch directories. Also sweep
+                        // any existing directories already past the grace period.
+                        {
+                            let plans_base = repo_root.join(".chump-plans");
+                            let gap_plans = plans_base.join(&gap_id);
+                            if gap_plans.is_dir() {
+                                let marker = gap_plans.join("SHIPPED_AT");
+                                let ts = unix_ts().to_string();
+                                let _ = std::fs::write(&marker, &ts);
+                            }
+                            // GC: remove any .chump-plans/<dir>/ with SHIPPED_AT > 7d old.
+                            const GRACE_SECS: u64 = 7 * 24 * 3600;
+                            let now_ts = unix_ts();
+                            let mut removed_count: u64 = 0;
+                            if let Ok(rd) = std::fs::read_dir(&plans_base) {
+                                for entry in rd.flatten() {
+                                    let marker = entry.path().join("SHIPPED_AT");
+                                    if let Ok(contents) = std::fs::read_to_string(&marker) {
+                                        if let Ok(ship_ts) = contents.trim().parse::<u64>() {
+                                            if now_ts.saturating_sub(ship_ts) > GRACE_SECS
+                                                && std::fs::remove_dir_all(entry.path()).is_ok()
+                                            {
+                                                removed_count += 1;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if removed_count > 0 {
+                                let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                let event = format!(
+                                    "{{\"ts\":\"{}\",\"kind\":\"chump_plans_gc\",\
+                                     \"gap\":\"{gap_id}\",\"removed_count\":{removed_count}}}\n",
+                                    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ"),
+                                );
+                                let _ = std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .create(true)
+                                    .open(&ambient_log)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        f.write_all(event.as_bytes())
+                                    });
+                            }
+                        }
                         // INFRA-994: auto-close orphaned PRs whose title still
                         // references this gap ID. Runs close-superseded-prs.sh
                         // in the background so it doesn't block the ship command.

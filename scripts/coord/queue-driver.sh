@@ -301,7 +301,7 @@ behind_candidates=""
 dirty_candidates=""
 if [[ -f "$(dirname "$0")/lib/github_cache.sh" ]]; then
     # shellcheck source=lib/github_cache.sh
-# shellcheck disable=SC1091
+    # shellcheck disable=SC1091
     source "$(dirname "$0")/lib/github_cache.sh"
     behind_candidates="$(cache_query_behind_prs)"
     # DIRTY rows are also in the cache — same shape, different mergeable_state.

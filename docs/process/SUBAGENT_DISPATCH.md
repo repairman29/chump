@@ -138,6 +138,35 @@ throughput differential is larger.
 When calling the `Agent` tool manually, omit `model:` (inherits the session
 default, which is sonnet for fleet sessions) or explicitly pass `"model": "sonnet"`.
 
+## Write-ahead log — protect edits from /tmp reap (INFRA-1200)
+
+Worktrees live in `/tmp`, which macOS can reap without warning. Before writing
+any file, subagents **should** wrap the write through `chump-edit-wrap.sh` so
+the new content is persisted to the stable main-repo tree first. If the
+worktree is reaped, `chump-edit-replay.sh` re-applies all patches to a fresh
+worktree in seconds.
+
+```bash
+# Before: write directly (unsafe — /tmp reap loses work)
+cat new-content.txt > /private/tmp/chump-INFRA-NNN/src/foo.rs
+
+# After: wrap through the WAL (safe)
+cat new-content.txt | \
+  CHUMP_WORKTREE_ROOT=/private/tmp/chump-INFRA-NNN \
+  scripts/coord/chump-edit-wrap.sh INFRA-NNN \
+  /private/tmp/chump-INFRA-NNN/src/foo.rs
+```
+
+Recovery after `/tmp` reap:
+
+```bash
+# Fresh worktree already created (e.g. via chump claim --resume)
+scripts/coord/chump-edit-replay.sh INFRA-NNN /private/tmp/chump-INFRA-NNN
+```
+
+Patches are stored in `.chump-plans/<GAP-ID>/` in the main repo. They are
+cleaned up automatically 7 days after the gap ships.
+
 ## Timeout rescue path — find WIP on the branch (INFRA-525)
 
 `worker.sh` now installs a `SIGALRM` trap at `FLEET_TIMEOUT_S − 30 s`. If an
