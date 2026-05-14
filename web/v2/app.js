@@ -2161,12 +2161,17 @@ class ChumpViewAgent extends HTMLElement {
 
         // Attach claim handlers
         list.querySelectorAll('.gap-claim-btn').forEach((btn) => {
-          btn.addEventListener('click', (e) => this.#claim(e.target.dataset.gapId));
+          btn.addEventListener('click', (e) => this.#claim(e.target.closest('article'), e.target.dataset.gapId));
         });
 
-        // Attach work handlers
+        // Attach work/dispatch handlers
         list.querySelectorAll('.gap-work-btn').forEach((btn) => {
-          btn.addEventListener('click', (e) => this.#work(e.target.dataset.gapId));
+          btn.addEventListener('click', (e) => this.#work(e.target.closest('article'), e.target.dataset.gapId));
+        });
+
+        // Attach retry handlers (PRODUCT-114)
+        list.querySelectorAll('.gap-retry-btn').forEach((btn) => {
+          btn.addEventListener('click', (e) => this.#retry(e.target.closest('article'), e.target.dataset.gapId, e.target.dataset.fromPhase));
         });
 
         // Attach status handlers
@@ -2187,35 +2192,107 @@ class ChumpViewAgent extends HTMLElement {
       });
   }
 
-  #claim(gapId) {
-    fetch(`/api/gap/claim/${gapId}`, { method: 'POST' })
+  // PRODUCT-114: disable all action buttons in a row while a call is in-flight (AC-4).
+  #setRowPending(article, pending) {
+    if (!article) return;
+    article.querySelectorAll('.gap-claim-btn,.gap-work-btn,.gap-retry-btn,.gap-status-btn')
+      .forEach((btn) => { btn.disabled = pending; });
+    if (pending) {
+      article.classList.add('gap-row-pending');
+    } else {
+      article.classList.remove('gap-row-pending');
+    }
+  }
+
+  // PRODUCT-114: common headers for state-mutating gap POST calls (AC-5).
+  // Includes CSRF token required by gap_security_headers_middleware (CREDIBLE-023).
+  #gapPostHeaders() {
+    return { 'X-CSRF-Token': 'pwa', 'Content-Type': 'application/json' };
+  }
+
+  // PRODUCT-114: inline update of the row status badge after a successful claim (AC-1).
+  #updateRowStatus(article, statusText) {
+    if (!article) return;
+    const badge = article.querySelector('.gap-badge');
+    if (badge) { badge.textContent = statusText; badge.className = 'gap-badge badge-warn'; }
+  }
+
+  // AC-1: Claim button POSTs to /api/gap/claim/{id};
+  // row updates with claimed-by + worktree on success.
+  #claim(article, gapId) {
+    this.#setRowPending(article, true);
+    fetch(`/api/gap/claim/${gapId}`, {
+      method: 'POST',
+      headers: this.#gapPostHeaders(),
+    })
       .then((r) => r.json())
       .then((d) => {
+        this.#setRowPending(article, false);
         if (d.error) {
-          alert(`Claim failed: ${d.error}`);
+          const errEl = article?.querySelector('.gap-error');
+          if (errEl) errEl.textContent = `Claim failed: ${d.error}`;
+          else alert(`Claim failed: ${d.error}`);
         } else {
-          alert(`Claimed ${gapId}. Worktree: ${d.worktree_path}`);
+          this.#updateRowStatus(article, 'claimed');
+          const msg = d.worktree_path ? `Claimed. Worktree: ${d.worktree_path}` : 'Claimed.';
+          const actionsEl = article?.querySelector('.gap-actions');
+          if (actionsEl) actionsEl.textContent = msg;
           this.#load();
         }
       })
       .catch((err) => {
+        this.#setRowPending(article, false);
         alert(`Claim error: ${err.message}`);
       });
   }
 
-  #work(gapId) {
-    fetch(`/api/gap/work/${gapId}`, { method: 'POST' })
+  // AC-2: Dispatch button POSTs to /api/gap/work/{id};
+  // row shows worker SSE stream inline (via IntersectionObserver embed after #load).
+  #work(article, gapId) {
+    if (!confirm(`Dispatch a fleet worker for ${gapId}?\n\nThis spawns an autonomous agent workflow.`)) return;
+    this.#setRowPending(article, true);
+    fetch(`/api/gap/work/${gapId}`, {
+      method: 'POST',
+      headers: this.#gapPostHeaders(),
+    })
       .then((r) => r.json())
       .then((d) => {
+        this.#setRowPending(article, false);
         if (d.error) {
-          alert(`Work failed: ${d.error}`);
+          alert(`Dispatch failed: ${d.error}`);
         } else {
-          alert(`Workflow started for ${gapId}. Chump is working...`);
+          // Reload to mount the SSE workflow-timeline embed for this row.
           this.#load();
         }
       })
       .catch((err) => {
-        alert(`Work error: ${err.message}`);
+        this.#setRowPending(article, false);
+        alert(`Dispatch error: ${err.message}`);
+      });
+  }
+
+  // AC-3: Retry button POSTs /api/gap/work/{id}/retry;
+  // visible when a previous attempt is in-flight or failed (preflight_status=blocked).
+  #retry(article, gapId, fromPhase = 'preflight') {
+    this.#setRowPending(article, true);
+    fetch(`/api/gap/work/${gapId}/retry?from_phase=${encodeURIComponent(fromPhase)}`, {
+      method: 'POST',
+      headers: this.#gapPostHeaders(),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        this.#setRowPending(article, false);
+        if (d.status === 'max_retries_exceeded') {
+          alert(`Max retries exceeded for ${gapId} (phase: ${fromPhase}).`);
+        } else if (d.error) {
+          alert(`Retry failed: ${d.error}`);
+        } else {
+          this.#load();
+        }
+      })
+      .catch((err) => {
+        this.#setRowPending(article, false);
+        alert(`Retry error: ${err.message}`);
       });
   }
 
@@ -2243,10 +2320,17 @@ class ChumpViewAgent extends HTMLElement {
     const badgeClass = g.preflight_status === 'claimable' ? 'badge-success' :
                       g.preflight_status === 'blocked'   ? 'badge-warn'    :
                                                            'badge-error';
+    // PRODUCT-114: three action buttons per gap row.
+    // Claim: shown when gap is claimable.
+    // Dispatch + Retry: shown when gap is active (blocked by an in-flight session).
+    // Retry is always offered alongside Dispatch so the operator can force-retry
+    // from a specific phase without having to navigate elsewhere.
     const actions = g.preflight_status === 'claimable'
       ? `<button class="gap-claim-btn" data-gap-id="${g.id}">Claim</button>`
       : g.preflight_status === 'blocked'
-      ? `<button class="gap-work-btn" data-gap-id="${g.id}">Work</button><button class="gap-status-btn" data-gap-id="${g.id}">Status</button>`
+      ? `<button class="gap-work-btn" data-gap-id="${g.id}">Dispatch</button>` +
+        `<button class="gap-retry-btn" data-gap-id="${g.id}" data-from-phase="preflight">Retry</button>` +
+        `<button class="gap-status-btn" data-gap-id="${g.id}">Status</button>`
       : '';
 
     // Pillar pill — colored. Falls back to nothing when no tag.
