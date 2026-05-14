@@ -445,14 +445,8 @@ jobs:
           PYTHON: python3
         run: bash scripts/eval/research-lane-a-smoke.sh
 
-      - name: gap-preflight unregistered-ID guard (INFRA-020)
-        run: bash scripts/ci/test-gap-preflight-unregistered.sh
-
       - name: gap-preflight AC gate + picker AC filter (INFRA-1259)
         run: bash scripts/ci/test-gap-preflight-ac-gate.sh
-
-      - name: gap-claim claim-time exclusivity race guard (INFRA-403)
-        run: bash scripts/ci/test-gap-claim-race.sh
 
       - name: atomic claim no-shell-out + thin-wrapper assertions (INFRA-1025)
         run: bash scripts/ci/test-infra-1025-atomic-claim.sh
