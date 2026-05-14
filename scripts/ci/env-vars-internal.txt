@@ -304,6 +304,9 @@ FLEET_HARNESS
 # missing_attribution detection.
 CHUMP_AGENT_HARNESS
 
+# ── INFRA-994: bypass auto-close of superseded PRs ─────────────────────────
+CHUMP_SKIP_SUPERSEDED_CLOSE
+
 # ── CREDIBLE-051: closure-consistency check overrides ──────────────────────
 CHUMP_STATE_DB
 CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL
