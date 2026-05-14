@@ -274,10 +274,26 @@ fn list_linked_worktrees(repo: &std::path::Path) -> Vec<PathBuf> {
     }
     let body = String::from_utf8_lossy(&out.stdout);
     let mut paths = Vec::new();
+    // INFRA-1053: filter to worktrees under the harness base. Legacy
+    // .claude/worktrees/ stays accepted unconditionally so existing
+    // installs keep working; the env override extends the filter to
+    // wherever the operator pointed CHUMP_WORKTREE_BASE.
+    let env_base = std::env::var("CHUMP_WORKTREE_BASE").ok();
     for line in body.lines() {
         if let Some(rest) = line.strip_prefix("worktree ") {
             let p = PathBuf::from(rest);
-            if p.to_string_lossy().contains("/.claude/worktrees/") {
+            let path_str = p.to_string_lossy();
+            let matches_legacy = path_str.contains("/.claude/worktrees/");
+            let matches_env = env_base
+                .as_deref()
+                .map(|base| {
+                    let base = base.trim_end_matches('/');
+                    !base.is_empty()
+                        && (path_str.starts_with(&format!("{base}/"))
+                            || path_str.contains(&format!("/{base}/")))
+                })
+                .unwrap_or(false);
+            if matches_legacy || matches_env {
                 paths.push(p);
             }
         }

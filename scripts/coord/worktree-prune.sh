@@ -28,7 +28,9 @@ set -euo pipefail
 
 DRY_RUN=1
 KEEP_MERGED=0
-WORKTREE_ROOT=".claude/worktrees"
+# INFRA-1053: harness-agnostic base. Default preserves the
+# .claude/worktrees/ convention (zero behavior change for existing operators).
+WORKTREE_ROOT="${CHUMP_WORKTREE_BASE:-.claude/worktrees}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
