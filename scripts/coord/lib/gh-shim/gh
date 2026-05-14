@@ -51,19 +51,42 @@ fi
 # Tag this call.
 api_tag="$(chump_gh_api_tag "$@" 2>/dev/null || echo "?")"
 
+# CREDIBLE-065: walk the ps tree past shells (bash/sh/zsh/dash/fish) AND gh
+# itself until we find the real calling script. The previous 2-level walk
+# fell back to 'gh' when the shim was called from inside a gh subshell:
+#   pr-watch.sh → bash → gh → bash-subshell → gh(shim) → recorded 'gh'
+# Now we walk up to 10 levels, skipping any shell or gh ancestor.
+_resolve_script_tag() {
+    local pid="${1:-$PPID}"
+    local name ppid_up depth=0
+    while [[ $depth -lt 10 ]]; do
+        name="$(ps -o comm= -p "$pid" 2>/dev/null | tr -d ' \t' | head -1 || true)"
+        name="$(basename "${name:-}")"
+        # Accept first ancestor that is not a shell or gh
+        if [[ -n "$name" ]] && \
+           [[ "$name" != "bash" && "$name" != "-bash" && \
+              "$name" != "sh"   && "$name" != "-sh"   && \
+              "$name" != "zsh"  && "$name" != "-zsh"  && \
+              "$name" != "dash" && "$name" != "fish"  && \
+              "$name" != "gh" ]]; then
+            echo "$name"
+            return 0
+        fi
+        ppid_up="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' \t')"
+        if [[ -z "$ppid_up" || "$ppid_up" == "0" || "$ppid_up" == "$pid" ]]; then
+            break
+        fi
+        pid="$ppid_up"
+        depth=$((depth + 1))
+    done
+    echo "shim"
+}
+
 # Caller-script identity — resolve early so both throttle and record share it.
-# Prefer CHUMP_GH_SCRIPT (env override), else walk parent process name.
+# Prefer CHUMP_GH_SCRIPT (env override), else walk the process tree.
 script_tag="${CHUMP_GH_SCRIPT:-}"
 if [[ -z "$script_tag" ]]; then
-    script_tag="$(ps -o comm= -p "$PPID" 2>/dev/null | head -1 || true)"
-    # If parent is "bash" or empty, walk one more level (script exec'd by shell).
-    if [[ -z "$script_tag" || "$script_tag" == "bash" || "$script_tag" == "-bash" ]]; then
-        grandparent="$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')"
-        if [[ -n "$grandparent" && "$grandparent" != "0" ]]; then
-            script_tag="$(ps -o comm= -p "$grandparent" 2>/dev/null | head -1 || true)"
-        fi
-    fi
-    script_tag="$(basename "${script_tag:-shim}")"
+    script_tag="$(_resolve_script_tag "$PPID")"
 fi
 
 # INFRA-1103: invoke throttle for every bare 'gh ...' call that reaches the shim.
@@ -94,19 +117,9 @@ started_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
 # `gh "$@"` it issued. Double-waiting would inflate latency and corrupt
 # the sliding window. (The same env var is used to skip double-record.)
 if [[ "${CHUMP_GH_SHIM_RECORDING:-}" != "1" ]]; then
-    # Caller-script identity, same resolution as the record path below.
-    _shim_script_tag="${CHUMP_GH_SCRIPT:-}"
-    if [[ -z "$_shim_script_tag" ]]; then
-        _shim_script_tag="$(ps -o comm= -p "$PPID" 2>/dev/null | head -1 || true)"
-        if [[ -z "$_shim_script_tag" || "$_shim_script_tag" == "bash" || "$_shim_script_tag" == "-bash" ]]; then
-            _shim_gp="$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')"
-            if [[ -n "$_shim_gp" && "$_shim_gp" != "0" ]]; then
-                _shim_script_tag="$(ps -o comm= -p "$_shim_gp" 2>/dev/null | head -1 || true)"
-            fi
-            unset _shim_gp
-        fi
-        _shim_script_tag="$(basename "${_shim_script_tag:-shim}")"
-    fi
+    # CREDIBLE-065: reuse the already-resolved script_tag (walked via _resolve_script_tag
+    # above) rather than duplicating the old 2-level walk here.
+    _shim_script_tag="${CHUMP_GH_SCRIPT:-$script_tag}"
     if declare -F _chump_gh_throttle_wait >/dev/null 2>&1; then
         _chump_gh_throttle_wait "$_shim_script_tag" 2>/dev/null || true
     fi

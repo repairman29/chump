@@ -167,6 +167,37 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 - **PRs are intent-atomic**, not file-count-bounded. One logical change per PR.
 - **`--no-verify` is the reason most regressions ship.** Use very sparingly.
 
+## Rust-first vs. shell-OK (META-064, 2026-05-14)
+
+When you reach for `nano scripts/coord/foo.sh`, pause and check the criteria
+below first. The codebase has shipped 16k+ LOC of "this was shell, now we
+port it to Rust" gaps in the last quarter. Most of that work could have
+been Rust from the start.
+
+**Rust-first IF *any* of these hold:**
+- Mutates canonical state: `state.db`, `.chump-locks/*.json`, `ambient.jsonl`, `docs/gaps/*.yaml`
+- Called from a hot path: `worker.sh` per-cycle, `bot-merge.sh` per-ship, every claim
+- Shares a process boundary with a Rust caller (subprocess-race candidate)
+- Will outlive 3 months (durable tooling, not exploratory)
+- > 200 LOC at first commit (size predicts maintenance compounding)
+
+**Shell is OK IF *all* of these hold:**
+- Glue between existing CLI tools (`gh` + `git` + `jq`)
+- One-shot or exploratory
+- < 200 LOC, no state mutation
+- No regression-test maintenance burden (no `scripts/ci/test-<name>.sh` sibling required)
+
+**Bypass:** when adding shell that hits the Rust-first criteria intentionally
+(e.g. a 30-line `gh + jq` glue shim that legitimately doesn't need types),
+add this trailer to the commit body:
+```
+Rust-First-Bypass: <one-sentence reason>
+```
+The pre-commit gate at `scripts/git-hooks/pre-commit-rust-first.sh` checks
+for the trailer when the criteria match; bypass goes into the audit log.
+
+Sibling rules: META-063 (no new duplicates), META-065 (auto-prioritization).
+
 ## Cache-first reads (INFRA-1081, 2026-05-14)
 
 The fleet has a **local SQLite cache** at `.chump/github_cache.db` populated by a
@@ -187,8 +218,25 @@ cache_query_behind_prs               # returns one number per line
 cache_lookup_checks "<head_sha>"     # returns `name\tstatus\tconclusion` per check
 ```
 
+Additional helpers (INFRA-1275):
+
+```bash
+# List open PRs — replaces gh pr list with mergeStateStatus=BEHIND filter off
+cache_query_open_prs                 # returns `number\ttitle\thead_ref` per row
+
+# Title-substring search — replaces gh pr list --search
+cache_query_open_prs_by_title "X"    # same shape, filtered by LOWER(title) LIKE
+
+# Per-PR file list — replaces gh api repos/X/pulls/N/files
+cache_lookup_pr_files "<number>"     # background-tagged REST under the hood
+
+# Bulk refill — call once on cold cache, REST not GraphQL
+cache_refresh_open_prs               # writes up to 100 open PRs into pr_state
+```
+
 **Already migrated:** queue-driver.sh (BEHIND scan), bot-merge.sh FLEET-029
-overlap scan via chump-ambient-glance.sh, pr-rescue.sh per-PR meta fetch.
+overlap scan, pr-rescue.sh per-PR meta fetch, chump-ambient-glance.sh
+(INFRA-1275), gap-preflight.sh (INFRA-1275).
 **Next consumers** (filed as gaps): bot-merge per-PR check-runs polling
 (INFRA-1130), ghost-gap-reaper (INFRA-1082 audit).
 
