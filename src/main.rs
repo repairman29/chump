@@ -1034,7 +1034,7 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("waste-tally") {
         if args.iter().any(|a| a == "--help" || a == "help") {
             println!(
-                "Usage: chump waste-tally [--since WINDOW] [--json] [--domain|--by-domain] [--tokens]"
+                "Usage: chump waste-tally [--since WINDOW] [--json] [--domain|--by-domain] [--tokens] [--by-close-reason] [--emit-ambient]"
             );
             println!();
             println!("Zero-Waste pillar measurement. Tallies waste events from ambient.jsonl");
@@ -1042,15 +1042,27 @@ async fn main() -> Result<()> {
             println!("with per-kind counts and rough cost estimates.");
             println!();
             println!("Options:");
-            println!("  --since T    time window: 24h, 7d, 60m, or raw seconds  [default: 24h]");
-            println!("  --json       output in JSON format");
-            println!("  --domain     break down waste by gap domain (exits 1 if any domain >40%)");
-            println!("  --by-domain  alias for --domain (back-compat)");
-            println!("  --tokens     include token-cost estimates");
+            println!(
+                "  --since T          time window: 24h, 7d, 60m, or raw seconds  [default: 24h]"
+            );
+            println!("  --json             output in JSON format");
+            println!(
+                "  --domain           break down waste by gap domain (exits 1 if any domain >40%)"
+            );
+            println!("  --by-domain        alias for --domain (back-compat)");
+            println!("  --tokens           include token-cost estimates");
+            println!("  --by-close-reason  classify closed-not-merged PRs by close-comment pattern (INFRA-998)");
+            println!("                     Categories: superseded, duplicate_claim, stale_branch,");
+            println!("                     scratch_commit, ci_fail_orphan, staging_branch, other");
+            println!(
+                "  --emit-ambient     with --by-close-reason: write kind=waste_category_report"
+            );
+            println!("                     to ambient.jsonl (for weekly cron)");
             println!();
             println!("Example:");
             println!("  chump waste-tally --since 7d");
             println!("  chump waste-tally --window 2h   # alias accepted by fleet scaling gate");
+            println!("  chump waste-tally --by-close-reason --since 7d --json");
             return Ok(());
         }
         let since_arg = args
@@ -1063,6 +1075,9 @@ async fn main() -> Result<()> {
         // INFRA-934: --domain is the canonical flag; --by-domain remains for back-compat.
         let by_domain = args.iter().any(|a| a == "--by-domain" || a == "--domain");
         let want_tokens = args.iter().any(|a| a == "--tokens");
+        // INFRA-998: PR-closure-reason categorization.
+        let by_close_reason = args.iter().any(|a| a == "--by-close-reason");
+        let emit_ambient = args.iter().any(|a| a == "--emit-ambient");
 
         // Parse "24h" / "7d" / "60m" / raw seconds.
         let since_secs = parse_duration_to_secs(&since_arg).unwrap_or_else(|| {
@@ -1074,6 +1089,19 @@ async fn main() -> Result<()> {
         });
 
         let repo_root = repo_path::repo_root();
+        // INFRA-998: close-reason mode. Mutually exclusive with --domain.
+        if by_close_reason {
+            let report = waste_tally::build_close_reason_report(since_secs);
+            if want_json {
+                println!("{}", report.render_json());
+            } else {
+                print!("{}", report.render_text());
+            }
+            if emit_ambient {
+                report.emit_ambient(&repo_root);
+            }
+            return Ok(());
+        }
         if by_domain {
             let report = waste_tally::build_domain_report(&repo_root, since_secs);
             if want_json {
