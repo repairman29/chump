@@ -1357,6 +1357,8 @@ jobs:
             bash scripts/ci/test-api-gap-queue-shape.sh
       - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
         run: bash scripts/ci/test-gap-ac-requirement.sh
+      - name: dispatch.rs lease release error surfacing — silent swallow removed, ambient event wired (INFRA-1243)
+        run: bash scripts/ci/test-lease-release-error.sh
 
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path
