@@ -4110,6 +4110,64 @@ async fn main() -> Result<()> {
                     },
                     None => None,
                 };
+                // INFRA-1007: staleness gate — belt-and-suspenders for the CLAUDE.md
+                // "rebase if > 15 commits behind" rule. bot-merge.sh has this gate for
+                // the push path; the manual `chump gap ship` path needs the same check.
+                let stale_threshold: u64 = std::env::var("CHUMP_GAP_SHIP_STALE_THRESHOLD")
+                    .ok()
+                    .and_then(|s| s.trim().parse().ok())
+                    .unwrap_or(15);
+                if std::env::var("CHUMP_GAP_SHIP_SKIP_STALE_CHECK").as_deref() != Ok("1") {
+                    let _ = std::process::Command::new("git")
+                        .args(["fetch", "origin", "main", "--quiet"])
+                        .current_dir(&worktree_root)
+                        .stderr(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .status();
+                    let behind: u64 = std::process::Command::new("git")
+                        .args(["rev-list", "--count", "HEAD..origin/main"])
+                        .current_dir(&worktree_root)
+                        .output()
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok())
+                        .unwrap_or(0);
+                    if behind > stale_threshold {
+                        eprintln!(
+                            "chump gap ship: branch is {behind} commits behind origin/main \
+                             (threshold {stale_threshold}). Rebase before shipping."
+                        );
+                        eprintln!("  Recover: git fetch && git rebase origin/main, then retry.");
+                        eprintln!(
+                            "  Override: CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 chump gap ship ..."
+                        );
+                        let branch = std::process::Command::new("git")
+                            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                            .current_dir(&worktree_root)
+                            .output()
+                            .ok()
+                            .filter(|o| o.status.success())
+                            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let amb = repo_root.join(".chump-locks").join("ambient.jsonl");
+                        let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&repo_root));
+                        let event = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"stale_branch_blocked\",\
+                             \"branch\":\"{branch}\",\"behind\":{behind},\
+                             \"threshold\":{stale_threshold},\"phase\":\"gap-ship\"}}\n"
+                        );
+                        use std::io::Write as _;
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&amb)
+                        {
+                            let _ = f.write_all(event.as_bytes());
+                        }
+                        std::process::exit(3);
+                    }
+                }
                 match store.ship(&gap_id, &session_id, closed_pr) {
                     Ok(()) => {
                         println!("shipped {}", gap_id);

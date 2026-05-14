@@ -1,0 +1,16 @@
+- id: INFRA-1007
+  domain: INFRA
+  title: "RESILIENT: mirror INFRA-995 pre-push staleness gate in chump gap ship Rust path"
+  status: done
+  closed_pr: 1765
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/main.rs chump gap ship re-fetches origin/main and refuses if HEAD..origin/main
+      > 15 commits (env override CHUMP_GAP_SHIP_STALE_THRESHOLD)
+    - on refusal emits kind=stale_branch_blocked with phase=gap-ship and exits non-zero
+      matching bot-merge.sh contract from INFRA-995
+    - integration test covers BEHIND=20 refuse and BEHIND=5 pass
+    - EVENT_REGISTRY.yaml already registers stale_branch_blocked (only the phase value
+      differs from bot-merge usage)
+    - belt-and-suspenders for the manual ship path where operators bypass bot-merge.sh

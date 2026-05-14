@@ -1205,10 +1205,9 @@ events:
 
   # ── INFRA-995: pre-push staleness gate ────────────────────────────────────
   - kind: stale_branch_blocked
-    emitter: scripts/coord/bot-merge.sh (INFRA-995)
-    trigger: branch is >CHUMP_BOT_MERGE_STALE_THRESHOLD (default 15) commits behind
-      main right before push — main moved during build/test. bot-merge.sh refuses
-      to push and exits 3 to keep CI from running on a stale base.
+    emitter: scripts/coord/bot-merge.sh (INFRA-995); src/main.rs chump gap ship (INFRA-1007)
+    trigger: branch is >threshold (default 15) commits behind origin/main. phase=pre-push
+      from bot-merge.sh; phase=gap-ship from the Rust manual-ship path.
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, behind, threshold, phase]
 
