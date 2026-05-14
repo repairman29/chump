@@ -8172,30 +8172,73 @@ async fn main() -> Result<()> {
             (agent_lease::current_session_id(), false)
         };
 
-        // INFRA-1026: when an explicit --lease / --session-id was given and the
-        // session is not in the active list, exit 1 instead of silently deleting
-        // whatever chump_XXXXXXXXX.json might or might not exist.
-        if explicit_target {
-            let active = agent_lease::list_active();
-            if !active.iter().any(|l| l.session_id == target_id) {
-                eprintln!(
-                    "chump --release: no such session '{}' in active leases.",
-                    target_id
-                );
-                eprintln!(
-                    "  Active sessions: {}",
-                    if active.is_empty() {
-                        "(none)".to_string()
+        let force_release = args.iter().any(|a| a == "--force");
+
+        // Validate explicit targets exist before acting.
+        let active = agent_lease::list_active();
+        if explicit_target && !active.iter().any(|l| l.session_id == target_id) {
+            eprintln!(
+                "chump --release: no such session '{}' in active leases.",
+                target_id
+            );
+            eprintln!(
+                "  Active sessions: {}",
+                if active.is_empty() {
+                    "(none)".to_string()
+                } else {
+                    active
+                        .iter()
+                        .map(|l| l.session_id.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                }
+            );
+            eprintln!("  Use 'chump --leases' to list all active sessions.");
+            std::process::exit(1);
+        }
+
+        // INFRA-1043: when no explicit --lease / --session-id, print what we're
+        // about to release and ask for confirmation (unless --force is given).
+        // This prevents accidentally releasing the wrong session.
+        if !explicit_target && !force_release {
+            let current_id = agent_lease::current_session_id();
+            let matching_lease = active.iter().find(|l| l.session_id == current_id);
+            let gap_str = matching_lease
+                .and_then(|l| l.gap_id.as_deref())
+                .unwrap_or("(unknown)");
+            let age_str = matching_lease
+                .map(|l| {
+                    if l.taken_at.is_empty() {
+                        "unknown age".to_string()
                     } else {
-                        active
-                            .iter()
-                            .map(|l| l.session_id.as_str())
-                            .collect::<Vec<_>>()
-                            .join(", ")
+                        // Parse taken_at to compute age
+                        chrono::DateTime::parse_from_rfc3339(&l.taken_at)
+                            .map(|t| {
+                                let secs = (chrono::Utc::now() - t.with_timezone(&chrono::Utc))
+                                    .num_seconds();
+                                if secs < 120 {
+                                    format!("{}s old", secs)
+                                } else {
+                                    format!("{}m old", secs / 60)
+                                }
+                            })
+                            .unwrap_or_else(|_| "unknown age".to_string())
                     }
-                );
-                eprintln!("  Use 'chump --leases' to list all active sessions.");
-                std::process::exit(1);
+                })
+                .unwrap_or_else(|| "unknown age".to_string());
+
+            eprintln!(
+                "About to release session_id={} (gap={}, {}). \
+                 Use --force to skip this confirmation.",
+                target_id, gap_str, age_str
+            );
+            eprintln!("  Confirm? [y/N] ");
+            let mut input = String::new();
+            if std::io::stdin().read_line(&mut input).is_err()
+                || !input.trim().eq_ignore_ascii_case("y")
+            {
+                eprintln!("Release cancelled.");
+                std::process::exit(0);
             }
         }
 
@@ -8210,6 +8253,18 @@ async fn main() -> Result<()> {
             gap_id: None,
             pending_new_gap: None,
         };
+        // Resolve gap_id for the ambient event before release
+        let release_gap_id = active
+            .iter()
+            .find(|l| l.session_id == target_id)
+            .and_then(|l| l.gap_id.clone())
+            .unwrap_or_default();
+        let release_source = if explicit_target {
+            "explicit"
+        } else {
+            "current"
+        };
+
         match agent_lease::release(&stub) {
             Ok(()) => {
                 println!("released session_id={}", target_id);
@@ -8218,6 +8273,24 @@ async fn main() -> Result<()> {
                     explicit_target = explicit_target,
                     "lease released via --release"
                 );
+                // INFRA-1043: emit ambient event for release observability
+                let ambient_path = repo_path::repo_root()
+                    .join(".chump-locks")
+                    .join("ambient.jsonl");
+                let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
+                let _ = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&ambient_path)
+                    .and_then(|mut f| {
+                        use std::io::Write;
+                        writeln!(
+                            f,
+                            "{{\"ts\":\"{ts}\",\"kind\":\"session_released\",\
+                             \"session_id\":\"{target_id}\",\"gap_id\":\"{release_gap_id}\",\
+                             \"source\":\"{release_source}\"}}"
+                        )
+                    });
                 return Ok(());
             }
             Err(e) => {

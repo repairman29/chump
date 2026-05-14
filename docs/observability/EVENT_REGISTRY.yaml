@@ -1690,3 +1690,9 @@ events:
     trigger: gh pr create attempted while GraphQL quota = 0; REST fallback taken or failed
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, source, note]
+  # ── INFRA-1043: chump --release observability ──────────────────────────────
+  - kind: session_released
+    emitter: src/main.rs --release handler (INFRA-1043)
+    trigger: operator or agent releases a lease via chump --release (with or without --lease)
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, session_id, gap_id, source]
