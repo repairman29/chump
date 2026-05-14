@@ -230,6 +230,31 @@ while IFS=$'\t' read -r PR_NUM PR_BRANCH PR_TITLE; do
             continue
         fi
 
+        # INFRA-1195: freshness gate — skip the close if the PR was updated
+        # recently. During an active rebase + force-push cycle the branch can
+        # briefly satisfy ALL_DONE + parity-OK while the owner is mid-push.
+        # Closing at that moment is a false-positive that strands real work.
+        # Default window: CHUMP_CURATOR_FRESHNESS_MIN=10 minutes.
+        _freshness_min="${CHUMP_CURATOR_FRESHNESS_MIN:-10}"
+        _pr_updated_at=$(gh pr view "$PR_NUM" --json updatedAt -q .updatedAt 2>/dev/null || echo "")
+        if [[ -n "$_pr_updated_at" ]]; then
+            _pr_epoch=$(python3 -c "
+from datetime import datetime, timezone
+dt = datetime.fromisoformat('${_pr_updated_at}'.replace('Z','+00:00'))
+print(int(dt.timestamp()))" 2>/dev/null || echo 0)
+            _now_epoch=$(date +%s)
+            _age_min=$(( (_now_epoch - _pr_epoch) / 60 ))
+            if [[ "$_age_min" -lt "$_freshness_min" ]]; then
+                warn "  → SKIP CLOSE (INFRA-1195): PR #$PR_NUM updated ${_age_min}m ago (< ${_freshness_min}m freshness window) — possible active rebase, deferring."
+                _amb="${REAPER_LOCK_DIR:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.chump-locks}/ambient.jsonl"
+                _ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+                printf '{"ts":"%s","kind":"curator_skip_active_rebase","pr":%s,"gap":"%s","age_minutes":%d,"reason":"updated_within_freshness_window"}\n' \
+                    "$_ts" "$PR_NUM" "$DONE_LIST" "$_age_min" >> "$_amb" 2>/dev/null || true
+                WARNED=$((WARNED + 1))
+                continue
+            fi
+        fi
+
         red "  → STALE: all gaps done on main [$DONE_LIST], $BEHIND commits behind, file parity OK."
         CLOSE_MSG="Auto-closing: every gap this PR was working on (${DONE_LIST}) is already \`done\` on \`main\` — the work landed via another agent's commits. The branch is **${BEHIND} commits behind** \`${BASE}\`. Verified all PR files are byte-identical to main, so nothing is lost.
 
