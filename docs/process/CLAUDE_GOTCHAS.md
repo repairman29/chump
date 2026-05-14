@@ -830,6 +830,39 @@ EOF
 
 ---
 
+### ci-yml merge-driver orphan step (INFRA-1199)
+
+**Symptom:** After rebasing, `.github/workflows/ci.yml` ends with a dangling step:
+```yaml
+      - name: gap-reserve concurrency (INFRA-021)
+```
+…with no `run:` or `uses:` body. GitHub Actions rejects the file with
+*"This run likely failed because of a workflow file issue"* — zero CI jobs run,
+no checks appear, the PR is permanently blocked.
+
+**Root cause:** The `scripts/git/merge-driver-ci-yml-add-row.sh` custom merge
+driver resolves ci.yml conflicts by appending the lines theirs-branch added
+beyond the common ancestor. If the theirs-branch's version of ci.yml contained
+an incomplete step (a `- name:` header without a `run:` body), the driver
+blindly appended it. As of INFRA-1199, the driver detects this via
+`validate_step_bodies()` and exits 1 (falls back to standard 3-way merge)
+instead of writing the orphan step.
+
+**If you hit this before the fix is deployed:**
+```bash
+# Remove the trailing orphan step manually
+# Open .github/workflows/ci.yml in your editor and delete the dangling '- name:' line at the end
+git add .github/workflows/ci.yml
+git commit --amend --no-edit
+```
+
+**Permanent fix:** INFRA-1199 landed in `scripts/git/merge-driver-ci-yml-add-row.sh`.
+If you see this after INFRA-1199, check that:
+1. The driver script is the INFRA-1199 version (`grep 'INFRA-1199' scripts/git/merge-driver-ci-yml-add-row.sh`)
+2. The merge driver attribute is registered in `.gitattributes`
+
+---
+
 ## Fleet git worktree path confusion (INFRA-779)
 
 **Problem:** On macOS, `/tmp` is a symlink to `/private/tmp`. When a linked worktree

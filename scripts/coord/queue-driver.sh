@@ -27,6 +27,7 @@ set -euo pipefail
 # INFRA-999: API cost telemetry. CHUMP_GH_SCRIPT sets the script tag in
 # the emitted ambient.jsonl `github_api_call` lines.
 # shellcheck source=lib/github.sh
+# shellcheck disable=SC1091
 source "$(dirname "$0")/lib/github.sh"
 export CHUMP_GH_SCRIPT="queue-driver.sh"
 
@@ -52,6 +53,7 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 RESOLVER="$REPO_ROOT/scripts/coord/resolve-gaps-conflict.py"
+export RESOLVER
 
 # INFRA-670/INFRA-711: files whose change in a merged commit requires ALL open
 # PRs to be rebased immediately, not just the next-in-queue one. Includes
@@ -153,7 +155,7 @@ resolve_dirty_pr() {
 
   local tmpdir
   tmpdir=$(mktemp -d)
-  trap "rm -rf '$tmpdir'" RETURN
+  trap 'rm -rf "$tmpdir"' RETURN
 
   # Shallow checkout — we only need to rebase one branch on top of main.
   if ! git -C "$REPO_ROOT" worktree add --quiet "$tmpdir" "origin/$branch" 2>&1; then
@@ -213,7 +215,7 @@ resolve_dirty_pr() {
     for pat in "${md_patterns[@]}"; do
       # bash extglob substring match — patterns are filenames or globs.
       # Use bash's [[ var == glob ]] which handles wildcards.
-      [[ "$f" == $pat ]] && return 0
+      [[ "$f" == "$pat" ]] && return 0
     done
     return 1
   }
@@ -299,6 +301,7 @@ behind_candidates=""
 dirty_candidates=""
 if [[ -f "$(dirname "$0")/lib/github_cache.sh" ]]; then
     # shellcheck source=lib/github_cache.sh
+# shellcheck disable=SC1091
     source "$(dirname "$0")/lib/github_cache.sh"
     behind_candidates="$(cache_query_behind_prs)"
     # DIRTY rows are also in the cache — same shape, different mergeable_state.

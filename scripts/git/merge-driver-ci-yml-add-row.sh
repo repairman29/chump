@@ -21,6 +21,12 @@
 #     outside the tail (path-filter additions, duplicate if: lines, etc.).
 #     Fixed: verify pure-append by comparing head-N of ours/theirs to ancestor,
 #     then take only the tail beyond ancestor line-count.
+#
+# Bug fixed (INFRA-1199):
+#   - Driver could append a '- name:' step header without a 'run:' or 'uses:' body
+#     if theirs_tail contained an incomplete step. GitHub Actions rejects such files
+#     outright — zero CI jobs run. Fixed: validate_step_bodies() checks every
+#     '- name:' in theirs_tail is followed by 'run:' or 'uses:' before writing.
 
 set -euo pipefail
 
@@ -60,6 +66,47 @@ theirs_tail=$(tail -n +"$((ancestor_lines + 1))" "$THEIRS")
 if [[ -z "$theirs_tail" ]]; then
   # Theirs appended nothing; keep ours as-is.
   exit 0
+fi
+
+# INFRA-1199: validate that every '- name:' step in theirs_tail has a
+# matching 'run:' or 'uses:' body.  An orphan name-only step causes GitHub
+# Actions to reject the entire workflow file.  If validation fails, fall
+# back to the standard 3-way merge (exit 1) rather than corrupt the file.
+validate_step_bodies() {
+  local tail="$1"
+  local in_step=0
+  local step_has_body=0
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^[[:space:]]*-[[:space:]]name: ]]; then
+      # Entering a new step — check the previous one had a body.
+      if [[ $in_step -eq 1 ]] && [[ $step_has_body -eq 0 ]]; then
+        return 1
+      fi
+      in_step=1
+      step_has_body=0
+    elif [[ "$line" =~ ^[[:space:]]+(run|uses): ]]; then
+      step_has_body=1
+    fi
+  done <<< "$tail"
+  # Check the final step.
+  if [[ $in_step -eq 1 ]] && [[ $step_has_body -eq 0 ]]; then
+    return 1
+  fi
+  return 0
+}
+
+if ! validate_step_bodies "$theirs_tail"; then
+  # INFRA-1199: theirs_tail has a '- name:' step without 'run:'/'uses:'.
+  # Emit ambient event for auditability, then fall back to standard 3-way merge.
+  _repo=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+  if [[ -n "$_repo" ]]; then
+    _amb="${CHUMP_AMBIENT_LOG:-$_repo/.chump-locks/ambient.jsonl}"
+    if [[ -w "$(dirname "$_amb")" ]]; then
+      printf '{"ts":"%s","kind":"ci_yml_merge_driver_abort","ours":"%s","theirs":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OURS" "$THEIRS" >> "$_amb" 2>/dev/null || true
+    fi
+  fi
+  exit 1
 fi
 
 # Safe to merge: append theirs' new steps to ours.
