@@ -2478,12 +2478,13 @@ fi
 if [[ $DRY_RUN -eq 0 ]]; then
     _grade_model="${FLEET_MODEL:-unknown}"
     _grade_agent="${AGENT_ID:-unknown}"
+    _grade_harness="${CHUMP_AGENT_HARNESS:-manual}"
     _grade_amb="${REPO_ROOT}/.chump-locks/ambient.jsonl"
     _grade_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     for gid in "${GAP_IDS[@]:-}"; do
         [[ -z "$gid" ]] && continue
-        printf '{"event":"ship_grade","kind":"ship_grade","ts":"%s","gap_id":"%s","model":"%s","agent_id":"%s","clippy_ok":%s,"test_added":%s,"rebase_clean":%s}\n' \
-            "$_grade_ts" "$gid" "$_grade_model" "$_grade_agent" \
+        printf '{"event":"ship_grade","kind":"ship_grade","ts":"%s","gap_id":"%s","model":"%s","agent_id":"%s","harness":"%s","clippy_ok":%s,"test_added":%s,"rebase_clean":%s}\n' \
+            "$_grade_ts" "$gid" "$_grade_model" "$_grade_agent" "$_grade_harness" \
             "$_grade_clippy_ok" "$_grade_test_added" "$_grade_rebase_clean" \
             >> "$_grade_amb" 2>/dev/null || true
     done

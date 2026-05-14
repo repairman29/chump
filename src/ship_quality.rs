@@ -37,6 +37,8 @@ pub struct ShipGrade {
     pub model: String,
     /// AGENT_ID value from the fleet worker, or "unknown" for manual ships.
     pub agent_id: String,
+    /// CHUMP_AGENT_HARNESS value (claude / opencode / manual / unknown). INFRA-1049.
+    pub harness: String,
     /// None = skipped (--fast mode).
     pub clippy_ok: Option<bool>,
     /// None = diff check not available.
@@ -61,11 +63,12 @@ pub fn emit_ship_grade(repo_root: &Path, grade: &ShipGrade) {
     }
 
     let json = format!(
-        r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{ts}","gap_id":"{gap}","model":"{model}","agent_id":"{agent}"{clippy}{test}{rebase}}}"#,
+        r#"{{"event":"ship_grade","kind":"ship_grade","ts":"{ts}","gap_id":"{gap}","model":"{model}","agent_id":"{agent}","harness":"{harness}"{clippy}{test}{rebase}}}"#,
         ts = ts,
         gap = json_escape(&grade.gap_id),
         model = json_escape(&grade.model),
         agent = json_escape(&grade.agent_id),
+        harness = json_escape(&grade.harness),
         clippy = opt_bool_field("clippy_ok", grade.clippy_ok),
         test = opt_bool_field("test_added", grade.test_added),
         rebase = opt_bool_field("rebase_clean", grade.rebase_clean),
@@ -142,6 +145,8 @@ pub struct ShipQualityReport {
     pub total_grades: u64,
     pub by_model: BTreeMap<String, GradeStats>,
     pub by_agent: BTreeMap<String, GradeStats>,
+    /// INFRA-1049: per-harness aggregation.
+    pub by_harness: BTreeMap<String, GradeStats>,
 }
 
 /// Build a ship-quality report from ambient.jsonl for the given lookback window.
@@ -152,6 +157,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> ShipQualityReport {
 
     let mut by_model: BTreeMap<String, GradeStats> = BTreeMap::new();
     let mut by_agent: BTreeMap<String, GradeStats> = BTreeMap::new();
+    let mut by_harness: BTreeMap<String, GradeStats> = BTreeMap::new();
     let mut total = 0u64;
 
     for line in contents.lines() {
@@ -167,6 +173,8 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> ShipQualityReport {
         }
         let model = extract_field(line, "model").unwrap_or_else(|| "unknown".to_string());
         let agent = extract_field(line, "agent_id").unwrap_or_else(|| "unknown".to_string());
+        // INFRA-1049: harness field; pre-fix events default to "claude" (fleet default).
+        let harness = extract_field(line, "harness").unwrap_or_else(|| "claude".to_string());
         let clippy = extract_opt_bool(line, "clippy_ok");
         let test = extract_opt_bool(line, "test_added");
         let rebase = extract_opt_bool(line, "rebase_clean");
@@ -180,6 +188,10 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> ShipQualityReport {
             .entry(agent)
             .or_default()
             .accum(clippy, test, rebase);
+        by_harness
+            .entry(harness)
+            .or_default()
+            .accum(clippy, test, rebase);
     }
 
     ShipQualityReport {
@@ -187,6 +199,7 @@ pub fn build_report(repo_root: &Path, since_secs: u64) -> ShipQualityReport {
         total_grades: total,
         by_model,
         by_agent,
+        by_harness,
     }
 }
 
@@ -233,6 +246,7 @@ impl ShipQualityReport {
 
         out.push_str(&table_block("By model", &self.by_model));
         out.push_str(&table_block("By agent", &self.by_agent));
+        out.push_str(&table_block("By harness", &self.by_harness));
         out
     }
 
@@ -261,13 +275,19 @@ impl ShipQualityReport {
             .iter()
             .map(|(k, v)| entry_json(k, v))
             .collect();
+        let harnesses: Vec<_> = self
+            .by_harness
+            .iter()
+            .map(|(k, v)| entry_json(k, v))
+            .collect();
 
         format!(
-            r#"{{"since_seconds":{since},"total_grades":{total},"by_model":[{models}],"by_agent":[{agents}]}}"#,
+            r#"{{"since_seconds":{since},"total_grades":{total},"by_model":[{models}],"by_agent":[{agents}],"by_harness":[{harnesses}]}}"#,
             since = self.since_seconds,
             total = self.total_grades,
             models = models.join(","),
             agents = agents.join(","),
+            harnesses = harnesses.join(","),
         )
     }
 }
@@ -405,6 +425,7 @@ mod tests {
                 gap_id: "INFRA-537".to_string(),
                 model: "sonnet".to_string(),
                 agent_id: "2".to_string(),
+                harness: "claude".to_string(),
                 clippy_ok: Some(true),
                 test_added: Some(false),
                 rebase_clean: Some(true),
@@ -416,6 +437,7 @@ mod tests {
         assert!(log.contains(r#""gap_id":"INFRA-537""#));
         assert!(log.contains(r#""model":"sonnet""#));
         assert!(log.contains(r#""agent_id":"2""#));
+        assert!(log.contains(r#""harness":"claude""#));
         assert!(log.contains(r#""clippy_ok":true"#));
         assert!(log.contains(r#""test_added":false"#));
         assert!(log.contains(r#""rebase_clean":true"#));
@@ -431,6 +453,7 @@ mod tests {
                 gap_id: "INFRA-100".to_string(),
                 model: "haiku".to_string(),
                 agent_id: "1".to_string(),
+                harness: "opencode".to_string(),
                 clippy_ok: None,
                 test_added: None,
                 rebase_clean: None,
@@ -522,6 +545,51 @@ mod tests {
         assert_eq!(haiku.clippy_ok, 0);
         assert_eq!(haiku.clippy_n, 1);
 
+        // INFRA-1049: events without harness field default to "claude"
+        let claude = &report.by_harness["claude"];
+        assert_eq!(claude.total, 3);
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn infra1049_mixed_harness_fixture() {
+        let tmp = tmpdir();
+        let amb = tmp.join(".chump-locks/ambient.jsonl");
+        std::fs::create_dir_all(amb.parent().unwrap()).unwrap();
+
+        let t1 = recent_iso(100);
+        let t2 = recent_iso(60);
+        let t3 = recent_iso(20);
+        let lines = [
+            format!(
+                r#"{{"kind":"ship_grade","ts":"{t1}","gap_id":"A","model":"sonnet","agent_id":"1","harness":"claude","clippy_ok":true,"test_added":true,"rebase_clean":true}}"#
+            ),
+            format!(
+                r#"{{"kind":"ship_grade","ts":"{t2}","gap_id":"B","model":"sonnet","agent_id":"2","harness":"opencode","clippy_ok":false,"test_added":false,"rebase_clean":null}}"#
+            ),
+            format!(
+                r#"{{"kind":"ship_grade","ts":"{t3}","gap_id":"C","model":"haiku","agent_id":"3","harness":"claude","clippy_ok":true,"test_added":false,"rebase_clean":true}}"#
+            ),
+        ];
+        std::fs::write(&amb, lines.join("\n") + "\n").unwrap();
+
+        let report = build_report(&tmp, 86400);
+        assert_eq!(report.total_grades, 3);
+        assert_eq!(report.by_harness.len(), 2);
+        let claude = &report.by_harness["claude"];
+        assert_eq!(claude.total, 2);
+        let opencode = &report.by_harness["opencode"];
+        assert_eq!(opencode.total, 1);
+        assert_eq!(opencode.clippy_ok, 0);
+
+        let text = report.render_text();
+        assert!(text.contains("By harness"));
+        assert!(text.contains("opencode"));
+
+        let json = report.render_json();
+        assert!(json.contains(r#""by_harness""#));
+        assert!(json.contains("opencode"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -549,6 +617,7 @@ mod tests {
         let text = report.render_text();
         assert!(text.contains("By model"));
         assert!(text.contains("By agent"));
+        assert!(text.contains("By harness"));
         assert!(text.contains("sonnet"));
         assert!(text.contains("100%")); // clippy 1/1
         let _ = std::fs::remove_dir_all(&tmp);
@@ -569,6 +638,7 @@ mod tests {
         assert!(json.contains(r#""total_grades":1"#));
         assert!(json.contains(r#""by_model""#));
         assert!(json.contains(r#""by_agent""#));
+        assert!(json.contains(r#""by_harness""#));
         assert!(json.contains("sonnet"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
