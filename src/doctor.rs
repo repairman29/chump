@@ -135,6 +135,7 @@ pub async fn run_all_checks() -> DoctorReport {
     checks.push(check_openai_api_base());
     checks.push(check_repo_env());
     checks.push(check_db_pool());
+    checks.push(check_repo_init());
     checks.push(check_inference_reachable().await);
     checks.push(check_embed_server().await);
     checks.push(check_brain_dir());
@@ -202,6 +203,38 @@ fn check_repo_env() -> CheckResult {
             "set CHUMP_REPO=/path/to/your/project in .env to enable repo-aware tools",
         ),
     }
+}
+
+/// INFRA-1015: detect if the current repo lacks `.chump/state.db` and surface
+/// an actionable hint pointing at POST /api/repo/init.
+fn check_repo_init() -> CheckResult {
+    let repo_root = crate::repo_path::repo_root();
+    let state_db = repo_root.join(".chump").join("state.db");
+    if state_db.exists() {
+        return CheckResult::pass(
+            "repo_init",
+            format!(".chump/state.db present at {}", state_db.display()),
+        );
+    }
+    let chump_dir = repo_root.join(".chump");
+    if !chump_dir.exists() {
+        return CheckResult::warn(
+            "repo_init",
+            format!(
+                "no .chump/state.db found at {} — repo not initialized",
+                repo_root.display()
+            ),
+            "initialize this repo: POST /api/repo/init {\"path\": \"<repo_path>\"} or run: chump init",
+        );
+    }
+    CheckResult::warn(
+        "repo_init",
+        format!(
+            ".chump/ directory exists at {} but state.db is missing",
+            chump_dir.display()
+        ),
+        "re-initialize: POST /api/repo/init {\"path\": \"<repo_path>\"} or run: chump init",
+    )
 }
 
 fn check_db_pool() -> CheckResult {

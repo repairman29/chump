@@ -320,7 +320,7 @@ fn prompt(label: &str) -> Result<String> {
 
 // ────────────────────────── (e) state.db scaffold ──────────────────────────
 
-fn write_state_db_scaffold(path: &Path) -> Result<()> {
+pub fn write_state_db_scaffold(path: &Path) -> Result<()> {
     // Minimal SQLite scaffold so `chump gap list` works immediately on a clean machine.
     let conn = rusqlite::Connection::open(path)
         .map_err(|e| anyhow!("cannot create {}: {e}", path.display()))?;
