@@ -1,0 +1,701 @@
+openapi: "3.0.3"
+info:
+  title: Chump Web API
+  description: |
+    REST + SSE API served by `chump --web` (default port 3000).
+
+    ## Authentication
+
+    When `CHUMP_WEB_TOKEN` is set, all state-mutating routes and private-data
+    routes require an `Authorization: Bearer <token>` header. Read-only public
+    routes (`GET /api/health`) are always open.
+
+    ## CSRF
+
+    POST routes that mutate gap state additionally require a `X-Chump-CSRF: 1`
+    header (CREDIBLE-023). Requests without it receive **403 Forbidden**.
+
+    ## Rate limiting
+
+    Gap mutation endpoints are rate-limited per IP (X-Forwarded-For or "local").
+    Excess requests receive **429 Too Many Requests**.
+
+    ## Gap ID format
+
+    Gap IDs follow the pattern `[A-Z]+-[0-9]+` (e.g. `INFRA-1197`, `EFFECTIVE-012`).
+    Requests with IDs that fail this validation receive **400 Bad Request**.
+  version: "1.0.0"
+  contact:
+    name: Chump project
+    url: https://github.com/repairman29/chump
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Set `CHUMP_WEB_TOKEN` to enable auth. Pass the same value as the Bearer
+        token. When the env var is unset, auth is disabled and the header is
+        ignored.
+
+  schemas:
+    GapQueueItem:
+      type: object
+      required: [id, title, priority, effort, status, domain, preflight_status,
+                 created_at, depends_on, acceptance_criteria_count]
+      properties:
+        id:
+          type: string
+          example: INFRA-1197
+          description: Canonical gap ID.
+        title:
+          type: string
+          maxLength: 200
+          example: "EFFECTIVE: /api/gap-queue returns full gap metadata"
+        priority:
+          type: string
+          enum: [P0, P1, P2, P3]
+        effort:
+          type: string
+          enum: [xs, s, m, l]
+        preflight_status:
+          type: string
+          enum: [claimable, blocked, error]
+        preflight_error:
+          type: string
+          nullable: true
+          description: Human-readable reason when not claimable.
+        domain:
+          type: string
+          example: INFRA
+        status:
+          type: string
+          enum: [open, claimed, shipped, done]
+        closed_pr:
+          type: integer
+          nullable: true
+          description: PR number when shipped/done, else null.
+        assigned_session:
+          type: string
+          nullable: true
+          description: Session ID holding the current lease.
+        created_at:
+          type: integer
+          description: Unix epoch seconds.
+        opened_date:
+          type: string
+          nullable: true
+          description: ISO date from YAML opened_date field.
+        depends_on:
+          type: array
+          items:
+            type: string
+          description: Gap IDs this row depends on. Always an array, never null.
+        acceptance_criteria_count:
+          type: integer
+          description: Count of AC items. Full body available via /api/gap/status/{id}.
+        pillar:
+          type: string
+          nullable: true
+          enum: [effective, credible, resilient, zero-waste, mission, null]
+          description: |
+            Derived from leading title tag (EFFECTIVE: etc.). null when no tag.
+
+    GapStatusResponse:
+      type: object
+      required: [gap_id, status, title, priority, effort]
+      properties:
+        gap_id:
+          type: string
+          example: INFRA-1197
+        status:
+          type: string
+          enum: [open, claimed, shipped, done, not_found, error]
+        title:
+          type: string
+        priority:
+          type: string
+          enum: [P0, P1, P2, P3]
+        effort:
+          type: string
+          enum: [xs, s, m, l]
+        closed_date:
+          type: string
+          nullable: true
+        closed_pr:
+          type: integer
+          nullable: true
+
+    WorkflowStatusResponse:
+      type: object
+      required: [status, workflow_phase, progress_pct]
+      properties:
+        status:
+          type: string
+          enum: [open, claimed, shipped, done, not_found, unknown]
+        workflow_phase:
+          type: string
+          enum: [preflight, claim, execute, ship]
+          description: Most recent workflow phase from ambient.jsonl.
+        progress_pct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        error:
+          type: string
+          nullable: true
+
+    GapClaimResponse:
+      type: object
+      properties:
+        gap_id:
+          type: string
+        status:
+          type: string
+          enum: [claimed, blocked]
+        worktree_path:
+          type: string
+          description: Path to the linked git worktree (when status=claimed).
+        message:
+          type: string
+        error:
+          type: string
+          description: Present when status=blocked.
+
+    GapWorkResponse:
+      type: object
+      required: [status, gap_id, request_id, message]
+      properties:
+        status:
+          type: string
+          enum: [started]
+        gap_id:
+          type: string
+        request_id:
+          type: string
+          description: 12-char UUID prefix for end-to-end tracing (CREDIBLE-024).
+        message:
+          type: string
+          example: Autonomous workflow triggered
+
+    GapWorkRetryResponse:
+      type: object
+      required: [status, gap_id]
+      properties:
+        status:
+          type: string
+          enum: [started, max_retries_exceeded]
+        gap_id:
+          type: string
+        phase:
+          type: string
+        request_id:
+          type: string
+        retry_count:
+          type: integer
+        message:
+          type: string
+
+    HealthResponse:
+      type: object
+      required: [status, service, binary_version]
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: chump-web
+        binary_version:
+          type: string
+          example: "0.9.4"
+        build_sha:
+          type: string
+          nullable: true
+        build_date:
+          type: string
+          nullable: true
+        binary_age_secs:
+          type: integer
+          nullable: true
+        version_match:
+          type: boolean
+          description: true when running version matches CHUMP_BINARY_VERSION (or env unset).
+        cascade_mode:
+          type: string
+          nullable: true
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        status:
+          type: string
+
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      description: |
+        Returns server liveness and version info. Always open — no auth required.
+
+        ```bash
+        curl http://localhost:3000/api/health
+        ```
+      operationId: getHealth
+      tags: [Health]
+      responses:
+        "200":
+          description: Server is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                service: chump-web
+                binary_version: "0.9.4"
+                build_sha: "abc1234"
+                build_date: "2026-05-14"
+                binary_age_secs: 3600
+                version_match: true
+                cascade_mode: local_only
+
+  /api/gap-queue:
+    get:
+      summary: List gap queue
+      description: |
+        Queryable gap list for the PWA queue view. Returns up to 15 fields per row,
+        sorted by priority asc → effort asc → created_at desc. Emits one
+        `gap_queue_request` ambient event per call.
+
+        ```bash
+        # All open gaps
+        curl http://localhost:3000/api/gap-queue
+
+        # Open P1 INFRA gaps
+        curl "http://localhost:3000/api/gap-queue?status=open&domain=INFRA&priority=P1"
+
+        # Open + claimed together
+        curl "http://localhost:3000/api/gap-queue?status=open,claimed"
+        ```
+      operationId: getGapQueue
+      tags: [Gap Registry]
+      parameters:
+        - name: status
+          in: query
+          description: |
+            Gap status filter. Default: `open`. Comma-separated for OR logic:
+            `?status=open,claimed` returns both sets deduped by id.
+          schema:
+            type: string
+            default: open
+          example: open
+        - name: domain
+          in: query
+          description: Exact domain match (e.g. `INFRA`, `EFFECTIVE`, `CREDIBLE`).
+          schema:
+            type: string
+          example: INFRA
+        - name: priority
+          in: query
+          description: Exact priority match.
+          schema:
+            type: string
+            enum: [P0, P1, P2, P3]
+      responses:
+        "200":
+          description: Gap list response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [gaps, count, total, claimable_count]
+                properties:
+                  gaps:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/GapQueueItem"
+                  count:
+                    type: integer
+                    description: gaps.length after filters.
+                  total:
+                    type: integer
+                    description: Pre-filter count for the selected status set.
+                  claimable_count:
+                    type: integer
+                    description: Number of rows with preflight_status=claimable.
+              example:
+                gaps:
+                  - id: EFFECTIVE-012
+                    title: "EFFECTIVE: PWA API documentation — OpenAPI spec"
+                    priority: P2
+                    effort: s
+                    preflight_status: claimable
+                    preflight_error: null
+                    domain: EFFECTIVE
+                    status: open
+                    closed_pr: null
+                    assigned_session: null
+                    created_at: 1778800229
+                    opened_date: "2026-05-14"
+                    depends_on: []
+                    acceptance_criteria_count: 6
+                    pillar: effective
+                count: 1
+                total: 272
+                claimable_count: 1
+
+  /api/gap/claim/{id}:
+    post:
+      summary: Claim a gap
+      description: |
+        Atomic gap claim — runs preflight and creates worktree + lease. Requires
+        Bearer auth and CSRF header.
+
+        ```bash
+        curl -X POST http://localhost:3000/api/gap/claim/EFFECTIVE-012 \
+          -H "Authorization: Bearer $CHUMP_WEB_TOKEN" \
+          -H "X-Chump-CSRF: 1"
+        ```
+      operationId: claimGap
+      tags: [Gap Registry]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Gap ID (e.g. `INFRA-1197`).
+          schema:
+            type: string
+            pattern: "^[A-Z]+-[0-9]+$"
+      responses:
+        "200":
+          description: Claim result (success or blocked — both return 200 with status field).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GapClaimResponse"
+              examples:
+                claimed:
+                  value:
+                    gap_id: EFFECTIVE-012
+                    status: claimed
+                    worktree_path: /tmp/chump-EFFECTIVE-012
+                    message: "Gap claimed successfully (worktree creation deferred to daemon)"
+                blocked:
+                  value:
+                    error: "Gap already claimed by session claim-effective-012-2567"
+                    status: blocked
+        "400":
+          description: Invalid gap ID format.
+        "401":
+          description: Missing or invalid Bearer token.
+        "403":
+          description: Missing X-Chump-CSRF header.
+        "429":
+          description: Rate limit exceeded.
+
+  /api/gap/status/{id}:
+    get:
+      summary: Gap status snapshot
+      description: |
+        Returns stored gap record fields. Requires Bearer auth.
+
+        ```bash
+        curl http://localhost:3000/api/gap/status/EFFECTIVE-012 \
+          -H "Authorization: Bearer $CHUMP_WEB_TOKEN"
+        ```
+      operationId: getGapStatus
+      tags: [Gap Registry]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Gap ID.
+          schema:
+            type: string
+            pattern: "^[A-Z]+-[0-9]+$"
+      responses:
+        "200":
+          description: Gap record fields (or error when not found).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GapStatusResponse"
+              example:
+                gap_id: EFFECTIVE-012
+                status: open
+                title: "EFFECTIVE: PWA API documentation — OpenAPI spec"
+                priority: P2
+                effort: s
+                closed_date: null
+                closed_pr: null
+        "400":
+          description: Invalid gap ID format.
+        "401":
+          description: Missing or invalid Bearer token.
+
+  /api/gap/{id}/status:
+    get:
+      summary: Workflow phase + progress (polling endpoint)
+      description: |
+        Maps recent `gap_workflow_phase` events from `ambient.jsonl` to a
+        structured response suitable for 2-second polling from the PWA UI.
+        Alias / replacement for `/api/gap/status/{id}` for workflow tracking.
+        Requires Bearer auth.
+
+        ```bash
+        # Poll until done
+        while true; do
+          curl -s http://localhost:3000/api/gap/EFFECTIVE-012/status \
+            -H "Authorization: Bearer $CHUMP_WEB_TOKEN" | jq .
+          sleep 2
+        done
+        ```
+      operationId: getGapWorkflowStatus
+      tags: [Gap Registry]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Gap ID.
+          schema:
+            type: string
+            pattern: "^[A-Z]+-[0-9]+$"
+      responses:
+        "200":
+          description: Workflow phase snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowStatusResponse"
+              examples:
+                in_progress:
+                  value:
+                    status: claimed
+                    workflow_phase: execute
+                    progress_pct: 60
+                    error: null
+                done:
+                  value:
+                    status: done
+                    workflow_phase: ship
+                    progress_pct: 100
+                    error: null
+        "401":
+          description: Missing or invalid Bearer token.
+
+  /api/gap/{id}/stream:
+    get:
+      summary: SSE workflow event stream
+      description: |
+        Server-Sent Events stream of `gap_workflow_phase` events from
+        `ambient.jsonl` for a gap. Push-delivers phase progression
+        (preflight → claim → execute → ship) without polling lag (INFRA-1009).
+
+        Each event has `event: phase` and a JSON `data:` payload. The JSON
+        carries the original ambient event verbatim. Workflow completion is
+        signaled by `data: {"done": true, ...}` after a phase event with
+        `phase_status=complete` and `phase=ship`.
+
+        Requires Bearer auth.
+
+        ```bash
+        curl -N http://localhost:3000/api/gap/EFFECTIVE-012/stream \
+          -H "Authorization: Bearer $CHUMP_WEB_TOKEN" \
+          -H "Accept: text/event-stream"
+        ```
+
+        Example event stream:
+        ```
+        event: phase
+        data: {"gap_id":"EFFECTIVE-012","phase":"claim","phase_status":"started","progress_pct":20,"ts":"2026-05-14T23:00:00Z"}
+
+        event: phase
+        data: {"gap_id":"EFFECTIVE-012","phase":"execute","phase_status":"started","progress_pct":40,"ts":"2026-05-14T23:01:00Z"}
+
+        event: phase
+        data: {"done":true,"gap_id":"EFFECTIVE-012","phase":"ship","phase_status":"complete","progress_pct":100,"ts":"2026-05-14T23:05:00Z"}
+        ```
+      operationId: streamGapWorkflow
+      tags: [Gap Registry]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Gap ID.
+          schema:
+            type: string
+            pattern: "^[A-Z]+-[0-9]+$"
+      responses:
+        "200":
+          description: SSE event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Line-oriented SSE format. Each event has:
+                  - `event: phase`
+                  - `data: <JSON object with gap_id, phase, phase_status, progress_pct, ts>`
+                  Terminal event adds `"done": true`.
+        "401":
+          description: Missing or invalid Bearer token.
+
+  /api/gap/work/{id}:
+    post:
+      summary: Spawn autonomous gap workflow
+      description: |
+        Triggers an `--execute-gap` autonomous workflow for the given gap. The
+        workflow runs asynchronously; use `/api/gap/{id}/stream` or
+        `/api/gap/{id}/status` to monitor progress.
+
+        Requires Bearer auth and CSRF header. Rate-limited per IP.
+
+        ```bash
+        curl -X POST http://localhost:3000/api/gap/work/EFFECTIVE-012 \
+          -H "Authorization: Bearer $CHUMP_WEB_TOKEN" \
+          -H "X-Chump-CSRF: 1"
+        ```
+      operationId: startGapWork
+      tags: [Gap Registry]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Gap ID.
+          schema:
+            type: string
+            pattern: "^[A-Z]+-[0-9]+$"
+      responses:
+        "200":
+          description: Workflow accepted and started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GapWorkResponse"
+              example:
+                status: started
+                gap_id: EFFECTIVE-012
+                request_id: a1b2c3d4e5f6
+                message: Autonomous workflow triggered
+        "400":
+          description: Invalid gap ID format.
+        "401":
+          description: Missing or invalid Bearer token.
+        "403":
+          description: Missing X-Chump-CSRF header.
+        "429":
+          description: Rate limit exceeded.
+
+  /api/gap/work/{id}/retry:
+    post:
+      summary: Retry gap workflow from a specific phase
+      description: |
+        Re-triggers an autonomous workflow from a given phase. Maximum 3 retries
+        per gap+phase pair (CREDIBLE-024). Requires Bearer auth and CSRF header.
+
+        ```bash
+        # Retry from the execute phase
+        curl -X POST "http://localhost:3000/api/gap/work/EFFECTIVE-012/retry?from_phase=execute" \
+          -H "Authorization: Bearer $CHUMP_WEB_TOKEN" \
+          -H "X-Chump-CSRF: 1"
+        ```
+      operationId: retryGapWork
+      tags: [Gap Registry]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Gap ID.
+          schema:
+            type: string
+            pattern: "^[A-Z]+-[0-9]+$"
+        - name: from_phase
+          in: query
+          description: Phase to retry from. Default `preflight`.
+          schema:
+            type: string
+            enum: [preflight, claim, execute, ship]
+            default: preflight
+      responses:
+        "200":
+          description: Retry accepted or rejected (max exceeded — both return 200).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GapWorkRetryResponse"
+              examples:
+                started:
+                  value:
+                    status: started
+                    gap_id: EFFECTIVE-012
+                    phase: execute
+                    request_id: b2c3d4e5f6a1
+                    retry_count: 1
+                    message: Retry workflow triggered from execute
+                max_retries:
+                  value:
+                    status: max_retries_exceeded
+                    gap_id: EFFECTIVE-012
+                    phase: execute
+                    retry_count: 3
+        "400":
+          description: Invalid gap ID or unrecognized from_phase value.
+        "401":
+          description: Missing or invalid Bearer token.
+        "403":
+          description: Missing X-Chump-CSRF header.
+        "429":
+          description: Rate limit exceeded.
+
+  /api/docs:
+    get:
+      summary: OpenAPI specification (this document)
+      description: |
+        Serves this OpenAPI 3.0 YAML file for client discovery and code generation.
+        No auth required.
+
+        ```bash
+        curl http://localhost:3000/api/docs
+        # Or validate with openapi-generator:
+        openapi-generator-cli validate -i http://localhost:3000/api/docs
+        ```
+      operationId: getApiDocs
+      tags: [Meta]
+      responses:
+        "200":
+          description: OpenAPI 3.0 YAML document.
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+tags:
+  - name: Health
+    description: Server health and liveness.
+  - name: Gap Registry
+    description: |
+      Gap queue, claim, status, streaming, and autonomous workflow endpoints.
+      Most require Bearer auth when `CHUMP_WEB_TOKEN` is set. POST endpoints
+      additionally require `X-Chump-CSRF: 1`.
+  - name: Meta
+    description: API discovery endpoints.
