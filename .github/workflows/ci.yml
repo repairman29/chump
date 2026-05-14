@@ -1334,6 +1334,11 @@ jobs:
         run: bash scripts/ci/test-gap-list-since-json-schema.sh
       - name: bot-merge GraphQL preflight + REST fallback — fails fast, emits graphql_exhausted (INFRA-1031)
         run: bash scripts/ci/test-bot-merge-graphql-preflight.sh
+      - name: /api/gap-queue fat shape — 15 fields, filters, sort, pillar derivation, ambient signal (INFRA-1197)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-api-gap-queue-shape.sh
       - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
         run: bash scripts/ci/test-gap-ac-requirement.sh
 

@@ -215,6 +215,85 @@ Remote control (e.g. from another host on Tailscale): see [OPERATIONS.md](OPERAT
 | GET | `/api/shortcut/status` | Shortcut status. |
 | POST | `/api/shortcut/command` | Execute shortcut command. |
 
+## Gap registry (INFRA-1197)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/gap-queue` | Queryable gap list for the PWA queue view. **Fat shape** since INFRA-1197: returns 15 fields per row, supports `?status` / `?domain` / `?priority` filters, sorted by priority asc → effort asc → created_at desc. |
+| POST | `/api/gap/claim/{id}` | Atomic claim — creates worktree + lease. |
+| GET | `/api/gap/status/{id}` | Gap status snapshot. |
+| GET | `/api/gap/{id}/status` | Workflow status (alias). |
+| GET | `/api/gap/{id}/stream` | SSE stream of `gap_workflow_phase` events for a gap (INFRA-1009). |
+| POST | `/api/gap/work/{id}` | Spawn an `--execute-gap` workflow. |
+
+### `GET /api/gap-queue` — query params + response shape
+
+Query (all optional, all additive):
+
+- **`status`** — `open` (default), `claimed`, `shipped`, `done`, `all`. Comma-separated for OR: `?status=open,claimed` returns both sets, deduped by `id`.
+- **`domain`** — exact domain match: `INFRA`, `CREDIBLE`, `EFFECTIVE`, `COG`, …
+- **`priority`** — exact priority match: `P0`, `P1`, `P2`, `P3`.
+
+Response:
+
+```json
+{
+  "gaps": [
+    {
+      "id": "INFRA-1197",
+      "title": "EFFECTIVE: /api/gap-queue returns full gap metadata …",
+      "priority": "P1",
+      "effort": "s",
+      "preflight_status": "blocked",
+      "preflight_error": "Already claimed by session claim-infra-1197-...",
+      "domain": "INFRA",
+      "status": "open",
+      "closed_pr": null,
+      "assigned_session": "claim-infra-1197-5675-1778768595",
+      "created_at": 1778768400,
+      "opened_date": "2026-05-14",
+      "depends_on": [],
+      "acceptance_criteria_count": 15,
+      "pillar": "effective"
+    }
+  ],
+  "count": 1,
+  "total": 272,
+  "claimable_count": 0
+}
+```
+
+**Field semantics:**
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `id` | string | Canonical gap ID (e.g. `INFRA-1197`). |
+| `title` | string | Truncated to 200 chars (utf-8 safe). |
+| `priority` | string | `P0` / `P1` / `P2` / `P3`. |
+| `effort` | string | `xs` / `s` / `m` / `l`. |
+| `preflight_status` | string | `claimable` / `blocked` / `error`. |
+| `preflight_error` | string \| null | Human-readable reason when not claimable. |
+| `domain` | string | `INFRA` / `CREDIBLE` / `EFFECTIVE` / `COG` / etc. |
+| `status` | string | `open` / `claimed` / `shipped` / `done`. |
+| `closed_pr` | int \| null | PR number when `status: shipped`/`done`, else `null`. Used by `<chump-pr-card>` to embed. |
+| `assigned_session` | string \| null | Session ID currently holding the lease (only set when `preflight_status: blocked` for that reason). |
+| `created_at` | int | Unix epoch seconds. |
+| `opened_date` | string \| null | ISO date from the YAML `opened_date` field. |
+| `depends_on` | array<string> | Gap IDs this row depends on. Empty array if none — not `null` — so callers can `.length` without guards. |
+| `acceptance_criteria_count` | int | Count of AC items. Use for badges; full AC body served from `/api/gap/status/{id}`. |
+| `pillar` | string \| null | `effective` / `credible` / `resilient` / `zero-waste` / `mission`, derived **only** from a leading title tag (`EFFECTIVE:` etc.). `null` when the title has no tag. Domain is **not** used as a fallback — intentionally crisp semantics. |
+
+**Sort order:** priority asc (`P0 < P1 < P2 < P3`), then effort asc (`xs < s < m < l`), then `created_at` desc (newest first within tier). Stable across requests.
+
+**Top-level fields:**
+
+- `gaps` — array of rows (post-filter, sorted).
+- `count` — `gaps.length` after filters.
+- `total` — pre-filter count for the selected `status` set. Lets a future paginated mode show "showing N of M".
+- `claimable_count` — number of rows with `preflight_status: "claimable"`.
+
+**Telemetry:** every request emits one `kind=gap_queue_request` ambient event with `{filter, count, ms}` fields. Tail `.chump-locks/ambient.jsonl` to spot frontend hot-loops.
+
 ## Static
 
 The server serves the PWA from the static directory (default `CHUMP_WEB_STATIC_DIR` or repo `web/`). All non-API routes fall through to static files (e.g. `index.html`, `manifest.json`, `sw.js`).

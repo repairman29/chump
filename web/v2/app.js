@@ -976,6 +976,11 @@ class ChumpViewAgent extends HTMLElement {
     if (this.#searchActive()) return; // don't stomp search results with poll
     const list = this.querySelector('#gap-list');
     const stats = this.querySelector('#gap-stats');
+    // INFRA-1197: response now carries 15 fields per gap (domain, status,
+    // closed_pr, assigned_session, pillar, depends_on, …). This consumer
+    // still uses only the legacy 6 — see INFRA-1196 to wire <chump-pr-card>
+    // (per closed_pr) and <chump-workflow-timeline> (per active workflow)
+    // into each row, plus pillar/domain badges + lease-holder indicator.
     fetch('/api/gap-queue')
       .then((r) => r.json())
       .then((d) => {

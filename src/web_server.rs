@@ -3348,17 +3348,55 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
 /// GET /api/gap-queue — List of open gaps with preflight status for PWA dispatch queue.
 /// Returns `{gaps: [{id, title, priority, effort, preflight_status, preflight_error?}]}`
 /// where preflight_status is "claimable" | "conflict" | "blocked" | "error".
-async fn handle_gap_queue(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+/// GET /api/gap-queue — list queryable gap registry rows for the PWA.
+///
+/// INFRA-1197: previously this returned 6 fields per row; PWA could not render
+/// rich queue cards (no domain, no closed_pr, no pillar tag, etc.). The fat
+/// shape adds: domain, status, closed_pr, assigned_session, created_at,
+/// opened_date, depends_on (parsed array), acceptance_criteria_count, pillar.
+///
+/// Query params (all optional, all additive):
+///   ?status=open|claimed|shipped|done   (default: open. comma-separated for OR)
+///   ?domain=INFRA|CREDIBLE|EFFECTIVE|...  (exact match)
+///   ?priority=P0|P1|P2|P3                  (exact match)
+///
+/// Response shape: { gaps:[...], count, total, claimable_count }
+///   - count = returned (post-filter) length
+///   - total = pre-filter length (matches first selected status set)
+///
+/// Sort order: priority asc (P0<P1<P2<P3), effort asc (xs<s<m<l), created_at
+/// desc. Stable across requests.
+///
+/// Titles are truncated at 200 chars (utf-8 safe) to bound payload size; a
+/// future drill-in endpoint will serve full title + AC bodies.
+async fn handle_gap_queue(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
+
+    let t_start = std::time::Instant::now();
+
+    let status_filter: Vec<String> = params
+        .get("status")
+        .map(|s| {
+            s.split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect()
+        })
+        .unwrap_or_else(|| vec!["open".to_string()]);
+    let domain_filter = params.get("domain").cloned();
+    let priority_filter = params.get("priority").cloned();
 
     let repo_root = match std::env::var("CHUMP_REPO") {
         Ok(r) => PathBuf::from(r),
         Err(_) => repo_path::runtime_base(),
     };
 
-    let gap_store = match crate::gap_store::GapStore::open(&repo_root) {
+    let gap_store_inst = match crate::gap_store::GapStore::open(&repo_root) {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("gap-queue: failed to open gap store: {}", e);
@@ -3368,43 +3406,123 @@ async fn handle_gap_queue(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         }
     };
 
-    let open_gaps = match gap_store.list(Some("open")) {
-        Ok(gaps) => gaps,
-        Err(e) => {
-            tracing::warn!("gap-queue: failed to list open gaps: {}", e);
-            return Ok(Json(
-                serde_json::json!({ "gaps": [], "error": e.to_string() }),
-            ));
+    // Fetch matching status sets, dedup by id. Single-status takes the
+    // optimized path; multi-status loops and merges.
+    let mut all_gaps: Vec<gap_store::GapRow> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for st in &status_filter {
+        let st_arg = if st == "all" { None } else { Some(st.as_str()) };
+        match gap_store_inst.list(st_arg) {
+            Ok(chunk) => {
+                for g in chunk {
+                    if seen.insert(g.id.clone()) {
+                        all_gaps.push(g);
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!("gap-queue: failed to list status={}: {}", st, e);
+                return Ok(Json(
+                    serde_json::json!({ "gaps": [], "error": e.to_string() }),
+                ));
+            }
         }
-    };
+    }
+    let total_pre_filter = all_gaps.len();
 
-    let mut result_gaps = Vec::new();
-    for gap in open_gaps {
-        let preflight_result = gap_store.preflight(&gap.id);
-        let (preflight_status, preflight_error) = match preflight_result {
-            Ok(gap_store::PreflightResult::Available) => ("claimable".to_string(), None),
-            Ok(gap_store::PreflightResult::Claimed(session_id)) => (
+    // Domain + priority filters.
+    let filtered: Vec<gap_store::GapRow> = all_gaps
+        .into_iter()
+        .filter(|g| {
+            domain_filter
+                .as_ref()
+                .map(|d| g.domain == *d)
+                .unwrap_or(true)
+        })
+        .filter(|g| {
+            priority_filter
+                .as_ref()
+                .map(|p| g.priority == *p)
+                .unwrap_or(true)
+        })
+        .collect();
+
+    // Sort: priority asc, effort asc, created_at desc (newest first within tier).
+    fn priority_ord(p: &str) -> u8 {
+        match p {
+            "P0" => 0,
+            "P1" => 1,
+            "P2" => 2,
+            "P3" => 3,
+            _ => 9,
+        }
+    }
+    fn effort_ord(e: &str) -> u8 {
+        match e {
+            "xs" => 0,
+            "s" => 1,
+            "m" => 2,
+            "l" => 3,
+            _ => 9,
+        }
+    }
+    let mut sorted = filtered;
+    sorted.sort_by(|a, b| {
+        priority_ord(&a.priority)
+            .cmp(&priority_ord(&b.priority))
+            .then(effort_ord(&a.effort).cmp(&effort_ord(&b.effort)))
+            .then(b.created_at.cmp(&a.created_at))
+    });
+
+    let mut result_gaps = Vec::with_capacity(sorted.len());
+    for gap in sorted {
+        let preflight_result = gap_store_inst.preflight(&gap.id);
+        let (preflight_status, preflight_error, assigned_session) = match preflight_result {
+            Ok(gap_store::PreflightResult::Available) => ("claimable".to_string(), None, None),
+            Ok(gap_store::PreflightResult::Claimed(sid)) => (
                 "blocked".to_string(),
-                Some(format!("Already claimed by session {}", session_id)),
+                Some(format!("Already claimed by session {}", sid)),
+                Some(sid),
             ),
             Ok(gap_store::PreflightResult::Done) => (
                 "blocked".to_string(),
                 Some("Gap is already closed/done".to_string()),
+                None,
             ),
             Ok(gap_store::PreflightResult::NotFound) => (
                 "error".to_string(),
                 Some("Gap not found in registry".to_string()),
+                None,
             ),
-            Err(e) => ("error".to_string(), Some(e.to_string())),
+            Err(e) => ("error".to_string(), Some(e.to_string()), None),
+        };
+
+        let depends_on = gap_store::parse_json_ac_list(&gap.depends_on);
+        let ac_count = gap_store::parse_json_ac_list(&gap.acceptance_criteria).len();
+        let pillar = derive_pillar_from_title(&gap.title);
+        let title_truncated = truncate_utf8(&gap.title, 200);
+        let opened_date = if gap.opened_date.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::String(gap.opened_date.clone())
         };
 
         result_gaps.push(serde_json::json!({
             "id": gap.id,
-            "title": gap.title,
+            "title": title_truncated,
             "priority": gap.priority,
             "effort": gap.effort,
             "preflight_status": preflight_status,
-            "preflight_error": preflight_error
+            "preflight_error": preflight_error,
+            "domain": gap.domain,
+            "status": gap.status,
+            "closed_pr": gap.closed_pr,
+            "assigned_session": assigned_session,
+            "created_at": gap.created_at,
+            "opened_date": opened_date,
+            "depends_on": depends_on,
+            "acceptance_criteria_count": ac_count,
+            "pillar": pillar,
         }));
     }
 
@@ -3412,16 +3530,38 @@ async fn handle_gap_queue(headers: HeaderMap) -> Result<Json<serde_json::Value>,
         .iter()
         .filter(|g| g["preflight_status"] == "claimable")
         .count();
+    let elapsed_ms = t_start.elapsed().as_millis();
+
+    // INFRA-1197: ambient telemetry for adoption / load profiling.
+    // Best-effort — never fail the request on an emit hiccup.
+    let filter_summary = format!(
+        "status={};domain={};priority={}",
+        status_filter.join(","),
+        domain_filter.as_deref().unwrap_or("*"),
+        priority_filter.as_deref().unwrap_or("*")
+    );
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "gap_queue_request".to_string(),
+        fields: vec![
+            ("filter".to_string(), filter_summary),
+            ("count".to_string(), result_gaps.len().to_string()),
+            ("ms".to_string(), elapsed_ms.to_string()),
+        ],
+        ..Default::default()
+    });
+
     tracing::info!(
-        "gap-queue: {} open gaps, {} claimable (PRODUCT-043)",
+        "gap-queue: {} gaps, {} claimable, {}ms (INFRA-1197 fat shape)",
         result_gaps.len(),
-        claimable_count
+        claimable_count,
+        elapsed_ms
     );
 
     Ok(Json(serde_json::json!({
         "gaps": result_gaps,
         "count": result_gaps.len(),
-        "claimable_count": claimable_count
+        "total": total_pre_filter,
+        "claimable_count": claimable_count,
     })))
 }
 
@@ -3539,6 +3679,40 @@ async fn handle_gaps_search(
     Ok(Json(
         serde_json::json!({ "total": total, "results": results }),
     ))
+}
+
+/// INFRA-1197: parse leading pillar tag from a gap title.
+/// Returns "effective" / "credible" / "resilient" / "zero-waste" / "mission"
+/// based on the title's `<TAG>:` prefix, or None if no tag is present.
+/// Domain-as-fallback is intentionally NOT done — keeps semantics crisp.
+fn derive_pillar_from_title(title: &str) -> Option<&'static str> {
+    let t = title.trim_start();
+    if t.starts_with("EFFECTIVE:") {
+        Some("effective")
+    } else if t.starts_with("CREDIBLE:") {
+        Some("credible")
+    } else if t.starts_with("RESILIENT:") {
+        Some("resilient")
+    } else if t.starts_with("ZERO-WASTE:") {
+        Some("zero-waste")
+    } else if t.starts_with("MISSION:") {
+        Some("mission")
+    } else {
+        None
+    }
+}
+
+/// INFRA-1197: utf-8-safe truncation at `max` bytes — never splits a code
+/// point. Mirrors the floor_char_boundary helper used in chump-planner.
+fn truncate_utf8(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s[..end].to_string()
 }
 
 /// POST /api/gap/claim/:id — Claim a gap and create a worktree for it.
