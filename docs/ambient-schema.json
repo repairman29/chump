@@ -152,7 +152,9 @@
         },
         "kind": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "pattern": "^(?!ALERT$|INFO$).+$",
+          "description": "INFRA-1159: specific event kind; must not be generic ALERT or INFO sentinel"
         },
         "note": {
           "type": "string"
