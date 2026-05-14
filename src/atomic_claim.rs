@@ -7,10 +7,11 @@
 //!   4. derive a unique per-claim session ID
 //!   5. git worktree add to ${CHUMP_WORKTREE_BASE:-/tmp}/chump-<gap-lower>
 //!   6. repair gitdir back-reference (INFRA-779)
-//!   6c. remote-branch guard (AC6: --resume resets to remote tip)
-//!   7a. NATS KV dual-write (opt-in)
-//!   7b. write JSON lease file to .chump-locks/
-//!   7c. write state.db leases row
+//!      6c. remote-branch guard (AC6: --resume resets to remote tip)
+//!   7. write lease:
+//!      7a. NATS KV dual-write (opt-in)
+//!      7b. write JSON lease file to .chump-locks/
+//!      7c. write state.db leases row
 //!
 //! Each step rolls back prior steps on failure (no half-claim state).
 
