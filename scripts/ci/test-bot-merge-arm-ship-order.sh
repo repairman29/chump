@@ -154,18 +154,13 @@ bash "$BOT_MERGE" \
 
 # In dry-run, gap ship is skipped. Verify ordering via a non-dry-run mock.
 # Instead check the script source order directly (unit check).
-if grep -n "gh_with_backoff.*pr merge" "$BOT_MERGE" | head -1 | awk -F: '{print $1}' | \
-   xargs -I{} sh -c 'a={}; grep -n "chump gap ship" '"$BOT_MERGE"' | head -1 | awk -F: '"'"'{print $1}'"'"' | xargs -I{} sh -c "if [ {} -gt '"'"'$a'"'"' ]; then exit 0; else exit 1; fi"' 2>/dev/null; then
-    pass "Test 1: gh pr merge line appears BEFORE chump gap ship line in script"
+# bot-merge.sh arms auto-merge via auto-merge-armer.sh (not a direct gh pr merge call).
+ARM_LINE=$(grep -n "auto-merge-armer\.sh" "$BOT_MERGE" | grep -v "^#\|# " | head -1 | cut -d: -f1)
+SHIP_LINE=$(grep -n "chump gap ship" "$BOT_MERGE" | grep -v "^#\|# " | head -1 | cut -d: -f1)
+if [[ -n "$ARM_LINE" && -n "$SHIP_LINE" && "$ARM_LINE" -lt "$SHIP_LINE" ]]; then
+    pass "Test 1: auto-merge arm (line $ARM_LINE) is before chump gap ship (line $SHIP_LINE)"
 else
-    # Simpler check: line numbers
-    ARM_LINE=$(grep -n "gh_with_backoff.*pr merge" "$BOT_MERGE" | head -1 | cut -d: -f1)
-    SHIP_LINE=$(grep -n "chump gap ship" "$BOT_MERGE" | grep -v "#" | head -1 | cut -d: -f1)
-    if [[ -n "$ARM_LINE" && -n "$SHIP_LINE" && "$ARM_LINE" -lt "$SHIP_LINE" ]]; then
-        pass "Test 1: gh pr merge (line $ARM_LINE) is before chump gap ship (line $SHIP_LINE)"
-    else
-        fail "Test 1: ordering wrong — arm_line=$ARM_LINE ship_line=$SHIP_LINE (arm must come first)"
-    fi
+    fail "Test 1: ordering wrong — arm_line=${ARM_LINE:-?} ship_line=${SHIP_LINE:-?} (arm must come first)"
 fi
 
 # ── Test 2: when gap ship fails AFTER arm, exit 0 + ambient event emitted ───

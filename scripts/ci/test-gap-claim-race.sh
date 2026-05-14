@@ -18,6 +18,24 @@
 
 set -euo pipefail
 
+# INFRA-1025: gap-claim.sh is now a thin wrapper around `chump claim`. The
+# INFRA-403 exclusivity logic lives in Rust (src/atomic_claim.rs) and is
+# tested there. This shell test requires the chump binary to be built; skip
+# gracefully when it is not available (e.g., the fast-checks job pre-build).
+ROOT_TMP="$(cd "$(dirname "$0")/../.." && pwd)"
+CHUMP_BIN=""
+if [[ -x "$ROOT_TMP/target/release/chump" ]]; then
+    CHUMP_BIN="$ROOT_TMP/target/release/chump"
+elif command -v chump &>/dev/null; then
+    CHUMP_BIN="$(command -v chump)"
+fi
+if [[ -z "$CHUMP_BIN" ]]; then
+    echo "=== INFRA-403 gap-claim claim-time exclusivity tests ==="
+    echo "  SKIP: chump binary not found; INFRA-403 logic is tested via Rust unit"
+    echo "        tests in src/atomic_claim.rs (cargo test). Build first to run here."
+    exit 0
+fi
+
 PASS=0
 FAIL=0
 FAILS=()
