@@ -120,7 +120,11 @@ for arg in "$@"; do
 done
 
 # ── Build the JSON line (CREDIBLE-037: include harness field) ─────────────────
-JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"event\":\"${EVENT_KIND}\"${EXTRA_JSON}}"
+# INFRA-1159: dual-write both "kind" (canonical per EVENT_REGISTRY.yaml) and
+# "event" (legacy alias, kept for backward-compat with existing consumers that
+# grep for .event). Consumers should migrate to "kind"; "event" will be
+# removed in a future cleanup once all consumers are updated.
+JSON_LINE="{\"ts\":\"${TS}\",\"session\":\"${SESSION_ID}\",\"worktree\":\"${WORKTREE}\",\"harness\":\"${_HARNESS}\",\"kind\":\"${EVENT_KIND}\",\"event\":\"${EVENT_KIND}\"${EXTRA_JSON}}"
 
 # ── CREDIBLE-037: emit one-shot missing_attribution alert ─────────────────────
 if [[ "${_HARNESS_ALERTED:-false}" == "true" ]]; then

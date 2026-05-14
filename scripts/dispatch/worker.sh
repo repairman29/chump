@@ -380,7 +380,7 @@ PY
             _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             _amb_path="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
             mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
-            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","event":"fleet_starved","agent_id":"%s","consecutive_empty":%d,"filters":"prio=%s domain=%s effort=%s","suggest":"%s"}\n' \
+            printf '{"ts":"%s","session":"%s","worktree":"worker-%s","kind":"fleet_starved","event":"fleet_starved","agent_id":"%s","consecutive_empty":%d,"filters":"prio=%s domain=%s effort=%s","suggest":"%s"}\n' \
                 "$_ts" \
                 "${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-fleet-worker-$AGENT_ID}}" \
                 "$AGENT_ID" \
@@ -1667,12 +1667,12 @@ PY778
             _reh_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             if [[ "$_reh_ok" -eq 1 ]]; then
                 log "INFRA-771: handoff applied and pushed for PR #$_pr_num"
-                printf '{"ts":"%s","event":"review_handoff_applied","session":"%s","pr":%s,"gap_id":"%s","agent":"%s"}\n' \
+                printf '{"ts":"%s","kind":"review_handoff_applied","event":"review_handoff_applied","session":"%s","pr":%s,"gap_id":"%s","agent":"%s"}\n' \
                     "$_reh_ts" "${CHUMP_SESSION_ID:-$AGENT_ID}" "$_pr_num" "$GAP_ID" "$AGENT_ID" \
                     >> "$_reh_amb" 2>/dev/null || true
             else
                 log "INFRA-771: handoff apply or tests failed for PR #$_pr_num"
-                printf '{"ts":"%s","event":"review_handoff_failed","session":"%s","pr":%s,"gap_id":"%s","agent":"%s","reason":"apply_or_test_failure"}\n' \
+                printf '{"ts":"%s","kind":"review_handoff_failed","event":"review_handoff_failed","session":"%s","pr":%s,"gap_id":"%s","agent":"%s","reason":"apply_or_test_failure"}\n' \
                     "$_reh_ts" "${CHUMP_SESSION_ID:-$AGENT_ID}" "$_pr_num" "$GAP_ID" "$AGENT_ID" \
                     >> "$_reh_amb" 2>/dev/null || true
             fi
