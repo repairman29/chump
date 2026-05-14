@@ -160,16 +160,8 @@ except Exception:
     print(0)
 " 2>/dev/null || echo "0")"
 
-    if [[ "$expires_epoch" -gt 0 && "$expires_epoch" -lt "$NOW_EPOCH_CLAIM" ]]; then
-        gap_id="$(python3 -c "
-import json, sys
-try:
-    d = json.load(open('$claim_file'))
-    print(d.get('gap_id', ''))
-except Exception:
-    print('')
-" 2>/dev/null || echo "")"
-        session_id="$(python3 -c "
+    # Parse session_id + gap_id once for both code paths below.
+    session_id="$(python3 -c "
 import json, sys
 try:
     d = json.load(open('$claim_file'))
@@ -177,6 +169,38 @@ try:
 except Exception:
     print('')
 " 2>/dev/null || echo "")"
+    gap_id="$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$claim_file'))
+    print(d.get('gap_id', ''))
+except Exception:
+    print('')
+" 2>/dev/null || echo "")"
+
+    # INFRA-1208: PID-liveness check BEFORE TTL check. Sessions write 8h TTL
+    # leases, but if a session crashes 30 min in, the existing TTL check
+    # leaves the lease sitting for 7.5h+ — overnight accumulation of 14
+    # dead leases observed 2026-05-14. session_id format is
+    # claim-<gap>-<PID>-<EPOCH>. If PID is dead, reap immediately.
+    claim_pid="$(printf '%s' "$session_id" | grep -oE '[0-9]+-[0-9]+$' | cut -d- -f1 2>/dev/null || echo "")"
+    if [[ -n "$claim_pid" ]] && ! ps -p "$claim_pid" >/dev/null 2>&1; then
+        if [[ "$DRY_RUN" == "true" ]]; then
+            echo "  WOULD REAP claim (pid=$claim_pid dead): $(basename "$claim_file") [gap=$gap_id]"
+        else
+            rm -f "$claim_file"
+            echo "  REAPED claim (pid=$claim_pid dead): $(basename "$claim_file") [gap=$gap_id]"
+            printf '{"ts":"%s","kind":"stale_gap_lock_reaped","event":"stale_gap_lock_reaped","lock":"%s","session":"%s","gap":"%s","reason":"pid_dead","pid":%d,"source":"claim_file"}\n' \
+                "$NOW_ISO" \
+                "$(basename "$claim_file")" \
+                "$session_id" "$gap_id" "$claim_pid" \
+                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+        fi
+        CLAIM_REAPED=$((CLAIM_REAPED+1))
+        continue
+    fi
+
+    if [[ "$expires_epoch" -gt 0 && "$expires_epoch" -lt "$NOW_EPOCH_CLAIM" ]]; then
         if [[ "$DRY_RUN" == "true" ]]; then
             echo "  WOULD REAP claim (expired $expires_at): $(basename "$claim_file") [gap=$gap_id]"
         else

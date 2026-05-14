@@ -1,0 +1,18 @@
+- id: INFRA-1208
+  domain: INFRA
+  title: "RESILIENT: claim-*.json session-lease reaper (companion to INFRA-1164 which only handles .gap-*.lock)"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Discovered 2026-05-14: INFRA-1164 (PR #1849, stale-gap-lock-reaper) handles .chump-locks/.gap-NNN.lock files but NOT .chump-locks/claim-<gap>-<pid>-<ts>.json session-lease files. Observed 14 dead session leases accumulated overnight; sessions exited without releasing leases. Reaped manually 2026-05-14, but pattern recurs whenever a session is SIGKILLed / OOM / sandbox-terminated. Fix: extend scripts/ops/stale-gap-lock-reaper.sh (or add companion scripts/ops/stale-session-lease-reaper.sh) to also sweep claim-*.json files where (a) the recorded pid is not running, OR (b) the file is older than CHUMP_CLAIM_LEASE_TTL (default 4h). Existing launchd plist dev.chump.stale-gap-lock-reaper (already loaded) is the natural runner — extend that script in-place.
+  acceptance_criteria:
+    - scripts/ops/stale-gap-lock-reaper.sh extended (or companion script added) to sweep .chump-locks/claim-*.json files
+    - "Sweep logic: reap if (a) recorded pid not running via kill -0 PID, OR (b) file mtime older than CHUMP_CLAIM_LEASE_TTL seconds (default 14400 = 4h)"
+    - Dry-run default; --execute required to actually delete; matches existing reaper convention
+    - Emits kind=session_lease_reaped via chump ambient emit per reaped file with fields [ts, kind, session, source=claim_file, reason=expired
+    - pid_dead, age_hours]
+    - EVENT_REGISTRY.yaml registers session_lease_reaped
+    - Existing launchd plist dev.chump.stale-gap-lock-reaper runs this in same 5-min cadence as INFRA-1164
+    - "Test scripts/ci/test-session-lease-reaper.sh: synthesize claim-test-123-99999-1.json with dead pid + fresh-lease counterpart; --dry-run identifies only the dead; --execute deletes only the dead"
+
