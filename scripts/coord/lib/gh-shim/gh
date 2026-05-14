@@ -50,6 +50,37 @@ fi
 
 # Tag this call.
 api_tag="$(chump_gh_api_tag "$@" 2>/dev/null || echo "?")"
+
+# Caller-script identity — resolve early so both throttle and record share it.
+# Prefer CHUMP_GH_SCRIPT (env override), else walk parent process name.
+script_tag="${CHUMP_GH_SCRIPT:-}"
+if [[ -z "$script_tag" ]]; then
+    script_tag="$(ps -o comm= -p "$PPID" 2>/dev/null | head -1 || true)"
+    # If parent is "bash" or empty, walk one more level (script exec'd by shell).
+    if [[ -z "$script_tag" || "$script_tag" == "bash" || "$script_tag" == "-bash" ]]; then
+        grandparent="$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')"
+        if [[ -n "$grandparent" && "$grandparent" != "0" ]]; then
+            script_tag="$(ps -o comm= -p "$grandparent" 2>/dev/null | head -1 || true)"
+        fi
+    fi
+    script_tag="$(basename "${script_tag:-shim}")"
+fi
+
+# INFRA-1103: invoke throttle for every bare 'gh ...' call that reaches the shim.
+#
+# Skip when CHUMP_GH_SHIM_RECORDING=1 — this flag is set by either:
+#   (a) chump_gh() in github.sh, which already called _chump_gh_throttle_wait
+#       before invoking 'gh'; or
+#   (b) an outer shim invocation (this shim is nested inside a real gh execution).
+# In both cases the throttle was already applied; a second call would double-wait.
+#
+# CHUMP_GH_NO_THROTTLE=1 is an unconditional bypass (emergency / testing).
+if [[ "${CHUMP_GH_SHIM_RECORDING:-0}" != "1" ]]; then
+    if declare -F _chump_gh_throttle_wait >/dev/null 2>&1; then
+        _chump_gh_throttle_wait "$script_tag" 2>/dev/null || true
+    fi
+fi
+
 started_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
 
 # Run real gh, preserve stdout/stderr/exit.
@@ -66,20 +97,6 @@ ended_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
 
 # Best-effort record. Never blocks/fails the real call.
 if declare -F chump_gh_record >/dev/null 2>&1; then
-    # Caller-script identity: prefer CHUMP_GH_SCRIPT (env override), else
-    # walk $0 of the parent process. ps -o comm gives the basename.
-    script_tag="${CHUMP_GH_SCRIPT:-}"
-    if [[ -z "$script_tag" ]]; then
-        script_tag="$(ps -o comm= -p "$PPID" 2>/dev/null | head -1 || true)"
-        # If parent is "bash" or empty, walk one more level (script execed by shell).
-        if [[ -z "$script_tag" || "$script_tag" == "bash" || "$script_tag" == "-bash" ]]; then
-            grandparent="$(ps -o ppid= -p "$PPID" 2>/dev/null | tr -d ' ')"
-            if [[ -n "$grandparent" && "$grandparent" != "0" ]]; then
-                script_tag="$(ps -o comm= -p "$grandparent" 2>/dev/null | head -1 || true)"
-            fi
-        fi
-        script_tag="$(basename "${script_tag:-shim}")"
-    fi
     chump_gh_record "$api_tag" "$(( ended_ms - started_ms ))" "$rc" "$script_tag" \
         2>/dev/null || true
 fi
