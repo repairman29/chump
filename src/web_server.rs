@@ -7576,6 +7576,10 @@ fn build_api_router() -> Router {
             "/api/neuromod-stream",
             get(routes::health::handle_neuromod_stream),
         )
+        .route(
+            "/api/fleet/health",
+            get(routes::health::handle_fleet_health),
+        )
         .route("/api/chat", post(handle_chat))
         .route("/api/stop", post(handle_stop))
         .route("/api/tts", get(handle_tts))

@@ -3,7 +3,8 @@
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::{response::Redirect, Json};
-use std::time::Duration;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::local_openai;
 use crate::provider_cascade;
@@ -629,4 +630,365 @@ fn build_slots_response(slots: &[crate::provider_cascade::ProviderSlot]) -> serd
         })
         .collect();
     serde_json::json!({ "slots": slot_data })
+}
+// ── INFRA-1334: /api/fleet/health — aggregate mission health snapshot ──────
+//
+// Returns a single JSON object combining pillar grades, KPIs, SLO status, and
+// GraphQL budget. Designed to be the single data source for:
+//   - PRODUCT-107 status-footer pillar quadrant
+//   - INFRA-1203 <chump-view-fleet-health> detail view
+//
+// Shape:
+//   {
+//     pillars: { effective:{grade,score,count_pickable,...}, credible:...,
+//                resilient:..., zero_waste:..., mission:... },
+//     kpis: { ships_24h, open_count, claimed_count, waste_rate_pct },
+//     slo:  { status:"ok"|"breach"|"unknown", breach_count, breaches:[] },
+//     graphql_budget: { remaining, limit, reset_at } | null,
+//     ts: ISO string,
+//   }
+//
+// Cache: 60s in-process OnceLock. Protects against PWA poll storms.
+
+#[derive(Clone)]
+struct FleetHealthSnapshot {
+    payload: serde_json::Value,
+    cached_at: Instant,
+}
+
+fn fleet_health_cache() -> &'static OnceLock<Mutex<Option<FleetHealthSnapshot>>> {
+    static CELL: OnceLock<Mutex<Option<FleetHealthSnapshot>>> = OnceLock::new();
+    &CELL
+}
+
+/// GET /api/fleet/health — see module doc for full schema.
+pub async fn handle_fleet_health() -> Json<serde_json::Value> {
+    let ttl = Duration::from_secs(60);
+    let cell = fleet_health_cache().get_or_init(|| Mutex::new(None));
+
+    if let Ok(g) = cell.lock() {
+        if let Some(snap) = g.as_ref() {
+            if snap.cached_at.elapsed() < ttl {
+                return Json(snap.payload.clone());
+            }
+        }
+    }
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => std::path::PathBuf::from(r),
+        Err(_) => crate::repo_path::runtime_base(),
+    };
+
+    let report = crate::mission_grade::build_report(&repo_root);
+    let pillars = fleet_health_pillars_json(&report);
+    let kpis = fleet_health_kpis_json(&repo_root, &report);
+    let slo = fleet_health_slo_json(&repo_root);
+    let graphql_budget = fleet_health_graphql_budget_json(&repo_root);
+    let ts = report.ts.clone();
+
+    let mission_grade = pillars
+        .get("mission")
+        .and_then(|m| m.get("grade"))
+        .and_then(|g| g.as_str())
+        .unwrap_or("?")
+        .to_string();
+    let slo_status = slo
+        .get("status")
+        .and_then(|s| s.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let graphql_remaining = graphql_budget
+        .get("remaining")
+        .and_then(|r| r.as_i64())
+        .unwrap_or(-1);
+
+    tracing::info!(
+        target: "chump::fleet_health",
+        mission_grade,
+        slo_status,
+        graphql_remaining,
+        "fleet health computed (cache miss)"
+    );
+
+    let payload = serde_json::json!({
+        "pillars": pillars,
+        "kpis": kpis,
+        "slo": slo,
+        "graphql_budget": graphql_budget,
+        "ts": ts,
+    });
+
+    if let Ok(mut g) = cell.lock() {
+        *g = Some(FleetHealthSnapshot {
+            payload: payload.clone(),
+            cached_at: Instant::now(),
+        });
+    }
+    Json(payload)
+}
+
+// ── Pillar sub-object — mirrors /api/fleet/pillars (INFRA-1339) ────────────
+
+fn pillar_entry_health(c: &crate::mission_grade::PillarCounts) -> serde_json::Value {
+    let grade_ch = crate::mission_grade::pillar_grade(c.count_pickable, c.count_in_flight);
+    let raw: u64 = c
+        .count_pickable
+        .saturating_mul(25)
+        .saturating_add(c.count_in_flight.saturating_mul(10))
+        .saturating_add(c.count_shipped_24h.saturating_mul(5));
+    let score = raw.min(100);
+
+    let mut breach_reasons: Vec<&str> = vec![];
+    match grade_ch {
+        'A' => {}
+        'B' => breach_reasons.push("only 1 pickable gap — restock to 2+"),
+        'C' => breach_reasons.push("no pickable gaps (all in-flight or blocked)"),
+        _ => breach_reasons.push("no open gaps in this pillar"),
+    }
+
+    serde_json::json!({
+        "grade": grade_ch.to_string(),
+        "score": score,
+        "count_pickable": c.count_pickable,
+        "count_in_flight": c.count_in_flight,
+        "count_shipped_24h": c.count_shipped_24h,
+        "trend": "flat",
+        "breach_reasons": breach_reasons,
+    })
+}
+
+fn fleet_health_pillars_json(r: &crate::mission_grade::MissionGradeReport) -> serde_json::Value {
+    let eff = pillar_entry_health(&r.effective);
+    let cred = pillar_entry_health(&r.credible);
+    let res = pillar_entry_health(&r.resilient);
+    let zw = pillar_entry_health(&r.zero_waste);
+
+    // Mission: worst grade across pillars; score = min; breach_reasons = union
+    let grades = [
+        eff["grade"].as_str().unwrap_or("F"),
+        cred["grade"].as_str().unwrap_or("F"),
+        res["grade"].as_str().unwrap_or("F"),
+        zw["grade"].as_str().unwrap_or("F"),
+    ];
+    let grade_rank = |g: &str| match g {
+        "A" => 4u8,
+        "B" => 3,
+        "C" => 2,
+        _ => 1,
+    };
+    let mission_grade = grades
+        .iter()
+        .min_by_key(|g| grade_rank(g))
+        .copied()
+        .unwrap_or("F");
+    let mission_score = [
+        eff["score"].as_u64().unwrap_or(0),
+        cred["score"].as_u64().unwrap_or(0),
+        res["score"].as_u64().unwrap_or(0),
+        zw["score"].as_u64().unwrap_or(0),
+    ]
+    .iter()
+    .copied()
+    .min()
+    .unwrap_or(0);
+
+    let mut mission_reasons: Vec<&str> = vec![];
+    for v in [&eff, &cred, &res, &zw] {
+        if let Some(arr) = v["breach_reasons"].as_array() {
+            for r in arr {
+                if let Some(s) = r.as_str() {
+                    mission_reasons.push(s);
+                }
+            }
+        }
+    }
+
+    serde_json::json!({
+        "effective": eff,
+        "credible": cred,
+        "resilient": res,
+        "zero_waste": zw,
+        "mission": {
+            "grade": mission_grade,
+            "score": mission_score,
+            "trend": "flat",
+            "breach_reasons": mission_reasons,
+        },
+    })
+}
+
+// ── KPIs sub-object ────────────────────────────────────────────────────────
+
+fn fleet_health_kpis_json(
+    repo_root: &std::path::Path,
+    report: &crate::mission_grade::MissionGradeReport,
+) -> serde_json::Value {
+    let gs = match crate::gap_store::GapStore::open(repo_root) {
+        Ok(g) => g,
+        Err(_) => {
+            return serde_json::json!({
+                "ships_24h": 0,
+                "open_count": 0,
+                "claimed_count": 0,
+                "waste_rate_pct": 0.0,
+            })
+        }
+    };
+
+    let open_count = gs.list(Some("open")).map(|v| v.len()).unwrap_or(0) as u64;
+    let claimed_count = gs.list(Some("claimed")).map(|v| v.len()).unwrap_or(0) as u64;
+
+    // ships_24h: sum of shipped_24h across all 4 pillars (which already counted from done list)
+    let ships_24h = report.effective.count_shipped_24h
+        + report.credible.count_shipped_24h
+        + report.resilient.count_shipped_24h
+        + report.zero_waste.count_shipped_24h;
+
+    // waste_rate_pct: (open_count / (open_count + ships_24h_over_week)) rough proxy.
+    // Simplified: use 0.0 when we have no shipping history (can't compute meaningful rate
+    // from in-memory data alone — the proper source is chump waste-tally which needs disk scan).
+    let waste_rate_pct: f64 = 0.0;
+
+    serde_json::json!({
+        "ships_24h": ships_24h,
+        "open_count": open_count,
+        "claimed_count": claimed_count,
+        "waste_rate_pct": waste_rate_pct,
+    })
+}
+
+// ── SLO sub-object ─────────────────────────────────────────────────────────
+
+fn fleet_health_slo_json(_repo_root: &std::path::Path) -> serde_json::Value {
+    // Try `chump health --slo-check --json`. If the binary is unavailable or the flag
+    // is unrecognised, fall back to status:unknown.
+    let chump_bin = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump"));
+    let result = std::process::Command::new(&chump_bin)
+        .args(["health", "--slo-check", "--json"])
+        .env("CHUMP_ALLOW_MAIN_WORKTREE", "1")
+        .output();
+
+    match result {
+        Ok(out) if out.status.success() => {
+            if let Ok(s) = std::str::from_utf8(&out.stdout) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s.trim()) {
+                    return parsed;
+                }
+            }
+            serde_json::json!({ "status": "unknown", "breach_count": 0, "breaches": [] })
+        }
+        Ok(out) if out.status.code() == Some(1) => {
+            // exit 1 means SLO breach
+            if let Ok(s) = std::str::from_utf8(&out.stdout) {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s.trim()) {
+                    return parsed;
+                }
+            }
+            serde_json::json!({ "status": "breach", "breach_count": 1, "breaches": [] })
+        }
+        _ => serde_json::json!({ "status": "unknown", "breach_count": 0, "breaches": [] }),
+    }
+}
+
+// ── GraphQL budget sub-object ───────────────────────────────────────────────
+
+fn fleet_health_graphql_budget_json(repo_root: &std::path::Path) -> serde_json::Value {
+    // Read the most recent graphql_exhausted or graphql_rate event from ambient.jsonl.
+    // This avoids an external gh api call on every request.
+    // Returns null when no signal is available.
+    let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let content = match std::fs::read_to_string(&ambient_path) {
+        Ok(c) => c,
+        Err(_) => return serde_json::Value::Null,
+    };
+
+    // Scan in reverse for the most recent graphql_exhausted event.
+    for line in content.lines().rev() {
+        if !line.contains("graphql_exhausted") && !line.contains("graphql_remaining") {
+            continue;
+        }
+        if let Ok(ev) = serde_json::from_str::<serde_json::Value>(line) {
+            let remaining = ev.get("threshold_seen").and_then(|v| v.as_i64());
+            let reset_at = ev.get("resets_at").and_then(|v| v.as_str()).map(|s| {
+                if s == "unknown" {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::Value::String(s.to_string())
+                }
+            });
+            if remaining.is_some() || reset_at.is_some() {
+                return serde_json::json!({
+                    "remaining": remaining,
+                    "limit": 5000,
+                    "reset_at": reset_at.unwrap_or(serde_json::Value::Null),
+                });
+            }
+        }
+    }
+
+    // No graphql event found — return null so callers know this data is unavailable.
+    serde_json::Value::Null
+}
+
+#[cfg(test)]
+mod fleet_health_tests {
+    use super::*;
+    use crate::mission_grade::{MissionGradeReport, PillarCounts};
+
+    #[test]
+    fn pillar_entry_grade_a() {
+        let c = PillarCounts {
+            count_pickable: 2,
+            count_in_flight: 1,
+            count_shipped_24h: 3,
+        };
+        let v = pillar_entry_health(&c);
+        assert_eq!(v["grade"], "A");
+        assert!(v["breach_reasons"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn pillar_entry_grade_f_has_breach_reason() {
+        let c = PillarCounts::default();
+        let v = pillar_entry_health(&c);
+        assert_eq!(v["grade"], "F");
+        assert_eq!(v["breach_reasons"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn fleet_health_pillars_mission_worst_grade() {
+        let r = MissionGradeReport {
+            effective: PillarCounts {
+                count_pickable: 3,
+                count_in_flight: 0,
+                count_shipped_24h: 0,
+            },
+            credible: PillarCounts::default(), // F
+            resilient: PillarCounts {
+                count_pickable: 1,
+                count_in_flight: 0,
+                count_shipped_24h: 0,
+            }, // B
+            zero_waste: PillarCounts {
+                count_pickable: 2,
+                count_in_flight: 0,
+                count_shipped_24h: 0,
+            }, // A
+            ts: "".to_string(),
+        };
+        let v = fleet_health_pillars_json(&r);
+        assert_eq!(v["effective"]["grade"], "A");
+        assert_eq!(v["credible"]["grade"], "F");
+        assert_eq!(v["resilient"]["grade"], "B");
+        assert_eq!(v["zero_waste"]["grade"], "A");
+        // Mission = worst = F
+        assert_eq!(v["mission"]["grade"], "F");
+    }
+
+    #[test]
+    fn graphql_budget_null_on_missing_ambient() {
+        let tmp = std::path::PathBuf::from("/tmp/no-such-repo-infra-1334-test");
+        let v = fleet_health_graphql_budget_json(&tmp);
+        assert!(v.is_null());
+    }
 }

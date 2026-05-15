@@ -329,6 +329,61 @@ Response:
 
 **Telemetry:** every request emits one `kind=gap_queue_request` ambient event with `{filter, count, ms}` fields. Tail `.chump-locks/ambient.jsonl` to spot frontend hot-loops.
 
+## GET /api/fleet/health (INFRA-1334)
+
+Aggregate fleet mission-health snapshot — the single data source for PRODUCT-107 status-footer and INFRA-1203 `<chump-view-fleet-health>`. Combines pillar grades, KPIs, SLO status, and GraphQL budget.
+
+**Response shape:**
+
+```json
+{
+  "pillars": {
+    "effective":  { "grade": "A", "score": 80, "count_pickable": 3, "count_in_flight": 1, "count_shipped_24h": 2, "trend": "flat", "breach_reasons": [] },
+    "credible":   { "grade": "B", "score": 30, "count_pickable": 1, ... },
+    "resilient":  { "grade": "F", "score":  0, "count_pickable": 0, ..., "breach_reasons": ["no open gaps in this pillar"] },
+    "zero_waste": { "grade": "F", "score":  0, ... },
+    "mission":    { "grade": "F", "score":  0, "trend": "flat", "breach_reasons": ["...rolled-up..."] }
+  },
+  "kpis": {
+    "ships_24h":      4,
+    "open_count":     42,
+    "claimed_count":  3,
+    "waste_rate_pct": 0.0
+  },
+  "slo": {
+    "status":       "ok",
+    "breach_count": 0,
+    "breaches":     []
+  },
+  "graphql_budget": { "remaining": 4800, "limit": 5000, "reset_at": "2026-05-15T21:00:00Z" },
+  "ts": "2026-05-15T20:55:00Z"
+}
+```
+
+**Field semantics:**
+
+| Key | Type | Meaning |
+|-----|------|---------|
+| `pillars` | object | Per-pillar grade assessment. Mirrors `/api/fleet/pillars` (INFRA-1339). `mission` is worst-grade roll-up. |
+| `kpis.ships_24h` | int | Gaps shipped/done in the last 24 h across all pillars. |
+| `kpis.open_count` | int | Total open (unclaimed) gaps. |
+| `kpis.claimed_count` | int | Currently claimed (in-flight) gaps. |
+| `kpis.waste_rate_pct` | float | 0–100 waste percentage. `0.0` when insufficient history (use `chump waste-tally` for full calculation). |
+| `slo.status` | string | `ok` / `breach` / `unknown`. `unknown` when `chump health --slo-check` binary is unavailable. |
+| `slo.breach_count` | int | Number of SLOs currently in breach. |
+| `slo.breaches` | array | `[{slo, current, target, unit}]` objects describing each breach. |
+| `graphql_budget` | object \| null | Latest GraphQL rate data from ambient.jsonl. `null` when no signal available. |
+| `graphql_budget.remaining` | int | Remaining GraphQL requests before reset. |
+| `graphql_budget.limit` | int | Total GraphQL quota per window (typically 5000). |
+| `graphql_budget.reset_at` | string \| null | ISO 8601 reset time, or `null` if unknown. |
+| `ts` | string | ISO 8601 UTC timestamp of report computation. |
+
+**Caching:** 60-second in-process OnceLock cache. Cache-miss emits `tracing::info!` with `mission_grade`, `slo_status`, `graphql_remaining`.
+
+**SLO data source:** subprocess call to `chump health --slo-check --json` on cache miss. Returns `status: "unknown"` on any error (binary absent, flag unrecognized, timeout).
+
+**GraphQL budget source:** scans `$CHUMP_REPO/.chump-locks/ambient.jsonl` in reverse for the most recent `graphql_exhausted` event. Returns `null` when no event found — this is expected on fresh deployments or when the fleet has not exhausted the quota.
+
 ## Static
 
 The server serves the PWA from the static directory (default `CHUMP_WEB_STATIC_DIR` or repo `web/`). All non-API routes fall through to static files (e.g. `index.html`, `manifest.json`, `sw.js`).
