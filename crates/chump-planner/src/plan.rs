@@ -44,6 +44,12 @@ pub struct PlanItem {
     pub gap: Gap,
     pub score: Scored,
     pub prerequisites: Vec<GapId>,
+    /// INFRA-1281: topological layer in the open dep graph. 0 = no open
+    /// prereqs (foundation). Enables tier-aware picking (INFRA-1258).
+    pub layer: u32,
+    /// INFRA-1281: longest forward chain of `Effort::days()` from this
+    /// gap through all transitive open dependents to a leaf.
+    pub critical_path_days: f32,
 }
 
 pub fn build_plan(
@@ -103,6 +109,12 @@ pub fn build_plan(
             .then_with(|| a.1.gap_id.0.cmp(&b.1.gap_id.0))
     });
 
+    // INFRA-1281: precompute layer + critical_path_days for every open gap
+    // once; attach to each PlanItem during picking. O(V+E) each — cheap at
+    // the ~400-open-gap scale and keeps the picker stateless about graph shape.
+    let layers = graph.layers(&open_set);
+    let cpds = graph.critical_path_days(gaps, &open_set);
+
     let want = req.agents.max(1);
     let mut picked: Vec<PlanItem> = Vec::new();
     let mut domain_picks: HashMap<Domain, usize> = HashMap::new();
@@ -122,10 +134,14 @@ pub fn build_plan(
             }
         }
 
+        let layer = layers.get(&gap.id).copied().unwrap_or(0);
+        let critical_path_days = cpds.get(&gap.id).copied().unwrap_or(gap.effort.days());
         picked.push(PlanItem {
             gap: gap.clone(),
             score: item_score,
             prerequisites: prereqs,
+            layer,
+            critical_path_days,
         });
         *domain_picks.entry(gap.domain).or_insert(0) += 1;
 

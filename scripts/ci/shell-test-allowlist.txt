@@ -1,0 +1,21 @@
+# scripts/ci/shell-test-allowlist.txt — INFRA-1306
+#
+# Allow-list for `scripts/ci/test-*.sh` files that LEGITIMATELY use shell
+# to exercise `chump <subcommand>` logic. Today this is EMPTY by design —
+# the lint checks NET-NEW additions only (files added in this PR vs
+# origin/main), so the existing 595 shell tests don't need entries.
+#
+# Add an entry ONLY when:
+#   1. The new shell test is the right tool — e.g.
+#        - multi-process race conditions (file locks, NATS hand-offs)
+#        - CLI ergonomics test (arg parsing, --help output assertions)
+#        - genuine end-to-end test that needs sleep/setsid/trap orchestration
+#          impractical from cargo test
+#   2. The accompanying PR review acknowledges the exception.
+#
+# Format: one path per line, optional `# reason:` comment. Comments + blank
+# lines are ignored.
+#
+# Example:
+#   # reason: multi-worker race condition on the same .chump-locks lease
+#   scripts/ci/test-multi-worker-lease-race.sh

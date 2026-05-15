@@ -27,6 +27,10 @@ LOCK_DIR="$REPO_ROOT/.chump-locks"
 STUCK_SENT_DIR="$LOCK_DIR/.stuck-sent"
 mkdir -p "$STUCK_SENT_DIR" 2>/dev/null || true
 
+# INFRA-1082: cache-first per-PR meta lookup (zero API calls when cache warm).
+# shellcheck source=lib/github_cache.sh
+[[ -f "${SCRIPT_DIR}/lib/github_cache.sh" ]] && source "${SCRIPT_DIR}/lib/github_cache.sh"
+
 STUCK_AFTER_S="${CHUMP_PR_STUCK_AFTER_S:-7200}"            # 2h
 RESEND_COOLDOWN_S="${CHUMP_PR_STUCK_RESEND_COOLDOWN_S:-21600}"  # 6h
 
@@ -74,9 +78,21 @@ except Exception: print(0)
     age_s=$(( now_epoch - upd_epoch ))
     [ "$age_s" -lt "$STUCK_AFTER_S" ] && continue
 
-    # Mergeability — single REST hit per candidate (only those past age threshold).
-    # Strip JSON quotes (gh --jq returns "dirty" not dirty without -r).
-    detail="$(gh api "repos/$repo/pulls/$pr_num" --jq '.mergeable_state' 2>/dev/null | tr -d '"')"
+    # Mergeability — INFRA-1082: cache-first lookup; REST only on cache miss.
+    # cache_lookup_pr returns raw_payload_json which contains mergeable_state.
+    detail=""
+    if declare -F cache_lookup_pr >/dev/null 2>&1; then
+        _pr_meta="$(cache_lookup_pr "$pr_num" 2>/dev/null)"
+        if [[ -n "$_pr_meta" ]]; then
+            detail="$(printf '%s' "$_pr_meta" | python3 -c \
+                "import sys,json; print(json.load(sys.stdin).get('mergeable_state','') or '')" \
+                2>/dev/null | tr -d '"')"
+        fi
+    fi
+    # Fallback to direct REST if cache miss / lib not loaded.
+    if [[ -z "$detail" ]]; then
+        detail="$(gh api "repos/$repo/pulls/$pr_num" --jq '.mergeable_state' 2>/dev/null | tr -d '"')"
+    fi
     case "$detail" in
         dirty|blocked) : ;;  # candidate
         *) continue ;;

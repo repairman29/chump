@@ -109,14 +109,20 @@ warn()  { printf '\033[0;33m%s\033[0m\n' "$*"; }
 info()  { printf '  %s\n' "$*"; }
 log()   { echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] $*" >>"$LOG"; }
 
-# INFRA-1074: emit kind=worktree_reaper_skipped_active to ambient.jsonl
+# INFRA-1211: _emit_reaper_skipped and _emit_worktree_reap_protected are now
+# thin wrappers around emit_reaper_event() from scripts/lib/worktree-iter.sh.
+# Kept as wrappers (not deleted) so callers deep in this file need no rewrite.
 _emit_reaper_skipped() {
     local wt_path="$1" reason="$2"
-    local ambient="${CHUMP_AMBIENT_LOG:-$LOCKS_DIR/ambient.jsonl}"
-    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"ts":"%s","kind":"worktree_reaper_skipped_active","worktree":"%s","reason":"%s"}\n' \
-        "$ts" "$wt_path" "$reason" >> "$ambient" 2>/dev/null || true
+    emit_reaper_event "worktree_reaper_skipped_active" "$wt_path" "$reason"
     log "SKIP_ACTIVE $wt_path reason=$reason"
+}
+_emit_worktree_reap_protected() {
+    local wt_path="$1" lease="$2"
+    emit_reaper_event "worktree_reap_protected" "$wt_path" \
+        "active_lease_heartbeat_fresh" \
+        "\"lease\":\"$(basename "$lease")\",\"ttl_s\":${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}"
+    log "REAP_PROTECTED $wt_path via fresh heartbeat in $lease"
 }
 
 green "=== stale-worktree-reaper (repo: $REPO_ROOT) ==="
@@ -172,6 +178,12 @@ info "target/ purge: $_target_purged dir(s), $((_target_freed_kb / 1024)) MB $([
 # taken_at, grep fallback when jq absent — all handled by the lib.
 # shellcheck source=../lib/lease.sh
 source "$REPO_ROOT/scripts/lib/lease.sh"
+# INFRA-1211: shared worktree scanning + emission helpers.
+# shellcheck source=scripts/lib/worktree-iter.sh
+source "$REPO_ROOT/scripts/lib/worktree-iter.sh"
+REAPER_NAME="${REAPER_NAME:-worktree}"
+REAPER_REPO_ROOT="$REPO_ROOT"
+export REAPER_REPO_ROOT
 
 ACTIVE_WORKTREES=""
 if [[ -d "$LOCKS_DIR" && "${REAPER_SAFETY_CHECK}" == "1" ]]; then
@@ -179,8 +191,9 @@ if [[ -d "$LOCKS_DIR" && "${REAPER_SAFETY_CHECK}" == "1" ]]; then
         [[ -f "$lease" ]] || continue
         wt="$(lease_worktree "$lease")"
         [[ -z "$wt" ]] && continue
-        # INFRA-1074: skip leases with heartbeat > 15 min stale.
-        if ! lease_is_fresh "$lease" 900; then
+        # INFRA-1074: skip leases with heartbeat stale beyond TTL.
+        # INFRA-1291: TTL now configurable via CHUMP_LEASE_HEARTBEAT_TTL_S (default 600s).
+        if ! lease_is_fresh "$lease" "${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}"; then
             age_s="$(lease_heartbeat_age_s "$lease")"
             info "  lease $lease: worktree=$wt but heartbeat is ${age_s}s old (>15 min) — not treating as active"
             continue
@@ -257,6 +270,20 @@ process_worktree() {
 
     if is_active_lease "$wt_name"; then
         info "  active lease references this worktree — keeping"
+        # INFRA-1291: emit worktree_reap_protected (distinct from the generic
+        # worktree_reaper_skipped_active) so observers can track heartbeat-TTL
+        # protection specifically. Look up the protecting lease by scanning
+        # .chump-locks/ (small set — ≤ active worker count).
+        _protecting_lease=""
+        while IFS= read -r _pl; do
+            [[ -f "$_pl" ]] || continue
+            _pl_wt="$(lease_worktree "$_pl")"
+            [[ -z "$_pl_wt" ]] && continue
+            if [[ "$_pl_wt" == "$wt_path" || "$(basename "$_pl_wt")" == "$wt_name" ]]; then
+                _protecting_lease="$_pl"; break
+            fi
+        done < <(lease_iter --repo "$REPO_ROOT")
+        _emit_worktree_reap_protected "$wt_path" "${_protecting_lease:-unknown}"
         _emit_reaper_skipped "$wt_path" "active_lease"
         KEPT=$((KEPT+1)); return 0
     fi

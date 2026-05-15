@@ -126,10 +126,7 @@ pub enum ShipPlan {
         recovery_hint: String,
     },
     /// Branch has commits but no PR yet — push (if needed) and create PR.
-    CreatePr {
-        branch: String,
-        ahead: u32,
-    },
+    CreatePr { branch: String, ahead: u32 },
     /// Branch behind main, within stale threshold — rebase + force-push.
     RebaseAndPush { behind_count: u32 },
     /// All required checks green, mergeable → REST PUT directly (INFRA-1166).
@@ -139,10 +136,7 @@ pub enum ShipPlan {
         checks_verified: u32,
     },
     /// Mergeable, checks still resolving → arm auto-merge.
-    ArmAutoMerge {
-        pr: u64,
-        reason: String,
-    },
+    ArmAutoMerge { pr: u64, reason: String },
     /// Already armed and waiting on checks/review.
     WaitForChecks {
         pr: u64,
@@ -157,10 +151,7 @@ pub enum ShipPlan {
         recovery_hint: String,
     },
     /// Mergeable=false + dirty (merge conflict) OR unstable failures.
-    ConflictRecover {
-        pr: u64,
-        recovery_hint: String,
-    },
+    ConflictRecover { pr: u64, recovery_hint: String },
     /// State the planner can't handle confidently — surface to operator.
     OperatorAction {
         reason: String,
@@ -309,6 +300,248 @@ pub fn plan(pr: &PrSnapshot, repo: &RepoSnapshot) -> ShipPlan {
     }
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// INFRA-1229 slice 2 — pure executor-step decision.
+//
+// `decide_steps(plan)` translates a ShipPlan into a list of shell
+// commands to run (git or gh). It's pure — no I/O — so the planner +
+// executor pair can be unit-tested end-to-end without a network or repo.
+// The CLI wrapper in `src/main.rs` walks the steps via std::process::Command.
+// ──────────────────────────────────────────────────────────────────────
+
+/// One shell command in the executor pipeline. `expect_success=true`
+/// means the runner aborts the chain on non-zero exit; `false` means
+/// best-effort (warn + continue).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutorStep {
+    pub program: String,
+    pub args: Vec<String>,
+    pub expect_success: bool,
+    pub note: String,
+}
+
+impl ExecutorStep {
+    fn git(args: &[&str], note: &str) -> Self {
+        Self {
+            program: "git".to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            expect_success: true,
+            note: note.to_string(),
+        }
+    }
+    fn gh(args: &[&str], note: &str) -> Self {
+        Self {
+            program: "gh".to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            expect_success: true,
+            note: note.to_string(),
+        }
+    }
+}
+
+/// Translate a [`ShipPlan`] into the executor's command list. Empty list
+/// means "no action needed for this plan variant" (e.g. AlreadyDone,
+/// WaitForChecks, OperatorAction).
+pub fn decide_steps(plan: &ShipPlan) -> Vec<ExecutorStep> {
+    match plan {
+        ShipPlan::RebaseAndPush { .. } => vec![
+            ExecutorStep::git(
+                &["fetch", "origin", "main", "--quiet"],
+                "fetch origin/main",
+            ),
+            ExecutorStep::git(
+                &["rebase", "origin/main"],
+                "rebase onto origin/main",
+            ),
+            ExecutorStep::git(
+                &["push", "--force-with-lease", "origin", "HEAD"],
+                "force-with-lease push",
+            ),
+        ],
+        ShipPlan::RestDirectMerge { pr, .. } => {
+            // REST PUT bypasses the GraphQL enablePullRequestAutoMerge mutation
+            // (INFRA-1166 fast path). Owner/repo are filled by the CLI from
+            // `gh repo view`; we leave a placeholder marker the runner replaces.
+            vec![ExecutorStep {
+                program: "gh".to_string(),
+                args: vec![
+                    "api".to_string(),
+                    format!("repos/{{OWNER_REPO}}/pulls/{pr}/merge"),
+                    "-X".to_string(),
+                    "PUT".to_string(),
+                    "-f".to_string(),
+                    "merge_method=squash".to_string(),
+                ],
+                expect_success: true,
+                note: format!("REST PUT direct merge for PR #{pr} (no GraphQL)"),
+            }]
+        }
+        ShipPlan::ArmAutoMerge { pr, .. } => vec![ExecutorStep::gh(
+            &["pr", "merge", &pr.to_string(), "--auto", "--squash"],
+            "arm auto-merge (GraphQL enablePullRequestAutoMerge — last GraphQL mutation pending INFRA-1076)",
+        )
+        .into_lenient_on_secondary_limit()],
+        // Variants below are observation-only — no executor action needed.
+        ShipPlan::AlreadyDone { .. }
+        | ShipPlan::WaitForChecks { .. }
+        | ShipPlan::StaleBranch { .. }
+        | ShipPlan::ConflictRecover { .. }
+        | ShipPlan::OperatorAction { .. }
+        | ShipPlan::CreatePr { .. } => vec![],
+    }
+}
+
+impl ExecutorStep {
+    /// The auto-merge arm mutation can fail with a secondary rate-limit
+    /// error even when the bucket has plenty of quota; the runner should
+    /// surface that distinctly rather than treat it as a hard fault.
+    /// Marker for the CLI runner to attach retry/backoff logic.
+    fn into_lenient_on_secondary_limit(mut self) -> Self {
+        self.expect_success = false;
+        self
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// INFRA-1229 slice 3 — behind-recovery (pure helpers).
+//
+// Slice 2 emits 3 git steps for RebaseAndPush. In practice the 3rd step
+// (`git push --force-with-lease`) loses to origin races during the
+// build/test window — bot-merge.sh handles this with ~400 LOC of
+// shell-side retry + conflict detection + pre-push freshness gate.
+//
+// This slice extracts that decision logic into pure functions:
+//   - `classify_step_failure()` — given a failed step's rc + stderr,
+//     return a RetryAction (retry, abort-as-conflict, fail).
+//   - `freshness_verdict()` — given a behind-count + threshold,
+//     decide if we should refuse the push.
+//
+// The CLI runner consumes these to drive a stateful retry loop without
+// shell-style branching.
+// ──────────────────────────────────────────────────────────────────────
+
+/// What the runner should do after a failed step in a RebaseAndPush chain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "PascalCase")]
+pub enum RetryAction {
+    /// Step succeeded (or non-failing-as-classified) — proceed.
+    Continue,
+    /// Force-push rejected by stale-info race; re-rebase and re-push.
+    RetryRebaseAndPush { attempt: u32, max: u32 },
+    /// `git rebase` produced merge conflicts. Operator must resolve.
+    AbortAsConflict { reason: String },
+    /// Pre-push freshness check found behind > threshold. Abort.
+    AbortAsStaleBranch { behind: u32, threshold: u32 },
+    /// Other unrecoverable failure.
+    Fail { reason: String },
+}
+
+/// Classify a single failed step into a RetryAction. Pure — no I/O.
+///
+/// Heuristics (matched to bot-merge.sh today):
+/// - `git push` + non-zero + stderr mentions "stale info" OR
+///   "rejected" + "force-with-lease" → RetryRebaseAndPush
+/// - `git rebase` + non-zero + stderr contains "CONFLICT" →
+///   AbortAsConflict
+/// - rc == 0 → Continue
+/// - attempt >= max → Fail
+/// - anything else → Fail
+pub fn classify_step_failure(
+    program: &str,
+    args: &[String],
+    rc: i32,
+    stderr: &str,
+    attempt: u32,
+    max_attempts: u32,
+) -> RetryAction {
+    if rc == 0 {
+        return RetryAction::Continue;
+    }
+    let is_git = program == "git";
+    let first_arg = args.first().map(|s| s.as_str()).unwrap_or("");
+    let stderr_l = stderr.to_lowercase();
+
+    if is_git && first_arg == "push" {
+        let stale_info = stderr_l.contains("stale info");
+        let rejected_lease =
+            stderr_l.contains("rejected") && stderr_l.contains("force-with-lease");
+        if stale_info || rejected_lease {
+            if attempt >= max_attempts {
+                return RetryAction::Fail {
+                    reason: format!(
+                        "push --force-with-lease still rejected after {attempt} attempt(s); origin moved repeatedly. Manual rebase recommended."
+                    ),
+                };
+            }
+            return RetryAction::RetryRebaseAndPush {
+                attempt: attempt + 1,
+                max: max_attempts,
+            };
+        }
+        return RetryAction::Fail {
+            reason: format!(
+                "git push failed (rc={rc}) and stderr does not look like a stale-info race; inspect: {}",
+                truncate_for_log(stderr, 240)
+            ),
+        };
+    }
+
+    if is_git && first_arg == "rebase" {
+        if stderr.contains("CONFLICT") || stderr_l.contains("merge conflict") {
+            return RetryAction::AbortAsConflict {
+                reason: format!(
+                    "git rebase produced merge conflicts. Run `git rebase --abort`, then `gh pr checkout <N>` to inspect and resolve manually."
+                ),
+            };
+        }
+        return RetryAction::Fail {
+            reason: format!(
+                "git rebase failed (rc={rc}) without visible CONFLICT markers; stderr tail: {}",
+                truncate_for_log(stderr, 240)
+            ),
+        };
+    }
+
+    RetryAction::Fail {
+        reason: format!(
+            "{program} {first_arg} failed (rc={rc}); stderr: {}",
+            truncate_for_log(stderr, 240)
+        ),
+    }
+}
+
+fn truncate_for_log(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max])
+    }
+}
+
+/// Result of the pre-push freshness recheck (INFRA-995): is the branch
+/// now too far behind main to safely push?
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FreshnessCheck {
+    pub behind: u32,
+    pub threshold: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FreshnessVerdict {
+    Fresh,
+    Stale,
+}
+
+/// Pure verdict: stale when `behind > threshold` (strict; equal is fresh).
+pub fn freshness_verdict(c: &FreshnessCheck) -> FreshnessVerdict {
+    if c.behind > c.threshold {
+        FreshnessVerdict::Stale
+    } else {
+        FreshnessVerdict::Fresh
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,7 +597,13 @@ mod tests {
     fn closed_pr_yields_already_done() {
         let pr = mk_pr(1913, PrState::Closed);
         let repo = mk_repo(0, 0);
-        assert!(matches!(plan(&pr, &repo), ShipPlan::AlreadyDone { state: PrState::Closed, .. }));
+        assert!(matches!(
+            plan(&pr, &repo),
+            ShipPlan::AlreadyDone {
+                state: PrState::Closed,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -390,7 +629,9 @@ mod tests {
         pr.mergeable = Some(true);
         let repo = mk_repo(20, 5); // 20 > 15 threshold
         match plan(&pr, &repo) {
-            ShipPlan::StaleBranch { behind, threshold, .. } => {
+            ShipPlan::StaleBranch {
+                behind, threshold, ..
+            } => {
                 assert_eq!(behind, 20);
                 assert_eq!(threshold, 15);
             }
@@ -432,7 +673,11 @@ mod tests {
         };
         let repo = mk_repo(0, 3);
         match plan(&pr, &repo) {
-            ShipPlan::RestDirectMerge { pr: n, checks_verified, .. } => {
+            ShipPlan::RestDirectMerge {
+                pr: n,
+                checks_verified,
+                ..
+            } => {
                 assert_eq!(n, 1913);
                 assert_eq!(checks_verified, 7);
             }
@@ -464,7 +709,9 @@ mod tests {
         pr.checks.incomplete = 2;
         let repo = mk_repo(0, 3);
         match plan(&pr, &repo) {
-            ShipPlan::WaitForChecks { pr: n, incomplete, .. } => {
+            ShipPlan::WaitForChecks {
+                pr: n, incomplete, ..
+            } => {
                 assert_eq!(n, 1913);
                 assert_eq!(incomplete, 2);
             }
@@ -524,5 +771,260 @@ mod tests {
         let pr = mk_pr(1913, PrState::Merged);
         let repo = mk_repo(5, 0);
         assert!(matches!(plan(&pr, &repo), ShipPlan::AlreadyDone { .. }));
+    }
+
+    // ── INFRA-1229 slice 2: decide_steps() tests ─────────────────────────
+
+    #[test]
+    fn rebase_and_push_yields_three_git_steps() {
+        let steps = decide_steps(&ShipPlan::RebaseAndPush { behind_count: 3 });
+        assert_eq!(steps.len(), 3);
+        // fetch
+        assert_eq!(steps[0].program, "git");
+        assert_eq!(steps[0].args[0], "fetch");
+        assert!(steps[0].expect_success);
+        // rebase
+        assert_eq!(steps[1].program, "git");
+        assert_eq!(steps[1].args[0], "rebase");
+        // push with --force-with-lease
+        assert_eq!(steps[2].program, "git");
+        assert_eq!(steps[2].args[0], "push");
+        assert!(steps[2].args.contains(&"--force-with-lease".to_string()));
+    }
+
+    #[test]
+    fn rest_direct_merge_yields_gh_api_put() {
+        let plan = ShipPlan::RestDirectMerge {
+            pr: 1913,
+            head_sha: "abc1234567".into(),
+            checks_verified: 7,
+        };
+        let steps = decide_steps(&plan);
+        assert_eq!(steps.len(), 1);
+        let s = &steps[0];
+        assert_eq!(s.program, "gh");
+        assert_eq!(s.args[0], "api");
+        // PR number is encoded in the path
+        assert!(
+            s.args.iter().any(|a| a.contains("/pulls/1913/merge")),
+            "step args missing /pulls/1913/merge: {:?}",
+            s.args
+        );
+        // -X PUT + merge_method=squash present
+        assert!(s.args.contains(&"PUT".to_string()));
+        assert!(s.args.iter().any(|a| a.contains("merge_method=squash")));
+    }
+
+    #[test]
+    fn arm_auto_merge_yields_gh_pr_merge() {
+        let plan = ShipPlan::ArmAutoMerge {
+            pr: 1913,
+            reason: "stuff".into(),
+        };
+        let steps = decide_steps(&plan);
+        assert_eq!(steps.len(), 1);
+        let s = &steps[0];
+        assert_eq!(s.program, "gh");
+        assert_eq!(s.args[..4], ["pr", "merge", "1913", "--auto"]);
+        assert_eq!(s.args[4], "--squash");
+        // Lenient on secondary rate-limit — the runner can retry.
+        assert!(!s.expect_success,
+                "arm step should be lenient (expect_success=false) so the runner can retry on secondary limit");
+    }
+
+    #[test]
+    fn observation_only_variants_yield_no_steps() {
+        let cases = [
+            ShipPlan::AlreadyDone {
+                pr: 1,
+                state: PrState::Merged,
+                recovery_hint: "x".into(),
+            },
+            ShipPlan::WaitForChecks {
+                pr: 1,
+                incomplete: 3,
+                reason: "x".into(),
+            },
+            ShipPlan::StaleBranch {
+                pr: Some(1),
+                behind: 50,
+                threshold: 15,
+                recovery_hint: "x".into(),
+            },
+            ShipPlan::ConflictRecover {
+                pr: 1,
+                recovery_hint: "x".into(),
+            },
+            ShipPlan::OperatorAction {
+                reason: "x".into(),
+                recovery_hint: "x".into(),
+            },
+            ShipPlan::CreatePr {
+                branch: "b".into(),
+                ahead: 2,
+            },
+        ];
+        for plan in &cases {
+            let steps = decide_steps(plan);
+            assert!(
+                steps.is_empty(),
+                "{:?} should yield zero executor steps, got {:?}",
+                plan,
+                steps
+            );
+        }
+    }
+
+    #[test]
+    fn executor_step_serializes_to_stable_json() {
+        let s = ExecutorStep::git(&["status", "--porcelain"], "check tree");
+        let j = serde_json::to_string(&s).unwrap();
+        assert!(j.contains("\"program\":\"git\""));
+        assert!(j.contains("\"status\""));
+        assert!(j.contains("\"--porcelain\""));
+        assert!(j.contains("\"expect_success\":true"));
+    }
+
+    // ── INFRA-1229 slice 3: retry classification tests ───────────────────
+
+    fn arg(s: &str) -> String { s.to_string() }
+
+    #[test]
+    fn push_rejection_stale_info_triggers_retry() {
+        let stderr = "To github.com:x/y.git\n ! [rejected] HEAD -> branch (stale info)";
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease"), arg("origin"), arg("HEAD")],
+            1,
+            stderr,
+            0,
+            3,
+        );
+        match act {
+            RetryAction::RetryRebaseAndPush { attempt, max } => {
+                assert_eq!(attempt, 1);
+                assert_eq!(max, 3);
+            }
+            other => panic!("expected RetryRebaseAndPush, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn push_rejection_force_with_lease_triggers_retry() {
+        let stderr = "error: failed to push some refs to 'x'\n ! [rejected] (force-with-lease)";
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease"), arg("origin"), arg("HEAD")],
+            1,
+            stderr,
+            1,
+            3,
+        );
+        assert!(matches!(act, RetryAction::RetryRebaseAndPush { attempt: 2, .. }),
+                "got {act:?}");
+    }
+
+    #[test]
+    fn rebase_conflict_aborts() {
+        let stderr = "CONFLICT (content): Merge conflict in src/main.rs\n";
+        let act = classify_step_failure(
+            "git",
+            &[arg("rebase"), arg("origin/main")],
+            1,
+            stderr,
+            0,
+            3,
+        );
+        match act {
+            RetryAction::AbortAsConflict { reason } => {
+                assert!(reason.contains("rebase --abort"),
+                        "reason should mention rebase --abort: {reason}");
+            }
+            other => panic!("expected AbortAsConflict, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn clean_step_yields_continue() {
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease")],
+            0,
+            "",
+            0,
+            3,
+        );
+        assert_eq!(act, RetryAction::Continue);
+    }
+
+    #[test]
+    fn attempt_at_max_yields_fail() {
+        let stderr = "rejected (stale info)";
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease")],
+            1,
+            stderr,
+            3, // already at max
+            3,
+        );
+        match act {
+            RetryAction::Fail { reason } => {
+                assert!(reason.contains("attempt"), "reason should mention attempts: {reason}");
+            }
+            other => panic!("expected Fail (max exceeded), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unrelated_rc_yields_fail() {
+        // Non-push, non-rebase failure: opaque "Fail".
+        let act = classify_step_failure(
+            "git",
+            &[arg("fetch"), arg("origin"), arg("main")],
+            128,
+            "fatal: could not resolve host: github.com",
+            0,
+            3,
+        );
+        assert!(matches!(act, RetryAction::Fail { .. }), "got {act:?}");
+    }
+
+    #[test]
+    fn push_failure_without_stale_marker_yields_fail() {
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease")],
+            1,
+            "error: src refspec HEAD does not match any",
+            0,
+            3,
+        );
+        match act {
+            RetryAction::Fail { reason } => {
+                assert!(reason.contains("does not look like a stale-info race"),
+                        "reason: {reason}");
+            }
+            other => panic!("expected Fail (non-stale push failure), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn freshness_fresh_under_threshold() {
+        let v = freshness_verdict(&FreshnessCheck { behind: 5, threshold: 15 });
+        assert_eq!(v, FreshnessVerdict::Fresh);
+    }
+
+    #[test]
+    fn freshness_stale_over_threshold() {
+        let v = freshness_verdict(&FreshnessCheck { behind: 16, threshold: 15 });
+        assert_eq!(v, FreshnessVerdict::Stale);
+    }
+
+    #[test]
+    fn freshness_equal_threshold_is_fresh() {
+        // Equal-to-threshold is fresh (strict greater-than for stale).
+        let v = freshness_verdict(&FreshnessCheck { behind: 15, threshold: 15 });
+        assert_eq!(v, FreshnessVerdict::Fresh);
     }
 }

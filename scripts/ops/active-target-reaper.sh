@@ -63,6 +63,15 @@ fi
 # INFRA-1053: harness-agnostic base. Default keeps the .claude/worktrees/
 # convention so reaping behavior is unchanged for existing operators.
 WORKTREES_DIR="${CHUMP_WORKTREE_BASE:-$REPO/.claude/worktrees}"
+REAPER_REPO_ROOT="$REPO"
+export REAPER_REPO_ROOT
+
+# INFRA-1211: shared worktree scanning + lease check + event emission lib.
+# shellcheck source=scripts/lib/worktree-iter.sh
+source "$(dirname "$0")/../lib/worktree-iter.sh"
+# shellcheck source=scripts/lib/lease.sh
+source "$(dirname "$0")/../lib/lease.sh"
+REAPER_NAME="${REAPER_NAME:-active-target}"
 
 AGE_SECONDS=$((AGE_DAYS * 86400))
 NOW=$(date +%s)
@@ -70,44 +79,11 @@ RECLAIMED_BYTES=0
 PURGED=0
 SKIPPED=0
 
-# INFRA-1124: emit kind=worktree_reaper_skipped_active on safety-triggered skips.
-_emit_reaper_skipped() {
-    local wt_path="$1" reason="$2"
-    local ambient="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
-    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"ts":"%s","kind":"worktree_reaper_skipped_active","worktree":"%s","reason":"%s"}\n' \
-        "$ts" "$wt_path" "$reason" >> "$ambient" 2>/dev/null || true
-}
-
-# Collect worktree paths with active leases (for active-session check).
-# INFRA-1124: filter by heartbeat_at within last 15 min (same as stale-worktree-reaper).
-ACTIVE_WORKTREES=""
-if [[ -d "$REPO/.chump-locks" && "$REAPER_SAFETY_CHECK" == "1" ]]; then
-    for lease in "$REPO"/.chump-locks/*.json; do
-        [[ -f "$lease" ]] || continue
-        wt=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' || true)
-        [[ -z "$wt" ]] && continue
-        hb=$(grep -o '"heartbeat_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' || true)
-        [[ -z "$hb" ]] && hb=$(grep -o '"taken_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' || true)
-        if [[ -n "$hb" ]]; then
-            hb_ts=$(date -d "$hb" +%s 2>/dev/null \
-                || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$hb" +%s 2>/dev/null \
-                || echo 0)
-            age_s=$(( NOW - hb_ts ))
-            [[ $age_s -gt 900 ]] && continue
-        fi
-        ACTIVE_WORKTREES="$ACTIVE_WORKTREES $wt"
-    done
-fi
-
-# Build list of candidate worktree roots: .claude/worktrees/* + /tmp/chump-*
+# Build list of candidate worktrees via shared lib (INFRA-1211).
 CANDIDATE_DIRS=()
-[[ -d "$WORKTREES_DIR" ]] && for d in "$WORKTREES_DIR"/*/; do
-    [[ -d "$d" ]] && CANDIDATE_DIRS+=("${d%/}")
-done
-for d in /tmp/chump-*/; do
-    [[ -d "$d" ]] && CANDIDATE_DIRS+=("${d%/}")
-done
+while IFS= read -r _wt; do
+    CANDIDATE_DIRS+=("$_wt")
+done < <(CHUMP_WORKTREE_BASE="$WORKTREES_DIR" scan_worktrees)
 
 for wt in "${CANDIDATE_DIRS[@]+"${CANDIDATE_DIRS[@]}"}"; do
     [[ -d "$wt" ]] || continue
@@ -134,10 +110,13 @@ for wt in "${CANDIDATE_DIRS[@]+"${CANDIDATE_DIRS[@]}"}"; do
         continue
     fi
 
-    # INFRA-1124: Active-lease check with heartbeat freshness (≤15 min).
-    if [[ " $ACTIVE_WORKTREES " == *" $wt "* ]]; then
+    # INFRA-1124/1211: Active-lease check via shared lib — wt_has_active_lease
+    # checks heartbeat freshness and handles /private/tmp macOS aliasing.
+    if [[ "$REAPER_SAFETY_CHECK" == "1" ]] && wt_has_active_lease "$wt" "${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}"; then
         echo "SKIP $wt — active lease with fresh heartbeat"
-        _emit_reaper_skipped "$wt" "active_lease"
+        emit_reaper_event "worktree_reap_protected" "$wt" "active_lease_heartbeat_fresh" \
+            "\"ttl_s\":${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}"
+        emit_reaper_event "worktree_reaper_skipped_active" "$wt" "active_lease"
         SKIPPED=$((SKIPPED + 1))
         continue
     fi
@@ -157,7 +136,7 @@ for wt in "${CANDIDATE_DIRS[@]+"${CANDIDATE_DIRS[@]}"}"; do
             _idx_fresh=$(find "$_git_index" -mmin -5 2>/dev/null | head -1 || true)
             if [[ -n "$_idx_fresh" ]]; then
                 echo "SKIP $wt — .git/index touched within 5 min (in-flight)"
-                _emit_reaper_skipped "$wt" "git_index_fresh"
+                emit_reaper_event "worktree_reaper_skipped_active" "$wt" "git_index_fresh"
                 SKIPPED=$((SKIPPED + 1))
                 continue
             fi

@@ -70,6 +70,18 @@ HARNESS="${CHUMP_AGENT_HARNESS:-unknown}"
 # auto-derives. Set CHUMP_CORR_ID in env to force across nested calls.
 CORR_ID_OVERRIDE="${CHUMP_CORR_ID:-}"
 
+# INFRA-1297: stable operator-id for two-way comms. Every event gets
+# operator_id when resolvable so messages targeted at the operator can be
+# delivered to a durable inbox (rather than a per-tab transient session).
+_BROADCAST_OP_LIB="$(dirname "${BASH_SOURCE[0]}")/lib/operator-id.sh"
+if [[ -f "$_BROADCAST_OP_LIB" ]]; then
+    # shellcheck disable=SC1090
+    source "$_BROADCAST_OP_LIB"
+    OPERATOR_ID="$(operator_id 2>/dev/null || echo "")"
+else
+    OPERATOR_ID="${CHUMP_OPERATOR_ID:-}"
+fi
+
 # ── Build JSON payload ────────────────────────────────────────────────────────
 build_json() {
     python3 -c "import json,sys; print(json.dumps(dict(zip(sys.argv[1::2],sys.argv[2::2]))))" "$@"
@@ -163,9 +175,11 @@ fi
 
 # INFRA-1115: optional --to <recipient> targets the inbox(es) named.
 # INFRA-1255: optional --corr <id> sets correlation_id explicitly.
-# Both flags can appear in either order before the event-type positional.
+# INFRA-1299: optional --urgency <now|hours|digest> drives reach-classifier.
+# All flags can appear in any order before the event-type positional.
 TO=""
 CORR_FLAG=""
+URGENCY=""
 while :; do
     case "${1:-}" in
         --to)
@@ -176,6 +190,13 @@ while :; do
         --corr)
             CORR_FLAG="${2:-}"
             [[ -z "$CORR_FLAG" ]] && { echo "Usage: $0 --corr <id> EVENT [args...]" >&2; exit 1; }
+            shift 2
+            ;;
+        --urgency)
+            URGENCY="${2:-}"
+            case "$URGENCY" in now|hours|digest) : ;;
+                *) echo "Usage: $0 --urgency now|hours|digest" >&2; exit 1 ;;
+            esac
             shift 2
             ;;
         *) break ;;
@@ -207,9 +228,9 @@ case "$EVENT" in
         [[ -n "$GAP" ]] || { echo "Usage: $0 INTENT <gap-id> [files]" >&2; exit 1; }
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event INTENT session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" files "$FILES" to "$TO" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event INTENT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" files "$FILES" to "$TO" model "$MODEL" harness "$HARNESS")"
         else
-            JSON="$(build_json event INTENT session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" files "$FILES" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event INTENT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" files "$FILES" model "$MODEL" harness "$HARNESS")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -225,7 +246,7 @@ case "$EVENT" in
         EFFECTIVE_TO="${TO:-$POS_TO}"
         [[ -n "$GAP" && -n "$EFFECTIVE_TO" ]] || { echo "Usage: $0 [--to <recipient>] HANDOFF <gap-id> [<to-session>]" >&2; exit 1; }
         CORR_ID="$(_derive_corr "$GAP")"
-        JSON="$(build_json event HANDOFF session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" to "$EFFECTIVE_TO")"
+        JSON="$(build_json event HANDOFF session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" to "$EFFECTIVE_TO")"
         emit_to_file "$JSON"
         emit_to_inbox "$EFFECTIVE_TO" "$JSON"
         emit_to_nats HANDOFF "gap=$GAP" "to=$EFFECTIVE_TO"
@@ -237,9 +258,9 @@ case "$EVENT" in
         [[ -n "$GAP" ]] || { echo "Usage: $0 STUCK <gap-id> \"<reason>\"" >&2; exit 1; }
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event STUCK session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" reason "$REASON" to "$TO")"
+            JSON="$(build_json event STUCK session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" reason "$REASON" to "$TO")"
         else
-            JSON="$(build_json event STUCK session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" reason "$REASON")"
+            JSON="$(build_json event STUCK session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" reason "$REASON")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -252,9 +273,9 @@ case "$EVENT" in
         [[ -n "$GAP" ]] || { echo "Usage: $0 DONE <gap-id> [commit-sha]" >&2; exit 1; }
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event DONE session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" commit "$COMMIT" to "$TO" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event DONE session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" commit "$COMMIT" to "$TO" model "$MODEL" harness "$HARNESS")"
         else
-            JSON="$(build_json event DONE session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" gap "$GAP" commit "$COMMIT" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event DONE session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" commit "$COMMIT" model "$MODEL" harness "$HARNESS")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -267,9 +288,9 @@ case "$EVENT" in
         [[ -n "$MSG" ]] || { echo "Usage: $0 WARN \"<message>\"" >&2; exit 1; }
         CORR_ID="$(_derive_corr "")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event WARN session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" reason "$MSG" to "$TO")"
+            JSON="$(build_json event WARN session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" reason "$MSG" to "$TO")"
         else
-            JSON="$(build_json event WARN session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" reason "$MSG")"
+            JSON="$(build_json event WARN session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" reason "$MSG")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -283,9 +304,9 @@ case "$EVENT" in
         [[ -n "$KIND" ]] || { echo "Usage: $0 ALERT kind=<kind> \"<message>\"" >&2; exit 1; }
         CORR_ID="$(_derive_corr "")"
         if [[ -n "$TO" ]]; then
-            JSON="$(build_json event ALERT session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" kind "$KIND" reason "$MSG" to "$TO")"
+            JSON="$(build_json event ALERT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" kind "$KIND" reason "$MSG" to "$TO")"
         else
-            JSON="$(build_json event ALERT session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" kind "$KIND" reason "$MSG")"
+            JSON="$(build_json event ALERT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" kind "$KIND" reason "$MSG")"
         fi
         emit_to_file "$JSON"
         emit_to_inbox "$TO" "$JSON"
@@ -318,9 +339,9 @@ case "$EVENT" in
         CORR_ID="$(_derive_corr "$FB_SUBJECT")"
         if [[ "$FB_KIND" == "preference" ]]; then
             : "${FB_VOTE:=0}"
-            JSON="$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" vote "$FB_VOTE" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" vote "$FB_VOTE" model "$MODEL" harness "$HARNESS")"
         else
-            JSON="$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" ts "$TS" corr_id "$CORR_ID" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" model "$MODEL" harness "$HARNESS")"
+            JSON="$(build_json event FEEDBACK kind "$FB_KIND" session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" subject "$FB_SUBJECT" rationale "$FB_RATIONALE" model "$MODEL" harness "$HARNESS")"
         fi
         # File-mode emit: still write to ambient.jsonl (audit trail) AND to the
         # dedicated feedback.jsonl that the curator (INFRA-1272) reads.
