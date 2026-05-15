@@ -41,6 +41,68 @@ EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 PILLAR_TAGS = {"EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE", "MISSION"}
 
 
+def _load_planner_priority(
+    repo_root: str, max_age_s: int = 7200
+) -> tuple[dict[str, dict], str, float]:
+    """INFRA-1258: read .chump-locks/gap-priority.json written by INFRA-1257.
+    Returns (gap_id -> {rank, layer}, status_tag, age_s).
+    status_tag: "absent" | "stale" | "invalid" | "ok".
+    layer 0 = no open prerequisites (foundation); picker drains layer 0 first.
+    Falls back silently; never raises.
+    """
+    path = os.path.join(repo_root, ".chump-locks", "gap-priority.json")
+    if not os.path.exists(path):
+        return {}, "absent", 0.0
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        return {}, "invalid", 0.0
+    age_s = time.time() - mtime
+    if age_s > max_age_s:
+        return {}, "stale", age_s
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except Exception:
+        return {}, "invalid", 0.0
+    items = data.get("items") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return {}, "invalid", 0.0
+    out: dict[str, dict] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        gid = item.get("gap_id")
+        rank = item.get("rank")
+        layer = item.get("layer", 0)
+        if isinstance(gid, str) and isinstance(rank, int):
+            out[gid] = {
+                "rank": rank,
+                "layer": layer if isinstance(layer, int) else 0,
+            }
+    return out, "ok", age_s
+
+
+def _emit_picker_event(repo_root: str, kind: str, **fields: object) -> None:
+    """Best-effort ambient emit for picker events. Never raises."""
+    ambient = os.environ.get(
+        "CHUMP_AMBIENT_LOG",
+        os.path.join(repo_root, ".chump-locks", "ambient.jsonl"),
+    )
+    if not os.path.isdir(os.path.dirname(ambient)):
+        return
+    rec = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "kind": kind,
+        **{k: v for k, v in fields.items() if v is not None},
+    }
+    try:
+        with open(ambient, "a") as f:
+            f.write(json.dumps(rec) + "\n")
+    except Exception:
+        pass
+
+
 def extract_pillar(title: str) -> str:
     """Extract pillar tag from gap title (e.g. 'EFFECTIVE: foo bar' → 'EFFECTIVE')."""
     upper = title.lstrip().upper()
@@ -484,6 +546,21 @@ def main() -> int:
         worker_id=os.environ.get("WORKER_ID", os.environ.get("AGENT_ID", "")),
     )
 
+    # INFRA-1258: load planner priorities from .chump-locks/gap-priority.json.
+    # Adds planner rank as the leading sort key so high-betweenness P1s outrank
+    # leaf P3s. Layer gate (AC#2) drains lowest dependency layer first.
+    repo_root = os.environ.get("REPO_ROOT", str(get_lock_dir().parent))
+    planner_data, planner_status, planner_age_s = _load_planner_priority(repo_root)
+    if planner_status != "ok":
+        _emit_picker_event(
+            repo_root,
+            "picker_priority_stale",
+            reason=planner_status,
+            worker_id=os.environ.get("WORKER_ID", ""),
+        )
+    skip_layer_gate = os.environ.get("CHUMP_SKIP_LAYER_GATE", "0") == "1"
+    candidate_layers: dict[str, int] = {}
+
     # INFRA-314: Worker skill affinity scoring.
     # CHUMP_AFFINITY=0 disables affinity matching (treats all gaps as eligible).
     affinity_enabled = os.environ.get("CHUMP_AFFINITY", "1") != "0"
@@ -623,9 +700,16 @@ def main() -> int:
 
         effective_prio = max(PRIO_RANK.get(p, 9) - rebalance_boost, 0)
 
-        # Primary sort: affinity (desc), effective priority, effort, created_at.
+        # INFRA-1258: planner rank as leading sort key; unknown gaps get 10_000.
+        planner_entry = planner_data.get(gid, {})
+        planner_rank = planner_entry.get("rank", 10_000)
+        planner_layer = planner_entry.get("layer", 10_000)
+        candidate_layers[gid] = planner_layer
+
+        # Sort: planner rank (primary), affinity (desc), effective priority, effort, age.
         candidates.append(
             (
+                planner_rank,
                 -affinity_score,
                 effective_prio,
                 EFFORT_RANK.get(e, 9),
@@ -635,6 +719,24 @@ def main() -> int:
         )
 
     candidates.sort()
+
+    # INFRA-1258 AC#2: layer gate — drain lowest dependency layer first before
+    # workers race onto higher-layer siblings. CHUMP_SKIP_LAYER_GATE=1 bypasses.
+    layer_enforced = False
+    if planner_status == "ok" and not skip_layer_gate and candidate_layers:
+        ranked_layers = [
+            candidate_layers[c[5]]
+            for c in candidates
+            if candidate_layers.get(c[5], 10_000) < 10_000
+        ]
+        if ranked_layers:
+            min_layer = min(ranked_layers)
+            before = len(candidates)
+            candidates = [
+                c for c in candidates
+                if candidate_layers.get(c[5], 10_000) in (min_layer, 10_000)
+            ]
+            layer_enforced = len(candidates) < before
 
     if candidates:
         # Try to claim candidates in priority order. Return the first one we
@@ -653,11 +755,28 @@ def main() -> int:
         # Try candidates in rotated order.
         for i in range(len(candidates)):
             idx = (offset + i) % len(candidates)
-            gap_id = candidates[idx][4]  # Index changed from [3] to [4] due to affinity_score.
+            gap_id = candidates[idx][5]  # [5] = gid (grew by planner_rank at [0]).
             if dry_run:
                 print(gap_id)
                 return 0
             if try_claim_gap(gap_id, session_id, lock_dir):
+                # INFRA-1258: emit picker_used_priority when planner influenced pick.
+                candidate_planner_rank = candidates[idx][0]
+                priority_file = os.path.join(
+                    repo_root, ".chump-locks", "gap-priority.json"
+                )
+                if planner_status == "ok" and candidate_planner_rank < 10_000:
+                    _emit_picker_event(
+                        repo_root,
+                        "picker_used_priority",
+                        gap_id=gap_id,
+                        file=priority_file,
+                        age_s=round(planner_age_s, 1),
+                        scored=candidate_planner_rank,
+                        planner_rank=candidate_planner_rank,  # backward compat
+                        layer_enforced=layer_enforced,
+                        worker_id=os.environ.get("WORKER_ID", ""),
+                    )
                 # FLEET-046 + INFRA-720: log when rebalancing influenced the pick.
                 if rebalance_enabled and (monopoly_domain or starved_pillars or under_represented_pillars):
                     ambient_path = os.environ.get(
