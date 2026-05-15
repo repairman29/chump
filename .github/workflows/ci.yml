@@ -98,7 +98,6 @@ jobs:
               - 'src/**'
               - 'desktop/**'
               - 'e2e-tauri/**'
-              - '.github/workflows/ci.yml'
             rust:
               - 'src/**'
               - 'crates/**'
@@ -129,20 +128,17 @@ jobs:
               - 'SECURITY.md'
 
   # ── Tauri Cowork E2E ───────────────────────────────────────────────────────
-  # INFRA-1348: Only runs on push-to-main and merge_group — NOT on PRs.
-  #
-  # Root-cause analysis: `continue-on-error: true` (INFRA-1342) was intended
-  # to stop this flaky job from blocking auto-merge, but it doesn't help:
-  # GitHub's statusCheckRollup aggregates individual job *conclusions* (not the
-  # workflow-run conclusion), so a job with conclusion=failure still sets
-  # statusCheckRollup.state=FAILURE → mergeStateStatus=BLOCKED fleet-wide.
-  #
-  # The correct fix is to not run the job on pull_request events at all.
-  # The test requires Ollama (unreachable on CI runners) so it will always
-  # fail on PRs anyway. Run it post-merge on push to surface real regressions.
+  # Only runs when desktop / src / e2e-tauri files change. Skipped on
+  # docs-only, scripts-only, crate-only PRs.
   tauri-cowork-e2e:
     needs: changes
-    if: github.event_name == 'push' || github.event_name == 'merge_group'
+    if: needs.changes.outputs.tauri == 'true' || github.event_name == 'merge_group'
+    # INFRA-1342 fix: removed 'push' trigger — push events create a check run
+    # with conclusion=failure on the commit, which GitHub's statusCheckRollup
+    # aggregates into FAILURE and blocks auto-merge on ALL PRs fleet-wide, even
+    # those that pass all required checks.  Only run tauri when tauri files
+    # change (any event) or in the merge queue.  continue-on-error retained as
+    # a second layer of protection.
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
@@ -899,8 +895,8 @@ jobs:
   # Skipped when no e2e-relevant files change.  Target wall-clock: ~10-12 min.
   e2e-pwa:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
+    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 60  # INFRA-1018: cap wall-clock; Ollama+cargo+playwright target ~30 min; 6h default caused stuck runs
@@ -979,8 +975,8 @@ jobs:
   # Lightweight — runs on bare ubuntu-latest in ~1-2 min.
   e2e-battle-sim:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
+    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
@@ -997,8 +993,8 @@ jobs:
   # No Ollama.  Target wall-clock: ~5 min.
   e2e-golden-path:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
+    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
