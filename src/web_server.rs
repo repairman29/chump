@@ -8288,6 +8288,10 @@ fn build_api_router() -> Router {
         .route("/api/prs/{number}/comment", post(handle_pr_comment))
         .route("/api/prs/{number}/revert", post(handle_pr_revert))
         .route("/api/gap-queue", get(handle_gap_queue))
+        // PRODUCT-102: /api/gaps is the canonical gap-list-browser alias — same
+        // handler as /api/gap-queue, exposes id/title/status/priority/effort/
+        // domain/pillar and accepts ?status=&priority=&domain= query params.
+        .route("/api/gaps", get(handle_gap_queue))
         .route("/api/gaps/search", get(handle_gaps_search))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
         .route("/api/gap/status/{id}", get(handle_gap_status))

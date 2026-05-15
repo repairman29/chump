@@ -3543,3 +3543,12 @@ events:
       trailer is provided.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, gaps, missing_files]
+  # ── PRODUCT-102: PWA gap list browser ────────────────────────────────────
+  - kind: pwa_gap_list_filtered
+    emitter: web/v2/gap-list.js ChumpViewGaps._applyFilters (PRODUCT-102)
+    trigger: operator applies status/priority/domain/pillar filters or a search
+      query in the PWA gap list browser; sent via navigator.sendBeacon to
+      POST /api/ambient/emit so filter usage is visible in the ambient stream
+      without blocking the UI thread
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, source, status_filter, priority_filter, domain_filter, pillar_filter, search, result_count]
