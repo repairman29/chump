@@ -3800,7 +3800,25 @@ async fn main() -> Result<()> {
                                     || s.contains('"')
                                     || s.contains('\\')
                                     || s.starts_with(|c: char| {
-                                        matches!(c, '{' | '}' | '[' | ']' | ',' | '&' | '*' | '?' | '|' | '-' | '<' | '>' | '=' | '!' | '%' | '@' | '`')
+                                        matches!(
+                                            c,
+                                            '{' | '}'
+                                                | '['
+                                                | ']'
+                                                | ','
+                                                | '&'
+                                                | '*'
+                                                | '?'
+                                                | '|'
+                                                | '-'
+                                                | '<'
+                                                | '>'
+                                                | '='
+                                                | '!'
+                                                | '%'
+                                                | '@'
+                                                | '`'
+                                        )
                                     })
                                     || s.starts_with(|c: char| c.is_whitespace())
                                     || s.ends_with(|c: char| c.is_whitespace())
