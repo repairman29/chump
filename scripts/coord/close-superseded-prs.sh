@@ -25,6 +25,7 @@ set -uo pipefail
 # ── Resolve paths ─────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/repo-paths.sh
+# shellcheck disable=SC1091  # repo-paths.sh sourced at runtime; not available to shellcheck
 source "$SCRIPT_DIR/../lib/repo-paths.sh"
 
 GAP_ID="${1:-}"
@@ -79,19 +80,21 @@ PR_COUNT="$(printf '%s' "$OPEN_PRS_JSON" | python3 -c "import sys,json; print(le
 echo "[close-superseded-prs] Found $PR_COUNT open PR(s) for $GAP_ID."
 
 # ── Find the merged commit for this gap (for the close comment) ───────────────
-MERGED_SHA="$(git -C "$REPO_ROOT" log --oneline --all --grep="$GAP_ID" --format="%H" \
-    origin/main..origin/main 2>/dev/null | head -1 || true)"
-# Simpler: find merge commit on main that mentions the gap ID.
+# INFRA-1289: MERGED_SHA is now also a gate — if empty, the close is forbidden
+# (gap not yet visible on main; would be a false-positive close).
 MERGED_SHA="$(git -C "$REPO_ROOT" log origin/main --oneline --grep="$GAP_ID" --format="%H" \
     2>/dev/null | head -1 || true)"
 
 # ── Process each orphaned PR ──────────────────────────────────────────────────
-python3 - "$OPEN_PRS_JSON" <<'PYEOF'
+# Use process substitution instead of heredoc-pipe (shellcheck SC1121).
+_pr_lines=$(python3 -c "
 import sys, json
 data = json.loads(sys.argv[1])
 for pr in data:
-    print(f"{pr['number']}|{pr['head_ref']}|{pr['title']}")
-PYEOF | while IFS='|' read -r pr_num head_ref pr_title; do
+    print(str(pr['number']) + '|' + pr['head_ref'] + '|' + pr['title'])
+" "$OPEN_PRS_JSON" 2>/dev/null || true)
+
+while IFS='|' read -r pr_num head_ref pr_title; do
     echo "[close-superseded-prs] Checking PR #$pr_num ($head_ref): '$pr_title'"
 
     # ── False-positive guard ─────────────────────────────────────────────────
@@ -112,12 +115,21 @@ PYEOF | while IFS='|' read -r pr_num head_ref pr_title; do
         continue
     fi
 
-    # ── Build close comment ──────────────────────────────────────────────────
-    if [[ -n "$MERGED_SHA" ]]; then
-        CLOSE_COMMENT="Superseded: gap $GAP_ID was shipped via commit $MERGED_SHA on main. Closing this PR as no longer needed (all unique changes are already in main)."
-    else
-        CLOSE_COMMENT="Superseded: gap $GAP_ID is now done. This PR has no unique commits that are not already in main — closing as superseded."
+    # ── INFRA-1289: require git evidence before closing ──────────────────────
+    # status=done alone is insufficient — gap ship can be called before the
+    # implementing PR merges, causing false-positive closes. We require a
+    # commit on main that references the gap ID. Without it, emit
+    # orphan_pr_close_evidence_missing and skip — let operator decide.
+    if [[ -z "$MERGED_SHA" ]]; then
+        echo "[close-superseded-prs]   SKIP PR #$pr_num — gap $GAP_ID status=done but no commit on origin/main references it (evidence missing; INFRA-1289)." >&2
+        _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '{"ts":"%s","kind":"orphan_pr_close_evidence_missing","gap_id":"%s","pr":%s,"reason":"status=done but no main commit found","source":"close-superseded-prs"}\n' \
+            "$_ts" "$GAP_ID" "$pr_num" >> "$AMBIENT" 2>/dev/null || true
+        continue
     fi
+
+    # ── Build close comment ──────────────────────────────────────────────────
+    CLOSE_COMMENT="Superseded: gap $GAP_ID was shipped via commit $MERGED_SHA on main. Closing this PR as no longer needed (all unique changes are already in main)."
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
         echo "[close-superseded-prs]   DRY-RUN: would close PR #$pr_num with comment: '$CLOSE_COMMENT'"
@@ -141,6 +153,6 @@ PYEOF | while IFS='|' read -r pr_num head_ref pr_title; do
     else
         echo "[close-superseded-prs]   WARN: failed to close PR #$pr_num (rc=$CLOSE_RC)." >&2
     fi
-done
+done <<< "$_pr_lines"
 
 echo "[close-superseded-prs] Done."
