@@ -1588,7 +1588,7 @@ impl GapStore {
             let _ = Command::new("gh")
                 .args(["api", &format!("repos/{repo}/issues/{pr_num}/comments")])
                 .args(["-X", "POST", "-f"])
-                .arg(&format!("body={comment}"))
+                .arg(format!("body={comment}"))
                 .output();
 
             // Close the PR
