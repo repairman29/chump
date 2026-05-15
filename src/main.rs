@@ -23,6 +23,7 @@ mod approval_resolver;
 mod asi_telemetry;
 mod ask_jeff_db;
 mod ask_jeff_tool;
+pub mod assertion; // CREDIBLE-065: runtime assertion framework
 mod atomic_claim;
 mod auth;
 mod autonomy_fsm;
@@ -4713,6 +4714,14 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // CREDIBLE-065: assert gap has valid state before claiming.
+                if let Ok(Some(gap_row)) = store.get(&gap_id) {
+                    if let Err(e) = crate::assertion::assert_gap_valid(&gap_row) {
+                        eprintln!("[claim] {e}");
+                        std::process::exit(1);
+                    }
+                }
+
                 let session_id = flag("--session")
                     .or_else(|| crate::ambient_stream::env_session_id())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
@@ -4887,6 +4896,13 @@ async fn main() -> Result<()> {
                             let _ = f.write_all(event.as_bytes());
                         }
                         std::process::exit(3);
+                    }
+                }
+                // CREDIBLE-065: assert lease is held before shipping (soft warn).
+                if std::env::var("CHUMP_ASSERT_SKIP").as_deref() != Ok("1") {
+                    if let Err(e) = crate::assertion::assert_lease_held(&gap_id, &repo_root) {
+                        eprintln!("[ship] assertion warn: {e}");
+                        eprintln!("[ship] continuing (lease may have expired post-CI). Set CHUMP_ASSERT_SKIP=1 to silence.");
                     }
                 }
                 match store.ship(&gap_id, &session_id, closed_pr) {

@@ -2652,3 +2652,13 @@ events:
     trigger: one or more assertions in the claim→commit→ship integration test failed
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, fail_count, pass_count, elapsed_s]
+
+  # ── CREDIBLE-065: runtime assertion framework ─────────────────────────────
+  - kind: assertion_failure
+    emitter: src/assertion.rs (CREDIBLE-065)
+    trigger: a runtime assertion (assert_json_shape, assert_gap_valid, or
+      assert_lease_held) detected a data invariant violation at a key execution
+      boundary (chump gap claim or chump gap ship). Indicates invalid gap state
+      or missing lease file.
+    consumers: [fleet-brief, ops-audit, watchdog]
+    fields_required: [ts, kind, assertion, expected, actual]
