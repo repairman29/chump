@@ -141,15 +141,31 @@ while IFS=$'\t' read -r pr title branch updated; do
         continue
     fi
 
+    # INFRA-1289: Require git evidence that the gap actually landed on main.
+    # status=done alone is insufficient — chump gap ship can be called before
+    # the implementing PR is merged, causing false-positive closes.
+    # We need EITHER a commit on main referencing the gap id OR closed_pr set.
+    _main_sha=""
+    _main_sha="$(git log origin/main --oneline --grep="$gap_id" --format="%H" 2>/dev/null | head -1 || true)"
+    if [[ -z "$_main_sha" && -z "$closed_pr" ]]; then
+        echo "[orphan-pr-closer] SKIP #$pr ($gap_id): status=done but no git evidence on main and no closed_pr — evidence_missing" >&2
+        emit "orphan_pr_close_evidence_missing" "$pr" "$gap_id" "status=done but no commit on origin/main references $gap_id"
+        continue
+    fi
+
     reason="superseded — $gap_id is already status=done"
-    if [[ -n "$closed_pr" ]]; then
+    if [[ -n "$_main_sha" ]]; then
+        reason="$reason (commit $( echo "$_main_sha" | cut -c1-12) on main)"
+    elif [[ -n "$closed_pr" ]]; then
         reason="$reason (landed via #$closed_pr)"
     fi
 
     if [[ "$APPLY" == "1" ]]; then
         echo "[orphan-pr-closer] CLOSING #$pr ($gap_id): $reason" >&2
         body="Auto-closing as orphan: gap $gap_id is status=done"
-        if [[ -n "$closed_pr" ]]; then
+        if [[ -n "$_main_sha" ]]; then
+            body="$body (shipped via commit ${_main_sha} on main)"
+        elif [[ -n "$closed_pr" ]]; then
             body="$body (closed via #$closed_pr)"
         fi
         body="$body. This branch's changes are superseded; queued by INFRA-1139 orphan-pr-closer. If this is wrong, reopen and add 'orphan-pr-closer-skip' to the title."
