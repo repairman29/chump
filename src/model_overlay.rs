@@ -345,6 +345,33 @@ pub fn maybe_overlay_from_env() -> Option<String> {
     overlay_for_family(detect_model_family(&model))
 }
 
+/// INFRA-741: return a human-readable capability summary for `model` using the
+/// probe cache. Returns `None` if no cached probe exists for the model+base combo.
+///
+/// Used by `chump doctor` to report detected capabilities without blocking on a
+/// live probe (doctor should be fast and non-destructive).
+pub fn cached_capability_summary(model: &str, base_url: &str) -> Option<String> {
+    let probe = crate::model_probe::get_cached(model, base_url)?;
+    let tool = if probe.has_tool_use {
+        "tool-use=yes"
+    } else {
+        "tool-use=no"
+    };
+    let think = if probe.has_think_tags {
+        "think-tags=yes"
+    } else {
+        "think-tags=no"
+    };
+    let ctx = probe
+        .context_window
+        .map(|n| format!("ctx={}k", n / 1024))
+        .unwrap_or_else(|| "ctx=unknown".to_string());
+    Some(format!(
+        "{} {} {} (probed {})",
+        tool, think, ctx, probe.probed_at
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

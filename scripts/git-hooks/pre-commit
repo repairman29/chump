@@ -1323,6 +1323,70 @@ PYEOF_SLICE
 fi
 
 # ------------------------------------------------------------------
+# 3b. INFRA-824: deviation-documentation guard — when closing an EVAL-*
+# or RESEARCH-* gap, the matching preregistration must NOT still have
+# "(none yet)" in its Deviations section. A run that deviated from
+# protocol but left the deviation section blank is what caused EVAL-101
+# to be closed as a null result despite being uninterpretable.
+#
+# Guard fires when:
+#   - A docs/gaps/EVAL-*.yaml or docs/gaps/RESEARCH-*.yaml with
+#     status:done/shipped is staged
+#   - docs/eval/preregistered/EVAL-<N>.md (matching ID) is available and
+#     its Deviations section contains "(none yet)"
+#
+# Bypass (rare — genuine no-deviation run): CHUMP_DEVIATION_DOC_CHECK=0
+# Also add a comment explaining why deviations truly don't apply.
+# ------------------------------------------------------------------
+if [ "${CHUMP_DEVIATION_DOC_CHECK:-1}" != "0" ]; then
+    closing_eval_gaps=$(git diff --cached --name-only | grep -E 'docs/gaps/(EVAL|RESEARCH)-[^/]+\.yaml$' || true)
+    if [ -n "$closing_eval_gaps" ]; then
+        dev_doc_failures=""
+        repo_root="$(git rev-parse --show-toplevel)"
+        while IFS= read -r yaml_path; do
+            [ -z "$yaml_path" ] && continue
+            # Check if this gap is being closed (status changing to done/shipped/closed)
+            staged_content=$(git show ":$yaml_path" 2>/dev/null || true)
+            [ -z "$staged_content" ] && continue
+            if ! echo "$staged_content" | grep -qE 'status:\s*(done|shipped|closed)'; then
+                continue
+            fi
+            # Extract gap ID
+            gap_id=$(echo "$staged_content" | grep -m1 '^\- id:' | sed 's/.*id:[[:space:]]*//')
+            [ -z "$gap_id" ] && gap_id=$(basename "$yaml_path" .yaml)
+            # Find matching preregistration
+            prereg_path="$repo_root/docs/eval/preregistered/${gap_id}.md"
+            if [ ! -f "$prereg_path" ]; then
+                continue
+            fi
+            # Check if Deviations section still has "(none yet)"
+            if grep -qiE '\(none yet\)' "$prereg_path"; then
+                dev_doc_failures="${dev_doc_failures}${gap_id}\n"
+            fi
+        done <<< "$closing_eval_gaps"
+        if [ -n "$dev_doc_failures" ]; then
+            echo "" >&2
+            echo "[pre-commit] DEVIATION DOCUMENTATION MISSING (INFRA-824):" >&2
+            echo "[pre-commit] The following EVAL/RESEARCH gaps are being closed but their" >&2
+            echo "[pre-commit] preregistration Deviations section still reads '(none yet)':" >&2
+            printf '%b' "$dev_doc_failures" | while IFS= read -r gid; do
+                [ -z "$gid" ] && continue
+                echo "  - $gid: docs/eval/preregistered/${gid}.md §Deviations" >&2
+            done
+            echo "" >&2
+            echo "[pre-commit] Every EVAL run deviates from protocol or it doesn't." >&2
+            echo "[pre-commit] If NO deviations occurred: replace '(none yet)' with" >&2
+            echo "[pre-commit]   '(none — run followed preregistered protocol exactly)'." >&2
+            echo "[pre-commit] If deviations occurred: document each with timestamp," >&2
+            echo "[pre-commit]   cause, impact, and disposition (see EVAL-101 as example)." >&2
+            echo "[pre-commit] Bypass (e.g. prereg not used for this run):" >&2
+            echo "[pre-commit]   CHUMP_DEVIATION_DOC_CHECK=0 git commit ..." >&2
+            exit 1
+        fi
+    fi
+fi
+
+# ------------------------------------------------------------------
 # 3a. mechanism-kappa advisory (EVAL-093, 2026-05-02): warn when a
 # commit introduces mechanism language with |Δ|>0.05 and no κ citation.
 # Catches the EVAL-074 class (PR #549 → #551 retraction): single-judge
