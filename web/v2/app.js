@@ -375,8 +375,9 @@ const CHUMP_CADENCES = [
     label: 'Now',
     icon: '⚡',
     shortcut: 'n',
-    default_view: 'chat',
+    default_view: 'cockpit',
     subtabs: [
+      { id: 'cockpit',       label: 'Cockpit',        icon: '🎯' }, // PRODUCT-122
       { id: 'chat',          label: 'Chat',           icon: '💬' },
       { id: 'agent',         label: 'My queue',       icon: '🔄' },
       { id: 'notifications', label: 'Alerts',         icon: '🔔', badge: true },

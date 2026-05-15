@@ -198,3 +198,5 @@ watchdog_silent            # reason: planned for watchdog heartbeat absence dete
 # ── Integration test pipeline (INFRA-849) ─────────────────────────────────────
 integration_test_pass      # reason: emitted by scripts/ci/test-system-integration.sh which is excluded from PROD_PATHS (CI scripts legitimately mention events without standard emit pattern)
 integration_test_fail      # reason: emitted by scripts/ci/test-system-integration.sh which is excluded from PROD_PATHS (CI scripts legitimately mention events without standard emit pattern)
+
+target_artifact_reaped  # reason: INFRA-1349 target/ artifact reaper kind; emitted when build dirs are cleaned under disk pressure
