@@ -1575,6 +1575,34 @@ events:
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, session, gap, paths, reason]
 
+  - kind: intent_announced
+    emitter: src/atomic_claim.rs emit_intent_announced() (INFRA-1116)
+    trigger: chump claim succeeds and emits this event so subsequent
+      claiming sessions' INTENT gates can detect path overlap. Emitted with
+      paths (from --paths CSV) and expires_at (= claim time + 4h TTL).
+      Sessions without --paths emit nothing (undeclared scope = no overlap
+      detection, not a refusal).
+    consumers: [check_intent_overlap, fleet-brief, operator-recall]
+    fields_required: [ts, kind, gap_id, session_id, paths, expires_at]
+
+  - kind: intent_retracted
+    emitter: src/atomic_claim.rs emit_intent_retracted() via chump --release (INFRA-1116)
+    trigger: chump --release emits this event so other sessions' overlap
+      gates immediately treat this session as inactive even if expires_at
+      has not passed. check_intent_overlap filters retracted sessions from
+      the live set before checking overlap.
+    consumers: [check_intent_overlap, fleet-brief, operator-recall]
+    fields_required: [ts, kind, gap_id, session_id]
+
+  - kind: intent_refreshed
+    emitter: scripts/dispatch/worker.sh heartbeat loop (INFRA-1116)
+    trigger: worker heartbeat loop emits this every 30s while claude is
+      running to confirm the INTENT is still active. Consumers can infer
+      that a session with no recent intent_refreshed (and a stale lease)
+      is inactive even before expires_at passes.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, gap_id, session_id]
+
   # ── INFRA-1081: GitHub webhook cache ─────────────────────────────────────
   - kind: webhook_event_received
     emitter: scripts/ops/github-webhook-receiver.py (INFRA-1081)
