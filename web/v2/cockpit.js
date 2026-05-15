@@ -118,6 +118,54 @@ const CSS = `
     background: var(--bg, #0d0d0f); padding: 1px 5px; border-radius: 3px;
     font-size: 12px;
   }
+  .cockpit-center-stack {
+    display: flex; flex-direction: column; gap: 16px;
+    height: 100%;
+  }
+  .center-half {
+    flex: 1 1 0; min-height: 0;
+    display: flex; flex-direction: column;
+  }
+  .center-half .zone-header { flex: 0 0 auto; }
+  .brief-list {
+    flex: 1 1 auto; overflow: auto;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .brief-loading, .brief-empty {
+    padding: 16px; text-align: center;
+    color: var(--text-secondary, #8a8a8e); font-size: 12px;
+    border: 1px dashed var(--border, #2a2a2e); border-radius: 6px;
+  }
+  .brief-item {
+    padding: 10px 12px; border: 1px solid var(--border, #2a2a2e);
+    border-radius: 6px; background: var(--bg, #0d0d0f);
+    display: flex; gap: 10px; align-items: flex-start;
+    font-size: 13px;
+  }
+  .brief-item:hover { background: var(--bg-tertiary, #25252a); }
+  .brief-pill {
+    flex: 0 0 auto; font-size: 10px; font-weight: 600;
+    padding: 2px 6px; border-radius: 4px;
+    background: var(--bg-tertiary, #25252a); color: var(--text-secondary, #8a8a8e);
+    white-space: nowrap;
+  }
+  .brief-pill.priority-P0 { background: rgba(204,51,68,.22); color: #ff8a99; }
+  .brief-pill.priority-P1 { background: rgba(10,132,255,.22); color: #6ab8ff; }
+  .brief-pill.priority-P2 { background: rgba(120,140,180,.18); color: #aab5cc; }
+  .brief-pill.ship-pr     { background: rgba(48,209,88,.20);  color: #6cd9a0; }
+  .brief-pill.ship-gap    { background: rgba(204,136,0,.22);  color: #ffc56a; }
+  .brief-body { flex: 1 1 auto; min-width: 0; }
+  .brief-title {
+    color: var(--text, #e5e5ea); margin-bottom: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .brief-meta {
+    font-size: 11px; color: var(--text-secondary, #8a8a8e);
+  }
+  .brief-meta a {
+    color: var(--accent, #0a84ff); text-decoration: none;
+  }
+  .brief-meta a:hover { text-decoration: underline; }
   .ambient-collapsed {
     flex: 0 0 auto; max-height: 38px; overflow: hidden;
     transition: max-height 0.2s;
@@ -135,6 +183,135 @@ const CSS = `
     border-top: 1px solid var(--border, #2a2a2e);
     padding-top: 12px;
   }
+  /* ── Intelligence layer: Read → Signal → Noise ─────────────────────── */
+  .intel-stack {
+    display: flex; flex-direction: column; gap: 14px;
+    height: 100%;
+  }
+  /* The Read — one sentence, highest visual weight */
+  .intel-read {
+    padding: 14px 16px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(10,132,255,.08), rgba(10,132,255,.02));
+    border: 1px solid rgba(10,132,255,.25);
+  }
+  .intel-read-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    color: var(--accent, #0a84ff); text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .intel-read-text {
+    font-size: 15px; line-height: 1.45;
+    color: var(--text, #e5e5ea);
+  }
+  .intel-read-meta {
+    margin-top: 8px; font-size: 11px;
+    color: var(--text-secondary, #8a8a8e);
+    display: flex; gap: 12px; align-items: center;
+  }
+  .intel-confidence {
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .intel-confidence-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  }
+  .intel-confidence-dot.high   { background: #30d158; }
+  .intel-confidence-dot.medium { background: #ffd60a; }
+  .intel-confidence-dot.low    { background: #ff453a; }
+  .intel-read-evidence {
+    background: none; border: none; padding: 0;
+    color: var(--accent, #0a84ff); cursor: pointer;
+    font-size: 11px; text-decoration: underline;
+  }
+
+  /* Signal — narrative cards */
+  .intel-signal {
+    flex: 1 1 auto; min-height: 0; overflow: auto;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .intel-signal-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em;
+    color: var(--text-secondary, #8a8a8e); text-transform: uppercase;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border, #2a2a2e);
+  }
+  .intel-card {
+    padding: 11px 13px;
+    border: 1px solid var(--border, #2a2a2e);
+    border-radius: 7px;
+    background: var(--bg, #0d0d0f);
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px 12px;
+    align-items: start;
+  }
+  .intel-card.counter {
+    border-color: rgba(255,159,10,.35);
+    background: linear-gradient(135deg, rgba(255,159,10,.05), transparent);
+  }
+  .intel-card-icon {
+    grid-row: 1 / span 2;
+    font-size: 18px; line-height: 1; padding-top: 1px;
+  }
+  .intel-card-title {
+    font-size: 13px; font-weight: 600;
+    color: var(--text, #e5e5ea);
+  }
+  .intel-card-detail {
+    font-size: 12px;
+    color: var(--text-secondary, #8a8a8e);
+    grid-column: 2 / span 2;
+  }
+  .intel-card-actions {
+    grid-row: 1; grid-column: 3;
+    display: flex; gap: 6px; align-items: center;
+  }
+  .intel-card-btn {
+    background: var(--bg-tertiary, #25252a);
+    border: 1px solid var(--border, #2a2a2e);
+    color: var(--text, #e5e5ea);
+    padding: 3px 8px; border-radius: 4px;
+    font-size: 11px; cursor: pointer; text-decoration: none;
+    white-space: nowrap;
+  }
+  .intel-card-btn:hover { background: var(--accent, #0a84ff); color: white; border-color: transparent; }
+  .intel-card-btn.wrong {
+    color: var(--text-secondary, #8a8a8e);
+    padding: 3px 6px;
+  }
+  .intel-card-btn.wrong:hover { background: #ff453a; color: white; }
+  .intel-card-btn.primary {
+    background: var(--accent, #0a84ff); color: white; border-color: transparent;
+  }
+
+  /* Noise — collapsed by default */
+  .intel-noise {
+    flex: 0 0 auto;
+    border-top: 1px solid var(--border, #2a2a2e);
+    padding-top: 10px;
+  }
+  .intel-noise-toggle {
+    background: none; border: none;
+    color: var(--text-secondary, #8a8a8e);
+    font-size: 11px; cursor: pointer;
+    padding: 0; text-align: left;
+    width: 100%;
+  }
+  .intel-noise-toggle:hover { color: var(--accent, #0a84ff); }
+  .intel-noise-body {
+    margin-top: 10px;
+    max-height: 200px; overflow: auto;
+    font-family: ui-monospace, monospace; font-size: 11px;
+    color: var(--text-secondary, #8a8a8e);
+    display: none;
+  }
+  .intel-noise-body.open { display: block; }
+  .intel-noise-event {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border, #2a2a2e);
+  }
+  .intel-noise-event:last-child { border: none; }
+
   /* Narrow viewport: stack columns. */
   @media (max-width: 1000px) {
     .cockpit {
@@ -193,21 +370,33 @@ class ChumpViewCockpit extends HTMLElement {
           </div>
         </div>
 
-        <div class="zone zone-center" aria-label="Daily brief">
-          <div class="zone-header">
-            <span>Since you were away</span>
-            <span class="question">What did the fleet do?</span>
-          </div>
-          <div id="slot-brief">
-            <div class="center-placeholder">
-              <strong>Daily brief — lands here in Phase 1.2</strong>
-              See <code>PRODUCT-078</code>. For now, this slot is reserved so
-              you can react to the layout, not the content.
-              <br><br>
-              <em>If you'd rather see PR list / outcome / something else in
-              this slot, that's the kind of feedback this shell exists to
-              capture.</em>
-            </div>
+        <div class="zone zone-center" aria-label="Intelligence">
+          <div class="intel-stack">
+            <!-- THE READ: one synthesized sentence with confidence -->
+            <section class="intel-read" id="intel-read" aria-label="The read">
+              <div class="intel-read-label">The read</div>
+              <div class="intel-read-text" id="intel-read-text">
+                Synthesizing…
+              </div>
+              <div class="intel-read-meta" id="intel-read-meta"></div>
+            </section>
+
+            <!-- SIGNAL: 3-4 narrative cards -->
+            <section class="intel-signal" aria-label="Signal">
+              <div class="intel-signal-label">Signal</div>
+              <div id="intel-cards">
+                <div class="brief-loading">Pattern-extracting…</div>
+              </div>
+            </section>
+
+            <!-- NOISE: collapsed raw event stream -->
+            <section class="intel-noise" aria-label="Noise">
+              <button type="button" class="intel-noise-toggle"
+                      id="intel-noise-toggle" aria-expanded="false">
+                ▶ <span id="intel-noise-count">…</span> raw events fed this synthesis
+              </button>
+              <div class="intel-noise-body" id="intel-noise-body"></div>
+            </section>
           </div>
         </div>
 
@@ -242,6 +431,16 @@ class ChumpViewCockpit extends HTMLElement {
     this.#mount('slot-fleet', 'chump-fleet-sidebar');
     this.#mount('slot-ambient', 'chump-ambient-viewer');
     this.#mount('slot-quick', 'chump-quick-actions');
+    // Center: synthesize Read/Signal/Noise from ambient + gap-queue.
+    this.#synthesize();
+    // Noise toggle.
+    const noiseToggle = this.#shadow.getElementById('intel-noise-toggle');
+    const noiseBody = this.#shadow.getElementById('intel-noise-body');
+    noiseToggle?.addEventListener('click', () => {
+      const open = noiseBody.classList.toggle('open');
+      noiseToggle.setAttribute('aria-expanded', String(open));
+      noiseToggle.firstChild.textContent = open ? '▼ ' : '▶ ';
+    });
 
     // Wire ambient toggle.
     const toggle = this.#shadow.getElementById('ambient-toggle');
@@ -270,6 +469,630 @@ class ChumpViewCockpit extends HTMLElement {
       </div>`;
     }
   }
+
+  // ── Synthesis pipeline: ambient + gap-queue → Read / Signal / Noise ──────
+  //
+  // ALGORITHM (also documented in docs/product/COCKPIT_SYNTHESIS.md):
+  //
+  //   inputs  = /api/ambient/recent?limit=200 + /api/gap-queue
+  //   ships   = events where kind in {pr_merged, gap_shipped, gap_done,
+  //                                    pr_closed_merged}
+  //   feedback= events where kind in {feedback_emitted, operator_feedback,
+  //                                    ambient_feedback}
+  //   queue   = gaps where status='open', sorted by priority then effort
+  //
+  //   THE READ = pick highest-signal narrative:
+  //     (a) if recent (<10min) feedback exists referencing an open gap by
+  //         subject substring  → "active reshape" read
+  //     (b) elif ships in last 24h > 0
+  //         → "{N} PR shipped, {top_domain} dominant" read
+  //     (c) else "fleet idle for {since_last_ship}" read
+  //   confidence = high if data window ≥ 12h AND ≥ 3 events; medium if
+  //                ≥ 1 event in window; low otherwise
+  //
+  //   SIGNAL cards (in this fixed order — NOT ranked):
+  //     1. Today's arc      — count ships in 24h, list top 2 PRs
+  //     2. Active reshape   — most recent feedback event with open-gap ref
+  //     3. Counter-evidence — hard-coded anti-pattern: phase ships but no
+  //                           external dogfooders (PRODUCT-119 status)
+  //     4. Next decision    — highest-priority unclaimed open gap w/ AC
+  //
+  //   NOISE = total raw event count + ALL events fed the synthesis (drillable)
+  //
+  // BIAS MITIGATIONS:
+  //   - synthesis is templated, not LLM/opinion
+  //   - every card has 🚩 wrong button → emits FEEDBACK kind=preference
+  //     vote=-1 subject=cockpit_card_<id> for tomorrow's re-rank
+  //   - counter-evidence card is REQUIRED — never hidden, even if good news
+  //   - confidence indicator on the Read (high/medium/low dot)
+  //   - all evidence (raw events) one click away under Noise
+  async #synthesize() {
+    const inputs = await this.#fetchInputs();
+    const synth = this.#computeSynthesis(inputs);
+    this.#renderRead(synth.read, synth.confidence, synth.evidenceCount);
+    this.#renderSignal(synth.cards);
+    this.#renderNoise(inputs.events);
+  }
+
+  async #fetchInputs() {
+    const [eventsR, queueR, autopilotR] = await Promise.allSettled([
+      fetch('/api/ambient/recent?limit=200'),
+      fetch('/api/gap-queue'),
+      fetch('/api/autopilot/status'),
+    ]);
+    let events = [];
+    let queue = [];
+    let autopilot = null;
+    try {
+      if (eventsR.status === 'fulfilled' && eventsR.value.ok) {
+        const d = await eventsR.value.json();
+        events = d.events || [];
+      }
+    } catch {}
+    try {
+      if (queueR.status === 'fulfilled' && queueR.value.ok) {
+        const d = await queueR.value.json();
+        queue = d.gaps || [];
+      }
+    } catch {}
+    try {
+      if (autopilotR.status === 'fulfilled' && autopilotR.value.ok) {
+        autopilot = await autopilotR.value.json();
+      }
+    } catch {}
+    return { events, queue, autopilot };
+  }
+
+  #computeSynthesis({ events, queue, autopilot }) {
+    const now = Date.now();
+    const dayMs = 24 * 3600 * 1000;
+    const tenMin = 10 * 60 * 1000;
+    const SHIP_KINDS = new Set([
+      'pr_merged', 'gap_shipped', 'gap_done', 'pr_closed_merged',
+    ]);
+    const FEEDBACK_KINDS = new Set([
+      'feedback_emitted', 'operator_feedback', 'ambient_feedback',
+    ]);
+
+    const tsOf = (e) => e.ts ? new Date(e.ts).getTime() : 0;
+    const within = (e, ms) => (now - tsOf(e)) < ms;
+
+    const ships24h   = events.filter((e) => SHIP_KINDS.has((e.kind || '').toLowerCase()) && within(e, dayMs));
+    const recentFb   = events.filter((e) => FEEDBACK_KINDS.has((e.kind || '').toLowerCase()) && within(e, tenMin));
+    const lastShip   = events.find((e) => SHIP_KINDS.has((e.kind || '').toLowerCase()));
+    const openGaps   = queue.filter((g) => (g.status || 'open') === 'open');
+    const nextDec    = openGaps
+      .filter((g) => Array.isArray(g.acceptance_criteria) && g.acceptance_criteria.length > 0)
+      .sort((a, b) => {
+        const o = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
+        return (o[a.priority] ?? 9) - (o[b.priority] ?? 9);
+      })[0];
+
+    // ─ THE READ ────────────────────────────────────────────────────────────
+    let read, confidence;
+    if (recentFb.length > 0) {
+      const fb = recentFb[0];
+      const subj = fb.subject || fb.body?.subject || 'unspecified';
+      const ago = this.#ago(new Date(tsOf(fb)));
+      read = `Your "${subj}" feedback (${ago}) is reshaping current work. Synthesis is responding live.`;
+      confidence = 'high';
+    } else if (ships24h.length > 0) {
+      const n = ships24h.length;
+      const sinceLast = lastShip ? this.#ago(new Date(tsOf(lastShip))) : 'recently';
+      read = `${n} ship${n === 1 ? '' : 's'} in the last 24h. Most recent ${sinceLast}.`;
+      confidence = ships24h.length >= 3 ? 'high' : 'medium';
+    } else if (lastShip) {
+      read = `Fleet idle — no ships in 24h. Last ship was ${this.#ago(new Date(tsOf(lastShip)))}.`;
+      confidence = 'medium';
+    } else {
+      read = 'No recent activity in ambient. Either the fleet hasn\'t shipped yet, or ambient.jsonl isn\'t being read here.';
+      confidence = 'low';
+    }
+
+    // ─ SIGNAL CARDS ────────────────────────────────────────────────────────
+    const cards = [];
+
+    // Card 1: Today's arc — PRODUCT-128 (Wake-fleet action when idle + autopilot off)
+    const autopilotRunning = !!(autopilot && (
+      autopilot.actual_state === 'running'
+      || autopilot.actual_state === 'starting'
+      || autopilot.desired_enabled === true
+    ));
+    if (ships24h.length > 0) {
+      const topPrs = ships24h
+        .filter((e) => e.pr_number)
+        .slice(0, 2)
+        .map((e) => `#${e.pr_number}`)
+        .join(' + ');
+      cards.push({
+        id: 'todays-arc',
+        icon: '📈',
+        title: `Today's arc — ${ships24h.length} ship${ships24h.length === 1 ? '' : 's'}`,
+        detail: topPrs ? `Most recent: ${topPrs}` : 'No PR numbers attached.',
+        actions: [{ label: 'see ships', view: 'noise' }],
+      });
+    } else if (!autopilotRunning) {
+      // Idle + autopilot off → propose [Wake fleet]
+      cards.push({
+        id: 'todays-arc',
+        icon: '📈',
+        title: `Today's arc — zero ships, autopilot off`,
+        detail: `Fleet is parked. Wake autopilot to start the dispatch loop, or pick a one-off gap manually.`,
+        actions: [
+          { label: 'Wake fleet', view: 'wake-fleet', primary: true },
+          { label: 'see fleet panel', view: 'fleet' },
+        ],
+      });
+    } else {
+      // Idle but autopilot is on — diff diagnosis
+      const lastErr = autopilot?.last_error;
+      cards.push({
+        id: 'todays-arc',
+        icon: '📈',
+        title: `Today's arc — zero ships (autopilot on)`,
+        detail: lastErr
+          ? `Autopilot running but picker stuck. Last error: ${this.#truncate(String(lastErr), 90)}`
+          : `Autopilot on but nothing's shipping. Picker may be wedged or queue is dry.`,
+        actions: [
+          { label: 'Stop + restart', view: 'restart-fleet', primary: true },
+          { label: 'see fleet panel', view: 'fleet' },
+        ],
+      });
+    }
+
+    // Card 1b: Gap-store drift — PRODUCT-127 (Repair-drift action)
+    // Detect drift via gaps that have closed_pr set but status=open (state.db
+    // didn't get the ship signal). This is the actual surveillance leak we
+    // saw vomiting into <chump-operator-attention> as 20 identical rows.
+    const driftGaps = queue.filter((g) =>
+      g.closed_pr && (g.status || 'open') === 'open'
+    );
+    if (driftGaps.length >= 3) {
+      cards.push({
+        id: 'gap-store-drift',
+        icon: '🧹',
+        title: `Gap-store drift — ${driftGaps.length} gaps shipped but state.db still 'open'`,
+        detail: `These gaps have closed_pr set but status=open. Picker may re-pick them. Repair runs 'chump gap dep-clean --apply' to reconcile.`,
+        actions: [
+          { label: 'Copy repair command', view: 'copy-repair', primary: true },
+          { label: 'see gaps', view: 'noise' },
+        ],
+      });
+    }
+
+    // Card 2: Active reshape (only if feedback exists)
+    if (recentFb.length > 0) {
+      const fb = recentFb[0];
+      const subj = fb.subject || fb.body?.subject || 'unspecified';
+      cards.push({
+        id: 'active-reshape',
+        icon: '🔄',
+        title: `Active reshape — "${subj}"`,
+        detail: `Feedback emitted ${this.#ago(new Date(tsOf(fb)))}. Synthesis demoting this card if you 🚩 it.`,
+        actions: [{ label: 'see feedback', href: '#', view: 'noise' }],
+      });
+    }
+
+    // Card 2b: Fleet-health pattern (only if a meaningful anomaly exists)
+    const anomalyKinds = {};
+    for (const e of events) {
+      const k = (e.kind || '').toLowerCase();
+      // Anti-patterns the operator should know about, weighted by severity
+      if (k === 'fleet_state_lock_timeout' || k === 'fleet_wedge'
+          || k === 'silent_agent' || k === 'pr_stuck'
+          || k === 'cache_drift' || k === 'slo_breach') {
+        anomalyKinds[k] = (anomalyKinds[k] || 0) + 1;
+      }
+    }
+    const topAnomaly = Object.entries(anomalyKinds).sort((a, b) => b[1] - a[1])[0];
+    if (topAnomaly && topAnomaly[1] >= 3) {
+      const [kind, count] = topAnomaly;
+      const friendly = {
+        fleet_state_lock_timeout: 'Lock contention spike',
+        fleet_wedge: 'Fleet wedge detected',
+        silent_agent: 'Silent agent(s)',
+        pr_stuck: 'PR stuck cluster',
+        cache_drift: 'Cache thrashing',
+        slo_breach: 'SLO breach',
+      }[kind] || kind;
+      cards.push({
+        id: `anomaly-${kind}`,
+        icon: '⚠️',
+        title: `${friendly} — ${count} events in window`,
+        detail: `Pattern detected via kind=${kind}. May indicate fleet plumbing needs attention.`,
+        actions: [{ label: 'show events', view: 'noise' }],
+      });
+    }
+
+    // Card 3: Counter-evidence (REQUIRED — always present)
+    // Heuristic anti-pattern: phase ships but external adoption is zero.
+    cards.push({
+      id: 'counter-evidence',
+      icon: '🟡',
+      title: 'Counter-evidence — 0 external dogfooders',
+      detail: 'Phase 1 ships don\'t matter if no operator outside Jeff opens the cockpit. See PRODUCT-119.',
+      counter: true,
+      actions: [
+        { label: 'see PRODUCT-119', href: '#', view: 'gap', gapId: 'PRODUCT-119' },
+      ],
+    });
+
+    // Card 4: Next decision (only if a clear candidate exists)
+    if (nextDec) {
+      cards.push({
+        id: 'next-decision',
+        icon: '⏭',
+        title: `Next decision — ${nextDec.id} (${nextDec.priority})`,
+        detail: this.#truncate(nextDec.title || '', 90),
+        actions: [
+          { label: 'see gap', href: '#', view: 'gap', gapId: nextDec.id },
+          { label: 'pick it', href: '#', view: 'pick', gapId: nextDec.id, primary: true },
+        ],
+      });
+    }
+
+    return { read, confidence, cards, evidenceCount: events.length };
+  }
+
+  #renderRead(text, confidence, evidenceCount) {
+    const t = this.#shadow.getElementById('intel-read-text');
+    const m = this.#shadow.getElementById('intel-read-meta');
+    if (t) t.textContent = text;
+    if (m) {
+      const dot = confidence === 'high' ? 'high' : confidence === 'medium' ? 'medium' : 'low';
+      const conf = confidence === 'high' ? 'High confidence' : confidence === 'medium' ? 'Medium confidence' : 'Low confidence — limited data';
+      m.innerHTML = `
+        <span class="intel-confidence">
+          <span class="intel-confidence-dot ${dot}"></span>
+          ${conf}
+        </span>
+        <span>· ${evidenceCount} events in window</span>
+        <span>·</span>
+        <button class="intel-read-evidence" type="button" id="intel-read-evidence">show evidence ↓</button>
+      `;
+      m.querySelector('#intel-read-evidence')?.addEventListener('click', () => {
+        const body = this.#shadow.getElementById('intel-noise-body');
+        const toggle = this.#shadow.getElementById('intel-noise-toggle');
+        body?.classList.add('open');
+        toggle?.setAttribute('aria-expanded', 'true');
+        if (toggle?.firstChild) toggle.firstChild.textContent = '▼ ';
+        body?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+    }
+  }
+
+  #renderSignal(cards) {
+    const slot = this.#shadow.getElementById('intel-cards');
+    if (!slot) return;
+    if (cards.length === 0) {
+      slot.innerHTML = '<div class="brief-empty">No signal extracted — too little data.</div>';
+      return;
+    }
+    slot.innerHTML = cards.map((c) => {
+      const actionsHtml = (c.actions || []).map((a) => `
+        <button class="intel-card-btn ${a.primary ? 'primary' : ''}" type="button"
+                data-card-id="${this.#escape(c.id)}"
+                data-action-view="${this.#escape(a.view || '')}"
+                data-action-gap="${this.#escape(a.gapId || '')}">
+          ${this.#escape(a.label)}
+        </button>`).join('');
+      return `
+        <div class="intel-card ${c.counter ? 'counter' : ''}" data-card-id="${this.#escape(c.id)}">
+          <div class="intel-card-icon">${c.icon || ''}</div>
+          <div class="intel-card-title">${this.#escape(c.title)}</div>
+          <div class="intel-card-actions">
+            ${actionsHtml}
+            <button class="intel-card-btn wrong" type="button"
+                    data-card-id="${this.#escape(c.id)}"
+                    data-action-view="wrong"
+                    title="Wrong card? Tell the synthesis.">🚩</button>
+          </div>
+          <div class="intel-card-detail">${this.#escape(c.detail)}</div>
+        </div>
+      `;
+    }).join('');
+    slot.querySelectorAll('button[data-card-id]').forEach((btn) => {
+      btn.addEventListener('click', (e) => this.#onCardAction(e.currentTarget));
+    });
+  }
+
+  #renderNoise(events) {
+    const count = this.#shadow.getElementById('intel-noise-count');
+    const body  = this.#shadow.getElementById('intel-noise-body');
+    if (count) count.textContent = String(events.length);
+    if (body) {
+      body.innerHTML = events.slice(0, 50).map((e) => `
+        <div class="intel-noise-event">
+          [${this.#escape(e.ts || '')}] ${this.#escape(e.kind || '?')}
+          ${e.pr_number ? `pr=#${e.pr_number}` : ''}
+          ${e.subject ? `subj="${this.#escape(this.#truncate(e.subject, 50))}"` : ''}
+        </div>`).join('');
+    }
+  }
+
+  async #onCardAction(btn) {
+    const cardId = btn.dataset.cardId;
+    const view = btn.dataset.actionView;
+    const gapId = btn.dataset.actionGap;
+
+    if (view === 'wrong') {
+      // 🚩 — emit FEEDBACK so tomorrow's synthesis demotes this card
+      try {
+        await fetch('/api/broadcast', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            event: 'FEEDBACK',
+            kind: 'preference',
+            subject: `cockpit_card_${cardId}`,
+            vote: '-1',
+            rationale: 'operator flagged cockpit synthesis card as wrong',
+          }),
+        });
+        btn.textContent = '✓';
+        btn.disabled = true;
+      } catch (e) {
+        console.warn('flag-card feedback failed', e);
+      }
+      return;
+    }
+    if (view === 'noise') {
+      const body = this.#shadow.getElementById('intel-noise-body');
+      const toggle = this.#shadow.getElementById('intel-noise-toggle');
+      body?.classList.add('open');
+      toggle?.setAttribute('aria-expanded', 'true');
+      if (toggle?.firstChild) toggle.firstChild.textContent = '▼ ';
+      return;
+    }
+    if (view === 'gap' && gapId) {
+      // Best-effort: open gap details in a new window via GH search.
+      window.open(`https://github.com/repairman29/chump/issues?q=${gapId}`, '_blank', 'noopener');
+      return;
+    }
+    if (view === 'pick' && gapId) {
+      // Trigger picker via existing API; on success show toast via console.
+      try {
+        const r = await fetch(`/api/gap/work/${encodeURIComponent(gapId)}`, { method: 'POST' });
+        const d = await r.json();
+        console.info('[cockpit] picked', gapId, d);
+        btn.textContent = '✓ picked';
+        btn.disabled = true;
+      } catch (e) {
+        console.warn('pick failed', e);
+      }
+      return;
+    }
+    if (view === 'fleet') {
+      // Scroll the right zone (fleet sidebar) into focus.
+      this.#shadow.querySelector('.zone-right')?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    // PRODUCT-128 — Wake-fleet button on Today's-arc card
+    if (view === 'wake-fleet') {
+      btn.disabled = true;
+      btn.textContent = 'Starting…';
+      try {
+        const r = await fetch('/api/autopilot/start', { method: 'POST' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        btn.textContent = '✓ Autopilot starting';
+        // Re-synthesize after 2s to refresh the cockpit read
+        setTimeout(() => this.#synthesize(), 2500);
+      } catch (e) {
+        btn.textContent = `✗ ${e.message || 'failed'}`;
+        btn.disabled = false;
+        setTimeout(() => { btn.textContent = 'Wake fleet'; }, 4000);
+      }
+      return;
+    }
+    if (view === 'restart-fleet') {
+      btn.disabled = true;
+      btn.textContent = 'Restarting…';
+      try {
+        await fetch('/api/autopilot/stop', { method: 'POST' });
+        await new Promise((r) => setTimeout(r, 800));
+        const r = await fetch('/api/autopilot/start', { method: 'POST' });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        btn.textContent = '✓ Restarted';
+        setTimeout(() => this.#synthesize(), 2500);
+      } catch (e) {
+        btn.textContent = `✗ ${e.message || 'failed'}`;
+        btn.disabled = false;
+        setTimeout(() => { btn.textContent = 'Stop + restart'; }, 4000);
+      }
+      return;
+    }
+
+    // PRODUCT-127 — Copy gap-drift repair command to clipboard (until the
+    // /api/gap/dep-clean endpoint lands, the action is "paste this in your
+    // terminal"; still more actionable than 'see more').
+    if (view === 'copy-repair') {
+      const cmd = 'chump gap dep-clean --apply';
+      try {
+        await navigator.clipboard.writeText(cmd);
+        btn.textContent = '✓ Copied — paste in terminal';
+      } catch {
+        // Fallback for browsers without clipboard write permission.
+        btn.textContent = `Run: ${cmd}`;
+      }
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.textContent = 'Copy repair command';
+        btn.disabled = false;
+      }, 5000);
+      return;
+    }
+  }
+
+  #truncate(s, n) {
+    s = String(s || '');
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  }
+
+  // ── Legacy methods retained for compat (no longer wired) ─────────────────
+  async #loadReleaseNotes_LEGACY() {
+    const slot = this.#shadow.getElementById('slot-release-notes');
+    if (!slot) return;
+    try {
+      const r = await fetch('/api/ambient/recent?limit=200');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      const events = (d.events || []).filter((e) => {
+        const k = (e.kind || '').toLowerCase();
+        return k === 'pr_merged'
+            || k === 'gap_shipped'
+            || k === 'gap_done'
+            || k === 'pr_closed_merged';
+      });
+      const merges = events.slice(0, 8);
+      if (merges.length === 0) {
+        slot.innerHTML = `
+          <div class="brief-empty">
+            No ships in recent ambient. As PRs merge they'll surface here.
+            <br><br>
+            <em>Want a different signal? Tell me what "release notes" means
+            to you — last 7 days? merged PRs by domain? a curated weekly
+            summary? Tell me the shape and we'll wire it.</em>
+          </div>`;
+        return;
+      }
+      slot.innerHTML = merges.map((e) => {
+        const ts = e.ts ? new Date(e.ts) : null;
+        const pr = e.pr_number ? `#${e.pr_number}` : '';
+        const title = this.#escape(e.title || e.subject || e.gap || e.kind || 'ship');
+        const ago = this.#ago(ts);
+        const href = e.pr_number
+          ? `https://github.com/repairman29/chump/pull/${e.pr_number}`
+          : '#';
+        return `
+          <div class="brief-item">
+            <span class="brief-pill ship-pr">SHIPPED</span>
+            <div class="brief-body">
+              <div class="brief-title">${title}</div>
+              <div class="brief-meta">
+                ${pr ? `<a href="${href}" target="_blank" rel="noopener">${pr}</a> · ` : ''}${ago}
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      slot.innerHTML = `
+        <div class="brief-empty">
+          Couldn't load release notes (${this.#escape(String(e.message || e))}).
+        </div>`;
+    }
+  }
+
+  // ── Where we're headed — top-priority pickable gaps from the queue ────────
+  async #loadRoadmap() {
+    const slot = this.#shadow.getElementById('slot-roadmap');
+    if (!slot) return;
+    try {
+      const r = await fetch('/api/gap-queue');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      const gaps = (d.gaps || [])
+        .filter((g) => (g.status || 'open') === 'open')
+        .sort((a, b) => {
+          const order = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4, P5: 5 };
+          return (order[a.priority] ?? 9) - (order[b.priority] ?? 9);
+        })
+        .slice(0, 6);
+      if (gaps.length === 0) {
+        slot.innerHTML = `
+          <div class="brief-empty">
+            No pickable gaps in this fleet's queue right now.
+            <br><br>
+            <em>"Where we're headed" can also mean roadmap milestones, not
+            just the next 6 gaps. Want me to surface
+            <code>docs/product/PWA_ROADMAP.md</code> phases here instead?
+            Or both — gaps as "this week" and milestones as "this quarter"?</em>
+          </div>`;
+        return;
+      }
+      slot.innerHTML = gaps.map((g) => {
+        const pri = g.priority || 'P?';
+        const id = this.#escape(g.id || '?');
+        const title = this.#escape(g.title || '');
+        const effort = g.effort ? `· ${this.#escape(g.effort)}` : '';
+        return `
+          <div class="brief-item">
+            <span class="brief-pill priority-${pri}">${pri}</span>
+            <div class="brief-body">
+              <div class="brief-title">${title}</div>
+              <div class="brief-meta">${id} ${effort}</div>
+            </div>
+          </div>`;
+      }).join('');
+    } catch (e) {
+      slot.innerHTML = `
+        <div class="brief-empty">
+          Couldn't load priority queue (${this.#escape(String(e.message || e))}).
+        </div>`;
+    }
+  }
+
+  #escape(s) {
+    return String(s || '').replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  #ago(ts) {
+    if (!ts) return '';
+    const ms = Date.now() - ts.getTime();
+    if (ms < 60_000) return 'just now';
+    if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ago`;
+    if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h ago`;
+    return `${Math.floor(ms / 86_400_000)}d ago`;
+  }
 }
 
 customElements.define('chump-view-cockpit', ChumpViewCockpit);
+
+// ── URL bootstrap ──────────────────────────────────────────────────────────
+// The chump-nav cadence router (app.js CHUMP_CADENCES) rewrites ?view=<x>
+// to the cadence's default_view when <x> isn't in any cadence's subtabs.
+// Since we don't promote cockpit into a cadence here (avoid colliding with
+// 5 live leases on app.js), the router would otherwise redirect
+// /v2/?view=cockpit → /v2/?view=chat&cadence=now.
+//
+// Workaround that doesn't touch app.js: read the *original* navigation URL
+// from PerformanceNavigationTiming (which survives history.replaceState),
+// and if it asked for view=cockpit OR the page is loaded with #cockpit,
+// force-render the cockpit view into #main-content after the router has run.
+function getOriginalUrl() {
+  try {
+    const nav = performance.getEntriesByType?.('navigation')?.[0];
+    if (nav?.name) return new URL(nav.name);
+  } catch {}
+  return new URL(location.href);
+}
+
+function maybeRenderCockpit() {
+  const origView   = getOriginalUrl().searchParams.get('view');
+  const curView    = new URLSearchParams(location.search).get('view');
+  const hashView   = location.hash === '#cockpit';
+  if (origView !== 'cockpit' && curView !== 'cockpit' && !hashView) return;
+  const main = document.getElementById('main-content');
+  if (!main) return;
+  if (main.querySelector('chump-view-cockpit')) return; // idempotent
+  main.innerHTML = '';
+  main.appendChild(document.createElement('chump-view-cockpit'));
+  // Re-stamp the URL so a copy-paste / bookmark reflects what's on screen,
+  // and the cadence router doesn't keep rewriting it on subsequent hops.
+  try {
+    const url = new URL(location.href);
+    url.searchParams.set('view', 'cockpit');
+    history.replaceState(null, '', url.toString());
+  } catch {}
+}
+
+if (document.readyState === 'loading') {
+  // Wait until DOMContentLoaded + a microtask so chump-nav's connectedCallback
+  // (which rewrites the URL) has run first, then we steal the view back.
+  document.addEventListener('DOMContentLoaded', () => setTimeout(maybeRenderCockpit, 50));
+} else {
+  setTimeout(maybeRenderCockpit, 50);
+}
+window.addEventListener('hashchange', maybeRenderCockpit);
