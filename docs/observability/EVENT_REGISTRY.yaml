@@ -1852,6 +1852,19 @@ events:
     consumers: [fleet-brief, emergency-fast-path]
     fields_required: [ts, kind, worktree, reason]
 
+  - kind: worktree_reap_protected
+    emitter: >
+      scripts/ops/stale-worktree-reaper.sh (_emit_worktree_reap_protected, INFRA-1291);
+      scripts/ops/active-target-reaper.sh (_emit_worktree_reap_protected, INFRA-1291)
+    trigger: >
+      Reaper would have removed a worktree (or its target/) but spared it
+      because an active lease's heartbeat_at is within CHUMP_LEASE_HEARTBEAT_TTL_S
+      (default 600s). Distinct from worktree_reaper_skipped_active — this event
+      specifically marks the heartbeat-freshness protection path, and includes
+      the protecting lease name and the configured TTL.
+    consumers: [fleet-brief, reaper-heartbeat-watchdog]
+    fields_required: [ts, kind, worktree, lease, ttl_s]
+
   # ── CREDIBLE-038: file-count-blast rule ──────────────────────────────────
   - kind: pr_scope_violation
     emitter: scripts/ci/check-mass-deletion.sh (CREDIBLE-038, rule C)
