@@ -91,12 +91,13 @@ by how much. We've shipped COG-041 / COG-046 / COG-042 / COG-043 on faith;
 this week we measure.
 
 **Implementing gaps:**
-- **EVAL-101** (P0 m) — cognition A/B with fleet evidence ✅ **preregistration filed, fixture ready.** Run `scripts/eval/run-cognition-ab.sh` to execute the 60-trial sweep. Preregistered at `docs/eval/preregistered/EVAL-101.md`.
+- **EVAL-101** (P0 m) — cognition A/B pilot ✅ **null result (Δ=+0.025, n=20/cell, Qwen local).** Result cannot be cited — protocol violated preregistration (wrong agent, structural-only scoring, no Cell C, no LLM judges). See audit trail in EVAL-102 prereg.
+- **EVAL-102** (P1 m) 🏗️ **preregistration locked 2026-05-11, harness run PENDING.** Corrected re-run: Sonnet 4.6, n=50/cell, Cell C padding control, dual judges (haiku + Llama-3.3-70B), deviation-locked runner. Preregistered at `docs/eval/preregistered/EVAL-102.md`. Result doc stub at `docs/eval/EVAL-102-cognition-ab-followup-2026-05-14.md`. Run the sweep to get a citable result.
 - **INFRA-595** (P1 s) ✅ — per-PR coupling-tax measurement. `chump pr-coupling-cost` shipped in #1224.
-- **INFRA-601** (P1 s) ✅ — bandit Thompson vs UCB1 replay study. `src/bin/bandit-replay.rs` + report shipped in #1225.
+- **INFRA-601** (P1 s) ✅ — bandit Thompson vs UCB1 replay study. `src/bin/bandit-relay.rs` + report shipped in #1225.
 - **COG-053** (P1 m) ✅ — subagent self-ship rate measurement. Prompt epilogue shipped in #1310.
 
-**Remaining.** Run `scripts/eval/run-cognition-ab.sh` (needs Claude Sonnet API access + ~$4). When results land at `docs/eval/EVAL-101-cognition-ab-<date>.md`, close EVAL-101 as supported/rejected/ambiguous per the decision rule in the preregistration.
+**Remaining.** Execute EVAL-102 harness sweep (needs Anthropic API ~$5 + Together AI free tier + ~24h). Smoke-check first: `python3.12 scripts/ab-harness/run-local-v2.py --gap EVAL-102 --n 2 ...`. Full decision rule and downstream consequence map in `docs/eval/EVAL-102-cognition-ab-followup-2026-05-14.md`.
 
 **Out of scope this week.** Anything that doesn't produce a measurable
 number. No new infra, no new features unless they unblock a measurement.
