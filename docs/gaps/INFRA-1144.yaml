@@ -1,7 +1,8 @@
 - id: INFRA-1144
   domain: INFRA
   title: "RESILIENT: chump gap ship atomically closes other open PRs for the same gap (structural zero-orphan)"
-  status: open
+  status: done
+  closed_date: '2026-05-15'
   priority: P2
   effort: s
   description: |

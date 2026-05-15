@@ -4860,6 +4860,35 @@ async fn main() -> Result<()> {
                                 "shipped {gap_id} — why: status flipped to done{pr_note}, session={session_id}"
                             );
                         }
+                        // INFRA-1144: atomically close orphan PRs for this gap
+                        // (complements INFRA-1139 sweeper). Emits orphan_pr_closed_at_ship
+                        // events for each closure.
+                        if let Ok(closed_prs) =
+                            store.close_orphan_prs(&gap_id, closed_pr, &repo_root)
+                        {
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            for (pr_num, reason) in closed_prs {
+                                let closed_pr_str =
+                                    closed_pr.map(|n| n.to_string()).unwrap_or_default();
+                                let event = format!(
+                                    "{{\"ts\":\"{ts}\",\"kind\":\"orphan_pr_closed_at_ship\",\
+                                     \"gap\":\"{gap_id}\",\"pr\":{pr_num},\"ship_pr\":{closed_pr_str},\
+                                     \"reason\":\"{reason}\"}}\n"
+                                );
+                                let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                let _ = std::fs::OpenOptions::new()
+                                    .append(true)
+                                    .create(true)
+                                    .open(&ambient_log)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        f.write_all(event.as_bytes())
+                                    });
+                                if why {
+                                    eprintln!("  closed orphan PR #{pr_num} ({reason})");
+                                }
+                            }
+                        }
                         // INFRA-1200: write-ahead log cleanup. On ship, stamp
                         // .chump-plans/<gap-id>/SHIPPED_AT so the 7-day GC pass
                         // can find and remove stale patch directories. Also sweep
