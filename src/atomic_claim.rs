@@ -2144,4 +2144,180 @@ mod tests {
             None => std::env::remove_var("CHUMP_COORD_BIN"),
         }
     }
+    // ── INFRA-1116: INTENT overlap gate tests ──────────────────────────────────
+
+    fn mk_intent_tmp(label: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "infra1116-{}-{}",
+            label,
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    fn write_intent_announced(ambient_path: &Path, session_id: &str, gap_id: &str,
+                               paths: &[&str], ts_secs: u64, ttl_secs: u64) {
+        let ts = iso8601_from_unix(ts_secs);
+        let expires_at = iso8601_from_unix(ts_secs + ttl_secs);
+        let paths_json = serde_json::to_string(paths).unwrap();
+        let line = format!(
+            r#"{{"ts":"{ts}","kind":"intent_announced","gap_id":"{gap_id}","session_id":"{session_id}","paths":{paths_json},"expires_at":"{expires_at}"}}
+"#
+        );
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().create(true).append(true).open(ambient_path).unwrap();
+        f.write_all(line.as_bytes()).unwrap();
+    }
+
+    fn write_live_lease(lock_dir: &Path, session_id: &str) {
+        let expires_at = iso8601_from_unix(
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) + 3600
+        );
+        let json = format!(r#"{{"session_id":"{session_id}","expires_at":"{expires_at}"}}
+"#);
+        std::fs::write(lock_dir.join(format!("{session_id}.json")), json).unwrap();
+    }
+
+    fn write_expired_lease(lock_dir: &Path, session_id: &str) {
+        let json = format!(r#"{{"session_id":"{session_id}","expires_at":"2000-01-01T00:00:00Z"}}
+"#);
+        std::fs::write(lock_dir.join(format!("{session_id}.json")), json).unwrap();
+    }
+
+    #[test]
+    fn intent_gate_no_overlap_when_ambient_empty() {
+        let tmp = mk_intent_tmp("empty");
+        // No ambient.jsonl → no INTENTs → check passes
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "empty ambient should not block");
+    }
+
+    #[test]
+    fn intent_gate_no_overlap_when_paths_disjoint() {
+        let tmp = mk_intent_tmp("disjoint");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        write_intent_announced(&ambient, "sibling", "INFRA-B", &["docs/process/"], now, 3600);
+        write_live_lease(&tmp, "sibling");
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "disjoint paths should not block");
+    }
+
+    #[test]
+    fn intent_gate_blocks_on_overlapping_paths_with_live_lease() {
+        let tmp = mk_intent_tmp("overlap");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        write_intent_announced(&ambient, "sibling", "INFRA-B", &["src/atomic_claim.rs"], now, 3600);
+        write_live_lease(&tmp, "sibling");
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/atomic_claim.rs", "me");
+        assert!(result.is_err(), "overlapping paths with live lease should block");
+        let msg = format!("{}", result.unwrap_err());
+        assert!(msg.contains("sibling"), "error should name the blocking session");
+    }
+
+    #[test]
+    fn intent_gate_skips_stale_session_absent_lease() {
+        let tmp = mk_intent_tmp("stale");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        write_intent_announced(&ambient, "ghost", "INFRA-B", &["src/main.rs"], now, 3600);
+        // No lease file for "ghost" → stale filter should skip it
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "absent lease = stale, should not block");
+    }
+
+    #[test]
+    fn intent_gate_skips_stale_session_expired_lease() {
+        let tmp = mk_intent_tmp("expired");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        write_intent_announced(&ambient, "old-session", "INFRA-B", &["src/main.rs"], now, 3600);
+        write_expired_lease(&tmp, "old-session");
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "expired lease = stale, should not block");
+    }
+
+    #[test]
+    fn intent_gate_self_skip() {
+        let tmp = mk_intent_tmp("self");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        write_intent_announced(&ambient, "my-session", "INFRA-A", &["src/main.rs"], now, 3600);
+        write_live_lease(&tmp, "my-session");
+        // Own session should not block itself
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "my-session");
+        assert!(result.is_ok(), "own-session intent should not block self");
+    }
+
+    #[test]
+    fn intent_gate_skips_retracted_session() {
+        let tmp = mk_intent_tmp("retracted");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        write_intent_announced(&ambient, "sibling", "INFRA-B", &["src/main.rs"], now, 3600);
+        write_live_lease(&tmp, "sibling");
+        // Sibling emits intent_retracted before we check
+        emit_intent_retracted(&ambient, "INFRA-B", "sibling");
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "retracted intent should not block");
+    }
+
+    #[test]
+    fn emit_intent_announced_writes_valid_json() {
+        let tmp = mk_intent_tmp("emit-ann");
+        let ambient = tmp.join("ambient.jsonl");
+        emit_intent_announced(&ambient, "INFRA-C", "my-sess", "src/a.rs,src/b.rs", 3600);
+        let content = std::fs::read_to_string(&ambient).unwrap();
+        assert!(!content.is_empty());
+        for line in content.lines() {
+            let v: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+            assert_eq!(v["kind"], "intent_announced");
+            assert_eq!(v["gap_id"], "INFRA-C");
+            assert_eq!(v["session_id"], "my-sess");
+            assert!(v["expires_at"].as_str().unwrap().ends_with('Z'));
+        }
+    }
+
+    #[test]
+    fn emit_intent_retracted_writes_valid_json() {
+        let tmp = mk_intent_tmp("emit-ret");
+        let ambient = tmp.join("ambient.jsonl");
+        emit_intent_retracted(&ambient, "INFRA-D", "session-123");
+        let content = std::fs::read_to_string(&ambient).unwrap();
+        for line in content.lines() {
+            let v: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+            assert_eq!(v["kind"], "intent_retracted");
+            assert_eq!(v["gap_id"], "INFRA-D");
+            assert_eq!(v["session_id"], "session-123");
+        }
+    }
+
+    #[test]
+    fn is_session_lease_alive_absent_returns_false() {
+        let tmp = mk_intent_tmp("alive-absent");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        assert!(!is_session_lease_alive(&tmp, "no-such-session", now));
+    }
+
+    #[test]
+    fn is_session_lease_alive_expired_returns_false() {
+        let tmp = mk_intent_tmp("alive-expired");
+        write_expired_lease(&tmp, "old");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        assert!(!is_session_lease_alive(&tmp, "old", now));
+    }
+
+    #[test]
+    fn is_session_lease_alive_live_returns_true() {
+        let tmp = mk_intent_tmp("alive-live");
+        write_live_lease(&tmp, "fresh");
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        assert!(is_session_lease_alive(&tmp, "fresh", now));
+    }
+
 }
