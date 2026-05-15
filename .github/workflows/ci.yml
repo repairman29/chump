@@ -1128,6 +1128,9 @@ jobs:
       - name: bounced-PR detector fixture (INFRA-781)
         run: bash scripts/ci/test-bounced-pr-detector.sh
 
+      - name: orphan-PR closer fixture (INFRA-1139)
+        run: bash scripts/ci/test-orphan-pr-closer.sh
+
       - name: precommit strict replay — mirror local guards to CI (INFRA-767)
         run: bash scripts/ci/precommit-strict-replay.sh
 
