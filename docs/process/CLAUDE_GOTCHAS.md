@@ -111,6 +111,8 @@ ALERT events from other concurrent sessions.
 
 **Scope reminder (FLEET-023, 2026-05-02).** `ambient.jsonl` is **filesystem-local** to whatever machine / sandbox you're on. Cross-machine peripheral vision goes through NATS (FLEET-006: `chump-coord watch`, subjects `chump.events.>`). In a fresh remote sandbox (Cold Water, ephemeral CI runner, etc.) where no NATS broker is reachable, the file tail will only show *this* session's own events — typically just two `session_start` lines from this session itself. That's expected, not a bug. If you need cross-machine signal, ensure `CHUMP_NATS_URL` is set to a reachable broker before flagging "ambient empty" as a finding.
 
+**NATS deployment decision (FLEET-053, 2026-05-15).** As of this date, the Cold Water scheduled trigger (`trig_01GA2XVbAZtpkBaWfrEo1CrP`) does **not** have `CHUMP_NATS_URL` set to a public broker — no public NATS broker has been provisioned for the fleet. Consequence: Cold Water cycle ambient evidence will show only local-file events from that runner session; cross-machine fleet activity is **not** visible in Cold Water output. This is intentional, not an oversight. Do **not** file a finding like "NATS subscription silent" or "ambient stream empty" — local-file silence in a Cold Water context reflects the absence of a broker, not a bug. If a public broker is provisioned in future, set `CHUMP_NATS_URL=nats://<host>:4222` in the trigger environment and remove this note.
+
 Event kinds to know:
 - `session_start` — another agent just opened a session (note their worktree and gap)
 - `file_edit` — another agent edited a file (note the path — may overlap yours)
