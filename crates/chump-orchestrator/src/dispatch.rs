@@ -1098,6 +1098,11 @@ mod tests {
             kind: String::new(),
             depends_on: None,
             closed_date: None,
+            acceptance_criteria: Some(serde_yaml::Value::Sequence(vec![
+                serde_yaml::Value::String(
+                    "the dispatch test fixture has a substantive AC line".into(),
+                ),
+            ])),
         }
     }
 

@@ -1361,17 +1361,39 @@ impl GapStore {
         ttl_secs: i64,
     ) -> Result<()> {
         let expires_at = unix_now() + ttl_secs;
-        // Verify gap exists and is open
-        let status: String = self
+        // Verify gap exists and is open; pull AC for the vague-gate check below.
+        let (status, ac_raw): (String, String) = self
             .conn
             .query_row(
-                "SELECT status FROM gaps WHERE id=?1",
+                "SELECT status, COALESCE(acceptance_criteria, '') FROM gaps WHERE id=?1",
                 params![gap_id],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .with_context(|| format!("gap {} not found in state.db", gap_id))?;
         if status == "done" {
             bail!("gap {} is already done", gap_id);
+        }
+        // INFRA-1259: refuse to claim vague-AC gaps. Bypass via CHUMP_ALLOW_VAGUE_AC=1
+        // (operator override; emits kind=vague_ac_override to ambient.jsonl when set).
+        if is_vague_acceptance_criteria(&ac_raw) {
+            let bypass = std::env::var("CHUMP_ALLOW_VAGUE_AC")
+                .map(|v| !v.trim().is_empty() && v.trim() != "0")
+                .unwrap_or(false);
+            if !bypass {
+                bail!(
+                    "gap {} has no real acceptance criteria — run `chump gap update {} \
+                     --ac \"...\"` before claiming, or set CHUMP_ALLOW_VAGUE_AC=1 to override",
+                    gap_id,
+                    gap_id
+                );
+            }
+            // Bypass emits a one-shot ambient signal so the override is auditable.
+            let reason = std::env::var("CHUMP_VAGUE_AC_REASON")
+                .unwrap_or_else(|_| "unspecified".to_string());
+            eprintln!(
+                "INFO: INFRA-1259: vague_ac_override gap={} session={} reason={}",
+                gap_id, session_id, reason
+            );
         }
         // Check for live conflicting claim
         let live_claim: Option<String> = self.conn.query_row(
@@ -2811,6 +2833,54 @@ pub fn parse_json_ac_list(s: &str) -> Vec<String> {
     parse_json_string_list(s).unwrap_or_default()
 }
 
+/// INFRA-1259: Returns `true` when the stored acceptance_criteria value is
+/// effectively a placeholder (empty list, single short stub, all-TODO items).
+///
+/// Heuristic: a gap is "vague" iff EVERY AC item is a placeholder. A single
+/// substantive item passes. Item-placeholder rule:
+///   - empty/whitespace-only
+///   - starts with TODO / FIXME / XXX / STUB / ? (any case)
+///   - shorter than 24 chars (catches "ac_gate_check", "make it work", etc.)
+///
+/// Accepts either the JSON-encoded stored form or a single raw line.
+/// Used by both `GapStore::claim` (claim-time gate) and the orchestrator
+/// picker (selection-time filter) so vague gaps never enter the work queue.
+pub fn is_vague_acceptance_criteria(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let items: Vec<String> = parse_json_string_list(trimmed).unwrap_or_else(|| {
+        // Field is not JSON list — treat whole thing as a single AC item.
+        vec![trimmed.to_string()]
+    });
+    if items.is_empty() {
+        return true;
+    }
+    items.iter().all(|i| is_placeholder_ac_item(i))
+}
+
+/// INFRA-1259: detect placeholder-shaped AC items. See
+/// [`is_vague_acceptance_criteria`].
+fn is_placeholder_ac_item(s: &str) -> bool {
+    let t = s.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let up = t.to_uppercase();
+    if up.starts_with("TODO")
+        || up.starts_with("FIXME")
+        || up.starts_with("XXX")
+        || up.starts_with("STUB")
+        || up.starts_with("?")
+    {
+        return true;
+    }
+    // Substantive ACs are typically full sentences; <24 chars is almost always
+    // a stub identifier like "ac_gate_check" or "make it work".
+    t.chars().count() < 24
+}
+
 /// Parse a stored JSON-string-array column back to Vec<String>. Returns None
 /// when the field is empty or unparseable.
 fn parse_json_string_list(s: &str) -> Option<Vec<String>> {
@@ -3062,6 +3132,12 @@ mod tests {
         // because every test in this module operates on synthetic fixtures.
         unsafe {
             std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            // INFRA-1259: bypass the vague-AC gate in tests by default; the
+            // dedicated `claim_rejects_vague_ac` test below explicitly clears
+            // this so it exercises the production gate. Pre-existing tests
+            // do not set AC on their fixture gaps and only care about the
+            // lease/preflight/ship contract.
+            std::env::set_var("CHUMP_ALLOW_VAGUE_AC", "1");
         }
         let dir = TempDir::new().unwrap();
         let store = GapStore::open(dir.path()).unwrap();
@@ -3313,6 +3389,18 @@ mod tests {
     fn test_claim_and_preflight() {
         let (store, _dir) = test_store();
         let id = store.reserve("EVAL", "Test gap", "P1", "s").unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(
+                        r#"["preflight returns Available before claim and Claimed after"]"#
+                            .to_string(),
+                    ),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
 
         match store.preflight(&id).unwrap() {
             PreflightResult::Available => {}
@@ -4991,10 +5079,100 @@ meta:
         );
     }
 
+    // ── INFRA-1259: vague-AC gate ────────────────────────────────────────
+    #[test]
+    #[serial_test::serial]
+    fn claim_rejects_vague_ac_without_bypass() {
+        let (store, _dir) = test_store();
+        // Explicitly clear the test-default bypass so we exercise the gate.
+        unsafe {
+            std::env::remove_var("CHUMP_ALLOW_VAGUE_AC");
+        }
+        let id = store.reserve("INFRA", "stub gap", "P2", "s").unwrap();
+        // reserve() seeds an empty AC by default — perfect for testing.
+        let result = store.claim(&id, "session-x", "/tmp/wt", 3600);
+        assert!(
+            result.is_err(),
+            "claim should refuse a gap with no acceptance criteria"
+        );
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(
+            msg.contains("no real acceptance criteria"),
+            "expected vague-AC error, got: {msg}"
+        );
+        // Re-arm bypass so unrelated tests that ran in this process don't fail.
+        unsafe {
+            std::env::set_var("CHUMP_ALLOW_VAGUE_AC", "1");
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn claim_accepts_real_ac_without_bypass() {
+        let (store, _dir) = test_store();
+        unsafe {
+            std::env::remove_var("CHUMP_ALLOW_VAGUE_AC");
+        }
+        let id = store.reserve("INFRA", "concrete gap", "P2", "s").unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(
+                        r#"["the gate accepts a gap with a substantive AC line"]"#.to_string(),
+                    ),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let result = store.claim(&id, "session-y", "/tmp/wt", 3600);
+        assert!(
+            result.is_ok(),
+            "claim should accept a gap with a substantive AC: {:?}",
+            result.err()
+        );
+        unsafe {
+            std::env::set_var("CHUMP_ALLOW_VAGUE_AC", "1");
+        }
+    }
+
+    #[test]
+    fn vague_ac_helper_classifies_correctly() {
+        // Empty / null / single-stub → vague
+        assert!(is_vague_acceptance_criteria(""));
+        assert!(is_vague_acceptance_criteria("[]"));
+        assert!(is_vague_acceptance_criteria(r#"[""]"#));
+        assert!(is_vague_acceptance_criteria(r#"["ac_gate_check"]"#));
+        assert!(is_vague_acceptance_criteria(r#"["TODO: write it"]"#));
+        assert!(is_vague_acceptance_criteria(r#"["fixme me later"]"#));
+        // Real AC (>= 24 chars, no TODO prefix) → not vague
+        assert!(!is_vague_acceptance_criteria(
+            r#"["the gate accepts gaps with substantive AC text"]"#
+        ));
+        // Mixed: any one substantive item passes
+        assert!(!is_vague_acceptance_criteria(
+            r#"["TODO short", "the second item is long enough to be meaningful"]"#
+        ));
+    }
+
     #[test]
     fn claim_live_claimed_gap_returns_err() {
         let (store, _dir) = test_store();
         let id = store.reserve("INFRA", "contested", "P2", "s").unwrap();
+        // INFRA-1259: claim now requires non-vague AC. Seed real AC for the
+        // gap under test so we exercise the lease-conflict path, not the
+        // vague-AC gate.
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(
+                        r#"["the lease table refuses overlapping concurrent claims"]"#.to_string(),
+                    ),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         store.claim(&id, "session-owner", "/tmp/wt1", 3600).unwrap();
         let result = store.claim(&id, "session-interloper", "/tmp/wt2", 3600);
         assert!(result.is_err(), "claiming a live-claimed gap should fail");
@@ -5039,6 +5217,17 @@ meta:
         let (store, _dir) = test_store();
         let id = store
             .reserve("INFRA", "will-be-claimed", "P2", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(
+                        r#"["preflight reflects a live lease on the gap row"]"#.to_string(),
+                    ),
+                    ..Default::default()
+                },
+            )
             .unwrap();
         store.claim(&id, "session-owner", "/tmp/wt", 3600).unwrap();
         let result = store.preflight(&id).unwrap();

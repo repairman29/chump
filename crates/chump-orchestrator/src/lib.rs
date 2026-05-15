@@ -50,6 +50,73 @@ pub struct Gap {
     /// Used by the domain-bias logic (FLEET-045) to order recent ships.
     #[serde(default)]
     pub closed_date: Option<String>,
+    /// INFRA-1259: acceptance criteria. Stored as the YAML-parsed shape (list
+    /// of strings or a single string). The picker filters out gaps whose AC
+    /// is vague via [`is_vague_acceptance_criteria`].
+    #[serde(default)]
+    pub acceptance_criteria: Option<serde_yaml::Value>,
+}
+
+/// INFRA-1259: mirrors `chump-gap-store::is_vague_acceptance_criteria`. Kept
+/// in-crate because `chump-gap-store` deliberately has zero internal deps on
+/// other Chump crates (see its Cargo.toml comment).
+///
+/// A gap is vague iff every AC item is a placeholder (empty, TODO/FIXME/XXX/
+/// STUB/?, or shorter than 24 chars).
+pub fn is_vague_acceptance_criteria(value: Option<&serde_yaml::Value>) -> bool {
+    let v = match value {
+        Some(v) => v,
+        None => return true,
+    };
+    let items: Vec<String> = match v {
+        serde_yaml::Value::Null => return true,
+        serde_yaml::Value::String(s) => {
+            // Could be the JSON-stringified array form from state.db dumps.
+            let t = s.trim();
+            if t.is_empty() {
+                return true;
+            }
+            if let Ok(arr) = serde_json::from_str::<Vec<String>>(t) {
+                arr
+            } else {
+                vec![t.to_string()]
+            }
+        }
+        serde_yaml::Value::Sequence(seq) => seq
+            .iter()
+            .filter_map(|x| match x {
+                serde_yaml::Value::String(s) => Some(s.clone()),
+                serde_yaml::Value::Number(n) => Some(n.to_string()),
+                serde_yaml::Value::Mapping(m) => {
+                    // Some YAML embeds key:value pairs — stringify roughly.
+                    Some(format!("{:?}", m))
+                }
+                _ => None,
+            })
+            .collect(),
+        _ => return true,
+    };
+    if items.is_empty() {
+        return true;
+    }
+    items.iter().all(|i| is_placeholder_ac_item(i))
+}
+
+fn is_placeholder_ac_item(s: &str) -> bool {
+    let t = s.trim();
+    if t.is_empty() {
+        return true;
+    }
+    let up = t.to_uppercase();
+    if up.starts_with("TODO")
+        || up.starts_with("FIXME")
+        || up.starts_with("XXX")
+        || up.starts_with("STUB")
+        || up.starts_with("?")
+    {
+        return true;
+    }
+    t.chars().count() < 24
 }
 
 #[derive(Debug, Deserialize)]
@@ -222,6 +289,19 @@ pub fn pick_gap_with_kind<'a>(
                 .flatten()
                 .all(|dep| done_ids.contains(dep))
         })
+        // INFRA-1259: rule 4.5 — skip vague-AC gaps (would just block the
+        // worker on claim-time gate). Logged once per skipped gap per cycle
+        // so the picker stays auditable.
+        .filter(|g| {
+            let vague = is_vague_acceptance_criteria(g.acceptance_criteria.as_ref());
+            if vague {
+                tracing::info!(
+                    gap_id = %g.id,
+                    "picker_skipped_vague_ac: gap has placeholder AC; refile with concrete criteria"
+                );
+            }
+            !vague
+        })
         .collect();
 
     // Rule 6: sort by domain bias, then priority ASC, then effort ASC.
@@ -298,6 +378,12 @@ mod tests {
             kind: String::new(), // default: user gap
             depends_on: deps.map(|v| v.into_iter().map(String::from).collect()),
             closed_date: None,
+            // INFRA-1259: every test fixture gets a substantive AC so the
+            // vague-AC filter doesn't drop it. Tests that exercise the
+            // vague-AC path build their own Gap explicitly.
+            acceptance_criteria: Some(serde_yaml::Value::Sequence(vec![
+                serde_yaml::Value::String("the test fixture provides a substantive AC line".into()),
+            ])),
         }
     }
 
@@ -311,6 +397,7 @@ mod tests {
             kind: String::new(),
             depends_on: None,
             closed_date: Some(closed.into()),
+            acceptance_criteria: None, // done gaps aren't picked anyway
         }
     }
 
@@ -434,6 +521,55 @@ mod tests {
         let live: HashSet<String> = ["A".to_string()].into();
         let result = pick_gap(&gaps, &done, &live, 0, 3).expect("B should be picked");
         assert_eq!(result.id, "B", "A is live-claimed; B should be selected");
+    }
+
+    // ── INFRA-1259: vague-AC filter ──────────────────────────────────────
+    #[test]
+    fn pick_gap_skips_vague_ac() {
+        // A has a stub AC ("ac_gate_check") → must be skipped.
+        // B has a real AC and lower priority — it should still win.
+        let a_vague = Gap {
+            id: "A".into(),
+            title: "vague".into(),
+            priority: "P1".into(),
+            effort: "s".into(),
+            status: "open".into(),
+            kind: String::new(),
+            depends_on: None,
+            closed_date: None,
+            acceptance_criteria: Some(serde_yaml::Value::Sequence(vec![
+                serde_yaml::Value::String("ac_gate_check".into()),
+            ])),
+        };
+        let b_real = g("B", "P2", "m", "open", None);
+        let gaps = vec![a_vague, b_real];
+        let result =
+            pick_gap(&gaps, &HashSet::new(), &no_live(), 0, 3).expect("B should be picked");
+        assert_eq!(
+            result.id, "B",
+            "A's AC is vague (single stub); picker should skip it"
+        );
+    }
+
+    #[test]
+    fn is_vague_helper_classifies_correctly() {
+        assert!(is_vague_acceptance_criteria(None));
+        assert!(is_vague_acceptance_criteria(Some(&serde_yaml::Value::Null)));
+        assert!(is_vague_acceptance_criteria(Some(
+            &serde_yaml::Value::String("".into())
+        )));
+        assert!(is_vague_acceptance_criteria(Some(
+            &serde_yaml::Value::String("ac_gate_check".into())
+        )));
+        assert!(is_vague_acceptance_criteria(Some(
+            &serde_yaml::Value::Sequence(vec![serde_yaml::Value::String("TODO write it".into())])
+        )));
+        // Substantive (>= 24 chars) → not vague
+        assert!(!is_vague_acceptance_criteria(Some(
+            &serde_yaml::Value::String(
+                "the picker filters vague AC entries from the candidate set".into()
+            )
+        )));
     }
 
     #[test]
