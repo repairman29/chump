@@ -14,6 +14,6 @@
     - "Refuses paths outside CHUMP_INIT_ALLOWED_ROOTS (default: /Users/jeffadkins tree); CHUMP_INIT_ANYWHERE=1 bypasses"
     - "Test: point at empty /tmp/test-repo, verify /api/repo/init creates state.db + hooks; verify second call is idempotent (succeeds without overwriting)"
   depends_on: [INFRA-990]
-  closed_date: '2026-05-14'
+  closed_date: '2026-05-15'
   closed_pr: 1936
 

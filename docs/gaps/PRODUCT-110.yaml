@@ -1,0 +1,13 @@
+- id: PRODUCT-110
+  domain: PRODUCT
+  title: "EFFECTIVE: ACP deeplinks on every gap + PR row (chump://acp/open?gap=X) — competitive differentiation vs Claude Code — see docs/design/OPERATOR_CONSOLE_V2.md (archetype 3)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+  closed_date: '2026-05-15'
+

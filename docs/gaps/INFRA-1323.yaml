@@ -1,0 +1,12 @@
+- id: INFRA-1323
+  domain: INFRA
+  title: "RESILIENT: local merge queue — NATS KV serialized git merge to local main, replaces bot-merge.sh for CHUMP_GITHUB_MODE=offline (OFFLINE_FIRST.md Phase 2)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

@@ -1,0 +1,12 @@
+- id: INFRA-1319
+  domain: INFRA
+  title: "ZERO-WASTE: GitHub Liaison Phase 3 — mutation routing via NATS request/reply (workers never call GitHub directly)"
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

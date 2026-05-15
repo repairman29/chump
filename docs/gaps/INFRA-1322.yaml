@@ -1,0 +1,12 @@
+- id: INFRA-1322
+  domain: INFRA
+  title: "ZERO-WASTE: run-local-ci.sh — unified local CI gate that mirrors GitHub Actions, works with no network (OFFLINE_FIRST.md Phase 1)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

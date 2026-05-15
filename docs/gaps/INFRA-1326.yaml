@@ -1,0 +1,12 @@
+- id: INFRA-1326
+  domain: INFRA
+  title: "RESILIENT: orphan-PR-closer must check PR health before closing — don't close PRs with armed auto-merge or live CI"
+  status: open
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
