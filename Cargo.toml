@@ -3,6 +3,7 @@ members = [
     "chump-tool-macro",
     "desktop/src-tauri",
     "crates/chump-agent-lease",
+    "crates/chump-xml-adapter",
     "crates/chump-mcp-lifecycle",
     "crates/chump-cancel-registry",
     "crates/chump-perception",

@@ -1,0 +1,12 @@
+- id: EFFECTIVE-003
+  domain: EFFECTIVE
+  title: "EFFECTIVE: text-to-tool-call adapter for models that emit XML tool tags instead of native tool_calls"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria: |
+    1. cargo test -p chump-xml-adapter — all 8 unit tests pass
+    2. scripts/ci/test-xml-tool-adapter.sh — 5 assertions pass
+    3. Cargo.toml workspace members includes crates/chump-xml-adapter
+    4. adapt() handles <tool_call> and <function_call name="X"> styles
+    5. Malformed JSON inside tags is skipped (no panic), raw text preserved
