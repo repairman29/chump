@@ -1537,7 +1537,7 @@ impl GapStore {
 
         // Use gh api to list open PRs
         let output = Command::new("gh")
-            .args(&["api", &format!("repos/{repo}/pulls?state=open&per_page=100")])
+            .args(["api", &format!("repos/{repo}/pulls?state=open&per_page=100")])
             .arg("--jq")
             .arg(format!("[.[] | select(.title | contains(\"{gap_id}\")) | {{number: .number, title: .title, head_ref: .head.ref, pushed_at: .head.repo.pushed_at}}]"))
             .output();
@@ -1586,15 +1586,15 @@ impl GapStore {
 
             // Post comment
             let _ = Command::new("gh")
-                .args(&["api", &format!("repos/{repo}/issues/{pr_num}/comments")])
-                .args(&["-X", "POST", "-f"])
+                .args(["api", &format!("repos/{repo}/issues/{pr_num}/comments")])
+                .args(["-X", "POST", "-f"])
                 .arg(&format!("body={comment}"))
                 .output();
 
             // Close the PR
             let close_result = Command::new("gh")
-                .args(&["api", &format!("repos/{repo}/pulls/{pr_num}")])
-                .args(&["-X", "PATCH", "-f", "state=closed"])
+                .args(["api", &format!("repos/{repo}/pulls/{pr_num}")])
+                .args(["-X", "PATCH", "-f", "state=closed"])
                 .output();
 
             if let Ok(output) = close_result {
@@ -1614,7 +1614,7 @@ impl GapStore {
     /// Helper: resolve GitHub repo from git remote origin
     fn get_repo_from_git(&self, repo_root: &Path) -> Result<String> {
         let output = std::process::Command::new("git")
-            .args(&[
+            .args([
                 "-C",
                 repo_root.to_str().unwrap_or("."),
                 "remote",
