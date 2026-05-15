@@ -107,36 +107,21 @@ echo
 
 # ── 1. Stale lease files ─────────────────────────────────────────────────────
 echo "── stale lease files (.chump-locks/*.json past expires_at) ──"
+# INFRA-1224: migrated 22-line python3 expires_at parser → scripts/lib/lease.sh.
+# shellcheck source=../lib/lease.sh
+source "$(git rev-parse --show-toplevel)/scripts/lib/lease.sh"
 stale_count=0
-if compgen -G ".chump-locks/*.json" > /dev/null 2>&1; then
-    for lease in .chump-locks/*.json; do
-        [[ -f "$lease" ]] || continue
-        # Parse expires_at; use python because jq isn't guaranteed and shell
-        # can't compare ISO dates portably.
-        expired=$(python3 -c "
-import json, sys, datetime
-try:
-    d = json.load(open('$lease'))
-    exp = d.get('expires_at')
-    if not exp:
-        sys.exit(2)
-    e = datetime.datetime.fromisoformat(exp.replace('Z', '+00:00'))
-    now = datetime.datetime.now(datetime.timezone.utc)
-    print('expired' if now > e else 'live')
-except Exception as ex:
-    print('error: ' + str(ex))
-    sys.exit(2)
-" 2>/dev/null)
-        if [[ "$expired" == "expired" ]]; then
-            stale_count=$((stale_count + 1))
-            if [[ $DRY_RUN -eq 1 ]]; then
-                echo "  WOULD DELETE  $lease"
-            else
-                rm "$lease" && echo "  DELETED       $lease"
-            fi
+while IFS= read -r lease; do
+    [[ -f "$lease" ]] || continue
+    if lease_is_expired "$lease"; then
+        stale_count=$((stale_count + 1))
+        if [[ $DRY_RUN -eq 1 ]]; then
+            echo "  WOULD DELETE  $lease"
+        else
+            rm "$lease" && echo "  DELETED       $lease"
         fi
-    done
-fi
+    fi
+done < <(lease_iter)
 echo "  ($stale_count stale leases found)"
 echo
 
