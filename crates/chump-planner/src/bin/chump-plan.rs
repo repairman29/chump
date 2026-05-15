@@ -47,7 +47,12 @@ struct Args {
     #[arg(long)]
     include_blocked: bool,
 
-    /// Output format. v0.1 supports: table.
+    /// Limit output to N items (alias for --agents; preferred for --format json).
+    /// When both --top and --agents are provided, --top takes precedence.
+    #[arg(long)]
+    top: Option<usize>,
+
+    /// Output format. Supports: table, json.
     #[arg(long, default_value = "table")]
     format: String,
 
@@ -91,8 +96,11 @@ fn main() -> Result<()> {
         None => None,
     };
 
+    // --top N is the preferred flag for JSON consumers; --agents is kept for
+    // the interactive table (where "agents" has semantic meaning).
+    let n_results = args.top.unwrap_or(args.agents);
     let req = PlanRequest {
-        agents: args.agents,
+        agents: n_results,
         pillar_filter,
         max_effort,
         respect_pillar_cap: !args.no_pillar_cap,
