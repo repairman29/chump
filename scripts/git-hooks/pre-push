@@ -213,8 +213,18 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # isolated. Per-worktree path ensures each linked worktree's test run
             # sees only its own source file set.
             _WT_TEST_TARGET="$REPO_ROOT_T/.cargo-test-target"
+            # INFRA-1316: bash 3.2 + `set -u` aborts on `"${arr[@]}"` when
+            # the array is empty. KNOWN_FLAKES.yaml has zero entries today,
+            # so the subshell crashed before cargo test ever ran and the
+            # hook falsely reported "tests failed" on every push.
+            #
+            # `${arr[@]:+"${arr[@]}"}` is the canonical safe idiom: it
+            # expands to the array contents iff set-and-non-empty, otherwise
+            # to nothing (zero args, not one empty arg — important because
+            # cargo test treats `""` as a filter and silently runs zero tests).
             if (cd "$REPO_ROOT_T" && CARGO_TARGET_DIR="$_WT_TEST_TARGET" \
-                cargo test --bin chump --tests --no-fail-fast --quiet "${_SKIP_ARGS[@]}") 2>&1 \
+                cargo test --bin chump --tests --no-fail-fast --quiet \
+                    ${_SKIP_ARGS[@]:+"${_SKIP_ARGS[@]}"}) 2>&1 \
                 | tee "$_TEST_LOG" | tail -200; then
                 mkdir -p "$CACHE_DIR"
                 date -u +%Y-%m-%dT%H:%M:%SZ > "$CACHE_MARKER"
