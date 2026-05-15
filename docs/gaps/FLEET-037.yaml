@@ -1,7 +1,7 @@
 - id: FLEET-037
   domain: FLEET
   title: chump fleet subcommand — up/status/down/scale CLI ergonomics over run-fleet.sh env-var incantation
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
