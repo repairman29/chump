@@ -1,27 +1,21 @@
 - id: INFRA-1049
   domain: INFRA
-  title: 'CREDIBLE: per-harness identity bucketing in ship_rate + waste-tally + kpi-report (not just per-model)'
-  status: done
+  title: "CREDIBLE: per-harness identity bucketing in ship_rate + waste-tally + kpi-report (not just per-model)"
+  status: in_flight
   priority: P1
   effort: s
-  closed_pr: 1802
+  closed_pr: ~
   depends_on: []
   acceptance_criteria:
-  - ship_grade ambient event includes harness field alongside model + agent_id
-  - ship_quality::build_report() groups by harness in by_harness section
-  - waste_tally + kpi_report read the harness field — foundation laid via ship_grade harness; full per-event bucketing requires
-    harness propagation to waste events in follow-up
-  - surfaces 'claude ships at X/h, opencode at Y/h' data via By harness table in ship-quality output
-  - test fixture covers a mixed-harness ambient log (claude + opencode events)
-  description: 'CREDIBLE-040 added per-harness commit identity; this propagates that to the
-
+    - "ship_grade ambient event includes harness field alongside model + agent_id"
+    - "ship_quality::build_report() groups by harness in by_harness section"
+    - "waste_tally + kpi_report read the harness field — foundation laid via ship_grade harness; full per-event bucketing requires harness propagation to waste events in follow-up"
+    - "surfaces 'claude ships at X/h, opencode at Y/h' data via By harness table in ship-quality output"
+    - "test fixture covers a mixed-harness ambient log (claude + opencode events)"
+  description: |
+    CREDIBLE-040 added per-harness commit identity; this propagates that to the
     measurement layer so ship_quality --json can bucket by harness in addition to model.
 
-
     bot-merge.sh ship_grade events now include harness: CHUMP_AGENT_HARNESS
-
     (default "manual" for non-fleet ships). Pre-fix events parse to "claude"
-
     via the default fallback.
-
-    '

@@ -309,17 +309,14 @@ Each gap is an atomic unit of work with a stable ID (e.g. `COMP-007`,
    them, your commits silently bypass every guard** — Cold Water Issue #10
    (2026-05-02) found 9 gaps shipped to `origin/main` with `closed_pr: TBD`
    precisely because remote-dispatched sandboxes had skipped this step.
-   `bot-merge.sh` and `gap-claim.sh` now auto-bootstrap if hooks are missing
-   (INFRA-209/INFRA-224), but the explicit one-shot is still the right call
-   when you first land in a fresh checkout.
+   `bot-merge.sh` now auto-bootstraps if hooks are missing (INFRA-209/INFRA-224),
+   but the explicit one-shot is still the right call when you first land in a fresh checkout.
 
 1. **Pick an open gap** — `chump gap list --status open` (canonical) or
    `grep -lE 'status:[[:space:]]*open' docs/gaps/*.yaml` (per-file mirror fallback).
-2. **Preflight** — `chump gap preflight <GAP-ID>` (or
-   `scripts/coord/gap-preflight.sh <GAP-ID>`); checks done-on-main and live
+2. **Preflight** — `chump gap preflight <GAP-ID>` checks done-on-main and live
    claims by sibling sessions.
-3. **Claim** — `chump gap claim <GAP-ID>` (or `scripts/coord/gap-claim.sh
-   <GAP-ID>`) writes a lease file under `.chump-locks/<session_id>.json`.
+3. **Claim** — `chump gap claim <GAP-ID>` writes a lease file under `.chump-locks/<session_id>.json`.
    **Claims do not go in the registry** — they live in lease files only.
    The registry records `status: open` / `status: done` and nothing else
    about ownership. The `CHUMP_GAPS_LOCK` pre-commit guard rejects writes
@@ -559,7 +556,7 @@ doesn't belong.
 **Migration:** existing `claude/*` branches and `.claude/worktrees/`
 trees stay as history — no rename. New branches and worktrees use
 `chump/<codename>` and `.chump/worktrees/<name>` from this commit
-forward. `bot-merge.sh` and `gap-claim.sh` accept either prefix during
+forward. `bot-merge.sh` and `chump gap` commands accept either prefix during
 the transition (INFRA-187 will tighten the default to `chump/`).
 
 **Tool-specific overlays** (skills, hooks, harness behavior) still

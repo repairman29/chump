@@ -408,6 +408,7 @@ mod tests {
 
     // INFRA-1047: verify env_session_id priority chain
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn test_env_session_id_priority() {
         // Clean slate
         std::env::remove_var("CHUMP_SESSION_ID");

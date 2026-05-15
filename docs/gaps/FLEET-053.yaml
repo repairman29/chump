@@ -1,62 +1,40 @@
 - id: FLEET-053
   domain: FLEET
-  title: 'FLEET-017: Cold Water NATS deployment incomplete — CHUMP_NATS_URL not set / fallback observed'
-  status: done
+  title: "FLEET-017: Cold Water NATS deployment incomplete — CHUMP_NATS_URL not set / fallback observed"
+  status: open
   priority: P0
   effort: xs
   opened_date: '2026-05-12'
-  description: 'FLEET-017 (PR #629, 2026-04-28) updated docs/agents/cold-water.md to subscribe
-
+  description: |
+    FLEET-017 (PR #629, 2026-04-28) updated docs/agents/cold-water.md to subscribe
     to chump.events.> over NATS at session start (Step -0.5), with fallback to
-
     .chump-locks/ambient.jsonl when the subscription fails. The canonical prompt on
-
     origin/main has Step -0.5. However, the most recent Cold Water cycle (Issue #11,
-
     2026-05-11) contains zero NATS reference — it describes "fresh sandbox, no ambient
-
     stream" with no $NATS_LOG evidence, indicating the deployed trigger prompt was
-
-    never sync''d via `/schedule update trig_01GA2XVbAZtpkBaWfrEo1CrP` OR
-
+    never sync'd via `/schedule update trig_01GA2XVbAZtpkBaWfrEo1CrP` OR
     CHUMP_NATS_URL was never set to a publicly-reachable broker (default
-
     nats://127.0.0.1:4222 is unreachable in a remote sandbox).
 
-
     Two expected Cold Water cycles in the 2-week post-ship window:
-
     - 2026-05-05: no public cycle entry found (may be in chump-proprietary)
-
     - 2026-05-11: Issue #11 filed, no NATS evidence
 
-
     The FLEET-006 → FLEET-017 chain is documented-but-not-delivering. Cold Water
-
     keeps falling back to the empty local ambient.jsonl, treating silence as evidence
-
     of no activity — the exact failure mode Red Letter Issues #2-#7 flagged.
 
-
     Trigger condition: no NATS mention in Issue #11 (BAD per decision tree).
-
-    '
   acceptance_criteria:
-  - 'Operator confirms `/schedule update trig_01GA2XVbAZtpkBaWfrEo1CrP` was run after PR #629 merged (or runs it now)'
-  - CHUMP_NATS_URL is set to a publicly-reachable NATS broker in the trigger config (not nats://127.0.0.1:4222)
-  - 'Next Cold Water cycle output (Issue #12 or equivalent) contains ''ambient via NATS (chump.events.>'' in its evidence
-    section'
-  - 'docs/audits/RED_LETTER.md Issue #12 entry shows $NATS_PID_FILE non-empty and NATS log has at least one event line, OR
-    explicitly notes ''NATS subscription healthy, zero events in window'''
-  - If CHUMP_NATS_URL cannot be set (no public broker), operator documents the decision and the fallback path in CLAUDE_GOTCHAS.md
-    so future cycles don't misread local-file silence as fleet silence
+    - "Operator confirms `/schedule update trig_01GA2XVbAZtpkBaWfrEo1CrP` was run after PR #629 merged (or runs it now)"
+    - "CHUMP_NATS_URL is set to a publicly-reachable NATS broker in the trigger config (not nats://127.0.0.1:4222)"
+    - "Next Cold Water cycle output (Issue #12 or equivalent) contains 'ambient via NATS (chump.events.>' in its evidence section"
+    - "docs/audits/RED_LETTER.md Issue #12 entry shows $NATS_PID_FILE non-empty and NATS log has at least one event line, OR explicitly notes 'NATS subscription healthy, zero events in window'"
+    - "If CHUMP_NATS_URL cannot be set (no public broker), operator documents the decision and the fallback path in CLAUDE_GOTCHAS.md so future cycles don't misread local-file silence as fleet silence"
   audit_evidence:
-    trigger_condition: no NATS mention in cycle
-    most_recent_affected_cycle: '2026-05-11 (Issue #11)'
-    surfacing_line: 'Sandbox: fresh clone, no ambient stream, no lease state. `chump gap import` run manually to populate
-      state.db (itself a finding — see Looming Ghost).'
+    trigger_condition: "no NATS mention in cycle"
+    most_recent_affected_cycle: "2026-05-11 (Issue #11)"
+    surfacing_line: "Sandbox: fresh clone, no ambient stream, no lease state. `chump gap import` run manually to populate state.db (itself a finding — see Looming Ghost)."
     canonical_prompt_step_minus_0_5: present
     deployed_trigger_sync_confirmed: false
     chump_nats_url_set: unknown
-  closed_date: '2026-05-12'
-  closed_pr: 1617

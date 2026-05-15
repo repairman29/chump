@@ -1,13 +1,11 @@
 - id: INFRA-679
   domain: INFRA
-  title: 'CREDIBLE: wire observability to alerting — cascade exhaustion, cost budget breach, tool health recovery emit actionable
-    alerts not just logs'
-  status: done
+  title: "CREDIBLE: wire observability to alerting — cascade exhaustion, cost budget breach, tool health recovery emit actionable alerts not just logs"
+  status: open
   priority: P1
   effort: m
   acceptance_criteria:
-  - cascade exhaustion (>80% RPD on 3+ slots) emits ALERT kind=cascade_near_cap
-  - cost budget breach (daily Anthropic spend > env-configurable cap) emits ALERT kind=cost_budget_breach
-  - both alerts route to ambient.jsonl AND to operator (Discord/Telegram via CHUMP_ALERT_WEBHOOK)
-  - 'test: synth a high-RPD usage event, assert alert chain fires within 60s'
-  closed_date: '2026-05-12'
+    - "cascade exhaustion (>80% RPD on 3+ slots) emits ALERT kind=cascade_near_cap"
+    - "cost budget breach (daily Anthropic spend > env-configurable cap) emits ALERT kind=cost_budget_breach"
+    - "both alerts route to ambient.jsonl AND to operator (Discord/Telegram via CHUMP_ALERT_WEBHOOK)"
+    - "test: synth a high-RPD usage event, assert alert chain fires within 60s"

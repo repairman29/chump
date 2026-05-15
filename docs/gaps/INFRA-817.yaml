@@ -1,35 +1,41 @@
 - id: INFRA-817
   domain: INFRA
   title: e2e-pwa flake persists — PWA-shell-loads-home test fails intermittently, zero green CI runs on main in last 100
-  status: done
+  status: open
   priority: P1
   effort: s
-  description: "The e2e-pwa Playwright test \"PWA-shell-loads-home-and-shows-message-composer\" \nfails intermittently in\
-    \ CI with `element(s) not found` for the message composer \ninput. It is retried 3 times and all attempts fail. This single\
-    \ flaky test is \nthe primary cause of zero successful main-branch CI runs in the last 100 \nexecutions (all either cancelled\
-    \ by merge queue or failed on this flake).\n\nPrevious attempts:\n- PRODUCT-070 (PR #1379, closed): enabled CHUMP_LIGHT_CONTEXT\
-    \ for web_slim — did not fix\n- PRODUCT-074 (PR #1381, closed): investigation of DOM element timeouts — closed as done\
-    \ but flake persists  \n- INFRA-764 (PR #1366, closed): added flake auto-rerun harness — safety net only\n- PRODUCT-076\
-    \ (open, P2/m): update tests to use v2-native selectors — may help but low priority\n\nThe core issue is likely a race\
-    \ condition in the PWA v2 web UI rendering \npipeline — the message composer DOM element isn't consistently available\
-    \ \nby the time Playwright checks for it. This could be a missing loading \nindicator, a hydration timing issue, or a\
-    \ CSS selector mismatch after v2 \nmigration.\n\nFix options:\n1. Add Playwright waitForSelector with longer timeout /\
-    \ retry logic\n2. Fix the root rendering race in web_server.rs or PWA v2 frontend\n3. Remove or skip the flaky test until\
-    \ v2 migration is complete\n"
+  description: |
+    The e2e-pwa Playwright test "PWA-shell-loads-home-and-shows-message-composer" 
+    fails intermittently in CI with `element(s) not found` for the message composer 
+    input. It is retried 3 times and all attempts fail. This single flaky test is 
+    the primary cause of zero successful main-branch CI runs in the last 100 
+    executions (all either cancelled by merge queue or failed on this flake).
+    
+    Previous attempts:
+    - PRODUCT-070 (PR #1379, closed): enabled CHUMP_LIGHT_CONTEXT for web_slim — did not fix
+    - PRODUCT-074 (PR #1381, closed): investigation of DOM element timeouts — closed as done but flake persists  
+    - INFRA-764 (PR #1366, closed): added flake auto-rerun harness — safety net only
+    - PRODUCT-076 (open, P2/m): update tests to use v2-native selectors — may help but low priority
+    
+    The core issue is likely a race condition in the PWA v2 web UI rendering 
+    pipeline — the message composer DOM element isn't consistently available 
+    by the time Playwright checks for it. This could be a missing loading 
+    indicator, a hydration timing issue, or a CSS selector mismatch after v2 
+    migration.
+    
+    Fix options:
+    1. Add Playwright waitForSelector with longer timeout / retry logic
+    2. Fix the root rendering race in web_server.rs or PWA v2 frontend
+    3. Remove or skip the flaky test until v2 migration is complete
   acceptance_criteria:
-  - ''
-  - ' e2e-pwa CI runs pass consistently (10 consecutive green runs on main) '
-  - ' yes '
-  - '
+    - ""
+    - " e2e-pwa CI runs pass consistently (10 consecutive green runs on main) "
+    - " yes "
+    - "\n"
+    - " Root cause of the PWA-shell-loads-home flake identified and documented "
+    - " yes "
+    - "\n"
+    - " Either: rendering race fixed, or test hardened, or test skipped with tracking gap "
+    - " yes "
+    - ""
 
-    '
-  - ' Root cause of the PWA-shell-loads-home flake identified and documented '
-  - ' yes '
-  - '
-
-    '
-  - ' Either: rendering race fixed, or test hardened, or test skipped with tracking gap '
-  - ' yes '
-  - ''
-  closed_date: '2026-05-10'
-  closed_pr: 1435
