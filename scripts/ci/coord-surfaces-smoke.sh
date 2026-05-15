@@ -34,7 +34,9 @@ if [[ -n "${1:-}" ]]; then
 else
     echo "[coord-surfaces-smoke] reserving fresh gap for self-contained test …" >&2
     GAP_ID=$("$ROOT/target/debug/chump" gap reserve --domain SMOKE --priority P3 --effort xs \
-        --title "coord-surfaces-smoke fixture (auto-clean)" 2>&1 | tail -1)
+        --title "coord-surfaces-smoke fixture (auto-clean)" \
+        --acceptance-criteria "1. Smoke test fixture claims cleanly without AC-gate error." \
+        2>&1 | tail -1)
     echo "[coord-surfaces-smoke] reserved $GAP_ID" >&2
 fi
 
