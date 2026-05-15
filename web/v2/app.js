@@ -87,6 +87,78 @@ window.chumpPrefs = window.chumpPrefs || (() => {
   });
 })();
 
+// ── ChumpAcpDeeplink helper (PRODUCT-110) ───────────────────────────────────
+// Build chump://acp/open?... URLs the operator's registered ACP client (Zed,
+// JetBrains, etc) can intercept and open. Competitive-differentiation surface
+// vs Claude Code per docs/design/OPERATOR_CONSOLE_V2.md (archetype 3) —
+// CC structurally can't ship this. The browser silently ignores the click
+// when no ACP client is registered; the companion "Copy link" button keeps
+// the value useful for sharing in either case.
+//
+// Schema documented in docs/api/PWA_ACP_DEEPLINKS.md.
+window.ChumpAcpDeeplink = window.ChumpAcpDeeplink || (() => {
+  function build(params) {
+    const url = new URL('chump://acp/open');
+    for (const [k, v] of Object.entries(params || {})) {
+      if (v == null || v === '') continue;
+      url.searchParams.set(k, String(v));
+    }
+    return url.toString();
+  }
+  return {
+    open(params)     { return build(params); },          // generic
+    gap(id, opts={}) { return build({ gap: id, ...opts }); },
+    pr(num, opts={}) { return build({ pr: num,  ...opts }); },
+    branch(b, opts={}) { return build({ branch: b, ...opts }); },
+  };
+})();
+
+// PRODUCT-110: delegated click handler for Copy-link buttons across the app.
+// Lives at the document level so any future view that renders a .gap-acp-copy
+// button gets the same behavior without extra wiring.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.gap-acp-copy');
+  if (!btn) return;
+  const href = btn.dataset.acpHref;
+  if (!href) return;
+  try {
+    navigator.clipboard?.writeText(href).then(() => {
+      const prev = btn.textContent;
+      btn.textContent = 'Copied ✓';
+      btn.classList.add('gap-acp-copy-success');
+      setTimeout(() => {
+        btn.textContent = prev;
+        btn.classList.remove('gap-acp-copy-success');
+      }, 1200);
+    });
+  } catch {}
+  try {
+    navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+      kind: 'acp_deeplink_emitted',
+      target_kind: 'copy',
+      client_detected: !!navigator.clipboard,
+      ts: new Date().toISOString(),
+    }));
+  } catch {}
+});
+
+// PRODUCT-110: telemetry on the actual ACP link click (the editor handoff path).
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a.gap-acp-link');
+  if (!a) return;
+  try {
+    navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+      kind: 'acp_deeplink_emitted',
+      target_kind: a.dataset.acpTarget || 'unknown',
+      target_id: a.dataset.acpId || a.dataset.acpPr || a.dataset.acpBranch || '',
+      // We can't observe whether the browser actually had a handler — emit
+      // best-effort so the leaderboard sees "deeplink attempted" volume.
+      client_detected: 'unknown',
+      ts: new Date().toISOString(),
+    }));
+  } catch {}
+});
+
 // ── DashboardStream singleton (PRODUCT-099) ──────────────────────────────────
 // Frontend was polling /api/dashboard, /api/jobs, /api/fleet-status, /api/gap-queue
 // on 3 different setInterval timers (5/10/15s). Meanwhile the backend has been
@@ -664,6 +736,257 @@ class ChumpToolApprovalTray extends HTMLElement {
   }
 }
 customElements.define('chump-tool-approval-tray', ChumpToolApprovalTray);
+
+// ── <chump-first-run-wizard> (PRODUCT-108) ──────────────────────────────────
+// Inline golden-path runner that replaces the empty Dashboard for new
+// operators. Per docs/design/OPERATOR_CONSOLE_V2.md §first-run (archetype 1
+// — offline solo dev): until brain/heartbeat/repo/model are configured,
+// the NOW view shows this checklist instead of an empty dashboard.
+//
+// Each step polls its detection endpoint every 5s; the moment a step's
+// pre-conditions go green, it auto-checks. Operator can [Skip] any step.
+// When all 5 are done OR skipped, the wizard self-hides. State persists
+// via INFRA-1280 chumpPrefs (chump.firstrun.completed_steps,
+// chump.firstrun.dismissed). Re-accessible via Config → Setup at any
+// time (a follow-up sub-gap wires the Settings entry).
+//
+// Telemetry: kind=firstrun_step_complete {step, action: detected|clicked|skipped}
+// on every transition — lets us measure where new operators get stuck.
+const FIRSTRUN_STEPS = [
+  {
+    id: 'model',
+    title: 'LLM ready',
+    detail: 'Detect an LLM at /api/stack-status (ollama / mistral.rs / OpenAI-compat)',
+    detect: async () => {
+      try {
+        const r = await fetch('/api/stack-status'); if (!r.ok) return null;
+        const d = await r.json();
+        const inf = d.inference || {};
+        if (inf.configured && inf.models_reachable !== false) {
+          return { ok: true, label: d.llm_last_completion?.label || d.primary_backend || 'ready' };
+        }
+        return { ok: false, hint: 'No model reachable — install ollama + pull a model, or set OPENAI_API_BASE' };
+      } catch { return null; }
+    },
+    cta: { href: 'https://github.com/repairman29/chump#install', label: 'Install guide' },
+  },
+  {
+    id: 'repo',
+    title: 'Repo set',
+    detect: async () => {
+      try {
+        const r = await fetch('/api/repo/context'); if (!r.ok) return null;
+        const d = await r.json();
+        const repo = d.current_repo || d.repo || d.path;
+        return repo ? { ok: true, label: repo } : { ok: false, hint: 'Set CHUMP_REPO or cd into a git repo before running chump --web' };
+      } catch { return null; }
+    },
+    cta: { action: 'open-config', label: 'Choose repo' },
+  },
+  {
+    id: 'brain',
+    title: 'Brain initialized',
+    detect: async () => {
+      try {
+        const r = await fetch('/api/brain/graph/stats'); if (!r.ok) return null;
+        const d = await r.json();
+        const nodes = Number(d.nodes ?? d.node_count ?? 0);
+        return nodes > 0
+          ? { ok: true, label: `${nodes} nodes` }
+          : { ok: false, hint: 'Run `chump init` to populate the brain graph' };
+      } catch { return null; }
+    },
+    cta: { href: 'https://github.com/repairman29/chump#init', label: 'Init brain' },
+  },
+  {
+    id: 'autopilot',
+    title: 'Autopilot running',
+    detect: async () => {
+      try {
+        const r = await fetch('/api/autopilot/status'); if (!r.ok) return null;
+        const d = await r.json();
+        const running = d.running === true || d.status === 'running' || d.heartbeat_running === true;
+        return running
+          ? { ok: true, label: 'running' }
+          : { ok: false, hint: 'Optional — required for "ship products" loop, not for one-off claims' };
+      } catch { return null; }
+    },
+    cta: { action: 'start-autopilot', label: 'Start' },
+    optional: true,
+  },
+  {
+    id: 'first_gap',
+    title: 'First gap claimed',
+    detect: async () => {
+      try {
+        const r = await fetch('/api/gap-queue?status=claimed');
+        if (!r.ok) return null;
+        const d = await r.json();
+        return (d.count ?? 0) > 0
+          ? { ok: true, label: `${d.count} claimed` }
+          : { ok: false, hint: 'Browse the Queue to claim your first gap' };
+      } catch { return null; }
+    },
+    cta: { action: 'open-queue', label: 'Browse queue' },
+    optional: true,
+  },
+];
+
+class ChumpFirstRunWizard extends HTMLElement {
+  #pollTimer = null;
+  #state = {};
+
+  connectedCallback() {
+    // Hide-permanently flag — if dismissed, never render until chumpPrefs is reset.
+    if (window.chumpPrefs?.get('firstrun.dismissed', false) === true) {
+      this.hidden = true;
+      return;
+    }
+    this.#state = {
+      steps: FIRSTRUN_STEPS.map((s) => ({
+        id: s.id,
+        status: window.chumpPrefs?.get(`firstrun.step.${s.id}`, null) || 'pending', // 'pending' | 'detected' | 'skipped' | 'completed'
+        result: null,
+      })),
+    };
+    this.#render();
+    this.#detectAll();
+    this.#pollTimer = setInterval(() => this.#detectAll(), 5000);
+  }
+
+  disconnectedCallback() {
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+  }
+
+  #render() {
+    if (this.#isAllDone()) {
+      this.hidden = true;
+      return;
+    }
+    this.hidden = false;
+    const total = this.#state.steps.length;
+    const done = this.#state.steps.filter((s) => s.status === 'detected' || s.status === 'skipped' || s.status === 'completed').length;
+    this.innerHTML = `
+      <section class="frw-shell" role="region" aria-label="First-run setup">
+        <header class="frw-header">
+          <h2 class="frw-title">Welcome — let's get Chump ready.</h2>
+          <p class="frw-subtitle">${done} of ${total} steps complete. Each row auto-checks every 5 seconds.</p>
+          <button type="button" class="frw-dismiss" aria-label="Dismiss the setup wizard (re-open from Config → Setup)">Dismiss</button>
+        </header>
+        <ol class="frw-steps">
+          ${this.#state.steps.map((s, i) => this.#renderStep(s, FIRSTRUN_STEPS[i])).join('')}
+        </ol>
+      </section>
+    `;
+    this.querySelector('.frw-dismiss')?.addEventListener('click', () => this.#dismiss());
+    this.querySelectorAll('[data-step-skip]').forEach((b) => {
+      b.addEventListener('click', () => this.#skipStep(b.dataset.stepSkip));
+    });
+    this.querySelectorAll('[data-step-action]').forEach((b) => {
+      b.addEventListener('click', () => this.#stepAction(b.dataset.stepAction, b.dataset.actionKind));
+    });
+  }
+
+  #renderStep(state, def) {
+    const idx = FIRSTRUN_STEPS.findIndex((s) => s.id === state.id);
+    const isCurrent = state.status === 'pending' && this.#state.steps.slice(0, idx).every((s) => s.status !== 'pending');
+    const checkIcon = state.status === 'detected' ? '✓'
+                    : state.status === 'completed' ? '✓'
+                    : state.status === 'skipped' ? '·'
+                    : isCurrent ? '▸' : '○';
+    const checkClass = state.status === 'detected' || state.status === 'completed' ? 'frw-step-done'
+                    : state.status === 'skipped' ? 'frw-step-skipped'
+                    : isCurrent ? 'frw-step-current' : 'frw-step-pending';
+    const hint = state.result?.hint || def.detail || '';
+    const label = state.result?.label || '';
+    const showCta = state.status === 'pending';
+    const ctaHtml = showCta && def.cta ? this.#renderCta(def.cta, state.id) : '';
+    const skipHtml = showCta && def.optional ? `<button type="button" class="frw-skip" data-step-skip="${state.id}">Skip</button>` : '';
+    return `
+      <li class="frw-step ${checkClass}" role="listitem" aria-current="${isCurrent ? 'step' : 'false'}">
+        <span class="frw-step-icon" aria-hidden="true">${checkIcon}</span>
+        <div class="frw-step-body">
+          <p class="frw-step-title">${def.title}${label ? ` — <span class="frw-step-label">${label}</span>` : ''}</p>
+          ${state.status === 'pending' && hint ? `<p class="frw-step-hint">${hint}</p>` : ''}
+        </div>
+        <div class="frw-step-actions">${ctaHtml}${skipHtml}</div>
+      </li>
+    `;
+  }
+
+  #renderCta(cta, stepId) {
+    if (cta.href) {
+      return `<a class="frw-cta" href="${cta.href}" target="_blank" rel="noopener" data-step-action="${stepId}" data-action-kind="link">${cta.label}</a>`;
+    }
+    if (cta.action) {
+      return `<button type="button" class="frw-cta" data-step-action="${stepId}" data-action-kind="${cta.action}">${cta.label}</button>`;
+    }
+    return '';
+  }
+
+  async #detectAll() {
+    let dirty = false;
+    for (let i = 0; i < FIRSTRUN_STEPS.length; i++) {
+      const def = FIRSTRUN_STEPS[i];
+      const state = this.#state.steps[i];
+      if (state.status === 'detected' || state.status === 'completed' || state.status === 'skipped') continue;
+      const result = await def.detect();
+      state.result = result || null;
+      if (result?.ok === true && state.status !== 'detected') {
+        state.status = 'detected';
+        window.chumpPrefs?.set(`firstrun.step.${state.id}`, 'detected');
+        this.#emitTelemetry(state.id, 'detected');
+        dirty = true;
+      } else {
+        dirty = true; // hint may have changed even on no-op
+      }
+    }
+    if (dirty) this.#render();
+  }
+
+  #skipStep(stepId) {
+    const state = this.#state.steps.find((s) => s.id === stepId);
+    if (!state) return;
+    state.status = 'skipped';
+    window.chumpPrefs?.set(`firstrun.step.${stepId}`, 'skipped');
+    this.#emitTelemetry(stepId, 'skipped');
+    this.#render();
+  }
+
+  #stepAction(stepId, kind) {
+    this.#emitTelemetry(stepId, `clicked:${kind || 'link'}`);
+    if (kind === 'start-autopilot') {
+      fetch('/api/autopilot/start', { method: 'POST' }).then(() => this.#detectAll()).catch(() => {});
+    } else if (kind === 'open-queue') {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'agent' }));
+    } else if (kind === 'open-config') {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+    }
+    // 'link' kind — the <a> handles navigation natively.
+  }
+
+  #dismiss() {
+    window.chumpPrefs?.set('firstrun.dismissed', true);
+    this.#emitTelemetry('*', 'dismissed');
+    this.hidden = true;
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+  }
+
+  #isAllDone() {
+    return this.#state.steps.every((s) => s.status !== 'pending');
+  }
+
+  #emitTelemetry(stepId, action) {
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'firstrun_step_complete',
+        step: stepId, action,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+  }
+}
+customElements.define('chump-first-run-wizard', ChumpFirstRunWizard);
 
 // ── <chump-model-indicator> ───────────────────────────────────────────────────
 class ChumpModelIndicator extends HTMLElement {
@@ -2351,6 +2674,26 @@ class ChumpViewAgent extends HTMLElement {
       ? `<p class="gap-lease" title="${g.assigned_session}">⚙ claimed by ${this.#shortSession(g.assigned_session)}</p>`
       : '';
 
+    // PRODUCT-110: ACP deeplinks — competitive-differentiation surface vs CC.
+    // Render "Open in editor ↗" and "Copy" buttons on every gap row. The
+    // chump://acp/open?gap=X scheme requires a registered ACP client
+    // (Zed / JetBrains / etc) on the operator's machine — if absent, the
+    // browser silently ignores the click. The Copy button always works for
+    // sharing the link with a teammate or sibling tab.
+    const acpHref = ChumpAcpDeeplink.open({ gap: g.id });
+    const acpHtml = `
+      <a class="gap-acp-link" href="${acpHref}" data-acp-target="gap" data-acp-id="${g.id}"
+         title="Open ${g.id} in your registered ACP editor (Zed / JetBrains)"
+         aria-label="Open ${g.id} in editor">
+        Open in editor ↗
+      </a>
+      <button type="button" class="gap-acp-copy" data-acp-href="${acpHref}"
+              title="Copy ACP deeplink to clipboard"
+              aria-label="Copy ACP link for ${g.id}">
+        Copy link
+      </button>
+    `;
+
     // Embedded slots — placeholders the IntersectionObserver fills.
     // pr-card slot: only when closed_pr is set (a shipped gap surfaced via
     // ?status=shipped or via search).
@@ -2382,6 +2725,7 @@ class ChumpViewAgent extends HTMLElement {
         ${leaseHtml}
         ${g.preflight_error ? `<p class="gap-error">${g.preflight_error}</p>` : ''}
         ${actions ? `<div class="gap-actions">${actions}</div>` : ''}
+        <div class="gap-acp-row">${acpHtml}</div>
         ${timelineSlot}
         ${prCardSlot}
       </article>
@@ -2846,6 +3190,7 @@ const VIEWS = {
   judgment:      () => document.createElement('chump-view-judgment'),
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
+  attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
   memory:        () => document.createElement('chump-view-memory'),
   models:        () => document.createElement('chump-view-models'),
   settings:      () => document.createElement('chump-view-settings'),

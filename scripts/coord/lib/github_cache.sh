@@ -360,6 +360,54 @@ cache_lookup_pr_files() {
         --jq '[.[].filename] | join(",")' 2>/dev/null || echo ""
 }
 
+# INFRA-1082: cache_lookup_pr_by_branch <head_ref>
+#   Resolve branch name → PR number + raw JSON from cache.
+#   stdout: raw_payload_json (same shape as cache_lookup_pr)
+#   rc=0 on hit (cache or REST fallback), rc=2 on miss.
+#   Falls back to REST gh api if the cache has no row for this branch.
+#   Used by bot-merge.sh to replace `gh pr view "$BRANCH"` lookups.
+cache_lookup_pr_by_branch() {
+    local head_ref="${1:?cache_lookup_pr_by_branch <head_ref>}"
+    local db; db="$(_cache_db_path)"
+    local amb; amb="$(_cache_ambient_path)"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    if [[ ! -f "$db" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_lookup_pr_by_branch","target":"%s","reason":"db_not_found"}\n' \
+            "$ts" "$head_ref" >> "$amb" 2>/dev/null || true
+        return 2
+    fi
+    # Escape single-quotes in branch name for SQL
+    local esc_ref="${head_ref//\'/\'\'}"
+    local row age
+    row="$(sqlite3 "$db" \
+        "SELECT number, raw_payload_json, \
+                CAST((strftime('%s','now') - strftime('%s', fetched_at_local)) AS INTEGER) AS age \
+         FROM pr_state WHERE head_ref = '${esc_ref}' AND merged_at IS NULL \
+         ORDER BY number DESC LIMIT 1" 2>/dev/null || true)"
+    if [[ -z "$row" ]]; then
+        printf '{"ts":"%s","kind":"cache_miss","helper":"cache_lookup_pr_by_branch","target":"%s","reason":"not_found"}\n' \
+            "$ts" "$head_ref" >> "$amb" 2>/dev/null || true
+        return 2
+    fi
+    # sqlite returns "number|json|age" with default | separator
+    age="${row##*|}"
+    local rest="${row%|*}"
+    local payload="${rest#*|}"
+    local number="${rest%%|*}"
+    local ttl="${CHUMP_CACHE_TTL_S:-60}"
+    if [[ "$age" =~ ^[0-9]+$ ]] && [[ "$age" -lt "$ttl" ]]; then
+        printf '{"ts":"%s","kind":"cache_hit","helper":"cache_lookup_pr_by_branch","target":"%s","pr":%s,"age_s":%s}\n' \
+            "$ts" "$head_ref" "$number" "$age" >> "$amb" 2>/dev/null || true
+        printf '%s' "$payload"
+        return 0
+    fi
+    # Stale: re-fetch by number (we know it now)
+    printf '{"ts":"%s","kind":"cache_miss","helper":"cache_lookup_pr_by_branch","target":"%s","pr":%s,"reason":"stale","age_s":%s}\n' \
+        "$ts" "$head_ref" "$number" "$age" >> "$amb" 2>/dev/null || true
+    _cache_fetch_and_store "$number"
+    return 0
+}
+
 # INFRA-1107: cache_lookup_checks <head_sha>
 #   stdout: tab-separated lines `<name>\t<status>\t<conclusion>` per cached
 #           check_run for the given head SHA. Empty on miss.
