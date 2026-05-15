@@ -622,6 +622,12 @@ events:
     trigger: workspace-file landing → open-PR rebase sweep
     consumers: [audit-log]
 
+  - kind: cascade_rebase_skipped_duplicate
+    emitter: scripts/coord/queue-driver.sh (INFRA-1310)
+    trigger: worker detected hot-file commit but another worker already holds the per-SHA debounce lock
+    consumers: [audit-log]
+    fields_required: [ts, kind, sha, triggered_by]
+
   - kind: dirty_pr_auto_resolved
     emitter: scripts/coord/queue-driver.sh (INFRA-1137)
     trigger: DIRTY PR rescued by rebase + .gitattributes merge driver resolution
