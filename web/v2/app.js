@@ -2939,6 +2939,7 @@ const VIEWS = {
   judgment:      () => document.createElement('chump-view-judgment'),
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
+  attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
   memory:        () => document.createElement('chump-view-memory'),
   models:        () => document.createElement('chump-view-models'),
   settings:      () => document.createElement('chump-view-settings'),
