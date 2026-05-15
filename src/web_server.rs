@@ -4192,6 +4192,59 @@ async fn handle_ambient_recent(
     ))
 }
 
+/// POST /api/ambient/emit — append a synthetic event from a PWA client to ambient.jsonl.
+///
+/// Accepts any JSON object that contains a `kind` string field.  The server stamps the
+/// current UTC time as `ts` (overwriting any client-supplied value to prevent skew) and
+/// tags the event with `source:"pwa"` so fleet tooling can distinguish PWA-emitted events
+/// from server-generated ones.  Returns 200 `{"ok":true}` on success or 400/401 on error.
+///
+/// Auth-gated the same way as the other `/api/ambient/*` endpoints.  INFRA-1333.
+async fn handle_ambient_emit(
+    headers: HeaderMap,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Payload must be a JSON object.
+    let mut obj: serde_json::Map<String, serde_json::Value> = match payload {
+        serde_json::Value::Object(m) => m,
+        _ => return Err(StatusCode::BAD_REQUEST),
+    };
+
+    // Require a non-empty `kind` string.
+    match obj.get("kind") {
+        Some(serde_json::Value::String(k)) if !k.is_empty() => {}
+        _ => return Err(StatusCode::BAD_REQUEST),
+    }
+
+    // Stamp server-side timestamp and source tag to prevent client clock skew / spoofing.
+    obj.insert(
+        "ts".to_string(),
+        serde_json::Value::String(
+            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        ),
+    );
+    obj.entry("source".to_string())
+        .or_insert_with(|| serde_json::Value::String("pwa".to_string()));
+
+    let line = serde_json::to_string(&serde_json::Value::Object(obj))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Append to ambient.jsonl best-effort; ignore write errors (file may not exist in tests).
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log_path())
+    {
+        let _ = writeln!(f, "{}", line);
+    }
+
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
 /// GET /api/ambient/stream — SSE endpoint that tails ambient.jsonl and emits new events.
 /// Polls every 500ms for new lines. Sends existing last-50 events on connect, then live tail.
 /// PRODUCT-091.
@@ -6325,6 +6378,7 @@ fn build_api_router() -> Router {
         )
         .route("/api/ambient/stream", get(handle_ambient_stream))
         .route("/api/ambient/recent", get(handle_ambient_recent))
+        .route("/api/ambient/emit", post(handle_ambient_emit))
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
         .route("/api/health/pillars", get(handle_health_pillars))
