@@ -80,7 +80,19 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS pr_state_behind_armed
             ON pr_state(mergeable_state, auto_merge_enabled);
-
+        """
+    )
+    # INFRA-1368: add merge_state_status column (idempotent — ignore duplicate-column error).
+    # Stores the webhook pull_request.mergeable_state value so consumers can
+    # look it up from the column rather than parsing the raw_payload_json blob
+    # (which has inconsistent shape between webhook and REST sources).
+    try:
+        conn.execute("ALTER TABLE pr_state ADD COLUMN merge_state_status TEXT")
+        conn.commit()
+    except Exception:
+        pass  # column already exists — safe to ignore
+    conn.executescript(
+        """
         -- INFRA-1107: per (head_sha, check_name) CI status, populated by
         -- check_suite.completed + workflow_run.completed webhook events.
         -- Unlocks bot-merge's per-PR check_runs polling.
@@ -155,13 +167,19 @@ def _verify_signature(secret: str, payload: bytes, header: str | None) -> bool:
 def _upsert_pr(conn: sqlite3.Connection, pr: dict, payload: dict) -> None:
     """Upsert a pull_request row into pr_state."""
     now = _now_iso()
+    # INFRA-1368: store merge_state_status in its own column so the gh-shim can
+    # look it up directly without parsing raw_payload_json (whose format differs
+    # between webhook and REST sources). pr.get("mergeable_state") is the correct
+    # path inside the pull_request sub-object of a GitHub pull_request webhook.
+    merge_state_status = pr.get("mergeable_state")
     conn.execute(
         """
         INSERT INTO pr_state (
             number, head_ref, head_sha, base_ref, base_sha,
             mergeable_state, auto_merge_enabled, draft, merged_at,
-            title, user_login, updated_at_api, fetched_at_local, raw_payload_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            title, user_login, updated_at_api, fetched_at_local, raw_payload_json,
+            merge_state_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(number) DO UPDATE SET
             head_ref           = excluded.head_ref,
             head_sha           = excluded.head_sha,
@@ -175,7 +193,8 @@ def _upsert_pr(conn: sqlite3.Connection, pr: dict, payload: dict) -> None:
             user_login         = excluded.user_login,
             updated_at_api     = excluded.updated_at_api,
             fetched_at_local   = excluded.fetched_at_local,
-            raw_payload_json   = excluded.raw_payload_json
+            raw_payload_json   = excluded.raw_payload_json,
+            merge_state_status = excluded.merge_state_status
         """,
         (
             pr.get("number"),
@@ -192,6 +211,7 @@ def _upsert_pr(conn: sqlite3.Connection, pr: dict, payload: dict) -> None:
             pr.get("updated_at") or _now_iso(),
             now,
             json.dumps(payload),
+            merge_state_status,
         ),
     )
     conn.commit()

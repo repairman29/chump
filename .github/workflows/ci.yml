@@ -1134,6 +1134,9 @@ jobs:
       - name: gh-shim script attribution deep walk (CREDIBLE-065)
         run: bash scripts/ci/test-gh-shim-script-attribution.sh
 
+      - name: merge_state_status column — webhook write + shim read + migration (INFRA-1368)
+        run: bash scripts/ci/test-cache-mergestatestatus.sh
+
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
 # Why: primary correctness + style fence before anything lands on main.
