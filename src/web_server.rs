@@ -4062,6 +4062,67 @@ async fn handle_ambient_recent(
     ))
 }
 
+/// POST /api/ambient/emit — INFRA-1333
+///
+/// Accepts a JSON body `{kind, ...extra_fields}` and appends a synthetic event
+/// to ambient.jsonl. Tolerates both `sendBeacon` (text/plain with JSON body) and
+/// `fetch` (application/json) payloads — the body is parsed as raw bytes regardless
+/// of Content-Type.
+///
+/// Auth-gated like other /api/ambient/* endpoints.
+/// Returns 200 OK on success, 400 on bad/missing `kind`, 401 on auth failure,
+/// 500 if the write fails.
+async fn handle_ambient_emit(
+    headers: HeaderMap,
+    bytes: axum::body::Bytes,
+) -> Result<StatusCode, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    // Parse — sendBeacon sends text/plain; fetch sends application/json.
+    // We parse from raw bytes to accept both without content-type inspection.
+    let payload: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    let kind = payload
+        .get("kind")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .ok_or(StatusCode::BAD_REQUEST)?
+        .to_string();
+
+    // Reject oversized / control-char-bearing kind strings.
+    if kind.len() > 64 || kind.chars().any(|c| c == '"' || c == '\\' || c.is_control()) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let mut args = crate::ambient_emit::EmitArgs {
+        kind,
+        source: Some("pwa".to_string()),
+        harness: Some("pwa".to_string()),
+        ..Default::default()
+    };
+
+    // Pass all other fields through as string-valued extra fields.
+    if let Some(obj) = payload.as_object() {
+        for (k, v) in obj {
+            if k == "kind" {
+                continue;
+            }
+            // Coerce non-string values to their JSON representation.
+            let val = if let Some(s) = v.as_str() {
+                s.to_string()
+            } else {
+                v.to_string()
+            };
+            args.fields.push((k.clone(), val));
+        }
+    }
+
+    crate::ambient_emit::emit(&args).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(StatusCode::OK)
+}
+
 /// GET /api/ambient/stream — SSE endpoint that tails ambient.jsonl and emits new events.
 /// Polls every 500ms for new lines. Sends existing last-50 events on connect, then live tail.
 /// PRODUCT-091.
@@ -6168,6 +6229,7 @@ fn build_api_router() -> Router {
         )
         .route("/api/ambient/stream", get(handle_ambient_stream))
         .route("/api/ambient/recent", get(handle_ambient_recent))
+        .route("/api/ambient/emit", post(handle_ambient_emit))
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
         .route("/api/health/pillars", get(handle_health_pillars))
