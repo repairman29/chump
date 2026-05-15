@@ -32,6 +32,7 @@ export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
 # INFRA-379: heal a wedged chump binary before any CLI call (see
 # scripts/lib/chump-preflight.sh). Silent no-op on healthy binaries.
 # shellcheck source=../lib/chump-preflight.sh
+# shellcheck disable=SC1091  # dynamic path; source target verified above
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chump-preflight.sh"
 
 # ── Escalation mode (INFRA-AGENT-ESCALATION) ─────────────────────────────────
@@ -188,6 +189,7 @@ fi
 # repo. REPO_ROOT here is the local worktree; LOCK_DIR (set by repo-paths.sh)
 # is the main-repo .chump-locks/.
 # shellcheck source=../lib/repo-paths.sh
+# shellcheck disable=SC1091  # dynamic path; source target verified above
 source "$(dirname "$0")/../lib/repo-paths.sh"
 cd "$REPO_ROOT"
 
@@ -283,6 +285,7 @@ git add -- "${FILES[@]}"
 # recently edited any of the staged paths. Advisory only here (the pre-commit
 # hook's lease-collision guard is the hard gate); this surfaces near-misses
 # the lease layer can't see (e.g. a sibling without a path-lease).
+# shellcheck disable=SC2034  # reserved for future caller-relative path; glance currently uses REPO_ROOT
 SCRIPT_DIR_GLANCE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -x "$REPO_ROOT/scripts/dev/chump-ambient-glance.sh" ]] && [[ "${CHUMP_AMBIENT_GLANCE:-1}" != "0" ]]; then
     _STAGED_CSV="$(IFS=,; printf '%s' "${FILES[*]}")"
@@ -495,6 +498,34 @@ if [[ "${CHUMP_AUTO_LEASE_FROM_MSG:-1}" != "0" ]]; then
         fi
     fi
 fi
+
+# ── INFRA-1367: stamp COMMIT_EDITMSG before pre-commit hooks run ──────────────
+# pre-commit-rust-first.sh (and other hooks) read Rust-First-Bypass: from
+# $(git rev-parse --git-common-dir)/COMMIT_EDITMSG. However, git only writes
+# that file AFTER pre-commit hooks complete — so inline -m messages are never
+# visible to the hook, silently breaking bypass trailers.
+#
+# Fix: write the inline message ourselves before invoking git. The gate uses
+# --git-common-dir so we do too (linked worktrees share the common gitdir and
+# git writes COMMIT_EDITMSG there, not to the per-worktree gitdir).
+#
+# Only -m/--message is handled here; -F/--file paths are already on disk and
+# the hook can read them via the path argument. -C/--amend/--reuse-message
+# reference an existing commit — git populates COMMIT_EDITMSG from the
+# referenced commit before running hooks, so no action is needed.
+_GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"
+_next_is_inline_msg=0
+for _ga in "${GIT_ARGS[@]}"; do
+    if [[ $_next_is_inline_msg -eq 1 ]]; then
+        printf '%s\n' "$_ga" > "$_GIT_COMMON_DIR/COMMIT_EDITMSG"
+        _next_is_inline_msg=0
+        break
+    fi
+    case "$_ga" in
+        -m|--message) _next_is_inline_msg=1 ;;
+    esac
+done
+unset _next_is_inline_msg _ga _GIT_COMMON_DIR
 
 # Commit with the passed-through git args.
 # Note: using `git commit` (not `exec`) so that FD 200 (the index mutex) is
