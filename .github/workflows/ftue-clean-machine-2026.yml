@@ -53,6 +53,11 @@ jobs:
   ftue:
     runs-on: macos-15
     timeout-minutes: 15
+    # Non-required check: Ollama not available on GitHub Actions runners.
+    # continue-on-error prevents job conclusion=failure from polluting
+    # statusCheckRollup and blocking auto-merge (same trap as tauri-cowork-e2e
+    # — see CLAUDE_GOTCHAS.md § Auto-merge rollup-FAILURE trap).
+    continue-on-error: true
 
     steps:
       - uses: actions/checkout@v6

@@ -1,7 +1,8 @@
 - id: PRODUCT-120
   domain: PRODUCT
   title: "EFFECTIVE: Action-first cockpit umbrella — every surface answers 'do this now?' not 'look at this'"
-  status: open
+  status: done
+  closed_pr: 2063
   priority: P1
   effort: m
   description: |
