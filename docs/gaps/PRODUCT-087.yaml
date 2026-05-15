@@ -10,17 +10,20 @@
     This gap is the PWA-side of the universalization: a wizard that
     sets up Ollama + chooses a model + verifies chump can run without
     Anthropic credentials.
-
+    
     DEPENDS ON: EFFECTIVE-017 (WorkBackend trait) + EFFECTIVE-018
     (pluggable auth) — both filed but not shipped. P2 until they land.
   acceptance_criteria:
-    - "New PWA view /onboard/local launched from PRODUCT-082 welcome flow when user picks 'I want to use local LLMs only'"
+    - New PWA view /onboard/local launched from PRODUCT-082 welcome flow when user picks 'I want to use local LLMs only'
     - "Step 1: detect Ollama at default http://localhost:11434/api/tags; if absent, show install instructions (`brew install ollama` for mac, `curl -fsSL https://ollama.com/install.sh | sh` for linux) + 'Probe again' button"
     - "Step 2: list installed Ollama models (`ollama list`); if empty, suggest `ollama pull qwen2.5:7b` as a tested-stable default per memory project_model_dogfood.md"
     - "Step 3: pick model from list (default = qwen2.5:7b if present, else first available); set CHUMP_WORK_BACKEND=ollama + OLLAMA_DEFAULT_MODEL in .chump/config.toml"
     - "Step 4: verify by running a smoke gap (the same fixture from CREDIBLE-046 'chump without Anthropic' CI gate); assert worker spawned + commit produced"
     - "Step 5: confirmation page — 'You're set up. Anthropic credentials NOT required. Your fleet runs entirely locally.'"
-    - "Backend /api/onboard/local/probe (step 1), /api/onboard/local/models (step 2), /api/onboard/local/configure (step 3), /api/onboard/local/verify (step 4)"
+    - Backend /api/onboard/local/probe (step 1), /api/onboard/local/models (step 2), /api/onboard/local/configure (step 3), /api/onboard/local/verify (step 4)
     - "scripts/ci/test-pwa-local-onboard.sh: fixture Ollama mock; walk all 5 steps; assert config.toml written correctly + smoke gap completes"
-    - "Documented in docs/process/EXTERNAL_REPO_USAGE.md (per DOC-022 when shipped) as the canonical local-only setup path"
-    - "Pairs with EFFECTIVE-017/018 (WorkBackend + pluggable auth) — onboarding is the UI; those are the runtime. Cannot meaningfully ship this until they ship."
+    - Documented in docs/process/EXTERNAL_REPO_USAGE.md (per DOC-022 when shipped) as the canonical local-only setup path
+    - Pairs with EFFECTIVE-017/018 (WorkBackend + pluggable auth) — onboarding is the UI; those are the runtime. Cannot meaningfully ship this until they ship.
+  notes: |
+    [2026-05-15T04:28:26Z] PWA phase: 4 (Demo Mode) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+

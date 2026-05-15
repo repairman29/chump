@@ -2,11 +2,13 @@
   domain: INFRA
   title: "EFFECTIVE: PWA top-bar overlap on narrow viewport — cost-meter + pillars + heartbeat collide at <=640px"
   status: open
-  priority: P2
+  priority: P3
   effort: m
   acceptance_criteria:
     - "TODO: what events emitted on success/failure/timeout"
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  notes: |
+    [2026-05-15T04:28:26Z] PWA phase: 4 (Demo Mode); demoted P2→P3 inside-phase per PRODUCT-121 — polish, not pitch-blocking on 1440px viewports
 

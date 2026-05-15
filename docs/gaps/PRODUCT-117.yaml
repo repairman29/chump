@@ -16,4 +16,6 @@
     - HTML-escapes event note/message field; safe for arbitrary ambient payloads
     - Wired in app.js VIEWS factory as 'attention'; loads via operator-attention.js script tag
     - Test scripts/ci/test-pwa-operator-attention.sh 13 assertions all pass
+  notes: |
+    [2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
 

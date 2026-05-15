@@ -4,11 +4,14 @@
   status: open
   priority: P2
   effort: s
-  depends_on: [PRODUCT-059, PRODUCT-043]
   acceptance_criteria:
-    - "Orchestrator refuses to dispatch when active leases >= 6 (hard cap)"
-    - "Warning shown in PWA when active leases >= 4 (soft cap)"
-    - "Caps configurable via CHUMP_FLEET_SOFT_CAP / CHUMP_FLEET_HARD_CAP env vars"
+    - Orchestrator refuses to dispatch when active leases >= 6 (hard cap)
+    - Warning shown in PWA when active leases >= 4 (soft cap)
+    - Caps configurable via CHUMP_FLEET_SOFT_CAP / CHUMP_FLEET_HARD_CAP env vars
     - "Decision channel: agents emit kind=decision_pending to ambient.jsonl when scope expands"
-    - "PWA /agents page shows pending-decision badge; click opens a quickpick for the agent"
-    - "Human response routed back to agent via .chump-locks/<session>/decision-response.json"
+    - PWA /agents page shows pending-decision badge; click opens a quickpick for the agent
+    - Human response routed back to agent via .chump-locks/<session>/decision-response.json
+  depends_on: [PRODUCT-059, PRODUCT-043]
+  notes: |
+    [2026-05-15T04:28:26Z] PWA phase: 3 (Fleet Grading) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+
