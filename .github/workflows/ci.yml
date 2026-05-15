@@ -28,6 +28,12 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5  # path filter only; <30s in practice
+    # INFRA-1348: dorny/paths-filter can fail transiently (GitHub runner issue,
+    # network blip). A FAILURE here flips rollup state and blocks auto-merge
+    # even though all correctness gates (test, audit, ACP) passed. COE makes
+    # the conclusion "neutral" on failure; downstream jobs see null outputs
+    # and treat all path-filters as false (= skip) which is safe.
+    continue-on-error: true
     outputs:
       code: ${{ steps.filter.outputs.code }}
       e2e: ${{ steps.filter.outputs.e2e }}
@@ -1050,6 +1056,11 @@ jobs:
     needs: [e2e-pwa, e2e-battle-sim, e2e-golden-path]
     if: always()
     runs-on: ubuntu-latest
+    # INFRA-1348: e2e shards all have continue-on-error: true, so test-e2e
+    # normally always succeeds. But runner failures or script errors in this
+    # aggregator itself could still contribute FAILURE to rollup state, blocking
+    # auto-merge on PRs where all required checks (test, audit, ACP) passed.
+    continue-on-error: true
     steps:
       - name: Verify all e2e shards passed
         run: |
