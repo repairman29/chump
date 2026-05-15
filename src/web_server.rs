@@ -886,6 +886,136 @@ async fn handle_policy_override_register(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+/// PRODUCT-129: POST /api/lease/release-expired — scan .chump-locks/*.json
+/// for past-TTL leases and remove them. Returns count + ids freed.
+/// Powers the cockpit Lock-contention card's [Release expired leases] button.
+async fn handle_lease_release_expired(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut released: Vec<String> = Vec::new();
+    let mut scanned: u32 = 0;
+    let entries = match std::fs::read_dir(&lock_dir) {
+        Ok(d) => d,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("read .chump-locks: {e}"),
+            ));
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        // Skip subdirectories like inbox/ — we only care about top-level
+        // session lease files.
+        if !path.is_file() {
+            continue;
+        }
+        scanned += 1;
+        let Ok(body) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+            continue;
+        };
+        // Parse expires_at — accept ISO8601 string OR unix-seconds int.
+        let expired = match val.get("expires_at") {
+            Some(serde_json::Value::String(s)) => {
+                // ISO8601 → unix seconds via chrono (avoids reaching into
+                // atomic_claim.rs's private parse_iso8601).
+                match chrono::DateTime::parse_from_rfc3339(s) {
+                    Ok(dt) => (dt.timestamp() as u64) <= now_secs,
+                    Err(_) => false,
+                }
+            }
+            Some(serde_json::Value::Number(n)) => {
+                n.as_u64().map(|s| s <= now_secs).unwrap_or(false)
+            }
+            _ => false, // no expiry → not expired
+        };
+        if !expired {
+            continue;
+        }
+        let session_id = val
+            .get("session_id")
+            .or_else(|| val.get("session"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                path.file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "?".to_string())
+            });
+        if std::fs::remove_file(&path).is_ok() {
+            released.push(session_id);
+        }
+    }
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "scanned": scanned,
+        "released_count": released.len(),
+        "released_ids": released,
+    })))
+}
+
+/// PRODUCT-127: POST /api/gap/dep-clean — strip depends_on entries pointing
+/// at done gaps. Powers cockpit Gap-store drift card's [Repair drift] button.
+async fn handle_gap_dep_clean(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    // Shell out to the existing CLI for now — keeps behavior consistent with
+    // `chump gap dep-clean --apply` and avoids re-implementing the dep walker.
+    let repo_root = crate::repo_path::runtime_base();
+    let chump_bin = std::env::current_exe()
+        .ok()
+        .unwrap_or_else(|| std::path::PathBuf::from("chump"));
+    let output = match std::process::Command::new(&chump_bin)
+        .args(["gap", "dep-clean", "--apply", "--json"])
+        .current_dir(&repo_root)
+        .output()
+    {
+        Ok(o) => o,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("invoke gap dep-clean: {e}"),
+            ));
+        }
+    };
+    if !output.status.success() {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!(
+                "dep-clean exit {}: {}",
+                output.status.code().unwrap_or(-1),
+                String::from_utf8_lossy(&output.stderr)
+            ),
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let parsed: serde_json::Value =
+        serde_json::from_str(&stdout).unwrap_or_else(|_| serde_json::json!({ "raw": stdout }));
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "result": parsed,
+    })))
+}
+
 #[derive(serde::Deserialize)]
 struct SessionsListQuery {
     #[serde(default)]
@@ -4587,27 +4717,34 @@ async fn handle_gap_queue(
             .then(b.created_at.cmp(&a.created_at))
     });
 
+    // INFRA-1277: batch-fetch all active leases once (1 query) instead of
+    // calling preflight() per row (2 queries × N rows).  The list view only
+    // needs to distinguish claimable / blocked-by-lease / blocked-by-status;
+    // the actual claim path still runs the full preflight before locking.
+    let active_leases: std::collections::HashMap<String, String> =
+        gap_store_inst.active_leases().unwrap_or_default();
+
     let mut result_gaps = Vec::with_capacity(sorted.len());
     for gap in sorted {
-        let preflight_result = gap_store_inst.preflight(&gap.id);
-        let (preflight_status, preflight_error, assigned_session) = match preflight_result {
-            Ok(gap_store::PreflightResult::Available) => ("claimable".to_string(), None, None),
-            Ok(gap_store::PreflightResult::Claimed(sid)) => (
-                "blocked".to_string(),
-                Some(format!("Already claimed by session {}", sid)),
-                Some(sid),
-            ),
-            Ok(gap_store::PreflightResult::Done) => (
+        // Derive preflight_status entirely in memory — no per-row DB round-trip.
+        let (preflight_status, preflight_error, assigned_session): (
+            String,
+            Option<String>,
+            Option<String>,
+        ) = match gap.status.as_str() {
+            "done" | "shipped" => (
                 "blocked".to_string(),
                 Some("Gap is already closed/done".to_string()),
                 None,
             ),
-            Ok(gap_store::PreflightResult::NotFound) => (
-                "error".to_string(),
-                Some("Gap not found in registry".to_string()),
-                None,
-            ),
-            Err(e) => ("error".to_string(), Some(e.to_string()), None),
+            _ => match active_leases.get(&gap.id) {
+                Some(sid) => (
+                    "blocked".to_string(),
+                    Some(format!("Already claimed by session {}", sid)),
+                    Some(sid.clone()),
+                ),
+                None => ("claimable".to_string(), None, None),
+            },
         };
 
         let depends_on = gap_store::parse_json_ac_list(&gap.depends_on);
@@ -4656,15 +4793,35 @@ async fn handle_gap_queue(
     let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
         kind: "gap_queue_request".to_string(),
         fields: vec![
-            ("filter".to_string(), filter_summary),
+            ("filter".to_string(), filter_summary.clone()),
             ("count".to_string(), result_gaps.len().to_string()),
             ("ms".to_string(), elapsed_ms.to_string()),
         ],
         ..Default::default()
     });
 
+    // INFRA-1277: SLO signal — emit slow-path event when >500ms so the
+    // ambient stream surfaces latency regressions before operators notice.
+    if elapsed_ms > 500 {
+        tracing::warn!(
+            "gap-queue: SLOW {}ms for {} gaps (filter={})",
+            elapsed_ms,
+            result_gaps.len(),
+            filter_summary
+        );
+        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+            kind: "api_gap_queue_slow".to_string(),
+            fields: vec![
+                ("ms".to_string(), elapsed_ms.to_string()),
+                ("count".to_string(), result_gaps.len().to_string()),
+                ("filter".to_string(), filter_summary),
+            ],
+            ..Default::default()
+        });
+    }
+
     tracing::info!(
-        "gap-queue: {} gaps, {} claimable, {}ms (INFRA-1197 fat shape)",
+        "gap-queue: {} gaps, {} claimable, {}ms (INFRA-1277 batch-preflight)",
         result_gaps.len(),
         claimable_count,
         elapsed_ms
@@ -6181,6 +6338,13 @@ fn build_api_router() -> Router {
         .route("/api/gap/{id}/stream", get(handle_gap_workflow_stream))
         .route("/api/gap/work/{id}", post(handle_gap_work))
         .route("/api/gap/work/{id}/retry", post(handle_gap_work_retry))
+        // PRODUCT-127: cockpit Gap-store drift card [Repair drift] action.
+        .route("/api/gap/dep-clean", post(handle_gap_dep_clean))
+        // PRODUCT-129: cockpit Lock-contention card [Release expired leases].
+        .route(
+            "/api/lease/release-expired",
+            post(handle_lease_release_expired),
+        )
         .route("/api/logs/{request_id}", get(handle_get_logs))
         // EFFECTIVE-012: serve OpenAPI spec for client discovery.
         .route("/api/docs", get(handle_api_docs))

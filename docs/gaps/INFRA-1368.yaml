@@ -1,0 +1,22 @@
+- id: INFRA-1368
+  domain: INFRA
+  title: "ZERO-WASTE: materialize mergeStateStatus column in .chump/github_cache.db pr_state — webhook receiver writes from pull_request payload, gh-shim/pr-view-translate.py serves it from cache (kills the dominant cache_miss source on every fleet poll)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Investigated 2026-05-15: smee.io webhook tunnel + receiver are healthy and 71 PRs are cached fresh-seconds, but last-1000-ambient shows 3 cache_miss / 1 cache_hit with ALL misses being mergeStateStatus lookups. The dominant fleet query (BLOCKED scan in bot-merge, queue-driver, pr-rescue) takes a cache miss every time and falls back to direct gh REST — defeating most of the smee architecture. Pure infra-on-disk that the pipeline already exists for; just a missing column + write path + read path. Small surface (one column, three Python edits). Pairs with broader INFRA-1318 (Liaison Phase 2) but is the 80% win without the deps.
+  acceptance_criteria:
+    - Add merge_state_status TEXT column to pr_state in .chump/github_cache.db (nullable; schema migration in scripts/ops/github-webhook-receiver.py via ALTER TABLE IF NOT EXISTS pattern)
+    - github-webhook-receiver.py on pull_request webhook event writes mergeStateStatus from payload (BLOCKED
+    - CLEAN
+    - DIRTY
+    - UNKNOWN
+    - UNSTABLE
+    - BEHIND
+    - DRAFT) into the new column
+    - scripts/coord/lib/gh-shim/pr-view-translate.py recognizes mergeStateStatus in the requested fields and serves from cache when present, falls back to live gh only when null (cold start before first webhook)
+    - scripts/ops/github-cache-reconcile.sh backfill pass populates the column for existing rows using one GraphQL call per PR (background-criticality, throttled)
+    - "CI test scripts/ci/test-cache-mergestatestatus.sh: stub webhook delivery; assert column written; gh-shim invocation serves from cache (cache_hit emit)"
+    - "Telemetry: existing cache_hit/cache_miss kinds already cover this; the shipping signal is the fleet-wide cache_miss rate drop visible in last-hour ambient histogram"
+
