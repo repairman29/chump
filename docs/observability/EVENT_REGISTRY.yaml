@@ -2652,3 +2652,73 @@ events:
     trigger: one or more assertions in the claim→commit→ship integration test failed
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, fail_count, pass_count, elapsed_s]
+
+  # ── INFRA-1324: network-sync-daemon.sh (OFFLINE_FIRST Phase 3) ──────────────
+  - kind: network_sync_cycle_start
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: daemon iteration begins
+    consumers: [fleet-brief, offline-monitor]
+    fields_required: [ts, kind, cycle_number]
+
+  - kind: network_sync_network_available
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: GitHub API becomes reachable (state-change event, not polled on every cycle)
+    consumers: [fleet-brief, offline-monitor]
+    fields_required: [ts, kind]
+
+  - kind: network_sync_network_unavailable
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: GitHub API becomes unreachable (state-change event, not polled on every cycle)
+    consumers: [fleet-brief, offline-monitor]
+    fields_required: [ts, kind]
+
+  - kind: pending_push_flushed
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: pending-push queue entry successfully pushed to origin
+    consumers: [fleet-brief, offline-monitor, api-cost-leaderboard]
+    fields_required: [ts, kind, branch, sha, retry_count]
+
+  - kind: pending_push_failed_transient
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: pending-push failed with transient error (rate-limit, timeout, 5xx); will retry next cycle
+    consumers: [fleet-brief, offline-monitor, watchdog]
+    fields_required: [ts, kind, branch, error_class, retry_count, error]
+
+  - kind: pending_push_failed_permanent
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: pending-push failed with permanent error (auth, 404, permission); entry skipped after max retries
+    consumers: [fleet-brief, offline-monitor, watchdog]
+    fields_required: [ts, kind, branch, error_class, error]
+
+  - kind: network_sync_cache_refresh_start
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: daemon begins GitHub cache refresh (Liaison polling, INFRA-1317/1318)
+    consumers: [fleet-brief, offline-monitor]
+    fields_required: [ts, kind, phase]
+
+  - kind: network_sync_cache_refresh_done
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: daemon completes GitHub cache refresh or skips due to freshness
+    consumers: [fleet-brief, offline-monitor, api-cost-leaderboard]
+    fields_required: [ts, kind, entries_updated, api_calls, elapsed_s]
+
+  - kind: network_sync_cache_refresh_skipped
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: daemon skips cache refresh because cache is fresh enough (age < CHUMP_SYNC_CACHE_MIN_AGE_S)
+    consumers: [fleet-brief, offline-monitor]
+    fields_required: [ts, kind, reason, age_s]
+
+  - kind: network_sync_cycle_done
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: daemon cycle completes; emits cycle metrics
+    consumers: [fleet-brief, offline-monitor]
+    fields_required: [ts, kind, cycle_number, network_available, entries_processed, entries_failed, elapsed_s]
+
+  - kind: network_sync_cost
+    emitter: scripts/coord/network-sync-daemon.sh (INFRA-1324)
+    trigger: daemon emits per-cycle cost tracking (API calls, cost category)
+    consumers: [fleet-brief, api-cost-leaderboard, offline-monitor]
+    fields_required: [ts, kind, cache_api_calls, git_push_attempts, cost_category]
+    docs: |
+      cost_category is "low" (<5 API calls), "medium" (5-20), or "high" (>20).
+      Helps operators track GitHub API usage during offline→online transitions.

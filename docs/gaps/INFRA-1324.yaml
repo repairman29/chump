@@ -5,8 +5,10 @@
   priority: P2
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Pending-push queue processing: daemon reads `.chump-locks/pending-push.jsonl` (JSONL: {branch, timestamp}), attempts `git push origin <branch> --force-with-lease` for each, removes successfully-pushed entries."
+    - "Network availability check: `_network_available()` uses fast check (`curl -sf --max-time 3 https://api.github.com/zen`), emits state-change events (unavailable→available transition) to ambient.jsonl, not polled every check."
+    - "Event emission: `network_sync_cycle_start`, `network_sync_network_{available,unavailable}`, `pending_push_flushed` (branch, sha), `pending_push_failed_transient` (branch, error_class, retry_count), `pending_push_failed_permanent` (branch, error_class), `network_sync_cache_refresh_{start,done}`, `network_sync_cycle_done` (ts, cycle_number, entries_processed, entries_failed, elapsed_s), `network_sync_cost` (cache_api_calls, git_push_attempts, cost_category: low/medium/high)."
+    - "Failure-class taxonomy: transient (timeout, ECONNREFUSED, rate-limit, 5xx) → re-queued; permanent (auth, 404, permission denied) → skipped after 3 retries with warning. Distinguish by git push stderr parsing."
+    - "Cost tracking: ambient event `network_sync_cost` per cycle logs cache_api_calls, git_push_attempts, bytes_transferred (if available), cost_category based on REST call count."
+    - "Smoke test: `bash scripts/ci/test-network-sync-daemon.sh [--daemon-timeout 60]` creates synthetic pending-push.jsonl, starts daemon, triggers network state change, verifies queue flushed + events in ambient.jsonl within timeout, exits 0 if all events present and queue empty."
 
