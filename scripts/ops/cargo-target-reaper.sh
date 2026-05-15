@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# cargo-target-reaper.sh — INFRA-1250
+# cargo-target-reaper.sh — INFRA-1250 + INFRA-1170
 # Reclaim stale cargo build artifacts (60GB+ unbounded growth).
 #
 # Usage:
@@ -12,6 +12,8 @@
 #   (b) target/debug/deps/lib*.rlib        mtime > FINGERPRINT_AGE_D days
 #   (c) ~/.cache/chump-fleet-target/<dir>/ mtime > FLEET_AGE_D days AND
 #       no live process has CARGO_TARGET_DIR pointing at <dir>
+#   (d) INFRA-1170: /tmp/chump-*/target/   where originating git worktree no
+#       longer exists in `git worktree list --porcelain` (orphaned target dirs)
 
 set -euo pipefail
 
@@ -123,16 +125,108 @@ if [[ -d "$FLEET_CACHE" ]]; then
     done < <(find "$FLEET_CACHE" -mindepth 1 -maxdepth 1 -type d -mtime "+${FLEET_AGE_D}" -print0 2>/dev/null)
 fi
 
+# ── (d) INFRA-1170: /tmp/chump-*/target/ orphaned by gone worktrees ──────────
+# Reap target/ dirs in /tmp/chump-* paths where the originating git worktree
+# is no longer registered in `git worktree list --porcelain`. Safe because:
+#   - If the worktree was removed (git worktree remove), the target dir is dead weight.
+#   - If the worktree is still active, git worktree list will still show it.
+#
+# Failure taxonomy (emitted as ambient events):
+#   transient: cargo lock file present (.cargo-lock) — build may be in flight.
+#   permanent: rm -rf failed (path gone mid-reap, permission error, etc.).
+_tmp_orphan_count=0
+
+# Build set of registered worktree paths. Handle /tmp ↔ /private/tmp on macOS.
+# SAFETY: if git worktree list fails or returns empty (e.g. REPO_ROOT is not a git
+# checkout), we SKIP the /tmp scan entirely — fail-closed protects active worktrees.
+_registered_wts=$'\n'  # newline-delimited
+_wt_list_raw=""
+# Support override for testing: CHUMP_CARGO_REAPER_GIT_DIR overrides the git root.
+_GIT_DIR_FOR_WTS="${CHUMP_CARGO_REAPER_GIT_DIR:-$REPO_ROOT}"
+_wt_list_raw="$(git -C "$_GIT_DIR_FOR_WTS" worktree list --porcelain 2>/dev/null || true)"
+
+if [[ -z "$_wt_list_raw" ]]; then
+    echo "[cargo-target-reaper] WARN: git worktree list returned empty — skipping /tmp orphan scan (fail-safe)"
+    _skip_tmp_scan=1
+else
+    _skip_tmp_scan=0
+    while IFS= read -r _wt_line; do
+        if [[ "$_wt_line" == worktree\ * ]]; then
+            _wt_path="${_wt_line#worktree }"
+            _registered_wts="${_registered_wts}${_wt_path}"$'\n'
+            # Add the /private/tmp ↔ /tmp symlink variant so macOS paths match either way.
+            case "$_wt_path" in
+                /tmp/*)          _registered_wts="${_registered_wts}${_wt_path/\/tmp\//\/private\/tmp\/}"$'\n' ;;
+                /private/tmp/*)  _registered_wts="${_registered_wts}${_wt_path/\/private\/tmp\//\/tmp\/}"$'\n' ;;
+            esac
+        fi
+    done <<< "$_wt_list_raw"
+fi
+
+# Support override for testing: CHUMP_CARGO_REAPER_TMP_GLOB controls the scan path.
+_TMP_GLOB="${CHUMP_CARGO_REAPER_TMP_GLOB:-/tmp/chump-*}"
+echo "[cargo-target-reaper] Scanning ${_TMP_GLOB}/target/ (orphaned worktrees)…"
+[[ "$_skip_tmp_scan" == "1" ]] && echo "  SKIP (git worktree list failed — fail-safe)" && _TMP_GLOB=""
+for _wt_candidate in ${_TMP_GLOB}/; do
+    [[ -d "$_wt_candidate" ]] || continue
+    _wt_candidate="${_wt_candidate%/}"
+    _target_candidate="${_wt_candidate}/target"
+    [[ -d "$_target_candidate" ]] || continue
+
+    # Skip if this worktree is still registered with git.
+    if printf '%s' "$_registered_wts" | grep -qxF "$_wt_candidate" 2>/dev/null; then
+        echo "  skip (registered worktree): ${_wt_candidate}"
+        continue
+    fi
+
+    # Transient failure: cargo lock present means a build may be in flight.
+    if [[ -f "${_target_candidate}/.cargo-lock" ]]; then
+        printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","error":"cargo_lock_active","failure_class":"transient","worktree_gone":true,"dry_run":true}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_target_candidate" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+        echo "  skip (cargo lock active — transient): ${_target_candidate}"
+        continue
+    fi
+
+    _t_size_bytes=$(du -sk "$_target_candidate" 2>/dev/null | awk '{print $1 * 1024}' || echo 0)
+    _t_age_days=$(( ( $(date +%s) - $(stat -f%m "$_target_candidate" 2>/dev/null \
+        || stat -c%Y "$_target_candidate" 2>/dev/null || echo 0) ) / 86400 ))
+    echo "${_dry_label}  orphan worktree target: ${_target_candidate} (${_t_age_days}d old, ~$(( _t_size_bytes / 1024 / 1024 ))MB)"
+
+    _reap_ok=1
+    if [[ $EXECUTE -eq 1 ]]; then
+        if ! rm -rf "$_target_candidate" 2>/dev/null; then
+            # Permanent failure: path vanished mid-reap or permission denied.
+            printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","error":"rm_failed","failure_class":"permanent","worktree_gone":true}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_target_candidate" \
+                >> "$AMBIENT_LOG" 2>/dev/null || true
+            _reap_ok=0
+        fi
+    fi
+
+    if [[ $_reap_ok -eq 1 ]]; then
+        _total_bytes=$(( _total_bytes + _t_size_bytes ))
+        _reaped_count=$(( _reaped_count + 1 ))
+        _tmp_orphan_count=$(( _tmp_orphan_count + 1 ))
+        printf '{"ts":"%s","kind":"cargo_target_reaped","path":"%s","bytes_freed":%d,"age_days":%d,"dry_run":%s,"worktree_gone":true}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_target_candidate" \
+            "$_t_size_bytes" "$_t_age_days" \
+            "$([[ $EXECUTE -eq 1 ]] && echo 'false' || echo 'true')" \
+            >> "$AMBIENT_LOG" 2>/dev/null || true
+    fi
+done
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 _total_mb=$(( _total_bytes / 1024 / 1024 ))
 echo ""
-echo "[cargo-target-reaper] ${_dry_label} Done: ${_reaped_count} artifacts, ~${_total_mb}MB"
+echo "[cargo-target-reaper] ${_dry_label} Done: ${_reaped_count} artifacts, ~${_total_mb}MB (orphaned /tmp worktrees: ${_tmp_orphan_count})"
 if [[ $EXECUTE -eq 0 && $_reaped_count -gt 0 ]]; then
     echo "[cargo-target-reaper] Re-run with --execute to actually delete."
 fi
 
-# Summary ambient event
-printf '{"ts":"%s","kind":"cargo_target_reaper_summary","reaped_count":%d,"bytes_freed":%d,"execute":%s}\n' \
+# Summary ambient event — includes worktree_orphan_count (INFRA-1170).
+printf '{"ts":"%s","kind":"cargo_target_reaper_summary","reaped_count":%d,"bytes_freed":%d,"execute":%s,"worktree_orphan_count":%d}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_reaped_count" "$_total_bytes" \
     "$([[ $EXECUTE -eq 1 ]] && echo 'true' || echo 'false')" \
+    "$_tmp_orphan_count" \
     >> "$AMBIENT_LOG" 2>/dev/null || true
