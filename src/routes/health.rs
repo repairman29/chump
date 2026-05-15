@@ -3,7 +3,8 @@
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::{response::Redirect, Json};
-use std::time::Duration;
+use std::sync::{OnceLock, RwLock};
+use std::time::{Duration, Instant};
 
 use crate::local_openai;
 use crate::provider_cascade;
@@ -555,4 +556,264 @@ pub async fn handle_neuromod_stream(
             .interval(Duration::from_secs(15))
             .text("ping"),
     )
+}
+
+// ── INFRA-1341: /api/acp/health — detect installed ACP client handlers ──
+//
+// PRODUCT-110 deeplinks (`chump://acp/open?...`) need to know whether *any*
+// handler is registered before surfacing the link — otherwise we send the
+// operator into a dead URL. This endpoint enumerates known ACP-capable
+// editors (Zed, JetBrains IDEA family) by probing PATH + well-known install
+// paths, caches for 60s, and returns 200 even when no handler is present
+// so the frontend can render a "no handler registered" tooltip without
+// dealing with a 5xx.
+
+#[derive(Clone)]
+struct AcpHealthSnapshot {
+    payload: serde_json::Value,
+    cached_at: Instant,
+}
+
+fn acp_health_cache() -> &'static OnceLock<RwLock<Option<AcpHealthSnapshot>>> {
+    static CELL: OnceLock<RwLock<Option<AcpHealthSnapshot>>> = OnceLock::new();
+    &CELL
+}
+
+/// GET /api/acp/health — see module doc for schema.
+pub async fn handle_acp_health() -> Json<serde_json::Value> {
+    let ttl = Duration::from_secs(60);
+    let cell = acp_health_cache().get_or_init(|| RwLock::new(None));
+    if let Ok(g) = cell.read() {
+        if let Some(snap) = g.as_ref() {
+            if snap.cached_at.elapsed() < ttl {
+                return Json(snap.payload.clone());
+            }
+        }
+    }
+    let payload = build_acp_health_payload();
+    if let Ok(mut g) = cell.write() {
+        *g = Some(AcpHealthSnapshot {
+            payload: payload.clone(),
+            cached_at: Instant::now(),
+        });
+    }
+    Json(payload)
+}
+
+fn build_acp_health_payload() -> serde_json::Value {
+    let generated_at = {
+        use chrono::Utc;
+        Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+    };
+
+    let zed = detect_zed();
+    let jetbrains = detect_jetbrains();
+    let any_present = zed["present"].as_bool().unwrap_or(false)
+        || jetbrains["present"].as_bool().unwrap_or(false);
+
+    serde_json::json!({
+        "clients": [zed, jetbrains],
+        "any_handler_present": any_present,
+        "generated_at_iso": generated_at,
+        "acp_error": serde_json::Value::Null,
+    })
+}
+
+fn home_dir() -> std::path::PathBuf {
+    std::env::var("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("/"))
+}
+
+fn which_bin(name: &str) -> Option<String> {
+    // Allow test override via CHUMP_ACP_PATH so CI can stub PATH without
+    // mutating the runner's real environment.
+    let path = std::env::var("CHUMP_ACP_PATH")
+        .ok()
+        .or_else(|| std::env::var("PATH").ok())
+        .unwrap_or_default();
+    for dir in path.split(':') {
+        if dir.is_empty() {
+            continue;
+        }
+        let candidate = std::path::Path::new(dir).join(name);
+        if candidate.is_file() {
+            // Best-effort executable check: any file in PATH/<name> counts.
+            return Some(candidate.display().to_string());
+        }
+    }
+    None
+}
+
+fn detect_zed() -> serde_json::Value {
+    // Override for tests: CHUMP_ACP_ZED_OVERRIDE=present|absent
+    if let Ok(v) = std::env::var("CHUMP_ACP_ZED_OVERRIDE") {
+        let present = v == "present";
+        let detected_at: serde_json::Value = if present {
+            serde_json::Value::String("stub".to_string())
+        } else {
+            serde_json::Value::Null
+        };
+        let binary_path: serde_json::Value = if present {
+            serde_json::Value::String("/stub/zed".to_string())
+        } else {
+            serde_json::Value::Null
+        };
+        return serde_json::json!({
+            "id": "zed",
+            "name": "Zed",
+            "present": present,
+            "detected_at": detected_at,
+            "version": serde_json::Value::Null,
+            "binary_path": binary_path,
+        });
+    }
+    let binary_path = which_bin("zed");
+    let home = home_dir();
+    // macOS app-support path.
+    let mac_support = home.join("Library/Application Support/Zed");
+    let mac_support_present = mac_support.is_dir();
+    // Linux/BSD config path.
+    let xdg_support = home.join(".config/zed");
+    let xdg_support_present = xdg_support.is_dir();
+
+    let present = binary_path.is_some() || mac_support_present || xdg_support_present;
+    let detected_at = if binary_path.is_some() {
+        "PATH"
+    } else if mac_support_present {
+        "Library/Application Support/Zed"
+    } else if xdg_support_present {
+        ".config/zed"
+    } else {
+        ""
+    };
+    serde_json::json!({
+        "id": "zed",
+        "name": "Zed",
+        "present": present,
+        "detected_at": if detected_at.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(detected_at.to_string()) },
+        "version": serde_json::Value::Null,
+        "binary_path": binary_path,
+    })
+}
+
+fn detect_jetbrains() -> serde_json::Value {
+    if let Ok(v) = std::env::var("CHUMP_ACP_JETBRAINS_OVERRIDE") {
+        let present = v == "present";
+        let detected_at: serde_json::Value = if present {
+            serde_json::Value::String("stub".to_string())
+        } else {
+            serde_json::Value::Null
+        };
+        let binary_path: serde_json::Value = if present {
+            serde_json::Value::String("/stub/idea".to_string())
+        } else {
+            serde_json::Value::Null
+        };
+        return serde_json::json!({
+            "id": "jetbrains",
+            "name": "JetBrains IDEA family",
+            "present": present,
+            "detected_at": detected_at,
+            "version": serde_json::Value::Null,
+            "binary_path": binary_path,
+        });
+    }
+    // Common JetBrains launchers.
+    let launchers = [
+        "idea", "pycharm", "webstorm", "rubymine", "rider", "clion", "goland", "phpstorm",
+    ];
+    let mut binary_path: Option<String> = None;
+    let mut detected_launcher: Option<&str> = None;
+    for l in launchers.iter() {
+        if let Some(p) = which_bin(l) {
+            binary_path = Some(p);
+            detected_launcher = Some(l);
+            break;
+        }
+    }
+    let home = home_dir();
+    let mac_support = home.join("Library/Application Support/JetBrains");
+    let mac_support_present = mac_support.is_dir();
+    let linux_support = home.join(".config/JetBrains");
+    let linux_support_present = linux_support.is_dir();
+
+    let present = binary_path.is_some() || mac_support_present || linux_support_present;
+    let detected_at = if let Some(l) = detected_launcher {
+        format!("PATH ({})", l)
+    } else if mac_support_present {
+        "Library/Application Support/JetBrains".to_string()
+    } else if linux_support_present {
+        ".config/JetBrains".to_string()
+    } else {
+        String::new()
+    };
+    serde_json::json!({
+        "id": "jetbrains",
+        "name": "JetBrains IDEA family",
+        "present": present,
+        "detected_at": if detected_at.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(detected_at) },
+        "version": serde_json::Value::Null,
+        "binary_path": binary_path,
+    })
+}
+
+#[cfg(test)]
+mod acp_health_tests {
+    use super::*;
+    use serial_test::serial;
+
+    #[test]
+    #[serial]
+    fn override_absent_marks_no_handler() {
+        std::env::set_var("CHUMP_ACP_ZED_OVERRIDE", "absent");
+        std::env::set_var("CHUMP_ACP_JETBRAINS_OVERRIDE", "absent");
+        let p = build_acp_health_payload();
+        std::env::remove_var("CHUMP_ACP_ZED_OVERRIDE");
+        std::env::remove_var("CHUMP_ACP_JETBRAINS_OVERRIDE");
+        assert_eq!(p["any_handler_present"], false);
+        let clients = p["clients"].as_array().unwrap();
+        assert_eq!(clients.len(), 2);
+        for c in clients {
+            assert_eq!(c["present"], false);
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn override_present_zed_flips_any_handler() {
+        std::env::set_var("CHUMP_ACP_ZED_OVERRIDE", "present");
+        std::env::set_var("CHUMP_ACP_JETBRAINS_OVERRIDE", "absent");
+        let p = build_acp_health_payload();
+        std::env::remove_var("CHUMP_ACP_ZED_OVERRIDE");
+        std::env::remove_var("CHUMP_ACP_JETBRAINS_OVERRIDE");
+        assert_eq!(p["any_handler_present"], true);
+        let zed = &p["clients"][0];
+        assert_eq!(zed["id"], "zed");
+        assert_eq!(zed["present"], true);
+    }
+
+    #[test]
+    #[serial]
+    fn schema_always_two_clients_with_required_fields() {
+        std::env::set_var("CHUMP_ACP_ZED_OVERRIDE", "absent");
+        std::env::set_var("CHUMP_ACP_JETBRAINS_OVERRIDE", "absent");
+        let p = build_acp_health_payload();
+        std::env::remove_var("CHUMP_ACP_ZED_OVERRIDE");
+        std::env::remove_var("CHUMP_ACP_JETBRAINS_OVERRIDE");
+        for c in p["clients"].as_array().unwrap() {
+            for f in &[
+                "id",
+                "name",
+                "present",
+                "detected_at",
+                "version",
+                "binary_path",
+            ] {
+                assert!(c.get(f).is_some(), "client missing {}: {}", f, c);
+            }
+        }
+        assert!(p["generated_at_iso"].is_string());
+        assert!(p["acp_error"].is_null());
+    }
 }

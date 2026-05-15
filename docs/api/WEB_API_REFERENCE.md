@@ -37,6 +37,46 @@ Live snapshot of precision / neuromod hooks (WP-6.x): **`recommended_max_tool_ca
 
 The same **`llm_last_completion`** and **`llm_completion_totals`** fields are included on **`GET /health`** (health port) for operators who poll that endpoint.
 
+### `GET /api/acp/health` — installed ACP-capable editor handlers (INFRA-1341)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/acp/health` | Probes for installed ACP-capable editors (Zed, JetBrains IDEA family) by checking PATH + well-known install dirs (macOS `Library/Application Support/...`, Linux `.config/...`). Used by **PRODUCT-110** `ChumpAcpDeeplink` to tooltip-warn when no handler is registered before surfacing `chump://acp/open?...` deeplinks. 60-second in-process cache. |
+
+Response shape:
+
+```json
+{
+  "clients": [
+    {
+      "id": "zed",
+      "name": "Zed",
+      "present": true,
+      "detected_at": "PATH",                // or "Library/Application Support/Zed" / ".config/zed" / null
+      "version": null,
+      "binary_path": "/usr/local/bin/zed"   // or null
+    },
+    {
+      "id": "jetbrains",
+      "name": "JetBrains IDEA family",
+      "present": false,
+      "detected_at": null,
+      "version": null,
+      "binary_path": null
+    }
+  ],
+  "any_handler_present": true,
+  "generated_at_iso": "2026-05-15T20:12:43Z",
+  "acp_error": null
+}
+```
+
+Detection notes:
+- **Zed.** Tries `which zed`, then macOS `~/Library/Application Support/Zed/`, then Linux `~/.config/zed/`.
+- **JetBrains.** Tries common launcher names (`idea`, `pycharm`, `webstorm`, `rubymine`, `rider`, `clion`, `goland`, `phpstorm`), then macOS `~/Library/Application Support/JetBrains/`, then Linux `~/.config/JetBrains/`.
+- **Test overrides.** Set `CHUMP_ACP_ZED_OVERRIDE=present|absent` and `CHUMP_ACP_JETBRAINS_OVERRIDE=present|absent` to bypass real probing — used by `scripts/ci/test-api-acp-health.sh`.
+- **`version`** is reserved for a future enrichment pass; currently always `null`.
+
 ## Dashboard
 
 | Method | Path | Description |
