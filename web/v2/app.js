@@ -394,6 +394,9 @@ const CHUMP_CADENCES = [
       { id: 'agents',  label: 'Fleet',   icon: '🤝' },
       { id: 'results', label: 'Ships',   icon: '📊' },
       { id: 'health',  label: 'Health',  icon: '🩺' }, // INFRA-1203
+
+      // INFRA-1204: a2a coordination view (inbox / INTENT / nudge).
+      { id: 'coord',   label: 'Coord',   icon: '✉️' },
     ],
   },
   {
@@ -2118,6 +2121,73 @@ class ChumpViewFleetHealth extends HTMLElement {
           </div>
           <p class="fh-panel-footnote" id="fh-budget-footnote">
             Loading rate-limit state…
+
+// ── <chump-view-coord> (INFRA-1204) ─────────────────────────────────────────
+// A2A coordination panel — inbox + INTENT board + PR-nudge log in one pane.
+// Surfaces the consumer side of INFRA-1115 (mailboxes), INFRA-1116 (INTENT
+// gate), INFRA-1117 (chump-pr-nudge) so operators can MONITOR multi-agent
+// coordination in real time + intervene (force-override an INTENT, mark
+// nudge as acked, peek at any session's inbox).
+//
+// Sits in AMBIENT cadence per docs/design/OPERATOR_CONSOLE_V2.md §canvas.
+//
+// Three panels stacked:
+//   1. INBOX     — /api/inbox/{session} for the operator's chosen session
+//                  + dropdown to pick from recently-active sessions
+//   2. INTENT    — /api/ambient/recent?kind=intent_announced (last 5min,
+//                  filtered to entries with no matching CLAIM within 60s)
+//   3. NUDGES    — /api/ambient/recent?kind=pr_nudge_emitted (last 24h)
+class ChumpViewCoord extends HTMLElement {
+  #pollTimer = null;
+  #selectedSession = null;
+  #sessions = [];      // [{id, last_event_ts}]
+  #inbox = [];
+  #intents = [];
+  #nudges = [];
+
+  connectedCallback() {
+    this.#selectedSession = window.chumpPrefs?.get('coord.session', null) || null;
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Coordination</h2>
+        <p class="view-subtitle">Inbox + INTENT board + PR-nudge log — the a2a consumption side</p>
+      </section>
+      <section class="coord-panels">
+        <article class="coord-panel coord-inbox">
+          <header class="coord-panel-header">
+            <h3>📬 Inbox</h3>
+            <label class="coord-session-picker">
+              session
+              <select id="coord-session-select" aria-label="Select inbox session"></select>
+            </label>
+            <span class="coord-stat" id="coord-inbox-count">…</span>
+          </header>
+          <ul class="coord-list" id="coord-inbox-list" aria-live="polite">
+            <li class="placeholder">Loading inbox…</li>
+          </ul>
+        </article>
+        <article class="coord-panel coord-intents">
+          <header class="coord-panel-header">
+            <h3>🎯 INTENT board</h3>
+            <span class="coord-stat" id="coord-intents-count">…</span>
+          </header>
+          <ul class="coord-list" id="coord-intents-list" aria-live="polite">
+            <li class="placeholder">Loading INTENT events…</li>
+          </ul>
+          <p class="coord-panel-footnote">
+            Recent INTENT announcements (last 5 min). Operators can override a stale INTENT via <code>scripts/coord/broadcast.sh</code>.
+          </p>
+        </article>
+        <article class="coord-panel coord-nudges">
+          <header class="coord-panel-header">
+            <h3>🔔 PR-nudge log</h3>
+            <span class="coord-stat" id="coord-nudges-count">…</span>
+          </header>
+          <ul class="coord-list" id="coord-nudges-list" aria-live="polite">
+            <li class="placeholder">Loading nudge log…</li>
+          </ul>
+          <p class="coord-panel-footnote">
+            chump-pr-nudge.sh history — 5 classes: dirty / blocked-ci / orphan-disarmed / base-modified / clean-not-merged.
           </p>
         </article>
       </section>
@@ -2127,6 +2197,17 @@ class ChumpViewFleetHealth extends HTMLElement {
     try {
       navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
         kind: 'fleet_health_view_session', ts: new Date().toISOString(),
+
+    this.querySelector('#coord-session-select')?.addEventListener('change', (e) => {
+      this.#selectedSession = e.target.value || null;
+      window.chumpPrefs?.set('coord.session', this.#selectedSession);
+      this.#loadInbox();
+    });
+    this.#loadAll();
+    this.#pollTimer = setInterval(() => this.#loadAll(), 20_000);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'coord_view_session', ts: new Date().toISOString(),
       }));
     } catch {}
   }
@@ -2502,6 +2583,155 @@ class ChumpViewRoadmap extends HTMLElement {
 
   #esc(s) {
     return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+
+  async #loadAll() {
+    await Promise.all([
+      this.#refreshSessions(),
+      this.#loadIntents(),
+      this.#loadNudges(),
+    ]);
+    await this.#loadInbox();
+  }
+
+  async #refreshSessions() {
+    // Scan recent ambient events for distinct session ids.
+    try {
+      const r = await fetch('/api/ambient/recent?n=500');
+      if (!r.ok) return;
+      const d = await r.json();
+      const events = d?.events || d?.rows || d || [];
+      const map = new Map(); // sid → last_ts
+      for (const e of events) {
+        const sid = e.session || e.session_id;
+        if (!sid) continue;
+        const t = e.ts || '';
+        const prev = map.get(sid);
+        if (!prev || t > prev) map.set(sid, t);
+      }
+      this.#sessions = [...map.entries()]
+        .map(([id, t]) => ({ id, last_event_ts: t }))
+        .sort((a, b) => (b.last_event_ts || '').localeCompare(a.last_event_ts || ''))
+        .slice(0, 30);
+      const sel = this.querySelector('#coord-session-select');
+      if (sel) {
+        const prev = sel.value || this.#selectedSession || '';
+        sel.innerHTML = '<option value="">— pick a session —</option>' + this.#sessions.map((s) => `
+          <option value="${this.#esc(s.id)}"${s.id === prev ? ' selected' : ''}>
+            ${this.#shortSession(s.id)} (${this.#fmtTs(s.last_event_ts)})
+          </option>
+        `).join('');
+        if (prev && [...sel.options].some((o) => o.value === prev)) sel.value = prev;
+        else if (this.#sessions.length && !prev) {
+          this.#selectedSession = this.#sessions[0].id;
+          sel.value = this.#selectedSession;
+        }
+      }
+    } catch {}
+  }
+
+  async #loadInbox() {
+    const list = this.querySelector('#coord-inbox-list');
+    const count = this.querySelector('#coord-inbox-count');
+    if (!list || !count) return;
+    if (!this.#selectedSession) {
+      list.innerHTML = `<li class="placeholder">Pick a session above to read its inbox.</li>`;
+      count.textContent = '—';
+      return;
+    }
+    try {
+      const sid = encodeURIComponent(this.#selectedSession);
+      const r = await fetch(`/api/inbox/${sid}?limit=50`);
+      if (!r.ok) {
+        list.innerHTML = `<li class="placeholder">No inbox for this session yet (or backend missing).</li>`;
+        count.textContent = '0';
+        return;
+      }
+      const d = await r.json();
+      const msgs = d?.messages || d?.items || (Array.isArray(d) ? d : []);
+      this.#inbox = msgs;
+      count.textContent = String(msgs.length);
+      if (msgs.length === 0) {
+        list.innerHTML = `<li class="placeholder">No messages in this inbox.</li>`;
+        return;
+      }
+      list.innerHTML = msgs.map((m) => `
+        <li class="coord-row coord-row-inbox">
+          <span class="coord-row-ts">${this.#fmtTs(m.ts || m.timestamp)}</span>
+          <span class="coord-row-from">${this.#shortSession(m.from || m.sender || '?')}</span>
+          <span class="coord-row-kind">${this.#esc(m.kind || m.type || 'msg')}</span>
+          <span class="coord-row-body">${this.#esc((m.body || m.summary || '').slice(0, 200))}</span>
+        </li>
+      `).join('');
+    } catch {
+      list.innerHTML = `<li class="placeholder">Could not load inbox.</li>`;
+    }
+  }
+
+  async #loadIntents() {
+    const list = this.querySelector('#coord-intents-list');
+    const count = this.querySelector('#coord-intents-count');
+    if (!list || !count) return;
+    try {
+      const r = await fetch('/api/ambient/recent?n=200&kind=intent_announced');
+      const d = r.ok ? await r.json() : null;
+      const events = d?.events || d?.rows || d || [];
+      const cutoff = Date.now() - 5 * 60 * 1000;
+      this.#intents = events.filter((e) => {
+        try { return new Date(e.ts).getTime() >= cutoff; } catch { return false; }
+      }).slice(0, 50);
+      count.textContent = String(this.#intents.length);
+      if (this.#intents.length === 0) {
+        list.innerHTML = `<li class="placeholder">No pending INTENT announcements (last 5 min).</li>`;
+        return;
+      }
+      list.innerHTML = this.#intents.map((e) => `
+        <li class="coord-row coord-row-intent">
+          <span class="coord-row-ts">${this.#fmtTs(e.ts)}</span>
+          <span class="coord-row-from">${this.#shortSession(e.session || e.session_id || '?')}</span>
+          <span class="coord-row-gap">${this.#esc(e.gap_id || e.gap || '—')}</span>
+          <span class="coord-row-body">${this.#esc((e.paths || e.summary || '').toString().slice(0, 160))}</span>
+        </li>
+      `).join('');
+    } catch {
+      list.innerHTML = `<li class="placeholder">Could not load INTENT board.</li>`;
+    }
+  }
+
+  async #loadNudges() {
+    const list = this.querySelector('#coord-nudges-list');
+    const count = this.querySelector('#coord-nudges-count');
+    if (!list || !count) return;
+    try {
+      const r = await fetch('/api/ambient/recent?n=200&kind=pr_nudge_emitted');
+      const d = r.ok ? await r.json() : null;
+      const events = d?.events || d?.rows || d || [];
+      this.#nudges = events.slice(0, 50);
+      count.textContent = String(this.#nudges.length);
+      if (this.#nudges.length === 0) {
+        list.innerHTML = `<li class="placeholder">No PR nudges in window.</li>`;
+        return;
+      }
+      list.innerHTML = this.#nudges.map((e) => `
+        <li class="coord-row coord-row-nudge">
+          <span class="coord-row-ts">${this.#fmtTs(e.ts)}</span>
+          <span class="coord-row-class coord-row-class-${this.#esc(e.class || 'unknown')}">${this.#esc(e.class || '?')}</span>
+          <span class="coord-row-pr">${e.pr ? `<a href="https://github.com/repairman29/chump/pull/${this.#esc(String(e.pr))}" target="_blank" rel="noopener">#${this.#esc(String(e.pr))}</a>` : '—'}</span>
+          <span class="coord-row-body">${this.#esc((e.template || e.note || '').slice(0, 140))}</span>
+        </li>
+      `).join('');
+    } catch {
+      list.innerHTML = `<li class="placeholder">Could not load nudge log.</li>`;
+    }
+  }
+
+  // helpers
+  #esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  #shortSession(sid) {
+    const m = String(sid).match(/^(?:claim-)?([a-z]+-\d+)/i);
+    return m ? m[1] : (String(sid).slice(0, 18) + (String(sid).length > 18 ? '…' : ''));
   }
   #fmtTs(ts) {
     if (!ts) return '—';
@@ -2736,6 +2966,16 @@ customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
 customElements.define('chump-view-roadmap', ChumpViewRoadmap);
 
 customElements.define('chump-view-fleet-health', ChumpViewFleetHealth);
+
+      const ageS = (Date.now() - d.getTime()) / 1000;
+      if (ageS < 60)    return `${Math.round(ageS)}s ago`;
+      if (ageS < 3600)  return `${Math.round(ageS / 60)}m ago`;
+      if (ageS < 86400) return `${Math.round(ageS / 3600)}h ago`;
+      return d.toISOString().slice(11, 16);
+    } catch { return ts; }
+  }
+}
+customElements.define('chump-view-coord', ChumpViewCoord);
 
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
@@ -4409,6 +4649,8 @@ const VIEWS = {
   roadmap:       () => document.createElement('chump-view-roadmap'), // INFRA-1207
 
   health:        () => document.createElement('chump-view-fleet-health'), // INFRA-1203
+
+  coord:         () => document.createElement('chump-view-coord'), // INFRA-1204
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
