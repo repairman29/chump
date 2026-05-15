@@ -2521,3 +2521,16 @@ events:
       auth token call entirely — avoids ~27 redundant calls/hr.
     consumers: [fleet-brief, api-cost-leaderboard]
     fields_required: [ts, kind, age_s, ttl_s]
+  # ── INFRA-1311: bot-merge exponential backoff events ─────────────────────
+  - kind: bot_merge_backoff_written
+    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1311)
+    trigger: auto-merge-armer failed to arm a PR and wrote a backoff record with
+      next-retry delay. Backoff grows exponentially per-PR (30s/60s/120s/300s).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, delay_s, until]
+  - kind: bot_merge_backoff_skipped
+    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1311)
+    trigger: auto-merge-armer skipped a PR because its per-PR backoff has not yet
+      expired. No merge attempt is made until the backoff period elapses.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, remaining_s, until]
