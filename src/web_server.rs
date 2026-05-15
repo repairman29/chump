@@ -4717,27 +4717,34 @@ async fn handle_gap_queue(
             .then(b.created_at.cmp(&a.created_at))
     });
 
+    // INFRA-1277: batch-fetch all active leases once (1 query) instead of
+    // calling preflight() per row (2 queries × N rows).  The list view only
+    // needs to distinguish claimable / blocked-by-lease / blocked-by-status;
+    // the actual claim path still runs the full preflight before locking.
+    let active_leases: std::collections::HashMap<String, String> =
+        gap_store_inst.active_leases().unwrap_or_default();
+
     let mut result_gaps = Vec::with_capacity(sorted.len());
     for gap in sorted {
-        let preflight_result = gap_store_inst.preflight(&gap.id);
-        let (preflight_status, preflight_error, assigned_session) = match preflight_result {
-            Ok(gap_store::PreflightResult::Available) => ("claimable".to_string(), None, None),
-            Ok(gap_store::PreflightResult::Claimed(sid)) => (
-                "blocked".to_string(),
-                Some(format!("Already claimed by session {}", sid)),
-                Some(sid),
-            ),
-            Ok(gap_store::PreflightResult::Done) => (
+        // Derive preflight_status entirely in memory — no per-row DB round-trip.
+        let (preflight_status, preflight_error, assigned_session): (
+            String,
+            Option<String>,
+            Option<String>,
+        ) = match gap.status.as_str() {
+            "done" | "shipped" => (
                 "blocked".to_string(),
                 Some("Gap is already closed/done".to_string()),
                 None,
             ),
-            Ok(gap_store::PreflightResult::NotFound) => (
-                "error".to_string(),
-                Some("Gap not found in registry".to_string()),
-                None,
-            ),
-            Err(e) => ("error".to_string(), Some(e.to_string()), None),
+            _ => match active_leases.get(&gap.id) {
+                Some(sid) => (
+                    "blocked".to_string(),
+                    Some(format!("Already claimed by session {}", sid)),
+                    Some(sid.clone()),
+                ),
+                None => ("claimable".to_string(), None, None),
+            },
         };
 
         let depends_on = gap_store::parse_json_ac_list(&gap.depends_on);
@@ -4786,15 +4793,35 @@ async fn handle_gap_queue(
     let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
         kind: "gap_queue_request".to_string(),
         fields: vec![
-            ("filter".to_string(), filter_summary),
+            ("filter".to_string(), filter_summary.clone()),
             ("count".to_string(), result_gaps.len().to_string()),
             ("ms".to_string(), elapsed_ms.to_string()),
         ],
         ..Default::default()
     });
 
+    // INFRA-1277: SLO signal — emit slow-path event when >500ms so the
+    // ambient stream surfaces latency regressions before operators notice.
+    if elapsed_ms > 500 {
+        tracing::warn!(
+            "gap-queue: SLOW {}ms for {} gaps (filter={})",
+            elapsed_ms,
+            result_gaps.len(),
+            filter_summary
+        );
+        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+            kind: "api_gap_queue_slow".to_string(),
+            fields: vec![
+                ("ms".to_string(), elapsed_ms.to_string()),
+                ("count".to_string(), result_gaps.len().to_string()),
+                ("filter".to_string(), filter_summary),
+            ],
+            ..Default::default()
+        });
+    }
+
     tracing::info!(
-        "gap-queue: {} gaps, {} claimable, {}ms (INFRA-1197 fat shape)",
+        "gap-queue: {} gaps, {} claimable, {}ms (INFRA-1277 batch-preflight)",
         result_gaps.len(),
         claimable_count,
         elapsed_ms
