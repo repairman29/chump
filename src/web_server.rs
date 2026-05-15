@@ -2330,6 +2330,9 @@ const SETTINGS_KEYS: &[&str] = &[
     "FLEET_MODEL",
     "CHUMP_ROUND_PRIVACY",
     "CHUMP_REPO",
+    // PRODUCT-118: operator dials for throttle + work-backend selection.
+    "CHUMP_GH_MAX_CALLS_PER_MIN",
+    "CHUMP_WORK_BACKEND",
 ];
 
 fn settings_default(key: &str) -> &'static str {
@@ -2340,6 +2343,10 @@ fn settings_default(key: &str) -> &'static str {
         "FLEET_MODEL" => "sonnet",
         "CHUMP_ROUND_PRIVACY" => "safe",
         "CHUMP_REPO" => "",
+        // PRODUCT-118: throttle cap (per-min sliding window) + work-backend.
+        // 60/min matches CHUMP_GH_MAX_CALLS_PER_MIN default in chump_gh wrapper.
+        "CHUMP_GH_MAX_CALLS_PER_MIN" => "60",
+        "CHUMP_WORK_BACKEND" => "claude",
         _ => "",
     }
 }
@@ -2386,6 +2393,19 @@ fn validate_setting_value(key: &str, value: &str) -> bool {
         "FLEET_MODEL" => matches!(value, "haiku" | "sonnet" | "opus"),
         "CHUMP_ROUND_PRIVACY" => matches!(value, "safe" | "dogfood"),
         "CHUMP_REPO" => value.is_empty() || value.starts_with('/'),
+        // PRODUCT-118: throttle cap 1..600 calls/min (1 = effectively paused;
+        // 600 = unthrottled). Backend default is 60.
+        "CHUMP_GH_MAX_CALLS_PER_MIN" => value
+            .parse::<u32>()
+            .ok()
+            .is_some_and(|n| (1..=600).contains(&n)),
+        // PRODUCT-118: work-backend selector — must match dispatch::backend_from_env.
+        "CHUMP_WORK_BACKEND" => {
+            matches!(
+                value,
+                "claude" | "opencode" | "aider" | "chump-local" | "exec-gap"
+            )
+        }
         _ => false,
     }
 }
