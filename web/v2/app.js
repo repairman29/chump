@@ -409,6 +409,9 @@ const CHUMP_CADENCES = [
       { id: 'judgment',  label: 'Judgment',  icon: '⚖️' },
       { id: 'decisions', label: 'Decisions', icon: '🎯' },
       { id: 'memory',    label: 'Memory',    icon: '🧠' },
+
+      { id: 'judgment',  label: 'Audit',     icon: '⚖️' },
+      { id: 'roadmap',   label: 'Roadmap',   icon: '🗺' }, // INFRA-1207
     ],
   },
   {
@@ -2351,6 +2354,45 @@ class ChumpViewNetworkAudit extends HTMLElement {
         rows: this.#rows.length,
         window: this.#window,
         ts: new Date().toISOString(),
+
+// ── <chump-view-roadmap> (INFRA-1207) ───────────────────────────────────────
+// Apex situational-awareness view per docs/design/OPERATOR_CONSOLE_V2.md
+// (archetype 2 fleet operator). Answers "where does today's gap fit in the
+// long arc?" — by rendering docs/ROADMAP.md milestones with completion %
+// and gap chips per milestone.
+//
+// Routes via 'roadmap' in LIBRARY cadence.
+//
+// Data: /api/roadmap (endpoint not yet shipped — file backend follow-up).
+// MVP renders three states:
+//   1. Endpoint live + parsed → vertical timeline with milestone cards
+//   2. Endpoint 404 → manual fallback "open docs/ROADMAP.md" + raw file
+//      fetch from /docs/ROADMAP.md (served by chump --web static path)
+//   3. Both fail → friendly error
+class ChumpViewRoadmap extends HTMLElement {
+  #data = null;
+
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Roadmap</h2>
+        <p class="view-subtitle">Where today's gap fits in the long arc — milestone completion + blockers</p>
+      </section>
+      <section class="roadmap-toolbar" role="toolbar" aria-label="Roadmap filters">
+        <label class="roadmap-filter">
+          <input type="checkbox" id="roadmap-current-only" checked>
+          <span>Show only current milestone</span>
+        </label>
+      </section>
+      <section class="roadmap-list" id="roadmap-list" aria-live="polite" aria-busy="true">
+        <p class="placeholder">Loading roadmap…</p>
+      </section>
+    `;
+    this.querySelector('#roadmap-current-only')?.addEventListener('change', () => this.#render());
+    this.#load();
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'roadmap_view_session', ts: new Date().toISOString(),
       }));
     } catch {}
   }
@@ -2388,6 +2430,127 @@ class ChumpViewNetworkAudit extends HTMLElement {
 customElements.define('chump-view-audit', ChumpViewAudit);
 
 customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
+
+  async #load() {
+    const list = this.querySelector('#roadmap-list');
+    if (!list) return;
+    list.setAttribute('aria-busy', 'true');
+    try {
+      // First try the structured endpoint.
+      const r = await fetch('/api/roadmap');
+      if (r.ok) {
+        this.#data = await r.json();
+        this.#render();
+        return;
+      }
+      // Fall back to raw markdown if the static dir serves it.
+      const raw = await fetch('/docs/ROADMAP.md').catch(() => null);
+      if (raw && raw.ok) {
+        const text = await raw.text();
+        this.#data = this.#parseMarkdown(text);
+        this.#render();
+        return;
+      }
+      list.innerHTML = `<p class="placeholder">
+        Roadmap endpoint pending (<code>/api/roadmap</code> not implemented yet).<br>
+        Read the source: <a href="https://github.com/repairman29/chump/blob/main/docs/ROADMAP.md" target="_blank" rel="noopener">docs/ROADMAP.md on GitHub</a>
+        or run <code>chump roadmap-status</code> in a terminal.
+      </p>`;
+    } catch (err) {
+      list.innerHTML = `<p class="placeholder">Could not load roadmap: ${this.#esc(String(err))}</p>`;
+    }
+    list.setAttribute('aria-busy', 'false');
+  }
+
+  #parseMarkdown(text) {
+    // Minimal parser for ROADMAP.md milestones. Heuristic: each "## Milestone"
+    // heading starts a milestone block; "status:", "Gaps:", "Blockers:" are
+    // optional fields. This is good-enough for the MVP shell; the real
+    // /api/roadmap endpoint will do this server-side properly.
+    const milestones = [];
+    const lines = text.split('\n');
+    let current = null;
+    for (const line of lines) {
+      if (/^##\s+/.test(line)) {
+        if (current) milestones.push(current);
+        const m = line.match(/^##\s+(.+)$/);
+        current = { id: '', title: m ? m[1] : 'untitled', status: 'unknown', progress_pct: null, gaps: [], blockers: [], target_date: null };
+      } else if (current) {
+        if (/^status:\s*/i.test(line)) {
+          current.status = line.replace(/^status:\s*/i, '').trim().toLowerCase();
+        } else if (/^target[_ -]?date:\s*/i.test(line)) {
+          current.target_date = line.replace(/^target[_ -]?date:\s*/i, '').trim();
+        } else if (/^- ([A-Z]+-\d+)/.test(line)) {
+          const gm = line.match(/^- ([A-Z]+-\d+)\s*[—-]?\s*(.+)?$/);
+          if (gm) current.gaps.push({ id: gm[1], title: gm[2] || '' });
+        }
+      }
+    }
+    if (current) milestones.push(current);
+    return { milestones };
+  }
+
+  #render() {
+    const list = this.querySelector('#roadmap-list');
+    if (!list || !this.#data) return;
+    const onlyCurrent = !!this.querySelector('#roadmap-current-only')?.checked;
+    const milestones = this.#data.milestones || [];
+    if (milestones.length === 0) {
+      list.innerHTML = `<p class="placeholder">No milestones found in roadmap.</p>`;
+      return;
+    }
+    const filtered = onlyCurrent
+      ? milestones.filter((m) => m.status === 'active' || m.status === 'next')
+      : milestones;
+    if (filtered.length === 0) {
+      list.innerHTML = `<p class="placeholder">No active milestones (toggle "current only" off to see done/next).</p>`;
+      return;
+    }
+    list.innerHTML = filtered.map((m) => this.#renderMilestone(m)).join('');
+  }
+
+  #renderMilestone(m) {
+    const statusIcon = m.status === 'active'  ? '▶'
+                    : m.status === 'next'    ? '◇'
+                    : m.status === 'done'    ? '✓'
+                    : m.status === 'blocked' ? '✗'
+                    : '○';
+    const statusClass = m.status === 'active'  ? 'roadmap-milestone-active'
+                     : m.status === 'next'    ? 'roadmap-milestone-next'
+                     : m.status === 'done'    ? 'roadmap-milestone-done'
+                     : m.status === 'blocked' ? 'roadmap-milestone-blocked'
+                     :                          'roadmap-milestone-unknown';
+    const pct = typeof m.progress_pct === 'number'
+      ? `<span class="roadmap-pct">${m.progress_pct}%</span>`
+      : '';
+    const gapsHtml = (m.gaps || []).slice(0, 8).map((g) => `
+      <a href="/v2/?view=agent#${this.#esc(g.id || '')}" class="roadmap-gap-chip"
+         title="${this.#esc(g.title || '')}">
+        ${this.#esc(g.id || '?')}
+      </a>
+    `).join('');
+    const blockersHtml = (m.blockers || []).length > 0
+      ? `<div class="roadmap-blockers">⚠ Blockers: ${m.blockers.map((b) => this.#esc(typeof b === 'string' ? b : b.description || '')).join(', ')}</div>`
+      : '';
+    return `
+      <article class="roadmap-milestone ${statusClass}">
+        <header class="roadmap-milestone-header">
+          <span class="roadmap-milestone-icon" aria-hidden="true">${statusIcon}</span>
+          <h3 class="roadmap-milestone-title">${this.#esc(m.title || m.id || 'untitled')}</h3>
+          ${m.target_date ? `<span class="roadmap-target">${this.#esc(m.target_date)}</span>` : ''}
+          ${pct}
+        </header>
+        ${gapsHtml ? `<div class="roadmap-gaps">${gapsHtml}</div>` : ''}
+        ${blockersHtml}
+      </article>
+    `;
+  }
+
+  #esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+}
+customElements.define('chump-view-roadmap', ChumpViewRoadmap);
 
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
@@ -4057,6 +4220,8 @@ const VIEWS = {
   audit:         () => document.createElement('chump-view-audit'), // PRODUCT-111
 
   network:       () => document.createElement('chump-view-network-audit'), // PRODUCT-112
+
+  roadmap:       () => document.createElement('chump-view-roadmap'), // INFRA-1207
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
