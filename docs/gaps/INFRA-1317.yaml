@@ -1,0 +1,12 @@
+- id: INFRA-1317
+  domain: INFRA
+  title: "ZERO-WASTE: GitHub Liaison — elect one worker as sole GitHub read client, all others cache-only (Phase 1 of GITHUB_LIAISON.md)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

@@ -683,6 +683,187 @@ async fn handle_broadcast(
     })))
 }
 
+/// INFRA-1298: GET /api/inbox/{session} — read targeted-inbox messages.
+async fn handle_inbox_get(
+    headers: HeaderMap,
+    axum::extract::Path(session): axum::extract::Path<String>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    if session.is_empty() || session.contains('/') || session.contains("..") {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "session id must be non-empty, no slashes".to_string(),
+        ));
+    }
+    let repo_root = crate::repo_path::runtime_base();
+    let inbox_path = repo_root
+        .join(".chump-locks")
+        .join("inbox")
+        .join(format!("{session}.jsonl"));
+    let cursor_path = repo_root
+        .join(".chump-locks")
+        .join("inbox")
+        .join(format!("{session}.read-cursor"));
+    if !inbox_path.exists() {
+        return Ok(Json(serde_json::json!({
+            "session": session, "messages": [], "count": 0,
+        })));
+    }
+    let contents = std::fs::read_to_string(&inbox_path).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("read inbox: {e}"),
+        )
+    })?;
+    let since: Option<String> = params.get("since").cloned();
+    let unread_only = params.get("unread").map(|s| s.as_str()) == Some("1");
+    let cursor_ts: Option<String> = if unread_only && cursor_path.exists() {
+        std::fs::read_to_string(&cursor_path)
+            .ok()
+            .map(|s| s.trim().to_string())
+    } else {
+        None
+    };
+    let mut out = Vec::new();
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let entry: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let ts = entry
+            .get("ts")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if let Some(ref s) = since {
+            if ts.as_str() <= s.as_str() {
+                continue;
+            }
+        }
+        if let Some(ref c) = cursor_ts {
+            if ts.as_str() <= c.as_str() {
+                continue;
+            }
+        }
+        out.push(entry);
+    }
+    let count = out.len();
+    Ok(Json(serde_json::json!({
+        "session": session, "messages": out, "count": count,
+    })))
+}
+
+/// INFRA-1298: GET /api/inbox/{session}/unread-count — fast badge count.
+async fn handle_inbox_unread_count(
+    headers: HeaderMap,
+    axum::extract::Path(session): axum::extract::Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let repo_root = crate::repo_path::runtime_base();
+    let inbox_path = repo_root
+        .join(".chump-locks")
+        .join("inbox")
+        .join(format!("{session}.jsonl"));
+    let cursor_path = repo_root
+        .join(".chump-locks")
+        .join("inbox")
+        .join(format!("{session}.read-cursor"));
+    if !inbox_path.exists() {
+        return Ok(Json(serde_json::json!({
+            "session": session, "unread": 0,
+        })));
+    }
+    let cursor_ts = std::fs::read_to_string(&cursor_path)
+        .ok()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default();
+    let contents = std::fs::read_to_string(&inbox_path).unwrap_or_default();
+    let mut unread = 0_u32;
+    for line in contents.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let entry: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let ts = entry.get("ts").and_then(|v| v.as_str()).unwrap_or("");
+        if cursor_ts.is_empty() || ts > cursor_ts.as_str() {
+            unread += 1;
+        }
+    }
+    Ok(Json(serde_json::json!({
+        "session": session, "unread": unread,
+    })))
+}
+
+#[derive(serde::Deserialize)]
+struct InboxAckRequest {
+    #[serde(default)]
+    up_to_ts: Option<String>,
+}
+
+/// INFRA-1298: POST /api/inbox/{session}/ack — advance read cursor.
+async fn handle_inbox_ack(
+    headers: HeaderMap,
+    axum::extract::Path(session): axum::extract::Path<String>,
+    Json(body): Json<InboxAckRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let repo_root = crate::repo_path::runtime_base();
+    let inbox_dir = repo_root.join(".chump-locks").join("inbox");
+    std::fs::create_dir_all(&inbox_dir)
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("mkdir: {e}")))?;
+    let cursor_path = inbox_dir.join(format!("{session}.read-cursor"));
+    let ts = match body
+        .up_to_ts
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(t) => t.to_string(),
+        None => {
+            let inbox_path = inbox_dir.join(format!("{session}.jsonl"));
+            if let Ok(c) = std::fs::read_to_string(&inbox_path) {
+                let mut latest = String::new();
+                for line in c.lines() {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+                        if let Some(t) = v.get("ts").and_then(|x| x.as_str()) {
+                            if t > latest.as_str() {
+                                latest = t.to_string();
+                            }
+                        }
+                    }
+                }
+                latest
+            } else {
+                chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+            }
+        }
+    };
+    std::fs::write(&cursor_path, &ts).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("write cursor: {e}"),
+        )
+    })?;
+    Ok(Json(serde_json::json!({
+        "session": session, "cursor": ts,
+    })))
+}
+
 /// POST /api/policy-override — time-boxed relax of **CHUMP_TOOLS_ASK** for a web session (requires **`CHUMP_POLICY_OVERRIDE_API=1`**).
 async fn handle_policy_override_register(
     headers: HeaderMap,
@@ -3857,6 +4038,35 @@ async fn handle_ambient_stream(
         return Err(StatusCode::UNAUTHORIZED);
     }
     let kind_filter: Option<String> = params.get("kind").cloned();
+    // INFRA-1010: `?kinds=a,b,c` (OR-match exact) and `?prefixes=phase_,ship_`
+    // (OR-match prefix) so FleetSidebar can subscribe to its whitelist in
+    // one connection instead of N or filtering client-side.
+    let kinds_filter: Vec<String> = params
+        .get("kinds")
+        .map(|s| {
+            s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let prefixes_filter: Vec<String> = params
+        .get("prefixes")
+        .map(|s| {
+            s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if !kinds_filter.is_empty() || !prefixes_filter.is_empty() {
+        tracing::info!(
+            kinds_count = kinds_filter.len(),
+            prefixes_count = prefixes_filter.len(),
+            "ambient/stream multi-filter subscription (INFRA-1010)"
+        );
+    }
 
     let path = ambient_log_path();
     let (tx, rx) =
@@ -3875,20 +4085,40 @@ async fn handle_ambient_stream(
             .collect();
         let mut file_offset: u64 = seed_content.len() as u64;
 
+        // INFRA-1010: shared filter — passes if no filters set, or if event
+        // kind matches any of `kind` / `kinds` / `prefixes`.
+        let passes_filter = |v: &serde_json::Value| -> bool {
+            let ek = v
+                .get("kind")
+                .or_else(|| v.get("event"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("");
+            let any_filter =
+                kind_filter.is_some() || !kinds_filter.is_empty() || !prefixes_filter.is_empty();
+            if !any_filter {
+                return true;
+            }
+            if let Some(ref k) = kind_filter {
+                if ek == k.as_str() {
+                    return true;
+                }
+            }
+            if kinds_filter.iter().any(|k| ek == k.as_str()) {
+                return true;
+            }
+            if prefixes_filter.iter().any(|p| ek.starts_with(p.as_str())) {
+                return true;
+            }
+            false
+        };
+
         for line in &seed_lines {
             if line.is_empty() {
                 continue;
             }
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(ref k) = kind_filter {
-                    let ek = v
-                        .get("kind")
-                        .or_else(|| v.get("event"))
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("");
-                    if ek != k.as_str() {
-                        continue;
-                    }
+                if !passes_filter(&v) {
+                    continue;
                 }
                 let data = line.to_string();
                 if tx
@@ -3926,15 +4156,8 @@ async fn handle_ambient_stream(
                     continue;
                 }
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                    if let Some(ref k) = kind_filter {
-                        let ek = v
-                            .get("kind")
-                            .or_else(|| v.get("event"))
-                            .and_then(|x| x.as_str())
-                            .unwrap_or("");
-                        if ek != k.as_str() {
-                            continue;
-                        }
+                    if !passes_filter(&v) {
+                        continue;
                     }
                     let data = line.to_string();
                     if tx
@@ -5794,6 +6017,13 @@ fn build_api_router() -> Router {
         .route("/api/inject-hint", post(handle_inject_hint))
         // INFRA-1296: A2A — operator emits any a2a event from PWA.
         .route("/api/broadcast", post(handle_broadcast))
+        // INFRA-1298: A2A — operator/agent reads targeted inbox.
+        .route("/api/inbox/{session}", get(handle_inbox_get))
+        .route(
+            "/api/inbox/{session}/unread-count",
+            get(handle_inbox_unread_count),
+        )
+        .route("/api/inbox/{session}/ack", post(handle_inbox_ack))
         .route("/api/approve", post(handle_approve))
         .route(
             "/api/policy-override",
