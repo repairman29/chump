@@ -32,12 +32,9 @@ else
 fi
 
 # Verify specific CREDIBLE-005 tests exist in gap_store.rs
-# INFRA-693: gap_store.rs moved to crates/chump-gap-store/src/lib.rs.
-if [[ -f "$REPO_ROOT/crates/chump-gap-store/src/lib.rs" ]]; then
-    _gs="$REPO_ROOT/crates/chump-gap-store/src/lib.rs"
-else
-    _gs="$REPO_ROOT/src/gap_store.rs"
-fi
+# INFRA-1214: use source-grep.sh library instead of inline if/else
+source "$SCRIPT_DIR/lib/source-grep.sh"
+_gs=$(find_gap_store_path)
 
 check_test() {
     local test_name="$1"
