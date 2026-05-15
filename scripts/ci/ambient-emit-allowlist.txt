@@ -1,0 +1,36 @@
+# scripts/ci/ambient-emit-allowlist.txt — INFRA-1307
+#
+# Files that currently write inline to .chump-locks/ambient.jsonl via
+# `printf '...' >> ambient.jsonl` or equivalent. New files MUST NOT add
+# this pattern — they MUST call `chump ambient emit <kind> [--field k=v]`
+# instead (the helper auto-fills ts/session/worktree/harness, validates
+# against EVENT_REGISTRY.yaml).
+#
+# Each entry below is a Phase-2 migration target. Remove the entry when
+# its file has been migrated to `chump ambient emit` — the lint will then
+# refuse any new inline-emit additions to that file.
+#
+# Format: one path per line, optional `# reason:` comment. Comments and
+# blank lines are ignored. Paths are repo-root-relative.
+#
+# Snapshot taken: 2026-05-14 (INFRA-1307 ship). 17 sites total. As migration
+# PRs ship, this number decreases. INFRA-1307 itself migrates gap-preflight.sh
+# (3 emits) as the pilot, demonstrating the workflow.
+
+scripts/coord/auto-merge-armer.sh
+scripts/coord/bot-merge.sh
+# gap-preflight.sh removed from allowlist — migrated in INFRA-1307 pilot
+scripts/coord/pr-rescue.sh
+scripts/coord/pr-stuck-announcer.sh
+scripts/coord/pr-title-drift-detector.sh
+scripts/coord/queue-driver.sh
+scripts/coord/recurring-gap-pattern-detector.sh
+scripts/coord/stale-lease-reaper.sh
+scripts/dispatch/worker.sh
+scripts/ops/ci-flake-rerun.sh
+scripts/ops/reaper-heartbeat-watchdog.sh
+scripts/ops/stale-bot-merge-reaper.sh
+scripts/ops/stale-gap-lock-reaper.sh
+scripts/ops/stale-pr-reaper.sh
+scripts/coord/bot-merge-watchdog.sh
+scripts/ops/auto-arm-sweeper.sh

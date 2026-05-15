@@ -78,6 +78,10 @@ struct InjectHintRequest {
     hint: String,
     #[serde(default)]
     tool_context: Option<String>,
+    /// TTL for the hint in minutes (PRODUCT-116). Default 60. Stored in ambient event
+    /// so /api/ambient/recent?kind=operator_hint can surface the history list.
+    #[serde(default)]
+    ttl_minutes: Option<u32>,
 }
 
 #[derive(serde::Deserialize)]
@@ -481,7 +485,31 @@ async fn handle_inject_hint(
         "operator hint injected via API: {:?}",
         &content[..content.len().min(120)]
     );
-    Ok(Json(serde_json::json!({ "ok": true, "blackboard_id": id })))
+
+    // PRODUCT-116: emit to ambient.jsonl so /api/ambient/recent?kind=operator_hint
+    // surfaces the history list in the PWA strategic-redirect composer.
+    let ttl_min = body.ttl_minutes.unwrap_or(60);
+    let hint_event = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "kind": "operator_hint",
+        "hint": &hint,
+        "ttl_minutes": ttl_min,
+        "blackboard_id": id,
+    });
+    let ambient_path = repo_path::runtime_base()
+        .join(".chump-locks")
+        .join("ambient.jsonl");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{}", hint_event);
+    }
+
+    Ok(Json(
+        serde_json::json!({ "ok": true, "blackboard_id": id, "ttl_minutes": ttl_min }),
+    ))
 }
 
 /// POST /api/policy-override — time-boxed relax of **CHUMP_TOOLS_ASK** for a web session (requires **`CHUMP_POLICY_OVERRIDE_API=1`**).
@@ -4943,6 +4971,33 @@ async fn handle_docs_file(Path(path): Path<String>) -> impl axum::response::Into
         .into_response()
 }
 
+/// GET /api/docs — EFFECTIVE-012: serve OpenAPI 3.0 spec for client discovery.
+///
+/// Reads `docs/api/openapi.yaml` relative to the repo root and returns it with
+/// `Content-Type: application/yaml`. No auth required (read-only public spec).
+/// Validated by `openapi-generator validate`.
+async fn handle_api_docs() -> impl axum::response::IntoResponse {
+    use axum::http::{header, StatusCode};
+
+    let repo_root = crate::repo_path::repo_root();
+    let spec_path = repo_root.join("docs").join("api").join("openapi.yaml");
+
+    match std::fs::read_to_string(&spec_path) {
+        Ok(content) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/yaml")],
+            content,
+        )
+            .into_response(),
+        Err(_) => (
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "text/plain")],
+            "openapi.yaml not found — ensure docs/api/openapi.yaml exists in the repo".to_string(),
+        )
+            .into_response(),
+    }
+}
+
 /// POST /api/gap/work/{id}/retry?from_phase=<phase> — INFRA-1013: retry workflow from a phase.
 ///
 /// Tracks consecutive failures per (gap_id, phase). After 3 failures, returns 409 with
@@ -5686,6 +5741,8 @@ fn build_api_router() -> Router {
         .route("/api/gap/work/{id}", post(handle_gap_work))
         .route("/api/gap/work/{id}/retry", post(handle_gap_work_retry))
         .route("/api/logs/{request_id}", get(handle_get_logs))
+        // EFFECTIVE-012: serve OpenAPI spec for client discovery.
+        .route("/api/docs", get(handle_api_docs))
         // INFRA-1303: serve repo docs/ directory as /docs/* — markdown files
         // readable in browser and linkable from within the PWA.
         .route("/docs/{*path}", get(handle_docs_file))

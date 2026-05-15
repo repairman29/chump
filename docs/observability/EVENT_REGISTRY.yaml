@@ -324,6 +324,38 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, from_size, to_size, reason]
 
+  # ── FLEET-054: waste-spike auto-pause ─────────────────────────────────────
+  - kind: waste_spike_detected
+    emitter: scripts/coord/waste-spike-detector.sh (FLEET-054)
+    trigger: waste rate (total_incidents / total_events × 100) exceeded
+      CHUMP_WASTE_SPIKE_THRESHOLD (default 30%) in the last CHUMP_WASTE_WINDOW
+      (default 2h); fleet-paused sentinel created to halt new claims
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, rate, threshold, window, total_events, total_incidents]
+
+  - kind: fleet_resumed
+    emitter: scripts/coord/waste-spike-detector.sh (FLEET-054)
+    trigger: waste rate fell below CHUMP_WASTE_RECOVERY_THRESHOLD (default 20%)
+      for two consecutive waste-spike-detector checks; fleet-paused sentinel
+      removed and workers allowed to resume claiming
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, rate, recovery_threshold, window]
+
+  - kind: worker_paused_waste_spike
+    emitter: scripts/dispatch/worker.sh (FLEET-054)
+    trigger: worker found .chump/fleet-paused sentinel at the top of a claim
+      cycle, indicating an active waste spike; worker sleeps before retrying
+      instead of claiming a new gap
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, agent_id, pause_file]
+
+  - kind: worker_paused_waste_spike_bypass
+    emitter: scripts/coord/waste-spike-detector.sh (FLEET-054)
+    trigger: CHUMP_IGNORE_WASTE_PAUSE=1 was set; waste-spike check was bypassed
+      and no fleet-paused sentinel was created or checked regardless of rate
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, session]
+
   - kind: pager_notified
     emitter: scripts/coord/fleet-wedge-handler.sh (INFRA-845)
     trigger: CHUMP_PAGER_WEBHOOK set + escalation fires + POST attempted
@@ -2154,6 +2186,14 @@ events:
       the message bodies (which can leak env paths). Counts only.
     consumers: [fleet-brief, audit-trail]
     fields_required: [ts, kind, ok, failure_count, warning_count]
+  # ── PRODUCT-116: strategic-redirect composer ─────────────────────────────────
+  - kind: operator_hint
+    emitter: src/web_server.rs handle_inject_hint (PRODUCT-116)
+    trigger: operator POSTs to /api/inject-hint via PWA strategic-redirect composer;
+      emitted after the hint is written to the blackboard so the history list
+      (/api/ambient/recent?kind=operator_hint) can surface recent directives.
+    consumers: [fleet-brief, ambient-viewer, hint-composer-history]
+    fields_required: [ts, kind, hint, ttl_minutes, blackboard_id]
   # ── INFRA-1030: bot-merge arm-ship ordering fix ────────────────────────────
   - kind: gap_ship_post_arm_failed
     emitter: scripts/coord/bot-merge.sh (INFRA-1030)

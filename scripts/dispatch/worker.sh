@@ -5,7 +5,7 @@
 #   1. git fetch + (best-effort) rebase main into a fresh worktree
 #   2. ask musher.py / chump gap list for the next pickable gap
 #      (filters: priority, domain, effort)
-#   3. claim it via gap-claim.sh (atomic flock)
+#   3. claim it via chump claim (atomic flock)
 #   4. create a worktree at .claude/worktrees/<gap-id>-<sid>
 #   5. spawn `claude -p <focused-prompt> --dangerously-skip-permissions`
 #      with FLEET_TIMEOUT_S timeout — same surface as WorkBackend::Headless
@@ -48,8 +48,8 @@ REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 # INFRA-461: derive a unique per-worker session ID so leases written by this
 # worker (or any chump/coord subprocess it invokes) DO NOT stomp the
 # operator's interactive session via the .chump-locks/.wt-session-id
-# fallback in the gap-claim.sh resolution chain. Workers run with
-# cwd=$REPO_ROOT (the main worktree); without this export, gap-claim.sh
+# fallback in the chump claim resolution chain. Workers run with
+# cwd=$REPO_ROOT (the main worktree); without this export, chump claim
 # picks up `.wt-session-id` and every fleet worker writes the lease under
 # the operator's interactive session ID — observed live 2026-05-04 with
 # multiple SWARM-* claims overwriting an active interactive INFRA-458
@@ -59,6 +59,7 @@ REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 # session name is unique per fleet spawn; PID + epoch make sibling
 # workers in the same fleet collision-free.
 if [[ -z "${CHUMP_SESSION_ID:-}" ]]; then
+    # shellcheck disable=SC2155  # single-use identifier; masking return value acceptable
     export CHUMP_SESSION_ID="fleet-${FLEET_SESSION:-fleet}-agent${AGENT_ID}-$$-$(date +%s)"
 fi
 FLEET_LOG_DIR="${FLEET_LOG_DIR:-/tmp/chump-fleet-default}"
@@ -138,7 +139,7 @@ log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
 # FLEET-042: write heartbeat file with current epoch + gap_id.
 write_heartbeat() {
     local gap_id="${1:-none}"
-    local now=$(date +%s)
+    local now; now=$(date +%s)
     local heartbeat_file="/tmp/chump-fleet-worker-${AGENT_ID}.heartbeat"
     printf '%s %s\n' "$now" "$gap_id" > "$heartbeat_file" 2>/dev/null || true
 }
@@ -245,7 +246,7 @@ trap '_sigterm_wip_checkpoint' INT TERM
 # effort=m/l/xl or vague ACs remain un-picked — those need human judgment.
 EXCLUDE_PREFIXES_REGEX='^(EVAL-|RESEARCH-|SWARM-)'
 
-cd "$REPO_ROOT"
+cd "$REPO_ROOT" || exit 1
 
 # INFRA-333: heal any wedged-inode chump binary before we touch chump gap.
 # Idempotent — fast no-op (probe < 5s) when binary is healthy. When the
@@ -289,6 +290,20 @@ _check_binary_freshness
 cycle=0
 while :; do
     cycle=$((cycle + 1))
+
+    # FLEET-054: auto-pause when waste rate spikes. Workers check for the
+    # .chump/fleet-paused sentinel before each claim cycle. CHUMP_IGNORE_WASTE_PAUSE=1
+    # bypasses (operator override; logged to ambient).
+    _pause_file="${CHUMP_FLEET_PAUSE_FILE:-$REPO_ROOT/.chump/fleet-paused}"
+    if [[ -f "$_pause_file" && "${CHUMP_IGNORE_WASTE_PAUSE:-0}" != "1" ]]; then
+        log "FLEET-054: fleet-paused sentinel present ($( cat "$_pause_file" | head -1 )) — waste spike in progress; sleeping ${IDLE_SLEEP_S}s before retry"
+        _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        printf '{"ts":"%s","kind":"worker_paused_waste_spike","agent_id":"%s","pause_file":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_pause_file" >> "$_amb" 2>/dev/null || true
+        sleep "${IDLE_SLEEP_S:-60}"
+        continue
+    fi
+
     log "cycle $cycle: fetching origin/main"
     git fetch origin main --quiet || log "WARN: git fetch failed; continuing"
 
@@ -329,7 +344,7 @@ PY
     # INFRA-415: atomic gap picker+claimer. This picker filters candidates
     # AND claims the gap atomically before returning, preventing concurrent
     # workers from picking the same gap. Uses the same session-ID resolution
-    # as gap-claim.sh so the lease is scoped to this worker's session.
+    # as chump claim so the lease is scoped to this worker's session.
     gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
     printf '%s' "$gap_json" > "$gap_json_file"
     pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
@@ -508,6 +523,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     # _resolve_model.py walks routing.yaml to find the best model for THIS gap,
     # overriding FLEET_MODEL locally for the current cycle only.
     # gap_json is still in scope here (written before picker, not yet deleted).
+    # shellcheck disable=SC2097,SC2098  # subprocess inherits env; inline vars intentional
     _resolved_model="$(printf '%s' "$gap_json" | \
         GAP_ID="$GAP_ID" \
         REPO_ROOT="$REPO_ROOT" \
@@ -636,7 +652,7 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     # INFRA-415: the atomic picker (_pick_and_claim_gap.py) already claimed
     # the gap atomically before returning the gap ID. The lease file is
     # already written in .chump-locks/<session>.json, so we skip the separate
-    # gap-claim.sh call and proceed directly to spawning the agent.
+    # chump claim call and proceed directly to spawning the agent.
 
     # ── Spawn agent (claude or chump-local) ───────────────────────────────
     cycle_log="$FLEET_LOG_DIR/agent-${AGENT_ID}-cycle${cycle}-${GAP_ID}.log"
@@ -1244,10 +1260,10 @@ Operator or sibling worker can rescue this branch via:
 
     # FLEET-043: track consecutive dispatch failures for circuit breaker.
     # Reset on success, increment on any failure.
-    if [ $rc -eq 0 ]; then
+    if [ "$rc" -eq 0 ]; then
         log "$FLEET_BACKEND exited CLEAN (rc=0) for $GAP_ID"
         _dispatch_fail_count=0
-    elif [ $rc -eq 124 ]; then
+    elif [ "$rc" -eq 124 ]; then
         _dispatch_fail_count=$((_dispatch_fail_count + 1))
         if [ "$_is_wedge" -eq 1 ]; then
             log "WARN: $FLEET_BACKEND exited TIMEOUT/WEDGED (rc=124, cycle_log=${_cycle_log_size}B) on $GAP_ID — applying extended cooldown"
@@ -1329,7 +1345,7 @@ Operator or sibling worker can rescue this branch via:
         #     — wedge means claude -p produced no output AT ALL; the gap
         #     is likely incompatible with the current backend or hit a
         #     systemic issue (auth, API down, MCP startup hang).
-        if [ $rc -ne 0 ]; then
+        if [ "$rc" -ne 0 ]; then
             if [ "${_is_wedge:-0}" -eq 1 ]; then
                 cooldown_s="${FLEET_WEDGE_COOLDOWN_S:-14400}"  # 4h default
                 _cooldown_kind="wedge"
@@ -1355,6 +1371,7 @@ Operator or sibling worker can rescue this branch via:
             # FLEET-051: cluster-wide block if >= FLEET_COOLDOWN_THRESHOLD distinct
             # workers have all cooled on this gap. Default threshold = 3.
             _cooldown_threshold="${FLEET_COOLDOWN_THRESHOLD:-3}"
+            # shellcheck disable=SC2012  # glob patterns with * work reliably here; find is overkill
             _distinct_workers=$(ls "$cooldown_dir"/*"-${GAP_ID}.json" 2>/dev/null | wc -l | tr -d ' ')
             if [ "${_distinct_workers:-0}" -ge "$_cooldown_threshold" ]; then
                 printf '{"gap_id":"%s","cooldown_kind":"cluster_wide","until":%d,"agent":"%s","ts":"%s","worker_count":%d}\n' \
@@ -1366,7 +1383,7 @@ Operator or sibling worker can rescue this branch via:
                 printf '{"ts":"%s","session":"%s","kind":"worker_cooldown_cluster_wide","gap_id":"%s","worker_count":%d,"until":%d}\n' \
                     "$_ts_now" "${CHUMP_SESSION_ID:-fleet}" "$GAP_ID" "$_distinct_workers" "$cooldown_until" \
                     >> "$_amb" 2>/dev/null || true
-                log "cooldown: cluster-wide block on $GAP_ID ($__distinct_workers workers failed)"
+                log "cooldown: cluster-wide block on $GAP_ID ($_distinct_workers workers failed)"
             else
                 _ts_now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
                 _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
@@ -1536,7 +1553,8 @@ Operator or sibling worker can rescue this branch via:
             [[ -z "$_head_ts" ]] && continue
 
             # Scan comments for [handoff:apply] newer than HEAD commit
-            _handoff_body="$(printf '%s' "$_pr_json" | python3 - "$_head_ts" <<'PYEOF'
+            # shellcheck disable=SC2259  # heredoc is the Python script; pipe feeds argv
+            _handoff_body="$(printf '%s' "$_pr_json" | python3 - "$_head_ts" 2>/dev/null <<'PYEOF' || true
 import sys, json
 from datetime import datetime, timezone
 
@@ -1561,7 +1579,7 @@ for c in reversed(comments):
         print(body)
         break
 PYEOF
-2>/dev/null || true)"
+)"
 
             [[ -z "$_handoff_body" ]] && continue
 
@@ -1586,6 +1604,7 @@ if m:
             # files changed in this PR branch (vs merge-base with main) is
             # < 50%, the branch was likely recycled for unrelated work.
             # Skip auto-apply and emit review_handoff_branch_diverged.
+            # shellcheck disable=SC2259  # heredoc is the Python script; pipe feeds argv
             _778_overlap_pct="$(printf '%s' "$_diff_block" \
                 | python3 - "$_head_sha" "$REPO_ROOT" <<'PY778' 2>/dev/null || echo 100
 import sys, subprocess, re
