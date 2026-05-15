@@ -61,47 +61,28 @@ if [[ -z "$MAIN_REPO" || ! -d "$MAIN_REPO/$WORKTREE_ROOT" ]]; then
 fi
 cd "$MAIN_REPO"
 
-# INFRA-1124: emit kind=worktree_reaper_skipped_active on safety-triggered skips.
-_prune_emit_skipped() {
-    local wt_path="$1" reason="$2"
-    local ambient="${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}"
-    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"ts":"%s","kind":"worktree_reaper_skipped_active","worktree":"%s","reason":"%s"}\n' \
-        "$ts" "$wt_path" "$reason" >> "$ambient" 2>/dev/null || true
-}
-
-# INFRA-1124: build set of worktrees with fresh leases (heartbeat within 15 min).
-_PRUNE_ACTIVE_WORKTREES=""
-_PRUNE_NOW_TS="$(date +%s)"
-if [[ "$REAPER_SAFETY_CHECK" == "1" && -d ".chump-locks" ]]; then
-    for _lease in .chump-locks/*.json; do
-        [[ -f "$_lease" ]] || continue
-        _wt=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$_lease" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' || true)
-        [[ -z "$_wt" ]] && continue
-        _hb=$(grep -o '"heartbeat_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$_lease" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' || true)
-        [[ -z "$_hb" ]] && _hb=$(grep -o '"taken_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$_lease" 2>/dev/null | sed 's/.*"\([^"]*\)"$/\1/' || true)
-        if [[ -n "$_hb" ]]; then
-            _hb_ts=$(date -d "$_hb" +%s 2>/dev/null \
-                || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$_hb" +%s 2>/dev/null \
-                || echo 0)
-            _age_s=$(( _PRUNE_NOW_TS - _hb_ts ))
-            [[ $_age_s -gt 900 ]] && continue
-        fi
-        _PRUNE_ACTIVE_WORKTREES="$_PRUNE_ACTIVE_WORKTREES $_wt"
-    done
-fi
+# INFRA-1211: shared worktree scanning + lease check + event emission lib.
+# shellcheck source=scripts/lib/worktree-iter.sh
+# shellcheck disable=SC1091
+source "$(dirname "$0")/../lib/worktree-iter.sh"
+# shellcheck source=scripts/lib/lease.sh
+# shellcheck disable=SC1091
+source "$(dirname "$0")/../lib/lease.sh"
+REAPER_NAME="${REAPER_NAME:-worktree-prune}"
+REAPER_REPO_ROOT="$MAIN_REPO"
+export REAPER_REPO_ROOT
 
 # Returns 0 if wt_dir has a fresh active lease or a fresh .git/index.
+# Delegates lease scanning to wt_has_active_lease() from worktree-iter.sh.
 _prune_is_inflight() {
-    local wt_dir="$1" wt_name; wt_name="$(basename "$wt_dir")"
+    local wt_dir="$1"
     [[ "$REAPER_SAFETY_CHECK" != "1" ]] && return 1
-    # Lease check
-    if [[ " $_PRUNE_ACTIVE_WORKTREES " == *" $wt_name "* \
-       || " $_PRUNE_ACTIVE_WORKTREES " == *" $wt_dir "* ]]; then
-        _prune_emit_skipped "$wt_dir" "active_lease"
+    # Lease check via shared lib (replaces the old _PRUNE_ACTIVE_WORKTREES loop).
+    if wt_has_active_lease "$wt_dir" 900; then
+        emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "active_lease"
         return 0
     fi
-    # .git/index mtime check
+    # .git/index mtime check (belt-and-suspenders for pre-fix leases).
     local _gi=""
     if [[ -f "$wt_dir/.git" ]]; then
         local _gd; _gd=$(sed 's/^gitdir: //' "$wt_dir/.git" 2>/dev/null || true)
@@ -112,7 +93,7 @@ _prune_is_inflight() {
     if [[ -n "$_gi" ]]; then
         local _fresh; _fresh=$(find "$_gi" -mmin -5 2>/dev/null | head -1 || true)
         if [[ -n "$_fresh" ]]; then
-            _prune_emit_skipped "$wt_dir" "git_index_fresh"
+            emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "git_index_fresh"
             return 0
         fi
     fi
