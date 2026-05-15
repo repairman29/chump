@@ -12,6 +12,7 @@ members = [
     "crates/chump-coord",
     "crates/chump-orchestrator",
     "crates/chump-planner",
+    "crates/chump-ship",
     "crates/mcp-servers/chump-mcp-github",
     "crates/mcp-servers/chump-mcp-tavily",
     "crates/mcp-servers/chump-mcp-adb",
