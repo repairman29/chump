@@ -4092,7 +4092,11 @@ async fn handle_ambient_emit(
         .to_string();
 
     // Reject oversized / control-char-bearing kind strings.
-    if kind.len() > 64 || kind.chars().any(|c| c == '"' || c == '\\' || c.is_control()) {
+    if kind.len() > 64
+        || kind
+            .chars()
+            .any(|c| c == '"' || c == '\\' || c.is_control())
+    {
         return Err(StatusCode::BAD_REQUEST);
     }
 
