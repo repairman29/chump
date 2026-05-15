@@ -27,6 +27,14 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${REPO_ROOT:-$(cd "$_SCRIPT_DIR/../.." && pwd)}"
 _FAST_PATH="$REPO_ROOT/scripts/coord/emergency-fast-path.sh"
 
+# INFRA-1068: batch write library (queue+flush).
+_WRITER_LIB="$REPO_ROOT/scripts/coord/lib/fleet-state-writer.sh"
+if [[ -r "$_WRITER_LIB" ]]; then
+  # shellcheck source=./lib/fleet-state-writer.sh
+  # shellcheck disable=SC1091
+  source "$_WRITER_LIB"
+fi
+
 # INFRA-841: frequency-aware scheduling — emit kind=system_gap_tick on each run.
 _TICK_HELPER="$REPO_ROOT/scripts/coord/system-gap-tick.sh"
 if [[ -r "$_TICK_HELPER" ]]; then
@@ -57,9 +65,20 @@ EOF
 }
 
 # INFRA-847: fleet_state_set_field — update a top-level field via flock accessor.
+# INFRA-1068: when CHUMP_FLEET_STATE_BATCH_WRITES=1 (default), enqueues the
+# write via fleet_state_queue_write instead of grabbing the flock immediately.
+# The caller is responsible for calling fleet_state_flush at the end of the
+# logical unit (e.g. main loop iteration). Set CHUMP_FLEET_STATE_BATCH_WRITES=0
+# to restore the original immediate-write behavior.
 # Uses emergency-fast-path.sh when available; falls back to direct write (no flock).
 fleet_state_set_field() {
   local key="$1" val="$2"
+  local _batch="${CHUMP_FLEET_STATE_BATCH_WRITES:-1}"
+  if [[ "$_batch" == "1" ]] && declare -F fleet_state_queue_write >/dev/null 2>&1; then
+    fleet_state_queue_write "$key" "$val"
+    return 0
+  fi
+  # Immediate write (batch disabled or library not loaded).
   if [[ -x "$_FAST_PATH" ]]; then
     CHUMP_AMBIENT_LOG="$AMBIENT" \
     REPO_ROOT="$REPO_ROOT" \
@@ -695,6 +714,15 @@ main() {
 
   echo ""
   echo "=== CURATOR AUDIT COMPLETE ==="
+
+  # INFRA-1068: flush all queued fleet-state.json writes in ONE flock acquisition.
+  # This covers last_curator_run + any slo_breach_active changes accumulated
+  # during the audit and decision phases above. No-op if batching is disabled
+  # (CHUMP_FLEET_STATE_BATCH_WRITES=0) because set_field would have written
+  # immediately. Safe to call even when the library is not loaded.
+  if declare -F fleet_state_flush >/dev/null 2>&1; then
+    fleet_state_flush || true
+  fi
 }
 
 _parse_args "$@"

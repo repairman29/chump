@@ -9,6 +9,7 @@
 #   scripts/coord/emergency-fast-path.sh read              # print fleet-state.json
 #   scripts/coord/emergency-fast-path.sh write <json>      # replace fleet-state.json atomically
 #   scripts/coord/emergency-fast-path.sh set-field key val # merge a top-level key
+#   scripts/coord/emergency-fast-path.sh update-jq <filter> # apply jq filter (batch flush, INFRA-1068)
 #   scripts/coord/emergency-fast-path.sh reset             # write default fleet state
 #   scripts/coord/emergency-fast-path.sh status            # human-readable summary
 #
@@ -53,18 +54,30 @@ _default_state() {
 
 # Run $@ under exclusive flock. On timeout: log warning, emit ambient event,
 # proceed without lock (fail-open) so callers don't deadlock.
+# INFRA-1068: tracks flock wait time and emits fleet_state_lock_contention
+# when wait_ms > 1000 so the batch-write telemetry dashboard has a contention
+# signal to correlate against.
 _with_lock() {
     mkdir -p "$_lock_dir"
     if [[ "${_mutex}" == "0" ]]; then
         "$@"; return
     fi
+    local _before_ms _after_ms _wait_ms
+    _before_ms=$(python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null \
+        || date +%s 2>/dev/null | awk '{print $1*1000}' || echo 0)
     {
         local flock_rc=0
         flock -w "$_lock_timeout" 9 || flock_rc=$?
+        _after_ms=$(python3 -c "import time; print(int(time.time()*1000))" 2>/dev/null \
+            || date +%s 2>/dev/null | awk '{print $1*1000}' || echo 0)
+        _wait_ms=$(( _after_ms - _before_ms ))
         if [[ $flock_rc -ne 0 ]]; then
             echo "[emergency-fast-path] WARN: fleet-state.lock timeout (${_lock_timeout}s) — proceeding without lock" >&2
             _emit "fleet_state_lock_timeout" \
                 '"source":"emergency-fast-path","timeout_s":'"$_lock_timeout"',"note":"INFRA-847"'
+        elif [[ "$_wait_ms" -gt 1000 ]]; then
+            _emit "fleet_state_lock_contention" \
+                '"source":"emergency-fast-path","wait_ms":'"$_wait_ms"',"note":"INFRA-1068"'
         fi
         "$@"
     } 9>"$_lock_file"
@@ -99,6 +112,27 @@ print(json.dumps(d))
 "
 }
 
+# INFRA-1068: _apply_jq_filter — read, apply a jq filter, write atomically.
+# Called under _with_lock by the update-jq subcommand so all queued batch
+# writes land in one flock acquisition.
+_apply_jq_filter() {
+    local jq_filter="$1"
+    local current new_json
+    current="$(_read_state)"
+    # Apply the filter and stamp ts; fall back to identity on jq error.
+    if command -v jq &>/dev/null; then
+        new_json=$(printf '%s\n' "$current" \
+            | jq --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                "(${jq_filter}) | .ts = \$ts" 2>/dev/null) || true
+    fi
+    if [[ -z "${new_json:-}" ]]; then
+        # jq unavailable or filter error — fall through with unchanged state
+        echo "[emergency-fast-path] WARN: update-jq filter failed — state unchanged" >&2
+        return 0
+    fi
+    _write_state "$new_json"
+}
+
 cmd="${1:-status}"
 shift || true
 
@@ -123,6 +157,13 @@ case "$cmd" in
         new_json="$(_set_field "$key" "$val")"
         _with_lock _write_state "$new_json"
         ;;
+    update-jq)
+        # INFRA-1068: batch-flush subcommand. Accepts a jq filter string and
+        # applies it to fleet-state.json in ONE flock acquisition. Called by
+        # fleet_state_flush() in scripts/coord/lib/fleet-state-writer.sh.
+        jq_filter="${1:?update-jq requires a jq filter argument}"
+        _with_lock _apply_jq_filter "$jq_filter"
+        ;;
     reset)
         _with_lock _write_state "$(_default_state)"
         echo "[emergency-fast-path] Fleet state reset to defaults." >&2
@@ -143,7 +184,7 @@ case "$cmd" in
         fi
         ;;
     *)
-        echo "Usage: $0 {read|write <json>|set-field <key> <val>|reset|status}" >&2
+        echo "Usage: $0 {read|write <json>|set-field <key> <val>|update-jq <filter>|reset|status}" >&2
         exit 1
         ;;
 esac
