@@ -2549,6 +2549,20 @@ events:
       rebase, cargo fmt, cargo clippy, cargo test, push, PR create, etc.
     consumers: [fleet-brief, ops-audit, infra-1067-timeout-tuning]
     fields_required: [ts, kind, phase, elapsed_s, gap, branch]
+  - kind: lease_auto_extended
+    emitter: scripts/coord/lease-auto-extend.sh (INFRA-1327)
+    trigger: a near-expiry claim lease (remaining < CHUMP_LEASE_EXTEND_THRESHOLD_S,
+      default 1800s) has an open PR with armed auto-merge; the lease expires_at is
+      rewritten to now + CHUMP_GAP_CLAIM_TTL_SECS to prevent a stomp race where a
+      second worker re-claims the gap while GitHub merge is still processing.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, gap_id, pr_number, new_expires, reason]
+    docs: |
+      reason is always "auto_merge_armed". pr_number is the integer GitHub PR number.
+      new_expires is an ISO-8601 UTC timestamp. Emitted once per lease per extension
+      cycle; no dedup — operators can count events to see how many times a lease was
+      extended before merge completed.
+
   - kind: lease_release_failed
     emitter: src/dispatch.rs::release_with_retry (INFRA-1243)
     trigger: chump --release subprocess failed twice in the dispatch step-5 cleanup
