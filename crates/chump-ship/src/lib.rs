@@ -463,8 +463,7 @@ pub fn classify_step_failure(
 
     if is_git && first_arg == "push" {
         let stale_info = stderr_l.contains("stale info");
-        let rejected_lease =
-            stderr_l.contains("rejected") && stderr_l.contains("force-with-lease");
+        let rejected_lease = stderr_l.contains("rejected") && stderr_l.contains("force-with-lease");
         if stale_info || rejected_lease {
             if attempt >= max_attempts {
                 return RetryAction::Fail {
@@ -887,14 +886,21 @@ mod tests {
 
     // ── INFRA-1229 slice 3: retry classification tests ───────────────────
 
-    fn arg(s: &str) -> String { s.to_string() }
+    fn arg(s: &str) -> String {
+        s.to_string()
+    }
 
     #[test]
     fn push_rejection_stale_info_triggers_retry() {
         let stderr = "To github.com:x/y.git\n ! [rejected] HEAD -> branch (stale info)";
         let act = classify_step_failure(
             "git",
-            &[arg("push"), arg("--force-with-lease"), arg("origin"), arg("HEAD")],
+            &[
+                arg("push"),
+                arg("--force-with-lease"),
+                arg("origin"),
+                arg("HEAD"),
+            ],
             1,
             stderr,
             0,
@@ -914,31 +920,34 @@ mod tests {
         let stderr = "error: failed to push some refs to 'x'\n ! [rejected] (force-with-lease)";
         let act = classify_step_failure(
             "git",
-            &[arg("push"), arg("--force-with-lease"), arg("origin"), arg("HEAD")],
+            &[
+                arg("push"),
+                arg("--force-with-lease"),
+                arg("origin"),
+                arg("HEAD"),
+            ],
             1,
             stderr,
             1,
             3,
         );
-        assert!(matches!(act, RetryAction::RetryRebaseAndPush { attempt: 2, .. }),
-                "got {act:?}");
+        assert!(
+            matches!(act, RetryAction::RetryRebaseAndPush { attempt: 2, .. }),
+            "got {act:?}"
+        );
     }
 
     #[test]
     fn rebase_conflict_aborts() {
         let stderr = "CONFLICT (content): Merge conflict in src/main.rs\n";
-        let act = classify_step_failure(
-            "git",
-            &[arg("rebase"), arg("origin/main")],
-            1,
-            stderr,
-            0,
-            3,
-        );
+        let act =
+            classify_step_failure("git", &[arg("rebase"), arg("origin/main")], 1, stderr, 0, 3);
         match act {
             RetryAction::AbortAsConflict { reason } => {
-                assert!(reason.contains("rebase --abort"),
-                        "reason should mention rebase --abort: {reason}");
+                assert!(
+                    reason.contains("rebase --abort"),
+                    "reason should mention rebase --abort: {reason}"
+                );
             }
             other => panic!("expected AbortAsConflict, got {other:?}"),
         }
@@ -970,7 +979,10 @@ mod tests {
         );
         match act {
             RetryAction::Fail { reason } => {
-                assert!(reason.contains("attempt"), "reason should mention attempts: {reason}");
+                assert!(
+                    reason.contains("attempt"),
+                    "reason should mention attempts: {reason}"
+                );
             }
             other => panic!("expected Fail (max exceeded), got {other:?}"),
         }
@@ -1002,8 +1014,10 @@ mod tests {
         );
         match act {
             RetryAction::Fail { reason } => {
-                assert!(reason.contains("does not look like a stale-info race"),
-                        "reason: {reason}");
+                assert!(
+                    reason.contains("does not look like a stale-info race"),
+                    "reason: {reason}"
+                );
             }
             other => panic!("expected Fail (non-stale push failure), got {other:?}"),
         }
@@ -1011,20 +1025,29 @@ mod tests {
 
     #[test]
     fn freshness_fresh_under_threshold() {
-        let v = freshness_verdict(&FreshnessCheck { behind: 5, threshold: 15 });
+        let v = freshness_verdict(&FreshnessCheck {
+            behind: 5,
+            threshold: 15,
+        });
         assert_eq!(v, FreshnessVerdict::Fresh);
     }
 
     #[test]
     fn freshness_stale_over_threshold() {
-        let v = freshness_verdict(&FreshnessCheck { behind: 16, threshold: 15 });
+        let v = freshness_verdict(&FreshnessCheck {
+            behind: 16,
+            threshold: 15,
+        });
         assert_eq!(v, FreshnessVerdict::Stale);
     }
 
     #[test]
     fn freshness_equal_threshold_is_fresh() {
         // Equal-to-threshold is fresh (strict greater-than for stale).
-        let v = freshness_verdict(&FreshnessCheck { behind: 15, threshold: 15 });
+        let v = freshness_verdict(&FreshnessCheck {
+            behind: 15,
+            threshold: 15,
+        });
         assert_eq!(v, FreshnessVerdict::Fresh);
     }
 }
