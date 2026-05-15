@@ -1,8 +1,54 @@
 # PWA Cockpit Roadmap — PRODUCT-121
 
-**Status:** draft v1 (pending operator sign-off)
+**Status:** v1.1 — Phase 1 partially shipped, doctrine added
 **Owner:** the operator (currently Jeff)
-**Date:** 2026-05-15
+**Date:** 2026-05-15 (updated end-of-day)
+
+---
+
+## Day-of-spec retrospective (added 2026-05-15 evening)
+
+The principles below were authored at session start. By end of day **this
+much had shipped or was in flight**:
+
+| Phase | Item | Status |
+|---|---|---|
+| 1 | Cockpit landing shell (5-zone grid, 22-component composition) | ✅ merged (#2030) |
+| 1 | Read/Signal/Noise intelligence layer | 🟡 in PR #2063 (auto-merge armed, sibling rebasing) |
+| 1 | Wake-fleet + Dispatch-gap + Release-leases + Repair-drift action wires | 🟡 in PR #2063 |
+| 1 | Operator-attention within-kind dedup | 🟡 in PR #2066 |
+| — | Cockpit Action Model doctrine (7 rules) | ✅ merged (#2067) |
+| — | Cockpit Synthesis algorithm spec | ✅ merged (#2067) |
+| — | `target/` artifact reaper (disk-pressure fix) | 🟡 in PR #2083 |
+| — | Failure-cascade docs in CLAUDE_GOTCHAS.md | ✅ merged (#2094) |
+
+**What we learned that wasn't in the morning's spec:**
+
+1. **"Intelligence vs surveillance" was a forcing function.** The operator's
+   mid-day reaction ("this is just data, not intelligence") reshaped the
+   center zone from "release notes + roadmap" lists into the Read/Signal/
+   Noise framework. The framework only exists because that reaction
+   happened on a real artifact.
+2. **"Every surface answers 'do this now?'" became doctrine.** Captured in
+   `COCKPIT_ACTION_MODEL.md` (7 rules + gap-review checklist). Rule 1 and
+   Rule 2 ("direct action button; empty state IS the button") are the
+   load-bearing ones — every cockpit gap reviewed against those.
+3. **Bias mitigation has to be inspectable, not absent.** Documented in
+   `COCKPIT_SYNTHESIS.md`: synthesis ladder, confidence calibration,
+   counter-evidence requirement, evidence-on-demand, 🚩 wrong-card
+   override. Operators can read exactly how the cockpit computes each
+   card.
+
+**What didn't ship:**
+
+- PRODUCT-133 (right-zone action-first treatment) — filed, P2, blocked
+  waiting for PR #2063's synthesis layer to land first
+- INFRA-1349 target-reaper launchd install — script shipped but launchd
+  job isn't running yet (operator-action item)
+- Operator sign-off on Phase 1 ship-criterion ("operator reaches for
+  cockpit before CLI in next 5 sessions") — pending real dogfood
+
+---
 
 ---
 

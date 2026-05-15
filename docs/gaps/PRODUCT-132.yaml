@@ -1,7 +1,8 @@
 - id: PRODUCT-132
   domain: PRODUCT
   title: "EFFECTIVE: <chump-operator-attention> dedup — 20 identical gap-drift alerts collapse to 1 row with count"
-  status: open
+  status: done
+  closed_pr: 2066
   priority: P1
   effort: s
   description: |
