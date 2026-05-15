@@ -37,6 +37,15 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 LOCK_DIR="$REPO_ROOT/.chump-locks"
 AMBIENT="$LOCK_DIR/ambient.jsonl"
 
+# INFRA-1211: shared worktree scanning + lease check + event emission lib.
+# shellcheck source=scripts/lib/worktree-iter.sh
+source "$(dirname "$0")/../lib/worktree-iter.sh"
+# shellcheck source=scripts/lib/lease.sh
+source "$(dirname "$0")/../lib/lease.sh"
+REAPER_NAME="${REAPER_NAME:-prune-worktrees}"
+REAPER_REPO_ROOT="$REPO_ROOT"
+export REAPER_REPO_ROOT
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run) DRY_RUN=true; shift ;;
@@ -62,42 +71,23 @@ emit_ambient() {
     echo "[prune-worktrees] $payload"
 }
 
-# Check if a lease is active (file exists AND not expired).
+# Check if a lease is active — delegates to wt_has_active_lease() from
+# worktree-iter.sh (INFRA-1211). Branch-based matching retained as fallback.
 is_active_lease() {
     local worktree_path="$1"
-    local branch="$2"
-    local now_ts; now_ts="$(date -u +%s)"
-    local found=0
-
-    while IFS= read -r lease_file; do
-        [[ -f "$lease_file" ]] || continue
-        # Match by worktree path or branch name in the lease JSON.
-        local worktree_match branch_match
-        worktree_match=$(python3 -c "import json; d=json.load(open('$lease_file')); print(d.get('worktree',''))" 2>/dev/null || echo "")
-        branch_match=$(python3 -c "import json; d=json.load(open('$lease_file')); print(d.get('branch',''))" 2>/dev/null || echo "")
-
-        # Also check the gap_id field maps to a worktree path.
-        if [[ "$worktree_match" == "$worktree_path" || "$worktree_match" == "/private${worktree_path}" \
-            || "$branch_match" == "$branch" ]]; then
-            # Check expiry.
-            local expires_at
-            expires_at=$(python3 -c "import json; d=json.load(open('$lease_file')); print(d.get('expires_at',''))" 2>/dev/null || echo "")
-            if [[ -n "$expires_at" ]]; then
-                local exp_ts
-                exp_ts=$(date -d "$expires_at" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$expires_at" +%s 2>/dev/null || echo 0)
-                if [[ "$exp_ts" -gt "$now_ts" ]]; then
-                    found=1
-                    break
-                fi
-            else
-                # No expiry field — treat as active (conservative).
-                found=1
-                break
-            fi
-        fi
-    done < <(find "$LOCK_DIR" -maxdepth 1 -name "*.json" 2>/dev/null)
-
-    [[ "$found" -eq 1 ]]
+    local branch="${2:-}"
+    # Primary: heartbeat-aware worktree path match via shared lib.
+    wt_has_active_lease "$worktree_path" 900 && return 0
+    # Fallback: branch name match (some old leases lack worktree field).
+    if [[ -n "$branch" ]]; then
+        local lease_file
+        while IFS= read -r lease_file; do
+            [[ -f "$lease_file" ]] || continue
+            local b; b="$(lease_field "$lease_file" branch 2>/dev/null || true)"
+            [[ "$b" == "$branch" ]] && ! lease_is_expired "$lease_file" && return 0
+        done < <(lease_iter --repo "$REPO_ROOT")
+    fi
+    return 1
 }
 
 # Check if there's an open PR for the given branch on GitHub.
