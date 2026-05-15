@@ -3,7 +3,8 @@
 use axum::http::StatusCode;
 use axum::response::sse::{Event, Sse};
 use axum::{response::Redirect, Json};
-use std::time::Duration;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use crate::local_openai;
 use crate::provider_cascade;
@@ -555,4 +556,248 @@ pub async fn handle_neuromod_stream(
             .interval(Duration::from_secs(15))
             .text("ping"),
     )
+}
+
+// ── INFRA-1339: /api/fleet/pillars — 4-pillar mission grade JSON ──
+//
+// Powers PRODUCT-107 status-footer pillar quadrant + INFRA-1203 health view
+// pillar grades. Reuses crate::mission_grade::build_report (the same call
+// `chump mission-grade` makes) and serializes per-pillar
+// {grade, score, count_pickable, count_in_flight, count_shipped_24h, trend,
+// breach_reasons}. Trend is currently always "flat" — wiring up history is
+// a follow-up (file when we want sparklines).
+//
+// Cache: 60s in-process via OnceLock<Mutex<Option<Snapshot>>>. Pillar grades
+// don't move minute-to-minute, and computing the report touches sqlite +
+// disk, so caching protects against PWA-poll storms.
+
+#[derive(Clone)]
+struct PillarsSnapshot {
+    payload: serde_json::Value,
+    cached_at: Instant,
+}
+
+fn pillars_cache() -> &'static OnceLock<Mutex<Option<PillarsSnapshot>>> {
+    static CELL: OnceLock<Mutex<Option<PillarsSnapshot>>> = OnceLock::new();
+    &CELL
+}
+
+/// GET /api/fleet/pillars — see module doc for schema.
+pub async fn handle_fleet_pillars() -> Json<serde_json::Value> {
+    let ttl = Duration::from_secs(60);
+    let cell = pillars_cache().get_or_init(|| Mutex::new(None));
+
+    if let Ok(g) = cell.lock() {
+        if let Some(snap) = g.as_ref() {
+            if snap.cached_at.elapsed() < ttl {
+                return Json(snap.payload.clone());
+            }
+        }
+    }
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => std::path::PathBuf::from(r),
+        Err(_) => crate::repo_path::runtime_base(),
+    };
+    let report = crate::mission_grade::build_report(&repo_root);
+    let payload = pillars_report_to_json(&report);
+
+    let mission_grade = payload
+        .get("mission")
+        .and_then(|m| m.get("grade"))
+        .and_then(|g| g.as_str())
+        .unwrap_or("?");
+    tracing::info!(
+        target: "chump::fleet_pillars",
+        mission_grade,
+        effective_grade = payload
+            .get("effective")
+            .and_then(|m| m.get("grade"))
+            .and_then(|g| g.as_str())
+            .unwrap_or("?"),
+        "fleet pillars computed (cache miss)"
+    );
+
+    if let Ok(mut g) = cell.lock() {
+        *g = Some(PillarsSnapshot {
+            payload: payload.clone(),
+            cached_at: Instant::now(),
+        });
+    }
+    Json(payload)
+}
+
+fn pillar_entry(c: &crate::mission_grade::PillarCounts) -> serde_json::Value {
+    let grade_ch = crate::mission_grade::pillar_grade(c.count_pickable, c.count_in_flight);
+    // Score: rough 0-100 indicator. 25 per pickable, 10 per in-flight, 5 per shipped/24h, clamp to 100.
+    let raw: u64 = c
+        .count_pickable
+        .saturating_mul(25)
+        .saturating_add(c.count_in_flight.saturating_mul(10))
+        .saturating_add(c.count_shipped_24h.saturating_mul(5));
+    let score = raw.min(100);
+
+    let mut reasons: Vec<String> = Vec::new();
+    if grade_ch == 'F' {
+        reasons.push("no open gaps tagged for this pillar".to_string());
+    } else if grade_ch == 'C' {
+        reasons.push(format!("0 pickable; {} in flight", c.count_in_flight));
+    } else if grade_ch == 'B' {
+        reasons.push("only 1 pickable gap — restock to >=2".to_string());
+    }
+
+    serde_json::json!({
+        "grade": grade_ch.to_string(),
+        "score": score,
+        "count_pickable": c.count_pickable,
+        "count_in_flight": c.count_in_flight,
+        "count_shipped_24h": c.count_shipped_24h,
+        "trend": "flat",
+        "breach_reasons": reasons,
+    })
+}
+
+fn pillars_report_to_json(r: &crate::mission_grade::MissionGradeReport) -> serde_json::Value {
+    // Aggregate mission grade: worst of the 4 (A>B>C>F).
+    let grades = [
+        crate::mission_grade::pillar_grade(r.effective.count_pickable, r.effective.count_in_flight),
+        crate::mission_grade::pillar_grade(r.credible.count_pickable, r.credible.count_in_flight),
+        crate::mission_grade::pillar_grade(r.resilient.count_pickable, r.resilient.count_in_flight),
+        crate::mission_grade::pillar_grade(
+            r.zero_waste.count_pickable,
+            r.zero_waste.count_in_flight,
+        ),
+    ];
+    let mission_grade = grades
+        .iter()
+        .max_by_key(|g| grade_severity(**g))
+        .unwrap_or(&'F');
+    let mission_score = {
+        let mut total = 0u64;
+        for c in [&r.effective, &r.credible, &r.resilient, &r.zero_waste] {
+            let raw: u64 = c
+                .count_pickable
+                .saturating_mul(25)
+                .saturating_add(c.count_in_flight.saturating_mul(10))
+                .saturating_add(c.count_shipped_24h.saturating_mul(5));
+            total = total.saturating_add(raw.min(100));
+        }
+        total / 4
+    };
+    let mut mission_breach: Vec<String> = Vec::new();
+    for (counts, name) in [
+        (&r.effective, "effective"),
+        (&r.credible, "credible"),
+        (&r.resilient, "resilient"),
+        (&r.zero_waste, "zero_waste"),
+    ] {
+        if counts.count_pickable < 2 {
+            mission_breach.push(format!(
+                "{} has {} pickable (target >=2)",
+                name, counts.count_pickable
+            ));
+        }
+    }
+    serde_json::json!({
+        "ts": r.ts,
+        "effective": pillar_entry(&r.effective),
+        "credible": pillar_entry(&r.credible),
+        "resilient": pillar_entry(&r.resilient),
+        "zero_waste": pillar_entry(&r.zero_waste),
+        "mission": {
+            "grade": mission_grade.to_string(),
+            "score": mission_score,
+            "breach_reasons": mission_breach,
+            "trend": "flat",
+        },
+    })
+}
+
+fn grade_severity(g: char) -> u8 {
+    match g {
+        'A' => 0,
+        'B' => 1,
+        'C' => 2,
+        'F' => 3,
+        _ => 4,
+    }
+}
+
+#[cfg(test)]
+mod fleet_pillars_tests {
+    use super::*;
+    use crate::mission_grade::{MissionGradeReport, PillarCounts};
+
+    #[test]
+    fn pillar_entry_grade_a_two_pickable() {
+        let c = PillarCounts {
+            count_pickable: 3,
+            count_in_flight: 1,
+            count_shipped_24h: 2,
+        };
+        let v = pillar_entry(&c);
+        assert_eq!(v["grade"], "A");
+        assert_eq!(v["count_pickable"], 3);
+        assert_eq!(v["count_in_flight"], 1);
+        assert_eq!(v["count_shipped_24h"], 2);
+        assert_eq!(v["trend"], "flat");
+        assert!(v["breach_reasons"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn pillar_entry_grade_b_one_pickable_has_restock_reason() {
+        let c = PillarCounts {
+            count_pickable: 1,
+            count_in_flight: 0,
+            count_shipped_24h: 0,
+        };
+        let v = pillar_entry(&c);
+        assert_eq!(v["grade"], "B");
+        let reasons = v["breach_reasons"].as_array().unwrap();
+        assert_eq!(reasons.len(), 1);
+        assert!(reasons[0].as_str().unwrap().contains("only 1 pickable"));
+    }
+
+    #[test]
+    fn pillar_entry_grade_f_no_open_has_reason() {
+        let c = PillarCounts::default();
+        let v = pillar_entry(&c);
+        assert_eq!(v["grade"], "F");
+        let reasons = v["breach_reasons"].as_array().unwrap();
+        assert_eq!(reasons.len(), 1);
+    }
+
+    #[test]
+    fn report_to_json_full_shape() {
+        let r = MissionGradeReport {
+            effective: PillarCounts {
+                count_pickable: 3,
+                count_in_flight: 0,
+                count_shipped_24h: 0,
+            },
+            credible: PillarCounts {
+                count_pickable: 1,
+                count_in_flight: 0,
+                count_shipped_24h: 0,
+            },
+            resilient: PillarCounts {
+                count_pickable: 0,
+                count_in_flight: 2,
+                count_shipped_24h: 0,
+            },
+            zero_waste: PillarCounts::default(),
+            ts: "2026-05-15T20:30:00Z".to_string(), // chump-fmt: time-bomb-ok
+        };
+        let v = pillars_report_to_json(&r);
+        assert_eq!(v["effective"]["grade"], "A");
+        assert_eq!(v["credible"]["grade"], "B");
+        assert_eq!(v["resilient"]["grade"], "C");
+        assert_eq!(v["zero_waste"]["grade"], "F");
+        // Mission grade is worst of the 4.
+        assert_eq!(v["mission"]["grade"], "F");
+        assert_eq!(v["ts"], "2026-05-15T20:30:00Z"); // chump-fmt: time-bomb-ok
+        let mission_reasons = v["mission"]["breach_reasons"].as_array().unwrap();
+        // zero_waste + resilient + credible all have <2 pickable.
+        assert!(mission_reasons.len() >= 3);
+    }
 }

@@ -1274,6 +1274,8 @@ jobs:
         run: bash scripts/ci/test-fleet-bootstrap.sh
       - name: PWA flake quarantine wiring (INFRA-1332)
         run: bash scripts/ci/test-pwa-flake-quarantine.sh
+      - name: fleet pillars endpoint — /api/fleet/pillars wiring + mission-grade proxy (INFRA-1339)
+        run: bash scripts/ci/test-api-fleet-pillars.sh
       - name: worktree-prune protects live edits (INFRA-1347)
         run: bash scripts/ci/test-worktree-prune-protects-live-edits.sh
       - name: cockpit Today's-arc Wake-fleet action (PRODUCT-128)

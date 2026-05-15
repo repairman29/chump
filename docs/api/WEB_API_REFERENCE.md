@@ -294,6 +294,44 @@ Response:
 
 **Telemetry:** every request emits one `kind=gap_queue_request` ambient event with `{filter, count, ms}` fields. Tail `.chump-locks/ambient.jsonl` to spot frontend hot-loops.
 
+## GET /api/fleet/pillars (INFRA-1339)
+
+Returns the current 4-pillar mission-grade assessment. Powers the PRODUCT-107 status-footer pillar quadrant and the INFRA-1203 fleet-health view.
+
+**Response shape:**
+
+```json
+{
+  "effective":  { "grade": "A", "score": 80, "count_pickable": 3, "count_in_flight": 1, "count_shipped_24h": 2, "trend": "flat", "breach_reasons": [] },
+  "credible":   { "grade": "B", "score": 30, "count_pickable": 1, "count_in_flight": 0, "count_shipped_24h": 0, "trend": "flat", "breach_reasons": ["only 1 pickable gap — restock to 2+"] },
+  "resilient":  { "grade": "C", "score": 20, "count_pickable": 0, "count_in_flight": 2, "count_shipped_24h": 0, "trend": "flat", "breach_reasons": ["no pickable gaps (2 in flight)"] },
+  "zero_waste": { "grade": "F", "score":  0, "count_pickable": 0, "count_in_flight": 0, "count_shipped_24h": 0, "trend": "flat", "breach_reasons": ["no open gaps in this pillar"] },
+  "mission":    { "grade": "F", "score":  0, "count_pickable": 0, "count_in_flight": 0, "count_shipped_24h": 0, "trend": "flat", "breach_reasons": ["...rolled-up pillar reasons..."] },
+  "ts": "2026-05-15T20:30:00Z"
+}
+```
+
+**Field semantics:**
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `grade` | string | `A` / `B` / `C` / `F` — A: ≥2 pickable; B: exactly 1 pickable; C: 0 pickable but ≥1 in-flight; F: nothing. |
+| `score` | int 0-100 | Rough health score: 25 × pickable + 10 × in_flight + 5 × shipped_24h, clamped to 100. |
+| `count_pickable` | int | Open non-leased gaps tagged to this pillar. |
+| `count_in_flight` | int | Open currently-leased (claimed) gaps for this pillar. |
+| `count_shipped_24h` | int | Gaps shipped/done in the last 24 h for this pillar. |
+| `trend` | string | `up` / `down` / `flat` — grade direction vs previous reading. Currently always `flat`; history wired in follow-up. |
+| `breach_reasons` | array\<string\> | Human-readable reasons the grade is not A. Empty when grade is A. |
+| `ts` | string | ISO 8601 UTC timestamp of the report computation. |
+
+**`mission` key:** synthetic roll-up — grade is the worst of the four pillars; `breach_reasons` concatenates all pillar reasons; `score` is the minimum score.
+
+**Caching:** 60-second in-process cache (OnceLock). First caller computes; subsequent callers within the TTL get the cached snapshot. Safe under PWA poll storms.
+
+**Implementation:** reuses `crate::mission_grade::build_report()` — the same function `chump mission-grade` calls — so CLI output and endpoint output are always consistent.
+
+**Pillar detection:** same as `chump mission-grade` — title prefix tag (`EFFECTIVE:` / `CREDIBLE:` / `RESILIENT:` / `ZERO-WASTE:`). Domain field is not used.
+
 ## Static
 
 The server serves the PWA from the static directory (default `CHUMP_WEB_STATIC_DIR` or repo `web/`). All non-API routes fall through to static files (e.g. `index.html`, `manifest.json`, `sw.js`).
