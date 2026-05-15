@@ -89,7 +89,7 @@ if ! command -v "$CHUMP" &>/dev/null; then
     echo "  SKIP: chump binary not found at '${CHUMP}' — skipping runtime tests"
     echo "        Set CHUMP_BIN=<path> to enable"
 else
-    FIXTURE_DESCRIPTION="uses gap_store module and the parse_json_ac_list helper"
+    FIXTURE_DESCRIPTION="uses src/gap_store.rs and the parse_json_ac_list helper"
     FIXTURE_TITLE="INFRA-945-test-fixture-decompose-description"
 
     # Create a synthetic state.db with a medium gap that has a description

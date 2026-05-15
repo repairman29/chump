@@ -1,42 +1,33 @@
 - id: CREDIBLE-051
   domain: CREDIBLE
-  title: "CREDIBLE: fail-closed when gh unavailable + fixture-aware state.db lookup in test-gap-closure-consistency.sh"
-  status: open
+  title: 'CREDIBLE: fail-closed when gh unavailable + fixture-aware state.db lookup in test-gap-closure-consistency.sh'
+  status: done
   priority: P1
   effort: s
-  description: |
-    Two bugs in scripts/ci/test-gap-closure-consistency.sh surfaced by the
-    CREDIBLE-050 force-fire harness:
-
-    BUG 1 — Gate passes-by-default on gh API failure:
-      Line ~108: 'merged_at=$(gh pr view ... || echo ERROR)'
-      Line ~108: '[[ "$merged_at" == "ERROR" ]] && { warn ...; continue; }'
-
-      When gh is rate-limited, network-partitioned, or the PR number does
-      not exist, the per-gap iteration warns and continues. After 30+ skips
-      the gate emits "all done gaps verified" and exits 0. The premature-
-      closure gate is therefore silenced any time GitHub is degraded — the
-      exact moment we most need it.
-
-    BUG 2 — State.db resolution ignores per-invocation fixture:
-      Line ~56-62: Resolves DB via 'git rev-parse --git-common-dir', which
-      points back at the parent repo when run from a linked worktree or test
-      fixture. CREDIBLE-050 fixture creates $tmp/.chump/state.db with a
-      ghost closed_pr; the gate ignores it and reads the real repo's
-      state.db instead.
-
-      Should honor an explicit override (CHUMP_STATE_DB env or --db arg)
-      and default to $PWD/.chump/state.db when present, falling back to
-      git-common-dir only when --use-main flag given.
+  description: "Two bugs in scripts/ci/test-gap-closure-consistency.sh surfaced by the\nCREDIBLE-050 force-fire harness:\n\
+    \nBUG 1 — Gate passes-by-default on gh API failure:\n  Line ~108: 'merged_at=$(gh pr view ... || echo ERROR)'\n  Line\
+    \ ~108: '[[ \"$merged_at\" == \"ERROR\" ]] && { warn ...; continue; }'\n\n  When gh is rate-limited, network-partitioned,\
+    \ or the PR number does\n  not exist, the per-gap iteration warns and continues. After 30+ skips\n  the gate emits \"\
+    all done gaps verified\" and exits 0. The premature-\n  closure gate is therefore silenced any time GitHub is degraded\
+    \ — the\n  exact moment we most need it.\n\nBUG 2 — State.db resolution ignores per-invocation fixture:\n  Line ~56-62:\
+    \ Resolves DB via 'git rev-parse --git-common-dir', which\n  points back at the parent repo when run from a linked worktree\
+    \ or test\n  fixture. CREDIBLE-050 fixture creates $tmp/.chump/state.db with a\n  ghost closed_pr; the gate ignores it\
+    \ and reads the real repo's\n  state.db instead.\n\n  Should honor an explicit override (CHUMP_STATE_DB env or --db arg)\n\
+    \  and default to $PWD/.chump/state.db when present, falling back to\n  git-common-dir only when --use-main flag given.\n"
   acceptance_criteria:
-    - test-gap-closure-consistency.sh exits non-zero (drift) when gh pr view returns ERROR for any gap (not skip+continue)
-    - CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL=1 escape hatch documented in env-vars-internal.txt for legitimate offline use
-    - DB resolution honors CHUMP_STATE_DB env first, then $PWD/.chump/state.db, falling back to git-common-dir only with --use-main
-    - CREDIBLE-050 force-fire fixture for CREDIBLE-028 passes (gate fires on ghost closed_pr) without needing real gh
-    - Shell test in scripts/ci/ asserts both behaviors (fail-closed on gh-fail; honors local state.db)
+  - test-gap-closure-consistency.sh exits non-zero (drift) when gh pr view returns ERROR for any gap (not skip+continue)
+  - CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL=1 escape hatch documented in env-vars-internal.txt for legitimate offline use
+  - DB resolution honors CHUMP_STATE_DB env first, then $PWD/.chump/state.db, falling back to git-common-dir only with --use-main
+  - CREDIBLE-050 force-fire fixture for CREDIBLE-028 passes (gate fires on ghost closed_pr) without needing real gh
+  - Shell test in scripts/ci/ asserts both behaviors (fail-closed on gh-fail; honors local state.db)
   source_doc: scripts/ci/test-gap-closure-consistency.sh
-  notes: |
-    Surfaced by CREDIBLE-050 (#1523). Currently 4/5 gates pass force-fire;
+  notes: 'Surfaced by CREDIBLE-050 (#1523). Currently 4/5 gates pass force-fire;
+
     only CREDIBLE-028 fails because of these two issues. Fixing this lets
+
     CREDIBLE-028 graduate to passing fixture and CREDIBLE-042/043 to
+
     promote gates to REQUIRED status.
+
+    '
+  closed_pr: 1686

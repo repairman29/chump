@@ -126,54 +126,25 @@ def parse_workflow_jobs(content):
         return []
 
 def get_all_workflow_job_names(staged=False):
-    """Return set of all job names from workflow files.
-
-    In staged mode (--check-staged), builds a merged view that matches what
-    GitHub would see after the push:
-      - For workflow files that ARE staged: read the staged (index) version.
-      - For workflow files that are NOT staged: read the on-disk version.
-    This prevents false drift reports caused by unchanged files (e.g.
-    editor-integration.yml) that define required status check jobs but are
-    absent from the staged file list.
-    """
+    """Return set of all job names from workflow files."""
     names = set()
     if staged:
-        # Collect the set of workflow paths that have staged changes.
+        # Read staged workflow files
         result = subprocess.run(
             ["git", "diff", "--cached", "--name-only"],
             capture_output=True, text=True, cwd=repo_root
         )
-        staged_paths = set()
         for path in result.stdout.splitlines():
-            if path.startswith(".github/workflows/"):
-                staged_paths.add(path)
-
-        # For staged workflow files: read from the git index (staged content).
-        for path in staged_paths:
+            if not path.startswith(".github/workflows/"):
+                continue
             result2 = subprocess.run(
                 ["git", "show", f":0:{path}"],
                 capture_output=True, text=True, cwd=repo_root
             )
             if result2.returncode == 0:
                 names.update(parse_workflow_jobs(result2.stdout))
-
-        # For unstaged workflow files: read from disk (they are unchanged).
-        # Together with the staged set above, this gives the full post-push view.
-        if os.path.isdir(workflows_dir):
-            for fname in os.listdir(workflows_dir):
-                if not (fname.endswith(".yml") or fname.endswith(".yaml")):
-                    continue
-                rel_path = f".github/workflows/{fname}"
-                if rel_path in staged_paths:
-                    continue  # already covered by the staged read above
-                fpath = os.path.join(workflows_dir, fname)
-                try:
-                    with open(fpath) as f:
-                        names.update(parse_workflow_jobs(f.read()))
-                except Exception:
-                    pass
     else:
-        # Read all committed workflow files from disk.
+        # Read all committed workflow files
         if os.path.isdir(workflows_dir):
             for fname in os.listdir(workflows_dir):
                 if not (fname.endswith(".yml") or fname.endswith(".yaml")):

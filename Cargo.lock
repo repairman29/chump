@@ -1331,7 +1331,6 @@ dependencies = [
  "chump-orchestrator",
  "chump-perception",
  "chump-planner",
- "chump-ship",
  "chump-tool-macro",
  "console-subscriber",
  "dhat",
@@ -1593,14 +1592,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chump-ship"
-version = "0.1.1"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "chump-tool-macro"
 version = "0.1.0"
 dependencies = [
@@ -1608,14 +1599,6 @@ dependencies = [
  "quote",
  "serde_json",
  "syn 2.0.117",
-]
-
-[[package]]
-name = "chump-xml-adapter"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

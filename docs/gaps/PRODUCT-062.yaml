@@ -1,13 +1,17 @@
 - id: PRODUCT-062
   domain: PRODUCT
-  title: "EFFECTIVE: MCP server install — chump mcp install <name> downloads + configures server from registry (PRODUCT-033 slice 2)"
-  status: open
+  title: 'EFFECTIVE: MCP server install — chump mcp install <name> downloads + configures server from registry (PRODUCT-033
+    slice 2)'
+  status: done
   priority: P1
   effort: s
-  depends_on: [PRODUCT-061]
+  depends_on:
+  - PRODUCT-061
   acceptance_criteria:
-    - "chump mcp install <name> looks up server in registry, downloads binary/script, adds to ~/.chump/config.toml"
-    - "Supports stdio and SSE transport types"
-    - "chump mcp remove <name> removes config entry and optionally deletes downloaded files"
-    - "Installed servers automatically available to ChumpAgent tool set on next run"
-    - "Works offline if server binary is already cached locally"
+  - chump mcp install <name> looks up server in registry, downloads binary/script, adds to ~/.chump/config.toml
+  - Supports stdio and SSE transport types
+  - chump mcp remove <name> removes config entry and optionally deletes downloaded files
+  - Installed servers automatically available to ChumpAgent tool set on next run
+  - Works offline if server binary is already cached locally
+  closed_date: '2026-05-11'
+  closed_pr: 1470

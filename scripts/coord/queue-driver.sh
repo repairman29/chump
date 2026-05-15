@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1091  # lib/ sources use dynamic $SCRIPT_DIR — resolved at runtime
 # INFRA-048 — queue driver: refresh the oldest BEHIND PR with auto-merge armed
 # so GitHub branch protection's "require up-to-date" doesn't strand the queue.
 #
@@ -30,10 +29,6 @@ set -euo pipefail
 # shellcheck source=lib/github.sh
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/github.sh"
-# INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
-# shellcheck source=lib/ambient-write.sh
-# shellcheck disable=SC1091
-source "$(dirname "$0")/lib/ambient-write.sh"
 export CHUMP_GH_SCRIPT="queue-driver.sh"
 
 DRY_RUN=0
@@ -118,9 +113,8 @@ cascade_rebase_if_hot() {
         # Another worker already holds the lock for this SHA — skip.
         local _ambient="$REPO_ROOT/.chump-locks/ambient.jsonl"
         local _now; _now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-        _ambient_write "$_ambient" \
-            "$(printf '{"ts":"%s","kind":"cascade_rebase_skipped_duplicate","sha":"%s","triggered_by":"%s"}' \
-                "$_now" "$head_sha" "$triggered_by")"
+        printf '{"ts":"%s","kind":"cascade_rebase_skipped_duplicate","sha":"%s","triggered_by":"%s"}\n' \
+            "$_now" "$head_sha" "$triggered_by" >> "$_ambient" 2>/dev/null || true
         echo "queue-driver: cascade already handled for sha=${head_sha} — skipping"
         return 0
     fi
@@ -161,9 +155,9 @@ cascade_rebase_if_hot() {
     local ambient="$REPO_ROOT/.chump-locks/ambient.jsonl"
     local now
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    _ambient_write "$ambient" \
-        "$(printf '{"ts":"%s","kind":"cascade_rebase_triggered","triggered_by":"%s","pr_ok":%d,"pr_fail":%d,"dry_run":%d}' \
-            "$now" "$triggered_by" "$ok" "$fail" "$DRY_RUN")"
+    printf '{"ts":"%s","kind":"cascade_rebase_triggered","triggered_by":"%s","pr_ok":%d,"pr_fail":%d,"dry_run":%d}\n' \
+        "$now" "$triggered_by" "$ok" "$fail" "$DRY_RUN" \
+        >> "$ambient" 2>/dev/null || true
 
     echo "queue-driver: cascade done — $ok rebased, $fail failed"
 }
@@ -212,9 +206,9 @@ resolve_dirty_pr() {
       echo "$_push_out" | tail -1
       if [[ $_push_rc -ne 0 ]]; then
         echo "queue-driver: ✗ #$pr push failed after clean rebase"
-        _ambient_write "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/ambient.jsonl" \
-          "$(printf '{"ts":"%s","kind":"dirty_pr_push_failed","pr":%s,"phase":"clean_rebase","error":"%s"}' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$(echo "$_push_out" | tail -1 | sed 's/"/\\"/g')")"
+        printf '{"ts":"%s","kind":"dirty_pr_push_failed","pr":%s,"phase":"clean_rebase","error":"%s"}\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$(echo "$_push_out" | tail -1 | sed 's/"/\\"/g')" \
+          >> "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/ambient.jsonl" 2>/dev/null || true
         popd >/dev/null
         git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
         return 1
@@ -265,9 +259,9 @@ resolve_dirty_pr() {
 
   if [[ -n "$unresolvable" ]]; then
     echo "queue-driver: ✗ #$pr DIRTY but conflicts in non-merge-driver files: $unresolvable"
-    _ambient_write "$_amb" \
-      "$(printf '{"ts":"%s","kind":"dirty_pr_unresolvable","pr":%s,"conflict_files":"%s","unresolvable":"%s"}' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" "${unresolvable% }")"
+    printf '{"ts":"%s","kind":"dirty_pr_unresolvable","pr":%s,"conflict_files":"%s","unresolvable":"%s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" "${unresolvable% }" \
+      >> "$_amb" 2>/dev/null || true
     git rebase --abort 2>/dev/null || true
     popd >/dev/null
     git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
@@ -284,9 +278,9 @@ resolve_dirty_pr() {
 
   if ! git -c core.editor=true rebase --continue 2>&1 | tail -3; then
     echo "queue-driver: ✗ #$pr — rebase --continue failed after merge-driver resolution"
-    _ambient_write "$_amb" \
-      "$(printf '{"ts":"%s","kind":"dirty_pr_unresolvable","pr":%s,"conflict_files":"%s","note":"rebase_continue_failed"}' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }")"
+    printf '{"ts":"%s","kind":"dirty_pr_unresolvable","pr":%s,"conflict_files":"%s","note":"rebase_continue_failed"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" \
+      >> "$_amb" 2>/dev/null || true
     git rebase --abort 2>/dev/null || true
     popd >/dev/null
     git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
@@ -303,18 +297,18 @@ resolve_dirty_pr() {
     echo "$_push_out" | tail -1
     if [[ $_push_rc -ne 0 ]]; then
       echo "queue-driver: ✗ #$pr push failed after dirty auto-resolve"
-      _ambient_write "$_amb" \
-        "$(printf '{"ts":"%s","kind":"dirty_pr_push_failed","pr":%s,"conflict_files":"%s","phase":"dirty_resolve","error":"%s"}' \
-          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" "$(echo "$_push_out" | tail -1 | sed 's/"/\\"/g')")"
+      printf '{"ts":"%s","kind":"dirty_pr_push_failed","pr":%s,"conflict_files":"%s","phase":"dirty_resolve","error":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" "$(echo "$_push_out" | tail -1 | sed 's/"/\\"/g')" \
+        >> "$_amb" 2>/dev/null || true
       git rebase --abort 2>/dev/null || true
       popd >/dev/null
       git -C "$REPO_ROOT" worktree remove --force "$tmpdir" 2>/dev/null || true
       return 1
     fi
     echo "queue-driver: ✓ #$pr DIRTY auto-resolved via merge drivers ($conflict_files)"
-    _ambient_write "$_amb" \
-      "$(printf '{"ts":"%s","kind":"dirty_pr_auto_resolved","pr":%s,"conflict_files":"%s"}' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }")"
+    printf '{"ts":"%s","kind":"dirty_pr_auto_resolved","pr":%s,"conflict_files":"%s"}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "${conflict_files% }" \
+      >> "$_amb" 2>/dev/null || true
   fi
 
   popd >/dev/null

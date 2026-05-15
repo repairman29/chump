@@ -1,13 +1,26 @@
 - id: INFRA-766
   domain: INFRA
-  title: "RESILIENT: state-drift detector — catalog every 'two-store' pair in the codebase (.chump-locks/JSON ↔ agent_lease table; docs/gaps.yaml legacy ↔ docs/gaps/<ID>.yaml ↔ state.db; .env vs .env.example; Cargo workspace lints vs Cargo.toml; chump_improvement_targets vs reflection JSON), document which is canonical for each, and add a daily reconcile job that emits ALERT kind=store_drift when reads of the non-canonical store would have given a different answer. Same architectural pattern as INFRA-760 (briefing.rs YAML→state.db) — apply systemically."
-  status: open
+  title: 'RESILIENT: state-drift detector — catalog every ''two-store'' pair in the codebase (.chump-locks/JSON ↔ agent_lease
+    table; docs/gaps.yaml legacy ↔ docs/gaps/<ID>.yaml ↔ state.db; .env vs .env.example; Cargo workspace lints vs Cargo.toml;
+    chump_improvement_targets vs reflection JSON), document which is canonical for each, and add a daily reconcile job that
+    emits ALERT kind=store_drift when reads of the non-canonical store would have given a different answer. Same architectural
+    pattern as INFRA-760 (briefing.rs YAML→state.db) — apply systemically.'
+  status: done
   priority: P1
   effort: m
-  acceptance_criteria: |
-    Criterion 1: Every "two-store" pair in the codebase is cataloged (e.g. `.chump-locks/JSON ↔ agent_lease table`, `docs/gaps/ ↔ state.db`, `.env ↔ .env.example`, `Cargo workspace lints ↔ Cargo.toml`, `chump_improvement_targets ↔ reflection JSON`)
+  acceptance_criteria: 'Criterion 1: Every "two-store" pair in the codebase is cataloged (e.g. `.chump-locks/JSON ↔ agent_lease
+    table`, `docs/gaps/ ↔ state.db`, `.env ↔ .env.example`, `Cargo workspace lints ↔ Cargo.toml`, `chump_improvement_targets
+    ↔ reflection JSON`)
+
     Criterion 2: For each pair, the canonical store is documented in a design note or inline comment
-    Criterion 3: A daily reconcile job exists that reads the non-canonical store and emits an ALERT with `kind=store_drift` when results differ from the canonical store
+
+    Criterion 3: A daily reconcile job exists that reads the non-canonical store and emits an ALERT with `kind=store_drift`
+    when results differ from the canonical store
+
     Criterion 4: The reconcile job is wired into the daemon or a cron equivalent
+
     Criterion 5: Test covers a deliberately-introduced drift and confirms ALERT emission
 
+    '
+  closed_date: '2026-05-11'
+  closed_pr: 1460

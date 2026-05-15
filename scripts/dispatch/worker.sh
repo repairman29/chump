@@ -657,37 +657,6 @@ print(max(1.0, idle + random.uniform(-delta, +delta)))
     # ── Spawn agent (claude or chump-local) ───────────────────────────────
     cycle_log="$FLEET_LOG_DIR/agent-${AGENT_ID}-cycle${cycle}-${GAP_ID}.log"
 
-    # INFRA-1160: scale timeout by gap effort estimate.
-    # Multipliers: xs=0.5, s=1.0, m=1.5, l=2.0, xl=3.0 (capped at max).
-    _gap_effort="$(printf '%s' "$gap_json" | \
-        python3 -c "import sys,json; d=json.load(sys.stdin); gs=d if isinstance(d,list) else [d]; g=next((x for x in gs if x.get('id')=='$GAP_ID'),{}); print(g.get('effort','') or '')" \
-        2>/dev/null || true)"
-    case "${_gap_effort:-s}" in
-        xs) _effort_mult_n=5  _effort_mult_d=10 ;;  # 0.5×
-        s)  _effort_mult_n=10 _effort_mult_d=10 ;;  # 1.0×
-        m)  _effort_mult_n=15 _effort_mult_d=10 ;;  # 1.5×
-        l)  _effort_mult_n=20 _effort_mult_d=10 ;;  # 2.0×
-        xl) _effort_mult_n=30 _effort_mult_d=10 ;;  # 3.0×
-        *)  _effort_mult_n=10 _effort_mult_d=10 ;;  # 1.0× fallback
-    esac
-    _scaled_timeout=$(( FLEET_TIMEOUT_S * _effort_mult_n / _effort_mult_d ))
-    _max_timeout="${CHUMP_WORKER_TIMEOUT_MAX_S:-7200}"
-    if [ "$_scaled_timeout" -gt "$_max_timeout" ]; then
-        _scaled_timeout="$_max_timeout"
-    fi
-    if [ "$_scaled_timeout" -ne "$FLEET_TIMEOUT_S" ]; then
-        log "INFRA-1160: timeout scaled by effort=${_gap_effort:-s}: ${FLEET_TIMEOUT_S}s → ${_scaled_timeout}s"
-        FLEET_TIMEOUT_S="$_scaled_timeout"
-    fi
-    # Emit telemetry
-    printf '{"ts":"%s","kind":"worker_timeout_scaled","gap_id":"%s","effort":"%s","base_timeout_s":%d,"scaled_timeout_s":%d}\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$GAP_ID" \
-        "${_gap_effort:-s}" \
-        "$(( FLEET_TIMEOUT_S ))" \
-        "$_scaled_timeout" \
-        >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
-
     # Pick `timeout` (linux) or `gtimeout` (mac brew coreutils); fall back to none.
     if command -v timeout >/dev/null 2>&1; then
         TO="timeout ${FLEET_TIMEOUT_S}s"
@@ -962,14 +931,6 @@ Operator or sibling worker can rescue this branch via:
                 sleep 1  # Let claude process start
                 while kill -0 $$ 2>/dev/null; do
                     write_heartbeat "$GAP_ID"
-                    # INFRA-1116 AC5: refresh INTENT announcement every heartbeat cycle
-                    # so other sessions' overlap gates see us as live.
-                    if [[ -n "${GAP_ID:-}" && -n "${CHUMP_SESSION_ID:-}" ]]; then
-                        _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
-                        _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                        printf '{"ts":"%s","kind":"intent_refreshed","gap_id":"%s","session_id":"%s"}\n' \
-                            "$_ts" "$GAP_ID" "$CHUMP_SESSION_ID" >> "$_amb" 2>/dev/null || true
-                    fi
                     sleep "$_heartbeat_interval"
                 done
             ) &

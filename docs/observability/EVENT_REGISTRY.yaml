@@ -213,16 +213,6 @@ events:
     consumers: [fleet-brief, watchdog, oncall]
     fields_required: [ts, kind, wedge_age_s, threshold_s, handler]
 
-  - kind: execution_timeout
-    emitter: src/blocker_detect.rs (chump fleet blocker-detect)
-    trigger: subprocess or operation exceeded its timeout during blocking-operation detection
-    consumers: [fleet-brief, watchdog]
-
-  - kind: hang_detector
-    emitter: src/dispatch.rs (chump dispatch)
-    trigger: subprocess hung past deadline; process details and name logged
-    consumers: [fleet-brief, watchdog, operator-recall]
-
   - kind: claim_aborted_disk_full
     emitter: scripts/lib/disk-check.sh via gap-claim.sh (INFRA-975)
     trigger: chump claim attempted but free disk < CHUMP_DISK_LOW_GB (default 5 GB)
@@ -276,12 +266,12 @@ events:
     fields_required: [ts, kind, mode, installed, skipped_healthy, failed, missing_count]
 
   - kind: picker_used_priority
-    emitter: scripts/dispatch/_pick_gap.py + _pick_and_claim_gap.py (INFRA-1258)
-    trigger: picker successfully selected a gap from the planner-ranked list
-      at .chump-locks/gap-priority.json. Includes file path, age, scored rank,
-      and whether the layer gate filtered any candidates (layer_enforced).
+    emitter: scripts/dispatch/_pick_gap.py (INFRA-1258)
+    trigger: picker successfully selected a gap from the planner-ranked
+      list at .chump-locks/gap-priority.json. Captures planner_rank so
+      we can measure how much delta vs. legacy first-fit.
     consumers: [fleet-brief, audit-log, kpi-report]
-    fields_required: [ts, kind, gap_id, file, age_s, scored, layer_enforced, worker_id]
+    fields_required: [ts, kind, gap_id, planner_rank, worker_id]
 
   - kind: picker_priority_stale
     emitter: scripts/dispatch/_pick_gap.py (INFRA-1258)
@@ -297,11 +287,6 @@ events:
     trigger: pre-commit gate matched Rust-first criteria on a new shell
       file but commit body had 'Rust-First-Bypass:' trailer — bypass
       logged for audit.
-  - kind: redundancy_bypass_used
-    emitter: scripts/git-hooks/pre-commit-redundancy.sh (META-063)
-    trigger: pre-commit gate detected high function-name overlap between
-      a new shell file and an existing sibling, but commit body had
-      'Redundancy-OK:' trailer — bypass logged for audit.
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, files, reason]
 
@@ -440,16 +425,6 @@ events:
   - kind: fleet_auto_restart_cancel
     emitter: scripts/dispatch/fleet-autorestart-daemon.sh
     trigger: pending restart canceled
-    consumers: [audit-log]
-
-  - kind: fleet_auto_restart
-    emitter: scripts/dispatch/fleet-autorestart-daemon.sh
-    trigger: fleet auto-restart actually executed (follows fleet_auto_restart_decision)
-    consumers: [audit-log, fleet-brief]
-
-  - kind: fleet_restart_snapshot
-    emitter: src/main.rs (chump fleet restart-snapshot)
-    trigger: fleet state snapshot recorded before a coordinated restart
     consumers: [audit-log]
 
   # ── Reapers / cleanup daemons ──────────────────────────────────────────────
@@ -613,23 +588,6 @@ events:
   - kind: pr_blocked_long
     emitter: scripts/ops/stuck-pr-filer.sh
     trigger: pr_stuck variant for very long blocks
-    consumers: [operator-recall]
-
-  - kind: pr_resolved
-    emitter: scripts/ops/queue-health-monitor.sh
-    trigger: a previously stuck or blocked PR is now resolved; paired with pr_stuck
-    consumers: [audit-log, fleet-brief]
-
-  - kind: serializing_blocking_parallel
-    emitter: scripts/ops/queue-health-monitor.sh
-    trigger: bot-merge queue is serializing PRs that could safely run in parallel;
-      emitted when serializing_count > parallel_safe_count threshold
-    consumers: [fleet-brief, operator-recall]
-
-  - kind: fat_worktree
-    emitter: scripts/ops/queue-health-monitor.sh
-    trigger: a linked worktree exceeds CHUMP_FAT_WT_GB (default 4 GB); likely due
-      to target/ cargo build artifacts
     consumers: [operator-recall]
 
   - kind: pr_repair
@@ -875,6 +833,12 @@ events:
     trigger: many bot-merges touching same file
     consumers: [audit-log]
 
+  - kind: hot_file_contention
+    emitter: scripts/coord/gap-preflight.sh (INFRA-1069)
+    trigger: gap preflight detects an open PR touching a serializing hot file from hot-files.yaml
+    consumers: [waste-tally, fleet-brief, audit-log]
+    fields_required: [ts, kind, gap_id, pr, file]
+
   - kind: bot_merge_contention_avoided
     emitter: scripts/coord/bot-merge.sh (INFRA-860 mutex)
     trigger: flock wait > 5s acquiring bot-merge.lock; another bot-merge was active
@@ -1050,23 +1014,15 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, starved_count, untraced_p0_count]
 
-  # (product_drought removed by INFRA-1287: emitter scripts/ops/pillar-drought-detector.sh
-  #  never shipped; drought detection done via chump gap list + pillar counts)
+  - kind: product_drought
+    emitter: scripts/ops/pillar-drought-detector.sh
+    trigger: PRODUCT pillar starved for N days
+    consumers: [operator-recall]
 
   - kind: disk_critical
-    emitter: scripts/ops/disk-health-monitor.sh + disk-watchdog.sh
-    trigger: disk free < 5% (CHUMP_DISK_CRITICAL_PCT); fleet pauses
-    consumers: [operator-recall, fleet-brief]
-
-  - kind: disk_low
-    emitter: scripts/ops/disk-health-monitor.sh + disk-pressure-watchdog.sh
-    trigger: disk free < 10% (CHUMP_DISK_LOW_PCT); warning-level alert
-    consumers: [operator-recall, fleet-brief]
-
-  - kind: disk_recovered
-    emitter: scripts/ops/disk-pressure-watchdog.sh
-    trigger: disk free rose above the low threshold after a disk_low event
-    consumers: [fleet-brief]
+    emitter: scripts/ops/disk-watchdog.sh
+    trigger: disk free < threshold
+    consumers: [operator-recall]
 
   - kind: delta_recorded
     emitter: scripts/coord/reflect-delta.sh
@@ -1124,12 +1080,16 @@ events:
     consumers: [audit-log]
 
   # ── Adversary / safety ────────────────────────────────────────────────────
-  # (adversary_alert removed by INFRA-1287: emitter scripts/ops/adversary-detector.sh
-  #  never shipped; no planned gap; concept superseded by general RESILIENT monitoring)
+  - kind: adversary_alert
+    emitter: scripts/ops/adversary-detector.sh
+    trigger: prompt-injection or adversarial behavior detected
+    consumers: [operator-recall]
 
   # ── Aggregations ──────────────────────────────────────────────────────────
-  # (aggregate removed by INFRA-1287: generic placeholder, no concrete emit site;
-  #  real aggregations emit domain-specific kinds like fleet_metrics_snapshot)
+  - kind: aggregate
+    emitter: chump waste-tally / kpi-report
+    trigger: aggregated metric snapshot for downstream consumers
+    consumers: [fleet-brief]
 
   # ── Bounced-PR detector (INFRA-781) ───────────────────────────────────────
   - kind: pr_bounced_unfinished
@@ -1160,13 +1120,6 @@ events:
     consumers: [audit-log, fleet-brief]
     fields_required: [ts, kind, pr, gap, note]
 
-  - kind: orphan_pr_closed_at_ship
-    emitter: src/main.rs (INFRA-1144, chump gap ship)
-    trigger: orphan PR closed atomically when gap is marked done via chump gap ship
-    consumers: [audit-log, fleet-brief]
-    fields_required: [ts, kind, pr, gap, ship_pr]
-    notes: structural orphan closing at write time; complements orphan-pr-closer.sh sweeper (INFRA-1139)
-
   - kind: orphan_pr_close_failed
     emitter: scripts/coord/orphan-pr-closer.sh --apply
     trigger: orphan PR detected but gh PATCH /pulls/N state=closed failed — operator surface
@@ -1180,20 +1133,6 @@ events:
     fields_required: [ts, kind, pr, gap, note]
     fields_optional: [gap_id, reason, source]
     notes: replaces the false-positive close pattern; operator should verify if chump gap ship was called prematurely
-
-  - kind: pr_close_skipped_auto_merge_armed
-    emitter: scripts/coord/orphan-pr-closer.sh (INFRA-1326)
-    trigger: orphan-closer found a done-gap PR but auto_merge is non-null — PR is queued
-      for GitHub to merge itself; closing now would race the merge
-    consumers: [fleet-brief, operator-recall, audit-log]
-    fields_required: [ts, kind, pr, gap, note]
-
-  - kind: pr_close_skipped_ci_running
-    emitter: scripts/coord/orphan-pr-closer.sh (INFRA-1326)
-    trigger: orphan-closer found a done-gap PR but at least one check_run has
-      status=queued or status=in_progress — closing mid-CI races the merge path
-    consumers: [fleet-brief, operator-recall, audit-log]
-    fields_required: [ts, kind, pr, gap, note]
 
   # ── Review-as-Handoff telemetry (INFRA-773) ──────────────────────────────
   - kind: review_handoff_initiated
@@ -1270,12 +1209,6 @@ events:
     trigger: gh pr merge --auto failed after retries; PR left unarmed
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, pr, detail]
-
-  - kind: auto_merge_rest_direct
-    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1113)
-    trigger: auto-merge armer fell back to direct REST merge (GraphQL unavailable);
-      PR merged via REST API rather than auto-merge queue
-    consumers: [fleet-brief, audit-log]
 
   # ── Free-tier dispatch testing ─────────────────────────────────────────
   - kind: free_tier_e2e
@@ -1447,14 +1380,6 @@ events:
       of it in --dry-run mode)
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, gap_id, model, timeout_s, dry_run]
-
-  - kind: worker_timeout_scaled
-    emitter: scripts/dispatch/worker.sh (INFRA-1160)
-    trigger: worker scaled FLEET_TIMEOUT_S by the gap's effort estimate before
-      spawning the claude subprocess. xs=0.5×, s=1.0×, m=1.5×, l=2.0×, xl=3.0×,
-      capped at CHUMP_WORKER_TIMEOUT_MAX_S (default 7200s).
-    consumers: [fleet-brief, waste-tally]
-    fields_required: [ts, kind, gap_id, effort, base_timeout_s, scaled_timeout_s]
 
   - kind: worker_timeout_no_commit
     emitter: scripts/dispatch/worker.sh (INFRA-831)
@@ -1645,34 +1570,6 @@ events:
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, session, gap, paths, reason]
 
-  - kind: intent_announced
-    emitter: src/atomic_claim.rs emit_intent_announced() (INFRA-1116)
-    trigger: chump claim succeeds and emits this event so subsequent
-      claiming sessions' INTENT gates can detect path overlap. Emitted with
-      paths (from --paths CSV) and expires_at (= claim time + 4h TTL).
-      Sessions without --paths emit nothing (undeclared scope = no overlap
-      detection, not a refusal).
-    consumers: [check_intent_overlap, fleet-brief, operator-recall]
-    fields_required: [ts, kind, gap_id, session_id, paths, expires_at]
-
-  - kind: intent_retracted
-    emitter: src/atomic_claim.rs emit_intent_retracted() via chump --release (INFRA-1116)
-    trigger: chump --release emits this event so other sessions' overlap
-      gates immediately treat this session as inactive even if expires_at
-      has not passed. check_intent_overlap filters retracted sessions from
-      the live set before checking overlap.
-    consumers: [check_intent_overlap, fleet-brief, operator-recall]
-    fields_required: [ts, kind, gap_id, session_id]
-
-  - kind: intent_refreshed
-    emitter: scripts/dispatch/worker.sh heartbeat loop (INFRA-1116)
-    trigger: worker heartbeat loop emits this every 30s while claude is
-      running to confirm the INTENT is still active. Consumers can infer
-      that a session with no recent intent_refreshed (and a stale lease)
-      is inactive even before expires_at passes.
-    consumers: [fleet-brief, operator-recall]
-    fields_required: [ts, kind, gap_id, session_id]
-
   # ── INFRA-1081: GitHub webhook cache ─────────────────────────────────────
   - kind: webhook_event_received
     emitter: scripts/ops/github-webhook-receiver.py (INFRA-1081)
@@ -1766,26 +1663,6 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, source, timeout_s, note]
 
-  # ── INFRA-1068: fleet-state.json batch-write telemetry ────────────────────
-  - kind: fleet_state_lock_contention
-    emitter: scripts/coord/emergency-fast-path.sh (INFRA-1068)
-    trigger: flock(1) acquisition on fleet-state.lock took more than 1000ms,
-      indicating write contention between concurrent workers. Emitted INSIDE
-      the lock after acquisition succeeds (not on timeout), so the write
-      still proceeds. Carry wait_ms so operators can track contention trends.
-    consumers: [fleet-brief, ops-audit]
-    fields_required: [ts, kind, source, wait_ms, note]
-
-  - kind: fleet_state_batch_flush
-    emitter: scripts/coord/lib/fleet-state-writer.sh fleet_state_flush (INFRA-1068)
-    trigger: fleet_state_flush applied one or more queued field updates to
-      fleet-state.json in a single flock acquisition (batch mode). Emitted
-      after every successful flush that had at least one queued write.
-      fields_updated = number of distinct keys flushed (not raw queue lines —
-      last-write-wins deduplication is applied before the flock grab).
-    consumers: [fleet-brief, ops-audit]
-    fields_required: [ts, kind, fields_updated, wait_ms]
-
   - kind: curator_decision
     emitter: scripts/coord/opus-curator.sh (INFRA-848)
     trigger: curator completed a proactive health audit cycle and made a decision
@@ -1835,11 +1712,6 @@ events:
     trigger: worker startup detects target/debug/chump mtime > CHUMP_BINARY_MAX_AGE_SECS behind src/main.rs
     consumers: [fleet-brief, watchdog]
     fields_required: [ts, kind, source, age_secs, max_age_secs, note]
-
-  - kind: stale_binary_destructive_override
-    emitter: src/version.rs (chump fleet version-check)
-    trigger: operator forces a destructive action despite stale binary detection warning
-    consumers: [audit-log, operator-recall]
 
   # ── Disk hygiene ─────────────────────────────────────────────────────────
   - kind: tmp_cleanup
@@ -2106,12 +1978,6 @@ events:
       sibling lease; allocator skipped to the next safe ID
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, domain, skipped_id]
-
-  - kind: gap_id_allocator_collision
-    emitter: crates/chump-gap-store/src/lib.rs
-    trigger: gap ID collision detected after reservation (sibling claimed the same ID
-      concurrently); emitted as ALERT; caller must retry with a new ID
-    consumers: [fleet-brief, curator, operator-recall]
 
   # ── INFRA-1020: opencode identity residue audit ───────────────────────────
   - kind: identity_residue_swept
@@ -2592,20 +2458,6 @@ events:
       rebase, cargo fmt, cargo clippy, cargo test, push, PR create, etc.
     consumers: [fleet-brief, ops-audit, infra-1067-timeout-tuning]
     fields_required: [ts, kind, phase, elapsed_s, gap, branch]
-  - kind: lease_auto_extended
-    emitter: scripts/coord/lease-auto-extend.sh (INFRA-1327)
-    trigger: a near-expiry claim lease (remaining < CHUMP_LEASE_EXTEND_THRESHOLD_S,
-      default 1800s) has an open PR with armed auto-merge; the lease expires_at is
-      rewritten to now + CHUMP_GAP_CLAIM_TTL_SECS to prevent a stomp race where a
-      second worker re-claims the gap while GitHub merge is still processing.
-    consumers: [fleet-brief, waste-tally, ops-audit]
-    fields_required: [ts, kind, gap_id, pr_number, new_expires, reason]
-    docs: |
-      reason is always "auto_merge_armed". pr_number is the integer GitHub PR number.
-      new_expires is an ISO-8601 UTC timestamp. Emitted once per lease per extension
-      cycle; no dedup — operators can count events to see how many times a lease was
-      extended before merge completed.
-
   - kind: lease_release_failed
     emitter: src/dispatch.rs::release_with_retry (INFRA-1243)
     trigger: chump --release subprocess failed twice in the dispatch step-5 cleanup
@@ -2626,39 +2478,3 @@ events:
       auth token call entirely — avoids ~27 redundant calls/hr.
     consumers: [fleet-brief, api-cost-leaderboard]
     fields_required: [ts, kind, age_s, ttl_s]
-  # ── INFRA-1311: bot-merge exponential backoff events ─────────────────────
-  - kind: bot_merge_backoff_written
-    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1311)
-    trigger: auto-merge-armer failed to arm a PR and wrote a backoff record with
-      next-retry delay. Backoff grows exponentially per-PR (30s/60s/120s/300s).
-    consumers: [fleet-brief, ops-audit]
-    fields_required: [ts, kind, pr, delay_s, until]
-  - kind: bot_merge_backoff_skipped
-    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1311)
-    trigger: auto-merge-armer skipped a PR because its per-PR backoff has not yet
-      expired. No merge attempt is made until the backoff period elapses.
-    consumers: [fleet-brief, ops-audit]
-    fields_required: [ts, kind, pr, remaining_s, until]
-
-  # ── INFRA-849: system integration test pipeline ───────────────────────────
-  - kind: integration_test_pass
-    emitter: scripts/ci/test-system-integration.sh (INFRA-849)
-    trigger: all assertions in the claim→commit→ship integration test passed
-    consumers: [fleet-brief, ops-audit]
-    fields_required: [ts, kind, pass_count, elapsed_s]
-
-  - kind: integration_test_fail
-    emitter: scripts/ci/test-system-integration.sh (INFRA-849)
-    trigger: one or more assertions in the claim→commit→ship integration test failed
-    consumers: [fleet-brief, ops-audit]
-    fields_required: [ts, kind, fail_count, pass_count, elapsed_s]
-
-  # ── INFRA-1076: lane-routed GitHub App tokens (scaffold) ──────────────────
-  - kind: github_app_fallback
-    emitter: scripts/coord/lib/github.sh _chump_gh_lane_token (INFRA-1076)
-    trigger: chump_gh requested a lane-specific token (CHUMP_GH_CALL_CRITICALITY=critical|background)
-      but the corresponding ~/.chump/oauth-token-<lane>.json file was absent. Falls back to the
-      legacy GH_TOKEN / gh-CLI keyring path. Emitted once per process so the operator sees the
-      degraded mode without log spam.
-    consumers: [fleet-brief, ops-audit]
-    fields_required: [ts, kind, criticality, reason, expected_file]

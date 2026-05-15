@@ -96,40 +96,11 @@ Is the prompt >20K tokens?
   → prefer Gemini (1M+ context) or Cerebras/NVIDIA (128K)
 ```
 
-## Gemini 2.5 Flash tool-call validation (EFFECTIVE-007)
-
-After INFRA-788 enabled billing on Google AI Studio and INFRA-789 expanded the cascade
-to include Gemini slots, Gemini 2.5 Flash is confirmed as the preferred sonnet-tier
-provider (best tool-call quality, 1M context, fast inference).
-
-**Test protocol (E2E-9999):** Dispatch a minimal code-edit task (add a marker comment
-to `src/execute_gap.rs`) via Gemini 2.5 Flash. Expected sequence:
-1. Model calls `read_file` to load `src/execute_gap.rs` → OpenAI-format tool call
-2. Model calls `patch_file` with unified diff → valid syntax (not malformed like Llama 3.3 70B)
-3. Model calls `git_commit` to create commit → success on first attempt
-4. Agent exits with final report (0 exit code)
-
-**Validation findings:**
-- **Tool call format**: Gemini emits proper OpenAI-compatible `tool_calls` format (not text narration)
-- **Patch generation**: Unified diffs are syntactically valid; no fuzzy-match fallback needed
-- **Iterations to completion**: 3-5 iterations typical (includes initial prompt + 3 tool steps)
-- **Thinking tokens**: Minimal overhead; no extended thinking blocks (cf. INFRA-790 for Qwen3)
-- **Conclusion**: Gemini 2.5 Flash tool-call quality is equal to or better than Llama 3.3 70B
-
-**Confirmed working with**: LocalOpenAIProvider using `generativelanguage.googleapis.com/v1beta/openai`
-**Rate limit (paid tier)**: unlimited RPM after billing enabled (vs. 20 RPD free tier)
-**Operational note**: As of 2026-05-15, Gemini 2.5 Flash has been added to the cascade
-and marked as active (INFRA-789, PR #1881). No functional issues observed.
-
 ## Related gaps
 
 - EFFECTIVE-001: end-to-end free-tier ship test
 - EFFECTIVE-002: free-tier provider rotation within a session
 - EFFECTIVE-003: XML-to-tool-call adapter for Qwen models
 - EFFECTIVE-004: sequential tool execution for multi-tool responses
-- EFFECTIVE-007: Gemini tool-call quality validation (this gap)
 - INFRA-775: wire provider_rates.yaml into ProviderCascade::from_env()
 - INFRA-776: cascade 429 cooldown intelligence
-- INFRA-788: Gemini-first cascade — enable paid-tier billing (DONE, PR #1451)
-- INFRA-789: expand cascade to 14 slots for Gemini 2.5 Flash Lite + 3.x (DONE, PR #1881)
-- INFRA-790: Gemini thinking-token budget

@@ -30,9 +30,6 @@ fi
 
 # shellcheck source=../lib/reaper-instrumentation.sh
 source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
-# INFRA-1224: canonical lease parser.
-# shellcheck source=../lib/lease.sh
-source "$(dirname "$0")/../lib/lease.sh"
 reaper_setup subagent-budget
 reaper_check_disk_headroom  # INFRA-453: exit 0 + ALERT if <5% free
 
@@ -59,11 +56,11 @@ for lease in "$LOCK_DIR"/*.json; do
     # Skip leases that already have budget_exceeded marked.
     grep -q '"budget_exceeded"[[:space:]]*:[[:space:]]*true' "$lease" 2>/dev/null && continue
 
-    # INFRA-1224: replaced 4 python3 heredocs with lease_field shortcuts.
-    sid=$(lease_session_id "$lease")
-    gid=$(lease_gap_id "$lease")
-    taken=$(lease_field "$lease" taken_at)
-    pid=$(lease_field "$lease" pid)
+    # Read fields. Tolerate missing keys.
+    sid=$(python3 -c "import json,sys;d=json.load(open('$lease'));print(d.get('session_id',''))" 2>/dev/null || echo "")
+    gid=$(python3 -c "import json,sys;d=json.load(open('$lease'));print(d.get('gap_id',''))" 2>/dev/null || echo "")
+    taken=$(python3 -c "import json,sys;d=json.load(open('$lease'));print(d.get('taken_at',''))" 2>/dev/null || echo "")
+    pid=$(python3 -c "import json,sys;d=json.load(open('$lease'));print(d.get('pid',''))" 2>/dev/null || echo "")
     [[ -z "$sid" || -z "$taken" ]] && continue
 
     # Compute age.

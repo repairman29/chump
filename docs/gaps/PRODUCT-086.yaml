@@ -16,11 +16,8 @@
     - "Comment: textarea + submit; POST /api/prs/{N}/comment → `gh pr comment {N} --body ...`"
     - "Auth: server-side gh uses GH_TOKEN env var or keychain; PWA never sees the token"
     - "Audit log: every action emits ambient kind=operator_pr_action with type, pr, operator_session"
-    - Action buttons disabled when PR state can't accept them (e.g., can't approve a closed PR)
+    - "Action buttons disabled when PR state can't accept them (e.g., can't approve a closed PR)"
     - "Mobile-friendly: action panel collapses into a 'Actions' button that opens bottom sheet on narrow viewports"
     - "scripts/ci/test-pwa-pr-actions.sh: mock gh calls; assert each action invokes the right gh subcommand"
-    - Pairs with PRODUCT-085 (diff) — actions follow context; you don't approve without seeing the diff
-    - Pairs with PRODUCT-079 (Needs your judgment) — judgment queue's per-item link routes here for action
-  notes: |
-    [2026-05-15T04:28:26Z] PWA phase: 2 (Inbox & PR Loop) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
-
+    - "Pairs with PRODUCT-085 (diff) — actions follow context; you don't approve without seeing the diff"
+    - "Pairs with PRODUCT-079 (Needs your judgment) — judgment queue's per-item link routes here for action"

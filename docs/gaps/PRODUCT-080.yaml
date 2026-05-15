@@ -10,14 +10,11 @@
     shipped for hours. This gap surfaces wedges proactively with one-click
     rescue paths (pr-rescue.sh per RESILIENT-006, lease-reaper, etc.).
   acceptance_criteria:
-    - New PWA component <chump-stuck-items> rendered on / + /brief
+    - "New PWA component <chump-stuck-items> rendered on / + /brief"
     - "Aggregates ambient kinds: pr_stuck (>4h), silent_agent, lease_expired_server, fat_worktree, disk_critical, reaper_silent, fleet_wedge"
     - "Per-item: type, severity (HIGH/MED/LOW), age, suggested rescue action with one-click button that invokes the right script (pr-rescue.sh for PR-stuck, stale-worktree-reaper for fat_worktree, etc.)"
-    - Rescue buttons emit ambient kind=operator_rescue_invoked before action; on completion emit kind=rescue_result with success/fail
-    - Backend /api/stuck endpoint returns the list; /api/stuck/rescue/{id} executes the rescue (gated by csrf token from session)
+    - "Rescue buttons emit ambient kind=operator_rescue_invoked before action; on completion emit kind=rescue_result with success/fail"
+    - "Backend /api/stuck endpoint returns the list; /api/stuck/rescue/{id} executes the rescue (gated by csrf token from session)"
     - "Empty-state: 'Nothing stuck. Last wedge resolved Nh ago.'"
     - "scripts/ci/test-pwa-stuck-items.sh: synthesize ambient events for each stuck-class; assert all surface; assert one-click rescue invokes the right script (mocked)"
-    - Pairs with RESILIENT-006 (pr-rescue.sh daemon — already merged) — surfaces the daemon's queue + lets operator manually trigger when daemon is slow
-  notes: |
-    [2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
-
+    - "Pairs with RESILIENT-006 (pr-rescue.sh daemon — already merged) — surfaces the daemon's queue + lets operator manually trigger when daemon is slow"

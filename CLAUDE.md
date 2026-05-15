@@ -74,10 +74,12 @@ Never file sub-gaps manually in advance. The filing agent's context is valuable 
 
 ```bash
 chump claim <GAP-ID> [--paths CSV]   # atomic: fetch + verify + doctor + worktree + lease
+# fallback if broken:
+scripts/coord/gap-claim.sh <GAP-ID>                       # existing gap
 chump gap reserve --domain INFRA --title "short title"    # new gap
 ```
 
-Run `chump gap preflight <GAP-ID>` first to verify pickability. If preflight fails, **stop** — do not bypass.
+If preflight fails, **stop** — do not bypass.
 
 ## Ship pipeline (always)
 
@@ -159,9 +161,9 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 - **`proprietary/` — NEVER commit here.** Private sibling repo; stray copies must not be staged or referenced.
 - **Default model: haiku for IDE sessions, sonnet for fleet workers.** Cost-sensitive sweeps: `FLEET_MODEL=haiku`. Opus is ~50× haiku per token.
 - **Never push directly to `main`.** See [AGENTS.md → Naming conventions](./AGENTS.md#naming-conventions-infra-186-2026-05-01).
-- **Always work in a linked worktree** — `chump claim` refuses the main checkout.
+- **Always work in a linked worktree** — `gap-claim.sh` refuses the main checkout.
 - **Linked worktree git path confusion (INFRA-779):** On macOS, `/tmp` → `/private/tmp` symlink plus concurrent sibling claims can corrupt a worktree's gitdir back-reference, causing `git rev-parse --show-toplevel` to return the wrong path. Recovery: `GIT_DIR=/Users/jeffadkins/Projects/Chump/.git/worktrees/<wt-name> GIT_WORK_TREE=/private/tmp/<wt-name> git <cmd>`. Prevention: `chump claim` now auto-repairs the gitdir after `git worktree add`.
-- **Never start a gap without `chump gap preflight <GAP-ID>` first.**
+- **Never start a gap without `gap-preflight.sh` first.**
 - **Never leave a lease behind** — `chump --release` or delete `.chump-locks/<session>.json`.
 - **Commit often** (every 30 min) — use `scripts/coord/chump-commit.sh <files> -m "msg"`, not bare `git commit`.
 - **Mutate gaps via `chump gap …` only** — `.chump/state.db` is canonical. Use `chump gap show <ID>` to inspect.
@@ -169,7 +171,6 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 - **Auto-merge is the default.** `bot-merge.sh --auto-merge` arms it. Once armed, treat PR as frozen — new work → new PR.
 - **PRs are intent-atomic**, not file-count-bounded. One logical change per PR.
 - **`--no-verify` is the reason most regressions ship.** Use very sparingly.
-- **`chump gap reserve` applies title similarity check (INFRA-1149).** Jaccard similarity >= `CHUMP_GAP_RESERVE_SIMILARITY_WARN` (default 0.65) prompts y/N to continue; >= `CHUMP_GAP_RESERVE_SIMILARITY_BLOCK` (default 0.85) blocks the reserve. Thresholds are tunable via env. Bypass: `--force-duplicate` flag or `CHUMP_GAP_RESERVE_NO_SIMILARITY=1`.
 
 ## Rust-first vs. shell-OK (META-064, 2026-05-14)
 

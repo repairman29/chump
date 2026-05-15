@@ -5,9 +5,8 @@
   priority: P0
   effort: s
   acceptance_criteria:
-    - "orphan-pr-closer.sh sources lib/github_cache.sh and has both new skip guards (auto-merge-armed + live-CI-running)"
-    - "Guard 1: if auto_merge field is non-null, emits pr_close_skipped_auto_merge_armed and continues without closing"
-    - "Guard 2: if any check_run status is queued or in_progress, emits pr_close_skipped_ci_running and continues without closing"
-    - "Both events registered in docs/observability/EVENT_REGISTRY.yaml"
-    - "scripts/ci/test-orphan-pr-closer-health-check.sh passes 5/5 assertions (stale-close, auto-merge-skip, live-ci-skip, combined-skip, ambient-emit)"
-    - "Backward-compatible: CHUMP_ORPHAN_PR_CLOSER=0 still bypasses everything"
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

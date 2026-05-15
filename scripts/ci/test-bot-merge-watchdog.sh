@@ -39,16 +39,15 @@ mkdir -p "$LOCK_DIR"
 SHIM_DIR="$TMP/bin"
 mkdir -p "$SHIM_DIR"
 
-# chump shim: return YAML output matching _gap_status / closed_pr grep patterns
-# in bot-merge-watchdog.sh (which uses `grep -E '^\s*status:'`, not JSON parsing).
+# chump shim: return done for INFRA-9001, open for INFRA-9002
 cat > "$SHIM_DIR/chump" <<'SHIM'
 #!/usr/bin/env bash
 if [[ "$*" == *"INFRA-9001"* ]]; then
-    printf 'status: done\nclosed_pr: \n'
+    echo '{"status":"done","closed_pr":""}'
 elif [[ "$*" == *"INFRA-9002"* ]]; then
-    printf 'status: open\nclosed_pr: \n'
+    echo '{"status":"open","closed_pr":""}'
 else
-    printf 'status: open\nclosed_pr: \n'
+    echo '{"status":"open","closed_pr":""}'
 fi
 SHIM
 chmod +x "$SHIM_DIR/chump"
@@ -72,9 +71,8 @@ sleep 0.2
 
 cat > "$SHIM_DIR/pgrep" <<PGREPSHIM
 #!/usr/bin/env bash
-# Return only our test PIDs when searching for bot-merge (handles both
-# 'bot-merge.sh' and 'bot-merge\.sh' as passed by the watchdog).
-if [[ "\$*" == *"bot-merge"* ]]; then
+# Return only our test PIDs when searching for bot-merge.sh
+if [[ "\$*" == *"bot-merge.sh"* ]]; then
     echo $FAKE_PID_DONE
     echo $FAKE_PID_OPEN
     echo $FAKE_PID_EXEMPT

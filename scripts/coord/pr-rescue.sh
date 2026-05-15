@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1091  # lib/ sources use dynamic $SCRIPT_DIR — resolved at runtime
 # RESILIENT-006: PR-stale auto-rebase.
 #
 # When a PR that has auto-merge armed is BLOCKED because of CI failures on
@@ -43,9 +42,6 @@ source "${SCRIPT_DIR}/lib/github.sh"
 # INFRA-1109: cache-first per-PR meta lookup via INFRA-1081 cache.
 # shellcheck source=lib/github_cache.sh
 [[ -f "${SCRIPT_DIR}/lib/github_cache.sh" ]] && source "${SCRIPT_DIR}/lib/github_cache.sh"
-# INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
-# shellcheck source=lib/ambient-write.sh
-source "${SCRIPT_DIR}/lib/ambient-write.sh"
 export CHUMP_GH_SCRIPT="pr-rescue.sh"
 REPO="${GITHUB_REPOSITORY:-}"
 TARGET_PR=""
@@ -69,9 +65,9 @@ emit_ambient() {
     mkdir -p "${locks_dir}" 2>/dev/null || true
     local ts
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    _ambient_write "${locks_dir}/ambient.jsonl" \
-        "$(printf '{"ts":"%s","kind":"%s","pr":%s,"detail":"%s"}' \
-            "${ts}" "${kind}" "${pr_num}" "${detail}")"
+    printf '{"ts":"%s","kind":"%s","pr":%s,"detail":"%s"}\n' \
+        "${ts}" "${kind}" "${pr_num}" "${detail}" \
+        >> "${locks_dir}/ambient.jsonl" 2>/dev/null || true
 }
 
 # ── Guard: skip if no GH_TOKEN ───────────────────────────────────────────────

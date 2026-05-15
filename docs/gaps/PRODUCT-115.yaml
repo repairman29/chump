@@ -16,6 +16,4 @@
     - "Cleanup: disconnectedCallback clears poll timer"
     - "Accessibility: aria-pressed + aria-label on toggle button"
     - Test scripts/ci/test-pwa-autopilot-toggle.sh 13 assertions all pass
-  notes: |
-    [2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
 

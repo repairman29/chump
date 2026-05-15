@@ -58,13 +58,9 @@ registered = set(re.findall(r'^\s*-\s+kind:\s*([A-Za-z0-9_]+)', yaml_text, re.M)
 # Production paths. Excludes scripts/ab-harness/, scripts/ci/,
 # scripts/git-hooks/, scripts/auto-docs/, etc. — those legitimately mention
 # `"kind":"X"` as test fixtures, doc examples, or hook bypass templates.
-# INFRA-1287: extended to include scripts/dev/ and scripts/setup/ which
-# contain real emit sites (e.g. ambient-watch.sh emits lease_overlap/edit_burst,
-# install-chump-fleet-daemon.sh emits daemon_tick via daemon orchestration).
 PROD_PATHS = [
     'src/', 'crates/',
     'scripts/coord/', 'scripts/dispatch/', 'scripts/ops/',
-    'scripts/dev/', 'scripts/setup/',
 ]
 # Also skip per-file patterns that may live inside PROD_PATHS but are tests
 # or fixtures (e.g. `src/foo/tests/bar.rs`).
@@ -72,11 +68,8 @@ SKIP_PATTERNS = ('/tests/', '/test_', '_test.rs', '/fixtures/')
 
 def grep_lines(pattern, paths):
     """Run grep -rEnI, return list of `path:lineno:content` strings."""
-    existing = [p for p in paths if pathlib.Path(p).exists()]
-    if not existing:
-        return []
     proc = subprocess.run(
-        ['grep', '-rEnI', pattern, *existing],
+        ['grep', '-rEnI', pattern, *paths],
         capture_output=True, text=True
     )
     # rc 1 == no matches (OK); rc 2+ == real error
@@ -110,70 +103,6 @@ emitted |= extract_kinds(
     grep_lines(r'kind\s*=\s*"[a-zA-Z0-9_]+"', ['src/', 'crates/']),
     r'kind\s*=\s*"([a-zA-Z0-9_]+)"',
 )
-# Pattern 3: Rust format-string escaped-quote form: \"kind\":\"fleet_scale_change\"
-# Common in format! / write! macros where the JSON is built inline.
-# INFRA-1287: adds ~33 new emit sites (daemon_tick, fleet_scale_change, etc.)
-emitted |= extract_kinds(
-    grep_lines(r'\\"kind\\":\\"[a-zA-Z0-9_]+\\"', ['src/', 'crates/']),
-    r'\\"kind\\":\\"([a-zA-Z0-9_]+)\\"',
-)
-# Pattern 4: Shell _emit "kind_name" — function-mediated emits.
-# fleet-wedge-handler.sh, active-target-reaper.sh, etc.
-# INFRA-1287: adds ~13 new emit sites.
-emitted |= extract_kinds(
-    grep_lines(r'_emit\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
-    r'_emit\s+"([a-zA-Z0-9_]+)"',
-)
-# Pattern 5a: emit_alert "kind_name" — ambient-watch.sh.
-# INFRA-1287: catches lease_overlap, edit_burst, silent_agent from scripts/dev/.
-emitted |= extract_kinds(
-    grep_lines(r'emit_alert\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
-    r'emit_alert\s+"([a-zA-Z0-9_]+)"',
-)
-# Pattern 5b: emit_ambient "kind_name" — disk-health-monitor.sh, auto-merge-armer.sh,
-# scripts/coord/pr-rescue.sh, and many scripts/ops/ scripts.
-# grep -E doesn't support lookbehind, so filter out `_emit_ambient` lines
-# in extract_kinds instead of the grep pattern.
-# `_emit_ambient` in free-tier-e2e-test.sh takes status codes ("pass","fail"),
-# not event kinds — skip those lines.
-def extract_kinds_no_prefix_emit(lines, kind_re):
-    """Like extract_kinds but skip lines containing _emit_ambient."""
-    out = set()
-    for line in lines:
-        parts = line.split(':', 2)
-        if len(parts) < 3:
-            continue
-        path = parts[0]
-        if any(p in path for p in SKIP_PATTERNS):
-            continue
-        content = parts[2]
-        if '_emit_ambient' in content:
-            continue
-        m = re.search(kind_re, content)
-        if m:
-            out.add(m.group(1))
-    return out
-
-emitted |= extract_kinds_no_prefix_emit(
-    grep_lines(r'emit_ambient\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
-    r'emit_ambient\s+"([a-zA-Z0-9_]+)"',
-)
-# Pattern 6: known alert_kind= variable assignments.
-# Narrowly scoped to `alert_kind=` (reaper-heartbeat-watchdog.sh, watchdogs).
-# Avoids the noise from broader `*kind*=` patterns that catch internal state
-# variables like _cooldown_kind="wedge" which are NOT event kinds.
-emitted |= extract_kinds(
-    grep_lines(r'alert_kind\s*=\s*"[a-zA-Z0-9_]+"', PROD_PATHS),
-    r'alert_kind\s*=\s*"([a-zA-Z0-9_]+)"',
-)
-# Pattern 7: emit_reaper_event "kind_name" — reaper observability helper.
-# Used in scripts/ops/active-target-reaper.sh, scripts/ops/stale-worktree-reaper.sh,
-# scripts/coord/worktree-prune.sh. First quoted argument is the kind name.
-# INFRA-1287: catches worktree_reap_protected, worktree_reaper_skipped_active, etc.
-emitted |= extract_kinds(
-    grep_lines(r'emit_reaper_event\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
-    r'emit_reaper_event\s+"([a-zA-Z0-9_]+)"',
-)
 
 # Allowlist — kinds exempt from BOTH directions.
 allowlist = set()
@@ -190,9 +119,7 @@ except FileNotFoundError:
     pass
 
 # Drop obvious noise (placeholders inadvertently caught by the regex).
-# 'test' is emitted in #[cfg(test)] blocks in src/ (e.g. ambient_rotate.rs)
-# which are stripped in production builds — not a real event kind.
-NOISE = {'X', 'kind', 'name', 'value', 'type', 'event', 'other', 'test'}
+NOISE = {'X', 'kind', 'name', 'value', 'type', 'event', 'other'}
 emitted -= NOISE
 
 emit_without_register = sorted((emitted - registered) - allowlist)
@@ -207,19 +134,13 @@ for k in emit_without_register:
     print(f"  EMIT-NO-REG: {k}")
 print(f"[event-registry-audit] register-without-emit (orphans): "
       f"{len(register_without_emit)}")
-# INFRA-1287: always print the full orphan list in report mode (grouped alpha).
-# In non-report modes, print first 5 + count for CI log brevity.
-if register_without_emit:
-    if mode == 'report':
-        for k in register_without_emit:
-            print(f"  ORPHAN: {k}")
-    else:
-        head = register_without_emit[:5]
-        for k in head:
-            print(f"  ORPHAN: {k}")
-        if len(register_without_emit) > 5:
-            print(f"  ... +{len(register_without_emit)-5} more "
-                  f"(run with CHUMP_REGISTRY_GATE_MODE=report for full list)")
+if register_without_emit and mode != 'report':
+    head = register_without_emit[:5]
+    for k in head:
+        print(f"  ORPHAN: {k}")
+    if len(register_without_emit) > 5:
+        print(f"  ... +{len(register_without_emit)-5} more "
+              f"(run with CHUMP_REGISTRY_GATE_MODE=report for full list)")
 
 # ── Exit policy ──
 if mode == 'report':

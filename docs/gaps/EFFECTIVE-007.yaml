@@ -1,9 +1,31 @@
 - id: EFFECTIVE-007
   domain: EFFECTIVE
   title: "CREDIBLE: Gemini tool-call quality validation — verify read/patch/commit loop works end-to-end"
-  status: done
+  status: open
   priority: P1
   effort: xs
-  depends_on: [INFRA-788]
-  closed_date: '2026-05-15'
+  depends_on:
+    - INFRA-788
+  acceptance_criteria: |
+    Gemini 2.5 Flash supports OpenAI-compatible tool calling via
+    googleapis.com/v1beta/openai. Unlike Llama 3.3 70B (which
+    generates bad patch_file diffs), Gemini should produce higher-
+    quality tool inputs.
+
+    Run the E2E-9999 gap test against Gemini 2.5 Flash:
+    1. read_file src/execute_gap.rs — must succeed
+    2. patch_file — must produce a valid unified diff
+    3. git_commit — must create a commit
+
+    Document results in docs/architecture/FREE_TIER_PROVIDER_COMPAT.md:
+    - Does Gemini emit tool_calls in OpenAI format? (vs text narration)
+    - Does patch_file work on first try? (vs Llama's bad diffs)
+    - How many iterations to complete E2E-9999?
+    - Any thinking-token overhead? (see INFRA-790)
+
+    Requires INFRA-788 (billing or RPD budget) so we can make enough
+    API calls to complete the test.
+
+    Test: E2E-9999 gap dispatched via gemini-2.5-flash produces a
+    commit with the test marker in src/execute_gap.rs.
 

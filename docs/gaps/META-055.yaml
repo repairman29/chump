@@ -1,28 +1,26 @@
 - id: META-055
   domain: META
-  title: "MISSION: AC-backfill sprint for the remaining 64 vague-AC pickable gaps + audit which should be closed as obsolete instead"
-  status: open
+  title: 'MISSION: AC-backfill sprint for the remaining 64 vague-AC pickable gaps + audit which should be closed as obsolete
+    instead'
+  status: done
   priority: P2
   effort: m
-  description: |
-    Today's session synced 18 gaps whose YAML had AC but state.db didn't.
-    64 truly-vague gaps remain (no AC anywhere). Many likely have stale
-    intent — they've been sitting weeks without anyone writing AC, which
-    suggests the work itself may be obsolete.
-
-    The 17 P1-vague subset was triaged this session:
-      - 3 ACed (COG-054, INFRA-604, FLEET-048)
-      - 2 demoted (FLEET-038/039 NATS migration)
-      - 1 superseded (META-045 by EVAL-102)
-      - 11 remain for this sprint
-
-    Remaining P1 vague: INFRA-615, INFRA-630, INFRA-635, INFRA-636,
-    INFRA-688, PRODUCT-032/036/054/056/057/058. Plus 47 P2/P3 vague.
+  description: "Today's session synced 18 gaps whose YAML had AC but state.db didn't.\n64 truly-vague gaps remain (no AC anywhere).\
+    \ Many likely have stale\nintent — they've been sitting weeks without anyone writing AC, which\nsuggests the work itself\
+    \ may be obsolete.\n\nThe 17 P1-vague subset was triaged this session:\n  - 3 ACed (COG-054, INFRA-604, FLEET-048)\n \
+    \ - 2 demoted (FLEET-038/039 NATS migration)\n  - 1 superseded (META-045 by EVAL-102)\n  - 11 remain for this sprint\n\
+    \nRemaining P1 vague: INFRA-615, INFRA-630, INFRA-635, INFRA-636,\nINFRA-688, PRODUCT-032/036/054/056/057/058. Plus 47\
+    \ P2/P3 vague.\n"
   acceptance_criteria:
-    - "Per-gap triage decision: AC (concrete bullets), demote (P2/P3), close (obsolete/duplicate), or sub-decompose (if too broad)"
-    - "Decisions logged in docs/syntheses/2026-05-1X-ac-backfill-sprint.md with reasoning per gap"
-    - "Post-sprint: `chump gap audit-priorities` shows 'Vague (no AC) pickable: 0' OR a documented exception list with explicit operator approval"
-    - "Sprint exits early if a pattern emerges (e.g., 'all PRODUCT-* gaps from <date> are obsolete' → batch-close)"
-    - "Lessons feed into RESILIENT-007 (dispatcher refuses TODO-AC) so the dispatcher's bar is calibrated against real backlog"
-    - "Pairs with META-054 (bulk pillar-prefix retag) — same registry-health intent"
-    - "Not P1 because: now that RESILIENT-007 prevents future TODO-AC pickup and CREDIBLE-026/027 prevent silent-revert/scratch-disaster, the existing vague gaps are dead-weight, not blast-radius. Curation-cadence work."
+  - 'Per-gap triage decision: AC (concrete bullets), demote (P2/P3), close (obsolete/duplicate), or sub-decompose (if too
+    broad)'
+  - Decisions logged in docs/syntheses/2026-05-1X-ac-backfill-sprint.md with reasoning per gap
+  - 'Post-sprint: `chump gap audit-priorities` shows ''Vague (no AC) pickable: 0'' OR a documented exception list with explicit
+    operator approval'
+  - Sprint exits early if a pattern emerges (e.g., 'all PRODUCT-* gaps from <date> are obsolete' → batch-close)
+  - Lessons feed into RESILIENT-007 (dispatcher refuses TODO-AC) so the dispatcher's bar is calibrated against real backlog
+  - Pairs with META-054 (bulk pillar-prefix retag) — same registry-health intent
+  - 'Not P1 because: now that RESILIENT-007 prevents future TODO-AC pickup and CREDIBLE-026/027 prevent silent-revert/scratch-disaster,
+    the existing vague gaps are dead-weight, not blast-radius. Curation-cadence work.'
+  closed_date: '2026-05-13'
+  closed_pr: 1635

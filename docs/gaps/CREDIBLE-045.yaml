@@ -1,20 +1,33 @@
 - id: CREDIBLE-045
   domain: CREDIBLE
-  title: "CREDIBLE: generic agent-attribution in bot-merge + commit trailers — accept any Co-Authored-By pattern, not Anthropic-flavored only"
-  status: open
+  title: 'CREDIBLE: generic agent-attribution in bot-merge + commit trailers — accept any Co-Authored-By pattern, not Anthropic-flavored
+    only'
+  status: done
   priority: P1
   effort: xs
-  description: |
-    scripts/coord/bot-merge.sh and related coord scripts assume commit
+  description: 'scripts/coord/bot-merge.sh and related coord scripts assume commit
+
     trailers like `Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`.
+
     Per CREDIBLE-025 (worker-model tagging) + CREDIBLE-040 (opencode-bigpickle
+
     git identity), each harness should have its own attribution. The coord
+
     scripts must accept any well-formed `Co-Authored-By` rather than
+
     pattern-matching Anthropic.
+
+    '
   acceptance_criteria:
-    - "scripts/coord/bot-merge.sh's commit-trailer logic accepts any `Co-Authored-By: <agent-name> <email>` pattern; previously hardcoded `Claude (Sonnet|Haiku|Opus)` matchers are replaced with a generic regex"
-    - "scripts/dispatch/model-ship-rate.sh + waste-tally aggregate by trailer-extracted agent identity (claude, opencode, aider, opencode-bigpickle, llama-via-ollama, etc.) — not just Anthropic-flavored"
-    - "scripts/ci/test-attribution-portable.sh: synthetic commits with trailers from 5 different agents (claude, opencode, aider, repairman, manual); assert the aggregator groups them correctly"
-    - "scripts/coord/code-reviewer-agent.sh + gap-architect.py — same generic-attribution pattern; no Anthropic-specific assumptions"
-    - "Documented in docs/process/AGENT_COORDINATION.md (or AGENTS.md per EFFECTIVE-020): the canonical agent-attribution table per harness"
-    - "Pairs with CREDIBLE-025 (model tagging in ambient) + CREDIBLE-037 (harness tagging in ambient) + CREDIBLE-040 (bigpickle git identity)"
+  - 'scripts/coord/bot-merge.sh''s commit-trailer logic accepts any `Co-Authored-By: <agent-name> <email>` pattern; previously
+    hardcoded `Claude (Sonnet|Haiku|Opus)` matchers are replaced with a generic regex'
+  - scripts/dispatch/model-ship-rate.sh + waste-tally aggregate by trailer-extracted agent identity (claude, opencode, aider,
+    opencode-bigpickle, llama-via-ollama, etc.) — not just Anthropic-flavored
+  - 'scripts/ci/test-attribution-portable.sh: synthetic commits with trailers from 5 different agents (claude, opencode, aider,
+    repairman, manual); assert the aggregator groups them correctly'
+  - scripts/coord/code-reviewer-agent.sh + gap-architect.py — same generic-attribution pattern; no Anthropic-specific assumptions
+  - 'Documented in docs/process/AGENT_COORDINATION.md (or AGENTS.md per EFFECTIVE-020): the canonical agent-attribution table
+    per harness'
+  - Pairs with CREDIBLE-025 (model tagging in ambient) + CREDIBLE-037 (harness tagging in ambient) + CREDIBLE-040 (bigpickle
+    git identity)
+  closed_date: '2026-05-13'

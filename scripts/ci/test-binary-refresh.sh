@@ -72,11 +72,7 @@ ok "fresh-binary --check exits 0 + logs 'fresh'"
 # ── Functional: --check with stale binary fixture ──────────────────────────
 # Stale fixture: fake chump prints a version with an OLD SHA that's behind
 # multiple gap-store commits. Find such a SHA by going back ~20 commits.
-# INFRA-1214: source-grep.sh to locate gap_store dynamically
-source "$(dirname "$0")/lib/source-grep.sh"
-_gs_path=$(find_gap_store_path)
-_gs_rel="${_gs_path#$REPO_ROOT/}"
-OLD_SHA="$(git -C "$REPO_ROOT" log --format=%H -20 -- "$_gs_rel" src/main.rs 2>/dev/null | tail -1 | cut -c1-12)"
+OLD_SHA="$(git -C "$REPO_ROOT" log --format=%H -20 -- src/gap_store.rs src/main.rs 2>/dev/null | tail -1 | cut -c1-12)"
 if [[ -z "$OLD_SHA" ]]; then
     echo "  SKIP stale test — couldn't find an old gap-store SHA in repo"
 else

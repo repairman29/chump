@@ -17,11 +17,10 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }
-skip() { printf '\033[0;33mSKIP\033[0m %s\n' "$*"; exit 0; }
 
 CHUMP="${CHUMP_BIN:-$(command -v chump 2>/dev/null || true)}"
 if [[ -z "$CHUMP" || ! -x "$CHUMP" ]]; then
-    skip "chump binary not on PATH (set CHUMP_BIN or 'cargo install --path .'); skipping help regression gate"
+    fail "chump binary not on PATH (set CHUMP_BIN or 'cargo install --path .')"
 fi
 
 # Skip staleness check + LLM dispatch; help is local.

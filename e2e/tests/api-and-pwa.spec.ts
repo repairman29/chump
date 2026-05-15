@@ -1,14 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { ensureOllamaOrSkip } from '../lib/ollama-check';
 
-// INFRA-1332: PWA-shell + mobile-viewport + Chat-/task describe blocks have
-// flaked across 6+ unrelated PRs in the past 24h despite playwright retries:2.
-// Until INFRA-1335 root-causes them, these are skipped on the PR path. Set
-// CHUMP_E2E_INCLUDE_FLAKES=1 in the advisory workflow to surface them
-// without blocking merges. The KNOWN_FLAKES.yaml `playwright_flakes:` section
-// is the audit trail.
-const INCLUDE_PWA_FLAKES = process.env.CHUMP_E2E_INCLUDE_FLAKES === '1';
-
 test.describe('API (no browser)', () => {
   test('GET /api/health', async ({ request }) => {
     const r = await request.get('/api/health');
@@ -76,7 +68,6 @@ test.describe('API (no browser)', () => {
 });
 
 test.describe('PWA shell', () => {
-  test.skip(!INCLUDE_PWA_FLAKES, 'INFRA-1332: quarantined flake — set CHUMP_E2E_INCLUDE_FLAKES=1 to run');
   test('loads home and shows message composer', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#msg-input')).toBeVisible();
@@ -108,7 +99,6 @@ test.describe('PWA shell', () => {
 
 /** Narrow viewport: touch-style chrome without a real device lab (P5.2 automation). */
 test.describe('PWA mobile viewport', () => {
-  test.skip(!INCLUDE_PWA_FLAKES, 'INFRA-1332: quarantined flake — set CHUMP_E2E_INCLUDE_FLAKES=1 to run');
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
   });
@@ -131,7 +121,6 @@ test.describe('PWA mobile viewport', () => {
 });
 
 test.describe('Chat /task path (tolerates slow local Ollama)', () => {
-  test.skip(!INCLUDE_PWA_FLAKES, 'INFRA-1332: quarantined flake — set CHUMP_E2E_INCLUDE_FLAKES=1 to run');
   // INFRA-1072: `test.skip()` inside beforeAll is unreliable in current
   // Playwright — the tests still execute and time out for 5min each instead
   // of skipping cleanly. Probe Ollama once in beforeAll and use the proven

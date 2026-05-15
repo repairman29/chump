@@ -1,9 +1,12 @@
 - id: INFRA-900
   domain: INFRA
-  title: "CREDIBLE: Metrics collection infrastructure"
-  status: open
+  title: 'CREDIBLE: Metrics collection infrastructure'
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
-    - "1. scripts/ops/fleet-metrics-snapshot.sh reads ambient.jsonl + state.db and emits kind=fleet_metrics_snapshot with fields: ts, ship_rate_24h (merged PRs / opened PRs), waste_rate_24h (chump waste-tally --window 24h), cycle_time_p50_h (median gap open→closed hours), active_gaps, p0_count. 2. Snapshot runs via chump fleet metrics (subcommand or flag). 3. scripts/ci/test-fleet-metrics-snapshot.sh: 6+ tests verifying schema and field types."
-
+  - '1. scripts/ops/fleet-metrics-snapshot.sh reads ambient.jsonl + state.db and emits kind=fleet_metrics_snapshot with fields:
+    ts, ship_rate_24h (merged PRs / opened PRs), waste_rate_24h (chump waste-tally --window 24h), cycle_time_p50_h (median
+    gap open→closed hours), active_gaps, p0_count. 2. Snapshot runs via chump fleet metrics (subcommand or flag). 3. scripts/ci/test-fleet-metrics-snapshot.sh:
+    6+ tests verifying schema and field types.'
+  closed_date: '2026-05-12'

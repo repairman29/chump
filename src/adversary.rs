@@ -610,7 +610,12 @@ rules:
 mod e2e_rule_to_ambient {
     use super::*;
     use serde_json::json;
+    use std::sync::Mutex;
     use tempfile::TempDir;
+
+    /// Serialize tests that mutate CHUMP_AMBIENT_LOG / CHUMP_SESSION_ID — these
+    /// are process-global env vars and parallel tests would interleave them.
+    static AMBIENT_ENV_LOCK: Mutex<()> = Mutex::new(());
 
     /// Build a fresh rules struct from a YAML literal, the same way the
     /// existing parsing tests do.
@@ -651,8 +656,8 @@ mod e2e_rule_to_ambient {
     /// writes one line, the line parses as JSON and carries all fields the
     /// downstream consumers depend on.
     #[test]
-    #[serial_test::serial(ambient_env)]
     fn rule_check_emits_ambient_line_with_correct_shape() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
         let tmp = TempDir::new().unwrap();
         let ambient_path = tmp.path().join("ambient.jsonl");
         std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);
@@ -747,8 +752,8 @@ rules:
     /// must still be emitted to ambient.jsonl. Same dispatcher contract as
     /// the block test, opposite outcome.
     #[test]
-    #[serial_test::serial(ambient_env)]
     fn warn_action_emits_but_caller_continues() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
         let tmp = TempDir::new().unwrap();
         let ambient_path = tmp.path().join("ambient.jsonl");
         std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);
@@ -793,8 +798,8 @@ rules:
     /// integration: an attacker whose tool input contains a `"` or `\n`
     /// must not be able to break the JSON shape downstream parsers depend on.
     #[test]
-    #[serial_test::serial(ambient_env)]
     fn emit_handles_malicious_input_safely() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
         let tmp = TempDir::new().unwrap();
         let ambient_path = tmp.path().join("ambient.jsonl");
         std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);

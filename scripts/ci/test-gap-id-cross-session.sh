@@ -12,9 +12,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# INFRA-1214: use source-grep.sh library instead of inline if/else
-source "$SCRIPT_DIR/lib/source-grep.sh"
-GAP_STORE_PATH=$(find_gap_store_path)
+# INFRA-693: gap_store.rs moved to crates/chump-gap-store/src/lib.rs.
+if [[ -f "$REPO_ROOT/crates/chump-gap-store/src/lib.rs" ]]; then
+    GAP_STORE_PATH="$REPO_ROOT/crates/chump-gap-store/src/lib.rs"
+else
+    GAP_STORE_PATH="$REPO_ROOT/src/gap_store.rs"
+fi
 
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }

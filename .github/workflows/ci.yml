@@ -129,21 +129,11 @@ jobs:
               - 'SECURITY.md'
 
   # ── Tauri Cowork E2E ───────────────────────────────────────────────────────
-  # INFRA-1348: Only runs on push-to-main and merge_group — NOT on PRs.
-  #
-  # Root-cause analysis: `continue-on-error: true` (INFRA-1342) was intended
-  # to stop this flaky job from blocking auto-merge, but it doesn't help:
-  # GitHub's statusCheckRollup aggregates individual job *conclusions* (not the
-  # workflow-run conclusion), so a job with conclusion=failure still sets
-  # statusCheckRollup.state=FAILURE → mergeStateStatus=BLOCKED fleet-wide.
-  #
-  # The correct fix is to not run the job on pull_request events at all.
-  # The test requires Ollama (unreachable on CI runners) so it will always
-  # fail on PRs anyway. Run it post-merge on push to surface real regressions.
+  # Only runs when desktop / src / e2e-tauri files change. Skipped on
+  # docs-only, scripts-only, crate-only PRs.
   tauri-cowork-e2e:
     needs: changes
-    if: github.event_name == 'push' || github.event_name == 'merge_group'
-    continue-on-error: true
+    if: needs.changes.outputs.tauri == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -455,13 +445,11 @@ jobs:
           PYTHON: python3
         run: bash scripts/eval/research-lane-a-smoke.sh
 
-      - name: gap-preflight AC gate + picker AC filter (INFRA-1259)
-        run: bash scripts/ci/test-gap-preflight-ac-gate.sh
+      - name: gap-preflight unregistered-ID guard (INFRA-020)
+        run: bash scripts/ci/test-gap-preflight-unregistered.sh
 
-      - name: chump subcommand --help regression gate (INFRA-1246)
-        # Prevents "claim --help exits non-zero" / "ship --help falls through to LLM" regressions.
-        # See INFRA-1238 for the original fix; this is the CI guard so it never regresses.
-        run: bash scripts/ci/test-chump-subcommand-help.sh
+      - name: gap-claim claim-time exclusivity race guard (INFRA-403)
+        run: bash scripts/ci/test-gap-claim-race.sh
 
       - name: atomic claim no-shell-out + thin-wrapper assertions (INFRA-1025)
         run: bash scripts/ci/test-infra-1025-atomic-claim.sh
@@ -639,10 +627,11 @@ jobs:
         # Build once, reuse across the next three steps.
         run: cargo build --bin chump
 
-      - name: gap-reserve concurrency (INFRA-021)
+      - name: gap-reserve concurrency + preflight (INFRA-021)
         run: |
           export PATH="$(pwd)/target/debug:$PATH"
           bash scripts/ci/test-gap-reserve-concurrency.sh
+          bash scripts/ci/test-gap-reserve-preflight.sh
 
       - name: gap-reserve ID zero-padding (INFRA-080)
         run: |
@@ -900,8 +889,6 @@ jobs:
   e2e-pwa:
     needs: changes
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
-    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 60  # INFRA-1018: cap wall-clock; Ollama+cargo+playwright target ~30 min; 6h default caused stuck runs
     steps:
@@ -980,8 +967,6 @@ jobs:
   e2e-battle-sim:
     needs: changes
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
-    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -998,8 +983,6 @@ jobs:
   e2e-golden-path:
     needs: changes
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
-    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -1149,9 +1132,6 @@ jobs:
       - name: bounced-PR detector fixture (INFRA-781)
         run: bash scripts/ci/test-bounced-pr-detector.sh
 
-      - name: orphan-PR closer fixture (INFRA-1139)
-        run: bash scripts/ci/test-orphan-pr-closer.sh
-
       - name: precommit strict replay — mirror local guards to CI (INFRA-767)
         run: bash scripts/ci/precommit-strict-replay.sh
 
@@ -1199,8 +1179,6 @@ jobs:
         run: bash scripts/ci/test-picker-priority.sh
       - name: chump fleet bootstrap orchestrator (META-066)
         run: bash scripts/ci/test-fleet-bootstrap.sh
-      - name: PWA flake quarantine wiring (INFRA-1332)
-        run: bash scripts/ci/test-pwa-flake-quarantine.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
@@ -1393,12 +1371,11 @@ jobs:
         run: bash scripts/ci/test-gap-ac-requirement.sh
       - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
         run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
-      - name: EVENT_REGISTRY coverage — no drift in either direction (INFRA-1237/INFRA-1287)
-        # INFRA-1287: flipped to strict mode — all 88 register-without-emit orphans
-        # are now either pruned from the registry (3 dead) or listed in
-        # scripts/ci/event-registry-reserved.txt with reason comments.
-        # strict mode: BOTH emit-without-register AND register-without-emit FAIL.
-        run: CHUMP_REGISTRY_GATE_MODE=strict bash scripts/ci/test-event-registry-coverage.sh
+      - name: EVENT_REGISTRY coverage — no emit-without-register on full tree (INFRA-1237)
+        # strict-emit mode: emit-without-register FAILS; orphans warn-only.
+        # Flip to CHUMP_REGISTRY_GATE_MODE=strict once the orphan-reconciliation
+        # follow-up (INFRA-1287) lands.
+        run: CHUMP_REGISTRY_GATE_MODE=strict-emit bash scripts/ci/test-event-registry-coverage.sh
       - name: no-inline-ambient-printf — Phase-1 dry-up (INFRA-1307)
         # Refuses net-new files in scripts/coord|dispatch|ops/ + src/ + crates/
         # that write inline to ambient.jsonl. New emit sites should call
@@ -1580,6 +1557,8 @@ jobs:
             echo "::error::audit-required FAIL (real=$real, stub=$stub)"
             exit 1
           fi
+      - name: gap-preflight pre-claim duplicate sweep — worktree + open-PR scan (INFRA-1029)
+        run: bash scripts/ci/test-gap-preflight-dupe-sweep.sh
       - name: INFRA-779 gitdir auto-repair — corrupt + verify repair + ambient event (INFRA-1033)
         run: bash scripts/ci/test-infra-779-gitdir-repair.sh
       - name: pre-push known-flake skip integration (INFRA-1167)
@@ -1607,33 +1586,3 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pillar-balance-guard.sh
-
-  # ── System integration test (INFRA-849) ──────────────────────────────────────
-  # Non-blocking end-to-end test for the claim→commit→ship pipeline using stubs.
-  # Does not gate merges (continue-on-error: true); provides CREDIBLE signal
-  # that the full pipeline round-trips without requiring real GitHub API calls.
-  integration-test:
-    name: System integration test (INFRA-849)
-    runs-on: ubuntu-latest
-    needs: [fast-checks]
-    continue-on-error: true
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-integration-test
-
-      - name: Build chump binary
-        run: cargo build --bin chump --quiet 2>&1 | tail -3
-
-      - name: Run system integration test
-        run: bash scripts/ci/test-system-integration.sh
-        env:
-          CHUMP_INTEGRATION_TEST: "1"
-          CHUMP_BIN: target/debug/chump

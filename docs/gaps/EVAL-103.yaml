@@ -1,8 +1,7 @@
 - id: EVAL-103
   domain: EVAL
   title: "CREDIBLE: EVAL prereg-enforcement runtime gates — runner reads prereg's locked-fields manifest, asserts every env/flag matches, fail-closed on any deviation; ships BEFORE EVAL-102 sweep"
-  status: done
-  closed_date: '2026-05-15'
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:

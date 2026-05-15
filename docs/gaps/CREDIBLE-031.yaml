@@ -1,16 +1,23 @@
 - id: CREDIBLE-031
   domain: CREDIBLE
-  title: "CREDIBLE: add tests to src/web_server.rs — HTTP handlers + middleware + spawn_gap_workflow (4095 LOC, decomp of CREDIBLE-004 child 2/4)"
-  status: open
+  title: 'CREDIBLE: add tests to src/web_server.rs — HTTP handlers + middleware + spawn_gap_workflow (4095 LOC, decomp of
+    CREDIBLE-004 child 2/4)'
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
-    - "tests/web_server_endpoints.rs uses axum-test (or hyper test client) to exercise every public route in src/web_server.rs"
-    - "Route-level tests cover: /api/gap/list, /api/gap/work/<ID>, /api/gap/work-status/<ID>, /api/health, /api/fleet/status — happy path + error path (404, 400 missing param, 500 db down)"
-    - "spawn_gap_workflow phases tested in isolation: preflight, claim, execute, ship — each phase mockable via trait + test double"
-    - "Auth middleware tested: missing token → 401, wrong token → 403, valid → 200 (per CREDIBLE-023 PWA hardening if shipped, else current behavior)"
-    - "Coverage target: >50% line coverage on src/web_server.rs (today: 0%)"
-    - "CREDIBLE-020 (PWA end-to-end claim/execute/ship integration test) is the cross-cutting sibling; if it ships first, this gap re-targets to unit/route coverage only"
-    - "CI gate: `cargo test --test web_server_endpoints` passes; runs in <30s (no real network)"
-    - "If web_server.rs has untestable god-functions, file refactor follow-ups rather than force-testing — document them in the gap close notes"
-
+  - tests/web_server_endpoints.rs uses axum-test (or hyper test client) to exercise every public route in src/web_server.rs
+  - 'Route-level tests cover: /api/gap/list, /api/gap/work/<ID>, /api/gap/work-status/<ID>, /api/health, /api/fleet/status
+    — happy path + error path (404, 400 missing param, 500 db down)'
+  - 'spawn_gap_workflow phases tested in isolation: preflight, claim, execute, ship — each phase mockable via trait + test
+    double'
+  - 'Auth middleware tested: missing token → 401, wrong token → 403, valid → 200 (per CREDIBLE-023 PWA hardening if shipped,
+    else current behavior)'
+  - 'Coverage target: >50% line coverage on src/web_server.rs (today: 0%)'
+  - CREDIBLE-020 (PWA end-to-end claim/execute/ship integration test) is the cross-cutting sibling; if it ships first, this
+    gap re-targets to unit/route coverage only
+  - 'CI gate: `cargo test --test web_server_endpoints` passes; runs in <30s (no real network)'
+  - If web_server.rs has untestable god-functions, file refactor follow-ups rather than force-testing — document them in the
+    gap close notes
+  closed_date: '2026-05-12'
+  closed_pr: 1536

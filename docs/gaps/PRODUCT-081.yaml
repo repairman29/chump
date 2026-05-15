@@ -15,11 +15,8 @@
     - "Pillar mix chart: % of merged work in EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE/MISSION (per pillar-tag detection); flag if any pillar starved"
     - "Top 5 'most valuable' PRs of the window: ranked by FLEET-048 operator-impact rating (when shipped) or by gap effort (fallback)"
     - "Trend lines (when 7+ days of data available): ship velocity (PRs/day), waste rate %, pillar mix drift"
-    - Backend /api/impact endpoint joins ambient.jsonl + state.db + git log with window param
-    - Renders in <500ms cold; caches result for 60s server-side
+    - "Backend /api/impact endpoint joins ambient.jsonl + state.db + git log with window param"
+    - "Renders in <500ms cold; caches result for 60s server-side"
     - "scripts/ci/test-pwa-impact.sh: fixture state with 20 known ships across pillars; assert top-line numbers match expected"
-    - Pairs with FLEET-048 (operator impact rating) — Impact uses those ratings as the primary value signal once available
-    - Pairs with PRODUCT-078 (Daily Brief) — Brief is the 'what happened?' filter; Impact is the 'what was it worth?' filter
-  notes: |
-    [2026-05-15T04:28:26Z] PWA phase: 3 (Fleet Grading) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
-
+    - "Pairs with FLEET-048 (operator impact rating) — Impact uses those ratings as the primary value signal once available"
+    - "Pairs with PRODUCT-078 (Daily Brief) — Brief is the 'what happened?' filter; Impact is the 'what was it worth?' filter"

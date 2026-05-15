@@ -1,14 +1,24 @@
 - id: INFRA-825
   domain: INFRA
-  title: "RESILIENT: chump gap ship --update-yaml refuses to run on stale binary — today's #1444 silent revert was caused by a 9-commit-stale binary regenerating all YAMLs from outdated state.db, wiping META-044 + AC additions"
-  status: open
+  title: 'RESILIENT: chump gap ship --update-yaml refuses to run on stale binary — today''s #1444 silent revert was caused
+    by a 9-commit-stale binary regenerating all YAMLs from outdated state.db, wiping META-044 + AC additions'
+  status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-    - "chump gap ship --update-yaml exits non-zero with a clear error when the binary's build SHA is N+ commits behind origin/main on any gap-store-affecting file (today's threshold check is the same N used by the existing CHUMP_BINARY_STALENESS_CHECK warning)"
-    - "Same hard-fail applies to any chump command that regenerates YAML files in bulk (the destructive surface, not all chump commands)"
-    - "Error message names the exact path forward: 'cargo install --path /Users/jeffadkins/Projects/Chump --bin chump --force, then retry'"
-    - "Escape hatch: CHUMP_ALLOW_STALE_DESTRUCTIVE=1 (very loud env var name on purpose; logged to ambient as kind=stale_binary_destructive_override with the gap_id being shipped)"
-    - "Today's bug class explicitly tested: scripts/ci/test-stale-binary-ship-blocked.sh — checkout a chump binary 10 commits behind, run chump gap ship --update-yaml against a recent gap, assert non-zero exit and YAML files untouched"
-    - "Test fixture replays #1444's d698e9cd commit: confirm the new hard-fail would have blocked that destructive regen"
-    - "Documented in docs/process/CLAUDE_GOTCHAS.md alongside the existing stale-binary section (which today only documents the soft warning)"
+  - chump gap ship --update-yaml exits non-zero with a clear error when the binary's build SHA is N+ commits behind origin/main
+    on any gap-store-affecting file (today's threshold check is the same N used by the existing CHUMP_BINARY_STALENESS_CHECK
+    warning)
+  - Same hard-fail applies to any chump command that regenerates YAML files in bulk (the destructive surface, not all chump
+    commands)
+  - 'Error message names the exact path forward: ''cargo install --path /Users/jeffadkins/Projects/Chump --bin chump --force,
+    then retry'''
+  - 'Escape hatch: CHUMP_ALLOW_STALE_DESTRUCTIVE=1 (very loud env var name on purpose; logged to ambient as kind=stale_binary_destructive_override
+    with the gap_id being shipped)'
+  - 'Today''s bug class explicitly tested: scripts/ci/test-stale-binary-ship-blocked.sh — checkout a chump binary 10 commits
+    behind, run chump gap ship --update-yaml against a recent gap, assert non-zero exit and YAML files untouched'
+  - 'Test fixture replays #1444''s d698e9cd commit: confirm the new hard-fail would have blocked that destructive regen'
+  - Documented in docs/process/CLAUDE_GOTCHAS.md alongside the existing stale-binary section (which today only documents the
+    soft warning)
+  closed_date: '2026-05-11'
+  closed_pr: 1509

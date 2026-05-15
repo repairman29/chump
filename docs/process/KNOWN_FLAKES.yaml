@@ -48,35 +48,21 @@ schema_version: 1
 last_audit: "2026-05-15"
 
 flakes:
-  - test: doctor::tests::repo_env_missing_is_warn_not_fail
-    reason: "test removes CHUMP_REPO/CHUMP_HOME and asserts check_repo_env returns Warn, but parallel tests in cargo test can set those env vars between this test's remove_var and check_repo_env call → assert fails with left=Pass right=Warn"
-    tracking_gap: INFRA-977
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
+  # INFRA-977 (2026-05-13 → done 2026-05-14): doctor::tests::repo_env_missing_is_warn_not_fail
+  # removed — fixed via #[serial_test::serial] in PR #1653; passes reliably.
 
-  # RESILIENT-012: 11 consistent pre-push failures on main — environment-dependent
-  # tests that break under parallel cargo test execution. Tracked by INFRA-1008.
-  - test: diff_review_tool::tests::diff_review_empty_diff_returns_message
-    reason: "depends on git diff output in the test worktree; parallel tests mutate git state, causing diff_review to see unexpected content"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
+  # INFRA-1008 (2026-05-14): all 11 RESILIENT-012 entries removed.
+  # Root cause was fixed by adding #[serial_test::serial] annotations and
+  # tempfile::TempDir isolation (git env cleared via env_remove in all commands).
+  # Verified passing reliably across 3 consecutive runs at --test-threads=16.
+  # diff_review_tool, repo_path (3 tests), rescue_tally, sandbox_tool,
+  # version (5 tests) — all green.
 
-  - test: repo_path::tests::repo_profiles_list_parses_git_root
-    reason: "reads CHUMP_REPO env var which parallel tests may have mutated between set and read"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
+  # INFRA-1192 (2026-05-14): skill_hub::tests::default_registries_reads_env removed.
+  # Already has #[serial_test::serial] at src/skill_hub.rs; passes reliably.
 
-  - test: repo_path::tests::set_working_repo_from_profile_roundtrip
-    reason: "mutates and reads back profile state; collides with parallel repo_path tests under cargo test --tests"
-    tracking_gap: INFRA-1008
-    added: "2026-05-13"
-    last_observed: "2026-05-13"
-    max_reruns: 1
+  # INFRA-1193 (2026-05-14): atomic_claim::tests::nats_dual_write_conflict_emits_ambient_event removed.
+  # Passes reliably at --test-threads=16; subprocess/file-read race resolved.
 
   # INFRA-1194 (2026-05-14): kpi_report::tests::infra617_leverage_counts_depends_on removed.
   # Passes reliably at --test-threads=16; git context leak fixed.
@@ -115,46 +101,3 @@ flakes:
 #     added: "2026-05-08"
 #     last_observed: "2026-05-08"
 #     max_reruns: 1
-
-# ── Playwright e2e flakes (INFRA-1332) ───────────────────────────────────────
-# Audit registry for Playwright tests skipped on the PR path. The actual
-# skip enforcement lives in e2e/tests/<file>.spec.ts via
-# `test.skip(!process.env.CHUMP_E2E_INCLUDE_FLAKES === '1', ...)`. The
-# advisory workflow .github/workflows/e2e-pwa-advisory.yml sets the env
-# and runs the quarantined describe blocks for visibility (non-blocking).
-#
-# Each entry MUST have a tracking_gap. Remove the entry when 10
-# consecutive advisory runs are green.
-
-playwright_flakes:
-  - describe: "PWA shell"
-    file: e2e/tests/api-and-pwa.spec.ts
-    tests:
-      - "loads home and shows message composer"
-      - "navigate between views via sidebar"
-      - "settings view shows v2 shell info"
-      - "sessions toggle activates chat view"
-    reason: "Intermittent failures on chromium across the 4 PWA-shell tests despite retries:2 — likely lifecycle race between web server boot and Playwright fixtures. Observed flaking on PRs #1712, #1732, #1816 (8×), #1765, #1792, #1968 in 24h."
-    tracking_gap: INFRA-1335
-    added: "2026-05-15"
-    last_observed: "2026-05-15"
-
-  - describe: "PWA mobile viewport"
-    file: e2e/tests/api-and-pwa.spec.ts
-    tests:
-      - "composer and send remain usable"
-      - "nav items accessible in mobile viewport"
-    reason: "Mobile-viewport variants of the PWA-shell flakes. Same root cause suspected (web-server lifecycle race) plus viewport-resize timing."
-    tracking_gap: INFRA-1335
-    added: "2026-05-15"
-    last_observed: "2026-05-15"
-
-  - describe: "Chat /task path (tolerates slow local Ollama)"
-    file: e2e/tests/api-and-pwa.spec.ts
-    tests:
-      - "/task creates assistant reply in thread"
-      - "New chat clears thread after a quick reply"
-    reason: "Real-LLM round-trip with timing assumptions; flakes when Ollama warm-start exceeds Playwright timeout."
-    tracking_gap: INFRA-1335
-    added: "2026-05-15"
-    last_observed: "2026-05-15"

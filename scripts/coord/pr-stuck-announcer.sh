@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1091,SC2012  # SC1091: lib/ dynamic sources; SC2012: ls used intentionally for glob+head pattern
 # scripts/coord/pr-stuck-announcer.sh — INFRA-1251
 #
 # Periodic scanner. Finds open PRs that are STUCK (mergeable_state=dirty OR
@@ -31,9 +30,6 @@ mkdir -p "$STUCK_SENT_DIR" 2>/dev/null || true
 # INFRA-1082: cache-first per-PR meta lookup (zero API calls when cache warm).
 # shellcheck source=lib/github_cache.sh
 [[ -f "${SCRIPT_DIR}/lib/github_cache.sh" ]] && source "${SCRIPT_DIR}/lib/github_cache.sh"
-# INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
-# shellcheck source=lib/ambient-write.sh
-source "${SCRIPT_DIR}/lib/ambient-write.sh"
 
 STUCK_AFTER_S="${CHUMP_PR_STUCK_AFTER_S:-7200}"            # 2h
 RESEND_COOLDOWN_S="${CHUMP_PR_STUCK_RESEND_COOLDOWN_S:-21600}"  # 6h
@@ -146,9 +142,9 @@ except Exception: print('')
         fi
         printf '%s' "$now_epoch" > "$stamp"
         # Audit ambient event distinct from STUCK itself (this is the *scanner's* announce).
-        _ambient_write "$LOCK_DIR/ambient.jsonl" \
-            "$(printf '{"ts":"%s","kind":"pr_stuck_announced","pr":%s,"gap":"%s","target":"%s","age_h":%d,"failing_check":"%s"}' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr_num" "$gap_id" "${target:-fleet}" "$((age_s/3600))" "${failing_check:-}")"
+        printf '{"ts":"%s","kind":"pr_stuck_announced","pr":%s,"gap":"%s","target":"%s","age_h":%d,"failing_check":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr_num" "$gap_id" "${target:-fleet}" "$((age_s/3600))" "${failing_check:-}" \
+            >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
         announced_count=$((announced_count + 1))
         echo "[pr-stuck-announcer] STUCK #$pr_num ($gap_id) → ${target:-fleet}"
     else

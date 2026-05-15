@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC1091  # lib/ sources use dynamic $SCRIPT_DIR — resolved at runtime
 # stale-lease-reaper.sh — clean up expired claim session leases.
 #
 # Expired leases indicate sessions that crashed, disconnected, or were forcefully
@@ -17,10 +16,6 @@
 # Exits 0 if all OK, 1 if any gaps are in-flight (should not delete).
 
 set -euo pipefail
-
-# INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
-# shellcheck source=lib/ambient-write.sh
-source "$(dirname "$0")/lib/ambient-write.sh"
 
 DRY_RUN=1
 LOCK_DIR=".chump-locks"
@@ -41,9 +36,9 @@ done
 # Helper: emit ambient event
 emit_event() {
     local kind="$1" lease_id="$2" reason="$3"
-    _ambient_write "$LOCK_DIR/ambient.jsonl" \
-        "$(printf '{"ts":"%s","kind":"%s","lease":"%s","reason":"%s"}' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$lease_id" "$reason")"
+    printf '{"ts":"%s","kind":"%s","lease":"%s","reason":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$lease_id" "$reason" \
+        >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
 }
 
 # Helper: check if lease is expired

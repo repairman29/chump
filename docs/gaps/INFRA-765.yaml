@@ -1,14 +1,25 @@
 - id: INFRA-765
   domain: INFRA
-  title: "EFFECTIVE: bot-merge.sh auto-rebase-on-base-merge for stacked PRs — when a PR's base branch (chump/infra-X) merges into main, bot-merge.sh detects all open PRs whose base = that branch, rebases each onto main, force-pushes with --force-with-lease, re-arms auto-merge. Eliminates manual ceremony I did 3x today for the obs-doctrine stack (rebased #1350 #1351 #1354 by hand)."
-  status: open
+  title: 'EFFECTIVE: bot-merge.sh auto-rebase-on-base-merge for stacked PRs — when a PR''s base branch (chump/infra-X) merges
+    into main, bot-merge.sh detects all open PRs whose base = that branch, rebases each onto main, force-pushes with --force-with-lease,
+    re-arms auto-merge. Eliminates manual ceremony I did 3x today for the obs-doctrine stack (rebased #1350 #1351 #1354 by
+    hand).'
+  status: done
   priority: P1
   effort: m
-  acceptance_criteria: |
-    Criterion 1: When a PR's base branch (e.g. `chump/infra-X`) merges into main, `bot-merge.sh` detects all open PRs whose base is that branch
+  acceptance_criteria: 'Criterion 1: When a PR''s base branch (e.g. `chump/infra-X`) merges into main, `bot-merge.sh` detects
+    all open PRs whose base is that branch
+
     Criterion 2: Each detected PR is rebased onto main
+
     Criterion 3: Each rebased PR is force-pushed with `--force-with-lease`
+
     Criterion 4: Auto-merge is re-armed on each rebased PR
+
     Criterion 5: The auto-rebase is gated — only triggers when the base merge event is detected, not on every poll cycle
+
     Criterion 6: Test covers a stacked 2-PR scenario with real merge of the base branch
 
+    '
+  closed_date: '2026-05-12'
+  closed_pr: 1525

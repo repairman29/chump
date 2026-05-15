@@ -15,6 +15,4 @@
     - emits kind=pwa_gap_list_filtered to ambient.jsonl when filter applied
   notes: |
     PWA audit 2026-05-14: the PWA has gap detail (PRODUCT-088) and gap search API (PRODUCT-089) but no gap list/browser view. This is the primary gap-management surface for operators avoiding the CLI. Rough shape: /api/gaps endpoint + React GapList component + FilterBar + PWA route /gaps.
-    
-    [2026-05-15T04:28:26Z] PWA phase: 2 (Inbox & PR Loop) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
 

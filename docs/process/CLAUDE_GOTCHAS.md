@@ -39,7 +39,7 @@ tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)
 chump-coord watch &  # FLEET-006: cross-machine peripheral vision (NATS); local file tail above is the durable fallback. Skip if NATS unavailable.
 chump gap list --status open                     # canonical (.chump/state.db); per-file mirror fallback: grep -lE 'status:[[:space:]]*open' docs/gaps/*.yaml
 python3 scripts/coord/gap-doctor.py doctor       # INFRA-155 (live 2026-04-28): detect YAML↔SQLite drift, ghost gaps, orphan rows BEFORE you reserve. Bucket 3 > 0 means a future `chump gap reserve` may collide silently.
-chump gap preflight <GAP-ID>            # exits 1 if done, live-claimed/reserved, or ID missing from registry — stop if so
+scripts/coord/gap-preflight.sh <GAP-ID>     # exits 1 if done, live-claimed/reserved, or ID missing from registry — stop if so
 chump --briefing <GAP-ID>             # MEM-007: per-gap context — gap acceptance + relevant reflections + recent ambient + strategic doc refs + prior PRs
 ```
 
@@ -110,8 +110,6 @@ The `ambient.jsonl` tail is your peripheral vision — recent file edits, commit
 ALERT events from other concurrent sessions.
 
 **Scope reminder (FLEET-023, 2026-05-02).** `ambient.jsonl` is **filesystem-local** to whatever machine / sandbox you're on. Cross-machine peripheral vision goes through NATS (FLEET-006: `chump-coord watch`, subjects `chump.events.>`). In a fresh remote sandbox (Cold Water, ephemeral CI runner, etc.) where no NATS broker is reachable, the file tail will only show *this* session's own events — typically just two `session_start` lines from this session itself. That's expected, not a bug. If you need cross-machine signal, ensure `CHUMP_NATS_URL` is set to a reachable broker before flagging "ambient empty" as a finding.
-
-**NATS deployment decision (FLEET-053, 2026-05-15).** As of this date, the Cold Water scheduled trigger (`trig_01GA2XVbAZtpkBaWfrEo1CrP`) does **not** have `CHUMP_NATS_URL` set to a public broker — no public NATS broker has been provisioned for the fleet. Consequence: Cold Water cycle ambient evidence will show only local-file events from that runner session; cross-machine fleet activity is **not** visible in Cold Water output. This is intentional, not an oversight. Do **not** file a finding like "NATS subscription silent" or "ambient stream empty" — local-file silence in a Cold Water context reflects the absence of a broker, not a bug. If a public broker is provisioned in future, set `CHUMP_NATS_URL=nats://<host>:4222` in the trigger environment and remove this note.
 
 Event kinds to know:
 - `session_start` — another agent just opened a session (note their worktree and gap)
@@ -193,8 +191,8 @@ when no `--gap` was given, or when the chump binary doesn't support
 
 - **Default to haiku for routine project work (INFRA-369, 2026-05-03).** `.claude/settings.json` pins `"model": "claude-haiku-4-5"` + `"effortLevel": "medium"` for this repo. Rationale: opus-4-7 high is ~50× haiku per token; one fleet session burned $92 of workspace credit + maxed the $20/mo subscription cap. For routine ship-a-gap work haiku is plenty. Override per-session via `/model` in the Claude Code app for genuinely hard tasks. Per-fleet override: `FLEET_MODEL=sonnet scripts/dispatch/run-fleet.sh` (INFRA-364).
 - **Never push directly to `main`.** Branch + worktree naming follow [AGENTS.md → Naming conventions](./AGENTS.md#naming-conventions-infra-186-2026-05-01) (canonical: `chump/<codename>` branch, `.chump/worktrees/<name>` worktree). Existing `claude/*` branches and `.claude/worktrees/` paths are accepted by tooling for backward compat — new work uses the `chump/` prefix so the project owns the namespace, not whichever tool is running this session.
-- **Always work in a linked worktree, never in the main repo root.** `chump claim` refuses to run from the main repo root — use a linked worktree under `.chump/worktrees/<name>/` (canonical) or `.claude/worktrees/<name>/` (legacy, accepted). Override with `CHUMP_ALLOW_MAIN_WORKTREE=1` only for bootstrapping.
-- **Never start work on a gap without running `chump gap preflight <GAP-ID>` first.** It takes 3 seconds and prevents hours of wasted work.
+- **Always work in a linked worktree, never in the main repo root.** `gap-claim.sh` refuses to run from `/Users/jeffadkins/Projects/Chump` directly — use a linked worktree under `.chump/worktrees/<name>/` (canonical) or `.claude/worktrees/<name>/` (legacy, accepted). Override with `CHUMP_ALLOW_MAIN_WORKTREE=1` only for bootstrapping.
+- **Never start work on a gap without running `gap-preflight.sh` first.** It takes 3 seconds and prevents hours of wasted work.
 - **Never leave a lease file behind.** Delete `.chump-locks/<session_id>.json` or call `chump --release` when done.
 - **Commit often.** Uncommitted edits are at risk of being overwritten by `git pull`. Stage-commit every 30 minutes of work.
 - **Commit explicitly, never implicitly.** Use `scripts/coord/chump-commit.sh <file1> [file2 ...] -m "msg"` instead of `git add && git commit`. The wrapper resets any unrelated staged files from OTHER agents before committing so their in-flight WIP doesn't leak into your commit (observed twice on 2026-04-17 — memory_db.rs stomp in cf79287, DOGFOOD_RELIABILITY_GAPS.md stomp in a5b5053).
@@ -207,7 +205,7 @@ when no `--gap` was given, or when the chump binary doesn't support
 - **Atomic PR discipline.** Once `bot-merge.sh` runs, treat the PR as frozen — **do not push more commits to it**. If you need to add work, open a *new* PR from a fresh worktree (cheap with the musher dispatcher) and let the queue land them in order. Pushing-after-arm reintroduces the squash-loss footgun the queue exists to prevent.[^pr52]
 - **Branch-protection / workflow-job alignment (CREDIBLE-058, 2026-05-14).** Branch protection requires three check contexts: `test`, `audit`, `ACP protocol smoke test (Zed / JetBrains compatible)`. If you rename any of these workflow jobs in `.github/workflows/`, branch protection still expects the OLD name and every PR will stall with "required check missing." The pre-commit hook now catches this: any staged change to `.github/workflows/*.yml` triggers `scripts/ci/audit-branch-protection.sh --baseline --check-staged`, which verifies every required context matches a job name in the staged YAML. If you intentionally rename a job and update branch protection, run `scripts/ci/audit-branch-protection.sh --update-baseline` to commit the new baseline. Bypass: `CHUMP_BRANCH_PROTECTION_AUDIT=0 git commit ...`. Drift is also signalled via `kind=branch_protection_drift` in ambient.jsonl.
 - **Workflow-only / gap-only PR path-filter trap (INFRA-272, 2026-05-02).** Required CI checks (`test`, `audit`, `ACP smoke test`) are gated by `dorny/paths-filter` inside `.github/workflows/ci.yml`'s `changes` job, which uses an **allowlist** in the `code:` filter. If a PR's diff matches NONE of the allowlist patterns, the gated jobs mark "skipped" and branch protection treats that as missing-not-passing — auto-merge can never satisfy it (killed PR #803 entirely, almost killed PR #874 on 2026-05-02). **Decision: option (a) — extend the allowlist.** `.github/workflows/**` and `docs/gaps/**` are now in `code:`, so workflow-only and gap-filing PRs trigger all required checks. If you add a new top-level path that PRs may exclusively touch (e.g. a new config dir), add it to the `code:` filter or your PR will get stuck. PR #874 is the regression fixture: gap+workflow+script diff, all three required checks fired green. Bypass for genuine docs-only sweeps: keep diffs in `docs/` (excluding `docs/gaps/`) and accept the skip — branch protection lets the rollup pass when shards skip uniformly.
-- **bot-merge.sh recovery — manual ship path (INFRA-028).** If `scripts/coord/bot-merge.sh` hangs, times out, or is broken while you still have a clean branch in a linked worktree, ship by hand the same way that unblocked RESEARCH-027 cycle 5: `git push -u origin <branch> --force-with-lease` (or without `-u` if upstream exists), then `gh pr create --base main --title "…" --body "…"`, then `gh pr merge <N> --auto --squash` when you want the merge queue. Re-run `chump gap preflight <GAP-ID>` first if you are gap-scoped. After a manual ship, run `chump gap ship <GAP-ID> --update-yaml` to flip status in `.chump/state.db` and regenerate `docs/gaps/<GAP-ID>.yaml` on the same branch, and release any `.chump-locks/<session>.json` lease for that gap so the ledger matches reality.
+- **bot-merge.sh recovery — manual ship path (INFRA-028).** If `scripts/coord/bot-merge.sh` hangs, times out, or is broken while you still have a clean branch in a linked worktree, ship by hand the same way that unblocked RESEARCH-027 cycle 5: `git push -u origin <branch> --force-with-lease` (or without `-u` if upstream exists), then `gh pr create --base main --title "…" --body "…"`, then `gh pr merge <N> --auto --squash` when you want the merge queue. Re-run `scripts/coord/gap-preflight.sh <GAP-ID>` first if you are gap-scoped. After a manual ship, run `chump gap ship <GAP-ID> --update-yaml` to flip status in `.chump/state.db` and regenerate `docs/gaps/<GAP-ID>.yaml` on the same branch, and release any `.chump-locks/<session>.json` lease for that gap so the ledger matches reality.
 - **If auto-merge is stuck.** (Pre-INFRA-201 framing was "queue stuck"; in practice the symptoms and recovery are identical because there is no queue — see auto-merge note above.) Symptoms: `gh pr view <n> --json autoMergeRequest` shows auto-merge armed but PR state is still `OPEN` long after CI finished. Recovery (in order — try least-destructive first):
   0. **Confirm it's actually stuck (INFRA-306).** `gh pr view <n> --json state -q .state` first. If `MERGED`, abandon recovery — the PR landed and your "stuck" view was 30s stale. `bot-merge.sh` and `pr-watch.sh` both run this check before any force-push since INFRA-306; manual recovery should too.
   1. **Diagnose.** `gh pr checks <n>` + open `https://github.com/repairman29/chump/queue/main` — identify the blocking PR. Common causes: CI failure on the queue's temp merge branch, required-check timeout, a rebase conflict the queue couldn't resolve, or auto-merge silently disarmed by a force-push / branch-protection change.
@@ -333,8 +331,6 @@ Manual escape hatch from the **main** checkout: `git worktree remove .claude/wor
 **Cold-build cost (INFRA-202, 2026-05-02).** Disk reclaim doesn't help the *time* tax: every fresh worktree pays a 5–15 min cold `cargo check` / `clippy` because each `target/` starts empty. Observed 2026-05-01: `bot-merge.sh` hit a 900s clippy timeout on a freshly-created worktree. Fix is **sccache as a rustc wrapper** — install once per machine with `scripts/setup/install-sccache.sh` (idempotent: `brew install sccache` + writes `.cargo/config.toml` with `rustc-wrapper = "sccache"` and a 10G cache). The first worktree to build a given crate version populates the cache; every subsequent worktree gets it in <60s. `.cargo/config.toml` is `.gitignore`d so each machine controls its own cache config (CI runners without sccache won't break). Opt out with `rm .cargo/config.toml`.
 
 **Shared CARGO_TARGET_DIR phantom fingerprint error (INFRA-1138, 2026-05-14).** `install-sccache.sh` (INFRA-481) sets `target-dir = "/Users/.../Chump/target"` in `.cargo/config.toml` so all linked worktrees share a single target directory (saving disk). Side-effect: cargo's fingerprint cache is also shared. If worktree A compiled `tests/cli_fleet_coord.rs` and stored the fingerprint in the shared target, worktree B (which may not have that test file on its branch) reads the cached fingerprint and tries to verify the file — failing with `couldn't read tests/cli_fleet_coord.rs: No such file or directory`. **Fix (INFRA-1138):** the pre-push test gate sets `CARGO_TARGET_DIR="$REPO_ROOT_T/.cargo-test-target"` (per-worktree) for the `cargo test` invocation. sccache (configured via `rustc-wrapper` in `.cargo/config.toml`) still provides cross-worktree object-code caching — only the fingerprint/incremental data is isolated. The `.cargo-test-target` directory lives inside each linked worktree and is cleaned up when the worktree is deleted. **Symptom:** `Test-Gate-Bypass: phantom fingerprint from sibling worktree` trailers on commits from before INFRA-1138.
-
-**`target/` directories during in-flight PRs (INFRA-1349, 2026-05-15).** The existing worktree-reaper only deletes whole worktrees after stale-checks pass; while a PR is in flight, the `target/` dir lives forever consuming 5-8GB each. On 2026-05-15 the fleet had 254 worktrees in `/private/tmp/chump-*` and disk hit **97% full** (14GB free of 460GB). Fix: `scripts/coord/target-dir-reaper.sh` (separate, narrower reaper) deletes only `target/` dirs when disk pressure is high AND the worktree is idle > 6h AND no active lease. **Install:** `scripts/setup/install-target-reaper-launchd.sh` (runs every 30 min, self-throttles on disk pressure). **Manual sweep:** `scripts/coord/target-dir-reaper.sh --force --execute`. Emits `kind=target_artifact_reaped` per reap.
 
 **Reaper visibility — heartbeat + ambient events (INFRA-120, 2026-05-01).** All three reapers (`stale-pr-reaper.sh`, `stale-worktree-reaper.sh`, `stale-branch-reaper.sh`) emit a `kind=reaper_run` event into `.chump-locks/ambient.jsonl` on every run with `status=ok|fail` and per-reaper counts. They also stamp `/tmp/chump-reaper-<name>.heartbeat` (`pr` / `worktree` / `branch`). Each reaper rotates its own `/tmp/chump-stale-*-reaper.{out,err}.log` to a single `.1` archive at 5MB so logs never grow unbounded.
 
@@ -516,9 +512,9 @@ has burned workspace credit caps in prior sessions.
 - `.chump/state.sql` — readable diff of the SQLite schema/data; regenerate with `chump gap dump --out .chump/state.sql` after merge conflicts
 - `docs/process/AGENT_COORDINATION.md` — full coordination system (leases, branches, failure modes, pre-commit spec)
 - `docs/process/POST_INFRA_188_GOTCHAS.md` — short-lived (2026 Q3 prune target) operational gotchas observed during the post-cutover ship wave: `gh run rerun --failed` replays old payloads, `<DOMAIN>-<NUM>:` PR titles trip `gap-status-check`, the 38 lost per-file YAMLs (INFRA-240), `chump gap reserve` writes at outer `repo_root()` not linked-worktree CWD (INFRA-247), and the `chump` vs `chump-coord` binary path split. Read once at session start during the cleanup window; the doc auto-prunes when `scripts/audit/check-post-infra-188-gotchas-prunable.sh` returns 0.
-- `chump gap preflight` — gap availability check (reads lease files + checks done on main); Rust-based replacement for deprecated `scripts/coord/gap-preflight.sh`
-- `chump claim` — write a gap claim to your session's lease file; Rust-based replacement for deprecated `scripts/coord/gap-claim.sh`
-- `scripts/coord/bot-merge.sh` — ship pipeline (calls `chump claim` automatically)
+- `scripts/coord/gap-preflight.sh` — gap availability check (reads lease files + checks done on main)
+- `scripts/coord/gap-claim.sh` — write a gap claim to your session's lease file
+- `scripts/coord/bot-merge.sh` — ship pipeline (calls gap-claim.sh automatically)
 - `scripts/coord/gap-doctor.py` — drift detector + repair tool (INFRA-155). Compares `.chump/state.db` against `docs/gaps/<ID>.yaml` files (post-INFRA-188; previously the monolithic `docs/gaps.yaml`) and reports four buckets: DB done / YAML open (regen YAML), DB open / YAML done (sync DB from YAML), DB-only orphans, YAML-only ghosts. Run `gap-doctor.py doctor` for a read-only report; `sync-from-yaml --apply` drains pre-INFRA-152 hand-edit drift; `sync-from-db --apply` regenerates YAML from DB. The 2026-04-28 first run drained 25 status:open-but-actually-done rows in one shot.
 - `scripts/ops/stale-pr-reaper.sh` — runs hourly, auto-closes PRs whose gaps landed on main. **INFRA-1195 freshness gate (2026-05-14)**: before auto-closing, the reaper checks the PR's `updatedAt` timestamp. If updated within `CHUMP_CURATOR_FRESHNESS_MIN` minutes (default 10), the close is **skipped** and a `kind=curator_skip_active_rebase` event is emitted to `ambient.jsonl`. This prevents false-closes during active rebase/force-push windows. Bypass: `CHUMP_CURATOR_FRESHNESS_MIN=0`. If you see these events but the PR is genuinely stale, wait for the freshness window to expire or close manually.
 - `scripts/ops/stuck-pr-filer.sh` — INFRA-307, hourly. Detects stuck PRs (DIRTY > 4h, required CI red > 2h, BEHIND > 20 commits, or auto-merge disarmed with no live owner lease) and **files them as INFRA P1 cleanup gaps** so `run-fleet.sh` picks them up under default filters. This replaces the human-as-relay loop ("agent A's PR #472 is stuck — please tell A"): the cleanup work belongs to whoever the fleet picks up next, not the original (often-exited) author. De-dups by title (`PR #N stuck — …`); skips drafts, dependabot, and `chore(gaps): file/reserve …` PRs. Emits `ALERT kind=pr_stuck` to ambient and is graded by the reaper-heartbeat-watchdog. Bypass: `CHUMP_STUCK_PR_FILER=0`. macOS install: `scripts/setup/install-stuck-pr-filer-launchd.sh`. Test: `scripts/ci/test-stuck-pr-filer.sh`.
@@ -917,32 +913,6 @@ git rev-parse --absolute-git-dir     # should be .git/worktrees/chump-<name>
 cat $(git rev-parse --absolute-git-dir)/gitdir   # should be /private/tmp/chump-<name>/.git
 ```
 
-**Reaper protection (INFRA-1347, in flight 2026-05-15):** the stale-worktree-reaper was historically too aggressive — on 2026-05-15 it deleted *three different agent sessions' active worktrees* mid-bash (INFRA-1346 attempts 1+2 + my `intelligent-ishizaka-0dc931` session). INFRA-1347 adds pre-delete checks: skip if `git status --porcelain` returns non-empty, if HEAD differs from `origin/<branch>`, if a lease file in `.chump-locks/` is live, or if any file under the worktree was modified within 30 min. Until INFRA-1347 lands, run important worktree work from a path the reaper doesn't scan, OR keep your session worktree mtime fresh.
-
----
-
-## Failure cascade — stale binary → state-db drift → orphan-PR-killer (2026-05-15)
-
-**Pattern observed:** A single stale binary call cost ~840 LOC of cockpit work and required 2 rescue PRs to recover.
-
-**The cascade:**
-
-1. **Stale binary.** `~/.cargo/bin/chump` was built 28h before, but `src/web_server.rs` had since landed `INFRA-1285` (gap-store-affecting commit). The binary warned `credible022: web_server.rs source is newer than binary`.
-2. **Reserve collision.** A `chump gap reserve` call from the stale binary picked an existing ID (PRODUCT-119, already-filed dogfooder gap), then **overwrote** both the yaml AND the state.db record with new content (action-first umbrella).
-3. **Gap registry drift.** Subsequent gaps were filed at the worktree's `docs/gaps/<id>.yaml` via `chump gap reserve`. INFRA-484's auto-stage ran git-add in the **session worktree** (`intelligent-ishizaka-0dc931`), but PRs were shipped from a **different worktree** (`/private/tmp/chump-product-122`) which never saw the yamls.
-4. **Orphan-PR-killer fires.** With the yamls missing from main's `docs/gaps/`, the orphan-PR-closer (sweeper that closes PRs whose referenced gap is "not in registry") killed PR #2063 — the entire action-first cockpit work, 70 checks, 30 minutes from auto-merge.
-5. **Recovery.** Required reopening #2063 + two rescue PRs (#2071, #2077) just to staple yamls into main.
-
-**Prevention:**
-
-- **`cargo install --path . --bin chump --force`** before any non-trivial `chump gap reserve` session. The `credible022` warning is load-bearing — don't dismiss it.
-- **`chump gap reserve` from the worktree you intend to ship from**, not from your session worktree. Or, run reserve from the main repo checkout where docs/gaps/ is the canonical home.
-- **INFRA-1354 (filed 2026-05-15):** `chump gap reserve` should write yamls to the MAIN repo's `docs/gaps/` regardless of cwd, so any worktree's next pull picks them up.
-
-**Detection:**
-- After `chump gap reserve`, immediately `git status` in the worktree you plan to ship from. If the yaml isn't showing up there, you have the cross-worktree visibility bug.
-- Run `git show origin/main:docs/gaps/<id>.yaml` to check whether your gap is actually in main yet.
-
 ---
 
 ## cargo test must not inherit parent shell git env (INFRA-1057)
@@ -1148,48 +1118,3 @@ If the losing PR's head branch is deleted (e.g., `chump claim` cleanup path dele
 - If you delete a branch that backs a PR: expect GitHub to close the PR silently. Check `gh pr view <N> --json state` to confirm.
 - If you reclaim a gap that had an open PR: let `chump claim` handle branch cleanup; it stamps the cooldown when it detects an existing PR for the gap. Do not manually delete branches without checking for associated open PRs first.
 - The dedup gate (INFRA-1219) is the strongest protection: it fires synchronously at `pr create` time and blocks before a second PR exists.
-
-## Auto-merge rollup-FAILURE trap (INFRA-1342, 2026-05-15)
-
-GitHub's `statusCheckRollup.state` is set to `FAILURE` when **any** check on a
-commit fails — including non-required checks. When rollup state is FAILURE,
-`mergeable_state` flips to `blocked` and auto-merge silently refuses to fire,
-even if every branch-protection required context (e.g. `test`, `audit`, `ACP
-protocol smoke test`) reports SUCCESS.
-
-**Symptom:** PRs sit with `BLOCKED auto=true`, all `*-required` checks green,
-but GitHub won't merge. `gh pr view N --json mergeStateStatus` returns
-`"BLOCKED"`. The only hint is that some non-required check has `FAILURE`.
-
-**Root cause discovered:** `tauri-cowork-e2e` flakes with
-`TimeoutError: Waiting for element to be located By(css selector, chump-chat)`
-on slow GitHub Actions VMs when 18+ `type="module"` scripts delay
-`DOMContentLoaded`. Even though `tauri-cowork-e2e` is not in branch protection,
-its `FAILURE` conclusion pollutes the overall rollup state.
-
-**Fix (INFRA-1342):** Add `continue-on-error: true` to any CI job that is:
-- NOT in branch protection required contexts, AND
-- Known to be flaky or environment-sensitive
-
-GitHub treats `continue-on-error: true` jobs as `neutral` in the rollup
-even on failure, so `statusCheckRollup.state` stays `SUCCESS`.
-
-```yaml
-  my-flaky-job:
-    runs-on: ubuntu-latest
-    continue-on-error: true   # ← prevents rollup FAILURE on flake
-    steps:
-      ...
-```
-
-**Jobs fixed in INFRA-1342** (all now have `continue-on-error: true`):
-- `tauri-cowork-e2e` — Tauri WebDriver flake on slow VMs
-- `e2e-pwa` — Ollama + Playwright, environment-sensitive
-- `e2e-battle-sim` — lightweight but can time out
-- `e2e-golden-path` — cargo build + file-presence checks
-
-**When adding a new CI job:** if it is NOT in branch protection required contexts,
-add `continue-on-error: true` to prevent it from blocking fleet-wide auto-merge.
-
-**Workaround when already blocked:** Re-trigger the flaky check.
-If it fails again: `gh pr merge <N> --squash --admin` to bypass.

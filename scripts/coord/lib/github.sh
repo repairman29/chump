@@ -426,58 +426,6 @@ _chump_gh_is_secondary_limit() {
     echo "${1:-}" | grep -qE 'rate limit already exceeded|You have exceeded a secondary rate limit'
 }
 
-# INFRA-1076: lane-routed GitHub-App installation tokens.
-#
-# Each lane (critical | background) reads from its own installation token
-# file written by the chump-gh-app rotator. When the lane file is absent,
-# falls back to the legacy GH_TOKEN / gh-CLI keyring path and emits a
-# one-shot ambient event so operators see the degraded mode.
-#
-# Token file shape (written by the future chump gh-token rotate cron):
-#   {"token": "ghs_…", "written_at": "...", "expires_at": "..."}
-# Both `token` and `access_token` field names are accepted (matches the
-# existing legacy `~/.chump/oauth-token.json` format from auth.rs).
-#
-# Returns 0 + prints the token on stdout when found; returns 1 otherwise.
-_chump_gh_lane_token() {
-    local criticality="${CHUMP_GH_CALL_CRITICALITY:-critical}"
-    case "$criticality" in
-        critical|background) ;;
-        *) return 1 ;;
-    esac
-    local lane_file="${CHUMP_GH_LANE_TOKEN_DIR:-$HOME/.chump}/oauth-token-${criticality}.json"
-    if [[ ! -f "$lane_file" ]]; then
-        # One-shot fallback notice per process.
-        if [[ "${_CHUMP_GH_FALLBACK_NOTICED:-0}" != "1" ]]; then
-            export _CHUMP_GH_FALLBACK_NOTICED=1
-            local ambient ts
-            ambient="$(_chump_gh_ambient_path)"
-            ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            mkdir -p "$(dirname "$ambient")" 2>/dev/null || true
-            printf '{"ts":"%s","kind":"github_app_fallback","criticality":"%s","reason":"lane_token_missing","expected_file":"%s"}\n' \
-                "$ts" "$criticality" "$lane_file" \
-                >> "$ambient" 2>/dev/null || true
-        fi
-        return 1
-    fi
-    # Extract token via python3 (handles both shapes; minimal dep).
-    local tok
-    tok="$(python3 - "$lane_file" <<'PYEOF' 2>/dev/null
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-    print(d.get("token") or d.get("access_token") or "")
-except Exception:
-    pass
-PYEOF
-)"
-    if [[ -n "$tok" ]]; then
-        printf '%s' "$tok"
-        return 0
-    fi
-    return 1
-}
-
 chump_gh() {
     local api_tag started rc ended used_ms script_tag api_class
     api_tag="$(chump_gh_api_tag "$@")"
@@ -488,11 +436,6 @@ chump_gh() {
     _chump_gh_throttle_wait "$script_tag" "$api_class"
     # INFRA-1080: pre-emptive backoff when graphql bucket is low (background only).
     _chump_gh_preempt_if_low "$script_tag" "$api_tag"
-    # INFRA-1076: lane-routed App-installation token. When present, routes
-    # this call through the lane-appropriate App installation so a sweep on
-    # the background lane cannot gag the critical lane.
-    local _lane_tok=""
-    _lane_tok="$(_chump_gh_lane_token 2>/dev/null || true)"
     started="$(_chump_gh_now_ms)"
 
     # INFRA-1111: exponential backoff on secondary rate-limit.
@@ -509,22 +452,11 @@ chump_gh() {
         if [[ -n "$_tmp_stderr" ]]; then
             # INFRA-1103: CHUMP_GH_SHIM_RECORDING=1 signals to the PATH shim that
             # this call is already throttled (_chump_gh_throttle_wait ran above).
-            # INFRA-1076: when a lane token is available, scope it to this gh call
-            # only (no global env mutation). When absent, gh uses its existing
-            # auth path (keyring / GH_TOKEN env).
-            if [[ -n "$_lane_tok" ]]; then
-                CHUMP_GH_SHIM_RECORDING=1 GH_TOKEN="$_lane_tok" gh "$@" 2>"$_tmp_stderr"
-            else
-                CHUMP_GH_SHIM_RECORDING=1 gh "$@" 2>"$_tmp_stderr"
-            fi
+            CHUMP_GH_SHIM_RECORDING=1 gh "$@" 2>"$_tmp_stderr"
             rc=$?
             cat "$_tmp_stderr" >&2 2>/dev/null || true
         else
-            if [[ -n "$_lane_tok" ]]; then
-                CHUMP_GH_SHIM_RECORDING=1 GH_TOKEN="$_lane_tok" gh "$@"
-            else
-                CHUMP_GH_SHIM_RECORDING=1 gh "$@"
-            fi
+            CHUMP_GH_SHIM_RECORDING=1 gh "$@"
             rc=$?
         fi
         set -e

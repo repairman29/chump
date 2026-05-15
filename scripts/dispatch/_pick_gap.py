@@ -175,14 +175,14 @@ def _inbox_handoff_pick(gaps):
 
 def _load_planner_priority(
     repo_root: str, max_age_s: int = 7200
-) -> tuple[dict[str, dict], str, float]:
+) -> tuple[dict[str, int], str]:
     """INFRA-1258: read .chump-locks/gap-priority.json written by the
-    INFRA-1257 hourly planner. Returns (gap_id -> {rank, layer}, status_tag, age_s).
+    INFRA-1257 hourly planner. Returns (gap_id -> rank, status_tag).
 
     The producer (chump-plan --format json via launchd) writes one entry
-    per scored gap with rank ascending (1 = best) and layer = dependency
-    depth (0 = no open prerequisites). The picker uses rank as the primary
-    sort key and layer for the layer gate (AC#2 INFRA-1258).
+    per scored gap with rank ascending (1 = best). The picker uses that
+    rank as the primary sort key so a betweenness-high P1 outranks a
+    leaf P3 even when the legacy (prio, effort, age) score is identical.
 
     status_tag is one of:
       "absent"  — file missing
@@ -192,64 +192,33 @@ def _load_planner_priority(
 
     Caller may emit kind=picker_priority_stale to ambient when status_tag
     is not "ok"; picker falls back to legacy ordering in every case.
-    age_s is seconds since file mtime (0.0 when file absent/invalid).
     """
     path = os.path.join(repo_root, ".chump-locks", "gap-priority.json")
     if not os.path.exists(path):
-        return {}, "absent", 0.0
+        return {}, "absent"
     try:
         mtime = os.path.getmtime(path)
     except OSError:
-        return {}, "invalid", 0.0
-    age_s = time.time() - mtime
-    if age_s > max_age_s:
-        return {}, "stale", age_s
+        return {}, "invalid"
+    if (time.time() - mtime) > max_age_s:
+        return {}, "stale"
     try:
         with open(path) as f:
             data = json.load(f)
     except Exception:
-        return {}, "invalid", 0.0
+        return {}, "invalid"
     items = data.get("items") if isinstance(data, dict) else None
     if not isinstance(items, list):
-        return {}, "invalid", 0.0
-    out: dict[str, dict] = {}
+        return {}, "invalid"
+    out: dict[str, int] = {}
     for item in items:
         if not isinstance(item, dict):
             continue
         gid = item.get("gap_id")
         rank = item.get("rank")
-        layer = item.get("layer", 0)
         if isinstance(gid, str) and isinstance(rank, int):
-            out[gid] = {
-                "rank": rank,
-                "layer": layer if isinstance(layer, int) else 0,
-            }
-    return out, "ok", age_s
-
-
-def _is_acceptance_criteria_vague(ac: str) -> bool:
-    """INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
-    Returns True if the AC is empty, contains only TODO items, or contains only TBD items."""
-    if not ac:
-        return True
-
-    # Try to parse as JSON array (the canonical format)
-    try:
-        arr = json.loads(ac)
-        if isinstance(arr, list):
-            if not arr:
-                return True  # Empty array
-            # Check if all items are TODO or TBD strings
-            return all(
-                isinstance(item, str) and item.upper() in ("TODO", "TBD")
-                for item in arr
-            )
-    except (json.JSONDecodeError, TypeError):
-        pass
-
-    # If not JSON array, check if the raw string is just TODO/TBD
-    upper = ac.upper()
-    return upper in ("TODO", "TBD") or (len(ac) < 50 and upper.count("TODO") == 1 and len(ac.split()) <= 2)
+            out[gid] = rank
+    return out, "ok"
 
 
 def _emit_picker_event(repo_root: str, kind: str, **fields: object) -> None:
@@ -308,7 +277,7 @@ def main() -> int:
     # tying on (priority, effort, age). On absent/stale/invalid we silently
     # fall back to legacy ordering and emit kind=picker_priority_stale once.
     repo_root = os.environ.get("CHUMP_REPO", os.getcwd())
-    planner_data, planner_status, planner_age_s = _load_planner_priority(repo_root)
+    planner_ranks, planner_status = _load_planner_priority(repo_root)
     if planner_status != "ok":
         _emit_picker_event(
             repo_root,
@@ -316,12 +285,6 @@ def main() -> int:
             reason=planner_status,
             worker_id=os.environ.get("WORKER_ID", ""),
         )
-    # INFRA-1258 AC#2: layer gate — drain lowest dependency layer first.
-    # CHUMP_SKIP_LAYER_GATE=1 bypasses enforcement (operator override for
-    # quota crunches or tests that need specific gap order).
-    skip_layer_gate = os.environ.get("CHUMP_SKIP_LAYER_GATE", "0") == "1"
-    # Per-candidate layer tracking (gap_id -> planner layer or sentinel 10_000).
-    candidate_layers: dict[str, int] = {}
 
     candidates = []
     for g in gaps:
@@ -404,17 +367,11 @@ def main() -> int:
         notes = (g.get("notes") or "").strip()
         if notes.upper().startswith("SUPERSEDED"):
             continue
-        # INFRA-1259: skip gaps with empty or TODO-only acceptance_criteria
-        # to avoid wasted work on unspecified requirements.
-        ac_text = (g.get("acceptance_criteria") or "").strip()
-        if _is_acceptance_criteria_vague(ac_text):
-            continue
-
         # INFRA-756: downrank gaps with incomplete acceptance_criteria (obs-AC placeholders)
         # by adding 5 to priority rank. This keeps them pickable but below fully-specified gaps.
         prio_rank = PRIO_RANK.get(p, 9)
-        ac_text_upper = ac_text.upper()
-        if ac_text and ("TODO" in ac_text_upper or "TBD" in ac_text_upper or "<FILL IN>" in ac_text_upper):
+        ac_text = (g.get("acceptance_criteria") or "").upper()
+        if ac_text and ("TODO" in ac_text or "TBD" in ac_text or "<FILL IN>" in ac_text):
             prio_rank += 5
 
         # INFRA-1258: planner rank takes precedence when available. Lower rank
@@ -422,10 +379,7 @@ def main() -> int:
         # sentinel large rank so they sort AFTER planner-ranked gaps but
         # remain pickable; legacy (prio_rank, effort, age) still resolves
         # ties within each bucket.
-        planner_entry = planner_data.get(gid, {})
-        planner_rank = planner_entry.get("rank", 10_000)
-        planner_layer = planner_entry.get("layer", 10_000)  # unknown → high sentinel
-        candidate_layers[gid] = planner_layer
+        planner_rank = planner_ranks.get(gid, 10_000)
         candidates.append(
             (
                 planner_rank,
@@ -437,26 +391,6 @@ def main() -> int:
         )
 
     candidates.sort()
-
-    # INFRA-1258 AC#2: layer gate — prevent workers from picking layer-N gaps
-    # when lower-layer (foundation) gaps are still open. Drain tier-0 first.
-    # CHUMP_SKIP_LAYER_GATE=1 bypasses this for operator overrides.
-    layer_enforced = False
-    if planner_status == "ok" and not skip_layer_gate and candidate_layers:
-        ranked_layers = [
-            candidate_layers[c[4]]
-            for c in candidates
-            if candidate_layers.get(c[4], 10_000) < 10_000
-        ]
-        if ranked_layers:
-            min_layer = min(ranked_layers)
-            before = len(candidates)
-            candidates = [
-                c for c in candidates
-                if candidate_layers.get(c[4], 10_000) in (min_layer, 10_000)
-            ]
-            layer_enforced = len(candidates) < before
-
     if candidates:
         # INFRA-340: stagger by worker index so simultaneously-booting siblings
         # pick different gaps instead of all colliding on candidates[0].
@@ -468,18 +402,12 @@ def main() -> int:
         picked = candidates[offset]
         # INFRA-1258: emit attribution so operators can see whether the
         # planner influenced this pick (rank < 10_000) vs. legacy ordering.
-        # Fields: file, age_s, scored (planner rank), layer_enforced (bool).
-        priority_file = os.path.join(repo_root, ".chump-locks", "gap-priority.json")
         if planner_status == "ok" and picked[0] < 10_000:
             _emit_picker_event(
                 repo_root,
                 "picker_used_priority",
                 gap_id=picked[-1],
-                file=priority_file,
-                age_s=round(planner_age_s, 1),
-                scored=picked[0],
-                planner_rank=picked[0],  # kept for backward compat
-                layer_enforced=layer_enforced,
+                planner_rank=picked[0],
                 worker_id=os.environ.get("WORKER_ID", ""),
             )
         print(picked[-1])

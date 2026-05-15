@@ -65,21 +65,6 @@ or every hour for finer granularity; both work).
 | Largest logs | 18M vllm-mlx-8000.log;9.0M ollama-serve.log;7.9M farmer-brown-launchd.out.log; |
 
 
-### Checkpoint: 2026-05-14T04:48:17Z (T0+264h)
-
-| Metric | Value |
-|--------|-------|
-| memory_db size | 1.4M |
-| WAL | 4.1M |
-| logs/ size | 283M |
-| sessions/ size | 9.9M |
-| Model server | web_ok |
-| Chump RSS | 1.6M |
-| Ship heartbeat | stopped |
-| SQLite errors (last 500 lines) | 0 |
-| Largest logs | 20M vllm-mlx-8000.log;9.3M ollama-serve.log;8.8M farmer-brown-launchd.out.log; |
-
-
 ### Checkpoint: 2026-05-14T14:37:54Z (T0+274h)
 
 | Metric | Value |

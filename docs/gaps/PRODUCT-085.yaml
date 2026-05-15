@@ -10,16 +10,13 @@
     AC-fit check alongside so operator sees 'did this PR satisfy its gap's
     AC?' at a glance (preview of CREDIBLE-026 enforcement).
   acceptance_criteria:
-    - PWA /prs/{N} detail view renders syntax-highlighted diff using gh pr diff <N> output + a JS syntax highlighter (highlight.js or Shiki, whichever is smaller for the file types in this repo)
+    - "PWA /prs/{N} detail view renders syntax-highlighted diff using gh pr diff <N> output + a JS syntax highlighter (highlight.js or Shiki, whichever is smaller for the file types in this repo)"
     - "AC-fit panel: parse PR title for gap ID; pull gap's AC from state.db; render each AC bullet with a check/cross/unknown marker (heuristic: AC keyword present in diff = check; absent = unknown; explicit anti-match = cross). Mirrors COG-052 audit-ac logic"
     - "Side-by-side toggle: 3 modes — Unified (default), Split, AC-fit-only (just the AC panel + which files satisfy each bullet)"
-    - Per-file collapse/expand; long diffs paginated at 1000 lines
-    - Backend /api/prs/{N}/diff endpoint streams the diff (large diffs)
-    - Backend /api/prs/{N}/ac-fit endpoint returns the per-AC-bullet check result
+    - "Per-file collapse/expand; long diffs paginated at 1000 lines"
+    - "Backend /api/prs/{N}/diff endpoint streams the diff (large diffs)"
+    - "Backend /api/prs/{N}/ac-fit endpoint returns the per-AC-bullet check result"
     - "scripts/ci/test-pwa-pr-diff.sh: fixture PR with known AC; assert renderer + AC-fit results"
-    - Pairs with CREDIBLE-026 (scope detector) — diff renderer surfaces the scope-divergence flags inline so operator sees them at review time, not post-merge
-    - Pairs with PRODUCT-084 (PR list) — list is the index; this is the detail
-    - Pairs with PRODUCT-086 (action panel) — diff is the context; action panel is the actuator
-  notes: |
-    [2026-05-15T04:28:26Z] PWA phase: 2 (Inbox & PR Loop) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
-
+    - "Pairs with CREDIBLE-026 (scope detector) — diff renderer surfaces the scope-divergence flags inline so operator sees them at review time, not post-merge"
+    - "Pairs with PRODUCT-084 (PR list) — list is the index; this is the detail"
+    - "Pairs with PRODUCT-086 (action panel) — diff is the context; action panel is the actuator"
