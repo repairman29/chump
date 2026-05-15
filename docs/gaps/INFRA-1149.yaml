@@ -1,9 +1,9 @@
-- id: INFRA-1124
+- id: INFRA-1149
   domain: INFRA
-  title: "RESILIENT: extend INFRA-1074 safety to active-target-reaper.sh + worktree-prune.sh (cc4d4038 only fixed stale-worktree-reaper.sh)"
+  title: "RESILIENT: chump gap reserve similarity check — block duplicate filings against open+recently-shipped gaps + existing CLI primitives (Silo 2)"
   status: open
-  priority: P2
-  effort: m
+  priority: P1
+  effort: s
   acceptance_criteria:
     - "TODO: what events emitted on success/failure/timeout"
     - "TODO: how cost tracked and reported to operator"

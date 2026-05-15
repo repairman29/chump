@@ -1,19 +1,15 @@
 - id: INFRA-902
   domain: INFRA
-  title: 'CREDIBLE: Pillar balance analysis + alerts'
-  status: done
+  title: "CREDIBLE: Pillar balance analysis + alerts"
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
-  - 1. scripts/ops/pillar-balance-check.sh reads state.db via 'chump gap list --status open', counts pickable (P0
-  - P1 xs
-  - s
-  - m, no TODO ACs, no blocked deps) per pillar (EFFECTIVE
-  - CREDIBLE
-  - RESILIENT
-  - 'ZERO-WASTE). 2. When any pillar count < 2, emits kind=pillar_balance_alert to ambient.jsonl with fields: pillar, count,
-    floor=2. 3. When any pillar count > 50% of total pickable pool, emits kind=pillar_balance_overweight with pillar, count,
-    pct. 4. Script exits non-zero if any alert fired. 5. ''chump gap audit-priorities'' calls pillar-balance-check.sh and
-    includes result in output. 6. scripts/ci/test-pillar-balance-alerts.sh: 8+ tests verifying alert schema, thresholds, exit
-    codes.'
-  closed_date: '2026-05-12'
+    - 1. scripts/ops/pillar-balance-check.sh reads state.db via 'chump gap list --status open', counts pickable (P0
+    - P1 xs
+    - s
+    - m, no TODO ACs, no blocked deps) per pillar (EFFECTIVE
+    - CREDIBLE
+    - RESILIENT
+    - "ZERO-WASTE). 2. When any pillar count < 2, emits kind=pillar_balance_alert to ambient.jsonl with fields: pillar, count, floor=2. 3. When any pillar count > 50% of total pickable pool, emits kind=pillar_balance_overweight with pillar, count, pct. 4. Script exits non-zero if any alert fired. 5. 'chump gap audit-priorities' calls pillar-balance-check.sh and includes result in output. 6. scripts/ci/test-pillar-balance-alerts.sh: 8+ tests verifying alert schema, thresholds, exit codes."
+

@@ -875,12 +875,6 @@ events:
     trigger: many bot-merges touching same file
     consumers: [audit-log]
 
-  - kind: hot_file_contention
-    emitter: scripts/coord/gap-preflight.sh (INFRA-1069)
-    trigger: gap preflight detects an open PR touching a serializing hot file from hot-files.yaml
-    consumers: [waste-tally, fleet-brief, audit-log]
-    fields_required: [ts, kind, gap_id, pr, file]
-
   - kind: bot_merge_contention_avoided
     emitter: scripts/coord/bot-merge.sh (INFRA-860 mutex)
     trigger: flock wait > 5s acquiring bot-merge.lock; another bot-merge was active

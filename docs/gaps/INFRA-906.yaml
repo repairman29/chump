@@ -1,15 +1,12 @@
 - id: INFRA-906
   domain: INFRA
-  title: 'ZERO-WASTE: Performance profiling per gap'
-  status: done
+  title: "ZERO-WASTE: Performance profiling per gap"
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
-  - '1. scripts/ci/emit-gap-timing.sh wraps any CI gate script and emits kind=gap_perf_sample to ambient.jsonl with fields:
-    gap_id, phase (lint'
-  - test
-  - build
-  - 'e2e), duration_ms, host. 2. src/fleet_health.rs or gap_store.rs exposes p50/p95 per phase from last 20 samples via chump
-    fleet perf --gap GAP-ID. 3. Flame-chart export: chump fleet perf --gap GAP-ID --svg writes a chrome-tracing-format JSON.
-    4. scripts/ci/test-gap-profiling.sh: emits 5 synthetic samples, asserts p50 computable, asserts svg output non-empty.'
-  closed_date: '2026-05-12'
+    - "1. scripts/ci/emit-gap-timing.sh wraps any CI gate script and emits kind=gap_perf_sample to ambient.jsonl with fields: gap_id, phase (lint"
+    - test
+    - build
+    - "e2e), duration_ms, host. 2. src/fleet_health.rs or gap_store.rs exposes p50/p95 per phase from last 20 samples via chump fleet perf --gap GAP-ID. 3. Flame-chart export: chump fleet perf --gap GAP-ID --svg writes a chrome-tracing-format JSON. 4. scripts/ci/test-gap-profiling.sh: emits 5 synthetic samples, asserts p50 computable, asserts svg output non-empty."
+

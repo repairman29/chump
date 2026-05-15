@@ -1,24 +1,15 @@
 - id: CREDIBLE-038
   domain: CREDIBLE
-  title: 'CREDIBLE: complete the file-count-blast rule for CREDIBLE-027 (mass-deletion guard) — FAIL when a chore(gaps): or
-    docs: title PR touches >50 files'
-  status: done
+  title: "CREDIBLE: complete the file-count-blast rule for CREDIBLE-027 (mass-deletion guard) — FAIL when a chore(gaps): or docs: title PR touches >50 files"
+  status: open
   priority: P1
   effort: xs
   acceptance_criteria:
-  - 'scripts/ci/check-mass-deletion.sh (shipped in CREDIBLE-027 via #1459) gains a new check: FAIL when net diff touches >50
-    files AND PR title prefix is `chore(gaps):` OR `docs:`'
-  - 'Rationale: those title prefixes promise narrow scope; touching 50+ files violates that promise. Catches the #1444 class
-    where chore-gaps titled PR was secretly touching scripts/ + tests/ too'
-  - Rule fires AFTER rule B (mass deletion) and rule A (vague titles) so the operator sees the most-actionable rule first
-  - 'Test fixture in scripts/ci/test-mass-deletion-guard.sh: PR with title `chore(gaps): add AC to 60 gaps` touching 60 docs/gaps/*.yaml
-    files → PASS (mass-AC additions are legit). Same title but also touching 5 src/* files → FAIL (cross-cutting under chore-gaps
-    title)'
-  - Allow-list via PR label `cross-cutting-acknowledged` (already specified in CREDIBLE-027 AC) — same allow-list applies
-    to this rule
-  - Emits ambient kind=pr_scope_violation with rule=file_count_blast, pr, title_prefix, file_count when fires (sibling event
-    kind to kind=mass_deletion_blocked already shipped)
-  - Documented as rule C in scripts/ci/check-mass-deletion.sh's header docstring + docs/process/PR_HYGIENE.md (or PR_SCOPE_HONESTY.md
-    if that's the established home)
-  closed_date: '2026-05-13'
-  closed_pr: 1658
+    - "scripts/ci/check-mass-deletion.sh (shipped in CREDIBLE-027 via #1459) gains a new check: FAIL when net diff touches >50 files AND PR title prefix is `chore(gaps):` OR `docs:`"
+    - "Rationale: those title prefixes promise narrow scope; touching 50+ files violates that promise. Catches the #1444 class where chore-gaps titled PR was secretly touching scripts/ + tests/ too"
+    - "Rule fires AFTER rule B (mass deletion) and rule A (vague titles) so the operator sees the most-actionable rule first"
+    - "Test fixture in scripts/ci/test-mass-deletion-guard.sh: PR with title `chore(gaps): add AC to 60 gaps` touching 60 docs/gaps/*.yaml files → PASS (mass-AC additions are legit). Same title but also touching 5 src/* files → FAIL (cross-cutting under chore-gaps title)"
+    - "Allow-list via PR label `cross-cutting-acknowledged` (already specified in CREDIBLE-027 AC) — same allow-list applies to this rule"
+    - "Emits ambient kind=pr_scope_violation with rule=file_count_blast, pr, title_prefix, file_count when fires (sibling event kind to kind=mass_deletion_blocked already shipped)"
+    - "Documented as rule C in scripts/ci/check-mass-deletion.sh's header docstring + docs/process/PR_HYGIENE.md (or PR_SCOPE_HONESTY.md if that's the established home)"
+

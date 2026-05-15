@@ -1,11 +1,10 @@
 - id: PRODUCT-075
   domain: PRODUCT
-  title: 'RESILIENT: PRODUCT-043 agent silent for 119+ minutes — investigate stall or crash'
-  status: done
+  title: "RESILIENT: PRODUCT-043 agent silent for 119+ minutes — investigate stall or crash"
+  status: open
   priority: P1
   effort: xs
   acceptance_criteria:
-  - 'Release PRODUCT-043 lease or investigate why agent stopped (last activity: edited web_server.rs + pushed PR #1380 at
-    23:35Z); confirm work status'
+    - "Release PRODUCT-043 lease or investigate why agent stopped (last activity: edited web_server.rs + pushed PR #1380 at 23:35Z); confirm work status"
   opened_date: '2026-05-10'
-  closed_date: '2026-05-11'
+

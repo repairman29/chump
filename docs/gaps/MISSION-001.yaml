@@ -1,9 +1,9 @@
-- id: INFRA-1124
-  domain: INFRA
-  title: "RESILIENT: extend INFRA-1074 safety to active-target-reaper.sh + worktree-prune.sh (cc4d4038 only fixed stale-worktree-reaper.sh)"
+- id: MISSION-001
+  domain: MISSION
+  title: "MISSION: agent visibility & cross-silo coordination — umbrella for INFRA-1139/1141/1144/1145/1146/1147 + silo-breakers"
   status: open
-  priority: P2
-  effort: m
+  priority: P1
+  effort: l
   acceptance_criteria:
     - "TODO: what events emitted on success/failure/timeout"
     - "TODO: how cost tracked and reported to operator"

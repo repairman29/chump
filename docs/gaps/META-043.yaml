@@ -1,16 +1,12 @@
 - id: META-043
   domain: META
-  title: 'CREDIBLE: every new feature must ship with a preregistered eval (EVAL-098 pattern) — no measurement = no merge;
-    bot-merge.sh gate enforces presence of docs/eval/preregistered/<GAP>.md when commit modifies cognition-or-routing-related
-    src/'
-  status: done
+  title: "CREDIBLE: every new feature must ship with a preregistered eval (EVAL-098 pattern) — no measurement = no merge; bot-merge.sh gate enforces presence of docs/eval/preregistered/<GAP>.md when commit modifies cognition-or-routing-related src/"
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
-  - 'bot-merge.sh adds a guard: if commit modifies src/{briefing,reflection,reflection_db,prompt_assembly,provider_*,bandit*,cog_*,cognition_*}.rs
-    OR src/atomic_claim.rs OR scripts/dispatch/, require docs/eval/preregistered/<GAP-ID>.md present in commit'
-  - 'bypass: CHUMP_NO_PREREG=1 with reason (e.g. for trivial typo fixes inside cognition modules)'
-  - 'test: scripts/ci/test-prereg-required-for-cognition.sh covers 3 cases (cognition src + prereg = pass, cognition src +
-    no prereg = fail, non-cognition src = pass)'
+    - "bot-merge.sh adds a guard: if commit modifies src/{briefing,reflection,reflection_db,prompt_assembly,provider_*,bandit*,cog_*,cognition_*}.rs OR src/atomic_claim.rs OR scripts/dispatch/, require docs/eval/preregistered/<GAP-ID>.md present in commit"
+    - "bypass: CHUMP_NO_PREREG=1 with reason (e.g. for trivial typo fixes inside cognition modules)"
+    - "test: scripts/ci/test-prereg-required-for-cognition.sh covers 3 cases (cognition src + prereg = pass, cognition src + no prereg = fail, non-cognition src = pass)"
   opened_date: '2026-05-05'
-  closed_date: '2026-05-11'
+

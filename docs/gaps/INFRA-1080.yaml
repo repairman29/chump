@@ -1,13 +1,12 @@
 - id: INFRA-1080
   domain: INFRA
-  title: 'ZERO-WASTE: chump_gh pre-emptive backoff — queue non-critical calls when graphql remaining < 10%'
-  status: done
+  title: "ZERO-WASTE: chump_gh pre-emptive backoff — queue non-critical calls when graphql remaining < 10%"
+  status: open
   priority: P1
   effort: xs
   acceptance_criteria:
-  - 'TODO: what events emitted on success/failure/timeout'
-  - 'TODO: how cost tracked and reported to operator'
-  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
-  - 'TODO: smoke test command to verify observability'
-  closed_date: '2026-05-14'
-  closed_pr: 1776
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

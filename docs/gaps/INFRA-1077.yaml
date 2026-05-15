@@ -1,13 +1,12 @@
 - id: INFRA-1077
   domain: INFRA
-  title: 'CREDIBLE: API cost leaderboard — daily ambient digest of github_api_call top burners from INFRA-999 data'
-  status: done
+  title: "CREDIBLE: API cost leaderboard — daily ambient digest of github_api_call top burners from INFRA-999 data"
+  status: open
   priority: P1
   effort: xs
   acceptance_criteria:
-  - 'TODO: what events emitted on success/failure/timeout'
-  - 'TODO: how cost tracked and reported to operator'
-  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
-  - 'TODO: smoke test command to verify observability'
-  closed_date: '2026-05-14'
-  closed_pr: 1770
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+
