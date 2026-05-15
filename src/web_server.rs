@@ -3683,6 +3683,56 @@ async fn handle_message_feedback(
     }
 }
 
+/// Read the kill-gate threshold from `~/.chump/config.toml` `[cost]` section.
+/// Returns `None` when the file is missing, the section is absent, or the key
+/// is absent — meaning no kill gate is active (AC: missing config → no kill gate).
+fn cost_kill_threshold() -> Option<f64> {
+    crate::auth::read_config_kv("cost", "kill")
+        .and_then(|v| v.trim().parse::<f64>().ok())
+        .filter(|&t| t > 0.0)
+}
+
+/// POST /api/chat — kill-gate wrapper (INFRA-1335).
+///
+/// Checks `session_cost_usd` against the `[cost] kill` threshold from
+/// `chump.toml` before delegating to [`handle_chat`]. Returns HTTP 402 with
+/// `{"error":"session_cost_exceeded",...}` when the threshold is exceeded.
+/// Returns the normal SSE stream when under threshold or no threshold is set.
+async fn handle_chat_with_kill_gate(headers: HeaderMap, Json(body): Json<ChatRequest>) -> Response {
+    if let Some(kill_thresh) = cost_kill_threshold() {
+        let session_cost = crate::cost_tracker::session_cost_usd();
+        if session_cost > kill_thresh {
+            let session_id = body.session_id.as_deref().unwrap_or("default").to_string();
+            tracing::warn!(
+                session_id = %session_id,
+                session_cost_usd = session_cost,
+                threshold_usd = kill_thresh,
+                "INFRA-1335: session_cost_kill — refusing chat, cost exceeds threshold"
+            );
+            // Emit ambient event for observability (INFRA-1335 AC-3).
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "session_cost_kill".to_string(),
+                fields: vec![
+                    ("session_id".to_string(), session_id),
+                    ("cost_usd".to_string(), format!("{:.6}", session_cost)),
+                    ("threshold_usd".to_string(), format!("{:.6}", kill_thresh)),
+                ],
+                ..Default::default()
+            });
+            return (
+                StatusCode::PAYMENT_REQUIRED,
+                Json(serde_json::json!({
+                    "error": "session_cost_exceeded",
+                    "session_cost_usd": session_cost,
+                    "threshold_usd": kill_thresh,
+                })),
+            )
+                .into_response();
+        }
+    }
+    handle_chat(headers, Json(body)).await.into_response()
+}
+
 async fn handle_chat(
     headers: HeaderMap,
     Json(body): Json<ChatRequest>,
@@ -8145,7 +8195,7 @@ fn build_api_router() -> Router {
             "/api/fleet/health",
             get(routes::health::handle_fleet_health),
         )
-        .route("/api/chat", post(handle_chat))
+        .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/stop", post(handle_stop))
         .route("/api/tts", get(handle_tts))
         .route("/api/inject-hint", post(handle_inject_hint))

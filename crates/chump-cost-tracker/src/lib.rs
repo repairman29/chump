@@ -137,6 +137,12 @@ pub fn add_session_cost_usd(usd: f64) {
 
 /// Current accumulated session spend in USD.
 pub fn session_cost_usd() -> f64 {
+    // CHUMP_SESSION_COST_USD: test/CI injection point — overrides the in-process atomic.
+    if let Ok(v) = std::env::var("CHUMP_SESSION_COST_USD") {
+        if let Ok(cost) = v.trim().parse::<f64>() {
+            return cost;
+        }
+    }
     SESSION_COST_MICRO_USD.load(Ordering::Relaxed) as f64 / 1_000_000.0
 }
 

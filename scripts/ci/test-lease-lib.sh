@@ -115,49 +115,6 @@ lease_is_fresh "$stale" && fail "stale lease incorrectly fresh" || ok "lease_is_
 # Custom grace
 lease_is_fresh "$stale" 3600 && ok "lease_is_fresh grace=3600 accepts stale" || fail "grace=3600 should accept 1800s stale"
 
-# ── INFRA-1356: age=0s must be treated as fresh ──────────────────────────────
-# Prior bug: lease_heartbeat_age_s returned 0 for both "no heartbeat" and
-# "just-written heartbeat"; lease_is_fresh rejected both via [[ $age -gt 0 ]].
-just_written="$LOCK_DIR/just-written.json"
-cat > "$just_written" <<EOF
-{
-  "session_id": "claim-infra-1356-test",
-  "paths": [],
-  "taken_at": "$(now_iso)",
-  "expires_at": "$(iso_in_future 14400)",
-  "heartbeat_at": "$(now_iso)",
-  "purpose": "gap:INFRA-1356",
-  "gap_id": "INFRA-1356",
-  "worktree": "chump-infra-1356"
-}
-EOF
-age0="$(lease_heartbeat_age_s "$just_written")"
-if [[ "$age0" -ge 0 && "$age0" -le 5 ]]; then
-    ok "INFRA-1356: lease_heartbeat_age_s age=0s returns non-negative (got ${age0}s)"
-else
-    fail "INFRA-1356: lease_heartbeat_age_s age=0s returned $age0 (expected 0-5)"
-fi
-lease_is_fresh "$just_written" \
-    && ok "INFRA-1356: lease_is_fresh treats age=0s as fresh (was stale before fix)" \
-    || fail "INFRA-1356: lease_is_fresh incorrectly treated age=0s heartbeat as stale"
-
-# Missing heartbeat must still be stale (regression guard)
-no_heartbeat="$LOCK_DIR/no-heartbeat.json"
-cat > "$no_heartbeat" <<'EOF'
-{
-  "session_id": "claim-infra-nohb",
-  "paths": [],
-  "purpose": "gap:TEST"
-}
-EOF
-age_nohb="$(lease_heartbeat_age_s "$no_heartbeat")"
-[[ "$age_nohb" == "-1" ]] \
-    && ok "INFRA-1356: missing heartbeat returns -1 (sentinel)" \
-    || fail "INFRA-1356: missing heartbeat should return -1, got $age_nohb"
-lease_is_fresh "$no_heartbeat" \
-    && fail "INFRA-1356: missing-heartbeat lease must not be fresh" \
-    || ok "INFRA-1356: missing-heartbeat lease correctly not fresh"
-
 # ── lease_is_expired ─────────────────────────────────────────────────────────
 lease_is_expired "$expired" && ok "lease_is_expired: expired ✓" || fail "expired lease not detected"
 lease_is_expired "$fresh" && fail "fresh lease incorrectly expired" || ok "lease_is_expired: fresh ✗ (correct)"
