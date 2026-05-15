@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091,SC2034  # SC1091: lib/ dynamic sources; SC2034: vars used via printf/emission patterns
 # scripts/coord/pr-stuck-cluster-detector.sh — INFRA-1133
 #
 # Detect PR stuck clusters: when 3+ distinct PRs get stuck (merged but unmerged)
@@ -24,6 +25,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd -P)"
 LOCK_DIR="${LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 CLUSTER_SENT_DIR="$LOCK_DIR/.cluster-sent"
 mkdir -p "$CLUSTER_SENT_DIR" 2>/dev/null || true
+
+# INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
+# shellcheck source=lib/ambient-write.sh
+source "${SCRIPT_DIR}/lib/ambient-write.sh"
 
 CLUSTER_THRESHOLD=3                   # 3+ PRs = cluster
 CLUSTER_WINDOW_S="${CHUMP_PR_CLUSTER_WINDOW_S:-7200}"           # 2h window
@@ -202,14 +207,14 @@ if [ "$APPLY" -eq 1 ]; then
             echo "[pr-stuck-cluster-detector] filed $gap_id for PR cluster: $(echo "$pr_list" | xargs)"
 
             # Emit cluster detection event.
-            printf '{"ts":"%s","kind":"pr_stuck_cluster","cluster_id":"%s","pr_count":%d,"prs":%s,"gap":"%s","window_h":%d}\n' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                "$cluster_id" \
-                "$stuck_pr_count" \
-                "$(echo "$pr_list" | tr ' ' ',' | sed 's/^/[/;s/,$/]/')" \
-                "$gap_id" \
-                "$((CLUSTER_WINDOW_S/3600))" \
-                >> "$LOCK_DIR/ambient.jsonl" 2>/dev/null || true
+            _ambient_write "$LOCK_DIR/ambient.jsonl" \
+                "$(printf '{"ts":"%s","kind":"pr_stuck_cluster","cluster_id":"%s","pr_count":%d,"prs":%s,"gap":"%s","window_h":%d}' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                    "$cluster_id" \
+                    "$stuck_pr_count" \
+                    "$(echo "$pr_list" | tr ' ' ',' | sed 's/^/[/;s/,$/]/')" \
+                    "$gap_id" \
+                    "$((CLUSTER_WINDOW_S/3600))")"
 
             # Record the cluster filing time.
             printf '%s' "$now_epoch" > "$cluster_stamp"

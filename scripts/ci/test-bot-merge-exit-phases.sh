@@ -71,6 +71,9 @@ AMBIENT="$TMP/ambient.jsonl"
     export CHUMP_AMBIENT_LOG="$AMBIENT"
     export GAP_IDS="TEST-001"
     export BRANCH="test-branch"
+    # INFRA-1241: source lib/ambient-write.sh so _bm_fail can emit the phase-failure
+    # ambient event in this test subshell (moved out of bot-merge.sh by INFRA-1241).
+    source "$REPO_ROOT/scripts/coord/lib/ambient-write.sh" 2>/dev/null || true
     # Source only the _bm_fail function (skip everything else that requires git)
     eval "$(grep -A 12 '^_bm_fail()' "$BOT_MERGE" | head -13)"
     _bm_fail "test" 14 "synthetic test failure" 2>/dev/null || true

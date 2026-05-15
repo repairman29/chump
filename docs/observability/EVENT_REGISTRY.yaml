@@ -1759,6 +1759,26 @@ events:
     consumers: [fleet-brief, operator-recall]
     fields_required: [ts, kind, source, timeout_s, note]
 
+  # ── INFRA-1068: fleet-state.json batch-write telemetry ────────────────────
+  - kind: fleet_state_lock_contention
+    emitter: scripts/coord/emergency-fast-path.sh (INFRA-1068)
+    trigger: flock(1) acquisition on fleet-state.lock took more than 1000ms,
+      indicating write contention between concurrent workers. Emitted INSIDE
+      the lock after acquisition succeeds (not on timeout), so the write
+      still proceeds. Carry wait_ms so operators can track contention trends.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, wait_ms, note]
+
+  - kind: fleet_state_batch_flush
+    emitter: scripts/coord/lib/fleet-state-writer.sh fleet_state_flush (INFRA-1068)
+    trigger: fleet_state_flush applied one or more queued field updates to
+      fleet-state.json in a single flock acquisition (batch mode). Emitted
+      after every successful flush that had at least one queued write.
+      fields_updated = number of distinct keys flushed (not raw queue lines —
+      last-write-wins deduplication is applied before the flock grab).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, fields_updated, wait_ms]
+
   - kind: curator_decision
     emitter: scripts/coord/opus-curator.sh (INFRA-848)
     trigger: curator completed a proactive health audit cycle and made a decision
