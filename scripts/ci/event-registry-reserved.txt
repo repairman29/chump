@@ -21,6 +21,7 @@
 
 # ── Hook-emitted (not grep-scannable) ─────────────────────────────────────────
 commit  # reason: emitted by Claude Code PostToolUse hook (Bash git commit), not by scripts/; hooks are outside grep production paths
+redundancy_bypass_used  # reason: emitted by scripts/git-hooks/pre-commit-redundancy.sh (META-063); git hooks are outside PROD_PATHS grep scan
 
 # ── Test fixtures ─────────────────────────────────────────────────────────────
 obs_coverage_test_fixture  # reason: synthetic test-fixture kind; emitter is scripts/ci/ (excluded from prod grep); status=test-fixture in registry
