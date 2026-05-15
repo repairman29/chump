@@ -213,6 +213,16 @@ events:
     consumers: [fleet-brief, watchdog, oncall]
     fields_required: [ts, kind, wedge_age_s, threshold_s, handler]
 
+  - kind: execution_timeout
+    emitter: src/blocker_detect.rs (chump fleet blocker-detect)
+    trigger: subprocess or operation exceeded its timeout during blocking-operation detection
+    consumers: [fleet-brief, watchdog]
+
+  - kind: hang_detector
+    emitter: src/dispatch.rs (chump dispatch)
+    trigger: subprocess hung past deadline; process details and name logged
+    consumers: [fleet-brief, watchdog, operator-recall]
+
   - kind: claim_aborted_disk_full
     emitter: scripts/lib/disk-check.sh via gap-claim.sh (INFRA-975)
     trigger: chump claim attempted but free disk < CHUMP_DISK_LOW_GB (default 5 GB)
@@ -418,6 +428,16 @@ events:
     trigger: pending restart canceled
     consumers: [audit-log]
 
+  - kind: fleet_auto_restart
+    emitter: scripts/dispatch/fleet-autorestart-daemon.sh
+    trigger: fleet auto-restart actually executed (follows fleet_auto_restart_decision)
+    consumers: [audit-log, fleet-brief]
+
+  - kind: fleet_restart_snapshot
+    emitter: src/main.rs (chump fleet restart-snapshot)
+    trigger: fleet state snapshot recorded before a coordinated restart
+    consumers: [audit-log]
+
   # ── Reapers / cleanup daemons ──────────────────────────────────────────────
   - kind: reaper_run
     emitter: scripts/ops/stale-*-reaper.sh
@@ -579,6 +599,23 @@ events:
   - kind: pr_blocked_long
     emitter: scripts/ops/stuck-pr-filer.sh
     trigger: pr_stuck variant for very long blocks
+    consumers: [operator-recall]
+
+  - kind: pr_resolved
+    emitter: scripts/ops/queue-health-monitor.sh
+    trigger: a previously stuck or blocked PR is now resolved; paired with pr_stuck
+    consumers: [audit-log, fleet-brief]
+
+  - kind: serializing_blocking_parallel
+    emitter: scripts/ops/queue-health-monitor.sh
+    trigger: bot-merge queue is serializing PRs that could safely run in parallel;
+      emitted when serializing_count > parallel_safe_count threshold
+    consumers: [fleet-brief, operator-recall]
+
+  - kind: fat_worktree
+    emitter: scripts/ops/queue-health-monitor.sh
+    trigger: a linked worktree exceeds CHUMP_FAT_WT_GB (default 4 GB); likely due
+      to target/ cargo build artifacts
     consumers: [operator-recall]
 
   - kind: pr_repair
@@ -999,15 +1036,23 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, starved_count, untraced_p0_count]
 
-  - kind: product_drought
-    emitter: scripts/ops/pillar-drought-detector.sh
-    trigger: PRODUCT pillar starved for N days
-    consumers: [operator-recall]
+  # (product_drought removed by INFRA-1287: emitter scripts/ops/pillar-drought-detector.sh
+  #  never shipped; drought detection done via chump gap list + pillar counts)
 
   - kind: disk_critical
-    emitter: scripts/ops/disk-watchdog.sh
-    trigger: disk free < threshold
-    consumers: [operator-recall]
+    emitter: scripts/ops/disk-health-monitor.sh + disk-watchdog.sh
+    trigger: disk free < 5% (CHUMP_DISK_CRITICAL_PCT); fleet pauses
+    consumers: [operator-recall, fleet-brief]
+
+  - kind: disk_low
+    emitter: scripts/ops/disk-health-monitor.sh + disk-pressure-watchdog.sh
+    trigger: disk free < 10% (CHUMP_DISK_LOW_PCT); warning-level alert
+    consumers: [operator-recall, fleet-brief]
+
+  - kind: disk_recovered
+    emitter: scripts/ops/disk-pressure-watchdog.sh
+    trigger: disk free rose above the low threshold after a disk_low event
+    consumers: [fleet-brief]
 
   - kind: delta_recorded
     emitter: scripts/coord/reflect-delta.sh
@@ -1065,16 +1110,12 @@ events:
     consumers: [audit-log]
 
   # ── Adversary / safety ────────────────────────────────────────────────────
-  - kind: adversary_alert
-    emitter: scripts/ops/adversary-detector.sh
-    trigger: prompt-injection or adversarial behavior detected
-    consumers: [operator-recall]
+  # (adversary_alert removed by INFRA-1287: emitter scripts/ops/adversary-detector.sh
+  #  never shipped; no planned gap; concept superseded by general RESILIENT monitoring)
 
   # ── Aggregations ──────────────────────────────────────────────────────────
-  - kind: aggregate
-    emitter: chump waste-tally / kpi-report
-    trigger: aggregated metric snapshot for downstream consumers
-    consumers: [fleet-brief]
+  # (aggregate removed by INFRA-1287: generic placeholder, no concrete emit site;
+  #  real aggregations emit domain-specific kinds like fleet_metrics_snapshot)
 
   # ── Bounced-PR detector (INFRA-781) ───────────────────────────────────────
   - kind: pr_bounced_unfinished
@@ -1194,6 +1235,12 @@ events:
     trigger: gh pr merge --auto failed after retries; PR left unarmed
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, pr, detail]
+
+  - kind: auto_merge_rest_direct
+    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1113)
+    trigger: auto-merge armer fell back to direct REST merge (GraphQL unavailable);
+      PR merged via REST API rather than auto-merge queue
+    consumers: [fleet-brief, audit-log]
 
   # ── Free-tier dispatch testing ─────────────────────────────────────────
   - kind: free_tier_e2e
@@ -1698,6 +1745,11 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [ts, kind, source, age_secs, max_age_secs, note]
 
+  - kind: stale_binary_destructive_override
+    emitter: src/version.rs (chump fleet version-check)
+    trigger: operator forces a destructive action despite stale binary detection warning
+    consumers: [audit-log, operator-recall]
+
   # ── Disk hygiene ─────────────────────────────────────────────────────────
   - kind: tmp_cleanup
     emitter: scripts/dev/cleanup-claude-tmp.sh
@@ -1963,6 +2015,12 @@ events:
       sibling lease; allocator skipped to the next safe ID
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, domain, skipped_id]
+
+  - kind: gap_id_allocator_collision
+    emitter: crates/chump-gap-store/src/lib.rs
+    trigger: gap ID collision detected after reservation (sibling claimed the same ID
+      concurrently); emitted as ALERT; caller must retry with a new ID
+    consumers: [fleet-brief, curator, operator-recall]
 
   # ── INFRA-1020: opencode identity residue audit ───────────────────────────
   - kind: identity_residue_swept

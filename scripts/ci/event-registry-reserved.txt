@@ -10,8 +10,186 @@
 # Format: one kind per line, optional inline `# reason: ...` comment.
 # Blank lines and lines starting with `#` are ignored.
 #
-# Today (post-INFRA-1237 initial reconciliation): empty. All known
-# in-production emit kinds are registered. The 138 register-without-emit
-# orphans are tracked separately in a follow-up gap (INFRA-1289) for
-# implement-or-prune review per kind.
+# INFRA-1287: seeded with 88 register-without-emit orphans after analysis.
+# Disposition per kind:
+#   - 3 truly dead entries were PRUNED from EVENT_REGISTRY.yaml (adversary_alert,
+#     aggregate, product_drought — emitters never shipped)
+#   - obs_coverage_test_fixture → reserved (test-only, explicitly marked in registry)
+#   - remaining 84 → reserved (planned for specific features; see reason comments)
+#
+# Remove an entry here once the emit site is implemented and CI runs clean.
 
+# ── Hook-emitted (not grep-scannable) ─────────────────────────────────────────
+commit  # reason: emitted by Claude Code PostToolUse hook (Bash git commit), not by scripts/; hooks are outside grep production paths
+
+# ── Test fixtures ─────────────────────────────────────────────────────────────
+obs_coverage_test_fixture  # reason: synthetic test-fixture kind; emitter is scripts/ci/ (excluded from prod grep); status=test-fixture in registry
+
+# ── Autonomous mode tracking ───────────────────────────────────────────────────
+autonomous_mode_entered    # reason: planned for chump fleet autonomous-mode command
+autonomous_mode_exited     # reason: planned for chump fleet autonomous-mode command
+autonomous_ship_rate_regression # reason: planned for fleet health regression detector
+
+# ── Bot/merge observability ────────────────────────────────────────────────────
+auto_merge_arm_failed      # reason: planned for bot-merge.sh auto-merge arm failure path
+auto_merge_armed           # reason: planned for bot-merge.sh --auto-merge success confirmation
+bot_autonomous_check_failed # reason: planned for bot-merge autonomous-mode pre-ship gate
+bot_autonomous_check_passed # reason: planned for bot-merge autonomous-mode pre-ship gate
+bot_merge_aborted_no_worktree # reason: planned for bot-merge when worktree missing mid-run
+bot_merge_auto_armed       # reason: duplicate of auto_merge_armed (harmonize on ship)
+bot_merge_watchdog_killed  # reason: planned for bot-merge watchdog kill path
+bot_merge_watchdog_stuck   # reason: planned for bot-merge stuck-detection
+
+# ── Branch / protection ────────────────────────────────────────────────────────
+branch_protection_drift    # reason: planned for CI gate that detects branch protection changes
+
+# ── Cascade routing ────────────────────────────────────────────────────────────
+cascade_near_cap           # reason: planned for Anthropic cascade rate-limit approach warning
+cascade_report             # reason: planned for cascade routing summary event
+
+# ── Change management ──────────────────────────────────────────────────────────
+change_approved            # reason: planned for operator change-approval workflow
+change_rolled_back         # reason: planned for automated rollback on regression
+
+# ── CI / gate ──────────────────────────────────────────────────────────────────
+ci_yml_merge_driver_abort  # reason: planned for merge-driver failure detection in CI
+gate_check_result          # reason: planned for chump gate --check result emission
+gate_check_start           # reason: planned for chump gate --check start emission
+
+# ── Claims ────────────────────────────────────────────────────────────────────
+claim_aborted_disk_full    # reason: planned for claim guard: disk < threshold aborts claim
+
+# ── Cost / quota ──────────────────────────────────────────────────────────────
+cost_budget_breach         # reason: planned for INFRA-1076 cost quota enforcement
+cost_quota_exceeded        # reason: planned for INFRA-1076 hard quota enforcement
+cost_quota_warning         # reason: planned for INFRA-1076 soft quota warning
+
+# ── Cognition / eval ──────────────────────────────────────────────────────────
+cognition_ab_comparison    # reason: planned for EVAL-102 LLM-judge comparison result
+cognition_ab_run_start     # reason: planned for EVAL-102 AB run start
+
+# ── Curator / decompose ───────────────────────────────────────────────────────
+curator_auto_decompose     # reason: planned for opus-curator auto-decompose arm
+curator_decision           # reason: planned for opus-curator gap-ranking decision emit
+decomposition_hint         # reason: planned for chump gap decompose hint injection
+
+# ── Disk / fleet safety ───────────────────────────────────────────────────────
+disk_critical              # reason: emitter scripts/ops/disk-watchdog.sh uses variable-mediated emit (disk_alert_kind); grep pattern misses it; will fix in follow-up
+fleet_paused_disk_critical # reason: planned for fleet pause-on-disk-critical guard
+
+# ── Eval / behavior ───────────────────────────────────────────────────────────
+asks_clarification         # reason: planned for eval harness behavior tracking
+avoids_tool                # reason: planned for eval harness behavior tracking
+
+# ── Feature monitoring ────────────────────────────────────────────────────────
+feature_silent_failure     # reason: planned for feature smoke-test failure detector
+
+# ── Flake auto-rerun ──────────────────────────────────────────────────────────
+flake_autorerun_initiated  # reason: planned for RESILIENT flake-rerun orchestrator
+flake_autorerun_persisted  # reason: planned for RESILIENT flake-rerun (still flaking after retry)
+flake_autorerun_recovered  # reason: planned for RESILIENT flake-rerun (recovered on retry)
+flake_autorerun_skipped    # reason: planned for RESILIENT flake-rerun (skipped: not a known flake)
+
+# ── Fleet / FTUE ──────────────────────────────────────────────────────────────
+fleet_version_skew         # reason: planned for fleet version drift detector
+ftue_init_smoke_passed     # reason: planned for FTUE first-run smoke test confirmation
+
+# ── Gap lifecycle ──────────────────────────────────────────────────────────────
+gap_check_false_positive   # reason: planned for gap-preflight false-positive reporter
+gap_perf_sample            # reason: planned for gap execution performance sampling
+gap_shipped                # reason: planned for chump gap ship emit (currently ship silently succeeds)
+
+# ── GitHub shim ───────────────────────────────────────────────────────────────
+gh_shim_worktree_install_blocked # reason: planned for gh-shim install blocked by security policy
+gh_shim_worktree_path_resolved   # reason: planned for INFRA-779 gitdir repair confirmation
+
+# ── Guard / hook bypass ───────────────────────────────────────────────────────
+guard_bypassed             # reason: planned for pre-commit/pre-push --no-verify bypass tracker
+
+# ── Intent system (INFRA-1116/1117) ──────────────────────────────────────────
+intent                     # reason: planned for INFRA-1116 INTENT file registration
+intent_overlap_detected    # reason: planned for INFRA-1116 overlap gate
+intent_overlap_overridden  # reason: planned for INFRA-1116 operator override
+intent_parse_ok            # reason: planned for INFRA-1117 intent parser success
+intent_parse_unknown       # reason: planned for INFRA-1117 intent parser unknown field
+
+# ── Invariant tracking ────────────────────────────────────────────────────────
+invariant_recovered        # reason: planned for invariant violation auto-recovery
+invariant_violation        # reason: planned for invariant violation detector
+
+# ── Lessons system ────────────────────────────────────────────────────────────
+lesson_not_applied         # reason: planned for lessons injection failure detector
+lessons_audit_run          # reason: planned for lessons audit cron emit
+lessons_pruned             # reason: planned for lessons pruner emit
+
+# ── Network monitoring ────────────────────────────────────────────────────────
+network_restored           # reason: planned for network watchdog: online after offline
+network_unavailable        # reason: planned for network watchdog: offline detection
+
+# ── Opus / roadmap ────────────────────────────────────────────────────────────
+opus_roadmap_published     # reason: planned for opus-curator roadmap publication emit
+orchestrate_intent         # reason: planned for orchestration session intent emit
+orchestrate_session_end    # reason: planned for orchestration session end emit
+
+# ── Orphan PR handling ────────────────────────────────────────────────────────
+orphan_pr_candidate        # reason: planned for orphan-pr-detector candidate emit
+orphan_pr_close_failed     # reason: planned for orphan-pr-detector close failure
+orphan_pr_closed           # reason: planned for orphan-pr-detector close success
+
+# ── Picker priority ───────────────────────────────────────────────────────────
+picker_priority_stale      # reason: planned for INFRA-1258 picker priority stale detection
+picker_used_priority       # reason: planned for INFRA-1258 picker priority usage confirmation
+
+# ── Pillar balance ────────────────────────────────────────────────────────────
+pillar_balance_block       # reason: planned for pillar balance enforcer: block claim
+pillar_balance_warn        # reason: planned for pillar balance enforcer: warn
+
+# ── Planner ───────────────────────────────────────────────────────────────────
+planner_rank_ran           # reason: planned for gap planner ranking emit
+
+# ── PR lifecycle ──────────────────────────────────────────────────────────────
+pr_bounced_relanded        # reason: emitter scripts/coord/ uses _emit function (confirmed in grep); adding to reserved while INFRA-1287 grep fixes land
+pr_bounced_unfinished      # reason: emitter scripts/coord/bounced-pr-detector.sh; _emit pattern may not cover all code paths
+pr_bundle_blocked          # reason: planned for PR bundle gate: conflicting bundle blocked
+pr_dedup_blocked           # reason: planned for PR dedup gate: duplicate PR blocked
+pr_dedup_bypass_rejected   # reason: planned for PR dedup bypass rejection
+pr_dedup_bypassed          # reason: planned for PR dedup bypass with reason
+pr_fmt_auto_fixed          # reason: planned for PR format shepherd auto-fix emit
+pr_fmt_shepherd_run        # reason: planned for PR format shepherd run emit
+pr_scope_violation         # reason: planned for PR scope gate: files-outside-intent
+
+# ── Preflight ────────────────────────────────────────────────────────────────
+preflight_dupe_pr          # reason: planned for gap-preflight duplicate PR warning emit
+preflight_dupe_worktree    # reason: planned for gap-preflight duplicate worktree warning emit
+premature_closure_auto_fixed # reason: planned for premature-closure auto-fix emit
+
+# ── Reaper observability ──────────────────────────────────────────────────────
+reaper_run                 # reason: planned for reaper start/stop lifecycle emit
+
+# ── Review handoff ────────────────────────────────────────────────────────────
+review_handoff_escalated   # reason: planned for review handoff escalation emit
+review_handoff_timeout     # reason: planned for review handoff timeout emit
+
+# ── Roadmap proposals ────────────────────────────────────────────────────────
+roadmap_update_proposal_cost    # reason: planned for opus-curator roadmap update cost report
+roadmap_update_proposal_failed  # reason: planned for opus-curator roadmap update failure
+roadmap_update_proposal_opened  # reason: planned for opus-curator roadmap update PR opened
+roadmap_update_proposal_skipped # reason: planned for opus-curator roadmap update skipped
+
+# ── Rust-first policy ────────────────────────────────────────────────────────
+rust_first_bypass_used     # reason: planned for rust-first policy bypass tracker
+
+# ── SLO / health ──────────────────────────────────────────────────────────────
+slo_recovered              # reason: planned for SLO watchdog: recovered from breach
+
+# ── Speculative work ──────────────────────────────────────────────────────────
+speculative_race_loss      # reason: planned for speculative-gap race loss emit
+
+# ── Stale gaps ────────────────────────────────────────────────────────────────
+stale_post_merge_gap       # reason: planned for post-merge stale gap detector
+
+# ── Test gate ────────────────────────────────────────────────────────────────
+test_gate_bypassed         # reason: planned for test gate bypass emit (CHUMP_TEST_GATE=0)
+
+# ── Watchdog ──────────────────────────────────────────────────────────────────
+watchdog_silent            # reason: planned for watchdog heartbeat absence detector
