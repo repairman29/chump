@@ -116,7 +116,8 @@ pub fn adapt(raw: &str) -> AdapterOutput {
                         //
                         // Strategy: replace just the opening tag so this block won't
                         // match again, then let the outer loop continue.
-                        remaining.replace_range(start..start + "<tool_call>".len(), "\x00tool_call\x00");
+                        remaining
+                            .replace_range(start..start + "<tool_call>".len(), "\x00tool_call\x00");
                     }
                 }
             }
@@ -161,7 +162,10 @@ pub fn adapt(raw: &str) -> AdapterOutput {
             }
             None => {
                 // Malformed: advance past this block to avoid infinite loop.
-                remaining.replace_range(fc_start..fc_start + "<function_call".len(), "\x00function_call\x00");
+                remaining.replace_range(
+                    fc_start..fc_start + "<function_call".len(),
+                    "\x00function_call\x00",
+                );
             }
         }
     }
@@ -197,7 +201,8 @@ mod tests {
     /// 3. Single <tool_call> block.
     #[test]
     fn test_tool_call_style() {
-        let raw = r#"<tool_call>{"name":"read_file","arguments":{"path":"src/main.rs"}}</tool_call>"#;
+        let raw =
+            r#"<tool_call>{"name":"read_file","arguments":{"path":"src/main.rs"}}</tool_call>"#;
         let out = adapt(raw);
         assert_eq!(out.tool_calls.len(), 1);
         let tc = &out.tool_calls[0];
@@ -250,9 +255,15 @@ mod tests {
     fn test_malformed_json_skipped() {
         let raw = "<tool_call>not json</tool_call>";
         let out = adapt(raw);
-        assert!(out.tool_calls.is_empty(), "malformed block should produce no tool calls");
+        assert!(
+            out.tool_calls.is_empty(),
+            "malformed block should produce no tool calls"
+        );
         // The raw block should still be present in the text output.
-        assert!(out.text.contains("not json"), "raw content should remain in text");
+        assert!(
+            out.text.contains("not json"),
+            "raw content should remain in text"
+        );
     }
 
     /// 8. Round-trip: ToolCall can be serialized and fields are preserved.
