@@ -1,0 +1,16 @@
+- id: PRODUCT-127
+  domain: PRODUCT
+  title: "EFFECTIVE: Cockpit fix #1 — collapse 20× gap-drift attention rows into ONE row + [Repair drift] button"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Cockpit Today's-arc card currently surfaces 'zero ships' but its [check fleet] action only scrolls the page. Replace with [Repair drift] button when gap-drift events are detected — wires to existing 'chump gap dep-clean --apply' CLI via new POST /api/gap/dep-clean endpoint. Surveillance vomits 20 identical drift rows; this collapses them into 1 fixable row.
+  acceptance_criteria:
+    - Cockpit detects gap-drift events from ambient (kind=gap_drift or state.db drift heuristic)
+    - "Today's-arc card or dedicated card surfaces ONE row 'Gap drift: N instances'"
+    - Row has [Repair drift] action button (not 'see more')
+    - Button POSTs to /api/gap/dep-clean (new endpoint) or existing equivalent
+    - Success state shows 'fixed N drift rows' inline
+    - Smoke test scripts/ci/test-cockpit-repair-drift.sh
+
