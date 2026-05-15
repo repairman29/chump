@@ -4648,20 +4648,43 @@ async fn main() -> Result<()> {
                                 // diff so origin/main and all linked worktrees
                                 // pick it up.
                                 //
-                                // Best-effort: silent if not in a git worktree
-                                // or if git is unavailable. Bypass with
+                                // Best-effort: warns on failure but never
+                                // blocks the reserve. Bypass with
                                 // CHUMP_RESERVE_NO_AUTOSTAGE=1 for genuine
                                 // detached / read-only operator workflows.
+                                // INFRA-1354: emit warning when git add fails
+                                // so operators notice the staging gap instead
+                                // of discovering it via orphan-PR-closer.
                                 if std::env::var("CHUMP_RESERVE_NO_AUTOSTAGE").as_deref() != Ok("1")
                                 {
-                                    let _ = std::process::Command::new("git")
+                                    match std::process::Command::new("git")
                                         .arg("-C")
                                         .arg(&worktree_root)
                                         .arg("add")
                                         .arg(&yaml_path)
-                                        .stderr(std::process::Stdio::null())
-                                        .stdout(std::process::Stdio::null())
-                                        .status();
+                                        .status()
+                                    {
+                                        Ok(s) if s.success() => {
+                                            if !quiet {
+                                                eprintln!(
+                                                    "[reserve] staged {}",
+                                                    yaml_path.display()
+                                                );
+                                            }
+                                        }
+                                        Ok(s) => {
+                                            eprintln!(
+                                                "[reserve] warning: git add {} exited {}; yaml is written but unstaged — commit manually to avoid orphan-PR-closer killing in-flight PRs",
+                                                yaml_path.display(), s
+                                            );
+                                        }
+                                        Err(e) => {
+                                            eprintln!(
+                                                "[reserve] warning: git add {} failed ({e}); yaml is written but unstaged — commit manually to avoid orphan-PR-closer killing in-flight PRs",
+                                                yaml_path.display()
+                                            );
+                                        }
+                                    }
                                 }
                             }
                             Ok(false) => {} // no-op write
