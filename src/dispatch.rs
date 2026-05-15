@@ -1168,9 +1168,6 @@ mod tests {
 
     // ── INFRA-1243: release_with_retry error handling ────────────────────────
 
-    /// Serializes tests that mutate CHUMP_AMBIENT_LOG in this module.
-    static RELEASE_AMBIENT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
     /// When the `chump --release` subprocess fails twice, `release_with_retry`
     /// must:
     ///   (a) return an Err (not swallow it),
@@ -1180,12 +1177,9 @@ mod tests {
     /// `<tmp>/target/release/chump` that always exits 1 — `resolve_chump_binary`
     /// finds it before falling back to PATH, so the real chump is never called.
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn release_with_retry_emits_ambient_event_and_propagates_on_double_failure() {
         use std::os::unix::fs::PermissionsExt as _;
-
-        let _guard = RELEASE_AMBIENT_LOCK
-            .lock()
-            .unwrap_or_else(|p| p.into_inner());
 
         let tmp = tempfile::TempDir::new().expect("create tempdir");
         let dir = tmp.path();

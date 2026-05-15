@@ -3532,17 +3532,126 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // FLEET-037: ergonomic primary verb — like "start" but with an
+            // idempotency guard: refuses if the tmux session is already running.
+            "up" => {
+                let session = flag("--session")
+                    .or_else(|| cfg("session"))
+                    .unwrap_or_else(|| "chump-fleet".to_string());
+
+                // Idempotency: if session already running, bail early with clear guidance.
+                let already_running = std::process::Command::new("tmux")
+                    .args(["has-session", "-t", &session])
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+
+                if already_running {
+                    eprintln!("[fleet up] session '{session}' is already running.");
+                    eprintln!("  Use 'chump fleet status' to see current state.");
+                    eprintln!("  Use 'chump fleet scale <N>' to resize.");
+                    eprintln!("  Use 'chump fleet down' to stop first, then 'chump fleet up'.");
+                    std::process::exit(2);
+                }
+
+                // Delegate to the same logic as "start" (shared via the start arm path).
+                let size = flag("--size")
+                    .or_else(|| cfg("size"))
+                    .unwrap_or_else(|| "2".to_string());
+                let model = flag("--model")
+                    .or_else(|| cfg("model"))
+                    .unwrap_or_else(|| "sonnet".to_string());
+                let effort = flag("--effort")
+                    .or_else(|| cfg("effort"))
+                    .unwrap_or_else(|| "xs,s,m".to_string());
+                let domain = flag("--domain")
+                    .or_else(|| cfg("domain"))
+                    .unwrap_or_default();
+
+                const KNOWN_HARNESSES_UP: &[&str] = &["claude", "opencode", "codex", "manual"];
+                let harness = flag("--harness")
+                    .or_else(|| {
+                        std::env::var("CHUMP_AGENT_HARNESS")
+                            .ok()
+                            .filter(|v| !v.is_empty())
+                    })
+                    .or_else(|| cfg("harness"))
+                    .unwrap_or_else(|| "claude".to_string());
+                if !KNOWN_HARNESSES_UP.contains(&harness.as_str()) {
+                    eprintln!(
+                        "chump fleet up: unknown --harness '{harness}'. Known: {}",
+                        KNOWN_HARNESSES_UP.join(", ")
+                    );
+                    eprintln!("  (Add a new harness to scripts/dispatch/harnesses/<name>.sh per INFRA-1045.)");
+                    std::process::exit(2);
+                }
+
+                // Persist last-used config for restart.
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+                let last_config = std::path::Path::new(&home).join(".chump/last-fleet-config.json");
+                let _ = std::fs::create_dir_all(
+                    last_config.parent().unwrap_or(std::path::Path::new("/tmp")),
+                );
+                let _ = std::fs::write(
+                    &last_config,
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "size": size,
+                        "model": model,
+                        "harness": harness,
+                        "effort": effort,
+                        "domain": domain,
+                        "session": session,
+                        "updated_at": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                    }))
+                    .unwrap_or_default(),
+                );
+
+                let status = std::process::Command::new("bash")
+                    .arg(&run_fleet_sh)
+                    .env("FLEET_SIZE", &size)
+                    .env("FLEET_MODEL", &model)
+                    .env("FLEET_HARNESS", &harness)
+                    .env("FLEET_EFFORT_FILTER", &effort)
+                    .env("FLEET_DOMAIN_FILTER", &domain)
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("chump fleet up: {e}");
+                        std::process::exit(1);
+                    });
+                std::process::exit(status.code().unwrap_or(1));
+            }
+            // FLEET-037: ergonomic primary verb — alias for "stop".
+            "down" => {
+                let session = flag("--session")
+                    .or_else(|| cfg("session"))
+                    .unwrap_or_else(|| "chump-fleet".to_string());
+                let status = std::process::Command::new("bash")
+                    .arg(&run_fleet_sh)
+                    .env("FLEET_SIZE", "0")
+                    .env("FLEET_SESSION", &session)
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("chump fleet down: {e}");
+                        std::process::exit(1);
+                    });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon>"
                 );
-                eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]");
-                eprintln!("  stop        [--session NAME]");
+                eprintln!("Primary verbs:");
+                eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
+                eprintln!("              (like 'start' but refuses if session already running — use 'scale' to resize)");
+                eprintln!("  down        [--session NAME]  (alias for stop)");
                 eprintln!("  status      [--json]");
                 eprintln!("  scale       N [--session NAME]");
+                eprintln!("Aliases / advanced:");
+                eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]  (alias for up, no idempotency check)");
+                eprintln!("  stop        [--session NAME]  (alias for down)");
                 eprintln!("  snapshot");
                 eprintln!("  restore     <snapshot-id>");
-                eprintln!("  restart     [--size N] [--session NAME]");
+                eprintln!("  restart     [--size N] [--session NAME]  (fleet-restart.sh — graceful reload)");
                 eprintln!("  audit-pids  [--apply]");
                 eprintln!("  brief       [--json] [--window SECS]");
                 eprintln!("  auto-widen  [--apply]  -- widen effort/priority filter on starvation");
