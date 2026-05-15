@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.chump.target-reaper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/Users/jeffadkins/Projects/Chump/scripts/coord/target-dir-reaper.sh --execute</string>
+  </array>
+  <!-- INFRA-1349: every 30 min, scan /private/tmp/chump-* + .claude/worktrees
+       for stale target/ dirs and reap them under disk pressure (<20% free)
+       or opportunistically when idle >48h. Active leases are always spared. -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-target-reaper.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-target-reaper.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- INFRA-1212 lease lib needs HOME for fallback CHUMP_REPO resolution. -->
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+  </dict>
+</dict>
+</plist>

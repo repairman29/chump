@@ -322,6 +322,15 @@ scripts/coord/bot-merge.sh --gap INFRA-NNN --auto-merge --speculative
 
 Linked worktrees under `.claude/worktrees/` are the main **disk** risk on agent-heavy machines: each keeps its own `target/` (often multi‑GB after `cargo clippy` / `cargo test`). After a successful ship, `bot-merge.sh` **purges `./target`** in that worktree when it writes `.bot-merge-shipped` (skip with **`CHUMP_KEEP_TARGET=1`** if you still need the cache there).
 
+**Pre-INFRA-1349:** the only reaper deleted whole worktrees on staleness, but a worktree can be alive (open PR, recent commits, active lease) for days while its `target/` consumes 5–8 GB. With 250+ `/private/tmp/chump-*` worktrees disk routinely hit **95+%** on operator machines.
+
+**INFRA-1349 — `scripts/coord/target-dir-reaper.sh`.** Reaps `target/` dirs *separately* from the worktrees themselves. Active leases are always spared (heartbeat freshness via `scripts/lib/lease.sh`). Two thresholds:
+
+- **Disk pressure** (free disk < `TARGET_REAPER_FREE_DISK_FLOOR` %, default 20): reap any non-leased `target/` idle > `TARGET_REAPER_IDLE_HOURS` (default 6).
+- **Opportunistic** (no pressure): reap any non-leased `target/` idle > `TARGET_REAPER_IDLE_HARD_HOURS` (default 48).
+
+Emits `kind=target_artifact_reaped` per reaped dir with `{path, freed_gb, worktree_age_h, reason}`. Install via **`scripts/plists/dev.chump.target-reaper.plist`** (runs every 30 min). Force a sweep manually: `scripts/coord/target-dir-reaper.sh --execute --force`.
+
 **Stale trees (merged PR or deleted remote branch):** prefer automation over hand-tuning `git worktree list`.
 
 1. **`scripts/ops/stale-worktree-reaper.sh`** — default is **dry-run** (safe to run anytime). With **`--execute`**, it archives selected eval logs then `git worktree remove --force` under `.claude/worktrees/` only when the script’s guards pass (cooldown, no conflicting lease, process / log freshness — see the script header).

@@ -2652,3 +2652,15 @@ events:
     trigger: one or more assertions in the claim→commit→ship integration test failed
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, fail_count, pass_count, elapsed_s]
+
+  # ── INFRA-1349: target/ artifact reaper ───────────────────────────────────
+  - kind: target_artifact_reaped
+    emitter: scripts/coord/target-dir-reaper.sh (INFRA-1349)
+    trigger: >
+      target/ dir of a stale, non-leased worktree was deleted to reclaim
+      disk. Fires per reaped dir. Under disk pressure (< FREE_DISK_FLOOR%
+      free) the idle threshold is TARGET_REAPER_IDLE_HOURS (default 6h);
+      opportunistically (no pressure) it's TARGET_REAPER_IDLE_HARD_HOURS
+      (default 48h). Active leases (heartbeat fresh) are NEVER touched.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, path, freed_gb, worktree_age_h, reason]
