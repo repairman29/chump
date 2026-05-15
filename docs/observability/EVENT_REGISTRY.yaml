@@ -2266,17 +2266,22 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, original_kind, reason, target_id]
   - kind: cargo_target_reaped
-    emitter: scripts/ops/cargo-target-reaper.sh (INFRA-1250)
-    trigger: cargo-target-reaper.sh deleted a stale fingerprint dir, rlib, or
-      fleet target directory that exceeded its age threshold.
+    emitter: >
+      scripts/ops/cargo-target-reaper.sh (INFRA-1250 + INFRA-1170)
+    trigger: >
+      cargo-target-reaper.sh reaped a stale fingerprint dir, rlib, fleet
+      target directory, or an orphaned /tmp/chump-*/target/ whose originating
+      git worktree is no longer registered. Failure events (cargo lock active,
+      rm failure) also use this kind with an error + failure_class field.
     consumers: [fleet-brief, waste-tally]
-    fields_required: [ts, kind, path, bytes_freed, age_days, dry_run]
+    fields_required: [ts, kind, path]
+    fields_optional: [bytes_freed, age_days, dry_run, worktree_gone, error, failure_class]
 
   - kind: cargo_target_reaper_summary
-    emitter: scripts/ops/cargo-target-reaper.sh (INFRA-1250)
+    emitter: scripts/ops/cargo-target-reaper.sh (INFRA-1250 + INFRA-1170)
     trigger: cargo-target-reaper.sh completed a full run (dry or execute).
     consumers: [fleet-brief, waste-tally]
-    fields_required: [ts, kind, reaped_count, bytes_freed, execute]
+    fields_required: [ts, kind, reaped_count, bytes_freed, execute, worktree_orphan_count]
 
   # ── INFRA-1237: emit-without-register reconciliation (2026-05-14) ────────
   # 19 kinds that were fired in production but missing from the registry.
