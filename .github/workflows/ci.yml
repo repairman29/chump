@@ -1373,11 +1373,12 @@ jobs:
         run: bash scripts/ci/test-gap-ac-requirement.sh
       - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
         run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
-      - name: EVENT_REGISTRY coverage — no emit-without-register on full tree (INFRA-1237)
-        # strict-emit mode: emit-without-register FAILS; orphans warn-only.
-        # Flip to CHUMP_REGISTRY_GATE_MODE=strict once the orphan-reconciliation
-        # follow-up (INFRA-1287) lands.
-        run: CHUMP_REGISTRY_GATE_MODE=strict-emit bash scripts/ci/test-event-registry-coverage.sh
+      - name: EVENT_REGISTRY coverage — no drift in either direction (INFRA-1237/INFRA-1287)
+        # INFRA-1287: flipped to strict mode — all 88 register-without-emit orphans
+        # are now either pruned from the registry (3 dead) or listed in
+        # scripts/ci/event-registry-reserved.txt with reason comments.
+        # strict mode: BOTH emit-without-register AND register-without-emit FAIL.
+        run: CHUMP_REGISTRY_GATE_MODE=strict bash scripts/ci/test-event-registry-coverage.sh
       - name: no-inline-ambient-printf — Phase-1 dry-up (INFRA-1307)
         # Refuses net-new files in scripts/coord|dispatch|ops/ + src/ + crates/
         # that write inline to ambient.jsonl. New emit sites should call
