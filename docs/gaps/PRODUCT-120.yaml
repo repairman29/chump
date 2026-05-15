@@ -1,0 +1,16 @@
+- id: PRODUCT-120
+  domain: PRODUCT
+  title: "EFFECTIVE: Action-first cockpit umbrella — every surface answers 'do this now?' not 'look at this'"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Cockpit (shipped in PRODUCT-122) ships intelligence-shaped information but every card ends in 'see more' rather than an action button. Intelligence without agency = surveillance with better fonts. Reshape every cockpit surface to be a *proposal queue*: machine proposes an action, operator approves with one click. Decomposes into: PRODUCT-127 (gap-drift repair), PRODUCT-128 (wake-fleet), PRODUCT-129 (release-leases), PRODUCT-130 (dispatch-gap), PRODUCT-131 (counter-evidence actions), PRODUCT-132 (operator-attention dedup). See critique conversation 2026-05-15 14:35Z.
+  acceptance_criteria:
+    - docs/product/COCKPIT_ACTION_MODEL.md captures the principle (proposal queue not dashboard)
+    - Every signal card in cockpit has at least one direct-action button (not navigation, not 'see more')
+    - Every empty state in cockpit has at least one primary action button
+    - All 5 child gaps shipped
+    - Operator FEEDBACK vote=+1 subject='cockpit_action_first' after reshape
+  depends_on: [PRODUCT-127, PRODUCT-128, PRODUCT-129, PRODUCT-130, PRODUCT-131, PRODUCT-132]
+
