@@ -420,6 +420,9 @@ const CHUMP_CADENCES = [
     subtabs: [
       { id: 'settings', label: 'Settings', icon: '⚙' },
       { id: 'models',   label: 'Models',   icon: '🤖' },
+      // PRODUCT-112: archetype-1 (offline solo dev) trust signal —
+      // air-gap badge in the footer click-drills here.
+      { id: 'network',  label: 'Network',  icon: '🌐' },
     ],
   },
 ];
@@ -1104,7 +1107,7 @@ class ChumpStatusFooter extends HTMLElement {
           <span class="sf-label">$</span>
           <span class="sf-value" id="sf-cost-value">…</span>
         </button>
-        <button type="button" class="sf-slot sf-airgap" data-slot="airgap" data-target="config:settings"
+        <button type="button" class="sf-slot sf-airgap" data-slot="airgap" data-target="config:network"
                 title="Air-gap mode" aria-label="Air-gap mode status (click for network audit)">
           <span class="sf-dot" id="sf-airgap-dot">○</span>
           <span class="sf-value" id="sf-airgap-value">network</span>
@@ -1966,6 +1969,69 @@ class ChumpViewAudit extends HTMLElement {
     `;
     this.#wireToolbar();
     this.#load();
+
+// ── <chump-view-network-audit> (PRODUCT-112) ────────────────────────────────
+// Archetype 1 (offline solo dev) trust signal. The status footer air-gap
+// slot drills here. Renders a chronological list of outbound HTTP requests
+// Chump has made — sourced from /api/ambient/recent filtered to the
+// outbound-network event kinds (github_api_call, outbound_http_call,
+// bash_call with curl/wget).
+//
+// Behavior per docs/design/OPERATOR_CONSOLE_V2.md (archetype 1):
+//   - When air-gap mode is on AND any non-github row appears: red banner
+//     "WARN — air-gap claim violated by N outbound calls"
+//   - When air-gap mode is on AND ZERO non-github rows: empty state
+//     celebrates the win ("No outbound traffic. Air-gap claim holds.")
+//   - github.com is the documented exception (PR ship pipeline) — shown
+//     in a footnote, never triggers a violation banner
+//
+// Time window: last 10m / 1h / 24h / since-process-start. Defaults to 1h.
+class ChumpViewNetworkAudit extends HTMLElement {
+  #rows = [];
+  #airgap = null; // true | false | null
+  #window = '1h';
+  #pollTimer = null;
+
+  connectedCallback() {
+    this.#window = window.chumpPrefs?.get('network.window', '1h') || '1h';
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Network audit</h2>
+        <p class="view-subtitle">Outbound HTTP calls since process start — archetype-1 air-gap trust signal</p>
+      </section>
+      <section class="netaudit-banner" id="netaudit-banner" hidden></section>
+      <section class="netaudit-toolbar" role="toolbar" aria-label="Network audit window">
+        <div class="netaudit-chips" role="radiogroup" aria-label="Time window">
+          ${['10m', '1h', '24h', 'all'].map((w) => `
+            <button type="button" class="netaudit-chip" data-window="${w}"
+                    aria-pressed="${this.#window === w ? 'true' : 'false'}">${w}</button>
+          `).join('')}
+        </div>
+        <button type="button" class="netaudit-export" aria-label="Export visible rows as JSONL">Export JSONL</button>
+      </section>
+      <section class="netaudit-stats" id="netaudit-stats" aria-live="polite"></section>
+      <section class="netaudit-list" id="netaudit-list" aria-live="polite" aria-busy="true">
+        <p class="placeholder">Loading network audit…</p>
+      </section>
+      <footer class="netaudit-footnote">
+        Note: <code>github.com</code> / <code>api.github.com</code> are documented
+        exceptions for the PR ship pipeline. They do not violate the air-gap claim.
+      </footer>
+    `;
+    this.querySelectorAll('[data-window]').forEach((b) => {
+      b.addEventListener('click', () => { this.#window = b.dataset.window; window.chumpPrefs?.set('network.window', this.#window); this.#load(); });
+    });
+    this.querySelector('.netaudit-export')?.addEventListener('click', () => this.#export());
+    this.#load();
+    // Auto-refresh every 30s so a fresh outbound call appears quickly.
+    this.#pollTimer = setInterval(() => this.#load(), 30_000);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'network_audit_viewed',
+        window: this.#window,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
   }
 
   disconnectedCallback() {
@@ -2039,6 +2105,28 @@ class ChumpViewAudit extends HTMLElement {
       this.#render();
     } catch (err) {
       if (list) list.innerHTML = `<p class="placeholder">Could not load audit feed: ${this.#esc(String(err))}</p>`;
+
+
+  async #load() {
+    const list = this.querySelector('#netaudit-list');
+    if (list) list.setAttribute('aria-busy', 'true');
+    try {
+      // Pull air-gap mode in parallel with the ambient tail.
+      const [stack, ambient] = await Promise.all([
+        fetch('/api/stack-status').then((r) => r.ok ? r.json() : null).catch(() => null),
+        fetch(`/api/ambient/recent?n=500&kind=github_api_call,outbound_http_call`).then((r) => r.ok ? r.json() : null).catch(() => null),
+      ]);
+      this.#airgap = stack?.air_gap_mode === true;
+      const events = ambient?.events || ambient?.rows || ambient || [];
+      const sinceMs = this.#windowSinceMs();
+      this.#rows = events
+        .map((e) => this.#normalise(e))
+        .filter((r) => r.host)
+        .filter((r) => sinceMs == null || r.ts_ms >= sinceMs)
+        .sort((a, b) => b.ts_ms - a.ts_ms);
+      this.#render();
+    } catch (err) {
+      if (list) list.innerHTML = `<p class="placeholder">Could not load network audit: ${this.#esc(String(err))}</p>`;
     }
     if (list) list.setAttribute('aria-busy', 'false');
   }
@@ -2081,6 +2169,94 @@ class ChumpViewAudit extends HTMLElement {
         </thead>
         <tbody>
           ${this.#filtered.map((r, i) => this.#renderRow(r, i)).join('')}
+
+  #windowSinceMs() {
+    const now = Date.now();
+    switch (this.#window) {
+      case '10m': return now - 10 * 60 * 1000;
+      case '1h':  return now - 60 * 60 * 1000;
+      case '24h': return now - 24 * 60 * 60 * 1000;
+      case 'all': return null;
+      default:    return now - 60 * 60 * 1000;
+    }
+  }
+
+  #normalise(e) {
+    // Map heterogeneous ambient kinds to a uniform row shape.
+    const ts = e.ts || e.timestamp || '';
+    const ts_ms = (() => {
+      try { return new Date(ts).getTime() || 0; } catch { return 0; }
+    })();
+    const kind = e.kind || e.event || '';
+    let host = '', path = '', initiated_by = '';
+    if (kind === 'github_api_call') {
+      host = 'api.github.com';
+      path = e.api || e.endpoint || '';
+      initiated_by = e.script || e.session || 'gh';
+    } else if (kind === 'outbound_http_call') {
+      host = e.host || e.url?.split('/')[2] || '';
+      path = e.path || (e.url || '').slice(host ? e.url.indexOf(host) + host.length : 0);
+      initiated_by = e.source || e.module || 'unknown';
+    } else {
+      host = e.host || '';
+      path = e.path || '';
+      initiated_by = e.source || '';
+    }
+    return { ts, ts_ms, kind, host, path, initiated_by, bytes: e.bytes ?? null, payload: e };
+  }
+
+  #render() {
+    const banner = this.querySelector('#netaudit-banner');
+    const stats = this.querySelector('#netaudit-stats');
+    const list = this.querySelector('#netaudit-list');
+    if (!banner || !stats || !list) return;
+
+    const total = this.#rows.length;
+    const githubOnly = this.#rows.filter((r) => /github\.com$/i.test(r.host));
+    const nonGithub = this.#rows.filter((r) => !/github\.com$/i.test(r.host));
+    stats.innerHTML = `
+      <span class="netaudit-stat">${total}</span> total
+      <span class="netaudit-stat-sep">·</span>
+      <span class="netaudit-stat">${githubOnly.length}</span> github (exception)
+      <span class="netaudit-stat-sep">·</span>
+      <span class="netaudit-stat ${nonGithub.length > 0 && this.#airgap ? 'netaudit-stat-violation' : ''}">${nonGithub.length}</span> non-github
+    `;
+
+    if (this.#airgap === true) {
+      if (nonGithub.length > 0) {
+        banner.hidden = false;
+        banner.className = 'netaudit-banner netaudit-banner-violation';
+        banner.innerHTML = `⛔ <strong>WARN</strong> — air-gap claim violated by ${nonGithub.length} outbound call${nonGithub.length === 1 ? '' : 's'} in the selected window. Investigate immediately.`;
+      } else {
+        banner.hidden = false;
+        banner.className = 'netaudit-banner netaudit-banner-ok';
+        banner.innerHTML = `● <strong>Air-gap holds</strong> — no outbound non-github traffic in the selected window. ${githubOnly.length} github call${githubOnly.length === 1 ? '' : 's'} (documented exception).`;
+      }
+    } else if (this.#airgap === false) {
+      banner.hidden = false;
+      banner.className = 'netaudit-banner netaudit-banner-info';
+      banner.innerHTML = `Air-gap mode is OFF. To enable: set <code>CHUMP_AIR_GAP_MODE=1</code> and restart <code>chump --web</code>.`;
+    } else {
+      banner.hidden = true;
+    }
+
+    if (total === 0) {
+      const msg = this.#airgap === true
+        ? `No outbound traffic in the last ${this.#window}. Air-gap claim holds — celebrate the offline win.`
+        : `No outbound traffic in the last ${this.#window}.`;
+      list.innerHTML = `<p class="placeholder">${msg}</p>`;
+      return;
+    }
+    list.innerHTML = `
+      <table class="netaudit-table" role="grid">
+        <thead><tr>
+          <th scope="col">when</th>
+          <th scope="col">host</th>
+          <th scope="col">path</th>
+          <th scope="col">via</th>
+        </tr></thead>
+        <tbody>
+          ${this.#rows.map((r) => this.#renderRow(r)).join('')}
         </tbody>
       </table>
     `;
@@ -2138,12 +2314,30 @@ class ChumpViewAudit extends HTMLElement {
 
   #export() {
     const jsonl = this.#filtered.map((r) => JSON.stringify(r.payload)).join('\n');
+
+  #renderRow(r) {
+    const isGithub = /github\.com$/i.test(r.host);
+    const exceptionTag = isGithub ? '<span class="netaudit-pill netaudit-pill-ok">exception</span>' : '';
+    return `
+      <tr class="netaudit-row ${isGithub ? '' : 'netaudit-row-nongithub'}">
+        <td class="netaudit-cell-ts">${this.#fmtTs(r.ts)}</td>
+        <td class="netaudit-cell-host">${this.#esc(r.host)} ${exceptionTag}</td>
+        <td class="netaudit-cell-path">${this.#esc((r.path || '').slice(0, 240))}</td>
+        <td class="netaudit-cell-via">${this.#esc(r.initiated_by)}</td>
+      </tr>
+    `;
+  }
+
+  #export() {
+    const jsonl = this.#rows.map((r) => JSON.stringify(r.payload)).join('\n');
     const blob = new Blob([jsonl], { type: 'application/x-ndjson' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     a.href = url;
     a.download = `chump-audit-${stamp}.jsonl`;
+
+    a.download = `chump-network-audit-${stamp}.jsonl`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2152,6 +2346,10 @@ class ChumpViewAudit extends HTMLElement {
       navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
         kind: 'audit_view_session', action: 'exported',
         rows_exported: this.#filtered.length,
+
+        kind: 'network_audit_exported',
+        rows: this.#rows.length,
+        window: this.#window,
         ts: new Date().toISOString(),
       }));
     } catch {}
@@ -2165,6 +2363,9 @@ class ChumpViewAudit extends HTMLElement {
   #shortSession(sid) {
     const m = String(sid).match(/^(?:claim-)?([a-z]+-\d+)/i);
     return m ? m[1] : (String(sid).slice(0, 16) + (sid.length > 16 ? '…' : ''));
+
+  #esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   #fmtTs(ts) {
     if (!ts) return '—';
@@ -2175,12 +2376,18 @@ class ChumpViewAudit extends HTMLElement {
       const ageS = (Date.now() - d.getTime()) / 1000;
       if (ageS < 60) return `${Math.round(ageS)}s ago`;
       if (ageS < 3600) return `${Math.round(ageS / 60)}m ago`;
+
+      const ageS = (Date.now() - d.getTime()) / 1000;
+      if (ageS < 60)    return `${Math.round(ageS)}s ago`;
+      if (ageS < 3600)  return `${Math.round(ageS / 60)}m ago`;
       if (ageS < 86400) return `${Math.round(ageS / 3600)}h ago`;
       return d.toISOString().slice(0, 16).replace('T', ' ');
     } catch { return ts; }
   }
 }
 customElements.define('chump-view-audit', ChumpViewAudit);
+
+customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
 
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
@@ -3848,6 +4055,8 @@ const VIEWS = {
   decisions:     () => document.createElement('chump-view-decisions'),
   judgment:      () => document.createElement('chump-view-judgment'),
   audit:         () => document.createElement('chump-view-audit'), // PRODUCT-111
+
+  network:       () => document.createElement('chump-view-network-audit'), // PRODUCT-112
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
