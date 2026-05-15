@@ -1,0 +1,31 @@
+- id: INFRA-1068
+  domain: INFRA
+  title: "ZERO-WASTE: fleet-state.json lock contention reduction — batch writes, async updates"
+  status: open
+  priority: P1
+  effort: m
+  pillar: ZERO-WASTE
+  acceptance_criteria: >
+    scripts/coord/lib/fleet-state-writer.sh exists with fleet_state_queue_write + fleet_state_flush |
+    emergency-fast-path.sh supports update-jq subcommand and emits fleet_state_lock_contention when wait > 1s |
+    opus-curator.sh sources the library and calls fleet_state_flush at end of main() |
+    CHUMP_FLEET_STATE_BATCH_WRITES=0 restores immediate per-field write behavior |
+    scripts/ci/test-fleet-state-batch-writes.sh passes all 5 assertions |
+    fleet_state_batch_flush and fleet_state_lock_contention registered in EVENT_REGISTRY.yaml
+  description: >
+    With multiple concurrent workers each calling fleet_state_set_field per field per curator cycle,
+    every write grabs an exclusive flock on fleet-state.json. Under fleet-size >= 3, these serial
+    acquisitions cause measurable contention (timeouts, delays).
+
+    Solution: introduce a queue+flush pattern. fleet_state_set_field enqueues updates locally;
+    fleet_state_flush applies all queued updates in ONE flock acquisition at end of each logical unit.
+    Adds contention telemetry (fleet_state_lock_contention when wait > 1s) and batch-flush telemetry
+    (fleet_state_batch_flush) so operators can observe the improvement.
+
+    Rough shape:
+      (a) scripts/coord/lib/fleet-state-writer.sh — new sourced library
+      (b) emergency-fast-path.sh update-jq subcommand + contention emit
+      (c) opus-curator.sh: source lib, modify fleet_state_set_field, add flush call
+      (d) CI test: scripts/ci/test-fleet-state-batch-writes.sh
+      (e) EVENT_REGISTRY.yaml: register both new event kinds
+  created_at: 1747267200
