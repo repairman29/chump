@@ -5261,7 +5261,7 @@ meta:
             .similarity_candidates("gap title variant", 3, 30)
             .unwrap();
         assert!(
-            candidates_30.len() > 0,
+            !candidates_30.is_empty(),
             "should find gaps within 30-day window"
         );
 
