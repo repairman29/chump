@@ -1,0 +1,18 @@
+# scripts/ci/coord-shell-allowlist.txt — INFRA-1305
+#
+# Allow-list of `scripts/coord/*.sh` files that may legitimately stay as
+# shell. Today this is EMPTY by design — the lint checks NET-NEW additions
+# only (files added in the PR vs origin/main), so the existing 79 coord
+# shell scripts don't need to be enumerated here.
+#
+# Add an entry ONLY when:
+#   1. A new shell script is the right tool (one-shot operator recovery,
+#      thin wrapper around a chump subcommand)
+#   2. The accompanying PR is reviewed with that exception in mind
+#
+# Format: one path per line, optional `# reason:` comment. Comments + blank
+# lines ignored.
+#
+# Example (hypothetical):
+#   # reason: pure operator recovery wrapper around `chump worktree repair`
+#   scripts/coord/recover-worktree-by-hand.sh
