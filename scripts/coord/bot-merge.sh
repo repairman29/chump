@@ -2398,7 +2398,10 @@ print(f"{incomplete} {failed} {total}")
             fi
 
             if [[ $_rest_direct_merged -eq 0 ]]; then
-                # INFRA-1113: delegate to centralized armer to enforce 5s spacing
+                # INFRA-1113: delegate to centralized armer to enforce 5s spacing.
+                # INFRA-1311: auto-merge-armer.sh now enforces per-PR exponential
+                # backoff (30s→60s→120s→300s) via .chump-locks/bot-merge-backoff-<pr>.ts
+                # to avoid burning gh pr merge calls on PRs that failed recently.
                 # between successive gh pr merge --auto calls across all callers.
                 stage_start "auto-merge-armer.sh --pr $TARGET_PR"
                 if ! "$SCRIPT_DIR/auto-merge-armer.sh" --pr "$TARGET_PR"; then
