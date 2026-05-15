@@ -1,0 +1,8 @@
+name: Test Protection
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "test"
+      # enforce_admins would go here
