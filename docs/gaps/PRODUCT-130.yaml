@@ -1,0 +1,17 @@
+- id: PRODUCT-130
+  domain: PRODUCT
+  title: "EFFECTIVE: Cockpit fix #4 — Dispatch-gap button in empty Fleet zone (picks top P1, starts autopilot)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Right zone Fleet panel empty state currently says 'No workers active — dispatch a gap to start' but has no dispatch button. Add primary [Dispatch top P1 gap] button that picks the top P1 from /api/gap-queue + POSTs /api/gap/work/<id> to dispatch a worker on it.
+  acceptance_criteria:
+    - Fleet zone empty-state has primary [Dispatch top P1 gap] button
+    - Button reads top open P1 gap from /api/gap-queue (with AC, not blocked)
+    - Confirmation modal shows which gap before dispatching
+    - POSTs /api/gap/work/<gap-id> or equivalent
+    - Empty state replaced with 'dispatched <gap-id>' + worker status
+    - If no pickable P1 gaps, button is disabled with hint 'no P1 gaps with AC — file or refine first'
+    - Smoke test scripts/ci/test-cockpit-dispatch-gap.sh
+
