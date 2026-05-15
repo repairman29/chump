@@ -87,12 +87,13 @@ lease_session_id() { lease_field "$1" session_id; }
 lease_gap_id()     { lease_field "$1" gap_id; }
 lease_worktree()   { lease_field "$1" worktree; }
 
-# Heartbeat age in seconds since `heartbeat_at`. Returns 0 if absent
-# or unparseable (consumers should treat 0 as "no heartbeat" not "fresh").
+# Heartbeat age in seconds since `heartbeat_at`. Returns -1 if absent
+# or unparseable (INFRA-1356: was 0, which collided with the legitimate
+# age=0 case when a heartbeat is written and immediately re-read).
 lease_heartbeat_age_s() {
     local path="$1"
     local hb; hb="$(lease_field "$path" heartbeat_at)"
-    [[ -z "$hb" ]] && { printf '0\n'; return; }
+    [[ -z "$hb" ]] && { printf '%s\n' "-1"; return; }
     # ISO8601 like "2026-05-14T07:21:50Z" — strip trailing Z, parse as UTC.
     local hb_epoch
     if hb_epoch="$(date -u -j -f '%Y-%m-%dT%H:%M:%S' "${hb%Z}" +%s 2>/dev/null)"; then
@@ -100,7 +101,7 @@ lease_heartbeat_age_s() {
     elif hb_epoch="$(date -u -d "$hb" +%s 2>/dev/null)"; then
         :
     else
-        printf '0\n'; return
+        printf '%s\n' "-1"; return
     fi
     local now; now="$(date -u +%s)"
     printf '%d\n' "$(( now - hb_epoch ))"
@@ -108,10 +109,12 @@ lease_heartbeat_age_s() {
 
 # Return 0 iff heartbeat_at is within `grace_s` seconds (default 900 = 15 min).
 # Mirrors the INFRA-1074 reaper safety threshold.
+# INFRA-1356: age=0 (heartbeat just written) is now correctly treated as fresh.
+# age=-1 means missing/unparseable heartbeat → stale.
 lease_is_fresh() {
     local path="$1" grace="${2:-900}"
     local age; age="$(lease_heartbeat_age_s "$path")"
-    [[ "$age" -gt 0 ]] || return 1   # no heartbeat == not fresh
+    [[ "$age" != "-1" ]] || return 1   # missing/parse-failed heartbeat == not fresh
     [[ "$age" -le "$grace" ]]
 }
 
