@@ -1,0 +1,18 @@
+- id: INFRA-1349
+  domain: INFRA
+  title: "ZERO-WASTE: target/ artifact reaper — prune cargo build dirs in stale worktrees when disk > 80%"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Existing worktree-prune (INFRA-1347) deletes whole worktrees only when stale. While a PR is in-flight, the worktree's target/ dir lives forever and consumes 5-8GB each. With 254 worktrees in /private/tmp/, the math doesn't work — disk hit 97% today. Build artifacts are reproducible; they should auto-prune when disk pressure exceeds threshold OR when the worktree's last build is > N hours old. Independent of full worktree deletion (which requires uncommitted/unpushed checks per INFRA-1347).
+  acceptance_criteria:
+    - scripts/coord/target-dir-reaper.sh scans /private/tmp/chump-* + .claude/worktrees/*/target
+    - Deletes target/ dirs in worktrees idle > 6h when free-disk < 20% (configurable thresholds via env)
+    - Emits kind=target_artifact_reaped to ambient with {path, freed_gb, worktree_age_h}
+    - Skip if worktree has active lease
+    - launchd plist scripts/plists/dev.chump.target-reaper.plist runs every 30 min
+    - Smoke test scripts/ci/test-target-dir-reaper.sh
+    - docs/process/CLAUDE_GOTCHAS.md updated under disk-hygiene section
+  depends_on: [INFRA-1347]
+
