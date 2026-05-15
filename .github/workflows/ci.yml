@@ -1601,6 +1601,8 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pillar-balance-guard.sh
+      - name: patch_file headerless-diff (tier-c) fallback for Llama-style outputs (INFRA-785)
+        run: bash scripts/ci/test-patch-file-fallback.sh
 
   # ── System integration test (INFRA-849) ──────────────────────────────────────
   # Non-blocking end-to-end test for the claim→commit→ship pipeline using stubs.
