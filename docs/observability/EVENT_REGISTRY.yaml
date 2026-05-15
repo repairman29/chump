@@ -1427,6 +1427,14 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, gap_id, model, timeout_s, dry_run]
 
+  - kind: worker_timeout_scaled
+    emitter: scripts/dispatch/worker.sh (INFRA-1160)
+    trigger: worker scaled FLEET_TIMEOUT_S by the gap's effort estimate before
+      spawning the claude subprocess. xs=0.5×, s=1.0×, m=1.5×, l=2.0×, xl=3.0×,
+      capped at CHUMP_WORKER_TIMEOUT_MAX_S (default 7200s).
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, gap_id, effort, base_timeout_s, scaled_timeout_s]
+
   - kind: worker_timeout_no_commit
     emitter: scripts/dispatch/worker.sh (INFRA-831)
     trigger: FLEET_TIMEOUT_S expired (rc=124) and claude produced no git commit
