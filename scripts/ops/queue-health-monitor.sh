@@ -66,6 +66,13 @@ EMIT="$MAIN_REPO/scripts/dev/ambient-emit.sh"
 
 mkdir -p "$CHUMP_DIR"
 
+# INFRA-1211: shared worktree scanning lib.
+# shellcheck source=scripts/lib/worktree-iter.sh
+source "$(dirname "$0")/../lib/worktree-iter.sh"
+REAPER_NAME="${REAPER_NAME:-queue-health}"
+REAPER_REPO_ROOT="$MAIN_REPO"
+export REAPER_REPO_ROOT
+
 say()  { [[ "$QUIET" -eq 1 ]] || printf '\033[1;36m[queue-health]\033[0m %s\n' "$*"; }
 warn() { [[ "$QUIET" -eq 1 ]] || printf '\033[1;33m[queue-health]\033[0m %s\n' "$*" >&2; }
 
@@ -256,26 +263,21 @@ done
 shopt -u nullglob
 
 # ── Check 3: fat worktrees ────────────────────────────────────────────────────
+# INFRA-1211: use scan_worktrees() from worktree-iter.sh (--no-tmp: managed
+# worktree dirs only; /tmp/chump-* are ephemeral and separately reaped by
+# prune-worktrees.sh).
 say "checking worktrees for size > ${WORKTREE_MAX_GB} GB..."
-WT_PARENT_NEW="$MAIN_REPO/.chump/worktrees"
-WT_PARENT_OLD="$MAIN_REPO/.claude/worktrees"
-# INFRA-1053: also scan the harness-agnostic base when configured.
-WT_PARENT_ENV="${CHUMP_WORKTREE_BASE:-}"
-for parent in "$WT_PARENT_NEW" "$WT_PARENT_OLD" "$WT_PARENT_ENV"; do
-    [[ -n "$parent" ]] || continue
-    [[ -d "$parent" ]] || continue
-    for wt in "$parent"/*/; do
-        [[ -d "$wt" ]] || continue
-        # du -sk gives KB; convert to GB.
-        kb="$(du -sk "$wt" 2>/dev/null | awk '{print $1}')"
-        [[ -z "$kb" ]] && continue
-        gb=$(python3 -c "print(round($kb / 1024 / 1024, 2))" 2>/dev/null || echo 0)
-        over=$(python3 -c "print(1 if $gb > $WORKTREE_MAX_GB else 0)" 2>/dev/null || echo 0)
-        if [[ "$over" == "1" ]]; then
-            emit_alert "fat_worktree" "path=${wt%/} size_gb=${gb} (run scripts/ops/stale-worktree-reaper.sh --execute or rm -rf <worktree>/target/)"
-        fi
-    done
-done
+while IFS= read -r wt; do
+    [[ -d "$wt" ]] || continue
+    # du -sk gives KB; convert to GB.
+    kb="$(du -sk "$wt" 2>/dev/null | awk '{print $1}')"
+    [[ -z "$kb" ]] && continue
+    gb=$(python3 -c "print(round($kb / 1024 / 1024, 2))" 2>/dev/null || echo 0)
+    over=$(python3 -c "print(1 if $gb > $WORKTREE_MAX_GB else 0)" 2>/dev/null || echo 0)
+    if [[ "$over" == "1" ]]; then
+        emit_alert "fat_worktree" "path=${wt%/} size_gb=${gb} (run scripts/ops/stale-worktree-reaper.sh --execute or rm -rf <worktree>/target/)"
+    fi
+done < <(CHUMP_WORKTREE_BASE="${CHUMP_WORKTREE_BASE:-$MAIN_REPO/.claude/worktrees}" scan_worktrees --no-tmp)
 
 # ── Check 4: stale bot-merge health files (INFRA-119) ────────────────────────
 # bot-merge.sh writes .chump-locks/bot-merge-<pid>.health every 30s while

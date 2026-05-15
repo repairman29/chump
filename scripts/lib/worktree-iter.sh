@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+# scripts/lib/worktree-iter.sh — INFRA-1211
+#
+# Shared worktree-scanning primitives for the reaper family.
+# Eliminates the 7 independent hand-rolled scan loops that each reaper
+# maintained independently (divergence documented in INFRA-1211).
+#
+# Builds on top of scripts/lib/lease.sh (INFRA-1212), which owns all
+# .chump-locks/*.json reading. This library owns the *worktree* layer:
+# path scanning, git state inspection, and ambient event emission.
+#
+# Public API:
+#   scan_worktrees [--include-tmp] [--include-dot-claude] [--repo <path>]
+#       Emit one worktree path per stdout line.
+#       --include-tmp       include /tmp/chump-* directories (default: on)
+#       --include-dot-claude include <repo>/.claude/worktrees/* (default: on)
+#       --repo <path>       use this as the main repo root
+#
+#   wt_has_active_lease <wt_path> [<grace_s>]
+#       Return 0 iff any .chump-locks/*.json claims <wt_path> and its
+#       heartbeat is within <grace_s> seconds (default 900 = 15 min).
+#
+#   wt_is_dirty <wt_path>
+#       Return 0 iff the worktree has uncommitted or untracked changes.
+#
+#   emit_reaper_event <kind> <wt_path> <reason> [<extra_json_fields>]
+#       Append one JSON line to .chump-locks/ambient.jsonl.
+#       <extra_json_fields>: optional extra JSON fields like "\"foo\":1"
+#
+# Usage:
+#   # shellcheck source=scripts/lib/worktree-iter.sh
+#   source "$(dirname "$0")/../lib/worktree-iter.sh"
+#   source "$(dirname "$0")/../lib/lease.sh"   # required for wt_has_active_lease
+
+# Idempotent guard.
+if [[ -n "${__CHUMP_LIB_WORKTREE_ITER_LOADED:-}" ]]; then return 0; fi
+__CHUMP_LIB_WORKTREE_ITER_LOADED=1
+
+# ── Internal helpers ──────────────────────────────────────────────────────────
+
+# Resolve the main repo root from any worktree. Uses --git-common-dir so linked
+# worktrees still point at the shared repo root.
+_wt_main_repo() {
+    if [[ -n "${REAPER_REPO_ROOT:-}" ]]; then
+        printf '%s\n' "$REAPER_REPO_ROOT"
+        return
+    fi
+    local common
+    common="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
+    if [[ "$common" == ".git" ]]; then
+        git rev-parse --show-toplevel 2>/dev/null || pwd
+    else
+        (cd "$common/.." && pwd)
+    fi
+}
+
+# ── Public: scan_worktrees ────────────────────────────────────────────────────
+
+# scan_worktrees [--include-tmp] [--include-dot-claude] [--repo <path>]
+#
+# Both --include-tmp and --include-dot-claude are ON by default; pass the
+# flag to override via CHUMP_WT_SCAN_TMP=0 / CHUMP_WT_SCAN_DOT_CLAUDE=0.
+# Directories that don't exist are silently skipped.
+scan_worktrees() {
+    local include_tmp="${CHUMP_WT_SCAN_TMP:-1}"
+    local include_dot_claude="${CHUMP_WT_SCAN_DOT_CLAUDE:-1}"
+    local repo=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --include-tmp)         include_tmp=1 ;;
+            --no-tmp)              include_tmp=0 ;;
+            --include-dot-claude)  include_dot_claude=1 ;;
+            --no-dot-claude)       include_dot_claude=0 ;;
+            --repo)                repo="$2"; shift ;;
+            *) ;;  # ignore unknown flags for forward-compat
+        esac
+        shift
+    done
+
+    [[ -z "$repo" ]] && repo="$(_wt_main_repo)"
+
+    if [[ "$include_dot_claude" == "1" ]]; then
+        local wt_base="${CHUMP_WORKTREE_BASE:-$repo/.claude/worktrees}"
+        if [[ -d "$wt_base" ]]; then
+            for d in "$wt_base"/*/; do
+                [[ -d "$d" ]] && printf '%s\n' "${d%/}"
+            done
+        fi
+    fi
+
+    if [[ "$include_tmp" == "1" ]]; then
+        for d in /tmp/chump-*/; do
+            [[ -d "$d" ]] && printf '%s\n' "${d%/}"
+        done
+    fi
+}
+
+# ── Public: wt_has_active_lease ──────────────────────────────────────────────
+
+# wt_has_active_lease <wt_path> [<grace_s>]
+#
+# Scans all .chump-locks/*.json and returns 0 iff at least one lease:
+#   (a) names <wt_path> (or /private<wt_path> on macOS) in its "worktree" field, AND
+#   (b) has heartbeat_at within <grace_s> seconds (default 900 = 15 min).
+#
+# Requires lease.sh to be sourced. Degrades gracefully if lease.sh helpers
+# are unavailable — falls back to a raw grep scan (sufficient for safety).
+wt_has_active_lease() {
+    local wt_path="$1"
+    local grace="${2:-900}"
+
+    # Normalise macOS /private/tmp symlink — leases may store either form.
+    local wt_alt=""
+    if [[ "$wt_path" == /tmp/* ]]; then
+        wt_alt="/private${wt_path}"
+    elif [[ "$wt_path" == /private/tmp/* ]]; then
+        wt_alt="${wt_path#/private}"
+    fi
+
+    local repo; repo="$(_wt_main_repo)"
+    local lock_dir="${CHUMP_LOCK_DIR:-$repo/.chump-locks}"
+    [[ -d "$lock_dir" ]] || return 1
+
+    local lease
+    for lease in "$lock_dir"/*.json; do
+        [[ -f "$lease" ]] || continue
+
+        # Read worktree field — use lease.sh if available, else grep.
+        local claimed_wt=""
+        if command -v lease_worktree >/dev/null 2>&1; then
+            claimed_wt="$(lease_worktree "$lease" 2>/dev/null || true)"
+        else
+            claimed_wt="$(grep -oE '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" 2>/dev/null \
+                | head -1 \
+                | sed -E 's/.*"worktree"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
+        fi
+        [[ -z "$claimed_wt" ]] && continue
+
+        # Match either canonical form.
+        if [[ "$claimed_wt" != "$wt_path" && "$claimed_wt" != "$wt_alt" ]]; then
+            continue
+        fi
+
+        # Check heartbeat freshness — use lease.sh if available.
+        if command -v lease_is_fresh >/dev/null 2>&1; then
+            if lease_is_fresh "$lease" "$grace"; then
+                return 0
+            fi
+        else
+            # Fallback: raw grep for heartbeat_at and manual age calculation.
+            local hb
+            hb="$(grep -oE '"heartbeat_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" 2>/dev/null \
+                | head -1 \
+                | sed -E 's/.*"heartbeat_at"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
+            [[ -z "$hb" ]] && hb="$(grep -oE '"taken_at"[[:space:]]*:[[:space:]]*"[^"]*"' "$lease" 2>/dev/null \
+                | head -1 \
+                | sed -E 's/.*"taken_at"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/')"
+            if [[ -n "$hb" ]]; then
+                local hb_epoch now age
+                hb_epoch="$(date -u -j -f '%Y-%m-%dT%H:%M:%S' "${hb%Z}" +%s 2>/dev/null \
+                    || date -u -d "$hb" +%s 2>/dev/null \
+                    || echo 0)"
+                now="$(date -u +%s)"
+                age=$(( now - hb_epoch ))
+                [[ "$age" -le "$grace" ]] && return 0
+            fi
+        fi
+    done
+
+    return 1
+}
+
+# ── Public: wt_is_dirty ───────────────────────────────────────────────────────
+
+# wt_is_dirty <wt_path>
+#
+# Return 0 iff the worktree at <wt_path> has uncommitted or untracked changes.
+# Uses `git -C <path> status --porcelain`. Returns 1 on error (e.g. not a git
+# repo — treat as clean to avoid spurious safety blocks).
+wt_is_dirty() {
+    local wt_path="$1"
+    [[ -d "$wt_path" ]] || return 1
+    local out
+    out="$(git -C "$wt_path" status --porcelain 2>/dev/null || true)"
+    [[ -n "$out" ]]
+}
+
+# ── Public: emit_reaper_event ─────────────────────────────────────────────────
+
+# emit_reaper_event <kind> <wt_path> <reason> [<extra_json_fields>]
+#
+# Appends a JSON event to .chump-locks/ambient.jsonl.
+# <extra_json_fields> is optional raw JSON text inserted into the object,
+# e.g. '"age_days":3,"branch":"chump/foo"'. Must not include a leading comma.
+emit_reaper_event() {
+    local kind="$1"
+    local wt_path="$2"
+    local reason="$3"
+    local extra="${4:-}"
+
+    local repo; repo="$(_wt_main_repo)"
+    local ambient="${CHUMP_AMBIENT_LOG:-$repo/.chump-locks/ambient.jsonl}"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    local reaper="${REAPER_NAME:-unknown}"
+
+    local json
+    if [[ -n "$extra" ]]; then
+        json="{\"ts\":\"$ts\",\"kind\":\"$kind\",\"reaper\":\"$reaper\",\"worktree\":\"$wt_path\",\"reason\":\"$reason\",$extra}"
+    else
+        json="{\"ts\":\"$ts\",\"kind\":\"$kind\",\"reaper\":\"$reaper\",\"worktree\":\"$wt_path\",\"reason\":\"$reason\"}"
+    fi
+    mkdir -p "$(dirname "$ambient")" 2>/dev/null || true
+    printf '%s\n' "$json" >> "$ambient" 2>/dev/null || true
+}
