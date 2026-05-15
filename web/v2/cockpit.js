@@ -673,6 +673,31 @@ class ChumpViewCockpit extends HTMLElement {
       });
     }
 
+    // Card 1c: No workers + queue has P1 → propose dispatch (PRODUCT-130)
+    const fleetWorkers = autopilot?.recent_events?.filter?.((e) =>
+      (e.kind || '').includes('worker') || (e.kind || '').includes('claim_')) || [];
+    const noWorkers = !autopilotRunning && fleetWorkers.length === 0;
+    const dispatchable = openGaps
+      .filter((g) => g.priority === 'P1' || g.priority === 'P0')
+      .filter((g) => !g.claimed_by && !g.assignee)
+      .filter((g) => Array.isArray(g.acceptance_criteria) && g.acceptance_criteria.length > 0)
+      .sort((a, b) => {
+        const o = { P0: 0, P1: 1 };
+        return (o[a.priority] ?? 9) - (o[b.priority] ?? 9);
+      })[0];
+    if (noWorkers && dispatchable) {
+      cards.push({
+        id: 'no-workers-dispatch',
+        icon: '🚀',
+        title: `No workers running — top ${dispatchable.priority} ready to dispatch`,
+        detail: `${dispatchable.id}: ${this.#truncate(dispatchable.title || '', 75)}`,
+        actions: [
+          { label: `Dispatch ${dispatchable.id}`, view: 'dispatch-gap', gapId: dispatchable.id, primary: true },
+          { label: 'see gap', view: 'gap', gapId: dispatchable.id },
+        ],
+      });
+    }
+
     // Card 2b: Fleet-health pattern (only if a meaningful anomaly exists)
     const anomalyKinds = {};
     for (const e of events) {
@@ -695,25 +720,40 @@ class ChumpViewCockpit extends HTMLElement {
         cache_drift: 'Cache thrashing',
         slo_breach: 'SLO breach',
       }[kind] || kind;
+      // PRODUCT-129: kinds that map to a one-click remediation get a primary
+      // action button. Others fall back to "show events" (drillable evidence).
+      const actions = [];
+      if (kind === 'fleet_state_lock_timeout' || kind === 'silent_agent') {
+        actions.push({
+          label: 'Release expired leases',
+          view: 'release-expired-leases',
+          primary: true,
+        });
+      }
+      actions.push({ label: 'show events', view: 'noise' });
       cards.push({
         id: `anomaly-${kind}`,
         icon: '⚠️',
         title: `${friendly} — ${count} events in window`,
         detail: `Pattern detected via kind=${kind}. May indicate fleet plumbing needs attention.`,
-        actions: [{ label: 'show events', view: 'noise' }],
+        actions,
       });
     }
 
     // Card 3: Counter-evidence (REQUIRED — always present)
-    // Heuristic anti-pattern: phase ships but external adoption is zero.
+    // PRODUCT-131: action_kind-specific actions (Draft outreach / Bump priority)
+    // instead of just navigating to GitHub. The principle: counter-evidence
+    // points at a problem; the action button proposes the fix.
     cards.push({
       id: 'counter-evidence',
       icon: '🟡',
       title: 'Counter-evidence — 0 external dogfooders',
-      detail: 'Phase 1 ships don\'t matter if no operator outside Jeff opens the cockpit. See PRODUCT-119.',
+      detail: 'Phase 1 ships don\'t matter if no operator outside Jeff opens the cockpit. PRODUCT-119 is the recruitment gap; today it sits at P2.',
       counter: true,
       actions: [
-        { label: 'see PRODUCT-119', href: '#', view: 'gap', gapId: 'PRODUCT-119' },
+        { label: 'Draft outreach', view: 'draft-outreach', primary: true },
+        { label: 'Bump P2→P1', view: 'bump-priority', gapId: 'PRODUCT-119' },
+        { label: 'see gap', view: 'gap', gapId: 'PRODUCT-119' },
       ],
     });
 
@@ -903,23 +943,111 @@ class ChumpViewCockpit extends HTMLElement {
       return;
     }
 
-    // PRODUCT-127 — Copy gap-drift repair command to clipboard (until the
-    // /api/gap/dep-clean endpoint lands, the action is "paste this in your
-    // terminal"; still more actionable than 'see more').
-    if (view === 'copy-repair') {
-      const cmd = 'chump gap dep-clean --apply';
+    // PRODUCT-127 — Real /api/gap/dep-clean wire (one-click fix)
+    if (view === 'copy-repair' || view === 'repair-drift') {
+      btn.disabled = true;
+      btn.textContent = 'Repairing…';
+      try {
+        const r = await fetch('/api/gap/dep-clean', { method: 'POST' });
+        if (r.status === 404) {
+          // Endpoint not in running binary yet — clipboard fallback
+          await navigator.clipboard.writeText('chump gap dep-clean --apply');
+          btn.textContent = '✓ Copied (endpoint pending rebuild — paste in terminal)';
+        } else if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`);
+        } else {
+          const d = await r.json();
+          const n = d.result?.cleaned_count ?? d.result?.count ?? 'some';
+          btn.textContent = `✓ Repaired ${n} drift rows`;
+          setTimeout(() => this.#synthesize(), 1500);
+        }
+      } catch (e) {
+        btn.textContent = `✗ ${e.message || 'failed'}`;
+      }
+      setTimeout(() => { btn.disabled = false; }, 5000);
+      return;
+    }
+
+    // PRODUCT-129 — Release expired leases (real endpoint)
+    if (view === 'release-expired-leases') {
+      btn.disabled = true;
+      btn.textContent = 'Scanning leases…';
+      try {
+        const r = await fetch('/api/lease/release-expired', { method: 'POST' });
+        if (r.status === 404) {
+          await navigator.clipboard.writeText(
+            'find .chump-locks -name "*.json" -mtime +1h -delete  # rough fallback');
+          btn.textContent = '✓ Endpoint pending rebuild — fallback copied';
+        } else if (!r.ok) {
+          throw new Error(`HTTP ${r.status}`);
+        } else {
+          const d = await r.json();
+          btn.textContent = `✓ Released ${d.released_count ?? 0}/${d.scanned ?? 0}`;
+          setTimeout(() => this.#synthesize(), 1500);
+        }
+      } catch (e) {
+        btn.textContent = `✗ ${e.message || 'failed'}`;
+      }
+      setTimeout(() => { btn.disabled = false; }, 5000);
+      return;
+    }
+
+    // PRODUCT-130 — Dispatch top-priority gap
+    if (view === 'dispatch-gap' && gapId) {
+      btn.disabled = true;
+      btn.textContent = 'Dispatching…';
+      try {
+        const r = await fetch(`/api/gap/work/${encodeURIComponent(gapId)}`, {
+          method: 'POST',
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        btn.textContent = `✓ Dispatched ${gapId}`;
+        setTimeout(() => this.#synthesize(), 2000);
+      } catch (e) {
+        btn.textContent = `✗ ${e.message || 'failed'}`;
+      }
+      setTimeout(() => { btn.disabled = false; }, 5000);
+      return;
+    }
+
+    // PRODUCT-131 — Counter-evidence actions
+    if (view === 'draft-outreach') {
+      const template =
+        'Hi {{NAME}} — \n\n' +
+        'I\'m running an experimental coordination platform called Chump that ' +
+        'lets autonomous AI agents work as a fleet on your repo. It runs ' +
+        '100% locally (or via your own API keys) and the cockpit gives you ' +
+        'one-click control over the agents.\n\n' +
+        'I\'m looking for 5 dev teams to dogfood it for 30 days. No cost, no ' +
+        'lock-in, the data stays on your machine. I just want operator ' +
+        'feedback (good and bad). Interested?\n\n' +
+        'Quick demo: <link to chump-demo>\nSetup: <link to install guide>\n\n' +
+        '— {{YOUR_NAME}}';
+      try {
+        await navigator.clipboard.writeText(template);
+        btn.textContent = '✓ Template copied — paste into Slack/email';
+      } catch {
+        // Fallback: open mailto with template as body
+        const subj = encodeURIComponent('Try Chump — fleet coordination for solo devs');
+        const body = encodeURIComponent(template);
+        window.open(`mailto:?subject=${subj}&body=${body}`, '_blank');
+        btn.textContent = '✓ Opened mail composer';
+      }
+      btn.disabled = true;
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Draft outreach'; }, 6000);
+      return;
+    }
+    if (view === 'bump-priority' && gapId) {
+      // No /api/gap/set endpoint yet — clipboard fallback with the CLI command
+      const cmd = `chump gap set ${gapId} --priority P1`;
       try {
         await navigator.clipboard.writeText(cmd);
-        btn.textContent = '✓ Copied — paste in terminal';
+        btn.textContent = `✓ Command copied — paste to bump ${gapId}`;
       } catch {
-        // Fallback for browsers without clipboard write permission.
         btn.textContent = `Run: ${cmd}`;
       }
       btn.disabled = true;
-      setTimeout(() => {
-        btn.textContent = 'Copy repair command';
-        btn.disabled = false;
-      }, 5000);
+      setTimeout(() => { btn.disabled = false; btn.textContent = 'Bump P2→P1'; }, 6000);
       return;
     }
   }
