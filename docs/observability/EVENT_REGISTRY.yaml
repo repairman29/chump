@@ -741,6 +741,12 @@ events:
     trigger: per-cycle pillar grade computed
     consumers: [fleet-brief]
 
+  - kind: audit_finding
+    emitter: src/audit.rs (INFRA-1370, `chump audit aha-sweep`)
+    trigger: ambient-kind sweep finds a registered kind whose recent emit count diverges from its expected_min_per_day floor (or whose effect_metric=self yields 0 emits when --flag-silent-self is set)
+    consumers: [fleet-brief, audit-log, PWA <chump-view-audit-findings>]
+    fields_required: [ts, kind, feature_id, feature_class, plumbing_ok, heartbeat_ok, effect_ok, effect_metric_name, effect_observed, effect_expected_min, severity, note]
+
   - kind: pillar_imbalance
     emitter: scripts/dispatch/_pick_and_claim_gap.py (INFRA-720)
     trigger: one pillar > 60% of recent ships for 8h
