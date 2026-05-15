@@ -89,6 +89,9 @@ mod ftue_tool;
 // INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
 // The rename keeps every `gap_store::*` call site compiling unchanged.
 use chump_gap_store as gap_store;
+// INFRA-1229: explicit linkage declaration so Cargo always links chump-ship
+// even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
+extern crate chump_ship;
 mod completion;
 mod gen;
 mod genai_conv;

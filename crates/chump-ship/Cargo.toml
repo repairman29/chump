@@ -1,6 +1,6 @@
 [package]
 name = "chump-ship"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Pure planner deciding ship actions for a PR + branch state (INFRA-1229 slice 1 of bot-merge.sh port)"
 license = "MIT"

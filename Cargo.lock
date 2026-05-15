@@ -1331,6 +1331,7 @@ dependencies = [
  "chump-orchestrator",
  "chump-perception",
  "chump-planner",
+ "chump-ship",
  "chump-tool-macro",
  "console-subscriber",
  "dhat",
@@ -1589,6 +1590,14 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tracing",
+]
+
+[[package]]
+name = "chump-ship"
+version = "0.1.1"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
