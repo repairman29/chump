@@ -50,7 +50,7 @@ echo "--- Test 1: gap list ---"
 export CHUMP_STATE_DB="$TMP/state.db"
 output=$("$CHUMP_BIN" gap list --status open 2>&1 || true)
 # Should not error out, may print "state.db is empty" or a list
-if echo "$output" | grep -q "Error.*anthropic\|401\|API key"; then
+if echo "$output" | grep -qE "Error.*anthropic|HTTP 401|Unauthorized|API key"; then
     fail "gap list made an Anthropic API call: $output"
 fi
 pass "gap list works without Anthropic creds"
@@ -71,7 +71,7 @@ pass "gap reserve works without Anthropic creds (gap=$gap_id)"
 echo "--- Test 3: gap show ---"
 show_out=$("$CHUMP_BIN" gap show "$gap_id" 2>&1)
 echo "$show_out" | grep -q "id: $gap_id" || fail "gap show did not return expected ID"
-if echo "$show_out" | grep -q "Error.*anthropic\|401\|API key"; then
+if echo "$show_out" | grep -qE "Error.*anthropic|HTTP 401|Unauthorized|API key"; then
     fail "gap show made an Anthropic API call"
 fi
 pass "gap show works without Anthropic creds"
