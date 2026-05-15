@@ -1,0 +1,11 @@
+- id: INFRA-1246
+  domain: INFRA
+  title: "CREDIBLE: scripts/ci/test-chump-subcommand-help.sh — invokes every chump <verb> --help and asserts exit 0 + non-empty stdout (regression for INFRA-1238)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "New scripts/ci/test-chump-subcommand-help.sh enumerates every documented chump subcommand (from main.rs match arms) and invokes each with --help"
+    - "For each subcommand: assert exit 0, stdout non-empty, stdout contains the verb name OR 'Usage' OR 'Options'"
+    - "Script added to fast-checks job in .github/workflows/ci.yml"
+    - "Acts as CI regression test for INFRA-1238 (help text fixes) — bash scripts/ci/test-chump-subcommand-help.sh exits 0"
