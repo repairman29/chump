@@ -488,9 +488,7 @@ pub fn classify_step_failure(
     if is_git && first_arg == "rebase" {
         if stderr.contains("CONFLICT") || stderr_l.contains("merge conflict") {
             return RetryAction::AbortAsConflict {
-                reason: format!(
-                    "git rebase produced merge conflicts. Run `git rebase --abort`, then `gh pr checkout <N>` to inspect and resolve manually."
-                ),
+                reason: "git rebase produced merge conflicts. Run `git rebase --abort`, then `gh pr checkout <N>` to inspect and resolve manually.".to_string(),
             };
         }
         return RetryAction::Fail {
