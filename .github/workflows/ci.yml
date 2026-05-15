@@ -98,7 +98,6 @@ jobs:
               - 'src/**'
               - 'desktop/**'
               - 'e2e-tauri/**'
-              - '.github/workflows/ci.yml'
             rust:
               - 'src/**'
               - 'crates/**'
