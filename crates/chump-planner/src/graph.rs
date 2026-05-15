@@ -457,11 +457,11 @@ mod tests {
     #[test]
     fn critical_path_days_walks_longest_forward_chain() {
         let gaps = vec![
-            mk_e("INFRA-1", vec![], Effort::M),       // 3.0d
+            mk_e("INFRA-1", vec![], Effort::M),           // 3.0d
             mk_e("INFRA-2", vec!["INFRA-1"], Effort::S),  // 1.0d
             mk_e("INFRA-3", vec!["INFRA-1"], Effort::S),  // 1.0d
             mk_e("INFRA-4", vec!["INFRA-3"], Effort::Xs), // 0.5d
-            mk_e("INFRA-5", vec![], Effort::M),       // 3.0d
+            mk_e("INFRA-5", vec![], Effort::M),           // 3.0d
         ];
         let g = DependencyGraph::build(&gaps);
         let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
@@ -470,7 +470,10 @@ mod tests {
         // Leaves (no open dependents): just self
         assert!((get("INFRA-2") - 1.0).abs() < 1e-4, "INFRA-2 leaf: 1.0d");
         assert!((get("INFRA-4") - 0.5).abs() < 1e-4, "INFRA-4 leaf: 0.5d");
-        assert!((get("INFRA-5") - 3.0).abs() < 1e-4, "INFRA-5 isolated: 3.0d");
+        assert!(
+            (get("INFRA-5") - 3.0).abs() < 1e-4,
+            "INFRA-5 isolated: 3.0d"
+        );
         // Inner: 3 = self(1.0) + max(cpd(4)=0.5) = 1.5
         assert!((get("INFRA-3") - 1.5).abs() < 1e-4, "INFRA-3 = 1.0 + 0.5");
         // Root: 1 = self(3.0) + max(cpd(2)=1.0, cpd(3)=1.5) = 4.5
@@ -492,8 +495,16 @@ mod tests {
         open.remove(&GapId("INFRA-1".into()));
         let layers = g.layers(&open);
         let get = |id: &str| *layers.get(&GapId(id.into())).unwrap_or(&u32::MAX);
-        assert_eq!(get("INFRA-2"), 0, "INFRA-2 has no OPEN prereqs after INFRA-1 closes");
+        assert_eq!(
+            get("INFRA-2"),
+            0,
+            "INFRA-2 has no OPEN prereqs after INFRA-1 closes"
+        );
         assert_eq!(get("INFRA-3"), 1, "INFRA-3 still has open prereq INFRA-2");
-        assert_eq!(layers.get(&GapId("INFRA-1".into())), None, "closed gap not in layer map");
+        assert_eq!(
+            layers.get(&GapId("INFRA-1".into())),
+            None,
+            "closed gap not in layer map"
+        );
     }
 }
