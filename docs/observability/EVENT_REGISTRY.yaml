@@ -1174,6 +1174,20 @@ events:
     fields_optional: [gap_id, reason, source]
     notes: replaces the false-positive close pattern; operator should verify if chump gap ship was called prematurely
 
+  - kind: pr_close_skipped_auto_merge_armed
+    emitter: scripts/coord/orphan-pr-closer.sh (INFRA-1326)
+    trigger: orphan-closer found a done-gap PR but auto_merge is non-null — PR is queued
+      for GitHub to merge itself; closing now would race the merge
+    consumers: [fleet-brief, operator-recall, audit-log]
+    fields_required: [ts, kind, pr, gap, note]
+
+  - kind: pr_close_skipped_ci_running
+    emitter: scripts/coord/orphan-pr-closer.sh (INFRA-1326)
+    trigger: orphan-closer found a done-gap PR but at least one check_run has
+      status=queued or status=in_progress — closing mid-CI races the merge path
+    consumers: [fleet-brief, operator-recall, audit-log]
+    fields_required: [ts, kind, pr, gap, note]
+
   # ── Review-as-Handoff telemetry (INFRA-773) ──────────────────────────────
   - kind: review_handoff_initiated
     emitter: src/review_handoff.rs (chump review --serve daemon)
