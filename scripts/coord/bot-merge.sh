@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2001,SC2016,SC2018,SC2019,SC2086,SC1091  # pre-existing style/info issues; not introduced by INFRA-1241
 #
 # bot-merge.sh — Automated ship pipeline for agent branches.
 #
@@ -116,9 +117,9 @@ _bm_cleanup() {
         # Emit to ambient so fleet monitors can detect bot-merge crashes.
         local ambient=".chump-locks/ambient.jsonl"
         [[ -n "${CHUMP_AMBIENT_LOG:-}" ]] && ambient="$CHUMP_AMBIENT_LOG"
-        printf '{"ts":"%s","kind":"bot_merge_crashed","step":"%s","pid":%d,"steps_file":"%s","note":"start without done on exit"}\n' \
-            "$ts" "${__STAGE_LABEL:-unknown}" "$_BM_PID" "${_BM_STEPS_FILE:-}" \
-            >> "$ambient" 2>/dev/null || true
+        _ambient_write "$ambient" \
+            "$(printf '{"ts":"%s","kind":"bot_merge_crashed","step":"%s","pid":%d,"steps_file":"%s","note":"start without done on exit"}' \
+                "$ts" "${__STAGE_LABEL:-unknown}" "$_BM_PID" "${_BM_STEPS_FILE:-}")"
     fi
     # NOTE: _BM_STEPS_FILE is intentionally NOT deleted here — it's the
     # recovery artifact that bot-merge-recover.sh needs to diagnose the crash.
@@ -154,9 +155,9 @@ _bm_fail() {
     # Fallback to .chump-locks/ambient.jsonl if CHUMP_AMBIENT_LOG unset.
     [[ -z "${CHUMP_AMBIENT_LOG:-}" ]] && ambient=".chump-locks/ambient.jsonl"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "1970-01-01T00:00:00Z")"
-    printf '{"ts":"%s","kind":"bot_merge_phase_failure","step":"%s","exit_code":%d,"gap_id":"%s","branch":"%s","note":"%s"}\n' \
-        "$ts" "$step" "$code" "${GAP_IDS[*]:-}" "${BRANCH:-}" "$msg" \
-        >> "$ambient" 2>/dev/null || true
+    _ambient_write "$ambient" \
+        "$(printf '{"ts":"%s","kind":"bot_merge_phase_failure","step":"%s","exit_code":%d,"gap_id":"%s","branch":"%s","note":"%s"}' \
+            "$ts" "$step" "$code" "${GAP_IDS[*]:-}" "${BRANCH:-}" "$msg")"
     exit "$code"
 }
 
@@ -485,9 +486,9 @@ emit_hot_file_warnings() {
         for hot in "${BOT_MERGE_HOT_FILES[@]}"; do
             if [[ "$path" == "$hot" ]]; then
                 printf '\033[0;33m[bot-merge] HOT FILE: %s — expect rebase loop, OK to wait\033[0m\n' "$path" >&2
-                printf '{"ts":"%s","session":"bot-merge-%d","event":"bot_merge_hot_file","kind":"bot_merge_hot_file","path":"%s","gap_id":"%s","pr":"%s","note":"PR touches hot file — expect ≥1 DIRTY rebase before landing if other agents are active. The 4-step disarm-push-rearm loop in CLAUDE.md is the recovery."}\n' \
-                    "$now" "$_BM_PID" "$path" "$gap_label" "$target_pr" \
-                    >> "$ambient" 2>/dev/null || true
+                _ambient_write "$ambient" \
+                    "$(printf '{"ts":"%s","session":"bot-merge-%d","event":"bot_merge_hot_file","kind":"bot_merge_hot_file","path":"%s","gap_id":"%s","pr":"%s","note":"PR touches hot file — expect ≥1 DIRTY rebase before landing if other agents are active. The 4-step disarm-push-rearm loop in CLAUDE.md is the recovery."}' \
+                        "$now" "$_BM_PID" "$path" "$gap_label" "$target_pr")"
                 break
             fi
         done
@@ -537,10 +538,10 @@ apply_pr_parallelism_label() {
     local now
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     local gap_label="${GAP_IDS[0]:-none}"
-    printf '{"ts":"%s","session":"bot-merge-%d","event":"pr_classified","kind":"pr_classified","pr":"%s","class":"%s","gap_id":"%s","serializing_hot_files":"%s"}\n' \
-        "$now" "$_BM_PID" "$pr_number" "$class" "$gap_label" \
-        "$(IFS=','; echo "${SERIALIZING_HOT_FILES[*]}")" \
-        >> "$ambient" 2>/dev/null || true
+    _ambient_write "$ambient" \
+        "$(printf '{"ts":"%s","session":"bot-merge-%d","event":"pr_classified","kind":"pr_classified","pr":"%s","class":"%s","gap_id":"%s","serializing_hot_files":"%s"}' \
+            "$now" "$_BM_PID" "$pr_number" "$class" "$gap_label" \
+            "$(IFS=','; echo "${SERIALIZING_HOT_FILES[*]}")")"
 }
 
 __STAGE_LABEL=""
@@ -660,9 +661,9 @@ _emit_hang_alert() {
     local now gap_label
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     gap_label="${GAP_IDS[0]:-none}"
-    printf '{"ts":"%s","session":"bot-merge-%d","event":"ALERT","kind":"bot_merge_hang","phase":"%s","timeout_secs":%s,"gap_id":"%s","note":"bot-merge phase timed out after %ss — possible hang (INFRA-587)"}\n' \
-        "$now" "$_BM_PID" "$phase" "$timeout_secs" "$gap_label" "$timeout_secs" \
-        >> "$ambient" 2>/dev/null || true
+    _ambient_write "$ambient" \
+        "$(printf '{"ts":"%s","session":"bot-merge-%d","event":"ALERT","kind":"bot_merge_hang","phase":"%s","timeout_secs":%s,"gap_id":"%s","note":"bot-merge phase timed out after %ss — possible hang (INFRA-587)"}' \
+            "$now" "$_BM_PID" "$phase" "$timeout_secs" "$gap_label" "$timeout_secs")"
     red "INFRA-587: phase '$phase' timed out after ${timeout_secs}s — bot_merge_hang ALERT emitted to ambient stream"
 }
 
@@ -718,8 +719,9 @@ gh_api_probe() {
     if ! command -v gh >/dev/null 2>&1; then
         ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         red "CREDIBLE-032: gh binary not found — halting (install gh CLI)"
-        printf '{"ts":"%s","kind":"gh_missing","source":"bot-merge","note":"gh binary not in PATH — CREDIBLE-032"}\n' \
-            "$ts" >> "$ambient" 2>/dev/null || true
+        _ambient_write "$ambient" \
+            "$(printf '{"ts":"%s","kind":"gh_missing","source":"bot-merge","note":"gh binary not in PATH — CREDIBLE-032"}' \
+                "$ts")"
         return 1
     fi
 
@@ -730,11 +732,13 @@ gh_api_probe() {
     if [[ $rc -ne 0 ]]; then
         ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         red "CREDIBLE-032: gh API call failed (exit=${rc}) — halting to prevent queue churn"
-        printf '{"ts":"%s","kind":"gh_errored","source":"bot-merge","exit_code":%d,"note":"gh api /rate_limit failed — CREDIBLE-032"}\n' \
-            "$ts" "$rc" >> "$ambient" 2>/dev/null || true
+        _ambient_write "$ambient" \
+            "$(printf '{"ts":"%s","kind":"gh_errored","source":"bot-merge","exit_code":%d,"note":"gh api /rate_limit failed — CREDIBLE-032"}' \
+                "$ts" "$rc")"
         # backward-compat alias so consumers watching github_unreachable still fire
-        printf '{"ts":"%s","kind":"github_unreachable","source":"bot-merge","exit_code":%d,"note":"alias for gh_errored — CREDIBLE-032"}\n' \
-            "$ts" "$rc" >> "$ambient" 2>/dev/null || true
+        _ambient_write "$ambient" \
+            "$(printf '{"ts":"%s","kind":"github_unreachable","source":"bot-merge","exit_code":%d,"note":"alias for gh_errored — CREDIBLE-032"}' \
+                "$ts" "$rc")"
         return 1
     fi
 }
@@ -798,8 +802,9 @@ _bm_health_init() {
             local step now
             step="$(cat "$sf" 2>/dev/null || echo unknown)"
             now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            printf '{"ts":"%s","session":"bot-merge-%d","event":"ALERT","kind":"bot_merge_hung","pid":%d,"step":"%s","note":"total budget %ss exceeded — sending SIGTERM"}\n' \
-                "$now" "$ppid" "$ppid" "$step" "$budget" >> "$ambient" 2>/dev/null || true
+            _ambient_write "$ambient" \
+                "$(printf '{"ts":"%s","session":"bot-merge-%d","event":"ALERT","kind":"bot_merge_hung","pid":%d,"step":"%s","note":"total budget %ss exceeded — sending SIGTERM"}' \
+                    "$now" "$ppid" "$ppid" "$step" "$budget")"
             rm -f "$hf" 2>/dev/null || true
             kill -TERM "$ppid" 2>/dev/null || true
         ) &
@@ -819,12 +824,16 @@ source "$(dirname "$0")/../lib/repo-paths.sh"
 # shellcheck source=lib/github.sh
 # INFRA-999: chump_gh + chump_gh_record for API cost telemetry.
 source "$(dirname "$0")/lib/github.sh"
+# INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
+# shellcheck source=lib/ambient-write.sh
+source "$(dirname "$0")/lib/ambient-write.sh"
 # shellcheck source=lib/github_cache.sh
 # INFRA-1130: cache_lookup_pr / cache_lookup_checks for zero-API CI polling.
 source "$(dirname "$0")/lib/github_cache.sh"
 # INFRA-1055: API rate-limit circuit breaker (non-fatal if missing on old branches).
 # shellcheck source=api-rate-limit-gate.sh
 _rl_gate_path="$(dirname "$0")/api-rate-limit-gate.sh"
+# shellcheck disable=SC1090  # dynamic optional source; path computed at runtime
 [[ -f "$_rl_gate_path" ]] && source "$_rl_gate_path"
 unset _rl_gate_path
 # INFRA-1169: fail fast if the worktree has been reaped before we emit health
@@ -1363,9 +1372,9 @@ _run_cargo_with_lock_detect() {
         _ambient="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
         _now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         _gap_label="${GAP_IDS[0]:-none}"
-        printf '{"ts":"%s","session":"bot-merge-%d","kind":"cargo_lock_wait","phase":"%s","gap_id":"%s","target_dir":"%s","note":"cargo build-dir lock contention detected; CARGO_TARGET_DIR per-worktree isolation may not be active (INFRA-1063)"}\n' \
-            "$_now" "$_BM_PID" "$label" "$_gap_label" "${CARGO_TARGET_DIR:-?}" \
-            >> "$_ambient" 2>/dev/null || true
+        _ambient_write "$_ambient" \
+            "$(printf '{"ts":"%s","session":"bot-merge-%d","kind":"cargo_lock_wait","phase":"%s","gap_id":"%s","target_dir":"%s","note":"cargo build-dir lock contention detected; CARGO_TARGET_DIR per-worktree isolation may not be active (INFRA-1063)"}' \
+                "$_now" "$_BM_PID" "$label" "$_gap_label" "${CARGO_TARGET_DIR:-?}")"
         warn "INFRA-1063: cargo build-dir lock wait detected on phase '${label}' — cargo_lock_wait emitted to ambient stream"
     fi
     rm -f "$_tmpout"
@@ -1611,15 +1620,15 @@ if [[ "${CHUMP_NO_PREREG:-0}" != "1" ]] && [[ -n "${GAP_ID:-}" ]]; then
             info "  Create the file (even a stub with hypothesis + metric) and re-run."
             info "  Bypass once: CHUMP_NO_PREREG=1 scripts/coord/bot-merge.sh ..."
             info "  Bypass trailer (required in commit): Prereg-Bypass-Reason: <reason>"
-            printf '{"ts":"%s","kind":"prereg_blocked","gap":"%s","missing":"%s","session":"%s"}\n' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_ID}" "${_prereg_doc}" "${SESSION_ID:-unknown}" \
-                >> "${REPO_ROOT}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+            _ambient_write "${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}" \
+                "$(printf '{"ts":"%s","kind":"prereg_blocked","gap":"%s","missing":"%s","session":"%s"}' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_ID}" "${_prereg_doc}" "${SESSION_ID:-unknown}")"
             exit 1
         else
             green "[META-043] prereg doc found: ${_prereg_doc}"
-            printf '{"ts":"%s","kind":"prereg_ok","gap":"%s","doc":"%s","session":"%s"}\n' \
-                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_ID}" "${_prereg_doc}" "${SESSION_ID:-unknown}" \
-                >> "${REPO_ROOT}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+            _ambient_write "${REPO_ROOT}/.chump-locks/ambient.jsonl" \
+                "$(printf '{"ts":"%s","kind":"prereg_ok","gap":"%s","doc":"%s","session":"%s"}' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_ID}" "${_prereg_doc}" "${SESSION_ID:-unknown}")"
         fi
     fi
 fi
@@ -1998,13 +2007,15 @@ EOF
                     --field body="$_pr_body" \
                     --jq '.number' 2>/dev/null || echo "")
                 if [[ -n "$_rest_result" ]]; then
-                    printf '{"ts":"%s","kind":"graphql_exhausted","source":"bot-merge","note":"INFRA-1031 REST fallback succeeded PR #%s"}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_rest_result" >> "${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}" 2>/dev/null || true
+                    _ambient_write "${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}" \
+                        "$(printf '{"ts":"%s","kind":"graphql_exhausted","source":"bot-merge","note":"INFRA-1031 REST fallback succeeded PR #%s"}' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_rest_result")"
                     green "PR #$_rest_result created via REST fallback (GraphQL quota was 0)."
                 else
                     red "INFRA-1031: REST fallback also failed — GraphQL exhausted and REST failed."
-                    printf '{"ts":"%s","kind":"graphql_exhausted","source":"bot-merge","note":"INFRA-1031 REST fallback failed; branch=%s"}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" >> "${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}" 2>/dev/null || true
+                    _ambient_write "${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}" \
+                        "$(printf '{"ts":"%s","kind":"graphql_exhausted","source":"bot-merge","note":"INFRA-1031 REST fallback failed; branch=%s"}' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH")"
                     _bm_fail "pr-create" 16 "GraphQL exhausted and REST fallback failed; retry when quota resets (gh api rate_limit)"
                 fi
             else

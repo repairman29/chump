@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091  # lib/ sources use dynamic $SCRIPT_DIR — resolved at runtime
 # INFRA-1113: Single-owner auto-merge armer — enforces 5s spacing between
 # successive arm calls to avoid GitHub secondary rate limits.
 #
@@ -21,6 +22,9 @@ LOCKS_DIR="${REPO_ROOT}/.chump-locks"
 
 # shellcheck source=lib/github.sh
 source "${SCRIPT_DIR}/lib/github.sh"
+# INFRA-1241: route ambient appends through helper (surfaces errors to stderr).
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/lib/ambient-write.sh"
 export CHUMP_GH_SCRIPT="auto-merge-armer.sh"
 
 # INFRA-1113: min wall-clock seconds between successive gh pr merge --auto calls.
@@ -60,9 +64,9 @@ emit_ambient() {
     local kind="$1" pr_num="$2" detail="${3:-}"
     local ts
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"ts":"%s","kind":"%s","pr":%s,"detail":"%s"}\n' \
-        "${ts}" "${kind}" "${pr_num}" "${detail}" \
-        >> "${LOCKS_DIR}/ambient.jsonl" 2>/dev/null || true
+    _ambient_write "${LOCKS_DIR}/ambient.jsonl" \
+        "$(printf '{"ts":"%s","kind":"%s","pr":%s,"detail":"%s"}' \
+            "${ts}" "${kind}" "${pr_num}" "${detail}")"
 }
 
 # INFRA-1311: Per-PR exponential backoff for failed gh pr merge attempts.

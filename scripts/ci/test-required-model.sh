@@ -21,14 +21,9 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 WORKER="$REPO_ROOT/scripts/dispatch/worker.sh"
 MAIN_RS="$REPO_ROOT/src/main.rs"
-# INFRA-693: gap_store.rs was extracted to crates/chump-gap-store/.
-# Accept either location during the transition for branches that haven't
-# rebased onto the extracted-crate layout yet.
-if [[ -f "$REPO_ROOT/crates/chump-gap-store/src/lib.rs" ]]; then
-    GAP_STORE="$REPO_ROOT/crates/chump-gap-store/src/lib.rs"
-else
-    GAP_STORE="$REPO_ROOT/src/gap_store.rs"
-fi
+# INFRA-1214: use source-grep.sh library instead of inline if/else
+source "$(dirname "$0")/lib/source-grep.sh"
+GAP_STORE=$(find_gap_store_path)
 REGISTRY="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
 PICKER="$REPO_ROOT/scripts/dispatch/_pick_gap.py"
 PICK_CLAIM="$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py"
