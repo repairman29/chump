@@ -220,6 +220,94 @@
         justify-content: flex-end;
       }
       chump-first-run-wizard .frw-cta, chump-first-run-wizard .frw-skip { min-height: 36px; }
+    /* PRODUCT-107: <chump-status-footer> persistent operator HUD.
+       Always visible across every cadence (NOW/AMBIENT/LIBRARY/CONFIG).
+       6 slots: model / cost / air-gap / pillars / fleet / GH budget.
+       Desktop: one row. Mobile: wraps to 2 rows. */
+    chump-status-footer { display: block; }
+    chump-status-footer .sf-shell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      padding-bottom: calc(6px + var(--safe-bottom));
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+      position: relative;
+      z-index: 8;
+      flex-shrink: 0;
+    }
+    chump-status-footer .sf-slot {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      padding: 4px 8px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      border-radius: var(--radius-sm);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      min-height: 28px;
+      transition: background 0.12s, color 0.12s;
+    }
+    chump-status-footer .sf-slot:hover {
+      background: var(--bg-elevated);
+      color: var(--text-primary, var(--text));
+    }
+    chump-status-footer .sf-slot:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+    chump-status-footer .sf-dot {
+      font-size: 14px; line-height: 1;
+    }
+    chump-status-footer .sf-label {
+      font-size: 9px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-secondary);
+    }
+    chump-status-footer .sf-value {
+      color: var(--text-primary, var(--text));
+      font-weight: 500;
+    }
+    chump-status-footer .sf-value.sf-stale {
+      opacity: 0.5;
+    }
+    chump-status-footer .sf-value.sf-warn {
+      color: var(--warn, #ff9f0a);
+    }
+    chump-status-footer .sf-value.sf-red {
+      color: var(--error, #ff453a);
+      font-weight: 600;
+    }
+    chump-status-footer .sf-pillars { padding: 4px 10px; }
+    chump-status-footer .sf-pillar-grades {
+      font-family: "SF Mono", ui-monospace, monospace;
+      font-size: 11px;
+      letter-spacing: 0.02em;
+      color: var(--text-primary, var(--text));
+    }
+    /* Mobile (≤640px): wrap to 2 rows, tap targets ≥36px */
+    @media (max-width: 640px) {
+      chump-status-footer .sf-shell {
+        flex-wrap: wrap;
+        justify-content: space-around;
+        gap: 4px;
+        padding: 6px 8px;
+      }
+      chump-status-footer .sf-slot {
+        flex: 1 1 auto;
+        min-width: 90px;
+        min-height: 36px;
+        justify-content: center;
+      }
+      chump-status-footer .sf-pillars { flex-basis: 100%; }
     }
 
     /* PRODUCT-109: <chump-tool-approval-tray> persistent banner above main
@@ -1485,6 +1573,10 @@
     <chump-nav></chump-nav>
     <main id="main-content" role="main" aria-label="Main content"></main>
   </div>
+
+  <!-- PRODUCT-107: persistent operator HUD — always visible across every cadence.
+       6 slots: model / cost / air-gap / pillar grades / fleet / GH budget. -->
+  <chump-status-footer></chump-status-footer>
 
   <chump-ootb-wizard></chump-ootb-wizard>
   <!-- PRODUCT-082: universal first-run welcome (non-Tauri) -->

@@ -988,6 +988,184 @@ class ChumpFirstRunWizard extends HTMLElement {
 }
 customElements.define('chump-first-run-wizard', ChumpFirstRunWizard);
 
+// ── <chump-status-footer> (PRODUCT-107) ─────────────────────────────────────
+// Persistent operator HUD — always visible across every cadence. Six slots:
+//   model | cost | air-gap | pillars (E/C/R/Z) | fleet | GH budget
+//
+// Each slot polls independently (its own interval) so a slow one doesn't
+// stall the others. Click any slot → drill to the canonical detail view
+// via the same chump:navigate event the rest of the app uses.
+//
+// Data sources per docs/design/OPERATOR_CONSOLE_V2.md §footer:
+//   - model   : /api/stack-status .llm_last_completion (+ cascade slot suffix)
+//   - cost    : /api/telemetry/cost (INFRA-1012)
+//   - air-gap : /api/stack-status .air_gap_mode
+//   - pillars : placeholder "—" until INFRA-1203 ships an endpoint
+//   - fleet   : /api/fleet-status
+//   - GH budget : /api/stack-status .github_rate_limit (or .gh_rate_limit)
+//
+// Telemetry: kind=footer_slot_drilled {slot, cadence_target} on every click.
+class ChumpStatusFooter extends HTMLElement {
+  #pollers = [];
+  #lastValues = {};
+
+  connectedCallback() {
+    this.innerHTML = `
+      <div class="sf-shell" role="contentinfo" aria-label="Operator status">
+        <button type="button" class="sf-slot sf-model" data-slot="model" data-target="config:models"
+                title="Model — click to view providers" aria-label="Active model (click to view providers)">
+          <span class="sf-dot" id="sf-model-dot">○</span>
+          <span class="sf-value" id="sf-model-value">loading…</span>
+        </button>
+        <button type="button" class="sf-slot sf-cost" data-slot="cost" data-target="library:judgment"
+                title="Today's cost — click for breakdown" aria-label="Cumulative cost (click for breakdown)">
+          <span class="sf-label">$</span>
+          <span class="sf-value" id="sf-cost-value">…</span>
+        </button>
+        <button type="button" class="sf-slot sf-airgap" data-slot="airgap" data-target="config:settings"
+                title="Air-gap mode" aria-label="Air-gap mode status (click for network audit)">
+          <span class="sf-dot" id="sf-airgap-dot">○</span>
+          <span class="sf-value" id="sf-airgap-value">network</span>
+        </button>
+        <button type="button" class="sf-slot sf-pillars" data-slot="pillars" data-target="library:judgment"
+                title="Pillar grades (E/C/R/Z) — click for Fleet Health" aria-label="Pillar grades (click for Fleet Health)">
+          <span class="sf-pillar-grades" id="sf-pillar-grades">E:— C:— R:— Z:—</span>
+        </button>
+        <button type="button" class="sf-slot sf-fleet" data-slot="fleet" data-target="ambient:agents"
+                title="Fleet roster — click to view agents" aria-label="Fleet health (click to view agents)">
+          <span class="sf-dot" id="sf-fleet-dot">○</span>
+          <span class="sf-value" id="sf-fleet-value">…</span>
+        </button>
+        <button type="button" class="sf-slot sf-gh" data-slot="gh" data-target="library:judgment"
+                title="GitHub rate-limit budget" aria-label="GitHub GraphQL budget remaining">
+          <span class="sf-label">GH</span>
+          <span class="sf-value" id="sf-gh-value">…</span>
+        </button>
+      </div>
+    `;
+    this.addEventListener('click', (e) => this.#onSlotClick(e));
+
+    this.#startPoller(60_000, () => this.#pollStackStatus());
+    this.#startPoller(30_000, () => this.#pollCost());
+    this.#startPoller(15_000, () => this.#pollFleet());
+
+    // First paint immediately.
+    this.#pollStackStatus();
+    this.#pollCost();
+    this.#pollFleet();
+  }
+
+  disconnectedCallback() {
+    this.#pollers.forEach((id) => clearInterval(id));
+    this.#pollers = [];
+  }
+
+  #startPoller(intervalMs, fn) {
+    this.#pollers.push(setInterval(() => fn(), intervalMs));
+  }
+
+  #pollStackStatus() {
+    fetch('/api/stack-status').then((r) => r.ok ? r.json() : null).then((d) => {
+      if (!d) return this.#markStale('model');
+      const last = d.llm_last_completion || null;
+      const modelLabel = last?.label || d.primary_backend || 'cold';
+      const modelDot = this.querySelector('#sf-model-dot');
+      const modelVal = this.querySelector('#sf-model-value');
+      if (modelDot) { modelDot.textContent = last ? '●' : '○'; modelDot.style.color = last ? 'var(--accent)' : 'var(--text-secondary)'; }
+      if (modelVal) { modelVal.textContent = ChumpStatusFooter.#truncate(modelLabel, 18); modelVal.classList.remove('sf-stale'); }
+      this.#lastValues.model = modelLabel;
+
+      const airgap = d.air_gap_mode === true;
+      const agDot = this.querySelector('#sf-airgap-dot');
+      const agVal = this.querySelector('#sf-airgap-value');
+      if (agDot) { agDot.textContent = airgap ? '●' : '○'; agDot.style.color = airgap ? 'var(--success)' : 'var(--text-secondary)'; }
+      if (agVal) { agVal.textContent = airgap ? 'air-gap' : 'network'; agVal.classList.remove('sf-stale'); }
+      this.#lastValues.airgap = airgap;
+
+      const rl = d.github_rate_limit || d.gh_rate_limit;
+      if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
+        const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
+        const ghVal = this.querySelector('#sf-gh-value');
+        if (ghVal) {
+          ghVal.textContent = `${pct}%`;
+          ghVal.classList.toggle('sf-warn', pct < 50);
+          ghVal.classList.toggle('sf-red',  pct < 20);
+          ghVal.classList.remove('sf-stale');
+        }
+        this.#lastValues.gh = pct;
+      }
+    }).catch(() => this.#markStale('model'));
+  }
+
+  #pollCost() {
+    fetch('/api/telemetry/cost').then((r) => r.ok ? r.json() : null).then((d) => {
+      if (!d) return this.#markStale('cost');
+      const dollars = Number(d.session_cost_usd ?? d.total_cost_usd ?? d.cost_today ?? 0);
+      const v = this.querySelector('#sf-cost-value');
+      if (v) {
+        v.textContent = dollars.toFixed(2);
+        v.classList.remove('sf-stale');
+        const thresh = (window.chumpPrefs?.get('cost.thresholds', null)) || { warn: 0.50, red: 2.00 };
+        v.classList.toggle('sf-warn', dollars >= (thresh.warn || 0.5));
+        v.classList.toggle('sf-red',  dollars >= (thresh.red  || 2.0));
+      }
+      this.#lastValues.cost = dollars;
+    }).catch(() => this.#markStale('cost'));
+  }
+
+  #pollFleet() {
+    fetch('/api/fleet-status').then((r) => r.ok ? r.json() : null).then((d) => {
+      if (!d) return this.#markStale('fleet');
+      const agents = Array.isArray(d.agents) ? d.agents
+                   : Array.isArray(d.sessions) ? d.sessions
+                   : Array.isArray(d) ? d
+                   : [];
+      const total = agents.length;
+      const healthy = agents.filter((a) => {
+        const s = String(a.status || a.state || '').toLowerCase();
+        return s === 'active' || s === 'working' || s === 'healthy' || s === '';
+      }).length;
+      const dot = this.querySelector('#sf-fleet-dot');
+      const val = this.querySelector('#sf-fleet-value');
+      if (val) { val.textContent = total === 0 ? '—' : `${healthy}/${total}`; val.classList.remove('sf-stale'); }
+      if (dot) {
+        if (total === 0)            { dot.textContent = '○'; dot.style.color = 'var(--text-secondary)'; }
+        else if (healthy === total) { dot.textContent = '●'; dot.style.color = 'var(--success)'; }
+        else if (healthy >= total/2){ dot.textContent = '●'; dot.style.color = 'var(--warn)'; }
+        else                        { dot.textContent = '●'; dot.style.color = 'var(--error)'; }
+      }
+      this.#lastValues.fleet = { healthy, total };
+    }).catch(() => this.#markStale('fleet'));
+  }
+
+  #markStale(slot) {
+    const v = this.querySelector(`#sf-${slot}-value`);
+    if (v && this.#lastValues[slot] !== undefined) v.classList.add('sf-stale');
+  }
+
+  #onSlotClick(e) {
+    const btn = e.target.closest('[data-slot]');
+    if (!btn) return;
+    const slot = btn.dataset.slot;
+    const [cadence, view] = (btn.dataset.target || '').split(':');
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'footer_slot_drilled', slot, cadence_target: cadence,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+    if (view) {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: view }));
+    }
+  }
+
+  static #truncate(s, max) {
+    if (!s) return '—';
+    return s.length > max ? s.slice(0, max - 1) + '…' : s;
+  }
+}
+customElements.define('chump-status-footer', ChumpStatusFooter);
+
 // ── <chump-model-indicator> ───────────────────────────────────────────────────
 class ChumpModelIndicator extends HTMLElement {
   connectedCallback() {
