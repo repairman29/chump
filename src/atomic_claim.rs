@@ -1809,11 +1809,7 @@ mod tests {
             .current_dir(&tmp)
             .output();
         let _ = Command::new("git")
-            .args([
-                "config",
-                "remote.origin.url",
-                "git@github.com:myorg/myrepo",
-            ])
+            .args(["config", "remote.origin.url", "git@github.com:myorg/myrepo"])
             .current_dir(&tmp)
             .output();
         assert_eq!(gh_owner_repo(&tmp).as_deref(), Some("myorg/myrepo"));
@@ -1835,11 +1831,7 @@ mod tests {
             .current_dir(&tmp)
             .output();
         let _ = Command::new("git")
-            .args([
-                "config",
-                "remote.origin.url",
-                "https://gitlab.com/x/y.git",
-            ])
+            .args(["config", "remote.origin.url", "https://gitlab.com/x/y.git"])
             .current_dir(&tmp)
             .output();
         assert!(gh_owner_repo(&tmp).is_none());
