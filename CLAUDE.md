@@ -36,13 +36,18 @@ Check current vs. target at any time: `chump health --slo-check` (exits non-zero
 ```bash
 git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
-bash scripts/setup/install-ambient-hooks.sh 2>&1 | tail -2  # FLEET-023, idempotent
+bash scripts/setup/chump-fleet-bootstrap.sh --check  # META-066, must exit 0
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 chump-coord watch &                              # FLEET-006 (skip if NATS unavailable)
 chump gap list --status open                     # canonical .chump/state.db
-scripts/coord/gap-preflight.sh <GAP-ID>          # exits 1 if not pickable — stop if so
+chump gap preflight <GAP-ID>                     # exits 1 if not pickable — stop if so
 chump --briefing <GAP-ID>                        # MEM-007 per-gap context
 ```
+
+If `chump-fleet-bootstrap.sh --check` exits non-zero, run without `--check` to
+install missing launchd plists + git hooks. Without this, the productization
+layer (META-063 redundancy gate, META-064 Rust-first gate, META-065 curator,
+INFRA-1257 hourly planner) is dormant code-on-disk, not active discipline.
 
 `ambient.jsonl` is your peripheral vision — watch for `lease_overlap`, `silent_agent`,
 `edit_burst`, `queue_config_drift`, `pr_stuck`, `subagent_budget_exceeded`,
