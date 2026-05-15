@@ -400,11 +400,15 @@ const CHUMP_CADENCES = [
     label: 'Library',
     icon: '📚',
     shortcut: 'l',
-    default_view: 'memory',
+    default_view: 'audit',
     subtabs: [
-      { id: 'memory',    label: 'Memory',    icon: '🧠' },
+      // PRODUCT-111: dedicated Audit view consolidating tool-approval-audit +
+      // cos-decisions for the enterprise-auditor archetype. Judgment kept as
+      // a separate sub-tab for the operator-pending-decisions surface.
+      { id: 'audit',     label: 'Audit',     icon: '📋' },
+      { id: 'judgment',  label: 'Judgment',  icon: '⚖️' },
       { id: 'decisions', label: 'Decisions', icon: '🎯' },
-      { id: 'judgment',  label: 'Audit',     icon: '⚖️' },
+      { id: 'memory',    label: 'Memory',    icon: '🧠' },
     ],
   },
   {
@@ -1901,6 +1905,282 @@ class ChumpViewJudgment extends HTMLElement {
   }
 }
 customElements.define('chump-view-judgment', ChumpViewJudgment);
+
+// ── <chump-view-audit> (PRODUCT-111) ────────────────────────────────────────
+// Decision-chain audit panel. Consolidates /api/tool-approval-audit +
+// /api/cos/decisions into one chronological feed for archetype 4 (enterprise
+// auditor) per docs/design/OPERATOR_CONSOLE_V2.md.
+//
+// "We let an AI commit code" goes from trust-me-bro to a defensible audit
+// trail when this view ships: every tool approval, every COS decision, every
+// outcome, exportable as JSONL.
+//
+// Filter dimensions:
+//   - Time window: 1h | 24h (default) | 7d | all
+//   - Decision kind: tool_approval | cos | (more as endpoints land)
+//   - Session ID (click any session_id in a row to filter to it)
+//   - Gap ID (click any gap_id to filter)
+//
+// Export: visible rows → JSONL download. Useful for the CTO screenshot
+// use case.
+class ChumpViewAudit extends HTMLElement {
+  #rows = [];       // merged chronological list
+  #filtered = [];   // post-filter
+  #filters = { window: '24h', kind: '', session: '', gap: '' };
+  #expanded = new Set(); // request_id / decision_id of rows expanded inline
+
+  connectedCallback() {
+    // Restore filter state from chumpPrefs (INFRA-1280).
+    const stored = window.chumpPrefs?.get('audit.filters', null);
+    if (stored && typeof stored === 'object') {
+      Object.assign(this.#filters, stored);
+    }
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Audit</h2>
+        <p class="view-subtitle">Tool approvals + COS decisions chronological — defensible record of every agent action</p>
+      </section>
+      <section class="audit-toolbar" role="toolbar" aria-label="Audit filters">
+        <div class="audit-chips" role="radiogroup" aria-label="Time window">
+          ${['1h', '24h', '7d', 'all'].map((w) => `
+            <button type="button" class="audit-chip" data-window="${w}"
+                    aria-pressed="${this.#filters.window === w ? 'true' : 'false'}">${w}</button>
+          `).join('')}
+        </div>
+        <div class="audit-chips" role="radiogroup" aria-label="Decision kind">
+          ${[['', 'all kinds'], ['tool_approval', 'tool'], ['cos', 'COS']].map(([k, lbl]) => `
+            <button type="button" class="audit-chip" data-kind="${k}"
+                    aria-pressed="${this.#filters.kind === k ? 'true' : 'false'}">${lbl}</button>
+          `).join('')}
+        </div>
+        <input type="search" class="audit-search" placeholder="Filter by session / gap"
+               aria-label="Filter by session ID or gap ID"
+               value="${this.#escAttr(this.#filters.session || this.#filters.gap || '')}">
+        <button type="button" class="audit-export" aria-label="Export visible rows as JSONL">Export JSONL</button>
+        <button type="button" class="audit-clear" aria-label="Clear filters">Clear</button>
+      </section>
+      <section class="audit-stats" id="audit-stats" aria-live="polite"></section>
+      <section class="audit-list" id="audit-list" aria-live="polite" aria-busy="true">
+        <p class="placeholder">Loading audit feed…</p>
+      </section>
+    `;
+    this.#wireToolbar();
+    this.#load();
+  }
+
+  disconnectedCallback() {
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+  }
+  #pollTimer = null;
+
+  #wireToolbar() {
+    this.querySelectorAll('[data-window]').forEach((b) => {
+      b.addEventListener('click', () => { this.#filters.window = b.dataset.window; this.#persist(); this.#load(); });
+    });
+    this.querySelectorAll('[data-kind]').forEach((b) => {
+      b.addEventListener('click', () => { this.#filters.kind = b.dataset.kind; this.#persist(); this.#render(); });
+    });
+    this.querySelector('.audit-search')?.addEventListener('input', (e) => {
+      // Heuristic: if input looks like a gap ID (X-NNN), filter by gap; else session.
+      const v = e.target.value.trim();
+      if (/^[A-Z]+-\d+$/i.test(v)) { this.#filters.gap = v; this.#filters.session = ''; }
+      else { this.#filters.session = v; this.#filters.gap = ''; }
+      this.#persist();
+      this.#render();
+    });
+    this.querySelector('.audit-export')?.addEventListener('click', () => this.#export());
+    this.querySelector('.audit-clear')?.addEventListener('click', () => this.#clearFilters());
+    this.querySelector('#audit-list')?.addEventListener('click', (e) => this.#onRowClick(e));
+  }
+
+  #persist() {
+    window.chumpPrefs?.set('audit.filters', this.#filters);
+  }
+
+  #clearFilters() {
+    this.#filters = { window: '24h', kind: '', session: '', gap: '' };
+    this.#persist();
+    // Reset visual state.
+    this.querySelectorAll('[data-window]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.window === '24h' ? 'true' : 'false'));
+    this.querySelectorAll('[data-kind]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.kind === '' ? 'true' : 'false'));
+    const s = this.querySelector('.audit-search'); if (s) s.value = '';
+    this.#load();
+  }
+
+  async #load() {
+    const list = this.querySelector('#audit-list');
+    if (list) list.setAttribute('aria-busy', 'true');
+    const w = this.#filters.window;
+    const sinceParam = w === 'all' ? '' : `?since=${w}`;
+    try {
+      const [toolR, cosR] = await Promise.all([
+        fetch(`/api/tool-approval-audit${sinceParam}`).then((r) => r.ok ? r.json() : null).catch(() => null),
+        fetch(`/api/cos/decisions${sinceParam}`).then((r) => r.ok ? r.json() : null).catch(() => null),
+      ]);
+      const toolRows = (toolR?.rows || toolR || []).map((r) => ({
+        ts: r.ts || r.timestamp || r.decided_at || r.ts_iso || '',
+        kind: 'tool_approval',
+        session_id: r.session_id || r.session || '',
+        gap_id: r.gap_id || r.gap || '',
+        summary: r.tool_name ? `${r.tool_name} → ${r.allowed === true ? 'approved' : r.allowed === false ? 'denied' : '?'}` : (r.summary || '(no summary)'),
+        outcome: r.allowed === true ? 'approved' : r.allowed === false ? 'denied' : (r.outcome || 'unknown'),
+        payload: r,
+      }));
+      const cosRows = (cosR?.rows || cosR || []).map((r) => ({
+        ts: r.ts || r.timestamp || r.decided_at || r.ts_iso || '',
+        kind: 'cos',
+        session_id: r.session_id || r.session || '',
+        gap_id: r.gap_id || r.gap || '',
+        summary: r.decision || r.reason || r.summary || '(no summary)',
+        outcome: r.outcome || r.action || 'logged',
+        payload: r,
+      }));
+      this.#rows = [...toolRows, ...cosRows].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+      this.#render();
+    } catch (err) {
+      if (list) list.innerHTML = `<p class="placeholder">Could not load audit feed: ${this.#esc(String(err))}</p>`;
+    }
+    if (list) list.setAttribute('aria-busy', 'false');
+  }
+
+  #render() {
+    const stats = this.querySelector('#audit-stats');
+    const list = this.querySelector('#audit-list');
+    if (!stats || !list) return;
+    const f = this.#filters;
+    this.#filtered = this.#rows.filter((r) => {
+      if (f.kind && r.kind !== f.kind) return false;
+      if (f.session && !r.session_id.includes(f.session)) return false;
+      if (f.gap && !r.gap_id.toUpperCase().includes(f.gap.toUpperCase())) return false;
+      return true;
+    });
+    stats.innerHTML = `
+      <span class="audit-stat">${this.#filtered.length}</span> rows
+      <span class="audit-stat-sep">·</span>
+      <span class="audit-stat">${this.#rows.length}</span> total in window
+      <span class="audit-stat-sep">·</span>
+      <span class="audit-stat">${this.#rows.filter((r) => r.kind === 'tool_approval').length}</span> tool
+      <span class="audit-stat-sep">·</span>
+      <span class="audit-stat">${this.#rows.filter((r) => r.kind === 'cos').length}</span> cos
+    `;
+    if (this.#filtered.length === 0) {
+      list.innerHTML = `<p class="placeholder">No decisions in the selected window/filter — fleet has been quiet (or your filters are too narrow).</p>`;
+      return;
+    }
+    list.innerHTML = `
+      <table class="audit-table" role="grid">
+        <thead>
+          <tr>
+            <th scope="col">when</th>
+            <th scope="col">kind</th>
+            <th scope="col">session</th>
+            <th scope="col">gap</th>
+            <th scope="col">summary</th>
+            <th scope="col">outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${this.#filtered.map((r, i) => this.#renderRow(r, i)).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  #renderRow(r, i) {
+    const rowId = `audit-row-${i}`;
+    const isExpanded = this.#expanded.has(rowId);
+    const outcomeClass = r.outcome === 'approved' ? 'audit-outcome-ok'
+                       : r.outcome === 'denied'   ? 'audit-outcome-bad'
+                       : 'audit-outcome-info';
+    return `
+      <tr class="audit-row" data-row-id="${rowId}" tabindex="0">
+        <td class="audit-cell-ts">${this.#fmtTs(r.ts)}</td>
+        <td class="audit-cell-kind"><span class="audit-kind audit-kind-${r.kind}">${r.kind}</span></td>
+        <td class="audit-cell-session"><button type="button" class="audit-pill" data-filter-session="${this.#escAttr(r.session_id)}">${this.#shortSession(r.session_id)}</button></td>
+        <td class="audit-cell-gap">${r.gap_id ? `<button type="button" class="audit-pill" data-filter-gap="${this.#escAttr(r.gap_id)}">${this.#esc(r.gap_id)}</button>` : '—'}</td>
+        <td class="audit-cell-summary">${this.#esc(r.summary).slice(0, 200)}</td>
+        <td class="audit-cell-outcome"><span class="audit-outcome ${outcomeClass}">${r.outcome}</span></td>
+      </tr>
+      ${isExpanded ? `<tr class="audit-row-expansion"><td colspan="6"><pre><code>${this.#esc(JSON.stringify(r.payload, null, 2))}</code></pre></td></tr>` : ''}
+    `;
+  }
+
+  #onRowClick(e) {
+    // Click on a session/gap pill → set filter.
+    const sessBtn = e.target.closest('[data-filter-session]');
+    if (sessBtn) {
+      this.#filters.session = sessBtn.dataset.filterSession;
+      this.#filters.gap = '';
+      this.#persist();
+      const s = this.querySelector('.audit-search'); if (s) s.value = this.#filters.session;
+      this.#render();
+      e.stopPropagation();
+      return;
+    }
+    const gapBtn = e.target.closest('[data-filter-gap]');
+    if (gapBtn) {
+      this.#filters.gap = gapBtn.dataset.filterGap;
+      this.#filters.session = '';
+      this.#persist();
+      const s = this.querySelector('.audit-search'); if (s) s.value = this.#filters.gap;
+      this.#render();
+      e.stopPropagation();
+      return;
+    }
+    // Click on the row body → toggle expansion.
+    const tr = e.target.closest('.audit-row');
+    if (!tr) return;
+    const id = tr.dataset.rowId;
+    if (this.#expanded.has(id)) this.#expanded.delete(id);
+    else this.#expanded.add(id);
+    this.#render();
+  }
+
+  #export() {
+    const jsonl = this.#filtered.map((r) => JSON.stringify(r.payload)).join('\n');
+    const blob = new Blob([jsonl], { type: 'application/x-ndjson' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `chump-audit-${stamp}.jsonl`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'audit_view_session', action: 'exported',
+        rows_exported: this.#filtered.length,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+  }
+
+  // helpers
+  #esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  #escAttr(s) { return this.#esc(s); }
+  #shortSession(sid) {
+    const m = String(sid).match(/^(?:claim-)?([a-z]+-\d+)/i);
+    return m ? m[1] : (String(sid).slice(0, 16) + (sid.length > 16 ? '…' : ''));
+  }
+  #fmtTs(ts) {
+    if (!ts) return '—';
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return ts;
+      // Relative for recent, absolute else
+      const ageS = (Date.now() - d.getTime()) / 1000;
+      if (ageS < 60) return `${Math.round(ageS)}s ago`;
+      if (ageS < 3600) return `${Math.round(ageS / 60)}m ago`;
+      if (ageS < 86400) return `${Math.round(ageS / 3600)}h ago`;
+      return d.toISOString().slice(0, 16).replace('T', ' ');
+    } catch { return ts; }
+  }
+}
+customElements.define('chump-view-audit', ChumpViewAudit);
 
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
@@ -3567,6 +3847,7 @@ const VIEWS = {
   tasks:         () => document.createElement('chump-view-tasks'),
   decisions:     () => document.createElement('chump-view-decisions'),
   judgment:      () => document.createElement('chump-view-judgment'),
+  audit:         () => document.createElement('chump-view-audit'), // PRODUCT-111
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
