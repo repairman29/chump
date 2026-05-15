@@ -122,6 +122,106 @@
       color: var(--text-secondary);
     }
 
+    /* PRODUCT-108: <chump-first-run-wizard> golden-path checklist.
+       Renders above the cadence nav for new operators; self-hides when all
+       5 steps are done OR dismissed. Persists via chumpPrefs (INFRA-1280).
+       See docs/design/OPERATOR_CONSOLE_V2.md §first-run. */
+    chump-first-run-wizard { display: block; }
+    chump-first-run-wizard[hidden] { display: none; }
+    chump-first-run-wizard .frw-shell {
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      padding: 16px 20px;
+      position: relative;
+      z-index: 8;
+    }
+    chump-first-run-wizard .frw-header {
+      display: flex; align-items: baseline; gap: 12px;
+      margin-bottom: 12px;
+    }
+    chump-first-run-wizard .frw-title {
+      font-size: 16px; font-weight: 700; color: var(--text-primary, var(--text));
+      flex: 1;
+    }
+    chump-first-run-wizard .frw-subtitle {
+      font-size: 11px; color: var(--text-secondary);
+      flex: 1; text-align: right;
+    }
+    chump-first-run-wizard .frw-dismiss {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 10px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 11px;
+    }
+    chump-first-run-wizard .frw-dismiss:hover { color: var(--text); border-color: var(--text-secondary); }
+    chump-first-run-wizard .frw-steps {
+      list-style: none; padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    chump-first-run-wizard .frw-step {
+      display: grid;
+      grid-template-columns: 32px 1fr auto;
+      gap: 12px; align-items: start;
+      padding: 8px 6px;
+      border-radius: var(--radius-sm);
+      transition: background 0.12s;
+    }
+    chump-first-run-wizard .frw-step:hover { background: var(--bg-elevated); }
+    chump-first-run-wizard .frw-step-current { background: var(--accent-dim); }
+    chump-first-run-wizard .frw-step-icon {
+      font-size: 18px; line-height: 24px; text-align: center;
+      font-weight: 700;
+    }
+    chump-first-run-wizard .frw-step-done   .frw-step-icon { color: var(--success); }
+    chump-first-run-wizard .frw-step-skipped .frw-step-icon { color: var(--text-secondary); }
+    chump-first-run-wizard .frw-step-current .frw-step-icon { color: var(--accent); }
+    chump-first-run-wizard .frw-step-pending .frw-step-icon { color: var(--text-secondary); }
+    chump-first-run-wizard .frw-step-body { min-width: 0; }
+    chump-first-run-wizard .frw-step-title {
+      font-size: 13px; color: var(--text-primary, var(--text));
+      line-height: 1.4;
+    }
+    chump-first-run-wizard .frw-step-label {
+      color: var(--accent); font-family: "SF Mono", ui-monospace, monospace;
+      font-size: 12px;
+    }
+    chump-first-run-wizard .frw-step-hint {
+      font-size: 11px; color: var(--text-secondary);
+      margin-top: 4px; line-height: 1.4;
+    }
+    chump-first-run-wizard .frw-step-actions {
+      display: flex; gap: 6px; align-items: center;
+    }
+    chump-first-run-wizard .frw-cta {
+      background: var(--accent); color: #fff;
+      padding: 5px 12px; border-radius: var(--radius-sm);
+      border: none; cursor: pointer; font-size: 12px; font-weight: 500;
+      text-decoration: none;
+      transition: filter 0.12s;
+    }
+    chump-first-run-wizard .frw-cta:hover { filter: brightness(1.15); }
+    chump-first-run-wizard .frw-skip {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 10px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 11px;
+    }
+    chump-first-run-wizard .frw-skip:hover { color: var(--text); border-color: var(--text-secondary); }
+    /* Mobile (≤640px): condense layout */
+    @media (max-width: 640px) {
+      chump-first-run-wizard .frw-shell { padding: 12px 14px; }
+      chump-first-run-wizard .frw-step {
+        grid-template-columns: 28px 1fr;
+        grid-template-rows: auto auto;
+      }
+      chump-first-run-wizard .frw-step-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+      }
+      chump-first-run-wizard .frw-cta, chump-first-run-wizard .frw-skip { min-height: 36px; }
+    }
+
     /* PRODUCT-109: <chump-tool-approval-tray> persistent banner above main
        content when approvals are pending. Hidden by default; visible + sticky
        when shell is unhidden. See docs/design/OPERATOR_CONSOLE_V2.md
@@ -1366,6 +1466,7 @@
     <chump-model-picker></chump-model-picker>
     <chump-cost-meter></chump-cost-meter>
     <chump-pillar-health></chump-pillar-health>
+    <chump-autopilot-toggle></chump-autopilot-toggle>
     <chump-heartbeat></chump-heartbeat>
   </header>
 
@@ -1375,6 +1476,10 @@
   <!-- PRODUCT-109: persistent tool-approval tray. Hidden when list is empty;
        sticky-banner above main-content when approvals are pending. -->
   <chump-tool-approval-tray></chump-tool-approval-tray>
+
+  <!-- PRODUCT-108: first-run golden-path wizard. Renders when brain/repo/
+       autopilot trio is empty; self-hides + dismissable. -->
+  <chump-first-run-wizard></chump-first-run-wizard>
 
   <div id="app-body">
     <chump-nav></chump-nav>
@@ -1405,13 +1510,17 @@
   <script src="welcome.js" type="module"></script>
   <script src="inference-profile.js" type="module"></script>
   <script src="ambient-viewer.js" type="module"></script>
+  <script src="fleet-sidebar.js" type="module"></script>
   <script src="quick-actions.js" type="module"></script>
   <!-- PRODUCT-105: A2A in-app toast + nav badge for inbox notifications -->
   <script src="inbox-notifications.js" type="module"></script>
+  <!-- PRODUCT-103: A2A operator compose form -->
+  <script src="fleet-message.js" type="module"></script>
   <script src="pillar-health.js" type="module"></script>
   <script src="notification-center.js" type="module"></script>
   <script src="error-ux.js" type="module"></script>
   <script src="operator-attention.js" type="module"></script>
+  <script src="autopilot-toggle.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));

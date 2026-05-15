@@ -3857,6 +3857,35 @@ async fn handle_ambient_stream(
         return Err(StatusCode::UNAUTHORIZED);
     }
     let kind_filter: Option<String> = params.get("kind").cloned();
+    // INFRA-1010: `?kinds=a,b,c` (OR-match exact) and `?prefixes=phase_,ship_`
+    // (OR-match prefix) so FleetSidebar can subscribe to its whitelist in
+    // one connection instead of N or filtering client-side.
+    let kinds_filter: Vec<String> = params
+        .get("kinds")
+        .map(|s| {
+            s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let prefixes_filter: Vec<String> = params
+        .get("prefixes")
+        .map(|s| {
+            s.split(',')
+                .map(|x| x.trim().to_string())
+                .filter(|x| !x.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if !kinds_filter.is_empty() || !prefixes_filter.is_empty() {
+        tracing::info!(
+            kinds_count = kinds_filter.len(),
+            prefixes_count = prefixes_filter.len(),
+            "ambient/stream multi-filter subscription (INFRA-1010)"
+        );
+    }
 
     let path = ambient_log_path();
     let (tx, rx) =
@@ -3875,20 +3904,40 @@ async fn handle_ambient_stream(
             .collect();
         let mut file_offset: u64 = seed_content.len() as u64;
 
+        // INFRA-1010: shared filter — passes if no filters set, or if event
+        // kind matches any of `kind` / `kinds` / `prefixes`.
+        let passes_filter = |v: &serde_json::Value| -> bool {
+            let ek = v
+                .get("kind")
+                .or_else(|| v.get("event"))
+                .and_then(|x| x.as_str())
+                .unwrap_or("");
+            let any_filter =
+                kind_filter.is_some() || !kinds_filter.is_empty() || !prefixes_filter.is_empty();
+            if !any_filter {
+                return true;
+            }
+            if let Some(ref k) = kind_filter {
+                if ek == k.as_str() {
+                    return true;
+                }
+            }
+            if kinds_filter.iter().any(|k| ek == k.as_str()) {
+                return true;
+            }
+            if prefixes_filter.iter().any(|p| ek.starts_with(p.as_str())) {
+                return true;
+            }
+            false
+        };
+
         for line in &seed_lines {
             if line.is_empty() {
                 continue;
             }
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                if let Some(ref k) = kind_filter {
-                    let ek = v
-                        .get("kind")
-                        .or_else(|| v.get("event"))
-                        .and_then(|x| x.as_str())
-                        .unwrap_or("");
-                    if ek != k.as_str() {
-                        continue;
-                    }
+                if !passes_filter(&v) {
+                    continue;
                 }
                 let data = line.to_string();
                 if tx
@@ -3926,15 +3975,8 @@ async fn handle_ambient_stream(
                     continue;
                 }
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
-                    if let Some(ref k) = kind_filter {
-                        let ek = v
-                            .get("kind")
-                            .or_else(|| v.get("event"))
-                            .and_then(|x| x.as_str())
-                            .unwrap_or("");
-                        if ek != k.as_str() {
-                            continue;
-                        }
+                    if !passes_filter(&v) {
+                        continue;
                     }
                     let data = line.to_string();
                     if tx

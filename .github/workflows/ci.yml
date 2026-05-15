@@ -1177,6 +1177,8 @@ jobs:
         run: bash scripts/ci/test-required-model.sh
       - name: picker consumes planner priority (INFRA-1258)
         run: bash scripts/ci/test-picker-priority.sh
+      - name: chump fleet bootstrap orchestrator (META-066)
+        run: bash scripts/ci/test-fleet-bootstrap.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)

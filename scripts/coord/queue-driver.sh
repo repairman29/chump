@@ -94,6 +94,34 @@ cascade_rebase_if_hot() {
     done
     [[ -z "$triggered_by" ]] && return 0
 
+    # ── INFRA-1310: per-commit-SHA debounce lock ──────────────────────────────
+    # With N concurrent workers all running queue-driver.sh, each one would
+    # independently detect the hot-file commit and fire cascade_rebase_if_hot,
+    # multiplying update-branch calls by worker count. Use an atomic mkdir lock
+    # keyed on the commit SHA: the winning worker runs the cascade; all others
+    # skip and emit kind=cascade_rebase_skipped_duplicate to ambient.jsonl.
+    # Lock expires after 10 min (cascade for this SHA is done well before then).
+    local head_sha
+    head_sha=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null | cut -c1-12 || echo "unknown")
+    local lock_dir="$REPO_ROOT/.chump-locks/cascade-rebase-${head_sha}.lock"
+
+    # Sweep expired locks (older than 10 min) from previous commits.
+    find "$REPO_ROOT/.chump-locks" -maxdepth 1 -name 'cascade-rebase-*.lock' \
+        -type d -mmin +10 -exec rm -rf {} + 2>/dev/null || true
+
+    if ! mkdir "$lock_dir" 2>/dev/null; then
+        # Another worker already holds the lock for this SHA — skip.
+        local _ambient="$REPO_ROOT/.chump-locks/ambient.jsonl"
+        local _now; _now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '{"ts":"%s","kind":"cascade_rebase_skipped_duplicate","sha":"%s","triggered_by":"%s"}\n' \
+            "$_now" "$head_sha" "$triggered_by" >> "$_ambient" 2>/dev/null || true
+        echo "queue-driver: cascade already handled for sha=${head_sha} — skipping"
+        return 0
+    fi
+    # Lock acquired — we are the designated cascade runner for this SHA.
+    # Lock directory intentionally NOT removed after cascade; let it expire via
+    # the 10-min sweep above so late-arriving workers also skip.
+
     echo "queue-driver: workspace hot-file '$triggered_by' changed on main — cascade rebasing all open PRs"
 
     local all_prs

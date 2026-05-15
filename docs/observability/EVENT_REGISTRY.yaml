@@ -256,6 +256,15 @@ events:
     consumers: [picker, fleet-brief, audit-log]
     fields_required: [ts, kind, out_file]
 
+  - kind: fleet_bootstrap_ran
+    emitter: scripts/setup/chump-fleet-bootstrap.sh (META-066)
+    trigger: operator (or CI/pre-flight) ran the bootstrap orchestrator.
+      Captures installed_count, skipped_healthy_count, failed_count,
+      missing_at_check_count so the audit log shows when fleet-discipline
+      was actually activated on this machine vs. just present-on-disk.
+    consumers: [fleet-brief, audit-log, watchdog]
+    fields_required: [ts, kind, mode, installed, skipped_healthy, failed, missing_count]
+
   - kind: picker_used_priority
     emitter: scripts/dispatch/_pick_gap.py (INFRA-1258)
     trigger: picker successfully selected a gap from the planner-ranked
@@ -621,6 +630,12 @@ events:
     emitter: .github/workflows/post-merge-cascade-rebase.yml (INFRA-670)
     trigger: workspace-file landing → open-PR rebase sweep
     consumers: [audit-log]
+
+  - kind: cascade_rebase_skipped_duplicate
+    emitter: scripts/coord/queue-driver.sh (INFRA-1310)
+    trigger: worker detected hot-file commit but another worker already holds the per-SHA debounce lock
+    consumers: [audit-log]
+    fields_required: [ts, kind, sha, triggered_by]
 
   - kind: dirty_pr_auto_resolved
     emitter: scripts/coord/queue-driver.sh (INFRA-1137)

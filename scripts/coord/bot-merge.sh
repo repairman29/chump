@@ -1631,7 +1631,19 @@ fi
 # branch wastes 5-15min of cargo + can lose work in stack-of-PRs scenarios.
 # Cheap one-shot query (~200ms). Bypass: CHUMP_SKIP_MERGED_CHECK=1.
 if [[ "${CHUMP_SKIP_MERGED_CHECK:-0}" != "1" ]]; then
-    _existing_state=$(gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null || echo "")
+    # INFRA-1082: cache-first branch lookup; falls back to gh pr view on miss.
+    _existing_state=""
+    if declare -F cache_lookup_pr_by_branch >/dev/null 2>&1; then
+        _bm_cached_meta="$(cache_lookup_pr_by_branch "$BRANCH" 2>/dev/null)"
+        if [[ -n "$_bm_cached_meta" ]]; then
+            _existing_state="$(printf '%s' "$_bm_cached_meta" | \
+                python3 -c "import sys,json; print(json.load(sys.stdin).get('state','') or '')" \
+                2>/dev/null || echo "")"
+        fi
+    fi
+    if [[ -z "$_existing_state" ]]; then
+        _existing_state=$(gh pr view "$BRANCH" --json state --jq '.state' 2>/dev/null || echo "")
+    fi
     if [[ "$_existing_state" == "MERGED" ]]; then
         green "PR for $BRANCH already MERGED — skipping force-push (INFRA-306)."
         info "Saved you the cargo cost on a race that's already settled."
@@ -1842,7 +1854,19 @@ if [[ "${CHUMP_RAW_YAML_EDIT_CHECK:-1}" != "0" ]]; then
 fi
 
 # ── 6. Open or update PR ─────────────────────────────────────────────────────
-EXISTING_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
+# INFRA-1082: cache-first branch→PR-number lookup; REST fallback on miss.
+EXISTING_PR=""
+if declare -F cache_lookup_pr_by_branch >/dev/null 2>&1; then
+    _bm_exist_meta="$(cache_lookup_pr_by_branch "$BRANCH" 2>/dev/null)"
+    if [[ -n "$_bm_exist_meta" ]]; then
+        EXISTING_PR="$(printf '%s' "$_bm_exist_meta" | \
+            python3 -c "import sys,json; print(json.load(sys.stdin).get('number','') or '')" \
+            2>/dev/null || echo "")"
+    fi
+fi
+if [[ -z "$EXISTING_PR" ]]; then
+    EXISTING_PR=$(gh pr view "$BRANCH" --json number --jq '.number' 2>/dev/null || echo "")
+fi
 
 # INFRA-997: refuse to open a PR when the branch's commits since divergence
 # are ONLY auto-staging commits from INFRA-472. These are mechanical commits
@@ -2374,7 +2398,10 @@ print(f"{incomplete} {failed} {total}")
             fi
 
             if [[ $_rest_direct_merged -eq 0 ]]; then
-                # INFRA-1113: delegate to centralized armer to enforce 5s spacing
+                # INFRA-1113: delegate to centralized armer to enforce 5s spacing.
+                # INFRA-1311: auto-merge-armer.sh now enforces per-PR exponential
+                # backoff (30s→60s→120s→300s) via .chump-locks/bot-merge-backoff-<pr>.ts
+                # to avoid burning gh pr merge calls on PRs that failed recently.
                 # between successive gh pr merge --auto calls across all callers.
                 stage_start "auto-merge-armer.sh --pr $TARGET_PR"
                 if ! "$SCRIPT_DIR/auto-merge-armer.sh" --pr "$TARGET_PR"; then

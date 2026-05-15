@@ -1,0 +1,61 @@
+# bootstrap-manifest.yaml — META-066
+#
+# Canonical list of installers that `chump fleet bootstrap` runs on a fresh
+# operator machine. New launchd plists / git hooks MUST add an entry here
+# (enforced by pre-commit; see scripts/git-hooks/pre-commit-bootstrap-manifest.sh).
+#
+# Schema:
+#   - id:           short stable identifier (used by --only / --skip flags)
+#     why:          one-line operator-facing reason this exists
+#     install:      command to run; cwd is repo root
+#     check:        command that exits 0 iff already installed (idempotency)
+#     priority:     P0 (must-have) | P1 (productization) | P2 (nice-to-have)
+#     adds:         (optional) brief description of what gets created
+#     depends_on:   (optional) list of other ids that must install first
+#
+# Run order: priority then declaration order. P0 first.
+
+installers:
+  - id: chump-binary
+    why: Required by every other tool — the canonical `chump` CLI.
+    priority: P0
+    install: cargo install --path . --bin chump
+    check: command -v chump >/dev/null 2>&1
+    adds: ~/.cargo/bin/chump
+
+  - id: chump-plan-binary
+    why: INFRA-1257 producer — writes hourly gap-priority.json.
+    priority: P1
+    install: cargo install --path crates/chump-planner --bin chump-plan
+    check: command -v chump-plan >/dev/null 2>&1
+    adds: ~/.cargo/bin/chump-plan
+
+  - id: git-hooks
+    why: META-063 redundancy gate, META-064 Rust-first gate, INFRA-787 git-identity gate, INFRA-754 event-registry gate, and ~12 other pre-commit / pre-push guards. None fire without per-worktree hook install.
+    priority: P0
+    install: bash scripts/setup/install-hooks.sh --quiet
+    check: test -L .git/hooks/pre-commit -o -f .git/hooks/pre-commit
+    adds: .git/hooks/pre-commit + pre-push symlinks
+
+  - id: chump-planner-launchd
+    why: INFRA-1257 — hourly planner that writes .chump-locks/gap-priority.json (consumed by the fleet picker per INFRA-1258).
+    priority: P1
+    install: bash scripts/setup/install-chump-planner-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q dev.chump.planner
+    depends_on: [chump-plan-binary]
+    adds: ~/Library/LaunchAgents/dev.chump.planner.plist + hourly run
+
+  - id: curator-launchd
+    why: META-065 — opus-curator runs every 10 min, mutates gap registry (P0 demotion, vague-AC fill, pillar rebalance). Without this, registry rots.
+    priority: P1
+    install: bash scripts/setup/install-curator-launchd.sh
+    check: launchctl list 2>/dev/null | grep -q com.chump.opus-curator
+    depends_on: [chump-binary]
+    adds: ~/Library/LaunchAgents/com.chump.opus-curator.plist + 10-min run
+
+  - id: ambient-hooks
+    why: FLEET-023 — claude SessionStart / PreToolUse / Stop hooks emit ambient events. Without these, the audit stream is silent.
+    priority: P2
+    install: bash scripts/setup/install-ambient-hooks.sh
+    check: grep -q chump-ambient ~/.claude/settings.json 2>/dev/null
+    adds: ~/.claude/settings.json hooks entries

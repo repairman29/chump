@@ -65,6 +65,85 @@ emit_ambient() {
         >> "${LOCKS_DIR}/ambient.jsonl" 2>/dev/null || true
 }
 
+# INFRA-1311: Per-PR exponential backoff for failed gh pr merge attempts.
+# Backoff state is persisted in .chump-locks/bot-merge-backoff-<pr>.ts as a
+# UNIX epoch timestamp (the earliest time the next attempt is allowed).
+# Initial delay: 30s. Multiplier: 2x per retry. Max: 300s.
+# File is written on any non-200 merge failure, deleted on success.
+
+# _backoff_file <pr_num>  — path to the backoff timestamp file
+_backoff_file() {
+    printf '%s/bot-merge-backoff-%s.ts' "${LOCKS_DIR}" "$1"
+}
+
+# _backoff_remaining <pr_num>
+# Prints remaining seconds in backoff window (0 if not in backoff).
+_backoff_remaining() {
+    local pr_num="$1" bf
+    bf="$(_backoff_file "${pr_num}")"
+    [[ -f "${bf}" ]] || { printf '0'; return 0; }
+    local until_ts now
+    until_ts="$(cat "${bf}" 2>/dev/null || echo 0)"
+    now="$(date -u +%s)"
+    local remaining=$(( until_ts - now ))
+    if [[ $remaining -le 0 ]]; then
+        printf '0'
+    else
+        printf '%s' "${remaining}"
+    fi
+}
+
+# _backoff_write <pr_num> <delay_s>
+# Writes the backoff deadline (now + delay_s) to the backoff file.
+_backoff_write() {
+    local pr_num="$1" delay_s="$2"
+    local bf until_ts
+    bf="$(_backoff_file "${pr_num}")"
+    until_ts=$(( $(date -u +%s) + delay_s ))
+    printf '%s\n' "${until_ts}" > "${bf}" 2>/dev/null || true
+}
+
+# _backoff_clear <pr_num>
+# Removes the backoff file (called on successful merge).
+_backoff_clear() {
+    local bf
+    bf="$(_backoff_file "$1")"
+    rm -f "${bf}" 2>/dev/null || true
+}
+
+# _backoff_next_delay <pr_num>
+# Returns the next backoff duration based on current file contents.
+# 30s initial, ×2 per retry, max 300s.
+_backoff_next_delay() {
+    local pr_num="$1" bf until_ts now delay
+    bf="$(_backoff_file "${pr_num}")"
+    if [[ ! -f "${bf}" ]]; then
+        # No prior backoff — first failure gets 30s.
+        printf '30'
+        return 0
+    fi
+    until_ts="$(cat "${bf}" 2>/dev/null || echo 0)"
+    now="$(date -u +%s)"
+    # Estimate current delay from (until - now_at_write). We store only the
+    # deadline, not the duration; reconstruct an approximation by reading how
+    # much was remaining when we last wrote. For simplicity: double the current
+    # window relative to a 30s base, clamped to 300s.
+    # We read elapsed since the deadline was set; use a tag-file to track retry count.
+    local count_file="${LOCKS_DIR}/bot-merge-backoff-${pr_num}.count"
+    local count=0
+    [[ -f "${count_file}" ]] && count="$(cat "${count_file}" 2>/dev/null || echo 0)"
+    count=$(( count + 1 ))
+    printf '%s\n' "${count}" > "${count_file}" 2>/dev/null || true
+    # 30 * 2^(count-1), max 300
+    delay=30
+    local i
+    for (( i=1; i<count; i++ )); do
+        delay=$(( delay * 2 ))
+        [[ $delay -ge 300 ]] && delay=300 && break
+    done
+    printf '%s' "${delay}"
+}
+
 # INFRA-1223: try REST PUT /pulls/N/merge first when all required checks are
 # already green. REST PUT lives on a different rate-limit lane than the
 # GraphQL `enablePullRequestAutoMerge` mutation, so it bypasses the
@@ -135,6 +214,7 @@ print(f"{incomplete} {failed} {total}")
 
 # Arm with secondary-rate-limit-aware retry (mirrors gh_with_backoff in bot-merge.sh).
 # INFRA-1223: tries REST-direct path first before the GraphQL arm.
+# INFRA-1311: writes per-PR backoff file on failure; clears it on success.
 arm_with_retry() {
     local pr_num="$1"
     local -a delays=(60 120 240)
@@ -143,6 +223,9 @@ arm_with_retry() {
     # INFRA-1223: REST-direct fast path. If all checks are green, merge now
     # via REST PUT — bypasses the GraphQL mutation entirely.
     if rest_direct_merge_if_green "${pr_num}"; then
+        # REST-direct success — clear any lingering backoff state.
+        _backoff_clear "${pr_num}"
+        rm -f "${LOCKS_DIR}/bot-merge-backoff-${pr_num}.count" 2>/dev/null || true
         return 0
     fi
 
@@ -155,6 +238,9 @@ arm_with_retry() {
 
         if [[ $rc -eq 0 ]]; then
             rm -f "${tmpout}"
+            # INFRA-1311: successful merge — clear backoff state.
+            _backoff_clear "${pr_num}"
+            rm -f "${LOCKS_DIR}/bot-merge-backoff-${pr_num}.count" 2>/dev/null || true
             return 0
         fi
 
@@ -167,6 +253,21 @@ arm_with_retry() {
             sleep "${sleep_secs}"
             continue
         fi
+
+        # INFRA-1311: non-200/non-rate-limit failure — write backoff file so
+        # the next invocation skips this PR until the window expires.
+        local _next_delay
+        _next_delay="$(_backoff_next_delay "${pr_num}")"
+        _backoff_write "${pr_num}" "${_next_delay}"
+        local _until_ts
+        _until_ts=$(( $(date -u +%s) + _next_delay ))
+        local _until_human
+        _until_human="$(date -u -r "${_until_ts}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+            || date -u -d "@${_until_ts}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+            || printf '%s' "${_until_ts}")"
+        echo "[auto-merge-armer] PR #${pr_num}: merge failed — backoff ${_next_delay}s until ${_until_human}" >&2
+        emit_ambient "bot_merge_backoff_written" "${pr_num}" \
+            "delay_s=${_next_delay} until=${_until_human} script=auto-merge-armer.sh"
 
         cat "${tmpout}" >&2
         rm -f "${tmpout}"
@@ -202,6 +303,20 @@ for PR_NUM in "${PR_NUMS[@]}"; do
         --jq '.state' 2>/dev/null || echo '')"
     if [[ "${_state}" != "open" ]]; then
         echo "[auto-merge-armer] PR #${PR_NUM}: not open (state=${_state:-unknown}) — skipping."
+        LAST_ARM_TS="$(date -u +%s)"
+        continue
+    fi
+
+    # INFRA-1311: check per-PR backoff before attempting merge arm.
+    _remaining="$(_backoff_remaining "${PR_NUM}")"
+    if [[ "${_remaining}" -gt 0 ]]; then
+        _bo_until_ts=$(( $(date -u +%s) + _remaining ))
+        _bo_until_human="$(date -u -r "${_bo_until_ts}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+            || date -u -d "@${_bo_until_ts}" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null \
+            || printf '%s' "${_bo_until_ts}")"
+        echo "[auto-merge-armer] PR #${PR_NUM} in backoff until ${_bo_until_human} (${_remaining}s remaining) — skipping."
+        emit_ambient "bot_merge_backoff_skipped" "${PR_NUM}" \
+            "remaining_s=${_remaining} until=${_bo_until_human} script=auto-merge-armer.sh"
         LAST_ARM_TS="$(date -u +%s)"
         continue
     fi
