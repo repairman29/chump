@@ -9058,6 +9058,9 @@ async fn main() -> Result<()> {
                              \"source\":\"{release_source}\"}}"
                         )
                     });
+                // INFRA-1116 AC6: emit intent_retracted so other sessions' overlap
+                // gates treat this session as inactive immediately on release.
+                atomic_claim::emit_intent_retracted(&ambient_path, &release_gap_id, &target_id);
                 return Ok(());
             }
             Err(e) => {

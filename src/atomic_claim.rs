@@ -216,6 +216,31 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         )
     })?;
 
+    // 5.5. INFRA-1116: Check for overlapping INTENT from other live sessions,
+    // BEFORE creating the worktree so we never leave a dangling worktree on refusal.
+    let lock_dir = args.repo_root.join(".chump-locks");
+    let ambient_log = lock_dir.join("ambient.jsonl");
+    let claim_paths = args.paths.as_deref().unwrap_or("");
+
+    let enforce_gate =
+        std::env::var("CHUMP_ENFORCE_INTENT_GATE").unwrap_or_else(|_| "0".to_string());
+    if enforce_gate == "1" {
+        if let Err(e) = check_intent_overlap(&lock_dir, &args.gap_id, claim_paths, &session_id) {
+            // Exit 14 by convention (matching intent-overlap-check.sh).
+            eprintln!("[intent-gate] INFRA-1116: {:#}", e);
+            std::process::exit(14);
+        }
+    } else if !claim_paths.is_empty() {
+        // Warn-only mode (default): run the check, log any overlap, but don't block.
+        if let Err(e) = check_intent_overlap(&lock_dir, &args.gap_id, claim_paths, &session_id) {
+            eprintln!(
+                "[intent-gate] WARN (CHUMP_ENFORCE_INTENT_GATE not set to 1): {:#}",
+                e
+            );
+            eprintln!("[intent-gate] Set CHUMP_ENFORCE_INTENT_GATE=1 to enforce blocking.");
+        }
+    }
+
     // 6. git worktree add -b <branch> <path> <remote>/<base>
     run_git(
         &args.repo_root,
@@ -296,8 +321,6 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // Each step rolls back all prior steps on failure.
 
     // 7a. NATS KV dual-write (opt-in: CHUMP_NATS_URL must be set).
-    let lock_dir = args.repo_root.join(".chump-locks");
-    let ambient_log = lock_dir.join("ambient.jsonl");
     let nats_result = nats_dual_write(&args.gap_id, &session_id, Some(&ambient_log))?;
     if nats_result == NatsClaimOutcome::Conflict {
         rollback_wt("");
@@ -339,6 +362,16 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
 
     // INFRA-1240: emit gap_claimed ambient event for observability (silent_agent debugging)
     let _ = emit_gap_claimed_event(&args.repo_root, &args.gap_id, &session_id);
+
+    // INFRA-1116 AC4: emit intent_announced event so other sessions' overlap checks
+    // can detect this claim. TTL = 4h (same as the lease). Paths from --paths flag.
+    emit_intent_announced(
+        &ambient_log,
+        &args.gap_id,
+        &session_id,
+        args.paths.as_deref().unwrap_or(""),
+        14_400, // 4h TTL in seconds
+    );
 
     Ok(ClaimReport {
         gap_id: args.gap_id,
@@ -1225,6 +1258,413 @@ fn emit_nats_conflict_event(ambient_log_path: Option<&Path>, gap_id: &str, sessi
     }
 }
 
+// ── INFRA-1116: INTENT overlap gate ─────────────────────────────────────────
+
+/// Represents a live INTENT declaration from another session.
+#[derive(Debug, Clone)]
+struct IntentEntry {
+    gap_id: String,
+    session_id: String,
+    paths: Vec<String>,
+    expires_at: u64, // Unix seconds
+    claimed_at: u64,
+}
+
+/// Check if the new claim would overlap with live INTENTs from other sessions.
+/// Reads ambient.jsonl for recent intent_announced events and checks path overlap.
+/// On overlap: returns Err with context suitable for printing to the user.
+/// On no overlap or no INTENT gate enforcement: returns Ok(()).
+fn check_intent_overlap(
+    lock_dir: &Path,
+    new_gap_id: &str,
+    claim_paths_csv: &str,
+    this_session: &str,
+) -> Result<()> {
+    let window_secs = std::env::var("CHUMP_CLAIM_INTENT_WINDOW_S")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(60);
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Parse the claim paths
+    let claim_paths: Vec<String> = claim_paths_csv
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    // If no paths declared, allow the claim (but warn about coverage)
+    if claim_paths.is_empty() {
+        eprintln!(
+            "[intent-gate] warning: {} declared no path scope; proceeding with no overlap check",
+            new_gap_id
+        );
+        return Ok(());
+    }
+
+    // Read ambient.jsonl to find live INTENTs and retracted sessions
+    let ambient_path = lock_dir.join("ambient.jsonl");
+    let live_intents = read_live_intents(&ambient_path, window_secs, now)?;
+
+    // Build set of retracted sessions (intent_retracted events invalidate prior announcements).
+    let retracted = collect_retracted_sessions(&ambient_path);
+
+    // Check for overlaps
+    for intent in live_intents {
+        // Skip our own session
+        if intent.session_id == this_session {
+            continue;
+        }
+
+        // Skip expired intents
+        if intent.expires_at < now {
+            continue;
+        }
+
+        // Skip retracted sessions (they emitted intent_retracted on release)
+        if retracted.contains(&intent.session_id) {
+            continue;
+        }
+
+        // Stale-session filter: ignore INTENTs whose session lease is absent or expired.
+        if !is_session_lease_alive(lock_dir, &intent.session_id, now) {
+            continue;
+        }
+
+        // Check path overlap
+        if paths_overlap(&claim_paths, &intent.paths) {
+            return Err(anyhow!(
+                "Gap {} blocked — session {} has INTENT on overlapping paths [{}].\n\
+                 Options:\n  \
+                 1. Wait for {} to complete and ship (expires at {})\n  \
+                 2. Set CHUMP_ENFORCE_INTENT_GATE=0 to warn-only (not recommended for production)\n  \
+                 3. Contact the other session to coordinate",
+                new_gap_id,
+                intent.session_id,
+                intent.paths.join(", "),
+                intent.gap_id,
+                iso8601_from_unix(intent.expires_at),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Check if a session's lease file exists and has a non-expired expires_at.
+/// Returns false (stale) if the lease file is absent, unreadable, or expired.
+fn is_session_lease_alive(lock_dir: &Path, session_id: &str, now_secs: u64) -> bool {
+    let lease_path = lock_dir.join(format!("{}.json", session_id));
+    let Ok(body) = std::fs::read_to_string(&lease_path) else {
+        return false; // absent — session is stale
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return false;
+    };
+    let Some(exp_str) = val.get("expires_at").and_then(|v| v.as_str()) else {
+        return true; // no expiry field — treat as alive (conservative)
+    };
+    match parse_iso8601(exp_str) {
+        Ok(exp_secs) => exp_secs > now_secs,
+        Err(_) => true, // can't parse → treat as alive (conservative)
+    }
+}
+
+/// Collect session IDs that have emitted intent_retracted in ambient.jsonl.
+fn collect_retracted_sessions(ambient_path: &Path) -> std::collections::HashSet<String> {
+    let mut retracted = std::collections::HashSet::new();
+    let Ok(content) = std::fs::read_to_string(ambient_path) else {
+        return retracted;
+    };
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if val.get("kind").and_then(|k| k.as_str()) == Some("intent_retracted") {
+            if let Some(sid) = val.get("session_id").and_then(|v| v.as_str()) {
+                retracted.insert(sid.to_string());
+            }
+        }
+    }
+    retracted
+}
+
+/// Read all intent_announced events from ambient.jsonl within the window.
+fn read_live_intents(
+    ambient_path: &Path,
+    window_secs: u64,
+    now_secs: u64,
+) -> Result<Vec<IntentEntry>> {
+    let cutoff = now_secs.saturating_sub(window_secs);
+
+    let content = match std::fs::read_to_string(ambient_path) {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(e).context("reading ambient.jsonl"),
+    };
+
+    let mut intents = vec![];
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // Parse as JSON
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
+            // Look for intent_announced events
+            if val.get("kind").and_then(|k| k.as_str()) == Some("intent_announced") {
+                // Extract fields
+                let ts = val.get("ts").and_then(|v| v.as_str()).unwrap_or("0");
+                let ts_secs = parse_iso8601(ts).unwrap_or(0);
+
+                // Skip if outside the window
+                if ts_secs < cutoff {
+                    continue;
+                }
+
+                if let (Some(gap_id), Some(session_id), Some(paths_arr)) = (
+                    val.get("gap_id").and_then(|v| v.as_str()),
+                    val.get("session_id").and_then(|v| v.as_str()),
+                    val.get("paths").and_then(|v| v.as_array()),
+                ) {
+                    let paths: Vec<String> = paths_arr
+                        .iter()
+                        .filter_map(|p| p.as_str().map(|s| s.to_string()))
+                        .collect();
+
+                    let expires_at = val
+                        .get("expires_at")
+                        .and_then(|v| v.as_str())
+                        .and_then(|s| parse_iso8601(s).ok())
+                        .unwrap_or(0);
+
+                    intents.push(IntentEntry {
+                        gap_id: gap_id.to_string(),
+                        session_id: session_id.to_string(),
+                        paths,
+                        expires_at,
+                        claimed_at: ts_secs,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(intents)
+}
+
+/// Check if two path lists overlap.
+/// Simple implementation: for now, prefix-match directories and exact-match files.
+fn paths_overlap(paths_a: &[String], paths_b: &[String]) -> bool {
+    for a in paths_a {
+        for b in paths_b {
+            // Wildcard match: ** overlaps with everything
+            if a == "**" || b == "**" {
+                return true;
+            }
+            // Same path
+            if a == b {
+                return true;
+            }
+            // Prefix match (directory overlap): src/ overlaps src/foo.rs
+            if a.ends_with('/') && b.starts_with(a) {
+                return true;
+            }
+            if b.ends_with('/') && a.starts_with(b) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Parse ISO 8601 timestamp to Unix seconds (best-effort).
+fn parse_iso8601(s: &str) -> Result<u64> {
+    // Simple parser for YYYY-MM-DDTHH:MM:SSZ format
+    let s = s.trim_end_matches('Z');
+    let parts: Vec<&str> = s.split(|c| c == '-' || c == 'T' || c == ':').collect();
+    if parts.len() < 6 {
+        bail!("invalid timestamp format: {}", s);
+    }
+    let y: u32 = parts[0].parse()?;
+    let mo: u32 = parts[1].parse()?;
+    let d: u32 = parts[2].parse()?;
+    let h: u32 = parts[3].parse()?;
+    let mi: u32 = parts[4].parse()?;
+    let sec: u32 = parts[5].parse()?;
+
+    // Simplified day-of-year calculation (not accounting for leap seconds)
+    let is_leap = (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0);
+    let days_per_month = [
+        31,
+        if is_leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
+    let days_in_year: u32 = days_per_month[..(mo as usize).saturating_sub(1)]
+        .iter()
+        .sum::<u32>()
+        + d;
+
+    // Days since 1970-01-01
+    let mut days_since_epoch = 0u64;
+    for year in 1970..y {
+        let leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+        days_since_epoch += if leap { 366 } else { 365 };
+    }
+    days_since_epoch += (days_in_year - 1) as u64;
+
+    let secs = days_since_epoch * 86400 + (h as u64) * 3600 + (mi as u64) * 60 + (sec as u64);
+    Ok(secs)
+}
+
+/// Format Unix seconds to ISO 8601 string.
+fn iso8601_from_unix(secs: u64) -> String {
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z")
+}
+
+/// Emit intent_overlap_detected event to ambient.jsonl.
+fn emit_intent_overlap_event(
+    ambient_log: &Path,
+    new_gap_id: &str,
+    blocking_gap_id: &str,
+    blocking_session: &str,
+    overlapping_paths: &[String],
+) {
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let paths_json = serde_json::to_string(overlapping_paths).unwrap_or_else(|_| "[]".to_string());
+    let event = format!(
+        r#"{{"ts":"{ts}","kind":"intent_overlap_detected","gap_id":"{new_gap_id}","blocking_gap_id":"{blocking_gap_id}","blocking_session":"{blocking_session}","overlapping_paths":{paths_json}}}"#
+    );
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{}", event);
+    }
+}
+
+/// INFRA-1116 AC4: Emit intent_announced to ambient.jsonl after a successful claim.
+/// Other sessions' INTENT gates read these events to detect path overlaps.
+/// ttl_secs controls the expires_at field; sessions whose expires_at is in the
+/// past are ignored by the stale filter in check_intent_overlap.
+fn emit_intent_announced(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    paths_csv: &str,
+    ttl_secs: u64,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let expires_at = iso8601_from_unix(now.saturating_add(ttl_secs));
+
+    let paths_list: Vec<String> = paths_csv
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let paths_json = serde_json::to_string(&paths_list).unwrap_or_else(|_| "[]".to_string());
+
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"intent_announced\",\"gap_id\":\"{gid}\",\
+         \"session_id\":\"{sid}\",\"paths\":{paths},\"expires_at\":\"{exp}\"}}\n",
+        gid = json_escape(gap_id),
+        sid = json_escape(session_id),
+        paths = paths_json,
+        exp = expires_at,
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// INFRA-1116 AC6: Emit intent_retracted to ambient.jsonl when a session is released.
+/// The gate treats a retracted session as inactive even if expires_at has not passed.
+pub fn emit_intent_retracted(ambient_log: &Path, gap_id: &str, session_id: &str) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"intent_retracted\",\"gap_id\":\"{gid}\",\
+         \"session_id\":\"{sid}\"}}\n",
+        gid = json_escape(gap_id),
+        sid = json_escape(session_id),
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// INFRA-1116 AC5: Emit intent_refreshed to ambient.jsonl during heartbeat.
+/// Called from worker.sh heartbeat loop via `chump ambient emit intent_refreshed`.
+/// This function is the Rust-side equivalent for direct Rust heartbeat paths.
+pub fn emit_intent_refreshed(ambient_log: &Path, gap_id: &str, session_id: &str) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"intent_refreshed\",\"gap_id\":\"{gid}\",\
+         \"session_id\":\"{sid}\"}}\n",
+        gid = json_escape(gap_id),
+        sid = json_escape(session_id),
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1751,5 +2191,259 @@ mod tests {
             Some(v) => std::env::set_var("CHUMP_COORD_BIN", v),
             None => std::env::remove_var("CHUMP_COORD_BIN"),
         }
+    }
+    // ── INFRA-1116: INTENT overlap gate tests ──────────────────────────────────
+
+    fn mk_intent_tmp(label: &str) -> PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "infra1116-{}-{}",
+            label,
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    fn write_intent_announced(
+        ambient_path: &Path,
+        session_id: &str,
+        gap_id: &str,
+        paths: &[&str],
+        ts_secs: u64,
+        ttl_secs: u64,
+    ) {
+        let ts = iso8601_from_unix(ts_secs);
+        let expires_at = iso8601_from_unix(ts_secs + ttl_secs);
+        let paths_json = serde_json::to_string(paths).unwrap();
+        let line = format!(
+            r#"{{"ts":"{ts}","kind":"intent_announced","gap_id":"{gap_id}","session_id":"{session_id}","paths":{paths_json},"expires_at":"{expires_at}"}}
+"#
+        );
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(ambient_path)
+            .unwrap();
+        f.write_all(line.as_bytes()).unwrap();
+    }
+
+    fn write_live_lease(lock_dir: &Path, session_id: &str) {
+        let expires_at = iso8601_from_unix(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+                + 3600,
+        );
+        let json = format!(
+            r#"{{"session_id":"{session_id}","expires_at":"{expires_at}"}}
+"#
+        );
+        std::fs::write(lock_dir.join(format!("{session_id}.json")), json).unwrap();
+    }
+
+    fn write_expired_lease(lock_dir: &Path, session_id: &str) {
+        let json = format!(
+            r#"{{"session_id":"{session_id}","expires_at":"2000-01-01T00:00:00Z"}}
+"#
+        );
+        std::fs::write(lock_dir.join(format!("{session_id}.json")), json).unwrap();
+    }
+
+    #[test]
+    fn intent_gate_no_overlap_when_ambient_empty() {
+        let tmp = mk_intent_tmp("empty");
+        // No ambient.jsonl → no INTENTs → check passes
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "empty ambient should not block");
+    }
+
+    #[test]
+    fn intent_gate_no_overlap_when_paths_disjoint() {
+        let tmp = mk_intent_tmp("disjoint");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        write_intent_announced(
+            &ambient,
+            "sibling",
+            "INFRA-B",
+            &["docs/process/"],
+            now,
+            3600,
+        );
+        write_live_lease(&tmp, "sibling");
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "disjoint paths should not block");
+    }
+
+    #[test]
+    fn intent_gate_blocks_on_overlapping_paths_with_live_lease() {
+        let tmp = mk_intent_tmp("overlap");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        write_intent_announced(
+            &ambient,
+            "sibling",
+            "INFRA-B",
+            &["src/atomic_claim.rs"],
+            now,
+            3600,
+        );
+        write_live_lease(&tmp, "sibling");
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/atomic_claim.rs", "me");
+        assert!(
+            result.is_err(),
+            "overlapping paths with live lease should block"
+        );
+        let msg = format!("{}", result.unwrap_err());
+        assert!(
+            msg.contains("sibling"),
+            "error should name the blocking session"
+        );
+    }
+
+    #[test]
+    fn intent_gate_skips_stale_session_absent_lease() {
+        let tmp = mk_intent_tmp("stale");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        write_intent_announced(&ambient, "ghost", "INFRA-B", &["src/main.rs"], now, 3600);
+        // No lease file for "ghost" → stale filter should skip it
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "absent lease = stale, should not block");
+    }
+
+    #[test]
+    fn intent_gate_skips_stale_session_expired_lease() {
+        let tmp = mk_intent_tmp("expired");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        write_intent_announced(
+            &ambient,
+            "old-session",
+            "INFRA-B",
+            &["src/main.rs"],
+            now,
+            3600,
+        );
+        write_expired_lease(&tmp, "old-session");
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "expired lease = stale, should not block");
+    }
+
+    #[test]
+    fn intent_gate_self_skip() {
+        let tmp = mk_intent_tmp("self");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        write_intent_announced(
+            &ambient,
+            "my-session",
+            "INFRA-A",
+            &["src/main.rs"],
+            now,
+            3600,
+        );
+        write_live_lease(&tmp, "my-session");
+        // Own session should not block itself
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "my-session");
+        assert!(result.is_ok(), "own-session intent should not block self");
+    }
+
+    #[test]
+    fn intent_gate_skips_retracted_session() {
+        let tmp = mk_intent_tmp("retracted");
+        let ambient = tmp.join("ambient.jsonl");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        write_intent_announced(&ambient, "sibling", "INFRA-B", &["src/main.rs"], now, 3600);
+        write_live_lease(&tmp, "sibling");
+        // Sibling emits intent_retracted before we check
+        emit_intent_retracted(&ambient, "INFRA-B", "sibling");
+        let result = check_intent_overlap(&tmp, "INFRA-A", "src/main.rs", "me");
+        assert!(result.is_ok(), "retracted intent should not block");
+    }
+
+    #[test]
+    fn emit_intent_announced_writes_valid_json() {
+        let tmp = mk_intent_tmp("emit-ann");
+        let ambient = tmp.join("ambient.jsonl");
+        emit_intent_announced(&ambient, "INFRA-C", "my-sess", "src/a.rs,src/b.rs", 3600);
+        let content = std::fs::read_to_string(&ambient).unwrap();
+        assert!(!content.is_empty());
+        for line in content.lines() {
+            let v: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+            assert_eq!(v["kind"], "intent_announced");
+            assert_eq!(v["gap_id"], "INFRA-C");
+            assert_eq!(v["session_id"], "my-sess");
+            assert!(v["expires_at"].as_str().unwrap().ends_with('Z'));
+        }
+    }
+
+    #[test]
+    fn emit_intent_retracted_writes_valid_json() {
+        let tmp = mk_intent_tmp("emit-ret");
+        let ambient = tmp.join("ambient.jsonl");
+        emit_intent_retracted(&ambient, "INFRA-D", "session-123");
+        let content = std::fs::read_to_string(&ambient).unwrap();
+        for line in content.lines() {
+            let v: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+            assert_eq!(v["kind"], "intent_retracted");
+            assert_eq!(v["gap_id"], "INFRA-D");
+            assert_eq!(v["session_id"], "session-123");
+        }
+    }
+
+    #[test]
+    fn is_session_lease_alive_absent_returns_false() {
+        let tmp = mk_intent_tmp("alive-absent");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        assert!(!is_session_lease_alive(&tmp, "no-such-session", now));
+    }
+
+    #[test]
+    fn is_session_lease_alive_expired_returns_false() {
+        let tmp = mk_intent_tmp("alive-expired");
+        write_expired_lease(&tmp, "old");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        assert!(!is_session_lease_alive(&tmp, "old", now));
+    }
+
+    #[test]
+    fn is_session_lease_alive_live_returns_true() {
+        let tmp = mk_intent_tmp("alive-live");
+        write_live_lease(&tmp, "fresh");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        assert!(is_session_lease_alive(&tmp, "fresh", now));
     }
 }
