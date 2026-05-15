@@ -141,6 +141,7 @@ pub async fn run_all_checks() -> DoctorReport {
     checks.push(check_tool_inventory());
     checks.push(check_audit_chain());
     checks.push(check_disk_usage());
+    checks.push(check_model_capabilities());
     DoctorReport {
         version: env!("CARGO_PKG_VERSION").to_string(),
         checks,
@@ -378,6 +379,32 @@ fn check_audit_chain() -> CheckResult {
             "investigate unauthorized DB modifications; see src/introspect_tool.rs::audit_chain_status for tamper_points",
         ),
         Err(_) => CheckResult::skip("audit_chain", "DB not available; skipping chain verification"),
+    }
+}
+
+/// INFRA-741: report detected capabilities for the currently configured model
+/// using the probe cache. Does not run a live probe (doctor must stay fast).
+fn check_model_capabilities() -> CheckResult {
+    let model = std::env::var("OPENAI_MODEL").unwrap_or_default();
+    let base_url = std::env::var("OPENAI_API_BASE")
+        .unwrap_or_else(|_| "http://localhost:11434/v1".to_string());
+
+    if model.is_empty() {
+        return CheckResult::skip(
+            "model-capabilities",
+            "OPENAI_MODEL not set — skipping probe",
+        );
+    }
+
+    match crate::model_overlay::cached_capability_summary(&model, &base_url) {
+        Some(summary) => {
+            CheckResult::pass("model-capabilities", format!("model={} {}", model, summary))
+        }
+        None => CheckResult::warn(
+            "model-capabilities",
+            format!("no probe cached for model={}", model),
+            "run `chump probe` (or any gap) to cache capabilities for this model+endpoint",
+        ),
     }
 }
 
