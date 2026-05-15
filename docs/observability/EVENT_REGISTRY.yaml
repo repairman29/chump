@@ -2612,3 +2612,16 @@ events:
       expired. No merge attempt is made until the backoff period elapses.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, pr, remaining_s, until]
+
+  # ── INFRA-849: system integration test pipeline ───────────────────────────
+  - kind: integration_test_pass
+    emitter: scripts/ci/test-system-integration.sh (INFRA-849)
+    trigger: all assertions in the claim→commit→ship integration test passed
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pass_count, elapsed_s]
+
+  - kind: integration_test_fail
+    emitter: scripts/ci/test-system-integration.sh (INFRA-849)
+    trigger: one or more assertions in the claim→commit→ship integration test failed
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, fail_count, pass_count, elapsed_s]
