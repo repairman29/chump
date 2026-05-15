@@ -365,11 +365,12 @@ fn expand_aliases(mut args: Vec<String>) -> Vec<String> {
         // INFRA-1238: top-level `chump ship` (literal, not alias-s) was
         // promised in print_help but never wired — fell through to the
         // LLM agent loop. Mirror the `s` expansion.
-        // INFRA-1229: leave `chump ship plan` alone — that's the new
-        // pure-planner subcommand (slice 1 of bot-merge port). Only the
-        // legacy `chump ship <GAP-ID>` form gets the `gap ship` alias.
+        // INFRA-1229: leave `chump ship plan` / `chump ship execute` alone
+        // — those are the new subcommands (slices 1+2 of bot-merge port).
+        // Only the legacy `chump ship <GAP-ID>` form gets the `gap ship` alias.
         "ship" => {
-            if args.get(2).map(String::as_str) != Some("plan") {
+            let sub2 = args.get(2).map(String::as_str);
+            if sub2 != Some("plan") && sub2 != Some("execute") {
                 args[1] = "gap".to_string();
                 args.insert(2, "ship".to_string());
             }
@@ -739,6 +740,27 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         return ship_plan_cli(&args[3..]).await;
+    }
+
+    // `chump ship execute` (INFRA-1229 slice 2) — walks the ExecutorStep
+    // list derived from a ShipPlan via std::process::Command. Reads the
+    // plan JSON from --plan <file> or --stdin. Mutates state — pair with
+    // --dry-run to inspect without executing.
+    if args.get(1).map(String::as_str) == Some("ship")
+        && args.get(2).map(String::as_str) == Some("execute")
+    {
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            println!("Usage: chump ship execute (--plan PATH | --stdin) [--dry-run] [--json]");
+            println!();
+            println!("Read a ShipPlan JSON (from `chump ship plan`) and execute the");
+            println!("derived ExecutorStep list. Emits an ExecuteResult JSON with the");
+            println!("rc + stderr_tail for each step. --dry-run prints steps; runs none.");
+            println!();
+            println!("Pipe pattern:");
+            println!("  chump ship plan --gap INFRA-989 --pr 1913 | chump ship execute --stdin");
+            return Ok(());
+        }
+        return ship_execute_cli(&args[3..]).await;
     }
 
     // `chump init` (UX-001) — first-run setup: detect model, write .env, start server, open browser.
@@ -10839,7 +10861,9 @@ async fn ship_plan_cli(args: &[String]) -> Result<()> {
         match ship_plan_fetch_pr_snapshot(pr_num, &branch_name) {
             Ok(snapshot) => snapshot,
             Err(e) => {
-                eprintln!("chump ship plan: could not fetch PR snapshot ({e}); falling back to no-PR.");
+                eprintln!(
+                    "chump ship plan: could not fetch PR snapshot ({e}); falling back to no-PR."
+                );
                 chump_ship::PrSnapshot {
                     number: None,
                     state: chump_ship::PrState::None,
@@ -10893,10 +10917,20 @@ fn ship_plan_fetch_pr_snapshot(
 ) -> anyhow::Result<chump_ship::PrSnapshot> {
     // Resolve owner/repo from origin remote — `gh api repos/{owner}/{repo}/...`
     let nwo_out = std::process::Command::new("gh")
-        .args(["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
+        .args([
+            "repo",
+            "view",
+            "--json",
+            "nameWithOwner",
+            "--jq",
+            ".nameWithOwner",
+        ])
         .output()?;
     if !nwo_out.status.success() {
-        anyhow::bail!("gh repo view failed: {}", String::from_utf8_lossy(&nwo_out.stderr));
+        anyhow::bail!(
+            "gh repo view failed: {}",
+            String::from_utf8_lossy(&nwo_out.stderr)
+        );
     }
     let nwo = String::from_utf8_lossy(&nwo_out.stdout).trim().to_string();
 
@@ -10993,10 +11027,7 @@ fn ship_plan_fetch_pr_snapshot(
     })
 }
 
-fn ship_plan_fetch_checks(
-    nwo: &str,
-    sha: &str,
-) -> anyhow::Result<chump_ship::ChecksSummary> {
+fn ship_plan_fetch_checks(nwo: &str, sha: &str) -> anyhow::Result<chump_ship::ChecksSummary> {
     let out = std::process::Command::new("gh")
         .args([
             "api",
@@ -11037,14 +11068,17 @@ fn ship_plan_fetch_checks(
     Ok(s)
 }
 
-fn ship_plan_print_human(
-    plan: &chump_ship::ShipPlan,
-    gap: Option<&str>,
-    branch: &str,
-) {
-    println!("[ship plan] branch={branch} gap={}", gap.unwrap_or("(none)"));
+fn ship_plan_print_human(plan: &chump_ship::ShipPlan, gap: Option<&str>, branch: &str) {
+    println!(
+        "[ship plan] branch={branch} gap={}",
+        gap.unwrap_or("(none)")
+    );
     match plan {
-        chump_ship::ShipPlan::AlreadyDone { pr, state, recovery_hint } => {
+        chump_ship::ShipPlan::AlreadyDone {
+            pr,
+            state,
+            recovery_hint,
+        } => {
             println!("  action: ALREADY_DONE  pr=#{pr} state={state:?}");
             println!("  hint:   {recovery_hint}");
         }
@@ -11054,7 +11088,11 @@ fn ship_plan_print_human(
         chump_ship::ShipPlan::RebaseAndPush { behind_count } => {
             println!("  action: REBASE_AND_PUSH  behind_main={behind_count}");
         }
-        chump_ship::ShipPlan::RestDirectMerge { pr, head_sha, checks_verified } => {
+        chump_ship::ShipPlan::RestDirectMerge {
+            pr,
+            head_sha,
+            checks_verified,
+        } => {
             println!(
                 "  action: REST_DIRECT_MERGE  pr=#{pr} head={} checks_green={checks_verified}",
                 &head_sha[..head_sha.len().min(8)]
@@ -11064,14 +11102,24 @@ fn ship_plan_print_human(
             println!("  action: ARM_AUTO_MERGE  pr=#{pr}");
             println!("  reason: {reason}");
         }
-        chump_ship::ShipPlan::WaitForChecks { pr, incomplete, reason } => {
+        chump_ship::ShipPlan::WaitForChecks {
+            pr,
+            incomplete,
+            reason,
+        } => {
             println!("  action: WAIT_FOR_CHECKS  pr=#{pr} incomplete={incomplete}");
             println!("  reason: {reason}");
         }
-        chump_ship::ShipPlan::StaleBranch { pr, behind, threshold, recovery_hint } => {
+        chump_ship::ShipPlan::StaleBranch {
+            pr,
+            behind,
+            threshold,
+            recovery_hint,
+        } => {
             println!(
                 "  action: STALE_BRANCH  pr={} behind={behind} threshold={threshold}",
-                pr.map(|n| format!("#{n}")).unwrap_or_else(|| "(none)".to_string())
+                pr.map(|n| format!("#{n}"))
+                    .unwrap_or_else(|| "(none)".to_string())
             );
             println!("  hint:   {recovery_hint}");
         }
@@ -11079,12 +11127,202 @@ fn ship_plan_print_human(
             println!("  action: CONFLICT_RECOVER  pr=#{pr}");
             println!("  hint:   {recovery_hint}");
         }
-        chump_ship::ShipPlan::OperatorAction { reason, recovery_hint } => {
+        chump_ship::ShipPlan::OperatorAction {
+            reason,
+            recovery_hint,
+        } => {
             println!("  action: OPERATOR_ACTION");
             println!("  reason: {reason}");
             println!("  hint:   {recovery_hint}");
         }
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// INFRA-1229 slice 2 — `chump ship execute` CLI wrapper around the
+// chump-ship executor decision (decide_steps). Reads a ShipPlan from a
+// file or stdin, derives the ExecutorStep list, runs each step via
+// std::process::Command, and emits an ExecuteResult JSON.
+// ──────────────────────────────────────────────────────────────────────
+
+async fn ship_execute_cli(args: &[String]) -> Result<()> {
+    let mut plan_path: Option<String> = None;
+    let mut from_stdin = false;
+    let mut dry_run = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--plan" => {
+                plan_path = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--stdin" => {
+                from_stdin = true;
+                i += 1;
+            }
+            "--dry-run" => {
+                dry_run = true;
+                i += 1;
+            }
+            "--json" => {
+                i += 1; // default, but accepted
+            }
+            other => {
+                eprintln!("chump ship execute: unknown flag {other:?}");
+                eprintln!("Run `chump ship execute --help` for usage.");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    if plan_path.is_none() && !from_stdin {
+        eprintln!("chump ship execute: one of --plan PATH or --stdin is required.");
+        std::process::exit(2);
+    }
+
+    // Read the plan envelope. `chump ship plan` emits a top-level object
+    // with a `.plan` field; accept both that shape and a bare ShipPlan.
+    let plan_json = if let Some(p) = plan_path {
+        std::fs::read_to_string(&p).map_err(|e| anyhow::anyhow!("read --plan {p}: {e}"))?
+    } else {
+        use std::io::Read;
+        let mut buf = String::new();
+        std::io::stdin()
+            .read_to_string(&mut buf)
+            .map_err(|e| anyhow::anyhow!("read stdin: {e}"))?;
+        buf
+    };
+
+    let value: serde_json::Value =
+        serde_json::from_str(&plan_json).map_err(|e| anyhow::anyhow!("parse plan JSON: {e}"))?;
+    let plan_obj = value.get("plan").unwrap_or(&value).clone();
+    let plan: chump_ship::ShipPlan =
+        serde_json::from_value(plan_obj).map_err(|e| anyhow::anyhow!("decode ShipPlan: {e}"))?;
+
+    let steps = chump_ship::decide_steps(&plan);
+    let plan_action = match &plan {
+        chump_ship::ShipPlan::AlreadyDone { .. } => "AlreadyDone",
+        chump_ship::ShipPlan::CreatePr { .. } => "CreatePr",
+        chump_ship::ShipPlan::RebaseAndPush { .. } => "RebaseAndPush",
+        chump_ship::ShipPlan::RestDirectMerge { .. } => "RestDirectMerge",
+        chump_ship::ShipPlan::ArmAutoMerge { .. } => "ArmAutoMerge",
+        chump_ship::ShipPlan::WaitForChecks { .. } => "WaitForChecks",
+        chump_ship::ShipPlan::StaleBranch { .. } => "StaleBranch",
+        chump_ship::ShipPlan::ConflictRecover { .. } => "ConflictRecover",
+        chump_ship::ShipPlan::OperatorAction { .. } => "OperatorAction",
+    };
+
+    if steps.is_empty() {
+        let payload = serde_json::json!({
+            "plan_action": plan_action,
+            "executed": false,
+            "steps": [],
+            "any_failure": false,
+            "note": "No executor action needed for this ShipPlan variant.",
+        });
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+        return Ok(());
+    }
+
+    // Resolve the `{OWNER_REPO}` placeholder used by RestDirectMerge before
+    // executing — only one `gh repo view` per invocation.
+    let owner_repo = if dry_run {
+        "{OWNER_REPO}".to_string()
+    } else {
+        std::process::Command::new("gh")
+            .args([
+                "repo",
+                "view",
+                "--json",
+                "nameWithOwner",
+                "--jq",
+                ".nameWithOwner",
+            ])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "{OWNER_REPO}".to_string())
+    };
+
+    let mut step_results: Vec<serde_json::Value> = Vec::new();
+    let mut any_failure = false;
+    for step in &steps {
+        // Resolve the placeholder
+        let resolved_args: Vec<String> = step
+            .args
+            .iter()
+            .map(|a| a.replace("{OWNER_REPO}", &owner_repo))
+            .collect();
+        if dry_run {
+            step_results.push(serde_json::json!({
+                "program": step.program,
+                "args": resolved_args,
+                "rc": 0,
+                "stderr_tail": "",
+                "duration_ms": 0,
+                "dry_run": true,
+                "note": step.note,
+            }));
+            continue;
+        }
+        let started = std::time::Instant::now();
+        let out = std::process::Command::new(&step.program)
+            .args(&resolved_args)
+            .output();
+        let elapsed_ms = started.elapsed().as_millis() as u64;
+        let (rc, stderr_tail) = match out {
+            Ok(o) => {
+                let tail = String::from_utf8_lossy(&o.stderr);
+                let tail: String = tail
+                    .lines()
+                    .rev()
+                    .take(3)
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                (o.status.code().unwrap_or(-1), tail)
+            }
+            Err(e) => (-1, format!("exec error: {e}")),
+        };
+        let success = rc == 0;
+        if !success && step.expect_success {
+            any_failure = true;
+        }
+        step_results.push(serde_json::json!({
+            "program": step.program,
+            "args": resolved_args,
+            "rc": rc,
+            "stderr_tail": stderr_tail,
+            "duration_ms": elapsed_ms,
+            "expect_success": step.expect_success,
+            "success": success,
+            "note": step.note,
+        }));
+        if !success && step.expect_success {
+            // Abort the chain on hard failure.
+            break;
+        }
+    }
+    let payload = serde_json::json!({
+        "plan_action": plan_action,
+        "executed": !dry_run,
+        "dry_run": dry_run,
+        "steps": step_results,
+        "any_failure": any_failure,
+    });
+    println!("{}", serde_json::to_string_pretty(&payload)?);
+    if any_failure {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
