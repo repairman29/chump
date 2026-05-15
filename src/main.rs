@@ -3791,10 +3791,50 @@ async fn main() -> Result<()> {
                             };
                             println!("{}", val.trim());
                         } else {
+                            // INFRA-1285: helper to quote YAML scalar strings that need it.
+                            // Strings containing ':', '#', leading/trailing whitespace, or
+                            // starting with a YAML indicator char are quoted with double-quotes.
+                            fn yaml_quote(s: &str) -> String {
+                                let needs_quote = s.contains(':')
+                                    || s.contains('#')
+                                    || s.contains('"')
+                                    || s.contains('\\')
+                                    || s.starts_with(|c: char| {
+                                        matches!(
+                                            c,
+                                            '{' | '}'
+                                                | '['
+                                                | ']'
+                                                | ','
+                                                | '&'
+                                                | '*'
+                                                | '?'
+                                                | '|'
+                                                | '-'
+                                                | '<'
+                                                | '>'
+                                                | '='
+                                                | '!'
+                                                | '%'
+                                                | '@'
+                                                | '`'
+                                        )
+                                    })
+                                    || s.starts_with(|c: char| c.is_whitespace())
+                                    || s.ends_with(|c: char| c.is_whitespace())
+                                    || s.is_empty();
+                                if needs_quote {
+                                    // Escape backslashes and double-quotes inside the string.
+                                    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+                                    format!("\"{}\"", escaped)
+                                } else {
+                                    s.to_string()
+                                }
+                            }
                             // Default: status/closed_pr/closed_date promoted before description (INFRA-1037)
                             println!("- id: {}", g.id);
                             println!("  domain: {}", g.domain);
-                            println!("  title: {}", g.title);
+                            println!("  title: {}", yaml_quote(&g.title));
                             println!("  status: {}", g.status);
                             println!("  priority: {}", g.priority);
                             println!("  effort: {}", g.effort);
