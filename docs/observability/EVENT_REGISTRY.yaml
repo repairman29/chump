@@ -2016,6 +2016,20 @@ events:
     consumers: [fleet-brief, reaper-heartbeat-watchdog]
     fields_required: [ts, kind, worktree, lease, ttl_s]
 
+  # ── ZERO-WASTE-001: read-only stale-worktree audit ───────────────────────
+  - kind: worktree_stale_detected
+    emitter: scripts/ops/audit-stale-worktrees.sh (ZERO-WASTE-001)
+    trigger: >
+      Read-only audit found a worktree whose directory mtime exceeds
+      --age-hours (default 24h) AND either (a) has no matching lease in
+      .chump-locks/ ("no_lease_ever_existed"), or (b) has a lease whose
+      heartbeat_at is older than the same threshold ("orphaned_lease").
+      Distinct from worktree_reaper_skipped_active and worktree_orphan_pruned —
+      this event is an early-warning surface BEFORE the reaper trips; no
+      deletion happens here. Pruning belongs to INFRA-1347 worktree-prune.sh.
+    consumers: [fleet-brief, disk-health-monitor]
+    fields_required: [ts, kind, worktree, age_hours, reason, branch, lease]
+
   # ── CREDIBLE-038: file-count-blast rule ──────────────────────────────────
   - kind: pr_scope_violation
     emitter: scripts/ci/check-mass-deletion.sh (CREDIBLE-038, rule C)

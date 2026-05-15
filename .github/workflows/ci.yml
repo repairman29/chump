@@ -1296,6 +1296,8 @@ jobs:
         run: bash scripts/ci/test-known-flakes-gate.sh
       - name: orphaned worktree reaper — prune-worktrees.sh orphan mode (RESILIENT-013)
         run: bash scripts/ci/test-orphan-worktree-prune.sh
+      - name: read-only stale-worktree audit (ZERO-WASTE-001)
+        run: bash scripts/ci/test-audit-stale-worktrees.sh
       - name: gap consolidate — near-duplicate title detection (INFRA-935)
         run: |
           cargo build --bin chump 2>&1 | tail -2
