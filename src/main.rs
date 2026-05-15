@@ -3854,21 +3854,18 @@ async fn main() -> Result<()> {
                                 }
                             }
                             if !ac_items.is_empty() {
-                                // INFRA-1285: emit as YAML list (- "item"), not numbered mapping.
-                                // Warn on vague items but keep valid YAML.
+                                // CREDIBLE-033: numbered list, WARN prefix on vague items.
                                 println!("  acceptance_criteria:");
-                                for item in ac_items.iter() {
+                                for (i, item) in ac_items.iter().enumerate() {
                                     let up = item.to_uppercase();
                                     let is_vague = up.contains("TODO")
                                         || item.contains("TBD")
                                         || item.contains("<fill in>");
-                                    let display = if is_vague {
-                                        format!("WARN: {}", item)
+                                    if is_vague {
+                                        println!("    {}. WARN: {}", i + 1, item);
                                     } else {
-                                        item.clone()
-                                    };
-                                    // Always quote AC items — they often contain colons.
-                                    println!("    - {}", yaml_quote(&display));
+                                        println!("    {}. {}", i + 1, item);
+                                    }
                                 }
                                 if ac_has_todos {
                                     eprintln!(
@@ -3878,9 +3875,9 @@ async fn main() -> Result<()> {
                                     );
                                 }
                             } else if !g.acceptance_criteria.trim().is_empty() {
-                                // INFRA-1285: fallback raw text — wrap as single-item YAML list.
+                                // Fallback: raw text when not parseable as JSON list.
                                 println!("  acceptance_criteria:");
-                                println!("    - {}", yaml_quote(g.acceptance_criteria.trim()));
+                                println!("    1. {}", g.acceptance_criteria.trim());
                             }
                             if !g.notes.is_empty() {
                                 println!("  notes: |");
