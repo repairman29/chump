@@ -89,6 +89,9 @@ mod ftue_tool;
 // INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
 // The rename keeps every `gap_store::*` call site compiling unchanged.
 use chump_gap_store as gap_store;
+// INFRA-1229: explicit linkage declaration so Cargo always links chump-ship
+// even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
+extern crate chump_ship;
 mod completion;
 mod gen;
 mod genai_conv;
@@ -266,6 +269,36 @@ fn is_test_domain(domain: &str) -> bool {
         || domain.ends_with("TEST")
 }
 
+/// INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
+fn is_acceptance_criteria_vague(ac: &str) -> bool {
+    let trimmed = ac.trim();
+    // Empty AC is vague
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    // Try to parse as JSON array (the canonical format)
+    if let Ok(serde_json::Value::Array(arr)) = serde_json::from_str(trimmed) {
+        if arr.is_empty() {
+            return true; // Empty array
+        }
+        // Check if all items are TODO or TBD strings
+        let all_vague = arr.iter().all(|item| {
+            if let Some(s) = item.as_str() {
+                let upper = s.to_uppercase();
+                upper == "TODO" || upper == "TBD" || upper.contains("TODO") || upper.contains("TBD")
+            } else {
+                false
+            }
+        });
+        return all_vague && !arr.is_empty();
+    }
+
+    // If not JSON array, check if the raw string is just TODO/TBD
+    let upper = trimmed.to_uppercase();
+    upper == "TODO" || upper == "TBD" || (upper.len() < 50 && upper.contains("TODO"))
+}
+
 /// INFRA-094: write a marker recording that the chump CLI just modified
 /// docs/gaps.yaml via a canonical operation (`gap dump --out` /
 /// `gap ship --update-yaml`). The pre-commit hook reads this marker — if
@@ -365,9 +398,15 @@ fn expand_aliases(mut args: Vec<String>) -> Vec<String> {
         // INFRA-1238: top-level `chump ship` (literal, not alias-s) was
         // promised in print_help but never wired — fell through to the
         // LLM agent loop. Mirror the `s` expansion.
+        // INFRA-1229: leave `chump ship plan` / `chump ship execute` alone
+        // — those are the new subcommands (slices 1+2 of bot-merge port).
+        // Only the legacy `chump ship <GAP-ID>` form gets the `gap ship` alias.
         "ship" => {
-            args[1] = "gap".to_string();
-            args.insert(2, "ship".to_string());
+            let sub2 = args.get(2).map(String::as_str);
+            if sub2 != Some("plan") && sub2 != Some("execute") {
+                args[1] = "gap".to_string();
+                args.insert(2, "ship".to_string());
+            }
         }
         _ => {}
     }
@@ -712,6 +751,49 @@ async fn main() -> Result<()> {
         // Stderr so stdout stays clean for chained commands (e.g. backtick capture).
         eprintln!("[ambient] wrote {} ({})", parsed.kind, path.display());
         return Ok(());
+    }
+
+    // `chump ship plan` (INFRA-1229 slice 1) — pure planner that decides
+    // REBASE / ARM / WAIT / CONFLICT-RECOVER / etc. given a snapshot of
+    // PR + branch state. Today's bot-merge.sh consumes the output as a
+    // structured JSON plan and dispatches; slice 2 (separate PR) will
+    // move the executor side into Rust as well.
+    if args.get(1).map(String::as_str) == Some("ship")
+        && args.get(2).map(String::as_str) == Some("plan")
+    {
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            println!("Usage: chump ship plan [--gap GAP-ID] [--pr N] [--branch B] [--json|--human] [--dry-run]");
+            println!();
+            println!("Decide the next ship action for a branch + PR given their current state.");
+            println!("Output is a structured ShipPlan JSON (default) suitable for bot-merge.sh");
+            println!("or any other consumer to dispatch on. The planner does no mutations.");
+            println!();
+            println!("Inputs are gathered by calling `gh api` for the PR + check-runs and");
+            println!("`git rev-list --count` for behind/ahead. --dry-run uses synthetic state.");
+            return Ok(());
+        }
+        return ship_plan_cli(&args[3..]).await;
+    }
+
+    // `chump ship execute` (INFRA-1229 slice 2) — walks the ExecutorStep
+    // list derived from a ShipPlan via std::process::Command. Reads the
+    // plan JSON from --plan <file> or --stdin. Mutates state — pair with
+    // --dry-run to inspect without executing.
+    if args.get(1).map(String::as_str) == Some("ship")
+        && args.get(2).map(String::as_str) == Some("execute")
+    {
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            println!("Usage: chump ship execute (--plan PATH | --stdin) [--dry-run] [--json]");
+            println!();
+            println!("Read a ShipPlan JSON (from `chump ship plan`) and execute the");
+            println!("derived ExecutorStep list. Emits an ExecuteResult JSON with the");
+            println!("rc + stderr_tail for each step. --dry-run prints steps; runs none.");
+            println!();
+            println!("Pipe pattern:");
+            println!("  chump ship plan --gap INFRA-989 --pr 1913 | chump ship execute --stdin");
+            return Ok(());
+        }
+        return ship_execute_cli(&args[3..]).await;
     }
 
     // `chump init` (UX-001) — first-run setup: detect model, write .env, start server, open browser.
@@ -3450,17 +3532,126 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            // FLEET-037: ergonomic primary verb — like "start" but with an
+            // idempotency guard: refuses if the tmux session is already running.
+            "up" => {
+                let session = flag("--session")
+                    .or_else(|| cfg("session"))
+                    .unwrap_or_else(|| "chump-fleet".to_string());
+
+                // Idempotency: if session already running, bail early with clear guidance.
+                let already_running = std::process::Command::new("tmux")
+                    .args(["has-session", "-t", &session])
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false);
+
+                if already_running {
+                    eprintln!("[fleet up] session '{session}' is already running.");
+                    eprintln!("  Use 'chump fleet status' to see current state.");
+                    eprintln!("  Use 'chump fleet scale <N>' to resize.");
+                    eprintln!("  Use 'chump fleet down' to stop first, then 'chump fleet up'.");
+                    std::process::exit(2);
+                }
+
+                // Delegate to the same logic as "start" (shared via the start arm path).
+                let size = flag("--size")
+                    .or_else(|| cfg("size"))
+                    .unwrap_or_else(|| "2".to_string());
+                let model = flag("--model")
+                    .or_else(|| cfg("model"))
+                    .unwrap_or_else(|| "sonnet".to_string());
+                let effort = flag("--effort")
+                    .or_else(|| cfg("effort"))
+                    .unwrap_or_else(|| "xs,s,m".to_string());
+                let domain = flag("--domain")
+                    .or_else(|| cfg("domain"))
+                    .unwrap_or_default();
+
+                const KNOWN_HARNESSES_UP: &[&str] = &["claude", "opencode", "codex", "manual"];
+                let harness = flag("--harness")
+                    .or_else(|| {
+                        std::env::var("CHUMP_AGENT_HARNESS")
+                            .ok()
+                            .filter(|v| !v.is_empty())
+                    })
+                    .or_else(|| cfg("harness"))
+                    .unwrap_or_else(|| "claude".to_string());
+                if !KNOWN_HARNESSES_UP.contains(&harness.as_str()) {
+                    eprintln!(
+                        "chump fleet up: unknown --harness '{harness}'. Known: {}",
+                        KNOWN_HARNESSES_UP.join(", ")
+                    );
+                    eprintln!("  (Add a new harness to scripts/dispatch/harnesses/<name>.sh per INFRA-1045.)");
+                    std::process::exit(2);
+                }
+
+                // Persist last-used config for restart.
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+                let last_config = std::path::Path::new(&home).join(".chump/last-fleet-config.json");
+                let _ = std::fs::create_dir_all(
+                    last_config.parent().unwrap_or(std::path::Path::new("/tmp")),
+                );
+                let _ = std::fs::write(
+                    &last_config,
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "size": size,
+                        "model": model,
+                        "harness": harness,
+                        "effort": effort,
+                        "domain": domain,
+                        "session": session,
+                        "updated_at": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                    }))
+                    .unwrap_or_default(),
+                );
+
+                let status = std::process::Command::new("bash")
+                    .arg(&run_fleet_sh)
+                    .env("FLEET_SIZE", &size)
+                    .env("FLEET_MODEL", &model)
+                    .env("FLEET_HARNESS", &harness)
+                    .env("FLEET_EFFORT_FILTER", &effort)
+                    .env("FLEET_DOMAIN_FILTER", &domain)
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("chump fleet up: {e}");
+                        std::process::exit(1);
+                    });
+                std::process::exit(status.code().unwrap_or(1));
+            }
+            // FLEET-037: ergonomic primary verb — alias for "stop".
+            "down" => {
+                let session = flag("--session")
+                    .or_else(|| cfg("session"))
+                    .unwrap_or_else(|| "chump-fleet".to_string());
+                let status = std::process::Command::new("bash")
+                    .arg(&run_fleet_sh)
+                    .env("FLEET_SIZE", "0")
+                    .env("FLEET_SESSION", &session)
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("chump fleet down: {e}");
+                        std::process::exit(1);
+                    });
+                std::process::exit(status.code().unwrap_or(1));
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <start|stop|status|scale|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon>"
                 );
-                eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]");
-                eprintln!("  stop        [--session NAME]");
+                eprintln!("Primary verbs:");
+                eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
+                eprintln!("              (like 'start' but refuses if session already running — use 'scale' to resize)");
+                eprintln!("  down        [--session NAME]  (alias for stop)");
                 eprintln!("  status      [--json]");
                 eprintln!("  scale       N [--session NAME]");
+                eprintln!("Aliases / advanced:");
+                eprintln!("  start       [--size N] [--model M] [--effort xs,s,m] [--domain D]  (alias for up, no idempotency check)");
+                eprintln!("  stop        [--session NAME]  (alias for down)");
                 eprintln!("  snapshot");
                 eprintln!("  restore     <snapshot-id>");
-                eprintln!("  restart     [--size N] [--session NAME]");
+                eprintln!("  restart     [--size N] [--session NAME]  (fleet-restart.sh — graceful reload)");
                 eprintln!("  audit-pids  [--apply]");
                 eprintln!("  brief       [--json] [--window SECS]");
                 eprintln!("  auto-widen  [--apply]  -- widen effort/priority filter on starvation");
@@ -3871,9 +4062,16 @@ async fn main() -> Result<()> {
                                 } else {
                                     String::new()
                                 };
+                                // INFRA-1259: add warning indicator for vague AC
+                                let ac_warn =
+                                    if is_acceptance_criteria_vague(&g.acceptance_criteria) {
+                                        " ⚠"
+                                    } else {
+                                        ""
+                                    };
                                 println!(
-                                    "[{}] {} — {} ({}/{}){done_suffix}",
-                                    g.status, g.id, g.title, g.priority, g.effort
+                                    "[{}] {} — {} ({}/{}){}{done_suffix}",
+                                    g.status, g.id, g.title, g.priority, g.effort, ac_warn
                                 );
                             }
 
@@ -9021,6 +9219,9 @@ async fn main() -> Result<()> {
                              \"source\":\"{release_source}\"}}"
                         )
                     });
+                // INFRA-1116 AC6: emit intent_retracted so other sessions' overlap
+                // gates treat this session as inactive immediately on release.
+                atomic_claim::emit_intent_retracted(&ambient_path, &release_gap_id, &target_id);
                 return Ok(());
             }
             Err(e) => {
@@ -10698,6 +10899,666 @@ async fn run_reflection_ab_mode(episodes_path: Option<std::path::PathBuf>) {
              CHUMP_REFLECTION_AB_WITH_LLM=1 to compare against LLM variant."
         );
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// INFRA-1229 slice 1 — `chump ship plan` CLI wrapper around the pure
+// planner in the chump-ship crate. Gathers PR + repo snapshots via gh + git,
+// calls chump_ship::plan(), emits JSON (default) or a human summary.
+// ──────────────────────────────────────────────────────────────────────
+
+async fn ship_plan_cli(args: &[String]) -> Result<()> {
+    let mut gap_id: Option<String> = None;
+    let mut pr_num: Option<u64> = None;
+    let mut branch: Option<String> = None;
+    let mut json_out = true;
+    let mut dry_run = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--gap" => {
+                gap_id = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--pr" => {
+                pr_num = args.get(i + 1).and_then(|s| s.parse().ok());
+                i += 2;
+            }
+            "--branch" => {
+                branch = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--json" => {
+                json_out = true;
+                i += 1;
+            }
+            "--human" => {
+                json_out = false;
+                i += 1;
+            }
+            "--dry-run" => {
+                dry_run = true;
+                i += 1;
+            }
+            other => {
+                eprintln!("chump ship plan: unknown flag {other:?}");
+                eprintln!("Run `chump ship plan --help` for usage.");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    // Branch: explicit > current symbolic-ref > "HEAD" sentinel.
+    let branch_name = match branch {
+        Some(b) => b,
+        None => std::process::Command::new("git")
+            .args(["symbolic-ref", "--short", "HEAD"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "HEAD".to_string()),
+    };
+
+    // Repo snapshot — via git rev-list.
+    let stale_threshold: u32 = std::env::var("CHUMP_BOT_MERGE_STALE_THRESHOLD")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(15);
+    let (behind_main, ahead_main) = if dry_run {
+        (0u32, 0u32)
+    } else {
+        ship_plan_count_behind_ahead("HEAD", "origin/main").unwrap_or((0, 0))
+    };
+    let has_uncommitted = if dry_run {
+        false
+    } else {
+        !std::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .output()
+            .ok()
+            .map(|o| o.stdout.is_empty())
+            .unwrap_or(true)
+    };
+    let repo = chump_ship::RepoSnapshot {
+        branch: branch_name.clone(),
+        behind_main,
+        ahead_main,
+        has_uncommitted,
+        stale_threshold,
+    };
+
+    // PR snapshot — via gh api (REST), unless --dry-run.
+    let pr = if dry_run {
+        chump_ship::PrSnapshot {
+            number: pr_num,
+            state: if pr_num.is_some() {
+                chump_ship::PrState::Open
+            } else {
+                chump_ship::PrState::None
+            },
+            mergeable: None,
+            mergeable_state: chump_ship::MergeableState::Unknown,
+            auto_merge_set: false,
+            head_sha: String::new(),
+            base_sha: String::new(),
+            checks: chump_ship::ChecksSummary::default(),
+        }
+    } else {
+        match ship_plan_fetch_pr_snapshot(pr_num, &branch_name) {
+            Ok(snapshot) => snapshot,
+            Err(e) => {
+                eprintln!(
+                    "chump ship plan: could not fetch PR snapshot ({e}); falling back to no-PR."
+                );
+                chump_ship::PrSnapshot {
+                    number: None,
+                    state: chump_ship::PrState::None,
+                    mergeable: None,
+                    mergeable_state: chump_ship::MergeableState::Unknown,
+                    auto_merge_set: false,
+                    head_sha: String::new(),
+                    base_sha: String::new(),
+                    checks: chump_ship::ChecksSummary::default(),
+                }
+            }
+        }
+    };
+
+    let decision = chump_ship::plan(&pr, &repo);
+    let payload = serde_json::json!({
+        "gap": gap_id,
+        "branch": branch_name,
+        "behind_main": behind_main,
+        "ahead_main": ahead_main,
+        "pr": pr,
+        "plan": decision,
+    });
+
+    if json_out {
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+    } else {
+        ship_plan_print_human(&decision, gap_id.as_deref(), &branch_name);
+    }
+    Ok(())
+}
+
+fn ship_plan_count_behind_ahead(head: &str, base: &str) -> std::io::Result<(u32, u32)> {
+    let spec = format!("{head}...{base}");
+    let out = std::process::Command::new("git")
+        .args(["rev-list", "--left-right", "--count", &spec])
+        .output()?;
+    if !out.status.success() {
+        return Ok((0, 0));
+    }
+    let s = String::from_utf8_lossy(&out.stdout);
+    let mut parts = s.split_whitespace();
+    let ahead: u32 = parts.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    let behind: u32 = parts.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+    Ok((behind, ahead))
+}
+
+fn ship_plan_fetch_pr_snapshot(
+    pr_num: Option<u64>,
+    branch: &str,
+) -> anyhow::Result<chump_ship::PrSnapshot> {
+    // Resolve owner/repo from origin remote — `gh api repos/{owner}/{repo}/...`
+    let nwo_out = std::process::Command::new("gh")
+        .args([
+            "repo",
+            "view",
+            "--json",
+            "nameWithOwner",
+            "--jq",
+            ".nameWithOwner",
+        ])
+        .output()?;
+    if !nwo_out.status.success() {
+        anyhow::bail!(
+            "gh repo view failed: {}",
+            String::from_utf8_lossy(&nwo_out.stderr)
+        );
+    }
+    let nwo = String::from_utf8_lossy(&nwo_out.stdout).trim().to_string();
+
+    // Resolve PR number: explicit --pr > look up by head branch.
+    let pr = match pr_num {
+        Some(n) => n,
+        None => {
+            let owner = nwo.split('/').next().unwrap_or("");
+            let list = std::process::Command::new("gh")
+                .args([
+                    "api",
+                    &format!("repos/{nwo}/pulls?head={owner}:{branch}&state=open"),
+                    "--jq",
+                    ".[0].number // empty",
+                ])
+                .output()?;
+            let s = String::from_utf8_lossy(&list.stdout).trim().to_string();
+            if s.is_empty() {
+                // No PR for this branch — return synthetic "no PR" snapshot.
+                return Ok(chump_ship::PrSnapshot {
+                    number: None,
+                    state: chump_ship::PrState::None,
+                    mergeable: None,
+                    mergeable_state: chump_ship::MergeableState::Unknown,
+                    auto_merge_set: false,
+                    head_sha: String::new(),
+                    base_sha: String::new(),
+                    checks: chump_ship::ChecksSummary::default(),
+                });
+            }
+            s.parse()?
+        }
+    };
+
+    // Fetch PR detail.
+    let pr_json = std::process::Command::new("gh")
+        .args(["api", &format!("repos/{nwo}/pulls/{pr}")])
+        .output()?;
+    if !pr_json.status.success() {
+        anyhow::bail!(
+            "gh api pulls/{pr} failed: {}",
+            String::from_utf8_lossy(&pr_json.stderr)
+        );
+    }
+    let v: serde_json::Value = serde_json::from_slice(&pr_json.stdout)?;
+    let state = match v.get("state").and_then(|x| x.as_str()) {
+        Some("open") => chump_ship::PrState::Open,
+        Some("closed") if v.get("merged").and_then(|x| x.as_bool()) == Some(true) => {
+            chump_ship::PrState::Merged
+        }
+        Some("closed") => chump_ship::PrState::Closed,
+        _ => chump_ship::PrState::Open,
+    };
+    let mergeable = v.get("mergeable").and_then(|x| x.as_bool());
+    let mergeable_state = match v.get("mergeable_state").and_then(|x| x.as_str()) {
+        Some("clean") => chump_ship::MergeableState::Clean,
+        Some("behind") => chump_ship::MergeableState::Behind,
+        Some("blocked") => chump_ship::MergeableState::Blocked,
+        Some("dirty") => chump_ship::MergeableState::Dirty,
+        Some("unstable") => chump_ship::MergeableState::Unstable,
+        Some("has_hooks") => chump_ship::MergeableState::HasHooks,
+        _ => chump_ship::MergeableState::Unknown,
+    };
+    let auto_merge_set = v.get("auto_merge").map(|x| !x.is_null()).unwrap_or(false);
+    let head_sha = v
+        .get("head")
+        .and_then(|h| h.get("sha"))
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+    let base_sha = v
+        .get("base")
+        .and_then(|b| b.get("sha"))
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Fetch checks summary for the head sha.
+    let checks = if head_sha.is_empty() {
+        chump_ship::ChecksSummary::default()
+    } else {
+        ship_plan_fetch_checks(&nwo, &head_sha).unwrap_or_default()
+    };
+
+    Ok(chump_ship::PrSnapshot {
+        number: Some(pr),
+        state,
+        mergeable,
+        mergeable_state,
+        auto_merge_set,
+        head_sha,
+        base_sha,
+        checks,
+    })
+}
+
+fn ship_plan_fetch_checks(nwo: &str, sha: &str) -> anyhow::Result<chump_ship::ChecksSummary> {
+    let out = std::process::Command::new("gh")
+        .args([
+            "api",
+            &format!("repos/{nwo}/commits/{sha}/check-runs"),
+            "--paginate",
+        ])
+        .output()?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "gh api check-runs failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap_or(serde_json::json!({}));
+    let runs = v
+        .get("check_runs")
+        .and_then(|x| x.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let mut s = chump_ship::ChecksSummary::default();
+    for c in &runs {
+        let status = c.get("status").and_then(|x| x.as_str()).unwrap_or("");
+        let conclusion = c.get("conclusion").and_then(|x| x.as_str()).unwrap_or("");
+        let neutral_kind = matches!(conclusion, "skipped" | "neutral" | "cancelled");
+        if neutral_kind {
+            s.neutral_or_skipped += 1;
+            continue;
+        }
+        s.total += 1;
+        if status != "completed" {
+            s.incomplete += 1;
+        } else if conclusion != "success" {
+            s.completed_failure += 1;
+        } else {
+            s.completed_success += 1;
+        }
+    }
+    Ok(s)
+}
+
+fn ship_plan_print_human(plan: &chump_ship::ShipPlan, gap: Option<&str>, branch: &str) {
+    println!(
+        "[ship plan] branch={branch} gap={}",
+        gap.unwrap_or("(none)")
+    );
+    match plan {
+        chump_ship::ShipPlan::AlreadyDone {
+            pr,
+            state,
+            recovery_hint,
+        } => {
+            println!("  action: ALREADY_DONE  pr=#{pr} state={state:?}");
+            println!("  hint:   {recovery_hint}");
+        }
+        chump_ship::ShipPlan::CreatePr { branch, ahead } => {
+            println!("  action: CREATE_PR  branch={branch} ahead_main={ahead}");
+        }
+        chump_ship::ShipPlan::RebaseAndPush { behind_count } => {
+            println!("  action: REBASE_AND_PUSH  behind_main={behind_count}");
+        }
+        chump_ship::ShipPlan::RestDirectMerge {
+            pr,
+            head_sha,
+            checks_verified,
+        } => {
+            println!(
+                "  action: REST_DIRECT_MERGE  pr=#{pr} head={} checks_green={checks_verified}",
+                &head_sha[..head_sha.len().min(8)]
+            );
+        }
+        chump_ship::ShipPlan::ArmAutoMerge { pr, reason } => {
+            println!("  action: ARM_AUTO_MERGE  pr=#{pr}");
+            println!("  reason: {reason}");
+        }
+        chump_ship::ShipPlan::WaitForChecks {
+            pr,
+            incomplete,
+            reason,
+        } => {
+            println!("  action: WAIT_FOR_CHECKS  pr=#{pr} incomplete={incomplete}");
+            println!("  reason: {reason}");
+        }
+        chump_ship::ShipPlan::StaleBranch {
+            pr,
+            behind,
+            threshold,
+            recovery_hint,
+        } => {
+            println!(
+                "  action: STALE_BRANCH  pr={} behind={behind} threshold={threshold}",
+                pr.map(|n| format!("#{n}"))
+                    .unwrap_or_else(|| "(none)".to_string())
+            );
+            println!("  hint:   {recovery_hint}");
+        }
+        chump_ship::ShipPlan::ConflictRecover { pr, recovery_hint } => {
+            println!("  action: CONFLICT_RECOVER  pr=#{pr}");
+            println!("  hint:   {recovery_hint}");
+        }
+        chump_ship::ShipPlan::OperatorAction {
+            reason,
+            recovery_hint,
+        } => {
+            println!("  action: OPERATOR_ACTION");
+            println!("  reason: {reason}");
+            println!("  hint:   {recovery_hint}");
+        }
+    }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// INFRA-1229 slice 2 — `chump ship execute` CLI wrapper around the
+// chump-ship executor decision (decide_steps). Reads a ShipPlan from a
+// file or stdin, derives the ExecutorStep list, runs each step via
+// std::process::Command, and emits an ExecuteResult JSON.
+// ──────────────────────────────────────────────────────────────────────
+
+async fn ship_execute_cli(args: &[String]) -> Result<()> {
+    let mut plan_path: Option<String> = None;
+    let mut from_stdin = false;
+    let mut dry_run = false;
+    // INFRA-1229 slice 3: bounded retry on push --force-with-lease races.
+    let mut max_rebase_retries: u32 = std::env::var("CHUMP_BOT_MERGE_RETRY_MAX")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3);
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--plan" => {
+                plan_path = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--stdin" => {
+                from_stdin = true;
+                i += 1;
+            }
+            "--dry-run" => {
+                dry_run = true;
+                i += 1;
+            }
+            "--max-rebase-retries" => {
+                max_rebase_retries = args
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(max_rebase_retries);
+                i += 2;
+            }
+            "--json" => {
+                i += 1; // default, but accepted
+            }
+            other => {
+                eprintln!("chump ship execute: unknown flag {other:?}");
+                eprintln!("Run `chump ship execute --help` for usage.");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    if plan_path.is_none() && !from_stdin {
+        eprintln!("chump ship execute: one of --plan PATH or --stdin is required.");
+        std::process::exit(2);
+    }
+
+    // Read the plan envelope. `chump ship plan` emits a top-level object
+    // with a `.plan` field; accept both that shape and a bare ShipPlan.
+    let plan_json = if let Some(p) = plan_path {
+        std::fs::read_to_string(&p).map_err(|e| anyhow::anyhow!("read --plan {p}: {e}"))?
+    } else {
+        use std::io::Read;
+        let mut buf = String::new();
+        std::io::stdin()
+            .read_to_string(&mut buf)
+            .map_err(|e| anyhow::anyhow!("read stdin: {e}"))?;
+        buf
+    };
+
+    let value: serde_json::Value =
+        serde_json::from_str(&plan_json).map_err(|e| anyhow::anyhow!("parse plan JSON: {e}"))?;
+    let plan_obj = value.get("plan").unwrap_or(&value).clone();
+    let plan: chump_ship::ShipPlan =
+        serde_json::from_value(plan_obj).map_err(|e| anyhow::anyhow!("decode ShipPlan: {e}"))?;
+
+    let steps = chump_ship::decide_steps(&plan);
+    let plan_action = match &plan {
+        chump_ship::ShipPlan::AlreadyDone { .. } => "AlreadyDone",
+        chump_ship::ShipPlan::CreatePr { .. } => "CreatePr",
+        chump_ship::ShipPlan::RebaseAndPush { .. } => "RebaseAndPush",
+        chump_ship::ShipPlan::RestDirectMerge { .. } => "RestDirectMerge",
+        chump_ship::ShipPlan::ArmAutoMerge { .. } => "ArmAutoMerge",
+        chump_ship::ShipPlan::WaitForChecks { .. } => "WaitForChecks",
+        chump_ship::ShipPlan::StaleBranch { .. } => "StaleBranch",
+        chump_ship::ShipPlan::ConflictRecover { .. } => "ConflictRecover",
+        chump_ship::ShipPlan::OperatorAction { .. } => "OperatorAction",
+    };
+
+    if steps.is_empty() {
+        let payload = serde_json::json!({
+            "plan_action": plan_action,
+            "executed": false,
+            "steps": [],
+            "any_failure": false,
+            "note": "No executor action needed for this ShipPlan variant.",
+        });
+        println!("{}", serde_json::to_string_pretty(&payload)?);
+        return Ok(());
+    }
+
+    // Resolve the `{OWNER_REPO}` placeholder used by RestDirectMerge before
+    // executing — only one `gh repo view` per invocation.
+    let owner_repo = if dry_run {
+        "{OWNER_REPO}".to_string()
+    } else {
+        std::process::Command::new("gh")
+            .args([
+                "repo",
+                "view",
+                "--json",
+                "nameWithOwner",
+                "--jq",
+                ".nameWithOwner",
+            ])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if o.status.success() {
+                    Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| "{OWNER_REPO}".to_string())
+    };
+
+    let mut step_results: Vec<serde_json::Value> = Vec::new();
+    let mut any_failure = false;
+    let mut retry_attempts: u32 = 0;
+    let mut final_action: String = "Success".to_string();
+
+    // INFRA-1229 slice 3: RebaseAndPush gets a retry loop driven by
+    // chump_ship::classify_step_failure. Other plan variants use a single
+    // pass.
+    let is_rebase_and_push = matches!(plan, chump_ship::ShipPlan::RebaseAndPush { .. });
+
+    'attempt: for attempt in 0..=max_rebase_retries {
+        if attempt > 0 {
+            retry_attempts = attempt;
+            eprintln!(
+                "[ship execute] push lost a race; retry {}/{}",
+                attempt, max_rebase_retries
+            );
+        }
+        for step in &steps {
+            let resolved_args: Vec<String> = step
+                .args
+                .iter()
+                .map(|a| a.replace("{OWNER_REPO}", &owner_repo))
+                .collect();
+            if dry_run {
+                step_results.push(serde_json::json!({
+                    "program": step.program,
+                    "args": resolved_args,
+                    "rc": 0,
+                    "stderr_tail": "",
+                    "duration_ms": 0,
+                    "dry_run": true,
+                    "note": step.note,
+                    "attempt": attempt,
+                }));
+                continue;
+            }
+            let started = std::time::Instant::now();
+            let out = std::process::Command::new(&step.program)
+                .args(&resolved_args)
+                .output();
+            let elapsed_ms = started.elapsed().as_millis() as u64;
+            let (rc, stderr_tail) = match out {
+                Ok(o) => {
+                    let tail = String::from_utf8_lossy(&o.stderr);
+                    let tail: String = tail
+                        .lines()
+                        .rev()
+                        .take(3)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    (o.status.code().unwrap_or(-1), tail)
+                }
+                Err(e) => (-1, format!("exec error: {e}")),
+            };
+            let success = rc == 0;
+            step_results.push(serde_json::json!({
+                "program": step.program,
+                "args": resolved_args,
+                "rc": rc,
+                "stderr_tail": stderr_tail,
+                "duration_ms": elapsed_ms,
+                "expect_success": step.expect_success,
+                "success": success,
+                "note": step.note,
+                "attempt": attempt,
+            }));
+            if !success && step.expect_success {
+                any_failure = true;
+
+                if is_rebase_and_push {
+                    // Classify the failure: retry, abort-as-conflict, or hard-fail.
+                    let action = chump_ship::classify_step_failure(
+                        &step.program,
+                        &resolved_args,
+                        rc,
+                        &stderr_tail,
+                        attempt,
+                        max_rebase_retries,
+                    );
+                    match action {
+                        chump_ship::RetryAction::RetryRebaseAndPush { .. } => {
+                            // Restart from the top of the step list on next attempt.
+                            final_action = "RetryRebaseAndPush".to_string();
+                            continue 'attempt;
+                        }
+                        chump_ship::RetryAction::AbortAsConflict { reason } => {
+                            final_action = "ConflictRecover".to_string();
+                            eprintln!("[ship execute] {reason}");
+                            // Best-effort: leave the rebase abort to the operator
+                            // — the conflict markers in the working tree are the
+                            // evidence they need.
+                            break 'attempt;
+                        }
+                        chump_ship::RetryAction::Fail { reason } => {
+                            final_action = "Fail".to_string();
+                            eprintln!("[ship execute] {reason}");
+                            break 'attempt;
+                        }
+                        chump_ship::RetryAction::Continue
+                        | chump_ship::RetryAction::AbortAsStaleBranch { .. } => {
+                            // AbortAsStaleBranch isn't emitted by this classifier
+                            // (it's a pre-push check); Continue shouldn't happen
+                            // on a failed step.
+                            final_action = "Fail".to_string();
+                            break 'attempt;
+                        }
+                    }
+                } else {
+                    // Non-rebase variants: keep the existing single-pass behavior.
+                    final_action = "Fail".to_string();
+                    break 'attempt;
+                }
+            }
+        }
+        // Loop finished without a step-failure → all steps succeeded on this attempt.
+        // (Overwrite final_action even if a previous attempt failed and we
+        // retried successfully — the final state IS success.)
+        final_action = "Success".to_string();
+        // Once the chain succeeds via retry, the earlier failures are
+        // recorded in step_results but don't bubble out as any_failure.
+        any_failure = false;
+        break 'attempt;
+        // Note: if a step failed, control always reaches `break 'attempt` or
+        // `continue 'attempt` above and never falls through to here.
+    }
+
+    let payload = serde_json::json!({
+        "plan_action": plan_action,
+        "executed": !dry_run,
+        "dry_run": dry_run,
+        "steps": step_results,
+        "any_failure": any_failure,
+        "retry_attempts": retry_attempts,
+        "final_action": final_action,
+        "max_rebase_retries": max_rebase_retries,
+    });
+    println!("{}", serde_json::to_string_pretty(&payload)?);
+    if any_failure && final_action != "Success" {
+        std::process::exit(1);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

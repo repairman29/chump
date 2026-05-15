@@ -12,6 +12,7 @@ members = [
     "crates/chump-coord",
     "crates/chump-orchestrator",
     "crates/chump-planner",
+    "crates/chump-ship",
     "crates/mcp-servers/chump-mcp-github",
     "crates/mcp-servers/chump-mcp-tavily",
     "crates/mcp-servers/chump-mcp-adb",
@@ -94,6 +95,7 @@ chump-tool-macro = { path = "chump-tool-macro", version = "0.1.0" }
 chump-agent-lease = { path = "crates/chump-agent-lease", version = "0.2.0" }
 chump-orchestrator = { path = "crates/chump-orchestrator", version = "0.1.0" }
 chump-planner = { path = "crates/chump-planner", version = "0.1.0" }
+chump-ship = { path = "crates/chump-ship", version = "0.1.1" }
 chump-mcp-lifecycle = { path = "crates/chump-mcp-lifecycle", version = "0.1.1" }
 chump-cancel-registry = { path = "crates/chump-cancel-registry", version = "0.1.0" }
 chump-perception = { path = "crates/chump-perception", version = "0.1.0" }

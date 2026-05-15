@@ -1,15 +1,13 @@
 - id: PRODUCT-057
   domain: PRODUCT
-  title: 'EFFECTIVE: VS Code ext — chat sidebar panel with SSE-streamed agent responses (PRODUCT-048 slice 2)'
-  status: done
+  title: "EFFECTIVE: VS Code ext — chat sidebar panel with SSE-streamed agent responses (PRODUCT-048 slice 2)"
+  status: open
   priority: P1
   effort: s
-  depends_on:
-  - PRODUCT-056
+  depends_on: [PRODUCT-056]
   acceptance_criteria:
-  - Webview panel in VS Code sidebar with a text input + message list
-  - User message sent via ACP session/create + message/send
-  - Agent responses streamed via SSE and rendered incrementally in the panel
-  - Markdown rendered in responses (code blocks, links, lists)
-  - Multi-turn conversation within a session
-  closed_date: '2026-05-12'
+    - "Webview panel in VS Code sidebar with a text input + message list"
+    - "User message sent via ACP session/create + message/send"
+    - "Agent responses streamed via SSE and rendered incrementally in the panel"
+    - "Markdown rendered in responses (code blocks, links, lists)"
+    - "Multi-turn conversation within a session"

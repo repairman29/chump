@@ -1,0 +1,24 @@
+- id: PRODUCT-118
+  domain: PRODUCT
+  title: "\"EFFECTIVE: PWA throttle/cost dials — live knobs for CHUMP_GH_MAX_CALLS_PER_MIN, model selection, fleet size; visible from CONFIG cadence\""
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Live knobs for fleet control in the CONFIG cadence: CHUMP_GH_MAX_CALLS_PER_MIN (throttle window cap), CHUMP_AUTH_MODE (api-key | oauth | auto), FLEET_SIZE (worker count), default WorkBackend (claude | opencode | aider). Each knob: current value + edit-in-place + Apply. Apply writes to .env / launchd env / chump fleet config and signals running daemons via SIGHUP or via /api/config/reload.
+  acceptance_criteria:
+    - web/v2/config-dials.js defines <chump-config-dials> Web Component
+    - "6 operator dials: CHUMP_GH_MAX_CALLS_PER_MIN, FLEET_SIZE, FLEET_MODEL, CHUMP_WORK_BACKEND, CHUMP_AUTH_MODE, CHUMP_ROUND_PRIVACY"
+    - "Backend src/web_server.rs extends SETTINGS_KEYS with CHUMP_GH_MAX_CALLS_PER_MIN (validator: 1..600) and CHUMP_WORK_BACKEND (validator: claude"
+    - opencode
+    - aider
+    - chump-local
+    - exec-gap)
+    - "Per dial: current value + source badge (env"
+    - config
+    - default) + edit-in-place input + Apply/Cancel
+    - Auth via X-Chump-Auth header (INFRA-1014); HTML-escape XSS guard
+    - Wired in app.js VIEWS factory as 'config' route; loads via config-dials.js script tag
+    - "Backend defaults: CHUMP_GH_MAX_CALLS_PER_MIN=60, CHUMP_WORK_BACKEND=claude"
+    - Test scripts/ci/test-pwa-config-dials.sh 14 assertions all pass
+

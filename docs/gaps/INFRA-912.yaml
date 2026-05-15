@@ -1,14 +1,9 @@
 - id: INFRA-912
   domain: INFRA
-  title: 'RESILIENT: Change approval workflow and rollback capability'
-  status: done
+  title: "RESILIENT: Change approval workflow and rollback capability"
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
-  - '1. scripts/ops/change-approval.sh gates fleet changes (scale-up, model override, routing.yaml edit) by checking for a
-    human-readable approval token in .chump-locks/change-approvals/. 2. --approve CHANGE-ID creates the approval token with
-    ts, approver=env(CHUMP_APPROVER), rationale. 3. --rollback CHANGE-ID reverts to previous fleet-state.json snapshot saved
-    at change time. 4. Emits kind=change_approved or kind=change_rolled_back to ambient.jsonl. 5. scripts/ci/test-change-approval.sh:
-    8+ tests.'
-  closed_date: '2026-05-12'
-  closed_pr: 1559
+    - "1. scripts/ops/change-approval.sh gates fleet changes (scale-up, model override, routing.yaml edit) by checking for a human-readable approval token in .chump-locks/change-approvals/. 2. --approve CHANGE-ID creates the approval token with ts, approver=env(CHUMP_APPROVER), rationale. 3. --rollback CHANGE-ID reverts to previous fleet-state.json snapshot saved at change time. 4. Emits kind=change_approved or kind=change_rolled_back to ambient.jsonl. 5. scripts/ci/test-change-approval.sh: 8+ tests."
+

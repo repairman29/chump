@@ -4,9 +4,12 @@
   status: open
   priority: P2
   effort: s
-  depends_on: [PRODUCT-053]
   acceptance_criteria:
     - "Each slot card on /settings shows: avg latency (ms), tokens/sec, last-used timestamp"
-    - "Metrics sourced from existing CHUMP_LOGPROBS_ENABLED / token-rate telemetry (INFRA-730)"
-    - "Sparkline or bar chart for last 10 requests per slot"
-    - "Helps operator identify which local models are fast vs slow for their hardware"
+    - Metrics sourced from existing CHUMP_LOGPROBS_ENABLED / token-rate telemetry (INFRA-730)
+    - Sparkline or bar chart for last 10 requests per slot
+    - Helps operator identify which local models are fast vs slow for their hardware
+  depends_on: [PRODUCT-053]
+  notes: |
+    [2026-05-15T04:28:26Z] PWA phase: 3 (Fleet Grading) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+

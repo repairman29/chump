@@ -1,0 +1,9 @@
+- id: META-062
+  domain: META
+  title: "CREDIBLE: quarterly re-audit of ACP_CAPABILITY_COMPARISON.md — 2026-08-13"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - 1. ACP_CAPABILITY_COMPARISON.md last_audited updated to within 7 days of 2026-08-13\n2. All ⚠️ verify cells checked against live registry and agent docs; cells updated or confirmed\n3. New agents added to registry since 2026-05-13 added to table\n4. re_audit_due bumped to 2026-11-13\n5. PR merged to main
+

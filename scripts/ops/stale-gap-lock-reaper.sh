@@ -32,6 +32,10 @@ done
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$(cd "$(dirname "$0")/../.." && pwd)")"
 LOCK_DIR="${CHUMP_LOCK_DIR:-$REPO_ROOT/.chump-locks}"
 
+# INFRA-1224: canonical lease parser.
+# shellcheck source=../lib/lease.sh
+source "$REPO_ROOT/scripts/lib/lease.sh"
+
 if [[ ! -d "$LOCK_DIR" ]]; then
     echo "lock dir not found: $LOCK_DIR — nothing to reap"
     exit 0
@@ -139,18 +143,12 @@ NOW_EPOCH_CLAIM="$(date -u +%s)"
 
 for claim_file in "$LOCK_DIR"/claim-*.json; do
     [[ -e "$claim_file" ]] || continue
-    # Parse expires_at from JSON
-    expires_at="$(python3 -c "
-import json, sys
-try:
-    d = json.load(open('$claim_file'))
-    print(d.get('expires_at', ''))
-except Exception:
-    print('')
-" 2>/dev/null || echo "")"
+    # INFRA-1224: 4 python3 heredocs collapsed to lease_field shortcuts.
+    expires_at="$(lease_field "$claim_file" expires_at)"
     [[ -z "$expires_at" ]] && continue
 
-    # Convert ISO timestamp to epoch
+    # Convert ISO timestamp to epoch (still needs python — shell can't do
+    # portable ISO date arithmetic).
     expires_epoch="$(python3 -c "
 import datetime
 try:
@@ -160,23 +158,8 @@ except Exception:
     print(0)
 " 2>/dev/null || echo "0")"
 
-    # Parse session_id + gap_id once for both code paths below.
-    session_id="$(python3 -c "
-import json, sys
-try:
-    d = json.load(open('$claim_file'))
-    print(d.get('session_id', ''))
-except Exception:
-    print('')
-" 2>/dev/null || echo "")"
-    gap_id="$(python3 -c "
-import json, sys
-try:
-    d = json.load(open('$claim_file'))
-    print(d.get('gap_id', ''))
-except Exception:
-    print('')
-" 2>/dev/null || echo "")"
+    session_id="$(lease_session_id "$claim_file")"
+    gap_id="$(lease_gap_id "$claim_file")"
 
     # INFRA-1221: open-PR protection. If this gap has an open PR, the work
     # is durable — leave the lease alone even if the claim is "expired" or

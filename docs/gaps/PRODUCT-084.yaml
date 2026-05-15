@@ -14,7 +14,10 @@
     - "Backend /api/prs endpoint wraps `gh pr list --state open` + `gh pr list --state merged --search 'merged:>=$(date -u -d -24h)'` + `gh pr view` for mergeable+CI; result cached server-side for 30s"
     - "Sort/filter: by age, by gap-id, by author, by pillar (via gap-tag lookup)"
     - "Empty-state for Just-merged: 'No ships in the last 24h. Last ship: <Nh ago>'"
-    - "Click on PR row opens detail pane (placeholder for PRODUCT-085 diff renderer)"
+    - Click on PR row opens detail pane (placeholder for PRODUCT-085 diff renderer)
     - "scripts/ci/test-pwa-pr-list.sh: mock gh API responses; assert PR list renders + sections separate correctly"
-    - "Read-only in this gap; approval/revert actions come in PRODUCT-086"
-    - "Pairs with PRODUCT-085 (diff renderer) — list is the entry; diff is the detail"
+    - Read-only in this gap; approval/revert actions come in PRODUCT-086
+    - Pairs with PRODUCT-085 (diff renderer) — list is the entry; diff is the detail
+  notes: |
+    [2026-05-15T04:28:26Z] PWA phase: 2 (Inbox & PR Loop) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+

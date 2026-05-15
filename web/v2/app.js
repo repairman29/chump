@@ -87,6 +87,84 @@ window.chumpPrefs = window.chumpPrefs || (() => {
   });
 })();
 
+// ── Cost-ceiling 402 interceptor (PRODUCT-113) ──────────────────────────────
+// Frontend half of the kill-switch contract: when the backend returns 402
+// Payment Required on any /api/chat or /api/gap/work request, the body
+// carries {error:'session_cost_exceeded', kill_threshold, current} and the
+// PWA renders a modal that explains what happened and how to raise the
+// ceiling. Backend enforcement (Rust handler change) is a follow-up gap.
+//
+// This module ONLY handles the UI side: it wraps window.fetch so every
+// callsite that hits an /api/* endpoint inherits the modal automatically.
+// No view code needs to know about cost-kill semantics.
+(() => {
+  const origFetch = window.fetch.bind(window);
+  let modalOpen = false;
+  window.fetch = async function(input, init) {
+    const res = await origFetch(input, init);
+    if (res.status === 402) {
+      try {
+        const cloned = res.clone();
+        const body = await cloned.json().catch(() => ({}));
+        if (body && (body.error === 'session_cost_exceeded' || body.error === 'fleet_cost_exceeded')) {
+          if (!modalOpen) renderKillModal(body);
+        }
+      } catch {}
+    }
+    return res;
+  };
+
+  function renderKillModal(body) {
+    modalOpen = true;
+    const kind = body.error === 'fleet_cost_exceeded' ? 'fleet' : 'session';
+    const title = kind === 'fleet'
+      ? 'Fleet daily cost ceiling exceeded'
+      : 'Session cost ceiling exceeded';
+    const ceiling = body.kill_threshold ?? '?';
+    const current = body.current ?? '?';
+    const modal = document.createElement('div');
+    modal.className = 'cost-kill-modal';
+    modal.setAttribute('role', 'alertdialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', title);
+    modal.innerHTML = `
+      <div class="cost-kill-modal-shell">
+        <h2 class="cost-kill-title">⛔ ${title}</h2>
+        <p class="cost-kill-msg">
+          This ${kind} hit its <strong>$${ceiling}</strong> kill threshold
+          (current: <strong>$${current}</strong>). New turn requests will be
+          refused until the ceiling is raised or the cap resets.
+        </p>
+        <p class="cost-kill-actions">
+          <button type="button" class="cost-kill-config">Raise ceiling in CONFIG</button>
+          <button type="button" class="cost-kill-dismiss">Dismiss</button>
+        </p>
+        <p class="cost-kill-hint">
+          Telemetry: <code>kind=cost_threshold_crossed</code> fired in ambient.jsonl.
+        </p>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('.cost-kill-config')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+      closeModal();
+    });
+    modal.querySelector('.cost-kill-dismiss')?.addEventListener('click', closeModal);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'cost_threshold_crossed',
+        which: kind, kill_threshold: ceiling, current,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+
+    function closeModal() {
+      modalOpen = false;
+      modal.remove();
+    }
+  }
+})();
+
 // ── ChumpAcpDeeplink helper (PRODUCT-110) ───────────────────────────────────
 // Build chump://acp/open?... URLs the operator's registered ACP client (Zed,
 // JetBrains, etc) can intercept and open. Competitive-differentiation surface
@@ -322,11 +400,15 @@ const CHUMP_CADENCES = [
     label: 'Library',
     icon: '📚',
     shortcut: 'l',
-    default_view: 'memory',
+    default_view: 'audit',
     subtabs: [
-      { id: 'memory',    label: 'Memory',    icon: '🧠' },
+      // PRODUCT-111: dedicated Audit view consolidating tool-approval-audit +
+      // cos-decisions for the enterprise-auditor archetype. Judgment kept as
+      // a separate sub-tab for the operator-pending-decisions surface.
+      { id: 'audit',     label: 'Audit',     icon: '📋' },
+      { id: 'judgment',  label: 'Judgment',  icon: '⚖️' },
       { id: 'decisions', label: 'Decisions', icon: '🎯' },
-      { id: 'judgment',  label: 'Audit',     icon: '⚖️' },
+      { id: 'memory',    label: 'Memory',    icon: '🧠' },
     ],
   },
   {
@@ -988,6 +1070,184 @@ class ChumpFirstRunWizard extends HTMLElement {
 }
 customElements.define('chump-first-run-wizard', ChumpFirstRunWizard);
 
+// ── <chump-status-footer> (PRODUCT-107) ─────────────────────────────────────
+// Persistent operator HUD — always visible across every cadence. Six slots:
+//   model | cost | air-gap | pillars (E/C/R/Z) | fleet | GH budget
+//
+// Each slot polls independently (its own interval) so a slow one doesn't
+// stall the others. Click any slot → drill to the canonical detail view
+// via the same chump:navigate event the rest of the app uses.
+//
+// Data sources per docs/design/OPERATOR_CONSOLE_V2.md §footer:
+//   - model   : /api/stack-status .llm_last_completion (+ cascade slot suffix)
+//   - cost    : /api/telemetry/cost (INFRA-1012)
+//   - air-gap : /api/stack-status .air_gap_mode
+//   - pillars : placeholder "—" until INFRA-1203 ships an endpoint
+//   - fleet   : /api/fleet-status
+//   - GH budget : /api/stack-status .github_rate_limit (or .gh_rate_limit)
+//
+// Telemetry: kind=footer_slot_drilled {slot, cadence_target} on every click.
+class ChumpStatusFooter extends HTMLElement {
+  #pollers = [];
+  #lastValues = {};
+
+  connectedCallback() {
+    this.innerHTML = `
+      <div class="sf-shell" role="contentinfo" aria-label="Operator status">
+        <button type="button" class="sf-slot sf-model" data-slot="model" data-target="config:models"
+                title="Model — click to view providers" aria-label="Active model (click to view providers)">
+          <span class="sf-dot" id="sf-model-dot">○</span>
+          <span class="sf-value" id="sf-model-value">loading…</span>
+        </button>
+        <button type="button" class="sf-slot sf-cost" data-slot="cost" data-target="library:judgment"
+                title="Today's cost — click for breakdown" aria-label="Cumulative cost (click for breakdown)">
+          <span class="sf-label">$</span>
+          <span class="sf-value" id="sf-cost-value">…</span>
+        </button>
+        <button type="button" class="sf-slot sf-airgap" data-slot="airgap" data-target="config:settings"
+                title="Air-gap mode" aria-label="Air-gap mode status (click for network audit)">
+          <span class="sf-dot" id="sf-airgap-dot">○</span>
+          <span class="sf-value" id="sf-airgap-value">network</span>
+        </button>
+        <button type="button" class="sf-slot sf-pillars" data-slot="pillars" data-target="library:judgment"
+                title="Pillar grades (E/C/R/Z) — click for Fleet Health" aria-label="Pillar grades (click for Fleet Health)">
+          <span class="sf-pillar-grades" id="sf-pillar-grades">E:— C:— R:— Z:—</span>
+        </button>
+        <button type="button" class="sf-slot sf-fleet" data-slot="fleet" data-target="ambient:agents"
+                title="Fleet roster — click to view agents" aria-label="Fleet health (click to view agents)">
+          <span class="sf-dot" id="sf-fleet-dot">○</span>
+          <span class="sf-value" id="sf-fleet-value">…</span>
+        </button>
+        <button type="button" class="sf-slot sf-gh" data-slot="gh" data-target="library:judgment"
+                title="GitHub rate-limit budget" aria-label="GitHub GraphQL budget remaining">
+          <span class="sf-label">GH</span>
+          <span class="sf-value" id="sf-gh-value">…</span>
+        </button>
+      </div>
+    `;
+    this.addEventListener('click', (e) => this.#onSlotClick(e));
+
+    this.#startPoller(60_000, () => this.#pollStackStatus());
+    this.#startPoller(30_000, () => this.#pollCost());
+    this.#startPoller(15_000, () => this.#pollFleet());
+
+    // First paint immediately.
+    this.#pollStackStatus();
+    this.#pollCost();
+    this.#pollFleet();
+  }
+
+  disconnectedCallback() {
+    this.#pollers.forEach((id) => clearInterval(id));
+    this.#pollers = [];
+  }
+
+  #startPoller(intervalMs, fn) {
+    this.#pollers.push(setInterval(() => fn(), intervalMs));
+  }
+
+  #pollStackStatus() {
+    fetch('/api/stack-status').then((r) => r.ok ? r.json() : null).then((d) => {
+      if (!d) return this.#markStale('model');
+      const last = d.llm_last_completion || null;
+      const modelLabel = last?.label || d.primary_backend || 'cold';
+      const modelDot = this.querySelector('#sf-model-dot');
+      const modelVal = this.querySelector('#sf-model-value');
+      if (modelDot) { modelDot.textContent = last ? '●' : '○'; modelDot.style.color = last ? 'var(--accent)' : 'var(--text-secondary)'; }
+      if (modelVal) { modelVal.textContent = ChumpStatusFooter.#truncate(modelLabel, 18); modelVal.classList.remove('sf-stale'); }
+      this.#lastValues.model = modelLabel;
+
+      const airgap = d.air_gap_mode === true;
+      const agDot = this.querySelector('#sf-airgap-dot');
+      const agVal = this.querySelector('#sf-airgap-value');
+      if (agDot) { agDot.textContent = airgap ? '●' : '○'; agDot.style.color = airgap ? 'var(--success)' : 'var(--text-secondary)'; }
+      if (agVal) { agVal.textContent = airgap ? 'air-gap' : 'network'; agVal.classList.remove('sf-stale'); }
+      this.#lastValues.airgap = airgap;
+
+      const rl = d.github_rate_limit || d.gh_rate_limit;
+      if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
+        const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
+        const ghVal = this.querySelector('#sf-gh-value');
+        if (ghVal) {
+          ghVal.textContent = `${pct}%`;
+          ghVal.classList.toggle('sf-warn', pct < 50);
+          ghVal.classList.toggle('sf-red',  pct < 20);
+          ghVal.classList.remove('sf-stale');
+        }
+        this.#lastValues.gh = pct;
+      }
+    }).catch(() => this.#markStale('model'));
+  }
+
+  #pollCost() {
+    fetch('/api/telemetry/cost').then((r) => r.ok ? r.json() : null).then((d) => {
+      if (!d) return this.#markStale('cost');
+      const dollars = Number(d.session_cost_usd ?? d.total_cost_usd ?? d.cost_today ?? 0);
+      const v = this.querySelector('#sf-cost-value');
+      if (v) {
+        v.textContent = dollars.toFixed(2);
+        v.classList.remove('sf-stale');
+        const thresh = (window.chumpPrefs?.get('cost.thresholds', null)) || { warn: 0.50, red: 2.00 };
+        v.classList.toggle('sf-warn', dollars >= (thresh.warn || 0.5));
+        v.classList.toggle('sf-red',  dollars >= (thresh.red  || 2.0));
+      }
+      this.#lastValues.cost = dollars;
+    }).catch(() => this.#markStale('cost'));
+  }
+
+  #pollFleet() {
+    fetch('/api/fleet-status').then((r) => r.ok ? r.json() : null).then((d) => {
+      if (!d) return this.#markStale('fleet');
+      const agents = Array.isArray(d.agents) ? d.agents
+                   : Array.isArray(d.sessions) ? d.sessions
+                   : Array.isArray(d) ? d
+                   : [];
+      const total = agents.length;
+      const healthy = agents.filter((a) => {
+        const s = String(a.status || a.state || '').toLowerCase();
+        return s === 'active' || s === 'working' || s === 'healthy' || s === '';
+      }).length;
+      const dot = this.querySelector('#sf-fleet-dot');
+      const val = this.querySelector('#sf-fleet-value');
+      if (val) { val.textContent = total === 0 ? '—' : `${healthy}/${total}`; val.classList.remove('sf-stale'); }
+      if (dot) {
+        if (total === 0)            { dot.textContent = '○'; dot.style.color = 'var(--text-secondary)'; }
+        else if (healthy === total) { dot.textContent = '●'; dot.style.color = 'var(--success)'; }
+        else if (healthy >= total/2){ dot.textContent = '●'; dot.style.color = 'var(--warn)'; }
+        else                        { dot.textContent = '●'; dot.style.color = 'var(--error)'; }
+      }
+      this.#lastValues.fleet = { healthy, total };
+    }).catch(() => this.#markStale('fleet'));
+  }
+
+  #markStale(slot) {
+    const v = this.querySelector(`#sf-${slot}-value`);
+    if (v && this.#lastValues[slot] !== undefined) v.classList.add('sf-stale');
+  }
+
+  #onSlotClick(e) {
+    const btn = e.target.closest('[data-slot]');
+    if (!btn) return;
+    const slot = btn.dataset.slot;
+    const [cadence, view] = (btn.dataset.target || '').split(':');
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'footer_slot_drilled', slot, cadence_target: cadence,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+    if (view) {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: view }));
+    }
+  }
+
+  static #truncate(s, max) {
+    if (!s) return '—';
+    return s.length > max ? s.slice(0, max - 1) + '…' : s;
+  }
+}
+customElements.define('chump-status-footer', ChumpStatusFooter);
+
 // ── <chump-model-indicator> ───────────────────────────────────────────────────
 class ChumpModelIndicator extends HTMLElement {
   connectedCallback() {
@@ -1646,6 +1906,282 @@ class ChumpViewJudgment extends HTMLElement {
 }
 customElements.define('chump-view-judgment', ChumpViewJudgment);
 
+// ── <chump-view-audit> (PRODUCT-111) ────────────────────────────────────────
+// Decision-chain audit panel. Consolidates /api/tool-approval-audit +
+// /api/cos/decisions into one chronological feed for archetype 4 (enterprise
+// auditor) per docs/design/OPERATOR_CONSOLE_V2.md.
+//
+// "We let an AI commit code" goes from trust-me-bro to a defensible audit
+// trail when this view ships: every tool approval, every COS decision, every
+// outcome, exportable as JSONL.
+//
+// Filter dimensions:
+//   - Time window: 1h | 24h (default) | 7d | all
+//   - Decision kind: tool_approval | cos | (more as endpoints land)
+//   - Session ID (click any session_id in a row to filter to it)
+//   - Gap ID (click any gap_id to filter)
+//
+// Export: visible rows → JSONL download. Useful for the CTO screenshot
+// use case.
+class ChumpViewAudit extends HTMLElement {
+  #rows = [];       // merged chronological list
+  #filtered = [];   // post-filter
+  #filters = { window: '24h', kind: '', session: '', gap: '' };
+  #expanded = new Set(); // request_id / decision_id of rows expanded inline
+
+  connectedCallback() {
+    // Restore filter state from chumpPrefs (INFRA-1280).
+    const stored = window.chumpPrefs?.get('audit.filters', null);
+    if (stored && typeof stored === 'object') {
+      Object.assign(this.#filters, stored);
+    }
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Audit</h2>
+        <p class="view-subtitle">Tool approvals + COS decisions chronological — defensible record of every agent action</p>
+      </section>
+      <section class="audit-toolbar" role="toolbar" aria-label="Audit filters">
+        <div class="audit-chips" role="radiogroup" aria-label="Time window">
+          ${['1h', '24h', '7d', 'all'].map((w) => `
+            <button type="button" class="audit-chip" data-window="${w}"
+                    aria-pressed="${this.#filters.window === w ? 'true' : 'false'}">${w}</button>
+          `).join('')}
+        </div>
+        <div class="audit-chips" role="radiogroup" aria-label="Decision kind">
+          ${[['', 'all kinds'], ['tool_approval', 'tool'], ['cos', 'COS']].map(([k, lbl]) => `
+            <button type="button" class="audit-chip" data-kind="${k}"
+                    aria-pressed="${this.#filters.kind === k ? 'true' : 'false'}">${lbl}</button>
+          `).join('')}
+        </div>
+        <input type="search" class="audit-search" placeholder="Filter by session / gap"
+               aria-label="Filter by session ID or gap ID"
+               value="${this.#escAttr(this.#filters.session || this.#filters.gap || '')}">
+        <button type="button" class="audit-export" aria-label="Export visible rows as JSONL">Export JSONL</button>
+        <button type="button" class="audit-clear" aria-label="Clear filters">Clear</button>
+      </section>
+      <section class="audit-stats" id="audit-stats" aria-live="polite"></section>
+      <section class="audit-list" id="audit-list" aria-live="polite" aria-busy="true">
+        <p class="placeholder">Loading audit feed…</p>
+      </section>
+    `;
+    this.#wireToolbar();
+    this.#load();
+  }
+
+  disconnectedCallback() {
+    if (this.#pollTimer) clearInterval(this.#pollTimer);
+  }
+  #pollTimer = null;
+
+  #wireToolbar() {
+    this.querySelectorAll('[data-window]').forEach((b) => {
+      b.addEventListener('click', () => { this.#filters.window = b.dataset.window; this.#persist(); this.#load(); });
+    });
+    this.querySelectorAll('[data-kind]').forEach((b) => {
+      b.addEventListener('click', () => { this.#filters.kind = b.dataset.kind; this.#persist(); this.#render(); });
+    });
+    this.querySelector('.audit-search')?.addEventListener('input', (e) => {
+      // Heuristic: if input looks like a gap ID (X-NNN), filter by gap; else session.
+      const v = e.target.value.trim();
+      if (/^[A-Z]+-\d+$/i.test(v)) { this.#filters.gap = v; this.#filters.session = ''; }
+      else { this.#filters.session = v; this.#filters.gap = ''; }
+      this.#persist();
+      this.#render();
+    });
+    this.querySelector('.audit-export')?.addEventListener('click', () => this.#export());
+    this.querySelector('.audit-clear')?.addEventListener('click', () => this.#clearFilters());
+    this.querySelector('#audit-list')?.addEventListener('click', (e) => this.#onRowClick(e));
+  }
+
+  #persist() {
+    window.chumpPrefs?.set('audit.filters', this.#filters);
+  }
+
+  #clearFilters() {
+    this.#filters = { window: '24h', kind: '', session: '', gap: '' };
+    this.#persist();
+    // Reset visual state.
+    this.querySelectorAll('[data-window]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.window === '24h' ? 'true' : 'false'));
+    this.querySelectorAll('[data-kind]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.kind === '' ? 'true' : 'false'));
+    const s = this.querySelector('.audit-search'); if (s) s.value = '';
+    this.#load();
+  }
+
+  async #load() {
+    const list = this.querySelector('#audit-list');
+    if (list) list.setAttribute('aria-busy', 'true');
+    const w = this.#filters.window;
+    const sinceParam = w === 'all' ? '' : `?since=${w}`;
+    try {
+      const [toolR, cosR] = await Promise.all([
+        fetch(`/api/tool-approval-audit${sinceParam}`).then((r) => r.ok ? r.json() : null).catch(() => null),
+        fetch(`/api/cos/decisions${sinceParam}`).then((r) => r.ok ? r.json() : null).catch(() => null),
+      ]);
+      const toolRows = (toolR?.rows || toolR || []).map((r) => ({
+        ts: r.ts || r.timestamp || r.decided_at || r.ts_iso || '',
+        kind: 'tool_approval',
+        session_id: r.session_id || r.session || '',
+        gap_id: r.gap_id || r.gap || '',
+        summary: r.tool_name ? `${r.tool_name} → ${r.allowed === true ? 'approved' : r.allowed === false ? 'denied' : '?'}` : (r.summary || '(no summary)'),
+        outcome: r.allowed === true ? 'approved' : r.allowed === false ? 'denied' : (r.outcome || 'unknown'),
+        payload: r,
+      }));
+      const cosRows = (cosR?.rows || cosR || []).map((r) => ({
+        ts: r.ts || r.timestamp || r.decided_at || r.ts_iso || '',
+        kind: 'cos',
+        session_id: r.session_id || r.session || '',
+        gap_id: r.gap_id || r.gap || '',
+        summary: r.decision || r.reason || r.summary || '(no summary)',
+        outcome: r.outcome || r.action || 'logged',
+        payload: r,
+      }));
+      this.#rows = [...toolRows, ...cosRows].sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+      this.#render();
+    } catch (err) {
+      if (list) list.innerHTML = `<p class="placeholder">Could not load audit feed: ${this.#esc(String(err))}</p>`;
+    }
+    if (list) list.setAttribute('aria-busy', 'false');
+  }
+
+  #render() {
+    const stats = this.querySelector('#audit-stats');
+    const list = this.querySelector('#audit-list');
+    if (!stats || !list) return;
+    const f = this.#filters;
+    this.#filtered = this.#rows.filter((r) => {
+      if (f.kind && r.kind !== f.kind) return false;
+      if (f.session && !r.session_id.includes(f.session)) return false;
+      if (f.gap && !r.gap_id.toUpperCase().includes(f.gap.toUpperCase())) return false;
+      return true;
+    });
+    stats.innerHTML = `
+      <span class="audit-stat">${this.#filtered.length}</span> rows
+      <span class="audit-stat-sep">·</span>
+      <span class="audit-stat">${this.#rows.length}</span> total in window
+      <span class="audit-stat-sep">·</span>
+      <span class="audit-stat">${this.#rows.filter((r) => r.kind === 'tool_approval').length}</span> tool
+      <span class="audit-stat-sep">·</span>
+      <span class="audit-stat">${this.#rows.filter((r) => r.kind === 'cos').length}</span> cos
+    `;
+    if (this.#filtered.length === 0) {
+      list.innerHTML = `<p class="placeholder">No decisions in the selected window/filter — fleet has been quiet (or your filters are too narrow).</p>`;
+      return;
+    }
+    list.innerHTML = `
+      <table class="audit-table" role="grid">
+        <thead>
+          <tr>
+            <th scope="col">when</th>
+            <th scope="col">kind</th>
+            <th scope="col">session</th>
+            <th scope="col">gap</th>
+            <th scope="col">summary</th>
+            <th scope="col">outcome</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${this.#filtered.map((r, i) => this.#renderRow(r, i)).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  #renderRow(r, i) {
+    const rowId = `audit-row-${i}`;
+    const isExpanded = this.#expanded.has(rowId);
+    const outcomeClass = r.outcome === 'approved' ? 'audit-outcome-ok'
+                       : r.outcome === 'denied'   ? 'audit-outcome-bad'
+                       : 'audit-outcome-info';
+    return `
+      <tr class="audit-row" data-row-id="${rowId}" tabindex="0">
+        <td class="audit-cell-ts">${this.#fmtTs(r.ts)}</td>
+        <td class="audit-cell-kind"><span class="audit-kind audit-kind-${r.kind}">${r.kind}</span></td>
+        <td class="audit-cell-session"><button type="button" class="audit-pill" data-filter-session="${this.#escAttr(r.session_id)}">${this.#shortSession(r.session_id)}</button></td>
+        <td class="audit-cell-gap">${r.gap_id ? `<button type="button" class="audit-pill" data-filter-gap="${this.#escAttr(r.gap_id)}">${this.#esc(r.gap_id)}</button>` : '—'}</td>
+        <td class="audit-cell-summary">${this.#esc(r.summary).slice(0, 200)}</td>
+        <td class="audit-cell-outcome"><span class="audit-outcome ${outcomeClass}">${r.outcome}</span></td>
+      </tr>
+      ${isExpanded ? `<tr class="audit-row-expansion"><td colspan="6"><pre><code>${this.#esc(JSON.stringify(r.payload, null, 2))}</code></pre></td></tr>` : ''}
+    `;
+  }
+
+  #onRowClick(e) {
+    // Click on a session/gap pill → set filter.
+    const sessBtn = e.target.closest('[data-filter-session]');
+    if (sessBtn) {
+      this.#filters.session = sessBtn.dataset.filterSession;
+      this.#filters.gap = '';
+      this.#persist();
+      const s = this.querySelector('.audit-search'); if (s) s.value = this.#filters.session;
+      this.#render();
+      e.stopPropagation();
+      return;
+    }
+    const gapBtn = e.target.closest('[data-filter-gap]');
+    if (gapBtn) {
+      this.#filters.gap = gapBtn.dataset.filterGap;
+      this.#filters.session = '';
+      this.#persist();
+      const s = this.querySelector('.audit-search'); if (s) s.value = this.#filters.gap;
+      this.#render();
+      e.stopPropagation();
+      return;
+    }
+    // Click on the row body → toggle expansion.
+    const tr = e.target.closest('.audit-row');
+    if (!tr) return;
+    const id = tr.dataset.rowId;
+    if (this.#expanded.has(id)) this.#expanded.delete(id);
+    else this.#expanded.add(id);
+    this.#render();
+  }
+
+  #export() {
+    const jsonl = this.#filtered.map((r) => JSON.stringify(r.payload)).join('\n');
+    const blob = new Blob([jsonl], { type: 'application/x-ndjson' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `chump-audit-${stamp}.jsonl`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'audit_view_session', action: 'exported',
+        rows_exported: this.#filtered.length,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+  }
+
+  // helpers
+  #esc(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  #escAttr(s) { return this.#esc(s); }
+  #shortSession(sid) {
+    const m = String(sid).match(/^(?:claim-)?([a-z]+-\d+)/i);
+    return m ? m[1] : (String(sid).slice(0, 16) + (sid.length > 16 ? '…' : ''));
+  }
+  #fmtTs(ts) {
+    if (!ts) return '—';
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return ts;
+      // Relative for recent, absolute else
+      const ageS = (Date.now() - d.getTime()) / 1000;
+      if (ageS < 60) return `${Math.round(ageS)}s ago`;
+      if (ageS < 3600) return `${Math.round(ageS / 60)}m ago`;
+      if (ageS < 86400) return `${Math.round(ageS / 3600)}h ago`;
+      return d.toISOString().slice(0, 16).replace('T', ' ');
+    } catch { return ts; }
+  }
+}
+customElements.define('chump-view-audit', ChumpViewAudit);
+
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
   connectedCallback() {
@@ -1719,9 +2255,47 @@ class ChumpViewSettings extends HTMLElement {
           </p>
         </div>
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">Cost ceiling (PRODUCT-113)</p>
+          <p style="color: var(--text-muted); font-size: 0.85em; margin-bottom: 8px;">
+            Operator-tunable budget thresholds. Status footer cost meter colors per
+            band; if a session exceeds the kill threshold, new turn requests are
+            refused. Defends archetype 4 (enterprise) "what if the AI runs $1000
+            overnight" concern.
+          </p>
+          <div id="cost-thresholds" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:480px;">
+            <label class="cost-threshold">
+              <span class="cost-threshold-label">warn at $</span>
+              <input type="number" id="cost-warn" min="0" step="0.05" value="0.50"
+                     aria-label="Cost warning threshold in dollars">
+            </label>
+            <label class="cost-threshold">
+              <span class="cost-threshold-label">red at $</span>
+              <input type="number" id="cost-red" min="0" step="0.10" value="2.00"
+                     aria-label="Cost red threshold in dollars">
+            </label>
+            <label class="cost-threshold">
+              <span class="cost-threshold-label">KILL at $</span>
+              <input type="number" id="cost-kill" min="0" step="1.00" value="5.00"
+                     aria-label="Cost kill-switch threshold in dollars (session refused above this)">
+            </label>
+          </div>
+          <p id="cost-threshold-error" style="color: var(--accent-error,#cc3344); font-size: 0.8em; margin-top: 6px; display:none;"></p>
+          <div style="display:flex;gap:12px;align-items:center;margin-top:10px;">
+            <label style="display:inline-flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="cost-fleet-kill">
+              <span>Pause all workers when fleet daily cost exceeds $</span>
+              <input type="number" id="cost-fleet-kill-threshold" min="0" step="1" value="20"
+                     aria-label="Fleet-wide daily cost ceiling" style="width:80px;">
+            </label>
+          </div>
+          <button type="button" id="cost-threshold-reset" style="padding:4px 10px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);border-radius:4px;cursor:pointer;font-size:11px;margin-top:8px;">
+            Reset to defaults
+          </button>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
           <p class="setting-label" style="margin-bottom: 12px;">PWA Preferences (INFRA-1280)</p>
           <p style="color: var(--text-muted); font-size: 0.85em; margin-bottom: 8px;">
-            Theme + queue filters + (future) sidecar / cost thresholds / stream pause are persisted
+            Theme + queue filters + cost thresholds + (future) sidecar / stream pause are persisted
             under the <code>chump.*</code> localStorage namespace. Schema:
             <code>docs/api/PWA_STATE_SCHEMA.md</code>.
           </p>
@@ -1738,7 +2312,87 @@ class ChumpViewSettings extends HTMLElement {
     this.#loadOperatorConfig();
     this.#loadApiSecrets();
     this.#wireThemeToggle();
+    this.#wireCostThresholds();
     this.#wireResetButton();
+  }
+
+  // PRODUCT-113: cost-ceiling inputs (warn / red / kill) + fleet-wide kill toggle.
+  // Reads from chumpPrefs.cost.thresholds, validates positive + warn<red<kill,
+  // persists on every change. Cost meter + status-footer cost slot
+  // (PRODUCT-107) read the same chumpPrefs key to color their value bands.
+  // Kill switch is a frontend contract today — backend enforcement (POST
+  // /api/chat returns 402 when session cost > kill) is a follow-up gap.
+  #wireCostThresholds() {
+    const warn = this.querySelector('#cost-warn');
+    const red  = this.querySelector('#cost-red');
+    const kill = this.querySelector('#cost-kill');
+    const fleetKill   = this.querySelector('#cost-fleet-kill');
+    const fleetKillT  = this.querySelector('#cost-fleet-kill-threshold');
+    const err  = this.querySelector('#cost-threshold-error');
+    const resetBtn = this.querySelector('#cost-threshold-reset');
+    if (!warn || !red || !kill) return;
+
+    const stored = (window.chumpPrefs?.get('cost.thresholds', null)) || {};
+    const fleet = (window.chumpPrefs?.get('cost.fleet_kill', null)) || {};
+    if (stored.warn != null) warn.value = stored.warn;
+    if (stored.red  != null) red.value  = stored.red;
+    if (stored.kill != null) kill.value = stored.kill;
+    if (fleetKill)  fleetKill.checked   = fleet.enabled === true;
+    if (fleetKillT && fleet.threshold != null) fleetKillT.value = fleet.threshold;
+
+    const validate = () => {
+      const w = Number(warn.value), r = Number(red.value), k = Number(kill.value);
+      if (!Number.isFinite(w) || w < 0) return 'warn must be ≥ 0';
+      if (!Number.isFinite(r) || r < 0) return 'red must be ≥ 0';
+      if (!Number.isFinite(k) || k < 0) return 'kill must be ≥ 0';
+      if (!(w < r))      return 'warn must be less than red';
+      if (!(r < k))      return 'red must be less than kill';
+      return null;
+    };
+
+    const persist = () => {
+      const msg = validate();
+      if (err) { err.style.display = msg ? '' : 'none'; err.textContent = msg || ''; }
+      if (msg) return; // don't persist invalid state
+      const next = { warn: Number(warn.value), red: Number(red.value), kill: Number(kill.value) };
+      const prev = window.chumpPrefs?.get('cost.thresholds', null);
+      window.chumpPrefs?.set('cost.thresholds', next);
+      // Telemetry: emit when any threshold actually changed.
+      if (!prev || prev.warn !== next.warn || prev.red !== next.red || prev.kill !== next.kill) {
+        try {
+          navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+            kind: 'cost_threshold_changed',
+            warn: next.warn, red: next.red, kill: next.kill,
+            ts: new Date().toISOString(),
+          }));
+        } catch {}
+      }
+    };
+
+    [warn, red, kill].forEach((el) => el.addEventListener('change', persist));
+
+    const persistFleet = () => {
+      const enabled = !!fleetKill?.checked;
+      const t = Number(fleetKillT?.value || 0);
+      window.chumpPrefs?.set('cost.fleet_kill', { enabled, threshold: t });
+    };
+    fleetKill?.addEventListener('change', persistFleet);
+    fleetKillT?.addEventListener('change', persistFleet);
+
+    resetBtn?.addEventListener('click', () => {
+      warn.value = '0.50'; red.value = '2.00'; kill.value = '5.00';
+      if (fleetKill) fleetKill.checked = false;
+      if (fleetKillT) fleetKillT.value = '20';
+      window.chumpPrefs?.del('cost.thresholds');
+      window.chumpPrefs?.del('cost.fleet_kill');
+      if (err) { err.style.display = 'none'; err.textContent = ''; }
+      try {
+        navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+          kind: 'cost_threshold_changed', action: 'reset',
+          ts: new Date().toISOString(),
+        }));
+      } catch {}
+    });
   }
 
   // INFRA-1280 Sub-gap 4: theme toggle (System/Light/Dark/High-contrast).
@@ -3193,9 +3847,11 @@ const VIEWS = {
   tasks:         () => document.createElement('chump-view-tasks'),
   decisions:     () => document.createElement('chump-view-decisions'),
   judgment:      () => document.createElement('chump-view-judgment'),
+  audit:         () => document.createElement('chump-view-audit'), // PRODUCT-111
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
+  config:        () => document.createElement('chump-config-dials'), // PRODUCT-118
   memory:        () => document.createElement('chump-view-memory'),
   models:        () => document.createElement('chump-view-models'),
   settings:      () => document.createElement('chump-view-settings'),

@@ -1,0 +1,12 @@
+- id: INFRA-1325
+  domain: INFRA
+  title: "RESILIENT: auto-detect CHUMP_GITHUB_MODE=offline at startup — graceful degradation when GitHub unreachable, auto-recovery when reconnected (OFFLINE_FIRST.md Phase 4)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

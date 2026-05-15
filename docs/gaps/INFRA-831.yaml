@@ -1,13 +1,13 @@
 - id: INFRA-831
   domain: INFRA
-  title: 'RESILIENT: worker.sh — detect and recover from FLEET_TIMEOUT_S exhaustion without a WIP commit (silent loss of work)'
-  status: done
+  title: "RESILIENT: worker.sh — detect and recover from FLEET_TIMEOUT_S exhaustion without a WIP commit (silent loss of work)"
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
-  - worker.sh detects when FLEET_TIMEOUT_S expires with no commit and no checkpoint (rc=124 from timeout cmd)
-  - Emits kind=worker_timeout_no_commit to ambient.jsonl with agent_id, gap_id, timeout_s
-  - Attempts a WIP commit via chump-commit.sh before releasing lease
-  - CHUMP_TIMEOUT_RESCUE=0 disables
-  - 'test scripts/ci/test-worker-timeout-no-commit.sh: event emitted, WIP commit attempt, kill switch'
-  closed_date: '2026-05-12'
+    - worker.sh detects when FLEET_TIMEOUT_S expires with no commit and no checkpoint (rc=124 from timeout cmd)
+    - Emits kind=worker_timeout_no_commit to ambient.jsonl with agent_id, gap_id, timeout_s
+    - Attempts a WIP commit via chump-commit.sh before releasing lease
+    - CHUMP_TIMEOUT_RESCUE=0 disables
+    - "test scripts/ci/test-worker-timeout-no-commit.sh: event emitted, WIP commit attempt, kill switch"
+

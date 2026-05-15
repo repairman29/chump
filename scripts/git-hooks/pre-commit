@@ -1885,3 +1885,16 @@ if [ "${CHUMP_OPERATOR_RECOVERY:-0}" = "1" ]; then
 fi
                 echo "[pre-commit] Bypass: CHUMP_LEASE_CHECK=0 git commit ...  (or CHUMP_OPERATOR_RECOVERY=1 for full recovery mode)" >&2
                 echo "[pre-commit] Bypass: CHUMP_GAPS_LOCK=0 git commit ...  (or CHUMP_OPERATOR_RECOVERY=1 for full recovery mode)" >&2
+        exit 1
+    fi
+fi
+
+# 15b. Redundancy gate (META-063): refuse new scripts/coord|ops|dispatch shell
+# files whose function-name Jaccard ≥ 0.6 vs an existing sibling.
+# Bypass: Redundancy-OK: <reason> trailer, or CHUMP_REDUNDANCY_CHECK=0.
+REDUNDANCY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-redundancy.sh"
+if [ -x "$REDUNDANCY_HOOK" ]; then
+    if ! "$REDUNDANCY_HOOK"; then
+        exit 1
+    fi
+fi

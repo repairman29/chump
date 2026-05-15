@@ -1,13 +1,12 @@
 - id: EVAL-124
   domain: EVAL
-  title: 'EVAL: measure CI gate false-positive rate on last 30 merged PRs — baseline before CREDIBLE-048 telemetry lands'
-  status: done
+  title: "EVAL: measure CI gate false-positive rate on last 30 merged PRs — baseline before CREDIBLE-048 telemetry lands"
+  status: in-progress
   priority: P1
   effort: xs
   acceptance_criteria:
-  - scripts/ci/eval-gate-fpr-baseline.sh runs each gate's check script (check-pr-scope.sh, check-mass-deletion.sh) against
-    the last 30 merged PRs' diffs (via gh) and records pass/fail per PR
-  - 'Output: per-gate fire count, FP estimate (fired + PR merged without title change = likely FP), TP estimate'
-  - Results written to docs/eval/gate-fpr-baseline-2026-05.md for comparison with CREDIBLE-048 production telemetry
-  - Calibration finding updates docs/process/PR_HYGIENE.md gate calibration table
-  closed_pr: 1688
+    - scripts/ci/eval-gate-fpr-baseline.sh runs each gate's check script (check-pr-scope.sh, check-mass-deletion.sh) against the last 30 merged PRs' diffs (via gh) and records pass/fail per PR
+    - "Output: per-gate fire count, FP estimate (fired + PR merged without title change = likely FP), TP estimate"
+    - Results written to docs/eval/gate-fpr-baseline-2026-05.md for comparison with CREDIBLE-048 production telemetry
+    - Calibration finding updates docs/process/PR_HYGIENE.md gate calibration table
+

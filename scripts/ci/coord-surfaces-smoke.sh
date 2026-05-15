@@ -34,15 +34,18 @@ if [[ -n "${1:-}" ]]; then
 else
     echo "[coord-surfaces-smoke] reserving fresh gap for self-contained test …" >&2
     GAP_ID=$("$ROOT/target/debug/chump" gap reserve --domain SMOKE --priority P3 --effort xs \
-        --title "coord-surfaces-smoke fixture (auto-clean)" 2>&1 | tail -1)
+        --title "coord-surfaces-smoke fixture (auto-clean)" \
+        --acceptance-criteria "1. Smoke test fixture claims cleanly without AC-gate error." \
+        2>&1 | tail -1)
     echo "[coord-surfaces-smoke] reserved $GAP_ID" >&2
 fi
 
-echo "[coord-surfaces-smoke] gap-preflight $GAP_ID …" >&2
-bash scripts/coord/gap-preflight.sh "$GAP_ID"
+# INFRA-987: shell scripts replaced by Rust subcommands.
+echo "[coord-surfaces-smoke] chump gap preflight $GAP_ID …" >&2
+"$ROOT/target/debug/chump" gap preflight "$GAP_ID"
 
-echo "[coord-surfaces-smoke] gap-claim $GAP_ID …" >&2
-bash scripts/coord/gap-claim.sh "$GAP_ID" --paths docs/process/CURSOR_CLAUDE_COORDINATION.md
+echo "[coord-surfaces-smoke] chump claim $GAP_ID …" >&2
+"$ROOT/target/debug/chump" claim "$GAP_ID" --paths docs/process/CURSOR_CLAUDE_COORDINATION.md
 
 echo "[coord-surfaces-smoke] musher --status (first lines) …" >&2
 bash scripts/coord/musher.sh --status 2>/dev/null | head -25 || true

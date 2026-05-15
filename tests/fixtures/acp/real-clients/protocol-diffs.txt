@@ -1,0 +1,1 @@
+No protocol diffs — all checks passed.

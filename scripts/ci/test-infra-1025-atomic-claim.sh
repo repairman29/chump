@@ -65,23 +65,32 @@ grep -q 'rollback_wt' "$ATOMIC" \
 # ── scripts/coord/gap-claim.sh ────────────────────────────────────────────────
 echo "--- scripts/coord/gap-claim.sh ---"
 
-# AC2: gap-claim.sh must be ≤ 35 lines (thin wrapper)
-LINE_COUNT="$(wc -l < "$GAP_CLAIM")"
-if [[ "$LINE_COUNT" -le 35 ]]; then
-    ok "gap-claim.sh is thin wrapper ($LINE_COUNT lines ≤ 35)"
+# INFRA-987: gap-claim.sh was deleted (final state). Accept either:
+#   a) File deleted (INFRA-987 complete) — all three ACs pass trivially.
+#   b) File is ≤35-line thin wrapper delegating to chump claim (INFRA-985 intermediate).
+if [[ ! -f "$GAP_CLAIM" ]]; then
+    ok "gap-claim.sh deleted (INFRA-987 complete — fully replaced by chump claim)"
+    ok "gap-claim.sh exec-delegates to chump claim (N/A: file deleted)"
+    ok "gap-claim.sh does not contain old shell logic (N/A: file deleted)"
 else
-    fail "gap-claim.sh is still $LINE_COUNT lines (expected ≤ 35 for thin wrapper)"
+    # AC2: gap-claim.sh must be ≤ 35 lines (thin wrapper)
+    LINE_COUNT="$(wc -l < "$GAP_CLAIM")"
+    if [[ "$LINE_COUNT" -le 35 ]]; then
+        ok "gap-claim.sh is thin wrapper ($LINE_COUNT lines ≤ 35)"
+    else
+        fail "gap-claim.sh is still $LINE_COUNT lines (expected ≤ 35 for thin wrapper)"
+    fi
+
+    # AC2: exec chump claim present
+    grep -q 'exec.*chump.*claim\|exec.*"\$CHUMP".*claim' "$GAP_CLAIM" \
+      && ok "gap-claim.sh exec-delegates to chump claim" \
+      || fail "gap-claim.sh does NOT delegate to chump claim"
+
+    # AC2: gap-claim.sh must not contain the old bash logic
+    grep -q 'NATS_ENABLED\|write.*lease\|SESSION_ID=.*date' "$GAP_CLAIM" \
+      && fail "gap-claim.sh still contains old shell logic" \
+      || ok "gap-claim.sh does not contain old shell logic"
 fi
-
-# AC2: exec chump claim present
-grep -q 'exec.*chump.*claim\|exec.*"\$CHUMP".*claim' "$GAP_CLAIM" \
-  && ok "gap-claim.sh exec-delegates to chump claim" \
-  || fail "gap-claim.sh does NOT delegate to chump claim"
-
-# AC2: gap-claim.sh must not contain the old bash logic
-grep -q 'NATS_ENABLED\|write.*lease\|SESSION_ID=.*date' "$GAP_CLAIM" \
-  && fail "gap-claim.sh still contains old shell logic" \
-  || ok "gap-claim.sh does not contain old shell logic"
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="

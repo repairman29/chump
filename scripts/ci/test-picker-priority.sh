@@ -30,9 +30,9 @@ mkdir -p "$TMP/.chump-locks"
 # a clear winner. Planner says C > B > A.
 cat > "$TMP/gaps.json" <<'EOF'
 [
-  {"id":"INFRA-A","priority":"P1","effort":"s","status":"open","created_at":1000,"depends_on":"[]"},
-  {"id":"INFRA-B","priority":"P1","effort":"s","status":"open","created_at":1001,"depends_on":"[]"},
-  {"id":"INFRA-C","priority":"P1","effort":"s","status":"open","created_at":1002,"depends_on":"[]"}
+  {"id":"INFRA-A","priority":"P1","effort":"s","status":"open","created_at":1000,"depends_on":"[]","acceptance_criteria":"[\"1. Fixture gap A for picker-priority testing.\"]"},
+  {"id":"INFRA-B","priority":"P1","effort":"s","status":"open","created_at":1001,"depends_on":"[]","acceptance_criteria":"[\"1. Fixture gap B for picker-priority testing.\"]"},
+  {"id":"INFRA-C","priority":"P1","effort":"s","status":"open","created_at":1002,"depends_on":"[]","acceptance_criteria":"[\"1. Fixture gap C for picker-priority testing.\"]"}
 ]
 EOF
 

@@ -81,18 +81,18 @@ CREATE TABLE IF NOT EXISTS gap_counters (
 """)
 # Insert a done gap with closed_pr and closed_date
 db.execute("""
-INSERT INTO gaps (id, domain, title, status, priority, effort, closed_pr, closed_date)
-VALUES ('TEST-001', 'TEST', 'fixed the thing', 'done', 'P1', 'xs', 1701, '2026-04-15')
+INSERT INTO gaps (id, domain, title, status, priority, effort, closed_pr, closed_date, acceptance_criteria)
+VALUES ('TEST-001', 'TEST', 'fixed the thing', 'done', 'P1', 'xs', 1701, '2026-04-15', '1. Thing is fixed and tests pass')
 """)
 # Insert a done gap with only closed_pr (no closed_date)
 db.execute("""
-INSERT INTO gaps (id, domain, title, status, priority, effort, closed_pr, closed_date)
-VALUES ('TEST-002', 'TEST', 'another fix', 'done', 'P2', 's', 1702, '')
+INSERT INTO gaps (id, domain, title, status, priority, effort, closed_pr, closed_date, acceptance_criteria)
+VALUES ('TEST-002', 'TEST', 'another fix', 'done', 'P2', 's', 1702, '', '1. Another fix ships')
 """)
 # Insert an open gap (should NOT have → suffix)
 db.execute("""
-INSERT INTO gaps (id, domain, title, status, priority, effort)
-VALUES ('TEST-003', 'TEST', 'pending work', 'open', 'P1', 'm')
+INSERT INTO gaps (id, domain, title, status, priority, effort, acceptance_criteria)
+VALUES ('TEST-003', 'TEST', 'pending work', 'open', 'P1', 'm', '1. Work is done')
 """)
 db.commit()
 db.close()

@@ -107,6 +107,31 @@ Rust-First-Bypass: <one-sentence reason>
 Enforced by `scripts/git-hooks/pre-commit-rust-first.sh`; bypass goes
 into the audit log.
 
+## Redundancy prevention (META-063)
+
+Before writing a new `*.sh` under `scripts/coord/`, `scripts/ops/`, or
+`scripts/dispatch/`, **check whether existing files in the same dir
+already do most of the work.** Today's audit (2026-05-14) found:
+- 7 worktree-scanning reapers (collapse target: `scripts/lib/worktree-iter.sh`)
+- 4 stacked `gh` wrapper layers
+- 8 lease-JSON parsers reinventing the same regex
+- 6 CI tests hard-coding `src/gap_store.rs` for content greps
+
+Each of these was added as a "new" script that *looked* unique at filing
+time but ended up consolidated retroactively. The `pre-commit-redundancy.sh`
+hook catches the worst class: bash function-name shape that overlaps
+Jaccard ≥ 0.6 with an existing sibling.
+
+**Bypass:** when the overlap is intentional (e.g. a deliberate variant
+that legitimately can't extend the existing file), add to the commit
+body trailer:
+```
+Redundancy-OK: <one-sentence reason>
+```
+Logged to ambient as `kind=redundancy_bypass_used`.
+
+Sibling rules: META-064 (Rust-first), META-065 (auto-prioritization).
+
 ## Lint and format commands
 
 ```bash
@@ -284,17 +309,14 @@ Each gap is an atomic unit of work with a stable ID (e.g. `COMP-007`,
    them, your commits silently bypass every guard** — Cold Water Issue #10
    (2026-05-02) found 9 gaps shipped to `origin/main` with `closed_pr: TBD`
    precisely because remote-dispatched sandboxes had skipped this step.
-   `bot-merge.sh` and `gap-claim.sh` now auto-bootstrap if hooks are missing
-   (INFRA-209/INFRA-224), but the explicit one-shot is still the right call
-   when you first land in a fresh checkout.
+   `bot-merge.sh` now auto-bootstraps if hooks are missing (INFRA-209/INFRA-224),
+   but the explicit one-shot is still the right call when you first land in a fresh checkout.
 
 1. **Pick an open gap** — `chump gap list --status open` (canonical) or
    `grep -lE 'status:[[:space:]]*open' docs/gaps/*.yaml` (per-file mirror fallback).
-2. **Preflight** — `chump gap preflight <GAP-ID>` (or
-   `scripts/coord/gap-preflight.sh <GAP-ID>`); checks done-on-main and live
+2. **Preflight** — `chump gap preflight <GAP-ID>` checks done-on-main and live
    claims by sibling sessions.
-3. **Claim** — `chump gap claim <GAP-ID>` (or `scripts/coord/gap-claim.sh
-   <GAP-ID>`) writes a lease file under `.chump-locks/<session_id>.json`.
+3. **Claim** — `chump gap claim <GAP-ID>` writes a lease file under `.chump-locks/<session_id>.json`.
    **Claims do not go in the registry** — they live in lease files only.
    The registry records `status: open` / `status: done` and nothing else
    about ownership. The `CHUMP_GAPS_LOCK` pre-commit guard rejects writes
@@ -534,7 +556,7 @@ doesn't belong.
 **Migration:** existing `claude/*` branches and `.claude/worktrees/`
 trees stay as history — no rename. New branches and worktrees use
 `chump/<codename>` and `.chump/worktrees/<name>` from this commit
-forward. `bot-merge.sh` and `gap-claim.sh` accept either prefix during
+forward. `bot-merge.sh` and `chump gap` commands accept either prefix during
 the transition (INFRA-187 will tighten the default to `chump/`).
 
 **Tool-specific overlays** (skills, hooks, harness behavior) still
