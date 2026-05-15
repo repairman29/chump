@@ -6520,6 +6520,401 @@ async fn spawn_gap_workflow_inner(
     }
 }
 
+// ── PRODUCT-080: Stuck Items API ─────────────────────────────────────────────
+
+/// Stuck-item severity derived from ambient event kind.
+fn stuck_severity(kind: &str) -> &'static str {
+    match kind {
+        "fleet_wedge" | "disk_critical" => "HIGH",
+        "pr_stuck" | "silent_agent" | "lease_expired_server" => "MED",
+        "fat_worktree" | "reaper_silent" => "LOW",
+        _ => "LOW",
+    }
+}
+
+/// Suggested rescue action for each stuck kind.
+fn stuck_rescue_action(kind: &str) -> &'static str {
+    match kind {
+        "pr_stuck" => "Run pr-rescue.sh to rebase and re-arm auto-merge",
+        "silent_agent" => "Release stale lease and requeue gap",
+        "lease_expired_server" => "Reap expired lease via stale-lease-reaper.sh",
+        "fat_worktree" => "Prune stale worktrees via worktree-prune.sh",
+        "disk_critical" => "Free disk space; run worktree-prune.sh --execute",
+        "reaper_silent" => "Restart ghost-gap-reaper daemon",
+        "fleet_wedge" => "Drop to 2 workers; investigate pr_stuck cluster",
+        _ => "Inspect ambient log for details",
+    }
+}
+
+/// Script and args to invoke for a given rescue kind.
+fn rescue_script(
+    kind: &str,
+    repo_root: &std::path::Path,
+) -> Option<(std::path::PathBuf, Vec<String>)> {
+    match kind {
+        "pr_stuck" => {
+            let script = repo_root.join("scripts/coord/pr-rescue.sh");
+            Some((script, vec![]))
+        }
+        "fat_worktree" | "disk_critical" => {
+            let script = repo_root.join("scripts/coord/worktree-prune.sh");
+            Some((script, vec!["--execute".to_string()]))
+        }
+        "lease_expired_server" | "silent_agent" => {
+            let script = repo_root.join("scripts/coord/stale-lease-reaper.sh");
+            Some((script, vec![]))
+        }
+        "reaper_silent" => {
+            let script = repo_root.join("scripts/coord/ghost-gap-reaper.sh");
+            Some((script, vec!["--once".to_string()]))
+        }
+        _ => None,
+    }
+}
+
+/// Emit an ambient event directly to ambient.jsonl.
+fn emit_stuck_ambient(kind: &str, extra_fields: &[(&str, &str)]) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: kind.to_string(),
+        source: Some("pwa_stuck_api".to_string()),
+        fields: extra_fields
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        ..Default::default()
+    });
+}
+
+/// PRODUCT-080: GET /api/stuck — aggregate stuck items from ambient.jsonl.
+///
+/// Returns a JSON list of stuck items with type, severity, age, and rescue action.
+/// Queries last 1000 events; de-duplicates by kind so only the freshest per-kind
+/// surfaces (except pr_stuck which may have multiple distinct PRs).
+async fn handle_stuck_list(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let path = ambient_log_path();
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Kinds we surface as stuck items — sorted by priority.
+    const STUCK_KINDS: &[&str] = &[
+        "fleet_wedge",
+        "disk_critical",
+        "pr_stuck",
+        "silent_agent",
+        "lease_expired_server",
+        "fat_worktree",
+        "reaper_silent",
+    ];
+
+    // PR-stuck threshold: 4 hours in seconds.
+    const PR_STUCK_THRESHOLD_SECS: u64 = 4 * 60 * 60;
+
+    // Parse last 1000 events.
+    let events: Vec<serde_json::Value> = content
+        .lines()
+        .rev()
+        .take(1000)
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
+    let mut items: Vec<serde_json::Value> = Vec::new();
+    // Track which (kind, pr_number) pairs we've already emitted to avoid dups.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // Also track the most recent resolved fleet_wedge timestamp for empty-state.
+    let mut last_wedge_resolved_secs: Option<u64> = None;
+
+    for ev in &events {
+        let kind = ev
+            .get("kind")
+            .or_else(|| ev.get("event"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Track resolved wedges for empty-state.
+        if kind == "fleet_wedge_resolved" {
+            if let Some(ts_str) = ev.get("ts").and_then(|v| v.as_str()) {
+                if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+                    let ts_secs = ts.timestamp() as u64;
+                    match last_wedge_resolved_secs {
+                        None => last_wedge_resolved_secs = Some(ts_secs),
+                        Some(prev) if ts_secs > prev => last_wedge_resolved_secs = Some(ts_secs),
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if !STUCK_KINDS.contains(&kind) {
+            continue;
+        }
+
+        // Parse event timestamp.
+        let event_ts_secs: u64 = ev
+            .get("ts")
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.timestamp() as u64)
+            .unwrap_or(0);
+
+        let age_secs = now_secs.saturating_sub(event_ts_secs);
+
+        // pr_stuck: only surface if >= 4 hours old; deduplicate per (kind, pr).
+        if kind == "pr_stuck" {
+            if age_secs < PR_STUCK_THRESHOLD_SECS {
+                continue;
+            }
+            let pr_num = ev
+                .get("pr")
+                .and_then(|v| {
+                    v.as_str()
+                        .map(|s| s.to_string())
+                        .or_else(|| v.as_u64().map(|n| n.to_string()))
+                })
+                .unwrap_or_default();
+            let dedup_key = format!("{}:{}", kind, pr_num);
+            if !seen.insert(dedup_key.clone()) {
+                continue;
+            }
+            // Generate a stable ID from kind + pr + event_ts.
+            let id = format!("{}_{}_{}", kind, pr_num, event_ts_secs);
+            items.push(serde_json::json!({
+                "id": id,
+                "kind": kind,
+                "severity": stuck_severity(kind),
+                "age_secs": age_secs,
+                "rescue_action": stuck_rescue_action(kind),
+                "pr": pr_num,
+                "raw": ev,
+            }));
+        } else {
+            // For non-pr_stuck kinds, only surface the most recent occurrence (dedup by kind).
+            if !seen.insert(kind.to_string()) {
+                continue;
+            }
+            let id = format!("{}_{}", kind, event_ts_secs);
+            items.push(serde_json::json!({
+                "id": id,
+                "kind": kind,
+                "severity": stuck_severity(kind),
+                "age_secs": age_secs,
+                "rescue_action": stuck_rescue_action(kind),
+                "raw": ev,
+            }));
+        }
+    }
+
+    // Sort: HIGH first, then MED, then LOW; within group by age descending.
+    items.sort_by(|a, b| {
+        let sev_rank = |s: &str| match s {
+            "HIGH" => 0u8,
+            "MED" => 1,
+            _ => 2,
+        };
+        let sa = a.get("severity").and_then(|v| v.as_str()).unwrap_or("LOW");
+        let sb = b.get("severity").and_then(|v| v.as_str()).unwrap_or("LOW");
+        sev_rank(sa).cmp(&sev_rank(sb)).then_with(|| {
+            let aa = b.get("age_secs").and_then(|v| v.as_u64()).unwrap_or(0);
+            let ab = a.get("age_secs").and_then(|v| v.as_u64()).unwrap_or(0);
+            aa.cmp(&ab)
+        })
+    });
+
+    // Build empty-state message if needed.
+    let empty_state_msg = if items.is_empty() {
+        let resolved_note = last_wedge_resolved_secs
+            .map(|ts| {
+                let ago_secs = now_secs.saturating_sub(ts);
+                let ago_h = ago_secs / 3600;
+                format!("Last wedge resolved {}h ago.", ago_h)
+            })
+            .unwrap_or_else(|| "No wedge events recorded.".to_string());
+        Some(format!("Nothing stuck. {}", resolved_note))
+    } else {
+        None
+    };
+
+    Ok(Json(serde_json::json!({
+        "items": items,
+        "count": items.len(),
+        "empty_state": empty_state_msg,
+    })))
+}
+
+#[derive(serde::Deserialize)]
+struct RescueRequest {
+    /// The stuck-item kind (pr_stuck, fat_worktree, etc.) — used to look up the script.
+    kind: String,
+    /// Optional PR number for pr_stuck rescue.
+    #[serde(default)]
+    pr: Option<String>,
+}
+
+/// PRODUCT-080: POST /api/stuck/rescue/{id} — execute a rescue script for a stuck item.
+///
+/// Requires CSRF token (x-csrf-token header). Emits operator_rescue_invoked + rescue_result
+/// to ambient.jsonl. Returns {ok, message, rescue_id}.
+async fn handle_stuck_rescue(
+    headers: HeaderMap,
+    axum::extract::Path(item_id): axum::extract::Path<String>,
+    Json(body): Json<RescueRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    if !check_csrf(&headers) {
+        return Err((StatusCode::FORBIDDEN, "CSRF token required".to_string()));
+    }
+
+    // Validate kind — must be one of our known stuck kinds.
+    const ALLOWED_KINDS: &[&str] = &[
+        "pr_stuck",
+        "silent_agent",
+        "lease_expired_server",
+        "fat_worktree",
+        "disk_critical",
+        "reaper_silent",
+        "fleet_wedge",
+    ];
+    if !ALLOWED_KINDS.contains(&body.kind.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("unknown kind: {}", body.kind),
+        ));
+    }
+
+    // Validate item_id — only alphanumeric + underscore + hyphen.
+    if !item_id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid item_id".to_string()));
+    }
+
+    let rescue_id = format!(
+        "rescue_{}_{}",
+        body.kind,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    );
+
+    // Emit pre-action event.
+    emit_stuck_ambient(
+        "operator_rescue_invoked",
+        &[
+            ("item_id", item_id.as_str()),
+            ("kind", body.kind.as_str()),
+            ("rescue_id", rescue_id.as_str()),
+        ],
+    );
+
+    let repo_root = crate::repo_path::runtime_base();
+
+    let (script_path, script_args) = match rescue_script(&body.kind, &repo_root) {
+        Some(pair) => pair,
+        None => {
+            // No script — emit failure and return.
+            emit_stuck_ambient(
+                "rescue_result",
+                &[
+                    ("rescue_id", rescue_id.as_str()),
+                    ("kind", body.kind.as_str()),
+                    ("success", "false"),
+                    ("message", "no rescue script for this kind"),
+                ],
+            );
+            return Ok(Json(serde_json::json!({
+                "ok": false,
+                "message": format!("No rescue script configured for kind: {}", body.kind),
+                "rescue_id": rescue_id,
+            })));
+        }
+    };
+
+    if !script_path.exists() {
+        let msg = format!("rescue script missing: {}", script_path.display());
+        emit_stuck_ambient(
+            "rescue_result",
+            &[
+                ("rescue_id", rescue_id.as_str()),
+                ("kind", body.kind.as_str()),
+                ("success", "false"),
+                ("message", &msg),
+            ],
+        );
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "message": msg,
+            "rescue_id": rescue_id,
+        })));
+    }
+
+    let mut cmd = std::process::Command::new("bash");
+    cmd.arg(&script_path);
+    for arg in &script_args {
+        cmd.arg(arg);
+    }
+    // For pr_stuck, pass --pr <number> if provided.
+    if body.kind == "pr_stuck" {
+        if let Some(ref pr) = body.pr {
+            if !pr.is_empty() {
+                cmd.args(["--pr", pr.as_str()]);
+            }
+        }
+    }
+    cmd.current_dir(&repo_root);
+
+    let result = cmd.output();
+    let (ok, message) = match result {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            (
+                true,
+                if stdout.is_empty() {
+                    "rescue completed".to_string()
+                } else {
+                    stdout
+                },
+            )
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            (false, format!("exit {}: {}", out.status, stderr))
+        }
+        Err(e) => (false, format!("spawn error: {e}")),
+    };
+
+    emit_stuck_ambient(
+        "rescue_result",
+        &[
+            ("rescue_id", rescue_id.as_str()),
+            ("kind", body.kind.as_str()),
+            ("success", if ok { "true" } else { "false" }),
+            ("message", message.as_str()),
+        ],
+    );
+
+    Ok(Json(serde_json::json!({
+        "ok": ok,
+        "message": message,
+        "rescue_id": rescue_id,
+    })))
+}
+
+// ── End PRODUCT-080 ───────────────────────────────────────────────────────────
+
 fn build_api_router() -> Router {
     Router::new()
         .route("/favicon.ico", get(routes::health::handle_favicon))
@@ -6669,6 +7064,9 @@ fn build_api_router() -> Router {
         .route("/api/ambient/stream", get(handle_ambient_stream))
         .route("/api/ambient/recent", get(handle_ambient_recent))
         .route("/api/ambient/emit", post(handle_ambient_emit))
+        // PRODUCT-080: stuck items alerter
+        .route("/api/stuck", get(handle_stuck_list))
+        .route("/api/stuck/rescue/{id}", post(handle_stuck_rescue))
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
         .route("/api/health/pillars", get(handle_health_pillars))
