@@ -1,0 +1,19 @@
+- id: PRODUCT-115
+  domain: PRODUCT
+  title: "\"EFFECTIVE: PWA autopilot toggle in header — wire /api/autopilot/{start,stop,status} so operator can flip fleet on/off from any view\""
+  status: open
+  priority: P0
+  effort: xs
+  description: |
+    Add a persistent autopilot toggle in the PWA header. ON = fleet workers claim gaps and ship autonomously; OFF = fleet idles, only operator can manually claim. Wire to /api/autopilot/{start,stop,status} (all exist). Status polled from /api/autopilot/status (or SSE). Color-coded indicator: green=on, red=off, yellow=pausing-or-resuming.
+  acceptance_criteria:
+    - web/v2/autopilot-toggle.js defines <chump-autopilot-toggle> Web Component placed in app-header alongside chump-pillar-health / chump-heartbeat
+    - GET /api/autopilot/status on mount + every 10s polling; PUT /api/autopilot/start or stop on click
+    - "Visual states: green pulsing (running), gray (stopped), amber (starting/stopping), red (error)"
+    - Auth-checked via X-Chump-Auth header (INFRA-1014 middleware compat)
+    - "Pending guard: button disabled during in-flight API call; optimistic UI shows starting/stopping"
+    - Emits kind=autopilot_toggled ambient event with from + to state via best-effort fetch to /api/ambient/emit
+    - "Cleanup: disconnectedCallback clears poll timer"
+    - "Accessibility: aria-pressed + aria-label on toggle button"
+    - Test scripts/ci/test-pwa-autopilot-toggle.sh 13 assertions all pass
+
