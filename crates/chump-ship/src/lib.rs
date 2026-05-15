@@ -402,6 +402,146 @@ impl ExecutorStep {
     }
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// INFRA-1229 slice 3 — behind-recovery (pure helpers).
+//
+// Slice 2 emits 3 git steps for RebaseAndPush. In practice the 3rd step
+// (`git push --force-with-lease`) loses to origin races during the
+// build/test window — bot-merge.sh handles this with ~400 LOC of
+// shell-side retry + conflict detection + pre-push freshness gate.
+//
+// This slice extracts that decision logic into pure functions:
+//   - `classify_step_failure()` — given a failed step's rc + stderr,
+//     return a RetryAction (retry, abort-as-conflict, fail).
+//   - `freshness_verdict()` — given a behind-count + threshold,
+//     decide if we should refuse the push.
+//
+// The CLI runner consumes these to drive a stateful retry loop without
+// shell-style branching.
+// ──────────────────────────────────────────────────────────────────────
+
+/// What the runner should do after a failed step in a RebaseAndPush chain.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "action", rename_all = "PascalCase")]
+pub enum RetryAction {
+    /// Step succeeded (or non-failing-as-classified) — proceed.
+    Continue,
+    /// Force-push rejected by stale-info race; re-rebase and re-push.
+    RetryRebaseAndPush { attempt: u32, max: u32 },
+    /// `git rebase` produced merge conflicts. Operator must resolve.
+    AbortAsConflict { reason: String },
+    /// Pre-push freshness check found behind > threshold. Abort.
+    AbortAsStaleBranch { behind: u32, threshold: u32 },
+    /// Other unrecoverable failure.
+    Fail { reason: String },
+}
+
+/// Classify a single failed step into a RetryAction. Pure — no I/O.
+///
+/// Heuristics (matched to bot-merge.sh today):
+/// - `git push` + non-zero + stderr mentions "stale info" OR
+///   "rejected" + "force-with-lease" → RetryRebaseAndPush
+/// - `git rebase` + non-zero + stderr contains "CONFLICT" →
+///   AbortAsConflict
+/// - rc == 0 → Continue
+/// - attempt >= max → Fail
+/// - anything else → Fail
+pub fn classify_step_failure(
+    program: &str,
+    args: &[String],
+    rc: i32,
+    stderr: &str,
+    attempt: u32,
+    max_attempts: u32,
+) -> RetryAction {
+    if rc == 0 {
+        return RetryAction::Continue;
+    }
+    let is_git = program == "git";
+    let first_arg = args.first().map(|s| s.as_str()).unwrap_or("");
+    let stderr_l = stderr.to_lowercase();
+
+    if is_git && first_arg == "push" {
+        let stale_info = stderr_l.contains("stale info");
+        let rejected_lease =
+            stderr_l.contains("rejected") && stderr_l.contains("force-with-lease");
+        if stale_info || rejected_lease {
+            if attempt >= max_attempts {
+                return RetryAction::Fail {
+                    reason: format!(
+                        "push --force-with-lease still rejected after {attempt} attempt(s); origin moved repeatedly. Manual rebase recommended."
+                    ),
+                };
+            }
+            return RetryAction::RetryRebaseAndPush {
+                attempt: attempt + 1,
+                max: max_attempts,
+            };
+        }
+        return RetryAction::Fail {
+            reason: format!(
+                "git push failed (rc={rc}) and stderr does not look like a stale-info race; inspect: {}",
+                truncate_for_log(stderr, 240)
+            ),
+        };
+    }
+
+    if is_git && first_arg == "rebase" {
+        if stderr.contains("CONFLICT") || stderr_l.contains("merge conflict") {
+            return RetryAction::AbortAsConflict {
+                reason: format!(
+                    "git rebase produced merge conflicts. Run `git rebase --abort`, then `gh pr checkout <N>` to inspect and resolve manually."
+                ),
+            };
+        }
+        return RetryAction::Fail {
+            reason: format!(
+                "git rebase failed (rc={rc}) without visible CONFLICT markers; stderr tail: {}",
+                truncate_for_log(stderr, 240)
+            ),
+        };
+    }
+
+    RetryAction::Fail {
+        reason: format!(
+            "{program} {first_arg} failed (rc={rc}); stderr: {}",
+            truncate_for_log(stderr, 240)
+        ),
+    }
+}
+
+fn truncate_for_log(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max])
+    }
+}
+
+/// Result of the pre-push freshness recheck (INFRA-995): is the branch
+/// now too far behind main to safely push?
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FreshnessCheck {
+    pub behind: u32,
+    pub threshold: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FreshnessVerdict {
+    Fresh,
+    Stale,
+}
+
+/// Pure verdict: stale when `behind > threshold` (strict; equal is fresh).
+pub fn freshness_verdict(c: &FreshnessCheck) -> FreshnessVerdict {
+    if c.behind > c.threshold {
+        FreshnessVerdict::Stale
+    } else {
+        FreshnessVerdict::Fresh
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -743,5 +883,148 @@ mod tests {
         assert!(j.contains("\"status\""));
         assert!(j.contains("\"--porcelain\""));
         assert!(j.contains("\"expect_success\":true"));
+    }
+
+    // ── INFRA-1229 slice 3: retry classification tests ───────────────────
+
+    fn arg(s: &str) -> String { s.to_string() }
+
+    #[test]
+    fn push_rejection_stale_info_triggers_retry() {
+        let stderr = "To github.com:x/y.git\n ! [rejected] HEAD -> branch (stale info)";
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease"), arg("origin"), arg("HEAD")],
+            1,
+            stderr,
+            0,
+            3,
+        );
+        match act {
+            RetryAction::RetryRebaseAndPush { attempt, max } => {
+                assert_eq!(attempt, 1);
+                assert_eq!(max, 3);
+            }
+            other => panic!("expected RetryRebaseAndPush, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn push_rejection_force_with_lease_triggers_retry() {
+        let stderr = "error: failed to push some refs to 'x'\n ! [rejected] (force-with-lease)";
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease"), arg("origin"), arg("HEAD")],
+            1,
+            stderr,
+            1,
+            3,
+        );
+        assert!(matches!(act, RetryAction::RetryRebaseAndPush { attempt: 2, .. }),
+                "got {act:?}");
+    }
+
+    #[test]
+    fn rebase_conflict_aborts() {
+        let stderr = "CONFLICT (content): Merge conflict in src/main.rs\n";
+        let act = classify_step_failure(
+            "git",
+            &[arg("rebase"), arg("origin/main")],
+            1,
+            stderr,
+            0,
+            3,
+        );
+        match act {
+            RetryAction::AbortAsConflict { reason } => {
+                assert!(reason.contains("rebase --abort"),
+                        "reason should mention rebase --abort: {reason}");
+            }
+            other => panic!("expected AbortAsConflict, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn clean_step_yields_continue() {
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease")],
+            0,
+            "",
+            0,
+            3,
+        );
+        assert_eq!(act, RetryAction::Continue);
+    }
+
+    #[test]
+    fn attempt_at_max_yields_fail() {
+        let stderr = "rejected (stale info)";
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease")],
+            1,
+            stderr,
+            3, // already at max
+            3,
+        );
+        match act {
+            RetryAction::Fail { reason } => {
+                assert!(reason.contains("attempt"), "reason should mention attempts: {reason}");
+            }
+            other => panic!("expected Fail (max exceeded), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unrelated_rc_yields_fail() {
+        // Non-push, non-rebase failure: opaque "Fail".
+        let act = classify_step_failure(
+            "git",
+            &[arg("fetch"), arg("origin"), arg("main")],
+            128,
+            "fatal: could not resolve host: github.com",
+            0,
+            3,
+        );
+        assert!(matches!(act, RetryAction::Fail { .. }), "got {act:?}");
+    }
+
+    #[test]
+    fn push_failure_without_stale_marker_yields_fail() {
+        let act = classify_step_failure(
+            "git",
+            &[arg("push"), arg("--force-with-lease")],
+            1,
+            "error: src refspec HEAD does not match any",
+            0,
+            3,
+        );
+        match act {
+            RetryAction::Fail { reason } => {
+                assert!(reason.contains("does not look like a stale-info race"),
+                        "reason: {reason}");
+            }
+            other => panic!("expected Fail (non-stale push failure), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn freshness_fresh_under_threshold() {
+        let v = freshness_verdict(&FreshnessCheck { behind: 5, threshold: 15 });
+        assert_eq!(v, FreshnessVerdict::Fresh);
+    }
+
+    #[test]
+    fn freshness_stale_over_threshold() {
+        let v = freshness_verdict(&FreshnessCheck { behind: 16, threshold: 15 });
+        assert_eq!(v, FreshnessVerdict::Stale);
+    }
+
+    #[test]
+    fn freshness_equal_threshold_is_fresh() {
+        // Equal-to-threshold is fresh (strict greater-than for stale).
+        let v = freshness_verdict(&FreshnessCheck { behind: 15, threshold: 15 });
+        assert_eq!(v, FreshnessVerdict::Fresh);
     }
 }
