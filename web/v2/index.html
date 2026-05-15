@@ -454,6 +454,101 @@
     .cost-kill-hint { font-size: 11px; color: var(--text-secondary); }
     .cost-kill-hint code { font-family: "SF Mono", ui-monospace, monospace; }
 
+    /* PRODUCT-112: <chump-view-network-audit> air-gap trust page.
+       Archetype 1 (offline solo dev) clicks the footer air-gap badge →
+       drills here → sees proof of compliance OR a violation banner. */
+    chump-view-network-audit { display: block; padding: 16px 20px; max-width: 1280px; }
+    chump-view-network-audit .netaudit-banner {
+      padding: 10px 14px; border-radius: var(--radius-sm);
+      margin-bottom: 12px; font-size: 13px;
+    }
+    chump-view-network-audit .netaudit-banner-ok {
+      background: rgba(48,209,88,0.18); color: var(--success);
+      border: 1px solid var(--success);
+    }
+    chump-view-network-audit .netaudit-banner-violation {
+      background: rgba(255,69,58,0.22); color: var(--error);
+      border: 2px solid var(--error); font-weight: 500;
+    }
+    chump-view-network-audit .netaudit-banner-info {
+      background: var(--bg-elevated); color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+    chump-view-network-audit .netaudit-toolbar {
+      display: flex; gap: 12px; align-items: center;
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    chump-view-network-audit .netaudit-chips { display: inline-flex; gap: 4px; }
+    chump-view-network-audit .netaudit-chip {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 10px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 11px;
+    }
+    chump-view-network-audit .netaudit-chip[aria-pressed="true"] {
+      background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
+    }
+    chump-view-network-audit .netaudit-export {
+      margin-left: auto;
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 4px 12px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 11px;
+    }
+    chump-view-network-audit .netaudit-export:hover { color: var(--text); border-color: var(--text-secondary); }
+    chump-view-network-audit .netaudit-stats {
+      font-size: 11px; color: var(--text-secondary); padding: 6px 0;
+    }
+    chump-view-network-audit .netaudit-stat { color: var(--text-primary, var(--text)); font-weight: 600; }
+    chump-view-network-audit .netaudit-stat-violation { color: var(--error); }
+    chump-view-network-audit .netaudit-stat-sep { margin: 0 8px; opacity: 0.4; }
+    chump-view-network-audit .netaudit-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    chump-view-network-audit .netaudit-table thead th {
+      position: sticky; top: 0; background: var(--bg-surface);
+      text-align: left; padding: 6px 8px;
+      border-bottom: 2px solid var(--border);
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-secondary);
+    }
+    chump-view-network-audit .netaudit-row td {
+      padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top;
+    }
+    chump-view-network-audit .netaudit-row-nongithub { background: rgba(255,69,58,0.06); }
+    chump-view-network-audit .netaudit-cell-ts {
+      color: var(--text-secondary); white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    chump-view-network-audit .netaudit-cell-host { font-family: "SF Mono", ui-monospace, monospace; }
+    chump-view-network-audit .netaudit-cell-path {
+      color: var(--text-secondary); font-family: "SF Mono", ui-monospace, monospace;
+      max-width: 480px; overflow: hidden; text-overflow: ellipsis;
+    }
+    chump-view-network-audit .netaudit-pill {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 1px 6px; border-radius: 3px; margin-left: 6px;
+    }
+    chump-view-network-audit .netaudit-pill-ok {
+      background: rgba(48,209,88,0.18); color: var(--success);
+    }
+    chump-view-network-audit .netaudit-footnote {
+      margin-top: 12px; font-size: 11px; color: var(--text-secondary);
+      padding: 8px 0; border-top: 1px solid var(--border);
+    }
+    chump-view-network-audit .netaudit-footnote code {
+      font-family: "SF Mono", ui-monospace, monospace;
+    }
+    @media (max-width: 640px) {
+      chump-view-network-audit { padding: 12px 14px; }
+      chump-view-network-audit .netaudit-table thead { display: none; }
+      chump-view-network-audit .netaudit-row {
+        display: grid; grid-template-columns: auto 1fr; gap: 2px 8px;
+        padding: 8px 4px; border-bottom: 1px solid var(--border);
+      }
+      chump-view-network-audit .netaudit-row td { border-bottom: none; padding: 0; }
+      chump-view-network-audit .netaudit-cell-path { max-width: 100%; }
+    }
+
     /* PRODUCT-109: <chump-tool-approval-tray> persistent banner above main
        content when approvals are pending. Hidden by default; visible + sticky
        when shell is unhidden. See docs/design/OPERATOR_CONSOLE_V2.md
