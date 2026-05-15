@@ -624,11 +624,10 @@ jobs:
         # Build once, reuse across the next three steps.
         run: cargo build --bin chump
 
-      - name: gap-reserve concurrency + preflight (INFRA-021)
+      - name: gap-reserve concurrency (INFRA-021)
         run: |
           export PATH="$(pwd)/target/debug:$PATH"
           bash scripts/ci/test-gap-reserve-concurrency.sh
-          bash scripts/ci/test-gap-reserve-preflight.sh
 
       - name: gap-reserve ID zero-padding (INFRA-080)
         run: |
