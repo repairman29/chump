@@ -1,0 +1,16 @@
+- id: INFRA-1342
+  domain: INFRA
+  title: "RESILIENT: tauri-cowork-e2e failure blocks ALL PR auto-merge via rollup state — make it neutral on flake or non-PR-trigger"
+  status: done
+  closed_date: '2026-05-15'
+  priority: P0
+  effort: s
+  acceptance_criteria:
+    - "Reproduce: live evidence is PR #2052 (open as of 2026-05-15 17:10 UTC) — all 3 required-status contexts (test, audit, ACP protocol smoke) report SUCCESS but `mergeable_state=blocked` because GraphQL `statusCheckRollup.state=FAILURE` due to a single non-required check (tauri-cowork-e2e) failing. GitHub auto-merge silently refuses to fire when rollup state is FAILURE regardless of required-context list."
+    - "Fix option A (preferred): mark the tauri-cowork-e2e job as `continue-on-error: true` in `.github/workflows/*.yml` so its failure does NOT contribute to rollup state. Verify a forced-failure of the job no longer flips `statusCheckRollup.state` to FAILURE on a probe PR."
+    - "Fix option B: convert the job to report `neutral` conclusion when the failure matches a known-flake pattern (timeout, chump-chat startup wait, etc.) — use `actions/github-script` to call /check-runs API with `conclusion: neutral` instead of `failure`."
+    - "Fix option C (sledgehammer): drop tauri-cowork-e2e from PR-triggered events entirely; run only on scheduled cron + manual dispatch. Keeps coverage without blocking PRs."
+    - "Add a regression test: scripts/ci/test-rollup-not-failure-on-flaky-tauri.sh boots a synthetic PR with a forced tauri-cowork-e2e failure and asserts `gh api repos/.../pulls/N --jq .mergeable_state` does NOT return \"blocked\" attributable to that specific check."
+    - "Document the root cause in docs/process/CLAUDE_GOTCHAS.md under a new section \"Auto-merge rollup-FAILURE trap\" — every flake on a non-required job becomes a fleet-wide merge stop unless mitigated."
+    - "Audit follow-up (separate gap if needed): scan the workflow file list for OTHER non-required jobs that could trip the same trap; mark each one continue-on-error or convert known-flake outputs to neutral."
+

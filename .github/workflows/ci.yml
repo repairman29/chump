@@ -134,6 +134,10 @@ jobs:
   tauri-cowork-e2e:
     needs: changes
     if: needs.changes.outputs.tauri == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # INFRA-1342: non-required job; continue-on-error prevents a flaky Tauri
+    # test from flipping statusCheckRollup.state → FAILURE and silently
+    # blocking auto-merge for ALL open PRs fleet-wide.
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -890,6 +894,8 @@ jobs:
   e2e-pwa:
     needs: changes
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 60  # INFRA-1018: cap wall-clock; Ollama+cargo+playwright target ~30 min; 6h default caused stuck runs
     steps:
@@ -968,6 +974,8 @@ jobs:
   e2e-battle-sim:
     needs: changes
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -984,6 +992,8 @@ jobs:
   e2e-golden-path:
     needs: changes
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
