@@ -5,8 +5,8 @@
   priority: P2
   effort: xs
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Replace 3x printf-to-ambient calls in orphan-pr-closer.sh (emit func, line 68-74) with chump ambient emit invocations: orphan_pr_candidate, orphan_pr_closed, orphan_pr_close_failed, and orphan_pr_close_evidence_missing (4 event kinds)"
+    - "Each emit call passes kind + --gap <id> + --field for structured data (pr, reason, note), matching EVENT_REGISTRY.yaml schema"
+    - "test-orphan-pr-closer.sh passes all 14 checks including the new ambient emit-based events"
+    - "Verify CI gate wiring: scripts/ci/test-orphan-pr-closer.sh runs in fast-checks, no regressions"
 
