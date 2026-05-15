@@ -141,4 +141,35 @@ All exclusions must be logged with reason. Exclusion rate >10% invalidates the s
 
 ## Deviations (append-only, timestamped)
 
-(none yet)
+### [2026-05-10] D-1: Agent substituted — Qwen 2.5 14B instead of claude-sonnet-4-20250514
+
+- **Preregistered agent:** `claude-sonnet-4-20250514` (Anthropic API)
+- **Actual agent:** `Qwen 2.5 14B` via Ollama local endpoint
+- **Cause:** Anthropic API key unavailable at run time; operator did not update the preregistration or halt the sweep.
+- **Impact:** Results are not interpretable as evidence about the intended model. Different architecture, different base rates, different instruction-following behaviour. Null result (Δ=+0.025) cannot be attributed to the cognition stack on the intended model.
+- **Disposition:** Results NOT valid for H1/H0 on claude-sonnet-4. Marked as protocol violation. EVAL-102 filed for correct re-run.
+
+### [2026-05-10] D-2: Sample size below RESEARCH_INTEGRITY floor — n=20/cell (required n≥50)
+
+- **Preregistered floor:** n≥50 per cell (RESEARCH_INTEGRITY.md §1)
+- **Actual n:** 20 per cell (power-analysis minimum only; below the required floor)
+- **Impact:** Results are underpowered independent of the model substitution.
+- **Disposition:** Directional signal unreliable. EVAL-102 specifies n=50 per cell.
+
+### [2026-05-10] D-3: Cell C (neutral-padding control) skipped
+
+- **Preregistered:** Cell C required to rule out prompt-length confound (§3 Design).
+- **Actual:** Cell C omitted. Reason logged: "Ollama timeout, skipping C."
+- **Impact:** Prompt-length confound cannot be ruled out. Any observed Δ could be length artefact.
+- **Disposition:** Results not interpretable as a clean A/B comparison. Cell C is mandatory in EVAL-102.
+
+### [2026-05-10] D-4: No LLM judge — structural scoring only
+
+- **Preregistered judges:** dual LLM (claude-haiku-3-5-20241022 + gpt-4o-mini, §3 Model matrix)
+- **Actual:** Structural property scoring only (`scripts/ab-harness/score.py`); no LLM calls.
+- **Impact:** Structural scoring cannot capture partial credit or semantic correctness. RESEARCH_INTEGRITY.md §6 requires at least one LLM judge for EVAL-* runs.
+- **Disposition:** Scoring is incomparable to the preregistered protocol. EVAL-102 requires dual judges including a non-Anthropic family.
+
+---
+
+**Summary:** All four deviations together mean EVAL-101 results are non-interpretable as evidence for or against H1. The null result (Δ=+0.025, p≈0.4) should be treated as a failed protocol execution, not a scientific finding. EVAL-102 is the registered re-run with corrected protocol.
