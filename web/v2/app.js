@@ -87,6 +87,78 @@ window.chumpPrefs = window.chumpPrefs || (() => {
   });
 })();
 
+// ── ChumpAcpDeeplink helper (PRODUCT-110) ───────────────────────────────────
+// Build chump://acp/open?... URLs the operator's registered ACP client (Zed,
+// JetBrains, etc) can intercept and open. Competitive-differentiation surface
+// vs Claude Code per docs/design/OPERATOR_CONSOLE_V2.md (archetype 3) —
+// CC structurally can't ship this. The browser silently ignores the click
+// when no ACP client is registered; the companion "Copy link" button keeps
+// the value useful for sharing in either case.
+//
+// Schema documented in docs/api/PWA_ACP_DEEPLINKS.md.
+window.ChumpAcpDeeplink = window.ChumpAcpDeeplink || (() => {
+  function build(params) {
+    const url = new URL('chump://acp/open');
+    for (const [k, v] of Object.entries(params || {})) {
+      if (v == null || v === '') continue;
+      url.searchParams.set(k, String(v));
+    }
+    return url.toString();
+  }
+  return {
+    open(params)     { return build(params); },          // generic
+    gap(id, opts={}) { return build({ gap: id, ...opts }); },
+    pr(num, opts={}) { return build({ pr: num,  ...opts }); },
+    branch(b, opts={}) { return build({ branch: b, ...opts }); },
+  };
+})();
+
+// PRODUCT-110: delegated click handler for Copy-link buttons across the app.
+// Lives at the document level so any future view that renders a .gap-acp-copy
+// button gets the same behavior without extra wiring.
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.gap-acp-copy');
+  if (!btn) return;
+  const href = btn.dataset.acpHref;
+  if (!href) return;
+  try {
+    navigator.clipboard?.writeText(href).then(() => {
+      const prev = btn.textContent;
+      btn.textContent = 'Copied ✓';
+      btn.classList.add('gap-acp-copy-success');
+      setTimeout(() => {
+        btn.textContent = prev;
+        btn.classList.remove('gap-acp-copy-success');
+      }, 1200);
+    });
+  } catch {}
+  try {
+    navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+      kind: 'acp_deeplink_emitted',
+      target_kind: 'copy',
+      client_detected: !!navigator.clipboard,
+      ts: new Date().toISOString(),
+    }));
+  } catch {}
+});
+
+// PRODUCT-110: telemetry on the actual ACP link click (the editor handoff path).
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a.gap-acp-link');
+  if (!a) return;
+  try {
+    navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+      kind: 'acp_deeplink_emitted',
+      target_kind: a.dataset.acpTarget || 'unknown',
+      target_id: a.dataset.acpId || a.dataset.acpPr || a.dataset.acpBranch || '',
+      // We can't observe whether the browser actually had a handler — emit
+      // best-effort so the leaderboard sees "deeplink attempted" volume.
+      client_detected: 'unknown',
+      ts: new Date().toISOString(),
+    }));
+  } catch {}
+});
+
 // ── DashboardStream singleton (PRODUCT-099) ──────────────────────────────────
 // Frontend was polling /api/dashboard, /api/jobs, /api/fleet-status, /api/gap-queue
 // on 3 different setInterval timers (5/10/15s). Meanwhile the backend has been
@@ -2351,6 +2423,26 @@ class ChumpViewAgent extends HTMLElement {
       ? `<p class="gap-lease" title="${g.assigned_session}">⚙ claimed by ${this.#shortSession(g.assigned_session)}</p>`
       : '';
 
+    // PRODUCT-110: ACP deeplinks — competitive-differentiation surface vs CC.
+    // Render "Open in editor ↗" and "Copy" buttons on every gap row. The
+    // chump://acp/open?gap=X scheme requires a registered ACP client
+    // (Zed / JetBrains / etc) on the operator's machine — if absent, the
+    // browser silently ignores the click. The Copy button always works for
+    // sharing the link with a teammate or sibling tab.
+    const acpHref = ChumpAcpDeeplink.open({ gap: g.id });
+    const acpHtml = `
+      <a class="gap-acp-link" href="${acpHref}" data-acp-target="gap" data-acp-id="${g.id}"
+         title="Open ${g.id} in your registered ACP editor (Zed / JetBrains)"
+         aria-label="Open ${g.id} in editor">
+        Open in editor ↗
+      </a>
+      <button type="button" class="gap-acp-copy" data-acp-href="${acpHref}"
+              title="Copy ACP deeplink to clipboard"
+              aria-label="Copy ACP link for ${g.id}">
+        Copy link
+      </button>
+    `;
+
     // Embedded slots — placeholders the IntersectionObserver fills.
     // pr-card slot: only when closed_pr is set (a shipped gap surfaced via
     // ?status=shipped or via search).
@@ -2382,6 +2474,7 @@ class ChumpViewAgent extends HTMLElement {
         ${leaseHtml}
         ${g.preflight_error ? `<p class="gap-error">${g.preflight_error}</p>` : ''}
         ${actions ? `<div class="gap-actions">${actions}</div>` : ''}
+        <div class="gap-acp-row">${acpHtml}</div>
         ${timelineSlot}
         ${prCardSlot}
       </article>

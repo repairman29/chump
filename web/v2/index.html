@@ -762,6 +762,49 @@
       min-height: 0;
     }
     .gap-embed:empty { display: none; }
+
+    /* PRODUCT-110: ACP deeplink row on every gap card.
+       Competitive-differentiation surface vs Claude Code (CC structurally
+       can't ship this). chump://acp/open?gap=X opens in the registered
+       editor; Copy button always works for sharing. */
+    .gap-acp-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 6px;
+      font-size: 11px;
+    }
+    .gap-acp-link {
+      color: var(--accent);
+      text-decoration: none;
+      padding: 3px 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      transition: background 0.12s, color 0.12s, border-color 0.12s;
+    }
+    .gap-acp-link:hover {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .gap-acp-copy {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 3px 8px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 11px;
+      transition: color 0.12s, border-color 0.12s, background 0.12s;
+    }
+    .gap-acp-copy:hover { color: var(--text); border-color: var(--text-secondary); }
+    .gap-acp-copy-success {
+      background: rgba(48,209,88,0.18);
+      color: var(--success);
+      border-color: var(--success);
+    }
     .gap-title {
       font-size: 13px;
       color: var(--text);
