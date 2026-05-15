@@ -1696,11 +1696,16 @@ class ChumpViewAgents extends HTMLElement {
   #timer = null;
 
   connectedCallback() {
+    // INFRA-1010: <chump-fleet-sidebar> renders the same data as the legacy
+    // polling list but with real-time SSE updates (<2s on lease_acquired,
+    // phase_*, ship_*). The legacy agent-card list below remains as a
+    // detail view (PR/CI columns the sidebar omits).
     this.innerHTML = `
       <section class="view-header">
         <h2>Agents</h2>
         <p class="view-subtitle">Active fleet sessions — leases, PRs, and CI status</p>
       </section>
+      <chump-fleet-sidebar></chump-fleet-sidebar>
       <p class="agents-refresh-note" id="agents-refresh-note">Refreshes every 10 s</p>
       <section class="agents-list" id="agents-list">
         <p class="placeholder">Loading active sessions…</p>
