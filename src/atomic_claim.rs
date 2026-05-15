@@ -206,6 +206,37 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         );
     }
 
+    // 5b. INFRA-1328: stomp-prevention pre-claim PR check.
+    //
+    // If an OPEN PR exists upstream with `chump/<gap>-claim` as its head,
+    // the prior agent's work is in flight even if their lease lapsed (claim
+    // TTL is 30 min; ship cycles often run longer while CI sits in the
+    // queue). Re-claiming would force the next push to either bail or
+    // stomp the open PR — that's the failure mode PR #2008 lost work to
+    // when sibling-PR #2013 took the same branch.
+    //
+    // The check is best-effort: `gh` failures return None and we fall
+    // through to today's behavior. `--resume` and CHUMP_ALLOW_STOMP=1 are
+    // legitimate overrides (resume = same agent retrying, stomp = operator
+    // explicitly takes over an abandoned PR).
+    let stomp_bypass = std::env::var("CHUMP_ALLOW_STOMP")
+        .map(|v| !v.trim().is_empty() && v.trim() != "0")
+        .unwrap_or(false);
+    if !args.resume && !stomp_bypass {
+        if let Some(pr_num) = open_pr_on_branch(&args.repo_root, &branch) {
+            bail!(
+                "INFRA-1328: open PR #{} exists on branch `{}` upstream — \
+                 refusing to stomp.\n  \
+                 Either (a) wait for it to land/close, (b) pass --resume to \
+                 continue that PR's work, or (c) set CHUMP_ALLOW_STOMP=1 if \
+                 the PR is genuinely abandoned and you're taking it over \
+                 (with comment closing the prior PR).",
+                pr_num,
+                branch,
+            );
+        }
+    }
+
     // PathBuf-to-str: macOS/Linux paths are normally UTF-8, but
     // CHUMP_WORKTREE_BASE could be set to a non-UTF-8 path. Fail loudly
     // rather than panic with unwrap().
@@ -364,6 +395,63 @@ fn remote_branch_exists(repo_root: &Path, remote: &str, branch: &str) -> bool {
         Ok(o) => o.status.success(),
         Err(_) => false,
     }
+}
+
+/// INFRA-1328: Returns `Some(pr_number)` if the upstream has an OPEN PR with
+/// `<branch>` as its head. Used to refuse a stomp-claim: even if the prior
+/// claimer's lease expired, an open PR (especially one with armed auto-merge)
+/// is a strong signal the work is in flight and the branch must not be
+/// re-purposed.
+///
+/// Best-effort: any `gh` failure (no auth, no network, gh not on PATH) returns
+/// `None` so offline / un-authed clones don't get blocked. The downside is a
+/// false-negative — but the worst case is the same as today's behavior, while
+/// the success case prevents the stomp class entirely.
+pub(crate) fn open_pr_on_branch(repo_root: &Path, branch: &str) -> Option<u64> {
+    // GH expects head as `<owner>:<branch>` — derive owner from the repo's
+    // git remote (the same path bot-merge.sh and pr-stuck-cluster use).
+    let owner_repo = gh_owner_repo(repo_root)?;
+    let owner = owner_repo.split('/').next()?;
+    let head = format!("{}:{}", owner, branch);
+    let out = Command::new("gh")
+        .args([
+            "api",
+            "-H",
+            "Accept: application/vnd.github+json",
+            &format!(
+                "repos/{}/pulls?state=open&head={}&per_page=1",
+                owner_repo, head
+            ),
+            "--jq",
+            ".[0].number // empty",
+        ])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    stdout.trim().parse::<u64>().ok()
+}
+
+/// Resolve `owner/repo` from the git remote URL (https or ssh). Returns
+/// `None` if the remote isn't a github.com URL.
+fn gh_owner_repo(repo_root: &Path) -> Option<String> {
+    let out = Command::new("git")
+        .args(["config", "--get", "remote.origin.url"])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    // https://github.com/owner/repo(.git)?  or  git@github.com:owner/repo(.git)?
+    let stripped = url
+        .strip_prefix("https://github.com/")
+        .or_else(|| url.strip_prefix("git@github.com:"))?;
+    Some(stripped.trim_end_matches(".git").to_string())
 }
 
 /// INFRA-1025: write the leases row to state.db. Mirrors GapStore::claim()
@@ -1187,6 +1275,87 @@ mod tests {
         assert!(s.starts_with("claim-infra-123-"));
         // claim-infra-123-<pid>-<epoch> = 4 dash-separated segments
         assert_eq!(s.matches('-').count(), 4);
+    }
+
+    // INFRA-1328: gh_owner_repo URL parser — pure logic, no network.
+    #[test]
+    fn gh_owner_repo_parses_https_url() {
+        // We can't easily test the full fn because it shells out to `git
+        // config`; instead we test the URL-parse branch via a temp repo.
+        let tmp = std::env::temp_dir().join(format!(
+            "infra1328-https-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let _ = Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&tmp)
+            .output();
+        let _ = Command::new("git")
+            .args([
+                "config",
+                "remote.origin.url",
+                "https://github.com/myorg/myrepo.git",
+            ])
+            .current_dir(&tmp)
+            .output();
+        assert_eq!(gh_owner_repo(&tmp).as_deref(), Some("myorg/myrepo"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn gh_owner_repo_parses_ssh_url() {
+        let tmp = std::env::temp_dir().join(format!(
+            "infra1328-ssh-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let _ = Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&tmp)
+            .output();
+        let _ = Command::new("git")
+            .args([
+                "config",
+                "remote.origin.url",
+                "git@github.com:myorg/myrepo",
+            ])
+            .current_dir(&tmp)
+            .output();
+        assert_eq!(gh_owner_repo(&tmp).as_deref(), Some("myorg/myrepo"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn gh_owner_repo_returns_none_for_non_github_url() {
+        let tmp = std::env::temp_dir().join(format!(
+            "infra1328-gitlab-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let _ = Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(&tmp)
+            .output();
+        let _ = Command::new("git")
+            .args([
+                "config",
+                "remote.origin.url",
+                "https://gitlab.com/x/y.git",
+            ])
+            .current_dir(&tmp)
+            .output();
+        assert!(gh_owner_repo(&tmp).is_none());
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
