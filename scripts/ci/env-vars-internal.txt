@@ -216,6 +216,7 @@ CHUMP_ADB_DEVICE
 CHUMP_ADB_ENABLED
 
 # ── Tier 2: misc operational internals ────────────────────────────────────
+CHUMP_HTTP_INSTRUMENT
 CHUMP_STREAM_HTTP
 CHUMP_WEB_HTTP_TRACE
 CHUMP_WEB_INJECT_COS
