@@ -44,6 +44,8 @@ _closed_prs=$(gh api "repos/$_repo/pulls?state=closed&per_page=100&sort=updated&
 [[ -z "$_closed_prs" || "$_closed_prs" == "[]" ]] && exit 0
 
 # ── Step 2: filter to closed-without-merge within lookback window ─────────────
+# INFRA-1313: Use closed_at (not updated_at) so PRs bumped by comments don't
+# trigger false positives. If closed_at is missing, fall back to updated_at.
 # Write JSON to a temp file to avoid shell-quoting issues with large payloads.
 _tmp_prs=$(mktemp /tmp/ghost-reaper-prs.XXXXXX)
 printf '%s' "$_closed_prs" > "$_tmp_prs"
@@ -58,7 +60,8 @@ for pr in prs:
         continue
     if pr.get('state') != 'closed':
         continue
-    ts_str = pr.get('updated_at') or pr.get('closed_at') or ''
+    # INFRA-1313: Use closed_at first, fall back to updated_at only if closed_at missing
+    ts_str = pr.get('closed_at') or pr.get('updated_at') or ''
     if ts_str:
         try:
             ts = datetime.datetime.fromisoformat(ts_str.replace('Z','+00:00')).replace(tzinfo=None)
@@ -73,18 +76,27 @@ rm -f "$_tmp_prs"
 [[ -z "$_bounced_pr_nums" ]] && exit 0
 
 # ── Step 3: build closed_pr→gap_id map from state.db (no API calls) ──────────
+# INFRA-1313: Exclude gaps with titles containing meta-tracking patterns
+# ([CI-RED], [ORPHAN], [DIRTY], [BEHIND], or "stuck") — these are tracking
+# stuck PRs, not shipping PRs. closed_pr in these gaps points to the stuck PR
+# being tracked, not the gap's shipping PR.
 _done_json=$(CHUMP_REPO="$REPO_ROOT" CHUMP_BINARY_STALENESS_CHECK=0 \
     "$_chump" gap list --status done --json 2>/dev/null || echo "[]")
 
 [[ "$_done_json" == "[]" || -z "$_done_json" ]] && exit 0
 
 _pr_to_gap=$(printf '%s' "$_done_json" | python3 -c "
-import json, sys
+import json, sys, re
 m = {}
 for g in json.load(sys.stdin):
     pr = g.get('closed_pr')
-    if pr:
-        m[str(pr)] = g['id']
+    if not pr:
+        continue
+    title = g.get('title') or ''
+    # INFRA-1313: Skip meta-tracking gaps with these patterns in the title
+    if re.search(r'\[(CI-RED|ORPHAN|DIRTY|BEHIND)\]|stuck', title, re.IGNORECASE):
+        continue
+    m[str(pr)] = g['id']
 print(json.dumps(m))
 " 2>/dev/null || echo "{}")
 
