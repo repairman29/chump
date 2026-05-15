@@ -1,0 +1,13 @@
+{
+  "note": "Client denies the permission request.",
+  "client_response": {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "result": {
+      "outcome": {
+        "type": "selected",
+        "optionId": "deny"
+      }
+    }
+  }
+}

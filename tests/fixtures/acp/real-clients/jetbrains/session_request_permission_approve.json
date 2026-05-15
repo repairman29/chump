@@ -1,0 +1,50 @@
+{
+  "note": "This fixture records the session/request_permission request from the agent side and simulates the client responding with 'allow_once'.",
+  "agent_request": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "session/request_permission",
+    "params": {
+      "sessionId": "SESSION_ID_PLACEHOLDER",
+      "toolCall": {
+        "toolCallId": "tc-001",
+        "toolName": "bash",
+        "input": {
+          "command": "ls -la"
+        }
+      },
+      "options": [
+        {
+          "id": "allow_once",
+          "label": "Allow once",
+          "kind": "allow_once"
+        },
+        {
+          "id": "allow_always",
+          "label": "Allow for this session",
+          "kind": "allow_always"
+        },
+        {
+          "id": "deny",
+          "label": "Deny",
+          "kind": "deny"
+        }
+      ]
+    }
+  },
+  "client_response": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "result": {
+      "outcome": {
+        "type": "selected",
+        "optionId": "allow_once"
+      }
+    }
+  },
+  "expected_agent_ack": {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "result": {}
+  }
+}
