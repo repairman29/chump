@@ -3902,11 +3902,12 @@ async fn main() -> Result<()> {
                                     String::new()
                                 };
                                 // INFRA-1259: add warning indicator for vague AC
-                                let ac_warn = if is_acceptance_criteria_vague(&g.acceptance_criteria) {
-                                    " ⚠"
-                                } else {
-                                    ""
-                                };
+                                let ac_warn =
+                                    if is_acceptance_criteria_vague(&g.acceptance_criteria) {
+                                        " ⚠"
+                                    } else {
+                                        ""
+                                    };
                                 println!(
                                     "[{}] {} — {} ({}/{}){}{done_suffix}",
                                     g.status, g.id, g.title, g.priority, g.effort, ac_warn
