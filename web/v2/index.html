@@ -149,6 +149,17 @@
       flex: 1; text-align: right;
     }
     chump-first-run-wizard .frw-dismiss {
+    /* PRODUCT-111: <chump-view-audit> decision-chain panel for archetype 4
+       (enterprise auditor). Consolidates tool-approval-audit + cos/decisions
+       into one chronological feed with filters + export. */
+    chump-view-audit { display: block; padding: 16px 20px; max-width: 1400px; }
+    chump-view-audit .audit-toolbar {
+      display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+      padding: 8px 0; margin-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    chump-view-audit .audit-chips { display: inline-flex; gap: 4px; }
+    chump-view-audit .audit-chip {
       background: transparent; border: 1px solid var(--border);
       color: var(--text-secondary);
       padding: 4px 10px; border-radius: var(--radius-sm);
@@ -308,6 +319,76 @@
         justify-content: center;
       }
       chump-status-footer .sf-pillars { flex-basis: 100%; }
+      transition: color 0.12s, border-color 0.12s, background 0.12s;
+    }
+    chump-view-audit .audit-chip:hover { color: var(--text); border-color: var(--text-secondary); }
+    chump-view-audit .audit-chip[aria-pressed="true"] {
+      background: var(--accent-dim); color: var(--accent); border-color: var(--accent);
+    }
+    chump-view-audit .audit-search {
+      flex: 1; min-width: 180px;
+      padding: 5px 10px; background: var(--bg-elevated);
+      border: 1px solid var(--border); color: var(--text-primary, var(--text));
+      border-radius: var(--radius-sm); font-size: 12px;
+    }
+    chump-view-audit .audit-export,
+    chump-view-audit .audit-clear {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 5px 12px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 11px;
+    }
+    chump-view-audit .audit-export:hover,
+    chump-view-audit .audit-clear:hover { color: var(--text); border-color: var(--text-secondary); }
+    chump-view-audit .audit-stats {
+      padding: 6px 0; font-size: 11px;
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+    chump-view-audit .audit-stat { color: var(--text-primary, var(--text)); font-weight: 600; }
+    chump-view-audit .audit-stat-sep { margin: 0 8px; opacity: 0.4; }
+    chump-view-audit .audit-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    chump-view-audit .audit-table thead th {
+      position: sticky; top: 0; z-index: 1;
+      background: var(--bg-surface);
+      text-align: left; padding: 6px 8px;
+      border-bottom: 2px solid var(--border);
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-secondary);
+    }
+    chump-view-audit .audit-row { cursor: pointer; transition: background 0.1s; }
+    chump-view-audit .audit-row:hover { background: var(--bg-elevated); }
+    chump-view-audit .audit-row td { padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    chump-view-audit .audit-cell-ts { font-variant-numeric: tabular-nums; color: var(--text-secondary); white-space: nowrap; }
+    chump-view-audit .audit-kind { font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em; padding: 1px 6px; border-radius: 3px; }
+    chump-view-audit .audit-kind-tool_approval { background: rgba(10,132,255,0.18); color: #4aa3ff; }
+    chump-view-audit .audit-kind-cos { background: rgba(176,86,255,0.18); color: #c08fff; }
+    chump-view-audit .audit-pill {
+      background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+      padding: 1px 6px; border-radius: 3px; cursor: pointer; font-size: 11px;
+      font-family: "SF Mono", ui-monospace, monospace;
+    }
+    chump-view-audit .audit-pill:hover { color: var(--accent); border-color: var(--accent); }
+    chump-view-audit .audit-cell-summary { max-width: 480px; overflow: hidden; text-overflow: ellipsis; }
+    chump-view-audit .audit-outcome { font-size: 10px; padding: 1px 6px; border-radius: 3px; }
+    chump-view-audit .audit-outcome-ok   { background: rgba(48,209,88,0.18); color: var(--success); }
+    chump-view-audit .audit-outcome-bad  { background: rgba(255,69,58,0.22); color: var(--error); }
+    chump-view-audit .audit-outcome-info { background: var(--bg-elevated); color: var(--text-secondary); }
+    chump-view-audit .audit-row-expansion td { background: var(--bg-elevated); padding: 12px; }
+    chump-view-audit .audit-row-expansion pre {
+      margin: 0; font-size: 11px; color: var(--text-secondary);
+      max-height: 320px; overflow: auto; font-family: "SF Mono", ui-monospace, monospace;
+    }
+    @media (max-width: 640px) {
+      chump-view-audit { padding: 12px 14px; }
+      chump-view-audit .audit-table thead { display: none; }
+      chump-view-audit .audit-row {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 4px 8px; padding: 8px 4px; border-bottom: 1px solid var(--border);
+      }
+      chump-view-audit .audit-row td { border-bottom: none; padding: 0; }
+      chump-view-audit .audit-cell-summary { grid-column: 1 / -1; max-width: 100%; white-space: normal; }
     }
 
     /* PRODUCT-109: <chump-tool-approval-tray> persistent banner above main
