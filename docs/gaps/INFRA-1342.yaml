@@ -2,6 +2,7 @@
   domain: INFRA
   title: "RESILIENT: tauri-cowork-e2e failure blocks ALL PR auto-merge via rollup state — make it neutral on flake or non-PR-trigger"
   status: done
+  closed_pr: 2059
   closed_date: '2026-05-15'
   priority: P0
   effort: s
