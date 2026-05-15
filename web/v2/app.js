@@ -393,6 +393,7 @@ const CHUMP_CADENCES = [
       { id: 'ambient', label: 'Events',  icon: '📡' },
       { id: 'agents',  label: 'Fleet',   icon: '🤝' },
       { id: 'results', label: 'Ships',   icon: '📊' },
+      { id: 'health',  label: 'Health',  icon: '🩺' }, // INFRA-1203
     ],
   },
   {
@@ -2033,6 +2034,99 @@ class ChumpViewNetworkAudit extends HTMLElement {
         kind: 'network_audit_viewed',
         window: this.#window,
         ts: new Date().toISOString(),
+
+// ── <chump-view-fleet-health> (INFRA-1203) ──────────────────────────────────
+// Fleet operator's morning "how is everything?" view. Per
+// docs/design/OPERATOR_CONSOLE_V2.md §footer: this view is the drill-in for
+// the 4 pillar grades + KPI strip + SLO breach list + GraphQL budget.
+//
+// Lives in AMBIENT cadence as 'health' sub-tab. The status footer
+// (PRODUCT-107) pillar slot click-drills here.
+//
+// Backend endpoint /api/fleet/health doesn't exist yet (file backend follow-up
+// gap). For the MVP this view composes existing endpoints:
+//   - /api/stack-status (rate_limit + cognitive_control fields)
+//   - /api/dashboard (fleet_status + last_heartbeat_iso + fleet_status_reason)
+//   - /api/telemetry/cost (cost burn)
+//   - chumpPrefs cost.thresholds (operator-tunable warn/red bands)
+//
+// Pillar grades use placeholder dashes today; when a real grading endpoint
+// ships (file as INFRA-NEW), the panel will wire to it. The structural shell
+// is here so the wiring is a 30-line addition rather than a new view.
+class ChumpViewFleetHealth extends HTMLElement {
+  #pollTimer = null;
+  #last = { stack: null, dashboard: null, cost: null };
+
+  connectedCallback() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Fleet health</h2>
+        <p class="view-subtitle">Pillars · KPIs · SLOs · API budget — the operator HUD drill-in</p>
+      </section>
+      <section class="fh-grid">
+        <article class="fh-panel fh-pillars">
+          <header class="fh-panel-header"><h3>🏛 Pillar grades</h3></header>
+          <div class="fh-pillar-quadrant" id="fh-pillar-quadrant">
+            ${['effective','credible','resilient','zero-waste'].map((p) => `
+              <div class="fh-pillar-cell fh-pillar-${p}" data-pillar="${p}">
+                <span class="fh-pillar-label">${p.toUpperCase()}</span>
+                <span class="fh-pillar-grade" id="fh-grade-${p}">—</span>
+                <span class="fh-pillar-trend" id="fh-trend-${p}"></span>
+              </div>
+            `).join('')}
+          </div>
+          <p class="fh-panel-footnote">
+            Live grading endpoint pending — placeholder shows the slot.
+            Run <code>chump mission-grade</code> in a terminal for current grades.
+          </p>
+        </article>
+        <article class="fh-panel fh-kpis">
+          <header class="fh-panel-header"><h3>📈 KPI strip</h3></header>
+          <div class="fh-kpis-grid">
+            <div class="fh-kpi">
+              <span class="fh-kpi-value" id="fh-kpi-fleet">—</span>
+              <span class="fh-kpi-label">fleet</span>
+            </div>
+            <div class="fh-kpi">
+              <span class="fh-kpi-value" id="fh-kpi-cost">$—</span>
+              <span class="fh-kpi-label">cost / session</span>
+            </div>
+            <div class="fh-kpi">
+              <span class="fh-kpi-value" id="fh-kpi-heartbeat">—</span>
+              <span class="fh-kpi-label">last heartbeat</span>
+            </div>
+            <div class="fh-kpi">
+              <span class="fh-kpi-value" id="fh-kpi-ships">—</span>
+              <span class="fh-kpi-label">ships (24h, rough)</span>
+            </div>
+          </div>
+        </article>
+        <article class="fh-panel fh-slos">
+          <header class="fh-panel-header"><h3>🎯 SLO status</h3></header>
+          <ul class="fh-slo-list" id="fh-slo-list">
+            <li class="placeholder">Loading SLO check…</li>
+          </ul>
+          <p class="fh-panel-footnote">
+            Sourced from <code>fleet_status_reason</code> on <code>/api/dashboard</code> (INFRA-1206). Click <a href="/v2/?view=settings">CONFIG → Settings</a> to tune thresholds.
+          </p>
+        </article>
+        <article class="fh-panel fh-budget">
+          <header class="fh-panel-header"><h3>🔋 GraphQL budget</h3></header>
+          <div class="fh-budget-gauge">
+            <div class="fh-budget-bar"><div class="fh-budget-fill" id="fh-budget-fill" style="width:0%"></div></div>
+            <span class="fh-budget-pct" id="fh-budget-pct">—</span>
+          </div>
+          <p class="fh-panel-footnote" id="fh-budget-footnote">
+            Loading rate-limit state…
+          </p>
+        </article>
+      </section>
+    `;
+    this.#load();
+    this.#pollTimer = setInterval(() => this.#load(), 30_000);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'fleet_health_view_session', ts: new Date().toISOString(),
       }));
     } catch {}
   }
@@ -2544,6 +2638,95 @@ customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
         ${blockersHtml}
       </article>
     `;
+
+
+  async #load() {
+    const [stack, dash, cost, fleet] = await Promise.all([
+      fetch('/api/stack-status').then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/dashboard').then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/telemetry/cost').then((r) => r.ok ? r.json() : null).catch(() => null),
+      fetch('/api/fleet-status').then((r) => r.ok ? r.json() : null).catch(() => null),
+    ]);
+    this.#last = { stack, dashboard: dash, cost, fleet };
+
+    // ── KPI strip ─────────────────────────────────────────────────────────
+    const fleetEl = this.querySelector('#fh-kpi-fleet');
+    if (fleetEl) {
+      const agents = Array.isArray(fleet?.agents) ? fleet.agents
+                  : Array.isArray(fleet?.sessions) ? fleet.sessions
+                  : Array.isArray(fleet) ? fleet : [];
+      fleetEl.textContent = agents.length === 0 ? '—' : `${agents.length}`;
+    }
+    const costEl = this.querySelector('#fh-kpi-cost');
+    if (costEl) {
+      const d = Number(cost?.session_cost_usd ?? cost?.total_cost_usd ?? 0);
+      costEl.textContent = '$' + d.toFixed(2);
+      const t = (window.chumpPrefs?.get('cost.thresholds', null)) || { warn: 0.5, red: 2.0 };
+      costEl.classList.toggle('fh-kpi-warn', d >= t.warn);
+      costEl.classList.toggle('fh-kpi-red',  d >= t.red);
+    }
+    const hbEl = this.querySelector('#fh-kpi-heartbeat');
+    if (hbEl) {
+      const hb = dash?.last_heartbeat_iso || '';
+      if (hb) {
+        try {
+          const dt = new Date(hb);
+          const ageS = (Date.now() - dt.getTime()) / 1000;
+          hbEl.textContent = ageS < 60 ? `${Math.round(ageS)}s` : ageS < 3600 ? `${Math.round(ageS/60)}m` : ageS < 86400 ? `${Math.round(ageS/3600)}h` : '>1d';
+        } catch { hbEl.textContent = '?'; }
+      } else hbEl.textContent = '—';
+    }
+    const shipsEl = this.querySelector('#fh-kpi-ships');
+    if (shipsEl) {
+      // Best-effort: count "Round … ok" lines in ship_log_tail (rough proxy).
+      const tail = dash?.ship_log_tail || [];
+      const rounds = Array.isArray(tail) ? tail.filter((l) => /Round.*\) ok/.test(String(l))).length : 0;
+      shipsEl.textContent = String(rounds);
+    }
+
+    // ── SLO list (from fleet_status + reason — INFRA-1206 surface) ────────
+    const sloList = this.querySelector('#fh-slo-list');
+    if (sloList) {
+      const status = dash?.fleet_status || 'unknown';
+      const reason = dash?.fleet_status_reason || null;
+      const items = [];
+      const colorCls = status === 'green' ? 'fh-slo-ok' : status === 'amber' || status === 'yellow' ? 'fh-slo-warn' : 'fh-slo-bad';
+      items.push(`<li class="fh-slo-row ${colorCls}">
+        <span class="fh-slo-name">overall</span>
+        <span class="fh-slo-status">${this.#esc(status)}</span>
+        ${reason ? `<span class="fh-slo-reason">${this.#esc(reason)}</span>` : ''}
+      </li>`);
+      // GraphQL budget as a synthetic SLO ("≥20% remaining")
+      const rl = stack?.github_rate_limit || stack?.gh_rate_limit;
+      if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
+        const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
+        const cls = pct < 20 ? 'fh-slo-bad' : pct < 50 ? 'fh-slo-warn' : 'fh-slo-ok';
+        items.push(`<li class="fh-slo-row ${cls}">
+          <span class="fh-slo-name">github graphql ≥ 20%</span>
+          <span class="fh-slo-status">${pct}%</span>
+        </li>`);
+      }
+      sloList.innerHTML = items.join('');
+    }
+
+    // ── GraphQL budget gauge ──────────────────────────────────────────────
+    const fill = this.querySelector('#fh-budget-fill');
+    const pctEl = this.querySelector('#fh-budget-pct');
+    const fn = this.querySelector('#fh-budget-footnote');
+    const rl = stack?.github_rate_limit || stack?.gh_rate_limit;
+    if (fill && pctEl) {
+      if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
+        const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
+        fill.style.width = pct + '%';
+        fill.classList.toggle('fh-bar-warn', pct < 50);
+        fill.classList.toggle('fh-bar-red',  pct < 20);
+        pctEl.textContent = pct + '%';
+        if (fn) fn.textContent = `Remaining: ${rl.graphql_remaining} / ${rl.graphql_limit}${rl.reset ? `, resets ${new Date(rl.reset * 1000).toLocaleTimeString()}` : ''}`;
+      } else {
+        pctEl.textContent = 'n/a';
+        if (fn) fn.textContent = 'Rate-limit state unavailable from /api/stack-status (gh_rate_limit field absent).';
+      }
+    }
   }
 
   #esc(s) {
@@ -2551,6 +2734,8 @@ customElements.define('chump-view-network-audit', ChumpViewNetworkAudit);
   }
 }
 customElements.define('chump-view-roadmap', ChumpViewRoadmap);
+
+customElements.define('chump-view-fleet-health', ChumpViewFleetHealth);
 
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
@@ -4222,6 +4407,8 @@ const VIEWS = {
   network:       () => document.createElement('chump-view-network-audit'), // PRODUCT-112
 
   roadmap:       () => document.createElement('chump-view-roadmap'), // INFRA-1207
+
+  health:        () => document.createElement('chump-view-fleet-health'), // INFRA-1203
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
