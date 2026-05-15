@@ -26,10 +26,22 @@ use tokio::process::Command;
 
 // McpToolMeta now lives in the standalone crate `chump-mcp-lifecycle`.
 // Re-exported here so existing callsites inside the `chump` binary crate keep working.
+// PersistentMcpServer + SessionMcpPool are re-exported further down (see ACP section).
 pub use chump_mcp_lifecycle::McpToolMeta;
 
 /// Registry of tool name → full metadata (binary path + description + schema).
 static MCP_REGISTRY: OnceLock<HashMap<String, McpToolMeta>> = OnceLock::new();
+
+/// INFRA-745: Persistent CLI/fleet MCP pool — one long-lived `PersistentMcpServer`
+/// per binary, keyed by binary path.  Initialized once in `init()` alongside
+/// MCP_REGISTRY.  `call_mcp_tool()` tries this pool first; falls back to the
+/// original spawn-per-call path on any pool miss or error.
+///
+/// Lifecycle: tied to the chump process (CLI) or worker cycle (fleet).  Each
+/// call reuses the existing stdio pipes instead of spawning a fresh child.
+/// The memory server's SQLite connection stays open across calls — no
+/// open/close overhead per tool invocation (AC #2).
+static CLI_MCP_POOL: OnceLock<HashMap<PathBuf, Arc<PersistentMcpServer>>> = OnceLock::new();
 
 /// Directory containing MCP server binaries.
 fn mcp_servers_dir() -> PathBuf {
@@ -81,6 +93,11 @@ pub async fn discover_servers() -> HashMap<String, McpToolMeta> {
 }
 
 /// Initialize the global MCP registry. Call once at startup.
+///
+/// INFRA-745: also spawns a persistent `PersistentMcpServer` for each unique
+/// binary discovered, building `CLI_MCP_POOL`.  Failures to spawn a server are
+/// logged and skipped — they don't abort registry init; spawn-per-call remains
+/// available as fallback (AC #4).
 pub async fn init() {
     let registry = discover_servers().await;
     if !registry.is_empty() {
@@ -89,6 +106,56 @@ pub async fn init() {
             "MCP bridge: initialized with external tools"
         );
     }
+
+    // INFRA-745: spawn persistent pool for the CLI/fleet path.
+    // Collect unique binaries from the registry (multiple tools may share one binary).
+    let mut unique_binaries: std::collections::BTreeMap<PathBuf, String> =
+        std::collections::BTreeMap::new();
+    for meta in registry.values() {
+        let server_name = meta
+            .binary
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| meta.binary.to_string_lossy().to_string());
+        unique_binaries
+            .entry(meta.binary.clone())
+            .or_insert(server_name);
+    }
+
+    if !unique_binaries.is_empty() {
+        let mut pool: HashMap<PathBuf, Arc<PersistentMcpServer>> =
+            HashMap::with_capacity(unique_binaries.len());
+        for (binary, name) in &unique_binaries {
+            match PersistentMcpServer::spawn(
+                name.clone(),
+                binary.to_string_lossy().to_string(),
+                vec![],
+            )
+            .await
+            {
+                Ok(server) => {
+                    tracing::info!(server = %name, "MCP bridge: spawned persistent server (INFRA-745)");
+                    pool.insert(binary.clone(), Arc::new(server));
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        server = %name,
+                        error = %e,
+                        "MCP bridge: persistent spawn failed; tool will use spawn-per-call fallback"
+                    );
+                }
+            }
+        }
+        if !pool.is_empty() {
+            let spawned = pool.len();
+            let _ = CLI_MCP_POOL.set(pool);
+            tracing::info!(
+                servers = spawned,
+                "MCP bridge: CLI persistent pool ready (INFRA-745)"
+            );
+        }
+    }
+
     let _ = MCP_REGISTRY.set(registry);
 }
 
@@ -119,10 +186,33 @@ pub fn all_mcp_tools() -> Vec<McpToolMeta> {
 }
 
 /// Call an MCP server tool via JSON-RPC over stdio.
+///
+/// INFRA-745: tries the persistent CLI pool first (zero spawn overhead); falls
+/// back to the original spawn-per-call path when the pool is unavailable, the
+/// server isn't in the pool, or the pool call fails (AC #4).
 pub async fn call_mcp_tool(tool_name: &str, params: Value) -> Result<Value> {
     let binary = mcp_binary_for(tool_name)
         .ok_or_else(|| anyhow!("no MCP server registered for tool: {}", tool_name))?;
 
+    // Fast path: reuse persistent server if available for this binary.
+    if let Some(pool) = CLI_MCP_POOL.get() {
+        if let Some(server) = pool.get(&binary) {
+            match server.call(tool_name, params.clone()).await {
+                Ok(result) => return Ok(result),
+                Err(e) => {
+                    // Pool call failed (e.g. server crashed).  Log and fall
+                    // through to spawn-per-call so the tool still works.
+                    tracing::warn!(
+                        tool = %tool_name,
+                        error = %e,
+                        "MCP persistent pool call failed; retrying via spawn-per-call (INFRA-745 fallback)"
+                    );
+                }
+            }
+        }
+    }
+
+    // Fallback: original spawn-per-call path (AC #4).
     call_server(&binary, tool_name, params).await
 }
 
