@@ -1,7 +1,8 @@
 - id: INFRA-1149
   domain: INFRA
   title: "RESILIENT: chump gap reserve similarity check — block duplicate filings against open+recently-shipped gaps + existing CLI primitives (Silo 2)"
-  status: open
+  status: done
+  closed_date: '2026-05-15'
   priority: P1
   effort: s
   acceptance_criteria:
