@@ -125,6 +125,23 @@ def parse_workflow_jobs(content):
     except Exception:
         return []
 
+def has_branch_protection_rules(content):
+    """Check if workflow content contains branch-protection-related settings."""
+    patterns = [
+        "branch_protection",
+        "required_checks", 
+        "enforce_admins",
+        "dismiss_stale_reviews",
+        "require_code_review_from_code_owners",
+    ]
+    content_lower = content.lower()
+    for pattern in patterns:
+        if pattern in content_lower:
+            return True
+    return False
+
+
+
 def get_all_workflow_job_names(staged=False):
     """Return set of all job names from workflow files.
 
@@ -208,6 +225,37 @@ if update_baseline:
         f.write(result2.stdout)
     print(f"[audit-branch-protection] updated {baseline_path} from live GitHub API")
     sys.exit(0)
+
+# In staged mode, first check that unchanged workflow files don't contain branch-protection rules
+if check_staged:
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only"],
+        capture_output=True, text=True, cwd=repo_root
+    )
+    staged_paths = set()
+    for path in result.stdout.splitlines():
+        if path.startswith(".github/workflows/"):
+            staged_paths.add(path)
+
+    # Check all workflow files for branch-protection rules
+    if os.path.isdir(workflows_dir):
+        for fname in os.listdir(workflows_dir):
+            if not (fname.endswith(".yml") or fname.endswith(".yaml")):
+                continue
+            rel_path = f".github/workflows/{fname}"
+            if rel_path in staged_paths:
+                continue  # staged file, developer is aware of it
+            fpath = os.path.join(workflows_dir, fname)
+            try:
+                with open(fpath) as f:
+                    file_content = f.read()
+                if has_branch_protection_rules(file_content):
+                    print(f"[audit-branch-protection] ERROR: branch-protection rule found in unstaged {rel_path}", file=sys.stderr)
+                    print(f"  Remediation: either git add {rel_path} or remove the branch-protection rule", file=sys.stderr)
+                    sys.exit(1)
+            except Exception:
+                pass
+
 
 # Get required contexts
 if mode == "live":
