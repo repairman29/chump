@@ -88,7 +88,7 @@ events:
     fields_required: [agent_id, gap_id, elapsed_s, rc, cycle_kind]
 
   - kind: fleet_starved
-    effect_metric: self
+    effect_metric: fleet_auto_widen_applied_within_5min
     emitter: scripts/dispatch/worker.sh
     trigger: N consecutive empty picks (CHUMP_STARVE_THRESHOLD)
     consumers: [fleet-brief, watchdog]
@@ -691,7 +691,7 @@ events:
     fields_required: [ts, kind, gap_id, pr, title, merged_via]
 
   - kind: pr_stuck
-    effect_metric: self
+    effect_metric: pr_rescue_action_within_4h
     emitter: scripts/ops/stuck-pr-filer.sh (INFRA-307)
     trigger: PR BLOCKED > 4h with no progress
     consumers: [audit-log, fleet]
@@ -854,7 +854,7 @@ events:
 
   # ── Mission / pillar metrics ──────────────────────────────────────────────
   - kind: mission_grade
-    effect_metric: self
+    effect_metric: operator_action_or_gap_filed_within_60s
     emitter: scripts/ops/mission-auto-grader.sh (INFRA-599)
     trigger: per-cycle pillar grade computed
     consumers: [fleet-brief]
