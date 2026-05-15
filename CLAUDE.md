@@ -169,6 +169,7 @@ GH_TOKEN="..." curl -X POST http://localhost:3000/api/gap/work/<ID>
 - **Auto-merge is the default.** `bot-merge.sh --auto-merge` arms it. Once armed, treat PR as frozen — new work → new PR.
 - **PRs are intent-atomic**, not file-count-bounded. One logical change per PR.
 - **`--no-verify` is the reason most regressions ship.** Use very sparingly.
+- **`chump gap reserve` applies title similarity check (INFRA-1149).** Jaccard similarity >= `CHUMP_GAP_RESERVE_SIMILARITY_WARN` (default 0.65) prompts y/N to continue; >= `CHUMP_GAP_RESERVE_SIMILARITY_BLOCK` (default 0.85) blocks the reserve. Thresholds are tunable via env. Bypass: `--force-duplicate` flag or `CHUMP_GAP_RESERVE_NO_SIMILARITY=1`.
 
 ## Rust-first vs. shell-OK (META-064, 2026-05-14)
 
