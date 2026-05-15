@@ -85,6 +85,58 @@ else
     fail "ZERO-WASTE row missing from pillar table"
 fi
 
+# ── 4. INFRA-1355: brief survives chump's empty-state.db auto-import path ─
+# Reproduction case: fresh worktree → state.db missing → first `chump gap list`
+# auto-imports + tells caller to re-run. Brief would see empty output and
+# report Pillars=0/0/0/0 even with hundreds of pickable gaps.
+echo
+echo "[4. INFRA-1355: brief retries when first chump gap list says 're-run']"
+STUB_AUTOIMPORT="$TMP/chump-autoimport"
+cat > "$STUB_AUTOIMPORT" <<STUB
+#!/usr/bin/env bash
+# 1st call to \`gap list\` returns the auto-import notice; subsequent calls
+# return real pickable rows. Uses a flag file at a fixed path because each
+# chump invocation inside \$(...) is a separate subshell with a fresh \$\$.
+flag="$TMP/chump-autoimport-flag"
+if [[ "\$*" == *"gap list"* ]]; then
+    if [[ ! -f "\$flag" ]]; then
+        : > "\$flag"
+        echo "[gap-list] state.db is empty — auto-importing from docs/gaps/ (INFRA-821)"
+        echo "[gap-list] imported 400 gap(s) — re-run to list"
+        exit 0
+    fi
+    echo "[open] CREDIBLE-099 — CREDIBLE: stub gap (P1/s)"
+    echo "[open] EFFECTIVE-099 — EFFECTIVE: stub gap (P1/s)"
+    echo "[open] RESILIENT-099 — RESILIENT: stub gap (P1/s)"
+    echo "[open] ZERO-WASTE-099 — ZERO-WASTE: stub gap (P1/s)"
+elif [[ "\$*" == *"gap show"* ]]; then
+    echo "  title: stub"
+elif [[ "\$*" == *"waste-tally"* ]]; then
+    echo "0 waste events"
+else
+    echo ""
+fi
+STUB
+chmod +x "$STUB_AUTOIMPORT"
+
+BRIEF_OUT_AUTOIMPORT=$(
+    CHUMP_BIN="$STUB_AUTOIMPORT" \
+    PATH="$TMP:$PATH" \
+    TMPDIR="$TMP" \
+    bash "$FLEET_BRIEF" 2>/dev/null || true
+)
+# Each pillar should now show 1 (the stub row), not 0
+if echo "$BRIEF_OUT_AUTOIMPORT" | grep -E "EFFECTIVE\s+1" > /dev/null \
+   && echo "$BRIEF_OUT_AUTOIMPORT" | grep -E "CREDIBLE\s+1"  > /dev/null \
+   && echo "$BRIEF_OUT_AUTOIMPORT" | grep -E "RESILIENT\s+1" > /dev/null \
+   && echo "$BRIEF_OUT_AUTOIMPORT" | grep -E "ZERO-WASTE\s+1" > /dev/null; then
+    ok "brief retries past auto-import notice and reports the real pillar counts"
+else
+    fail "brief reports 0/0/0/0 when first chump gap list returns auto-import notice"
+    echo "--- brief output ---"
+    echo "$BRIEF_OUT_AUTOIMPORT" | grep -A6 "Pillar pickable" || true
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]
