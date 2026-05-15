@@ -93,6 +93,8 @@ echo
 echo "[Ambient event emission]"
 # Run one _bm_fail call and check the ambient event
 (
+    # INFRA-1241: source lib/ambient-write.sh so _bm_fail can emit the event.
+    source "$REPO_ROOT/scripts/coord/lib/ambient-write.sh" 2>/dev/null || true
     eval "$FAIL_FN"
     GAP_IDS=("INFRA-123")
     BRANCH="chump/infra-123-claim"
