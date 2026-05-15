@@ -2078,6 +2078,12 @@ events:
     trigger: bot-merge.sh process over age limit but gap still open — operator review
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, pid, gap, age_s, gap_status, pr_status]
+  # ── INFRA-1346: shadow ship-plan advisory ─────────────────────────────────
+  - kind: ship_plan_advisory
+    emitter: scripts/coord/bot-merge.sh _bm_shadow_plan() (INFRA-1346)
+    trigger: emitted once per bot-merge.sh invocation at main-flow entry; calls `chump ship plan` best-effort and records the planner's recommended action for INFRA-1229 divergence analysis
+    consumers: [fleet-brief, curator, operator]
+    fields_required: [ts, kind, source, branch, gap, plan_action, plan_json_truncated_to_2kb]
   # ── INFRA-1033: worktree gitdir auto-repair (INFRA-779 family) ────────────
   - kind: worktree_gitdir_repaired
     emitter: src/atomic_claim.rs (INFRA-1033)

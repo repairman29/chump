@@ -1360,6 +1360,8 @@ jobs:
         run: bash scripts/ci/test-fleet-status-rate-limit.sh
       - name: bot-merge watchdog — kills done-gap procs, spares open-gap, exempt bypass (INFRA-1006)
         run: bash scripts/ci/test-bot-merge-watchdog.sh
+      - name: bot-merge shadow ship-plan advisory — emits ship_plan_advisory, opt-out respected (INFRA-1346)
+        run: bash scripts/ci/test-bot-merge-shadow-plan.sh
       - name: autonomous ship-rate metric fixture (CREDIBLE-047)
         run: bash scripts/ci/test-autonomous-ship-rate.sh
       - name: release --lease <ID> flag — named session release (INFRA-1026)
