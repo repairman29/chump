@@ -136,6 +136,56 @@ fn estimate_tokens(text: &str) -> u64 {
     (text.len() / 4).max(1) as u64
 }
 
+/// Rough cost estimate for an orchestrate session.
+/// Uses claude-opus-4 pricing as default since orchestrator runs opus.
+/// Input: ~$15/1M tokens = $0.000015/token
+/// Output: ~$75/1M tokens = $0.000075/token
+fn estimate_cost_usd(input_tokens: u64, output_tokens: u64) -> f64 {
+    (input_tokens as f64 * 0.000015) + (output_tokens as f64 * 0.000075)
+}
+
+/// Emit kind=orchestrate_session_summary at the end of every orchestrate session.
+/// Uses typed JSON values (ints/floats) rather than string-only ambient events.
+/// INFRA-1363.
+fn emit_session_summary(
+    repo_root: &Path,
+    session_id: &str,
+    intents_routed: u64,
+    intents_failed: u64,
+    tool_calls: u64,
+    cost_usd: f64,
+    wall_time_s: u64,
+    exit_reason: &str,
+) {
+    let ambient = if let Ok(path) = std::env::var("CHUMP_AMBIENT_IN_PROMPT") {
+        std::path::PathBuf::from(&path)
+    } else {
+        let lock_dir = repo_root.join(".chump-locks");
+        let _ = std::fs::create_dir_all(&lock_dir);
+        lock_dir.join("ambient.jsonl")
+    };
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let event = serde_json::json!({
+        "ts": ts,
+        "kind": "orchestrate_session_summary",
+        "session_id": session_id,
+        "intents_routed": intents_routed,
+        "intents_failed": intents_failed,
+        "tool_calls": tool_calls,
+        "cost_usd": (cost_usd * 10000.0).round() / 10000.0,
+        "wall_time_s": wall_time_s,
+        "exit_reason": exit_reason,
+    });
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient)
+    {
+        let _ = writeln!(f, "{event}");
+    }
+}
+
 /// Outcome of a single LLM call attempt under timeout (INFRA-1364).
 #[derive(Debug)]
 enum LlmAttemptOutcome {
@@ -386,7 +436,7 @@ pub async fn run(repo_root: &Path) -> Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(0);
 
-    // Session identity for timeout events; matches INFRA-1363 session tracking.
+    // Session identity (INFRA-1363 / INFRA-1364): use env if provided, else synthesize.
     let session_id = std::env::var("CHUMP_ORCHESTRATE_SESSION_ID").unwrap_or_else(|_| {
         format!(
             "orchestrate-{}-{}",
@@ -397,6 +447,17 @@ pub async fn run(repo_root: &Path) -> Result<()> {
                 .unwrap_or(0)
         )
     });
+
+    // Session-level counters (INFRA-1363).
+    let session_start = Instant::now();
+    let mut intents_routed: u64 = 0;
+    let mut intents_failed: u64 = 0;
+    let mut total_tool_calls: u64 = 0;
+    let mut total_est_input_tokens: u64 = 0;
+    let mut total_est_output_tokens: u64 = 0;
+    // exit_reason is set before every break/return; default covers unexpected
+    // returns from the async block.
+    let mut exit_reason = "crash";
 
     // Apply FLEET_MODEL=opus default for the orchestrator session.
     // Workers (dispatched by the orchestrator) stay on sonnet.
@@ -434,204 +495,244 @@ pub async fn run(repo_root: &Path) -> Result<()> {
     let stdin = io::stdin();
     let stdout = io::stdout();
 
-    loop {
-        {
-            let mut out = stdout.lock();
-            write!(out, "orchestrate> ")?;
-            out.flush()?;
-        }
+    let loop_result: Result<()> = async {
+        loop {
+            {
+                let mut out = stdout.lock();
+                write!(out, "orchestrate> ")?;
+                out.flush()?;
+            }
 
-        let mut line = String::new();
-        let n = stdin.lock().read_line(&mut line).context("stdin read")?;
-        if n == 0 {
-            break; // EOF
-        }
-        let intent = line.trim().to_string();
-        if intent.is_empty() {
-            continue;
-        }
-        if matches!(intent.as_str(), "exit" | "quit") {
-            emit_ambient_event(
-                repo_root,
-                "orchestrate_session_end",
-                &[("intent", "exit"), ("status", "ok")],
-            );
-            println!("[orchestrate] bye.");
-            break;
-        }
+            let mut line = String::new();
+            let n = stdin.lock().read_line(&mut line).context("stdin read")?;
+            if n == 0 {
+                // EOF — operator closed stdin (Ctrl-D) or pipe ended.
+                exit_reason = "user_quit";
+                break;
+            }
+            let intent = line.trim().to_string();
+            if intent.is_empty() {
+                continue;
+            }
+            if matches!(intent.as_str(), "exit" | "quit") {
+                emit_ambient_event(
+                    repo_root,
+                    "orchestrate_session_end",
+                    &[("intent", "exit"), ("status", "ok")],
+                );
+                println!("[orchestrate] bye.");
+                exit_reason = "clean";
+                break;
+            }
 
-        let iter_start = Instant::now();
-        let mut tool_count: usize = 0;
-        let mut had_failure = false;
-        let mut failure_classes: Vec<&str> = Vec::new();
+            let iter_start = Instant::now();
+            let mut tool_count: usize = 0;
+            let mut had_failure = false;
+            let mut failure_classes: Vec<&str> = Vec::new();
 
-        // ── LLM call with timeout + single retry (INFRA-1364) ─────────────────
-        // Push user intent before attempt loop so retry reuses the same context.
-        if !stub_mode {
-            conversation.push(Message {
-                role: "user".into(),
-                content: intent.clone(),
-            });
-        }
+            // ── LLM call with timeout + single retry (INFRA-1364) ─────────────────
+            // Push user intent before attempt loop so retry reuses the same context.
+            if !stub_mode {
+                conversation.push(Message {
+                    role: "user".into(),
+                    content: intent.clone(),
+                });
+            }
 
-        let mut timeout_abort = false;
-        let reply = 'attempts: {
-            for attempt in 1u32..=2 {
-                let call_start = Instant::now();
+            let mut timeout_abort = false;
+            let reply = 'attempts: {
+                for attempt in 1u32..=2 {
+                    let call_start = Instant::now();
 
-                // Build the outcome for this attempt (stub vs real).
-                let outcome: Result<LlmAttemptOutcome> = if stub_mode {
-                    // Stub path: simulate hang on attempt 1 if CHUMP_ORCHESTRATE_STUB_SLEEP_S is set.
-                    if stub_sleep_s > 0 && attempt == 1 {
+                    // Build the outcome for this attempt (stub vs real).
+                    let outcome: Result<LlmAttemptOutcome> = if stub_mode {
+                        // Stub path: simulate hang on attempt 1 if CHUMP_ORCHESTRATE_STUB_SLEEP_S is set.
+                        if stub_sleep_s > 0 && attempt == 1 {
+                            match tokio::time::timeout(
+                                llm_timeout,
+                                tokio::time::sleep(Duration::from_secs(stub_sleep_s)),
+                            )
+                            .await
+                            {
+                                Err(_) => Ok(LlmAttemptOutcome::TimedOut {
+                                    elapsed_s: call_start.elapsed().as_secs(),
+                                }),
+                                Ok(_) => Ok(LlmAttemptOutcome::Ok(stub_response(&intent))),
+                            }
+                        } else {
+                            Ok(LlmAttemptOutcome::Ok(stub_response(&intent)))
+                        }
+                    } else {
+                        // Real provider path.
                         match tokio::time::timeout(
                             llm_timeout,
-                            tokio::time::sleep(Duration::from_secs(stub_sleep_s)),
+                            provider.as_ref().unwrap().complete(
+                                conversation.clone(),
+                                None,
+                                Some(2048),
+                                Some(system.clone()),
+                            ),
                         )
                         .await
                         {
                             Err(_) => Ok(LlmAttemptOutcome::TimedOut {
                                 elapsed_s: call_start.elapsed().as_secs(),
                             }),
-                            Ok(_) => Ok(LlmAttemptOutcome::Ok(stub_response(&intent))),
+                            Ok(Err(e)) => Err(e.context("orchestrator LLM call")),
+                            Ok(Ok(resp)) => Ok(LlmAttemptOutcome::Ok(resp.text.unwrap_or_default())),
                         }
-                    } else {
-                        Ok(LlmAttemptOutcome::Ok(stub_response(&intent)))
-                    }
-                } else {
-                    // Real provider path.
-                    match tokio::time::timeout(
-                        llm_timeout,
-                        provider.as_ref().unwrap().complete(
-                            conversation.clone(),
-                            None,
-                            Some(2048),
-                            Some(system.clone()),
-                        ),
-                    )
-                    .await
-                    {
-                        Err(_) => Ok(LlmAttemptOutcome::TimedOut {
-                            elapsed_s: call_start.elapsed().as_secs(),
-                        }),
-                        Ok(Err(e)) => Err(e.context("orchestrator LLM call")),
-                        Ok(Ok(resp)) => Ok(LlmAttemptOutcome::Ok(resp.text.unwrap_or_default())),
-                    }
-                };
+                    };
 
-                match outcome? {
-                    LlmAttemptOutcome::Ok(text) => {
-                        if !stub_mode {
-                            conversation.push(Message {
-                                role: "assistant".into(),
-                                content: text.clone(),
-                            });
+                    match outcome? {
+                        LlmAttemptOutcome::Ok(text) => {
+                            if !stub_mode {
+                                conversation.push(Message {
+                                    role: "assistant".into(),
+                                    content: text.clone(),
+                                });
+                            }
+                            break 'attempts text;
                         }
-                        break 'attempts text;
-                    }
-                    LlmAttemptOutcome::TimedOut { elapsed_s } => {
-                        tracing::warn!(
-                            kind = "orchestrate_llm_timeout",
-                            session_id = %session_id,
-                            attempt_number = attempt,
-                            elapsed_s = elapsed_s,
-                            "LLM call timed out (INFRA-1364)"
-                        );
-                        emit_ambient_event(
-                            repo_root,
-                            "orchestrate_llm_timeout",
-                            &[
-                                ("session_id", &session_id),
-                                ("attempt_number", &attempt.to_string()),
-                                ("call_kind", "intent_parse"),
-                                ("elapsed_s", &elapsed_s.to_string()),
-                            ],
-                        );
-                        eprintln!(
-                            "[orchestrate] LLM call timed out (attempt {attempt}/2, elapsed={elapsed_s}s)"
-                        );
-                        if attempt == 2 {
-                            // Double timeout → abort session (exit_reason="timeout" for INFRA-1363).
-                            eprintln!("[orchestrate] 2 consecutive timeouts — aborting session.");
+                        LlmAttemptOutcome::TimedOut { elapsed_s } => {
+                            tracing::warn!(
+                                kind = "orchestrate_llm_timeout",
+                                session_id = %session_id,
+                                attempt_number = attempt,
+                                elapsed_s = elapsed_s,
+                                "LLM call timed out (INFRA-1364)"
+                            );
                             emit_ambient_event(
                                 repo_root,
-                                "orchestrate_session_end",
-                                &[("intent", &intent), ("status", "timeout")],
+                                "orchestrate_llm_timeout",
+                                &[
+                                    ("session_id", &session_id),
+                                    ("attempt_number", &attempt.to_string()),
+                                    ("call_kind", "intent_parse"),
+                                    ("elapsed_s", &elapsed_s.to_string()),
+                                ],
                             );
-                            timeout_abort = true;
-                            break 'attempts String::from(
-                                "(session aborted: LLM unresponsive after 2 attempts)",
+                            eprintln!(
+                                "[orchestrate] LLM call timed out (attempt {attempt}/2, elapsed={elapsed_s}s)"
                             );
+                            if attempt == 2 {
+                                // Double timeout → abort session (exit_reason="timeout" for INFRA-1363).
+                                eprintln!("[orchestrate] 2 consecutive timeouts — aborting session.");
+                                emit_ambient_event(
+                                    repo_root,
+                                    "orchestrate_session_end",
+                                    &[("intent", &intent), ("status", "timeout")],
+                                );
+                                timeout_abort = true;
+                                exit_reason = "timeout";
+                                break 'attempts String::from(
+                                    "(session aborted: LLM unresponsive after 2 attempts)",
+                                );
+                            }
+                            // Retry after 2× backoff (scales with timeout_s for fast CI tests).
+                            let backoff_s = 2 * llm_timeout_s;
+                            eprintln!("[orchestrate] retrying after {backoff_s}s backoff...");
+                            tokio::time::sleep(Duration::from_secs(backoff_s)).await;
                         }
-                        // Retry after 2× backoff (scales with timeout_s for fast CI tests).
-                        let backoff_s = 2 * llm_timeout_s;
-                        eprintln!("[orchestrate] retrying after {backoff_s}s backoff...");
-                        tokio::time::sleep(Duration::from_secs(backoff_s)).await;
                     }
                 }
+                // Unreachable: loop always breaks via 'attempts label above.
+                String::new()
+            };
+
+            if timeout_abort {
+                break;
             }
-            // Unreachable: loop always breaks via 'attempts label above.
-            String::new()
-        };
+            // ── End LLM call with timeout + retry ─────────────────────────────────
 
-        if timeout_abort {
-            break;
-        }
-        // ── End LLM call with timeout + retry ─────────────────────────────────
+            let llm_elapsed_ms = iter_start.elapsed().as_millis() as u64;
 
-        let llm_elapsed_ms = iter_start.elapsed().as_millis() as u64;
+            println!("{reply}");
+            println!();
 
-        println!("{reply}");
-        println!();
-
-        // Execute TOOL: lines dispatched by the LLM (AC-c).
-        let tool_start = Instant::now();
-        for cmd in parse_tool_calls(&reply) {
-            tool_count += 1;
-            let result = run_tool(&cmd, repo_root);
-            if !result.is_empty() {
-                println!("  [{}]\n  {}\n", cmd, result);
+            // Execute TOOL: lines dispatched by the LLM (AC-c).
+            let tool_start = Instant::now();
+            for cmd in parse_tool_calls(&reply) {
+                tool_count += 1;
+                let result = run_tool(&cmd, repo_root);
+                if !result.is_empty() {
+                    println!("  [{}]\n  {}\n", cmd, result);
+                }
+                // Classify tool execution failures (INFRA-796).
+                if result.contains("error") || result.contains("Error") || result.contains("failed") {
+                    had_failure = true;
+                    failure_classes.push(classify_failure(&result));
+                }
             }
-            // Classify tool execution failures (INFRA-796).
-            if result.contains("error") || result.contains("Error") || result.contains("failed") {
-                had_failure = true;
-                failure_classes.push(classify_failure(&result));
-            }
-        }
-        let tool_elapsed_ms = tool_start.elapsed().as_millis() as u64;
+            let tool_elapsed_ms = tool_start.elapsed().as_millis() as u64;
 
-        // Emit telemetry event (INFRA-796).
-        let est_in = estimate_tokens(&format!("{system}\n{intent}"));
-        let est_out = estimate_tokens(&reply);
-        let total_elapsed = llm_elapsed_ms + tool_elapsed_ms;
-        let failure_class = if had_failure {
-            if failure_classes.contains(&"transient") {
-                "transient"
+            // Update session counters (INFRA-1363).
+            intents_routed += 1;
+            if had_failure {
+                intents_failed += 1;
+            }
+            total_tool_calls += tool_count as u64;
+            let est_in = estimate_tokens(&format!("{system}\n{intent}"));
+            let est_out = estimate_tokens(&reply);
+            total_est_input_tokens += est_in;
+            total_est_output_tokens += est_out;
+
+            // Emit per-intent telemetry event (INFRA-796).
+            let total_elapsed = llm_elapsed_ms + tool_elapsed_ms;
+            let failure_class = if had_failure {
+                if failure_classes.contains(&"transient") {
+                    "transient"
+                } else {
+                    "permanent"
+                }
             } else {
-                "permanent"
+                "none"
+            };
+            emit_ambient_event(
+                repo_root,
+                "orchestrate_intent",
+                &[
+                    ("intent", &intent),
+                    ("status", if had_failure { "failure" } else { "success" }),
+                    ("tool_count", &tool_count.to_string()),
+                    ("est_input_tokens", &est_in.to_string()),
+                    ("est_output_tokens", &est_out.to_string()),
+                    ("elapsed_ms", &total_elapsed.to_string()),
+                    ("failure_class", failure_class),
+                ],
+            );
+
+            // Emit 4-pillar grade after every iter (AC-d).
+            emit_grade(repo_root);
+            println!();
+
+            // If a non-stubbed session hits an intent with no errors, update exit_reason
+            // so a future clean break is not shadowed.
+            if !had_failure {
+                exit_reason = "clean";
             }
-        } else {
-            "none"
-        };
-        emit_ambient_event(
-            repo_root,
-            "orchestrate_intent",
-            &[
-                ("intent", &intent),
-                ("status", if had_failure { "failure" } else { "success" }),
-                ("tool_count", &tool_count.to_string()),
-                ("est_input_tokens", &est_in.to_string()),
-                ("est_output_tokens", &est_out.to_string()),
-                ("elapsed_ms", &total_elapsed.to_string()),
-                ("failure_class", failure_class),
-            ],
-        );
-
-        // Emit 4-pillar grade after every iter (AC-d).
-        emit_grade(repo_root);
-        println!();
+        }
+        Ok(())
     }
+    .await;
 
-    Ok(())
+    // Emit session summary regardless of how the loop ended (INFRA-1363).
+    if loop_result.is_err() {
+        exit_reason = "crash";
+    }
+    let wall_time_s = session_start.elapsed().as_secs();
+    let cost_usd = estimate_cost_usd(total_est_input_tokens, total_est_output_tokens);
+    emit_session_summary(
+        repo_root,
+        &session_id,
+        intents_routed,
+        intents_failed,
+        total_tool_calls,
+        cost_usd,
+        wall_time_s,
+        exit_reason,
+    );
+
+    loop_result
 }
 
 #[cfg(test)]
