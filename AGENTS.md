@@ -299,6 +299,8 @@ Each gap is an atomic unit of work with a stable ID (e.g. `COMP-007`,
    The registry records `status: open` / `status: done` and nothing else
    about ownership. The `CHUMP_GAPS_LOCK` pre-commit guard rejects writes
    of `in_progress` / `claimed_by` / `claimed_at` to any `docs/gaps/<ID>.yaml`.
+   **Never leave a lease behind** — run `chump --release` or delete
+   `.chump-locks/<session>.json` when the gap ships or is abandoned.
 4. **Work in a linked worktree** — `git worktree add .chump/worktrees/<name>
    -b chump/<codename> origin/main` (canonical; see "Naming conventions"
    below). Existing `.claude/worktrees/` paths still accepted by tooling.
