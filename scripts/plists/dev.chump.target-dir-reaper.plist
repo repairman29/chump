@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>dev.chump.target-dir-reaper</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/Users/jeffadkins/Projects/Chump/scripts/coord/target-dir-reaper.sh --execute</string>
+  </array>
+  <!-- Run every 30 minutes. Prunes stale target/ directories in /tmp/chump-*
+       and .claude/worktrees/* when disk free < 20% OR worktree idle > 6h.
+       Emits kind=target_artifact_reaped events to ambient.jsonl for monitoring. -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-target-dir-reaper.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-target-dir-reaper.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <!-- Customize idle threshold (hours) and disk threshold (%) if needed:
+    <key>CHUMP_REAPER_IDLE_HOURS</key>
+    <string>6</string>
+    <key>CHUMP_REAPER_DISK_PCT</key>
+    <string>20</string>
+    -->
+  </dict>
+</dict>
+</plist>

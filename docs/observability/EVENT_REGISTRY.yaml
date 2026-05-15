@@ -2440,6 +2440,22 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, reaped_count, bytes_freed, execute, worktree_orphan_count]
 
+  - kind: target_artifact_reaped
+    emitter: >
+      scripts/coord/target-dir-reaper.sh (INFRA-1349)
+    trigger: >
+      target-dir-reaper.sh pruned a target/ directory from an idle or disk-pressured
+      linked worktree. Failure events (rm failure) also use this kind with an error field.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, path, worktree, freed_gb, freed_mb, age_hours, dry_run]
+    fields_optional: [error, status]
+
+  - kind: target_dir_reaper_summary
+    emitter: scripts/coord/target-dir-reaper.sh (INFRA-1349)
+    trigger: target-dir-reaper.sh completed a full run (dry or execute).
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, reaped_count, freed_gb, freed_bytes, idle_hours, disk_free_pct, execute]
+
   # ── INFRA-1237: emit-without-register reconciliation (2026-05-14) ────────
   # 19 kinds that were fired in production but missing from the registry.
   # Discovered by scripts/ci/test-event-registry-coverage.sh, registered here

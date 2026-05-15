@@ -514,6 +514,9 @@ jobs:
       - name: cargo-target-reaper — dry-run, --execute, safety guards, ambient event (INFRA-1250)
         run: bash scripts/ci/test-cargo-target-reaper.sh
 
+      - name: target-dir-reaper — disk pressure, idle-threshold, lease safety (INFRA-1349)
+        run: bash scripts/ci/test-target-dir-reaper.sh
+
       - name: gap-doctor safe-sweep (INFRA-308)
         run: bash scripts/ci/test-gap-doctor-safe-sweep.sh
 
