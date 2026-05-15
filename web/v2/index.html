@@ -637,6 +637,13 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     chump-view-fleet-health .fh-panel {
+    /* INFRA-1204: <chump-view-coord> a2a coordination panel.
+       Three stacked sub-panels: inbox / INTENT / PR-nudge log. */
+    chump-view-coord { display: block; padding: 16px 20px; max-width: 1280px; }
+    chump-view-coord .coord-panels {
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    chump-view-coord .coord-panel {
       background: var(--bg-surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -746,6 +753,95 @@
     @media (max-width: 640px) {
       chump-view-fleet-health { padding: 12px 14px; }
       chump-view-fleet-health .fh-grid { grid-template-columns: 1fr; }
+    chump-view-coord .coord-panel-header {
+      display: flex; align-items: center; gap: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    chump-view-coord .coord-panel-header h3 {
+      font-size: 14px; font-weight: 600;
+      color: var(--text-primary, var(--text));
+      flex: 1; margin: 0;
+    }
+    chump-view-coord .coord-stat {
+      font-size: 11px; color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+      background: var(--bg-elevated);
+      padding: 2px 8px; border-radius: 10px;
+    }
+    chump-view-coord .coord-session-picker {
+      font-size: 11px; color: var(--text-secondary);
+      display: inline-flex; align-items: center; gap: 6px;
+    }
+    chump-view-coord .coord-session-picker select {
+      background: var(--bg-elevated); color: var(--text-primary, var(--text));
+      border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 3px 8px; font-size: 11px;
+      font-family: "SF Mono", ui-monospace, monospace;
+    }
+    chump-view-coord .coord-list {
+      list-style: none; padding: 0; margin: 0;
+      display: flex; flex-direction: column; gap: 2px;
+      max-height: 320px; overflow-y: auto;
+    }
+    chump-view-coord .coord-list .placeholder {
+      padding: 12px 4px; color: var(--text-secondary);
+      font-size: 12px; font-style: italic;
+    }
+    chump-view-coord .coord-row {
+      display: grid;
+      grid-template-columns: 56px 100px auto 1fr;
+      gap: 8px; align-items: baseline;
+      padding: 5px 4px;
+      font-size: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    chump-view-coord .coord-row:hover { background: var(--bg-elevated); }
+    chump-view-coord .coord-row-ts {
+      font-variant-numeric: tabular-nums; color: var(--text-secondary);
+      white-space: nowrap;
+    }
+    chump-view-coord .coord-row-from,
+    chump-view-coord .coord-row-gap {
+      font-family: "SF Mono", ui-monospace, monospace;
+      font-size: 11px; color: var(--text-secondary);
+    }
+    chump-view-coord .coord-row-kind {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
+      padding: 1px 6px; border-radius: 3px;
+      background: var(--bg-elevated); color: var(--text-secondary);
+    }
+    chump-view-coord .coord-row-body {
+      color: var(--text-primary, var(--text));
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    chump-view-coord .coord-row-pr a { color: var(--accent); text-decoration: none; }
+    chump-view-coord .coord-row-pr a:hover { text-decoration: underline; }
+    chump-view-coord .coord-row-class {
+      font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 1px 6px; border-radius: 3px;
+    }
+    chump-view-coord .coord-row-class-dirty            { background: rgba(255,69,58,0.22); color: var(--error); }
+    chump-view-coord .coord-row-class-blocked-ci       { background: rgba(255,159,10,0.18); color: var(--warn); }
+    chump-view-coord .coord-row-class-orphan-disarmed  { background: rgba(176,86,255,0.18); color: #c08fff; }
+    chump-view-coord .coord-row-class-base-modified    { background: rgba(10,132,255,0.18); color: #4aa3ff; }
+    chump-view-coord .coord-row-class-clean-not-merged { background: rgba(48,209,88,0.18); color: var(--success); }
+    chump-view-coord .coord-panel-footnote {
+      margin-top: 6px; padding-top: 6px;
+      border-top: 1px solid var(--border);
+      font-size: 11px; color: var(--text-secondary); line-height: 1.4;
+    }
+    chump-view-coord .coord-panel-footnote code {
+      font-family: "SF Mono", ui-monospace, monospace;
+    }
+    @media (max-width: 640px) {
+      chump-view-coord { padding: 12px 14px; }
+      chump-view-coord .coord-row {
+        grid-template-columns: 1fr;
+        gap: 2px;
+        padding: 8px 4px;
+      }
     }
 
     /* PRODUCT-109: <chump-tool-approval-tray> persistent banner above main
