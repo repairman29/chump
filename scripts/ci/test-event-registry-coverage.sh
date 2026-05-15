@@ -166,6 +166,14 @@ emitted |= extract_kinds(
     grep_lines(r'alert_kind\s*=\s*"[a-zA-Z0-9_]+"', PROD_PATHS),
     r'alert_kind\s*=\s*"([a-zA-Z0-9_]+)"',
 )
+# Pattern 7: emit_reaper_event "kind_name" — reaper observability helper.
+# Used in scripts/ops/active-target-reaper.sh, scripts/ops/stale-worktree-reaper.sh,
+# scripts/coord/worktree-prune.sh. First quoted argument is the kind name.
+# INFRA-1287: catches worktree_reap_protected, worktree_reaper_skipped_active, etc.
+emitted |= extract_kinds(
+    grep_lines(r'emit_reaper_event\s+"[a-zA-Z0-9_]+"', PROD_PATHS),
+    r'emit_reaper_event\s+"([a-zA-Z0-9_]+)"',
+)
 
 # Allowlist — kinds exempt from BOTH directions.
 allowlist = set()
