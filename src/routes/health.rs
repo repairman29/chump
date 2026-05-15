@@ -170,7 +170,8 @@ fn gh_rate_limit_poller_started() -> &'static std::sync::atomic::AtomicBool {
 }
 
 fn gh_rate_limit_snapshot_json() -> (serde_json::Value, Option<String>) {
-    let cell = gh_rate_limit_cell().get_or_init(|| std::sync::RwLock::new(GhRateLimitSnapshot::default()));
+    let cell =
+        gh_rate_limit_cell().get_or_init(|| std::sync::RwLock::new(GhRateLimitSnapshot::default()));
     let snap = match cell.read() {
         Ok(g) => g.clone(),
         Err(_) => GhRateLimitSnapshot::default(),
@@ -239,9 +240,15 @@ async fn gh_rate_limit_poll_once() {
         }
         Ok(o) => {
             let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
-            update_snapshot_error(format!("gh exit {}: {}",
+            update_snapshot_error(format!(
+                "gh exit {}: {}",
                 o.status.code().unwrap_or(-1),
-                if stderr.is_empty() { "no stderr".into() } else { stderr }));
+                if stderr.is_empty() {
+                    "no stderr".into()
+                } else {
+                    stderr
+                }
+            ));
         }
         Err(e) => update_snapshot_error(format!("spawn: {}", e)),
     }
@@ -251,26 +258,36 @@ fn update_snapshot_from_value(v: &serde_json::Value) {
     let resources = v.get("resources").and_then(|x| x.as_object());
     let graphql = resources.and_then(|r| r.get("graphql"));
     let core = resources.and_then(|r| r.get("core"));
-    let reset_epoch = graphql.and_then(|g| g.get("reset")).and_then(|x| x.as_u64());
+    let reset_epoch = graphql
+        .and_then(|g| g.get("reset"))
+        .and_then(|x| x.as_u64());
     let reset_iso = reset_epoch.map(epoch_to_iso8601);
     let now_iso = current_iso8601();
     let snap = GhRateLimitSnapshot {
-        graphql_remaining: graphql.and_then(|g| g.get("remaining")).and_then(|x| x.as_u64()),
-        graphql_limit:     graphql.and_then(|g| g.get("limit")).and_then(|x| x.as_u64()),
-        core_remaining:    core.and_then(|c| c.get("remaining")).and_then(|x| x.as_u64()),
-        core_limit:        core.and_then(|c| c.get("limit")).and_then(|x| x.as_u64()),
-        reset_at_iso:      reset_iso,
-        last_polled_iso:   Some(now_iso),
-        error:             None,
+        graphql_remaining: graphql
+            .and_then(|g| g.get("remaining"))
+            .and_then(|x| x.as_u64()),
+        graphql_limit: graphql
+            .and_then(|g| g.get("limit"))
+            .and_then(|x| x.as_u64()),
+        core_remaining: core
+            .and_then(|c| c.get("remaining"))
+            .and_then(|x| x.as_u64()),
+        core_limit: core.and_then(|c| c.get("limit")).and_then(|x| x.as_u64()),
+        reset_at_iso: reset_iso,
+        last_polled_iso: Some(now_iso),
+        error: None,
     };
-    let cell = gh_rate_limit_cell().get_or_init(|| std::sync::RwLock::new(GhRateLimitSnapshot::default()));
+    let cell =
+        gh_rate_limit_cell().get_or_init(|| std::sync::RwLock::new(GhRateLimitSnapshot::default()));
     if let Ok(mut g) = cell.write() {
         *g = snap;
     }
 }
 
 fn update_snapshot_error(msg: String) {
-    let cell = gh_rate_limit_cell().get_or_init(|| std::sync::RwLock::new(GhRateLimitSnapshot::default()));
+    let cell =
+        gh_rate_limit_cell().get_or_init(|| std::sync::RwLock::new(GhRateLimitSnapshot::default()));
     if let Ok(mut g) = cell.write() {
         g.error = Some(msg);
         g.last_polled_iso = Some(current_iso8601());
