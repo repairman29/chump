@@ -276,12 +276,12 @@ events:
     fields_required: [ts, kind, mode, installed, skipped_healthy, failed, missing_count]
 
   - kind: picker_used_priority
-    emitter: scripts/dispatch/_pick_gap.py (INFRA-1258)
-    trigger: picker successfully selected a gap from the planner-ranked
-      list at .chump-locks/gap-priority.json. Captures planner_rank so
-      we can measure how much delta vs. legacy first-fit.
+    emitter: scripts/dispatch/_pick_gap.py + _pick_and_claim_gap.py (INFRA-1258)
+    trigger: picker successfully selected a gap from the planner-ranked list
+      at .chump-locks/gap-priority.json. Includes file path, age, scored rank,
+      and whether the layer gate filtered any candidates (layer_enforced).
     consumers: [fleet-brief, audit-log, kpi-report]
-    fields_required: [ts, kind, gap_id, planner_rank, worker_id]
+    fields_required: [ts, kind, gap_id, file, age_s, scored, layer_enforced, worker_id]
 
   - kind: picker_priority_stale
     emitter: scripts/dispatch/_pick_gap.py (INFRA-1258)
@@ -2658,3 +2658,13 @@ events:
     trigger: one or more assertions in the claim→commit→ship integration test failed
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, fail_count, pass_count, elapsed_s]
+
+  # ── INFRA-1076: lane-routed GitHub App tokens (scaffold) ──────────────────
+  - kind: github_app_fallback
+    emitter: scripts/coord/lib/github.sh _chump_gh_lane_token (INFRA-1076)
+    trigger: chump_gh requested a lane-specific token (CHUMP_GH_CALL_CRITICALITY=critical|background)
+      but the corresponding ~/.chump/oauth-token-<lane>.json file was absent. Falls back to the
+      legacy GH_TOKEN / gh-CLI keyring path. Emitted once per process so the operator sees the
+      degraded mode without log spam.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, criticality, reason, expected_file]

@@ -334,6 +334,8 @@ Manual escape hatch from the **main** checkout: `git worktree remove .claude/wor
 
 **Shared CARGO_TARGET_DIR phantom fingerprint error (INFRA-1138, 2026-05-14).** `install-sccache.sh` (INFRA-481) sets `target-dir = "/Users/.../Chump/target"` in `.cargo/config.toml` so all linked worktrees share a single target directory (saving disk). Side-effect: cargo's fingerprint cache is also shared. If worktree A compiled `tests/cli_fleet_coord.rs` and stored the fingerprint in the shared target, worktree B (which may not have that test file on its branch) reads the cached fingerprint and tries to verify the file — failing with `couldn't read tests/cli_fleet_coord.rs: No such file or directory`. **Fix (INFRA-1138):** the pre-push test gate sets `CARGO_TARGET_DIR="$REPO_ROOT_T/.cargo-test-target"` (per-worktree) for the `cargo test` invocation. sccache (configured via `rustc-wrapper` in `.cargo/config.toml`) still provides cross-worktree object-code caching — only the fingerprint/incremental data is isolated. The `.cargo-test-target` directory lives inside each linked worktree and is cleaned up when the worktree is deleted. **Symptom:** `Test-Gate-Bypass: phantom fingerprint from sibling worktree` trailers on commits from before INFRA-1138.
 
+**`target/` directories during in-flight PRs (INFRA-1349, 2026-05-15).** The existing worktree-reaper only deletes whole worktrees after stale-checks pass; while a PR is in flight, the `target/` dir lives forever consuming 5-8GB each. On 2026-05-15 the fleet had 254 worktrees in `/private/tmp/chump-*` and disk hit **97% full** (14GB free of 460GB). Fix: `scripts/coord/target-dir-reaper.sh` (separate, narrower reaper) deletes only `target/` dirs when disk pressure is high AND the worktree is idle > 6h AND no active lease. **Install:** `scripts/setup/install-target-reaper-launchd.sh` (runs every 30 min, self-throttles on disk pressure). **Manual sweep:** `scripts/coord/target-dir-reaper.sh --force --execute`. Emits `kind=target_artifact_reaped` per reap.
+
 **Reaper visibility — heartbeat + ambient events (INFRA-120, 2026-05-01).** All three reapers (`stale-pr-reaper.sh`, `stale-worktree-reaper.sh`, `stale-branch-reaper.sh`) emit a `kind=reaper_run` event into `.chump-locks/ambient.jsonl` on every run with `status=ok|fail` and per-reaper counts. They also stamp `/tmp/chump-reaper-<name>.heartbeat` (`pr` / `worktree` / `branch`). Each reaper rotates its own `/tmp/chump-stale-*-reaper.{out,err}.log` to a single `.1` archive at 5MB so logs never grow unbounded.
 
 A separate watchdog grades the heartbeats and ALERTs the fleet when a reaper goes silent:
@@ -915,6 +917,32 @@ git rev-parse --absolute-git-dir     # should be .git/worktrees/chump-<name>
 cat $(git rev-parse --absolute-git-dir)/gitdir   # should be /private/tmp/chump-<name>/.git
 ```
 
+**Reaper protection (INFRA-1347, in flight 2026-05-15):** the stale-worktree-reaper was historically too aggressive — on 2026-05-15 it deleted *three different agent sessions' active worktrees* mid-bash (INFRA-1346 attempts 1+2 + my `intelligent-ishizaka-0dc931` session). INFRA-1347 adds pre-delete checks: skip if `git status --porcelain` returns non-empty, if HEAD differs from `origin/<branch>`, if a lease file in `.chump-locks/` is live, or if any file under the worktree was modified within 30 min. Until INFRA-1347 lands, run important worktree work from a path the reaper doesn't scan, OR keep your session worktree mtime fresh.
+
+---
+
+## Failure cascade — stale binary → state-db drift → orphan-PR-killer (2026-05-15)
+
+**Pattern observed:** A single stale binary call cost ~840 LOC of cockpit work and required 2 rescue PRs to recover.
+
+**The cascade:**
+
+1. **Stale binary.** `~/.cargo/bin/chump` was built 28h before, but `src/web_server.rs` had since landed `INFRA-1285` (gap-store-affecting commit). The binary warned `credible022: web_server.rs source is newer than binary`.
+2. **Reserve collision.** A `chump gap reserve` call from the stale binary picked an existing ID (PRODUCT-119, already-filed dogfooder gap), then **overwrote** both the yaml AND the state.db record with new content (action-first umbrella).
+3. **Gap registry drift.** Subsequent gaps were filed at the worktree's `docs/gaps/<id>.yaml` via `chump gap reserve`. INFRA-484's auto-stage ran git-add in the **session worktree** (`intelligent-ishizaka-0dc931`), but PRs were shipped from a **different worktree** (`/private/tmp/chump-product-122`) which never saw the yamls.
+4. **Orphan-PR-killer fires.** With the yamls missing from main's `docs/gaps/`, the orphan-PR-closer (sweeper that closes PRs whose referenced gap is "not in registry") killed PR #2063 — the entire action-first cockpit work, 70 checks, 30 minutes from auto-merge.
+5. **Recovery.** Required reopening #2063 + two rescue PRs (#2071, #2077) just to staple yamls into main.
+
+**Prevention:**
+
+- **`cargo install --path . --bin chump --force`** before any non-trivial `chump gap reserve` session. The `credible022` warning is load-bearing — don't dismiss it.
+- **`chump gap reserve` from the worktree you intend to ship from**, not from your session worktree. Or, run reserve from the main repo checkout where docs/gaps/ is the canonical home.
+- **INFRA-1354 (filed 2026-05-15):** `chump gap reserve` should write yamls to the MAIN repo's `docs/gaps/` regardless of cwd, so any worktree's next pull picks them up.
+
+**Detection:**
+- After `chump gap reserve`, immediately `git status` in the worktree you plan to ship from. If the yaml isn't showing up there, you have the cross-worktree visibility bug.
+- Run `git show origin/main:docs/gaps/<id>.yaml` to check whether your gap is actually in main yet.
+
 ---
 
 ## cargo test must not inherit parent shell git env (INFRA-1057)
@@ -1196,3 +1224,39 @@ CHUMP_BOT_MERGE_SHADOW_PLAN=0 scripts/coord/bot-merge.sh --gap INFRA-NNN --auto-
 **Failure is silent:** if `chump ship plan` times out, is missing, or hits a rate
 limit, bot-merge logs `ship-plan probe timed-out or failed` and continues normally.
 The advisory event is simply not emitted that run.
+## Secondary-mutation gag — per-user GitHub rate-limit exhaustion (INFRA-1076, 2026-05-14)
+
+**Symptom:** `gh pr merge --auto` and `gh pr update-branch` silently 429
+for 1–3 hours, even though the personal quota (`gh api rate_limit` →
+`resources.core.remaining`) looks fine. PRs with all checks green don't merge.
+
+**Root cause:** GitHub enforces a separate **secondary rate limit** on write/mutation
+operations (PR merges, label edits, update-branch, etc.). This limit is per-user
+and shared across all uses of the same OAuth token or personal access token.
+When a background sweep (label-edit loop, overlap scan, auto-update-branch on
+50 PRs) saturates the secondary limit, ship-blocking merges queue behind it
+for the entire reset window (typically 1–3 hours).
+
+**Evidence (2026-05-14):** A label-edit sweep consumed the mutation budget.
+12 auto-armed PRs with green CI sat unmerged for ~2 hours. No error message —
+`gh pr merge` appeared to succeed (exit 0) but the PR stayed open.
+
+**Structural fix (INFRA-1076):** Use two separate GitHub App installations —
+`chump-critical` for ship-blocking operations, `chump-background` for sweeps.
+Each App installation has its own secondary rate-limit counter.
+
+Setup: **[`docs/process/OPERATOR_RUNBOOK.md` — INFRA-1076 section](OPERATOR_RUNBOOK.md)**
+
+**Immediate workaround (before App installations are set up):**
+```bash
+# Identify the noisy caller
+scripts/dev/api-cost-leaderboard.sh --window 1h
+
+# Tag it as background so critical ops get priority
+CHUMP_GH_CALL_CRITICALITY=background <noisy-command>
+
+# Check remaining secondary limit (no official API — watch for 429 headers)
+# If gag'd, wait it out or switch to a different personal access token
+```
+
+**Call-criticality tagging:** see `CLAUDE.md § Call criticality (INFRA-1080)`.

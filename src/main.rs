@@ -123,6 +123,7 @@ mod mission_grade;
 #[cfg(feature = "mistralrs-infer")]
 mod mistralrs_provider;
 mod model_overlay;
+mod model_probe;
 mod neuromodulation;
 mod notify_tool;
 mod onboard_repo_tool;
