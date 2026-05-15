@@ -1,0 +1,29 @@
+- id: EVAL-101
+  domain: EVAL
+  title: "CREDIBLE: cognition A/B with fleet evidence — does the cognition stack improve agent task outcomes? (PROTOCOL VIOLATION — see EVAL-102 for valid re-run)"
+  status: done
+  priority: P1
+  effort: m
+  closed_date: '2026-05-10'
+  single_judge_waived: true
+  single_judge_waived_reason: >-
+    EVAL-101 run violated protocol on all four axes (model substitution, n=20
+    below n≥50 floor, Cell C skipped, no LLM judge). Results are non-interpretable
+    as scientific evidence. The gap is closed as a protocol-violation record, NOT
+    as a valid null result. The single_judge_waived field is set to acknowledge
+    the missing judge requirement and explain the circumstances; EVAL-102 is the
+    properly-judged re-run. See docs/eval/preregistered/EVAL-101.md §Deviations
+    for the full four-deviation record.
+  acceptance_criteria:
+    - "Preregistration at docs/eval/preregistered/EVAL-101.md is committed before data collection"
+    - "Run uses claude-sonnet-4, n≥50/cell, all 3 cells (A/B/C), dual LLM judges"
+    - "Result doc at docs/eval/EVAL-101-cognition-ab-<date>.md: cell means, 95% CI, judge kappa"
+    - "Decision rendered per §9 of the prereg"
+  notes: |
+    EVAL-101 was closed 2026-05-10 as a null result (delta=+0.025) but violated
+    RESEARCH_INTEGRITY.md on four counts: wrong model (Qwen 2.5 14B, not Sonnet),
+    n=20/cell (below n>=50 floor), Cell C skipped, no LLM judge. The deviations
+    section in docs/eval/preregistered/EVAL-101.md was "(none yet)" at close — this
+    YAML (filed as INFRA-824 resolution) retroactively documents the violations.
+    EVAL-102 is the registered correct re-run. EVAL-103 ships prereg-enforcement
+    gates to prevent recurrence.

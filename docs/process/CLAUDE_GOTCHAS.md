@@ -1212,3 +1212,40 @@ add `continue-on-error: true` to prevent it from blocking fleet-wide auto-merge.
 
 **Workaround when already blocked:** Re-trigger the flaky check.
 If it fails again: `gh pr merge <N> --squash --admin` to bypass.
+
+## Secondary-mutation gag — per-user GitHub rate-limit exhaustion (INFRA-1076, 2026-05-14)
+
+**Symptom:** `gh pr merge --auto` and `gh pr update-branch` silently 429
+for 1–3 hours, even though the personal quota (`gh api rate_limit` →
+`resources.core.remaining`) looks fine. PRs with all checks green don't merge.
+
+**Root cause:** GitHub enforces a separate **secondary rate limit** on write/mutation
+operations (PR merges, label edits, update-branch, etc.). This limit is per-user
+and shared across all uses of the same OAuth token or personal access token.
+When a background sweep (label-edit loop, overlap scan, auto-update-branch on
+50 PRs) saturates the secondary limit, ship-blocking merges queue behind it
+for the entire reset window (typically 1–3 hours).
+
+**Evidence (2026-05-14):** A label-edit sweep consumed the mutation budget.
+12 auto-armed PRs with green CI sat unmerged for ~2 hours. No error message —
+`gh pr merge` appeared to succeed (exit 0) but the PR stayed open.
+
+**Structural fix (INFRA-1076):** Use two separate GitHub App installations —
+`chump-critical` for ship-blocking operations, `chump-background` for sweeps.
+Each App installation has its own secondary rate-limit counter.
+
+Setup: **[`docs/process/OPERATOR_RUNBOOK.md` — INFRA-1076 section](OPERATOR_RUNBOOK.md)**
+
+**Immediate workaround (before App installations are set up):**
+```bash
+# Identify the noisy caller
+scripts/dev/api-cost-leaderboard.sh --window 1h
+
+# Tag it as background so critical ops get priority
+CHUMP_GH_CALL_CRITICALITY=background <noisy-command>
+
+# Check remaining secondary limit (no official API — watch for 429 headers)
+# If gag'd, wait it out or switch to a different personal access token
+```
+
+**Call-criticality tagging:** see `CLAUDE.md § Call criticality (INFRA-1080)`.
