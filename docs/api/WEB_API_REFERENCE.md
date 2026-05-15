@@ -37,6 +37,30 @@ Live snapshot of precision / neuromod hooks (WP-6.x): **`recommended_max_tool_ca
 
 The same **`llm_last_completion`** and **`llm_completion_totals`** fields are included on **`GET /health`** (health port) for operators who poll that endpoint.
 
+### `GET /api/stack-status` — `github_rate_limit` object (INFRA-1337)
+
+Lights up the GraphQL-budget slot in the PRODUCT-107 status footer and the
+gauge in the INFRA-1203 fleet-health view.
+
+- **`github_rate_limit`:** Object or `null` (null until the first poll
+  completes). Shape: **`graphql_remaining`** (u64), **`graphql_limit`**
+  (u64), **`core_remaining`** (u64), **`core_limit`** (u64), **`reset_at_iso`**
+  (RFC3339 UTC string, derived from the GraphQL bucket's `reset` epoch),
+  **`last_polled_iso`**.
+- **`github_rate_limit_error`:** String or `null`. Carries the most recent
+  poll error message (e.g. `gh exit 1: ...`, `parse: ...`, `spawn: ...`).
+  Cleared on the next successful poll.
+
+A background tokio task polls `gh api rate_limit` once per **60 seconds**
+starting from the first `/api/stack-status` request (lazy start — no poller
+runs until at least one consumer asks for the field). The poll uses
+`CHUMP_GH_CALL_CRITICALITY=background` so the chump_gh self-throttle
+(INFRA-1040) yields to ship-blocking calls.
+
+Override for tests: set **`CHUMP_GH_RATE_LIMIT_OVERRIDE_JSON`** to a raw
+`gh api rate_limit` payload to bypass the subprocess and make the poller
+deterministic.
+
 ## Dashboard
 
 | Method | Path | Description |

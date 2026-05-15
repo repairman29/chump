@@ -132,6 +132,184 @@ async fn probe_openai_http_sidecar(
     inference
 }
 
+// ── GitHub rate-limit snapshot (INFRA-1337) ─────────────────────────────────
+// Lights up the GraphQL-budget slot in the PRODUCT-107 status footer and the
+// gauge in the INFRA-1203 fleet-health view. Both currently render placeholder
+// 'n/a' because the field is absent from /api/stack-status.
+//
+// Snapshot is updated by a background tokio task that shells `gh api
+// rate_limit` once per 60s. First call to `gh_rate_limit_snapshot()` from any
+// handler lazily kicks off the poller; subsequent calls read the cached JSON.
+//
+// Failure (gh unavailable, offline, 401) → snapshot stays null + sibling
+// `github_rate_limit_error` field carries the last error message. The
+// frontend code already handles both states gracefully.
+
+#[derive(Clone, Default, serde::Serialize)]
+struct GhRateLimitSnapshot {
+    graphql_remaining: Option<u64>,
+    graphql_limit: Option<u64>,
+    core_remaining: Option<u64>,
+    core_limit: Option<u64>,
+    reset_at_iso: Option<String>,
+    /// Best-effort timestamp of the latest successful poll (RFC3339 UTC).
+    last_polled_iso: Option<String>,
+    /// Set when the most recent poll failed; cleared on success.
+    error: Option<String>,
+}
+
+fn gh_rate_limit_cell() -> &'static std::sync::OnceLock<std::sync::RwLock<GhRateLimitSnapshot>> {
+    static CELL: std::sync::OnceLock<std::sync::RwLock<GhRateLimitSnapshot>> =
+        std::sync::OnceLock::new();
+    &CELL
+}
+
+fn gh_rate_limit_poller_started() -> &'static std::sync::atomic::AtomicBool {
+    static STARTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    &STARTED
+}
+
+fn gh_rate_limit_snapshot_json() -> (serde_json::Value, Option<String>) {
+    let cell = gh_rate_limit_cell().get_or_init(|| std::sync::RwLock::new(GhRateLimitSnapshot::default()));
+    let snap = match cell.read() {
+        Ok(g) => g.clone(),
+        Err(_) => GhRateLimitSnapshot::default(),
+    };
+    // Lazily start the 60s poller on first read so we never poll until the
+    // first /api/stack-status request lands.
+    let started = gh_rate_limit_poller_started();
+    if !started.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        tokio::spawn(gh_rate_limit_poll_loop());
+    }
+    // Build the snake-case payload the frontend already expects.
+    let err = snap.error.clone();
+    let payload = if snap.last_polled_iso.is_none() && snap.error.is_none() {
+        // Never polled yet — return null so the frontend renders 'loading…'.
+        serde_json::Value::Null
+    } else {
+        serde_json::json!({
+            "graphql_remaining": snap.graphql_remaining,
+            "graphql_limit":     snap.graphql_limit,
+            "core_remaining":    snap.core_remaining,
+            "core_limit":        snap.core_limit,
+            "reset_at_iso":      snap.reset_at_iso,
+            "last_polled_iso":   snap.last_polled_iso,
+        })
+    };
+    (payload, err)
+}
+
+async fn gh_rate_limit_poll_loop() {
+    let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+    interval.tick().await; // fire immediately on first tick
+    loop {
+        gh_rate_limit_poll_once().await;
+        interval.tick().await;
+    }
+}
+
+async fn gh_rate_limit_poll_once() {
+    // Honor CHUMP_GH_RATE_LIMIT_OVERRIDE_JSON in tests / mocks. Lets the CI
+    // test stub return a deterministic payload without forking a real `gh`.
+    if let Ok(stub) = std::env::var("CHUMP_GH_RATE_LIMIT_OVERRIDE_JSON") {
+        match serde_json::from_str::<serde_json::Value>(&stub) {
+            Ok(v) => {
+                update_snapshot_from_value(&v);
+                return;
+            }
+            Err(e) => {
+                update_snapshot_error(format!("CHUMP_GH_RATE_LIMIT_OVERRIDE_JSON parse: {}", e));
+                return;
+            }
+        }
+    }
+    // Real path: shell out to `gh api rate_limit`. Tag as background so
+    // the chump_gh self-throttle (INFRA-1040) yields to ship-blocking calls.
+    let out = tokio::process::Command::new("gh")
+        .args(["api", "rate_limit"])
+        .env("CHUMP_GH_CALL_CRITICALITY", "background")
+        .output()
+        .await;
+    match out {
+        Ok(o) if o.status.success() => {
+            match serde_json::from_slice::<serde_json::Value>(&o.stdout) {
+                Ok(v) => update_snapshot_from_value(&v),
+                Err(e) => update_snapshot_error(format!("parse: {}", e)),
+            }
+        }
+        Ok(o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
+            update_snapshot_error(format!("gh exit {}: {}",
+                o.status.code().unwrap_or(-1),
+                if stderr.is_empty() { "no stderr".into() } else { stderr }));
+        }
+        Err(e) => update_snapshot_error(format!("spawn: {}", e)),
+    }
+}
+
+fn update_snapshot_from_value(v: &serde_json::Value) {
+    let resources = v.get("resources").and_then(|x| x.as_object());
+    let graphql = resources.and_then(|r| r.get("graphql"));
+    let core = resources.and_then(|r| r.get("core"));
+    let reset_epoch = graphql.and_then(|g| g.get("reset")).and_then(|x| x.as_u64());
+    let reset_iso = reset_epoch.map(epoch_to_iso8601);
+    let now_iso = current_iso8601();
+    let snap = GhRateLimitSnapshot {
+        graphql_remaining: graphql.and_then(|g| g.get("remaining")).and_then(|x| x.as_u64()),
+        graphql_limit:     graphql.and_then(|g| g.get("limit")).and_then(|x| x.as_u64()),
+        core_remaining:    core.and_then(|c| c.get("remaining")).and_then(|x| x.as_u64()),
+        core_limit:        core.and_then(|c| c.get("limit")).and_then(|x| x.as_u64()),
+        reset_at_iso:      reset_iso,
+        last_polled_iso:   Some(now_iso),
+        error:             None,
+    };
+    let cell = gh_rate_limit_cell().get_or_init(|| std::sync::RwLock::new(GhRateLimitSnapshot::default()));
+    if let Ok(mut g) = cell.write() {
+        *g = snap;
+    }
+}
+
+fn update_snapshot_error(msg: String) {
+    let cell = gh_rate_limit_cell().get_or_init(|| std::sync::RwLock::new(GhRateLimitSnapshot::default()));
+    if let Ok(mut g) = cell.write() {
+        g.error = Some(msg);
+        g.last_polled_iso = Some(current_iso8601());
+    }
+}
+
+fn epoch_to_iso8601(secs: u64) -> String {
+    // Howard Hinnant date algorithm — same as INFRA-1206's epoch_to_iso8601.
+    let days = (secs / 86400) as i64;
+    let rem = (secs % 86400) as u32;
+    let (y, m, d) = civil_from_unix_days(days);
+    let h = rem / 3600;
+    let mi = (rem % 3600) / 60;
+    let se = rem % 60;
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", y, m, d, h, mi, se)
+}
+
+fn civil_from_unix_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z.rem_euclid(146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
+fn current_iso8601() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    epoch_to_iso8601(now)
+}
+
 /// GET /api/stack-status
 pub async fn handle_stack_status() -> Json<serde_json::Value> {
     let air_gap_mode = crate::env_flags::chump_air_gap_mode();
@@ -180,6 +358,9 @@ pub async fn handle_stack_status() -> Json<serde_json::Value> {
         inf
     };
 
+    // INFRA-1337: github rate-limit snapshot (lazy-started 60s poller).
+    let (github_rate_limit, github_rate_limit_error) = gh_rate_limit_snapshot_json();
+
     Json(serde_json::json!({
         "status": "ok",
         "service": "chump-web",
@@ -188,6 +369,8 @@ pub async fn handle_stack_status() -> Json<serde_json::Value> {
         "inference": inference,
         "cascade_enabled": cascade_enabled,
         "air_gap_mode": air_gap_mode,
+        "github_rate_limit": github_rate_limit,
+        "github_rate_limit_error": github_rate_limit_error,
         "llm_last_completion": crate::llm_backend_metrics::snapshot_last_json(),
         "llm_completion_totals": crate::llm_backend_metrics::snapshot_totals_json(),
         "cognitive_control": {
