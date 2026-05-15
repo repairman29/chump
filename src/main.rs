@@ -11283,7 +11283,6 @@ async fn ship_execute_cli(args: &[String]) -> Result<()> {
                 attempt, max_rebase_retries
             );
         }
-        let mut attempt_failed = false;
         for step in &steps {
             let resolved_args: Vec<String> = step
                 .args
@@ -11338,7 +11337,6 @@ async fn ship_execute_cli(args: &[String]) -> Result<()> {
             }));
             if !success && step.expect_success {
                 any_failure = true;
-                attempt_failed = true;
 
                 if is_rebase_and_push {
                     // Classify the failure: retry, abort-as-conflict, or hard-fail.
@@ -11385,18 +11383,16 @@ async fn ship_execute_cli(args: &[String]) -> Result<()> {
                 }
             }
         }
-        // Loop finished without an attempt-failure → success.
+        // Loop finished without a step-failure → all steps succeeded on this attempt.
         // (Overwrite final_action even if a previous attempt failed and we
         // retried successfully — the final state IS success.)
-        if !attempt_failed {
-            final_action = "Success".to_string();
-            // Once the chain succeeds via retry, the earlier failures are
-            // recorded in step_results but don't bubble out as any_failure.
-            any_failure = false;
-            break 'attempt;
-        }
-        // Otherwise: if we didn't hit a `continue 'attempt`, the loop
-        // already broke via `break 'attempt`.
+        final_action = "Success".to_string();
+        // Once the chain succeeds via retry, the earlier failures are
+        // recorded in step_results but don't bubble out as any_failure.
+        any_failure = false;
+        break 'attempt;
+        // Note: if a step failed, control always reaches `break 'attempt` or
+        // `continue 'attempt` above and never falls through to here.
     }
 
     let payload = serde_json::json!({
