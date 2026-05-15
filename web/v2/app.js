@@ -4061,6 +4061,8 @@ const VIEWS = {
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
   config:        () => document.createElement('chump-config-dials'), // PRODUCT-118
+
+  cockpit:       () => document.createElement('chump-view-cockpit'),        // PRODUCT-122
   memory:        () => document.createElement('chump-view-memory'),
   models:        () => document.createElement('chump-view-models'),
   settings:      () => document.createElement('chump-view-settings'),
