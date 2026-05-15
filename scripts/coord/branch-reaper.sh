@@ -28,20 +28,27 @@ set -uo pipefail
 # ── Resolve repo root and ambient log ─────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/repo-paths.sh
+# shellcheck disable=SC1091
 source "$SCRIPT_DIR/../lib/repo-paths.sh"
+# INFRA-1211: worktree-iter lib for shared event emission.
+# shellcheck source=../lib/worktree-iter.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../lib/worktree-iter.sh"
+REAPER_NAME="${REAPER_NAME:-branch-reaper}"
+REAPER_REPO_ROOT="$REPO_ROOT"
+export REAPER_REPO_ROOT
 
 AMBIENT="$LOCK_DIR/ambient.jsonl"
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 DRY_RUN=1   # default: dry-run mode (safe)
-ACT=0
 MIN_AGE_DAYS=7
 EXTRA_KEEP=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dry-run)    DRY_RUN=1; ACT=0 ;;
-        --act)        DRY_RUN=0; ACT=1 ;;
+        --dry-run)    DRY_RUN=1 ;;
+        --act)        DRY_RUN=0 ;;
         --min-age-days)
             shift; MIN_AGE_DAYS="$1" ;;
         --keep-list)
@@ -85,6 +92,7 @@ fi
 _is_protected() {
     local branch="$1"
     for pattern in "${PROTECT_PATTERNS[@]}"; do
+        # shellcheck disable=SC2254  # glob patterns intentional in case
         case "$branch" in
             $pattern) return 0 ;;
         esac
