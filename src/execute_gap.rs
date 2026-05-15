@@ -50,6 +50,14 @@
 //! runs unattended end-to-end (mirrors `--dangerously-skip-permissions`
 //! on the `claude` baseline — see dispatch.rs INFRA-DISPATCH-PERMISSIONS-FLAG
 //! comment).
+//!
+//! ## Gemini tool-call validation (EFFECTIVE-007)
+//!
+//! Gemini 2.5 Flash has been validated (2026-05-15) as the preferred sonnet-tier
+//! provider for autonomous dispatch. Tool-call quality verified equal to or better
+//! than Llama 3.3 70B: proper OpenAI-format tool_calls, valid unified diffs on
+//! first attempt, no fuzzy-match fallback needed. See docs/architecture/FREE_TIER_PROVIDER_COMPAT.md
+//! for test methodology and full results.
 
 use anyhow::{anyhow, Context, Result};
 use tokio_util::sync::CancellationToken;
