@@ -1157,6 +1157,12 @@ events:
     trigger: dispatched agent asked a question instead of acting
     consumers: [waste-tally, fleet-brief]
 
+  - kind: assertion_failure
+    emitter: src/assertion.rs (CREDIBLE-065, runtime assertion framework)
+    trigger: gap claim or ship operation detects data invariant violation
+    consumers: [audit-log, fleet-brief, operator-dashboard]
+    fields_required: [ts, gap_id, assertion_type, field_name, expected, actual, context]
+
   - kind: avoids_tool
     effect_metric: self
     emitter: scripts/dispatch/tool-avoidance-detector.sh
