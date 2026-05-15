@@ -1160,6 +1160,13 @@ events:
     consumers: [audit-log, fleet-brief]
     fields_required: [ts, kind, pr, gap, note]
 
+  - kind: orphan_pr_closed_at_ship
+    emitter: src/main.rs (INFRA-1144, chump gap ship)
+    trigger: orphan PR closed atomically when gap is marked done via chump gap ship
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, pr, gap, ship_pr]
+    notes: structural orphan closing at write time; complements orphan-pr-closer.sh sweeper (INFRA-1139)
+
   - kind: orphan_pr_close_failed
     emitter: scripts/coord/orphan-pr-closer.sh --apply
     trigger: orphan PR detected but gh PATCH /pulls/N state=closed failed — operator surface

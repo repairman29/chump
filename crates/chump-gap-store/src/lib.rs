@@ -1501,6 +1501,153 @@ impl GapStore {
         Ok(())
     }
 
+    /// INFRA-1144: After a gap is shipped, close any open PRs whose title
+    /// contains the gap ID, subject to safety gates:
+    /// - Skip PRs with 'orphan-pr-closer-skip' in title
+    /// - Skip PRs whose head_sha was pushed within CHUMP_GAP_SHIP_ORPHAN_FRESHNESS_MIN (default 30 min)
+    /// - Skip if CHUMP_GAP_SHIP_NO_ORPHAN_CLOSE=1 is set
+    ///
+    /// Returns a Vec of (pr_number, close_reason) tuples for successfully closed PRs.
+    /// Failures (e.g., gh api errors) are logged but do not fail the overall ship.
+    pub fn close_orphan_prs(
+        &self,
+        gap_id: &str,
+        _closed_pr: Option<i64>,
+        repo_root: &Path,
+    ) -> Result<Vec<(i64, String)>> {
+        use std::process::Command;
+        use std::time::{Duration, SystemTime};
+
+        // Operator escape hatch
+        if std::env::var("CHUMP_GAP_SHIP_NO_ORPHAN_CLOSE").as_deref() == Ok("1") {
+            return Ok(Vec::new());
+        }
+
+        // Freshness gate (default 30 min)
+        let freshness_min = std::env::var("CHUMP_GAP_SHIP_ORPHAN_FRESHNESS_MIN")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(30);
+        let freshness_secs = freshness_min * 60;
+
+        // Query for open PRs with gap ID in title
+        let repo = self
+            .get_repo_from_git(repo_root)
+            .context("failed to resolve GitHub repo")?;
+
+        // Use gh api to list open PRs
+        let output = Command::new("gh")
+            .args(&["api", &format!("repos/{repo}/pulls?state=open&per_page=100")])
+            .arg("--jq")
+            .arg(format!("[.[] | select(.title | contains(\"{gap_id}\")) | {{number: .number, title: .title, head_ref: .head.ref, pushed_at: .head.repo.pushed_at}}]"))
+            .output();
+
+        let output = match output {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
+            _ => return Ok(Vec::new()), // Silently skip on gh api failure
+        };
+
+        if output.trim().is_empty() || output.trim() == "[]" {
+            return Ok(Vec::new());
+        }
+
+        let prs: Vec<serde_json::Value> = match serde_json::from_str(&output) {
+            Ok(v) => v,
+            Err(_) => return Ok(Vec::new()),
+        };
+
+        let mut closed = Vec::new();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_secs();
+
+        for pr in prs {
+            let pr_num = pr["number"].as_i64().unwrap_or(0);
+            let title = pr["title"].as_str().unwrap_or("");
+            let pushed_at_str = pr["pushed_at"].as_str().unwrap_or("");
+
+            // Skip PRs with escape hatch in title
+            if title.contains("orphan-pr-closer-skip") {
+                continue;
+            }
+
+            // Skip PRs that were pushed recently
+            if let Some(pushed_ts) = parse_iso_to_unix(pushed_at_str) {
+                if now.saturating_sub(pushed_ts as u64) < freshness_secs {
+                    continue;
+                }
+            }
+
+            // Attempt to close the PR
+            let comment = format!(
+                "Superseded: gap {gap_id} was shipped. Closing this PR as no longer needed."
+            );
+
+            // Post comment
+            let _ = Command::new("gh")
+                .args(&["api", &format!("repos/{repo}/issues/{pr_num}/comments")])
+                .args(&["-X", "POST", "-f"])
+                .arg(&format!("body={comment}"))
+                .output();
+
+            // Close the PR
+            let close_result = Command::new("gh")
+                .args(&["api", &format!("repos/{repo}/pulls/{pr_num}")])
+                .args(&["-X", "PATCH", "-f", "state=closed"])
+                .output();
+
+            if let Ok(output) = close_result {
+                if output.status.success() {
+                    let close_reason = format!(
+                        "closed orphan PR #{pr_num} (title: {title})",
+                        title = title.replace('"', "\\\"")
+                    );
+                    closed.push((pr_num, close_reason));
+                }
+            }
+        }
+
+        Ok(closed)
+    }
+
+    /// Helper: resolve GitHub repo from git remote origin
+    fn get_repo_from_git(&self, repo_root: &Path) -> Result<String> {
+        let output = std::process::Command::new("git")
+            .args(&[
+                "-C",
+                repo_root.to_str().unwrap_or("."),
+                "remote",
+                "get-url",
+                "origin",
+            ])
+            .output()
+            .context("git remote get-url failed")?;
+
+        if !output.status.success() {
+            bail!("cannot resolve git remote origin");
+        }
+
+        let url = String::from_utf8_lossy(&output.stdout);
+        let trimmed = url.trim();
+
+        let repo = if let Some(s) = trimmed.strip_prefix("git@github.com:") {
+            s.trim_end_matches(".git").to_string()
+        } else if let Some(s) = trimmed.strip_prefix("https://github.com/") {
+            s.trim_end_matches(".git").to_string()
+        } else if let Some(s) = trimmed.strip_prefix("http://github.com/") {
+            s.trim_end_matches(".git").to_string()
+        } else {
+            String::new()
+        };
+
+        if repo.is_empty() {
+            bail!("cannot parse GitHub repo from remote URL: {}", url);
+        }
+
+        Ok(repo)
+    }
+
     /// Dump gaps as canonical YAML, lossless across all DB columns.
     /// M1 (INFRA-059) — round-trips through `import_from_yaml` with byte
     /// stability for the `gaps:` block (the `meta:` preamble is preserved
@@ -5273,5 +5420,25 @@ meta:
             candidates_0.iter().any(|(id, _, _, _)| id == &id_open),
             "should include open gaps regardless of lookback"
         );
+    }
+
+    #[test]
+    fn close_orphan_prs_respects_bypass_env() {
+        let (store, dir) = test_store();
+        let id = store.reserve("INFRA", "test-orphan", "P2", "s").unwrap();
+
+        // Set the bypass env var
+        std::env::set_var("CHUMP_GAP_SHIP_NO_ORPHAN_CLOSE", "1");
+
+        // Calling close_orphan_prs should return empty vec without any gh calls
+        let result = store.close_orphan_prs(&id, Some(1234), dir.path()).unwrap();
+        assert_eq!(
+            result.len(),
+            0,
+            "orphan closing should be skipped with bypass env"
+        );
+
+        // Clean up
+        std::env::remove_var("CHUMP_GAP_SHIP_NO_ORPHAN_CLOSE");
     }
 }
