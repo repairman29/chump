@@ -69,7 +69,7 @@ _chump="${HOME}/.cargo/bin/chump"
 command -v "$_chump" >/dev/null 2>&1 || _chump="chump"
 command -v "$_chump" >/dev/null 2>&1 || { echo "[orphan-pr-closer] chump CLI not found, skipping" >&2; exit 0; }
 
-emit() {
+emit_ambient() {
     local kind="$1" pr="$2" gap="$3" note="$4"
     local ts
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -153,7 +153,7 @@ while IFS=$'\t' read -r pr title branch updated; do
     _main_sha="$(git log origin/main --oneline --grep="$gap_id" --format="%H" 2>/dev/null | head -1 || true)"
     if [[ -z "$_main_sha" && -z "$closed_pr" ]]; then
         echo "[orphan-pr-closer] SKIP #$pr ($gap_id): status=done but no git evidence on main and no closed_pr — evidence_missing" >&2
-        emit "orphan_pr_close_evidence_missing" "$pr" "$gap_id" "status=done but no commit on origin/main references $gap_id"
+        emit_ambient "orphan_pr_close_evidence_missing" "$pr" "$gap_id" "status=done but no commit on origin/main references $gap_id"
         continue
     fi
 
@@ -173,7 +173,7 @@ while IFS=$'\t' read -r pr title branch updated; do
     fi
     if [[ "$_auto_merge_armed" == "1" ]]; then
         echo "[orphan-pr-closer] SKIP #$pr ($gap_id): auto-merge armed — waiting for GitHub to process" >&2
-        emit "pr_close_skipped_auto_merge_armed" "$pr" "$gap_id" "auto_merge_armed"
+        emit_ambient "pr_close_skipped_auto_merge_armed" "$pr" "$gap_id" "auto_merge_armed"
         continue
     fi
 
@@ -194,7 +194,7 @@ while IFS=$'\t' read -r pr title branch updated; do
     fi
     if [[ "$_has_live_ci" == "1" ]]; then
         echo "[orphan-pr-closer] SKIP #$pr ($gap_id): CI checks still running/queued" >&2
-        emit "pr_close_skipped_ci_running" "$pr" "$gap_id" "ci_in_progress"
+        emit_ambient "pr_close_skipped_ci_running" "$pr" "$gap_id" "ci_in_progress"
         continue
     fi
 
@@ -211,7 +211,7 @@ while IFS=$'\t' read -r pr title branch updated; do
         if gh api -X PATCH "repos/{owner}/{repo}/pulls/$pr" -f state=closed >/dev/null 2>&1; then
             closed_count=$((closed_count + 1))
             echo "closed:$pr" >> "$SEEN_FILE"
-            emit "orphan_pr_closed" "$pr" "$gap_id" "$reason"
+            emit_ambient "orphan_pr_closed" "$pr" "$gap_id" "$reason"
             # INFRA-1220: stamp cooldown so the gap can't be immediately re-claimed.
             _cooldown_sh="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/gap-cooldown.sh"
             if [[ -x "$_cooldown_sh" ]]; then
@@ -222,11 +222,11 @@ while IFS=$'\t' read -r pr title branch updated; do
             fi
         else
             echo "[orphan-pr-closer] FAILED to close #$pr" >&2
-            emit "orphan_pr_close_failed" "$pr" "$gap_id" "$reason"
+            emit_ambient "orphan_pr_close_failed" "$pr" "$gap_id" "$reason"
         fi
     else
         echo "[orphan-pr-closer] (dry-run) would close #$pr ($gap_id): $reason" >&2
-        emit "orphan_pr_candidate" "$pr" "$gap_id" "$reason"
+        emit_ambient "orphan_pr_candidate" "$pr" "$gap_id" "$reason"
     fi
 
 done <<< "$PRS_TSV"
