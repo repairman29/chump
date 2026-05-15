@@ -79,6 +79,17 @@ _emit_reaper_skipped() {
         "$ts" "$wt_path" "$reason" >> "$ambient" 2>/dev/null || true
 }
 
+# INFRA-1291: emit kind=worktree_reap_protected when a worktree's target/ is
+# spared because its lease heartbeat_at is within CHUMP_LEASE_HEARTBEAT_TTL_S.
+_emit_worktree_reap_protected() {
+    local wt_path="$1" lease="$2"
+    local ambient="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
+    local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf '{"ts":"%s","kind":"worktree_reap_protected","worktree":"%s","lease":"%s","ttl_s":%d}\n' \
+        "$ts" "$wt_path" "$(basename "$lease")" "${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}" \
+        >> "$ambient" 2>/dev/null || true
+}
+
 # Collect worktree paths with active leases (for active-session check).
 # INFRA-1124: filter by heartbeat_at within last 15 min (same as stale-worktree-reaper).
 ACTIVE_WORKTREES=""
@@ -94,7 +105,8 @@ if [[ -d "$REPO/.chump-locks" && "$REAPER_SAFETY_CHECK" == "1" ]]; then
                 || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$hb" +%s 2>/dev/null \
                 || echo 0)
             age_s=$(( NOW - hb_ts ))
-            [[ $age_s -gt 900 ]] && continue
+            # INFRA-1291: use configurable TTL (default 600s, was hardcoded 900).
+            [[ $age_s -gt ${CHUMP_LEASE_HEARTBEAT_TTL_S:-600} ]] && continue
         fi
         ACTIVE_WORKTREES="$ACTIVE_WORKTREES $wt"
     done
@@ -134,9 +146,22 @@ for wt in "${CANDIDATE_DIRS[@]+"${CANDIDATE_DIRS[@]}"}"; do
         continue
     fi
 
-    # INFRA-1124: Active-lease check with heartbeat freshness (≤15 min).
+    # INFRA-1124: Active-lease check with heartbeat freshness.
+    # INFRA-1291: emit worktree_reap_protected (specific heartbeat-TTL guard)
+    # in addition to the generic worktree_reaper_skipped_active event.
     if [[ " $ACTIVE_WORKTREES " == *" $wt "* ]]; then
         echo "SKIP $wt — active lease with fresh heartbeat"
+        # Find the protecting lease file (scan .chump-locks/, small set).
+        _prot_lease=""
+        for _pl in "$REPO"/.chump-locks/*.json; do
+            [[ -f "$_pl" ]] || continue
+            _pl_wt=$(grep -o '"worktree"[[:space:]]*:[[:space:]]*"[^"]*"' "$_pl" 2>/dev/null \
+                | sed 's/.*"\([^"]*\)"$/\1/' || true)
+            if [[ "$_pl_wt" == "$wt" ]]; then
+                _prot_lease="$_pl"; break
+            fi
+        done
+        _emit_worktree_reap_protected "$wt" "${_prot_lease:-unknown}"
         _emit_reaper_skipped "$wt" "active_lease"
         SKIPPED=$((SKIPPED + 1))
         continue
