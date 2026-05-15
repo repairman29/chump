@@ -1469,6 +1469,25 @@ impl GapStore {
         Ok(PreflightResult::Available)
     }
 
+    /// Batch-fetch all currently-active leases as a `gap_id → session_id` map.
+    ///
+    /// Used by `handle_gap_queue` to replace per-row `preflight()` calls with a
+    /// single query, reducing latency from O(N×2 queries) to O(1 query) for the
+    /// list view (INFRA-1277).  Only non-expired leases are returned.
+    pub fn active_leases(&self) -> Result<std::collections::HashMap<String, String>> {
+        let now = unix_now();
+        let mut stmt = self
+            .conn
+            .prepare("SELECT gap_id, session_id FROM leases WHERE expires_at > ?1")?;
+        let map: std::collections::HashMap<String, String> = stmt
+            .query_map(params![now], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(map)
+    }
+
     /// Mark a gap as done. Stamps both `closed_at` (unix ts) and
     /// `closed_date` (ISO yyyy-mm-dd, matching YAML convention). When
     /// `closed_pr` is `Some(n)`, also sets the closed_pr column — this
