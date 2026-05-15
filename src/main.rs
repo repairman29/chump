@@ -3791,10 +3791,32 @@ async fn main() -> Result<()> {
                             };
                             println!("{}", val.trim());
                         } else {
+                            // INFRA-1285: helper to quote YAML scalar strings that need it.
+                            // Strings containing ':', '#', leading/trailing whitespace, or
+                            // starting with a YAML indicator char are quoted with double-quotes.
+                            fn yaml_quote(s: &str) -> String {
+                                let needs_quote = s.contains(':')
+                                    || s.contains('#')
+                                    || s.contains('"')
+                                    || s.contains('\\')
+                                    || s.starts_with(|c: char| {
+                                        matches!(c, '{' | '}' | '[' | ']' | ',' | '&' | '*' | '?' | '|' | '-' | '<' | '>' | '=' | '!' | '%' | '@' | '`')
+                                    })
+                                    || s.starts_with(|c: char| c.is_whitespace())
+                                    || s.ends_with(|c: char| c.is_whitespace())
+                                    || s.is_empty();
+                                if needs_quote {
+                                    // Escape backslashes and double-quotes inside the string.
+                                    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+                                    format!("\"{}\"", escaped)
+                                } else {
+                                    s.to_string()
+                                }
+                            }
                             // Default: status/closed_pr/closed_date promoted before description (INFRA-1037)
                             println!("- id: {}", g.id);
                             println!("  domain: {}", g.domain);
-                            println!("  title: {}", g.title);
+                            println!("  title: {}", yaml_quote(&g.title));
                             println!("  status: {}", g.status);
                             println!("  priority: {}", g.priority);
                             println!("  effort: {}", g.effort);
@@ -3814,18 +3836,21 @@ async fn main() -> Result<()> {
                                 }
                             }
                             if !ac_items.is_empty() {
-                                // CREDIBLE-033: numbered list, WARN prefix on vague items.
+                                // INFRA-1285: emit as YAML list (- "item"), not numbered mapping.
+                                // Warn on vague items but keep valid YAML.
                                 println!("  acceptance_criteria:");
-                                for (i, item) in ac_items.iter().enumerate() {
+                                for item in ac_items.iter() {
                                     let up = item.to_uppercase();
                                     let is_vague = up.contains("TODO")
                                         || item.contains("TBD")
                                         || item.contains("<fill in>");
-                                    if is_vague {
-                                        println!("    {}. WARN: {}", i + 1, item);
+                                    let display = if is_vague {
+                                        format!("WARN: {}", item)
                                     } else {
-                                        println!("    {}. {}", i + 1, item);
-                                    }
+                                        item.clone()
+                                    };
+                                    // Always quote AC items — they often contain colons.
+                                    println!("    - {}", yaml_quote(&display));
                                 }
                                 if ac_has_todos {
                                     eprintln!(
@@ -3835,9 +3860,9 @@ async fn main() -> Result<()> {
                                     );
                                 }
                             } else if !g.acceptance_criteria.trim().is_empty() {
-                                // Fallback: raw text when not parseable as JSON list.
+                                // INFRA-1285: fallback raw text — wrap as single-item YAML list.
                                 println!("  acceptance_criteria:");
-                                println!("    1. {}", g.acceptance_criteria.trim());
+                                println!("    - {}", yaml_quote(g.acceptance_criteria.trim()));
                             }
                             if !g.notes.is_empty() {
                                 println!("  notes: |");
