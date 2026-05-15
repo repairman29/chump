@@ -310,6 +310,67 @@
       chump-status-footer .sf-pillars { flex-basis: 100%; }
     }
 
+    /* PRODUCT-113: cost ceiling inputs in CONFIG + kill-switch modal.
+       Defends archetype 4 (enterprise auditor) "what if the AI runs $1000
+       overnight" concern. See docs/design/OPERATOR_CONSOLE_V2.md. */
+    .cost-threshold {
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    .cost-threshold-label {
+      font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+      color: var(--text-secondary);
+    }
+    .cost-threshold input[type="number"] {
+      padding: 6px 8px; background: var(--bg-elevated);
+      border: 1px solid var(--border); color: var(--text-primary, var(--text));
+      border-radius: var(--radius-sm); font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+    .cost-threshold input[type="number"]:focus {
+      outline: 2px solid var(--accent); outline-offset: 1px;
+    }
+
+    /* Kill-switch modal — alertdialog overlay when /api/* returns 402. */
+    .cost-kill-modal {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .cost-kill-modal-shell {
+      background: var(--bg-surface); color: var(--text-primary, var(--text));
+      border: 2px solid var(--error, #ff453a);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      max-width: 480px;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    }
+    .cost-kill-title {
+      font-size: 18px; font-weight: 700;
+      color: var(--error, #ff453a);
+      margin-bottom: 12px;
+    }
+    .cost-kill-msg { font-size: 13px; line-height: 1.5; margin-bottom: 12px; }
+    .cost-kill-msg strong { color: var(--error, #ff453a); }
+    .cost-kill-actions {
+      display: flex; gap: 8px; margin-bottom: 8px;
+    }
+    .cost-kill-config {
+      background: var(--accent); color: #fff;
+      padding: 6px 14px; border: none; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 12px; font-weight: 500;
+    }
+    .cost-kill-config:hover { filter: brightness(1.15); }
+    .cost-kill-dismiss {
+      background: transparent; color: var(--text-secondary);
+      border: 1px solid var(--border);
+      padding: 6px 14px; border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 12px;
+    }
+    .cost-kill-dismiss:hover { color: var(--text); border-color: var(--text-secondary); }
+    .cost-kill-hint { font-size: 11px; color: var(--text-secondary); }
+    .cost-kill-hint code { font-family: "SF Mono", ui-monospace, monospace; }
+
     /* PRODUCT-109: <chump-tool-approval-tray> persistent banner above main
        content when approvals are pending. Hidden by default; visible + sticky
        when shell is unhidden. See docs/design/OPERATOR_CONSOLE_V2.md

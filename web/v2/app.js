@@ -87,6 +87,84 @@ window.chumpPrefs = window.chumpPrefs || (() => {
   });
 })();
 
+// ── Cost-ceiling 402 interceptor (PRODUCT-113) ──────────────────────────────
+// Frontend half of the kill-switch contract: when the backend returns 402
+// Payment Required on any /api/chat or /api/gap/work request, the body
+// carries {error:'session_cost_exceeded', kill_threshold, current} and the
+// PWA renders a modal that explains what happened and how to raise the
+// ceiling. Backend enforcement (Rust handler change) is a follow-up gap.
+//
+// This module ONLY handles the UI side: it wraps window.fetch so every
+// callsite that hits an /api/* endpoint inherits the modal automatically.
+// No view code needs to know about cost-kill semantics.
+(() => {
+  const origFetch = window.fetch.bind(window);
+  let modalOpen = false;
+  window.fetch = async function(input, init) {
+    const res = await origFetch(input, init);
+    if (res.status === 402) {
+      try {
+        const cloned = res.clone();
+        const body = await cloned.json().catch(() => ({}));
+        if (body && (body.error === 'session_cost_exceeded' || body.error === 'fleet_cost_exceeded')) {
+          if (!modalOpen) renderKillModal(body);
+        }
+      } catch {}
+    }
+    return res;
+  };
+
+  function renderKillModal(body) {
+    modalOpen = true;
+    const kind = body.error === 'fleet_cost_exceeded' ? 'fleet' : 'session';
+    const title = kind === 'fleet'
+      ? 'Fleet daily cost ceiling exceeded'
+      : 'Session cost ceiling exceeded';
+    const ceiling = body.kill_threshold ?? '?';
+    const current = body.current ?? '?';
+    const modal = document.createElement('div');
+    modal.className = 'cost-kill-modal';
+    modal.setAttribute('role', 'alertdialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', title);
+    modal.innerHTML = `
+      <div class="cost-kill-modal-shell">
+        <h2 class="cost-kill-title">⛔ ${title}</h2>
+        <p class="cost-kill-msg">
+          This ${kind} hit its <strong>$${ceiling}</strong> kill threshold
+          (current: <strong>$${current}</strong>). New turn requests will be
+          refused until the ceiling is raised or the cap resets.
+        </p>
+        <p class="cost-kill-actions">
+          <button type="button" class="cost-kill-config">Raise ceiling in CONFIG</button>
+          <button type="button" class="cost-kill-dismiss">Dismiss</button>
+        </p>
+        <p class="cost-kill-hint">
+          Telemetry: <code>kind=cost_threshold_crossed</code> fired in ambient.jsonl.
+        </p>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    modal.querySelector('.cost-kill-config')?.addEventListener('click', () => {
+      document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+      closeModal();
+    });
+    modal.querySelector('.cost-kill-dismiss')?.addEventListener('click', closeModal);
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'cost_threshold_crossed',
+        which: kind, kill_threshold: ceiling, current,
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+
+    function closeModal() {
+      modalOpen = false;
+      modal.remove();
+    }
+  }
+})();
+
 // ── ChumpAcpDeeplink helper (PRODUCT-110) ───────────────────────────────────
 // Build chump://acp/open?... URLs the operator's registered ACP client (Zed,
 // JetBrains, etc) can intercept and open. Competitive-differentiation surface
@@ -1897,9 +1975,47 @@ class ChumpViewSettings extends HTMLElement {
           </p>
         </div>
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 12px;">Cost ceiling (PRODUCT-113)</p>
+          <p style="color: var(--text-muted); font-size: 0.85em; margin-bottom: 8px;">
+            Operator-tunable budget thresholds. Status footer cost meter colors per
+            band; if a session exceeds the kill threshold, new turn requests are
+            refused. Defends archetype 4 (enterprise) "what if the AI runs $1000
+            overnight" concern.
+          </p>
+          <div id="cost-thresholds" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:480px;">
+            <label class="cost-threshold">
+              <span class="cost-threshold-label">warn at $</span>
+              <input type="number" id="cost-warn" min="0" step="0.05" value="0.50"
+                     aria-label="Cost warning threshold in dollars">
+            </label>
+            <label class="cost-threshold">
+              <span class="cost-threshold-label">red at $</span>
+              <input type="number" id="cost-red" min="0" step="0.10" value="2.00"
+                     aria-label="Cost red threshold in dollars">
+            </label>
+            <label class="cost-threshold">
+              <span class="cost-threshold-label">KILL at $</span>
+              <input type="number" id="cost-kill" min="0" step="1.00" value="5.00"
+                     aria-label="Cost kill-switch threshold in dollars (session refused above this)">
+            </label>
+          </div>
+          <p id="cost-threshold-error" style="color: var(--accent-error,#cc3344); font-size: 0.8em; margin-top: 6px; display:none;"></p>
+          <div style="display:flex;gap:12px;align-items:center;margin-top:10px;">
+            <label style="display:inline-flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="cost-fleet-kill">
+              <span>Pause all workers when fleet daily cost exceeds $</span>
+              <input type="number" id="cost-fleet-kill-threshold" min="0" step="1" value="20"
+                     aria-label="Fleet-wide daily cost ceiling" style="width:80px;">
+            </label>
+          </div>
+          <button type="button" id="cost-threshold-reset" style="padding:4px 10px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);border-radius:4px;cursor:pointer;font-size:11px;margin-top:8px;">
+            Reset to defaults
+          </button>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
           <p class="setting-label" style="margin-bottom: 12px;">PWA Preferences (INFRA-1280)</p>
           <p style="color: var(--text-muted); font-size: 0.85em; margin-bottom: 8px;">
-            Theme + queue filters + (future) sidecar / cost thresholds / stream pause are persisted
+            Theme + queue filters + cost thresholds + (future) sidecar / stream pause are persisted
             under the <code>chump.*</code> localStorage namespace. Schema:
             <code>docs/api/PWA_STATE_SCHEMA.md</code>.
           </p>
@@ -1916,7 +2032,87 @@ class ChumpViewSettings extends HTMLElement {
     this.#loadOperatorConfig();
     this.#loadApiSecrets();
     this.#wireThemeToggle();
+    this.#wireCostThresholds();
     this.#wireResetButton();
+  }
+
+  // PRODUCT-113: cost-ceiling inputs (warn / red / kill) + fleet-wide kill toggle.
+  // Reads from chumpPrefs.cost.thresholds, validates positive + warn<red<kill,
+  // persists on every change. Cost meter + status-footer cost slot
+  // (PRODUCT-107) read the same chumpPrefs key to color their value bands.
+  // Kill switch is a frontend contract today — backend enforcement (POST
+  // /api/chat returns 402 when session cost > kill) is a follow-up gap.
+  #wireCostThresholds() {
+    const warn = this.querySelector('#cost-warn');
+    const red  = this.querySelector('#cost-red');
+    const kill = this.querySelector('#cost-kill');
+    const fleetKill   = this.querySelector('#cost-fleet-kill');
+    const fleetKillT  = this.querySelector('#cost-fleet-kill-threshold');
+    const err  = this.querySelector('#cost-threshold-error');
+    const resetBtn = this.querySelector('#cost-threshold-reset');
+    if (!warn || !red || !kill) return;
+
+    const stored = (window.chumpPrefs?.get('cost.thresholds', null)) || {};
+    const fleet = (window.chumpPrefs?.get('cost.fleet_kill', null)) || {};
+    if (stored.warn != null) warn.value = stored.warn;
+    if (stored.red  != null) red.value  = stored.red;
+    if (stored.kill != null) kill.value = stored.kill;
+    if (fleetKill)  fleetKill.checked   = fleet.enabled === true;
+    if (fleetKillT && fleet.threshold != null) fleetKillT.value = fleet.threshold;
+
+    const validate = () => {
+      const w = Number(warn.value), r = Number(red.value), k = Number(kill.value);
+      if (!Number.isFinite(w) || w < 0) return 'warn must be ≥ 0';
+      if (!Number.isFinite(r) || r < 0) return 'red must be ≥ 0';
+      if (!Number.isFinite(k) || k < 0) return 'kill must be ≥ 0';
+      if (!(w < r))      return 'warn must be less than red';
+      if (!(r < k))      return 'red must be less than kill';
+      return null;
+    };
+
+    const persist = () => {
+      const msg = validate();
+      if (err) { err.style.display = msg ? '' : 'none'; err.textContent = msg || ''; }
+      if (msg) return; // don't persist invalid state
+      const next = { warn: Number(warn.value), red: Number(red.value), kill: Number(kill.value) };
+      const prev = window.chumpPrefs?.get('cost.thresholds', null);
+      window.chumpPrefs?.set('cost.thresholds', next);
+      // Telemetry: emit when any threshold actually changed.
+      if (!prev || prev.warn !== next.warn || prev.red !== next.red || prev.kill !== next.kill) {
+        try {
+          navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+            kind: 'cost_threshold_changed',
+            warn: next.warn, red: next.red, kill: next.kill,
+            ts: new Date().toISOString(),
+          }));
+        } catch {}
+      }
+    };
+
+    [warn, red, kill].forEach((el) => el.addEventListener('change', persist));
+
+    const persistFleet = () => {
+      const enabled = !!fleetKill?.checked;
+      const t = Number(fleetKillT?.value || 0);
+      window.chumpPrefs?.set('cost.fleet_kill', { enabled, threshold: t });
+    };
+    fleetKill?.addEventListener('change', persistFleet);
+    fleetKillT?.addEventListener('change', persistFleet);
+
+    resetBtn?.addEventListener('click', () => {
+      warn.value = '0.50'; red.value = '2.00'; kill.value = '5.00';
+      if (fleetKill) fleetKill.checked = false;
+      if (fleetKillT) fleetKillT.value = '20';
+      window.chumpPrefs?.del('cost.thresholds');
+      window.chumpPrefs?.del('cost.fleet_kill');
+      if (err) { err.style.display = 'none'; err.textContent = ''; }
+      try {
+        navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+          kind: 'cost_threshold_changed', action: 'reset',
+          ts: new Date().toISOString(),
+        }));
+      } catch {}
+    });
   }
 
   // INFRA-1280 Sub-gap 4: theme toggle (System/Light/Dark/High-contrast).
