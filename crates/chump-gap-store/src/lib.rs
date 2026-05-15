@@ -5155,51 +5155,76 @@ meta:
     #[test]
     fn title_jaccard_completely_different() {
         let score = GapStore::title_jaccard("alpha bravo charlie", "delta echo foxtrot");
-        assert_eq!(score, 0.0, "completely different tokens should have score 0.0");
+        assert_eq!(
+            score, 0.0,
+            "completely different tokens should have score 0.0"
+        );
     }
 
     #[test]
     fn title_jaccard_partial_overlap() {
         let score = GapStore::title_jaccard("foo bar baz", "foo bar qux");
         // Tokens: {foo, bar, baz} vs {foo, bar, qux} → intersection=2, union=4 → 0.5
-        assert!(score > 0.4 && score < 0.6, "partial overlap should be ~0.5, got {}", score);
+        assert!(
+            score > 0.4 && score < 0.6,
+            "partial overlap should be ~0.5, got {}",
+            score
+        );
     }
 
     #[test]
     fn title_jaccard_stopword_filtering() {
         let score = GapStore::title_jaccard("the foo and the bar", "the foo and the baz");
         // After stopword removal: {foo, bar} vs {foo, baz} → intersection=1, union=3 → 0.333...
-        assert!(score > 0.3 && score < 0.4, "stopword filtering should work correctly, got {}", score);
+        assert!(
+            score > 0.3 && score < 0.4,
+            "stopword filtering should work correctly, got {}",
+            score
+        );
     }
 
     #[test]
     fn title_jaccard_pillar_prefix_normalization() {
-        let score1 = GapStore::title_jaccard(
-            "RESILIENT: foo bar",
-            "foo bar"
-        );
-        let score2 = GapStore::title_jaccard(
-            "EFFECTIVE: foo bar baz",
-            "CREDIBLE: foo bar qux"
-        );
+        let score1 = GapStore::title_jaccard("RESILIENT: foo bar", "foo bar");
+        let score2 = GapStore::title_jaccard("EFFECTIVE: foo bar baz", "CREDIBLE: foo bar qux");
         // Both should normalize pillar prefixes away
-        assert!(score1 > 0.7, "pillar prefix should not affect core similarity");
-        assert!(score2 > 0.3 && score2 < 0.7, "both should strip pillar prefix");
+        assert!(
+            score1 > 0.7,
+            "pillar prefix should not affect core similarity"
+        );
+        assert!(
+            score2 > 0.3 && score2 < 0.7,
+            "both should strip pillar prefix"
+        );
     }
 
     // INFRA-1149: similarity_candidates integration tests
     #[test]
     fn similarity_candidates_finds_similar_gaps() {
         let (store, _dir) = test_store();
-        let id1 = store.reserve("INFRA", "RESILIENT: foo bar baz", "P1", "s").unwrap();
-        let id2 = store.reserve("INFRA", "RESILIENT: foo bar qux", "P1", "s").unwrap();
-        let id3 = store.reserve("INFRA", "unrelated alpha beta", "P1", "s").unwrap();
+        let id1 = store
+            .reserve("INFRA", "RESILIENT: foo bar baz", "P1", "s")
+            .unwrap();
+        let id2 = store
+            .reserve("INFRA", "RESILIENT: foo bar qux", "P1", "s")
+            .unwrap();
+        let id3 = store
+            .reserve("INFRA", "unrelated alpha beta", "P1", "s")
+            .unwrap();
 
-        let candidates = store.similarity_candidates("RESILIENT: foo bar something", 3, 30).unwrap();
+        let candidates = store
+            .similarity_candidates("RESILIENT: foo bar something", 3, 30)
+            .unwrap();
 
         // Should find id1 and id2 with similarity > 0
-        assert!(candidates.iter().any(|(id, _, _, _)| id == &id1), "should find similar gap id1");
-        assert!(candidates.iter().any(|(id, _, _, _)| id == &id2), "should find similar gap id2");
+        assert!(
+            candidates.iter().any(|(id, _, _, _)| id == &id1),
+            "should find similar gap id1"
+        );
+        assert!(
+            candidates.iter().any(|(id, _, _, _)| id == &id2),
+            "should find similar gap id2"
+        );
 
         // id1 should rank higher than id3
         if let Some(pos1) = candidates.iter().position(|(id, _, _, _)| id == &id1) {
@@ -5213,7 +5238,9 @@ meta:
     fn similarity_candidates_respects_top_n() {
         let (store, _dir) = test_store();
         for i in 0..5 {
-            store.reserve("INFRA", &format!("foo bar variant {}", i), "P1", "s").unwrap();
+            store
+                .reserve("INFRA", &format!("foo bar variant {}", i), "P1", "s")
+                .unwrap();
         }
 
         let candidates = store.similarity_candidates("foo bar query", 2, 30).unwrap();
@@ -5230,12 +5257,21 @@ meta:
         store.ship(&id_done, "test-session", None).unwrap();
 
         // Query with 30-day lookback should find both
-        let candidates_30 = store.similarity_candidates("gap title variant", 3, 30).unwrap();
-        assert!(candidates_30.len() > 0, "should find gaps within 30-day window");
+        let candidates_30 = store
+            .similarity_candidates("gap title variant", 3, 30)
+            .unwrap();
+        assert!(
+            candidates_30.len() > 0,
+            "should find gaps within 30-day window"
+        );
 
         // Query with 0-day lookback should only find open gaps
-        let candidates_0 = store.similarity_candidates("gap title variant", 3, 0).unwrap();
-        assert!(candidates_0.iter().any(|(id, _, _, _)| id == &id_open),
-            "should include open gaps regardless of lookback");
+        let candidates_0 = store
+            .similarity_candidates("gap title variant", 3, 0)
+            .unwrap();
+        assert!(
+            candidates_0.iter().any(|(id, _, _, _)| id == &id_open),
+            "should include open gaps regardless of lookback"
+        );
     }
 }
