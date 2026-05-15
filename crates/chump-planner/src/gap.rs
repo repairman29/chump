@@ -148,6 +148,20 @@ impl Effort {
             Self::Xl => "xl",
         }
     }
+
+    /// INFRA-1281: rough cycle-time estimate in days, used by
+    /// `DependencyGraph::critical_path_days` to weight longest-path
+    /// computation. T-shirt sizing — operators can tune by editing this
+    /// match arm; the picker (INFRA-1258) re-derives via this same source.
+    pub fn days(&self) -> f32 {
+        match self {
+            Self::Xs => 0.5,
+            Self::S => 1.0,
+            Self::M => 3.0,
+            Self::L => 8.0,
+            Self::Xl => 21.0,
+        }
+    }
 }
 
 impl FromStr for Effort {

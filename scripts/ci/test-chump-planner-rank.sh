@@ -20,10 +20,24 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "=== INFRA-1257 chump-plan + launchd installer tests ==="
 
 # ── (a) Build chump-plan ─────────────────────────────────────────────────────
-BIN="$REPO_ROOT/target/debug/chump-plan"
+# In a linked worktree, cargo builds to the *main* workspace target/, not the
+# worktree's target/. Resolve via git rev-parse --git-common-dir.
+_GIT_COMMON="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || true)"
+if [[ -n "$_GIT_COMMON" ]]; then
+    # --git-common-dir returns the .git dir; workspace root is one level up.
+    _WORKSPACE_ROOT="$(cd "$(dirname "$_GIT_COMMON")" && pwd 2>/dev/null || echo "$REPO_ROOT")"
+    [[ -d "$_WORKSPACE_ROOT/target" ]] || _WORKSPACE_ROOT="$REPO_ROOT"
+else
+    _WORKSPACE_ROOT="$REPO_ROOT"
+fi
+BIN="$_WORKSPACE_ROOT/target/debug/chump-plan"
 if [[ ! -x "$BIN" ]]; then
     echo "  building chump-plan..."
     (cd "$REPO_ROOT" && cargo build -p chump-planner --bin chump-plan 2>&1 | tail -3)
+    # Re-check after build; may now be in workspace target.
+    if [[ ! -x "$BIN" ]]; then
+        BIN="$REPO_ROOT/target/debug/chump-plan"
+    fi
 fi
 [[ -x "$BIN" ]] && ok "chump-plan binary built at $BIN" || { fail "build failed"; exit 1; }
 
