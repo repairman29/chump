@@ -221,6 +221,31 @@ def _load_planner_priority(
     return out, "ok"
 
 
+def _is_acceptance_criteria_vague(ac: str) -> bool:
+    """INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
+    Returns True if the AC is empty, contains only TODO items, or contains only TBD items."""
+    if not ac:
+        return True
+
+    # Try to parse as JSON array (the canonical format)
+    try:
+        arr = json.loads(ac)
+        if isinstance(arr, list):
+            if not arr:
+                return True  # Empty array
+            # Check if all items are TODO or TBD strings
+            return all(
+                isinstance(item, str) and item.upper() in ("TODO", "TBD")
+                for item in arr
+            )
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # If not JSON array, check if the raw string is just TODO/TBD
+    upper = ac.upper()
+    return upper in ("TODO", "TBD") or (len(ac) < 50 and upper.count("TODO") == 1 and len(ac.split()) <= 2)
+
+
 def _emit_picker_event(repo_root: str, kind: str, **fields: object) -> None:
     """INFRA-1258: best-effort ambient emit. Never break the picker on log
     failure."""
@@ -367,11 +392,17 @@ def main() -> int:
         notes = (g.get("notes") or "").strip()
         if notes.upper().startswith("SUPERSEDED"):
             continue
+        # INFRA-1259: skip gaps with empty or TODO-only acceptance_criteria
+        # to avoid wasted work on unspecified requirements.
+        ac_text = (g.get("acceptance_criteria") or "").strip()
+        if _is_acceptance_criteria_vague(ac_text):
+            continue
+
         # INFRA-756: downrank gaps with incomplete acceptance_criteria (obs-AC placeholders)
         # by adding 5 to priority rank. This keeps them pickable but below fully-specified gaps.
         prio_rank = PRIO_RANK.get(p, 9)
-        ac_text = (g.get("acceptance_criteria") or "").upper()
-        if ac_text and ("TODO" in ac_text or "TBD" in ac_text or "<FILL IN>" in ac_text):
+        ac_text_upper = ac_text.upper()
+        if ac_text and ("TODO" in ac_text_upper or "TBD" in ac_text_upper or "<FILL IN>" in ac_text_upper):
             prio_rank += 5
 
         # INFRA-1258: planner rank takes precedence when available. Lower rank

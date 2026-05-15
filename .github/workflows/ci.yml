@@ -448,6 +448,9 @@ jobs:
       - name: gap-preflight unregistered-ID guard (INFRA-020)
         run: bash scripts/ci/test-gap-preflight-unregistered.sh
 
+      - name: gap-preflight AC gate + picker AC filter (INFRA-1259)
+        run: bash scripts/ci/test-gap-preflight-ac-gate.sh
+
       - name: gap-claim claim-time exclusivity race guard (INFRA-403)
         run: bash scripts/ci/test-gap-claim-race.sh
 

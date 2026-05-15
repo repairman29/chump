@@ -266,6 +266,36 @@ fn is_test_domain(domain: &str) -> bool {
         || domain.ends_with("TEST")
 }
 
+/// INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
+fn is_acceptance_criteria_vague(ac: &str) -> bool {
+    let trimmed = ac.trim();
+    // Empty AC is vague
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    // Try to parse as JSON array (the canonical format)
+    if let Ok(serde_json::Value::Array(arr)) = serde_json::from_str(trimmed) {
+        if arr.is_empty() {
+            return true; // Empty array
+        }
+        // Check if all items are TODO or TBD strings
+        let all_vague = arr.iter().all(|item| {
+            if let Some(s) = item.as_str() {
+                let upper = s.to_uppercase();
+                upper == "TODO" || upper == "TBD" || upper.contains("TODO") || upper.contains("TBD")
+            } else {
+                false
+            }
+        });
+        return all_vague && !arr.is_empty();
+    }
+
+    // If not JSON array, check if the raw string is just TODO/TBD
+    let upper = trimmed.to_uppercase();
+    upper == "TODO" || upper == "TBD" || (upper.len() < 50 && upper.contains("TODO"))
+}
+
 /// INFRA-094: write a marker recording that the chump CLI just modified
 /// docs/gaps.yaml via a canonical operation (`gap dump --out` /
 /// `gap ship --update-yaml`). The pre-commit hook reads this marker — if
@@ -3871,9 +3901,15 @@ async fn main() -> Result<()> {
                                 } else {
                                     String::new()
                                 };
+                                // INFRA-1259: add warning indicator for vague AC
+                                let ac_warn = if is_acceptance_criteria_vague(&g.acceptance_criteria) {
+                                    " ⚠"
+                                } else {
+                                    ""
+                                };
                                 println!(
-                                    "[{}] {} — {} ({}/{}){done_suffix}",
-                                    g.status, g.id, g.title, g.priority, g.effort
+                                    "[{}] {} — {} ({}/{}){}{done_suffix}",
+                                    g.status, g.id, g.title, g.priority, g.effort, ac_warn
                                 );
                             }
 

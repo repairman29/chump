@@ -948,6 +948,37 @@ fn json_escape(s: &str) -> String {
     out
 }
 
+/// INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
+/// Returns true if the AC is empty, contains only TODO items, or contains only TBD items.
+fn is_acceptance_criteria_vague(ac: &str) -> bool {
+    let trimmed = ac.trim();
+    // Empty AC is vague
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    // Try to parse as JSON array (the canonical format)
+    if let Ok(serde_json::Value::Array(arr)) = serde_json::from_str(trimmed) {
+        if arr.is_empty() {
+            return true; // Empty array
+        }
+        // Check if all items are TODO or TBD strings
+        let all_vague = arr.iter().all(|item| {
+            if let Some(s) = item.as_str() {
+                let upper = s.to_uppercase();
+                upper == "TODO" || upper == "TBD" || upper.contains("TODO") || upper.contains("TBD")
+            } else {
+                false
+            }
+        });
+        return all_vague && !arr.is_empty();
+    }
+
+    // If not JSON array, check if the raw string is just TODO/TBD
+    let upper = trimmed.to_uppercase();
+    upper == "TODO" || upper == "TBD" || (upper.len() < 50 && upper.contains("TODO"))
+}
+
 /// Step 2: ensure the gap is in state.db. If missing, attempt to seed
 /// via `chump gap import` (uses the per-file YAML mirrors as source of
 /// truth — INFRA-470 / INFRA-460 territory).
@@ -998,6 +1029,23 @@ fn verify_or_seed_gap(repo_root: &Path, gap_id: &str) -> Result<()> {
             gap_id
         );
     }
+
+    // INFRA-1259: Reject if acceptance_criteria is empty or contains only TODO items.
+    let ac: String = conn
+        .query_row(
+            "SELECT acceptance_criteria FROM gaps WHERE id = ?1",
+            [gap_id],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+
+    if is_acceptance_criteria_vague(&ac) {
+        bail!(
+            "Gap {} has no concrete acceptance criteria — add AC before claiming",
+            gap_id
+        );
+    }
+
     Ok(())
 }
 
