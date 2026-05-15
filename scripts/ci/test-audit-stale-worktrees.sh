@@ -53,14 +53,13 @@ make_backdated_worktree() {
     local wt_path="$FAKE_SCAN/$name"
     local branch="chump/${name}"
     git -C "$FAKE_REPO" worktree add "$wt_path" -b "$branch" -q 2>/dev/null
-    # Backdate the directory mtime. BSD `touch -t YYYYMMDDhhmm`, GNU `touch -d "X hours ago"`.
-    local backdated
-    backdated="$(date -u -v-${age_h}H +%Y%m%d%H%M 2>/dev/null \
-        || date -u -d "${age_h} hours ago" +%Y%m%d%H%M 2>/dev/null \
-        || echo "")"
-    if [[ -n "$backdated" ]]; then
-        touch -t "$backdated" "$wt_path" 2>/dev/null || true
-    fi
+    # Backdate the directory mtime portably. BSD `date -v` and GNU `date -d`
+    # have incompatible syntax + `touch -t` parsing varied across the CI runner
+    # vs local macOS — original 2026-05-15 PR #2097 failed on Linux because of
+    # this. Python's os.utime is portable everywhere python3 is installed
+    # (mandatory on Chump runners and dev machines).
+    python3 -c "import os,time; t=time.time()-${age_h}*3600; os.utime('$wt_path',(t,t))" \
+        2>/dev/null || true
     printf '%s\n' "$wt_path"
 }
 
@@ -69,8 +68,9 @@ make_backdated_worktree() {
 write_lease() {
     local name="$1" wt_path="$2" hb_age_h="$3"
     local hb
-    hb="$(date -u -v-${hb_age_h}H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-        || date -u -d "${hb_age_h} hours ago" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    # Portable ISO8601-N-hours-ago via Python (BSD date -v vs GNU date -d
+    # incompatibility broke this on Linux CI in PR #2097's original test).
+    hb="$(python3 -c "import time; print(time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(time.time()-${hb_age_h}*3600)))" 2>/dev/null \
         || echo "1970-01-01T00:00:00Z")"
     local now; now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     cat > "$FAKE_LOCKS/${name}.json" << LEASE
