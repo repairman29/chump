@@ -10,7 +10,7 @@
 # #565/#566/#568/#569, 2026-04-26).
 #
 # This wrapper still owns:
-#   1. Session-id resolution (matches gap-claim.sh).
+#   1. Session-id resolution (matches chump claim).
 #   2. Main-worktree guard (refuse to reserve from /Projects/Chump directly).
 #   3. Writing `pending_new_gap` into the session's lease file so that
 #      sibling agents see the in-flight reservation immediately and the
@@ -27,7 +27,7 @@
 # Prints the reserved ID as the only stdout line; human messages go to stderr.
 #
 # Environment:
-#   CHUMP_SESSION_ID / CLAUDE_SESSION_ID — same resolution order as gap-claim.sh
+#   CHUMP_SESSION_ID / CLAUDE_SESSION_ID — same resolution order as chump claim
 #   CHUMP_ALLOW_MAIN_WORKTREE=1 — allow running from the main worktree (testing)
 #   CHUMP_RESERVE_SCAN_OPEN_PRS=1 — opt-in `gh pr list` scan inside chump
 #   CHUMP_LOCK_DIR — override `.chump-locks/` path (tests; must match gap-preflight)
@@ -61,7 +61,7 @@ source "$(dirname "$0")/../lib/repo-paths.sh"
 mkdir -p "$LOCK_DIR"
 FLOCK_PATH="$LOCK_DIR/.gap-reserve-${DOMAIN}.flock"
 
-# ── Main-worktree guard (same rationale as gap-claim.sh) ─────────────────────
+# ── Main-worktree guard (same rationale as chump claim) ─────────────────────
 _WT_LIST="$(git worktree list --porcelain)"
 MAIN_WORKTREE_PATH="$(awk '/^worktree /{sub(/^worktree /,""); print; exit}' <<<"$_WT_LIST")"
 if [[ "$REPO_ROOT" == "$MAIN_WORKTREE_PATH" ]] && [[ "${CHUMP_ALLOW_MAIN_WORKTREE:-0}" != "1" ]]; then
@@ -70,7 +70,7 @@ if [[ "$REPO_ROOT" == "$MAIN_WORKTREE_PATH" ]] && [[ "${CHUMP_ALLOW_MAIN_WORKTRE
     exit 1
 fi
 
-# ── Session ID (match gap-claim.sh) ──────────────────────────────────────────
+# ── Session ID (match chump claim) ──────────────────────────────────────────
 SESSION_ID="${CHUMP_SESSION_ID:-${CLAUDE_SESSION_ID:-}}"
 if [[ -z "$SESSION_ID" ]]; then
     WT_SESSION_CACHE="$LOCK_DIR/.wt-session-id"
