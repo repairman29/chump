@@ -35,6 +35,10 @@
 
 set -uo pipefail
 
+# INFRA-1326: source github_cache.sh for cache_lookup_checks (cache-first CI reads)
+_CACHE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/github_cache.sh"
+[[ -f "$_CACHE_LIB" ]] && source "$_CACHE_LIB" 2>/dev/null || true
+
 if [[ "${CHUMP_ORPHAN_PR_CLOSER:-1}" == "0" ]]; then
     echo "[orphan-pr-closer] CHUMP_ORPHAN_PR_CLOSER=0 — skipping" >&2
     exit 0
@@ -158,6 +162,40 @@ while IFS=$'\t' read -r pr title branch updated; do
         reason="$reason (commit $( echo "$_main_sha" | cut -c1-12) on main)"
     elif [[ -n "$closed_pr" ]]; then
         reason="$reason (landed via #$closed_pr)"
+    fi
+
+    # INFRA-1326: skip if auto-merge is armed (PR is about to merge itself)
+    _auto_merge_armed=0
+    _pr_meta=$(gh api "repos/{owner}/{repo}/pulls/$pr" \
+        --jq '{autoMerge: .auto_merge, state: .state}' 2>/dev/null || echo '{}')
+    if echo "$_pr_meta" | grep -q '"autoMerge":[^n]'; then
+        _auto_merge_armed=1
+    fi
+    if [[ "$_auto_merge_armed" == "1" ]]; then
+        echo "[orphan-pr-closer] SKIP #$pr ($gap_id): auto-merge armed — waiting for GitHub to process" >&2
+        emit "pr_close_skipped_auto_merge_armed" "$pr" "$gap_id" "auto_merge_armed"
+        continue
+    fi
+
+    # INFRA-1326: skip if any CI check is QUEUED or IN_PROGRESS
+    _has_live_ci=0
+    _head_sha=$(gh api "repos/{owner}/{repo}/pulls/$pr" --jq '.head.sha' 2>/dev/null || echo "")
+    if [[ -n "$_head_sha" ]]; then
+        # cache_lookup_checks returns "name\tstatus\tconclusion" per line
+        if type cache_lookup_checks &>/dev/null; then
+            _checks=$(cache_lookup_checks "$_head_sha" 2>/dev/null || echo "")
+        else
+            _checks=$(gh api "repos/{owner}/{repo}/commits/$_head_sha/check-runs" \
+                --jq '.check_runs[] | [.name, .status, .conclusion] | @tsv' 2>/dev/null || echo "")
+        fi
+        if echo "$_checks" | awk -F'\t' '{print $2}' | grep -qE '^(queued|in_progress)$'; then
+            _has_live_ci=1
+        fi
+    fi
+    if [[ "$_has_live_ci" == "1" ]]; then
+        echo "[orphan-pr-closer] SKIP #$pr ($gap_id): CI checks still running/queued" >&2
+        emit "pr_close_skipped_ci_running" "$pr" "$gap_id" "ci_in_progress"
+        continue
     fi
 
     if [[ "$APPLY" == "1" ]]; then
