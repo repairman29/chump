@@ -2401,7 +2401,10 @@ fn validate_setting_value(key: &str, value: &str) -> bool {
             .is_some_and(|n| (1..=600).contains(&n)),
         // PRODUCT-118: work-backend selector — must match dispatch::backend_from_env.
         "CHUMP_WORK_BACKEND" => {
-            matches!(value, "claude" | "opencode" | "aider" | "chump-local" | "exec-gap")
+            matches!(
+                value,
+                "claude" | "opencode" | "aider" | "chump-local" | "exec-gap"
+            )
         }
         _ => false,
     }
