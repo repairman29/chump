@@ -31,7 +31,7 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 echo "=== bot-merge.sh + sibling scripts syntax regression tests ==="
 echo
 
-for f in bot-merge.sh gap-preflight.sh gap-claim.sh gap-reserve.sh chump-commit.sh; do
+for f in bot-merge.sh gap-reserve.sh chump-commit.sh; do  # gap-claim.sh + gap-preflight.sh deleted in INFRA-987
     path="$SCRIPT_DIR/$f"
     if [[ ! -f "$path" ]]; then
         continue
