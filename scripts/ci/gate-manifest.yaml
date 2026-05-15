@@ -116,6 +116,20 @@ gates:
     expected_exit_nonzero: false
     motivating_incident_pr: null
 
+  - id: CREDIBLE-057-acp-real-client-protocol
+    check_script: scripts/ci/test-acp-real-clients.sh
+    closing_pr: null
+    failure_class: acp-protocol-violation
+    description: |
+      ACP real-client fixture replay: verifies the chump ACP server responds
+      with camelCase field names (sessionId) as required by the ACP spec.
+      Force-fire: the fixture force-fire-broken.json contains a response with
+      snake_case 'session_id' — the test harness must detect this violation
+      and exit non-zero, confirming the gate is live.
+    fixture_kind: in-script-self-test
+    expected_exit_nonzero: false
+    motivating_incident_pr: null
+
 # Entries intentionally excluded from manifest:
 # - INFRA-825: stale-binary hard-fail is a runtime check; covered by version.rs
 #   unit tests (pr_1444_replay_refuses_without_override).

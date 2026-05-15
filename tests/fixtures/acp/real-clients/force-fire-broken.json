@@ -1,0 +1,22 @@
+{
+  "_comment": "CREDIBLE-057 force-fire fixture. This fixture describes an ACP server response that uses the WRONG field name 'session_id' (snake_case) instead of the correct 'sessionId' (camelCase). The test harness must detect this protocol violation and exit non-zero.",
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "session/new",
+    "params": {
+      "cwd": "/tmp/test",
+      "mcpServers": []
+    }
+  },
+  "broken_response": {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "result": {
+      "session_id": "broken-snake-case-field",
+      "configOptions": [],
+      "modes": []
+    }
+  },
+  "violation": "result.session_id should be result.sessionId per ACP spec"
+}

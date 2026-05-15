@@ -1,0 +1,18 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "method": "terminal/wait_for_exit",
+    "params": {
+      "sessionId": "SESSION_ID_PLACEHOLDER",
+      "terminalId": "TERMINAL_ID_PLACEHOLDER"
+    }
+  },
+  "expected_response_shape": {
+    "jsonrpc": "2.0",
+    "id": 12,
+    "result": {
+      "required_keys": ["exitCode"]
+    }
+  }
+}
