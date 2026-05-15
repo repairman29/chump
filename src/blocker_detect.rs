@@ -332,16 +332,12 @@ mod tests {
 
     /// Acceptance test: timeout-driven blocker → ambient.jsonl line appears.
     #[test]
+    #[serial_test::serial(ambient_env)]
     fn timeout_emits_ambient_alert_line() {
         let tmp = tempfile::tempdir().unwrap();
         let log = tmp.path().join("ambient.jsonl");
-        // SAFETY: tests run single-threaded by default in this module
-        // (test functions don't share env state intentionally), and we set
-        // CHUMP_AMBIENT_LOG before any concurrent access.
-        unsafe {
-            std::env::set_var("CHUMP_AMBIENT_LOG", &log);
-            std::env::set_var("CHUMP_SESSION_ID", "test-session");
-        }
+        std::env::set_var("CHUMP_AMBIENT_LOG", &log);
+        std::env::set_var("CHUMP_SESSION_ID", "test-session");
 
         let t = ExecutionTimer::new(0);
         let future = Instant::now() + Duration::from_secs(1);
@@ -354,9 +350,7 @@ mod tests {
         assert!(contents.contains("\"gap\":\"FLEET-012\""));
         assert!(contents.contains("\"session\":\"test-session\""));
 
-        unsafe {
-            std::env::remove_var("CHUMP_AMBIENT_LOG");
-            std::env::remove_var("CHUMP_SESSION_ID");
-        }
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        std::env::remove_var("CHUMP_SESSION_ID");
     }
 }

@@ -658,7 +658,6 @@ pub fn ambient_emit(event: &str, extra: &[(&str, &str)]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
 
     fn setup_tmp() -> PathBuf {
         let dir =
@@ -675,14 +674,14 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn path_matches_exact() {
         assert!(path_matches("src/foo.rs", "src/foo.rs"));
         assert!(!path_matches("src/foo.rs", "src/bar.rs"));
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn path_matches_prefix_slash() {
         assert!(path_matches("src/", "src/foo.rs"));
         assert!(path_matches("src/", "src/bar/baz.rs"));
@@ -692,7 +691,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn path_matches_glob() {
         assert!(path_matches("ChumpMenu/**", "ChumpMenu/foo.rs"));
         assert!(path_matches("ChumpMenu/**", "ChumpMenu/a/b/c.rs"));
@@ -701,7 +700,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn normalise_strips_leading_dot_and_trailing_slash() {
         assert_eq!(normalise_path("./src/foo.rs"), "src/foo.rs");
         assert_eq!(normalise_path("src//foo.rs"), "src/foo.rs");
@@ -709,7 +708,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn claim_release_roundtrip() {
         let dir = setup_tmp();
         std::env::set_var("CHUMP_SESSION_ID", "test-claim-release");
@@ -725,7 +724,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn second_session_blocked_on_overlapping_path() {
         let dir = setup_tmp();
         std::env::set_var("CHUMP_SESSION_ID", "sess-A");
@@ -744,7 +743,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn prefix_claim_blocks_nested_path() {
         let dir = setup_tmp();
         std::env::set_var("CHUMP_SESSION_ID", "sess-X");
@@ -759,7 +758,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn expired_lease_is_reaped_and_reclaimable() {
         let dir = setup_tmp();
         std::env::set_var("CHUMP_SESSION_ID", "sess-old");
@@ -783,7 +782,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn same_session_can_reclaim_own_path() {
         let dir = setup_tmp();
         std::env::set_var("CHUMP_SESSION_ID", "sess-reclaim");
@@ -797,7 +796,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn is_path_claimed_by_other_identifies_holder() {
         let dir = setup_tmp();
         std::env::set_var("CHUMP_SESSION_ID", "sess-holder");
@@ -824,7 +823,7 @@ mod tests {
     }
 
     #[test]
-    #[serial]
+    #[serial_test::serial(ambient_env)]
     fn pending_new_gap_counts_as_claim_for_other_sessions() {
         let dir = setup_tmp();
         let path = locks_dir().join("sess-pending.json");

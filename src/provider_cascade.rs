@@ -1792,7 +1792,7 @@ mod tests {
     /// `cascade_all_exhausted` JSONL line to the path set by `CHUMP_AMBIENT_LOG`.
     /// Pin the schema fields so future writers can grep / parse reliably.
     #[test]
-    #[serial_test::serial(cascade_ambient_env)]
+    #[serial_test::serial(ambient_env)]
     fn cascade_exhausted_emits_ambient_event_with_per_slot_tally() {
         let dir = tempfile::tempdir().unwrap();
         let log_path = dir.path().join("ambient.jsonl");
@@ -1881,7 +1881,7 @@ mod tests {
     /// or produce malformed JSON. Defensive against the "no providers
     /// available" terminal path.
     #[test]
-    #[serial_test::serial(cascade_ambient_env)]
+    #[serial_test::serial(ambient_env)]
     fn cascade_exhausted_with_zero_slots_emits_valid_json() {
         let dir = tempfile::tempdir().unwrap();
         let log_path = dir.path().join("ambient.jsonl");
@@ -3104,7 +3104,7 @@ mod tests {
     }
 
     #[test]
-    #[serial_test::serial(cascade_ambient_env)]
+    #[serial_test::serial(ambient_env)]
     fn cascade_routed_event_emitted() {
         let dir = tempfile::tempdir().unwrap();
         let log_path = dir.path().join("ambient.jsonl");
