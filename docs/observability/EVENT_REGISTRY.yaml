@@ -3066,3 +3066,12 @@ events:
       degraded mode without log spam.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, criticality, reason, expected_file]
+  # ── INFRA-1336: outbound HTTP call instrumentation ────────────────────────
+  - kind: outbound_http_call
+    emitter: src/http_client.rs (INFRA-1336)
+    trigger: any reqwest/hyper call routed through chump_http::send. Makes the
+      PRODUCT-112 air-gap claim verifiable by surfacing every egress with
+      host/path/method/status/duration_ms/initiated_by attribution.
+    consumers: [fleet-brief, air-gap-audit, api-cost-leaderboard]
+    fields_required: [ts, kind, host, path, method, duration_ms, initiated_by]
+    fields_optional: [status_code, bytes_sent, bytes_received, error_class]

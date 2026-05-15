@@ -41,7 +41,7 @@ async fn probe_model() -> &'static str {
         Some(c) => c,
         None => return "down",
     };
-    match client.get(&url).send().await {
+    match crate::http_client::send(client.get(&url), "health_server::probe_model").await {
         Ok(r) if r.status().is_success() => "ok",
         _ => "down",
     }
@@ -61,7 +61,7 @@ async fn probe_embed() -> &'static str {
         Some(c) => c,
         None => return "down",
     };
-    match client.get(&url).send().await {
+    match crate::http_client::send(client.get(&url), "health_server::probe_embed").await {
         Ok(r) if r.status().is_success() => "ok",
         _ => "down",
     }
