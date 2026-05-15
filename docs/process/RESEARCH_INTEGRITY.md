@@ -146,6 +146,39 @@ Any new eval gap filed must specify:
 
 ---
 
+## 10. Runtime Enforcement — Preregistration Integrity Gates
+
+To prevent deviations like EVAL-101's model substitution, runner scripts assert the locked-fields manifest before starting execution.
+
+**How it works:**
+
+1. **Locked-fields manifest (§12 in preregistration):** Each preregistration MD contains a YAML block listing:
+   - `primary_agent` — exact model used
+   - `n_per_cell` — minimum sample size per cell
+   - `judge_models` — list of judge models (exact set)
+   - `fixture` — path to the fixture file
+   - `n_per_cell` — minimum sample size (aids enforcement of RESEARCH_INTEGRITY §1)
+
+2. **Runner gates (scripts/eval/lib/prereg-enforce.sh):**
+   - Given a preregistration path, parses the locked-fields manifest
+   - Asserts every env var and CLI flag matches before any data collection
+   - Mismatch → exit 1 with named field + expected vs provided values
+   - Fail-closed: no `||true` fallback, no silent substitution
+
+3. **Mid-run deviation logging (§13):**
+   - If judge fails mid-run, runner appends timestamped entry to preregistration MD
+   - Includes commit SHA of runner binary (reproduceability)
+   - Result-doc title includes `PROTOCOL-DEVIATION` marker for operator review
+
+4. **Ambient event (kind=eval_prereg_check):**
+   - Emitted at gate time with `result` (pass|fail|deviation) + `mismatched_fields[]`
+   - Enables fleet-wide monitoring of integrity violations
+
+**Integration:** Run-eval scripts call `enforce_prereg_manifest` before harness launch.
+Test suite: `scripts/ci/test-prereg-enforce.sh`.
+
+---
+
 ## What Needs to Be Fixed (active gaps)
 
 These gaps exist specifically to correct the methodology:
