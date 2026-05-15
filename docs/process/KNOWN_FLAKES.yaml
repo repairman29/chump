@@ -101,3 +101,46 @@ flakes:
 #     added: "2026-05-08"
 #     last_observed: "2026-05-08"
 #     max_reruns: 1
+
+# ── Playwright e2e flakes (INFRA-1332) ───────────────────────────────────────
+# Audit registry for Playwright tests skipped on the PR path. The actual
+# skip enforcement lives in e2e/tests/<file>.spec.ts via
+# `test.skip(!process.env.CHUMP_E2E_INCLUDE_FLAKES === '1', ...)`. The
+# advisory workflow .github/workflows/e2e-pwa-advisory.yml sets the env
+# and runs the quarantined describe blocks for visibility (non-blocking).
+#
+# Each entry MUST have a tracking_gap. Remove the entry when 10
+# consecutive advisory runs are green.
+
+playwright_flakes:
+  - describe: "PWA shell"
+    file: e2e/tests/api-and-pwa.spec.ts
+    tests:
+      - "loads home and shows message composer"
+      - "navigate between views via sidebar"
+      - "settings view shows v2 shell info"
+      - "sessions toggle activates chat view"
+    reason: "Intermittent failures on chromium across the 4 PWA-shell tests despite retries:2 — likely lifecycle race between web server boot and Playwright fixtures. Observed flaking on PRs #1712, #1732, #1816 (8×), #1765, #1792, #1968 in 24h."
+    tracking_gap: INFRA-1335
+    added: "2026-05-15"
+    last_observed: "2026-05-15"
+
+  - describe: "PWA mobile viewport"
+    file: e2e/tests/api-and-pwa.spec.ts
+    tests:
+      - "composer and send remain usable"
+      - "nav items accessible in mobile viewport"
+    reason: "Mobile-viewport variants of the PWA-shell flakes. Same root cause suspected (web-server lifecycle race) plus viewport-resize timing."
+    tracking_gap: INFRA-1335
+    added: "2026-05-15"
+    last_observed: "2026-05-15"
+
+  - describe: "Chat /task path (tolerates slow local Ollama)"
+    file: e2e/tests/api-and-pwa.spec.ts
+    tests:
+      - "/task creates assistant reply in thread"
+      - "New chat clears thread after a quick reply"
+    reason: "Real-LLM round-trip with timing assumptions; flakes when Ollama warm-start exceeds Playwright timeout."
+    tracking_gap: INFRA-1335
+    added: "2026-05-15"
+    last_observed: "2026-05-15"
