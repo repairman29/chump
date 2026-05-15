@@ -880,6 +880,27 @@ const FIRSTRUN_STEPS = [
     cta: { action: 'open-config', label: 'Choose repo' },
   },
   {
+    // INFRA-1015: detect missing state.db and offer to initialize the repo via
+    // POST /api/repo/init. The wizard step shows a confirmation dialog before
+    // calling init so the operator is never surprised.
+    id: 'repo_init',
+    title: 'Repo initialized',
+    detail: 'Detect .chump/state.db — run chump init if missing',
+    detect: async () => {
+      try {
+        const r = await fetch('/api/repo/context'); if (!r.ok) return null;
+        const d = await r.json();
+        const repoPath = d.effective_root || d.current_repo || d.repo || d.path;
+        if (!repoPath) return { ok: false, hint: 'Set a repo first (step above).' };
+        // Check for state.db via a lightweight probe: if /api/gap-queue returns ok, state.db exists.
+        const gq = await fetch('/api/gap-queue?limit=1');
+        if (gq.ok) return { ok: true, label: '.chump/state.db found' };
+        return { ok: false, hint: 'state.db not found — click "Initialize" to run chump init in this repo.', repoPath };
+      } catch { return null; }
+    },
+    cta: { action: 'init-repo', label: 'Initialize' },
+  },
+  {
     id: 'brain',
     title: 'Brain initialized',
     detect: async () => {
@@ -1057,8 +1078,74 @@ class ChumpFirstRunWizard extends HTMLElement {
       document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'agent' }));
     } else if (kind === 'open-config') {
       document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'settings' }));
+    } else if (kind === 'init-repo') {
+      void this.#doRepoInit(stepId);
     }
     // 'link' kind — the <a> handles navigation natively.
+  }
+
+  // INFRA-1015: confirmation dialog + POST /api/repo/init flow.
+  async #doRepoInit(stepId) {
+    // Get the current repo path from context.
+    let repoPath = '';
+    try {
+      const r = await fetch('/api/repo/context');
+      if (r.ok) {
+        const d = await r.json();
+        repoPath = d.effective_root || d.current_repo || d.repo || d.path || '';
+      }
+    } catch {}
+
+    if (!repoPath) {
+      alert('Cannot initialize: no active repo path detected. Set a repo first.');
+      return;
+    }
+
+    // Confirmation dialog with optional seed-gaps checkbox.
+    const seedDefault = false;
+    const confirmed = window.confirm(
+      `Initialize Chump repo at:\n  ${repoPath}\n\nThis will run "chump init" and install git hooks.\nContinue?`
+    );
+    if (!confirmed) return;
+
+    // Ask about starter gaps — use confirm as a simple yes/no for the checkbox.
+    const seedGaps = window.confirm(
+      `Seed 3 starter gaps into the new registry?\n\n(STARTER-001 Feature, STARTER-002 Test, STARTER-003 Health check)\n\nClick OK to seed, Cancel to skip.`
+    );
+
+    // Show busy state in the step while we call the API.
+    const state = this.#state.steps.find((s) => s.id === stepId);
+    if (state) {
+      state.result = { hint: 'Initializing repo…' };
+      this.#render();
+    }
+
+    try {
+      const resp = await fetch('/api/repo/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: repoPath, seed_starter_gaps: seedGaps }),
+      });
+      const d = await resp.json();
+      if (d.ok) {
+        const msg = d.already_initialized
+          ? `Already initialized — state.db exists.`
+          : `Initialized: state.db created${d.hooks_installed ? ', hooks installed' : ''}${d.gaps_seeded?.length ? `, ${d.gaps_seeded.length} starter gaps seeded` : ''}.`;
+        if (state) {
+          state.status = 'detected';
+          state.result = { ok: true, label: msg };
+          window.chumpPrefs?.set(`firstrun.step.${stepId}`, 'detected');
+          this.#emitTelemetry(stepId, 'detected');
+        }
+      } else {
+        if (state) state.result = { hint: `Init failed: ${d.error || 'unknown error'}` };
+        alert(`Repo init failed:\n${d.error || 'Unknown error'}`);
+      }
+    } catch (e) {
+      if (state) state.result = { hint: `Network error: ${e.message}` };
+      alert(`Repo init error: ${e.message}`);
+    }
+    this.#render();
   }
 
   #dismiss() {

@@ -2291,6 +2291,215 @@ async fn handle_repo_working(
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
+// ── Repo init (INFRA-1015) ────────────────────────────────────────────────
+//
+// POST /api/repo/init {path} validates path is within allowed parent dirs,
+// runs `chump init --no-interactive --no-browser` in that path, installs hooks,
+// and returns {ok, state_db_created, hooks_installed, stderr} on failure.
+//
+// Path allowlist: CHUMP_INIT_ALLOWED_ROOTS (default: /Users/jeffadkins).
+// Bypass: CHUMP_INIT_ANYWHERE=1.
+// Idempotent: safe to call twice on the same repo (init skips already-done steps).
+//
+// Optional: seed_starter_gaps=true adds 3 template gaps to the new registry.
+
+#[derive(serde::Deserialize)]
+struct RepoInitBody {
+    path: String,
+    #[serde(default)]
+    seed_starter_gaps: bool,
+}
+
+/// POST /api/repo/init — initialize a Chump repo from the PWA (INFRA-1015).
+async fn handle_repo_init(
+    headers: HeaderMap,
+    Json(body): Json<RepoInitBody>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let raw_path = body.path.trim().to_string();
+    if raw_path.is_empty() {
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "error": "path must not be empty"
+        })));
+    }
+
+    // Resolve to canonical absolute path (must exist as directory).
+    let pb = PathBuf::from(&raw_path);
+    let canon = match pb.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            return Ok(Json(serde_json::json!({
+                "ok": false,
+                "error": format!("cannot resolve path {:?}: {}", raw_path, e)
+            })));
+        }
+    };
+    if !canon.is_dir() {
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "error": format!("path {:?} is not a directory", canon.display())
+        })));
+    }
+
+    // ── Allowlist check ──────────────────────────────────────────────────────
+    let anywhere = std::env::var("CHUMP_INIT_ANYWHERE")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if !anywhere {
+        let allowed: Vec<PathBuf> = std::env::var("CHUMP_INIT_ALLOWED_ROOTS")
+            .unwrap_or_else(|_| {
+                // Default: home dir of current user.
+                std::env::var("HOME").unwrap_or_else(|_| "/Users/jeffadkins".to_string())
+            })
+            .split(':')
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .collect();
+
+        let allowed_resolved: Vec<PathBuf> = allowed
+            .iter()
+            .filter_map(|p| p.canonicalize().ok())
+            .collect();
+
+        let under_allowed = allowed_resolved.iter().any(|root| canon.starts_with(root));
+        if !under_allowed {
+            tracing::warn!(
+                target: "infra_1015",
+                path = %canon.display(),
+                "POST /api/repo/init: path outside allowed roots — rejected"
+            );
+            return Ok(Json(serde_json::json!({
+                "ok": false,
+                "error": format!(
+                    "path {:?} is outside allowed roots ({:?}). Set CHUMP_INIT_ALLOWED_ROOTS or CHUMP_INIT_ANYWHERE=1.",
+                    canon.display(),
+                    allowed_resolved.iter().map(|p| p.display().to_string()).collect::<Vec<_>>()
+                )
+            })));
+        }
+    }
+
+    // ── Idempotency: check if state.db already exists ────────────────────────
+    let chump_dir = canon.join(".chump");
+    let state_db = chump_dir.join("state.db");
+    let already_initialized = state_db.exists();
+
+    // ── Run chump init --no-interactive --no-browser ─────────────────────────
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("chump"));
+    let init_out = std::process::Command::new(&exe)
+        .args(["init", "--no-interactive", "--no-browser"])
+        .current_dir(&canon)
+        .output();
+
+    let init_stderr = match &init_out {
+        Ok(o) => String::from_utf8_lossy(&o.stderr).to_string(),
+        Err(e) => e.to_string(),
+    };
+    let init_ok = init_out
+        .as_ref()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !init_ok {
+        tracing::warn!(
+            target: "infra_1015",
+            path = %canon.display(),
+            stderr = %init_stderr.trim(),
+            "POST /api/repo/init: chump init failed"
+        );
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "error": format!("chump init failed: {}", init_stderr.trim()),
+            "stderr": init_stderr,
+        })));
+    }
+
+    let state_db_created = !already_initialized && state_db.exists();
+
+    // ── Install hooks ────────────────────────────────────────────────────────
+    let repo_root = crate::repo_path::runtime_base();
+    let hook_script = repo_root.join("scripts/setup/install-hooks.sh");
+    let hooks_installed = if hook_script.exists() {
+        let hook_out = std::process::Command::new("bash")
+            .arg(&hook_script)
+            .arg("--quiet")
+            .current_dir(&canon)
+            .output();
+        hook_out.map(|o| o.status.success()).unwrap_or(false)
+    } else {
+        // Hook script not found — soft failure (repo may not be the main worktree).
+        false
+    };
+
+    // ── Optional: seed 3 starter gaps ────────────────────────────────────────
+    let gaps_seeded: Vec<String> = if body.seed_starter_gaps && state_db_created {
+        seed_starter_gaps(&canon)
+    } else {
+        vec![]
+    };
+
+    tracing::info!(
+        target: "infra_1015",
+        path = %canon.display(),
+        already_initialized,
+        state_db_created,
+        hooks_installed,
+        gaps_seeded = gaps_seeded.len(),
+        "POST /api/repo/init: repo initialized ok"
+    );
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "path": canon.display().to_string(),
+        "already_initialized": already_initialized,
+        "state_db_created": state_db_created,
+        "hooks_installed": hooks_installed,
+        "gaps_seeded": gaps_seeded,
+    })))
+}
+
+/// Seed 3 lightweight template gaps into a freshly initialized repo's state.db.
+fn seed_starter_gaps(repo_root: &std::path::Path) -> Vec<String> {
+    let db_path = repo_root.join(".chump").join("state.db");
+    let conn = match rusqlite::Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    let starters: &[(&str, &str, &str)] = &[
+        (
+            "STARTER-001",
+            "EFFECTIVE — Add your first feature",
+            "Write a hello-world endpoint or script.",
+        ),
+        (
+            "STARTER-002",
+            "CREDIBLE — Write a test for the feature",
+            "Add an automated test that verifies STARTER-001 works correctly.",
+        ),
+        (
+            "STARTER-003",
+            "RESILIENT — Add a health check",
+            "Implement a lightweight liveness probe so failures are detected quickly.",
+        ),
+    ];
+    let mut seeded = vec![];
+    for (id, title, desc) in starters {
+        let r = conn.execute(
+            "INSERT OR IGNORE INTO gaps (id, domain, title, status, priority, kind, meta) VALUES (?1,'STARTER',?2,'open','P2','feature',?3)",
+            rusqlite::params![id, title, desc],
+        );
+        // Only count as seeded if a row was actually inserted (rows_affected == 1).
+        // INSERT OR IGNORE returns Ok(0) when the row already exists.
+        if r == Ok(1) {
+            seeded.push(id.to_string());
+        }
+    }
+    seeded
+}
+
 // ── PWA secrets (INFRA-989) ────────────────────────────────────────────────
 //
 // Secret-input flow with mask + test-before-store. Mirror of the INFRA-988
@@ -7417,6 +7626,7 @@ fn build_api_router() -> Router {
         .route("/api/autopilot/stop", post(handle_autopilot_stop))
         .route("/api/repo/context", get(handle_repo_context))
         .route("/api/repo/working", post(handle_repo_working))
+        .route("/api/repo/init", post(handle_repo_init))
         // INFRA-1014: token-verify endpoint (bypasses auth middleware itself
         // so the login modal can call it without yet having the token).
         .route("/api/auth/check", post(handle_auth_check))
@@ -9153,6 +9363,111 @@ mod workflow_e2e_tests {
         assert_eq!(
             status, "done",
             "gap.status must be 'done' after ship phase completes — got '{status}'"
+        );
+    }
+}
+
+// ── INFRA-1015: repo init unit tests ─────────────────────────────────────────
+#[cfg(test)]
+mod repo_init_tests {
+    use super::seed_starter_gaps;
+
+    #[test]
+    fn seed_starter_gaps_inserts_three_rows() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let chump_dir = tmp.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).expect("create .chump");
+        let db_path = chump_dir.join("state.db");
+
+        // Create minimal state.db with gaps table.
+        let conn = rusqlite::Connection::open(&db_path).expect("open db");
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS gaps (
+                id TEXT PRIMARY KEY, domain TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'open',
+                priority TEXT NOT NULL DEFAULT 'P2', kind TEXT NOT NULL DEFAULT 'feature',
+                meta TEXT NOT NULL DEFAULT ''
+            );",
+        )
+        .expect("create table");
+        drop(conn);
+
+        let seeded = seed_starter_gaps(tmp.path());
+        assert_eq!(seeded.len(), 3, "expected 3 seeded gaps, got {:?}", seeded);
+        assert!(
+            seeded.contains(&"STARTER-001".to_string()),
+            "STARTER-001 missing"
+        );
+        assert!(
+            seeded.contains(&"STARTER-002".to_string()),
+            "STARTER-002 missing"
+        );
+        assert!(
+            seeded.contains(&"STARTER-003".to_string()),
+            "STARTER-003 missing"
+        );
+    }
+
+    #[test]
+    fn seed_starter_gaps_is_idempotent() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let chump_dir = tmp.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).expect("create .chump");
+        let db_path = chump_dir.join("state.db");
+
+        let conn = rusqlite::Connection::open(&db_path).expect("open db");
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS gaps (
+                id TEXT PRIMARY KEY, domain TEXT NOT NULL DEFAULT '',
+                title TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'open',
+                priority TEXT NOT NULL DEFAULT 'P2', kind TEXT NOT NULL DEFAULT 'feature',
+                meta TEXT NOT NULL DEFAULT ''
+            );",
+        )
+        .expect("create table");
+        drop(conn);
+
+        // First seed
+        let first = seed_starter_gaps(tmp.path());
+        assert_eq!(first.len(), 3, "first seed should insert 3");
+
+        // Second seed — INSERT OR IGNORE means 0 new rows, but no panic/error.
+        let second = seed_starter_gaps(tmp.path());
+        assert_eq!(second.len(), 0, "second seed should insert 0 (idempotent)");
+    }
+
+    #[test]
+    fn seed_starter_gaps_missing_db_returns_empty() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        // No .chump/state.db created — should return empty vec without panicking.
+        let result = seed_starter_gaps(tmp.path());
+        assert!(result.is_empty(), "expected empty vec when db missing");
+    }
+
+    #[test]
+    fn repo_init_allowlist_logic_rejects_outside_path() {
+        // Simulate the allowlist check logic inline (the actual handler is async/axum-bound).
+        let allowed_roots: Vec<std::path::PathBuf> =
+            vec![std::path::PathBuf::from("/Users/jeffadkins")];
+        let target = std::path::PathBuf::from("/tmp/some-other-path");
+
+        let under_allowed = allowed_roots.iter().any(|root| target.starts_with(root));
+        assert!(
+            !under_allowed,
+            "/tmp path should be outside /Users/jeffadkins"
+        );
+    }
+
+    #[test]
+    fn repo_init_allowlist_logic_accepts_subpath() {
+        let allowed_roots: Vec<std::path::PathBuf> =
+            vec![std::path::PathBuf::from("/Users/jeffadkins")];
+        let target = std::path::PathBuf::from("/Users/jeffadkins/Projects/MyRepo");
+
+        let under_allowed = allowed_roots.iter().any(|root| target.starts_with(root));
+        assert!(
+            under_allowed,
+            "/Users/jeffadkins/Projects/MyRepo should be inside /Users/jeffadkins"
         );
     }
 }

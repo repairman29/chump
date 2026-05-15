@@ -610,6 +610,9 @@ jobs:
       - name: install-ambient-hooks idempotence + bypass (FLEET-023)
         run: bash scripts/ci/test-install-ambient-hooks.sh
 
+      - name: repo-init unit tests — seed_starter_gaps + allowlist (INFRA-1015)
+        run: bash scripts/ci/test-api-repo-init.sh
+
       - name: Build chump (debug, single bin) for guard scripts
         # INFRA-100: gap-reserve.sh shells out to `chump gap reserve`.
         # INFRA-154: bot-merge auto-close test calls --closed-pr.
