@@ -11149,6 +11149,11 @@ async fn ship_execute_cli(args: &[String]) -> Result<()> {
     let mut plan_path: Option<String> = None;
     let mut from_stdin = false;
     let mut dry_run = false;
+    // INFRA-1229 slice 3: bounded retry on push --force-with-lease races.
+    let mut max_rebase_retries: u32 = std::env::var("CHUMP_BOT_MERGE_RETRY_MAX")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3);
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -11163,6 +11168,13 @@ async fn ship_execute_cli(args: &[String]) -> Result<()> {
             "--dry-run" => {
                 dry_run = true;
                 i += 1;
+            }
+            "--max-rebase-retries" => {
+                max_rebase_retries = args
+                    .get(i + 1)
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(max_rebase_retries);
+                i += 2;
             }
             "--json" => {
                 i += 1; // default, but accepted
@@ -11252,74 +11264,150 @@ async fn ship_execute_cli(args: &[String]) -> Result<()> {
 
     let mut step_results: Vec<serde_json::Value> = Vec::new();
     let mut any_failure = false;
-    for step in &steps {
-        // Resolve the placeholder
-        let resolved_args: Vec<String> = step
-            .args
-            .iter()
-            .map(|a| a.replace("{OWNER_REPO}", &owner_repo))
-            .collect();
-        if dry_run {
+    let mut retry_attempts: u32 = 0;
+    let mut final_action: String = "Success".to_string();
+
+    // INFRA-1229 slice 3: RebaseAndPush gets a retry loop driven by
+    // chump_ship::classify_step_failure. Other plan variants use a single
+    // pass.
+    let is_rebase_and_push = matches!(plan, chump_ship::ShipPlan::RebaseAndPush { .. });
+
+    'attempt: for attempt in 0..=max_rebase_retries {
+        if attempt > 0 {
+            retry_attempts = attempt;
+            eprintln!(
+                "[ship execute] push lost a race; retry {}/{}",
+                attempt, max_rebase_retries
+            );
+        }
+        let mut attempt_failed = false;
+        for step in &steps {
+            let resolved_args: Vec<String> = step
+                .args
+                .iter()
+                .map(|a| a.replace("{OWNER_REPO}", &owner_repo))
+                .collect();
+            if dry_run {
+                step_results.push(serde_json::json!({
+                    "program": step.program,
+                    "args": resolved_args,
+                    "rc": 0,
+                    "stderr_tail": "",
+                    "duration_ms": 0,
+                    "dry_run": true,
+                    "note": step.note,
+                    "attempt": attempt,
+                }));
+                continue;
+            }
+            let started = std::time::Instant::now();
+            let out = std::process::Command::new(&step.program)
+                .args(&resolved_args)
+                .output();
+            let elapsed_ms = started.elapsed().as_millis() as u64;
+            let (rc, stderr_tail) = match out {
+                Ok(o) => {
+                    let tail = String::from_utf8_lossy(&o.stderr);
+                    let tail: String = tail
+                        .lines()
+                        .rev()
+                        .take(3)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    (o.status.code().unwrap_or(-1), tail)
+                }
+                Err(e) => (-1, format!("exec error: {e}")),
+            };
+            let success = rc == 0;
             step_results.push(serde_json::json!({
                 "program": step.program,
                 "args": resolved_args,
-                "rc": 0,
-                "stderr_tail": "",
-                "duration_ms": 0,
-                "dry_run": true,
+                "rc": rc,
+                "stderr_tail": stderr_tail,
+                "duration_ms": elapsed_ms,
+                "expect_success": step.expect_success,
+                "success": success,
                 "note": step.note,
+                "attempt": attempt,
             }));
-            continue;
-        }
-        let started = std::time::Instant::now();
-        let out = std::process::Command::new(&step.program)
-            .args(&resolved_args)
-            .output();
-        let elapsed_ms = started.elapsed().as_millis() as u64;
-        let (rc, stderr_tail) = match out {
-            Ok(o) => {
-                let tail = String::from_utf8_lossy(&o.stderr);
-                let tail: String = tail
-                    .lines()
-                    .rev()
-                    .take(3)
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .rev()
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                (o.status.code().unwrap_or(-1), tail)
+            if !success && step.expect_success {
+                any_failure = true;
+                attempt_failed = true;
+
+                if is_rebase_and_push {
+                    // Classify the failure: retry, abort-as-conflict, or hard-fail.
+                    let action = chump_ship::classify_step_failure(
+                        &step.program,
+                        &resolved_args,
+                        rc,
+                        &stderr_tail,
+                        attempt,
+                        max_rebase_retries,
+                    );
+                    match action {
+                        chump_ship::RetryAction::RetryRebaseAndPush { .. } => {
+                            // Restart from the top of the step list on next attempt.
+                            final_action = "RetryRebaseAndPush".to_string();
+                            continue 'attempt;
+                        }
+                        chump_ship::RetryAction::AbortAsConflict { reason } => {
+                            final_action = "ConflictRecover".to_string();
+                            eprintln!("[ship execute] {reason}");
+                            // Best-effort: leave the rebase abort to the operator
+                            // — the conflict markers in the working tree are the
+                            // evidence they need.
+                            break 'attempt;
+                        }
+                        chump_ship::RetryAction::Fail { reason } => {
+                            final_action = "Fail".to_string();
+                            eprintln!("[ship execute] {reason}");
+                            break 'attempt;
+                        }
+                        chump_ship::RetryAction::Continue
+                        | chump_ship::RetryAction::AbortAsStaleBranch { .. } => {
+                            // AbortAsStaleBranch isn't emitted by this classifier
+                            // (it's a pre-push check); Continue shouldn't happen
+                            // on a failed step.
+                            final_action = "Fail".to_string();
+                            break 'attempt;
+                        }
+                    }
+                } else {
+                    // Non-rebase variants: keep the existing single-pass behavior.
+                    final_action = "Fail".to_string();
+                    break 'attempt;
+                }
             }
-            Err(e) => (-1, format!("exec error: {e}")),
-        };
-        let success = rc == 0;
-        if !success && step.expect_success {
-            any_failure = true;
         }
-        step_results.push(serde_json::json!({
-            "program": step.program,
-            "args": resolved_args,
-            "rc": rc,
-            "stderr_tail": stderr_tail,
-            "duration_ms": elapsed_ms,
-            "expect_success": step.expect_success,
-            "success": success,
-            "note": step.note,
-        }));
-        if !success && step.expect_success {
-            // Abort the chain on hard failure.
-            break;
+        // Loop finished without an attempt-failure → success.
+        // (Overwrite final_action even if a previous attempt failed and we
+        // retried successfully — the final state IS success.)
+        if !attempt_failed {
+            final_action = "Success".to_string();
+            // Once the chain succeeds via retry, the earlier failures are
+            // recorded in step_results but don't bubble out as any_failure.
+            any_failure = false;
+            break 'attempt;
         }
+        // Otherwise: if we didn't hit a `continue 'attempt`, the loop
+        // already broke via `break 'attempt`.
     }
+
     let payload = serde_json::json!({
         "plan_action": plan_action,
         "executed": !dry_run,
         "dry_run": dry_run,
         "steps": step_results,
         "any_failure": any_failure,
+        "retry_attempts": retry_attempts,
+        "final_action": final_action,
+        "max_rebase_retries": max_rebase_retries,
     });
     println!("{}", serde_json::to_string_pretty(&payload)?);
-    if any_failure {
+    if any_failure && final_action != "Success" {
         std::process::exit(1);
     }
     Ok(())
