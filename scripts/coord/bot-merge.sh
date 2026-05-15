@@ -755,11 +755,13 @@ gh_api_probe() {
 #      Set to 0 to disable (e.g. for full cargo-test runs).
 _bm_health_write() {
     [[ -z "${_BM_HEALTH_FILE:-}" ]] && return 0
-    local step now
+    local step now gap_str
     step="$(cat "$_BM_STEP_FILE" 2>/dev/null || echo init)"
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"pid":%d,"started_at":"%s","current_step":"%s","last_heartbeat_at":"%s"}\n' \
-        "$_BM_PID" "$_BM_STARTED_AT" "$step" "$now" \
+    # INFRA-1315: include gap_ids so bot-merge-watchdog.sh can identify zombies.
+    gap_str="${GAP_IDS[*]:-}"
+    printf '{"pid":%d,"started_at":"%s","current_step":"%s","last_heartbeat_at":"%s","gap_ids":"%s"}\n' \
+        "$_BM_PID" "$_BM_STARTED_AT" "$step" "$now" "$gap_str" \
         > "${_BM_HEALTH_FILE}.tmp" 2>/dev/null \
     && mv "${_BM_HEALTH_FILE}.tmp" "$_BM_HEALTH_FILE" 2>/dev/null || true
 }
@@ -780,14 +782,16 @@ _bm_health_init() {
     # Background heartbeat: rewrite health file every 30s
     local hf="$_BM_HEALTH_FILE" sf="$_BM_STEP_FILE"
     local pid="$_BM_PID" sa="$_BM_STARTED_AT"
+    # INFRA-1315: capture gap_ids for watchdog identification.
+    local gap_str="${GAP_IDS[*]:-}"
     (
         while true; do
             sleep 30
             local step now
             step="$(cat "$sf" 2>/dev/null || echo unknown)"
             now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            printf '{"pid":%d,"started_at":"%s","current_step":"%s","last_heartbeat_at":"%s"}\n' \
-                "$pid" "$sa" "$step" "$now" \
+            printf '{"pid":%d,"started_at":"%s","current_step":"%s","last_heartbeat_at":"%s","gap_ids":"%s"}\n' \
+                "$pid" "$sa" "$step" "$now" "$gap_str" \
                 > "${hf}.tmp" && mv "${hf}.tmp" "$hf" || true
         done
     ) &
