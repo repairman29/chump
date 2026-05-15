@@ -59,7 +59,6 @@ done
 REPO_ROOT="${CHUMP_REPO:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 FRESHNESS_MIN="${CHUMP_ORPHAN_PR_FRESHNESS_MIN:-30}"
 SEEN_FILE="$REPO_ROOT/.chump-locks/orphan-pr-seen.txt"
-AMBIENT="$REPO_ROOT/.chump-locks/ambient.jsonl"
 mkdir -p "$(dirname "$SEEN_FILE")" 2>/dev/null || true
 touch "$SEEN_FILE" 2>/dev/null || true
 
@@ -71,10 +70,10 @@ command -v "$_chump" >/dev/null 2>&1 || { echo "[orphan-pr-closer] chump CLI not
 
 emit_ambient() {
     local kind="$1" pr="$2" gap="$3" note="$4"
-    local ts
-    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf '{"ts":"%s","kind":"%s","source":"orphan-pr-closer","pr":%d,"gap":"%s","note":"%s"}\n' \
-        "$ts" "$kind" "$pr" "$gap" "$note" >> "$AMBIENT" 2>/dev/null || true
+    "$_chump" ambient emit "$kind" \
+        --gap "$gap" \
+        --field "pr=$pr" \
+        --field "note=$note" 2>/dev/null || true
 }
 
 # Freshness cutoff (ISO8601).
