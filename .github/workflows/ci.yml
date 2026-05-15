@@ -1195,6 +1195,8 @@ jobs:
         run: bash scripts/ci/test-fleet-bootstrap.sh
       - name: PWA flake quarantine wiring (INFRA-1332)
         run: bash scripts/ci/test-pwa-flake-quarantine.sh
+      - name: worktree-prune protects live edits (INFRA-1347)
+        run: bash scripts/ci/test-worktree-prune-protects-live-edits.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
