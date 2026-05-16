@@ -240,6 +240,8 @@ mod e2e_bot_tests;
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
 
+mod metrics;
+
 use anyhow::{Context as _, Result};
 use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
