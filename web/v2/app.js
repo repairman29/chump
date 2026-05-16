@@ -396,6 +396,7 @@ const CHUMP_CADENCES = [
       { id: 'agents',  label: 'Fleet',   icon: '🤝' },
       { id: 'results', label: 'Ships',   icon: '📊' },
       { id: 'health',  label: 'Health',  icon: '🩺' }, // INFRA-1203
+      { id: 'prs',     label: 'PRs',     icon: '🔀' }, // PRODUCT-084
 
       // INFRA-1204: a2a coordination view (inbox / INTENT / nudge).
       { id: 'coord',        label: 'Coord',        icon: '✉️' },
@@ -5120,6 +5121,7 @@ const VIEWS = {
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
   stuck:         () => document.createElement('chump-stuck-items'),        // PRODUCT-080
   config:        () => document.createElement('chump-config-dials'), // PRODUCT-118
+  prs:           () => document.createElement('chump-view-prs'),           // PRODUCT-084
 
   cockpit:       () => document.createElement('chump-view-cockpit'),        // PRODUCT-122
   memory:        () => document.createElement('chump-view-memory'),
