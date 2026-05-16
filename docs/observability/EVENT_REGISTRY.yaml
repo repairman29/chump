@@ -2454,6 +2454,22 @@ events:
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, gap_id, reason, branch, bypassed_by]
 
+  # ── INFRA-1372: pre-push HEAD-drift detection ─────────────────────────────
+  - kind: prepush_head_drift
+    emitter: scripts/git-hooks/pre-push (INFRA-1372)
+    trigger: HEAD moved during cargo test run (Rust test leaked a git commit via GIT_DIR inheritance)
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, pre_head, post_head, branch]
+    docs: |
+      Emitted immediately before blocking the push. pre_head and post_head are
+      the full 40-char SHA of HEAD before and after the cargo test run. The delta
+      indicates that at least one Rust test called Command::new("git commit") (or
+      equivalent) without clearing GIT_DIR, causing the commit to land on the
+      real worktree branch rather than the test's temporary repo fixture.
+      Fix: add env_remove("GIT_DIR")/env_remove("GIT_WORK_TREE")/
+      env_remove("GIT_COMMON_DIR")/env_remove("GIT_INDEX_FILE") to all
+      Command::new("git") invocations in the offending test.
+
   # ── INFRA-1006: bot-merge watchdog ────────────────────────────────────────
   - kind: bot_merge_watchdog_killed
     effect_metric: self
@@ -2608,6 +2624,16 @@ events:
       Eliminates GraphQL secondary rate limit errors in green-CI fast path.
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, pr, gap, sha, checks_verified]
+
+  - kind: branch_deleted_fallback
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh INFRA-1413 REST-direct branch cleanup
+    trigger: After a successful REST-direct merge, bot-merge.sh detected that the
+      source branch was not yet deleted by the repo-level delete-branch-on-merge
+      setting and deleted it manually via gh api -X DELETE. Common when the setting
+      lags a newly-provisioned fork or there is a race between merge and cleanup.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, pr, branch]
 
   - kind: bot_merge_auto_armed
     effect_metric: self

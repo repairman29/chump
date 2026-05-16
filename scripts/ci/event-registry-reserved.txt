@@ -23,6 +23,7 @@
 commit  # reason: emitted by Claude Code PostToolUse hook (Bash git commit), not by scripts/; hooks are outside grep production paths
 redundancy_bypass_used  # reason: emitted by scripts/git-hooks/pre-commit-redundancy.sh (META-063); git hooks are outside PROD_PATHS grep scan
 rust_first_blocked  # reason: emitted by scripts/git-hooks/pre-commit-rust-first.sh on the block path (INFRA-1448); git-hooks/ outside PROD_PATHS grep scan
+prepush_head_drift  # reason: emitted by scripts/git-hooks/pre-push (INFRA-1372); git-hooks/ dir is outside PROD_PATHS grep scan
 
 # ── Test fixtures ─────────────────────────────────────────────────────────────
 obs_coverage_test_fixture  # reason: synthetic test-fixture kind; emitter is scripts/ci/ (excluded from prod grep); status=test-fixture in registry
@@ -207,3 +208,7 @@ pr_rebase_failed        # reason: INFRA-1406 pr-rebase-daemon rebase failure
 pr_rebased_auto         # reason: INFRA-1406 pr-rebase-daemon successful auto-rebase
 
 fixture_commit_dropped  # reason: planned by INFRA-1408 #2179 pre-push fixture detector; allow orphan until that PR lands
+
+merge_preview_dirty     # reason: planned kind (no emitter yet); allowlist until emitter ships to unblock audit cluster
+gap_dup_archived       # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
+operator_pr_action     # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
