@@ -3631,6 +3631,7 @@ events:
       proactive block here saves the rebase cycle entirely for non-merge-driver paths.
   # ── INFRA-1437: disk_critical auto-action ─────────────────────────────────
   - kind: disk_critical_auto_remediated
+    effect_metric: self
     emitter: scripts/ops/disk-health-monitor.sh (INFRA-1437)
     trigger: >
       disk-health-monitor.sh detected disk_critical (free < CRITICAL_PCT or
