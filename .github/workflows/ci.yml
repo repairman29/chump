@@ -1855,6 +1855,9 @@ jobs:
       - name: cargo build mutex isolation — per-worktree CARGO_TARGET_DIR (INFRA-1374)
         run: bash scripts/ci/test-cargo-mutex-isolation.sh
 
+      - name: pre-push GIT_DIR isolation + HEAD-drift detection (INFRA-1372)
+        run: bash scripts/ci/test-pre-push-head-stability.sh
+
   # ── System integration test (INFRA-849) ──────────────────────────────────────
   # Non-blocking end-to-end test for the claim→commit→ship pipeline using stubs.
   # Does not gate merges (continue-on-error: true); provides CREDIBLE signal
