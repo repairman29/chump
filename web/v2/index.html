@@ -844,6 +844,86 @@
       }
     }
 
+    /* INFRA-1365: <chump-view-orchestrator-sessions> — Phase 3+4 demo panel.
+       Surfaces orchestrate_session_summary ambient events with sparklines. */
+    chump-view-orchestrator-sessions { display: block; padding: 16px 20px; max-width: 1200px; }
+    chump-view-orchestrator-sessions .orch-sparklines {
+      display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+    }
+    chump-view-orchestrator-sessions .orch-sparkline-fig {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      flex: 1 1 150px; min-width: 140px; max-width: 240px;
+    }
+    chump-view-orchestrator-sessions .orch-spark-label {
+      display: block; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--text-secondary); margin-bottom: 6px;
+    }
+    chump-view-orchestrator-sessions .orch-spark-svg {
+      display: block; width: 100%; height: 40px;
+    }
+    chump-view-orchestrator-sessions .orch-table-wrap {
+      overflow-x: auto;
+    }
+    chump-view-orchestrator-sessions .orch-table {
+      width: 100%; border-collapse: collapse; font-size: 12px;
+    }
+    chump-view-orchestrator-sessions .orch-table thead th {
+      text-align: left; padding: 6px 8px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--text-secondary);
+      font-weight: 600;
+    }
+    chump-view-orchestrator-sessions .orch-row { cursor: default; }
+    chump-view-orchestrator-sessions .orch-row:hover { background: var(--bg-elevated); }
+    chump-view-orchestrator-sessions .orch-row td {
+      padding: 6px 8px; border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    chump-view-orchestrator-sessions .orch-cell-ts {
+      white-space: nowrap; color: var(--text-secondary);
+      font-variant-numeric: tabular-nums; font-size: 11px;
+    }
+    chump-view-orchestrator-sessions .orch-cell-sid { max-width: 220px; }
+    chump-view-orchestrator-sessions .orch-sid-btn {
+      background: none; border: none; padding: 0;
+      color: var(--accent); cursor: pointer;
+      font-family: var(--font-mono, monospace); font-size: 11px;
+      overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; max-width: 200px; display: block;
+      text-align: left;
+    }
+    chump-view-orchestrator-sessions .orch-sid-btn:hover { text-decoration: underline; }
+    chump-view-orchestrator-sessions .orch-cell-num {
+      font-variant-numeric: tabular-nums; text-align: right;
+    }
+    chump-view-orchestrator-sessions .orch-exit {
+      font-size: 10px; padding: 2px 6px; border-radius: 3px;
+      text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600;
+    }
+    chump-view-orchestrator-sessions .orch-exit-clean { background: rgba(48,209,88,0.18); color: var(--success, #30d158); }
+    chump-view-orchestrator-sessions .orch-exit-bad   { background: rgba(255,69,58,0.22); color: var(--error, #ff453a); }
+    chump-view-orchestrator-sessions .orch-exit-gray  { background: var(--bg-elevated); color: var(--text-secondary); }
+    chump-view-orchestrator-sessions .orch-placeholder {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 8px; padding: 48px 16px;
+      text-align: center; color: var(--text-secondary); font-size: 14px;
+    }
+    chump-view-orchestrator-sessions .orch-empty-icon { font-size: 32px; }
+    chump-view-orchestrator-sessions .orch-empty-link {
+      color: var(--accent); font-size: 12px; text-decoration: none;
+    }
+    chump-view-orchestrator-sessions .orch-empty-link:hover { text-decoration: underline; }
+    @media (max-width: 640px) {
+      chump-view-orchestrator-sessions { padding: 12px 14px; }
+      chump-view-orchestrator-sessions .orch-sparklines { gap: 10px; }
+      chump-view-orchestrator-sessions .orch-sparkline-fig { max-width: 100%; }
+    }
+
     /* PRODUCT-109: <chump-tool-approval-tray> persistent banner above main
        content when approvals are pending. Hidden by default; visible + sticky
        when shell is unhidden. See docs/design/OPERATOR_CONSOLE_V2.md
