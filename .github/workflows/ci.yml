@@ -192,7 +192,7 @@ jobs:
     # change (any event) or in the merge queue.  continue-on-error retained as
     # a second layer of protection.
     continue-on-error: true
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_TAURI_COWORK_E2E != '' && fromJSON(vars.RUNNER_TAURI_COWORK_E2E) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     steps:
       - uses: actions/checkout@v6
 
@@ -213,6 +213,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Install Tauri + WebDriver system packages
+        if: runner.os == 'Linux'  # INFRA-1542: apt-get gated on Linux (macOS uses native WebKit)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -874,7 +875,7 @@ jobs:
   coverage:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_COVERAGE != '' && fromJSON(vars.RUNNER_COVERAGE) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     continue-on-error: true
     timeout-minutes: 45  # llvm-cov is slower than cargo-test alone; not required for merge
     steps:
@@ -982,7 +983,7 @@ jobs:
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
     # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
     continue-on-error: true
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_E2E_PWA != '' && fromJSON(vars.RUNNER_E2E_PWA) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     timeout-minutes: 60  # INFRA-1018: cap wall-clock; Ollama+cargo+playwright target ~30 min; 6h default caused stuck runs
     steps:
       - uses: actions/checkout@v6
@@ -1081,7 +1082,7 @@ jobs:
     if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
     # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
     continue-on-error: true
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_E2E_GOLDEN_PATH != '' && fromJSON(vars.RUNNER_E2E_GOLDEN_PATH) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     steps:
       - uses: actions/checkout@v6
 
@@ -1179,7 +1180,7 @@ jobs:
     if: |
       needs.changes.outputs.docs_only != 'true' ||
       github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_AUDIT != '' && fromJSON(vars.RUNNER_AUDIT) || 'ubuntu-latest' }}  # INFRA-1542: lane override via repo var (unset → ubuntu-latest)
     timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
     steps:
       - uses: actions/checkout@v6
@@ -1302,6 +1303,8 @@ jobs:
         run: bash scripts/ci/test-worktree-prune-protects-live-edits.sh
       - name: cockpit Today's-arc Wake-fleet action (PRODUCT-128)
         run: bash scripts/ci/test-cockpit-wake-fleet.sh
+      - name: heavy CI jobs cross-platform — apt-get gated + lane-flippable (INFRA-1542)
+        run: bash scripts/ci/test-ci-heavy-jobs-cross-platform.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
