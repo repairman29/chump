@@ -4498,8 +4498,7 @@ async fn main() -> Result<()> {
                 // main. Reset to main and re-applied fresh to avoid the driver.
                 let offline_check_disabled =
                     std::env::var("CHUMP_DISABLE_OFFLINE_CHECK").as_deref() == Ok("1");
-                let force_anti_offline =
-                    args.iter().any(|a| a == "--force-anti-offline");
+                let force_anti_offline = args.iter().any(|a| a == "--force-anti-offline");
                 let offline_bypass_reason = flag("--offline-bypass-reason");
                 if !offline_check_disabled {
                     let patterns: &[(&str, &str, &str, &str)] = &[
@@ -4556,8 +4555,7 @@ async fn main() -> Result<()> {
 
                     if !hits.is_empty() {
                         let ts_now = unix_ts();
-                        let ambient_path =
-                            worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
                         eprintln!();
                         for (name, snippet, why, fix) in &hits {
                             eprintln!("OFFLINE_CHECK FAIL: \"{snippet}\"");
@@ -4612,8 +4610,12 @@ async fn main() -> Result<()> {
                                 "[reserve] BLOCK: gap text trips offline-compliance lint ({} pattern hit(s)).",
                                 hits.len()
                             );
-                            eprintln!("          Either rewrite per the suggestions above, OR pass");
-                            eprintln!("          --force-anti-offline --offline-bypass-reason \"<text>\"");
+                            eprintln!(
+                                "          Either rewrite per the suggestions above, OR pass"
+                            );
+                            eprintln!(
+                                "          --force-anti-offline --offline-bypass-reason \"<text>\""
+                            );
                             eprintln!("          Bypass entirely (CI / bulk imports): CHUMP_DISABLE_OFFLINE_CHECK=1");
                             if let Some(parent) = ambient_path.parent() {
                                 let _ = std::fs::create_dir_all(parent);
