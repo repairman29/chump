@@ -76,7 +76,7 @@ import json, sqlite3, sys
 db = sys.argv[1]
 # Simulate webhook receiver upsert
 conn = sqlite3.connect(db)
-now = "2026-05-15T22:00:00Z"
+now = __import__('datetime').datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")  # INFRA-1384: was hardcoded "2026-05-15T22:00:00Z" — time-bomb that expired after max_age_s=9999s (~2.7h)
 # Full webhook payload (what GitHub sends)
 webhook_payload = {
     "action": "synchronize",
@@ -192,7 +192,7 @@ old_db = Path(sys.argv[1])
 repo_root = Path(sys.argv[2])
 
 # Create old-schema DB without merge_state_status
-now = "2026-05-15T22:00:00Z"
+now = __import__('datetime').datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")  # INFRA-1384: was hardcoded "2026-05-15T22:00:00Z" — time-bomb that expired after max_age_s=9999s (~2.7h)
 conn = sqlite3.connect(str(old_db))
 conn.executescript("""
 CREATE TABLE IF NOT EXISTS pr_state (
