@@ -397,7 +397,9 @@ const CHUMP_CADENCES = [
       { id: 'health',  label: 'Health',  icon: '🩺' }, // INFRA-1203
 
       // INFRA-1204: a2a coordination view (inbox / INTENT / nudge).
-      { id: 'coord',   label: 'Coord',   icon: '✉️' },
+      { id: 'coord',        label: 'Coord',        icon: '✉️' },
+      // INFRA-1365: orchestrator session history panel.
+      { id: 'orchestrator', label: 'Orchestrator', icon: '🎛' },
     ],
   },
   {
@@ -4623,6 +4625,268 @@ class ChumpAmbientViewer extends HTMLElement {
 }
 customElements.define('chump-ambient-viewer', ChumpAmbientViewer);
 
+// ── <chump-view-orchestrator-sessions> (INFRA-1365) ───────────────────────────
+// CREDIBLE — surfaces orchestrate_session_summary ambient events so operators
+// can see Phase 3/4 demo metrics (cost, wall time, intent-routing rate) without
+// grepping ambient.jsonl.
+//
+// Layout: 3 SVG sparklines at the top (cost, wall_time_s, intent ratio) + a
+// scrollable per-session row table below. Empty-state copy when no data.
+//
+// Data sources:
+//   - Initial load: GET /api/ambient/recent?kind=orchestrate_session_summary&n=50
+//   - Live tail:    EventSource /api/ambient/stream?kind=orchestrate_session_summary
+//
+// Telemetry: emits kind=ui_view_render on connectedCallback.
+class ChumpViewOrchestratorSessions extends HTMLElement {
+  #sessions = []; // chronological array of orchestrate_session_summary events
+  #es = null;
+  #MAX = 50;
+
+  connectedCallback() {
+    this.#render();
+    this.#emitTelemetry();
+    this.#loadHistory();
+    this.#subscribe();
+  }
+
+  disconnectedCallback() {
+    if (this.#es) { this.#es.close(); this.#es = null; }
+  }
+
+  // ── Render shell ────────────────────────────────────────────────────────────
+  #render() {
+    this.innerHTML = `
+      <section class="view-header">
+        <h2>Orchestrator sessions</h2>
+        <p class="view-subtitle">Last 50 orchestrate sessions · 24h rolling window · kind=orchestrate_session_summary</p>
+      </section>
+      <section class="orch-sparklines" id="orch-sparklines" aria-label="Orchestrator session sparklines">
+        <figure class="orch-sparkline-fig" id="orch-fig-cost">
+          <figcaption class="orch-spark-label">Cost (USD)</figcaption>
+          <svg class="orch-spark-svg" id="orch-spark-cost" viewBox="0 0 200 40"
+               aria-label="Cost per session sparkline" role="img"></svg>
+        </figure>
+        <figure class="orch-sparkline-fig" id="orch-fig-wall">
+          <figcaption class="orch-spark-label">Wall time (s)</figcaption>
+          <svg class="orch-spark-svg" id="orch-spark-wall" viewBox="0 0 200 40"
+               aria-label="Wall time per session sparkline" role="img"></svg>
+        </figure>
+        <figure class="orch-sparkline-fig" id="orch-fig-intent">
+          <figcaption class="orch-spark-label">Intent ratio</figcaption>
+          <svg class="orch-spark-svg" id="orch-spark-intent" viewBox="0 0 200 40"
+               aria-label="Intent-routing ratio per session sparkline" role="img"></svg>
+        </figure>
+      </section>
+      <section class="orch-table-wrap" id="orch-table-wrap" aria-live="polite" aria-busy="true">
+        <p class="orch-placeholder" id="orch-placeholder">Loading orchestrator sessions…</p>
+        <table class="orch-table" id="orch-table" hidden>
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">Session</th>
+              <th scope="col">Intents</th>
+              <th scope="col">Tools</th>
+              <th scope="col">Cost</th>
+              <th scope="col">Exit</th>
+            </tr>
+          </thead>
+          <tbody id="orch-tbody"></tbody>
+        </table>
+      </section>
+    `;
+  }
+
+  // ── Telemetry ───────────────────────────────────────────────────────────────
+  #emitTelemetry() {
+    try {
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'ui_view_render',
+        subject: 'orchestrator-sessions',
+        ts: new Date().toISOString(),
+      }));
+    } catch {}
+  }
+
+  // ── Historical load ─────────────────────────────────────────────────────────
+  async #loadHistory() {
+    try {
+      const r = await fetch('/api/ambient/recent?kind=orchestrate_session_summary&n=50');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const events = await r.json();
+      if (Array.isArray(events) && events.length > 0) {
+        // Sort ascending so sparklines flow left→right.
+        events.sort((a, b) => String(a.ts || '').localeCompare(String(b.ts || '')));
+        for (const ev of events) this.#ingest(ev, /* repaint */ false);
+        this.#repaint();
+      } else {
+        this.#showEmpty();
+      }
+    } catch {
+      this.#showEmpty();
+    }
+    // Mark table section no longer busy.
+    this.querySelector('#orch-table-wrap')?.removeAttribute('aria-busy');
+  }
+
+  // ── Live SSE ────────────────────────────────────────────────────────────────
+  #subscribe() {
+    if (this.#es) { this.#es.close(); this.#es = null; }
+    try {
+      this.#es = new EventSource('/api/ambient/stream?kind=orchestrate_session_summary');
+    } catch { return; }
+    this.#es.addEventListener('ambient', (e) => {
+      let payload;
+      try { payload = JSON.parse(e.data); } catch { return; }
+      if (payload.kind !== 'orchestrate_session_summary') return;
+      this.#ingest(payload, /* repaint */ true);
+    });
+  }
+
+  // ── Data ingestion ───────────────────────────────────────────────────────────
+  #ingest(ev, repaint) {
+    this.#sessions.push(ev);
+    if (this.#sessions.length > this.#MAX) {
+      this.#sessions.shift(); // drop oldest
+    }
+    if (repaint) this.#repaint();
+  }
+
+  // ── Full repaint ─────────────────────────────────────────────────────────────
+  #repaint() {
+    if (this.#sessions.length === 0) { this.#showEmpty(); return; }
+    this.#paintSparklines();
+    this.#paintTable();
+    // Reveal table, hide placeholder.
+    const ph = this.querySelector('#orch-placeholder');
+    const tbl = this.querySelector('#orch-table');
+    if (ph) ph.hidden = true;
+    if (tbl) tbl.hidden = false;
+  }
+
+  // ── Sparklines ───────────────────────────────────────────────────────────────
+  #paintSparklines() {
+    const cost   = this.#sessions.map(s => Number(s.cost_usd   ?? s.cost   ?? 0));
+    const wall   = this.#sessions.map(s => Number(s.wall_time_s ?? 0));
+    const intent = this.#sessions.map(s => {
+      const total  = Number(s.intents_total  ?? (Number(s.intents_routed ?? 0) + Number(s.intents_failed ?? 0)));
+      const routed = Number(s.intents_routed ?? 0);
+      return total > 0 ? routed / total : 0;
+    });
+    this.#drawSparkline('#orch-spark-cost',   cost,   '#30d158');
+    this.#drawSparkline('#orch-spark-wall',   wall,   '#0a84ff');
+    this.#drawSparkline('#orch-spark-intent', intent, '#ff9f0a');
+  }
+
+  #drawSparkline(selector, values, stroke) {
+    const svg = this.querySelector(selector);
+    if (!svg || values.length === 0) return;
+    const W = 200, H = 40, PAD = 4;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const n = values.length;
+    const pts = values.map((v, i) => {
+      const x = PAD + (i / Math.max(n - 1, 1)) * (W - 2 * PAD);
+      const y = H - PAD - ((v - min) / range) * (H - 2 * PAD);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    svg.innerHTML = `
+      <polyline points="${this.#escAttr(pts)}"
+                fill="none" stroke="${this.#escAttr(stroke)}" stroke-width="1.5"
+                stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${this.#escAttr(String((PAD + (W - 2 * PAD)).toFixed(1)))}"
+              cy="${this.#escAttr(String((H - PAD - ((values[values.length - 1] - min) / range) * (H - 2 * PAD)).toFixed(1)))}"
+              r="2.5" fill="${this.#escAttr(stroke)}"/>
+    `;
+  }
+
+  // ── Table ─────────────────────────────────────────────────────────────────────
+  #paintTable() {
+    const tbody = this.querySelector('#orch-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    // Render newest-first.
+    for (const s of [...this.#sessions].reverse()) {
+      const tr = document.createElement('tr');
+      tr.className = 'orch-row';
+      const ts    = this.#fmtTs(s.ts);
+      const sid   = String(s.session_id || s.session || '—').slice(0, 32);
+      const routed = Number(s.intents_routed ?? 0);
+      const failed = Number(s.intents_failed ?? 0);
+      const tools  = Number(s.tool_calls ?? 0);
+      const cost   = Number(s.cost_usd ?? s.cost ?? 0);
+      const exit   = String(s.exit_reason ?? 'unknown');
+      const exitCls = exit === 'clean' ? 'orch-exit-clean'
+                    : (exit === 'crash' || exit === 'timeout') ? 'orch-exit-bad'
+                    : 'orch-exit-gray';
+      tr.innerHTML = `
+        <td class="orch-cell-ts">${this.#esc(ts)}</td>
+        <td class="orch-cell-sid">
+          <button class="orch-sid-btn" type="button"
+                  data-sid="${this.#escAttr(sid)}"
+                  title="Filter ambient stream to session ${this.#escAttr(sid)}">${this.#esc(sid)}</button>
+        </td>
+        <td class="orch-cell-num">${this.#esc(String(routed))}/${this.#esc(String(failed))}</td>
+        <td class="orch-cell-num">${this.#esc(String(tools))}</td>
+        <td class="orch-cell-num">$${this.#esc(cost.toFixed(4))}</td>
+        <td><span class="orch-exit ${this.#escAttr(exitCls)}">${this.#esc(exit)}</span></td>
+      `;
+      // Click session_id → navigate to ambient filtered to that session.
+      tr.querySelector('.orch-sid-btn')?.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.sid;
+        // Dispatch navigation to ambient view with session filter hint.
+        document.dispatchEvent(new CustomEvent('chump:navigate', { detail: 'ambient' }));
+        // After a tick, try to set the ambient viewer's session filter if present.
+        setTimeout(() => {
+          const viewer = document.querySelector('chump-ambient-viewer');
+          if (viewer && typeof viewer.setFilter === 'function') viewer.setFilter(id);
+        }, 50);
+      });
+      tbody.appendChild(tr);
+    }
+  }
+
+  // ── Empty state ───────────────────────────────────────────────────────────────
+  #showEmpty() {
+    const ph = this.querySelector('#orch-placeholder');
+    if (!ph) return;
+    ph.hidden = false;
+    ph.innerHTML = `
+      <span class="orch-empty-icon">🎛</span>
+      <span>No orchestrator sessions in the last 24h —
+        run <code>chump orchestrate</code> to populate.</span>
+      <a class="orch-empty-link"
+         href="docs/process/CHUMP_ORCHESTRATE.md"
+         target="_blank" rel="noopener">View docs</a>
+    `;
+    const tbl = this.querySelector('#orch-table');
+    if (tbl) tbl.hidden = true;
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  #fmtTs(ts) {
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return String(ts ?? '—').slice(0, 19);
+      const ageS = (Date.now() - d.getTime()) / 1000;
+      if (ageS < 60)    return `${Math.round(ageS)}s ago`;
+      if (ageS < 3600)  return `${Math.round(ageS / 60)}m ago`;
+      if (ageS < 86400) return `${Math.round(ageS / 3600)}h ago`;
+      return d.toISOString().slice(0, 16).replace('T', ' ');
+    } catch { return String(ts ?? '—').slice(0, 19); }
+  }
+
+  #esc(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  #escAttr(s) { return this.#esc(s); }
+}
+customElements.define('chump-view-orchestrator-sessions', ChumpViewOrchestratorSessions);
+
 // ── Router ────────────────────────────────────────────────────────────────────
 // PRODUCT-091: ambient event viewer view factory.
 function makeAmbientView() {
@@ -4652,6 +4916,7 @@ const VIEWS = {
   health:        () => document.createElement('chump-view-fleet-health'), // INFRA-1203
 
   coord:         () => document.createElement('chump-view-coord'), // INFRA-1204
+  orchestrator:  () => document.createElement('chump-view-orchestrator-sessions'), // INFRA-1365
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
