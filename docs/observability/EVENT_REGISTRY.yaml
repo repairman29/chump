@@ -1753,6 +1753,7 @@ events:
     emitter: src/orchestrate.rs (chump orchestrate — emitted once at session end, INFRA-1363)
     trigger: every chump orchestrate session ends, regardless of exit path (clean, user_quit, crash, timeout)
     consumers: [fleet-brief, kpi-report, cost-watch, ops-audit]
+    effect_metric: self
     fields_required: [ts, kind, session_id, intents_routed, intents_failed, tool_calls, cost_usd, wall_time_s, exit_reason]
     docs: |
       session_id: matches CHUMP_ORCHESTRATE_SESSION_ID env var if set, else
