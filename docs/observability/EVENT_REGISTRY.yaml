@@ -273,6 +273,15 @@ events:
     # INFRA-1240: mirrors the event previously emitted only by gap-claim.sh.
     # Without this, silent_agent and lease_overlap watchdogs missed Rust-path claims.
 
+  - kind: chump_claim_force_recover
+    effect_metric: self
+    emitter: src/atomic_claim.rs emit_force_recover_event (INFRA-1439)
+    trigger: chump claim --force-recover auto-removed a stale worktree dir and/or
+      local branch before the atomic-claim step; actions field lists each recovery
+      step taken (worktree_remove_force, rm_rf, branch_delete)
+    consumers: [fleet-brief, waste-tally, audit-log]
+    fields_required: [ts, kind, gap_id, branch, actions]
+
   - kind: gap_claim_nats_conflict
     effect_metric: self
     emitter: src/atomic_claim.rs nats_dual_write (INFRA-986)
