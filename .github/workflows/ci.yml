@@ -436,6 +436,17 @@ jobs:
         # Per-line opt-out: `# chump-harness-ok: claude-mention`.
         # Promote to --strict once INFRA-1053 backfill closes the long-tail.
         run: bash scripts/ci/test-no-claude-leak.sh
+
+      - name: release staleness gate (INFRA-1373, P2 warn-only)
+        # Warns when the latest GitHub release is > CHUMP_RELEASE_STALENESS_DAYS
+        # (default 14d) behind main HEAD. Non-blocking at P2; promote to
+        # blocking (remove continue-on-error) when gap exceeds 30d.
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHUMP_RELEASE_STALENESS_DAYS: "14"
+        run: bash scripts/ci/check-release-staleness.sh
+
       - name: markdown intra-doc links (DOC-039)
         # Gates on links in .md files MODIFIED by this PR — prevents
         # regression without forcing a one-shot cleanup of the 492
