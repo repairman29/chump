@@ -1074,6 +1074,49 @@ fi
 
 green "=== bot-merge: $BRANCH → $BASE_BRANCH ==="
 
+# ── INFRA-1346: shadow ship-plan probe ────────────────────────────────────────
+# Calls `chump ship plan` once at main-flow entry and emits a ship_plan_advisory
+# ambient event. Purely observational — BEST-EFFORT. Any failure (timeout,
+# binary missing, gh rate-limit) is caught and ignored; bot-merge continues
+# unaffected. Use this advisory stream to spot divergences between the planner's
+# intent and what bot-merge actually does (pre-slice-4 of INFRA-1229).
+#
+# Opt-out: CHUMP_BOT_MERGE_SHADOW_PLAN=0
+_bm_shadow_plan() {
+    local _amb="${CHUMP_AMBIENT_LOG:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl}"
+    local _gap="${GAP_IDS[0]:-}"
+    local _sp_gap_args=()
+    [[ -n "$_gap" ]] && _sp_gap_args=(--gap "$_gap")
+
+    local _plan_json
+    _plan_json=$(timeout 10 chump ship plan --branch "$BRANCH" "${_sp_gap_args[@]}" --json 2>/dev/null) || {
+        info "[INFRA-1346] ship-plan probe timed-out or failed — skipping advisory (best-effort)"
+        return 0
+    }
+
+    # Extract action field and truncate JSON body to 2 KB.
+    local _action _plan_trunc
+    _action=$(printf '%s' "$_plan_json" | python3 -c \
+        "import sys,json; d=json.loads(sys.stdin.read()); print(d.get('action','unknown'))" \
+        2>/dev/null) || _action="unknown"
+    _plan_trunc=$(printf '%s' "$_plan_json" | python3 -c \
+        "import sys,json
+raw=sys.stdin.read()[:2048]
+try: print(json.dumps(json.loads(raw),separators=(',',':')))
+except: print(json.dumps({'raw':raw[:500]}))" \
+        2>/dev/null) || _plan_trunc='{}'
+
+    _ambient_write "$_amb" "$(printf \
+        '{"ts":"%s","kind":"ship_plan_advisory","source":"bot-merge.sh","branch":"%s","gap":"%s","plan_action":"%s","plan_json_truncated_to_2kb":%s}' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$_gap" "$_action" "$_plan_trunc")"
+
+    info "[INFRA-1346] ship_plan_advisory emitted (action=${_action} gap=${_gap:-none})"
+}
+
+if [[ "${CHUMP_BOT_MERGE_SHADOW_PLAN:-1}" == "1" ]]; then
+    _bm_shadow_plan || true   # best-effort: never block main flow
+fi
+
 # ── 0a. Untracked-files handler (INFRA-404) ──────────────────────────────────
 # Instead of aborting when untracked files exist, auto-add them with an
 # explicit warning. This closes the "partial-ship hazard" where bot-merge

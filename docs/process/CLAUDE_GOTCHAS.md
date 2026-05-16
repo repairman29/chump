@@ -1221,6 +1221,36 @@ add `continue-on-error: true` to prevent it from blocking fleet-wide auto-merge.
 **Workaround when already blocked:** Re-trigger the flaky check.
 If it fails again: `gh pr merge <N> --squash --admin` to bypass.
 
+## bot-merge.sh shadow ship-plan advisory stream (INFRA-1346, 2026-05-15)
+
+`bot-merge.sh` emits a `ship_plan_advisory` ambient event at **main-flow entry**
+(after GitHub probe + doctor preflight, before any mutations). It calls
+`chump ship plan --branch <BRANCH> --gap <GAP> --json` with a 10-second timeout
+and records the planner's recommended `action` field alongside the full plan JSON
+(truncated to 2 KB).
+
+**Purpose:** This is the pre-slice-4 validation channel for INFRA-1229. Operators
+can grep `ship_plan_advisory` events from `ambient.jsonl` and compare the planner's
+`plan_action` against the decisions bot-merge.sh actually made, surfacing divergences
+before the full planner-driven loop ships.
+
+**Query divergences:**
+```bash
+grep '"kind":"ship_plan_advisory"' .chump-locks/ambient.jsonl | python3 -c "
+import json,sys
+for line in sys.stdin:
+    d=json.loads(line); print(d['ts'], d.get('branch','?'), d.get('plan_action','?'))
+"
+```
+
+**Opt-out** (e.g. during GraphQL quota crunches to reduce gh API load):
+```bash
+CHUMP_BOT_MERGE_SHADOW_PLAN=0 scripts/coord/bot-merge.sh --gap INFRA-NNN --auto-merge
+```
+
+**Failure is silent:** if `chump ship plan` times out, is missing, or hits a rate
+limit, bot-merge logs `ship-plan probe timed-out or failed` and continues normally.
+The advisory event is simply not emitted that run.
 ## gap reserve + state.db drift → orphan-PR-closer kills in-flight work (INFRA-1354, 2026-05-15)
 
 **Incident:** On 2026-05-15, two `chump gap reserve` calls wrote gap YAMLs only

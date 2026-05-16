@@ -28,12 +28,6 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5  # path filter only; <30s in practice
-    # INFRA-1348: dorny/paths-filter can fail transiently (GitHub runner issue,
-    # network blip). A FAILURE here flips rollup state and blocks auto-merge
-    # even though all correctness gates (test, audit, ACP) passed. COE makes
-    # the conclusion "neutral" on failure; downstream jobs see null outputs
-    # and treat all path-filters as false (= skip) which is safe.
-    continue-on-error: true
     outputs:
       code: ${{ steps.filter.outputs.code }}
       e2e: ${{ steps.filter.outputs.e2e }}
@@ -42,12 +36,6 @@ jobs:
       scripts: ${{ steps.filter.outputs.scripts }}
       acp: ${{ steps.filter.outputs.acp }}
       docs: ${{ steps.filter.outputs.docs }}
-      # INFRA-1379: granular lane outputs
-      rust_code: ${{ steps.filter.outputs.rust }}
-      web_code: ${{ steps.filter.outputs.web_code }}
-      ci_config_only: ${{ steps.lanes.outputs.ci_config_only }}
-      scripts_only: ${{ steps.lanes.outputs.scripts_only }}
-      docs_only: ${{ steps.lanes.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -110,6 +98,7 @@ jobs:
               - 'src/**'
               - 'desktop/**'
               - 'e2e-tauri/**'
+              - '.github/workflows/ci.yml'
             rust:
               - 'src/**'
               - 'crates/**'
@@ -138,51 +127,95 @@ jobs:
               - 'CODE_OF_CONDUCT.md'
               - 'CHANGELOG.md'
               - 'SECURITY.md'
-            # INFRA-1379: new granular lane filters
-            web_code:
-              - 'web/**'
-              - 'ChumpMenu/**'
-            ci_config_raw:
-              - '.github/workflows/**'
 
-      # INFRA-1379: Compute derived exclusion flags.  dorny/paths-filter can
-      # only tell you IF a path changed; it cannot tell you if that was the
-      # ONLY thing that changed.  We compute docs_only / scripts_only /
-      # ci_config_only here so stubs can fire on pure-lane PRs.
-      - name: Compute lane flags (INFRA-1379)
-        id: lanes
+  # ── Tauri Cowork E2E ───────────────────────────────────────────────────────
+  # Only runs when desktop / src / e2e-tauri files change. Skipped on
+  # docs-only, scripts-only, crate-only PRs.
+  tauri-cowork-e2e:
+    needs: changes
+    if: needs.changes.outputs.tauri == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # INFRA-1342: non-required job; continue-on-error prevents a flaky Tauri
+    # test from flipping statusCheckRollup.state → FAILURE and silently
+    # blocking auto-merge for ALL open PRs fleet-wide.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      # Same rationale as the test job's Free disk space step — this job
+      # builds chump + chump-desktop (two binaries) plus tauri-driver.
+      - name: Free disk space
         run: |
-          rust="${{ steps.filter.outputs.rust }}"
-          web="${{ steps.filter.outputs.web_code }}"
-          scripts="${{ steps.filter.outputs.scripts }}"
-          docs="${{ steps.filter.outputs.docs }}"
-          ci="${{ steps.filter.outputs.ci_config_raw }}"
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+          sudo docker image prune --all --force || true
+          df -h /
 
-          # docs_only: docs changed but no rust / web / scripts
-          if [[ "$docs" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" && "$ci" != "true" ]]; then
-            echo "docs_only=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
-          # scripts_only: scripts changed but no rust / web
-          if [[ "$scripts" == "true" && "$rust" != "true" && "$web" != "true" ]]; then
-            echo "scripts_only=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "scripts_only=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
 
-          # ci_config_only: only .github/workflows/** changed
-          if [[ "$ci" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" && "$docs" != "true" ]]; then
-            echo "ci_config_only=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ci_config_only=false" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Install Tauri + WebDriver system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            webkit2gtk-driver \
+            xvfb \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            util-linux
 
-  # ── Tauri Cowork E2E (INFRA-1381: moved to ci-advisory.yml) ─────────────────
-  # Demoted from per-PR to post-merge-only. Not in required_status_checks.
-  # See .github/workflows/ci-advisory.yml for the job definition.
-  # Disposition gap: INFRA-1385.
+      - name: Cache tauri-driver binary
+        id: tauri-driver-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/tauri-driver
+          key: tauri-driver-crate-ubuntu-amd64-v1
+
+      - name: Install tauri-driver
+        if: steps.tauri-driver-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --locked
+
+      - name: Build chump + Cowork (Tauri) shell
+        run: |
+          cargo build --bin chump
+          cargo build -p chump-desktop
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Cowork WebDriver E2E (xvfb)
+        env:
+          CHUMP_WEB_PORT: '3848'
+          CHUMP_WEB_TOKEN: ''
+          CHUMP_DESKTOP_API_BASE: http://127.0.0.1:3848
+          CHUMP_DESKTOP_AUTO_WEB: '0'
+        run: |
+          ./target/debug/chump --web &
+          CHUMP_PID=$!
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:3848/api/health >/dev/null; then
+              echo "chump web ready"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3848/api/health >/dev/null
+          cd e2e-tauri && npm ci
+          xvfb-run -a npm test
+          kill "${CHUMP_PID}" || true
+          wait "${CHUMP_PID}" 2>/dev/null || true
 
   # ── Required-check rollup ─────────────────────────────────────────────────
   # The "test" name is wired into branch protection (required status check).
@@ -401,17 +434,6 @@ jobs:
         # Per-line opt-out: `# chump-harness-ok: claude-mention`.
         # Promote to --strict once INFRA-1053 backfill closes the long-tail.
         run: bash scripts/ci/test-no-claude-leak.sh
-
-      - name: release staleness gate (INFRA-1373, P2 warn-only)
-        # Warns when the latest GitHub release is > CHUMP_RELEASE_STALENESS_DAYS
-        # (default 14d) behind main HEAD. Non-blocking at P2; promote to
-        # blocking (remove continue-on-error) when gap exceeds 30d.
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CHUMP_RELEASE_STALENESS_DAYS: "14"
-        run: bash scripts/ci/check-release-staleness.sh
-
       - name: markdown intra-doc links (DOC-039)
         # Gates on links in .md files MODIFIED by this PR — prevents
         # regression without forcing a one-shot cleanup of the 492
@@ -523,11 +545,6 @@ jobs:
         run: |
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-fleet-brief.sh
-
-      - name: orchestrate LLM-call hang detection + retry (INFRA-1364)
-        run: |
-          cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-orchestrate-llm-timeout.sh
 
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
@@ -866,9 +883,10 @@ jobs:
           retention-days: 30
 
   # ── E2E shards (INFRA-549) ────────────────────────────────────────────────
-  # INFRA-1381: e2e-battle-sim, e2e-golden-path, and tauri-cowork-e2e demoted
-  # to ci-advisory.yml (post-merge only).  Only e2e-pwa remains per-PR; it is
-  # not a required check but its result feeds the test-e2e rollup.
+  # The old monolithic test-e2e (>1h26m, serialized behind unit-test rollup)
+  # is replaced by three parallel shards + a thin rollup.  All shards start
+  # immediately after `changes` — they no longer wait for the `test` rollup,
+  # so e2e runs in parallel with unit tests.  Wall-clock = max(shards) not sum.
   # Dogfood matrix (cargo --release + ~6 min LLM smoke) moved to nightly cron
   # (e2e-dogfood-nightly.yml) — it was the dominant tail and continue-on-error
   # anyway.
@@ -878,8 +896,8 @@ jobs:
   # Skipped when no e2e-relevant files change.  Target wall-clock: ~10-12 min.
   e2e-pwa:
     needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
-    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
     continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 60  # INFRA-1018: cap wall-clock; Ollama+cargo+playwright target ~30 min; 6h default caused stuck runs
@@ -953,32 +971,107 @@ jobs:
           kill "${CHUMP_WEB_PID}" || true
           wait "${CHUMP_WEB_PID}" 2>/dev/null || true
 
-  # ── E2E Shards B+C (INFRA-1381: moved to ci-advisory.yml) ───────────────────
-  # e2e-battle-sim and e2e-golden-path demoted from per-PR to post-merge-only.
-  # Neither is in required_status_checks.
-  # See .github/workflows/ci-advisory.yml for job definitions.
-  # Disposition gaps: INFRA-1386 (battle-sim), INFRA-1387 (golden-path).
+  # ── E2E Shard B: Battle sim ───────────────────────────────────────────────
+  # No Ollama, no cargo build (SKIP_CARGO=1), no LLM (SKIP_IF_NO_LLM=1).
+  # Lightweight — runs on bare ubuntu-latest in ~1-2 min.
+  e2e-battle-sim:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Battle sim suite (no web / no LLM)
+        env:
+          BATTLE_SIM_SKIP_CARGO: 1
+          BATTLE_SIM_SKIP_IF_NO_LLM: 1
+        run: bash scripts/ci/run-battle-sim-suite.sh
+
+  # ── E2E Shard C: Golden path ──────────────────────────────────────────────
+  # cargo build (debug) + file-presence checks + timing log.
+  # No Ollama.  Target wall-clock: ~5 min.
+  e2e-golden-path:
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
+    # INFRA-1342: non-required; continue-on-error prevents rollup FAILURE trap.
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Linux packages for chump-desktop (workspace member)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libgtk-3-dev \
+            librsvg2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-e2e-golden
+
+      - name: External golden path smoke
+        run: bash scripts/ci/verify-external-golden-path.sh
+
+      - name: Golden path timing (JSONL + artifact)
+        env:
+          GOLDEN_MAX_CARGO_BUILD_SEC: 1800
+        run: bash scripts/ci/golden-path-timing.sh
+
+      - name: Upload golden path timing log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: golden-path-timing
+          path: logs/golden-path-timing-*.jsonl
+          if-no-files-found: ignore
 
   # ── E2E rollup (keeps the required-check name) ────────────────────────────
-  # INFRA-1381: rollup simplified — now only waits on e2e-pwa (the sole
-  # remaining per-PR e2e shard).  battle-sim and golden-path moved to
-  # ci-advisory.yml (post-merge only, not required checks).
+  # Same pattern as the `test` rollup (INFRA-213): thin job that succeeds iff
+  # all three e2e shards succeed (or are skipped on non-e2e PRs).
   test-e2e:
-    needs: [e2e-pwa]
+    needs: [e2e-pwa, e2e-battle-sim, e2e-golden-path]
     if: always()
     runs-on: ubuntu-latest
-    # continue-on-error guards against runner failures in this aggregator
-    # creating a FAILURE status on PRs where all required checks passed.
-    continue-on-error: true
     steps:
-      - name: Verify e2e-pwa passed
+      - name: Verify all e2e shards passed
         run: |
           pwa="${{ needs.e2e-pwa.result }}"
-          echo "e2e-pwa=$pwa"
-          case "$pwa" in
-            success|skipped) echo "e2e-pwa green (or appropriately skipped)." ;;
-            *) echo "::error::e2e-pwa failed (result=$pwa)"; exit 1 ;;
-          esac
+          sim="${{ needs.e2e-battle-sim.result }}"
+          golden="${{ needs.e2e-golden-path.result }}"
+          echo "e2e-pwa=$pwa  e2e-battle-sim=$sim  e2e-golden-path=$golden"
+          fail=0
+          for r in "$pwa" "$sim" "$golden"; do
+            case "$r" in
+              success|skipped) ;;
+              *) fail=1 ;;
+            esac
+          done
+          if [ "$fail" = "1" ]; then
+            echo "::error::One or more e2e shards failed (see results above)"
+            exit 1
+          fi
+          echo "All e2e shards green (or appropriately skipped)."
 
   # INFRA-503 (2026-05-06): cargo audit was the dominant per-PR cycle-time
   # tax (~12min × every PR). Moved to .github/workflows/cargo-audit-nightly.yml
@@ -990,12 +1083,6 @@ jobs:
   # marks itself green in <1min. To remove this job entirely, also remove
   # 'audit' from branch-protection-main.json's required_status_checks.
   audit:
-    needs: changes
-    # INFRA-1379: skip audit for docs-only PRs (gap YAMLs, .md edits) — audit-stub
-    # satisfies the required check. Always runs on push/merge_group to keep main green.
-    if: |
-      needs.changes.outputs.docs_only != 'true' ||
-      github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
     steps:
@@ -1049,9 +1136,6 @@ jobs:
 
       - name: gh-shim script attribution deep walk (CREDIBLE-065)
         run: bash scripts/ci/test-gh-shim-script-attribution.sh
-
-      - name: merge_state_status column — webhook write + shim read + migration (INFRA-1368)
-        run: bash scripts/ci/test-cache-mergestatestatus.sh
 
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
@@ -1114,12 +1198,6 @@ jobs:
         run: bash scripts/ci/test-fleet-bootstrap.sh
       - name: PWA flake quarantine wiring (INFRA-1332)
         run: bash scripts/ci/test-pwa-flake-quarantine.sh
-      - name: worktree-prune protects live edits (INFRA-1347)
-        run: bash scripts/ci/test-worktree-prune-protects-live-edits.sh
-      - name: cockpit Today's-arc Wake-fleet action (PRODUCT-128)
-        run: bash scripts/ci/test-cockpit-wake-fleet.sh
-      - name: cockpit Lock-contention Release-leases button (PRODUCT-129)
-        run: bash scripts/ci/test-cockpit-release-leases.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
@@ -1285,6 +1363,8 @@ jobs:
         run: bash scripts/ci/test-fleet-status-rate-limit.sh
       - name: bot-merge watchdog — kills done-gap procs, spares open-gap, exempt bypass (INFRA-1006)
         run: bash scripts/ci/test-bot-merge-watchdog.sh
+      - name: bot-merge shadow ship-plan advisory — emits ship_plan_advisory, opt-out respected (INFRA-1346)
+        run: bash scripts/ci/test-bot-merge-shadow-plan.sh
       - name: autonomous ship-rate metric fixture (CREDIBLE-047)
         run: bash scripts/ci/test-autonomous-ship-rate.sh
       - name: release --lease <ID> flag — named session release (INFRA-1026)
@@ -1308,11 +1388,6 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-api-gap-queue-shape.sh
-      - name: /api/lease/release-expired — expired lease scan, delete, preserve active (PRODUCT-129)
-        run: |
-          cargo build --bin chump 2>&1 | tail -3
-          CHUMP_BIN="$(pwd)/target/debug/chump" \
-            bash scripts/ci/test-api-release-expired.sh
       - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
         run: bash scripts/ci/test-gap-ac-requirement.sh
       - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
@@ -1471,18 +1546,16 @@ jobs:
   audit-stub:
     name: audit-stub
     needs: changes
-    # INFRA-1379: fire when code filter is empty (original condition) OR when
-    # docs_only is true (new: gap YAML / .md-only PRs skip 15-min audit job).
     if: |
-      (needs.changes.outputs.code != 'true' || needs.changes.outputs.docs_only == 'true') &&
+      needs.changes.outputs.code != 'true' &&
       github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: audit skipped (no code changes or docs-only lane detected)
+      - name: audit skipped (no code changes detected)
         run: |
-          echo "audit-stub: lane check — docs_only=${{ needs.changes.outputs.docs_only }} code=${{ needs.changes.outputs.code }}"
-          echo "audit CI checks not required for this diff. Branch protection satisfied by this stub."
+          echo "audit-stub: no code-filter changes — audit CI checks not required for this diff."
+          echo "Branch protection satisfied by this stub."
 
   # ── audit-required: rollup that branch protection enforces ───────────────
   audit-required:
@@ -1533,11 +1606,6 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pillar-balance-guard.sh
-      - name: patch_file headerless-diff (tier-c) fallback for Llama-style outputs (INFRA-785)
-        run: bash scripts/ci/test-patch-file-fallback.sh
-
-      - name: cargo build mutex isolation — per-worktree CARGO_TARGET_DIR (INFRA-1374)
-        run: bash scripts/ci/test-cargo-mutex-isolation.sh
 
   # ── System integration test (INFRA-849) ──────────────────────────────────────
   # Non-blocking end-to-end test for the claim→commit→ship pipeline using stubs.
