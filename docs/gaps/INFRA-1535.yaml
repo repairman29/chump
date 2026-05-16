@@ -1,0 +1,20 @@
+- id: INFRA-1535
+  domain: INFRA
+  title: "ZERO-WASTE: paramedic RUNNER_AUTOSCALE — register self-hosted runners on queue surge, deregister on idle; per-machine + per-mesh capacity envelopes"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Paramedic daemon (INFRA-1375) new action RUNNER_AUTOSCALE: polls gh api /repos/<owner>/<repo>/actions/runners (online count) + gh run list --status queued (queue depth) every 60s"
+    - "Scale-up rule: if queue_depth > online_runners * 2 sustained over 2 min AND online < per_machine_cap AND total_online < CHUMP_RUNNER_MAX_TOTAL (default 8): spawn another via scripts/setup/install-self-hosted-runner.sh RUNNER_NAME=<machine>-<n>; cooldown 5min between scale-ups"
+    - "Scale-down rule: if runner status=idle for >10 min AND total_online > CHUMP_RUNNER_MIN_TOTAL (default 1): gh api DELETE /repos/.../actions/runners/<id> + launchctl bootout + rm -rf RUNNER_DIR"
+    - "Inventory: scripts/coord/runner-inventory.yaml lists reachable machines (hostname, ssh_target, platform, max_runners). Format: hosts: [{name: m4, ssh: localhost, platform: macos-arm64, max: 2}, {name: pi-01, ssh: pi-01.local, platform: linux-arm64, max: 1}, ...]"
+    - "Emit kind=runner_scaled {action: spawn"
+    - reap, machine, runner_name, total_after, queue_depth_observed}
+    - Shares signal-poll loop with INFRA-1519 (convoy detection) — both consume same gh api response
+    - "Per-machine cap: M4=2 (cargo thrash above that), Pi=1 (CPU-bound), configurable in inventory"
+    - "Smoke test scripts/ci/test-runner-autoscale.sh: fixture queue=10 + online=1 + cap=4, assert spawn; fixture idle=15min + online=4 + min=1, assert reap"
+    - "Today's signal: 24+ queued runs at 2 concurrent saturated for 12+ hours. Autoscale to 4 = ~6 min drain vs ~30 min. Pair with INFRA-1534 (single-runner install) which it builds on"
+  notes: |
+    Demoted P0→P1 2026-05-16: depends on INFRA-1534 (self-hosted runners) shipping first. Keeping P0 budget reserved for true unblockers across pillars per META-046. Re-promote to P0 after INFRA-1534 lands.
+
