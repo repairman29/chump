@@ -3227,6 +3227,129 @@ pub fn parse_json_ac_list(s: &str) -> Vec<String> {
     parse_json_string_list(s).unwrap_or_default()
 }
 
+/// INFRA-1411: load a single gap from its YAML file as a fallback when
+/// state.db is missing the row or holds vague (TODO/TBD) acceptance_criteria.
+///
+/// Looks for `<repo_root>/docs/gaps/<ID>.yaml`. Accepts either shape:
+///   1. Top-level list:   `- id: INFRA-1411\n  title: …`
+///   2. `gaps:` keyed:    `gaps:\n  - id: INFRA-1411\n    title: …`
+///
+/// Handles the double-encoded AC pattern observed 2026-05-16 in state.db
+/// (`acceptance_criteria: "[\"a\",\"b\"]"` — a single-string-element list
+/// whose only entry is a JSON-encoded array). Always returns AC as a
+/// canonical single-level JSON array string.
+pub fn load_gap_from_yaml(repo_root: &std::path::Path, gap_id: &str) -> Result<Option<GapRow>> {
+    let path = repo_root.join("docs/gaps").join(format!("{}.yaml", gap_id));
+    if !path.exists() {
+        return Ok(None);
+    }
+    let body =
+        std::fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    // Try top-level-list shape first; fall back to `gaps:`-keyed shape.
+    let yaml_gap: Option<YamlGap> = if let Ok(list) = serde_yaml::from_str::<Vec<YamlGap>>(&body) {
+        list.into_iter().find(|g| g.id == gap_id)
+    } else if let Ok(file) = serde_yaml::from_str::<YamlGapsFile>(&body) {
+        file.gaps.into_iter().find(|g| g.id == gap_id)
+    } else {
+        None
+    };
+    let Some(yg) = yaml_gap else {
+        return Ok(None);
+    };
+
+    // Normalize acceptance_criteria. The YAML on disk may carry it as a
+    // real JSON array, OR as a single-element list whose only entry is a
+    // JSON-encoded string of an array (double-encoded import bug).
+    let ac_string = match yg.acceptance_criteria.as_ref() {
+        None => String::new(),
+        Some(serde_json::Value::Array(items)) => {
+            if items.len() == 1 {
+                if let Some(s) = items[0].as_str() {
+                    if let Ok(inner) = serde_json::from_str::<serde_json::Value>(s) {
+                        if inner.is_array() {
+                            inner.to_string()
+                        } else {
+                            serde_json::Value::Array(items.clone()).to_string()
+                        }
+                    } else {
+                        serde_json::Value::Array(items.clone()).to_string()
+                    }
+                } else {
+                    serde_json::Value::Array(items.clone()).to_string()
+                }
+            } else {
+                serde_json::Value::Array(items.clone()).to_string()
+            }
+        }
+        Some(other) => other.to_string(),
+    };
+
+    // Best-effort coerce of YAML-Value-typed simple scalar fields back to string.
+    let stringify_val = |v: &Option<serde_yaml::Value>| -> String {
+        match v {
+            None => String::new(),
+            Some(serde_yaml::Value::String(s)) => s.clone(),
+            Some(serde_yaml::Value::Number(n)) => n.to_string(),
+            Some(serde_yaml::Value::Bool(b)) => b.to_string(),
+            Some(_) => String::new(),
+        }
+    };
+
+    let closed_pr = match yg.closed_pr.as_ref() {
+        None => None,
+        Some(serde_yaml::Value::Number(n)) => n.as_i64(),
+        Some(serde_yaml::Value::String(s)) => s.trim().parse::<i64>().ok(),
+        Some(_) => None,
+    };
+
+    let depends_on_string = match yg.depends_on.as_ref() {
+        None => String::new(),
+        Some(v) => v.to_string(),
+    };
+
+    Ok(Some(GapRow {
+        id: yg.id,
+        domain: yg.domain,
+        title: yg.title,
+        description: yg.description,
+        priority: yg.priority,
+        effort: yg.effort,
+        status: yg.status,
+        acceptance_criteria: ac_string,
+        depends_on: depends_on_string,
+        notes: stringify_val(&yg.notes),
+        source_doc: stringify_val(&yg.source_doc),
+        created_at: 0,
+        closed_at: None,
+        opened_date: stringify_val(&yg.opened_date),
+        closed_date: stringify_val(&yg.closed_date),
+        closed_pr,
+        skills_required: stringify_val(&yg.skills_required),
+        preferred_backend: stringify_val(&yg.preferred_backend),
+        preferred_machine: stringify_val(&yg.preferred_machine),
+        estimated_minutes: stringify_val(&yg.estimated_minutes),
+        required_model: stringify_val(&yg.required_model),
+    }))
+}
+
+/// INFRA-1411: returns true when `ac_string` either is empty OR every
+/// item is a TODO/TBD/placeholder string. Used by `chump gap show` to
+/// trigger the YAML fallback even when state.db has a row.
+pub fn acceptance_criteria_is_vague(ac_string: &str) -> bool {
+    let items = parse_json_ac_list(ac_string);
+    if items.is_empty() {
+        return ac_string.trim().is_empty();
+    }
+    items.iter().all(|item| {
+        let up = item.trim().to_uppercase();
+        up.is_empty()
+            || up.contains("TODO")
+            || up.contains("TBD")
+            || up.contains("<FILL IN>")
+            || up.contains("WARN: NEEDS ACCEPTANCE_CRITERIA")
+    })
+}
+
 /// Parse a stored JSON-string-array column back to Vec<String>. Returns None
 /// when the field is empty or unparseable.
 fn parse_json_string_list(s: &str) -> Option<Vec<String>> {
