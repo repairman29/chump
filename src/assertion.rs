@@ -1,5 +1,8 @@
 //! Runtime assertion framework for gap execution — fail-fast validation.
 //! CREDIBLE-065: catch data invariant violations early with clear error messages.
+//!
+//! Observability: callers should emit kind = "assertion_failure" to ambient.jsonl
+//! when an AssertionError is returned (wired at the call site in main.rs / claim path).
 
 use serde_json::Value;
 
@@ -85,7 +88,7 @@ pub fn assert_json_shape(
                 field_name: field_name.to_string(),
                 expected: expected_type.to_string(),
                 actual: actual_type.to_string(),
-                context: format!("required field missing or wrong type in JSON object"),
+                context: "required field missing or wrong type in JSON object".to_string(),
             });
         }
     }
@@ -116,7 +119,7 @@ pub fn assert_gap_valid(gap_data: &Value) -> AssertionResult<()> {
 
     // Additional validation: status must be one of the valid values
     if let Some(status_val) = gap_data.get("status").and_then(|v| v.as_str()) {
-        let valid_statuses = vec!["open", "claimed", "done", "wontfix"];
+        let valid_statuses = ["open", "claimed", "done", "wontfix"];
         if !valid_statuses.contains(&status_val) {
             return Err(AssertionError {
                 assertion_type: "gap_valid".to_string(),
@@ -130,7 +133,7 @@ pub fn assert_gap_valid(gap_data: &Value) -> AssertionResult<()> {
 
     // priority must be P0, P1, P2, or P3
     if let Some(priority_val) = gap_data.get("priority").and_then(|v| v.as_str()) {
-        let valid_priorities = vec!["P0", "P1", "P2", "P3"];
+        let valid_priorities = ["P0", "P1", "P2", "P3"];
         if !valid_priorities.contains(&priority_val) {
             return Err(AssertionError {
                 assertion_type: "gap_valid".to_string(),

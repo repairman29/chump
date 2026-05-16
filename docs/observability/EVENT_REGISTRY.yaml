@@ -1158,6 +1158,7 @@ events:
     consumers: [waste-tally, fleet-brief]
 
   - kind: assertion_failure
+    effect_metric: self
     emitter: src/assertion.rs (CREDIBLE-065, runtime assertion framework)
     trigger: gap claim or ship operation detects data invariant violation
     consumers: [audit-log, fleet-brief, operator-dashboard]
