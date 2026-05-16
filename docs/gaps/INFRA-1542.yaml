@@ -1,0 +1,9 @@
+- id: INFRA-1542
+  domain: INFRA
+  title: "RESILIENT: INFRA-1540 Phase 2 — gate apt-get on runner.os == Linux for the 7 heavy ci.yml jobs to enable macOS-ARM64 fan-out"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "[\"Phase 1 (INFRA-1540) migrated 14 macOS-safe jobs to self-hosted. The 7 bottleneck jobs (clippy, cargo-test, audit, coverage, e2e-pwa, e2e-golden-path, tauri-cowork-e2e) still install Linux Tauri deps via apt-get and stay on ubuntu-latest. These ARE the queue bottleneck. Phase 2 makes them cross-platform so they can use both lanes.\",\"For each of the 7 jobs in .github/workflows/ci.yml, wrap the apt-get install step in if: runner.os == Linux. On macOS, the Rust workspace builds via native WebKit + Cocoa (no webkit2gtk needed) — verify via per-job test on a self-hosted runner.\",\"After wrapping, change runs-on from ubuntu-latest to a matrix: [ubuntu-latest, [self-hosted, macOS, ARM64]] so jobs run on either lane based on availability. Use strategy.fail-fast: false to avoid one OS failure killing the other.\",\"Cargo workspace Tauri features must be feature-gated cleanly. If desktop/ crate hard-requires Linux Tauri deps unconditionally on the build path, factor that into a [target.cfg(unix)] / [target.cfg(target_os=linux)] split first.\",\"Add fork-PR security guard on the self-hosted leg of each matrix entry (same as Phase 1 AC #7).\",\"Smoke test scripts/ci/test-ci-yml-heavy-jobs-cross-platform.sh: assert each of the 7 jobs has the apt-get gate AND the matrix strategy.\",\"After ship: queue depth should fall ~50% during peak because the 7 bottleneck jobs now run on 4 macOS runners in parallel with github-hosted slots.\",\"Out of scope: ARM64 vs x86-64 cargo cross-compilation; tauri-cowork-e2e selenium driver compatibility (separate INFRA-1529).\"]"
+
