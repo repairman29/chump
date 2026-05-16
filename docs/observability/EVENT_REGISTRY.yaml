@@ -3516,3 +3516,11 @@ events:
       of pass/fail so fleet-brief can track health-check cadence
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, pass_count, fail_count]
+  # ── PRODUCT-081: PWA Outcome Dashboard ───────────────────────────────────
+  - kind: pwa_impact_viewed
+    emitter: web/v2/impact.js ChumpViewImpact._load (PRODUCT-081)
+    trigger: operator opens the Impact tab or switches time window;
+      sendBeacon POST /api/ambient/emit fires after /api/impact renders,
+      recording the selected window and top-line metric counts
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, source, window, prs_merged, gaps_closed, operator_hours_saved]
