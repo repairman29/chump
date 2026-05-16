@@ -21,16 +21,36 @@ ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
 cd "$ROOT"
 
 CHUMP_BIN="${CHUMP_BIN:-}"
+
+# INFRA-1540: if CHUMP_BIN is set but the file doesn't exist, fall through to
+# discovery rather than erroring out silently at exec-time. Surfaces on
+# self-hosted runners where CARGO_TARGET_DIR redirects cargo build output to
+# the shared cache (~/.cache/chump-runner/cargo-target/) — the legacy
+# ./target/debug/chump path is empty even after a successful build, so the
+# stale CHUMP_BIN env var causes a 45ms "FAIL: No output" with no diagnostic.
+if [[ -n "$CHUMP_BIN" ]] && [[ ! -x "$CHUMP_BIN" ]] && [[ ! -x "$ROOT/$CHUMP_BIN" ]]; then
+  echo "WARN: \$CHUMP_BIN='$CHUMP_BIN' not executable; falling through to discovery" >&2
+  CHUMP_BIN=""
+fi
+
 if [[ -z "$CHUMP_BIN" ]]; then
-  if [[ -x "$ROOT/target/release/chump" ]]; then
+  # Priority: explicit CARGO_TARGET_DIR (self-hosted with shared cache) >
+  # release > debug at legacy path.
+  if [[ -n "${CARGO_TARGET_DIR:-}" ]] && [[ -x "$CARGO_TARGET_DIR/release/chump" ]]; then
+    CHUMP_BIN="$CARGO_TARGET_DIR/release/chump"
+  elif [[ -n "${CARGO_TARGET_DIR:-}" ]] && [[ -x "$CARGO_TARGET_DIR/debug/chump" ]]; then
+    CHUMP_BIN="$CARGO_TARGET_DIR/debug/chump"
+  elif [[ -x "$ROOT/target/release/chump" ]]; then
     CHUMP_BIN="$ROOT/target/release/chump"
   elif [[ -x "$ROOT/target/debug/chump" ]]; then
     CHUMP_BIN="$ROOT/target/debug/chump"
   else
-    echo "ERROR: no chump binary found; run 'cargo build' first" >&2
+    echo "ERROR: no chump binary found; tried CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-<unset>} and $ROOT/target/{release,debug}/chump — run 'cargo build' first" >&2
     exit 1
   fi
 fi
+
+echo "[acp-smoke] using CHUMP_BIN=$CHUMP_BIN" >&2
 
 PASS=0
 FAIL=0
