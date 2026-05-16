@@ -31,3 +31,4 @@ scripts/ops/pr-blocked-watch.sh           # migration gap: INFRA-1249
 scripts/ops/pr-repair-rebase.sh           # migration gap: INFRA-1249
 scripts/ops/pr-watch-shepherd.sh          # migration gap: INFRA-1249
 scripts/ops/stale-pr-reaper.sh            # migration gap: INFRA-1249
+scripts/coord/pr-rescue-false-close.sh    # INFRA-1406: write ops (comment+merge) in PR recovery path; migration: INFRA-1249
