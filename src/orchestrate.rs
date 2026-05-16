@@ -201,6 +201,174 @@ fn stub_response(intent: &str) -> String {
     format!("{}\n(stub response — no LLM call)", tools.join("\n"))
 }
 
+/// Load the last `limit` ambient.jsonl events that carry the given `session_id` field.
+///
+/// Events are returned in chronological order (oldest first). If `CHUMP_AMBIENT_IN_PROMPT`
+/// is set, reads from that path instead of `.chump-locks/ambient.jsonl`.
+fn load_session_events(
+    repo_root: &Path,
+    session_id: &str,
+    limit: usize,
+) -> Vec<serde_json::Map<String, serde_json::Value>> {
+    let ambient = if let Ok(path) = std::env::var("CHUMP_AMBIENT_IN_PROMPT") {
+        std::path::PathBuf::from(path)
+    } else {
+        repo_root.join(".chump-locks").join("ambient.jsonl")
+    };
+    let Ok(content) = std::fs::read_to_string(&ambient) else {
+        return Vec::new();
+    };
+    let matching: Vec<_> = content
+        .lines()
+        .filter_map(|line| {
+            let v: serde_json::Value = serde_json::from_str(line).ok()?;
+            let map = v.into_object()?;
+            let ev_session = map.get("session_id").and_then(|v| v.as_str()).unwrap_or("");
+            if ev_session == session_id {
+                Some(map)
+            } else {
+                None
+            }
+        })
+        .collect();
+    // Take the last `limit` events, preserving chronological order.
+    if matching.len() <= limit {
+        matching
+    } else {
+        matching.into_iter().rev().take(limit).rev().collect()
+    }
+}
+
+/// Extension trait to convert `serde_json::Value` to `Option<serde_json::Map>`.
+trait IntoObject {
+    fn into_object(self) -> Option<serde_json::Map<String, serde_json::Value>>;
+}
+impl IntoObject for serde_json::Value {
+    fn into_object(self) -> Option<serde_json::Map<String, serde_json::Value>> {
+        match self {
+            serde_json::Value::Object(m) => Some(m),
+            _ => None,
+        }
+    }
+}
+
+/// `chump orchestrate --resume <session-id>` — recover from a crashed/timed-out session.
+///
+/// Reads the last 200 ambient events for the given session_id:
+/// - If exit_reason=clean (session completed normally), refuses with an error message.
+/// - If exit_reason is missing (no summary event) or crash/timeout/user_quit,
+///   re-poses the last unanswered intent and drops into the normal interactive loop.
+/// - Refuses if the session has already been resumed CHUMP_ORCHESTRATE_MAX_RESUMES times.
+///
+/// Emits kind=orchestrate_session_resumed on successful recovery.
+pub async fn resume(repo_root: &Path, session_id: &str) -> Result<()> {
+    let events = load_session_events(repo_root, session_id, 200);
+
+    // --- AC-2: refuse if the session was clean-exited -------------------------
+    // Look for orchestrate_session_summary (INFRA-1363) with exit_reason=clean,
+    // or fall back to orchestrate_session_end with status=ok (current codebase).
+    let exit_reason = events
+        .iter()
+        .rfind(|e| e.get("kind").and_then(|v| v.as_str()) == Some("orchestrate_session_summary"))
+        .and_then(|e| e.get("exit_reason"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| {
+            // Pre-INFRA-1363 fallback: infer clean from orchestrate_session_end + status=ok.
+            let clean = events.iter().any(|e| {
+                e.get("kind").and_then(|v| v.as_str()) == Some("orchestrate_session_end")
+                    && e.get("status").and_then(|v| v.as_str()) == Some("ok")
+                    && e.get("intent").and_then(|v| v.as_str()) == Some("exit")
+            });
+            if clean {
+                "clean"
+            } else {
+                ""
+            }
+        });
+
+    if exit_reason == "clean" {
+        eprintln!(
+            "session {} already completed — start a fresh session",
+            session_id
+        );
+        std::process::exit(1);
+    }
+
+    // --- AC-5: check resume attempt limit ------------------------------------
+    let prior_resumes = events
+        .iter()
+        .filter(|e| e.get("kind").and_then(|v| v.as_str()) == Some("orchestrate_session_resumed"))
+        .count();
+
+    let max_resumes: usize = std::env::var("CHUMP_ORCHESTRATE_MAX_RESUMES")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3);
+
+    if prior_resumes >= max_resumes {
+        eprintln!(
+            "session {} has been resumed {} time(s) — limit is {}; \
+             refusing to avoid infinite resume loop",
+            session_id, prior_resumes, max_resumes
+        );
+        std::process::exit(1);
+    }
+
+    // --- AC-3: find the last unanswered intent --------------------------------
+    let last_intent = events
+        .iter()
+        .rfind(|e| e.get("kind").and_then(|v| v.as_str()) == Some("orchestrate_intent"))
+        .and_then(|e| e.get("intent"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    // --- AC-4: emit orchestrate_session_resumed ------------------------------
+    let events_replayed = events.len().to_string();
+    let resume_attempts = (prior_resumes + 1).to_string();
+    tracing::info!(
+        kind = "orchestrate_session_resumed",
+        session_id = session_id,
+        events_replayed = events.len(),
+        resume_attempts = prior_resumes + 1,
+        "session resumed"
+    );
+    emit_ambient_event(
+        repo_root,
+        "orchestrate_session_resumed",
+        &[
+            ("session_id", session_id),
+            ("events_replayed", &events_replayed),
+            ("resume_attempts", &resume_attempts),
+            (
+                "prior_exit_reason",
+                if exit_reason.is_empty() {
+                    "unknown"
+                } else {
+                    exit_reason
+                },
+            ),
+        ],
+    );
+
+    // --- AC-3: re-pose last intent to operator --------------------------------
+    println!(
+        "[orchestrate --resume] Session {} recovered ({} events replayed, attempt {}/{})",
+        session_id, events_replayed, resume_attempts, max_resumes
+    );
+    if !last_intent.is_empty() {
+        println!(
+            "[orchestrate --resume] Last intent: '{}' — completed routing, \
+             awaiting confirmation when session crashed",
+            last_intent
+        );
+    }
+    println!("[orchestrate --resume] Resuming interactive loop. Type intent or 'exit'.");
+    println!();
+
+    // Drop into the normal interactive session.
+    run(repo_root).await
+}
+
 pub async fn run(repo_root: &Path) -> Result<()> {
     let stub_mode = std::env::var("CHUMP_ORCHESTRATE_STUB").as_deref() == Ok("1");
 
