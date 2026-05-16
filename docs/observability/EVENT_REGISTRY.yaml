@@ -1470,6 +1470,22 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, pr, detail]
 
+  - kind: auto_merge_arm_verified
+    effect_metric: self
+    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1438)
+    trigger: post-arm gh pr view confirmed autoMergeRequest is non-null; attempt_count
+      records whether the 30s retry was needed
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, pr, detail]
+
+  - kind: auto_merge_arm_verify_failed
+    effect_metric: self
+    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1438)
+    trigger: gh pr merge --auto returned 0 but autoMergeRequest was null after 2s +
+      30s retry; PR left unarmed (silent GraphQL exhaustion)
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, pr, detail]
+
   - kind: auto_merge_rest_direct
     effect_metric: self
     emitter: scripts/coord/auto-merge-armer.sh (INFRA-1113)

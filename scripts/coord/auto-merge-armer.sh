@@ -223,6 +223,48 @@ print(f"{incomplete} {failed} {total}")
     return 1
 }
 
+# INFRA-1438: Post-arm verification — confirm autoMergeRequest is non-null.
+# gh pr merge --auto can return exit 0 silently while GraphQL is exhausted,
+# leaving the PR without an auto-merge arm. Detect and retry before returning.
+#
+# verify_arm <pr_num> [attempt_count]
+#   Returns 0 if verified, 1 if null after one 30s retry.
+verify_arm() {
+    local pr_num="$1" attempt_count="${2:-1}"
+    local armed
+
+    sleep 2
+    armed="$(chump_gh api "repos/${REPO}/pulls/${pr_num}" \
+        --jq '.auto_merge != null' 2>/dev/null || echo 'false')"
+
+    if [[ "${armed}" == "true" ]]; then
+        emit_ambient "auto_merge_arm_verified" "${pr_num}" \
+            "attempt_count=${attempt_count} script=auto-merge-armer.sh"
+        echo "[auto-merge-armer] PR #${pr_num}: arm verified (autoMergeRequest non-null)." >&2
+        return 0
+    fi
+
+    # Null on first check — retry once with 30s backoff (INFRA-1438).
+    local retry_count=$(( attempt_count + 1 ))
+    echo "[auto-merge-armer] PR #${pr_num}: WARNING: arm returned 0 but autoMergeRequest is null — retrying in 30s… (attempt ${retry_count})" >&2
+    sleep 30
+
+    armed="$(chump_gh api "repos/${REPO}/pulls/${pr_num}" \
+        --jq '.auto_merge != null' 2>/dev/null || echo 'false')"
+
+    if [[ "${armed}" == "true" ]]; then
+        emit_ambient "auto_merge_arm_verified" "${pr_num}" \
+            "attempt_count=${retry_count} script=auto-merge-armer.sh"
+        echo "[auto-merge-armer] PR #${pr_num}: arm verified on retry (autoMergeRequest non-null)." >&2
+        return 0
+    fi
+
+    emit_ambient "auto_merge_arm_verify_failed" "${pr_num}" \
+        "attempt_count=${retry_count} script=auto-merge-armer.sh"
+    echo "[auto-merge-armer] ERROR: PR #${pr_num}: autoMergeRequest still null after retry — arm silently failed." >&2
+    return 1
+}
+
 # INFRA-1377: detect whether GitHub Merge Queue is active for main.
 # Cached in $MERGE_QUEUE_ACTIVE after first call — one API round-trip per
 # armer invocation. Returns "true" or "false".
@@ -294,10 +336,18 @@ arm_with_retry() {
 
         if [[ $rc -eq 0 ]]; then
             rm -f "${tmpout}"
-            # INFRA-1311: successful merge — clear backoff state.
-            _backoff_clear "${pr_num}"
-            rm -f "${LOCKS_DIR}/bot-merge-backoff-${pr_num}.count" 2>/dev/null || true
-            return 0
+            # INFRA-1438: verify that auto-merge actually engaged — gh pr merge
+            # --auto can return 0 silently under GraphQL exhaustion without setting
+            # autoMergeRequest. verify_arm sleeps 2s then checks; retries once at 30s.
+            if verify_arm "${pr_num}" "${attempt}"; then
+                # INFRA-1311: successful merge + verified — clear backoff state.
+                _backoff_clear "${pr_num}"
+                rm -f "${LOCKS_DIR}/bot-merge-backoff-${pr_num}.count" 2>/dev/null || true
+                return 0
+            fi
+            # verify_arm failed: fall through as rc=2 so the outer caller marks
+            # this PR as failed and emits auto_merge_arm_failed.
+            rc=2
         fi
 
         if grep -qi "secondary rate limit\|rate limit already exceeded" "${tmpout}" \
