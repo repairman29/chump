@@ -3516,3 +3516,14 @@ events:
       of pass/fail so fleet-brief can track health-check cadence
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, pass_count, fail_count]
+  # ── INFRA-1490: ci.yml merge driver mid-file fallback ────────────────────
+  - kind: ci_yml_row_add_merged
+    emitter: scripts/git/merge-driver-ci-yml-add-row.sh (INFRA-1490)
+    trigger: >
+      Custom merge driver was unable to use the original pure-append path
+      (both sides modified the shared prefix) but successfully auto-merged
+      via the patch-fuzz3 or git-merge-file --union fallback. Surfaces the
+      otherwise-invisible "10 of 12 PRs all conflicted on ci.yml" pattern
+      from 2026-05-16T04:30 in the audit trail.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, ours, theirs, mode, adds]

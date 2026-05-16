@@ -221,3 +221,4 @@ pwa_brief_loaded  # reason: emitted from web/v2/daily-brief.js via sendBeacon (J
 orchestrate_session_summary  # reason: emitted by INFRA-1363 src/orchestrate.rs; used as test fixture here while that PR is in flight
 chump_claim_force_recover  # reason: emitted via escaped Rust format string in src/atomic_claim.rs (INFRA-1439); regex pattern miss
 fleet_doctor_run        # reason: INFRA-1427 emitted via positional arg `bash "$AMBIENT_EMIT" fleet_doctor_run` in scripts/coord/fleet-doctor-strict.sh; grep scanner expects "kind":"..." JSON literal and misses this form
+ci_yml_row_add_merged  # reason: emitted from scripts/git/merge-driver-ci-yml-add-row.sh (shell); not in PROD_PATHS
