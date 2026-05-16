@@ -980,20 +980,28 @@ async fn handle_gap_dep_clean(
     }
     // Shell out to the existing CLI for now — keeps behavior consistent with
     // `chump gap dep-clean --apply` and avoids re-implementing the dep walker.
+    // INFRA-1485: tokio::process::Command + 10s timeout (dep-clean can be slow
+    // on large repos but should not block tokio workers indefinitely).
     let repo_root = crate::repo_path::runtime_base();
     let chump_bin = std::env::current_exe()
         .ok()
         .unwrap_or_else(|| std::path::PathBuf::from("chump"));
-    let output = match std::process::Command::new(&chump_bin)
+    let fut = tokio::process::Command::new(&chump_bin)
         .args(["gap", "dep-clean", "--apply", "--json"])
         .current_dir(&repo_root)
-        .output()
-    {
-        Ok(o) => o,
-        Err(e) => {
+        .output();
+    let output = match tokio::time::timeout(std::time::Duration::from_secs(10), fut).await {
+        Ok(Ok(o)) => o,
+        Ok(Err(e)) => {
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("invoke gap dep-clean: {e}"),
+            ));
+        }
+        Err(_) => {
+            return Err((
+                StatusCode::GATEWAY_TIMEOUT,
+                "gap dep-clean timeout >10s".to_string(),
             ));
         }
     };
@@ -1543,11 +1551,17 @@ async fn handle_dashboard(headers: HeaderMap) -> Result<Json<serde_json::Value>,
     let base = repo_path::runtime_base();
     let ship_log_path = base.join("logs/heartbeat-ship.log");
 
-    let ship_running = std::process::Command::new("pgrep")
-        .args(["-f", "heartbeat-ship"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    // INFRA-1485: tokio::process::Command + 1s timeout so a stalled pgrep
+    // doesn't park a tokio worker thread.
+    let ship_running = {
+        let fut = tokio::process::Command::new("pgrep")
+            .args(["-f", "heartbeat-ship"])
+            .output();
+        match tokio::time::timeout(std::time::Duration::from_secs(1), fut).await {
+            Ok(Ok(o)) => o.status.success(),
+            _ => false,
+        }
+    };
 
     let ship_log_content = std::fs::read_to_string(&ship_log_path).unwrap_or_default();
     let ship_lines: Vec<&str> = ship_log_content.lines().collect();
@@ -4066,7 +4080,10 @@ async fn handle_pr_detail(
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-    let out = std::process::Command::new("gh")
+    // INFRA-1485: tokio::process::Command + timeout to prevent worker
+    // starvation. PWA cockpit's PRCard polls this every 30s per visible
+    // PR; sync Command was a tail-latency hazard.
+    let gh_fut = tokio::process::Command::new("gh")
         .args([
             "pr",
             "view",
@@ -4074,8 +4091,11 @@ async fn handle_pr_detail(
             "--json",
             "number,state,title,url,mergeStateStatus,autoMergeRequest,statusCheckRollup,mergedAt,headRefOid,baseRefName",
         ])
-        .output()
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+        .output();
+    let out = match tokio::time::timeout(std::time::Duration::from_secs(3), gh_fut).await {
+        Ok(Ok(o)) => o,
+        Ok(Err(_)) | Err(_) => return Err(StatusCode::SERVICE_UNAVAILABLE),
+    };
     if !out.status.success() {
         // gh exited non-zero — return 503 so the widget keeps polling.
         return Err(StatusCode::SERVICE_UNAVAILABLE);
@@ -4797,12 +4817,14 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
         };
 
         // ── Best-effort PR lookup via gh CLI ─────────────────────────────────
-        // Runs synchronously but with a short timeout. If gh is unavailable or
-        // times out, pr_number/pr_state/ci_status remain null (AC: works without
-        // GitHub access).
+        // INFRA-1485: was std::process::Command (blocking) — moved to
+        // tokio::process::Command + tokio::time::timeout to prevent tokio
+        // worker starvation when called per-lease (N=25 sequential blocking
+        // calls used to wedge the whole web server). 2s per-call timeout;
+        // on timeout pr_number/pr_state/ci_status remain null.
         let (pr_number, pr_state, ci_status) = {
             let branch_clone = branch.clone();
-            let out = std::process::Command::new("gh")
+            let gh_fut = tokio::process::Command::new("gh")
                 .args([
                     "pr",
                     "list",
@@ -4816,6 +4838,10 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
                     "all",
                 ])
                 .output();
+            let out = match tokio::time::timeout(std::time::Duration::from_secs(2), gh_fut).await {
+                Ok(r) => r,
+                Err(_) => Err(std::io::Error::other("gh pr list timeout >2s")),
+            };
             match out {
                 Ok(o) if o.status.success() => {
                     if let Ok(arr) = serde_json::from_slice::<Vec<serde_json::Value>>(&o.stdout) {
