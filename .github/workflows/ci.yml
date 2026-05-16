@@ -1278,6 +1278,8 @@ jobs:
         run: bash scripts/ci/test-worktree-prune-protects-live-edits.sh
       - name: cockpit Today's-arc Wake-fleet action (PRODUCT-128)
         run: bash scripts/ci/test-cockpit-wake-fleet.sh
+      - name: cockpit Lock-contention Release-leases button (PRODUCT-129)
+        run: bash scripts/ci/test-cockpit-release-leases.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
@@ -1466,6 +1468,11 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-api-gap-queue-shape.sh
+      - name: /api/lease/release-expired — expired lease scan, delete, preserve active (PRODUCT-129)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" \
+            bash scripts/ci/test-api-release-expired.sh
       - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
         run: bash scripts/ci/test-gap-ac-requirement.sh
       - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
