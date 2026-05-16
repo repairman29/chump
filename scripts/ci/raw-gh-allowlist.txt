@@ -32,5 +32,6 @@ scripts/ops/pr-repair-rebase.sh           # migration gap: INFRA-1249
 scripts/ops/pr-watch-shepherd.sh          # migration gap: INFRA-1249
 scripts/ops/stale-pr-reaper.sh            # migration gap: INFRA-1249
 
-# Runner migration pipeline (scripts/coord/)
+# Runner migration pipeline and management (scripts/coord/)
 scripts/coord/chump-runner-migration-pipeline.sh  # INFRA-1535: gh pr merge is critical-path ship operation; new script
+scripts/coord/chump-runner-autoscale.sh  # INFRA-1535: GitHub Actions runner API not covered by cache abstraction; new script
