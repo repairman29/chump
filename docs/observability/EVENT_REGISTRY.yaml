@@ -2912,6 +2912,16 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
 
+  - kind: target_artifact_reaped
+    effect_metric: self
+    emitter: scripts/coord/target-dir-reaper.sh (INFRA-1349)
+    trigger: target-dir-reaper.sh cleaned a build-artifact directory under disk
+      pressure. Already allowlisted in scripts/ci/event-registry-reserved.txt
+      but the precommit-strict-replay hook reads the registry YAML directly —
+      this explicit entry unblocks rebased PRs that picked up the emit.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, path, freed_gb, worktree_age_h]
+
   - kind: gap_reserve_similarity_block
     effect_metric: self
     emitter: src/main.rs gap reserve handler (INFRA-1149)
@@ -2921,6 +2931,17 @@ events:
       override.
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
+
+  - kind: gap_import_similarity_block
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs import_from_yaml_with_similarity (INFRA-1434)
+    trigger: chump gap import detected a net-new gap whose title has Jaccard
+      similarity >= CHUMP_GAP_IMPORT_SIMILARITY_BLOCK (default 0.85) against an
+      existing open or recently-closed gap. Row is skipped from import (treated
+      as duplicate); import exits 1 if any row was blocked.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, proposed_id, top_match_id, top_match_title,
+      top_match_score]
 
   - kind: gap_dup_archived
     effect_metric: self
