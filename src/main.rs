@@ -2597,7 +2597,21 @@ async fn main() -> Result<()> {
                 let cutoff = now_ts - window_secs;
                 let ts_iso = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
-                let locks_dir = repo_root.join(".chump-locks");
+                // INFRA-1355: fleet-wide state (ambient.jsonl, lease files)
+                // lives only in the main checkout's .chump-locks/.  Linked
+                // worktrees get a sparse .chump-locks/ with only their own
+                // session files, so reading it gives ships=0 / stalls=0.
+                // Always resolve via git-common-dir so brief shows correct
+                // fleet totals regardless of CWD.
+                let locks_dir = {
+                    let main_root = repo_path::main_checkout_root();
+                    let main_locks = main_root.join(".chump-locks");
+                    if main_locks.is_dir() {
+                        main_locks
+                    } else {
+                        repo_root.join(".chump-locks")
+                    }
+                };
                 let ambient_path = locks_dir.join("ambient.jsonl");
 
                 // ── Parse ambient.jsonl ──────────────────────────────────

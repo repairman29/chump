@@ -192,6 +192,31 @@ pub fn repo_root() -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
+/// Returns the main repository root (the checkout that owns the shared `.git`
+/// directory), which differs from `repo_root()` when running from a linked
+/// worktree.  Useful for locating fleet-wide shared state such as
+/// `.chump-locks/` and `ambient.jsonl` that live only in the main checkout.
+///
+/// Algorithm: run `git rev-parse --git-common-dir` from the current
+/// `repo_root()`.  For both the main checkout and linked worktrees, this
+/// returns the same shared `.git` directory — its parent is always the main
+/// checkout root.  Falls back to `repo_root()` if the git invocation fails.
+pub fn main_checkout_root() -> PathBuf {
+    let rr = repo_root();
+    if let Some(common) = git_common_dir(&rr) {
+        // For the main checkout:    common = <root>/.git          → parent = <root>
+        // For a linked worktree:    common = <root>/.git  (abs.)  → parent = <root>
+        // Edge: nested .git (rare but possible) — parent still resolves correctly.
+        if let Some(parent) = common.parent() {
+            let candidate = parent.to_path_buf();
+            if candidate.is_dir() {
+                return candidate;
+            }
+        }
+    }
+    rr
+}
+
 /// Returns the canonical path to the shared git common dir for `repo` (the `.git`
 /// directory shared across all linked worktrees). Returns `None` if `repo` is not
 /// inside a git tree or if the git invocation fails.
