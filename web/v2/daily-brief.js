@@ -76,6 +76,16 @@ class ChumpViewBrief extends HTMLElement {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this._data = await res.json();
       this._renderData();
+      // Emit pwa_brief_loaded for usage analytics (PRODUCT-078).
+      const d = this._data || {};
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'pwa_brief_loaded',
+        source: 'daily-brief',
+        since_ago_secs: nowTs - since,
+        done: d.done?.length ?? 0,
+        needs_judgment: d.needs_judgment?.length ?? 0,
+        alerts: d.alerts?.length ?? 0,
+      }));
     } catch (e) {
       this._render(`<p class="error">Failed to load brief: ${e.message}</p>`);
     } finally {
