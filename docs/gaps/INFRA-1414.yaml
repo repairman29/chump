@@ -1,0 +1,12 @@
+- id: INFRA-1414
+  domain: INFRA
+  title: "RESILIENT: chump-first contract domain-skew alert is advisory-only — ALERT: domain INFRA has 139 gaps (61%) currently triggers exit 1 on every PR (today's every-CI-run false-fail on this check)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "scripts/ci/no-anthropic-smoke.sh (currently emits ALERT: domain INFRA has 139 gaps (61%) and exit-1s): downgrade the domain-skew alert from FAIL to WARN"
+    - Threshold ALERT_DOMAIN_SKEW_FATAL_PCT (default unset = warn-only) controls when it escalates to exit 1; today 80% should be the fatal threshold not 50%
+    - Add a fleet-state metric kind=domain_skew_observed emitted at ambient with {ts, kind, domain, pct, total} so the operator dashboard can render the skew without it blocking CI
+    - CI test scripts/ci/test-no-anthropic-smoke-skew.sh fabricates 100 gaps with 60% INFRA + asserts the script exits 0 but emits the warn-tier event
+
