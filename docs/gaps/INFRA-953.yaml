@@ -12,7 +12,7 @@
     - "Re-run audit after this lands: 7d bot_merge_hot_file count should drop materially"
     - "Why: META-055 audit picked this as the #1 token-cost root cause. Operator (Jeff 2026-05-12) asked \"tokens down the drain from poor design choices\" — parallel fleet vs shared files IS the design choice. Token cost is real ($0.75/week at current rate, scales with fleet size)."
     - "Depends-on: INFRA-950 + INFRA-951 (this gap consumes their waste-tally output)."
-  depends_on: [INFRA-950, INFRA-951, META-055]
+  depends_on: [INFRA-951, META-055]
   closed_date: '2026-05-13'
   closed_pr: 1638
 

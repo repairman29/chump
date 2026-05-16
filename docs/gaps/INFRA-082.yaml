@@ -33,7 +33,6 @@
     - Threshold is documented and tunable (env or config)
     - CHUMP_GAP_DUP_CHECK=0 bypass for non-interactive use, listed in CLAUDE.md
     - "Regression test under scripts/ covering \"title matches existing closed gap\" case"
-  depends_on: [INFRA-081]
   notes: |
     Partial delivery: AC 1 (gap-reserve.sh script) shipped via PR #557; AC 2 (chump gap reserve
     CLI reserve-time similarity check) was never wired into the CLI handler at src/main.rs
