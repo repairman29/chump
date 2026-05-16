@@ -1973,3 +1973,18 @@ if [ -x "$REDUNDANCY_HOOK" ]; then
         exit 1
     fi
 fi
+# ------------------------------------------------------------------
+# 18. AC-completeness gate (INFRA-1401, 2026-05-16)
+# ------------------------------------------------------------------
+# For commits that reference a gap ID in the subject, verifies that every
+# scripts/ci|coord|ops/*.sh file named in acceptance_criteria is either
+# staged or already present in HEAD.
+# Bypass: AC-Backfill-Reason: <reason> trailer OR CHUMP_AC_COMPLETENESS_CHECK=0
+
+AC_COMPLETENESS_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-ac-completeness.sh"
+if [ -x "$AC_COMPLETENESS_HOOK" ]; then
+    if ! "$AC_COMPLETENESS_HOOK"; then
+        exit 1
+    fi
+fi
+
