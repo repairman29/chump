@@ -196,9 +196,15 @@ class ChumpPrCard extends HTMLElement {
     const btn = this.querySelector(`.pr-action-${action}`);
     if (btn) btn.disabled = true;
 
+    // Get session ID from sessionStorage if available
+    const sessionId = sessionStorage.getItem('chump_session_id') || 'pwa-inline';
+
     fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-ID': sessionId,
+      },
       body: JSON.stringify(payload),
     })
       .then((r) => {

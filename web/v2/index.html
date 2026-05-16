@@ -1207,6 +1207,13 @@
     .pr-action-modal-submit:hover { background: var(--accent-hover, #3a5a8a); }
     .pr-action-modal-cancel:hover { background: var(--border, #2a2a2e); }
 
+    /* Mobile-friendly action panel: smaller buttons and text wrap on narrow viewports */
+    @media (max-width: 640px) {
+      chump-pr-card .pr-action-btn {
+        padding: 4px 8px; font-size: 11px; flex: 1; min-width: 60px;
+      }
+    }
+
     /* INFRA-1009: <chump-workflow-timeline gap-id="X"> live phase tracker.
        Embeddable — no layout opinion; host UI places it where it makes
        sense (workflow_done event embedder, agents view session row,
