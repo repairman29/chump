@@ -3581,3 +3581,19 @@ events:
     consumers: [fleet-brief, ops-audit]
     effect_metric: self
     fields_required: [ts, kind, stage, outcome, note]
+  # ── INFRA-1394: hot-file collision detection at claim time ────────────────
+  - kind: claim_hot_file_overlap
+    emitter: src/atomic_claim.rs emit_claim_hot_file_overlap_event (INFRA-1394)
+    trigger: >
+      chump claim detected that the gap's acceptance_criteria references one or
+      more hot shared files (from scripts/coord/lib/hot-files.yaml) AND a sibling
+      lease already declares the same file in its paths[] field. Fires before the
+      worktree is created — claim is blocked unless --force-overlap is passed.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, claim_gap, sibling_gap, sibling_session, overlap_paths]
+    docs: |
+      Hot files are those that frequently cause merge conflicts when touched by
+      multiple concurrent agents: ci.yml, EVENT_REGISTRY.yaml, web_server.rs,
+      app.js, main.rs. The list is tunable in scripts/coord/lib/hot-files.yaml.
+      Pairs with INFRA-1389 merge drivers (same region → no conflict) but the
+      proactive block here saves the rebase cycle entirely for non-merge-driver paths.

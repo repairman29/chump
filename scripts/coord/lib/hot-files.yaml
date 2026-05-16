@@ -1,0 +1,21 @@
+# scripts/coord/lib/hot-files.yaml — INFRA-1394
+#
+# Canonical list of "hot" shared files that frequently cause merge conflicts
+# when multiple agents touch them simultaneously.
+#
+# Used by `chump claim` to warn (or block with --force-overlap) when the
+# gap being claimed references one of these files AND a sibling lease already
+# has one of them in its paths[] field.
+#
+# Tuning: add/remove entries here — no code changes needed. Keep the list
+# small (5-10 entries): only files that are genuinely high-conflict.
+#
+# Format: one path per line under the `hot_files:` key. Paths are
+# repo-root-relative. Shell globs are NOT supported here — exact paths only.
+
+hot_files:
+  - .github/workflows/ci.yml
+  - docs/observability/EVENT_REGISTRY.yaml
+  - web/v2/app.js
+  - src/web_server.rs
+  - src/main.rs
