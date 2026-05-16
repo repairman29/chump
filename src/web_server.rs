@@ -5321,6 +5321,7 @@ async fn handle_brief(
             "alerts": alert_count,
         },
     })))
+}
 
 /// GET /api/ambient/recent?n=100&kind=fleet_wedge — returns last N ambient events.
 /// Optional `kind` param filters to a specific event kind.
