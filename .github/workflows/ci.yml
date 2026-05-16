@@ -455,6 +455,7 @@ jobs:
           df -h /
 
       - name: Install Linux packages for chump-desktop (workspace member)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -788,6 +789,7 @@ jobs:
           df -h /
 
       - name: Install Linux packages for chump-desktop (workspace member)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -834,6 +836,7 @@ jobs:
           df -h /
 
       - name: Install Linux packages for chump-desktop (workspace member)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -1173,6 +1176,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install Linux packages for chump-desktop (workspace member)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
