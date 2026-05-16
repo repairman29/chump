@@ -42,6 +42,12 @@ jobs:
       scripts: ${{ steps.filter.outputs.scripts }}
       acp: ${{ steps.filter.outputs.acp }}
       docs: ${{ steps.filter.outputs.docs }}
+      # INFRA-1379: granular lane outputs
+      rust_code: ${{ steps.filter.outputs.rust }}
+      web_code: ${{ steps.filter.outputs.web_code }}
+      ci_config_only: ${{ steps.lanes.outputs.ci_config_only }}
+      scripts_only: ${{ steps.lanes.outputs.scripts_only }}
+      docs_only: ${{ steps.lanes.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -132,6 +138,46 @@ jobs:
               - 'CODE_OF_CONDUCT.md'
               - 'CHANGELOG.md'
               - 'SECURITY.md'
+            # INFRA-1379: new granular lane filters
+            web_code:
+              - 'web/**'
+              - 'ChumpMenu/**'
+            ci_config_raw:
+              - '.github/workflows/**'
+
+      # INFRA-1379: Compute derived exclusion flags.  dorny/paths-filter can
+      # only tell you IF a path changed; it cannot tell you if that was the
+      # ONLY thing that changed.  We compute docs_only / scripts_only /
+      # ci_config_only here so stubs can fire on pure-lane PRs.
+      - name: Compute lane flags (INFRA-1379)
+        id: lanes
+        run: |
+          rust="${{ steps.filter.outputs.rust }}"
+          web="${{ steps.filter.outputs.web_code }}"
+          scripts="${{ steps.filter.outputs.scripts }}"
+          docs="${{ steps.filter.outputs.docs }}"
+          ci="${{ steps.filter.outputs.ci_config_raw }}"
+
+          # docs_only: docs changed but no rust / web / scripts
+          if [[ "$docs" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" && "$ci" != "true" ]]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # scripts_only: scripts changed but no rust / web
+          if [[ "$scripts" == "true" && "$rust" != "true" && "$web" != "true" ]]; then
+            echo "scripts_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scripts_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # ci_config_only: only .github/workflows/** changed
+          if [[ "$ci" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" && "$docs" != "true" ]]; then
+            echo "ci_config_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ci_config_only=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ── Tauri Cowork E2E ───────────────────────────────────────────────────────
   # Only runs when desktop / src / e2e-tauri files change. Skipped on
@@ -1104,6 +1150,12 @@ jobs:
   # marks itself green in <1min. To remove this job entirely, also remove
   # 'audit' from branch-protection-main.json's required_status_checks.
   audit:
+    needs: changes
+    # INFRA-1379: skip audit for docs-only PRs (gap YAMLs, .md edits) — audit-stub
+    # satisfies the required check. Always runs on push/merge_group to keep main green.
+    if: |
+      needs.changes.outputs.docs_only != 'true' ||
+      github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
     steps:
@@ -1570,16 +1622,18 @@ jobs:
   audit-stub:
     name: audit-stub
     needs: changes
+    # INFRA-1379: fire when code filter is empty (original condition) OR when
+    # docs_only is true (new: gap YAML / .md-only PRs skip 15-min audit job).
     if: |
-      needs.changes.outputs.code != 'true' &&
+      (needs.changes.outputs.code != 'true' || needs.changes.outputs.docs_only == 'true') &&
       github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: audit skipped (no code changes detected)
+      - name: audit skipped (no code changes or docs-only lane detected)
         run: |
-          echo "audit-stub: no code-filter changes — audit CI checks not required for this diff."
-          echo "Branch protection satisfied by this stub."
+          echo "audit-stub: lane check — docs_only=${{ needs.changes.outputs.docs_only }} code=${{ needs.changes.outputs.code }}"
+          echo "audit CI checks not required for this diff. Branch protection satisfied by this stub."
 
   # ── audit-required: rollup that branch protection enforces ───────────────
   audit-required:
