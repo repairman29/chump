@@ -31,7 +31,7 @@ use anyhow::{Context, Result};
 use axonerai::provider::Message;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Maps FLEET_MODEL env → concrete model identifier for the orchestrator session.
 /// Workers default to sonnet; the orchestrator defaults to opus.
@@ -136,6 +136,15 @@ fn estimate_tokens(text: &str) -> u64 {
     (text.len() / 4).max(1) as u64
 }
 
+/// Outcome of a single LLM call attempt under timeout (INFRA-1364).
+#[derive(Debug)]
+enum LlmAttemptOutcome {
+    /// Call completed normally; contains the reply text.
+    Ok(String),
+    /// Call exceeded the timeout deadline.
+    TimedOut { elapsed_s: u64 },
+}
+
 /// Classify a tool execution failure as transient or permanent (INFRA-796).
 fn classify_failure(error_msg: &str) -> &'static str {
     let lc = error_msg.to_lowercase();
@@ -194,6 +203,32 @@ fn stub_response(intent: &str) -> String {
 
 pub async fn run(repo_root: &Path) -> Result<()> {
     let stub_mode = std::env::var("CHUMP_ORCHESTRATE_STUB").as_deref() == Ok("1");
+
+    // LLM timeout config (INFRA-1364). Default 60s; scale down in tests via env.
+    let llm_timeout_s: u64 = std::env::var("CHUMP_ORCHESTRATE_LLM_TIMEOUT_S")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(60);
+    let llm_timeout = Duration::from_secs(llm_timeout_s);
+
+    // Stub timeout simulation: set CHUMP_ORCHESTRATE_STUB_SLEEP_S=N to make the
+    // first LLM call per intent sleep N seconds (triggers timeout when N > llm_timeout_s).
+    let stub_sleep_s: u64 = std::env::var("CHUMP_ORCHESTRATE_STUB_SLEEP_S")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+
+    // Session identity for timeout events; matches INFRA-1363 session tracking.
+    let session_id = std::env::var("CHUMP_ORCHESTRATE_SESSION_ID").unwrap_or_else(|_| {
+        format!(
+            "orchestrate-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0)
+        )
+    });
 
     // Apply FLEET_MODEL=opus default for the orchestrator session.
     // Workers (dispatched by the orchestrator) stay on sonnet.
@@ -262,26 +297,118 @@ pub async fn run(repo_root: &Path) -> Result<()> {
         let mut had_failure = false;
         let mut failure_classes: Vec<&str> = Vec::new();
 
-        let reply = if stub_mode {
-            stub_response(&intent)
-        } else {
+        // ── LLM call with timeout + single retry (INFRA-1364) ─────────────────
+        // Push user intent before attempt loop so retry reuses the same context.
+        if !stub_mode {
             conversation.push(Message {
                 role: "user".into(),
                 content: intent.clone(),
             });
-            let resp = provider
-                .as_ref()
-                .unwrap()
-                .complete(conversation.clone(), None, Some(2048), Some(system.clone()))
-                .await
-                .context("orchestrator LLM call")?;
-            let text = resp.text.unwrap_or_default();
-            conversation.push(Message {
-                role: "assistant".into(),
-                content: text.clone(),
-            });
-            text
+        }
+
+        let mut timeout_abort = false;
+        let reply = 'attempts: {
+            for attempt in 1u32..=2 {
+                let call_start = Instant::now();
+
+                // Build the outcome for this attempt (stub vs real).
+                let outcome: Result<LlmAttemptOutcome> = if stub_mode {
+                    // Stub path: simulate hang on attempt 1 if CHUMP_ORCHESTRATE_STUB_SLEEP_S is set.
+                    if stub_sleep_s > 0 && attempt == 1 {
+                        match tokio::time::timeout(
+                            llm_timeout,
+                            tokio::time::sleep(Duration::from_secs(stub_sleep_s)),
+                        )
+                        .await
+                        {
+                            Err(_) => Ok(LlmAttemptOutcome::TimedOut {
+                                elapsed_s: call_start.elapsed().as_secs(),
+                            }),
+                            Ok(_) => Ok(LlmAttemptOutcome::Ok(stub_response(&intent))),
+                        }
+                    } else {
+                        Ok(LlmAttemptOutcome::Ok(stub_response(&intent)))
+                    }
+                } else {
+                    // Real provider path.
+                    match tokio::time::timeout(
+                        llm_timeout,
+                        provider.as_ref().unwrap().complete(
+                            conversation.clone(),
+                            None,
+                            Some(2048),
+                            Some(system.clone()),
+                        ),
+                    )
+                    .await
+                    {
+                        Err(_) => Ok(LlmAttemptOutcome::TimedOut {
+                            elapsed_s: call_start.elapsed().as_secs(),
+                        }),
+                        Ok(Err(e)) => Err(e.context("orchestrator LLM call")),
+                        Ok(Ok(resp)) => Ok(LlmAttemptOutcome::Ok(resp.text.unwrap_or_default())),
+                    }
+                };
+
+                match outcome? {
+                    LlmAttemptOutcome::Ok(text) => {
+                        if !stub_mode {
+                            conversation.push(Message {
+                                role: "assistant".into(),
+                                content: text.clone(),
+                            });
+                        }
+                        break 'attempts text;
+                    }
+                    LlmAttemptOutcome::TimedOut { elapsed_s } => {
+                        tracing::warn!(
+                            kind = "orchestrate_llm_timeout",
+                            session_id = %session_id,
+                            attempt_number = attempt,
+                            elapsed_s = elapsed_s,
+                            "LLM call timed out (INFRA-1364)"
+                        );
+                        emit_ambient_event(
+                            repo_root,
+                            "orchestrate_llm_timeout",
+                            &[
+                                ("session_id", &session_id),
+                                ("attempt_number", &attempt.to_string()),
+                                ("call_kind", "intent_parse"),
+                                ("elapsed_s", &elapsed_s.to_string()),
+                            ],
+                        );
+                        eprintln!(
+                            "[orchestrate] LLM call timed out (attempt {attempt}/2, elapsed={elapsed_s}s)"
+                        );
+                        if attempt == 2 {
+                            // Double timeout → abort session (exit_reason="timeout" for INFRA-1363).
+                            eprintln!("[orchestrate] 2 consecutive timeouts — aborting session.");
+                            emit_ambient_event(
+                                repo_root,
+                                "orchestrate_session_end",
+                                &[("intent", &intent), ("status", "timeout")],
+                            );
+                            timeout_abort = true;
+                            break 'attempts String::from(
+                                "(session aborted: LLM unresponsive after 2 attempts)",
+                            );
+                        }
+                        // Retry after 2× backoff (scales with timeout_s for fast CI tests).
+                        let backoff_s = 2 * llm_timeout_s;
+                        eprintln!("[orchestrate] retrying after {backoff_s}s backoff...");
+                        tokio::time::sleep(Duration::from_secs(backoff_s)).await;
+                    }
+                }
+            }
+            // Unreachable: loop always breaks via 'attempts label above.
+            String::new()
         };
+
+        if timeout_abort {
+            break;
+        }
+        // ── End LLM call with timeout + retry ─────────────────────────────────
 
         let llm_elapsed_ms = iter_start.elapsed().as_millis() as u64;
 

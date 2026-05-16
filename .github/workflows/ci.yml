@@ -524,6 +524,11 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-fleet-brief.sh
 
+      - name: orchestrate LLM-call hang detection + retry (INFRA-1364)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-orchestrate-llm-timeout.sh
+
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
 

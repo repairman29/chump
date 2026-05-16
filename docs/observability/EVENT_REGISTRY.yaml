@@ -1643,6 +1643,23 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, intent, status]
 
+  - kind: orchestrate_llm_timeout
+    effect_metric: self
+    emitter: src/orchestrate.rs (chump orchestrate — INFRA-1364)
+    trigger: LLM call exceeds CHUMP_ORCHESTRATE_LLM_TIMEOUT_S (default 60s); emitted once
+      per timed-out attempt (max 2 per intent before session abort)
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, session_id, attempt_number, call_kind, elapsed_s]
+    docs: |
+      attempt_number: 1 (first timeout, retry follows) or 2 (second timeout, session aborted).
+      call_kind: "intent_parse" — the orchestrator currently only wraps intent LLM calls.
+        "tool_select" and "summary" are reserved for future routing layers.
+      elapsed_s: actual wall-clock seconds elapsed before the timeout fired; should
+        be approximately CHUMP_ORCHESTRATE_LLM_TIMEOUT_S.
+      session_id: matches CHUMP_ORCHESTRATE_SESSION_ID or the synthesized session identity.
+      On attempt_number=2, a companion orchestrate_session_end{status="timeout"} is also
+        emitted, and INFRA-1363 session_summary will carry exit_reason="timeout".
+
   # ── Intent parser (INFRA-798) ─────────────────────────────────────────────
   - kind: intent_parse_ok
     effect_metric: self
