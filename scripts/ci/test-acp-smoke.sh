@@ -17,7 +17,7 @@
 # Exit: 0 if all checks pass, 1 otherwise. Errors go to stderr.
 set -euo pipefail
 
-ROOT="${CHUMP_HOME:-$(cd "$(dirname "$0")/../.." && pwd)}"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"  # INFRA-1534: never use CHUMP_HOME as repo root — runner shell profile may set it to local dev dir
 cd "$ROOT"
 
 CHUMP_BIN="${CHUMP_BIN:-}"
