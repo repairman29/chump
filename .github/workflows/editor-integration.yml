@@ -23,7 +23,8 @@ env:
 jobs:
   acp-smoke:
     name: ACP protocol smoke test (Zed / JetBrains compatible)
-    runs-on: ubuntu-latest
+    # INFRA-1535 stage 3: self-hosted routing (M4 has chromedriver + Chrome + node installed)
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
 
