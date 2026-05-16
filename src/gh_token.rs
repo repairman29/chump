@@ -290,6 +290,11 @@ fn fetch_installation_token_via_subprocess(
 // ── Ambient event helpers ─────────────────────────────────────────────────────
 
 fn emit_noop(reason: &str) {
+    tracing::info!(
+        kind = "gh_token_rotate_noop",
+        reason = reason,
+        "gh-token rotate noop"
+    );
     let args = crate::ambient_emit::EmitArgs {
         kind: "gh_token_rotate_noop".to_string(),
         fields: vec![("reason".to_string(), reason.to_string())],
@@ -299,6 +304,12 @@ fn emit_noop(reason: &str) {
 }
 
 fn emit_rotated(lane: &str, expires_at: &str) {
+    tracing::info!(
+        kind = "gh_token_rotated",
+        lane = lane,
+        expires_at = expires_at,
+        "gh-token rotated"
+    );
     let ts = chrono::Utc::now().to_rfc3339();
     let args = crate::ambient_emit::EmitArgs {
         kind: "gh_token_rotated".to_string(),

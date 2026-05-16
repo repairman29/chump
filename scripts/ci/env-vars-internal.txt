@@ -355,3 +355,6 @@ CHUMP_ALLOW_STOMP
 CHUMP_PARAMEDIC_BUDGET_SECS
 # ── INFRA-1397: paramedic leader-election debug bypass ────────────────────────
 CHUMP_PARAMEDIC_FORCE_LEADER
+# ── INFRA-1361: gh-token rotate test-isolation overrides ─────────────────────
+CHUMP_GH_APPS_CONFIG
+CHUMP_GH_LANE_TOKEN_DIR
