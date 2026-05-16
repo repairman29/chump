@@ -55,8 +55,18 @@ while i < len(lines):
     line = lines[i]
     if re.match(r'^  - kind: \S', line):
         kind_name = line.split('kind:')[1].strip()
-        next_line = lines[i + 1] if i + 1 < len(lines) else ''
-        if not re.match(r'^\s+effect_metric:', next_line):
+        # Scan within the kind entry (until next '  - kind:' or EOF)
+        # to find effect_metric. Some entries have multi-line emitter/trigger
+        # blocks (YAML block scalars) before effect_metric.
+        has_em = False
+        j = i + 1
+        while j < len(lines) and not re.match(r'^  - kind:', lines[j]):
+            if re.match(r'^\s+effect_metric:\s*\S', lines[j]):
+                has_em = True
+                break
+            j += 1
+        if not has_em:
+            next_line = lines[i + 1] if i + 1 < len(lines) else ''
             missing.append(f"  line {i+2}: kind={kind_name!r} missing effect_metric (next: {next_line.strip()!r})")
     i += 1
 if missing:
@@ -69,7 +79,7 @@ sys.exit(0)
 PYEOF
 )
 if [ $? -eq 0 ]; then
-  ok "All kind entries have effect_metric on next line"
+  ok "All kind entries have effect_metric within their entry block"
 else
   echo "$MISSING_KINDS"
   fail "Some kind entries missing effect_metric — see above"
