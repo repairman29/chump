@@ -112,6 +112,37 @@ events:
     trigger: periodic fleet metrics summary
     consumers: [fleet-brief]
 
+  # ── Circuit breaker (RESILIENT-011) ───────────────────────────────────────────
+  - kind: circuit_breaker_opened
+    effect_metric: self
+    emitter: src/circuit_breaker.rs (RESILIENT-011)
+    trigger: circuit breaker for a target transitions from Closed to Open (error threshold exceeded)
+    consumers: [fleet_health, operator_dashboard]
+    fields_required: [ts, kind, target, reason]
+    docs: |
+      Emitted when a target reaches its error_threshold consecutive failures.
+      The circuit breaker will now fail fast (reject calls) for this target.
+
+  - kind: circuit_breaker_closed
+    effect_metric: self
+    emitter: src/circuit_breaker.rs (RESILIENT-011)
+    trigger: circuit breaker for a target transitions from Half-Open to Closed (target recovered)
+    consumers: [fleet_health, operator_dashboard]
+    fields_required: [ts, kind, target, reason]
+    docs: |
+      Emitted when a target has successfully recorded success_threshold consecutive
+      successes while in Half-Open state, indicating the target is healthy again.
+
+  - kind: circuit_breaker_state_change
+    effect_metric: self
+    emitter: src/circuit_breaker.rs (RESILIENT-011)
+    trigger: circuit breaker for a target changes state (any transition)
+    consumers: [fleet_health, operator_dashboard]
+    fields_required: [ts, kind, target, from_state, to_state, reason]
+    docs: |
+      General-purpose state change event emitted on any circuit breaker transition.
+      Includes the target, previous state, new state, and reason for the change.
+
   - kind: fleet_snapshot
     effect_metric: self
     emitter: scripts/ops/fleet-snapshot.sh
