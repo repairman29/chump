@@ -3301,6 +3301,7 @@ events:
     fields_required: [ts, kind, source, since_ago_secs, done, needs_judgment, alerts]
   # ── INFRA-1361: GitHub App installation-token rotator ────────────────────
   - kind: gh_token_rotate_noop
+    effect_metric: self
     emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
     trigger: chump gh-token rotate was invoked but ~/.chump/github_apps.toml is
       absent or empty. No tokens are fetched; exit 0. Emitted once per invocation
@@ -3310,6 +3311,7 @@ events:
     fields_optional: [session, worktree, harness]
 
   - kind: gh_token_rotated
+    effect_metric: self
     emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
     trigger: a fresh GitHub App installation token was successfully fetched for
       one lane and written to ~/.chump/oauth-token-<lane>.json (chmod 600).
