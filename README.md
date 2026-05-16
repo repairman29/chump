@@ -257,7 +257,7 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 | [`docs/strategy/CHUMP_TO_CHAMP.md`](docs/strategy/CHUMP_TO_CHAMP.md) | Chump-to-Champ roadmap — cognitive architecture vision and frontier direction |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | PR checklist and quality bar |
 | [`docs/operations/OPERATIONS.md`](docs/operations/OPERATIONS.md) | Run modes, env vars, heartbeats |
-| [`docs/strategy/ROADMAP.md`](docs/strategy/ROADMAP.md) | What's next |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | What's next |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting |
 
 **Bug reports:** use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md) or see [`CONTRIBUTING.md`](CONTRIBUTING.md#bug-reports).
