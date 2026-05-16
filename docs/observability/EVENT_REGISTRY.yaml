@@ -3583,6 +3583,7 @@ events:
     fields_required: [ts, kind, stage, outcome, note]
   # ── INFRA-1394: hot-file collision detection at claim time ────────────────
   - kind: claim_hot_file_overlap
+    effect_metric: self
     emitter: src/atomic_claim.rs emit_claim_hot_file_overlap_event (INFRA-1394)
     trigger: >
       chump claim detected that the gap's acceptance_criteria references one or
