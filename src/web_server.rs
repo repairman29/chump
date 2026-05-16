@@ -4277,7 +4277,10 @@ async fn handle_pr_approve(
     }
     let out = cmd.output().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     if !out.status.success() {
-        eprintln!("gh pr review --approve failed: {}", String::from_utf8_lossy(&out.stderr));
+        eprintln!(
+            "gh pr review --approve failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
     // Emit operator_pr_action event to ambient.
@@ -4297,11 +4300,21 @@ async fn handle_pr_request_changes(
     let session_id = get_session_id(&headers);
     let body = req.body.unwrap_or_default();
     let out = std::process::Command::new("gh")
-        .args(["pr", "review", &number.to_string(), "--request-changes", "--body", &body])
+        .args([
+            "pr",
+            "review",
+            &number.to_string(),
+            "--request-changes",
+            "--body",
+            &body,
+        ])
         .output()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     if !out.status.success() {
-        eprintln!("gh pr review --request-changes failed: {}", String::from_utf8_lossy(&out.stderr));
+        eprintln!(
+            "gh pr review --request-changes failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
     emit_operator_pr_action("request_changes", number, session_id.as_deref()).ok();
@@ -4324,7 +4337,10 @@ async fn handle_pr_comment(
         .output()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
     if !out.status.success() {
-        eprintln!("gh pr comment failed: {}", String::from_utf8_lossy(&out.stderr));
+        eprintln!(
+            "gh pr comment failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     }
     emit_operator_pr_action("comment", number, session_id.as_deref()).ok();
@@ -6815,7 +6831,10 @@ fn build_api_router() -> Router {
         .route("/api/pr/{number}/ac-fit", get(handle_pr_ac_fit))
 =======
         .route("/api/prs/{number}/approve", post(handle_pr_approve))
-        .route("/api/prs/{number}/request-changes", post(handle_pr_request_changes))
+        .route(
+            "/api/prs/{number}/request-changes",
+            post(handle_pr_request_changes),
+        )
         .route("/api/prs/{number}/comment", post(handle_pr_comment))
         .route("/api/prs/{number}/revert", post(handle_pr_revert))
 >>>>>>> 6bc3b069 (PRODUCT-086: EFFECTIVE — PWA PR action panel (approve/request-changes/comment/revert))
