@@ -344,3 +344,5 @@ CHUMP_GAP_RESERVE_SIMILARITY_BLOCK
 CHUMP_SKIP_PROBE
 # ── INFRA-1328: stomp-prevention bypass (escape hatch for force-claim) ────────
 CHUMP_ALLOW_STOMP
+# ── INFRA-1375: paramedic daemon per-cycle time budget ────────────────────────
+CHUMP_PARAMEDIC_BUDGET_SECS

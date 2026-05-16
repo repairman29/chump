@@ -1265,6 +1265,7 @@ events:
     consumers: [fleet-brief, kpi-report, waste-tally]
     fields_required: [ts, kind, pr_number, action, reason, dry_run]
     fields_optional: [gap_id]
+    effect_metric: self
 
   # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
   - kind: auto_merge_armed
