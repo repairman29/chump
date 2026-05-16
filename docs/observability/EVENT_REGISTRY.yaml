@@ -1675,6 +1675,21 @@ events:
       session_id: matches CHUMP_ORCHESTRATE_SESSION_ID or the synthesized session identity.
       On attempt_number=2, a companion orchestrate_session_end{status="timeout"} is also
         emitted, and INFRA-1363 session_summary will carry exit_reason="timeout".
+  - kind: orchestrate_session_resumed
+    emitter: src/orchestrate.rs (chump orchestrate --resume <session-id>)
+    trigger: operator invokes --resume for a non-clean-exited session within the max-resume limit
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, session_id, events_replayed, resume_attempts, prior_exit_reason]
+    docs: |
+      events_replayed: number of ambient events loaded for this session_id (up to 200).
+      resume_attempts: cumulative count including this invocation (1-based).
+      prior_exit_reason: exit_reason from the last orchestrate_session_summary event,
+        "unknown" if no summary event exists yet (pre-INFRA-1363 sessions).
+      Emitted before the interactive loop resumes so the event is always recorded
+      even if the resumed session immediately crashes again.
+      Refusal conditions (exit non-zero, no event emitted):
+        - exit_reason=clean → "session already completed"
+        - resume_attempts > CHUMP_ORCHESTRATE_MAX_RESUMES (default 3) → loop guard
 
   # ── Intent parser (INFRA-798) ─────────────────────────────────────────────
   - kind: intent_parse_ok

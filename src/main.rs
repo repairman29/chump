@@ -10071,6 +10071,24 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("orchestrate") {
         let repo_root = repo_path::repo_root();
 
+        // Resume mode: chump orchestrate --resume <session-id>  (INFRA-1366)
+        if args.get(2).map(String::as_str) == Some("--resume") {
+            let session_id = match args.get(3) {
+                Some(id) if !id.starts_with('-') => id.clone(),
+                _ => {
+                    eprintln!("Usage: chump orchestrate --resume <session-id>");
+                    std::process::exit(1);
+                }
+            };
+            match orchestrate::resume(&repo_root, &session_id).await {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    eprintln!("chump orchestrate --resume: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
         // Single-shot mode when a positional text arg follows "orchestrate".
         if let Some(text) = args.get(2) {
             let op = intent_parser::parse_intent(text);
