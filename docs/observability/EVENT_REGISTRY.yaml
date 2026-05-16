@@ -607,6 +607,13 @@ events:
     trigger: two sessions claim same files
     consumers: [fleet-brief]
 
+  - kind: fixture_commit_dropped
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push (INFRA-1408, Guard 0d)
+    trigger: ghost commits authored by Test<test@test.local> or matching CHUMP_FIXTURE_AUTHOR_REGEX detected; --auto-drop or CHUMP_AUTODROP_FIXTURE_COMMITS=1 rewrote local branch
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, branch, dropped_count]
+
   # ── PR / gap lifecycle ─────────────────────────────────────────────────────
   - kind: gap_reserved
     effect_metric: self
