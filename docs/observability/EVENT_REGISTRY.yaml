@@ -3437,3 +3437,28 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, lane, expires_at]
     fields_optional: [session, worktree, harness]
+  # ── INFRA-1421: CI regression guard ──────────────────────────────────────
+  - kind: ci_regression_guard_blocked
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push-ci-regression-guard.sh (INFRA-1421)
+    trigger: push blocked because a CI-Regression-Guard trailer references a
+      test script that does not exist in the repo at push time
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, note]
+
+  - kind: ci_regression_guard_missing
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push-ci-regression-guard.sh (INFRA-1421)
+    trigger: warning (non-blocking) emitted when a fix( commit touches
+      .github/workflows/ci.yml but carries no CI-Regression-Guard trailer;
+      prompts operator to add a regression test
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, source, note]
+
+  - kind: ci_regression_guard_suite_failed
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push-ci-regression-guard.sh (INFRA-1421)
+    trigger: push blocked because a regression-guard test script returned
+      non-zero — the CI regression it was guarding has been re-introduced
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, source, note]
