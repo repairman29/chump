@@ -1593,7 +1593,7 @@ if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" != "0" ]; then
     ADDED=$(git diff --cached --name-only --diff-filter=A -- 'docs/*.md' | wc -l | tr -d ' ')
     DELETED=$(git diff --cached --name-only --diff-filter=D -- 'docs/*.md' | wc -l | tr -d ' ')
     if [ "$ADDED" -gt 0 ] && [ "$ADDED" -gt "$DELETED" ]; then
-        MSG_FILE="${1:-$REPO_ROOT/.git/COMMIT_EDITMSG}"
+        MSG_FILE="${1:-$(git rev-parse --git-dir)/COMMIT_EDITMSG}"
         NET=$((ADDED - DELETED))
         # INFRA-124 (2026-05-02): parse the trailer's value, not just its
         # presence. Previously a commit could declare "Net-new-docs: +1"

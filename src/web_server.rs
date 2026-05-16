@@ -3862,19 +3862,31 @@ async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
     };
 
     // ── Fleet SLO breach count via chump health --slo-check --json ───────────
+    // Wrapped in tokio::time::timeout to prevent blocking the async runtime
+    // (INFRA-1466). Timeout is configurable via CHUMP_FLEET_STATUS_GH_TIMEOUT_S
+    // (default 3s).
     let mut fleet_breaches: u32 = 0;
-    if let Ok(out) = std::process::Command::new(
-        std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump")),
-    )
-    .args(["health", "--slo-check", "--json"])
-    .current_dir(&repo_root)
-    .output()
-    {
-        if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-            fleet_breaches = parsed
-                .get("slo_breaches")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
+    let mut health_timed_out = false;
+    let timeout_secs: u64 = std::env::var("CHUMP_FLEET_STATUS_GH_TIMEOUT_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3);
+    let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump"));
+    let health_future = tokio::process::Command::new(&exe)
+        .args(["health", "--slo-check", "--json"])
+        .current_dir(&repo_root)
+        .output();
+    match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), health_future).await {
+        Ok(Ok(out)) => {
+            if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                fleet_breaches = parsed
+                    .get("slo_breaches")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+            }
+        }
+        Ok(Err(_)) | Err(_) => {
+            health_timed_out = true;
         }
     }
     let fleet_grade = match fleet_breaches {
@@ -3940,6 +3952,7 @@ async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
         "fleet_grade": fleet_grade,
         "fleet_slo_breaches": fleet_breaches,
         "pillars": pillars,
+        "health_timed_out": health_timed_out,
     }))
 }
 
@@ -4127,6 +4140,256 @@ async fn handle_pr_detail(
         "checks": checks,
     });
     Ok(Json(payload))
+}
+
+// ── PRODUCT-085: PR diff + AC-fit endpoints ───────────────────────────────────────────────────
+
+/// GET /api/pr/{number}/diff — streams `gh pr diff <N>` as plain text.
+///
+/// Query params:
+///   max_lines — cap diff output (default: CHUMP_DIFF_MAX_LINES env, else 2000)
+///
+/// PRODUCT-085.
+async fn handle_pr_diff(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<axum::response::Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let max_lines: usize = params
+        .get("max_lines")
+        .and_then(|v| v.parse().ok())
+        .or_else(|| {
+            std::env::var("CHUMP_DIFF_MAX_LINES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+        })
+        .unwrap_or(2000);
+
+    let out = std::process::Command::new("gh")
+        .args(["pr", "diff", &number.to_string()])
+        .output()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+
+    if !out.status.success() {
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    let raw = String::from_utf8_lossy(&out.stdout);
+    let truncated: String = raw.lines().take(max_lines).collect::<Vec<_>>().join("\n");
+
+    let body = if raw.lines().count() > max_lines {
+        format!(
+            "{truncated}\n\n// … diff truncated at {max_lines} lines (set max_lines= to expand)"
+        )
+    } else {
+        truncated
+    };
+
+    Ok(axum::response::Response::builder()
+        .status(200)
+        .header(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; charset=utf-8",
+        )
+        .body(axum::body::Body::from(body))
+        .unwrap())
+}
+
+/// AC-fit result for a single acceptance-criteria bullet.
+#[derive(serde::Serialize)]
+struct AcBullet {
+    index: usize,
+    text: String,
+    /// "check" | "unknown" | "cross"
+    verdict: &'static str,
+    /// Keywords from AC text found in the diff (evidence for "check").
+    matched_keywords: Vec<String>,
+}
+
+/// GET /api/pr/{number}/ac-fit — heuristic per-AC-bullet check.
+///
+/// Algorithm:
+///   1. Parse PR title for a gap ID (e.g. INFRA-1355, PRODUCT-085).
+///   2. Look up the gap's acceptance_criteria in state.db.
+///   3. For each AC bullet, extract keywords (≥5-char tokens) and check
+///      whether they appear in the diff text.
+///   4. "check" = ≥1 keyword hit; "unknown" = 0 hits; "cross" when diff
+///      explicitly negates the bullet (contains "revert"/"remove" + keyword).
+///
+/// Returns JSON: { gap_id, gap_title, ac_bullets: [{ index, text, verdict, matched_keywords }] }
+///
+/// PRODUCT-085.
+async fn handle_pr_ac_fit(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // 1. Fetch PR title from gh.
+    let title_out = std::process::Command::new("gh")
+        .args([
+            "pr",
+            "view",
+            &number.to_string(),
+            "--json",
+            "title",
+            "--jq",
+            ".title",
+        ])
+        .output()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let pr_title = String::from_utf8_lossy(&title_out.stdout)
+        .trim()
+        .to_string();
+
+    // 2. Extract gap ID from title (first UPPERCASE-NNN token).
+    let gap_re = regex::Regex::new(r"\b([A-Z][A-Z0-9]*-[0-9]+)\b")
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let gap_id_opt = gap_re.find(&pr_title).map(|m| m.as_str().to_string());
+
+    let (gap_id, gap_title, ac_items): (String, String, Vec<String>) = match gap_id_opt {
+        None => {
+            return Ok(Json(serde_json::json!({
+                "gap_id": null,
+                "gap_title": null,
+                "pr_title": pr_title,
+                "ac_bullets": [],
+                "note": "no gap ID found in PR title"
+            })));
+        }
+        Some(ref gid) => {
+            let repo_root = repo_path::runtime_base();
+            let store = crate::gap_store::GapStore::open(&repo_root)
+                .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+            match store
+                .get(gid)
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+            {
+                None => (gid.clone(), String::new(), vec![]),
+                Some(gap) => {
+                    // acceptance_criteria is stored as a newline-separated or
+                    // YAML-list string; split into individual bullet strings.
+                    let ac_raw = gap.acceptance_criteria.clone();
+                    let bullets: Vec<String> = ac_raw
+                        .lines()
+                        .map(|l| {
+                            l.trim_start_matches(|c: char| {
+                                c == '-' || c == ' ' || c.is_ascii_digit() || c == '.'
+                            })
+                            .trim()
+                            .to_string()
+                        })
+                        .filter(|l| !l.is_empty())
+                        .collect();
+                    (gid.clone(), gap.title.clone(), bullets)
+                }
+            }
+        }
+    };
+
+    if ac_items.is_empty() {
+        return Ok(Json(serde_json::json!({
+            "gap_id": gap_id,
+            "gap_title": gap_title,
+            "pr_title": pr_title,
+            "ac_bullets": [],
+            "note": "no acceptance criteria found"
+        })));
+    }
+
+    // 3. Fetch diff text for keyword matching.
+    let diff_out = std::process::Command::new("gh")
+        .args(["pr", "diff", &number.to_string()])
+        .output()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    let diff_text = String::from_utf8_lossy(&diff_out.stdout).to_lowercase();
+
+    // 4. Evaluate each AC bullet.
+    let bullets: Vec<AcBullet> = ac_items
+        .iter()
+        .enumerate()
+        .map(|(i, ac_text)| {
+            let lower = ac_text.to_lowercase();
+            // Extract meaningful keywords (≥5 chars, alphanumeric).
+            let keywords: Vec<String> = lower
+                .split(|c: char| !c.is_alphanumeric() && c != '_')
+                .filter(|t| t.len() >= 5)
+                .filter(|t| {
+                    !matches!(
+                        *t,
+                        "should"
+                            | "shall"
+                            | "where"
+                            | "which"
+                            | "there"
+                            | "their"
+                            | "these"
+                            | "those"
+                            | "about"
+                            | "after"
+                            | "before"
+                            | "above"
+                            | "below"
+                            | "using"
+                            | "state"
+                            | "value"
+                            | "could"
+                            | "would"
+                            | "check"
+                            | "first"
+                            | "every"
+                            | "other"
+                    )
+                })
+                .map(|t| t.to_string())
+                .collect::<std::collections::HashSet<_>>()
+                .into_iter()
+                .collect();
+
+            let matched: Vec<String> = keywords
+                .iter()
+                .filter(|kw| diff_text.contains(kw.as_str()))
+                .cloned()
+                .collect();
+
+            // "cross" heuristic: diff contains revert/remove + keyword
+            let is_cross = !matched.is_empty()
+                && (diff_text.contains("revert") || diff_text.contains("remove"))
+                && matched.iter().any(|kw| {
+                    // Look for "-<keyword>" lines in the diff (deletion context).
+                    diff_text
+                        .lines()
+                        .any(|l| l.starts_with('-') && l.contains(kw.as_str()))
+                });
+
+            let verdict = if is_cross {
+                "cross"
+            } else if !matched.is_empty() {
+                "check"
+            } else {
+                "unknown"
+            };
+
+            AcBullet {
+                index: i + 1,
+                text: ac_text.clone(),
+                verdict,
+                matched_keywords: matched,
+            }
+        })
+        .collect();
+
+    Ok(Json(serde_json::json!({
+        "gap_id": gap_id,
+        "gap_title": gap_title,
+        "pr_title": pr_title,
+        "ac_bullets": bullets,
+    })))
 }
 
 // ── PRODUCT-091 / PRODUCT-094: ambient event viewer + notification center endpoints ──────────
@@ -6385,6 +6648,9 @@ fn build_api_router() -> Router {
         .route("/api/health/pillars", get(handle_health_pillars))
         .route("/api/health/doctor", get(handle_doctor_health))
         .route("/api/pr/{number}", get(handle_pr_detail))
+        // PRODUCT-085: diff + AC-fit for inline PWA diff renderer.
+        .route("/api/pr/{number}/diff", get(handle_pr_diff))
+        .route("/api/pr/{number}/ac-fit", get(handle_pr_ac_fit))
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gaps/search", get(handle_gaps_search))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))

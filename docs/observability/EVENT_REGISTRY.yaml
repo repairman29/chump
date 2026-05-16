@@ -341,6 +341,15 @@ events:
     trigger: pre-commit gate matched Rust-first criteria on a new shell
       file but commit body had 'Rust-First-Bypass:' trailer — bypass
       logged for audit.
+  - kind: rust_first_blocked
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-commit-rust-first.sh (INFRA-1448)
+    trigger: pre-commit gate matched Rust-first criteria on a new shell
+      file AND no 'Rust-First-Bypass:' trailer was present — commit
+      rejected. Fields. files=comma-separated paths, reasons=pipe-separated
+      per-file reasons (hot-path|state-mutator|>200 LOC|long-lived).
+    fields_required: [ts, kind, files, reasons]
+    consumers: [fleet-brief, audit-log, META-064-effectiveness]
   - kind: redundancy_bypass_used
     effect_metric: self
     emitter: scripts/git-hooks/pre-commit-redundancy.sh (META-063)
@@ -597,6 +606,13 @@ events:
     emitter: chump-coord
     trigger: two sessions claim same files
     consumers: [fleet-brief]
+
+  - kind: fixture_commit_dropped
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push (INFRA-1408, Guard 0d)
+    trigger: ghost commits authored by Test<test@test.local> or matching CHUMP_FIXTURE_AUTHOR_REGEX detected; --auto-drop or CHUMP_AUTODROP_FIXTURE_COMMITS=1 rewrote local branch
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, branch, dropped_count]
 
   # ── PR / gap lifecycle ─────────────────────────────────────────────────────
   - kind: gap_reserved
@@ -858,6 +874,13 @@ events:
     emitter: scripts/ops/mission-auto-grader.sh (INFRA-599)
     trigger: per-cycle pillar grade computed
     consumers: [fleet-brief]
+
+  - kind: audit_finding
+    effect_metric: operator_action_within_60s_for_same_feature_id
+    emitter: src/audit.rs (INFRA-1370, `chump audit aha-sweep`)
+    trigger: ambient-kind sweep finds a registered kind whose recent emit count diverges from its expected_min_per_day floor (or whose effect_metric=self yields 0 emits when --flag-silent-self is set)
+    consumers: [fleet-brief, audit-log, PWA <chump-view-audit-findings>]
+    fields_required: [ts, kind, feature_id, feature_class, plumbing_ok, heartbeat_ok, effect_ok, effect_metric_name, effect_observed, effect_expected_min, severity, note]
 
   - kind: pillar_imbalance
     effect_metric: self
@@ -1224,6 +1247,14 @@ events:
     trigger: disk free < 5% (CHUMP_DISK_CRITICAL_PCT); fleet pauses
     consumers: [operator-recall, fleet-brief]
 
+  - kind: disk_critical_auto_remediated
+    effect_metric: self
+    emitter: scripts/ops/disk-health-monitor.sh (INFRA-1440)
+    trigger: disk_critical fired and target-dir-reaper --critical completed; freed_gb
+      captures bytes reclaimed; emitted even if 0 bytes freed
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, freed_gb, timeout_s]
+
   - kind: disk_low
     effect_metric: self
     emitter: scripts/ops/disk-health-monitor.sh + disk-pressure-watchdog.sh
@@ -1382,6 +1413,15 @@ events:
     consumers: [fleet-brief, operator-recall, audit-log]
     fields_required: [ts, kind, pr, gap, note]
 
+  - kind: orphan_close_skipped
+    effect_metric: self
+    emitter: scripts/coord/orphan-pr-closer.sh (INFRA-1423)
+    trigger: orphan-closer found that the gap yaml (docs/gaps/<id>.yaml) exists in
+      the PR's own commit diff — gap is being registered by this PR; closing would
+      be a false positive caused by state.db drift
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, pr, gap, note]
+
   # ── Review-as-Handoff telemetry (INFRA-773) ──────────────────────────────
   - kind: review_handoff_initiated
     effect_metric: self
@@ -1455,6 +1495,15 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, pr, detail]
 
+  # ── Chump paramedic rule-engine rescue daemon (INFRA-1375) ───────────────
+  - kind: paramedic_action
+    emitter: src/paramedic.rs (INFRA-1375)
+    trigger: paramedic daemon determined an action to take on an open PR (REBASE_DIRTY, RERUN_FLAKE, ALLOWLIST_EMIT_NO_REG, SQUASH_INIT_LEAK, FILE_CLUSTER_RESCUE); emitted once per action per PR per triage cycle
+    consumers: [fleet-brief, kpi-report, waste-tally]
+    fields_required: [ts, kind, pr_number, action, reason, dry_run]
+    fields_optional: [gap_id]
+    effect_metric: self
+
   # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
   - kind: auto_merge_armed
     effect_metric: self
@@ -1467,6 +1516,22 @@ events:
     effect_metric: self
     emitter: scripts/coord/auto-merge-armer.sh (INFRA-1113)
     trigger: gh pr merge --auto failed after retries; PR left unarmed
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, pr, detail]
+
+  - kind: auto_merge_arm_verified
+    effect_metric: self
+    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1438)
+    trigger: post-arm gh pr view confirmed autoMergeRequest is non-null; attempt_count
+      records whether the 30s retry was needed
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, pr, detail]
+
+  - kind: auto_merge_arm_verify_failed
+    effect_metric: self
+    emitter: scripts/coord/auto-merge-armer.sh (INFRA-1438)
+    trigger: gh pr merge --auto returned 0 but autoMergeRequest was null after 2s +
+      30s retry; PR left unarmed (silent GraphQL exhaustion)
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, pr, detail]
 
@@ -2833,6 +2898,13 @@ events:
     trigger: branch-reaper.sh deleted a stale remote branch (no open PR, age past threshold).
     consumers: [fleet-brief, waste-tally, ops-audit]
     fields_required: [ts, kind, branch, pr, age_days, dry_run]
+
+  - kind: branch_reaped
+    effect_metric: self
+    emitter: scripts/ops/stale-branch-reaper.sh (INFRA-1453)
+    trigger: stale-branch-reaper.sh (the launchd-scheduled reaper) deleted a stale remote branch — per-deletion event so operator can audit which branches without grepping /tmp logs. Reaper_run summary still fires at end of run.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, branch, age_days, reaper_run_id]
 
   - kind: dup_pr_blocked
     effect_metric: self

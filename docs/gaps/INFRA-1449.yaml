@@ -1,0 +1,13 @@
+- id: INFRA-1449
+  domain: INFRA
+  title: "MISSION: port ambient-write.sh + fleet-state-writer.sh + target-dir-reaper.sh to Rust (post-gate slip-throughs)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Port scripts/coord/lib/ambient-write.sh helper to a Rust module (src/coord/ambient_write.rs) — used by 8+ coord scripts to write ambient.jsonl
+    - Port scripts/coord/lib/fleet-state-writer.sh to Rust — batched fleet-state.json writes with flock-equivalent semantics
+    - Port scripts/coord/target-dir-reaper.sh (INFRA-1349) to Rust subcommand chump target-reaper — runs from launchd
+    - "Each port: add chump-commit.sh test that exercises the new Rust path, then delete the shell script in the same PR; do NOT leave parallel implementations"
+    - All three are scripts/coord state-mutators that slipped through META-064's gate due to INFRA-1367 (trailer-in-m bug, now fixed) — porting them closes the loophole permanently
+
