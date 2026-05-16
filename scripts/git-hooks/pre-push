@@ -888,4 +888,21 @@ PYEOF
     fi
 done
 
+# ── INFRA-1421: CI-regression-guard suite ─────────────────────────────────────
+# When a push touches ci.yml fix commits, verify CI-Regression-Guard trailers
+# reference existing tests, then run those tests to catch re-regressions early.
+# Use git rev-parse to locate the guard script; degrade gracefully when git
+# cannot resolve a work-tree (bare clones used in test harnesses).
+_CI_REG_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+_CI_REG_GUARD="${_CI_REG_ROOT:+$_CI_REG_ROOT/scripts/git-hooks/pre-push-ci-regression-guard.sh}"
+if [[ -n "$_CI_REG_GUARD" ]] && [[ -x "$_CI_REG_GUARD" ]] && [[ "${CHUMP_CI_REGRESSION_GUARD:-1}" != "0" ]]; then
+    # Redirect stdout → stderr so test harnesses that capture hook stdout
+    # to extract the exit code are not polluted by guard diagnostic output.
+    if ! bash "$_CI_REG_GUARD" >&2; then
+        echo "[pre-push] CI regression guard failed — push blocked." >&2
+        echo "[pre-push] Bypass (sparingly): CHUMP_CI_REGRESSION_GUARD=0 git push" >&2
+        exit 1
+    fi
+fi
+
 exit 0
