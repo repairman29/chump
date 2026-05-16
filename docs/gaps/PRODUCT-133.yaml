@@ -1,7 +1,8 @@
 - id: PRODUCT-133
   domain: PRODUCT
   title: "EFFECTIVE: Right-zone action-first treatment — fleet sidebar + ambient viewer answer 'do this now?' not 'look at this'"
-  status: open
+  status: done
+  closed_pr: 2167
   priority: P2
   effort: m
   description: |

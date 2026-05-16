@@ -206,6 +206,13 @@ fi
 _chump="${CHUMP_BIN:-$(command -v chump 2>/dev/null || echo "$REPO_ROOT/target/debug/chump")}"
 if [[ -x "$_chump" ]]; then
     _open_gaps="$("$_chump" gap list --status open 2>/dev/null || true)"
+    # INFRA-1355: in a fresh worktree state.db is empty and the first call
+    # auto-imports + exits with a "re-run to list" message (INFRA-821). The
+    # brief then saw an empty body and reported Pillars=0/0/0/0 even when
+    # 17+ gaps were actually pickable. Re-run when we detect the import notice.
+    if echo "$_open_gaps" | grep -q "imported.*gap.*re-run to list"; then
+        _open_gaps="$("$_chump" gap list --status open 2>/dev/null || true)"
+    fi
     _count_pillar() {
         local tag="$1"
         echo "$_open_gaps" \
