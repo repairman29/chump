@@ -87,10 +87,13 @@ pub fn get_quality_full(slot_name: &str) -> Option<QualityFullRow> {
 const LATENCY_ALPHA: f64 = 0.1;
 
 /// Record latency for EMA of p50/p95. Call after each successful completion. Row must exist (from record_slot_success).
+/// Also records into the per-slot request history ring buffer (PRODUCT-055).
 pub fn record_latency(slot_name: &str, latency_ms: f64) {
     if slot_name.is_empty() {
         return;
     }
+    // PRODUCT-055: append to per-slot request history (tokens_out unknown at this callsite).
+    record_request_history(slot_name, latency_ms, 0);
     if let Err(e) = db_pool::get().and_then(|conn| {
         let (old_p50, old_p95): (Option<f64>, Option<f64>) = conn
             .query_row(
@@ -136,6 +139,73 @@ pub fn record_tool_call_result(slot_name: &str, success: bool) {
     }) {
         tracing::warn!("provider_quality: failed to record tool_call_accuracy for {slot_name}: {e}");
     }
+}
+
+/// PRODUCT-055: a single entry in the per-slot request history ring buffer.
+#[derive(Debug, serde::Serialize)]
+pub struct SlotRequestEntry {
+    pub latency_ms: f64,
+    pub tokens_out: i64,
+    pub recorded_at: String,
+}
+
+/// PRODUCT-055: Record a single inference request into the per-slot history ring buffer.
+/// Keeps only the most recent 10 rows per slot (older rows are pruned after insert).
+/// `latency_ms`: wall-clock from request start to first token or completion.
+/// `tokens_out`: output tokens from the response (0 when unavailable).
+pub fn record_request_history(slot_name: &str, latency_ms: f64, tokens_out: i64) {
+    if slot_name.is_empty() {
+        return;
+    }
+    if let Err(e) = db_pool::get().and_then(|conn| {
+        conn.execute(
+            "INSERT INTO chump_slot_request_history (slot_name, latency_ms, tokens_out) VALUES (?1, ?2, ?3)",
+            rusqlite::params![slot_name, latency_ms, tokens_out],
+        )?;
+        // Prune to last 10 rows per slot (ring buffer).
+        conn.execute(
+            "DELETE FROM chump_slot_request_history
+             WHERE slot_name = ?1
+               AND id NOT IN (
+                 SELECT id FROM chump_slot_request_history
+                 WHERE slot_name = ?1
+                 ORDER BY recorded_at DESC
+                 LIMIT 10
+               )",
+            rusqlite::params![slot_name],
+        )?;
+        Ok(())
+    }) {
+        tracing::warn!("provider_quality: failed to record request history for {slot_name}: {e}");
+    }
+}
+
+/// PRODUCT-055: Return up to the last 10 request entries for a slot (newest first).
+pub fn get_request_history(slot_name: &str) -> Vec<SlotRequestEntry> {
+    let conn = match db_pool::get() {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let mut stmt = match conn.prepare(
+        "SELECT latency_ms, tokens_out, recorded_at
+         FROM chump_slot_request_history
+         WHERE slot_name = ?1
+         ORDER BY recorded_at DESC
+         LIMIT 10",
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    stmt.query_map(rusqlite::params![slot_name], |r| {
+        Ok(SlotRequestEntry {
+            latency_ms: r.get(0)?,
+            tokens_out: r.get(1)?,
+            recorded_at: r.get(2)?,
+        })
+    })
+    .ok()
+    .map(|rows| rows.flatten().collect())
+    .unwrap_or_default()
 }
 
 /// Effective priority for cascade sort: demoted slots (sanity-fail >10%) get +10 so they are tried last.

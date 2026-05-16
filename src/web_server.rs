@@ -6190,6 +6190,7 @@ fn build_api_router() -> Router {
             "/api/cascade-status",
             get(routes::health::handle_cascade_status),
         )
+        .route("/api/slots", get(routes::health::handle_slots))
         .route(
             "/api/cascade-slot-toggle",
             post(routes::health::handle_cascade_slot_toggle),

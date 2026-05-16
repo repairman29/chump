@@ -1768,6 +1768,67 @@
     .cascade-toggle-input:checked + .cascade-toggle-track::after { transform: translateX(16px); }
     .cascade-toggle-input:disabled + .cascade-toggle-track { opacity: 0.4; cursor: not-allowed; }
 
+    /* ── Slot metrics cards (PRODUCT-055) ──────────────────────────────── */
+    .slot-metric-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .slot-metric-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .slot-metric-name {
+      font-family: "SF Mono", monospace;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .slot-metric-last {
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+    .slot-metric-stats {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: flex-end;
+    }
+    .slot-metric-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-width: 60px;
+    }
+    .slot-metric-val {
+      font-size: 16px;
+      font-weight: 700;
+      font-family: "SF Mono", monospace;
+      color: var(--text);
+      line-height: 1.2;
+    }
+    .slot-metric-val.accent { color: var(--accent); }
+    .slot-metric-val.success { color: var(--success); }
+    .slot-metric-label {
+      font-size: 9px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+    .slot-sparkline-wrap { flex: 1; min-width: 80px; }
+    .slot-sparkline-caption {
+      font-size: 9px;
+      color: var(--text-secondary);
+      text-align: center;
+      margin-top: 2px;
+    }
+
     /* ── View: settings ─────────────────────────────────────────────────── */
     .settings-grid { padding: 16px; display: flex; flex-direction: column; gap: 1px; }
     .setting-row {

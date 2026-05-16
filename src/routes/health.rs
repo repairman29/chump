@@ -556,3 +556,67 @@ pub async fn handle_neuromod_stream(
             .text("ping"),
     )
 }
+
+/// GET /api/slots — per-slot inference performance metrics for the PWA settings page (PRODUCT-055).
+///
+/// Returns an array of slot objects. Each slot includes aggregated quality data from
+/// `chump_provider_quality` (latency p50/p95, success/fail counts, last_updated) plus
+/// the last-10 request history from `chump_slot_request_history` (for sparklines).
+///
+/// Callers should poll every 5 seconds; this endpoint is read-only and cheap.
+pub async fn handle_slots() -> Result<Json<serde_json::Value>, StatusCode> {
+    if let Some(arc) = crate::provider_cascade::cascade_for_status() {
+        return Ok(Json(build_slots_response(&arc.slots)));
+    }
+    let c = crate::provider_cascade::ProviderCascade::from_env();
+    if c.slots.is_empty() {
+        return Ok(Json(serde_json::json!({ "slots": [] })));
+    }
+    Ok(Json(build_slots_response(&c.slots)))
+}
+
+fn build_slots_response(slots: &[crate::provider_cascade::ProviderSlot]) -> serde_json::Value {
+    let slot_data: Vec<serde_json::Value> = slots
+        .iter()
+        .map(|s| {
+            let quality = crate::provider_quality::get_quality_full(&s.name);
+            let history = crate::provider_quality::get_request_history(&s.name);
+            // Compute tokens/sec from history: average(tokens_out / (latency_ms / 1000)).
+            // Skip entries where tokens_out == 0 (unknown) or latency == 0.
+            let tps_samples: Vec<f64> = history
+                .iter()
+                .filter(|e| e.tokens_out > 0 && e.latency_ms > 0.0)
+                .map(|e| e.tokens_out as f64 / (e.latency_ms / 1000.0))
+                .collect();
+            let avg_tokens_per_sec: Option<f64> = if tps_samples.is_empty() {
+                None
+            } else {
+                Some(tps_samples.iter().sum::<f64>() / tps_samples.len() as f64)
+            };
+            // last_used_at: take the most recent request history timestamp if available.
+            let last_used_at: Option<String> = history.first().map(|e| e.recorded_at.clone());
+            // Serialize history entries for sparkline rendering.
+            let request_history: Vec<serde_json::Value> = history
+                .iter()
+                .map(|e| {
+                    serde_json::json!({
+                        "ts": e.recorded_at,
+                        "latency_ms": e.latency_ms,
+                        "tokens_out": e.tokens_out,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "name": s.name,
+                "latency_ms_p50": quality.and_then(|q| q.2),
+                "latency_ms_p95": quality.and_then(|q| q.3),
+                "avg_tokens_per_sec": avg_tokens_per_sec,
+                "success_count": quality.map(|q| q.0).unwrap_or(0),
+                "sanity_fail_count": quality.map(|q| q.1).unwrap_or(0),
+                "last_used_at": last_used_at,
+                "request_history": request_history,
+            })
+        })
+        .collect();
+    serde_json::json!({ "slots": slot_data })
+}
