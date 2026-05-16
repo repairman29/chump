@@ -178,6 +178,27 @@ const CSS = `
     cursor: pointer; font-size: 12px; text-align: left;
   }
   .ambient-toggle:hover { background: var(--bg-tertiary, #25252a); }
+  /* PRODUCT-133: right-zone action overlay */
+  .right-actions {
+    padding: 10px 12px;
+    background: linear-gradient(135deg, rgba(10,132,255,.10), rgba(10,132,255,.03));
+    border: 1px solid rgba(10,132,255,.25);
+    border-radius: 7px;
+    display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    flex-wrap: wrap;
+  }
+  .right-actions[hidden] { display: none; }
+  .right-actions-text {
+    font-size: 12px; color: var(--text, #e5e5ea); flex: 1 1 auto;
+  }
+  .right-actions-text strong { color: var(--accent, #0a84ff); font-weight: 600; }
+  .right-actions-btn {
+    background: var(--accent, #0a84ff); color: white;
+    border: none; border-radius: 5px; padding: 5px 12px;
+    font-size: 12px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  }
+  .right-actions-btn:hover { filter: brightness(1.15); }
+  .right-actions-btn:disabled { opacity: 0.6; cursor: default; }
   .inbox-preview-wrap {
     margin-top: 12px;
     border-top: 1px solid var(--border, #2a2a2e);
@@ -401,6 +422,12 @@ class ChumpViewCockpit extends HTMLElement {
         </div>
 
         <div class="zone zone-right" aria-label="Fleet + ambient">
+          <!-- PRODUCT-133: right-zone action overlay. Reuses center-zone
+               synthesis inputs to propose the right action for the right
+               zone's actual state (no workers → Wake, idle picker →
+               Stop+restart, sparse stream → Tail). Action-model Rule 2:
+               every empty state IS the action button. -->
+          <div class="right-actions" id="right-actions" hidden></div>
           <div>
             <div class="zone-header">
               <span>Fleet</span>
@@ -512,6 +539,67 @@ class ChumpViewCockpit extends HTMLElement {
     this.#renderRead(synth.read, synth.confidence, synth.evidenceCount);
     this.#renderSignal(synth.cards);
     this.#renderNoise(inputs.events);
+    this.#renderRightZoneAction(inputs);
+  }
+
+  // PRODUCT-133: right-zone action overlay. The center zone proposes
+  // intelligence; the right zone's evidence panels also surface a primary
+  // action when their underlying state is degraded. Action-model Rule 2:
+  // empty state IS the action button.
+  //
+  // Decision ladder (first match wins):
+  //   1. autopilot off + queue has dispatchable → [Wake fleet]
+  //   2. autopilot on + 0 ships in 24h + sparse ambient → [Restart autopilot]
+  //   3. ambient stream sparse (<5 events) → [Copy tail command]
+  //   4. None of above → overlay hidden (right zone fine as-is)
+  #renderRightZoneAction({ events, queue, autopilot }) {
+    const overlay = this.#shadow.getElementById('right-actions');
+    if (!overlay) return;
+    const autopilotRunning = !!(autopilot && (
+      autopilot.actual_state === 'running'
+      || autopilot.actual_state === 'starting'
+      || autopilot.desired_enabled === true
+    ));
+    const dispatchable = (queue || []).some((g) =>
+      (g.status || 'open') === 'open'
+      && (g.priority === 'P0' || g.priority === 'P1')
+      && Array.isArray(g.acceptance_criteria) && g.acceptance_criteria.length > 0
+      && !g.claimed_by && !g.assignee
+    );
+    const recentEvents = (events || []).length;
+    let html = '';
+    if (!autopilotRunning && dispatchable) {
+      html = `
+        <span class="right-actions-text">
+          <strong>Fleet parked.</strong> Queue has dispatchable P0/P1 work.
+        </span>
+        <button class="right-actions-btn" data-action-view="wake-fleet">Wake fleet</button>
+      `;
+    } else if (autopilotRunning && recentEvents < 10) {
+      html = `
+        <span class="right-actions-text">
+          <strong>Autopilot on, ambient sparse.</strong> Picker may be wedged.
+        </span>
+        <button class="right-actions-btn" data-action-view="restart-fleet">Stop + restart</button>
+      `;
+    } else if (recentEvents < 5) {
+      html = `
+        <span class="right-actions-text">
+          <strong>Ambient stream sparse.</strong> Stream may not be wired here.
+        </span>
+        <button class="right-actions-btn" data-action-view="copy-tail">Copy tail command</button>
+      `;
+    } else {
+      overlay.setAttribute('hidden', '');
+      overlay.innerHTML = '';
+      return;
+    }
+    overlay.removeAttribute('hidden');
+    overlay.innerHTML = html;
+    const btn = overlay.querySelector('button.right-actions-btn');
+    if (btn) {
+      btn.addEventListener('click', () => this.#onCardAction(btn));
+    }
   }
 
   async #fetchInputs() {
@@ -905,6 +993,23 @@ class ChumpViewCockpit extends HTMLElement {
     if (view === 'fleet') {
       // Scroll the right zone (fleet sidebar) into focus.
       this.#shadow.querySelector('.zone-right')?.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
+    // PRODUCT-133 — Copy ambient tail command to clipboard.
+    if (view === 'copy-tail') {
+      const cmd = 'tail -f .chump-locks/ambient.jsonl | jq -c .';
+      try {
+        await navigator.clipboard.writeText(cmd);
+        btn.textContent = '✓ Copied — paste in terminal';
+      } catch {
+        btn.textContent = `Run: ${cmd}`;
+      }
+      btn.disabled = true;
+      setTimeout(() => {
+        btn.textContent = 'Copy tail command';
+        btn.disabled = false;
+      }, 5000);
       return;
     }
 
