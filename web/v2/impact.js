@@ -95,6 +95,16 @@ class ChumpViewImpact extends HTMLElement {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       this._data = await res.json();
       this._renderData();
+      // Emit pwa_impact_viewed for usage analytics (PRODUCT-081).
+      const d = this._data || {};
+      const m = d.metrics || {};
+      navigator.sendBeacon?.('/api/ambient/emit', JSON.stringify({
+        kind: 'pwa_impact_viewed',
+        source: 'impact',
+        window: this._window,
+        prs_merged: m.prs_merged ?? 0,
+        gaps_closed: m.gaps_closed ?? 0,
+      }));
     } catch (e) {
       if (body) body.innerHTML = `<p class="error">Failed: ${e.message}</p>`;
     } finally {
