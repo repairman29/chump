@@ -198,10 +198,41 @@ emitted -= NOISE
 emit_without_register = sorted((emitted - registered) - allowlist)
 register_without_emit = sorted((registered - emitted) - allowlist)
 
+# ── INFRA-1371: effect_metric check ──────────────────────────────────────────
+# Parse which registered kinds have an effect_metric declaration.
+# A kind entry looks like:
+#   - kind: session_start
+#     effect_metric: self
+# We build a dict: kind_name → True/False (has effect_metric on next line).
+lines = yaml_text.splitlines()
+kinds_missing_effect_metric = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    m = re.match(r'^\s*-\s+kind:\s*([A-Za-z0-9_]+)', line)
+    if m:
+        kind_name = m.group(1)
+        # Check if any of the next few lines (before next '  - kind:') has effect_metric
+        has_em = False
+        j = i + 1
+        while j < len(lines) and not re.match(r'^\s*-\s+kind:', lines[j]):
+            if re.match(r'^\s+effect_metric:\s*\S', lines[j]):
+                has_em = True
+                break
+            j += 1
+        if not has_em and kind_name not in allowlist:
+            # Only flag kinds that are emitted in code (new-kind check)
+            if kind_name in emitted:
+                kinds_missing_effect_metric.append(kind_name)
+    i += 1
+
 # ── Report ──
 print(f"[event-registry-audit] mode={mode}")
 print(f"[event-registry-audit] registered={len(registered)} "
       f"emitted={len(emitted)} allowlisted={len(allowlist)}")
+print(f"[event-registry-audit] emitted-missing-effect_metric: {len(kinds_missing_effect_metric)}")
+for k in sorted(kinds_missing_effect_metric):
+    print(f"  MISSING-EFFECT-METRIC: {k}")
 print(f"[event-registry-audit] emit-without-register: {len(emit_without_register)}")
 for k in emit_without_register:
     print(f"  EMIT-NO-REG: {k}")
@@ -237,6 +268,14 @@ if mode == 'strict' and register_without_emit:
           "to fail on this too.)",
           file=sys.stderr)
     sys.exit(2)
+# INFRA-1371: emitted kinds without effect_metric fail in strict-emit mode too.
+if kinds_missing_effect_metric:
+    print("[event-registry-audit] FAIL: emitted kinds missing effect_metric — "
+          "add 'effect_metric: self' (or a specific metric name) to each entry "
+          "in docs/observability/EVENT_REGISTRY.yaml. See docs/observability/"
+          "EVENT_REGISTRY_FORMAT.md for guidance.",
+          file=sys.stderr)
+    sys.exit(3)
 print("[event-registry-audit] OK")
 sys.exit(0)
 PYEOF

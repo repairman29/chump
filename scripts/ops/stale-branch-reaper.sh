@@ -151,6 +151,15 @@ print(int(dt.timestamp()))
         if git push "$REMOTE" --delete "$BRANCH" 2>/dev/null; then
             green "  Deleted $REMOTE/$BRANCH."
             REAPED=$((REAPED + 1))
+            # INFRA-1453: per-deletion emit so operator can audit which branches
+            # were reaped without grepping /tmp/chump-stale-branch-reaper.out.log.
+            # The reaper_finish summary at the end gives aggregate counts; this
+            # event gives the per-branch detail.
+            _bt_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '{"ts":"%s","kind":"branch_reaped","branch":"%s","age_days":%s,"reaper_run_id":"%s"}\n' \
+                "$_bt_ts" "$BRANCH" "$pr_age_days" "${REAPER_NAME:-branch}-${REAPER_START_EPOCH:-$(date +%s)}" \
+                >> "${REAPER_LOCK_DIR:-$(_reaper_main_repo)/.chump-locks}/ambient.jsonl" 2>/dev/null || true
+            unset _bt_ts
         else
             warn "Failed to delete $REMOTE/$BRANCH (protected? already gone?)"
         fi

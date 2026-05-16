@@ -18,8 +18,10 @@
 #   CHUMP_DISK_WARN_PCT       (default 10) free-pct below which to emit disk_low
 #   CHUMP_DISK_CRITICAL_PCT   (default  5) free-pct below which to emit disk_critical
 #   CHUMP_DISK_BLOCKING_PCT   (default  2) free-pct below which to pause fleet
-#   CHUMP_DISK_MONITOR_DF_CMD (default "df -Ph") df command override for testing
-#   CHUMP_FLEET_PAUSE_FILE    (default ~/.chump-fleet-pause-disk-critical)
+#   CHUMP_DISK_MONITOR_DF_CMD   (default "df -Ph") df command override for testing
+#   CHUMP_FLEET_PAUSE_FILE      (default ~/.chump-fleet-pause-disk-critical)
+#   CHUMP_DISK_AUTO_REMEDIATE   (default 1) set 0 to disable auto-reaper invocation
+#   CHUMP_DISK_REAPER_TIMEOUT_S (default 60) max seconds for auto-reaper run
 
 set -uo pipefail
 
@@ -32,6 +34,9 @@ CRITICAL_PCT="${CHUMP_DISK_CRITICAL_PCT:-5}"
 BLOCKING_PCT="${CHUMP_DISK_BLOCKING_PCT:-2}"
 DF_CMD="${CHUMP_DISK_MONITOR_DF_CMD:-df -Ph}"
 PAUSE_FILE="${CHUMP_FLEET_PAUSE_FILE:-$HOME/.chump-fleet-pause-disk-critical}"
+AUTO_REMEDIATE="${CHUMP_DISK_AUTO_REMEDIATE:-1}"
+REAPER_TIMEOUT="${CHUMP_DISK_REAPER_TIMEOUT_S:-60}"
+REAPER_SCRIPT="$SCRIPT_DIR/../coord/target-dir-reaper.sh"
 DRY=0
 [[ "${1:-}" == "--dry-run" ]] && DRY=1
 
@@ -56,6 +61,37 @@ emit_ambient() {
         printf '{"ts":"%s","session":"disk-health-monitor","event":"ALERT","kind":"%s","body":"%s"}\n' \
             "$(ts)" "$kind" "$body" >> "$AMBIENT" 2>/dev/null || true
     fi
+}
+
+# INFRA-1440: auto-invoke target-dir-reaper --critical when disk_critical fires.
+# Capped to REAPER_TIMEOUT seconds so monitor never hangs. Emits
+# disk_critical_auto_remediated with freed_gb on completion.
+auto_remediate_disk() {
+    if [[ "$AUTO_REMEDIATE" != "1" ]]; then
+        log "auto-remediation disabled (CHUMP_DISK_AUTO_REMEDIATE=0)"
+        return 0
+    fi
+    if [[ ! -x "$REAPER_SCRIPT" ]]; then
+        log "WARN: target-dir-reaper.sh not found or not executable at $REAPER_SCRIPT — skipping auto-remediation"
+        return 0
+    fi
+    if [[ "$DRY" -eq 1 ]]; then
+        log "DRY-RUN: would invoke: timeout ${REAPER_TIMEOUT} bash $REAPER_SCRIPT --execute --critical"
+        return 0
+    fi
+    log "auto-remediation: invoking target-dir-reaper --execute --critical (timeout ${REAPER_TIMEOUT}s)…"
+    local reaper_out
+    reaper_out="$(timeout "${REAPER_TIMEOUT}" bash "$REAPER_SCRIPT" --execute --critical 2>&1 || true)"
+    log "$reaper_out"
+
+    # Parse freed GB from summary line: "✓  summary: reaped N, skipped M, freed X.YGB"
+    local freed_gb="0"
+    freed_gb="$(printf '%s\n' "$reaper_out" | grep -oE 'freed [0-9]+\.[0-9]+GB' | grep -oE '[0-9]+\.[0-9]+' | head -1 || echo 0)"
+
+    emit_ambient "disk_critical_auto_remediated" \
+        "target-dir-reaper --critical completed; freed ${freed_gb}GB" \
+        '"freed_gb":'"${freed_gb:-0}"',"timeout_s":'"$REAPER_TIMEOUT"
+    log "auto-remediation complete: freed ${freed_gb}GB"
 }
 
 WORST_FREE=100
@@ -96,11 +132,15 @@ for dir in "${MONITOR_DIRS[@]}"; do
         else
             log "DRY-RUN: would touch $PAUSE_FILE"
         fi
+        # INFRA-1440: auto-invoke reaper in critical mode to reclaim disk immediately.
+        auto_remediate_disk
         TRIGGERED=1
     elif [[ "$free_pct" -lt "$CRITICAL_PCT" ]]; then
         body="CRITICAL: ${free_pct}% free on ${dir} (critical threshold ${CRITICAL_PCT}%). df: ${df_out}"
         log "CRITICAL: $body"
         emit_ambient "disk_critical" "$body" '"level":"CRITICAL","dir":"'"$dir"'","free_pct":'"$free_pct"
+        # INFRA-1440: auto-invoke reaper in critical mode to reclaim disk immediately.
+        auto_remediate_disk
         TRIGGERED=1
     elif [[ "$free_pct" -lt "$WARN_PCT" ]]; then
         body="disk pressure: ${free_pct}% free on ${dir} (warn threshold ${WARN_PCT}%). df: ${df_out}"

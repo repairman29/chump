@@ -1,0 +1,14 @@
+- id: INFRA-1426
+  domain: INFRA
+  title: "EFFECTIVE: chump pr-dryrun <branch> — local CI matrix simulation. Run the same checks GitHub Actions will run, against the diff, BEFORE push. Surfaces failures in seconds instead of waiting 8-12 min for CI"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - chump pr-dryrun <branch?> runs the same checks GitHub Actions would on this branch's diff
+    - Reads .github/workflows/*.yml to enumerate jobs that would trigger on the diff (path filters)
+    - Runs cargo fmt/clippy/test, eslint/playwright (if web/v2 changed), CI smoke shells, etc — locally, in parallel
+    - "Output: per-job pass/fail with the first failure line, total wall-time vs estimated CI wall-time"
+    - Honors --skip flag for slow checks (e.g. --skip tauri-cowork-e2e)
+    - Smoke test scripts/ci/test-chump-pr-dryrun.sh
+

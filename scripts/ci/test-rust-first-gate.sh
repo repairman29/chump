@@ -68,13 +68,21 @@ rm -rf "$TR1"
 
 # ── Test 2: new shell in scripts/coord/ → blocked ────────────────────────────
 TR2="$(mk_repo)"
-mkdir -p "$TR2/scripts/coord"
+mkdir -p "$TR2/scripts/coord" "$TR2/.chump-locks"
 echo '#!/bin/sh' > "$TR2/scripts/coord/foo.sh"
 out="$(run_gate "$TR2" "tmp")"; rc=$?
 if [[ $rc -ne 0 ]] && echo "$out" | grep -q "Rust-first gate blocked"; then
     ok "scripts/coord/ new file: blocked"
 else
     fail "scripts/coord/ new file should be blocked (rc=$rc)"
+fi
+# INFRA-1448: block path must emit kind=rust_first_blocked to ambient.jsonl.
+# Without this, the gate's enforcement is invisible in fleet telemetry.
+if [[ -f "$TR2/.chump-locks/ambient.jsonl" ]] \
+    && grep -q '"kind":"rust_first_blocked"' "$TR2/.chump-locks/ambient.jsonl"; then
+    ok "block logs kind=rust_first_blocked to ambient (INFRA-1448)"
+else
+    fail "block did NOT emit rust_first_blocked (INFRA-1448 regression)"
 fi
 rm -rf "$TR2"
 

@@ -2982,6 +2982,15 @@ customElements.define('chump-view-coord', ChumpViewCoord);
 
 // ── <chump-view-settings> ─────────────────────────────────────────────────────
 class ChumpViewSettings extends HTMLElement {
+  #metricsTimer = null;
+
+  disconnectedCallback() {
+    if (this.#metricsTimer) {
+      clearInterval(this.#metricsTimer);
+      this.#metricsTimer = null;
+    }
+  }
+
   connectedCallback() {
     this.innerHTML = `
       <section class="view-header">
@@ -3025,6 +3034,15 @@ class ChumpViewSettings extends HTMLElement {
           <p class="setting-label" style="margin-bottom: 12px;">Inference Settings</p>
           <div id="cascade-slots" style="margin-bottom: 16px; font-size: 0.9em; color: var(--text-muted);">
             <p>Loading cascade slot info…</p>
+          </div>
+        </div>
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
+          <p class="setting-label" style="margin-bottom: 4px;">Inference Performance (PRODUCT-055)</p>
+          <p style="color: var(--text-muted); font-size: 0.8em; margin-bottom: 10px;">
+            Per-slot latency and throughput — live, updated every 5 s. Sparkline = last 10 requests.
+          </p>
+          <div id="slot-metrics" style="display: flex; flex-direction: column; gap: 8px;">
+            <p style="color: var(--text-muted); font-size: 0.9em;">Loading metrics…</p>
           </div>
         </div>
         <div style="border-top: 1px solid var(--border-color); padding-top: 12px; margin-top: 12px;">
@@ -3112,6 +3130,9 @@ class ChumpViewSettings extends HTMLElement {
     this.#wireThemeToggle();
     this.#wireCostThresholds();
     this.#wireResetButton();
+    this.#loadSlotMetrics();
+    // PRODUCT-055: poll slot metrics every 5 seconds for live latency/throughput display.
+    this.#metricsTimer = setInterval(() => this.#loadSlotMetrics(), 5000);
   }
 
   // PRODUCT-113: cost-ceiling inputs (warn / red / kill) + fleet-wide kill toggle.
@@ -3383,6 +3404,95 @@ class ChumpViewSettings extends HTMLElement {
         console.error(`settings POST ${key} failed:`, err);
         el.disabled = false;
       });
+  }
+
+  // PRODUCT-055: load per-slot inference metrics from /api/slots and render cards with sparklines.
+  #loadSlotMetrics() {
+    const container = this.querySelector('#slot-metrics');
+    if (!container) return;
+    fetch('/api/slots')
+      .then(r => r.json())
+      .then(data => {
+        const slots = data.slots || [];
+        if (slots.length === 0) {
+          container.innerHTML = '<p class="cascade-empty">No cascade slots configured — metrics unavailable.</p>';
+          return;
+        }
+        container.innerHTML = slots.map(slot => {
+          const p50 = slot.latency_ms_p50 != null ? `${Math.round(slot.latency_ms_p50)} ms` : '—';
+          const p95 = slot.latency_ms_p95 != null ? `${Math.round(slot.latency_ms_p95)} ms` : '—';
+          const tps = slot.avg_tokens_per_sec != null ? `${slot.avg_tokens_per_sec.toFixed(1)} tok/s` : '—';
+          const total = (slot.success_count || 0) + (slot.sanity_fail_count || 0);
+          const successRate = total > 0
+            ? `${Math.round(100 * (slot.success_count || 0) / total)}%`
+            : '—';
+          const lastUsed = slot.last_used_at
+            ? new Date(slot.last_used_at + 'Z').toLocaleTimeString()
+            : 'never';
+          const sparkSvg = this.#renderSparkline(slot.request_history || []);
+          return `
+            <div class="slot-metric-card">
+              <div class="slot-metric-header">
+                <span class="slot-metric-name">${slot.name}</span>
+                <span class="slot-metric-last">last: ${lastUsed}</span>
+              </div>
+              <div class="slot-metric-stats">
+                <div class="slot-metric-stat">
+                  <span class="slot-metric-val">${p50}</span>
+                  <span class="slot-metric-label">p50 latency</span>
+                </div>
+                <div class="slot-metric-stat">
+                  <span class="slot-metric-val">${p95}</span>
+                  <span class="slot-metric-label">p95 latency</span>
+                </div>
+                <div class="slot-metric-stat">
+                  <span class="slot-metric-val accent">${tps}</span>
+                  <span class="slot-metric-label">avg tok/s</span>
+                </div>
+                <div class="slot-metric-stat">
+                  <span class="slot-metric-val success">${successRate}</span>
+                  <span class="slot-metric-label">success rate</span>
+                </div>
+                <div class="slot-sparkline-wrap">
+                  ${sparkSvg}
+                  <div class="slot-sparkline-caption">last 10 requests</div>
+                </div>
+              </div>
+            </div>`;
+        }).join('');
+      })
+      .catch(() => {
+        // Silently fail — server may not have cascade slots configured.
+        if (container) container.innerHTML = '<p class="cascade-empty" style="color:var(--text-secondary)">Metrics unavailable (server offline or no cascade slots).</p>';
+      });
+  }
+
+  // PRODUCT-055: render a vanilla SVG sparkline for the last 10 latency values.
+  // Values are shown oldest→newest left→right. Bar height proportional to latency.
+  #renderSparkline(history) {
+    if (!history || history.length === 0) {
+      return '<div style="height:32px;display:flex;align-items:center;justify-content:center;color:var(--text-secondary);font-size:10px;">no data</div>';
+    }
+    // history is newest-first; reverse to show oldest→newest.
+    const entries = [...history].reverse();
+    const vals = entries.map(e => e.latency_ms || 0);
+    const maxVal = Math.max(...vals, 1);
+    const W = 80;
+    const H = 32;
+    const barW = Math.floor(W / 10);
+    const gap = 1;
+    const bars = vals.map((v, i) => {
+      const barH = Math.max(2, Math.round((v / maxVal) * (H - 4)));
+      const x = i * (barW + gap);
+      const y = H - barH;
+      // Color: green if below p50-ish (< half max), amber if mid, red if high.
+      const ratio = v / maxVal;
+      const fill = ratio < 0.4 ? 'var(--success, #30d158)'
+                 : ratio < 0.75 ? 'var(--warn, #ff9f0a)'
+                 : 'var(--error, #ff453a)';
+      return `<rect x="${x}" y="${y}" width="${barW}" height="${barH}" fill="${fill}" rx="1"/>`;
+    }).join('');
+    return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;width:100%;height:${H}px;" aria-hidden="true">${bars}</svg>`;
   }
 
   // PRODUCT-054: load real cascade slot data and render toggle switches.

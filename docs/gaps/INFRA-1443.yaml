@@ -1,0 +1,17 @@
+- id: INFRA-1443
+  domain: INFRA
+  title: "RESILIENT: chump revert <PR-or-commit> — first-class rollback mechanic for broken main commits (today's INFRA-1368 wedged audit job, needed 3 separate fix attempts because no obvious revert path)"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Today INFRA-1368 (PR #2105) merged a broken merge_state_status integration test that wedged the audit job fleet-wide. Recovery path required 3 sibling-attempted-and-some-failed fix PRs (INFRA-1341/1384/1396). A first-class revert mechanic would have rolled back #2105 in one step, restoring fleet velocity instantly, and unblocking proper INFRA-1368 redo on a deflake-run. Pairs with INFRA-1395 (required-check grace window) — together they make new required-check additions safe to ship.
+  acceptance_criteria:
+    - "New CLI: chump revert <PR-number-or-merge-commit> [--target <fix-commit>] — opens a chore PR that reverts the specified merge commit, runs same lane-split (INFRA-1379) so it merges fast"
+    - "Auto-fills PR title: \"revert(<orig-gap-id>): rollback <#PR> due to <reason>\"; --reason flag captures the why"
+    - Comments on the original PR with link to the revert PR
+    - "Branch name: revert/<orig-pr-number>-<short-sha>"
+    - chump pr explain-block (INFRA-1416) cross-references active revert PRs in the suggested-next-action list
+    - CI test scripts/ci/test-chump-revert.sh fabricates a merged PR + invokes revert + asserts a clean revert PR opens
+    - "Used when: sibling-shipped PR breaks main (test wedge, build break, runtime regression); operator runs chump revert <PR> --reason \"wedged audit job\" instead of needing 3 follow-up fix attempts"
+

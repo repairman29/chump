@@ -1,0 +1,55 @@
+- id: INFRA-1449
+  domain: INFRA
+  title: "MISSION: port ambient-write.sh + fleet-state-writer.sh + target-dir-reaper.sh to Rust (post-gate slip-throughs)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Three shell scripts in scripts/coord/ that slipped through META-064's
+    gate (because INFRA-1367's trailer-in-`-m` bug let them commit without
+    bypass-detection, now fixed). All three meet Rust-first criteria.
+
+    Decompose into 3 sub-gaps at claim time; pick by callsite blast radius
+    (smallest first):
+
+    1449-A: ambient-write.sh → src/ambient_writer.rs
+      28 LOC, 10 callers. Function: _ambient_write LOG_PATH JSON_LINE,
+      flock-safe append with stderr fallback. Likely src/ambient_jsonl.rs
+      already has append_event helpers; verify flock semantics match,
+      then swap callers from `source lib/ambient-write.sh; _ambient_write`
+      to `chump ambient emit --kind X --field k=v`. Highest blast radius
+      (10 callers) — ship this FIRST and let it bake.
+
+    1449-B: fleet-state-writer.sh → batch API in src/fleet_state.rs
+      110 LOC, 3 callers. Queue+flush semantics for fleet-state.json,
+      ONE flock per logical unit. Functions: fleet_state_queue_write
+      KEY VALUE; fleet_state_flush (jq-based merge, ambient emit
+      kind=fleet_state_batch_flush). Add equivalent batch API to Rust
+      module; expose as `chump fleet-state batch-write` with in-process
+      queue handle.
+
+    1449-C: target-dir-reaper.sh → chump target-reaper subcommand
+      157 LOC, 3 callers (launchd + 2). Scans linked worktrees, finds
+      idle ones (mtime > N hours, no active lease), deletes target/ dirs,
+      emits kind=target_artifact_reaped. Triggers on disk free <
+      CHUMP_TARGET_REAPER_DISK_MIN_GB (default 50). NEW src/cmd/target_reaper.rs
+      with --execute / --force flags. Reuse src/lease.rs for active-lease
+      check; nix::statvfs for disk-free. Update launchd plist to invoke
+      `chump target-reaper`.
+
+    Common rules per sub-gap:
+      - Add Rust path, update ALL callers, DELETE shell in same PR
+      - Add scripts/ci/test-chump-<verb>.sh exercising success + 1 failure
+      - NO bypass trailers — these are the canonical Rust-first targets
+      - Ship as separate PRs (A → B → C order, ambient-write first)
+
+    Sister gaps (both shipped 2026-05-15):
+      - INFRA-1447: CI-side rust-first gate enforcement
+      - INFRA-1448: emit rust_first_blocked on gate block path
+  acceptance_criteria:
+    - Port scripts/coord/lib/ambient-write.sh helper to a Rust module (src/coord/ambient_write.rs) — used by 8+ coord scripts to write ambient.jsonl
+    - Port scripts/coord/lib/fleet-state-writer.sh to Rust — batched fleet-state.json writes with flock-equivalent semantics
+    - Port scripts/coord/target-dir-reaper.sh (INFRA-1349) to Rust subcommand chump target-reaper — runs from launchd
+    - "Each port: add chump-commit.sh test that exercises the new Rust path, then delete the shell script in the same PR; do NOT leave parallel implementations"
+    - All three are scripts/coord state-mutators that slipped through META-064's gate due to INFRA-1367 (trailer-in-m bug, now fixed) — porting them closes the loophole permanently
+

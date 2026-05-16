@@ -13,7 +13,7 @@ The web server is started with `chump --web` (default port 3000; override with `
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/health` | Health check; returns JSON (e.g. status, version). |
-| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, **`air_gap_mode`**, **`inference`** (see below), **`tool_policy`** (effective **`CHUMP_TOOLS_ASK`**, auto-approve flags for PWA Settings), **`llm_last_completion`** / **`llm_completion_totals`** (which backend last answered; see below), and **`cognitive_control`** (recommended tool/delegate caps, belief-budget flag, task uncertainty, context-exploration fraction, effective tool timeout). |
+| GET | `/api/stack-status` | Desktop / ops: `OPENAI_API_BASE`, `OPENAI_MODEL`, cascade flag, **`air_gap_mode`**, **`inference`** (see below), **`tool_policy`** (effective **`CHUMP_TOOLS_ASK`**, auto-approve flags for PWA Settings), **`llm_last_completion`** / **`llm_completion_totals`** (which backend last answered; see below), **`cognitive_control`** (recommended tool/delegate caps, belief-budget flag, task uncertainty, context-exploration fraction, effective tool timeout), and **`github_rate_limit`** (see below). |
 | GET | `/api/cascade-status` | Cascade provider status (slots, remaining RPD, etc.). |
 | GET | `/api/pilot-summary` | **Pilot / N4 aggregate:** task counts by status, episode total, tool-call ring stats, last speculative batch JSON, plus **`recent_async_jobs`** (last 12 rows from the async job log — same data as `GET /api/jobs`). Requires `Authorization: Bearer …` when `CHUMP_WEB_TOKEN` is set (same as mutating task routes). See [WEDGE_PILOT_METRICS.md](WEDGE_PILOT_METRICS.md) and `./scripts/eval/export-pilot-summary.sh`. |
 | GET | `/api/jobs` | **Async job log (P2.2):** recent rows from **`chump_async_jobs`** (`chump_memory.db`). Query **`limit`** (1–200, default 40). Each job: `id`, `job_type` (e.g. `autonomy_once`), `status`, optional `task_id` / `session_id`, `detail`, `last_error`, timestamps. Bearer required when `CHUMP_WEB_TOKEN` is set. |
@@ -36,6 +36,41 @@ Live snapshot of precision / neuromod hooks (WP-6.x): **`recommended_max_tool_ca
 - **`llm_completion_totals`:** Object mapping **`"kind::label"`** → integer count since process start. Cascade inner HTTP attempts do not increment `openai_http` (only the winning slot’s `cascade` entry). See [METRICS.md](METRICS.md) §1c.
 
 The same **`llm_last_completion`** and **`llm_completion_totals`** fields are included on **`GET /health`** (health port) for operators who poll that endpoint.
+
+### `GET /api/stack-status` — `github_rate_limit` object (INFRA-1337)
+
+Polled once every 60 seconds in-process via `gh api rate_limit`. Exposed at the top level of the response so PRODUCT-107 status-footer and INFRA-1203 health view can read `d.github_rate_limit.graphql_remaining` directly.
+
+| Field | Type | Description |
+|---|---|---|
+| `github_rate_limit` | object or `null` | Rate limit snapshot. `null` when `gh` is unavailable or the first fetch has not yet completed. |
+| `github_rate_limit.graphql_remaining` | integer | Remaining GraphQL API calls before reset. |
+| `github_rate_limit.graphql_limit` | integer | Total GraphQL API call budget per reset window. |
+| `github_rate_limit.core_remaining` | integer | Remaining REST core API calls. |
+| `github_rate_limit.core_limit` | integer | Total REST core budget. |
+| `github_rate_limit.reset_at_iso` | string | ISO-8601 UTC timestamp of the next GraphQL reset window. |
+| `github_rate_limit_error` | string (optional) | Present **only** when `github_rate_limit` is `null`; describes why the fetch failed (e.g. `"gh not found"`, `"not yet fetched"`). |
+
+**Example (healthy):**
+```json
+{
+  "github_rate_limit": {
+    "graphql_remaining": 4820,
+    "graphql_limit": 5000,
+    "core_remaining": 4150,
+    "core_limit": 5000,
+    "reset_at_iso": "2026-05-15T14:00:00Z"
+  }
+}
+```
+
+**Example (gh unavailable):**
+```json
+{
+  "github_rate_limit": null,
+  "github_rate_limit_error": "gh not found: No such file or directory"
+}
+```
 
 ## Dashboard
 

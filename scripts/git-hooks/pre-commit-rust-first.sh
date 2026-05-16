@@ -103,7 +103,24 @@ if [[ "$HAS_BYPASS" == "1" ]]; then
     exit 0
 fi
 
-# Block.
+# Block. INFRA-1448: emit `rust_first_blocked` so the gate's *enforcement*
+# path is visible in ambient.jsonl. The bypass-used emit above only fires
+# on the success path; without this, 161k lines of ambient history showed
+# zero rust_first_* events even though the gate had blocked commits — making
+# the audit trail untrustworthy.
+AMBIENT="${CHUMP_AMBIENT_LOG:-$(git rev-parse --show-toplevel)/.chump-locks/ambient.jsonl}"
+if [[ -d "$(dirname "$AMBIENT")" ]]; then
+    # Concatenate reasons with '|' across files so a single event captures
+    # everything that fired (one violation can trigger multiple reasons:
+    # hot-path AND state-mutator AND >200 LOC).
+    _all_reasons="$(IFS='|'; echo "${REASONS[*]}")"
+    printf '{"ts":"%s","kind":"rust_first_blocked","files":"%s","reasons":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        "$(IFS=,; echo "${VIOLATIONS[*]}")" \
+        "$_all_reasons" \
+        >> "$AMBIENT" 2>/dev/null || true
+fi
+
 red='\033[0;31m'
 nc='\033[0m'
 echo "" >&2
