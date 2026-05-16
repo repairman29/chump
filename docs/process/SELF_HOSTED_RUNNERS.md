@@ -140,3 +140,75 @@ Once at least one runner is registered, the upcoming `scripts/ci/test-self-hoste
 
 This becomes part of `chump fleet doctor --check` so a missing/wedged runner
 surfaces as a fleet-level health alarm.
+
+---
+
+## INFRA-1542: heavy job cross-platform (2026-05-16)
+
+Phase 2 of INFRA-1540: the 8 heavy ci.yml jobs (clippy, cargo-test, audit,
+coverage, e2e-pwa, e2e-golden-path, tauri-cowork-e2e, fast-checks) are now
+**cross-platform-capable**:
+
+1. Every `sudo apt-get install` step is wrapped with `if: runner.os == 'Linux'`
+   so it skips on macOS, where Tauri v2 uses native WebKit + Cocoa.
+2. Each job's `runs-on:` honors a repo-variable override so the operator
+   can flip lanes without a code change.
+
+### Lane-flip recipes
+
+**Per-job override (INFRA-1542 form):**
+```bash
+# Flip the audit job to self-hosted macOS
+gh variable set RUNNER_AUDIT --body '["self-hosted","macOS","ARM64"]'
+
+# Back to ubuntu-latest
+gh variable delete RUNNER_AUDIT
+```
+
+The 5 heavy jobs that take per-job vars: `RUNNER_AUDIT`, `RUNNER_COVERAGE`,
+`RUNNER_E2E_PWA`, `RUNNER_E2E_GOLDEN_PATH`, `RUNNER_TAURI_COWORK_E2E`.
+
+**Master toggle (INFRA-1534 original form):**
+```bash
+# Flip ALL of clippy + cargo-test + fast-checks to self-hosted in one move
+gh variable set CHUMP_SELF_HOSTED_ENABLED --body 'true'
+
+# Back to ubuntu-latest
+gh variable set CHUMP_SELF_HOSTED_ENABLED --body 'false'
+```
+
+These 3 use the earlier `CHUMP_SELF_HOSTED_ENABLED` boolean (kept for
+back-compat). Unification under per-job vars is filed as a P3 follow-up.
+
+### Helpers
+
+Re-run the gating (idempotent):
+```bash
+python3 scripts/setup/gate-apt-get-on-linux.py --dry-run   # preview
+python3 scripts/setup/gate-apt-get-on-linux.py             # apply
+```
+
+Re-run the override-injection (idempotent):
+```bash
+python3 scripts/setup/add-heavy-job-runner-overrides.py --dry-run
+python3 scripts/setup/add-heavy-job-runner-overrides.py
+```
+
+Audit cross-platform readiness any time:
+```bash
+bash scripts/ci/test-ci-heavy-jobs-cross-platform.sh
+```
+
+### Capacity guidance
+
+Today: 4 macOS-ARM64 self-hosted runners. Each heavy job takes 4-10 min cold,
+30-90s warm with the persistent cache (run
+`install-self-hosted-runners-all-local.sh` to provision).
+
+- **Flip 1-2 heavy jobs first** — sample reliability + cache-hit-rate over 24h.
+- **Then flip the rest** as confidence grows.
+- **Add more macOS runners** OR **light up Pi mesh (INFRA-1543)** for the full
+  5×+ throughput lift.
+
+Don't flip all 8 at once with only 4 runners; you'll just shift the
+bottleneck from github-hosted to self-hosted.
