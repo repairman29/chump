@@ -2613,6 +2613,24 @@ events:
       rebase, cargo fmt, cargo clippy, cargo test, push, PR create, etc.
     consumers: [fleet-brief, ops-audit, infra-1067-timeout-tuning]
     fields_required: [ts, kind, phase, elapsed_s, gap, branch]
+  - kind: rebase_and_push_invoked
+    emitter: scripts/coord/chump-rebase-and-push.sh (INFRA-1404)
+    trigger: operator ran chump-rebase-and-push.sh; emitted on every successful
+      fetch+rebase+push cycle. On conflict or double-push-rejection the kind is
+      rebase_and_push_failed instead (same emitter, different exit path).
+    effect_metric: manual_rebase_ops_count{operator=<session>} — tracks how often
+      operators need to manually rebase; should trend to 0 as auto-rebase daemon
+      (INFRA-1406) matures
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, branch, base, remote, retries]
+  - kind: rebase_and_push_failed
+    emitter: scripts/coord/chump-rebase-and-push.sh (INFRA-1404)
+    trigger: rebase+push encountered a conflict (exit 2) or push-lease rejection
+      after retry (exit 3). Includes stage field to distinguish conflict vs. push.
+    effect_metric: rebase_conflict_count{branch=<branch>} — persistent conflicts
+      indicate hot-file contention; should be addressed by merge drivers
+    consumers: [fleet-brief, ops-audit, paramedic-daemon]
+    fields_required: [ts, kind, branch, base, stage]
   - kind: lease_auto_extended
     emitter: scripts/coord/lease-auto-extend.sh (INFRA-1327)
     trigger: a near-expiry claim lease (remaining < CHUMP_LEASE_EXTEND_THRESHOLD_S,
