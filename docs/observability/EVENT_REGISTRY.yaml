@@ -737,6 +737,15 @@ events:
     consumers: [audit-log, waste-tally]
     fields_required: [ts, kind, gap_id, pr, title, merged_via]
 
+  - kind: ci_retrigger_pushed
+    effect_metric: self
+    emitter: scripts/coord/chump-ci-retrigger.sh (INFRA-1407)
+    trigger: operator pushed an empty "ci: retrigger" commit to a PR branch to force
+      a fresh CI checkout; `gh run rerun --failed` replays the OLD snapshot so this
+      shim is needed when new commits must be picked up by CI
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, pr, branch, sha, reason]
+
   - kind: pr_stuck
     effect_metric: pr_rescue_action_within_4h
     emitter: scripts/ops/stuck-pr-filer.sh (INFRA-307)

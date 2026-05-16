@@ -347,3 +347,5 @@ CHUMP_SKIP_PROBE
 CHUMP_ALLOW_STOMP
 # ── INFRA-1375: paramedic daemon per-cycle time budget ────────────────────────
 CHUMP_PARAMEDIC_BUDGET_SECS
+# ── INFRA-1407: ci retrigger bypass + worktree base ──────────────────────────
+CHUMP_CI_RETRIGGER
