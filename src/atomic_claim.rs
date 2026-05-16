@@ -1433,11 +1433,43 @@ pub(crate) fn nats_dual_write_with_bin(
     session_id: &str,
     ambient_log_path: Option<&Path>,
 ) -> Result<NatsClaimOutcome> {
-    let out = Command::new(coord_bin)
-        .args(["claim", gap_id])
-        .env("CHUMP_SESSION_ID", session_id)
-        .output()
-        .with_context(|| format!("spawning {} claim {}", coord_bin.display(), gap_id))?;
+    // Retry on ETXTBSY (os error 26): the kernel returns this transiently when a
+    // script file was just written and the kernel's page-cache hasn't settled yet.
+    // Up to 3 attempts with a short backoff are sufficient in practice.
+    let out = {
+        let mut last_err: Option<std::io::Error> = None;
+        let mut result = None;
+        for attempt in 0..3 {
+            match Command::new(coord_bin)
+                .args(["claim", gap_id])
+                .env("CHUMP_SESSION_ID", session_id)
+                .output()
+            {
+                Ok(o) => {
+                    result = Some(o);
+                    break;
+                }
+                Err(e) if e.raw_os_error() == Some(26) => {
+                    // ETXTBSY — wait briefly and retry
+                    std::thread::sleep(std::time::Duration::from_millis(10 * (1 << attempt)));
+                    last_err = Some(e);
+                }
+                Err(e) => {
+                    return Err(e).with_context(|| {
+                        format!("spawning {} claim {}", coord_bin.display(), gap_id)
+                    });
+                }
+            }
+        }
+        match result {
+            Some(o) => o,
+            None => {
+                return Err(last_err.unwrap()).with_context(|| {
+                    format!("spawning {} claim {}", coord_bin.display(), gap_id)
+                });
+            }
+        }
+    };
 
     if out.status.success() {
         return Ok(NatsClaimOutcome::Claimed);
