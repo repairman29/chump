@@ -9,5 +9,8 @@
   acceptance_criteria:
     - "docs/business/ANTHROPIC_PARTNERSHIP.md with: contact path (Mike Krieger DM? developer relations team?), pitch in 3 paragraphs, what we offer them (Agent SDK validation, harness-agnostic SDK example), what we want (blog co-post, conference mention)"
     - Draft email + Twitter DM with 3-line value prop
-    - Track in OPERATOR_ACTIONS.md (proprietary)
+    - "Reference 2 concrete data points: Claude Code adoption among Chump operators (% of sessions), Chump's contribution to Agent SDK robustness (specific issues hit + filed upstream)"
+    - Track in proprietary OPERATOR_ACTIONS.md (legal-sensitive — keep out of public registry)
+    - "Decision rule: if no reply in 30d, escalate to Twitter DM or HN-post tag-mention"
+    - Cross-link from docs/ROADMAP.md Phase 4 as a launch dependency for INFRA-1500
 
