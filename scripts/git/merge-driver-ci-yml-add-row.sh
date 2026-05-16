@@ -51,15 +51,25 @@ if [[ $ours_lines -lt $ancestor_lines ]] || [[ $theirs_lines -lt $ancestor_lines
 fi
 
 # Pure-append check: the first ancestor_lines of ours and theirs must be
-# identical to ancestor.  Any insertion or edit in the shared prefix means
-# we fall through to the INFRA-1490 patch-based fallback below.
-_pure_append=1
+# identical to ancestor.  Track ours and theirs separately so the INFRA-1490
+# fallback can distinguish "both sides edited the shared prefix" (safe to
+# patch) from "only theirs edited the shared prefix" (unsafe — applying
+# theirs' mid-file diff to a pure-append ours would corrupt ours).
+_pure_ours=1
+_pure_theirs=1
 if ! diff -q <(head -n "$ancestor_lines" "$OURS")   "$ANCESTOR" > /dev/null 2>&1; then
-  _pure_append=0
+  _pure_ours=0
 fi
-if [[ $_pure_append -eq 1 ]] \
-   && ! diff -q <(head -n "$ancestor_lines" "$THEIRS") "$ANCESTOR" > /dev/null 2>&1; then
-  _pure_append=0
+if ! diff -q <(head -n "$ancestor_lines" "$THEIRS") "$ANCESTOR" > /dev/null 2>&1; then
+  _pure_theirs=0
+fi
+_pure_append=$(( _pure_ours & _pure_theirs ))
+
+# If ours is a pure append but theirs has mid-file edits, exit 1 and let
+# git's 3-way merge handle it — applying theirs' diff to ours would insert
+# theirs' mid-file content into ours (corruption, INFRA-1205 regression).
+if [[ $_pure_ours -eq 1 && $_pure_theirs -eq 0 ]]; then
+  exit 1
 fi
 
 if [[ $_pure_append -eq 0 ]]; then
