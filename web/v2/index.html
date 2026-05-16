@@ -1127,6 +1127,93 @@
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
 
+    /* PRODUCT-086: PR action panel — approve, request changes, comment, revert buttons. */
+    chump-pr-card .pr-card-actions {
+      display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
+    }
+    chump-pr-card .pr-action-btn {
+      padding: 6px 12px; font-size: 12px;
+      border: 1px solid var(--border, #2a2a2e);
+      background: var(--surface, #1a1a1e);
+      color: var(--text, #ddd);
+      border-radius: 4px; cursor: pointer;
+      transition: all 150ms ease;
+    }
+    chump-pr-card .pr-action-btn:hover:not(:disabled) {
+      background: var(--accent, #2a4a7a);
+      border-color: var(--accent, #4a7abb);
+    }
+    chump-pr-card .pr-action-btn:disabled {
+      opacity: 0.5; cursor: not-allowed;
+    }
+
+    /* PRODUCT-086: Action modal — appears when user clicks approve/request-changes/comment. */
+    .pr-action-modal {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 1000; display: flex; align-items: center; justify-content: center;
+    }
+    .pr-action-modal-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+    }
+    .pr-action-modal-content {
+      position: relative; background: var(--surface, #1a1a1e);
+      border: 1px solid var(--border, #2a2a2e);
+      border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      width: 90%; max-width: 500px; max-height: 80vh;
+      overflow-y: auto;
+    }
+    .pr-action-modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 16px; border-bottom: 1px solid var(--border, #2a2a2e);
+    }
+    .pr-action-modal-header h2 {
+      margin: 0; font-size: 18px; font-weight: 600;
+    }
+    .pr-action-modal-close {
+      background: transparent; border: none; font-size: 24px;
+      cursor: pointer; color: var(--text, #ddd);
+      padding: 0; width: 30px; height: 30px;
+    }
+    .pr-action-modal-close:hover { color: var(--accent, #4a7abb); }
+    .pr-action-modal-body {
+      padding: 16px;
+    }
+    .pr-action-modal-textarea {
+      width: 100%; padding: 10px; font-size: 13px;
+      border: 1px solid var(--border, #2a2a2e);
+      background: var(--input-bg, #0a0a0e);
+      color: var(--text, #ddd);
+      border-radius: 4px; font-family: ui-monospace, monospace;
+      min-height: 100px; resize: vertical;
+    }
+    .pr-action-modal-textarea:focus { outline: none; border-color: var(--accent, #4a7abb); }
+    .pr-action-modal-footer {
+      display: flex; gap: 8px; justify-content: flex-end;
+      padding: 16px; border-top: 1px solid var(--border, #2a2a2e);
+    }
+    .pr-action-modal-cancel, .pr-action-modal-submit {
+      padding: 8px 16px; font-size: 12px;
+      border: 1px solid var(--border, #2a2a2e);
+      background: var(--surface, #1a1a1e);
+      color: var(--text, #ddd);
+      border-radius: 4px; cursor: pointer;
+    }
+    .pr-action-modal-submit {
+      background: var(--accent, #2a4a7a);
+      border-color: var(--accent, #4a7abb);
+      color: #fff;
+    }
+    .pr-action-modal-submit:hover { background: var(--accent-hover, #3a5a8a); }
+    .pr-action-modal-cancel:hover { background: var(--border, #2a2a2e); }
+
+    /* Mobile-friendly action panel: smaller buttons and text wrap on narrow viewports */
+    @media (max-width: 640px) {
+      chump-pr-card .pr-action-btn {
+        padding: 4px 8px; font-size: 11px; flex: 1; min-width: 60px;
+      }
+    }
+
     /* INFRA-1009: <chump-workflow-timeline gap-id="X"> live phase tracker.
        Embeddable — no layout opinion; host UI places it where it makes
        sense (workflow_done event embedder, agents view session row,
