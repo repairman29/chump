@@ -1058,6 +1058,20 @@ events:
     trigger: bot-merge.sh hung beyond reaper threshold
     consumers: [audit-log]
 
+  - kind: bot_merge_stall_detected
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1399)
+    trigger: pre-push hook stalled longer than CHUMP_BOT_MERGE_PHASE_TIMEOUT_S (default 300s) during the git push step; typically caused by cargo fmt or another slow pre-push gate under sibling contention
+    consumers: [fleet-brief, waste-tally, operator-recall]
+    fields_required: [ts, kind, phase, timeout_s, gap_id, branch, note]
+
+  - kind: bot_merge_test_gate_skipped
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1399)
+    trigger: bot-merge delegated the cargo test gate to CI by setting CHUMP_TEST_GATE=0 before push; CI on the PR runs the same tests, making the pre-push gate redundant and the source of sibling contention
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, gap_id, branch, note]
+
   - kind: bot_merge_hot_file
     effect_metric: self
     emitter: scripts/ops/bot-merge-watch.sh
