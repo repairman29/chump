@@ -4,9 +4,15 @@
   status: open
   priority: P2
   effort: s
+  pillar: MISSION
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "PR opened against awesome-rust (sindresorhus-style list) adding Chump under the most-relevant section (likely 'Development tools > Build tools / CLI utilities' or 'AI / LLM'). Use the list's CONTRIBUTING.md format exactly — one-line description, GitHub stars badge, license."
+    - "PR opened against awesome-llm-agents (or equivalent active list — verify activity via last-merged-PR timestamp before submitting) with Chump entry under coding-agent category"
+    - "PR opened against awesome-coding-agents (verify it exists + is active; if not, skip + document why)"
+    - "Each PR description is one paragraph: what Chump is, why it belongs on this list, one concrete differentiator (offline-capable, local-LLM, multi-agent orchestration). NO marketing copy, NO emoji spam — these lists reject anything that smells promotional"
+    - "Maintainer outreach: for any list whose CONTRIBUTING says 'open an issue first', do that instead. Track every outbound contact in operator-tracker (not in this gap), so we can follow up on no-response in 2 weeks"
+    - "Operator action items (legal / commercial / outreach decisions) flagged to chump-proprietary/OPERATOR_ACTIONS.md per the existing reference; NOT tracked in this gap registry"
+    - "Done = PRs opened (regardless of merge outcome). Merge-acceptance lives in a follow-up gap if PRs sit > 2 weeks."
+    - "Cross-link: complements the README + landing-page work; placement on these lists is the standard discovery surface for OSS dev tools"
+
 

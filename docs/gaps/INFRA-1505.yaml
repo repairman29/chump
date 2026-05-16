@@ -4,9 +4,17 @@
   status: open
   priority: P2
   effort: m
+  pillar: CREDIBLE
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "New `chump telemetry` subcommand with `enable | disable | status | show-last-payload` actions; default is disabled — `chump telemetry status` on a fresh install returns 'disabled'"
+    - "Opt-in is explicit: `chump telemetry enable` requires --i-have-read-the-privacy-doc flag pointing to docs/process/TELEMETRY_PRIVACY.md; without that flag, the command prints the doc summary and refuses to enable"
+    - "Allowlist of fields (whitelist, not blacklist): chump_version, platform (darwin/linux/aarch64/x86_64), os_release_major, ship_rate_1h_bucket (0|1-5|6-15|16+), fleet_size_bucket (1|2-3|4-9|10+), opt_in_session_uuid_random_per_session. EVERY other field is rejected at serialize time."
+    - "Hard-blocked content surfaces: NO file paths, NO commit SHAs, NO PR numbers, NO gap IDs (any of these would deanonymize), NO repo names, NO agent prompts, NO model names, NO timing data beyond bucketed rate. Test scripts/ci/test-telemetry-no-leak.sh inspects an emitted payload via regex against forbidden patterns."
+    - "Transport: POST to a single configurable endpoint (env: CHUMP_TELEMETRY_URL, default unset = no-op). Failure of POST never blocks chump operation — silent drop, no retry, no local queue."
+    - "Audit trail: every emit writes one line to .chump-locks/telemetry-audit.log with timestamp + sha256 of payload (NOT the payload). Operator can inspect what was sent without reconstructing PII."
+    - "`chump telemetry show-last-payload` prints the most recent payload as JSON before sending — used for one-time verification by suspicious operators"
+    - "Doc: docs/process/TELEMETRY_PRIVACY.md commits to: never persist on server > 90 days, never sell/share, GDPR-style deletion-on-request via opt_in_session_uuid lookup"
+    - "Smoke test scripts/ci/test-telemetry-opt-in.sh: (a) fresh install → status disabled, (b) emit attempt while disabled → no network call (mock server sees nothing), (c) enable without flag → refused, (d) enable + emit → exactly one POST with allowlisted fields only"
+    - "Cross-link: per project_offline_local_llm_mission memory — Chump's pitch is offline-first; telemetry MUST never violate that. This gap codifies the privacy contract."
+
 

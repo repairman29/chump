@@ -1,0 +1,16 @@
+- id: INFRA-1537
+  domain: INFRA
+  title: "ZERO-WASTE: route ci.yml 'changes' paths-filter job to self-hosted too — it gates fast-checks/clippy/cargo-test dispatch, so GH-hosted queue saturation blocks even self-hosted lane"
+  status: open
+  priority: P2
+  effort: m
+  pillar: ZERO-WASTE
+  depends_on: ["INFRA-1534", "INFRA-1535"]
+  acceptance_criteria:
+    - "The `changes` job in .github/workflows/ci.yml (currently `runs-on: ubuntu-latest`) is rewritten to match the conditional pattern: `runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && fromJSON('[\"self-hosted\",\"macos-arm64\",\"chump-fleet\"]') || 'ubuntu-latest' }}`"
+    - "Verify dorny/paths-filter@vN works on macOS self-hosted (uses `git diff` under the hood — git is already on PATH)"
+    - "Smoke: with CHUMP_SELF_HOSTED_ENABLED=true, push a PR touching only .md files → `changes` reports rust=false; push a PR touching .rs files → reports rust=true. Both runs land on M4."
+    - "Without this fix: every CI run blocks on ubuntu-latest's `changes` job before dispatching to M4, defeating self-hosted capacity gain when GH-hosted is saturated"
+    - "No new failure modes on the ubuntu-latest fallback path (CHUMP_SELF_HOSTED_ENABLED=false)"
+    - "Cross-link: today's audit showed `changes` is the gating dispatch decision; when GH-hosted is saturated, `changes` queues there and the M4 lane sits idle waiting for the verdict"
+

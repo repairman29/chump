@@ -1,0 +1,15 @@
+- id: INFRA-1499
+  domain: INFRA
+  title: "RESILIENT: INFRA-1485 follow-up — async-ify Command::new at src/web_server.rs:6119 (bash one-off)"
+  status: open
+  priority: P2
+  effort: xs
+  pillar: RESILIENT
+  depends_on: ["INFRA-1485"]
+  acceptance_criteria:
+    - "src/web_server.rs:6119 (bash one-off shellout) converted from std::process::Command to tokio::process::Command + .output().await"
+    - "Containing handler is async; no synchronous Command::output() remains on this line"
+    - "Smallest of the INFRA-1485 follow-ups (xs effort) — single line change + handler signature confirmation"
+    - "Smoke check: existing scripts/ci/test-server-survives-slow-endpoint.sh covers the pattern; verify it still passes; add a one-line case targeting this endpoint if it's not already covered"
+    - "No new clippy warnings"
+
