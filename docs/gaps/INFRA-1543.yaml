@@ -1,0 +1,9 @@
+- id: INFRA-1543
+  domain: INFRA
+  title: "RESILIENT: Pi mesh actions-runner provisioner — Linux-ARM64 self-hosted runners (INFRA-1534 AC #3 ghost-ship)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "[\"INFRA-1534 AC #3 promised: Sibling registration for Pi mesh nodes — scripts/setup/install-self-hosted-runner.sh --pi installs on Linux ARM, registers with label [self-hosted, linux-arm64]. Not delivered. Currently 0 linux-arm64 runners registered.\",\"Extend scripts/setup/install-self-hosted-runner.sh (or new install-self-hosted-runner-pi.sh) to install actions-runner agent on a Raspberry Pi (Linux ARM64), register with the chump repo, and configure as a systemd service.\",\"Add labels: self-hosted, Linux, ARM64, linux-arm64, chump-fleet-pi\",\"Provide an offline-air-gapped install path: the script downloads the actions/runner release tarball once and caches it for subsequent Pi adds.\",\"Document the rack-and-register flow in docs/process/SELF_HOSTED_RUNNERS.md: physical Pi setup, SD card image, network config, then run install-self-hosted-runner-pi.sh on first boot.\",\"Smoke test scripts/ci/test-pi-mesh-installer-shape.sh: lint the installer script, assert labels include linux-arm64, assert systemd service file is emitted.\",\"Operator action: rack first Pi, run installer, verify gh api shows it online with linux-arm64 label.\",\"Once landed, INFRA-1540 Phase 2 jobs (clippy/cargo-test/audit/coverage/e2e-*) can route to Pi mesh for Linux runs instead of github-hosted.\"]"
+

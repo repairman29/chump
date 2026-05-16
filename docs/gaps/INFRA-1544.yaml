@@ -1,0 +1,9 @@
+- id: INFRA-1544
+  domain: INFRA
+  title: "CREDIBLE: chump fleet doctor self-hosted runner liveness check (INFRA-1534 AC #5 ghost-ship)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "[\"INFRA-1534 AC #5 promised: chump fleet doctor adds self-hosted runner liveness check — gh api /repos/.../actions/runners must show at least 1 online runner; warn at 0. Not delivered.\",\"Add a check to src/fleet_doctor.rs (or wherever fleet-doctor checks live): query gh api repos/{owner}/{repo}/actions/runners, count online runners, warn if 0, fail if 0 AND any ci.yml job uses self-hosted (workflows that need runners exist but no runners are available).\",\"Tag check name self_hosted_runner_liveness. Threshold tunable via CHUMP_FLEET_DOCTOR_MIN_RUNNERS (default 1).\",\"Output: green if N online, yellow if 1 online + degraded mode, red if 0 + workflows still require self-hosted.\",\"Add to chump fleet doctor --strict gate (INFRA-1427) so fleet up refuses to start if no runners online.\",\"Smoke test scripts/ci/test-fleet-doctor-self-hosted-check.sh: mock gh api response with 0 runners, assert non-zero exit; with 1+ runners, assert clean exit.\",\"Telemetry: emit kind=fleet_doctor_runner_count {online, offline, busy, total} once per check run.\"]"
+
