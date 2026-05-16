@@ -2145,7 +2145,7 @@ if [[ $AUTO_MERGE -eq 1 ]]; then
                         green "Code-reviewer verdict: APPROVE/SKIP — proceeding with auto-merge." ;;
                     1)
                         red "Code-reviewer raised CONCERN — auto-merge NOT enabled."
-                        red "Resolve concerns then run: gh pr merge $TARGET_PR --auto --squash"
+                        red "Resolve concerns then run: gh pr merge $TARGET_PR --auto --squash  # (omit --squash if merge queue is active)"
                         exit 1 ;;
                     2)
                         red "Code-reviewer ESCALATED — human review required, auto-merge NOT enabled."
@@ -2423,6 +2423,8 @@ print(f"{incomplete} {failed} {total}")
                 # backoff (30s→60s→120s→300s) via .chump-locks/bot-merge-backoff-<pr>.ts
                 # to avoid burning gh pr merge calls on PRs that failed recently.
                 # between successive gh pr merge --auto calls across all callers.
+                # INFRA-1377: auto-merge-armer.sh detects merge queue and adjusts
+                # merge strategy accordingly (omits --squash, skips REST-direct).
                 stage_start "auto-merge-armer.sh --pr $TARGET_PR"
                 if ! "$SCRIPT_DIR/auto-merge-armer.sh" --pr "$TARGET_PR"; then
                     red "auto-merge-armer failed (see above)."
