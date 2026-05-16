@@ -225,3 +225,6 @@ pwa_impact_viewed  # reason: emitted from web/v2/impact.js via sendBeacon (JS, n
 ci_yml_row_add_merged  # reason: emitted from scripts/git/merge-driver-ci-yml-add-row.sh (shell); not in PROD_PATHS
 pre_commit_ac_test_missing  # reason: emitted by scripts/git-hooks/pre-commit-ac-completeness.sh (INFRA-1401); git-hooks/ outside PROD_PATHS grep scan
 github_app_fallback  # reason: emitted by scripts/coord/lib/github.sh _chump_gh_lane_token (INFRA-1076); helper function emit not grep-scannable as literal kind string
+runner_migration_step           # reason: INFRA-1535 migration pipeline state-transition emit
+runner_scaled                   # reason: INFRA-1535 autoscale daemon scale-up/down emit
+self_hosted_runner_run          # reason: INFRA-1534 per-run completion (planned)
