@@ -51,13 +51,68 @@ if [[ $ours_lines -lt $ancestor_lines ]] || [[ $theirs_lines -lt $ancestor_lines
 fi
 
 # Pure-append check: the first ancestor_lines of ours and theirs must be
-# identical to ancestor.  Any insertion or edit in the shared prefix means we
-# can't safely auto-merge — fall back to the standard 3-way merge (exit 1).
+# identical to ancestor.  Any insertion or edit in the shared prefix means
+# we fall through to the INFRA-1490 patch-based fallback below.
+_pure_append=1
 if ! diff -q <(head -n "$ancestor_lines" "$OURS")   "$ANCESTOR" > /dev/null 2>&1; then
-  exit 1
+  _pure_append=0
 fi
-if ! diff -q <(head -n "$ancestor_lines" "$THEIRS") "$ANCESTOR" > /dev/null 2>&1; then
-  exit 1
+if [[ $_pure_append -eq 1 ]] \
+   && ! diff -q <(head -n "$ancestor_lines" "$THEIRS") "$ANCESTOR" > /dev/null 2>&1; then
+  _pure_append=0
+fi
+
+if [[ $_pure_append -eq 0 ]]; then
+  # ── INFRA-1490: patch-based fallback for mid-file row additions ─────────
+  # 12 of my own DIRTY PRs on 2026-05-16T04:30 had ci.yml conflicts because
+  # everyone was adding test-rows in the AUDIT-JOB section (mid-file). The
+  # pure-append driver above refused, dropping to 3-way merge which produced
+  # markers. This fallback: if `diff ancestor theirs` is an ADD-ONLY diff
+  # (no deletes), try applying it to ours with fuzz so context-line offsets
+  # are absorbed. patch(1) handles the common case where ours added rows
+  # before theirs' add point or after it.
+  _diff_theirs=$(mktemp)
+  diff -u "$ANCESTOR" "$THEIRS" > "$_diff_theirs" 2>/dev/null || true
+  # Count +/- lines (excluding the ---/+++ headers).
+  _adds=$(grep -cE '^\+[^+]' "$_diff_theirs" 2>/dev/null) || _adds=0
+  _dels=$(grep -cE '^-[^-]' "$_diff_theirs" 2>/dev/null) || _dels=0
+  if [[ "$_adds" -eq 0 ]]; then
+    # Theirs added nothing — keep ours, success.
+    rm -f "$_diff_theirs"
+    exit 0
+  fi
+  if [[ "$_dels" -gt 0 ]]; then
+    # Theirs has real edits/deletes; can't safely patch.
+    rm -f "$_diff_theirs"
+    exit 1
+  fi
+  # ADD-ONLY diff. Try two strategies in order:
+  #   (a) patch --fuzz=3 — handles case where ours+theirs added at different
+  #       anchor points (line offsets absorbed by fuzz)
+  #   (b) git merge-file --union — handles case where ours+theirs added at
+  #       the SAME anchor point (concatenate both sides at the conflict region)
+  if patch --silent --fuzz=3 --no-backup-if-mismatch "$OURS" < "$_diff_theirs" 2>/dev/null; then
+    _mode="patch_fuzz3"
+  elif git merge-file --union "$OURS" "$ANCESTOR" "$THEIRS" 2>/dev/null; then
+    # --union returned non-zero on conflicts but wrote the union output;
+    # capture EXIT here in a way that survives either 0 or merge-conflict rc.
+    _mode="union"
+  else
+    # git merge-file --union ALSO returned non-zero (true failure).
+    rm -f "$_diff_theirs"
+    exit 1
+  fi
+  _repo=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+  if [[ -n "$_repo" ]]; then
+    _amb="${CHUMP_AMBIENT_LOG:-$_repo/.chump-locks/ambient.jsonl}"
+    if [[ -w "$(dirname "$_amb")" ]] 2>/dev/null; then
+      printf '{"ts":"%s","kind":"ci_yml_row_add_merged","ours":"%s","theirs":"%s","mode":"%s","adds":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OURS" "$THEIRS" "$_mode" "$_adds" \
+        >> "$_amb" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$_diff_theirs"
+  exit 0
 fi
 
 # Extract the lines theirs appended beyond the shared ancestor prefix.
