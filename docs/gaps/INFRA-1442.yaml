@@ -1,0 +1,16 @@
+- id: INFRA-1442
+  domain: INFRA
+  title: "RESILIENT: claim-time fuzzy-match against open-PR titles/commit-bodies — prevents 3-way duplicate fixes (today's test-cache-mergestatestatus.sh fixed in INFRA-1341+1384+1396 in parallel, ~3 wasted compute-hours)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Today's session: scripts/ci/test-cache-mergestatestatus.sh got fixed independently by 3 PRs (INFRA-1341 commit b6cac13f, INFRA-1384 commit a1c5727e, INFRA-1396 commit 72acb97f). Three siblings + me each spent compute cycles on the same 4-line fix. Existing INFRA-1149 similarity gate catches duplicate GAP filings but not duplicate CLAIM attempts where different gap IDs target the same root cause.
+  acceptance_criteria:
+    - "chump claim runs fuzzy-match BEFORE creating worktree/lease: scans (a) open PR titles for keywords in the claimed gap title, (b) commit bodies of last 50 commits on origin/main for the gap ID, (c) open lease files (paths + gap_id), (d) recent ambient kind=gap_claimed events"
+    - "If match found above CHUMP_CLAIM_FUZZY_THRESHOLD (default 0.5 jaccard): print warning with the conflicting PR/commit/lease + suggest \"wait or coordinate\""
+    - "Bypass: --force-duplicate or CHUMP_CLAIM_NO_FUZZY=1; bypass emits kind=claim_duplicate_bypassed to ambient"
+    - Existing INFRA-1149 reserve-side similarity check covers gap-filing dupes; this gap covers CLAIM-side (different gap IDs targeting same root cause)
+    - CI test scripts/ci/test-claim-fuzzy-match.sh fabricates 2 gaps + 1 open PR with shared keywords + asserts claim refuses without --force-duplicate
+    - "Measure: kind=duplicate_root_cause_observed ambient event count drops over a 7d window"
+

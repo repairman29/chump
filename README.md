@@ -26,9 +26,11 @@ The end-to-end demo flow — what a new operator sees from a clean Mac to a self
 **1. Install**
 
 ```bash
-brew tap repairman29/chump && brew install chump   # macOS — when the tap is published
+brew tap repairman29/chump && brew install chump   # macOS — pre-built binary, ~25s
 # OR build from source (any platform): see "Build from source" below
 ```
+
+The tap is live at [`repairman29/homebrew-chump`](https://github.com/repairman29/homebrew-chump). Pre-built binaries for macOS arm64/x86_64 and Linux arm64/x86_64 ship with each release; SHA256 pinned in the formula. Verified end-to-end on 2026-05-15 (v0.1.2): `brew install` → working binary in ~23 seconds, no Rust compile required.
 
 **2. Initialize** — interactive wizard checks Ollama, scaffolds `~/.chump/`, picks a default model.
 
@@ -257,7 +259,7 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 | [`docs/strategy/CHUMP_TO_CHAMP.md`](docs/strategy/CHUMP_TO_CHAMP.md) | Chump-to-Champ roadmap — cognitive architecture vision and frontier direction |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md) | PR checklist and quality bar |
 | [`docs/operations/OPERATIONS.md`](docs/operations/OPERATIONS.md) | Run modes, env vars, heartbeats |
-| [`docs/strategy/ROADMAP.md`](docs/strategy/ROADMAP.md) | What's next |
+| [`docs/ROADMAP.md`](docs/ROADMAP.md) | What's next |
 | [`SECURITY.md`](SECURITY.md) | Vulnerability reporting |
 
 **Bug reports:** use the [GitHub issue template](.github/ISSUE_TEMPLATE/bug_report.md) or see [`CONTRIBUTING.md`](CONTRIBUTING.md#bug-reports).

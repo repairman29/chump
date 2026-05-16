@@ -71,13 +71,12 @@ PY
 
 # ── 2. webhook receiver writes merge_state_status from pr.mergeable_state ───
 python3 - "$DB" <<'PY'
-import json, sqlite3, sys
-from datetime import datetime, timezone
+import datetime, json, sqlite3, sys
 
 db = sys.argv[1]
 # Simulate webhook receiver upsert
 conn = sqlite3.connect(db)
-now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 # Full webhook payload (what GitHub sends)
 webhook_payload = {
     "action": "synchronize",
@@ -186,15 +185,14 @@ PY
 
 # ── 5. Pre-migration DB (no column) falls back gracefully ───────────────────
 python3 - "$TMP/old_schema.db" "$REPO_ROOT" <<'PY'
-import sys, json, sqlite3
+import datetime, sys, json, sqlite3
 from pathlib import Path
 
 old_db = Path(sys.argv[1])
 repo_root = Path(sys.argv[2])
 
 # Create old-schema DB without merge_state_status
-from datetime import datetime, timezone
-now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 conn = sqlite3.connect(str(old_db))
 conn.executescript("""
 CREATE TABLE IF NOT EXISTS pr_state (

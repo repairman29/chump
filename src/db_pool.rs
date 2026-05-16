@@ -579,6 +579,22 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         [],
     )?;
 
+    // PRODUCT-055: per-slot inference request history (ring buffer, last 10 per slot).
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS chump_slot_request_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            slot_name TEXT NOT NULL,
+            latency_ms REAL NOT NULL,
+            tokens_out INTEGER NOT NULL DEFAULT 0,
+            recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_slot_req_hist ON chump_slot_request_history(slot_name, recorded_at DESC)",
+        [],
+    )?;
+
     // COG-012: ASI telemetry tables for logprob + tool latency storage.
     conn.execute(
         "CREATE TABLE IF NOT EXISTS chump_asi_telemetry (

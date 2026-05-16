@@ -1,0 +1,15 @@
+- id: INFRA-1445
+  domain: INFRA
+  title: "CREDIBLE: chump pr blame-file <path> — surfaces squash-merged + cherry-picked history that git log misses (today: test-cache-mergestatestatus.sh fix shipped via PR not visible in git log -- path)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Today: git log -- scripts/ci/test-cache-mergestatestatus.sh on chump/main showed only INFRA-1368 (#2105) + INFRA-1383 (#2130, unrelated). But the file content on main was the FIXED version, meaning some other PR merged the fix. Operator had no way to find which PR via git log. Cost: 5min of confused investigation + the wrong assumption that the fix wasn't on main.
+  acceptance_criteria:
+    - "New CLI: chump pr blame-file <path> — combines git log on file + GitHub squash-merge history + cherry-pick history to surface the actual landed-commit history that git log alone misses"
+    - Uses github_cache.db raw_payload_json to find squash-merged PR numbers whose patches touched the path
+    - "Output: per-line table (or --json) showing landed_commit / landed_pr / landed_gap_id / landed_at"
+    - Used by INFRA-1416 chump pr explain-block to find sibling-fixes for the same file
+    - CI test scripts/ci/test-pr-blame-file.sh fabricates a github_cache.db with a squash-merge that touched a path + asserts blame-file finds it
+

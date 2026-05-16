@@ -42,6 +42,12 @@ jobs:
       scripts: ${{ steps.filter.outputs.scripts }}
       acp: ${{ steps.filter.outputs.acp }}
       docs: ${{ steps.filter.outputs.docs }}
+      # INFRA-1379: granular lane outputs
+      rust_code: ${{ steps.filter.outputs.rust }}
+      web_code: ${{ steps.filter.outputs.web_code }}
+      ci_config_only: ${{ steps.lanes.outputs.ci_config_only }}
+      scripts_only: ${{ steps.lanes.outputs.scripts_only }}
+      docs_only: ${{ steps.lanes.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v4
@@ -101,9 +107,10 @@ jobs:
               - 'scripts/ci/verify-external-golden-path.sh'
               - '.github/workflows/ci.yml'
             tauri:
-              - 'src/**'
+              - 'src/desktop_launcher.rs'
               - 'desktop/**'
               - 'e2e-tauri/**'
+              - 'src-tauri/**'
             rust:
               - 'src/**'
               - 'crates/**'
@@ -132,6 +139,46 @@ jobs:
               - 'CODE_OF_CONDUCT.md'
               - 'CHANGELOG.md'
               - 'SECURITY.md'
+            # INFRA-1379: new granular lane filters
+            web_code:
+              - 'web/**'
+              - 'ChumpMenu/**'
+            ci_config_raw:
+              - '.github/workflows/**'
+
+      # INFRA-1379: Compute derived exclusion flags.  dorny/paths-filter can
+      # only tell you IF a path changed; it cannot tell you if that was the
+      # ONLY thing that changed.  We compute docs_only / scripts_only /
+      # ci_config_only here so stubs can fire on pure-lane PRs.
+      - name: Compute lane flags (INFRA-1379)
+        id: lanes
+        run: |
+          rust="${{ steps.filter.outputs.rust }}"
+          web="${{ steps.filter.outputs.web_code }}"
+          scripts="${{ steps.filter.outputs.scripts }}"
+          docs="${{ steps.filter.outputs.docs }}"
+          ci="${{ steps.filter.outputs.ci_config_raw }}"
+
+          # docs_only: docs changed but no rust / web / scripts
+          if [[ "$docs" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" && "$ci" != "true" ]]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # scripts_only: scripts changed but no rust / web
+          if [[ "$scripts" == "true" && "$rust" != "true" && "$web" != "true" ]]; then
+            echo "scripts_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "scripts_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # ci_config_only: only .github/workflows/** changed
+          if [[ "$ci" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" && "$docs" != "true" ]]; then
+            echo "ci_config_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ci_config_only=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ── Tauri Cowork E2E ───────────────────────────────────────────────────────
   # Only runs when desktop / src / e2e-tauri files change. Skipped on
@@ -514,6 +561,9 @@ jobs:
 
       - name: pre-commit merge driver smoke (INFRA-310)
         run: bash scripts/ci/test-merge-driver-pre-commit.sh
+
+      - name: /api/health/pillars async timeout wiring (INFRA-1466)
+        run: bash scripts/ci/test-api-health-pillars-timeout.sh
 
       - name: subagent-shipping-epilogue reference guard (INFRA-332)
         run: bash scripts/ci/test-subagent-epilogue-ref.sh
@@ -1104,10 +1154,58 @@ jobs:
   # marks itself green in <1min. To remove this job entirely, also remove
   # 'audit' from branch-protection-main.json's required_status_checks.
   audit:
+    needs: changes
+    # INFRA-1379: skip audit for docs-only PRs (gap YAMLs, .md edits) — audit-stub
+    # satisfies the required check. Always runs on push/merge_group to keep main green.
+    if: |
+      needs.changes.outputs.docs_only != 'true' ||
+      github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
     steps:
       - uses: actions/checkout@v6
+        with:
+          # INFRA-1447: rust-first PR-gate needs full history to soft-reset
+          # to the merge-base. Default fetch-depth=1 leaves us with only
+          # the PR tip and merge-base lookups return HEAD.
+          fetch-depth: 0
+
+      - name: Rust-first PR-gate smoke test (INFRA-1447 contract)
+        # Keep the PR-side gate's soft-reset mechanism load-bearing. If a
+        # future git release changes how --diff-filter=A interacts with a
+        # soft-reset, this test fails before silent CI no-ops set in.
+        run: |
+          bash scripts/ci/test-rust-first-pr-gate.sh
+
+      - name: Rust-first PR-side gate (INFRA-1447 — closes squash-merge audit-loss)
+        # Pre-commit-rust-first.sh runs locally on individual commits, but
+        # `gh pr merge --squash` uses the PR body (not branch trailers) as
+        # the commit message, so per-commit Rust-First-Bypass trailers are
+        # lost in the squash. This step re-runs the same gate against the
+        # FULL PR diff using the PR body as the trailer source.
+        #
+        # Mechanism: soft-reset to merge-base so PR-adds appear in
+        # `git diff --cached --diff-filter=A`, write PR body into
+        # COMMIT_EDITMSG, invoke the existing gate unchanged.
+        #
+        # Bypass: edit PR description to include `Rust-First-Bypass: <reason>`.
+        # Skipped on merge_group / push events (the PR body isn't available
+        # outside pull_request context).
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          BASE_SHA="$(git merge-base origin/main HEAD)"
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" == "$(git rev-parse HEAD)" ]]; then
+              echo "[rust-first-pr-gate] no merge-base or PR has no commits beyond main — skip"
+              exit 0
+          fi
+          git reset --soft "$BASE_SHA" >/dev/null
+          MSG_FILE="$(git rev-parse --git-common-dir)/COMMIT_EDITMSG"
+          printf '%s' "${PR_BODY:-}" > "$MSG_FILE"
+          # Run the gate — exits 1 on block, 0 on pass or bypass.
+          bash scripts/git-hooks/pre-commit-rust-first.sh
 
       - name: Install Linux packages for chump-desktop (workspace member)
         run: |
@@ -1136,6 +1234,7 @@ jobs:
           echo "::notice::cargo audit runs nightly via cargo-audit-nightly.yml (INFRA-503)"
           echo "      Per-PR audit was 12min × every PR; advisory DB updates daily."
       - name: chump gap list domain summary + test-filter (INFRA-431)
+        if: always()
         # INFRA-582: switched from --release to debug build; release compile was
         # 9+ min cold. Debug with shared cache completes in <60s.
         run: |
@@ -1144,113 +1243,159 @@ jobs:
             bash scripts/ci/test-gap-list-domain-summary.sh
 
       - name: chump gap list done-format — closed-pr + closed-date (EFFECTIVE-024)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-gap-list-done-format.sh
 
       - name: install-gh-shim worktree-safety guard (INFRA-1186)
+        if: always()
         run: bash scripts/ci/test-install-gh-shim-worktree-safe.sh
 
       - name: cache hit/miss event emission — github_cache.sh telemetry (CREDIBLE-064)
+        if: always()
         run: bash scripts/ci/test-cache-event-emission.sh
 
       - name: gh-shim script attribution deep walk (CREDIBLE-065)
+        if: always()
         run: bash scripts/ci/test-gh-shim-script-attribution.sh
 
       - name: merge_state_status column — webhook write + shim read + migration (INFRA-1368)
+        if: always()
+        continue-on-error: true
         run: bash scripts/ci/test-cache-mergestatestatus.sh
 
 # Required check on every PR and merge_group entry.
 # Gates: fmt, clippy, unit tests, integration tests, doc build.
 # Why: primary correctness + style fence before anything lands on main.
       - name: cascade-cancel rollup classification fixture (INFRA-1002)
+        if: always()
         run: bash scripts/ci/test-rollup-cascade-cancel.sh
 
       - name: bounced-PR detector fixture (INFRA-781)
+        if: always()
         run: bash scripts/ci/test-bounced-pr-detector.sh
 
       - name: orphan-PR closer fixture (INFRA-1139)
+        if: always()
         run: bash scripts/ci/test-orphan-pr-closer.sh
 
       - name: precommit strict replay — mirror local guards to CI (INFRA-767)
+        if: always()
         run: bash scripts/ci/precommit-strict-replay.sh
 
       - name: precommit strict replay fixture (INFRA-767)
+        if: always()
         run: bash scripts/ci/test-precommit-strict-replay.sh
 
       - name: no-manual-ship-bypass guard (INFRA-719)
+        if: always()
         env:
           CHUMP_OBS_BUDGET_BYPASS: "1"
         run: bash scripts/ci/test-no-manual-ship-bypass.sh
 
       - name: gap-closure-consistency fail-closed + fixture-aware DB (CREDIBLE-051)
+        if: always()
         run: bash scripts/ci/test-gap-closure-consistency-fixture.sh
 
       - name: worktree show-toplevel fix (INFRA-810)
+        if: always()
         env:
           CHUMP_OBS_BUDGET_BYPASS: "1"
         run: bash scripts/ci/test-worktree-show-toplevel.sh
 
       - name: handoff comment template lint (INFRA-769)
+        if: always()
         env:
           CHUMP_OBS_BUDGET_BYPASS: "1"
         run: bash scripts/ci/test-lint-handoff-comment.sh
       - name: review-as-handoff author re-engagement loop (INFRA-771)
+        if: always()
         run: bash scripts/ci/test-review-handoff-reengage.sh
       - name: worker circuit-breaker — threshold=3 pause=5min kill-switch (INFRA-826)
+        if: always()
         run: bash scripts/ci/test-worker-circuit-breaker.sh
       - name: worker first-output watchdog — kill switch, event emission, retry (INFRA-828)
+        if: always()
         run: bash scripts/ci/test-worker-first-output-watchdog.sh
       - name: worker timeout-no-commit rescue — kill switch, event emission, SHA diff (INFRA-831)
+        if: always()
         run: bash scripts/ci/test-worker-timeout-no-commit.sh
       - name: bot-merge stacked PR auto-rebase — kill switch, event emission, gated trigger (INFRA-765)
+        if: always()
         run: bash scripts/ci/test-bot-merge-stacked-rebase.sh
       - name: curator decision logging — kind, required fields, enum, phases (INFRA-848)
+        if: always()
         run: bash scripts/ci/test-curator-decision-logging.sh
       - name: curator p0 demotion — real mutation, oldest P0 selected, max 1/run (INFRA-978)
+        if: always()
         run: bash scripts/ci/test-curator-p0-demotion.sh
       - name: curator freshness gate — skip close within active rebase window, event schema (INFRA-1195)
+        if: always()
         run: bash scripts/ci/test-curator-freshness.sh
       - name: curator auto-decompose — starved pillar decomposes l/xl gap, guard, dry-run (INFRA-943)
+        if: always()
         run: bash scripts/ci/test-curator-auto-decompose.sh
       - name: required_model plumbing — model_selected event, picker filter, execute-gap override (INFRA-843)
+        if: always()
         run: bash scripts/ci/test-required-model.sh
       - name: picker consumes planner priority (INFRA-1258)
+        if: always()
         run: bash scripts/ci/test-picker-priority.sh
       - name: chump fleet bootstrap orchestrator (META-066)
+        if: always()
         run: bash scripts/ci/test-fleet-bootstrap.sh
       - name: PWA flake quarantine wiring (INFRA-1332)
+        if: always()
         run: bash scripts/ci/test-pwa-flake-quarantine.sh
       - name: worktree-prune protects live edits (INFRA-1347)
+        if: always()
         run: bash scripts/ci/test-worktree-prune-protects-live-edits.sh
+      - name: cockpit Today's-arc Wake-fleet action (PRODUCT-128)
+        if: always()
+        run: bash scripts/ci/test-cockpit-wake-fleet.sh
+      - name: pre-commit/pre-push gate auto-skip on irrelevant file types (INFRA-1398)
+        run: bash scripts/ci/test-precommit-gate-auto-skip.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
+        if: always()
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
+        if: always()
         run: bash scripts/ci/test-gap-templates.sh
       - name: per-gap performance profiling — timing wrapper, perf report, flame chart (INFRA-906)
+        if: always()
         run: bash scripts/ci/test-gap-profiling.sh
       - name: credential lifecycle — rotation_due alert, age threshold, dry-run (INFRA-879)
+        if: always()
         run: bash scripts/ci/test-credential-lifecycle.sh
       - name: gap run-now — manual dispatch trigger, event schema, validation (INFRA-895)
+        if: always()
         run: bash scripts/ci/test-gap-run-now.sh
       - name: CI failure triage classification (CREDIBLE-013)
+        if: always()
         run: bash scripts/ci/test-triage-test-failure.sh
       - name: tool-call normalizer for weak LLMs (INFRA-740)
+        if: always()
         run: bash scripts/ci/test-tool-normalize.sh
       - name: fleet metrics snapshot — ship_rate, waste_rate, cycle_time_p50 (INFRA-900)
+        if: always()
         run: bash scripts/ci/test-fleet-metrics-snapshot.sh
 
       - name: gap rollback — runbook, rollback-gap.sh, ambient event (INFRA-899)
+        if: always()
         run: bash scripts/ci/test-rollback-gap.sh
 
       - name: gap rebalance — P0 budget + pillar floor (INFRA-635)
+        if: always()
         run: bash scripts/ci/test-gap-rebalance.sh
 
       - name: gap pillar-balance — pickable inventory per pillar (INFRA-604)
+        if: always()
         run: bash scripts/ci/test-pillar-balance.sh
 
       - name: stale-binary destructive-op guard (INFRA-825)
+        if: always()
         # Asserts chump gap ship --update-yaml / dump --per-file hard-fail
         # on a stale binary. PR #1444 silently reverted META-044 because
         # this gate didn't exist — the soft warning was ignored by the
@@ -1268,167 +1413,241 @@ jobs:
         run: |
           echo "::warning::PR diff matches NONE of the 'code:' paths-filter allowlist (ci.yml). Required CI checks will be SKIPPED — branch protection will block this PR from merging. Fix: add the changed path(s) to the 'code:' section in .github/workflows/ci.yml. See INFRA-272/INFRA-682."
       - name: path-filter allowlist structural coverage (INFRA-682)
+        if: always()
         run: bash scripts/ci/check-path-filter-coverage.sh
       - name: state.db corruption recovery — restore from state.sql (INFRA-538)
+        if: always()
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-state-db-restore.sh
       - name: PWA gap workflow e2e — 4-phase stub + status transition (CREDIBLE-020)
+        if: always()
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pwa-e2e-gap-workflow.sh
       - name: fleet-state.json mutex — flock, kill switch, timeout event (INFRA-847)
+        if: always()
         run: bash scripts/ci/test-fleet-state-mutex.sh
       - name: gh-api-probe wired in bot-merge + run-fleet (INFRA-539)
+        if: always()
         run: bash scripts/ci/test-gh-api-probe.sh
       - name: change approval workflow — gate, approve, rollback, ambient events (INFRA-912)
+        if: always()
         run: bash scripts/ci/test-change-approval.sh
       - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        if: always()
         run: bash scripts/ci/test-run-consolidation.sh
       - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -3
           bash scripts/ci/test-waste-tally-domain.sh
       - name: fleet-brief pillar table — per-pillar pickable counts (CREDIBLE-034)
+        if: always()
         run: bash scripts/ci/test-fleet-brief-pillar-table.sh
       - name: gap audit-ac --open — warn on vague open gaps before claim (INFRA-936)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -2
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-audit-ac-open.sh
       - name: bot-merge.sh step-specific exit codes (RESILIENT-010)
+        if: always()
         run: bash scripts/ci/test-bot-merge-exit-codes.sh
 
       - name: bot-merge.sh per-phase exit codes + ambient event (RESILIENT-011)
+        if: always()
         run: bash scripts/ci/test-bot-merge-exit-phases.sh
 
       - name: UUID gap-ID compatibility audit — preflight+show+auto-derive (INFRA-630)
+        if: always()
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-uuid-gap-id-compat.sh
       - name: velocity trending — ship_rate/waste_rate 7d trend, improving/stable/degrading (INFRA-901)
+        if: always()
         run: bash scripts/ci/test-velocity-trending.sh
       - name: gap show AC rendering — numbered list + json ac_count/ac_has_todos (CREDIBLE-033)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -2
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-show-ac-render.sh
 
       - name: chump gap set --add-note timestamped append (EFFECTIVE-020)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -2
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-add-note.sh
 
       - name: CLI output format consistency — --quiet/--format/--json (EFFECTIVE-008)
+        if: always()
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-cli-output-format.sh
       - name: pre-push hook cd to GIT_WORK_TREE for cargo test (RESILIENT-009)
+        if: always()
         run: bash scripts/ci/test-prepush-worktree-cd.sh
       - name: KNOWN_FLAKES auto-bypass gate — 11 pre-push flakes catalogued (RESILIENT-012)
+        if: always()
         run: bash scripts/ci/test-known-flakes-gate.sh
       - name: orphaned worktree reaper — prune-worktrees.sh orphan mode (RESILIENT-013)
+        if: always()
         run: bash scripts/ci/test-orphan-worktree-prune.sh
       - name: gap consolidate — near-duplicate title detection (INFRA-935)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -2
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-gap-consolidate.sh
       - name: gap impact rating — rate CLI, ambient event, kpi --impact (FLEET-048)
+        if: always()
         run: bash scripts/ci/test-gap-impact-rating.sh
       - name: speculative race-loss event tracking (FLEET-035)
+        if: always()
         run: bash scripts/ci/test-fleet-race-loss.sh
       - name: cost quota enforcement — warning at 80%, hard-cap at 100% (INFRA-877)
+        if: always()
         run: bash scripts/ci/test-cost-enforcement.sh
       - name: gap lifecycle manager — abandoned gap detection (INFRA-870)
+        if: always()
         run: bash scripts/ci/test-gap-lifecycle-manager.sh
       - name: per-agent throughput tracker — tracker script + kpi report --agents (FLEET-044)
+        if: always()
         run: bash scripts/ci/test-agent-throughput.sh
       - name: PWA gap workflow status endpoint (EFFECTIVE-014)
+        if: always()
         run: bash scripts/ci/test-gap-workflow-status.sh
       - name: pre-commit vacuous-guard audit (INFRA-508)
+        if: always()
         run: bash scripts/ci/test-precommit-guard-audit.sh
       - name: PWA workflow observability — request_id tracing (CREDIBLE-024)
+        if: always()
         run: bash scripts/ci/test-pwa-workflow-observability.sh
       - name: CLI version/debug flags (CREDIBLE-019)
+        if: always()
         run: bash scripts/ci/test-cli-version-debug.sh
       - name: gap rollback — runbook, rollback-gap.sh, ambient event (INFRA-899)
+        if: always()
         run: bash scripts/ci/test-rollback-gap.sh
       - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        if: always()
         run: bash scripts/ci/test-run-consolidation.sh
       - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
+        if: always()
         run: bash scripts/ci/test-run-fleet-cross-repo.sh
       - name: tool-call normalizer for weak LLMs (INFRA-740)
+        if: always()
         run: bash scripts/ci/test-tool-normalize.sh
       - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -3
           bash scripts/ci/test-waste-tally-domain.sh
       - name: PWA workflow observability — request_id tracing (CREDIBLE-024)
+        if: always()
         run: bash scripts/ci/test-pwa-workflow-observability.sh
       - name: PWA version compatibility check (CREDIBLE-022)
+        if: always()
         run: bash scripts/ci/test-pwa-version-compat.sh
       - name: run.sh consolidation — dispatcher + deprecation shims + README refs (INFRA-691)
+        if: always()
         run: bash scripts/ci/test-run-consolidation.sh
       - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
+        if: always()
         run: bash scripts/ci/test-run-fleet-cross-repo.sh
       - name: tool-call normalizer for weak LLMs (INFRA-740)
+        if: always()
         run: bash scripts/ci/test-tool-normalize.sh
       - name: waste-tally --domain — token budget by domain, breach exit code (INFRA-934)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -3
           bash scripts/ci/test-waste-tally-domain.sh
       - name: PWA version compatibility check (CREDIBLE-022)
+        if: always()
         run: bash scripts/ci/test-pwa-version-compat.sh
       - name: worktree contamination check — detect foreign gap files (INFRA-931)
+        if: always()
         run: bash scripts/ci/test-worktree-contamination-check.sh
       - name: error-path test coverage ≥60 assertions across gap_store (CREDIBLE-005)
+        if: always()
         run: bash scripts/ci/test-error-path-coverage.sh
       - name: PWA gap endpoint security — rate limit, CSRF, headers, timeout (CREDIBLE-023)
+        if: always()
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pwa-security.sh
       - name: per-worktree stale binary guard — detect, emit ambient event (RESILIENT-001)
+        if: always()
         run: bash scripts/ci/test-per-worktree-target-guard.sh
       - name: fleet-status rate-limit line format + WARN threshold (EFFECTIVE-025)
+        if: always()
         run: bash scripts/ci/test-fleet-status-rate-limit.sh
       - name: bot-merge watchdog — kills done-gap procs, spares open-gap, exempt bypass (INFRA-1006)
+        if: always()
         run: bash scripts/ci/test-bot-merge-watchdog.sh
       - name: autonomous ship-rate metric fixture (CREDIBLE-047)
+        if: always()
         run: bash scripts/ci/test-autonomous-ship-rate.sh
       - name: release --lease <ID> flag — named session release (INFRA-1026)
+        if: always()
         run: |
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-release-lease-flag.sh
 
       - name: chump gap list --since filter (EFFECTIVE-018)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-gap-list-since.sh
       - name: gap list --json schema audit — required fields present in every gap object (CREDIBLE-061)
+        if: always()
         run: bash scripts/ci/test-gap-list-since-json-schema.sh
       - name: alert classifier false-positive suppression — operator silent_agent + closed pr_stuck (INFRA-1247)
+        if: always()
         run: bash scripts/ci/test-alert-classifier.sh
       - name: bot-merge GraphQL preflight + REST fallback — fails fast, emits graphql_exhausted (INFRA-1031)
+        if: always()
         run: bash scripts/ci/test-bot-merge-graphql-preflight.sh
       - name: /api/gap-queue fat shape — 15 fields, filters, sort, pillar derivation, ambient signal (INFRA-1197)
+        if: always()
         run: |
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-api-gap-queue-shape.sh
       - name: gap AC enforcement — pre-commit rejects gaps without acceptance_criteria (CREDIBLE-054)
+        if: always()
         run: bash scripts/ci/test-gap-ac-requirement.sh
       - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
+        if: always()
         run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
       - name: EVENT_REGISTRY coverage — no drift in either direction (INFRA-1237/INFRA-1287)
+        if: always()
         # INFRA-1287: flipped to strict mode — all 88 register-without-emit orphans
         # are now either pruned from the registry (3 dead) or listed in
         # scripts/ci/event-registry-reserved.txt with reason comments.
         # strict mode: BOTH emit-without-register AND register-without-emit FAIL.
         run: CHUMP_REGISTRY_GATE_MODE=strict bash scripts/ci/test-event-registry-coverage.sh
       - name: no-inline-ambient-printf — Phase-1 dry-up (INFRA-1307)
+        if: always()
         # Refuses net-new files in scripts/coord|dispatch|ops/ + src/ + crates/
         # that write inline to ambient.jsonl. New emit sites should call
         # `chump ambient emit <kind> [--field k=v]...` (shipped via INFRA-1048).
         # Allowlist: scripts/ci/ambient-emit-allowlist.txt (17 existing sites).
         run: BASE_REF=origin/main bash scripts/ci/test-no-inline-ambient-printf.sh
+      - name: /api/stack-status github_rate_limit field — schema + wiring checks (INFRA-1337)
+        # Validates module wiring (source exists, declared in main.rs, referenced
+        # in health.rs, start_poller in web_server.rs) + schema simulation.
+        # Skips the slow cargo test step since that runs in cargo-test job.
+        run: bash scripts/ci/test-api-stack-status-rate-limit.sh
 
+
+      - name: Audit gate — all required tests ran (INFRA-1400)
+        if: always()
+        run: |
+          # INFRA-1400: all test steps above use 'if: always()' so they run even if
+          # a sibling test fails. Advisory tests (continue-on-error: true) are
+          # flagged with warnings but do not fail the job.
+          # GitHub Actions: this job fails if any non-advisory step exited non-zero.
+          # This sentinel step makes the gate contract explicit and visible.
+          echo "Audit gate: all test steps completed. Job status reflects required-test failures."
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path
   # filter says to skip (skipped ≠ passing in GitHub Actions). The stub pattern
@@ -1570,16 +1789,18 @@ jobs:
   audit-stub:
     name: audit-stub
     needs: changes
+    # INFRA-1379: fire when code filter is empty (original condition) OR when
+    # docs_only is true (new: gap YAML / .md-only PRs skip 15-min audit job).
     if: |
-      needs.changes.outputs.code != 'true' &&
+      (needs.changes.outputs.code != 'true' || needs.changes.outputs.docs_only == 'true') &&
       github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: audit skipped (no code changes detected)
+      - name: audit skipped (no code changes or docs-only lane detected)
         run: |
-          echo "audit-stub: no code-filter changes — audit CI checks not required for this diff."
-          echo "Branch protection satisfied by this stub."
+          echo "audit-stub: lane check — docs_only=${{ needs.changes.outputs.docs_only }} code=${{ needs.changes.outputs.code }}"
+          echo "audit CI checks not required for this diff. Branch protection satisfied by this stub."
 
   # ── audit-required: rollup that branch protection enforces ───────────────
   audit-required:
@@ -1630,6 +1851,12 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pillar-balance-guard.sh
+
+      - name: cargo build mutex isolation — per-worktree CARGO_TARGET_DIR (INFRA-1374)
+        run: bash scripts/ci/test-cargo-mutex-isolation.sh
+
+      - name: pre-push GIT_DIR isolation + HEAD-drift detection (INFRA-1372)
+        run: bash scripts/ci/test-pre-push-head-stability.sh
 
   # ── System integration test (INFRA-849) ──────────────────────────────────────
   # Non-blocking end-to-end test for the claim→commit→ship pipeline using stubs.

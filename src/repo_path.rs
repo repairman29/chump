@@ -192,6 +192,31 @@ pub fn repo_root() -> PathBuf {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
 }
 
+/// Returns the main repository root (the checkout that owns the shared `.git`
+/// directory), which differs from `repo_root()` when running from a linked
+/// worktree.  Useful for locating fleet-wide shared state such as
+/// `.chump-locks/` and `ambient.jsonl` that live only in the main checkout.
+///
+/// Algorithm: run `git rev-parse --git-common-dir` from the current
+/// `repo_root()`.  For both the main checkout and linked worktrees, this
+/// returns the same shared `.git` directory — its parent is always the main
+/// checkout root.  Falls back to `repo_root()` if the git invocation fails.
+pub fn main_checkout_root() -> PathBuf {
+    let rr = repo_root();
+    if let Some(common) = git_common_dir(&rr) {
+        // For the main checkout:    common = <root>/.git          → parent = <root>
+        // For a linked worktree:    common = <root>/.git  (abs.)  → parent = <root>
+        // Edge: nested .git (rare but possible) — parent still resolves correctly.
+        if let Some(parent) = common.parent() {
+            let candidate = parent.to_path_buf();
+            if candidate.is_dir() {
+                return candidate;
+            }
+        }
+    }
+    rr
+}
+
 /// Returns the canonical path to the shared git common dir for `repo` (the `.git`
 /// directory shared across all linked worktrees). Returns `None` if `repo` is not
 /// inside a git tree or if the git invocation fails.
@@ -655,8 +680,20 @@ mod tests {
         let wt_a = tmp.join(format!("chump-1064-wt-a-{}", uuid::Uuid::new_v4().simple()));
         let wt_b = tmp.join(format!("chump-1064-wt-b-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&main_repo).unwrap();
+        // Helper: build a git Command with all GIT env vars cleared so the
+        // pre-push hook's inherited GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/
+        // GIT_INDEX_FILE doesn't bleed into the subprocess (INFRA-1372, AC-1).
+        macro_rules! git_cmd {
+            () => {
+                Command::new("git")
+                    .env_remove("GIT_DIR")
+                    .env_remove("GIT_WORK_TREE")
+                    .env_remove("GIT_COMMON_DIR")
+                    .env_remove("GIT_INDEX_FILE")
+            };
+        }
         // git init + initial commit (needed for worktree add).
-        assert!(Command::new("git")
+        assert!(git_cmd!()
             .args(["init"])
             .current_dir(&main_repo)
             .status()
@@ -664,26 +701,26 @@ mod tests {
             .success());
         // Configure identity so commit works in any CI environment.
         for (k, v) in [("user.email", "test@test.local"), ("user.name", "Test")] {
-            assert!(Command::new("git")
+            assert!(git_cmd!()
                 .args(["-C", &main_repo.display().to_string(), "config", k, v])
                 .status()
                 .expect("git")
                 .success());
         }
-        assert!(Command::new("git")
+        assert!(git_cmd!()
             .args(["commit", "--allow-empty", "-m", "init"])
             .current_dir(&main_repo)
             .status()
             .expect("git")
             .success());
         // Add two linked worktrees.
-        assert!(Command::new("git")
+        assert!(git_cmd!()
             .args(["worktree", "add", "--detach", &wt_a.display().to_string()])
             .current_dir(&main_repo)
             .status()
             .expect("git")
             .success());
-        assert!(Command::new("git")
+        assert!(git_cmd!()
             .args(["worktree", "add", "--detach", &wt_b.display().to_string()])
             .current_dir(&main_repo)
             .status()
@@ -735,8 +772,8 @@ mod tests {
             Some(ref s) => std::env::set_var("CHUMP_WORKTREE_ROOT", s),
             None => std::env::remove_var("CHUMP_WORKTREE_ROOT"),
         }
-        // Prune worktrees before removing dirs.
-        let _ = Command::new("git")
+        // Prune worktrees before removing dirs (also clears GIT env vars — INFRA-1372).
+        let _ = git_cmd!()
             .args(["worktree", "prune"])
             .current_dir(&main_repo)
             .status();

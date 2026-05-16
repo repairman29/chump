@@ -92,10 +92,12 @@ use chump_gap_store as gap_store;
 // INFRA-1229: explicit linkage declaration so Cargo always links chump-ship
 // even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
 extern crate chump_ship;
+mod audit;
 mod completion;
 mod gen;
 mod genai_conv;
 mod git_tools;
+mod github_rate_limit;
 mod health;
 mod health_server;
 mod hitl_escalation;
@@ -129,6 +131,7 @@ mod notify_tool;
 mod onboard_repo_tool;
 mod operator_presence;
 mod orchestrate;
+mod paramedic;
 mod patch_apply;
 mod pending_peer_approval;
 mod perception;
@@ -234,7 +237,7 @@ mod e2e_bot_tests;
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
 use axonerai::tool::ToolRegistry;
@@ -948,6 +951,94 @@ async fn main() -> Result<()> {
         }
     }
 
+    // `chump audit aha-sweep [--json] [--window-days N] [--emit]` (INFRA-1370).
+    // Walks every kind in EVENT_REGISTRY.yaml, reads its effect_metric +
+    // expected_min_per_day declarations (INFRA-1371), and compares against the
+    // last-N-days emit count in .chump-locks/ambient.jsonl. Surfaces "registered
+    // but silent" kinds (alert) and "below floor" kinds (warn) as
+    // kind=audit_finding events. Exit non-zero on any alert.
+    if args.get(1).map(String::as_str) == Some("audit") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("--help");
+        if sub == "--help" || sub == "help" || sub.is_empty() {
+            println!("Usage: chump audit <subcommand> [options]");
+            println!();
+            println!("Subcommands:");
+            println!("  aha-sweep   walk code/runtime/effect triangle for every registered kind");
+            println!();
+            println!("Run 'chump audit aha-sweep --help' for sweep options.");
+            return Ok(());
+        }
+        if sub != "aha-sweep" {
+            eprintln!("chump audit: unknown subcommand '{}'", sub);
+            eprintln!("Run 'chump audit --help' for the list.");
+            std::process::exit(2);
+        }
+        let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+        if rest.iter().any(|a| *a == "--help" || *a == "help") {
+            println!("Usage: chump audit aha-sweep [--json] [--window-days N] [--flag-silent-self] [--emit]");
+            println!();
+            println!("Walks every kind in EVENT_REGISTRY.yaml and verifies the recent ambient");
+            println!("stream actually contains emits consistent with the declared effect_metric +");
+            println!("expected_min_per_day floor.");
+            println!();
+            println!("Options:");
+            println!("  --json               output JSON instead of text");
+            println!("  --window-days N      look back window in days (default 7)");
+            println!("  --flag-silent-self   also warn on effect_metric=self kinds with 0 emits");
+            println!("  --emit               write kind=audit_finding to ambient.jsonl for non-ok findings");
+            println!();
+            println!("Exits non-zero when any finding has severity=alert.");
+            return Ok(());
+        }
+        let want_json = rest.contains(&"--json");
+        let flag_silent_self = rest.contains(&"--flag-silent-self");
+        let do_emit = rest.contains(&"--emit");
+        let window_days: u64 = {
+            let mut it = rest.iter().peekable();
+            let mut n = 7u64;
+            while let Some(a) = it.next() {
+                if *a == "--window-days" {
+                    if let Some(v) = it.next() {
+                        if let Ok(parsed) = v.parse::<u64>() {
+                            n = parsed.clamp(1, 90);
+                        }
+                    }
+                }
+            }
+            n
+        };
+        let repo_root = repo_path::repo_root();
+        let cfg = audit::SweepConfig {
+            repo_root: repo_root.clone(),
+            window: std::time::Duration::from_secs(window_days * 24 * 3600),
+            flag_silent_self,
+        };
+        let findings = match audit::sweep_event_registry(&cfg) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("chump audit aha-sweep: {}", e);
+                std::process::exit(1);
+            }
+        };
+        if do_emit {
+            if let Err(e) = audit::emit_findings(&repo_root, &findings) {
+                eprintln!("chump audit aha-sweep: emit warning: {}", e);
+            }
+        }
+        if want_json {
+            println!("{}", audit::render_json(&findings));
+        } else {
+            print!("{}", audit::render_text(&findings));
+        }
+        let any_alert = findings
+            .iter()
+            .any(|f| f.severity == audit::AuditSeverity::Alert);
+        if any_alert {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
     // `chump mission-grade [--json]` (INFRA-599) — auto-emit 4-pillar scorecard.
     // Counts pickable, in_flight, and shipped_24h gaps per pillar
     // (EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE, identified by title prefix),
@@ -1414,6 +1505,102 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 eprintln!("chump pr triage: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
+    // `chump paramedic triage|execute|daemon [--dry-run] [--interval-secs N] [--budget-secs N] [--plan F]`
+    // (INFRA-1375) — RESILIENT: rule-engine PR rescue daemon.
+    // triage  — read PR state, emit JSON action plan (read-only)
+    // execute — run one triage→execute cycle with optional --plan <file>
+    // daemon  — loop triage→execute every --interval-secs (default 600)
+    if args.get(1).map(String::as_str) == Some("paramedic") {
+        let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
+        let repo_root = repo_path::repo_root();
+        let dry_run = args.iter().any(|a| a == "--dry-run");
+
+        if subcmd == "help" || args.iter().any(|a| a == "--help") {
+            println!("Usage: chump paramedic <subcommand> [options]");
+            println!();
+            println!("Subcommands:");
+            println!("  triage               Read PR state and emit JSON action plan (read-only).");
+            println!("  execute [--plan F]   Run one triage→execute cycle. --plan reads from file");
+            println!("                       instead of re-triaging.");
+            println!("  daemon               Loop triage→execute forever. Single-instance via PID");
+            println!("                       file at .chump-locks/paramedic.lock.");
+            println!();
+            println!("Options:");
+            println!("  --dry-run            Print actions; do not actually run gh commands.");
+            println!("  --interval-secs N    Daemon loop interval in seconds (default: 600).");
+            println!("  --budget-secs N      Per-PR action budget in seconds (default: 90).");
+            println!("  --plan F             Path to JSON plan file (execute only).");
+            println!();
+            println!("Examples:");
+            println!("  chump paramedic triage");
+            println!("  chump paramedic triage | chump paramedic execute --plan /dev/stdin");
+            println!("  chump paramedic daemon --interval-secs 300 --dry-run");
+            return Ok(());
+        }
+
+        match subcmd {
+            "triage" => match paramedic::triage(&repo_root, dry_run) {
+                Ok(plan) => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&plan).unwrap_or_default()
+                    );
+                }
+                Err(e) => {
+                    eprintln!("chump paramedic triage: {e}");
+                    std::process::exit(1);
+                }
+            },
+            "execute" => {
+                let budget_secs = args
+                    .iter()
+                    .position(|a| a == "--budget-secs")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(90);
+
+                // Optionally read plan from --plan <file>; otherwise triage first.
+                let plan_path = args
+                    .iter()
+                    .position(|a| a == "--plan")
+                    .and_then(|i| args.get(i + 1));
+
+                let plan = if let Some(path) = plan_path {
+                    let raw = std::fs::read_to_string(path)
+                        .with_context(|| format!("reading plan from {path}"))?;
+                    serde_json::from_str::<paramedic::ActionPlan>(&raw)
+                        .context("parsing plan JSON")?
+                } else {
+                    paramedic::triage(&repo_root, dry_run)?
+                };
+
+                if let Err(e) = paramedic::execute(&plan, &repo_root, dry_run, budget_secs) {
+                    eprintln!("chump paramedic execute: {e}");
+                    std::process::exit(1);
+                }
+            }
+            "daemon" => {
+                let interval_secs = args
+                    .iter()
+                    .position(|a| a == "--interval-secs")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(600);
+
+                if let Err(e) = paramedic::daemon(interval_secs, &repo_root, dry_run) {
+                    eprintln!("chump paramedic daemon: {e}");
+                    std::process::exit(1);
+                }
+            }
+            other => {
+                eprintln!("chump paramedic: unknown subcommand '{other}'");
+                eprintln!("Run 'chump paramedic help' for usage.");
                 std::process::exit(1);
             }
         }
@@ -2596,7 +2783,21 @@ async fn main() -> Result<()> {
                 let cutoff = now_ts - window_secs;
                 let ts_iso = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
-                let locks_dir = repo_root.join(".chump-locks");
+                // INFRA-1355: fleet-wide state (ambient.jsonl, lease files)
+                // lives only in the main checkout's .chump-locks/.  Linked
+                // worktrees get a sparse .chump-locks/ with only their own
+                // session files, so reading it gives ships=0 / stalls=0.
+                // Always resolve via git-common-dir so brief shows correct
+                // fleet totals regardless of CWD.
+                let locks_dir = {
+                    let main_root = repo_path::main_checkout_root();
+                    let main_locks = main_root.join(".chump-locks");
+                    if main_locks.is_dir() {
+                        main_locks
+                    } else {
+                        repo_root.join(".chump-locks")
+                    }
+                };
                 let ambient_path = locks_dir.join("ambient.jsonl");
 
                 // ── Parse ambient.jsonl ──────────────────────────────────
@@ -4649,20 +4850,43 @@ async fn main() -> Result<()> {
                                 // diff so origin/main and all linked worktrees
                                 // pick it up.
                                 //
-                                // Best-effort: silent if not in a git worktree
-                                // or if git is unavailable. Bypass with
+                                // Best-effort: warns on failure but never
+                                // blocks the reserve. Bypass with
                                 // CHUMP_RESERVE_NO_AUTOSTAGE=1 for genuine
                                 // detached / read-only operator workflows.
+                                // INFRA-1354: emit warning when git add fails
+                                // so operators notice the staging gap instead
+                                // of discovering it via orphan-PR-closer.
                                 if std::env::var("CHUMP_RESERVE_NO_AUTOSTAGE").as_deref() != Ok("1")
                                 {
-                                    let _ = std::process::Command::new("git")
+                                    match std::process::Command::new("git")
                                         .arg("-C")
                                         .arg(&worktree_root)
                                         .arg("add")
                                         .arg(&yaml_path)
-                                        .stderr(std::process::Stdio::null())
-                                        .stdout(std::process::Stdio::null())
-                                        .status();
+                                        .status()
+                                    {
+                                        Ok(s) if s.success() => {
+                                            if !quiet {
+                                                eprintln!(
+                                                    "[reserve] staged {}",
+                                                    yaml_path.display()
+                                                );
+                                            }
+                                        }
+                                        Ok(s) => {
+                                            eprintln!(
+                                                "[reserve] warning: git add {} exited {}; yaml is written but unstaged — commit manually to avoid orphan-PR-closer killing in-flight PRs",
+                                                yaml_path.display(), s
+                                            );
+                                        }
+                                        Err(e) => {
+                                            eprintln!(
+                                                "[reserve] warning: git add {} failed ({e}); yaml is written but unstaged — commit manually to avoid orphan-PR-closer killing in-flight PRs",
+                                                yaml_path.display()
+                                            );
+                                        }
+                                    }
                                 }
                             }
                             Ok(false) => {} // no-op write

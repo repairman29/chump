@@ -91,6 +91,17 @@ set -e
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
+# INFRA-1374: pin cargo build artifacts to a per-worktree hidden directory so
+# parallel git commit runs across /tmp/chump-* worktrees do NOT contend on the
+# same cargo file lock. Without this, cargo clippy in the smoke script (step 9)
+# and cargo fmt (step 0) both resolve to the global target-dir from
+# .cargo/config.toml (install-sccache.sh, INFRA-481), serializing parallel
+# fleet commits behind a single mutex (observed: 6-min stall at 4-way parallelism).
+# Only set if caller has not already pinned it (e.g. bot-merge.sh sets it first).
+if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+    export CARGO_TARGET_DIR="${REPO_ROOT}/.cargo-build-target"
+fi
+
 # ------------------------------------------------------------------
 # Profile-based env-var defaults (INFRA-631)
 # Reads $GIT_DIR/chump-hook-profile written by install-hooks.sh --profile.
@@ -1582,7 +1593,7 @@ if [ "${CHUMP_DOCS_DELTA_CHECK:-1}" != "0" ]; then
     ADDED=$(git diff --cached --name-only --diff-filter=A -- 'docs/*.md' | wc -l | tr -d ' ')
     DELETED=$(git diff --cached --name-only --diff-filter=D -- 'docs/*.md' | wc -l | tr -d ' ')
     if [ "$ADDED" -gt 0 ] && [ "$ADDED" -gt "$DELETED" ]; then
-        MSG_FILE="${1:-$REPO_ROOT/.git/COMMIT_EDITMSG}"
+        MSG_FILE="${1:-$(git rev-parse --git-dir)/COMMIT_EDITMSG}"
         NET=$((ADDED - DELETED))
         # INFRA-124 (2026-05-02): parse the trailer's value, not just its
         # presence. Previously a commit could declare "Net-new-docs: +1"
