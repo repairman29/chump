@@ -1464,9 +1464,8 @@ pub(crate) fn nats_dual_write_with_bin(
         match result {
             Some(o) => o,
             None => {
-                return Err(last_err.unwrap()).with_context(|| {
-                    format!("spawning {} claim {}", coord_bin.display(), gap_id)
-                });
+                return Err(last_err.unwrap())
+                    .with_context(|| format!("spawning {} claim {}", coord_bin.display(), gap_id));
             }
         }
     };
