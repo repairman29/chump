@@ -4826,104 +4826,6 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
         } else {
             (String::new(), String::new(), String::new())
         };
-<<<<<<< HEAD
-
-        // ── Best-effort PR lookup via gh CLI ─────────────────────────────────
-        // INFRA-1485: was std::process::Command (blocking) — moved to
-        // tokio::process::Command + tokio::time::timeout to prevent tokio
-        // worker starvation when called per-lease (N=25 sequential blocking
-        // calls used to wedge the whole web server). 2s per-call timeout;
-        // on timeout pr_number/pr_state/ci_status remain null.
-        let (pr_number, pr_state, ci_status) = {
-            let branch_clone = branch.clone();
-            let gh_fut = tokio::process::Command::new("gh")
-                .args([
-                    "pr",
-                    "list",
-                    "--head",
-                    &branch_clone,
-                    "--json",
-                    "number,state,statusCheckRollup",
-                    "--limit",
-                    "1",
-                    "--state",
-                    "all",
-                ])
-                .output();
-            let out = match tokio::time::timeout(std::time::Duration::from_secs(2), gh_fut).await {
-                Ok(r) => r,
-                Err(_) => Err(std::io::Error::other("gh pr list timeout >2s")),
-            };
-            match out {
-                Ok(o) if o.status.success() => {
-                    if let Ok(arr) = serde_json::from_slice::<Vec<serde_json::Value>>(&o.stdout) {
-                        if let Some(pr) = arr.first() {
-                            let num = pr.get("number").and_then(|v| v.as_u64());
-                            let state = pr
-                                .get("state")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_lowercase());
-                            // Aggregate CI: SUCCESS / FAILURE / PENDING / unknown
-                            let ci = pr.get("statusCheckRollup").and_then(|v| v.as_array()).map(
-                                |checks| {
-                                    let has_fail = checks.iter().any(|c| {
-                                        c.get("conclusion")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s == "FAILURE")
-                                            .unwrap_or(false)
-                                    });
-                                    let has_pending = checks.iter().any(|c| {
-                                        c.get("status")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s == "IN_PROGRESS" || s == "QUEUED")
-                                            .unwrap_or(false)
-                                    });
-                                    let all_success = checks.iter().all(|c| {
-                                        c.get("conclusion")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s == "SUCCESS" || s == "SKIPPED")
-                                            .unwrap_or(false)
-                                    });
-                                    if has_fail {
-                                        "failure"
-                                    } else if has_pending {
-                                        "pending"
-                                    } else if all_success && !checks.is_empty() {
-                                        "success"
-                                    } else {
-                                        "unknown"
-                                    }
-                                    .to_string()
-                                },
-                            );
-                            (num, state, ci)
-                        } else {
-                            (None, None, None)
-                        }
-                    } else {
-                        (None, None, None)
-                    }
-                }
-                _ => (None, None, None),
-            }
-        };
-
-        sessions.push(serde_json::json!({
-            "session_id": session_id,
-            "gap_id": gap_id,
-            "gap_title": gap_title,
-            "gap_priority": gap_priority,
-            "gap_effort": gap_effort,
-            "branch": branch,
-            "worktree_path": worktree_path,
-            "taken_at": taken_at,
-            "expires_at": expires_at,
-            "heartbeat_at": heartbeat_at,
-            "pr_number": pr_number,
-            "pr_state": pr_state,
-            "ci_status": ci_status,
-        }));
-=======
         lease_infos.push(LeaseInfo {
             gap_id,
             session_id,
@@ -4936,7 +4838,6 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
             gap_priority,
             gap_effort,
         });
->>>>>>> 8f729642 (fix(INFRA-1464): RESILIENT — /api/fleet-status parallel gh fan-out with 2s per-call timeout)
     }
 
     // Phase 2: gh pr list — parallel async calls, each with a per-call timeout.
