@@ -29,6 +29,11 @@ pub struct ClaimArgs {
     /// If branch already exists on the remote, reset HEAD to remote tip and continue
     /// instead of aborting. AC6: handles already-pushed-but-unmerged branch.
     pub resume: bool,
+    /// INFRA-1439: Before the atomic-claim step, auto-remove a stale worktree
+    /// directory + stale local branch if they exist. Without this flag the
+    /// caller must clean up manually. Does NOT bypass stomp-check (open PR on
+    /// branch) — that still blocks unless CHUMP_ALLOW_STOMP=1 is set.
+    pub force_recover: bool,
     /// Where to create the linked worktree. Default `/tmp`.
     pub worktree_base: PathBuf,
     /// Main repo root (the parent of `--git-common-dir`).
@@ -53,14 +58,15 @@ impl ClaimArgs {
         for a in args.iter().skip(1) {
             if a == "--help" || a == "-h" {
                 println!(
-                    "Usage: chump claim <GAP-ID> [--paths CSV] [--session ID] [--no-doctor] [--no-import]\n\n\
+                    "Usage: chump claim <GAP-ID> [--paths CSV] [--session ID] [--no-doctor] [--no-import] [--force-recover]\n\n\
                      Atomic claim: fetch + verify + (doctor) + worktree + lease for <GAP-ID>.\n\n\
                      Options:\n  \
-                       --paths CSV    Record path scope (comma-separated globs); enables overlap detection\n  \
-                       --session ID   Explicit session ID (default derived from env / pid)\n  \
-                       --no-doctor    Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
-                       --no-import    Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
-                       -h, --help     Show this help"
+                       --paths CSV      Record path scope (comma-separated globs); enables overlap detection\n  \
+                       --session ID     Explicit session ID (default derived from env / pid)\n  \
+                       --no-doctor      Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
+                       --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
+                       --force-recover  Auto-remove stale worktree dir + stale local branch before claiming\n  \
+                       -h, --help       Show this help"
                 );
                 std::process::exit(0);
             }
@@ -78,6 +84,7 @@ impl ClaimArgs {
         let mut skip_doctor = false;
         let mut skip_import = false;
         let mut resume = false;
+        let mut force_recover = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -110,6 +117,10 @@ impl ClaimArgs {
                     resume = true;
                     i += 1;
                 }
+                "--force-recover" => {
+                    force_recover = true;
+                    i += 1;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -131,6 +142,7 @@ impl ClaimArgs {
             skip_doctor,
             skip_import,
             resume,
+            force_recover,
         })
     }
 }
@@ -198,9 +210,84 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     let worktree_path = args.worktree_base.join(format!("chump-{}", gap_lower));
     let branch = format!("chump/{}-claim", gap_lower);
 
-    if worktree_path.exists() {
+    // PathBuf-to-str needed for both the force-recover block and worktree-add below.
+    // Derive early so both code paths share the same binding.
+    let worktree_path_str = worktree_path.to_str().ok_or_else(|| {
+        anyhow!(
+            "worktree path contains non-UTF-8 bytes (likely from CHUMP_WORKTREE_BASE): {}",
+            worktree_path.display()
+        )
+    })?;
+
+    // INFRA-1439: --force-recover — auto-clean stale worktree dir + local branch
+    // BEFORE the stomp-check or worktree-add, so the claim can proceed
+    // idempotently when a prior session left orphaned state.
+    //
+    // Actions taken (in order):
+    //   (a) git worktree remove --force <path>  if the dir exists
+    //   (b) rm -rf <path>                       if (a) failed or dir still present
+    //   (c) git branch -D <branch>              if branch exists locally
+    // Emits chump_claim_force_recover to ambient.jsonl with the actions taken.
+    if args.force_recover {
+        let mut recovery_actions: Vec<String> = Vec::new();
+
+        // (a) git worktree remove --force
+        if worktree_path.exists() {
+            match run_git(
+                &args.repo_root,
+                &["worktree", "remove", "--force", worktree_path_str],
+            ) {
+                Ok(_) => {
+                    recovery_actions
+                        .push(format!("worktree_remove_force:{}", worktree_path.display()));
+                }
+                Err(e) => {
+                    eprintln!(
+                        "[claim --force-recover] git worktree remove --force failed: {e}; falling back to rm -rf"
+                    );
+                    // (b) rm -rf fallback
+                    if let Err(rm_err) = std::fs::remove_dir_all(&worktree_path) {
+                        eprintln!(
+                            "[claim --force-recover] rm -rf {} failed: {rm_err}",
+                            worktree_path.display()
+                        );
+                        // If we can't remove it, bail — the claim will fail anyway
+                        bail!(
+                            "--force-recover: could not remove stale worktree {}: {rm_err}",
+                            worktree_path.display()
+                        );
+                    }
+                    recovery_actions.push(format!("rm_rf:{}", worktree_path.display()));
+                }
+            }
+        }
+
+        // (c) delete local branch if it exists
+        let local_branch_exists =
+            run_git(&args.repo_root, &["rev-parse", "--verify", &branch]).is_ok();
+        if local_branch_exists {
+            match run_git(&args.repo_root, &["branch", "-D", &branch]) {
+                Ok(_) => {
+                    recovery_actions.push(format!("branch_delete:{branch}"));
+                }
+                Err(e) => {
+                    eprintln!("[claim --force-recover] git branch -D {branch} failed: {e}");
+                    // Non-fatal — worktree-add will fail loudly if the branch still exists
+                }
+            }
+        }
+
+        if !recovery_actions.is_empty() {
+            let actions_str = recovery_actions.join(",");
+            eprintln!(
+                "[claim --force-recover] recovered stale state for {}: {}",
+                args.gap_id, actions_str
+            );
+            emit_force_recover_event(&args.repo_root, &args.gap_id, &branch, &actions_str);
+        }
+    } else if worktree_path.exists() {
         bail!(
-            "worktree path already exists: {}\n  Remove it first with: git worktree remove --force {}",
+            "worktree path already exists: {}\n  Remove it first with: git worktree remove --force {}\n  Or re-run with --force-recover to auto-clean.",
             worktree_path.display(),
             worktree_path.display()
         );
@@ -236,16 +323,6 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             );
         }
     }
-
-    // PathBuf-to-str: macOS/Linux paths are normally UTF-8, but
-    // CHUMP_WORKTREE_BASE could be set to a non-UTF-8 path. Fail loudly
-    // rather than panic with unwrap().
-    let worktree_path_str = worktree_path.to_str().ok_or_else(|| {
-        anyhow!(
-            "worktree path contains non-UTF-8 bytes (likely from CHUMP_WORKTREE_BASE): {}",
-            worktree_path.display()
-        )
-    })?;
 
     // 5.5. INFRA-1116: Check for overlapping INTENT from other live sessions,
     // BEFORE creating the worktree so we never leave a dangling worktree on refusal.
@@ -672,6 +749,33 @@ fn emit_gap_claimed_event(repo_root: &Path, gap_id: &str, session_id: &str) -> R
             f.write_all(line.as_bytes())
         });
     Ok(())
+}
+
+/// INFRA-1439: emit kind=chump_claim_force_recover to ambient.jsonl.
+/// Best-effort — silently no-ops if the file isn't writable.
+fn emit_force_recover_event(repo_root: &Path, gap_id: &str, branch: &str, actions: &str) {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"chump_claim_force_recover\",\
+         \"gap_id\":\"{}\",\"branch\":\"{}\",\"actions\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(branch),
+        json_escape(actions),
+    );
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
 }
 
 /// Decompose Unix epoch seconds into (year, month, day, hour, min, sec) UTC.
