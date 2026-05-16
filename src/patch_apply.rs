@@ -321,6 +321,100 @@ pub fn first_target_line_1based(diff: &str) -> Option<u64> {
     None
 }
 
+/// INFRA-785: detect whether `diff` already carries `---` / `+++` filename
+/// header lines. Headerless diffs (just `@@` hunks, body only) are emitted by
+/// smaller LLMs (Llama 3.3, Mistral) that "know" the file from context and
+/// skip the header entirely.
+fn diff_has_filename_headers(diff: &str) -> bool {
+    let mut saw_minus_header = false;
+    let mut saw_plus_header = false;
+    for line in diff.lines() {
+        if line.starts_with("@@") {
+            // Hunk begins; headers (if any) must have come before.
+            break;
+        }
+        if line.starts_with("--- ") {
+            saw_minus_header = true;
+        } else if line.starts_with("+++ ") {
+            saw_plus_header = true;
+        }
+    }
+    saw_minus_header && saw_plus_header
+}
+
+/// INFRA-785: parse a headerless diff (no `---`/`+++` lines, just `@@` hunks)
+/// by synthesizing a placeholder header and delegating to the normal parser.
+///
+/// Used as the third fallback tier in `patch_file` after strict and fuzzy. The
+/// synthesized header is purely a parse-time scaffold — the caller already
+/// knows the target path. Returns `Err(Parse)` if no `@@` hunk is present.
+pub fn parse_headerless_diff(diff: &str) -> Result<Patch<'static>, PatchApplyError> {
+    // Locate the first hunk header. Anything before it (commentary, file
+    // banner, blank lines) is dropped since headerless diffs have no
+    // structural prelude to preserve.
+    let hunk_start = diff
+        .lines()
+        .position(|l| l.starts_with("@@"))
+        .ok_or_else(|| {
+            PatchApplyError::Parse("headerless parse: no @@ hunk header found in diff".to_string())
+        })?;
+    let body: String = diff.lines().skip(hunk_start).collect::<Vec<_>>().join("\n");
+    let body = if diff.ends_with('\n') {
+        format!("{}\n", body)
+    } else {
+        body
+    };
+    let synth = format!("--- a/headerless\n+++ b/headerless\n{}", body);
+
+    // We need a 'static Patch so callers can hold onto it without lifetime
+    // entanglement with the temporary `synth` string. Parse, then deep-clone.
+    install_patch_panic_filter_once();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        Patch::from_single(&synth).map_err(|e| PatchApplyError::Parse(e.to_string()))
+    }));
+    let parsed = match result {
+        Ok(inner) => inner?,
+        Err(panic_info) => {
+            let msg = panic_info
+                .downcast_ref::<String>()
+                .map(|s| s.as_str())
+                .or_else(|| panic_info.downcast_ref::<&str>().copied())
+                .unwrap_or("unknown panic in patch parser");
+            return Err(PatchApplyError::Parse(format!(
+                "headerless parse panic: {}",
+                msg
+            )));
+        }
+    };
+    Ok(into_owned_patch(parsed))
+}
+
+/// Convert a borrowed `Patch<'a>` into an owned `Patch<'static>` by re-parsing
+/// its `Display` rendering. Patch values implement `Display` to the unified
+/// diff format, so this round-trips cleanly without manually rebuilding every
+/// inner `Line`/`Range` field.
+fn into_owned_patch(p: Patch<'_>) -> Patch<'static> {
+    let rendered = format!("{}\n", p);
+    let leaked: &'static str = Box::leak(rendered.into_boxed_str());
+    // Re-parse; this must succeed because we just printed a valid patch.
+    Patch::from_single(leaked).expect("Patch::Display round-trip must re-parse")
+}
+
+/// INFRA-785: apply a diff that lacks `---`/`+++` filename headers. Tries
+/// strict matching first, then falls back to fuzzy (whitespace-tolerant,
+/// ±3 line context drift). Returns Err if both fail.
+pub fn apply_unified_diff_headerless(old: &str, diff: &str) -> Result<String, PatchApplyError> {
+    let p = parse_headerless_diff(diff)?;
+    apply_patch_strict(old, &p).or_else(|_strict_err| apply_patch_fuzzy(old, &p))
+}
+
+/// INFRA-785: combined fallback gate. Returns `Some(diff)` only when `diff`
+/// looks headerless (no `---`/`+++` but has at least one `@@`). Lets callers
+/// branch into tier-c without re-implementing detection.
+pub fn looks_headerless(diff: &str) -> bool {
+    !diff_has_filename_headers(diff) && diff.lines().any(|l| l.starts_with("@@"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -473,5 +567,79 @@ But after they are produced,
         // All minus, no context — may panic or return Err; must not crash.
         let all_minus = "--- a/f\n+++ b/f\n@@ -1,3 +1,3 @@\n-line1\n-line2\n-line3\n";
         let _ = parse_single_file_patch(all_minus); // just assert no panic
+    }
+
+    // INFRA-785: tier-c headerless-diff fallback. Llama 3.3 (and other smaller
+    // models in chump dogfood) routinely emit unified diffs without the
+    // `---`/`+++` filename lines — just `@@` hunks. Today's strict/fuzzy
+    // parsers reject those outright. Tier-c synthesizes a placeholder header
+    // and reuses the existing strict→fuzzy applicator.
+
+    static HEADERLESS_DIFF: &str = "\
+@@ -1,7 +1,6 @@
+-The Way that can be told of is not the eternal Way;
+-The name that can be named is not the eternal name.
+ The Nameless is the origin of Heaven and Earth;
+-The Named is the mother of all things.
++The named is the mother of all things.
++
+ Therefore let there always be non-being,
+   so we may see their subtlety,
+ And let there always be being,
+@@ -9,3 +8,6 @@
+ The two are the same,
+ But after they are produced,
+   they have different names.
++They both may be called deep and profound.
++Deeper and more profound,
++The door of all subtleties!
+";
+
+    #[test]
+    fn looks_headerless_detects_missing_headers() {
+        assert!(looks_headerless(HEADERLESS_DIFF));
+        assert!(!looks_headerless(RAW_DIFF));
+        // No @@ at all → not headerless, just not a diff
+        assert!(!looks_headerless("just text\nwith no hunks\n"));
+    }
+
+    #[test]
+    fn headerless_strict_parse_rejects_llama_style() {
+        // Strict parser must NOT silently accept a headerless diff — that's
+        // why we need tier-c in the first place.
+        let err = parse_single_file_patch(HEADERLESS_DIFF).unwrap_err();
+        assert!(matches!(err, PatchApplyError::Parse(_)));
+    }
+
+    #[test]
+    fn apply_headerless_diff_succeeds_on_llama_style() {
+        let got = apply_unified_diff_headerless(LAO, HEADERLESS_DIFF).unwrap();
+        assert!(!got.contains("The Way that can be told"));
+        assert!(got.contains("The named is the mother of all things"));
+        assert!(got.contains("The door of all subtleties!"));
+    }
+
+    #[test]
+    fn apply_headerless_rejects_context_mismatch() {
+        // Tier-c is still context-sensitive — a real content mismatch should
+        // fail loudly, not silently corrupt the file.
+        let bad = HEADERLESS_DIFF.replace("The Nameless is the origin", "WRONG CONTEXT");
+        let err = apply_unified_diff_headerless(LAO, &bad).unwrap_err();
+        assert!(matches!(err, PatchApplyError::ContextMismatch { .. }));
+    }
+
+    #[test]
+    fn apply_headerless_no_hunks_returns_parse_error() {
+        let err = apply_unified_diff_headerless(LAO, "no hunks here\n").unwrap_err();
+        assert!(matches!(err, PatchApplyError::Parse(_)));
+    }
+
+    #[test]
+    fn apply_headerless_tolerates_leading_commentary() {
+        // Models sometimes prepend a "Here's the diff:" line; tier-c should
+        // skip prelude until the first @@ marker.
+        let with_prelude = format!("Here is the diff for you:\n{}", HEADERLESS_DIFF);
+        let got = apply_unified_diff_headerless(LAO, &with_prelude).unwrap();
+        assert!(got.contains("The door of all subtleties!"));
     }
 }
