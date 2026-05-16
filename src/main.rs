@@ -3958,12 +3958,11 @@ async fn main() -> Result<()> {
                     // Table: type / id / claimant / since / matches
                     let col_widths = (8usize, 20usize, 28usize, 22usize);
                     println!(
-                        "{:<width0$}  {:<width1$}  {:<width2$}  {:<width3$}  {}",
+                        "{:<width0$}  {:<width1$}  {:<width2$}  {:<width3$}  MATCHES",
                         "TYPE",
                         "ID",
                         "CLAIMANT",
                         "SINCE",
-                        "MATCHES",
                         width0 = col_widths.0,
                         width1 = col_widths.1,
                         width2 = col_widths.2,
