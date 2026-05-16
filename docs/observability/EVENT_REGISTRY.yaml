@@ -1675,9 +1675,17 @@ events:
       session_id: matches CHUMP_ORCHESTRATE_SESSION_ID or the synthesized session identity.
       On attempt_number=2, a companion orchestrate_session_end{status="timeout"} is also
         emitted, and INFRA-1363 session_summary will carry exit_reason="timeout".
+  - kind: orchestrate_session_summary
+    effect_metric: self
+    emitter: src/orchestrate.rs (chump orchestrate — emitted on each session exit, INFRA-1363)
+    trigger: session exits for any reason (clean, user_quit, error)
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, session_id, exit_reason, intents_routed]
+
   - kind: orchestrate_session_resumed
     emitter: src/orchestrate.rs (chump orchestrate --resume <session-id>)
     trigger: operator invokes --resume for a non-clean-exited session within the max-resume limit
+    effect_metric: self
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, session_id, events_replayed, resume_attempts, prior_exit_reason]
     docs: |
