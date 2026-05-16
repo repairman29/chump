@@ -77,7 +77,39 @@ fi
 # Bypass: CHUMP_FMT_CHECK=0 git push
 # -----------------------------------------------------------------------
 if [[ "${CHUMP_FMT_CHECK:-1}" != "0" ]] && command -v cargo &>/dev/null; then
-    if ls src/**/*.rs &>/dev/null 2>&1; then
+    # INFRA-1398: gate on the PUSH DELTA's .rs content, not on whether the repo
+    # has any Rust files at all. Pre-1398 the `ls src/**/*.rs` glob was always
+    # true (chump is a Rust repo), so doc-only / ci.yml-only pushes ran
+    # cargo fmt --check unnecessarily — slow + irrelevant.
+    #
+    # Push range: stdin gives `<local-sha> <local-ref> <remote-sha> <remote-ref>`.
+    # When we cannot derive a range (first-push of a new branch, no stdin
+    # available because hook called manually), fall back to the OLD behaviour
+    # (run on every push) — safer default.
+    push_has_rust=0
+    while IFS=' ' read -r local_sha local_ref remote_sha _remote_ref; do
+        [[ -z "$local_sha" ]] && continue
+        # Skip branch deletions (local_sha all zeros).
+        if [[ "$local_sha" =~ ^0+$ ]]; then continue; fi
+        # First push of branch: remote_sha is zeros → compare against origin/main.
+        if [[ "$remote_sha" =~ ^0+$ ]]; then
+            range_base="$(git merge-base origin/main "$local_sha" 2>/dev/null || echo "")"
+            [[ -z "$range_base" ]] && range_base="origin/main"
+        else
+            range_base="$remote_sha"
+        fi
+        if git diff --name-only "$range_base..$local_sha" 2>/dev/null | grep -qE '\.rs$'; then
+            push_has_rust=1
+            break
+        fi
+    done <<<"$(cat 2>/dev/null || true)"
+    # Conservative fallback: if we couldn't read stdin (manual invocation) AND
+    # the repo has Rust files, run the check to avoid silently letting bad
+    # code through.
+    if [[ "$push_has_rust" -eq 0 ]] && [[ -t 0 ]] && ls src/**/*.rs &>/dev/null 2>&1; then
+        push_has_rust=1
+    fi
+    if [[ "$push_has_rust" -eq 1 ]]; then
         if ! cargo fmt --all -- --check >/dev/null 2>&1; then
             echo "" >&2
             echo "[pre-push] BLOCKED: cargo fmt --check failed (INFRA-749)." >&2

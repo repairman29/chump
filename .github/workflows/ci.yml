@@ -1278,6 +1278,8 @@ jobs:
         run: bash scripts/ci/test-worktree-prune-protects-live-edits.sh
       - name: cockpit Today's-arc Wake-fleet action (PRODUCT-128)
         run: bash scripts/ci/test-cockpit-wake-fleet.sh
+      - name: pre-commit/pre-push gate auto-skip on irrelevant file types (INFRA-1398)
+        run: bash scripts/ci/test-precommit-gate-auto-skip.sh
       - name: gap quality gate — TODO/TBD ACs, invalid priority/effort (INFRA-904)
         run: bash scripts/ci/test-gap-quality-gate.sh
       - name: gap templates — pillar starter templates, gap-template.sh dispatcher (INFRA-905)
