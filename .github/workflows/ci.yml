@@ -829,6 +829,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Free disk space
+        if: runner.os == 'Linux'  # INFRA-1535: macOS self-hosted has no /opt/hostedtoolcache
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
