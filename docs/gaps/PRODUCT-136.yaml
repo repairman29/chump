@@ -1,0 +1,12 @@
+- id: PRODUCT-136
+  domain: PRODUCT
+  title: "EFFECTIVE: ACP onboarding doc — Zed + JetBrains step-by-step for operators who already live in those editors"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

@@ -1,0 +1,13 @@
+- id: INFRA-1501
+  domain: INFRA
+  title: "MISSION: Anthropic partnership outreach — Claude Code is dominant harness; document partnership pitch + draft email"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Claude Code is the dominant harness for Chump's current operator base. Anthropic distribution + endorsement would be a force multiplier for adoption. Outline who to contact + what to pitch — partnership/co-marketing is the right frame, not 'please feature us'. The Agent SDK + harness-agnostic design is the technical wedge.
+  acceptance_criteria:
+    - "docs/business/ANTHROPIC_PARTNERSHIP.md with: contact path (Mike Krieger DM? developer relations team?), pitch in 3 paragraphs, what we offer them (Agent SDK validation, harness-agnostic SDK example), what we want (blog co-post, conference mention)"
+    - Draft email + Twitter DM with 3-line value prop
+    - Track in OPERATOR_ACTIONS.md (proprietary)
+
