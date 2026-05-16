@@ -3508,3 +3508,11 @@ events:
       non-zero — the CI regression it was guarding has been re-introduced
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, source, note]
+  # ── INFRA-1427: fleet doctor ──────────────────────────────────────────────
+  - kind: fleet_doctor_run
+    effect_metric: fail_count
+    emitter: scripts/coord/fleet-doctor-strict.sh (INFRA-1427)
+    trigger: operator runs fleet-doctor-strict.sh; always emitted regardless
+      of pass/fail so fleet-brief can track health-check cadence
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, pass_count, fail_count]
