@@ -65,7 +65,9 @@ else
 fi
 
 # 7. fields_required includes age_secs
-if grep -A4 'stale_binary_detected' "$REGISTRY" 2>/dev/null | grep -q 'age_secs'; then
+# Use -A8 to tolerate the effect_metric field inserted by INFRA-1371 schema v2,
+# which adds one line between '- kind:' and subsequent fields.
+if grep -A8 'stale_binary_detected' "$REGISTRY" 2>/dev/null | grep -q 'age_secs'; then
     ok "EVENT_REGISTRY.yaml: age_secs in fields_required"
 else
     fail "EVENT_REGISTRY.yaml: age_secs missing from fields_required"
