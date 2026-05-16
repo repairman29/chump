@@ -1,0 +1,26 @@
+- id: INFRA-1352
+  domain: INFRA
+  title: "PR #2066 stuck [CI-RED] — CI red for 51m"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    https://github.com/repairman29/chump/pull/2066
+    
+    Detected by stuck-pr-filer (2026-05-15T20:05:39Z).
+    
+    Trigger: CI red for 51m
+    At least one required check has been failing for 51m (threshold 20m). Failing check: pr-hygiene.
+    
+    Suggested action:
+      1. Check the PR — confirm whether the underlying gap landed elsewhere.
+      2. If yes: gh pr close 2066 --comment 'superseded'.
+      3. If no:  rebase the branch and re-arm via scripts/coord/bot-merge.sh.
+    
+    Original gap(s) cited in PR title/commits: PRODUCT-132
+    Branch: chump/product-132-attention-dedup
+    Failing check: pr-hygiene
+    Stuck class: CI-RED — ci-flake-rerun or human investigation required
+  acceptance_criteria:
+    - "1. Spurious 'init' commit dropped from chump/product-132-attention-dedup branch; pr-hygiene passes; 2. PR #2066 auto-merge re-armed and CI green; 3. INFRA-1352 gap shipped"
+

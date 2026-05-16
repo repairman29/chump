@@ -1,0 +1,15 @@
+- id: INFRA-1394
+  domain: INFRA
+  title: "RESILIENT: chump claim hot-file collision check vs sibling leases — refuse/warn when claim+lease paths overlap on a shared file (ci.yml, EVENT_REGISTRY.yaml, web_server.rs, app.js, main.rs)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chump claim reads all sibling .chump-locks/claim-*.json files; for each, parses the paths[] field (already present per INFRA-1240)
+    - "For the gap-being-claimed: parse its AC for any reference to one of the 5 hot shared files (.github/workflows/ci.yml, docs/observability/EVENT_REGISTRY.yaml, web/v2/app.js, src/web_server.rs, src/main.rs)"
+    - "If overlap detected: print warning with sibling session_id + path; require --force-overlap flag to proceed"
+    - Emit kind=claim_hot_file_overlap to ambient.jsonl when warning fires, with fields ts/kind/claim_gap/sibling_gap/overlap_paths
+    - CI test scripts/ci/test-claim-hot-file-overlap.sh synthesizes a fake sibling lease on ci.yml; attempts to claim a gap whose AC mentions ci.yml; asserts claim refuses without --force-overlap; second attempt with flag succeeds + emits the event
+    - Hot-file list lives in scripts/coord/lib/hot-files.yaml so it can be tuned without code changes
+    - "Pairs with INFRA-1389: merge drivers make overlap less catastrophic, but proactive collision avoidance still saves the rebase cycle entirely"
+

@@ -1,0 +1,16 @@
+- id: INFRA-1391
+  domain: INFRA
+  title: "ZERO-WASTE: pre-push stack-on-main dry-run (git merge-tree main HEAD) — refuse push if DIRTY conflict, forces local rebase before CI thrash starts"
+  status: open
+  priority: P1
+  effort: xs
+  description: |
+    Today: 2 of 5 rebases needed (#2088, #2116) required manual conflict resolution. Both were avoidable if I'd run merge-tree locally before push and rebased proactively. Currently, the flow is: push → wait 20min for CI → see DIRTY → rebase → force-push → wait another 20min. Pre-push merge-tree compresses to: push → reject in <2s → rebase → push. Saves 20+ minutes per DIRTY occurrence.
+  acceptance_criteria:
+    - Extend scripts/git-hooks/pre-push to run `git merge-tree main HEAD --no-messages` BEFORE the push
+    - "If the merge-tree output contains conflict markers (<<<<<<<, =======, >>>>>>>), abort the push and print: \"DIRTY conflict with main on: <files>. Run: git fetch origin main && git rebase origin/main (then resolve, then re-push)\""
+    - Exit 0 if no conflict — push proceeds
+    - "Skip-flag: --skip-merge-preview for genuine off-main work (with bypass logged to ambient.jsonl as kind=merge_preview_skipped + paths-touched)"
+    - "CI test scripts/ci/test-pre-push-merge-preview.sh: stand up two divergent branches, attempt push from each, assert the second push is refused with the right error"
+    - Pairs with INFRA-1389 — merge driver coverage means most DIRTY scenarios auto-resolve at merge-tree time, so this gate fires less often as drivers come online
+

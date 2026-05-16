@@ -155,24 +155,26 @@ reports back) without human-typing each chump CLI command.
 
 ## Status (live; updated by Mission Driver)
 
-- **Updated.** 2026-05-13
+- **Updated.** 2026-05-15
 - **Note on "Week N" labels.** Week labels are **phase markers** (Phase 1 — Front door; Phase 2 — Credible evidence; Phase 3 — Orchestrator; Phase 4 — Polish + demo). The calendar dates in parens are *target* dates from the original 30-day plan, not enforcement boundaries. Status flags (SHIPPED / WORK COMPLETE / IN PROGRESS) reflect actual milestone completion, not calendar position. A phase can be WORK COMPLETE before its target date window opens.
 - **Phase 1 / Week 1 (target May 6–13) — SHIPPED.** User-facing front door complete. All gaps closed. FTUE clean-machine CI test deferred to Phase 4.
-- **Phase 2 / Week 2 (target May 14–21) — WORK COMPLETE (early).** EVAL-101 cognition A/B run and closed as null finding (Δ=+0.025, threshold 0.10). Result at `docs/eval/EVAL-101-cognition-ab-2026-05-10.md`. **Follow-up: EVAL-102 filed P1** (see `docs/gaps/EVAL-102.yaml`) — n≥50/cell rerun with explicit dependency map for downstream gaps.
-- **Phase 3 / Week 3 (target May 22–28) — IN PROGRESS.** INFRA-796/797/798 scoped and implemented. `chump orchestrate` loop exists with telemetry + auto-grade timer + stub/real intent parser.
-  - **INFRA-816 (release-plz glib dep)** — filed + fixed + merged (#1437). ✅
-  - **INFRA-1018 / INFRA-1066 (e2e-pwa `#msg-input` flake)** — root cause fixed and documented. Alias shim now correctly walks light DOM to `<chump-view-chat>` then shadow DOM into `<chump-chat>`. ✅ (#1741, #1735)
-- **Phase 4 / Week 4 (target May 29–June 6) — GAPS FILED.** DOC-035 (README rewrite for demo flow) and INFRA-818 (perf tuning FLEET_SIZE=10) filed. PRODUCT-025 (PWA dashboard MVP) and INFRA-799 (FTUE CI test) pending.
-- **Pillar balance (2026-05-13):** EFFECTIVE, CREDIBLE, RESILIENT, ZERO-WASTE — all 4 pillars pickable (each ≥2 xs/s P1 gaps open). Recent sprint emphasis: coordinator reliability (RESILIENT + ZERO-WASTE); next: EFFECTIVE user-facing and CREDIBLE measurement gaps.
-- **What changed this week (2026-05-07 → 2026-05-13):**
-  - **Coordinator robustness sprint (RESILIENT/ZERO-WASTE):** Per-worktree `CARGO_TARGET_DIR` eliminates parallel bot-merge lock contention (#1753); `cargo_lock_wait` telemetry added. `worktree_root()` now detects stale `core.worktree` in `.git/config` (#1755). `#[serial]` annotations on all env-mutating tests (#1758, INFRA-977/1071). Fleet coordinator now CREDIBLE-035: CLI integration tests for `chump health`, `fleet status`, `claim/release`, `--briefing`, auth modes (#1749).
-  - **Harness-agnostic framing (MISSION):** README and AGENTS.md rewritten to lead with "fleet coordinator + gap registry, bring your own agent" — Claude Code, opencode, Codex CLI, Aider, goose, or manual commits all first-class (#1750).
-  - **e2e-pwa green-main restoration (CREDIBLE):** Fixed shadowRoot traversal bug in `createTestAliases()` — `<chump-view-chat>` is light DOM, `<chump-chat>` is shadow DOM. Documented in `CLAUDE_GOTCHAS.md` (#1741, #1735).
-  - **Gap registry hygiene:** INFRA-980/981/982 stale stuck-PR gaps closed; INFRA-1064/1066/1071 done.
-- **CI pipeline:** e2e-pwa fix in main (#1741). `tauri-cowork-e2e` failing on all PRs (pre-existing, not regressions from this sprint).
-- **SLO status (from fleet-state.json):** L1-SLO-1 (silent_agent), L2-SLO-2 (ship rate), L2-SLO-5, L3-SLO-1 breached. Priority: reduce silent leases (many stale from crashed sessions) and check ship rate.
-- **Next actions:**
-  1. Arm auto-merge for open PRs (rate limit resets 2026-05-14T01:36Z; PRs #1735, #1753, #1755, #1758 waiting).
-  2. Rebuild + reinstall `chump` binary (staleness warning: built at 78339bcfc, 7 commits behind HEAD).
-  3. Pick next EFFECTIVE or CREDIBLE gap (CREDIBLE-037, INFRA-1052 — both leased by active sessions).
-  4. Run `chump gap audit-priorities` to check P0 count and vague gaps.
+- **Phase 2 / Week 2 (target May 14–21) — WORK COMPLETE (early), citable result PENDING.** EVAL-101 closed null (Δ=+0.025) but cannot be cited (preregistration violated). **EVAL-102 (rerun) still PENDING operator-action**: needs ~$5 API spend + Together AI + ~24h harness time. **Without EVAL-102, Week 2 has no citable credible-evidence number.**
+- **Phase 3 / Week 3 (target May 22–28) — IN PROGRESS.** INFRA-796/797/798 scoped and implemented. `chump orchestrate` loop exists with telemetry + auto-grade timer + stub/real intent parser. **Operator end-to-end smoke test still PENDING** — no one has typed the four demo prompts ("spawn the fleet…", "what's our grade?", "ship X by EOD", "stop the fleet") against the real binary and verified the fleet responds.
+- **Phase 4 / Week 4 (target May 29–June 6) — STARTED EARLY.** PWA cockpit work was undertaken ahead of schedule (see Cockpit detour below). **INFRA-799 (FTUE clean-machine CI test) SHIPPED** (PR #1468, commit c00102be) — covers brew install → `chump --version` → `chump init` → `chump gen` → `chump mcp list` → `chump fleet start/status/stop`. **Gap discovered 2026-05-15:** the existing FTUE workflow does NOT cover `chump orchestrate` (June 6 demo criterion #4 — "operator types 'spawn the fleet…', fleet starts"). Extending the FTUE workflow tonight to add a 3-intent smoke step. DOC-035 (README rewrite for demo flow) also pending.
+- **Cockpit detour (2026-05-15) — major cycle, not on the original 30-day spec.** A "PWA isn't running" session start expanded into a full cockpit reshape:
+  - PRODUCT-121 ✅ — PWA cockpit roadmap doc shipped (#2024) with 4 phases + ship-criteria
+  - PRODUCT-122 ✅ — Cockpit-MVP landing shell shipped (#2030) composing 22 existing components
+  - PRODUCT-120 🟡 — Action-first cockpit (Read/Signal/Noise framework + 5 action wires + 2 new endpoints) in PR #2063 (auto-merge armed, sibling rebasing); doctrine docs merged (#2067, #2094)
+  - PRODUCT-132 🟡 — Operator-attention dedup in PR #2066
+  - INFRA-1349 🟡 — `target/` artifact reaper in PR #2083 (addresses today's 97%-full disk crisis)
+  - **Honest assessment:** the cockpit work is arguably Week 4 polish surfaced as PRODUCT-025 (PWA dashboard MVP). It moves the project forward but **does NOT directly satisfy any of the 5 June-6 demo criteria** (brew install, chump init, chump gen, chump orchestrate, chump fleet-status). The demo is CLI-driven.
+- **Pillar balance (2026-05-15):** Fleet brief reported `EFFECTIVE=12 CREDIBLE=3 RESILIENT=4 ZERO-WASTE=6 (of 33 pickable)` — balanced. Ship velocity ~7.3 ships/hr / 176 ships/24h.
+- **SLO status:** earlier disk_critical alerts (97% full) recovered to ~90% after sibling-agent worktree reaping; INFRA-1349 launchd install pending for permanent fix. 13 active leases at session-end.
+- **Next actions (priority order for June 6):**
+  1. **FTUE workflow extended for `chump orchestrate`** (in this same PR). Adds a smoke step that asserts 3 canonical intents route to the right chump commands. Plugs the demo-criterion #4 hole.
+  2. **EVAL-102 rerun.** Operator-action required (~$5 API + 24h). Until this lands, Week 2 has no citable number.
+  3. **`chump orchestrate` LLM-driven e2e** (not just intent-parser stub). Operator types real prompts; orchestrator drives the fleet via Anthropic. The FTUE smoke covers the routing; this covers the cognition.
+  4. **DOC-035 README rewrite** anchored on the 5-step demo flow.
+  5. **5-minute screencast on clean Mac.** Final June 6 deliverable; operator-action.
+  6. **PWA cockpit PRs** (#2063 + #2066 + #2083) — already auto-merge armed, riding through CI; no further action needed.
+  7. **PRODUCT-133 (right-zone treatment)** — gated on #2063 landing first.

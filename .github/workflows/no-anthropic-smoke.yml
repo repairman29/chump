@@ -24,6 +24,11 @@ on:
 permissions:
   contents: read
 
+# INFRA-1378: per-PR group, cancel-in-progress so redundant pushes deduplicate.
+concurrency:
+  group: no-anthropic-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   no-anthropic-smoke:
     name: chump-first contract — coordination layer works without Anthropic

@@ -24,6 +24,11 @@ permissions:
   contents: write
   pull-requests: write
 
+# INFRA-1378: per-PR group, cancel-in-progress so redundant pushes deduplicate.
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   arm:
     if: github.event.pull_request.user.login == 'dependabot[bot]'

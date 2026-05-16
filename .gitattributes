@@ -59,3 +59,24 @@ scripts/ci/env-vars-internal.txt merge=union
 # Risk mitigation: pre-commit/duplicate-script-tag guard (INFRA-1201) catches
 # the rare case where two PRs add THE SAME <script src="X.js"> independently.
 web/v2/index.html merge=union
+
+# INFRA-1389: extend merge-driver coverage to remaining hot shared files.
+#
+# All three files below follow the same append-only pattern: concurrent PRs
+# add new entries at the end (new dep in Cargo.toml, new component class in
+# app.js, new route arm in src/main.rs). The generic merge-driver-append-only.sh
+# driver handles all three — pure-append check + tail deduplication + append.
+#
+# Dedup is important for Cargo.toml: two PRs that each independently add
+# `serde = "1"` would otherwise double-register the entry.
+
+# Cargo.toml — new [[bin]] entries, new [dependencies], new [features] lines.
+Cargo.toml merge=cargo-toml-append
+
+# web/v2/app.js — new component class definitions appended before the Router,
+# new VIEWS map entries, new CHUMP_CADENCES subtab entries.
+web/v2/app.js merge=js-append
+
+# src/main.rs — new route handlers / match arms / use declarations appended
+# at the bottom of the file (Axum router additions pattern).
+src/main.rs merge=rust-main-append

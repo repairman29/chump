@@ -1,17 +1,20 @@
-name: FTUE clean-machine 2026 (INFRA-600 / INFRA-799)
+name: FTUE clean-machine 2026 (INFRA-600 / INFRA-799 / INFRA-NEW-orchestrate)
 
 # Integration test for the week-4 ROADMAP acceptance: the 5-min demo flow
 # (brew install → chump --version → chump init → chump gen →
-#  chump mcp list → chump fleet start/status/stop)
+#  chump mcp list → chump orchestrate → chump fleet start/status/stop)
 # runs without operator hand-holding on a completely fresh macOS runner.
 #
 # fleet start/stop/status delegate to scripts/dispatch/ stubs so no real
 # Claude Code workers or API keys are required — the test validates CLI
 # routing and JSON output plumbing, not live agent execution.
 #
-# INFRA-799: added chump init --no-interactive + chump mcp list steps.
-# Replaces the infra-broken ftue-clean-machine.yml (INFRA-600).
-# Triggers: same cadence as the old workflow.
+# History:
+#   INFRA-600: original workflow (broken — replaced).
+#   INFRA-799: added chump init --no-interactive + chump mcp list steps.
+#   2026-05-15: added chump orchestrate intent-parser smoke (3 canonical
+#     phrases → routed commands). Covers the differentiated June-6 demo
+#     criterion #4 ("operator types 'spawn the fleet…', fleet starts").
 
 on:
   workflow_dispatch:
@@ -23,6 +26,8 @@ on:
       - 'src/gen.rs'
       - 'src/fleet*.rs'
       - 'src/mcp_discovery.rs'
+      - 'src/intent_parser.rs'
+      - 'src/orchestrate*.rs'
       - 'chump-mcp.json'
       - 'scripts/dispatch/**'
       - 'scripts/ci/test-chump-init-clean-machine.sh'
@@ -35,6 +40,8 @@ on:
       - 'src/gen.rs'
       - 'src/fleet*.rs'
       - 'src/mcp_discovery.rs'
+      - 'src/intent_parser.rs'
+      - 'src/orchestrate*.rs'
       - 'chump-mcp.json'
       - 'scripts/dispatch/**'
       - 'scripts/ci/test-chump-init-clean-machine.sh'
@@ -169,6 +176,38 @@ jobs:
           grep -q "chump-gen:" "$FIXTURE/src/main.rs" || \
             { echo "ERROR: chump gen stub did not patch src/main.rs"; exit 1; }
           echo "gen: OK"
+
+      # ── Step 4b: chump orchestrate — natural-language intent parser ───────
+      # June 6 demo criterion #4: operator types "spawn the fleet on infra
+      # p0/p1", fleet starts. This step verifies the intent-parser stub path
+      # (no LLM call) routes recognized phrases to chump CLI commands.
+      # Each line emits {intent, command, kind:intent_parse_ok} as JSON;
+      # we assert kind + command on three canonical phrases.
+      - name: chump orchestrate (intent parser)
+        id: orchestrate
+        run: |
+          set -euo pipefail
+          FIXTURE="${{ steps.fixture.outputs.fixture }}"
+          assert_intent() {
+            local phrase="$1" want_cmd="$2"
+            local out
+            out=$(CHUMP_REPO="$FIXTURE" chump orchestrate "$phrase" 2>/dev/null \
+                  | grep -E '^\{' | tail -1)
+            if [ -z "$out" ]; then
+              echo "ERROR: orchestrate produced no JSON line for '$phrase'"; exit 1
+            fi
+            echo "$out" | grep -q '"kind":"intent_parse_ok"' || {
+              echo "ERROR: orchestrate did not parse '$phrase' (got: $out)"; exit 1
+            }
+            echo "$out" | grep -q "\"command\":\"$want_cmd\"" || {
+              echo "ERROR: orchestrate routed '$phrase' wrong (want $want_cmd, got: $out)"; exit 1
+            }
+            echo "  '$phrase' → $want_cmd"
+          }
+          assert_intent "what is our mission grade?" "chump mission-grade"
+          assert_intent "stop the fleet now"        "chump fleet stop"
+          assert_intent "what's our waste rate?"    "chump waste-tally"
+          echo "orchestrate: OK (3/3 intents routed)"
 
       # ── Step 5: chump fleet start --size 1 ───────────────────────────────
       - name: chump fleet start

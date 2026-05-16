@@ -83,6 +83,9 @@ _prune_is_inflight() {
         return 0
     fi
     # .git/index mtime check (belt-and-suspenders for pre-fix leases).
+    # INFRA-1347: bumped from 5 → 30 minutes. Agents spend 10+ min in
+    # cargo build between edits; 5 min was too tight and ate live work
+    # twice during the 2026-05-15 session.
     local _gi=""
     if [[ -f "$wt_dir/.git" ]]; then
         local _gd; _gd=$(sed 's/^gitdir: //' "$wt_dir/.git" 2>/dev/null || true)
@@ -91,11 +94,48 @@ _prune_is_inflight() {
         _gi="$wt_dir/.git/index"
     fi
     if [[ -n "$_gi" ]]; then
-        local _fresh; _fresh=$(find "$_gi" -mmin -5 2>/dev/null | head -1 || true)
-        if [[ -n "$_fresh" ]]; then
-            emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "git_index_fresh"
-            return 0
+        # CHUMP_REAPER_INDEX_MMIN: override threshold in minutes (default 30).
+        # Set to "skip" (or "0") in CI tests to bypass this guard entirely so that
+        # deeper checks like unpushed_commits can be exercised.
+        local _mmin="${CHUMP_REAPER_INDEX_MMIN:-30}"
+        if [[ "$_mmin" != "0" && "$_mmin" != "skip" ]]; then
+            local _fresh; _fresh=$(find "$_gi" -mmin -"$_mmin" 2>/dev/null | head -1 || true)
+            if [[ -n "$_fresh" ]]; then
+                emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "git_index_fresh"
+                return 0
+            fi
         fi
+    fi
+    return 1
+}
+
+# INFRA-1347: returns 0 if the worktree's branch has commits not yet
+# pushed to its upstream. Distinct from `has_changes` (working-tree
+# dirty) and `_prune_is_inflight` (lease / fresh index). Used by the
+# CLOSED-PR and NO-PR case branches in §2 — those paths previously
+# deleted worktrees with committed-but-unpushed local work.
+_prune_has_unpushed_commits() {
+    local wt_dir="$1"
+    [[ "$REAPER_SAFETY_CHECK" != "1" ]] && return 1
+    local branch
+    branch=$(cd "$wt_dir" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    [[ -z "$branch" || "$branch" == "HEAD" ]] && return 1
+    local upstream="origin/${branch#refs/heads/}"
+    local ahead=0
+    # INFRA-1347: the prior `if cd ...` was NOT subshell-wrapped, which
+    # changed the outer pwd and broke relative-path resolution in the
+    # surrounding `for wt_dir in ".claude/worktrees/*/"` loop (subsequent
+    # iterations failed with "No such file or directory" and skipped real
+    # worktrees). Subshell-wrap so cwd never escapes the function.
+    if ( cd "$wt_dir" 2>/dev/null && git rev-parse --verify --quiet "$upstream" >/dev/null 2>&1 ); then
+        ahead=$(cd "$wt_dir" && git rev-list --count "${upstream}..HEAD" 2>/dev/null || echo 0)
+    else
+        # No upstream — count vs origin/main as the conservative fallback.
+        ahead=$(cd "$wt_dir" && git rev-list --count "origin/main..HEAD" 2>/dev/null || echo 0)
+    fi
+    if [[ "${ahead:-0}" -gt 0 ]]; then
+        emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "unpushed_commits"
+        return 0
     fi
     return 1
 }
@@ -108,8 +148,13 @@ echo
 # ── 1. Stale lease files ─────────────────────────────────────────────────────
 echo "── stale lease files (.chump-locks/*.json past expires_at) ──"
 # INFRA-1224: migrated 22-line python3 expires_at parser → scripts/lib/lease.sh.
+# INFRA-1347: was `git rev-parse --show-toplevel` which broke when the script
+# runs against a synthetic fake-repo (CI test, recovery tools) — falls back
+# to the script-relative path that already sourced lease.sh at line 70.
 # shellcheck source=../lib/lease.sh
-source "$(git rev-parse --show-toplevel)/scripts/lib/lease.sh"
+# shellcheck disable=SC1091
+# (lease.sh already sourced above; no-op re-source is cheap and idempotent.)
+source "$(dirname "$0")/../lib/lease.sh"
 stale_count=0
 while IFS= read -r lease; do
     [[ -f "$lease" ]] || continue
@@ -152,11 +197,13 @@ for wt_dir in "$WORKTREE_ROOT"/*/; do
     branch=$(cd "$wt_dir" 2>/dev/null && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")
     branch_short="${branch#refs/heads/}"
 
-    # Check if there are uncommitted changes (working-tree modifications or
-    # untracked files that aren't gitignored)
+    # Check if there are uncommitted changes (tracked-file modifications)
     has_changes=$(cd "$wt_dir" 2>/dev/null && \
         { git status --porcelain 2>/dev/null | grep -v "^??" | head -1; } || echo "")
-    # shellcheck disable=SC2034  # reserved for future prune-on-untracked logic
+    # Untracked files that aren't gitignored. INFRA-1347: previously
+    # captured-but-unused (`# reserved for future prune-on-untracked logic`).
+    # An agent that wrote a new test/doc/design file without `git add`'ing it
+    # had that file silently deleted on next reaper sweep. Now it KEEPs.
     untracked_unignored=$(cd "$wt_dir" 2>/dev/null && \
         { git status --porcelain --untracked-files=normal 2>/dev/null | grep "^??" | head -1; } || echo "")
 
@@ -164,6 +211,16 @@ for wt_dir in "$WORKTREE_ROOT"/*/; do
         printf "  %-30s %-40s %-12s %s\n" \
             "$wt_name" "$branch_short" "(dirty)" "KEEP — uncommitted changes"
         dirty_count=$((dirty_count + 1))
+        emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "uncommitted_changes"
+        continue
+    fi
+    if [[ -n "$untracked_unignored" ]]; then
+        # INFRA-1347: protect untracked-non-gitignored work (e.g. unstaged
+        # new test scripts, design docs, fixture files).
+        printf "  %-30s %-40s %-12s %s\n" \
+            "$wt_name" "$branch_short" "(untracked)" "KEEP — untracked non-gitignored files"
+        dirty_count=$((dirty_count + 1))
+        emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "untracked_unignored"
         continue
     fi
 
@@ -194,6 +251,11 @@ for wt_dir in "$WORKTREE_ROOT"/*/; do
             if _prune_is_inflight "$wt_dir"; then
                 action="KEEP — in-flight (active lease or fresh .git/index)"
                 kept_count=$((kept_count + 1))
+            elif _prune_has_unpushed_commits "$wt_dir"; then
+                # INFRA-1347: PR closed without merge — but local has commits
+                # never pushed. Refuse delete; operator decides keep vs salvage.
+                action="KEEP — unpushed local commits (PR #$pr_num closed)"
+                kept_count=$((kept_count + 1))
             else
                 action="PRUNE"
                 pruned_count=$((pruned_count + 1))
@@ -218,6 +280,10 @@ for wt_dir in "$WORKTREE_ROOT"/*/; do
             if [[ "$ahead" -gt 0 ]]; then
                 action="KEEP — $ahead WIP commits, no PR yet"
                 kept_count=$((kept_count + 1))
+                # INFRA-1347: emit a structured reason so the audit
+                # trail surfaces what saved the worktree (operators ask
+                # "why didn't the reaper take it?" — answer: unpushed work).
+                emit_reaper_event "worktree_reaper_skipped_active" "$wt_dir" "unpushed_commits"
             elif _prune_is_inflight "$wt_dir"; then
                 action="KEEP — in-flight (active lease or fresh .git/index)"
                 kept_count=$((kept_count + 1))
@@ -243,7 +309,7 @@ echo
 echo "── summary ──"
 echo "  pruned:  $pruned_count worktree(s)"
 echo "  kept:    $kept_count worktree(s) (open PR or WIP)"
-echo "  dirty:   $dirty_count worktree(s) (uncommitted — investigate manually)"
+echo "  dirty:   $dirty_count worktree(s) (uncommitted or untracked — investigate manually)"
 echo "  leases:  $stale_count stale lease(s)"
 
 if [[ $DRY_RUN -eq 1 ]]; then
