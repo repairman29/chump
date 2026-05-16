@@ -1,0 +1,14 @@
+- id: INFRA-1494
+  domain: INFRA
+  title: "RESILIENT: zombie-lease reaper on fleet startup — chump fleet up clears .chump-locks/*.json that match no live worker pid + lockfile age >ttl; halts otherwise reports phantom 17 active leases"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "`chump fleet up` (and `chump fleet doctor`) scans .chump-locks/*.json before spawning workers: for each lease file, check (a) PID alive (ps -p $pid) and (b) file mtime < lease TTL"
+    - "If both fail: remove the lockfile + emit kind=zombie_lease_reaped {gap_id, age_hours, pid_status}"
+    - "If only (b) fails but PID is alive on another machine: emit kind=lease_stale_remote (NATS-KV check covers cross-machine)"
+    - "Today's signal: fleet was halted for 11+ hours but `chump fleet status` showed 17 zombie leases (INFRA-1126, INFRA-1149 ×8, INFRA-1382, etc.); all session=? expires=? — pure noise that confused the SessionStart hook digest"
+    - "Document expected behavior: leases get TTL-reaped automatically once ttl expires; this gap adds aggressive reap-on-startup so a fresh fleet boot doesn't inherit garbage"
+    - "Smoke test scripts/ci/test-zombie-lease-reap.sh: fixture lockfile with PID=99999 (definitely dead) + 24h mtime, assert reaped + ambient emit; fixture lockfile with live PID assert not touched"
+
