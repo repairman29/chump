@@ -3822,6 +3822,375 @@ async fn main() -> Result<()> {
                     });
                 std::process::exit(status.code().unwrap_or(1));
             }
+            // INFRA-1446: work-discovery query — who is working on a given topic?
+            // Usage: chump fleet whoworkson <topic> [--json]
+            // Sources: (a) .chump-locks/claim-*.json lease files,
+            //          (b) open PR titles/branches via `gh pr list`,
+            //          (c) open gap titles/AC in state.db,
+            //          (d) recent ambient gap_claimed events.
+            // Returns a table (or JSON) sorted by recency, deduped by gap_id.
+            "whoworkson" => {
+                // Collect <topic> from args after "whoworkson"; skip flags.
+                let topic: String = args
+                    .iter()
+                    .skip(3) // chump fleet whoworkson ...
+                    .find(|a| !a.starts_with('-'))
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        eprintln!("Usage: chump fleet whoworkson <topic> [--json]");
+                        std::process::exit(2);
+                    });
+                let want_json = args.iter().any(|a| a == "--json");
+                let topic_lc = topic.to_lowercase();
+
+                // ── Result row ────────────────────────────────────────────
+                #[derive(Debug)]
+                struct WhoRow {
+                    kind: String,     // lease | pr | gap | ambient
+                    id: String,       // gap_id / PR number / event id
+                    claimant: String, // agent / worktree / author
+                    since: String,    // ISO timestamp (for sort)
+                    matches: String,  // excerpt that triggered the match
+                }
+
+                let mut rows: Vec<WhoRow> = Vec::new();
+                // Deduplicate by (kind, id) — accumulate seen gap IDs across sources.
+                let mut seen_gap_ids: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
+
+                let locks_dir = repo_root.join(".chump-locks");
+
+                // ── (a) Active lease files ────────────────────────────────
+                if let Ok(entries) = std::fs::read_dir(&locks_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                        // Only claim-*.json lease files.
+                        if !name.starts_with("claim-") || !name.ends_with(".json") {
+                            continue;
+                        }
+                        let Ok(raw) = std::fs::read_to_string(&path) else {
+                            continue;
+                        };
+                        let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                            continue;
+                        };
+                        let gap_id = v
+                            .get("gap_id")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let purpose = v
+                            .get("purpose")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let session_id = v
+                            .get("session_id")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or(name)
+                            .to_string();
+                        let taken_at = v
+                            .get("taken_at")
+                            .and_then(|x| x.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let paths_str = v
+                            .get("paths")
+                            .and_then(|x| x.as_array())
+                            .map(|arr| {
+                                arr.iter()
+                                    .filter_map(|p| p.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join(",")
+                            })
+                            .unwrap_or_default();
+
+                        // Check for topic match (case-insensitive) across gap_id, purpose, paths.
+                        let haystack =
+                            format!("{} {} {}", gap_id, purpose, paths_str).to_lowercase();
+                        if !haystack.contains(topic_lc.as_str()) {
+                            continue;
+                        }
+                        let key = format!("lease:{gap_id}");
+                        if seen_gap_ids.contains(&key) {
+                            continue;
+                        }
+                        seen_gap_ids.insert(key);
+                        rows.push(WhoRow {
+                            kind: "lease".to_string(),
+                            id: gap_id.clone(),
+                            claimant: session_id,
+                            since: taken_at,
+                            matches: format!("lease: {name}"),
+                        });
+                    }
+                }
+
+                // ── (b) Open PRs via `gh pr list` ─────────────────────────
+                {
+                    let gh_out = std::process::Command::new("gh")
+                        .args([
+                            "pr",
+                            "list",
+                            "--state",
+                            "open",
+                            "--json",
+                            "number,title,headRefName,createdAt,author",
+                            "--limit",
+                            "200",
+                        ])
+                        .current_dir(&repo_root)
+                        .output();
+                    if let Ok(out) = gh_out {
+                        let text = String::from_utf8_lossy(&out.stdout);
+                        if let Ok(arr) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if let Some(prs) = arr.as_array() {
+                                for pr in prs {
+                                    let number = pr
+                                        .get("number")
+                                        .and_then(|x| x.as_i64())
+                                        .map(|n| n.to_string())
+                                        .unwrap_or_default();
+                                    let title = pr
+                                        .get("title")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let branch = pr
+                                        .get("headRefName")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let created_at = pr
+                                        .get("createdAt")
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let author = pr
+                                        .get("author")
+                                        .and_then(|x| x.get("login"))
+                                        .and_then(|x| x.as_str())
+                                        .unwrap_or("unknown")
+                                        .to_string();
+
+                                    let haystack = format!("{} {}", title, branch).to_lowercase();
+                                    if !haystack.contains(topic_lc.as_str()) {
+                                        continue;
+                                    }
+                                    // Try to extract gap ID from branch/title.
+                                    let gap_id = {
+                                        let combined = format!("{} {}", branch, title);
+                                        // Pattern: INFRA-NNN, PRODUCT-NNN, etc.
+                                        let mut found = String::new();
+                                        for word in combined.split_whitespace() {
+                                            let w = word.trim_matches(|c: char| {
+                                                !c.is_alphanumeric() && c != '-'
+                                            });
+                                            if w.contains('-') {
+                                                let parts: Vec<&str> = w.splitn(2, '-').collect();
+                                                if parts.len() == 2
+                                                    && parts[0]
+                                                        .chars()
+                                                        .all(|c| c.is_ascii_uppercase())
+                                                    && parts[1].chars().all(|c| c.is_ascii_digit())
+                                                    && parts[0].len() >= 3
+                                                {
+                                                    found = w.to_string();
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        if found.is_empty() {
+                                            format!("PR#{number}")
+                                        } else {
+                                            found
+                                        }
+                                    };
+                                    let key = format!("pr:{gap_id}");
+                                    if seen_gap_ids.contains(&key) {
+                                        continue;
+                                    }
+                                    seen_gap_ids.insert(key);
+                                    rows.push(WhoRow {
+                                        kind: "pr".to_string(),
+                                        id: gap_id,
+                                        claimant: author,
+                                        since: created_at,
+                                        matches: format!("PR#{number}: {title}"),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── (c) Open gap titles/AC in state.db ───────────────────
+                {
+                    use chump_gap_store as gap_store;
+                    if let Ok(store) = gap_store::GapStore::open(&repo_root) {
+                        let _ = store.auto_seed_if_empty();
+                        if let Ok(all_gaps) = store.list(Some("open")) {
+                            for g in &all_gaps {
+                                let haystack =
+                                    format!("{} {} {}", g.id, g.title, g.acceptance_criteria)
+                                        .to_lowercase();
+                                if !haystack.contains(topic_lc.as_str()) {
+                                    continue;
+                                }
+                                let key = format!("gap:{}", g.id);
+                                if seen_gap_ids.contains(&key) {
+                                    continue;
+                                }
+                                seen_gap_ids.insert(key);
+                                // Use created_at (unix) → ISO string for sort.
+                                let since = if g.opened_date.is_empty() {
+                                    use chrono::TimeZone;
+                                    chrono::Utc
+                                        .timestamp_opt(g.created_at, 0)
+                                        .single()
+                                        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
+                                        .unwrap_or_default()
+                                } else {
+                                    format!("{}T00:00:00Z", g.opened_date)
+                                };
+                                let excerpt: String = g.title.chars().take(60).collect();
+                                rows.push(WhoRow {
+                                    kind: "gap".to_string(),
+                                    id: g.id.clone(),
+                                    claimant: "open (unclaimed)".to_string(),
+                                    since,
+                                    matches: excerpt,
+                                });
+                            }
+                        }
+                    }
+                }
+
+                // ── (d) Recent ambient gap_claimed events ─────────────────
+                {
+                    let ambient_path = locks_dir.join("ambient.jsonl");
+                    // Scan last 500 lines for recency.
+                    if let Ok(content) = std::fs::read_to_string(&ambient_path) {
+                        let recent_lines: Vec<&str> = content
+                            .lines()
+                            .rev()
+                            .take(500)
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .rev()
+                            .collect();
+                        for line in recent_lines {
+                            if !line.contains("gap_claimed") {
+                                continue;
+                            }
+                            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                                continue;
+                            };
+                            let kind_field = v.get("kind").and_then(|x| x.as_str()).unwrap_or("");
+                            if kind_field != "gap_claimed" {
+                                continue;
+                            }
+                            let gap_id = v
+                                .get("gap_id")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let ts = v
+                                .get("ts")
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let session = v
+                                .get("session_id")
+                                .or_else(|| v.get("session"))
+                                .and_then(|x| x.as_str())
+                                .unwrap_or("unknown")
+                                .to_string();
+
+                            let haystack = format!("{} {}", gap_id, line).to_lowercase();
+                            if !haystack.contains(topic_lc.as_str()) {
+                                continue;
+                            }
+                            let key = format!("ambient:{gap_id}");
+                            if seen_gap_ids.contains(&key) {
+                                continue;
+                            }
+                            seen_gap_ids.insert(key);
+                            rows.push(WhoRow {
+                                kind: "ambient".to_string(),
+                                id: gap_id,
+                                claimant: session,
+                                since: ts,
+                                matches: "gap_claimed event".to_string(),
+                            });
+                        }
+                    }
+                }
+
+                // ── Sort by recency (most recent first) ───────────────────
+                rows.sort_by(|a, b| b.since.cmp(&a.since));
+
+                // ── Render ────────────────────────────────────────────────
+                if want_json {
+                    let out: Vec<serde_json::Value> = rows
+                        .iter()
+                        .map(|r| {
+                            serde_json::json!({
+                                "type": r.kind,
+                                "id": r.id,
+                                "claimant": r.claimant,
+                                "since": r.since,
+                                "matches": r.matches,
+                            })
+                        })
+                        .collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "topic": topic,
+                            "results": out,
+                        }))
+                        .unwrap_or_default()
+                    );
+                } else if rows.is_empty() {
+                    println!("No active work found matching '{topic}'.");
+                } else {
+                    // Table: type / id / claimant / since / matches
+                    let col_widths = (8usize, 20usize, 28usize, 22usize);
+                    println!(
+                        "{:<width0$}  {:<width1$}  {:<width2$}  {:<width3$}  MATCHES",
+                        "TYPE",
+                        "ID",
+                        "CLAIMANT",
+                        "SINCE",
+                        width0 = col_widths.0,
+                        width1 = col_widths.1,
+                        width2 = col_widths.2,
+                        width3 = col_widths.3,
+                    );
+                    println!("{}", "-".repeat(100));
+                    for r in &rows {
+                        let since_short: String = r.since.chars().take(19).collect();
+                        let claimant_short: String =
+                            r.claimant.chars().take(col_widths.2).collect();
+                        let id_short: String = r.id.chars().take(col_widths.1).collect();
+                        println!(
+                            "{:<width0$}  {:<width1$}  {:<width2$}  {:<width3$}  {}",
+                            r.kind,
+                            id_short,
+                            claimant_short,
+                            since_short,
+                            r.matches,
+                            width0 = col_widths.0,
+                            width1 = col_widths.1,
+                            width2 = col_widths.2,
+                            width3 = col_widths.3,
+                        );
+                    }
+                }
+                return Ok(());
+            }
             // FLEET-037: ergonomic primary verb — alias for "stop".
             "down" => {
                 let session = flag("--session")
@@ -3840,7 +4209,7 @@ async fn main() -> Result<()> {
             }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-resize|prune-worktrees|daemon|whoworkson>"
                 );
                 eprintln!("Primary verbs:");
                 eprintln!("  up          [--size N] [--model M] [--effort xs,s,m] [--domain D]");
@@ -3862,6 +4231,7 @@ async fn main() -> Result<()> {
                 );
                 eprintln!("  prune-worktrees [--apply] [--json]  -- prune stale linked worktrees (INFRA-827)");
                 eprintln!("  daemon      [--once]  -- long-lived scheduler (INFRA-964); --once runs all tasks once");
+                eprintln!("  whoworkson  <topic> [--json]  -- who is working on a given topic (INFRA-1446)");
                 std::process::exit(2);
             }
         }
