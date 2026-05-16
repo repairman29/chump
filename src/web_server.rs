@@ -5091,6 +5091,316 @@ fn ambient_log_path() -> PathBuf {
         })
 }
 
+// ── PRODUCT-081: 60-second server-side cache for /api/impact ────────────────
+static IMPACT_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, (std::time::Instant, serde_json::Value)>>,
+> = std::sync::OnceLock::new();
+
+/// GET /api/impact?window=today|week|all — returns aggregated outcome metrics.
+/// Auth-gated. Responses are cached for 60 seconds per window key.
+/// PRODUCT-081: PWA Outcome Dashboard.
+async fn handle_impact(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let window = params
+        .get("window")
+        .map(|s| s.as_str())
+        .unwrap_or("today")
+        .to_string();
+
+    // ── Cache check ──────────────────────────────────────────────────────────
+    let cache =
+        IMPACT_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    {
+        if let Ok(guard) = cache.lock() {
+            if let Some((ts, val)) = guard.get(&window) {
+                if ts.elapsed() < std::time::Duration::from_secs(60) {
+                    return Ok(Json(val.clone()));
+                }
+            }
+        }
+    }
+
+    // ── Window bounds ────────────────────────────────────────────────────────
+    let now_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let window_duration_secs: u64 = match window.as_str() {
+        "week" => 7 * 86_400,
+        "all" => 365 * 86_400,
+        _ => 86_400, // "today" default
+    };
+    let window_start_ts = now_ts.saturating_sub(window_duration_secs);
+
+    // ── Parse ambient.jsonl since window_start ───────────────────────────────
+    let path = ambient_log_path();
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+
+    let mut prs_merged: u64 = 0;
+    let mut fleet_activity_hours: f64 = 0.0;
+    // gap_id → closed_pr string
+    let mut shipped_gaps: Vec<(String, String)> = Vec::new();
+
+    for line in content.lines() {
+        let v: serde_json::Value = match serde_json::from_str(line) {
+            Ok(val) => val,
+            Err(_) => continue,
+        };
+
+        // Filter by timestamp field (ts as unix seconds or ISO string)
+        let event_ts: Option<u64> = v.get("ts").and_then(|t| {
+            if let Some(n) = t.as_u64() {
+                Some(n)
+            } else if let Some(s) = t.as_str() {
+                // Parse ISO 8601 via chrono
+                chrono::DateTime::parse_from_rfc3339(s)
+                    .ok()
+                    .map(|dt| dt.timestamp() as u64)
+            } else {
+                None
+            }
+        });
+        if let Some(ts) = event_ts {
+            if ts < window_start_ts {
+                continue;
+            }
+        }
+
+        let kind = v
+            .get("kind")
+            .or_else(|| v.get("event"))
+            .and_then(|k| k.as_str())
+            .unwrap_or("");
+
+        match kind {
+            "gap_shipped" => {
+                let gap_id = v
+                    .get("gap_id")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let closed_pr = v
+                    .get("closed_pr")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if !gap_id.is_empty() {
+                    shipped_gaps.push((gap_id, closed_pr));
+                }
+            }
+            "pr_merged" => {
+                prs_merged += 1;
+            }
+            "session_end" => {
+                if let Some(secs) = v.get("elapsed_s").and_then(|x| x.as_f64()) {
+                    fleet_activity_hours += secs / 3600.0;
+                }
+            }
+            "cycle_end" => {
+                if let Some(secs) = v.get("elapsed_s").and_then(|x| x.as_f64()) {
+                    fleet_activity_hours += secs / 3600.0;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // ── Enrich from gap_store ────────────────────────────────────────────────
+    let repo_root = crate::repo_path::runtime_base();
+    let gap_store = crate::gap_store::GapStore::open(&repo_root).ok();
+
+    #[derive(Debug)]
+    struct GapSummary {
+        gap_id: String,
+        effort: String,
+        hours_saved: f64,
+        title: String,
+        pillar: String,
+        closed_pr: String,
+    }
+
+    let effort_to_hours = |effort: &str| -> f64 {
+        match effort {
+            "xs" => 0.25,
+            "s" => 1.0,
+            "m" => 4.0,
+            "l" => 12.0,
+            "xl" => 40.0,
+            _ => 1.0,
+        }
+    };
+
+    let detect_pillar = |title: &str| -> &'static str {
+        if title.contains("EFFECTIVE:") {
+            "EFFECTIVE"
+        } else if title.contains("CREDIBLE:") {
+            "CREDIBLE"
+        } else if title.contains("RESILIENT:") {
+            "RESILIENT"
+        } else if title.contains("ZERO-WASTE:") {
+            "ZERO-WASTE"
+        } else if title.contains("MISSION:") {
+            "MISSION"
+        } else {
+            "unknown"
+        }
+    };
+
+    let mut gap_summaries: Vec<GapSummary> = Vec::new();
+    for (gap_id, closed_pr) in &shipped_gaps {
+        let (effort, title) = if let Some(ref store) = gap_store {
+            match store.get(gap_id) {
+                Ok(Some(row)) => (row.effort.clone(), row.title.clone()),
+                _ => (String::new(), String::new()),
+            }
+        } else {
+            (String::new(), String::new())
+        };
+        let hours_saved = effort_to_hours(&effort);
+        let pillar = detect_pillar(&title).to_string();
+        gap_summaries.push(GapSummary {
+            gap_id: gap_id.clone(),
+            effort: effort.clone(),
+            hours_saved,
+            title: title.clone(),
+            pillar,
+            closed_pr: closed_pr.clone(),
+        });
+    }
+
+    // ── Derived metrics ──────────────────────────────────────────────────────
+    let gaps_closed = gap_summaries.len() as u64;
+    let operator_hours_saved: f64 = gap_summaries.iter().map(|g| g.hours_saved).sum();
+
+    // Pillar mix counts
+    let mut pillar_mix = std::collections::HashMap::<String, u64>::new();
+    for pillar_key in &[
+        "EFFECTIVE",
+        "CREDIBLE",
+        "RESILIENT",
+        "ZERO-WASTE",
+        "MISSION",
+        "unknown",
+    ] {
+        pillar_mix.insert(pillar_key.to_string(), 0);
+    }
+    for g in &gap_summaries {
+        *pillar_mix.entry(g.pillar.clone()).or_insert(0) += 1;
+    }
+
+    // Pillar mix percentages (non-unknown gaps only)
+    let total_non_unknown: u64 = gap_summaries
+        .iter()
+        .filter(|g| g.pillar != "unknown")
+        .count() as u64;
+
+    let mut pillar_mix_pct = serde_json::Map::new();
+    for pillar_key in &[
+        "EFFECTIVE",
+        "CREDIBLE",
+        "RESILIENT",
+        "ZERO-WASTE",
+        "MISSION",
+    ] {
+        let count = pillar_mix.get(*pillar_key).copied().unwrap_or(0);
+        let pct = if total_non_unknown > 0 {
+            (count as f64 / total_non_unknown as f64) * 100.0
+        } else {
+            0.0
+        };
+        if pct > 0.0 {
+            pillar_mix_pct.insert(
+                pillar_key.to_string(),
+                serde_json::Value::from((pct * 10.0).round() / 10.0),
+            );
+        }
+    }
+
+    // Starved pillars: non-MISSION pillars < 15% share (only when >= 5 total gaps)
+    let mut starved_pillars: Vec<String> = Vec::new();
+    if total_non_unknown >= 5 {
+        for pillar_key in &["EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE"] {
+            let count = pillar_mix.get(*pillar_key).copied().unwrap_or(0);
+            let pct = (count as f64 / total_non_unknown as f64) * 100.0;
+            if pct < 15.0 {
+                starved_pillars.push(pillar_key.to_string());
+            }
+        }
+    }
+
+    // Top 5 gaps by hours_saved
+    gap_summaries.sort_by(|a, b| {
+        b.hours_saved
+            .partial_cmp(&a.hours_saved)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let top_prs: Vec<serde_json::Value> = gap_summaries
+        .iter()
+        .take(5)
+        .map(|g| {
+            serde_json::json!({
+                "gap_id": g.gap_id,
+                "effort": g.effort,
+                "hours_saved": g.hours_saved,
+                "title": g.title,
+                "closed_pr": g.closed_pr,
+            })
+        })
+        .collect();
+
+    let data_days = window_duration_secs / 86_400;
+    let generated_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+    tracing::info!(
+        "handle_impact: window={}, prs={}, gaps={}, hours_saved={:.1}",
+        window,
+        prs_merged,
+        gaps_closed,
+        operator_hours_saved
+    );
+
+    // Build pillar_mix as JSON object with all 6 keys
+    let pillar_mix_json = serde_json::json!({
+        "EFFECTIVE": pillar_mix.get("EFFECTIVE").copied().unwrap_or(0),
+        "CREDIBLE": pillar_mix.get("CREDIBLE").copied().unwrap_or(0),
+        "RESILIENT": pillar_mix.get("RESILIENT").copied().unwrap_or(0),
+        "ZERO-WASTE": pillar_mix.get("ZERO-WASTE").copied().unwrap_or(0),
+        "MISSION": pillar_mix.get("MISSION").copied().unwrap_or(0),
+        "unknown": pillar_mix.get("unknown").copied().unwrap_or(0),
+    });
+
+    let payload = serde_json::json!({
+        "window": window,
+        "window_start_ts": window_start_ts,
+        "generated_at": generated_at,
+        "metrics": {
+            "prs_merged": prs_merged,
+            "gaps_closed": gaps_closed,
+            "fleet_activity_hours": (fleet_activity_hours * 10.0).round() / 10.0,
+            "operator_hours_saved": (operator_hours_saved * 10.0).round() / 10.0,
+        },
+        "pillar_mix": pillar_mix_json,
+        "pillar_mix_pct": serde_json::Value::Object(pillar_mix_pct),
+        "starved_pillars": starved_pillars,
+        "top_prs": top_prs,
+        "data_days": data_days,
+    });
+
+    // ── Store in cache ───────────────────────────────────────────────────────
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(window.clone(), (std::time::Instant::now(), payload.clone()));
+    }
+
+    Ok(Json(payload))
+}
+
 /// GET /api/brief?since=<unix_ts_secs> — structured JSON summary of ambient events
 /// since the given timestamp. Defaults to the last 8 hours. Events are
 /// categorised into three buckets: done, needs_judgment, and alerts.
@@ -7957,6 +8267,8 @@ fn build_api_router() -> Router {
         .route("/api/ambient/stream", get(handle_ambient_stream))
         .route("/api/ambient/recent", get(handle_ambient_recent))
         .route("/api/ambient/emit", post(handle_ambient_emit))
+        // PRODUCT-081: outcome dashboard
+        .route("/api/impact", get(handle_impact))
         // PRODUCT-080: stuck items alerter
         .route("/api/stuck", get(handle_stuck_list))
         .route("/api/stuck/rescue/{id}", post(handle_stuck_rescue))
