@@ -205,3 +205,5 @@ target_artifact_reaped  # reason: INFRA-1349 target/ artifact reaper kind; emitt
 pr_rebase_daemon_run    # reason: INFRA-1406 pr-rebase-daemon heartbeat
 pr_rebase_failed        # reason: INFRA-1406 pr-rebase-daemon rebase failure
 pr_rebased_auto         # reason: INFRA-1406 pr-rebase-daemon successful auto-rebase
+
+fixture_commit_dropped  # reason: planned by INFRA-1408 #2179 pre-push fixture detector; allow orphan until that PR lands
