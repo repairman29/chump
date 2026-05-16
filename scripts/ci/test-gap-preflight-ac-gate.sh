@@ -16,7 +16,10 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); FAILS+=("$1"); }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-BINARY="${REPO_ROOT}/${CARGO_TARGET_DIR:-target}/debug/chump"
+# Handle absolute CARGO_TARGET_DIR correctly (INFRA-runner-chump sets it to an
+# absolute path; naively prepending REPO_ROOT produces garbage).
+TARGET_DIR="${CARGO_TARGET_DIR:-${REPO_ROOT}/target}"
+BINARY="${TARGET_DIR}/debug/chump"
 
 # Build if needed
 if [[ ! -x "$BINARY" ]]; then
