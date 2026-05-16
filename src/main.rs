@@ -988,9 +988,9 @@ async fn main() -> Result<()> {
             println!("Exits non-zero when any finding has severity=alert.");
             return Ok(());
         }
-        let want_json = rest.iter().any(|a| *a == "--json");
-        let flag_silent_self = rest.iter().any(|a| *a == "--flag-silent-self");
-        let do_emit = rest.iter().any(|a| *a == "--emit");
+        let want_json = rest.contains(&"--json");
+        let flag_silent_self = rest.contains(&"--flag-silent-self");
+        let do_emit = rest.contains(&"--emit");
         let window_days: u64 = {
             let mut it = rest.iter().peekable();
             let mut n = 7u64;
