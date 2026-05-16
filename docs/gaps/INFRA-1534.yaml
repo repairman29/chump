@@ -1,0 +1,18 @@
+- id: INFRA-1534
+  domain: INFRA
+  title: "ZERO-WASTE: self-hosted GitHub Actions runners (M4 + Pi mesh) — bypass org-tier concurrency cap; eliminates today's CI saturation stall"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - Provision actions-runner agent on M4 (macos-arm64) as launchd service via scripts/setup/install-self-hosted-runner.sh
+    - "Migration policy: workflows that take >5min (test, audit, e2e suites) get 'runs-on: [self-hosted, macos-arm64]'; lightweight workflows (Repo health, Gap Status Guard) stay on GitHub-hosted to preserve isolation for non-fork PRs"
+    - "Sibling registration for Pi mesh nodes: scripts/setup/install-self-hosted-runner.sh --pi installs on Linux ARM, registers with label [self-hosted, linux-arm64]"
+    - "Persistent cache: /var/cache/chump-runner/cargo-target shared across runs (no cold rebuild); 5-10x faster Rust CI"
+    - "chump fleet doctor adds 'self-hosted runner liveness' check: gh api /repos/.../actions/runners must show at least 1 'online' runner; warn at 0"
+    - "Telemetry: kind=self_hosted_runner_run {runner_label, workflow, duration_s, cache_hit} on each run completion"
+    - "Security guard: workflows using self-hosted MUST have 'if: github.event.pull_request.head.repo.fork == false' — prevents fork PRs from running code on operator hardware"
+    - docs/process/SELF_HOSTED_RUNNERS.md documents install, label scheme, maintenance, security rationale
+    - Smoke test scripts/ci/test-self-hosted-runner-registered.sh asserts at least 1 online runner before declaring CI healthy
+    - "Today's signal: 24+ queued workflow runs at GH-hosted plan cap; 30+ min drain time per cycle. With 1 M4 runner = 2x throughput, 4-node Pi mesh = ~5x. Eliminates the recurring 'CI saturation' bottleneck that gates everything else this session"
+

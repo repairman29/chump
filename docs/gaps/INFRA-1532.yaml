@@ -1,0 +1,17 @@
+- id: INFRA-1532
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh self-watchdog + single-instance lock — kills itself when own heartbeat stale 5min; flock(2) on .chump-locks/bot-merge-<gap>.lock prevents siblings"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "Layer-2 self-watchdog: bot-merge.sh on startup forks a background watchdog that polls own heartbeat file every 30s; if heartbeat age >5min the watchdog kills the parent pid via 'kill -TERM' then 'kill -KILL' after 10s grace; watchdog itself exits when parent exits"
+    - "Heartbeat update: every stage_start writes ts to .chump-locks/bot-merge-<pid>.health (already implemented per today's evidence)"
+    - "Layer-4 single-instance lock: bot-merge.sh acquires flock(2) exclusive lock on .chump-locks/bot-merge-<gap-id>.lock at startup; if another instance holds it, exit with message 'bot-merge already running for <gap-id> (pid <other-pid>) — abort to avoid race'"
+    - Lock file release via trap EXIT (flock auto-releases on process death anyway)
+    - Emit kind=bot_merge_self_killed {pid, last_step, stuck_duration_s} when watchdog fires; kind=bot_merge_lock_contention {gap, holder_pid} when second instance blocked
+    - "Smoke test scripts/ci/test-bot-merge-watchdog.sh: spawn bot-merge with simulated stuck-init (sleep 999), assert watchdog kills it in ~5min"
+    - "Smoke test scripts/ci/test-bot-merge-singleton.sh: spawn two concurrent bot-merge for same gap, assert second exits with lock-contention"
+    - "Today's signal: pid=91790 wedged at init for 22.5 HOURS; no self-watchdog, no lock; nothing noticed externally either — needed 3 ALERT events before operator intervened"
+    - Pair with INFRA-1422 (per-stage timeout — caught from outside), INFRA-1531 (stale-health-file reaper — cleanup), INFRA-1516 (orphan-process reaper — kill on worktree reap)
+
