@@ -1,0 +1,9 @@
+- id: PRODUCT-138
+  domain: PRODUCT
+  title: "EFFECTIVE: offline PWA — IndexedDB mirror + stale-while-revalidate + service-worker cache invalidation"
+  status: open
+  priority: P3
+  effort: l
+  acceptance_criteria:
+    - "[\"Backlog-promoted 2026-05-16, DEFERRED to Q3: today the PWA hits backend API for every read. Offline = no signal. Strategic for the air-gapped solo-dev tier-3 audience but NOT needed for Marcus or 50/hr push. Park as P3 until post-50/hr stabilization.\",\"Read path: stale-while-revalidate (SWR). Each GET caches into IndexedDB on success; subsequent calls return cache immediately and revalidate in background. Cache miss + offline → return last-known with stale=true UI badge.\",\"Write path: writes (claim gap, ship, comment) queue locally in IndexedDB pending-ops table if offline. On reconnect, replay in order. Server returns conflict-detection result; operator UI flags any rejected write.\",\"Conflict resolution: NOT last-write-wins. Server is arbiter. claim is CAS — first online write wins. Ship is idempotent (PR number is identity). For pure-read state, SWR is sufficient.\",\"Service worker (web/v2/sw.js) manages cache invalidation: subscribes to ambient.jsonl stream, busts matching cache keys on relevant kinds (gap_state_changed, pr_merged, lesson_added).\",\"Honest scope: PWA without internet = read recent state, queue pending writes. CANNOT claim a gap (needs server CAS), CANNOT open a PR (needs GitHub). Document this in docs/process/OFFLINE_PWA_SEMANTICS.md.\",\"Smoke test scripts/ci/test-pwa-offline.sh: dev server up, fetch /api/gaps then take network down (mock), assert subsequent /api/gaps from PWA returns cached + stale flag.\",\"DEPENDENCY: Marcus M-B canonical demo + 50/hr plan must be done first. This is post-Q2 work.\",\"Out of scope: full P2P sync between operators offline (separate gap if ever wanted).\"]"
+
