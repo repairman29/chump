@@ -2943,6 +2943,26 @@ events:
     fields_required: [ts, kind, proposed_id, top_match_id, top_match_title,
       top_match_score]
 
+  - kind: gap_offline_check_block
+    effect_metric: self
+    emitter: src/main.rs gap reserve handler (INFRA-1418)
+    trigger: chump gap reserve detected one or more forbidden-without-fallback
+      patterns from docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md §2 in the proposed
+      title/description (e.g. "webhook ONLY", "gh pr X ONLY"). Reserve is
+      blocked; override with --force-anti-offline + --offline-bypass-reason.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, title, hits]
+
+  - kind: gap_offline_bypass
+    effect_metric: self
+    emitter: src/main.rs gap reserve handler (INFRA-1418)
+    trigger: operator deliberately bypassed the offline-compliance lint via
+      --force-anti-offline + --offline-bypass-reason. Audit row also written
+      to gap_offline_bypass_audit. See OFFLINE_COMPLIANCE_RUBRIC.md §4 for the
+      playbook.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, title, reason, hits]
+
   - kind: gap_dup_archived
     effect_metric: self
     emitter: src/main.rs gap consolidate --apply handler (INFRA-1435)

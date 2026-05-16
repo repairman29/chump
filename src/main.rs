@@ -4487,6 +4487,155 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // ── INFRA-1418: offline-compliance lint at reserve-time ────────────
+                // Scan title + description for forbidden-without-fallback patterns
+                // from docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md §2. Block unless
+                // --force-anti-offline is passed alongside --offline-bypass-reason.
+                // Disable: CHUMP_DISABLE_OFFLINE_CHECK=1.
+                //
+                // History (INFRA-1526): hunk repeatedly dropped by the
+                // rust-main-append merge driver during rebases against fast-moving
+                // main. Reset to main and re-applied fresh to avoid the driver.
+                let offline_check_disabled =
+                    std::env::var("CHUMP_DISABLE_OFFLINE_CHECK").as_deref() == Ok("1");
+                let force_anti_offline =
+                    args.iter().any(|a| a == "--force-anti-offline");
+                let offline_bypass_reason = flag("--offline-bypass-reason");
+                if !offline_check_disabled {
+                    let patterns: &[(&str, &str, &str, &str)] = &[
+                        (
+                            "gh-pr-only",
+                            r"(?i)gh\s+pr\s+(merge|create|view)[^.]{0,60}\bONLY\b",
+                            "hard-pins the path to GitHub even when local-merge-queue exists",
+                            "rewrite as 'gh pr X (online) OR local-merge-queue.sh (offline)'",
+                        ),
+                        (
+                            "webhook-only",
+                            r"(?i)\b(only|exclusively)[^.]{0,40}\bwebhook|\bwebhook[s]?[^.]{0,30}\bonly\b|\bwebhook-only\b",
+                            "local equivalents (post-receive hook, NATS subject) exist for almost every webhook event",
+                            "rewrite as 'webhook OR local-equivalent (post-receive hook / NATS subject)'",
+                        ),
+                        (
+                            "gh-actions-required",
+                            r"(?i)github\s+actions\s+(must|required|is\s+the\s+gate)",
+                            "conflates the executor with correctness; the tests ARE the CI",
+                            "split into local-CI (run-local-ci.sh) + remote-CI (.github/workflows/)",
+                        ),
+                        (
+                            "gh-api-blocking",
+                            r"(?i)gh\s+api[^.]*\b(blocking|required|gates)\b",
+                            "every fleet read should be cache-first per CLAUDE.md",
+                            "use cache_lookup_*; gh api fallback only on cache miss",
+                        ),
+                        (
+                            "state-db-coupled-to-network",
+                            r"(?i)state\.db[^.]{0,80}\b(ONLY|exclusively)\b[^.]{0,40}\bwebhook|webhook[^.]{0,40}\bwrites?\s+(to\s+)?state\.db",
+                            "couples local ground truth to network delivery — breaks Pi mesh + airplane mode",
+                            "use proof-of-merge: PROOF_LOCAL_MERGE OR PROOF_WEBHOOK (see INFRA-1392)",
+                        ),
+                    ];
+
+                    let combined = format!(
+                        "{}\n{}",
+                        title,
+                        flag("--description").as_deref().unwrap_or(""),
+                    );
+                    let mut hits: Vec<(&str, String, &str, &str)> = Vec::new();
+                    for entry in patterns {
+                        if let Ok(re) = regex::Regex::new(entry.1) {
+                            if let Some(m) = re.find(&combined) {
+                                hits.push((
+                                    entry.0,
+                                    m.as_str().trim_end().to_string(),
+                                    entry.2,
+                                    entry.3,
+                                ));
+                            }
+                        }
+                    }
+
+                    if !hits.is_empty() {
+                        let ts_now = unix_ts();
+                        let ambient_path =
+                            worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        eprintln!();
+                        for (name, snippet, why, fix) in &hits {
+                            eprintln!("OFFLINE_CHECK FAIL: \"{snippet}\"");
+                            eprintln!("  pattern : {name}");
+                            eprintln!("  why     : {why}");
+                            eprintln!("  fix     : {fix}");
+                            eprintln!("  see     : docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md §2");
+                        }
+
+                        if force_anti_offline {
+                            let reason = offline_bypass_reason.as_deref().unwrap_or("").trim();
+                            if reason.is_empty() {
+                                eprintln!();
+                                eprintln!(
+                                    "[reserve] --force-anti-offline requires --offline-bypass-reason \"<text>\"."
+                                );
+                                eprintln!(
+                                    "  Example: --offline-bypass-reason \"RUBRIC §4 case 1: intrinsically network-dependent\""
+                                );
+                                std::process::exit(2);
+                            }
+                            let _ = store.record_offline_bypass(
+                                title.as_str(),
+                                reason,
+                                std::env::var("USER").unwrap_or_default().as_str(),
+                            );
+                            if let Some(parent) = ambient_path.parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let safe_reason = reason.replace(['"', '\\'], "");
+                                let safe_title = title.replace(['"', '\\'], "");
+                                let _ = writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts_now}","kind":"gap_offline_bypass","title":"{safe_title}","reason":"{safe_reason}","hits":{}}}"#,
+                                    hits.len()
+                                );
+                            }
+                            eprintln!();
+                            eprintln!(
+                                "[reserve] --force-anti-offline accepted ({} hit(s)). Audit row written.",
+                                hits.len()
+                            );
+                        } else {
+                            eprintln!();
+                            eprintln!(
+                                "[reserve] BLOCK: gap text trips offline-compliance lint ({} pattern hit(s)).",
+                                hits.len()
+                            );
+                            eprintln!("          Either rewrite per the suggestions above, OR pass");
+                            eprintln!("          --force-anti-offline --offline-bypass-reason \"<text>\"");
+                            eprintln!("          Bypass entirely (CI / bulk imports): CHUMP_DISABLE_OFFLINE_CHECK=1");
+                            if let Some(parent) = ambient_path.parent() {
+                                let _ = std::fs::create_dir_all(parent);
+                            }
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let safe_title = title.replace(['"', '\\'], "");
+                                let _ = writeln!(
+                                    f,
+                                    r#"{{"ts":"{ts_now}","kind":"gap_offline_check_block","title":"{safe_title}","hits":{}}}"#,
+                                    hits.len()
+                                );
+                            }
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
                 // ── INFRA-1149: reserve-time title similarity check ───────────────
                 // Before allocating an ID, scan open + recently-closed gaps for
                 // near-duplicate titles. Jaccard on normalized token sets.

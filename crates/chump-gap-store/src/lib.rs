@@ -105,6 +105,37 @@ impl GapStore {
     /// INFRA-1435: append an audit row to `gap_dup_archive_audit` (creates
     /// the table on first call). Used by `chump gap consolidate --apply`
     /// to record a dup-archive decision: which ID was kept, which was
+    /// INFRA-1418: append an audit row to `gap_offline_bypass_audit` (creates
+    /// the table on first call). Used by `chump gap reserve --force-anti-offline`
+    /// to record a deliberate breaking-of-offline-compliance decision: the
+    /// proposed title, the operator-provided reason, and a unix timestamp.
+    /// See docs/strategy/OFFLINE_COMPLIANCE_RUBRIC.md §4 for the playbook.
+    pub fn record_offline_bypass(
+        &self,
+        proposed_title: &str,
+        reason: &str,
+        operator: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS gap_offline_bypass_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                proposed_title TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                operator TEXT NOT NULL DEFAULT '',
+                ts INTEGER NOT NULL
+             )",
+            [],
+        )?;
+        let ts = unix_now();
+        self.conn.execute(
+            "INSERT INTO gap_offline_bypass_audit
+                (proposed_title, reason, operator, ts)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![proposed_title, reason, operator, ts],
+        )?;
+        Ok(())
+    }
+
     /// archived, the similarity score, the depends_on rewrite count, the
     /// operator-provided reason, and a unix timestamp.
     pub fn record_dup_archive(
