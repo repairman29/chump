@@ -3250,3 +3250,11 @@ events:
       rendered, recording since_ago_secs and per-bucket counts for usage analytics
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, source, since_ago_secs, done, needs_judgment, alerts]
+  - kind: reaper_fetch_fallback
+    effect_metric: self
+    emitter: scripts/ops/stale-worktree-reaper.sh (INFRA-1472)
+    trigger: git fetch origin/main failed (network down, rate-limited, or disk pressure)
+      but a cached local origin/main ref exists — reaper continues in offline mode
+      rather than aborting. When no local ref exists, the reaper still aborts (exit 1).
+    consumers: [fleet-brief, reaper-watchdog]
+    fields_required: [ts, kind, remote, base, reason]

@@ -133,7 +133,14 @@ info "Log-fresh window: $LOG_FRESH_MIN minute(s) (any logs/ mtime newer than thi
 
 cd "$REPO_ROOT"
 git fetch "$REMOTE" "$BASE" --quiet 2>/dev/null || {
-    red "Could not fetch $REMOTE/$BASE — aborting."; exit 1
+    if git rev-parse --verify "$REMOTE/$BASE" >/dev/null 2>&1; then
+        warn "Could not fetch $REMOTE/$BASE — using cached local ref (offline mode)"
+        _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '{"ts":"%s","kind":"reaper_fetch_fallback","remote":"%s","base":"%s","reason":"offline"}\n' \
+            "$_ts" "$REMOTE" "$BASE" >> "$REAPER_LOCK_DIR/ambient.jsonl"
+    else
+        red "Could not fetch $REMOTE/$BASE and no local ref — aborting."; exit 1
+    fi
 }
 
 # ── INFRA-017: target/ purge pass (independent of worktree removal) ──────────
