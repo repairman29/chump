@@ -1,0 +1,14 @@
+- id: INFRA-1518
+  domain: INFRA
+  title: "ZERO-WASTE: chump-fleet-bootstrap.sh enforces Merge Queue on main (setup-invariant; flip via API every fleet up)"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "scripts/setup/chump-fleet-bootstrap.sh gains merge-queue-enforcement section: query gh api repos/<owner>/<repo>/branches/main/protection for .required_pull_request_reviews.merge_queue.enabled"
+    - "If false and --check: exit 1 with actionable message"
+    - "If false and not --check: PUT the protection rule with grouping_strategy=ALLGREEN, merge_method=SQUASH, max_entries_to_build=5, max_entries_to_merge=5, min_entries_to_merge=1, min_entries_to_merge_wait_minutes=1"
+    - "Idempotent: re-running is a no-op if already enabled"
+    - Smoke test scripts/ci/test-bootstrap-merge-queue-enforce.sh stubs gh api, asserts PUT fires when disabled, no-op when enabled, exit 1 in --check mode when disabled
+    - Eliminates the operator-flip-the-switch step from INFRA-1377 — once merged, every fleet up call ensures Merge Queue stays on. CONVOY pattern from today's session becomes structurally impossible.
+

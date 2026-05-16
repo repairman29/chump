@@ -1,0 +1,13 @@
+- id: INFRA-1519
+  domain: INFRA
+  title: "RESILIENT: paramedic CI_CONVOY_DETECTED rule — when queue_depth/running >= 5 for >5min emit alert + propose-action ambient event"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Paramedic daemon (INFRA-1375) new detection: poll gh run list --status queued every 60s; compute queue_depth + running counts"
+    - "Trigger condition: queue_depth >= 5 * running AND duration_in_state > 5 min"
+    - "On trigger: emit kind=ci_convoy_detected {queue_depth, running, workflows_queued, top_workflow_by_count}"
+    - "Auto-mitigations available (default off, opt-in via CHUMP_PARAMEDIC_AUTO_MITIGATE_CONVOY=1): cancel obsolete workflow runs (SHA != PR head); cancel non-required advisory workflows (Repo health, no-anthropic-smoke, Gap Status Guard) on PRs >2h old"
+    - Smoke test scripts/ci/test-convoy-detection.sh stubs gh run list output, asserts kind emitted and threshold logic correct
+
