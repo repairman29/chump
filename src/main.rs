@@ -129,6 +129,7 @@ mod notify_tool;
 mod onboard_repo_tool;
 mod operator_presence;
 mod orchestrate;
+mod paramedic;
 mod patch_apply;
 mod pending_peer_approval;
 mod perception;
@@ -234,7 +235,7 @@ mod e2e_bot_tests;
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
 use axonerai::tool::ToolRegistry;
@@ -1414,6 +1415,102 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 eprintln!("chump pr triage: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
+    // `chump paramedic triage|execute|daemon [--dry-run] [--interval-secs N] [--budget-secs N] [--plan F]`
+    // (INFRA-1375) — RESILIENT: rule-engine PR rescue daemon.
+    // triage  — read PR state, emit JSON action plan (read-only)
+    // execute — run one triage→execute cycle with optional --plan <file>
+    // daemon  — loop triage→execute every --interval-secs (default 600)
+    if args.get(1).map(String::as_str) == Some("paramedic") {
+        let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
+        let repo_root = repo_path::repo_root();
+        let dry_run = args.iter().any(|a| a == "--dry-run");
+
+        if subcmd == "help" || args.iter().any(|a| a == "--help") {
+            println!("Usage: chump paramedic <subcommand> [options]");
+            println!();
+            println!("Subcommands:");
+            println!("  triage               Read PR state and emit JSON action plan (read-only).");
+            println!("  execute [--plan F]   Run one triage→execute cycle. --plan reads from file");
+            println!("                       instead of re-triaging.");
+            println!("  daemon               Loop triage→execute forever. Single-instance via PID");
+            println!("                       file at .chump-locks/paramedic.lock.");
+            println!();
+            println!("Options:");
+            println!("  --dry-run            Print actions; do not actually run gh commands.");
+            println!("  --interval-secs N    Daemon loop interval in seconds (default: 600).");
+            println!("  --budget-secs N      Per-PR action budget in seconds (default: 90).");
+            println!("  --plan F             Path to JSON plan file (execute only).");
+            println!();
+            println!("Examples:");
+            println!("  chump paramedic triage");
+            println!("  chump paramedic triage | chump paramedic execute --plan /dev/stdin");
+            println!("  chump paramedic daemon --interval-secs 300 --dry-run");
+            return Ok(());
+        }
+
+        match subcmd {
+            "triage" => match paramedic::triage(&repo_root, dry_run) {
+                Ok(plan) => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&plan).unwrap_or_default()
+                    );
+                }
+                Err(e) => {
+                    eprintln!("chump paramedic triage: {e}");
+                    std::process::exit(1);
+                }
+            },
+            "execute" => {
+                let budget_secs = args
+                    .iter()
+                    .position(|a| a == "--budget-secs")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(90);
+
+                // Optionally read plan from --plan <file>; otherwise triage first.
+                let plan_path = args
+                    .iter()
+                    .position(|a| a == "--plan")
+                    .and_then(|i| args.get(i + 1));
+
+                let plan = if let Some(path) = plan_path {
+                    let raw = std::fs::read_to_string(path)
+                        .with_context(|| format!("reading plan from {path}"))?;
+                    serde_json::from_str::<paramedic::ActionPlan>(&raw)
+                        .context("parsing plan JSON")?
+                } else {
+                    paramedic::triage(&repo_root, dry_run)?
+                };
+
+                if let Err(e) = paramedic::execute(&plan, &repo_root, dry_run, budget_secs) {
+                    eprintln!("chump paramedic execute: {e}");
+                    std::process::exit(1);
+                }
+            }
+            "daemon" => {
+                let interval_secs = args
+                    .iter()
+                    .position(|a| a == "--interval-secs")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(600);
+
+                if let Err(e) = paramedic::daemon(interval_secs, &repo_root, dry_run) {
+                    eprintln!("chump paramedic daemon: {e}");
+                    std::process::exit(1);
+                }
+            }
+            other => {
+                eprintln!("chump paramedic: unknown subcommand '{other}'");
+                eprintln!("Run 'chump paramedic help' for usage.");
                 std::process::exit(1);
             }
         }

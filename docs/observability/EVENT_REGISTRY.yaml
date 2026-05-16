@@ -1258,6 +1258,14 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, pr, detail]
 
+  # ── Chump paramedic rule-engine rescue daemon (INFRA-1375) ───────────────
+  - kind: paramedic_action
+    emitter: src/paramedic.rs (INFRA-1375)
+    trigger: paramedic daemon determined an action to take on an open PR (REBASE_DIRTY, RERUN_FLAKE, ALLOWLIST_EMIT_NO_REG, SQUASH_INIT_LEAK, FILE_CLUSTER_RESCUE); emitted once per action per PR per triage cycle
+    consumers: [fleet-brief, kpi-report, waste-tally]
+    fields_required: [ts, kind, pr_number, action, reason, dry_run]
+    fields_optional: [gap_id]
+
   # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
   - kind: auto_merge_armed
     emitter: scripts/coord/auto-merge-armer.sh (INFRA-1113)
