@@ -107,9 +107,10 @@ jobs:
               - 'scripts/ci/verify-external-golden-path.sh'
               - '.github/workflows/ci.yml'
             tauri:
-              - 'src/**'
+              - 'src/desktop_launcher.rs'
               - 'desktop/**'
               - 'e2e-tauri/**'
+              - 'src-tauri/**'
             rust:
               - 'src/**'
               - 'crates/**'
