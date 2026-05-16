@@ -188,6 +188,7 @@ mod skills;
 mod slack;
 mod spawn_worker_tool;
 mod speculative_execution;
+mod stack_detect;
 mod state_db;
 mod stream_events;
 mod streaming_provider;
