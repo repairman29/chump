@@ -102,6 +102,52 @@ impl GapStore {
         &self.conn
     }
 
+    /// INFRA-1435: append an audit row to `gap_dup_archive_audit` (creates
+    /// the table on first call). Used by `chump gap consolidate --apply`
+    /// to record a dup-archive decision: which ID was kept, which was
+    /// archived, the similarity score, the depends_on rewrite count, the
+    /// operator-provided reason, and a unix timestamp.
+    pub fn record_dup_archive(
+        &self,
+        kept_id: &str,
+        archived_id: &str,
+        similarity_pct: u32,
+        depends_on_rewrites: usize,
+        reason: &str,
+        operator: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "CREATE TABLE IF NOT EXISTS gap_dup_archive_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                kept_id TEXT NOT NULL,
+                archived_id TEXT NOT NULL,
+                similarity_pct INTEGER NOT NULL,
+                depends_on_rewrites INTEGER NOT NULL DEFAULT 0,
+                reason TEXT NOT NULL,
+                operator TEXT NOT NULL DEFAULT '',
+                ts INTEGER NOT NULL
+             )",
+            [],
+        )?;
+        let ts = unix_now();
+        self.conn.execute(
+            "INSERT INTO gap_dup_archive_audit
+                (kept_id, archived_id, similarity_pct, depends_on_rewrites,
+                 reason, operator, ts)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![
+                kept_id,
+                archived_id,
+                similarity_pct,
+                depends_on_rewrites as i64,
+                reason,
+                operator,
+                ts,
+            ],
+        )?;
+        Ok(())
+    }
+
     pub fn open(repo_root: &Path) -> Result<Self> {
         let path = Self::db_path(repo_root);
         if let Some(parent) = path.parent() {

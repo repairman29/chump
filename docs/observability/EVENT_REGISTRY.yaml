@@ -2880,6 +2880,17 @@ events:
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
 
+  - kind: gap_dup_archived
+    effect_metric: self
+    emitter: src/main.rs gap consolidate --apply handler (INFRA-1435)
+    trigger: chump gap consolidate --apply detected a near-duplicate pair above
+      threshold (default 90% Jaccard with --apply), archived the higher-ID gap
+      as duplicate of the lower-ID gap, rewrote any depends_on backlinks across
+      open gaps, and wrote an audit row to gap_dup_archive_audit.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, kept_id, archived_id, similarity_pct,
+      depends_on_rewrites, reason]
+
   # ── INFRA-1247: alert classifier false-positive suppression ───────────────
   - kind: alert_classifier_suppressed
     effect_metric: self
