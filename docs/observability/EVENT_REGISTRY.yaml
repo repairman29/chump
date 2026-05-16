@@ -2454,6 +2454,22 @@ events:
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, gap_id, reason, branch, bypassed_by]
 
+  # ── INFRA-1372: pre-push HEAD-drift detection ─────────────────────────────
+  - kind: prepush_head_drift
+    emitter: scripts/git-hooks/pre-push (INFRA-1372)
+    trigger: HEAD moved during cargo test run (Rust test leaked a git commit via GIT_DIR inheritance)
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, pre_head, post_head, branch]
+    docs: |
+      Emitted immediately before blocking the push. pre_head and post_head are
+      the full 40-char SHA of HEAD before and after the cargo test run. The delta
+      indicates that at least one Rust test called Command::new("git commit") (or
+      equivalent) without clearing GIT_DIR, causing the commit to land on the
+      real worktree branch rather than the test's temporary repo fixture.
+      Fix: add env_remove("GIT_DIR")/env_remove("GIT_WORK_TREE")/
+      env_remove("GIT_COMMON_DIR")/env_remove("GIT_INDEX_FILE") to all
+      Command::new("git") invocations in the offending test.
+
   # ── INFRA-1006: bot-merge watchdog ────────────────────────────────────────
   - kind: bot_merge_watchdog_killed
     effect_metric: self
