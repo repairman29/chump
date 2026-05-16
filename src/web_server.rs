@@ -970,6 +970,52 @@ async fn handle_lease_release_expired(
     })))
 }
 
+/// PRODUCT-127: GET /api/gap/drift-status — count gaps with closed_pr set but
+/// status=open (state.db drift). Powers the cockpit "Gap drift: N instances" row.
+async fn handle_gap_drift_status(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let repo_root = crate::repo_path::runtime_base();
+    let store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("open gap store: {e}"),
+            ));
+        }
+    };
+    let gaps = match store.list(None) {
+        Ok(g) => g,
+        Err(e) => {
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("list gaps: {e}")));
+        }
+    };
+    // Drift = closed_pr set but status is still "open" (not done/shipped).
+    // These stale rows confuse the picker into re-claiming already-shipped work.
+    let instances: Vec<serde_json::Value> = gaps
+        .iter()
+        .filter(|g| g.closed_pr.is_some() && g.status != "done" && g.status != "shipped")
+        .map(|g| {
+            serde_json::json!({
+                "gap_id": g.id,
+                "reason": format!(
+                    "closed_pr=#{} but status={}",
+                    g.closed_pr.unwrap_or(0),
+                    g.status
+                ),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({
+        "count": instances.len(),
+        "instances": instances,
+    })))
+}
+
 /// PRODUCT-127: POST /api/gap/dep-clean — strip depends_on entries pointing
 /// at done gaps. Powers cockpit Gap-store drift card's [Repair drift] button.
 async fn handle_gap_dep_clean(
@@ -7308,7 +7354,8 @@ fn build_api_router() -> Router {
         .route("/api/gap/{id}/stream", get(handle_gap_workflow_stream))
         .route("/api/gap/work/{id}", post(handle_gap_work))
         .route("/api/gap/work/{id}/retry", post(handle_gap_work_retry))
-        // PRODUCT-127: cockpit Gap-store drift card [Repair drift] action.
+        // PRODUCT-127: cockpit Gap-store drift card — status query + repair action.
+        .route("/api/gap/drift-status", get(handle_gap_drift_status))
         .route("/api/gap/dep-clean", post(handle_gap_dep_clean))
         // PRODUCT-129: cockpit Lock-contention card [Release expired leases].
         .route(
