@@ -3527,3 +3527,11 @@ events:
       from 2026-05-16T04:30 in the audit trail.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, ours, theirs, mode, adds]
+  - kind: pre_commit_ac_test_missing
+    emitter: scripts/git-hooks/pre-commit-ac-completeness.sh (INFRA-1401)
+    trigger: A commit referencing a gap ID has acceptance_criteria that name a
+      scripts/ci|coord|ops/*.sh file but that file is neither staged nor present
+      in HEAD. The commit is blocked until the test ships or an AC-Backfill-Reason
+      trailer is provided.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gaps, missing_files]
