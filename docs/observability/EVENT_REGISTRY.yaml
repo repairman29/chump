@@ -3224,3 +3224,16 @@ events:
       degraded mode without log spam.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, criticality, reason, expected_file]
+
+  # ── INFRA-1441: bot-merge bypass audit trail ─────────────────────────────
+  - kind: bot_merge_bypassed
+    emitter: scripts/git-hooks/pre-push (INFRA-1441)
+    trigger: >
+      Operator pushed a chump/<gap-id> branch with CHUMP_BYPASS_BOT_MERGE=1
+      and an accompanying Bot-Merge-Bypass: <reason> trailer on the HEAD
+      commit body. The trailer is now mandatory for the bypass (mirrors
+      Rust-First-Bypass / Obs-Bypass-Reason conventions) so the audit trail
+      captures the reason on permanent record. Surfaces every bypass to
+      fleet-brief + ops-audit so the bypass RATE is visible.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, branch, gap, reason]

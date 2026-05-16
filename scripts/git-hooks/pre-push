@@ -643,6 +643,54 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         exit 1
     fi
 
+    # INFRA-1441: when CHUMP_BYPASS_BOT_MERGE=1 IS set, require a
+    # `Bot-Merge-Bypass: <reason>` trailer on the HEAD commit body. This
+    # mirrors the Rust-First-Bypass / Obs-Bypass-Reason convention so every
+    # bypass leaves an audit trail. Emits kind=bot_merge_bypassed per push so
+    # fleet-brief / ops-audit can surface the bypass rate.
+    if [[ "$remote_sha" == "$ZERO_SHA" ]] \
+        && [[ "$branch" =~ ^chump/[a-zA-Z]+-[0-9]+ ]] \
+        && [[ "${CHUMP_BYPASS_BOT_MERGE:-0}" == "1" ]] \
+        && [[ "${CHUMP_BOT_MERGE_IN_PROGRESS:-0}" != "1" ]] \
+        && [[ "${CHUMP_OPERATOR_RECOVERY:-0}" != "1" ]]; then
+        # Extract HEAD commit message body and grep for the trailer.
+        head_msg="$(git log -1 --format='%B' "$local_sha" 2>/dev/null || true)"
+        if ! grep -qE '^Bot-Merge-Bypass:[[:space:]]*\S' <<<"$head_msg"; then
+            echo "[pre-push] BLOCKED (INFRA-1441): CHUMP_BYPASS_BOT_MERGE=1 requires audit trailer." >&2
+            echo "" >&2
+            echo "[pre-push] Bypassing the bot-merge guard is fine sometimes, but the audit" >&2
+            echo "[pre-push] chain needs the reason on permanent record. Add a trailer to the" >&2
+            echo "[pre-push] HEAD commit body:" >&2
+            echo "" >&2
+            echo "[pre-push]   Bot-Merge-Bypass: <one-sentence reason>" >&2
+            echo "" >&2
+            echo "[pre-push] Common reasons: bot-merge stalled (INFRA-1399), test gate flake," >&2
+            echo "[pre-push] doc-only PR, sibling PR contention, etc." >&2
+            echo "" >&2
+            echo "[pre-push] To amend the HEAD commit message:" >&2
+            echo "[pre-push]   git commit --amend  # then add the trailer line at end of body" >&2
+            echo "" >&2
+            exit 1
+        fi
+        # Trailer present — emit audit event.
+        reason="$(grep -E '^Bot-Merge-Bypass:' <<<"$head_msg" | head -1 | sed -E 's/^Bot-Merge-Bypass:[[:space:]]*//')"
+        # Best-effort gap-id extraction from branch name.
+        gap_from_branch="$(echo "$branch" | sed -E 's|^chump/||' | awk -F- '{print toupper($1)"-"$2}')"
+        repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+        # If we're inside a worktree, the .chump-locks/ambient.jsonl lives at the main repo.
+        main_repo="$(git worktree list --porcelain 2>/dev/null | awk '/^worktree / {print $2; exit}')"
+        [[ -n "$main_repo" && -d "$main_repo/.chump-locks" ]] && repo_root="$main_repo"
+        ambient="${CHUMP_AMBIENT_LOG:-$repo_root/.chump-locks/ambient.jsonl}"
+        ts_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        mkdir -p "$(dirname "$ambient")" 2>/dev/null || true
+        # Sanitise the reason for JSON: drop quotes + backslashes.
+        reason_clean="$(echo "$reason" | tr -d '"\\' | head -c 200)"
+        printf '{"ts":"%s","session":"pre-push","event":"AUDIT","kind":"bot_merge_bypassed","branch":"%s","gap":"%s","reason":"%s"}\n' \
+            "$ts_iso" "$branch" "$gap_from_branch" "$reason_clean" \
+            >> "$ambient" 2>/dev/null || true
+        echo "[pre-push] INFRA-1441: bot-merge bypass authorized via trailer (reason: $reason_clean)" >&2
+    fi
+
     # INFRA-368: capture rebase state once per pushed ref so the per-guard
     # checks don't all re-grep the reflog.
     REBASE_DETECTED=0
