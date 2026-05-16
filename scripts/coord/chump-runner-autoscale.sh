@@ -26,6 +26,9 @@
 
 set -euo pipefail
 
+# shellcheck source=lib/github_cache.sh
+source "$(dirname "$0")/lib/github_cache.sh"
+
 REPO_OWNER="${CHUMP_REPO_OWNER:-repairman29}"
 REPO_NAME="${CHUMP_REPO_NAME:-chump}"
 MIN_RUNNERS="${CHUMP_RUNNER_MIN:-1}"
@@ -47,7 +50,7 @@ emit_kind() {
 log() { echo "[$(date -u +%FT%TZ)] $*"; }
 
 count_online() {
-  gh api "/repos/$REPO_OWNER/$REPO_NAME/actions/runners" \
+  chump_gh api "/repos/$REPO_OWNER/$REPO_NAME/actions/runners" \
     --jq '[.runners[] | select(.status=="online" and (.labels[].name | contains("chump-fleet")))] | length' 2>/dev/null || echo 0
 }
 
@@ -58,12 +61,12 @@ count_queued() {
 
 list_idle_runners() {
   # Idle = online AND busy=false. Returns "id name" tab-separated.
-  gh api "/repos/$REPO_OWNER/$REPO_NAME/actions/runners" \
+  chump_gh api "/repos/$REPO_OWNER/$REPO_NAME/actions/runners" \
     --jq '.runners[] | select(.status=="online" and .busy==false and (.labels[].name | contains("chump-fleet"))) | "\(.id)\t\(.name)"' 2>/dev/null
 }
 
 list_busy_runners() {
-  gh api "/repos/$REPO_OWNER/$REPO_NAME/actions/runners" \
+  chump_gh api "/repos/$REPO_OWNER/$REPO_NAME/actions/runners" \
     --jq '.runners[] | select(.status=="online" and .busy==true and (.labels[].name | contains("chump-fleet"))) | "\(.id)\t\(.name)"' 2>/dev/null
 }
 
@@ -134,7 +137,7 @@ decide_and_act() {
           log "SCALE-DOWN: runner $rid ($rname) idle for $((now - seen_at))s, reaping"
           emit_kind "runner_scaled" "\"action\":\"reap\",\"reason\":\"idle\",\"online_before\":$online,\"runner_id\":$rid,\"runner_name\":\"$rname\""
           # Deregister from GitHub
-          gh api -X DELETE "/repos/$REPO_OWNER/$REPO_NAME/actions/runners/$rid" 2>&1 | head -1 | sed 's/^/  reap> /'
+          chump_gh api -X DELETE "/repos/$REPO_OWNER/$REPO_NAME/actions/runners/$rid" 2>&1 | head -1 | sed 's/^/  reap> /'
           # Stop launchd service (if naming matches our convention)
           local plist="$HOME/Library/LaunchAgents/com.chump.actions-runner-$(echo "$rname" | grep -oE '[0-9]+$').plist"
           [ -f "$plist" ] && launchctl bootout "gui/$UID" "$plist" 2>/dev/null || true
