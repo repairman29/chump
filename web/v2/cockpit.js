@@ -382,6 +382,13 @@ class ChumpViewCockpit extends HTMLElement {
             <span class="question">What needs me?</span>
           </div>
           <div id="slot-attention"></div>
+          <div class="inbox-preview-wrap" style="margin-top:12px; border-top:1px solid var(--border,#2a2a2e); padding-top:12px;">
+            <div class="zone-header">
+              <span>Stuck Items</span>
+              <span class="question">What's blocked?</span>
+            </div>
+            <div id="slot-stuck"></div>
+          </div>
           <div class="inbox-preview-wrap">
             <div class="zone-header">
               <span>Inbox</span>
@@ -454,6 +461,7 @@ class ChumpViewCockpit extends HTMLElement {
     // each component runs its own connectedCallback lifecycle inside the
     // shadow tree.
     this.#mount('slot-attention', 'chump-operator-attention');
+    this.#mount('slot-stuck', 'chump-stuck-items');   // PRODUCT-080
     this.#mount('slot-inbox', 'chump-inbox');
     this.#mount('slot-fleet', 'chump-fleet-sidebar');
     this.#mount('slot-ambient', 'chump-ambient-viewer');

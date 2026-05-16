@@ -5031,6 +5031,7 @@ const VIEWS = {
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
+  stuck:         () => document.createElement('chump-stuck-items'),        // PRODUCT-080
   config:        () => document.createElement('chump-config-dials'), // PRODUCT-118
 
   cockpit:       () => document.createElement('chump-view-cockpit'),        // PRODUCT-122
