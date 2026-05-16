@@ -2607,6 +2607,22 @@ events:
     fields_required: [ts, kind, pr_number, run_id, diff_paths, failing_tests]
 
   # ── RESILIENT-014: test-gate bypass audit ─────────────────────────────────
+  - kind: merge_preview_dirty
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push Guard 0e (INFRA-1391)
+    trigger: git merge-tree detected a DIRTY semantic conflict between HEAD and
+      origin/main before the push; push was blocked to prevent a 20-min CI thrash
+    consumers: [fleet-brief, waste-tally, curator]
+    fields_required: [ts, kind, branch, conflict_files]
+
+  - kind: merge_preview_skipped
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push Guard 0e (INFRA-1391)
+    trigger: CHUMP_MERGE_PREVIEW=0 bypassed the merge-tree pre-check; logged for
+      waste-tally and operator audit
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, gap_id, branch, bypassed_by]
+
   - kind: test_gate_bypassed
     effect_metric: self
     emitter: scripts/git-hooks/pre-push (RESILIENT-014)

@@ -32,6 +32,11 @@
 # before allowing a force-push and aborts if the remote tip has moved.
 # Bypass: CHUMP_FORCE_LEASE_CHECK=0 git push  (use when intentional)
 #
+# Guard 0e (merge-tree DIRTY conflict pre-check — INFRA-1391): Runs
+# `git merge-tree <base> origin/main HEAD` before the push and aborts if
+# the output contains conflict markers. Catches the "push → 20min CI → DIRTY"
+# cycle in <2s locally. Bypass: CHUMP_MERGE_PREVIEW=0 git push
+#
 # Guard 4 (bot-merge required for new gap branches — INFRA-719): On a
 # first-push (new branch) of a chump/<gap-id>-* branch, requires that the
 # push was initiated by bot-merge.sh (CHUMP_BOT_MERGE_IN_PROGRESS=1).
@@ -59,6 +64,7 @@ if [ "${CHUMP_OPERATOR_RECOVERY:-0}" = "1" ]; then
     export CHUMP_ALLOW_REUSE_BRANCH=1
     export CHUMP_ALLOW_GAP_REWRITE=1
     export CHUMP_TEST_GATE=0
+    export CHUMP_MERGE_PREVIEW=0
     _or_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     _or_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
     mkdir -p "${_or_root}/.chump-locks" 2>/dev/null || true
@@ -208,6 +214,70 @@ if [[ "${CHUMP_FIXTURE_AUTHOR_GUARD:-1}" != "0" ]]; then
         fi
     fi
     unset _fa_regex _fa_local_sha _fa_base _fa_ghosts _fa_keep _fa_branch _fa_failed _sha
+fi
+
+# -----------------------------------------------------------------------
+# Guard 0e: merge-tree DIRTY conflict pre-check (INFRA-1391)
+#
+# Runs `git merge-tree <base> origin/main HEAD` to detect semantic
+# conflicts with main BEFORE pushing — catches the "push → 20min CI →
+# DIRTY → rebase" cycle by failing in <2s locally.
+#
+# The three-tree form is used for portability across git versions.
+# Exit-on-first-conflict: once the output contains a conflict marker
+# (<<<<<<<) we stop, print the files involved, and refuse the push.
+#
+# Skip-flag: CHUMP_MERGE_PREVIEW=0 git push
+#   Logs kind=merge_preview_skipped to ambient.jsonl with gap_id +
+#   branch so waste-tally can track voluntary bypasses.
+# -----------------------------------------------------------------------
+if [[ "${CHUMP_MERGE_PREVIEW:-1}" == "0" ]]; then
+    _mp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    _mp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    _mp_gap="$(echo "$_mp_branch" | grep -oiE '[A-Za-z]+-[0-9]+' | head -1 \
+        | tr '[:lower:]' '[:upper:]' || echo "")"
+    printf '{"ts":"%s","kind":"merge_preview_skipped","gap_id":"%s","branch":"%s","bypassed_by":"CHUMP_MERGE_PREVIEW=0"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_mp_gap" "$_mp_branch" \
+        >> "${_mp_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+    unset _mp_root _mp_branch _mp_gap
+elif command -v git &>/dev/null; then
+    # Fetch latest main so the merge-tree comparison is current.
+    git fetch origin main --quiet 2>/dev/null || true
+    _mp_base="$(git merge-base HEAD origin/main 2>/dev/null || echo "")"
+    _mp_head="$(git rev-parse HEAD 2>/dev/null || echo "")"
+    # Only check when HEAD is actually ahead of main (skip clean/up-to-date branches).
+    if [[ -n "$_mp_base" && "$_mp_base" != "$_mp_head" ]]; then
+        # Three-tree merge-tree: base, ours (origin/main), theirs (HEAD).
+        # Conflict markers appear as lines starting with +<<<<<<<, +=======,
+        # +>>>>>>> in the diff output section.
+        _mp_out="$(git merge-tree "$_mp_base" origin/main HEAD 2>/dev/null || true)"
+        if echo "$_mp_out" | grep -qE '^\+<{6,7} '; then
+            # Extract conflicting file names from the diff header lines.
+            _mp_files="$(echo "$_mp_out" \
+                | grep -E '^(diff --cc |diff --git a/)' \
+                | sed -E 's/^diff --cc //; s/^diff --git a\///' \
+                | awk '{print $1}' | sort -u | head -10 | tr '\n' ' ')"
+            _mp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+            _mp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+            echo "" >&2
+            echo "[pre-push] BLOCKED (INFRA-1391): DIRTY conflict with origin/main detected." >&2
+            echo "[pre-push] Conflict files: ${_mp_files:-<see merge-tree output>}" >&2
+            echo "[pre-push] Run:" >&2
+            echo "[pre-push]   git fetch origin main && git rebase origin/main" >&2
+            echo "[pre-push]   # resolve conflicts, git add, git rebase --continue, re-push" >&2
+            echo "[pre-push] Bypass (off-main work, e.g. long-running feature branch):" >&2
+            echo "[pre-push]   CHUMP_MERGE_PREVIEW=0 git push" >&2
+            echo "" >&2
+            # Emit ambient event for waste-tally.
+            printf '{"ts":"%s","kind":"merge_preview_dirty","branch":"%s","conflict_files":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_mp_branch" \
+                "$(echo "${_mp_files}" | sed 's/ *$//')" \
+                >> "${_mp_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+            unset _mp_base _mp_head _mp_out _mp_files _mp_branch _mp_root
+            exit 1
+        fi
+    fi
+    unset _mp_base _mp_head _mp_out
 fi
 
 # -----------------------------------------------------------------------
