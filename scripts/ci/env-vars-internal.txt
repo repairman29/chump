@@ -354,6 +354,8 @@ CHUMP_SKIP_PROBE
 CHUMP_ALLOW_STOMP
 # ── INFRA-1375: paramedic daemon per-cycle time budget ────────────────────────
 CHUMP_PARAMEDIC_BUDGET_SECS
+# ── INFRA-1407: ci retrigger bypass + worktree base ──────────────────────────
+CHUMP_CI_RETRIGGER
 # ── INFRA-1397: paramedic leader-election debug bypass ────────────────────────
 CHUMP_PARAMEDIC_FORCE_LEADER
 # ── INFRA-1361: gh-token rotate test-isolation overrides ─────────────────────
