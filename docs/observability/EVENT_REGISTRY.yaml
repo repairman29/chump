@@ -1290,6 +1290,27 @@ events:
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, starved_count, untraced_p0_count]
 
+  # ── Log health (INFRA-1468) ───────────────────────────────────────────────────
+  - kind: ambient_rotation_lagging
+    effect_metric: self
+    emitter: src/ambient_emit.rs maybe_warn_and_rotate (INFRA-1468)
+    trigger: >
+      ambient.jsonl exceeded CHUMP_AMBIENT_MAX_MB threshold (default 10 MB).
+      Written immediately before the in-process rotation so it lands in the
+      archived .1 copy. Repeat events indicate rotation is failing.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, size_bytes, threshold_bytes]
+
+  - kind: ambient_rotated
+    effect_metric: self
+    emitter: scripts/ops/ambient-rotate-now.sh (INFRA-1468)
+    trigger: >
+      scripts/ops/ambient-rotate-now.sh completed a force-rotation.
+      Written to the fresh ambient.jsonl immediately after the rename so
+      every rotation is traceable.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, size_bytes_before, lines_before, archive]
+
   # (product_drought removed by INFRA-1287: emitter scripts/ops/pillar-drought-detector.sh
   #  never shipped; drought detection done via chump gap list + pillar counts)
 
