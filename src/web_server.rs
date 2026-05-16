@@ -5017,7 +5017,17 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
                     .output();
                 match tokio::time::timeout(timeout_dur, cmd).await {
                     Ok(Ok(o)) if o.status.success() => parse_gh_pr_list(&o.stdout),
-                    _ => (None, None, None),
+                    Ok(Ok(_)) | Ok(Err(_)) => (None, None, None),
+                    Err(_) => {
+                        // Timeout: gh call exceeded per-call deadline. INFRA-1464.
+                        tracing::warn!(
+                            target: "infra_1464",
+                            branch = %branch,
+                            timeout_s = gh_timeout_secs,
+                            "fleet_status_gh_timeout: gh pr list timed out"
+                        );
+                        (None, None, None)
+                    }
                 }
             }
         })
