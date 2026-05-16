@@ -53,6 +53,14 @@ installers:
     depends_on: [chump-binary]
     adds: ~/Library/LaunchAgents/com.chump.opus-curator.plist + 10-min run
 
+  - id: paramedic-launchd
+    why: INFRA-1397 — chump paramedic daemon runs every 10min rescuing stuck PRs (REBASE_DIRTY, RERUN_FLAKE, etc.). Without this, PR rescue is manual-only.
+    priority: P1
+    install: bash scripts/setup/install-paramedic.sh
+    check: bash scripts/setup/install-paramedic.sh --check
+    depends_on: [chump-binary]
+    adds: ~/Library/LaunchAgents/com.chump.paramedic.plist + daemon process
+
   - id: ambient-hooks
     why: FLEET-023 — claude SessionStart / PreToolUse / Stop hooks emit ambient events. Without these, the audit stream is silent.
     priority: P2
