@@ -145,16 +145,21 @@ fn estimate_cost_usd(input_tokens: u64, output_tokens: u64) -> f64 {
 }
 
 /// Emit kind=orchestrate_session_summary at the end of every orchestrate session.
-/// Uses typed JSON values (ints/floats) rather than string-only ambient events.
-/// INFRA-1363.
-fn emit_session_summary(
-    repo_root: &Path,
-    session_id: &str,
+/// Session metrics bundled to avoid too-many-arguments clippy lint.
+struct SessionSummaryStats {
     intents_routed: u64,
     intents_failed: u64,
     tool_calls: u64,
     cost_usd: f64,
     wall_time_s: u64,
+}
+
+/// Uses typed JSON values (ints/floats) rather than string-only ambient events.
+/// INFRA-1363.
+fn emit_session_summary(
+    repo_root: &Path,
+    session_id: &str,
+    stats: SessionSummaryStats,
     exit_reason: &str,
 ) {
     let ambient = if let Ok(path) = std::env::var("CHUMP_AMBIENT_IN_PROMPT") {
@@ -169,11 +174,11 @@ fn emit_session_summary(
         "ts": ts,
         "kind": "orchestrate_session_summary",
         "session_id": session_id,
-        "intents_routed": intents_routed,
-        "intents_failed": intents_failed,
-        "tool_calls": tool_calls,
-        "cost_usd": (cost_usd * 10000.0).round() / 10000.0,
-        "wall_time_s": wall_time_s,
+        "intents_routed": stats.intents_routed,
+        "intents_failed": stats.intents_failed,
+        "tool_calls": stats.tool_calls,
+        "cost_usd": (stats.cost_usd * 10000.0).round() / 10000.0,
+        "wall_time_s": stats.wall_time_s,
         "exit_reason": exit_reason,
     });
     use std::io::Write as _;
@@ -724,11 +729,13 @@ pub async fn run(repo_root: &Path) -> Result<()> {
     emit_session_summary(
         repo_root,
         &session_id,
-        intents_routed,
-        intents_failed,
-        total_tool_calls,
-        cost_usd,
-        wall_time_s,
+        SessionSummaryStats {
+            intents_routed,
+            intents_failed,
+            tool_calls: total_tool_calls,
+            cost_usd,
+            wall_time_s,
+        },
         exit_reason,
     );
 
