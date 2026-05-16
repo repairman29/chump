@@ -3556,3 +3556,12 @@ events:
       without blocking the UI thread
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, source, status_filter, priority_filter, domain_filter, pillar_filter, search, result_count]
+  # ── INFRA-1535: self-hosted runner migration pipeline ─────────────────────
+  - kind: runner_migration_step
+    emitter: scripts/coord/chump-runner-migration-pipeline.sh (INFRA-1535)
+    trigger: Each stage of the self-hosted runner migration pipeline records
+      its progress. Fields include stage name, outcome (started/pr_armed/done),
+      and a note. Used to track the staged rollout of CI jobs to M4 runners.
+    consumers: [fleet-brief, ops-audit]
+    effect_metric: self
+    fields_required: [ts, kind, stage, outcome, note]
