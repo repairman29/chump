@@ -302,6 +302,25 @@ jobs:
       GITHUB_EMAIL: "admin+bot@axo.dev"
     if: ${{ !fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases }}
     steps:
+      # INFRA-1383: fail fast before spending 35min on artifact builds if the
+      # homebrew tap token is missing. v0.1.2 release burned full runner time
+      # because this check ran last. Now it runs first.
+      - name: Preflight — HOMEBREW_TAP_TOKEN secret present
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "${HOMEBREW_TAP_TOKEN}" ]; then
+            echo "::error::HOMEBREW_TAP_TOKEN secret is empty or not set."
+            echo "::error::This release will publish binaries but brew tap will NOT auto-update."
+            echo "::error::Fix: create a classic PAT (scope: public_repo) for repairman29/homebrew-chump"
+            echo "::error::     and add it as repo secret HOMEBREW_TAP_TOKEN at:"
+            echo "::error::     https://github.com/repairman29/chump/settings/secrets/actions"
+            echo "::error::See docs/process/RELEASE.md §Homebrew tap token for full procedure."
+            echo "::error::Manual fallback: download chump.rb from release assets, commit to"
+            echo "::error::     github.com/repairman29/homebrew-chump/Formula/ manually."
+            exit 1
+          fi
+          echo "HOMEBREW_TAP_TOKEN present — proceeding with tap update."
       - uses: actions/checkout@v6
         with:
           persist-credentials: true

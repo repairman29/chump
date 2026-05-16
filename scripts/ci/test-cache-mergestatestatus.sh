@@ -72,11 +72,12 @@ PY
 # ── 2. webhook receiver writes merge_state_status from pr.mergeable_state ───
 python3 - "$DB" <<'PY'
 import json, sqlite3, sys
+from datetime import datetime, timezone
 
 db = sys.argv[1]
 # Simulate webhook receiver upsert
 conn = sqlite3.connect(db)
-now = "2026-05-15T22:00:00Z"
+now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 # Full webhook payload (what GitHub sends)
 webhook_payload = {
     "action": "synchronize",
@@ -192,7 +193,8 @@ old_db = Path(sys.argv[1])
 repo_root = Path(sys.argv[2])
 
 # Create old-schema DB without merge_state_status
-now = "2026-05-15T22:00:00Z"
+from datetime import datetime, timezone
+now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 conn = sqlite3.connect(str(old_db))
 conn.executescript("""
 CREATE TABLE IF NOT EXISTS pr_state (
