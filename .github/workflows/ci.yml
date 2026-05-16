@@ -1161,6 +1161,48 @@ jobs:
     timeout-minutes: 15  # smoke tests + observability assertions; live-test step recently bumped to 20s budget
     steps:
       - uses: actions/checkout@v6
+        with:
+          # INFRA-1447: rust-first PR-gate needs full history to soft-reset
+          # to the merge-base. Default fetch-depth=1 leaves us with only
+          # the PR tip and merge-base lookups return HEAD.
+          fetch-depth: 0
+
+      - name: Rust-first PR-gate smoke test (INFRA-1447 contract)
+        # Keep the PR-side gate's soft-reset mechanism load-bearing. If a
+        # future git release changes how --diff-filter=A interacts with a
+        # soft-reset, this test fails before silent CI no-ops set in.
+        run: |
+          bash scripts/ci/test-rust-first-pr-gate.sh
+
+      - name: Rust-first PR-side gate (INFRA-1447 — closes squash-merge audit-loss)
+        # Pre-commit-rust-first.sh runs locally on individual commits, but
+        # `gh pr merge --squash` uses the PR body (not branch trailers) as
+        # the commit message, so per-commit Rust-First-Bypass trailers are
+        # lost in the squash. This step re-runs the same gate against the
+        # FULL PR diff using the PR body as the trailer source.
+        #
+        # Mechanism: soft-reset to merge-base so PR-adds appear in
+        # `git diff --cached --diff-filter=A`, write PR body into
+        # COMMIT_EDITMSG, invoke the existing gate unchanged.
+        #
+        # Bypass: edit PR description to include `Rust-First-Bypass: <reason>`.
+        # Skipped on merge_group / push events (the PR body isn't available
+        # outside pull_request context).
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          BASE_SHA="$(git merge-base origin/main HEAD)"
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" == "$(git rev-parse HEAD)" ]]; then
+              echo "[rust-first-pr-gate] no merge-base or PR has no commits beyond main — skip"
+              exit 0
+          fi
+          git reset --soft "$BASE_SHA" >/dev/null
+          MSG_FILE="$(git rev-parse --git-common-dir)/COMMIT_EDITMSG"
+          printf '%s' "${PR_BODY:-}" > "$MSG_FILE"
+          # Run the gate — exits 1 on block, 0 on pass or bypass.
+          bash scripts/git-hooks/pre-commit-rust-first.sh
 
       - name: Install Linux packages for chump-desktop (workspace member)
         run: |
