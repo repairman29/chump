@@ -180,7 +180,8 @@ pub async fn handle_stack_status() -> Json<serde_json::Value> {
         inf
     };
 
-    Json(serde_json::json!({
+    // INFRA-1337: merge the github_rate_limit snapshot into the top-level object.
+    let mut body = serde_json::json!({
         "status": "ok",
         "service": "chump-web",
         "openai_api_base": openai_base,
@@ -201,7 +202,16 @@ pub async fn handle_stack_status() -> Json<serde_json::Value> {
             ),
         },
         "tool_policy": crate::tool_policy::tool_policy_for_stack_status(),
-    }))
+    });
+    // Merge the two rate-limit keys (github_rate_limit + github_rate_limit_error)
+    // directly into the top-level object so callers can do d.github_rate_limit.
+    if let (Some(obj), serde_json::Value::Object(rl_map)) = (
+        body.as_object_mut(),
+        crate::github_rate_limit::snapshot_json(),
+    ) {
+        obj.extend(rl_map);
+    }
+    Json(body)
 }
 
 /// Redirect /favicon.ico to the PWA icon.

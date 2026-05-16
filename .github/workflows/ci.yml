@@ -1485,6 +1485,11 @@ jobs:
         # `chump ambient emit <kind> [--field k=v]...` (shipped via INFRA-1048).
         # Allowlist: scripts/ci/ambient-emit-allowlist.txt (17 existing sites).
         run: BASE_REF=origin/main bash scripts/ci/test-no-inline-ambient-printf.sh
+      - name: /api/stack-status github_rate_limit field — schema + wiring checks (INFRA-1337)
+        # Validates module wiring (source exists, declared in main.rs, referenced
+        # in health.rs, start_poller in web_server.rs) + schema simulation.
+        # Skips the slow cargo test step since that runs in cargo-test job.
+        run: bash scripts/ci/test-api-stack-status-rate-limit.sh
 
   # ── INFRA-1143: Synthetic-green stub pattern ───────────────────────────────
   # Required status checks in branch protection block forever when their path
