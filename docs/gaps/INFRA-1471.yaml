@@ -1,0 +1,18 @@
+- id: INFRA-1471
+  domain: INFRA
+  title: "RESILIENT: pressure-tiered disk reaper — autonomous escalation when disk fills"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    disk_critical hit 97% twice in session 2026-05-16. INFRA-1349's target-dir-reaper
+    correctly refused to touch active worktrees so disk pressure persisted until sibling
+    reapers caught up. Adds an autonomous tiered escalator that gets more aggressive as
+    free space decreases.
+  acceptance_criteria:
+    - "Tier ladder: >=50GB=idle, 20-50GB=Tier1 delegate to target-dir-reaper, 10-20GB=Tier2 target/ idle>2h + whole-worktree if PR merged+branch deleted, 5-10GB=Tier3 aggressive whole-worktree (no lease no uncommitted 30min idle), <5GB=Tier4 emit ALERT"
+    - "Safety contract: never reaps worktree with uncommitted changes, active lease, or (Tier2) live remote branch"
+    - "scripts/coord/disk-pressure-reaper.sh with --dry-run default"
+    - "scripts/plists/dev.chump.disk-pressure-reaper.plist runs every 15min via launchd"
+    - "scripts/ci/test-disk-pressure-reaper.sh: 10 invariants passing"
+  closed_pr: 2205

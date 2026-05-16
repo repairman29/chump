@@ -1,7 +1,7 @@
 - id: PRODUCT-118
   domain: PRODUCT
   title: "\"EFFECTIVE: PWA throttle/cost dials — live knobs for CHUMP_GH_MAX_CALLS_PER_MIN, model selection, fleet size; visible from CONFIG cadence\""
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -21,4 +21,5 @@
     - Wired in app.js VIEWS factory as 'config' route; loads via config-dials.js script tag
     - "Backend defaults: CHUMP_GH_MAX_CALLS_PER_MIN=60, CHUMP_WORK_BACKEND=claude"
     - Test scripts/ci/test-pwa-config-dials.sh 14 assertions all pass
+  closed_date: '2026-05-15'
 

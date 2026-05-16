@@ -1067,6 +1067,20 @@ events:
     trigger: bot-merge.sh hung beyond reaper threshold
     consumers: [audit-log]
 
+  - kind: bot_merge_stall_detected
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1399)
+    trigger: pre-push hook stalled longer than CHUMP_BOT_MERGE_PHASE_TIMEOUT_S (default 300s) during the git push step; typically caused by cargo fmt or another slow pre-push gate under sibling contention
+    consumers: [fleet-brief, waste-tally, operator-recall]
+    fields_required: [ts, kind, phase, timeout_s, gap_id, branch, note]
+
+  - kind: bot_merge_test_gate_skipped
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-1399)
+    trigger: bot-merge delegated the cargo test gate to CI by setting CHUMP_TEST_GATE=0 before push; CI on the PR runs the same tests, making the pre-push gate redundant and the source of sibling contention
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, gap_id, branch, note]
+
   - kind: bot_merge_hot_file
     effect_metric: self
     emitter: scripts/ops/bot-merge-watch.sh
@@ -1190,6 +1204,13 @@ events:
     emitter: scripts/dispatch/clarifying-question-detector.sh
     trigger: dispatched agent asked a question instead of acting
     consumers: [waste-tally, fleet-brief]
+
+  - kind: assertion_failure
+    effect_metric: self
+    emitter: src/assertion.rs (CREDIBLE-065, runtime assertion framework)
+    trigger: gap claim or ship operation detects data invariant violation
+    consumers: [audit-log, fleet-brief, operator-dashboard]
+    fields_required: [ts, gap_id, assertion_type, field_name, expected, actual, context]
 
   - kind: avoids_tool
     effect_metric: self
@@ -1544,6 +1565,22 @@ events:
     fields_optional: [gap_id]
     effect_metric: self
 
+  - kind: paramedic_heartbeat
+    emitter: src/paramedic.rs (INFRA-1397)
+    trigger: paramedic daemon leader completes one triage+execute cycle; emitted every --interval-secs (default 600s); absence for 15min triggers L4-SLO-1 breach (chump health --slo-check)
+    consumers: [fleet-brief, chump health --slo-check]
+    fields_required: [ts, kind, machine, pid, cycle_count, pr_count, last_action_count]
+    fields_optional: [dry_run]
+    effect_metric: self
+
+  - kind: paramedic_standby
+    effect_metric: self
+    emitter: src/paramedic.rs (INFRA-1397)
+    trigger: paramedic daemon process lost leader election and is waiting for leader expiry; emitted every 60s from the standby process
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, machine, pid]
+    fields_optional: [dry_run]
+
   # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
   - kind: auto_merge_armed
     effect_metric: self
@@ -1651,6 +1688,46 @@ events:
     trigger: operator types "exit"/"quit" or closes stdin
     consumers: [fleet-brief]
     fields_required: [ts, kind, intent, status]
+
+  - kind: orchestrate_llm_timeout
+    effect_metric: self
+    emitter: src/orchestrate.rs (chump orchestrate — INFRA-1364)
+    trigger: LLM call exceeds CHUMP_ORCHESTRATE_LLM_TIMEOUT_S (default 60s); emitted once
+      per timed-out attempt (max 2 per intent before session abort)
+    consumers: [fleet-brief, kpi-report, ops-audit]
+    fields_required: [ts, kind, session_id, attempt_number, call_kind, elapsed_s]
+    docs: |
+      attempt_number: 1 (first timeout, retry follows) or 2 (second timeout, session aborted).
+      call_kind: "intent_parse" — the orchestrator currently only wraps intent LLM calls.
+        "tool_select" and "summary" are reserved for future routing layers.
+      elapsed_s: actual wall-clock seconds elapsed before the timeout fired; should
+        be approximately CHUMP_ORCHESTRATE_LLM_TIMEOUT_S.
+      session_id: matches CHUMP_ORCHESTRATE_SESSION_ID or the synthesized session identity.
+      On attempt_number=2, a companion orchestrate_session_end{status="timeout"} is also
+        emitted, and INFRA-1363 session_summary will carry exit_reason="timeout".
+  - kind: orchestrate_session_summary
+    effect_metric: self
+    emitter: src/orchestrate.rs (chump orchestrate — emitted on each session exit, INFRA-1363)
+    trigger: session exits for any reason (clean, user_quit, error)
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, session_id, exit_reason, intents_routed]
+
+  - kind: orchestrate_session_resumed
+    emitter: src/orchestrate.rs (chump orchestrate --resume <session-id>)
+    trigger: operator invokes --resume for a non-clean-exited session within the max-resume limit
+    effect_metric: self
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, session_id, events_replayed, resume_attempts, prior_exit_reason]
+    docs: |
+      events_replayed: number of ambient events loaded for this session_id (up to 200).
+      resume_attempts: cumulative count including this invocation (1-based).
+      prior_exit_reason: exit_reason from the last orchestrate_session_summary event,
+        "unknown" if no summary event exists yet (pre-INFRA-1363 sessions).
+      Emitted before the interactive loop resumes so the event is always recorded
+      even if the resumed session immediately crashes again.
+      Refusal conditions (exit non-zero, no event emitted):
+        - exit_reason=clean → "session already completed"
+        - resume_attempts > CHUMP_ORCHESTRATE_MAX_RESUMES (default 3) → loop guard
 
   # ── Intent parser (INFRA-798) ─────────────────────────────────────────────
   - kind: intent_parse_ok
@@ -2904,6 +2981,16 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
 
+  - kind: target_artifact_reaped
+    effect_metric: self
+    emitter: scripts/coord/target-dir-reaper.sh (INFRA-1349)
+    trigger: target-dir-reaper.sh cleaned a build-artifact directory under disk
+      pressure. Already allowlisted in scripts/ci/event-registry-reserved.txt
+      but the precommit-strict-replay hook reads the registry YAML directly —
+      this explicit entry unblocks rebased PRs that picked up the emit.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, path, freed_gb, worktree_age_h]
+
   - kind: gap_reserve_similarity_block
     effect_metric: self
     emitter: src/main.rs gap reserve handler (INFRA-1149)
@@ -2913,6 +3000,17 @@ events:
       override.
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
+
+  - kind: gap_import_similarity_block
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs import_from_yaml_with_similarity (INFRA-1434)
+    trigger: chump gap import detected a net-new gap whose title has Jaccard
+      similarity >= CHUMP_GAP_IMPORT_SIMILARITY_BLOCK (default 0.85) against an
+      existing open or recently-closed gap. Row is skipped from import (treated
+      as duplicate); import exits 1 if any row was blocked.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, proposed_id, top_match_id, top_match_title,
+      top_match_score]
 
   - kind: gap_dup_archived
     effect_metric: self
@@ -2972,10 +3070,39 @@ events:
 
   - kind: branch_reaped
     effect_metric: self
-    emitter: scripts/ops/stale-branch-reaper.sh (INFRA-1453)
-    trigger: stale-branch-reaper.sh (the launchd-scheduled reaper) deleted a stale remote branch — per-deletion event so operator can audit which branches without grepping /tmp logs. Reaper_run summary still fires at end of run.
+    emitter: scripts/coord/branch-reaper.sh (INFRA-1453)
+    trigger: branch-reaper.sh deleted a stale remote branch. Per-deletion event
+      with reaper_run_id so operator can audit which branches were cleaned without
+      grepping /tmp logs. Emitted in --act mode; also emitted in --dry-run with
+      --emit-anyway for CI + observability tests. Supersedes branch_reaper_pruned
+      (legacy compat kind kept until fleet-brief migrates).
     consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, branch_name, age_days, repo, reaper_run_id]
+
+  - kind: branch_reaper_run_summary
+    effect_metric: self
+    emitter: scripts/coord/branch-reaper.sh (INFRA-1453)
+    trigger: branch-reaper.sh completed a full scan. Always emitted (dry-run and
+      act). Use reaped_count to track waste removed; dry_run field to distinguish.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, reaped_count, skipped_open_pr_count, skipped_fresh_count, duration_s, dry_run, reaper_run_id]
     fields_required: [ts, kind, branch, age_days, reaper_run_id]
+  - kind: orphan_branch_deleted
+    effect_metric: self
+    emitter: scripts/coord/orphan-branch-sweeper.sh INFRA-1450
+    trigger: orphan-branch-sweeper.sh deleted a remote branch that had no open PR
+      and whose last commit exceeded the age threshold (default 14d). Fires in
+      --apply mode only; dry-run runs produce no event.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, branch, last_commit_age_days, sweep_run_id]
+
+  - kind: orphan_branch_sweep_run
+    effect_metric: self
+    emitter: scripts/coord/orphan-branch-sweeper.sh INFRA-1450
+    trigger: orphan-branch-sweeper.sh completed a full scan. Emitted in both
+      dry-run and apply modes; use dry_run field to distinguish.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, nwo, candidates, deleted, skipped_open_pr, skipped_recent, dry_run, sweep_run_id]
 
   - kind: dup_pr_blocked
     effect_metric: self
@@ -3233,3 +3360,32 @@ events:
       degraded mode without log spam.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, criticality, reason, expected_file]
+
+  # ── PRODUCT-078: PWA Daily Brief ─────────────────────────────────────────
+  - kind: pwa_brief_loaded
+    emitter: web/v2/daily-brief.js ChumpViewBrief._load (PRODUCT-078)
+    trigger: operator opens the Daily Brief tab or returns to a tab after absence;
+      sendBeacon POST /api/ambient/emit fires after the /api/brief response is
+      rendered, recording since_ago_secs and per-bucket counts for usage analytics
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, source, since_ago_secs, done, needs_judgment, alerts]
+  # ── INFRA-1361: GitHub App installation-token rotator ────────────────────
+  - kind: gh_token_rotate_noop
+    effect_metric: self
+    emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
+    trigger: chump gh-token rotate was invoked but ~/.chump/github_apps.toml is
+      absent or empty. No tokens are fetched; exit 0. Emitted once per invocation
+      so operators can confirm the cron is running even before App configuration.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+    fields_optional: [session, worktree, harness]
+
+  - kind: gh_token_rotated
+    effect_metric: self
+    emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
+    trigger: a fresh GitHub App installation token was successfully fetched for
+      one lane and written to ~/.chump/oauth-token-<lane>.json (chmod 600).
+      Emitted once per lane per invocation.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, lane, expires_at]
+    fields_optional: [session, worktree, harness]

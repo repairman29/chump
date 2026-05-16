@@ -179,97 +179,10 @@ jobs:
             echo "ci_config_only=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # ── Tauri Cowork E2E ───────────────────────────────────────────────────────
-  # Only runs when desktop / src / e2e-tauri files change. Skipped on
-  # docs-only, scripts-only, crate-only PRs.
-  tauri-cowork-e2e:
-    needs: changes
-    if: needs.changes.outputs.tauri == 'true' || github.event_name == 'merge_group'
-    # INFRA-1342 fix: removed 'push' trigger — push events create a check run
-    # with conclusion=failure on the commit, which GitHub's statusCheckRollup
-    # aggregates into FAILURE and blocks auto-merge on ALL PRs fleet-wide, even
-    # those that pass all required checks.  Only run tauri when tauri files
-    # change (any event) or in the merge queue.  continue-on-error retained as
-    # a second layer of protection.
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      # Same rationale as the test job's Free disk space step — this job
-      # builds chump + chump-desktop (two binaries) plus tauri-driver.
-      - name: Free disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
-          sudo docker image prune --all --force || true
-          df -h /
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Install Tauri + WebDriver system packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            webkit2gtk-4.1 \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            webkit2gtk-driver \
-            xvfb \
-            build-essential \
-            pkg-config \
-            libssl-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            util-linux
-
-      - name: Cache tauri-driver binary
-        id: tauri-driver-cache
-        uses: actions/cache@v5
-        with:
-          path: ~/.cargo/bin/tauri-driver
-          key: tauri-driver-crate-ubuntu-amd64-v1
-
-      - name: Install tauri-driver
-        if: steps.tauri-driver-cache.outputs.cache-hit != 'true'
-        run: cargo install tauri-driver --locked
-
-      - name: Build chump + Cowork (Tauri) shell
-        run: |
-          cargo build --bin chump
-          cargo build -p chump-desktop
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: '20'
-
-      - name: Cowork WebDriver E2E (xvfb)
-        env:
-          CHUMP_WEB_PORT: '3848'
-          CHUMP_WEB_TOKEN: ''
-          CHUMP_DESKTOP_API_BASE: http://127.0.0.1:3848
-          CHUMP_DESKTOP_AUTO_WEB: '0'
-        run: |
-          ./target/debug/chump --web &
-          CHUMP_PID=$!
-          for i in $(seq 1 90); do
-            if curl -sf http://127.0.0.1:3848/api/health >/dev/null; then
-              echo "chump web ready"
-              break
-            fi
-            sleep 1
-          done
-          curl -sf http://127.0.0.1:3848/api/health >/dev/null
-          cd e2e-tauri && npm ci
-          xvfb-run -a npm test
-          kill "${CHUMP_PID}" || true
-          wait "${CHUMP_PID}" 2>/dev/null || true
+  # ── Tauri Cowork E2E (INFRA-1381: moved to ci-advisory.yml) ─────────────────
+  # Demoted from per-PR to post-merge-only. Not in required_status_checks.
+  # See .github/workflows/ci-advisory.yml for the job definition.
+  # Disposition gap: INFRA-1385.
 
   # ── Required-check rollup ─────────────────────────────────────────────────
   # The "test" name is wired into branch protection (required status check).
@@ -611,6 +524,11 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-fleet-brief.sh
 
+      - name: orchestrate LLM-call hang detection + retry (INFRA-1364)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="$(pwd)/target/debug/chump" bash scripts/ci/test-orchestrate-llm-timeout.sh
+
       - name: pre-push cargo-test full-suite gate (INFRA-761)
         run: bash scripts/ci/test-pre-push-test-gate.sh
 
@@ -945,10 +863,9 @@ jobs:
           retention-days: 30
 
   # ── E2E shards (INFRA-549) ────────────────────────────────────────────────
-  # The old monolithic test-e2e (>1h26m, serialized behind unit-test rollup)
-  # is replaced by three parallel shards + a thin rollup.  All shards start
-  # immediately after `changes` — they no longer wait for the `test` rollup,
-  # so e2e runs in parallel with unit tests.  Wall-clock = max(shards) not sum.
+  # INFRA-1381: e2e-battle-sim, e2e-golden-path, and tauri-cowork-e2e demoted
+  # to ci-advisory.yml (post-merge only).  Only e2e-pwa remains per-PR; it is
+  # not a required check but its result feeds the test-e2e rollup.
   # Dogfood matrix (cargo --release + ~6 min LLM smoke) moved to nightly cron
   # (e2e-dogfood-nightly.yml) — it was the dominant tail and continue-on-error
   # anyway.
@@ -1033,112 +950,32 @@ jobs:
           kill "${CHUMP_WEB_PID}" || true
           wait "${CHUMP_WEB_PID}" 2>/dev/null || true
 
-  # ── E2E Shard B: Battle sim ───────────────────────────────────────────────
-  # No Ollama, no cargo build (SKIP_CARGO=1), no LLM (SKIP_IF_NO_LLM=1).
-  # Lightweight — runs on bare ubuntu-latest in ~1-2 min.
-  e2e-battle-sim:
-    needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
-    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Battle sim suite (no web / no LLM)
-        env:
-          BATTLE_SIM_SKIP_CARGO: 1
-          BATTLE_SIM_SKIP_IF_NO_LLM: 1
-        run: bash scripts/ci/run-battle-sim-suite.sh
-
-  # ── E2E Shard C: Golden path ──────────────────────────────────────────────
-  # cargo build (debug) + file-presence checks + timing log.
-  # No Ollama.  Target wall-clock: ~5 min.
-  e2e-golden-path:
-    needs: changes
-    if: needs.changes.outputs.e2e == 'true' || github.event_name == 'merge_group'
-    # INFRA-1342 fix: push trigger removed (same rollup-FAILURE trap as tauri).
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Free disk space
-        run: |
-          df -h /
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
-          sudo docker image prune --all --force || true
-          df -h /
-
-      - name: Install Linux packages for chump-desktop (workspace member)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            webkit2gtk-4.1 \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            build-essential \
-            pkg-config \
-            libssl-dev \
-            libgtk-3-dev \
-            librsvg2-dev
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: ci-e2e-golden
-
-      - name: External golden path smoke
-        run: bash scripts/ci/verify-external-golden-path.sh
-
-      - name: Golden path timing (JSONL + artifact)
-        env:
-          GOLDEN_MAX_CARGO_BUILD_SEC: 1800
-        run: bash scripts/ci/golden-path-timing.sh
-
-      - name: Upload golden path timing log
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: golden-path-timing
-          path: logs/golden-path-timing-*.jsonl
-          if-no-files-found: ignore
+  # ── E2E Shards B+C (INFRA-1381: moved to ci-advisory.yml) ───────────────────
+  # e2e-battle-sim and e2e-golden-path demoted from per-PR to post-merge-only.
+  # Neither is in required_status_checks.
+  # See .github/workflows/ci-advisory.yml for job definitions.
+  # Disposition gaps: INFRA-1386 (battle-sim), INFRA-1387 (golden-path).
 
   # ── E2E rollup (keeps the required-check name) ────────────────────────────
-  # Same pattern as the `test` rollup (INFRA-213): thin job that succeeds iff
-  # all three e2e shards succeed (or are skipped on non-e2e PRs).
+  # INFRA-1381: rollup simplified — now only waits on e2e-pwa (the sole
+  # remaining per-PR e2e shard).  battle-sim and golden-path moved to
+  # ci-advisory.yml (post-merge only, not required checks).
   test-e2e:
-    needs: [e2e-pwa, e2e-battle-sim, e2e-golden-path]
+    needs: [e2e-pwa]
     if: always()
     runs-on: ubuntu-latest
-    # INFRA-1348: e2e shards all have continue-on-error: true, so test-e2e
-    # normally always succeeds. But runner failures or script errors in this
-    # aggregator itself could still contribute FAILURE to rollup state, blocking
-    # auto-merge on PRs where all required checks (test, audit, ACP) passed.
+    # continue-on-error guards against runner failures in this aggregator
+    # creating a FAILURE status on PRs where all required checks passed.
     continue-on-error: true
     steps:
-      - name: Verify all e2e shards passed
+      - name: Verify e2e-pwa passed
         run: |
           pwa="${{ needs.e2e-pwa.result }}"
-          sim="${{ needs.e2e-battle-sim.result }}"
-          golden="${{ needs.e2e-golden-path.result }}"
-          echo "e2e-pwa=$pwa  e2e-battle-sim=$sim  e2e-golden-path=$golden"
-          fail=0
-          for r in "$pwa" "$sim" "$golden"; do
-            case "$r" in
-              success|skipped) ;;
-              *) fail=1 ;;
-            esac
-          done
-          if [ "$fail" = "1" ]; then
-            echo "::error::One or more e2e shards failed (see results above)"
-            exit 1
-          fi
-          echo "All e2e shards green (or appropriately skipped)."
+          echo "e2e-pwa=$pwa"
+          case "$pwa" in
+            success|skipped) echo "e2e-pwa green (or appropriately skipped)." ;;
+            *) echo "::error::e2e-pwa failed (result=$pwa)"; exit 1 ;;
+          esac
 
   # INFRA-503 (2026-05-06): cargo audit was the dominant per-PR cycle-time
   # tax (~12min × every PR). Moved to .github/workflows/cargo-audit-nightly.yml
@@ -1693,6 +1530,8 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pillar-balance-guard.sh
+      - name: patch_file headerless-diff (tier-c) fallback for Llama-style outputs (INFRA-785)
+        run: bash scripts/ci/test-patch-file-fallback.sh
 
       - name: cargo build mutex isolation — per-worktree CARGO_TARGET_DIR (INFRA-1374)
         run: bash scripts/ci/test-cargo-mutex-isolation.sh

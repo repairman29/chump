@@ -382,6 +382,13 @@ class ChumpViewCockpit extends HTMLElement {
             <span class="question">What needs me?</span>
           </div>
           <div id="slot-attention"></div>
+          <div class="inbox-preview-wrap" style="margin-top:12px; border-top:1px solid var(--border,#2a2a2e); padding-top:12px;">
+            <div class="zone-header">
+              <span>Stuck Items</span>
+              <span class="question">What's blocked?</span>
+            </div>
+            <div id="slot-stuck"></div>
+          </div>
           <div class="inbox-preview-wrap">
             <div class="zone-header">
               <span>Inbox</span>
@@ -454,6 +461,7 @@ class ChumpViewCockpit extends HTMLElement {
     // each component runs its own connectedCallback lifecycle inside the
     // shadow tree.
     this.#mount('slot-attention', 'chump-operator-attention');
+    this.#mount('slot-stuck', 'chump-stuck-items');   // PRODUCT-080
     this.#mount('slot-inbox', 'chump-inbox');
     this.#mount('slot-fleet', 'chump-fleet-sidebar');
     this.#mount('slot-ambient', 'chump-ambient-viewer');
@@ -603,14 +611,16 @@ class ChumpViewCockpit extends HTMLElement {
   }
 
   async #fetchInputs() {
-    const [eventsR, queueR, autopilotR] = await Promise.allSettled([
+    const [eventsR, queueR, autopilotR, driftR] = await Promise.allSettled([
       fetch('/api/ambient/recent?limit=200'),
       fetch('/api/gap-queue'),
       fetch('/api/autopilot/status'),
+      fetch('/api/gap/drift-status'),  // PRODUCT-127: drift count from state.db
     ]);
     let events = [];
     let queue = [];
     let autopilot = null;
+    let driftStatus = null;
     try {
       if (eventsR.status === 'fulfilled' && eventsR.value.ok) {
         const d = await eventsR.value.json();
@@ -628,10 +638,15 @@ class ChumpViewCockpit extends HTMLElement {
         autopilot = await autopilotR.value.json();
       }
     } catch {}
-    return { events, queue, autopilot };
+    try {
+      if (driftR.status === 'fulfilled' && driftR.value.ok) {
+        driftStatus = await driftR.value.json();
+      }
+    } catch {}
+    return { events, queue, autopilot, driftStatus };
   }
 
-  #computeSynthesis({ events, queue, autopilot }) {
+  #computeSynthesis({ events, queue, autopilot, driftStatus }) {
     const now = Date.now();
     const dayMs = 24 * 3600 * 1000;
     const tenMin = 10 * 60 * 1000;
@@ -729,21 +744,22 @@ class ChumpViewCockpit extends HTMLElement {
     }
 
     // Card 1b: Gap-store drift — PRODUCT-127 (Repair-drift action)
-    // Detect drift via gaps that have closed_pr set but status=open (state.db
-    // didn't get the ship signal). This is the actual surveillance leak we
-    // saw vomiting into <chump-operator-attention> as 20 identical rows.
-    const driftGaps = queue.filter((g) =>
+    // Prefer the authoritative /api/gap/drift-status count; fall back to
+    // local queue heuristic (closed_pr + status=open) when the endpoint is
+    // unavailable (e.g. binary not rebuilt yet after this change lands).
+    const apiDriftCount = driftStatus?.count ?? null;
+    const localDriftCount = queue.filter((g) =>
       g.closed_pr && (g.status || 'open') === 'open'
-    );
-    if (driftGaps.length >= 3) {
+    ).length;
+    const driftCount = apiDriftCount !== null ? apiDriftCount : localDriftCount;
+    if (driftCount >= 1) {
       cards.push({
         id: 'gap-store-drift',
         icon: '🧹',
-        title: `Gap-store drift — ${driftGaps.length} gaps shipped but state.db still 'open'`,
-        detail: `These gaps have closed_pr set but status=open. Picker may re-pick them. Repair runs 'chump gap dep-clean --apply' to reconcile.`,
+        title: `Gap drift: ${driftCount} instance${driftCount === 1 ? '' : 's'}`,
+        detail: `${driftCount} gap${driftCount === 1 ? '' : 's'} with closed_pr set but status still 'open'. Picker may re-claim already-shipped work. One-click repair reconciles state.db.`,
         actions: [
-          { label: 'Copy repair command', view: 'copy-repair', primary: true },
-          { label: 'see gaps', view: 'noise' },
+          { label: 'Repair drift', view: 'repair-drift', primary: true },
         ],
       });
     }

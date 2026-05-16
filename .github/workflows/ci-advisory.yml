@@ -1,0 +1,204 @@
+name: CI Advisory (post-merge)
+
+# ── INFRA-1381: advisory / non-blocking CI jobs ───────────────────────────────
+# These jobs were demoted from ci.yml because they are NOT in the branch-
+# protection required_status_checks list and were burning per-PR minutes without
+# producing a merge decision.
+#
+# Run ONLY on push to main (post-merge signal) — never block a PR.
+#
+# Final disposition for each job — promote to required or keep advisory:
+#   INFRA-1385: tauri-cowork-e2e — pending decision
+#   INFRA-1386: e2e-battle-sim — pending decision
+#   INFRA-1387: e2e-golden-path — pending decision
+#
+# Drift gate: the advisory-drift-gate job at the bottom of this file verifies
+# that these three job names are NOT present in ci.yml.  If someone
+# accidentally re-adds them to ci.yml without moving them here, CI catches it.
+
+on:
+  push:
+    branches: [main, master]
+
+concurrency:
+  group: ci-advisory-${{ github.run_id }}
+  cancel-in-progress: false   # each main push gets its own full advisory run
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Tauri Cowork E2E ─────────────────────────────────────────────────────────
+  # Full Tauri + WebDriver smoke.  Runs against post-merge main.
+  tauri-cowork-e2e:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Tauri + WebDriver system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            webkit2gtk-driver \
+            xvfb \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            util-linux
+
+      - name: Cache tauri-driver binary
+        id: tauri-driver-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cargo/bin/tauri-driver
+          key: tauri-driver-crate-ubuntu-amd64-v1
+
+      - name: Install tauri-driver
+        if: steps.tauri-driver-cache.outputs.cache-hit != 'true'
+        run: cargo install tauri-driver --locked
+
+      - name: Build chump + Cowork (Tauri) shell
+        run: |
+          cargo build --bin chump
+          cargo build -p chump-desktop
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Cowork WebDriver E2E (xvfb)
+        env:
+          CHUMP_WEB_PORT: '3848'
+          CHUMP_WEB_TOKEN: ''
+          CHUMP_DESKTOP_API_BASE: http://127.0.0.1:3848
+          CHUMP_DESKTOP_AUTO_WEB: '0'
+        run: |
+          ./target/debug/chump --web &
+          CHUMP_PID=$!
+          for i in $(seq 1 90); do
+            if curl -sf http://127.0.0.1:3848/api/health >/dev/null; then
+              echo "chump web ready"
+              break
+            fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:3848/api/health >/dev/null
+          cd e2e-tauri && npm ci
+          xvfb-run -a npm test
+          kill "${CHUMP_PID}" || true
+          wait "${CHUMP_PID}" 2>/dev/null || true
+
+  # ── E2E Shard B: Battle sim ───────────────────────────────────────────────────
+  # No Ollama, no cargo build (SKIP_CARGO=1), no LLM (SKIP_IF_NO_LLM=1).
+  # Lightweight — runs on bare ubuntu-latest in ~1-2 min.
+  e2e-battle-sim:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Battle sim suite (no web / no LLM)
+        env:
+          BATTLE_SIM_SKIP_CARGO: 1
+          BATTLE_SIM_SKIP_IF_NO_LLM: 1
+        run: bash scripts/ci/run-battle-sim-suite.sh
+
+  # ── E2E Shard C: Golden path ──────────────────────────────────────────────────
+  # cargo build (debug) + file-presence checks + timing log.
+  # No Ollama.  Target wall-clock: ~5 min.
+  e2e-golden-path:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL /opt/hostedtoolcache/Python
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Linux packages for chump-desktop (workspace member)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            webkit2gtk-4.1 \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            build-essential \
+            pkg-config \
+            libssl-dev \
+            libgtk-3-dev \
+            librsvg2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-e2e-golden
+
+      - name: External golden path smoke
+        run: bash scripts/ci/verify-external-golden-path.sh
+
+      - name: Golden path timing (JSONL + artifact)
+        env:
+          GOLDEN_MAX_CARGO_BUILD_SEC: 1800
+        run: bash scripts/ci/golden-path-timing.sh
+
+      - name: Upload golden path timing log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: golden-path-timing
+          path: logs/golden-path-timing-*.jsonl
+          if-no-files-found: ignore
+
+  # ── Drift gate ────────────────────────────────────────────────────────────────
+  # Verifies that the three demoted jobs are NOT present in ci.yml.
+  # If a future contributor re-adds any of them to ci.yml without removing them
+  # from this file, this job catches it.
+  advisory-drift-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Verify advisory jobs absent from ci.yml
+        run: |
+          ADVISORY_JOBS="tauri-cowork-e2e e2e-battle-sim e2e-golden-path"
+          CI_YML=".github/workflows/ci.yml"
+          FAIL=0
+          for job in $ADVISORY_JOBS; do
+            # Match job-name line: "  <job-name>:" at the jobs level (2-space indent)
+            if grep -qE "^  ${job}:" "$CI_YML" 2>/dev/null; then
+              echo "::error::Advisory job '${job}' found in ci.yml — it must live only in ci-advisory.yml (INFRA-1381)"
+              FAIL=1
+            else
+              echo "OK: ${job} absent from ci.yml"
+            fi
+          done
+          exit "$FAIL"
