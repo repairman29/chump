@@ -37,6 +37,7 @@ set -uo pipefail
 
 # INFRA-1326: source github_cache.sh for cache_lookup_checks (cache-first CI reads)
 _CACHE_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/github_cache.sh"
+# shellcheck disable=SC1090  # path is dynamic; resolved at runtime
 [[ -f "$_CACHE_LIB" ]] && source "$_CACHE_LIB" 2>/dev/null || true
 
 if [[ "${CHUMP_ORPHAN_PR_CLOSER:-1}" == "0" ]]; then
@@ -120,6 +121,23 @@ while IFS=$'\t' read -r pr title branch updated; do
 
     # Freshness gate — skip if updated within last N min.
     if [[ "$updated" > "$cutoff" ]]; then
+        continue
+    fi
+
+    # INFRA-1423: Check if gap yaml is in this PR's own commit diff BEFORE
+    # consulting state.db or main. state.db drift can hide an in-flight gap
+    # (e.g. PRODUCT-120 / PR #2063) causing a false-positive orphan-close.
+    # A gap yaml present in the PR diff means the gap is being filed/updated
+    # by this PR — never safe to close.
+    _gap_yaml_path="docs/gaps/$(echo "$gap_id" | tr '[:upper:]' '[:lower:]').yaml"
+    _pr_diff_has_yaml=""
+    _pr_diff_has_yaml="$(gh api "repos/{owner}/{repo}/pulls/${pr}/files" \
+        --jq ".[] | select(.filename == \"${_gap_yaml_path}\") | .filename" \
+        2>/dev/null || true)"
+    if [[ -n "$_pr_diff_has_yaml" ]]; then
+        echo "[orphan-pr-closer] SKIP #$pr ($gap_id): gap yaml '$_gap_yaml_path' present in PR diff — gap registered by this PR" >&2
+        emit_ambient "orphan_close_skipped" "$pr" "$gap_id" \
+            "reason=in_pr_diff yaml=${_gap_yaml_path}"
         continue
     fi
 

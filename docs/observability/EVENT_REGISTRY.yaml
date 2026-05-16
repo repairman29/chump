@@ -1399,6 +1399,15 @@ events:
     consumers: [fleet-brief, operator-recall, audit-log]
     fields_required: [ts, kind, pr, gap, note]
 
+  - kind: orphan_close_skipped
+    effect_metric: self
+    emitter: scripts/coord/orphan-pr-closer.sh (INFRA-1423)
+    trigger: orphan-closer found that the gap yaml (docs/gaps/<id>.yaml) exists in
+      the PR's own commit diff — gap is being registered by this PR; closing would
+      be a false positive caused by state.db drift
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, pr, gap, note]
+
   # ── Review-as-Handoff telemetry (INFRA-773) ──────────────────────────────
   - kind: review_handoff_initiated
     effect_metric: self
