@@ -41,7 +41,7 @@ pub fn snapshot() -> FleetMetrics {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    
+
     FleetMetrics {
         timestamp_utc: format!("{}", now),
         pr_metrics: PrMetrics {
