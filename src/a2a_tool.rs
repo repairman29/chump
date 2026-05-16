@@ -88,3 +88,5 @@ impl Tool for A2aTool {
         }
     }
 }
+
+// INFRA-1534 canary: trigger fast-checks on self-hosted M4 (will revert after CI completes)
