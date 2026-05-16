@@ -193,6 +193,14 @@ fi
 source "$(dirname "$0")/../lib/repo-paths.sh"
 cd "$REPO_ROOT"
 
+# INFRA-1374: pin cargo target dir to a per-worktree path so the pre-commit
+# hook's cargo clippy (triggered by `git commit` below) doesn't contend with
+# parallel fleet builds on the shared target-dir from .cargo/config.toml.
+# Only set if caller hasn't already pinned (bot-merge.sh sets it earlier).
+if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+    export CARGO_TARGET_DIR="${REPO_ROOT}/.cargo-build-target"
+fi
+
 # Warn (non-blocking) when operating in the main checkout. Separate
 # worktrees are the long-term fix for the shared-worktree stomp class.
 MAIN_WORKTREE="/Users/jeffadkins/Projects/Chump"

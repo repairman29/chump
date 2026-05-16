@@ -1,6 +1,8 @@
 /target
 # INFRA-1138: per-worktree test target dir (isolates fingerprints from shared CARGO_TARGET_DIR)
 /.cargo-test-target
+# INFRA-1374: per-worktree build target dir (eliminates cargo mutex contention at 3+ parallelism)
+/.cargo-build-target
 # Standalone example crate (not a workspace member) builds here
 examples/apalis-poc/target/
 /docs-site

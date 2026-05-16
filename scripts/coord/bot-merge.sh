@@ -1348,8 +1348,14 @@ info "cargo parallelism: CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS} (override via env)
 #   - When the wait exceeds 60 s, cargo emits "Blocking waiting for file lock"
 #     to stderr; we capture that and emit kind=cargo_lock_wait to ambient.jsonl.
 if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
-    export CARGO_TARGET_DIR="${REPO_ROOT}/target"
-    info "INFRA-1063: CARGO_TARGET_DIR pinned to ${CARGO_TARGET_DIR} (per-worktree isolation)"
+    # INFRA-1374: use a hidden .cargo-build-target dir so the per-worktree
+    # isolation doesn't collide with the workspace `target/` name that cargo
+    # also uses by default (and which .cargo/config.toml may override globally
+    # to the main repo path). Using a distinct name ensures each worktree at
+    # /tmp/chump-* gets its own, unambiguous build cache regardless of any
+    # global config.toml target-dir override from install-sccache.sh (INFRA-481).
+    export CARGO_TARGET_DIR="${REPO_ROOT}/.cargo-build-target"
+    info "INFRA-1374: CARGO_TARGET_DIR pinned to ${CARGO_TARGET_DIR} (per-worktree mutex isolation)"
 else
     info "INFRA-1063: CARGO_TARGET_DIR already set to ${CARGO_TARGET_DIR} (respecting caller)"
 fi
