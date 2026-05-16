@@ -930,6 +930,37 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         ),
     });
 
+    // L4-SLO-1: paramedic heartbeat freshness (INFRA-1397 AC §7)
+    // Only breach if a leader has been seen in the last hour (otherwise daemon
+    // simply isn't installed yet, which is not a fleet health regression).
+    let fifteen_min_ago = now.saturating_sub(15 * 60);
+    let one_hour_ago = now.saturating_sub(3600);
+    let heartbeat_recent = count_kind_since(&contents, "paramedic_heartbeat", fifteen_min_ago);
+    let heartbeat_last_hour = count_kind_since(&contents, "paramedic_heartbeat", one_hour_ago);
+    let paramedic_breached = heartbeat_last_hour > 0 && heartbeat_recent == 0;
+    results.push(SloResult {
+        id: "L4-SLO-1",
+        target: "paramedic heartbeat fresh (< 15min gap)",
+        current: if heartbeat_recent > 0 {
+            "fresh".into()
+        } else if heartbeat_last_hour > 0 {
+            "stale".into()
+        } else {
+            "no data".into()
+        },
+        breached: paramedic_breached,
+        detail: if heartbeat_recent > 0 {
+            format!(
+                "paramedic_heartbeat seen in last 15min ({} events)",
+                heartbeat_recent
+            )
+        } else if heartbeat_last_hour > 0 {
+            "paramedic_heartbeat stale: leader seen in last hour but not in last 15min — daemon may be down".into()
+        } else {
+            "no paramedic_heartbeat in last hour — daemon not yet installed or never started".into()
+        },
+    });
+
     results
 }
 

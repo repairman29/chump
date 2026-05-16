@@ -1504,6 +1504,21 @@ events:
     fields_optional: [gap_id]
     effect_metric: self
 
+  - kind: paramedic_heartbeat
+    emitter: src/paramedic.rs (INFRA-1397)
+    trigger: paramedic daemon leader completes one triage+execute cycle; emitted every --interval-secs (default 600s); absence for 15min triggers L4-SLO-1 breach (chump health --slo-check)
+    consumers: [fleet-brief, chump health --slo-check]
+    fields_required: [ts, kind, machine, pid, cycle_count, pr_count, last_action_count]
+    fields_optional: [dry_run]
+    effect_metric: self
+
+  - kind: paramedic_standby
+    emitter: src/paramedic.rs (INFRA-1397)
+    trigger: paramedic daemon process lost leader election and is waiting for leader expiry; emitted every 60s from the standby process
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, machine, pid]
+    fields_optional: [dry_run]
+
   # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
   - kind: auto_merge_armed
     effect_metric: self
