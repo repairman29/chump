@@ -163,6 +163,7 @@ mod repo_allowlist_tool;
 mod repo_path;
 mod repo_tools;
 mod rescue_tally;
+mod revert_pr;
 mod review_handoff;
 mod roadmap_status;
 mod routes;

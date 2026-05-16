@@ -363,3 +363,4 @@ CHUMP_PARAMEDIC_FORCE_LEADER
 # ── INFRA-1361: gh-token rotate test-isolation overrides ─────────────────────
 CHUMP_GH_APPS_CONFIG
 CHUMP_GH_LANE_TOKEN_DIR
+CHUMP_GITHUB_REPO

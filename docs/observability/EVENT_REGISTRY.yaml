@@ -3329,6 +3329,14 @@ events:
       indicate hot-file contention; should be addressed by merge drivers
     consumers: [fleet-brief, ops-audit, paramedic-daemon]
     fields_required: [ts, kind, branch, base, stage]
+  - kind: gap_revert_pr_opened
+    effect_metric: self
+    emitter: src/revert_pr.rs via chump revert (INFRA-1443)
+    trigger: operator ran `chump revert <PR-or-commit> --reason <text>`;
+      emitted after the revert PR is created on GitHub and the
+      original PR has been commented with the revert link.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, merge_sha, orig_pr, revert_pr_url]
   - kind: lease_auto_extended
     effect_metric: self
     emitter: scripts/coord/lease-auto-extend.sh (INFRA-1327)
