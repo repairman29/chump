@@ -129,8 +129,13 @@ for dir in "${MONITOR_DIRS[@]}"; do
         emit_ambient "disk_critical" "$body" '"level":"BLOCKING","dir":"'"$dir"'","free_pct":'"$free_pct"
         if [[ $DRY -eq 0 ]]; then
             touch "$PAUSE_FILE" 2>/dev/null && log "fleet paused: $PAUSE_FILE"
+            # INFRA-1437: close the alert→action loop. Auto-invoke the
+            # target-dir-reaper in --critical mode so disk gets reclaimed
+            # without operator intervention. Bounded by timeout so it can
+            # never hang the monitor.
+            auto_remediate_disk_critical
         else
-            log "DRY-RUN: would touch $PAUSE_FILE"
+            log "DRY-RUN: would touch $PAUSE_FILE + invoke target-dir-reaper --critical"
         fi
         # INFRA-1440: auto-invoke reaper in critical mode to reclaim disk immediately.
         auto_remediate_disk
