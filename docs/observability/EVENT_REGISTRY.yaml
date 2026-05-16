@@ -3641,3 +3641,10 @@ events:
       Operator override: CHUMP_DISK_AUTO_REMEDIATE=0 disables the auto-action.
     consumers: [fleet-brief, disk-health-monitor, ops-audit]
     fields_required: [ts, kind, bytes_freed_mb, duration_s]
+  # ── INFRA-1409: pr triage ─────────────────────────────────────────────────
+  - kind: pr_triage_run
+    effect_metric: self
+    emitter: scripts/coord/chump-pr-triage.sh (INFRA-1409)
+    trigger: operator runs chump-pr-triage.sh to get next-action table for open PRs
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, scope, pr_count, output]
