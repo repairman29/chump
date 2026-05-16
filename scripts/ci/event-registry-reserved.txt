@@ -220,3 +220,4 @@ bot_merge_bypassed      # reason: emitted from scripts/git-hooks/pre-push (shell
 pwa_brief_loaded  # reason: emitted from web/v2/daily-brief.js via sendBeacon (JS not in PROD_PATHS); emit added in PRODUCT-078
 orchestrate_session_summary  # reason: emitted by INFRA-1363 src/orchestrate.rs; used as test fixture here while that PR is in flight
 chump_claim_force_recover  # reason: emitted via escaped Rust format string in src/atomic_claim.rs (INFRA-1439); regex pattern miss
+fleet_doctor_run        # reason: INFRA-1427 emitted via positional arg `bash "$AMBIENT_EMIT" fleet_doctor_run` in scripts/coord/fleet-doctor-strict.sh; grep scanner expects "kind":"..." JSON literal and misses this form
