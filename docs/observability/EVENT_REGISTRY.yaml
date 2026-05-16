@@ -1619,6 +1619,7 @@ events:
     fields_required: [ts, kind, intent, status]
 
   - kind: orchestrate_llm_timeout
+    effect_metric: self
     emitter: src/orchestrate.rs (chump orchestrate — INFRA-1364)
     trigger: LLM call exceeds CHUMP_ORCHESTRATE_LLM_TIMEOUT_S (default 60s); emitted once
       per timed-out attempt (max 2 per intent before session abort)
