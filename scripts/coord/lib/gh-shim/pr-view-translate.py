@@ -120,26 +120,58 @@ def cache_db_path(repo_root: Path) -> Path:
 
 
 def cache_lookup_by_number(db_path: Path, number: int, max_age_s: int = 60) -> dict | None:
+    """Return a REST-shaped PR dict from cache, or None on miss/stale.
+
+    INFRA-1368: also fetches merge_state_status column so mergeStateStatus
+    lookups are served from the dedicated column rather than parsing
+    raw_payload_json (which has inconsistent format between webhook and REST
+    sources). The returned dict always has mergeable_state injected from the
+    column when present so project() finds it at the top level.
+    """
     if not db_path.exists():
         return None
     conn = sqlite3.connect(str(db_path))
     try:
-        cur = conn.execute(
-            """SELECT raw_payload_json,
-                      CAST((strftime('%s','now') - strftime('%s', fetched_at_local)) AS INTEGER)
-               FROM pr_state WHERE number = ?""",
-            (number,),
-        )
+        try:
+            cur = conn.execute(
+                """SELECT raw_payload_json,
+                          CAST((strftime('%s','now') - strftime('%s', fetched_at_local)) AS INTEGER),
+                          merge_state_status,
+                          mergeable_state
+                   FROM pr_state WHERE number = ?""",
+                (number,),
+            )
+        except Exception:
+            # merge_state_status column not yet present (pre-migration DB) — fall back
+            cur = conn.execute(
+                """SELECT raw_payload_json,
+                          CAST((strftime('%s','now') - strftime('%s', fetched_at_local)) AS INTEGER),
+                          NULL,
+                          mergeable_state
+                   FROM pr_state WHERE number = ?""",
+                (number,),
+            )
         row = cur.fetchone()
         if not row:
             return None
-        payload, age = row
+        payload, age, merge_state_status, mergeable_state_col = row
         if age is None or age >= max_age_s:
             return None
         try:
-            return json.loads(payload)
+            data = json.loads(payload)
         except Exception:
             return None
+        # Unwrap webhook payload format: webhook receiver stores the full
+        # pull_request event ({"action":..., "pull_request":{...}}) but REST
+        # calls return a flat PR object. Normalise so project() always works.
+        if isinstance(data, dict) and "pull_request" in data:
+            data = data["pull_request"]
+        # INFRA-1368: inject mergeable_state from the dedicated column so
+        # mergeStateStatus is always available regardless of payload format.
+        col_val = merge_state_status or mergeable_state_col
+        if col_val is not None:
+            data["mergeable_state"] = col_val
+        return data
     finally:
         conn.close()
 

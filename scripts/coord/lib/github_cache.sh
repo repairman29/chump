@@ -153,12 +153,24 @@ CREATE TABLE IF NOT EXISTS pr_state (
 );
 CREATE INDEX IF NOT EXISTS pr_state_behind_armed ON pr_state(mergeable_state, auto_merge_enabled);
 """)
+# INFRA-1368: add merge_state_status column idempotently.
+try:
+    conn.execute("ALTER TABLE pr_state ADD COLUMN merge_state_status TEXT")
+    conn.commit()
+except Exception:
+    pass  # column already exists
 conn.execute("""
-INSERT INTO pr_state VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+INSERT INTO pr_state (
+    number, head_ref, head_sha, base_ref, base_sha,
+    mergeable_state, auto_merge_enabled, draft, merged_at,
+    title, user_login, updated_at_api, fetched_at_local,
+    raw_payload_json, merge_state_status
+) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(number) DO UPDATE SET
     head_ref=excluded.head_ref, head_sha=excluded.head_sha,
     base_ref=excluded.base_ref, base_sha=excluded.base_sha,
     mergeable_state=excluded.mergeable_state,
+    merge_state_status=excluded.merge_state_status,
     auto_merge_enabled=excluded.auto_merge_enabled,
     draft=excluded.draft, merged_at=excluded.merged_at,
     title=excluded.title, user_login=excluded.user_login,
@@ -180,6 +192,7 @@ ON CONFLICT(number) DO UPDATE SET
     pr.get("updated_at") or now,
     now,
     payload_raw,
+    pr.get("mergeable_state"),  # INFRA-1368: populate merge_state_status from REST
 ))
 conn.commit()
 PY
