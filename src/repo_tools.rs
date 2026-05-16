@@ -581,7 +581,7 @@ impl Tool for PatchFileTool {
         // on properly-headered diffs.
         let headerless_result: Option<Result<String, patch_apply::PatchApplyError>> =
             if strict_result.is_err()
-                && fuzzy_result.as_ref().map_or(true, |r| r.is_err())
+                && fuzzy_result.as_ref().is_none_or(|r| r.is_err())
                 && patch_apply::looks_headerless(&diff_owned)
             {
                 tracing::info!(
