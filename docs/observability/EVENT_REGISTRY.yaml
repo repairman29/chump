@@ -2828,6 +2828,13 @@ events:
     consumers: [fleet-brief, waste-tally, ops-audit]
     fields_required: [ts, kind, branch, pr, age_days, dry_run]
 
+  - kind: branch_reaped
+    effect_metric: self
+    emitter: scripts/ops/stale-branch-reaper.sh (INFRA-1453)
+    trigger: stale-branch-reaper.sh (the launchd-scheduled reaper) deleted a stale remote branch — per-deletion event so operator can audit which branches without grepping /tmp logs. Reaper_run summary still fires at end of run.
+    consumers: [fleet-brief, waste-tally, ops-audit]
+    fields_required: [ts, kind, branch, age_days, reaper_run_id]
+
   - kind: dup_pr_blocked
     effect_metric: self
     emitter: scripts/coord/bot-merge.sh
