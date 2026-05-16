@@ -1685,6 +1685,9 @@ jobs:
           CHUMP_BIN="$(pwd)/target/debug/chump" \
             bash scripts/ci/test-pillar-balance-guard.sh
 
+      - name: cargo build mutex isolation — per-worktree CARGO_TARGET_DIR (INFRA-1374)
+        run: bash scripts/ci/test-cargo-mutex-isolation.sh
+
   # ── System integration test (INFRA-849) ──────────────────────────────────────
   # Non-blocking end-to-end test for the claim→commit→ship pipeline using stubs.
   # Does not gate merges (continue-on-error: true); provides CREDIBLE signal

@@ -19,6 +19,14 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
+# INFRA-1374: per-worktree cargo build isolation — avoids file-lock contention
+# when multiple parallel commits run across /tmp/chump-* worktrees (observed:
+# 6-min stall at 4-way parallelism). Inherits from pre-commit or bot-merge if
+# already set; otherwise defaults to the worktree-local hidden target dir.
+if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+    export CARGO_TARGET_DIR="${REPO_ROOT}/.cargo-build-target"
+fi
+
 # Bypass for genuine edge cases (e.g., temporary linter regressions, CI-only code)
 if [[ "${CREDIBLE_INFRA_SMOKE_BYPASS:-}" == "1" ]]; then
     echo "[CREDIBLE-001 smoke] bypass active; skipping checks"
