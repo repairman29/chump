@@ -30,6 +30,13 @@ export CHUMP_GH_SCRIPT="auto-merge-armer.sh"
 # INFRA-1113: min wall-clock seconds between successive gh pr merge --auto calls.
 ARM_SPACING_S="${CHUMP_AUTO_MERGE_SPACING_S:-5}"
 
+# INFRA-1377: merge queue mode.
+# When merge queue is active on main, REST-direct merge bypasses queue ordering
+# (bad!), and --squash conflicts with the queue's configured merge method.
+# Set CHUMP_MERGE_QUEUE_ENABLED=1 to force-enable, =0 to force-disable, or
+# leave unset for live detection via the GitHub GraphQL API.
+MERGE_QUEUE_ACTIVE=""   # lazily set on first arm_with_retry call
+
 REPO="${GITHUB_REPOSITORY:-}"
 PR_NUMS=()
 
@@ -216,27 +223,72 @@ print(f"{incomplete} {failed} {total}")
     return 1
 }
 
+# INFRA-1377: detect whether GitHub Merge Queue is active for main.
+# Cached in $MERGE_QUEUE_ACTIVE after first call — one API round-trip per
+# armer invocation. Returns "true" or "false".
+_detect_merge_queue() {
+    if [[ "${CHUMP_MERGE_QUEUE_ENABLED:-}" == "1" ]]; then
+        printf 'true'; return
+    fi
+    if [[ "${CHUMP_MERGE_QUEUE_ENABLED:-}" == "0" ]]; then
+        printf 'false'; return
+    fi
+    # Live check: GitHub returns a non-null MergeQueue object when the queue
+    # is configured for the branch.
+    local owner repo_name result
+    owner="${REPO%%/*}"
+    repo_name="${REPO##*/}"
+    result="$(gh api graphql \
+        -f owner="${owner}" -f name="${repo_name}" \
+        -f query='query($owner:String!,$name:String!){
+          repository(owner:$owner,name:$name){
+            mergeQueue(branch:"main"){id}}}' \
+        --jq '.data.repository.mergeQueue != null' 2>/dev/null || printf 'false')"
+    printf '%s' "${result}"
+}
+
 # Arm with secondary-rate-limit-aware retry (mirrors gh_with_backoff in bot-merge.sh).
 # INFRA-1223: tries REST-direct path first before the GraphQL arm.
 # INFRA-1311: writes per-PR backoff file on failure; clears it on success.
+# INFRA-1377: skips REST-direct and --squash when merge queue is active.
 arm_with_retry() {
     local pr_num="$1"
     local -a delays=(60 120 240)
     local attempt=0 rc tmpout
 
+    # INFRA-1377: detect merge queue on first call and cache for this run.
+    if [[ -z "${MERGE_QUEUE_ACTIVE}" ]]; then
+        MERGE_QUEUE_ACTIVE="$(_detect_merge_queue)"
+        if [[ "${MERGE_QUEUE_ACTIVE}" == "true" ]]; then
+            echo "[auto-merge-armer] Merge queue active on main — REST-direct bypass disabled; using queue arm (no --squash)." >&2
+        fi
+    fi
+
     # INFRA-1223: REST-direct fast path. If all checks are green, merge now
     # via REST PUT — bypasses the GraphQL mutation entirely.
-    if rest_direct_merge_if_green "${pr_num}"; then
-        # REST-direct success — clear any lingering backoff state.
-        _backoff_clear "${pr_num}"
-        rm -f "${LOCKS_DIR}/bot-merge-backoff-${pr_num}.count" 2>/dev/null || true
-        return 0
+    # INFRA-1377: skip REST-direct when merge queue is active — REST PUT would
+    # bypass the queue's ordering guarantee and violate the serialization contract.
+    if [[ "${MERGE_QUEUE_ACTIVE}" != "true" ]]; then
+        if rest_direct_merge_if_green "${pr_num}"; then
+            # REST-direct success — clear any lingering backoff state.
+            _backoff_clear "${pr_num}"
+            rm -f "${LOCKS_DIR}/bot-merge-backoff-${pr_num}.count" 2>/dev/null || true
+            return 0
+        fi
     fi
 
     while true; do
         tmpout="$(mktemp)"
         set +e
-        gh pr merge "${pr_num}" --repo "${REPO}" --auto --squash >"${tmpout}" 2>&1
+        # INFRA-1377: omit --squash when merge queue is active — the queue uses
+        # its own configured merge method (SQUASH by default). Passing --squash
+        # to the queue arm is redundant and may cause "already queued" errors on
+        # some GitHub versions. Without merge queue: keep --squash for history.
+        if [[ "${MERGE_QUEUE_ACTIVE}" == "true" ]]; then
+            gh pr merge "${pr_num}" --repo "${REPO}" --auto >"${tmpout}" 2>&1
+        else
+            gh pr merge "${pr_num}" --repo "${REPO}" --auto --squash >"${tmpout}" 2>&1
+        fi
         rc=$?
         set -e
 
