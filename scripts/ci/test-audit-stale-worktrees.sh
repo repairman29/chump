@@ -58,8 +58,16 @@ make_backdated_worktree() {
     # vs local macOS — original 2026-05-15 PR #2097 failed on Linux because of
     # this. Python's os.utime is portable everywhere python3 is installed
     # (mandatory on Chump runners and dev machines).
-    python3 -c "import os,time; t=time.time()-${age_h}*3600; os.utime('$wt_path',(t,t))" \
-        2>/dev/null || true
+    # Run python WITHOUT swallowing stderr so failures are visible in CI logs.
+    if ! python3 -c "import os,time; t=time.time()-${age_h}*3600; os.utime('$wt_path',(t,t))"; then
+        echo "[test-debug] python3 utime FAILED for $wt_path age=$age_h" >&2
+    fi
+    # Diagnostic: confirm the mtime delta is sane.
+    local _mt
+    _mt=$(stat -c %Y "$wt_path" 2>/dev/null || stat -f %m "$wt_path" 2>/dev/null || echo 0)
+    local _now; _now=$(date +%s)
+    local _delta=$(( _now - _mt ))
+    echo "[test-debug] $wt_path mtime-delta=${_delta}s (expected ~$((age_h*3600))s)" >&2
     printf '%s\n' "$wt_path"
 }
 
