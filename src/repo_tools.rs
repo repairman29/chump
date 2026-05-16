@@ -572,19 +572,48 @@ impl Tool for PatchFileTool {
                 None
             };
 
-        let (new_content, mode) = match (&strict_result, &fuzzy_result) {
-            (Ok(nc), _) => (nc.clone(), "applied"),
-            (_, Some(Ok(nc))) => (nc.clone(), "applied-fuzzy"),
+        // INFRA-785: tier-c headerless fallback. Smaller models (Llama 3.3,
+        // Mistral) sometimes emit unified diffs without `---`/`+++` filename
+        // header lines — just `@@` hunks. Tier-c synthesizes a placeholder
+        // header and reuses the strict→fuzzy applicator under the hood. Only
+        // attempted when both prior tiers failed AND the diff looks
+        // structurally headerless, to avoid masking legitimate parse errors
+        // on properly-headered diffs.
+        let headerless_result: Option<Result<String, patch_apply::PatchApplyError>> =
+            if strict_result.is_err()
+                && fuzzy_result.as_ref().is_none_or(|r| r.is_err())
+                && patch_apply::looks_headerless(&diff_owned)
+            {
+                tracing::info!(
+                    path = %path_str,
+                    "patch_file fuzzy failed; diff looks headerless, attempting tier-c parse"
+                );
+                let d = diff_owned.clone();
+                let c = content.clone();
+                tokio::task::spawn_blocking(move || {
+                    patch_apply::apply_unified_diff_headerless(&c, &d)
+                })
+                .await
+                .ok()
+            } else {
+                None
+            };
+
+        let (new_content, mode) = match (&strict_result, &fuzzy_result, &headerless_result) {
+            (Ok(nc), _, _) => (nc.clone(), "applied"),
+            (_, Some(Ok(nc)), _) => (nc.clone(), "applied-fuzzy"),
+            (_, _, Some(Ok(nc))) => (nc.clone(), "applied-headerless"),
             _ => {
                 let e = strict_result.as_ref().unwrap_err();
                 chump_log::log_patch_file(
                     &path.display().to_string(),
                     diff.len(),
-                    "mismatch-fuzzy",
+                    "mismatch-all-tiers",
                 );
                 let mut msg = patch_recovery_message(&content, diff, e);
                 msg.push_str(
-                    "\n\nNote: patch_file also failed with fuzzy matching (whitespace-tolerant, ±3 line context drift). \
+                    "\n\nNote: patch_file also failed with fuzzy matching (whitespace-tolerant, ±3 line context drift) \
+                     and headerless-diff parsing (tier-c, INFRA-785). \
                      Try using read_file to get the exact current content, then use write_file to write \
                      the corrected version directly.",
                 );
@@ -601,6 +630,16 @@ impl Tool for PatchFileTool {
             None
         };
         fs::write(&path, &new_content).map_err(|e| anyhow!("write failed: {}", e))?;
+        // INFRA-785: tier-c applies emit a dedicated tracing line so dashboards
+        // can count Llama-style headerless-diff successes separately from the
+        // strict/fuzzy tiers (otherwise the obs signal is buried in chump_log).
+        if mode == "applied-headerless" {
+            tracing::info!(
+                path = %path_str,
+                mode = "applied-headerless",
+                "patch_file tier-c headerless-diff applied (INFRA-785)"
+            );
+        }
         chump_log::log_patch_file(&path.display().to_string(), diff.len(), mode);
         if let Some((_, _, ref failing)) = baseline {
             test_aware::check_regression(failing).map_err(|e| anyhow!("{}", e))?;

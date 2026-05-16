@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+# scripts/coord/disk-pressure-reaper.sh — INFRA-1471
+#
+# Pressure-tiered worktree + artifact reaper. Escalates aggression as disk
+# fills. Wraps INFRA-1349 target-dir-reaper and adds whole-worktree reap at
+# higher pressure tiers.
+#
+# Pressure ladder (defaults; tunable via env):
+#   ≥ 50 GB free → IDLE (no action)
+#   20-50 GB    → Tier 1: target/ idle > 6h (delegates to target-dir-reaper)
+#   10-20 GB    → Tier 2: target/ idle > 2h + whole-worktree if PR merged + branch deleted
+#    5-10 GB    → Tier 3: whole-worktree idle > 30min, no active lease, no uncommitted edits
+#    < 5 GB     → Tier 4 (RED): emit ALERT, fall back to operator escalation per INFRA-1471
+#
+# Each tier is strictly safe: never deletes a worktree with uncommitted/
+# unpushed work (per INFRA-1347 contract) or a live lease.
+#
+# Usage:
+#   disk-pressure-reaper.sh                   # dry-run
+#   disk-pressure-reaper.sh --execute         # actually delete
+#   disk-pressure-reaper.sh --execute --tier 3 # force Tier 3 regardless of disk
+
+set -uo pipefail
+REPO_ROOT="${CHUMP_REPO:-${CHUMP_HOME:-/Users/jeffadkins/Projects/Chump}}"
+TARGET_REAPER="$REPO_ROOT/scripts/coord/target-dir-reaper.sh"
+
+DRY_RUN=1
+TIER_OVERRIDE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --execute) DRY_RUN=0; shift ;;
+    --tier)    TIER_OVERRIDE="$2"; shift 2 ;;
+    --help|-h) sed -n '2,25p' "$0"; exit 0 ;;
+    *) echo "unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+
+ok()    { printf '\033[0;32m✓\033[0m  %s\n' "$*"; }
+warn()  { printf '\033[0;33m⚠\033[0m  %s\n' "$*"; }
+alert() { printf '\033[0;31m‼\033[0m  %s\n' "$*"; }
+info()  { printf '\033[0;36m→\033[0m  %s\n' "$*"; }
+
+# Detect disk free (macOS df -g format).
+free_gb=$(df -g /System/Volumes/Data 2>/dev/null | awk 'NR==2 {print $4}')
+if [[ -z "$free_gb" ]]; then
+  free_gb=$(df -BG / 2>/dev/null | awk 'NR==2 {gsub(/G/,"",$4); print $4}')
+fi
+free_gb="${free_gb:-999}"
+
+if [[ -n "$TIER_OVERRIDE" ]]; then
+  tier="$TIER_OVERRIDE"
+  info "tier $tier forced via --tier (disk free ${free_gb}GB)"
+elif [[ "$free_gb" -ge 50 ]]; then
+  ok "disk free ${free_gb}GB — idle (≥ 50GB threshold)"
+  exit 0
+elif [[ "$free_gb" -ge 20 ]]; then
+  tier=1
+elif [[ "$free_gb" -ge 10 ]]; then
+  tier=2
+elif [[ "$free_gb" -ge 5 ]]; then
+  tier=3
+else
+  tier=4
+fi
+
+info "disk free ${free_gb}GB → tier $tier"
+
+emit_ambient() {
+  local payload="$1"
+  if [[ -d "$REPO_ROOT/.chump-locks" ]]; then
+    local ts
+    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    printf '{"ts":"%s",%s}\n' "$ts" "$payload" >> "$REPO_ROOT/.chump-locks/ambient.jsonl"
+  fi
+}
+
+# ── Tier 1: target/ idle > 6h ────────────────────────────────────────────
+if [[ "$tier" -ge 1 ]]; then
+  info "tier $tier: delegate to target-dir-reaper (idle > 6h)"
+  if [[ -x "$TARGET_REAPER" ]]; then
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      CHUMP_TARGET_REAPER_DISK_MIN_GB=$((free_gb + 100)) "$TARGET_REAPER" 2>&1 | tail -10
+    else
+      CHUMP_TARGET_REAPER_DISK_MIN_GB=$((free_gb + 100)) "$TARGET_REAPER" --execute --force 2>&1 | tail -10
+    fi
+  else
+    warn "target-dir-reaper not found at $TARGET_REAPER"
+  fi
+fi
+
+# ── Tier 2+: tighter idle window for target/, plus whole-worktree if PR merged ──
+if [[ "$tier" -ge 2 ]]; then
+  info "tier $tier: target/ idle > 2h + whole-worktree if PR merged & branch deleted"
+  if [[ -x "$TARGET_REAPER" ]]; then
+    CHUMP_TARGET_REAPER_IDLE_H=2 CHUMP_TARGET_REAPER_DISK_MIN_GB=$((free_gb + 100)) \
+      "$TARGET_REAPER" $([[ "$DRY_RUN" -eq 1 ]] || echo --execute --force) 2>&1 | tail -5
+  fi
+  # Whole-worktree reap when its branch is gone from remote (merged-and-deleted).
+  scan_pattern="/private/tmp/chump-*"
+  reaped_wt=0
+  for wt in $scan_pattern; do
+    [[ -d "$wt" ]] || continue
+    wt_name=$(basename "$wt" | sed 's|^chump-||')
+    # Skip if any file modified in last 2h.
+    if find "$wt" -mmin -120 -not -path '*/target/*' -print -quit 2>/dev/null | grep -q .; then continue; fi
+    # Skip if remote branch still exists.
+    branch="chump/${wt_name}"
+    if git -C "$REPO_ROOT" ls-remote --heads chump "$branch" 2>/dev/null | grep -q .; then continue; fi
+    # Skip if uncommitted changes inside.
+    if [[ -d "$wt/.git" ]] && git -C "$wt" status --porcelain 2>/dev/null | grep -q .; then continue; fi
+    # Safe to reap.
+    size=$(du -sm "$wt" 2>/dev/null | awk '{print $1}')
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      info "would reap whole worktree $wt (~${size}MB)"
+    else
+      rm -rf "$wt" 2>/dev/null && {
+        reaped_wt=$((reaped_wt + 1))
+        emit_ambient "\"kind\":\"worktree_orphan_pruned_tier2\",\"path\":\"$wt\",\"freed_mb\":${size:-0}"
+        info "reaped $wt (~${size}MB)"
+      }
+    fi
+  done
+  [[ "$reaped_wt" -gt 0 ]] && ok "tier 2 reaped $reaped_wt worktrees"
+fi
+
+# ── Tier 3: aggressive — whole-worktree if no lease + no uncommitted, 30min idle ──
+if [[ "$tier" -ge 3 ]]; then
+  warn "tier $tier (5-10GB free): aggressive whole-worktree reap"
+  # Build active-lease gap-id set.
+  active_gaps=""
+  for lease in "$REPO_ROOT"/.chump-locks/*.json; do
+    [[ -f "$lease" ]] || continue
+    gap=$(basename "$lease" .json | sed -E 's/^claim-([a-z]+)-([0-9]+).*/\1-\2/' | tr '[:lower:]' '[:upper:]')
+    active_gaps+=" $gap"
+  done
+  reaped_t3=0
+  for wt in /private/tmp/chump-*; do
+    [[ -d "$wt" ]] || continue
+    wt_name=$(basename "$wt" | sed 's|^chump-||')
+    gap_id=$(echo "$wt_name" | tr '[:lower:]' '[:upper:]')
+    [[ " $active_gaps " == *" $gap_id "* ]] && continue
+    # 30 min idle threshold.
+    if find "$wt" -mmin -30 -not -path '*/target/*' -print -quit 2>/dev/null | grep -q .; then continue; fi
+    # Uncommitted check.
+    if [[ -d "$wt/.git" ]] && git -C "$wt" status --porcelain 2>/dev/null | grep -q .; then continue; fi
+    size=$(du -sm "$wt" 2>/dev/null | awk '{print $1}')
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      warn "would reap $wt (~${size}MB) — tier 3"
+    else
+      rm -rf "$wt" 2>/dev/null && {
+        reaped_t3=$((reaped_t3 + 1))
+        emit_ambient "\"kind\":\"worktree_orphan_pruned_tier3\",\"path\":\"$wt\",\"freed_mb\":${size:-0}"
+      }
+    fi
+  done
+  [[ "$reaped_t3" -gt 0 ]] && ok "tier 3 reaped $reaped_t3 worktrees"
+fi
+
+# ── Tier 4 (RED): operator escalation ────────────────────────────────────
+if [[ "$tier" -ge 4 ]]; then
+  alert "tier 4 (RED): disk < 5GB. Operator action required per INFRA-1471."
+  emit_ambient "\"kind\":\"disk_pressure_red\",\"free_gb\":${free_gb},\"note\":\"manual intervention required\""
+  alert "Suggested: identify + kill 3-5 large worktrees:"
+  du -sm /private/tmp/chump-* 2>/dev/null | sort -rn | head -5 | awk '{print "    "$2"  ("$1"MB)"}'
+fi
+
+# Final disk report
+final_free=$(df -g /System/Volumes/Data 2>/dev/null | awk 'NR==2 {print $4}')
+echo
+ok "disk free now ${final_free}GB (was ${free_gb}GB, tier ${tier})"

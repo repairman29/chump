@@ -378,6 +378,7 @@ const CHUMP_CADENCES = [
     default_view: 'cockpit',
     subtabs: [
       { id: 'cockpit',       label: 'Cockpit',        icon: '🎯' }, // PRODUCT-122
+      { id: 'brief',         label: 'Brief',          icon: '📋' }, // PRODUCT-078
       { id: 'chat',          label: 'Chat',           icon: '💬' },
       { id: 'agent',         label: 'My queue',       icon: '🔄' },
       { id: 'notifications', label: 'Alerts',         icon: '🔔', badge: true },
@@ -5030,12 +5031,14 @@ const VIEWS = {
   ambient:       makeAmbientView,
   notifications: () => document.createElement('chump-view-notifications'), // PRODUCT-094
   attention:     () => document.createElement('chump-operator-attention'), // PRODUCT-117
+  stuck:         () => document.createElement('chump-stuck-items'),        // PRODUCT-080
   config:        () => document.createElement('chump-config-dials'), // PRODUCT-118
 
   cockpit:       () => document.createElement('chump-view-cockpit'),        // PRODUCT-122
   memory:        () => document.createElement('chump-view-memory'),
   models:        () => document.createElement('chump-view-models'),
   settings:      () => document.createElement('chump-view-settings'),
+  brief:         () => document.createElement('chump-view-brief'),           // PRODUCT-078
 };
 
 document.addEventListener('chump:navigate', (e) => {

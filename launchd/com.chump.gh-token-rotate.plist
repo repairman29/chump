@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.gh-token-rotate — INFRA-1361 LaunchAgent.
+
+  Runs `chump gh-token rotate` every 50 minutes (10-min slack on the
+  60-minute GitHub App installation-token expiry window). Reads
+  ~/.chump/github_apps.toml and writes fresh tokens to
+  ~/.chump/oauth-token-{critical,background}.json so the INFRA-1076
+  lane-routing scaffold has valid tokens available.
+
+  Noop when ~/.chump/github_apps.toml is absent — safe to install before
+  GitHub App setup is complete (INFRA-1362 runbook).
+
+  INSTALLATION:
+    scripts/setup/install-gh-token-rotate-launchd.sh
+
+  Manual run:
+    launchctl start com.chump.gh-token-rotate
+    tail ~/Library/Logs/chump-gh-token-rotate.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.gh-token-rotate.plist
+    rm ~/Library/LaunchAgents/com.chump.gh-token-rotate.plist
+
+  Linux equivalent (crontab):
+    */50 * * * * /path/to/chump gh-token rotate >> ~/Library/Logs/chump-gh-token-rotate.log 2>&1
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.gh-token-rotate</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/chump gh-token rotate</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+  <key>StartInterval</key>
+  <integer>3000</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/path/to/HOME/Library/Logs/chump-gh-token-rotate.log</string>
+  <key>StandardErrorPath</key>
+  <string>/path/to/HOME/Library/Logs/chump-gh-token-rotate.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

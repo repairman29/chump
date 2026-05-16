@@ -507,6 +507,53 @@ if [[ "${CHUMP_AUTO_LEASE_FROM_MSG:-1}" != "0" ]]; then
     fi
 fi
 
+# ── INFRA-1467: auto-inject bypass trailers when CHUMP_*_BYPASS env vars set ──
+# Each bypass env var has a documented trailer convention. Operators were
+# manually `git commit --amend --trailer ...`ing after every blocked commit.
+# Auto-inject the trailer when the bypass env is set + the trailer isn't
+# already present. Idempotent and reason-less by default; operator can
+# override via CHUMP_BYPASS_REASON="<text>".
+#
+# Mapping (env var → trailer):
+#   CHUMP_BYPASS_BOT_MERGE=1       → Bot-Merge-Bypass: <reason>
+#   CHUMP_TEST_GATE=0              → Test-Gate-Bypass: <reason>
+#   CHUMP_OBS_BUDGET_BYPASS=1      → Obs-Bypass-Reason: <reason>
+#   CHUMP_RUST_FIRST_CHECK=0       → Rust-First-Bypass: <reason>
+#   CHUMP_HARDCODED_DATE_CHECK=0   → Hardcoded-Date-Bypass: <reason>
+_bypass_reason="${CHUMP_BYPASS_REASON:-bypass env set in commit invocation}"
+_inject_trailer() {
+    # $1 = env-var, $2 = trailer-name, $3 = positive value ("1" or "0")
+    local var="$1" trailer="$2" positive="$3"
+    local cur="${!var:-}"
+    [[ "$cur" != "$positive" ]] && return 0
+    # Walk GIT_ARGS for -m / --message; append trailer if not already present.
+    local i
+    for ((i=0; i<${#GIT_ARGS[@]}; i++)); do
+        case "${GIT_ARGS[$i]}" in
+            -m|--message)
+                local idx=$((i+1))
+                if [[ $idx -lt ${#GIT_ARGS[@]} ]]; then
+                    local msg="${GIT_ARGS[$idx]}"
+                    if ! grep -qE "^${trailer}:" <<<"$msg"; then
+                        # Append a blank line + trailer (trailer block convention).
+                        msg="${msg}"$'\n\n'"${trailer}: ${_bypass_reason}"
+                        GIT_ARGS[$idx]="$msg"
+                        echo "[chump-commit] INFRA-1467: auto-injected ${trailer}: (${var}=${cur})" >&2
+                    fi
+                fi
+                return 0
+                ;;
+        esac
+    done
+}
+_inject_trailer "CHUMP_BYPASS_BOT_MERGE"      "Bot-Merge-Bypass"     "1"
+_inject_trailer "CHUMP_TEST_GATE"             "Test-Gate-Bypass"     "0"
+_inject_trailer "CHUMP_OBS_BUDGET_BYPASS"     "Obs-Bypass-Reason"    "1"
+_inject_trailer "CHUMP_RUST_FIRST_CHECK"      "Rust-First-Bypass"    "0"
+_inject_trailer "CHUMP_HARDCODED_DATE_CHECK"  "Hardcoded-Date-Bypass" "0"
+unset _bypass_reason
+unset -f _inject_trailer
+
 # ── INFRA-1367: stamp COMMIT_EDITMSG before pre-commit hooks run ──────────────
 # pre-commit-rust-first.sh (and other hooks) read Rust-First-Bypass: from
 # $(git rev-parse --git-common-dir)/COMMIT_EDITMSG. However, git only writes

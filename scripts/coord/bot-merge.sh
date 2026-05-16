@@ -1886,8 +1886,41 @@ stage_start "git push $BRANCH → $REMOTE"
 # The hook blocks first-push of chump/* branches unless this flag is set, to
 # prevent the manual "git push + gh pr create" bypass that skips gap-ship-fatal.
 export CHUMP_BOT_MERGE_IN_PROGRESS=1
-if ! run_timed_hb "git push" 120 git push "$REMOTE" "$BRANCH" --force-with-lease; then
-    red "git push failed or timed out."
+
+# INFRA-1399: bot-merge delegates the cargo test gate to CI on the PR side.
+# Running the full test suite (140+ s) inside the pre-push hook creates sibling
+# contention and stalls every bot-merge for 5-15 min under fleet load.
+# CI on the PR enforces the same gate — running it twice is pure waste.
+# CHUMP_TEST_GATE=0 skips the slow phase; the fmt check remains active (< 10 s).
+# An audit event is emitted so the bypass is traceable in ambient.jsonl.
+_BM_PUSH_TIMEOUT_S="${CHUMP_BOT_MERGE_PHASE_TIMEOUT_S:-300}"
+if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]]; then
+    export CHUMP_TEST_GATE=0
+    _bm_amb_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+    _ambient_write "$_bm_amb_path" \
+        "$(printf '{"ts":"%s","kind":"bot_merge_test_gate_skipped","gap_id":"%s","branch":"%s","note":"INFRA-1399: test gate delegated to CI; CHUMP_TEST_GATE=0 for this push"}' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GAP_IDS[0]:-none}" "$BRANCH")"
+fi
+
+_bm_push_exit=0
+run_timed_hb "git push" "$_BM_PUSH_TIMEOUT_S" \
+    git push "$REMOTE" "$BRANCH" --force-with-lease || _bm_push_exit=$?
+
+if [[ "$_bm_push_exit" -eq 124 ]]; then
+    # Timeout — the pre-push hook (fmt or other gate) stalled longer than
+    # CHUMP_BOT_MERGE_PHASE_TIMEOUT_S. Emit bot_merge_stall_detected so the
+    # fleet monitor can alert and the operator can investigate.
+    _bm_stall_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
+    _ambient_write "$_bm_stall_path" \
+        "$(printf '{"ts":"%s","kind":"bot_merge_stall_detected","phase":"git push","timeout_s":%d,"gap_id":"%s","branch":"%s","note":"pre-push hook stalled > %ds; check for hung cargo fmt or other slow pre-push gate. Retry: CHUMP_FMT_CHECK=0 git push"}' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_BM_PUSH_TIMEOUT_S" \
+            "${GAP_IDS[0]:-none}" "$BRANCH" "$_BM_PUSH_TIMEOUT_S")"
+    red "git push stalled: pre-push hook did not complete within ${_BM_PUSH_TIMEOUT_S}s."
+    red "  → kind=bot_merge_stall_detected emitted to ambient.jsonl"
+    red "  → Retry with: CHUMP_FMT_CHECK=0 scripts/coord/bot-merge.sh --gap ${GAP_IDS[0]:-<ID>} --auto-merge"
+    _bm_fail "push" 15 "pre-push hook stalled after ${_BM_PUSH_TIMEOUT_S}s"
+elif [[ "$_bm_push_exit" -ne 0 ]]; then
+    red "git push failed (exit ${_bm_push_exit})."
     _bm_fail "push" 15 "force-with-lease rejected or network error"
 fi
 stage_done
