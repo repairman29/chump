@@ -1188,6 +1188,14 @@ even on failure, so `statusCheckRollup.state` stays `SUCCESS`.
 - `e2e-battle-sim` — lightweight but can time out
 - `e2e-golden-path` — cargo build + file-presence checks
 
+**Jobs fixed in INFRA-1348** (full audit of all non-required jobs):
+- `changes` — `dorny/paths-filter` can fail transiently (network/runner issue); COE makes failure neutral so downstream jobs safely skip rather than blocking
+- `test-e2e` — aggregates e2e shards (which already have COE); COE here guards against runner errors in the aggregator itself
+
+**Ongoing enforcement:** `scripts/ci/test-rollup-not-blocked-by-flaky-job.sh` parses
+`ci.yml` and asserts every non-required job has either `continue-on-error: true` or
+a PR-trigger exclusion. Run it after any ci.yml change.
+
 **When adding a new CI job:** if it is NOT in branch protection required contexts,
 add `continue-on-error: true` to prevent it from blocking fleet-wide auto-merge.
 
