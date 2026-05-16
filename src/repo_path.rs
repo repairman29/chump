@@ -680,8 +680,20 @@ mod tests {
         let wt_a = tmp.join(format!("chump-1064-wt-a-{}", uuid::Uuid::new_v4().simple()));
         let wt_b = tmp.join(format!("chump-1064-wt-b-{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&main_repo).unwrap();
+        // Helper: build a git Command with all GIT env vars cleared so the
+        // pre-push hook's inherited GIT_DIR/GIT_WORK_TREE/GIT_COMMON_DIR/
+        // GIT_INDEX_FILE doesn't bleed into the subprocess (INFRA-1372, AC-1).
+        macro_rules! git_cmd {
+            () => {
+                Command::new("git")
+                    .env_remove("GIT_DIR")
+                    .env_remove("GIT_WORK_TREE")
+                    .env_remove("GIT_COMMON_DIR")
+                    .env_remove("GIT_INDEX_FILE")
+            };
+        }
         // git init + initial commit (needed for worktree add).
-        assert!(Command::new("git")
+        assert!(git_cmd!()
             .args(["init"])
             .current_dir(&main_repo)
             .status()
@@ -689,26 +701,26 @@ mod tests {
             .success());
         // Configure identity so commit works in any CI environment.
         for (k, v) in [("user.email", "test@test.local"), ("user.name", "Test")] {
-            assert!(Command::new("git")
+            assert!(git_cmd!()
                 .args(["-C", &main_repo.display().to_string(), "config", k, v])
                 .status()
                 .expect("git")
                 .success());
         }
-        assert!(Command::new("git")
+        assert!(git_cmd!()
             .args(["commit", "--allow-empty", "-m", "init"])
             .current_dir(&main_repo)
             .status()
             .expect("git")
             .success());
         // Add two linked worktrees.
-        assert!(Command::new("git")
+        assert!(git_cmd!()
             .args(["worktree", "add", "--detach", &wt_a.display().to_string()])
             .current_dir(&main_repo)
             .status()
             .expect("git")
             .success());
-        assert!(Command::new("git")
+        assert!(git_cmd!()
             .args(["worktree", "add", "--detach", &wt_b.display().to_string()])
             .current_dir(&main_repo)
             .status()
@@ -760,8 +772,8 @@ mod tests {
             Some(ref s) => std::env::set_var("CHUMP_WORKTREE_ROOT", s),
             None => std::env::remove_var("CHUMP_WORKTREE_ROOT"),
         }
-        // Prune worktrees before removing dirs.
-        let _ = Command::new("git")
+        // Prune worktrees before removing dirs (also clears GIT env vars — INFRA-1372).
+        let _ = git_cmd!()
             .args(["worktree", "prune"])
             .current_dir(&main_repo)
             .status();

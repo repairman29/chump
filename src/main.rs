@@ -92,6 +92,7 @@ use chump_gap_store as gap_store;
 // INFRA-1229: explicit linkage declaration so Cargo always links chump-ship
 // even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
 extern crate chump_ship;
+mod audit;
 mod completion;
 mod gen;
 mod genai_conv;
@@ -130,6 +131,7 @@ mod notify_tool;
 mod onboard_repo_tool;
 mod operator_presence;
 mod orchestrate;
+mod paramedic;
 mod patch_apply;
 mod pending_peer_approval;
 mod perception;
@@ -235,7 +237,7 @@ mod e2e_bot_tests;
 #[cfg(feature = "inprocess-embed")]
 mod embed_inprocess;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use axonerai::agent::Agent;
 use axonerai::file_session_manager::FileSessionManager;
 use axonerai::tool::ToolRegistry;
@@ -949,6 +951,94 @@ async fn main() -> Result<()> {
         }
     }
 
+    // `chump audit aha-sweep [--json] [--window-days N] [--emit]` (INFRA-1370).
+    // Walks every kind in EVENT_REGISTRY.yaml, reads its effect_metric +
+    // expected_min_per_day declarations (INFRA-1371), and compares against the
+    // last-N-days emit count in .chump-locks/ambient.jsonl. Surfaces "registered
+    // but silent" kinds (alert) and "below floor" kinds (warn) as
+    // kind=audit_finding events. Exit non-zero on any alert.
+    if args.get(1).map(String::as_str) == Some("audit") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("--help");
+        if sub == "--help" || sub == "help" || sub.is_empty() {
+            println!("Usage: chump audit <subcommand> [options]");
+            println!();
+            println!("Subcommands:");
+            println!("  aha-sweep   walk code/runtime/effect triangle for every registered kind");
+            println!();
+            println!("Run 'chump audit aha-sweep --help' for sweep options.");
+            return Ok(());
+        }
+        if sub != "aha-sweep" {
+            eprintln!("chump audit: unknown subcommand '{}'", sub);
+            eprintln!("Run 'chump audit --help' for the list.");
+            std::process::exit(2);
+        }
+        let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+        if rest.iter().any(|a| *a == "--help" || *a == "help") {
+            println!("Usage: chump audit aha-sweep [--json] [--window-days N] [--flag-silent-self] [--emit]");
+            println!();
+            println!("Walks every kind in EVENT_REGISTRY.yaml and verifies the recent ambient");
+            println!("stream actually contains emits consistent with the declared effect_metric +");
+            println!("expected_min_per_day floor.");
+            println!();
+            println!("Options:");
+            println!("  --json               output JSON instead of text");
+            println!("  --window-days N      look back window in days (default 7)");
+            println!("  --flag-silent-self   also warn on effect_metric=self kinds with 0 emits");
+            println!("  --emit               write kind=audit_finding to ambient.jsonl for non-ok findings");
+            println!();
+            println!("Exits non-zero when any finding has severity=alert.");
+            return Ok(());
+        }
+        let want_json = rest.contains(&"--json");
+        let flag_silent_self = rest.contains(&"--flag-silent-self");
+        let do_emit = rest.contains(&"--emit");
+        let window_days: u64 = {
+            let mut it = rest.iter().peekable();
+            let mut n = 7u64;
+            while let Some(a) = it.next() {
+                if *a == "--window-days" {
+                    if let Some(v) = it.next() {
+                        if let Ok(parsed) = v.parse::<u64>() {
+                            n = parsed.clamp(1, 90);
+                        }
+                    }
+                }
+            }
+            n
+        };
+        let repo_root = repo_path::repo_root();
+        let cfg = audit::SweepConfig {
+            repo_root: repo_root.clone(),
+            window: std::time::Duration::from_secs(window_days * 24 * 3600),
+            flag_silent_self,
+        };
+        let findings = match audit::sweep_event_registry(&cfg) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("chump audit aha-sweep: {}", e);
+                std::process::exit(1);
+            }
+        };
+        if do_emit {
+            if let Err(e) = audit::emit_findings(&repo_root, &findings) {
+                eprintln!("chump audit aha-sweep: emit warning: {}", e);
+            }
+        }
+        if want_json {
+            println!("{}", audit::render_json(&findings));
+        } else {
+            print!("{}", audit::render_text(&findings));
+        }
+        let any_alert = findings
+            .iter()
+            .any(|f| f.severity == audit::AuditSeverity::Alert);
+        if any_alert {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
     // `chump mission-grade [--json]` (INFRA-599) — auto-emit 4-pillar scorecard.
     // Counts pickable, in_flight, and shipped_24h gaps per pillar
     // (EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE, identified by title prefix),
@@ -1415,6 +1505,102 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 eprintln!("chump pr triage: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
+    // `chump paramedic triage|execute|daemon [--dry-run] [--interval-secs N] [--budget-secs N] [--plan F]`
+    // (INFRA-1375) — RESILIENT: rule-engine PR rescue daemon.
+    // triage  — read PR state, emit JSON action plan (read-only)
+    // execute — run one triage→execute cycle with optional --plan <file>
+    // daemon  — loop triage→execute every --interval-secs (default 600)
+    if args.get(1).map(String::as_str) == Some("paramedic") {
+        let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
+        let repo_root = repo_path::repo_root();
+        let dry_run = args.iter().any(|a| a == "--dry-run");
+
+        if subcmd == "help" || args.iter().any(|a| a == "--help") {
+            println!("Usage: chump paramedic <subcommand> [options]");
+            println!();
+            println!("Subcommands:");
+            println!("  triage               Read PR state and emit JSON action plan (read-only).");
+            println!("  execute [--plan F]   Run one triage→execute cycle. --plan reads from file");
+            println!("                       instead of re-triaging.");
+            println!("  daemon               Loop triage→execute forever. Single-instance via PID");
+            println!("                       file at .chump-locks/paramedic.lock.");
+            println!();
+            println!("Options:");
+            println!("  --dry-run            Print actions; do not actually run gh commands.");
+            println!("  --interval-secs N    Daemon loop interval in seconds (default: 600).");
+            println!("  --budget-secs N      Per-PR action budget in seconds (default: 90).");
+            println!("  --plan F             Path to JSON plan file (execute only).");
+            println!();
+            println!("Examples:");
+            println!("  chump paramedic triage");
+            println!("  chump paramedic triage | chump paramedic execute --plan /dev/stdin");
+            println!("  chump paramedic daemon --interval-secs 300 --dry-run");
+            return Ok(());
+        }
+
+        match subcmd {
+            "triage" => match paramedic::triage(&repo_root, dry_run) {
+                Ok(plan) => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&plan).unwrap_or_default()
+                    );
+                }
+                Err(e) => {
+                    eprintln!("chump paramedic triage: {e}");
+                    std::process::exit(1);
+                }
+            },
+            "execute" => {
+                let budget_secs = args
+                    .iter()
+                    .position(|a| a == "--budget-secs")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(90);
+
+                // Optionally read plan from --plan <file>; otherwise triage first.
+                let plan_path = args
+                    .iter()
+                    .position(|a| a == "--plan")
+                    .and_then(|i| args.get(i + 1));
+
+                let plan = if let Some(path) = plan_path {
+                    let raw = std::fs::read_to_string(path)
+                        .with_context(|| format!("reading plan from {path}"))?;
+                    serde_json::from_str::<paramedic::ActionPlan>(&raw)
+                        .context("parsing plan JSON")?
+                } else {
+                    paramedic::triage(&repo_root, dry_run)?
+                };
+
+                if let Err(e) = paramedic::execute(&plan, &repo_root, dry_run, budget_secs) {
+                    eprintln!("chump paramedic execute: {e}");
+                    std::process::exit(1);
+                }
+            }
+            "daemon" => {
+                let interval_secs = args
+                    .iter()
+                    .position(|a| a == "--interval-secs")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(600);
+
+                if let Err(e) = paramedic::daemon(interval_secs, &repo_root, dry_run) {
+                    eprintln!("chump paramedic daemon: {e}");
+                    std::process::exit(1);
+                }
+            }
+            other => {
+                eprintln!("chump paramedic: unknown subcommand '{other}'");
+                eprintln!("Run 'chump paramedic help' for usage.");
                 std::process::exit(1);
             }
         }
@@ -7647,17 +7833,39 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
             // INFRA-935: gap consolidate — detect near-duplicate gap titles.
-            // Usage: chump gap consolidate [--dry-run] [--threshold N] [--json]
-            //   --threshold N  similarity threshold 0-100 (default 80)
-            //   --dry-run      (implied always; never mutates state.db)
-            //   --json         output pairs as JSON array
+            // INFRA-1435 (2026-05-16): added --apply mode that mechanically
+            // archives the higher-ID dup, rewrites depends_on backlinks,
+            // writes an audit row, and emits ambient kind=gap_dup_archived.
+            //
+            // Usage:
+            //   chump gap consolidate [--threshold N] [--json]
+            //     --threshold N  similarity threshold 0-100 (default 80 advisory,
+            //                    90 when --apply is set)
+            //     --json         output pairs as JSON array
+            //
+            //   chump gap consolidate --apply --reason "<text>" [--threshold N]
+            //                                                   [--json]
+            //     --apply        mutate: archive higher-ID dups, rewrite
+            //                    depends_on, write audit + ambient events.
+            //                    Refuses if either gap has an active lease.
+            //     --reason TEXT  required with --apply (audit-trail message)
             "consolidate" => {
+                let apply = args.iter().any(|a| a == "--apply");
+                let reason = flag("--reason").unwrap_or_default();
+                if apply && reason.trim().is_empty() {
+                    eprintln!(
+                        "chump gap consolidate --apply: requires --reason \"<text>\" \
+                         for the audit trail."
+                    );
+                    std::process::exit(2);
+                }
+                let default_threshold = if apply { 90 } else { 80 };
                 let threshold: u32 = args
                     .iter()
                     .position(|a| a == "--threshold")
                     .and_then(|i| args.get(i + 1))
                     .and_then(|s| s.parse().ok())
-                    .unwrap_or(80);
+                    .unwrap_or(default_threshold);
                 let as_json = args.iter().any(|a| a == "--json");
 
                 let all_gaps = match store.list(Some("open")) {
@@ -7698,6 +7906,180 @@ async fn main() -> Result<()> {
                 }
                 pairs.sort_by_key(|p| std::cmp::Reverse(p.2));
 
+                // INFRA-1435: --apply path. Mutates state.db; defensive
+                // against active leases.
+                if apply {
+                    // Read all active leases once; collect referenced gap IDs.
+                    let lease_dir = repo_root.join(".chump-locks");
+                    let mut leased_gaps: std::collections::HashSet<String> =
+                        std::collections::HashSet::new();
+                    if let Ok(entries) = std::fs::read_dir(&lease_dir) {
+                        for e in entries.flatten() {
+                            let p = e.path();
+                            if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                                continue;
+                            }
+                            if let Ok(text) = std::fs::read_to_string(&p) {
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if let Some(g) = v.get("gap").and_then(|g| g.as_str()) {
+                                        leased_gaps.insert(g.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let operator = std::env::var("USER").unwrap_or_default();
+                    let ts = chrono::Utc::now().timestamp();
+                    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                    let mut applied: Vec<(String, String, u32, usize)> = Vec::new(); // (kept, archived, sim, rewrites)
+                    let mut skipped_leased: Vec<(String, String, String)> = Vec::new(); // (a, b, why)
+
+                    for (a, b, sim) in &pairs {
+                        // Deterministic kept/archived: keep the LOWER id by
+                        // lexicographic order — older IDs have more backlinks
+                        // and are more likely to be cited externally.
+                        let (kept, archived) = if a < b {
+                            (a.clone(), b.clone())
+                        } else {
+                            (b.clone(), a.clone())
+                        };
+                        if leased_gaps.contains(&kept) || leased_gaps.contains(&archived) {
+                            skipped_leased.push((
+                                kept.clone(),
+                                archived.clone(),
+                                "active lease — refuse to mutate".to_string(),
+                            ));
+                            continue;
+                        }
+
+                        // Rewrite depends_on across all open gaps that point
+                        // at the archived ID.
+                        let mut rewrites = 0usize;
+                        if let Ok(open_gaps) = store.list(Some("open")) {
+                            for g in &open_gaps {
+                                if g.depends_on.is_empty() || g.id == archived {
+                                    continue;
+                                }
+                                let deps = gap_store::parse_json_ac_list(&g.depends_on);
+                                if !deps.iter().any(|d| d == &archived) {
+                                    continue;
+                                }
+                                let new_deps: Vec<String> = deps
+                                    .into_iter()
+                                    .map(|d| if d == archived { kept.clone() } else { d })
+                                    .collect::<Vec<_>>()
+                                    .into_iter()
+                                    .collect::<std::collections::BTreeSet<_>>()
+                                    .into_iter()
+                                    .collect();
+                                let new_deps_json =
+                                    serde_json::to_string(&new_deps).unwrap_or_default();
+                                let upd = gap_store::GapFieldUpdate {
+                                    depends_on: Some(new_deps_json),
+                                    ..Default::default()
+                                };
+                                if store.set_fields(&g.id, upd).is_ok() {
+                                    rewrites += 1;
+                                }
+                            }
+                        }
+
+                        // Archive the higher ID. Bypass closed_pr guard
+                        // (this is a dup-archive, not a real ship).
+                        let archive_notes = format!(
+                            "INFRA-1435 dup-archive (similarity {sim}%): keeping {kept}; \
+                             reason: {reason}"
+                        );
+                        let upd = gap_store::GapFieldUpdate {
+                            status: Some("done".to_string()),
+                            notes: Some(archive_notes),
+                            ..Default::default()
+                        };
+                        // Temporarily set the bypass env so set_fields' INFRA-402
+                        // guard accepts the status flip without a closed_pr.
+                        // SAFETY: single-threaded CLI; restored before next
+                        // iteration. Only main() touches env at this layer.
+                        unsafe {
+                            std::env::set_var("CHUMP_BYPASS_CLOSED_PR_GUARD", "1");
+                        }
+                        let archive_result = store.set_fields(&archived, upd);
+                        unsafe {
+                            std::env::remove_var("CHUMP_BYPASS_CLOSED_PR_GUARD");
+                        }
+                        if let Err(e) = archive_result {
+                            eprintln!(
+                                "[consolidate --apply] WARN: archive of {archived} failed: {e:#} — skipping audit/ambient for this pair"
+                            );
+                            continue;
+                        }
+
+                        // Audit row (typed API; creates table on first call).
+                        if let Err(e) = store.record_dup_archive(
+                            &kept, &archived, *sim, rewrites, &reason, &operator,
+                        ) {
+                            eprintln!(
+                                "[consolidate --apply] WARN: audit-row write failed for {archived}: {e:#}"
+                            );
+                        }
+
+                        // Ambient event.
+                        if let Some(parent) = ambient_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write;
+                            let safe_reason = reason.replace(['"', '\\'], "");
+                            let _ = writeln!(
+                                f,
+                                r#"{{"ts":{ts},"kind":"gap_dup_archived","kept_id":"{kept}","archived_id":"{archived}","similarity_pct":{sim},"depends_on_rewrites":{rewrites},"reason":"{safe_reason}"}}"#
+                            );
+                        }
+
+                        applied.push((kept, archived, *sim, rewrites));
+                    }
+
+                    if as_json {
+                        let arr: Vec<String> = applied
+                            .iter()
+                            .map(|(k, a, s, r)| {
+                                format!(
+                                    r#"{{"kept_id":"{k}","archived_id":"{a}","similarity_pct":{s},"depends_on_rewrites":{r}}}"#
+                                )
+                            })
+                            .collect();
+                        println!(
+                            r#"{{"applied":[{}],"skipped_leased_count":{}}}"#,
+                            arr.join(","),
+                            skipped_leased.len()
+                        );
+                    } else {
+                        println!(
+                            "═══ Gap Consolidate --apply (INFRA-1435) ═══ threshold={}% — \
+                             {} pair(s) above threshold, {} archived, {} skipped (leased)",
+                            threshold,
+                            pairs.len(),
+                            applied.len(),
+                            skipped_leased.len()
+                        );
+                        for (k, a, s, r) in &applied {
+                            println!(
+                                "  archived {} → kept {}  (sim {}%, {} depends_on rewritten)",
+                                a, k, s, r
+                            );
+                        }
+                        for (k, a, why) in &skipped_leased {
+                            println!("  SKIP  {} ↔ {}: {}", k, a, why);
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // Advisory mode (default).
                 if as_json {
                     let json_pairs: Vec<String> = pairs
                         .iter()
@@ -7725,6 +8107,11 @@ async fn main() -> Result<()> {
                             let action = if *sim >= 90 { "merge" } else { "review" };
                             println!("  {:>3}%  {:>12}  {:>12}  {}", sim, a, b, action);
                         }
+                        println!();
+                        println!(
+                            "  Hint: add --apply --reason \"<text>\" to mutate \
+                             (archives higher ID, rewrites depends_on, audits)."
+                        );
                     }
                 }
                 return Ok(());

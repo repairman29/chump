@@ -607,6 +607,19 @@ events:
     trigger: two sessions claim same files
     consumers: [fleet-brief]
 
+  - kind: fixture_commit_dropped
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push (INFRA-1408, Guard 0d)
+    trigger: ghost commits authored by Test<test@test.local> or matching CHUMP_FIXTURE_AUTHOR_REGEX detected; --auto-drop or CHUMP_AUTODROP_FIXTURE_COMMITS=1 rewrote local branch
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, branch, dropped_count]
+  - kind: lease_orphaned_by_sibling_merge
+    effect_metric: self
+    emitter: scripts/ops/github-webhook-receiver.py (INFRA-1444)
+    trigger: a pull_request.closed+merged=true webhook references a gap_id whose claim lease exists from a different session; the lease file is auto-deleted to release the orphaned worktree
+    consumers: [fleet-brief, stale-worktree-reaper, audit-log]
+    fields_required: [ts, kind, gap_id, released_session_id, merged_pr, lease_file]
+
   # ── PR / gap lifecycle ─────────────────────────────────────────────────────
   - kind: gap_reserved
     effect_metric: self
@@ -867,6 +880,13 @@ events:
     emitter: scripts/ops/mission-auto-grader.sh (INFRA-599)
     trigger: per-cycle pillar grade computed
     consumers: [fleet-brief]
+
+  - kind: audit_finding
+    effect_metric: operator_action_within_60s_for_same_feature_id
+    emitter: src/audit.rs (INFRA-1370, `chump audit aha-sweep`)
+    trigger: ambient-kind sweep finds a registered kind whose recent emit count diverges from its expected_min_per_day floor (or whose effect_metric=self yields 0 emits when --flag-silent-self is set)
+    consumers: [fleet-brief, audit-log, PWA <chump-view-audit-findings>]
+    fields_required: [ts, kind, feature_id, feature_class, plumbing_ok, heartbeat_ok, effect_ok, effect_metric_name, effect_observed, effect_expected_min, severity, note]
 
   - kind: pillar_imbalance
     effect_metric: self
@@ -1480,6 +1500,15 @@ events:
     trigger: wall-clock timeout (CHUMP_PR_RESCUE_TIMEOUT_S, default 300s) exceeded before all PRs processed; script exits early to avoid secondary rate-limit abuse
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, pr, detail]
+
+  # ── Chump paramedic rule-engine rescue daemon (INFRA-1375) ───────────────
+  - kind: paramedic_action
+    emitter: src/paramedic.rs (INFRA-1375)
+    trigger: paramedic daemon determined an action to take on an open PR (REBASE_DIRTY, RERUN_FLAKE, ALLOWLIST_EMIT_NO_REG, SQUASH_INIT_LEAK, FILE_CLUSTER_RESCUE); emitted once per action per PR per triage cycle
+    consumers: [fleet-brief, kpi-report, waste-tally]
+    fields_required: [ts, kind, pr_number, action, reason, dry_run]
+    fields_optional: [gap_id]
+    effect_metric: self
 
   # ── Centralized auto-merge armer (INFRA-1113) ─────────────────────────────
   - kind: auto_merge_armed
@@ -2431,6 +2460,22 @@ events:
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, gap_id, reason, branch, bypassed_by]
 
+  # ── INFRA-1372: pre-push HEAD-drift detection ─────────────────────────────
+  - kind: prepush_head_drift
+    emitter: scripts/git-hooks/pre-push (INFRA-1372)
+    trigger: HEAD moved during cargo test run (Rust test leaked a git commit via GIT_DIR inheritance)
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, pre_head, post_head, branch]
+    docs: |
+      Emitted immediately before blocking the push. pre_head and post_head are
+      the full 40-char SHA of HEAD before and after the cargo test run. The delta
+      indicates that at least one Rust test called Command::new("git commit") (or
+      equivalent) without clearing GIT_DIR, causing the commit to land on the
+      real worktree branch rather than the test's temporary repo fixture.
+      Fix: add env_remove("GIT_DIR")/env_remove("GIT_WORK_TREE")/
+      env_remove("GIT_COMMON_DIR")/env_remove("GIT_INDEX_FILE") to all
+      Command::new("git") invocations in the offending test.
+
   # ── INFRA-1006: bot-merge watchdog ────────────────────────────────────────
   - kind: bot_merge_watchdog_killed
     effect_metric: self
@@ -2579,6 +2624,16 @@ events:
       Eliminates GraphQL secondary rate limit errors in green-CI fast path.
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, pr, gap, sha, checks_verified]
+
+  - kind: branch_deleted_fallback
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh INFRA-1413 REST-direct branch cleanup
+    trigger: After a successful REST-direct merge, bot-merge.sh detected that the
+      source branch was not yet deleted by the repo-level delete-branch-on-merge
+      setting and deleted it manually via gh api -X DELETE. Common when the setting
+      lags a newly-provisioned fork or there is a race between merge and cleanup.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, pr, branch]
 
   - kind: bot_merge_auto_armed
     effect_metric: self
@@ -2824,6 +2879,17 @@ events:
       override.
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, proposed_title, top_match_id, top_match_score]
+
+  - kind: gap_dup_archived
+    effect_metric: self
+    emitter: src/main.rs gap consolidate --apply handler (INFRA-1435)
+    trigger: chump gap consolidate --apply detected a near-duplicate pair above
+      threshold (default 90% Jaccard with --apply), archived the higher-ID gap
+      as duplicate of the lower-ID gap, rewrote any depends_on backlinks across
+      open gaps, and wrote an audit row to gap_dup_archive_audit.
+    consumers: [fleet-brief, waste-tally, kpi-report]
+    fields_required: [ts, kind, kept_id, archived_id, similarity_pct,
+      depends_on_rewrites, reason]
 
   # ── INFRA-1247: alert classifier false-positive suppression ───────────────
   - kind: alert_classifier_suppressed

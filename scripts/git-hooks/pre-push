@@ -124,6 +124,93 @@ if [[ "${CHUMP_FMT_CHECK:-1}" != "0" ]] && command -v cargo &>/dev/null; then
 fi
 
 # -----------------------------------------------------------------------
+# Guard 0d: drop ghost test-fixture commits (INFRA-1408)
+#
+# Some CI test scripts (notably scripts/ci/test-api-broadcast.sh and
+# scripts/ci/test-claim-*.sh) run `git init && git add -A && git commit -m s`
+# inside scratch dirs to fabricate fixture repos. When those scratch dirs
+# overlap with the repo (or when a sibling-bot pushes into a feature branch),
+# the resulting "init" commits authored by `Test <test@test.local>` leak into
+# real PR branches and get caught by pr-hygiene (CREDIBLE-027) at CI time —
+# wasting one full CI cycle per occurrence.
+#
+# This guard scans the commits being pushed (zero-arg local-ref form of pre-
+# push input). For any commit authored by a name matching the fixture regex
+# (default '^Test.*@test\.local$'), it prints a warning and refuses the push.
+# Operator can interactively drop them via `git rebase --interactive base~N`
+# or pass --auto-drop to have the hook do it.
+#
+# Bypass: CHUMP_FIXTURE_AUTHOR_GUARD=0 git push
+# Auto-drop: CHUMP_AUTODROP_FIXTURE_COMMITS=1 git push  (rewrites HEAD)
+# Tune regex: CHUMP_FIXTURE_AUTHOR_REGEX='^Test.*@test\.local$|^Fixture<.*>$'
+# -----------------------------------------------------------------------
+if [[ "${CHUMP_FIXTURE_AUTHOR_GUARD:-1}" != "0" ]]; then
+    # Match by domain — the actual ghost commits observed today had
+    # author email "test@test.local" (lowercase) so we key on the .local
+    # TLD specifically since real authors use .com/.dev/.org/etc.
+    _fa_regex="${CHUMP_FIXTURE_AUTHOR_REGEX:-@(test|fixture|example)\.local$}"
+    # Read stdin only when we have one; pre-push hooks get refs on stdin.
+    # The git revisions to scan are determined by the diff between the
+    # being-pushed ref and its remote tracking ref. If there is no remote
+    # tracking ref (new branch), scan everything not yet on origin/main.
+    _fa_local_sha="$(git rev-parse HEAD 2>/dev/null || echo HEAD)"
+    _fa_base="$(git merge-base "$_fa_local_sha" origin/main 2>/dev/null || echo "")"
+    if [[ -n "$_fa_base" && "$_fa_base" != "$_fa_local_sha" ]]; then
+        _fa_ghosts="$(git log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" 2>/dev/null | \
+            grep -E " ${_fa_regex}" | awk '{print $1}' || true)"
+        if [[ -n "$_fa_ghosts" ]]; then
+            echo "" >&2
+            echo "[pre-push] BLOCKED: $(echo "$_fa_ghosts" | wc -l | tr -d ' ') ghost commit(s) authored by Test<test@test.local> or similar detected (INFRA-1408)." >&2
+            echo "[pre-push] These leak from CI test fixtures running 'git init' in shared dirs and trigger pr-hygiene/CREDIBLE-027 at CI time." >&2
+            echo "" >&2
+            echo "$_fa_ghosts" | while read -r _sha; do
+                git log -1 --format='  %h %ae — %s' "$_sha" >&2
+            done
+            echo "" >&2
+            if [[ "${CHUMP_AUTODROP_FIXTURE_COMMITS:-0}" = "1" ]]; then
+                echo "[pre-push] CHUMP_AUTODROP_FIXTURE_COMMITS=1 — attempting auto-drop via rebase --onto" >&2
+                # Build a rebase --onto base ghost~ HEAD for each (in order)
+                # Simplest reliable approach: cherry-pick all non-ghost commits onto base
+                _fa_keep="$(git log --format='%H %ae' "${_fa_base}..${_fa_local_sha}" --reverse | \
+                    grep -vE " ${_fa_regex}" | awk '{print $1}')"
+                _fa_branch="$(git rev-parse --abbrev-ref HEAD)"
+                git checkout -q "$_fa_base"
+                _fa_failed=0
+                for _sha in $_fa_keep; do
+                    if ! git cherry-pick "$_sha" >/dev/null 2>&1; then
+                        _fa_failed=1
+                        git cherry-pick --abort >/dev/null 2>&1 || true
+                        break
+                    fi
+                done
+                if [[ $_fa_failed -eq 1 ]]; then
+                    git checkout -q "$_fa_branch"
+                    echo "[pre-push] auto-drop failed; manual fix required: git rebase -i $_fa_base" >&2
+                    exit 1
+                fi
+                git branch -f "$_fa_branch" HEAD
+                git checkout -q "$_fa_branch"
+                # Emit ambient event
+                _fa_repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+                _fa_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+                printf '{"ts":"%s","kind":"fixture_commit_dropped","branch":"%s","dropped_count":%d}\n' \
+                    "$_fa_ts" "$_fa_branch" "$(echo "$_fa_ghosts" | wc -l | tr -d ' ')" \
+                    >> "${_fa_repo_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+                unset _fa_ts _fa_repo_root
+                echo "[pre-push] auto-drop succeeded — ghost commits removed from $_fa_branch" >&2
+            else
+                echo "[pre-push] Drop manually: git rebase -i $_fa_base    (delete the ghost lines)" >&2
+                echo "[pre-push] Or: CHUMP_AUTODROP_FIXTURE_COMMITS=1 git push   (rewrites local branch)" >&2
+                echo "[pre-push] Bypass:    CHUMP_FIXTURE_AUTHOR_GUARD=0 git push" >&2
+                echo "" >&2
+                exit 1
+            fi
+        fi
+    fi
+    unset _fa_regex _fa_local_sha _fa_base _fa_ghosts _fa_keep _fa_branch _fa_failed _sha
+fi
+
+# -----------------------------------------------------------------------
 # Guard 0c: cargo clippy lint gate (INFRA-1390)
 #
 # Runs cargo clippy on changed crates before the full test suite so
@@ -293,6 +380,19 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # don't inherit chump-dispatch@chump.bot (INFRA-813).
             unset GIT_AUTHOR_EMAIL GIT_COMMITTER_EMAIL GIT_AUTHOR_NAME GIT_COMMITTER_NAME
 
+            # INFRA-1372 AC-2: unset GIT_DIR and friends so cargo test's child git
+            # processes don't inherit the pre-push hook's GIT_DIR (which points at
+            # the hook-invoking repo). Without this, Rust tests that call
+            # Command::new("git") create commits inside the WRONG repo (the hook's
+            # repo), not the temp fixture repo the test set up — producing empty
+            # "init" commits in the real worktree's git history.
+            unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+
+            # INFRA-1372 AC-3: record HEAD before cargo test. If a Rust test
+            # creates a commit (e.g. via git-command inheritance), HEAD moves and
+            # we must abort the push to prevent garbage commits landing on the branch.
+            _PRE_TEST_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+
             # INFRA-1167: build --skip list from KNOWN_FLAKES.yaml so environment-
             # dependent parallel-test races never block a legitimate push. Skipped
             # tests are announced upfront; CHUMP_TEST_GATE=0 remains emergency bypass.
@@ -443,6 +543,32 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
                 >> "$_AMBIENT_LOG" 2>/dev/null || true
             echo "[pre-push] INFRA-1403: no .rs changes — test gate skipped." >&2
         fi  # end if [[ "$ANY_RS" == "1" ]]
+    fi
+
+    # INFRA-1372 AC-3: HEAD-drift detection — abort push if cargo test created
+    # a commit. GIT_DIR is now restored (unset above then re-exported after the
+    # subshell exits — bash restores env after a subshell, but `unset` in the
+    # parent shell is permanent). We re-read HEAD here from the worktree gitdir.
+    if [[ "${_PRE_TEST_HEAD:-unknown}" != "unknown" ]]; then
+        _POST_TEST_HEAD="$(git rev-parse HEAD 2>/dev/null || echo "unknown")"
+        if [[ "$_PRE_TEST_HEAD" != "$_POST_TEST_HEAD" && "$_POST_TEST_HEAD" != "unknown" ]]; then
+            _pp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+            _pp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+            _pp_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            mkdir -p "${_pp_root}/.chump-locks" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"prepush_head_drift","pre_head":"%s","post_head":"%s","branch":"%s"}\n' \
+                "$_pp_ts" "$_PRE_TEST_HEAD" "$_POST_TEST_HEAD" "$_pp_branch" \
+                >> "${_pp_root}/.chump-locks/ambient.jsonl" 2>/dev/null || true
+            echo "" >&2
+            echo "[pre-push] BLOCKED (INFRA-1372): HEAD moved during cargo test run!" >&2
+            echo "[pre-push]   Before: $_PRE_TEST_HEAD" >&2
+            echo "[pre-push]   After:  $_POST_TEST_HEAD" >&2
+            echo "[pre-push] A test created a git commit — this leaks garbage commits onto the branch." >&2
+            echo "[pre-push] Fix: ensure every Command::new(git) in tests unsets GIT_DIR/GIT_WORK_TREE." >&2
+            echo "[pre-push] Emitted kind=prepush_head_drift to ambient.jsonl for observability." >&2
+            echo "" >&2
+            exit 1
+        fi
     fi
 fi
 
