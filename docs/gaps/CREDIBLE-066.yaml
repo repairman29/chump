@@ -1,0 +1,12 @@
+- id: CREDIBLE-066
+  domain: CREDIBLE
+  title: "CREDIBLE: Public changelog auto-generation — git tags → CHANGELOG.md → repairman29.github.io/chump/changelog"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

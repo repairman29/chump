@@ -14,12 +14,20 @@
 #   target-dir-reaper.sh                      # dry-run, show what would happen
 #   target-dir-reaper.sh --execute            # actually delete
 #   target-dir-reaper.sh --execute --force    # ignore disk-pressure threshold
+#   target-dir-reaper.sh --execute --critical # critical mode: skip idle check
 #
 # Triggers:
 #   - Disk free < CHUMP_TARGET_REAPER_DISK_MIN_GB (default 50)
 #     OR --force
 #   - Worktree's last mtime > CHUMP_TARGET_REAPER_IDLE_H (default 6) hours ago
+#     UNLESS critical mode is active (see below)
 #   - Worktree has NO active lease (.chump-locks/<gap>.json with expires_at > now)
+#
+# Critical mode (INFRA-1431):
+#   Activated by --critical flag OR when free disk < CHUMP_REAPER_CRITICAL_GB (default 10).
+#   In critical mode the idle-mtime check is SKIPPED — active lease is the only guard.
+#   Disable auto-escalation: CHUMP_REAPER_NEVER_ESCALATE=1
+#   Emits kind=target_artifact_critical_reap instead of target_artifact_reaped.
 #
 # Output: per-target-dir status (skip-reason | reaped | bytes-freed)
 # Ambient event: kind=target_artifact_reaped {path, freed_gb, worktree_age_h}
@@ -28,18 +36,23 @@ set -uo pipefail
 
 DRY_RUN=1
 FORCE=0
+CRITICAL=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --execute) DRY_RUN=0; shift ;;
-    --force)   FORCE=1;   shift ;;
+    --execute)  DRY_RUN=0;  shift ;;
+    --force)    FORCE=1;    shift ;;
+    --critical) CRITICAL=1; shift ;;
     --help|-h)
-      sed -n '2,25p' "$0"; exit 0 ;;
+      sed -n '2,35p' "$0"; exit 0 ;;
     *) echo "unknown flag: $1" >&2; exit 2 ;;
   esac
 done
 
 DISK_MIN_GB="${CHUMP_TARGET_REAPER_DISK_MIN_GB:-50}"
 IDLE_H="${CHUMP_TARGET_REAPER_IDLE_H:-6}"
+# INFRA-1431: auto-escalate to critical mode when disk free drops below this.
+CRITICAL_GB="${CHUMP_REAPER_CRITICAL_GB:-10}"
+NEVER_ESCALATE="${CHUMP_REAPER_NEVER_ESCALATE:-0}"
 # Where to look. /private/tmp/chump-* is the worktree home on macOS;
 # .claude/worktrees/*/target on Linux/CI hosts. Both safe to scan.
 SCAN_PATHS=("/private/tmp/chump-*")
@@ -65,6 +78,12 @@ if [[ "$FORCE" -eq 0 && "$free_gb" -ge "$DISK_MIN_GB" ]]; then
   exit 0
 fi
 do_ "disk free ${free_gb}GB < threshold ${DISK_MIN_GB}GB — scanning"
+
+# INFRA-1431: auto-escalate to critical mode when disk pressure is severe.
+if [[ "$CRITICAL" -eq 0 && "$NEVER_ESCALATE" -ne 1 && "$free_gb" -lt "$CRITICAL_GB" ]]; then
+  CRITICAL=1
+  do_ "WARNING: disk critically low (${free_gb}GB < ${CRITICAL_GB}GB) — critical mode: bypassing ${IDLE_H}h idle threshold; active leases still protected"
+fi
 
 # Build set of gap-ids with active leases (so we skip their worktrees).
 ACTIVE_LEASES=""
@@ -114,15 +133,17 @@ for pattern in "${SCAN_PATHS[@]}"; do
       skipped=$((skipped + 1))
       continue
     fi
-    # Idle check — find any file inside modified within IDLE_H hours.
-    idle_ok=1
-    if find "$wt" -mmin -$((IDLE_H * 60)) -not -path "*/target/*" -print -quit 2>/dev/null | grep -q .; then
-      idle_ok=0
-    fi
-    if [[ "$idle_ok" -eq 0 ]]; then
-      skip "$target (active edits in last ${IDLE_H}h)"
-      skipped=$((skipped + 1))
-      continue
+    # Idle check — skipped in critical mode; active lease is the only guard then.
+    if [[ "$CRITICAL" -eq 0 ]]; then
+      idle_ok=1
+      if find "$wt" -mmin -$((IDLE_H * 60)) -not -path "*/target/*" -print -quit 2>/dev/null | grep -q .; then
+        idle_ok=0
+      fi
+      if [[ "$idle_ok" -eq 0 ]]; then
+        skip "$target (active edits in last ${IDLE_H}h)"
+        skipped=$((skipped + 1))
+        continue
+      fi
     fi
     # Reap.
     size_mb=$(du -sm "$target" 2>/dev/null | awk '{print $1}')
@@ -134,12 +155,14 @@ for pattern in "${SCAN_PATHS[@]}"; do
         ok "reaped $target (~${size_mb}MB)"
         reaped=$((reaped + 1))
         total_freed_mb=$((total_freed_mb + size_mb))
-        # Emit ambient event.
+        # Emit ambient event. Use distinct kind in critical mode (INFRA-1431).
+        _event_kind="target_artifact_reaped"
+        [[ "$CRITICAL" -eq 1 ]] && _event_kind="target_artifact_critical_reap"
         ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
         wt_age_h=$(stat -f "%m" "$wt" 2>/dev/null | awk -v now="$(date +%s)" '{print int((now-$1)/3600)}')
         if [[ -d "$REPO_ROOT/.chump-locks" ]]; then
-          printf '{"ts":"%s","kind":"target_artifact_reaped","path":"%s","freed_gb":%s,"worktree_age_h":%s}\n' \
-            "$ts" "$target" "$(awk -v m="$size_mb" 'BEGIN{printf "%.2f", m/1024}')" \
+          printf '{"ts":"%s","kind":"%s","path":"%s","freed_gb":%s,"worktree_age_h":%s}\n' \
+            "$ts" "$_event_kind" "$target" "$(awk -v m="$size_mb" 'BEGIN{printf "%.2f", m/1024}')" \
             "${wt_age_h:-0}" >> "$REPO_ROOT/.chump-locks/ambient.jsonl"
         fi
       }
