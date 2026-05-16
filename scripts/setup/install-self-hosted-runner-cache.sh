@@ -18,7 +18,12 @@
 
 set -euo pipefail
 
-CACHE_ROOT="${CHUMP_RUNNER_CACHE_ROOT:-/var/cache/chump-runner}"
+# Default to user-writable cache root so no-sudo automation works. Override
+# via CHUMP_RUNNER_CACHE_ROOT to use /var/cache for system-wide setups.
+# Auto-fallback: if the requested root needs sudo and we're non-interactive,
+# fall back to $HOME/.cache/chump-runner.
+DEFAULT_ROOT="${HOME}/.cache/chump-runner"
+CACHE_ROOT="${CHUMP_RUNNER_CACHE_ROOT:-$DEFAULT_ROOT}"
 TARGET_DIR="${CACHE_ROOT}/cargo-target"
 ENV_FILE="${CACHE_ROOT}/runner.env"
 
@@ -29,19 +34,26 @@ echo "[chump-runner-cache] target_dir  : $TARGET_DIR"
 echo "[chump-runner-cache] env_file    : $ENV_FILE"
 echo "[chump-runner-cache] runner_user : $RUNNER_USER"
 
-# 1. Provision the directory tree.
-if [[ "$(uname)" == "Darwin" ]]; then
-    # macOS: /var/cache may need sudo. Try without first.
-    if mkdir -p "$TARGET_DIR" 2>/dev/null; then
-        :
+# 1. Provision the directory tree (no sudo unless explicitly system-wide).
+if ! mkdir -p "$TARGET_DIR" 2>/dev/null; then
+    if [[ "$CACHE_ROOT" == /var/cache/* || "$CACHE_ROOT" == /usr/* ]]; then
+        # System path — try sudo (will fail non-interactively).
+        if sudo -n true 2>/dev/null; then
+            sudo mkdir -p "$TARGET_DIR"
+            sudo chown -R "$RUNNER_USER" "$CACHE_ROOT"
+        else
+            echo "[chump-runner-cache] WARN: cannot write $CACHE_ROOT (sudo would be interactive)"
+            echo "[chump-runner-cache]       falling back to $DEFAULT_ROOT"
+            CACHE_ROOT="$DEFAULT_ROOT"
+            TARGET_DIR="${CACHE_ROOT}/cargo-target"
+            ENV_FILE="${CACHE_ROOT}/runner.env"
+            mkdir -p "$TARGET_DIR"
+        fi
     else
-        echo "[chump-runner-cache] retrying with sudo (macOS /var/cache requires it)"
-        sudo mkdir -p "$TARGET_DIR"
-        sudo chown -R "$RUNNER_USER" "$CACHE_ROOT"
+        # Non-system path that we still can't write — hard error.
+        echo "[chump-runner-cache] FATAL: cannot mkdir $TARGET_DIR" >&2
+        exit 1
     fi
-else
-    sudo mkdir -p "$TARGET_DIR"
-    sudo chown -R "$RUNNER_USER" "$CACHE_ROOT"
 fi
 
 # 2. Write env file the runner sources.

@@ -101,11 +101,22 @@ if (( FAIL == 0 )); then
     ok "all 14 migrated jobs on self-hosted, none still on ubuntu-latest"
 fi
 
-# Test 4: setup script exists + executable
+# Test 4: setup scripts present + executable
 if [[ -x "$REPO_ROOT/scripts/setup/install-self-hosted-runner-cache.sh" ]]; then
     ok "install-self-hosted-runner-cache.sh present + executable"
 else
     fail "install-self-hosted-runner-cache.sh missing or not executable"
+fi
+if [[ -x "$REPO_ROOT/scripts/setup/install-self-hosted-runners-all-local.sh" ]]; then
+    ok "install-self-hosted-runners-all-local.sh (automation wrapper) present + executable"
+else
+    fail "install-self-hosted-runners-all-local.sh missing or not executable"
+fi
+# Smoke: wrapper passes --help and exits 0
+if bash "$REPO_ROOT/scripts/setup/install-self-hosted-runners-all-local.sh" --help >/dev/null 2>&1; then
+    ok "automation wrapper accepts --help"
+else
+    fail "automation wrapper --help returns non-zero"
 fi
 
 # Test 5: migration script exists + dry-run clean on already-migrated file

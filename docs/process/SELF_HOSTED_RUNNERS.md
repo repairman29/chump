@@ -187,21 +187,41 @@ Linux-ARM64 runners come online:
 - `e2e-golden-path`
 - `tauri-cowork-e2e` — Tauri desktop e2e
 
-### Persistent cache (INFRA-1534 AC #4)
+### Persistent cache (INFRA-1534 AC #4) — fully automated
 
-Run **once per runner machine** after the actions-runner agent is installed:
+**One command provisions everything.** Run from the chump repo root, on
+the machine hosting the runners:
+
+```bash
+bash scripts/setup/install-self-hosted-runners-all-local.sh
+```
+
+What it does:
+1. Provisions the shared cache (defaults to `~/.cache/chump-runner/cargo-target`;
+   set `CHUMP_RUNNER_CACHE_ROOT=/var/cache/chump-runner` to use the
+   system-wide location with sudo).
+2. Discovers every `actions-runner-*` directory under `$HOME` via
+   `find ... -name config.sh -path "*actions-runner*"`.
+3. Appends `CARGO_TARGET_DIR=...` + `CHUMP_RUNNER_CACHE_ROOT=...` to each
+   runner's `.env` (the actions-runner package reads `.env` on startup).
+4. Maps each dir → its launchd service (`com.chump.actions-runner`, `-2`,
+   `-3`, `-4`) and `launchctl kickstart -k`s each one.
+5. Polls `gh api repos/{owner}/{repo}/actions/runners` and reports
+   per-runner online status.
+
+Idempotent. Re-running is a no-op (`ALREADY HAS marker, skipping`).
+`--dry-run` previews; `--no-restart` skips the launchd kickstart phase
+when runners are mid-job and you'd rather restart manually.
+
+If you'd rather provision the cache without touching .env or restarting,
+use the lower-level script directly:
 
 ```bash
 bash scripts/setup/install-self-hosted-runner-cache.sh
 ```
 
-This provisions `/var/cache/chump-runner/cargo-target/` and writes
-`/var/cache/chump-runner/runner.env`. Add to the runner's environment
-(launchd plist `EnvironmentVariables` or `.env`):
-
-```
-source /var/cache/chump-runner/runner.env
-```
+This only creates `$CACHE_ROOT/cargo-target/` and writes `runner.env` for
+manual sourcing in a launchd plist `EnvironmentVariables` block.
 
 Subsequent Rust CI runs reuse the target dir → 30-90s incremental vs
 5-10 min cold rebuild. This is the 5-10x throughput win promised but
