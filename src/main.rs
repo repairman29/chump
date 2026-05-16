@@ -5584,21 +5584,47 @@ async fn main() -> Result<()> {
                         repo_root.clone()
                     }
                 };
-                match store.import_from_yaml(&root) {
-                    Ok((ins, skip, backfilled)) => {
-                        // INFRA-233: report backfill count so operators can see
-                        // how many NULL closed_pr rows were healed.
-                        if backfilled > 0 {
-                            eprintln!(
-                                "import complete: {} inserted, {} skipped (already present), \
-                                 {} closed_pr values backfilled from YAML.",
-                                ins, skip, backfilled
-                            );
+                // INFRA-1434: title-similarity guard at import time. Closes
+                // the YAML-import bypass that let INFRA-1267/1268 land as
+                // 100% identical-title duplicates. Mirrors INFRA-1149
+                // reserve-time check; same default 0.85 block threshold.
+                //
+                // Disable: CHUMP_GAP_IMPORT_NO_SIMILARITY=1 (CI / bulk imports)
+                // Tune:    CHUMP_GAP_IMPORT_SIMILARITY_BLOCK (default 0.85)
+                let block_threshold: Option<f64> =
+                    if std::env::var("CHUMP_GAP_IMPORT_NO_SIMILARITY").as_deref() == Ok("1") {
+                        None
+                    } else {
+                        Some(
+                            std::env::var("CHUMP_GAP_IMPORT_SIMILARITY_BLOCK")
+                                .ok()
+                                .and_then(|v| v.parse().ok())
+                                .unwrap_or(0.85),
+                        )
+                    };
+                match store.import_from_yaml_with_similarity(&root, block_threshold) {
+                    Ok((ins, skip, backfilled, blocked)) => {
+                        let backfill_msg = if backfilled > 0 {
+                            format!(", {backfilled} closed_pr values backfilled from YAML")
                         } else {
-                            eprintln!(
-                                "import complete: {} inserted, {} skipped (already present).",
-                                ins, skip
-                            );
+                            String::new()
+                        };
+                        let blocked_msg = if blocked > 0 {
+                            format!(
+                                ", {blocked} blocked by title-similarity (INFRA-1434; \
+                                 see ambient.jsonl kind=gap_import_similarity_block)"
+                            )
+                        } else {
+                            String::new()
+                        };
+                        eprintln!(
+                            "import complete: {ins} inserted, {skip} skipped (already present)\
+                             {backfill_msg}{blocked_msg}."
+                        );
+                        // Non-zero exit when any row was blocked so CI scripts
+                        // can detect partial imports. Bypass via env var above.
+                        if blocked > 0 {
+                            std::process::exit(1);
                         }
                         return Ok(());
                     }
