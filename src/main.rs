@@ -3663,10 +3663,7 @@ async fn main() -> Result<()> {
                 if let Ok(entries) = std::fs::read_dir(&locks_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        let name = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("");
+                        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                         // Only claim-*.json lease files.
                         if !name.starts_with("claim-") || !name.ends_with(".json") {
                             continue;
@@ -3776,8 +3773,7 @@ async fn main() -> Result<()> {
                                         .unwrap_or("unknown")
                                         .to_string();
 
-                                    let haystack =
-                                        format!("{} {}", title, branch).to_lowercase();
+                                    let haystack = format!("{} {}", title, branch).to_lowercase();
                                     if !haystack.contains(topic_lc.as_str()) {
                                         continue;
                                     }
@@ -3787,11 +3783,15 @@ async fn main() -> Result<()> {
                                         // Pattern: INFRA-NNN, PRODUCT-NNN, etc.
                                         let mut found = String::new();
                                         for word in combined.split_whitespace() {
-                                            let w = word.trim_matches(|c: char| !c.is_alphanumeric() && c != '-');
+                                            let w = word.trim_matches(|c: char| {
+                                                !c.is_alphanumeric() && c != '-'
+                                            });
                                             if w.contains('-') {
                                                 let parts: Vec<&str> = w.splitn(2, '-').collect();
                                                 if parts.len() == 2
-                                                    && parts[0].chars().all(|c| c.is_ascii_uppercase())
+                                                    && parts[0]
+                                                        .chars()
+                                                        .all(|c| c.is_ascii_uppercase())
                                                     && parts[1].chars().all(|c| c.is_ascii_digit())
                                                     && parts[0].len() >= 3
                                                 {
@@ -3831,13 +3831,9 @@ async fn main() -> Result<()> {
                         let _ = store.auto_seed_if_empty();
                         if let Ok(all_gaps) = store.list(Some("open")) {
                             for g in &all_gaps {
-                                let haystack = format!(
-                                    "{} {} {}",
-                                    g.id,
-                                    g.title,
-                                    g.acceptance_criteria
-                                )
-                                .to_lowercase();
+                                let haystack =
+                                    format!("{} {} {}", g.id, g.title, g.acceptance_criteria)
+                                        .to_lowercase();
                                 if !haystack.contains(topic_lc.as_str()) {
                                     continue;
                                 }
@@ -3875,8 +3871,14 @@ async fn main() -> Result<()> {
                     let ambient_path = locks_dir.join("ambient.jsonl");
                     // Scan last 500 lines for recency.
                     if let Ok(content) = std::fs::read_to_string(&ambient_path) {
-                        let recent_lines: Vec<&str> =
-                            content.lines().rev().take(500).collect::<Vec<_>>().into_iter().rev().collect();
+                        let recent_lines: Vec<&str> = content
+                            .lines()
+                            .rev()
+                            .take(500)
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .rev()
+                            .collect();
                         for line in recent_lines {
                             if !line.contains("gap_claimed") {
                                 continue;
@@ -3884,10 +3886,7 @@ async fn main() -> Result<()> {
                             let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
                                 continue;
                             };
-                            let kind_field = v
-                                .get("kind")
-                                .and_then(|x| x.as_str())
-                                .unwrap_or("");
+                            let kind_field = v.get("kind").and_then(|x| x.as_str()).unwrap_or("");
                             if kind_field != "gap_claimed" {
                                 continue;
                             }
@@ -3908,8 +3907,7 @@ async fn main() -> Result<()> {
                                 .unwrap_or("unknown")
                                 .to_string();
 
-                            let haystack =
-                                format!("{} {}", gap_id, line).to_lowercase();
+                            let haystack = format!("{} {}", gap_id, line).to_lowercase();
                             if !haystack.contains(topic_lc.as_str()) {
                                 continue;
                             }
@@ -3974,7 +3972,8 @@ async fn main() -> Result<()> {
                     println!("{}", "-".repeat(100));
                     for r in &rows {
                         let since_short: String = r.since.chars().take(19).collect();
-                        let claimant_short: String = r.claimant.chars().take(col_widths.2).collect();
+                        let claimant_short: String =
+                            r.claimant.chars().take(col_widths.2).collect();
                         let id_short: String = r.id.chars().take(col_widths.1).collect();
                         println!(
                             "{:<width0$}  {:<width1$}  {:<width2$}  {:<width3$}  {}",
