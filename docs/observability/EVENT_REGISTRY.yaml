@@ -3360,3 +3360,23 @@ events:
       rendered, recording since_ago_secs and per-bucket counts for usage analytics
     consumers: [fleet-brief, kpi-report]
     fields_required: [ts, kind, source, since_ago_secs, done, needs_judgment, alerts]
+  # ── INFRA-1361: GitHub App installation-token rotator ────────────────────
+  - kind: gh_token_rotate_noop
+    effect_metric: self
+    emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
+    trigger: chump gh-token rotate was invoked but ~/.chump/github_apps.toml is
+      absent or empty. No tokens are fetched; exit 0. Emitted once per invocation
+      so operators can confirm the cron is running even before App configuration.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, reason]
+    fields_optional: [session, worktree, harness]
+
+  - kind: gh_token_rotated
+    effect_metric: self
+    emitter: src/gh_token.rs chump gh-token rotate (INFRA-1361)
+    trigger: a fresh GitHub App installation token was successfully fetched for
+      one lane and written to ~/.chump/oauth-token-<lane>.json (chmod 600).
+      Emitted once per lane per invocation.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, lane, expires_at]
+    fields_optional: [session, worktree, harness]
