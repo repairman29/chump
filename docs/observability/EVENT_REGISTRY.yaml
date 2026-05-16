@@ -3650,6 +3650,7 @@ events:
     fields_required: [ts, kind, scope, pr_count, output]
   # ── INFRA-1406: orphan-pr-closer per-PR immunity ─────────────────────────
   - kind: orphan_pr_close_immunity_honored
+    effect_metric: self
     emitter: scripts/coord/orphan-pr-closer.sh (INFRA-1406)
     trigger: >
       Orphan-pr-closer was about to close a PR but found
@@ -3660,6 +3661,7 @@ events:
     fields_required: [ts, kind, pr, gap, reason]
 
   - kind: orphan_pr_rescued
+    effect_metric: self
     emitter: scripts/coord/pr-rescue-false-close.sh (INFRA-1406)
     trigger: >
       Operator (or automation) invoked the rescue script after a PR was
