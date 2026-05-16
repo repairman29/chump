@@ -636,11 +636,8 @@ jobs:
       - name: Install PyYAML for pr-triage-bot YAML validation (INFRA-648)
         if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips pip
         run: python3 -m pip install pyyaml
-        if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips pip
-        run: pip install pyyaml
 
       - name: pr-triage-bot smoke + YAML parse (INFRA-624/648)
-        if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips pip-dependent test
         if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips pip-dependent test
         run: bash scripts/ci/test-pr-triage-bot.sh
 
