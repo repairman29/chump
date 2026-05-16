@@ -7833,17 +7833,39 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
             // INFRA-935: gap consolidate — detect near-duplicate gap titles.
-            // Usage: chump gap consolidate [--dry-run] [--threshold N] [--json]
-            //   --threshold N  similarity threshold 0-100 (default 80)
-            //   --dry-run      (implied always; never mutates state.db)
-            //   --json         output pairs as JSON array
+            // INFRA-1435 (2026-05-16): added --apply mode that mechanically
+            // archives the higher-ID dup, rewrites depends_on backlinks,
+            // writes an audit row, and emits ambient kind=gap_dup_archived.
+            //
+            // Usage:
+            //   chump gap consolidate [--threshold N] [--json]
+            //     --threshold N  similarity threshold 0-100 (default 80 advisory,
+            //                    90 when --apply is set)
+            //     --json         output pairs as JSON array
+            //
+            //   chump gap consolidate --apply --reason "<text>" [--threshold N]
+            //                                                   [--json]
+            //     --apply        mutate: archive higher-ID dups, rewrite
+            //                    depends_on, write audit + ambient events.
+            //                    Refuses if either gap has an active lease.
+            //     --reason TEXT  required with --apply (audit-trail message)
             "consolidate" => {
+                let apply = args.iter().any(|a| a == "--apply");
+                let reason = flag("--reason").unwrap_or_default();
+                if apply && reason.trim().is_empty() {
+                    eprintln!(
+                        "chump gap consolidate --apply: requires --reason \"<text>\" \
+                         for the audit trail."
+                    );
+                    std::process::exit(2);
+                }
+                let default_threshold = if apply { 90 } else { 80 };
                 let threshold: u32 = args
                     .iter()
                     .position(|a| a == "--threshold")
                     .and_then(|i| args.get(i + 1))
                     .and_then(|s| s.parse().ok())
-                    .unwrap_or(80);
+                    .unwrap_or(default_threshold);
                 let as_json = args.iter().any(|a| a == "--json");
 
                 let all_gaps = match store.list(Some("open")) {
@@ -7884,6 +7906,180 @@ async fn main() -> Result<()> {
                 }
                 pairs.sort_by_key(|p| std::cmp::Reverse(p.2));
 
+                // INFRA-1435: --apply path. Mutates state.db; defensive
+                // against active leases.
+                if apply {
+                    // Read all active leases once; collect referenced gap IDs.
+                    let lease_dir = repo_root.join(".chump-locks");
+                    let mut leased_gaps: std::collections::HashSet<String> =
+                        std::collections::HashSet::new();
+                    if let Ok(entries) = std::fs::read_dir(&lease_dir) {
+                        for e in entries.flatten() {
+                            let p = e.path();
+                            if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                                continue;
+                            }
+                            if let Ok(text) = std::fs::read_to_string(&p) {
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if let Some(g) = v.get("gap").and_then(|g| g.as_str()) {
+                                        leased_gaps.insert(g.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let operator = std::env::var("USER").unwrap_or_default();
+                    let ts = chrono::Utc::now().timestamp();
+                    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                    let mut applied: Vec<(String, String, u32, usize)> = Vec::new(); // (kept, archived, sim, rewrites)
+                    let mut skipped_leased: Vec<(String, String, String)> = Vec::new(); // (a, b, why)
+
+                    for (a, b, sim) in &pairs {
+                        // Deterministic kept/archived: keep the LOWER id by
+                        // lexicographic order — older IDs have more backlinks
+                        // and are more likely to be cited externally.
+                        let (kept, archived) = if a < b {
+                            (a.clone(), b.clone())
+                        } else {
+                            (b.clone(), a.clone())
+                        };
+                        if leased_gaps.contains(&kept) || leased_gaps.contains(&archived) {
+                            skipped_leased.push((
+                                kept.clone(),
+                                archived.clone(),
+                                "active lease — refuse to mutate".to_string(),
+                            ));
+                            continue;
+                        }
+
+                        // Rewrite depends_on across all open gaps that point
+                        // at the archived ID.
+                        let mut rewrites = 0usize;
+                        if let Ok(open_gaps) = store.list(Some("open")) {
+                            for g in &open_gaps {
+                                if g.depends_on.is_empty() || g.id == archived {
+                                    continue;
+                                }
+                                let deps = gap_store::parse_json_ac_list(&g.depends_on);
+                                if !deps.iter().any(|d| d == &archived) {
+                                    continue;
+                                }
+                                let new_deps: Vec<String> = deps
+                                    .into_iter()
+                                    .map(|d| if d == archived { kept.clone() } else { d })
+                                    .collect::<Vec<_>>()
+                                    .into_iter()
+                                    .collect::<std::collections::BTreeSet<_>>()
+                                    .into_iter()
+                                    .collect();
+                                let new_deps_json =
+                                    serde_json::to_string(&new_deps).unwrap_or_default();
+                                let upd = gap_store::GapFieldUpdate {
+                                    depends_on: Some(new_deps_json),
+                                    ..Default::default()
+                                };
+                                if store.set_fields(&g.id, upd).is_ok() {
+                                    rewrites += 1;
+                                }
+                            }
+                        }
+
+                        // Archive the higher ID. Bypass closed_pr guard
+                        // (this is a dup-archive, not a real ship).
+                        let archive_notes = format!(
+                            "INFRA-1435 dup-archive (similarity {sim}%): keeping {kept}; \
+                             reason: {reason}"
+                        );
+                        let upd = gap_store::GapFieldUpdate {
+                            status: Some("done".to_string()),
+                            notes: Some(archive_notes),
+                            ..Default::default()
+                        };
+                        // Temporarily set the bypass env so set_fields' INFRA-402
+                        // guard accepts the status flip without a closed_pr.
+                        // SAFETY: single-threaded CLI; restored before next
+                        // iteration. Only main() touches env at this layer.
+                        unsafe {
+                            std::env::set_var("CHUMP_BYPASS_CLOSED_PR_GUARD", "1");
+                        }
+                        let archive_result = store.set_fields(&archived, upd);
+                        unsafe {
+                            std::env::remove_var("CHUMP_BYPASS_CLOSED_PR_GUARD");
+                        }
+                        if let Err(e) = archive_result {
+                            eprintln!(
+                                "[consolidate --apply] WARN: archive of {archived} failed: {e:#} — skipping audit/ambient for this pair"
+                            );
+                            continue;
+                        }
+
+                        // Audit row (typed API; creates table on first call).
+                        if let Err(e) = store.record_dup_archive(
+                            &kept, &archived, *sim, rewrites, &reason, &operator,
+                        ) {
+                            eprintln!(
+                                "[consolidate --apply] WARN: audit-row write failed for {archived}: {e:#}"
+                            );
+                        }
+
+                        // Ambient event.
+                        if let Some(parent) = ambient_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write;
+                            let safe_reason = reason.replace(['"', '\\'], "");
+                            let _ = writeln!(
+                                f,
+                                r#"{{"ts":{ts},"kind":"gap_dup_archived","kept_id":"{kept}","archived_id":"{archived}","similarity_pct":{sim},"depends_on_rewrites":{rewrites},"reason":"{safe_reason}"}}"#
+                            );
+                        }
+
+                        applied.push((kept, archived, *sim, rewrites));
+                    }
+
+                    if as_json {
+                        let arr: Vec<String> = applied
+                            .iter()
+                            .map(|(k, a, s, r)| {
+                                format!(
+                                    r#"{{"kept_id":"{k}","archived_id":"{a}","similarity_pct":{s},"depends_on_rewrites":{r}}}"#
+                                )
+                            })
+                            .collect();
+                        println!(
+                            r#"{{"applied":[{}],"skipped_leased_count":{}}}"#,
+                            arr.join(","),
+                            skipped_leased.len()
+                        );
+                    } else {
+                        println!(
+                            "═══ Gap Consolidate --apply (INFRA-1435) ═══ threshold={}% — \
+                             {} pair(s) above threshold, {} archived, {} skipped (leased)",
+                            threshold,
+                            pairs.len(),
+                            applied.len(),
+                            skipped_leased.len()
+                        );
+                        for (k, a, s, r) in &applied {
+                            println!(
+                                "  archived {} → kept {}  (sim {}%, {} depends_on rewritten)",
+                                a, k, s, r
+                            );
+                        }
+                        for (k, a, why) in &skipped_leased {
+                            println!("  SKIP  {} ↔ {}: {}", k, a, why);
+                        }
+                    }
+                    return Ok(());
+                }
+
+                // Advisory mode (default).
                 if as_json {
                     let json_pairs: Vec<String> = pairs
                         .iter()
@@ -7911,6 +8107,11 @@ async fn main() -> Result<()> {
                             let action = if *sim >= 90 { "merge" } else { "review" };
                             println!("  {:>3}%  {:>12}  {:>12}  {}", sim, a, b, action);
                         }
+                        println!();
+                        println!(
+                            "  Hint: add --apply --reason \"<text>\" to mutate \
+                             (archives higher ID, rewrites depends_on, audits)."
+                        );
                     }
                 }
                 return Ok(());
