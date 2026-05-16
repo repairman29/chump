@@ -96,6 +96,7 @@ mod completion;
 mod gen;
 mod genai_conv;
 mod git_tools;
+mod github_rate_limit;
 mod health;
 mod health_server;
 mod hitl_escalation;

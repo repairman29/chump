@@ -6766,6 +6766,9 @@ pub async fn start_web_server(port: u16) -> Result<()> {
         }
     });
 
+    // INFRA-1337: start GitHub rate-limit poller (60s interval).
+    crate::github_rate_limit::start_poller();
+
     axum::serve(listener, app).await?;
     Ok(())
 }
