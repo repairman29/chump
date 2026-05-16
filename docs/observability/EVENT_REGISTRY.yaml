@@ -2319,6 +2319,7 @@ events:
 
   # ── ZERO-WASTE-001: read-only stale-worktree audit ───────────────────────
   - kind: worktree_stale_detected
+    effect_metric: disk_used_bytes{component="worktree"} (fleet-brief surfaces stale count; drop to 0 = all cleaned)
     emitter: scripts/ops/audit-stale-worktrees.sh (ZERO-WASTE-001)
     trigger: >
       Read-only audit found a worktree whose directory mtime exceeds
