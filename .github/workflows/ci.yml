@@ -455,6 +455,7 @@ jobs:
           df -h /
 
       - name: Install Linux packages for chump-desktop (workspace member)
+        if: runner.os == 'Linux'  # INFRA-1534: self-hosted macOS skips apt
         run: |
           sudo apt-get update
           sudo apt-get install -y \
