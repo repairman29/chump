@@ -230,3 +230,6 @@ runner_migration_step           # reason: INFRA-1535 migration pipeline state-tr
 runner_scaled                   # reason: INFRA-1535 autoscale daemon scale-up/down emit
 self_hosted_runner_run          # reason: INFRA-1534 per-run completion (planned)
 merge_preview_skipped  # reason: emitted from scripts/coord/ (shell); not in PROD_PATHS
+circuit_breaker_opened       # reason: RESILIENT-011 emitted via Rust match-arm literal in src/circuit_breaker.rs:emit_state_change_event; grep scanner pattern `kind = "..."` misses match-arm form `=> "circuit_breaker_opened"`
+circuit_breaker_closed       # reason: RESILIENT-011 same emit site as circuit_breaker_opened; match-arm literal not grep-scannable
+circuit_breaker_state_change # reason: RESILIENT-011 same emit site; catch-all match-arm `_ => "circuit_breaker_state_change"` not grep-scannable
