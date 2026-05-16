@@ -1,0 +1,14 @@
+- id: INFRA-1512
+  domain: INFRA
+  title: "MISSION: Bus-factor mitigation plan — operator is current SPOF; knowledge transfer + ops doc + multi-operator support"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Operator (Jeff) is currently the single point of failure for: gap-store mutations, hot-path coordination decisions, the dogfood loop, all business decisions. Bus factor = 1. Mitigate via: runbook + handoff doc + identifying 1-2 trusted co-operators who can pick up if SPOF is unavailable. Critical because the project's growth trajectory now depends on operator availability.
+  acceptance_criteria:
+    - "docs/process/OPERATOR_HANDOFF.md with: current operator's daily-routine doc, critical decisions log, escalation paths, password/key inventory (in 1Password not git), failure-mode runbook"
+    - Identify 1-2 trusted co-operators (could be paid contractors)
+    - Cross-train via paired-week shadowing
+    - "Quarterly bus-factor drill: co-operator runs the fleet for 48h while SPOF is unreachable"
+
