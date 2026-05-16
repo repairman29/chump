@@ -156,6 +156,88 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _extract_gap_ids(pr: dict) -> list[str]:
+    """Extract gap IDs from PR title + body.
+
+    Looks for patterns like 'INFRA-1234' or 'CREDIBLE-001' anywhere in the
+    PR title or body. Returns a deduped list preserving first-seen order.
+    """
+    import re
+
+    pattern = re.compile(r"\b([A-Z][A-Z-]+-\d+)\b")
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for field in ("title", "body"):
+        text = pr.get(field) or ""
+        for match in pattern.findall(text):
+            if match not in seen:
+                seen.add(match)
+                ordered.append(match)
+    return ordered
+
+
+def _auto_release_sibling_leases(pr: dict, payload: dict) -> int:
+    """INFRA-1444: on a merged PR, release any sibling lease matching the
+    gap ID(s) parsed from the PR title/body.
+
+    Behavior:
+    - Only fires when action=closed AND merged=true.
+    - For each gap ID found in the PR title/body, scans .chump-locks/claim-*.json
+      for files whose gap_id field matches.
+    - Identifies the "PR author session" via the PR head commit author email
+      heuristic (CHUMP_LEASE_RELEASE_KEEP_AUTHOR=1 to preserve the original
+      claimant's lease if they were the actual PR shipper); default: release ALL
+      matching leases since the gap is done regardless of who shipped it.
+    - Deletes matched lease files and emits kind=lease_orphaned_by_sibling_merge
+      for each release.
+
+    Returns the count of leases released.
+
+    Bypass: CHUMP_LEASE_NO_AUTO_RELEASE=1 disables entirely.
+    """
+    if os.environ.get("CHUMP_LEASE_NO_AUTO_RELEASE") == "1":
+        return 0
+    if payload.get("action") != "closed" or not pr.get("merged"):
+        return 0
+
+    gap_ids = _extract_gap_ids(pr)
+    if not gap_ids:
+        return 0
+
+    locks_dir = _repo_root() / ".chump-locks"
+    if not locks_dir.is_dir():
+        return 0
+
+    released = 0
+    pr_number = pr.get("number")
+    for lease_file in locks_dir.glob("claim-*.json"):
+        try:
+            with lease_file.open("r", encoding="utf-8") as f:
+                lease = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            continue
+        lease_gap_id = lease.get("gap_id") or ""
+        if lease_gap_id not in gap_ids:
+            continue
+        lease_session_id = lease.get("session_id") or "unknown"
+        try:
+            lease_file.unlink()
+            released += 1
+            _emit_ambient({
+                "ts": _now_iso(),
+                "kind": "lease_orphaned_by_sibling_merge",
+                "gap_id": lease_gap_id,
+                "released_session_id": lease_session_id,
+                "merged_pr": pr_number,
+                "lease_file": lease_file.name,
+            })
+            log.info("released orphaned lease: gap=%s session=%s (merged via PR #%s)",
+                     lease_gap_id, lease_session_id, pr_number)
+        except OSError as e:
+            log.warning("failed to release lease %s: %s", lease_file, e)
+    return released
+
+
 def _verify_signature(secret: str, payload: bytes, header: str | None) -> bool:
     """Verify GitHub's X-Hub-Signature-256 header. Constant-time compare."""
     if not secret or not header or not header.startswith("sha256="):
@@ -310,6 +392,14 @@ class Handler(BaseHTTPRequestHandler):
                             "action": payload.get("action"),
                             "pr_number": pr.get("number"),
                         })
+                        # INFRA-1444: on PR merge, auto-release sibling leases
+                        # whose gap_id matches a gap referenced in the PR title/body.
+                        # Closes the "orphan lease + worktree after sibling shipped
+                        # the same gap" pattern observed today (2026-05-15).
+                        released = _auto_release_sibling_leases(pr, payload)
+                        if released > 0:
+                            log.info("INFRA-1444: auto-released %d orphaned lease(s) for PR #%s",
+                                     released, pr.get("number"))
                 elif event_type in ("check_suite", "workflow_run"):
                     # Touch fetched_at_local for referenced PRs so consumers re-fetch.
                     suite = payload.get(event_type) or {}

@@ -613,6 +613,12 @@ events:
     trigger: ghost commits authored by Test<test@test.local> or matching CHUMP_FIXTURE_AUTHOR_REGEX detected; --auto-drop or CHUMP_AUTODROP_FIXTURE_COMMITS=1 rewrote local branch
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, branch, dropped_count]
+  - kind: lease_orphaned_by_sibling_merge
+    effect_metric: self
+    emitter: scripts/ops/github-webhook-receiver.py (INFRA-1444)
+    trigger: a pull_request.closed+merged=true webhook references a gap_id whose claim lease exists from a different session; the lease file is auto-deleted to release the orphaned worktree
+    consumers: [fleet-brief, stale-worktree-reaper, audit-log]
+    fields_required: [ts, kind, gap_id, released_session_id, merged_pr, lease_file]
 
   # ── PR / gap lifecycle ─────────────────────────────────────────────────────
   - kind: gap_reserved
