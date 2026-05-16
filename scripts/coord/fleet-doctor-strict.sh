@@ -254,8 +254,11 @@ check_p0_budget() {
         return
     fi
 
+    # Note: chump gap list --priority P0 flag is not reliably filtered by the CLI;
+    # grep for the "(P0/" pattern in output instead.
     local p0_count
-    p0_count="$("$CHUMP_BIN" gap list --status open --priority P0 2>/dev/null | wc -l | tr -d ' ')" || p0_count=0
+    p0_count="$("$CHUMP_BIN" gap list --status open 2>/dev/null \
+        | grep -c "(P0/")" || p0_count=0
 
     if [[ "$p0_count" -gt "$P0_MAX" ]]; then
         register_check "p0-budget" "fail" \
