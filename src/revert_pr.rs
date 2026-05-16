@@ -15,12 +15,12 @@
 //!   2   PR already has an open revert PR (idempotency guard)
 
 use anyhow::{anyhow, Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Options parsed from CLI args.
 pub struct RevertOpts {
-    pub target: String,      // PR number or merge commit SHA
+    pub target: String, // PR number or merge commit SHA
     pub reason: String,
     pub dry_run: bool,
     pub repo: Option<String>, // owner/repo override
@@ -29,10 +29,9 @@ pub struct RevertOpts {
 impl RevertOpts {
     pub fn parse(args: &[String]) -> Result<Self> {
         // args[0] = "revert", args[1] = target, then flags
-        let target = args
-            .get(1)
-            .cloned()
-            .ok_or_else(|| anyhow!("Usage: chump revert <PR-number|merge-commit> [--reason <text>] [--dry-run]"))?;
+        let target = args.get(1).cloned().ok_or_else(|| {
+            anyhow!("Usage: chump revert <PR-number|merge-commit> [--reason <text>] [--dry-run]")
+        })?;
 
         let mut reason = String::from("no reason provided");
         let mut dry_run = false;
@@ -84,7 +83,7 @@ struct PrInfo {
 }
 
 /// Run the revert command. Returns the revert PR URL on success.
-pub fn run(opts: &RevertOpts, repo_root: &PathBuf) -> Result<String> {
+pub fn run(opts: &RevertOpts, repo_root: &Path) -> Result<String> {
     // Resolve GitHub repo slug (owner/repo).
     let repo_slug = resolve_repo_slug(opts, repo_root)?;
 
@@ -116,9 +115,7 @@ pub fn run(opts: &RevertOpts, repo_root: &PathBuf) -> Result<String> {
     // PR title.
     let pr_title = format!(
         "revert({}): rollback #{} due to {}",
-        gap_display,
-        pr_info.number,
-        opts.reason,
+        gap_display, pr_info.number, opts.reason,
     );
 
     // PR body.
@@ -145,12 +142,13 @@ pub fn run(opts: &RevertOpts, repo_root: &PathBuf) -> Result<String> {
         println!("[dry-run] Would revert merge commit: {}", pr_info.merge_sha);
         println!("[dry-run] PR title: {pr_title}");
         println!("[dry-run] Would comment on PR #{}", pr_info.number);
-        return Ok(format!("[dry-run] revert PR would be created in repo {repo_slug}"));
+        return Ok(format!(
+            "[dry-run] revert PR would be created in repo {repo_slug}"
+        ));
     }
 
     // 1. Fetch latest main.
-    run_git(&["fetch", "origin", "main", "--quiet"], repo_root)
-        .context("git fetch origin main")?;
+    run_git(&["fetch", "origin", "main", "--quiet"], repo_root).context("git fetch origin main")?;
 
     // 2. Create revert branch from origin/main.
     run_git(
@@ -203,7 +201,7 @@ pub fn run(opts: &RevertOpts, repo_root: &PathBuf) -> Result<String> {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-fn resolve_repo_slug(opts: &RevertOpts, repo_root: &PathBuf) -> Result<String> {
+fn resolve_repo_slug(opts: &RevertOpts, repo_root: &Path) -> Result<String> {
     if let Some(slug) = &opts.repo {
         return Ok(slug.clone());
     }
@@ -221,8 +219,9 @@ fn resolve_repo_slug(opts: &RevertOpts, repo_root: &PathBuf) -> Result<String> {
         .context("git remote get-url origin")?;
     let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
     // Parse github.com/<owner>/<repo> or git@github.com:<owner>/<repo>.git
-    extract_slug_from_remote(&url)
-        .ok_or_else(|| anyhow!("cannot derive owner/repo from remote URL: {url}. Use --repo <owner/repo>"))
+    extract_slug_from_remote(&url).ok_or_else(|| {
+        anyhow!("cannot derive owner/repo from remote URL: {url}. Use --repo <owner/repo>")
+    })
 }
 
 fn extract_slug_from_remote(url: &str) -> Option<String> {
@@ -237,7 +236,7 @@ fn extract_slug_from_remote(url: &str) -> Option<String> {
     None
 }
 
-fn resolve_pr_info(target: &str, repo_slug: &str, repo_root: &PathBuf) -> Result<PrInfo> {
+fn resolve_pr_info(target: &str, repo_slug: &str, repo_root: &Path) -> Result<PrInfo> {
     // If target looks like a PR number (all digits), use gh pr view.
     if target.chars().all(|c| c.is_ascii_digit()) {
         let pr_num: u64 = target.parse()?;
@@ -247,7 +246,7 @@ fn resolve_pr_info(target: &str, repo_slug: &str, repo_root: &PathBuf) -> Result
     find_pr_for_commit(target, repo_slug, repo_root)
 }
 
-fn fetch_pr_info(pr_num: u64, repo_slug: &str, _repo_root: &PathBuf) -> Result<PrInfo> {
+fn fetch_pr_info(pr_num: u64, repo_slug: &str, _repo_root: &Path) -> Result<PrInfo> {
     let out = Command::new("gh")
         .args([
             "pr",
@@ -269,17 +268,21 @@ fn fetch_pr_info(pr_num: u64, repo_slug: &str, _repo_root: &PathBuf) -> Result<P
         ));
     }
 
-    let json: serde_json::Value = serde_json::from_slice(&out.stdout)
-        .context("parse gh pr view JSON")?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&out.stdout).context("parse gh pr view JSON")?;
 
     let state = json["state"].as_str().unwrap_or("?");
     if state != "MERGED" {
-        return Err(anyhow!("PR #{pr_num} is not merged (state={state}). Can only revert merged PRs."));
+        return Err(anyhow!(
+            "PR #{pr_num} is not merged (state={state}). Can only revert merged PRs."
+        ));
     }
 
     let merge_sha = json["mergeCommit"]["oid"]
         .as_str()
-        .ok_or_else(|| anyhow!("PR #{pr_num} has no mergeCommit — was it squash-merged and not yet indexed?"))?
+        .ok_or_else(|| {
+            anyhow!("PR #{pr_num} has no mergeCommit — was it squash-merged and not yet indexed?")
+        })?
         .to_string();
 
     let title = json["title"].as_str().unwrap_or("?").to_string();
@@ -293,11 +296,16 @@ fn fetch_pr_info(pr_num: u64, repo_slug: &str, _repo_root: &PathBuf) -> Result<P
     })
 }
 
-fn find_pr_for_commit(sha: &str, repo_slug: &str, _repo_root: &PathBuf) -> Result<PrInfo> {
+fn find_pr_for_commit(sha: &str, repo_slug: &str, _repo_root: &Path) -> Result<PrInfo> {
     // Use gh api to find the PR associated with the commit.
     let endpoint = format!("repos/{repo_slug}/commits/{sha}/pulls");
     let out = Command::new("gh")
-        .args(["api", &endpoint, "--jq", ".[0] | {number,title,mergeCommit:.sha,headRefName:.head.ref,state}"])
+        .args([
+            "api",
+            &endpoint,
+            "--jq",
+            ".[0] | {number,title,mergeCommit:.sha,headRefName:.head.ref,state}",
+        ])
         .output()
         .context("gh api commits/pulls")?;
 
@@ -308,8 +316,8 @@ fn find_pr_for_commit(sha: &str, repo_slug: &str, _repo_root: &PathBuf) -> Resul
         ));
     }
 
-    let json: serde_json::Value = serde_json::from_slice(&out.stdout)
-        .context("parse gh api JSON")?;
+    let json: serde_json::Value =
+        serde_json::from_slice(&out.stdout).context("parse gh api JSON")?;
 
     let number = json["number"]
         .as_u64()
@@ -332,7 +340,7 @@ fn extract_gap_id(title: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
-fn run_git(args: &[&str], repo_root: &PathBuf) -> Result<()> {
+fn run_git(args: &[&str], repo_root: &Path) -> Result<()> {
     let status = Command::new("git")
         .args(args)
         .current_dir(repo_root)
@@ -351,18 +359,8 @@ fn run_git(args: &[&str], repo_root: &PathBuf) -> Result<()> {
 fn run_gh_create_pr(title: &str, body: &str, branch: &str, repo_slug: &str) -> Result<String> {
     let out = Command::new("gh")
         .args([
-            "pr",
-            "create",
-            "--repo",
-            repo_slug,
-            "--base",
-            "main",
-            "--head",
-            branch,
-            "--title",
-            title,
-            "--body",
-            body,
+            "pr", "create", "--repo", repo_slug, "--base", "main", "--head", branch, "--title",
+            title, "--body", body,
         ])
         .output()
         .context("gh pr create")?;
@@ -396,7 +394,12 @@ fn run_gh_comment(pr_num: u64, body: &str, repo_slug: &str) -> Result<()> {
     Ok(())
 }
 
-fn emit_revert_event(merge_sha: &str, orig_pr: u64, revert_pr_url: &str, repo_root: &PathBuf) -> Result<()> {
+fn emit_revert_event(
+    merge_sha: &str,
+    orig_pr: u64,
+    revert_pr_url: &str,
+    repo_root: &Path,
+) -> Result<()> {
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     // Use CHUMP_AMBIENT_LOG env override if set, else default path.
     let ambient = std::env::var("CHUMP_AMBIENT_LOG")
