@@ -2538,6 +2538,16 @@ events:
     consumers: [fleet-brief, waste-tally, kpi-report]
     fields_required: [ts, kind, pr, gap, sha, checks_verified]
 
+  - kind: branch_deleted_fallback
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh INFRA-1413 REST-direct branch cleanup
+    trigger: After a successful REST-direct merge, bot-merge.sh detected that the
+      source branch was not yet deleted by the repo-level delete-branch-on-merge
+      setting and deleted it manually via gh api -X DELETE. Common when the setting
+      lags a newly-provisioned fork or there is a race between merge and cleanup.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, pr, branch]
+
   - kind: bot_merge_auto_armed
     effect_metric: self
     emitter: scripts/coord/bot-merge.sh INFRA-1166 auto-merge fallback
