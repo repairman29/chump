@@ -1233,6 +1233,14 @@ events:
     trigger: disk free < 5% (CHUMP_DISK_CRITICAL_PCT); fleet pauses
     consumers: [operator-recall, fleet-brief]
 
+  - kind: disk_critical_auto_remediated
+    effect_metric: self
+    emitter: scripts/ops/disk-health-monitor.sh (INFRA-1440)
+    trigger: disk_critical fired and target-dir-reaper --critical completed; freed_gb
+      captures bytes reclaimed; emitted even if 0 bytes freed
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, freed_gb, timeout_s]
+
   - kind: disk_low
     effect_metric: self
     emitter: scripts/ops/disk-health-monitor.sh + disk-pressure-watchdog.sh
