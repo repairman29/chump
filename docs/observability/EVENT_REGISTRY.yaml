@@ -1996,10 +1996,17 @@ events:
     fields_required: [ts, kind, path, reason, branch]
 
   - kind: worktree_reaper_skipped_active
-    emitter: scripts/ops/stale-worktree-reaper.sh (_emit_reaper_skipped, INFRA-1074)
-    trigger: stale-worktree-reaper skips a worktree because an active lease
-      (heartbeat_at within 15 min) or fresh .git/index mtime (within 5 min)
-      indicates in-flight work — reaping would destroy uncommitted work
+    emitter: >
+      scripts/ops/stale-worktree-reaper.sh (_emit_reaper_skipped, INFRA-1074);
+      scripts/coord/worktree-prune.sh (emit_reaper_event, INFRA-1347)
+    trigger: >
+      Reaper skips a worktree because in-flight work was detected. Reasons:
+      active_lease (heartbeat_at within 15 min) — INFRA-1074;
+      git_index_fresh (.git/index mtime within 30 min) — INFRA-1074/1347;
+      uncommitted_changes (git status --porcelain non-empty, tracked files) — INFRA-1347;
+      untracked_unignored (new files not yet `git add`'d, non-gitignored) — INFRA-1347;
+      unpushed_commits (HEAD ahead of origin/<branch>) — INFRA-1347.
+      Reaping in any of these states would destroy work — protection is mandatory.
     consumers: [fleet-brief, emergency-fast-path]
     fields_required: [ts, kind, worktree, reason]
 

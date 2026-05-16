@@ -213,7 +213,7 @@ FAST=0
 DRY_RUN=0
 NO_MERGE_DRIVER=0
 # INFRA-193: speculative execution opt-in. With --speculative, chump claim
-# writes `"speculative": true` into the lease and gap-preflight.sh allows
+# writes `"speculative": true` into the lease and `chump gap preflight` allows
 # concurrent claims by other speculative-mode sessions on the same gap.
 # After auto-merge is armed for our PR, the post-arm sweep below scans for
 # open sibling PRs citing the same gap and closes them with a "superseded
@@ -397,7 +397,6 @@ BOT_MERGE_HOT_FILES=(
     "scripts/git-hooks/pre-commit"
     "scripts/coord/bot-merge.sh"
     "scripts/coord/gap-claim.sh"
-    "scripts/coord/gap-preflight.sh"
     "scripts/coord/gap-reserve.sh"
     "CLAUDE.md"
     "AGENTS.md"
@@ -904,7 +903,7 @@ export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-Chump Dispatched}"
 export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-chump-dispatch@chump.bot}"
 
 # ── Session-ID auto-detection ─────────────────────────────────────────────────
-# gap-preflight reads CHUMP_SESSION_ID to distinguish "our" claim from others'.
+# `chump gap preflight` reads CHUMP_SESSION_ID to distinguish "our" claim from others'.
 # If not set, try to infer it from an existing gap lease file so the preflight
 # recognises our own claim at ship time (the claim may have been written by a
 # different shell with a different default session ID — e.g. CHUMP_SESSION_ID
@@ -1140,7 +1139,7 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     info "Running gap pre-flight for: ${GAP_IDS[*]} …"
     # INFRA-193: when speculative, export so gap-preflight allows the
     # concurrent-speculative case (still blocks non-speculative collisions).
-    if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
+    if ! CHUMP_SPECULATIVE="$SPECULATIVE" chump gap preflight "${GAP_IDS[@]}"; then
         red "Gap pre-flight failed — aborting to avoid duplicate work."
         red "The gaps are already done or claimed. Pick a different gap from docs/gaps.yaml."
         _bm_fail "preflight" 10 "gap already done or claimed"
@@ -1200,7 +1199,7 @@ BEHIND=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || ec
 # likely means the work has already landed on main via another agent.
 if [[ "$BEHIND" -gt 50 ]]; then
     red "Branch is $BEHIND commits behind $REMOTE/$BASE_BRANCH — too stale to merge safely."
-    red "Run: scripts/coord/gap-preflight.sh ${GAP_IDS[*]:-<gap-ids>}"
+    red "Run: chump gap preflight ${GAP_IDS[*]:-<gap-ids>}"
     red "Then: git fetch && git rebase $REMOTE/$BASE_BRANCH (resolve conflicts)"
     red "If all your gaps are already done on main, close this branch instead."
     exit 3
@@ -1226,7 +1225,7 @@ if [[ "$BEHIND" -gt 0 ]]; then
         # INFRA-509: INFRA-344 filing-style PR detection removed — post-INFRA-498,
         # gap YAMLs are no longer added as new files in PRs; state.db is canonical.
         # Always run preflight here so we catch gaps completed on main while rebasing.
-        if ! CHUMP_SPECULATIVE="$SPECULATIVE" "$SCRIPT_DIR/gap-preflight.sh" "${GAP_IDS[@]}"; then
+        if ! CHUMP_SPECULATIVE="$SPECULATIVE" chump gap preflight "${GAP_IDS[@]}"; then
             red "Gap was completed on main while we rebased — nothing left to push."
             _bm_fail "preflight" 10 "gap completed on main during rebase"
         fi

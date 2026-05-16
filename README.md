@@ -17,9 +17,75 @@ Chump has two co-equal lanes:
 
 ---
 
-## Quick start
+## Try Chump in 5 minutes
 
-> **Claude Code not required.** The `chump` CLI binary installs and works standalone — `brew install chump` (when available) gives you the coordinator, gap registry, and ship pipeline without any Anthropic dependency. You supply the agent (or commit manually).
+The end-to-end demo flow — what a new operator sees from a clean Mac to a self-driving fleet. **Install, `init`, `gen`, `orchestrate`, `fleet-status` in five steps.**
+
+> **Prerequisites:** macOS or Linux. [Ollama](https://ollama.com) running with at least one model (`ollama pull qwen2.5:7b` — ~4.7 GB, ~5 min download). No paid API key required for the local-LLM path.
+
+**1. Install**
+
+```bash
+brew tap repairman29/chump && brew install chump   # macOS — when the tap is published
+# OR build from source (any platform): see "Build from source" below
+```
+
+**2. Initialize** — interactive wizard checks Ollama, scaffolds `~/.chump/`, picks a default model.
+
+```bash
+chump init
+```
+
+What it does: writes `~/.chump/config.toml`, creates `.chump/state.db`, prompts for an inference backend (Ollama / vLLM / hosted), confirms a working model. Non-interactive variant: `chump init --no-interactive` (used by CI).
+
+**3. One-shot a coding task** — single prompt → working PR, no fleet, no orchestration.
+
+```bash
+chump gen "add a /health endpoint to my axum server"
+```
+
+Reads the current repo, generates a patch, runs `cargo check`, opens a PR. Good for "I have one task, ship it" — no need to spin up the fleet.
+
+**4. Talk to the fleet** — conversational loop driving multiple agents in parallel.
+
+```bash
+chump orchestrate
+```
+
+Then type natural-language intents:
+
+```
+> spawn the fleet on infra p0/p1, size 4
+> what's our mission grade?
+> ship the offline quickstart by EOD
+> stop the fleet
+```
+
+Each line is parsed into a structured `chump` command (`chump fleet start --size 4`, `chump mission-grade`, etc.) — see `src/intent_parser.rs` for the routing table. The stub path (no LLM) recognizes ~20 canonical phrases; the LLM-driven path handles freeform when `ANTHROPIC_API_KEY` is set.
+
+**5. See what's running**
+
+```bash
+chump fleet status              # human-readable
+chump fleet status --json       # machine-readable, for scripting
+```
+
+Real-time view of active agents, current claims, recent ships, and pillar grades. Same data the PWA cockpit at `http://localhost:3000/v2/` renders graphically.
+
+> **First-run validation in CI:** `.github/workflows/ftue-clean-machine-2026.yml` runs the entire 5-step flow on a fresh macOS runner on every PR touching the relevant paths. If this README is accurate, that workflow stays green.
+
+### Troubleshooting (5-minute path)
+
+- **`chump init` says Ollama unreachable:** start it (`ollama serve`), confirm with `curl localhost:11434/api/tags`, re-run.
+- **`chump gen` runs but no PR opens:** check `$GH_TOKEN`. The PR step needs GitHub credentials; `gh auth status` should be green.
+- **`chump orchestrate` "unknown intent":** the stub parser only handles canonical phrases. Try `"what is our mission grade?"` or set `ANTHROPIC_API_KEY` for the LLM-driven path.
+- **`chump fleet status` shows zero workers:** run `chump fleet start --size N` first, or your fleet was already stopped.
+
+---
+
+## Build from source
+
+For operators on platforms without a brew tap, or who want to develop on Chump itself.
 
 **Time estimate:** ~30 minutes (Rust compilation and model download take most of it).
 
@@ -56,7 +122,7 @@ Chump has two co-equal lanes:
 
 **Full setup guide:** [docs/process/EXTERNAL_GOLDEN_PATH.md](docs/process/EXTERNAL_GOLDEN_PATH.md)
 
-### Troubleshooting
+### Troubleshooting (build-from-source path)
 
 - **Model / connection** (timeouts, refused, 5xx, flap, OOM): [docs/operations/INFERENCE_STABILITY.md](docs/operations/INFERENCE_STABILITY.md), [docs/operations/STEADY_RUN.md](docs/operations/STEADY_RUN.md), canonical ports [docs/operations/INFERENCE_PROFILES.md](docs/operations/INFERENCE_PROFILES.md).
 - **Empty PWA dashboard:** normal without `chump-brain/` and heartbeats — [docs/api/WEB_API_REFERENCE.md](docs/api/WEB_API_REFERENCE.md) (Dashboard).

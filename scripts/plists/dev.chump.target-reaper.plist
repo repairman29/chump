@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  INFRA-1349: target/ artifact reaper launchd job.
+  Runs every 30 min. The script self-checks disk pressure and exits 0
+  quickly when free disk is comfortable; only reaps when threshold is
+  crossed.
+
+  Install with scripts/setup/install-target-reaper-launchd.sh.
+  Logs to /tmp/chump-target-reaper.log.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>dev.chump.target-reaper</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>CHUMP_REPO="$HOME/Projects/Chump" "$HOME/Projects/Chump/scripts/coord/target-dir-reaper.sh" --execute</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/tmp/chump-target-reaper.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/chump-target-reaper.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

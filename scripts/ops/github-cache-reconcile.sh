@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS pr_state (
 );
 CREATE INDEX IF NOT EXISTS pr_state_behind_armed ON pr_state(mergeable_state, auto_merge_enabled);
 """)
+# INFRA-1368: add merge_state_status column idempotently.
+try:
+    conn.execute("ALTER TABLE pr_state ADD COLUMN merge_state_status TEXT")
+    conn.commit()
+except Exception:
+    pass  # column already exists
 
 drift_count = 0
 for pr in prs:
@@ -112,7 +118,12 @@ for pr in prs:
             pass
         if mode == "apply":
             conn.execute("""
-            INSERT INTO pr_state VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO pr_state (
+                number, head_ref, head_sha, base_ref, base_sha,
+                mergeable_state, auto_merge_enabled, draft, merged_at,
+                title, user_login, updated_at_api, fetched_at_local,
+                raw_payload_json, merge_state_status
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(number) DO UPDATE SET
                 head_ref=excluded.head_ref, head_sha=excluded.head_sha,
                 base_ref=excluded.base_ref, base_sha=excluded.base_sha,
@@ -122,7 +133,8 @@ for pr in prs:
                 title=excluded.title, user_login=excluded.user_login,
                 updated_at_api=excluded.updated_at_api,
                 fetched_at_local=excluded.fetched_at_local,
-                raw_payload_json=excluded.raw_payload_json
+                raw_payload_json=excluded.raw_payload_json,
+                merge_state_status=excluded.merge_state_status
             """, (
                 n, (pr.get("head") or {}).get("ref"), api_sha,
                 (pr.get("base") or {}).get("ref"), (pr.get("base") or {}).get("sha"),
@@ -130,6 +142,7 @@ for pr in prs:
                 pr.get("title"), (pr.get("user") or {}).get("login"),
                 pr.get("updated_at") or now, now,
                 json.dumps(pr),
+                api_ms,  # INFRA-1368: populate merge_state_status from REST mergeable_state
             ))
             conn.commit()
 
@@ -175,9 +188,15 @@ if mode == "apply" and max_fetch > 0:
             if not api_ms:
                 continue
             conn.execute("""
-            INSERT INTO pr_state VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            INSERT INTO pr_state (
+                number, head_ref, head_sha, base_ref, base_sha,
+                mergeable_state, auto_merge_enabled, draft, merged_at,
+                title, user_login, updated_at_api, fetched_at_local,
+                raw_payload_json, merge_state_status
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(number) DO UPDATE SET
                 mergeable_state=excluded.mergeable_state,
+                merge_state_status=excluded.merge_state_status,
                 head_sha=excluded.head_sha,
                 auto_merge_enabled=excluded.auto_merge_enabled,
                 draft=excluded.draft,
@@ -200,6 +219,7 @@ if mode == "apply" and max_fetch > 0:
                 pr_full.get("updated_at") or now,
                 now,
                 json.dumps(pr_full),
+                api_ms,  # INFRA-1368: populate merge_state_status
             ))
             conn.commit()
             warmed += 1

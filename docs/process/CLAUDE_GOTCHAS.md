@@ -325,8 +325,9 @@ Linked worktrees under `.claude/worktrees/` are the main **disk** risk on agent-
 **Stale trees (merged PR or deleted remote branch):** prefer automation over hand-tuning `git worktree list`.
 
 1. **`scripts/ops/stale-worktree-reaper.sh`** — default is **dry-run** (safe to run anytime). With **`--execute`**, it archives selected eval logs then `git worktree remove --force` under `.claude/worktrees/` only when the script’s guards pass (cooldown, no conflicting lease, process / log freshness — see the script header).
-2. **macOS — expected setup for dogfooding:** run **`scripts/setup/install-stale-worktree-reaper-launchd.sh`** once per machine so the reaper runs **hourly**. **Verify:** `launchctl list | grep dev.chump.stale-worktree-reaper`. **Logs:** `/tmp/chump-stale-worktree-reaper.out.log` and `/tmp/chump-stale-worktree-reaper.err.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/dev.chump.stale-worktree-reaper.plist`.
-3. **Opt out** for one worktree the reaper should never remove: **`touch <worktree-path>/.chump-no-reap`**.
+2. **`scripts/coord/worktree-prune.sh`** (INFRA-1347, 2026-05-15) — the multi-PR batch reaper for post-sprint cleanup. Uses `gh pr list` to look up each worktree’s PR state. **Safety guards (each independently sufficient to SKIP delete):** (a) active lease (`wt_has_active_lease` 900s), (b) `.git/index` modified within 30 min (was 5 min before INFRA-1347 — bumped because cargo builds take 10+ min between edits), (c) unpushed commits (`git rev-list --count origin/<branch>..HEAD > 0`), (d) untracked non-gitignored files (agent wrote a test/doc/fixture but hadn’t run `git add` yet). Any guard triggers a `kind=worktree_reaper_skipped_active` event in `ambient.jsonl` with the specific reason. CI test: `scripts/ci/test-worktree-prune-protects-live-edits.sh`.
+3. **macOS — expected setup for dogfooding:** run **`scripts/setup/install-stale-worktree-reaper-launchd.sh`** once per machine so the reaper runs **hourly**. **Verify:** `launchctl list | grep dev.chump.stale-worktree-reaper`. **Logs:** `/tmp/chump-stale-worktree-reaper.out.log` and `/tmp/chump-stale-worktree-reaper.err.log`. **Disable:** `launchctl unload ~/Library/LaunchAgents/dev.chump.stale-worktree-reaper.plist`.
+4. **Opt out** for one worktree the reaper should never remove: **`touch <worktree-path>/.chump-no-reap`**.
 
 Manual escape hatch from the **main** checkout: `git worktree remove .claude/worktrees/<name>` when you are sure nothing has that directory as its cwd.
 
@@ -736,6 +737,24 @@ GIT_DIR=/Users/<you>/Projects/Chump/.git/worktrees/chump-infra-NNN GIT_WORK_TREE
 **Prevention:** `chump claim` auto-runs the gitdir repair since INFRA-779.
 If claiming manually via `gap-claim.sh`, add the repair step immediately after
 `git worktree add`.
+
+**Related — worktree reaper data-loss protection (INFRA-1347).**
+`scripts/coord/worktree-prune.sh` now refuses to delete a worktree if **any**
+of the following hold (it emits `kind=worktree_reaper_skipped_active` with the
+matching `reason` so the audit trail surfaces the save):
+
+1. `git status --porcelain` is non-empty (uncommitted tracked changes)
+2. Untracked-and-non-gitignored files exist (e.g. new test/doc files not yet
+   `git add`'d — INFRA-1346 lost 40 LOC of edits this way before the fix)
+3. `git rev-list origin/<branch>..HEAD` > 0 (committed but unpushed)
+4. An active lease in `.chump-locks/*.json` names the worktree with
+   `heartbeat_at` within 15 min
+5. `.git/index` mtime within 30 min (cargo-build pauses can exceed 5 min, so
+   the prior 5 min threshold was too tight)
+
+Do **not** disable these via `CHUMP_REAPER_SAFETY_CHECK=0` in production —
+the gate exists because INFRA-1346 lost two attempts worth of work in one
+session before INFRA-1347 closed the holes.
 
 ---
 
@@ -1187,6 +1206,14 @@ even on failure, so `statusCheckRollup.state` stays `SUCCESS`.
 - `e2e-pwa` — Ollama + Playwright, environment-sensitive
 - `e2e-battle-sim` — lightweight but can time out
 - `e2e-golden-path` — cargo build + file-presence checks
+
+**Jobs fixed in INFRA-1348** (full audit of all non-required jobs):
+- `changes` — `dorny/paths-filter` can fail transiently (network/runner issue); COE makes failure neutral so downstream jobs safely skip rather than blocking
+- `test-e2e` — aggregates e2e shards (which already have COE); COE here guards against runner errors in the aggregator itself
+
+**Ongoing enforcement:** `scripts/ci/test-rollup-not-blocked-by-flaky-job.sh` parses
+`ci.yml` and asserts every non-required job has either `continue-on-error: true` or
+a PR-trigger exclusion. Run it after any ci.yml change.
 
 **When adding a new CI job:** if it is NOT in branch protection required contexts,
 add `continue-on-error: true` to prevent it from blocking fleet-wide auto-merge.
