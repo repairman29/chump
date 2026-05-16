@@ -1513,6 +1513,7 @@ events:
     effect_metric: self
 
   - kind: paramedic_standby
+    effect_metric: self
     emitter: src/paramedic.rs (INFRA-1397)
     trigger: paramedic daemon process lost leader election and is waiting for leader expiry; emitted every 60s from the standby process
     consumers: [fleet-brief]
