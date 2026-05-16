@@ -1,0 +1,14 @@
+- id: INFRA-1413
+  domain: INFRA
+  title: "ZERO-WASTE: auto-delete PR branches on merge (gh repo edit --delete-branch-on-merge=true) — branches pile up after successful merges"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Repo-level config: gh repo edit repairman29/chump --delete-branch-on-merge=true (one-time API call, idempotent)"
+    - "scripts/coord/bot-merge.sh: after successful merge, verify branch deletion happened; fall back to gh api repos/X/git/refs/heads/<branch> -X DELETE if not"
+    - CI test scripts/ci/test-branch-delete-on-merge.sh stubs a merge event + asserts the branch is gone from origin within 60s
+    - "Measure: count of orphan branches on origin (gh api repos/X/branches --paginate "
+    - " jq length) drops from current baseline (~50+ chump/infra-*-claim branches) to <10"
+    - Branch-protection-drift gate updated to flag if delete-branch-on-merge regresses
+

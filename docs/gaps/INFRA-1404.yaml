@@ -1,0 +1,15 @@
+- id: INFRA-1404
+  domain: INFRA
+  title: "ZERO-WASTE: chump rebase-and-push wrapper — atomic fetch+rebase-with-merge-drivers+force-with-lease-retry (replaces manual git surgery operator did 4× today)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New CLI subcommand chump rebase-and-push <ref> or scripts/coord/chump-rebase-and-push.sh — replaces 5-step manual recipe (fetch + checkout main + rebase + resolve via merge driver + force-with-lease)
+    - Auto-detects current branch + upstream tracking
+    - Honors --interactive only when explicitly passed
+    - "On unresolvable conflict (after merge drivers): print exact files + line counts + suggested manual resolution path; exit 2 (not 1) so wrapper scripts can distinguish driver-resolved vs operator-required"
+    - "On force-with-lease rejection (sibling pushed in meantime): retry once with fresh fetch+rebase, then bail with exit 3"
+    - Emit kind=rebase_and_push_invoked to ambient.jsonl with {ts, branch, base, driver_resolved_files, manual_files, retries}
+    - CI test scripts/ci/test-chump-rebase-and-push.sh seeds a synthetic divergent branch and asserts the wrapper produces a clean push
+

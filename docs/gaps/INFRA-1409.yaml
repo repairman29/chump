@@ -1,0 +1,14 @@
+- id: INFRA-1409
+  domain: INFRA
+  title: "EFFECTIVE: chump pr triage — single table of operator's open PRs with next mechanical action per row (rebase/force-push/close/re-arm/fix-clippy)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "New CLI: chump pr triage [--mine] [--json] prints a table of operator-owned (or fleet-wide with --all) open PRs"
+    - "Columns: PR# / title / mergeStateStatus / required-check status / last-action recommended"
+    - "Recommended actions (in priority order): rebase / force-push-without-lease / re-arm-auto-merge / fix-clippy-locally / close-and-respawn / wait-for-sibling-fix"
+    - "Sibling-fix detection: cross-reference failing-check names against currently-claimed gap titles (e.g. \"audit failing on test-cache-mergestatestatus.sh\" → \"wait for INFRA-1396\")"
+    - "--apply <pr> <action> executes the recommended mechanical action via INFRA-1404 rebase-and-push wrapper or direct gh api call"
+    - CI test scripts/ci/test-pr-triage.sh stubs N PRs in different stuck states + asserts triage table produces the right recommendation per state
+
