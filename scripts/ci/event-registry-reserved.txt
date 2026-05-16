@@ -229,3 +229,4 @@ github_app_fallback  # reason: emitted by scripts/coord/lib/github.sh _chump_gh_
 runner_migration_step           # reason: INFRA-1535 migration pipeline state-transition emit
 runner_scaled                   # reason: INFRA-1535 autoscale daemon scale-up/down emit
 self_hosted_runner_run          # reason: INFRA-1534 per-run completion (planned)
+merge_preview_skipped  # reason: emitted from scripts/coord/ (shell); not in PROD_PATHS
