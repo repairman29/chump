@@ -1,0 +1,15 @@
+- id: INFRA-1381
+  domain: INFRA
+  title: "ZERO-WASTE: demote non-required CI jobs (e2e-battle-sim/e2e-golden-path/tauri-cowork-e2e) to nightly cron on main — either gate merge or stop burning per-PR cycles"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Today the test umbrella job is required, but it depends on 7 sub-jobs of which only 4 are actually gating. The non-gating ones (advisory e2e variants, tauri-cowork-e2e) burn per-PR CI minutes without producing a merge decision. Either make them gating to justify cost, or run them on post-merge main only. Standard CI hygiene — separates this
+  acceptance_criteria:
+    - Audit which CI jobs in ci.yml are NOT in the required_status_checks list (gh api branches/main/protection)
+    - "Move non-required jobs (current candidates per 2026-05-15 audit: e2e-battle-sim, e2e-golden-path, tauri-cowork-e2e advisory, PWA flake advisory) to a separate workflow .github/workflows/ci-advisory.yml that runs on push to main only, not on PRs"
+    - "For each demoted job, file a follow-up gap deciding final disposition: PROMOTE (add to required + justify cost) or KEEP-ADVISORY (only blocks if main breaks)"
+    - Branch-protection-drift gate updated to flag any new job in ci.yml that isn't either required or moved to ci-advisory.yml
+    - "Measure: per-PR CI wall-time reduction (target: 25-40% on rust-touching PRs)"
+
