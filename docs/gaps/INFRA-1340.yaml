@@ -1,0 +1,12 @@
+- id: INFRA-1340
+  domain: INFRA
+  title: "EFFECTIVE: PRODUCT-109 follow-ups — per-tool policy-override dropdown (auto-approve <tool> for 15min/1h/session) + Web Push escalation when operator away >60s + optional audio cue"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
+

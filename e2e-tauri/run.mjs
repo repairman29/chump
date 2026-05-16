@@ -106,7 +106,15 @@ try {
   // The backward-compat alias script in index.html renames shadow #input → #msg-input
   // shortly after DOMContentLoaded (CREDIBLE-055). Accept either id so this check
   // passes regardless of which script wins the race.
-  await driver.wait(until.elementLocated(By.css('chump-chat')), 60_000);
+  //
+  // Timeout raised from 60 s → 120 s: index.html loads 18+ type="module" scripts
+  // (prefs.js, chat.js, app.js, cockpit.js, etc.).  On slow GitHub Actions VMs
+  // all those modules parse+execute after the static #app-title renders but
+  // before DOMContentLoaded fires — the JS-rendered <chump-chat> can take >60 s
+  // to appear.  120 s keeps us well within the job's overall timeout budget.
+  console.log(`tauri e2e: #app-title found at t=${Date.now()}; waiting for <chump-chat>…`);
+  await driver.wait(until.elementLocated(By.css('chump-chat')), 120_000);
+  console.log(`tauri e2e: <chump-chat> located at t=${Date.now()}; waiting for shadow root…`);
   await driver.wait(async () => {
     const ready = await driver.executeScript(
       `const sr = document.querySelector('chump-chat')?.shadowRoot;

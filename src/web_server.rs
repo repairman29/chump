@@ -305,6 +305,14 @@ fn check_auth(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
+/// Get session ID from X-Session-ID header, if present.
+fn get_session_id(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("X-Session-ID")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string())
+}
+
 /// INFRA-1014: routes that bypass auth even when CHUMP_WEB_TOKEN is set.
 /// Health is intentionally public (uptime checks, load balancers).
 /// Auth-check is the endpoint clients use to verify their token, so it
@@ -967,6 +975,52 @@ async fn handle_lease_release_expired(
         "scanned": scanned,
         "released_count": released.len(),
         "released_ids": released,
+    })))
+}
+
+/// PRODUCT-127: GET /api/gap/drift-status — count gaps with closed_pr set but
+/// status=open (state.db drift). Powers the cockpit "Gap drift: N instances" row.
+async fn handle_gap_drift_status(
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let repo_root = crate::repo_path::runtime_base();
+    let store = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("open gap store: {e}"),
+            ));
+        }
+    };
+    let gaps = match store.list(None) {
+        Ok(g) => g,
+        Err(e) => {
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, format!("list gaps: {e}")));
+        }
+    };
+    // Drift = closed_pr set but status is still "open" (not done/shipped).
+    // These stale rows confuse the picker into re-claiming already-shipped work.
+    let instances: Vec<serde_json::Value> = gaps
+        .iter()
+        .filter(|g| g.closed_pr.is_some() && g.status != "done" && g.status != "shipped")
+        .map(|g| {
+            serde_json::json!({
+                "gap_id": g.id,
+                "reason": format!(
+                    "closed_pr=#{} but status={}",
+                    g.closed_pr.unwrap_or(0),
+                    g.status
+                ),
+            })
+        })
+        .collect();
+    Ok(Json(serde_json::json!({
+        "count": instances.len(),
+        "instances": instances,
     })))
 }
 
@@ -4412,6 +4466,151 @@ async fn handle_pr_ac_fit(
     })))
 }
 
+// ── PRODUCT-086: PR action endpoints (approve, request-changes, comment, revert) ──────────
+
+#[derive(serde::Deserialize)]
+struct PrActionRequest {
+    body: Option<String>,
+}
+
+/// POST /api/prs/{number}/approve — Approve a PR with optional comment (PRODUCT-086).
+async fn handle_pr_approve(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+    Json(req): Json<PrActionRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let session_id = get_session_id(&headers);
+    let mut cmd = std::process::Command::new("gh");
+    cmd.args(["pr", "review", &number.to_string(), "--approve"]);
+    if let Some(body) = &req.body {
+        cmd.args(["--body", body]);
+    }
+    let out = cmd.output().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if !out.status.success() {
+        eprintln!(
+            "gh pr review --approve failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    // Emit operator_pr_action event to ambient.
+    emit_operator_pr_action("approve", number, session_id.as_deref()).ok();
+    Ok(Json(serde_json::json!({ "status": "approved" })))
+}
+
+/// POST /api/prs/{number}/request-changes — Request changes on a PR (PRODUCT-086).
+async fn handle_pr_request_changes(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+    Json(req): Json<PrActionRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let session_id = get_session_id(&headers);
+    let body = req.body.unwrap_or_default();
+    let out = std::process::Command::new("gh")
+        .args([
+            "pr",
+            "review",
+            &number.to_string(),
+            "--request-changes",
+            "--body",
+            &body,
+        ])
+        .output()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if !out.status.success() {
+        eprintln!(
+            "gh pr review --request-changes failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    emit_operator_pr_action("request_changes", number, session_id.as_deref()).ok();
+    Ok(Json(serde_json::json!({ "status": "requested_changes" })))
+}
+
+/// POST /api/prs/{number}/comment — Add a comment to a PR (PRODUCT-086).
+async fn handle_pr_comment(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+    Json(req): Json<PrActionRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let session_id = get_session_id(&headers);
+    let body = req.body.unwrap_or_default();
+    let out = std::process::Command::new("gh")
+        .args(["pr", "comment", &number.to_string(), "--body", &body])
+        .output()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if !out.status.success() {
+        eprintln!(
+            "gh pr comment failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    emit_operator_pr_action("comment", number, session_id.as_deref()).ok();
+    Ok(Json(serde_json::json!({ "status": "commented" })))
+}
+
+/// POST /api/prs/{number}/revert — Revert a merged PR by creating a new PR with the revert (PRODUCT-086).
+/// Note: gh pr revert doesn't exist natively, so we call a helper script.
+async fn handle_pr_revert(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let session_id = get_session_id(&headers);
+    // Call helper script scripts/coord/pr-revert.sh if it exists, else use gh directly.
+    let script_path = std::path::PathBuf::from("scripts/coord/pr-revert.sh");
+    let use_script = script_path.exists();
+    let out = if use_script {
+        std::process::Command::new("bash")
+            .args(["scripts/coord/pr-revert.sh", &number.to_string()])
+            .output()
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
+    } else {
+        // Fallback: gh pr revert (if available in newer gh versions)
+        std::process::Command::new("gh")
+            .args(["pr", "revert", &number.to_string(), "--create-issue"])
+            .output()
+            .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?
+    };
+    if !out.status.success() {
+        eprintln!("pr revert failed: {}", String::from_utf8_lossy(&out.stderr));
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    emit_operator_pr_action("revert", number, session_id.as_deref()).ok();
+    Ok(Json(serde_json::json!({ "status": "reverted" })))
+}
+
+fn emit_operator_pr_action(action: &str, pr: u32, session_id: Option<&str>) -> Result<()> {
+    let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let event = serde_json::json!({
+        "ts": now,
+        "kind": "operator_pr_action",
+        "type": action,
+        "pr": pr,
+        "operator_session": session_id.unwrap_or("unknown"),
+    });
+    let path = ambient_log_path();
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    writeln!(file, "{}", event)?;
+    Ok(())
+}
+
 // ── PRODUCT-091 / PRODUCT-094: ambient event viewer + notification center endpoints ──────────
 // PRODUCT-094: /api/ambient/stream is consumed by notification-center.js for
 // fleet_wedge, pr_stuck, gap_shipped, needs_judgment events → in-app badge +
@@ -4943,10 +5142,24 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
         }
     }
 
-    // ── Enrich with gap_store metadata ───────────────────────────────────────
+    // ── Enrich with gap_store metadata (synchronous — local SQLite, fast) ──────
     let gap_store = crate::gap_store::GapStore::open(&repo_root).ok();
 
-    let mut sessions: Vec<serde_json::Value> = Vec::new();
+    // Phase 1: extract all metadata synchronously so gap_store (non-Send) stays
+    // on this thread. gh CLI calls happen in phase 2, in parallel.
+    struct LeaseInfo {
+        gap_id: String,
+        session_id: String,
+        taken_at: String,
+        expires_at: String,
+        heartbeat_at: String,
+        worktree_path: String,
+        branch: String,
+        gap_title: String,
+        gap_priority: String,
+        gap_effort: String,
+    }
+    let mut lease_infos: Vec<LeaseInfo> = Vec::new();
     for lease in leases {
         let gap_id = lease
             .get("gap_id")
@@ -4980,10 +5193,7 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-
-        // Conventional branch name: chump/<gap-id-lowercase>-claim
         let branch = format!("chump/{}-claim", gap_id.to_lowercase().replace('_', "-"));
-
         let (gap_title, gap_priority, gap_effort) = if let Some(ref store) = gap_store {
             match store.get(&gap_id) {
                 Ok(Some(gap)) => (gap.title.clone(), gap.priority.clone(), gap.effort.clone()),
@@ -4992,103 +5202,139 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
         } else {
             (String::new(), String::new(), String::new())
         };
+        lease_infos.push(LeaseInfo {
+            gap_id,
+            session_id,
+            taken_at,
+            expires_at,
+            heartbeat_at,
+            worktree_path,
+            branch,
+            gap_title,
+            gap_priority,
+            gap_effort,
+        });
+    }
 
-        // ── Best-effort PR lookup via gh CLI ─────────────────────────────────
-        // INFRA-1485: was std::process::Command (blocking) — moved to
-        // tokio::process::Command + tokio::time::timeout to prevent tokio
-        // worker starvation when called per-lease (N=25 sequential blocking
-        // calls used to wedge the whole web server). 2s per-call timeout;
-        // on timeout pr_number/pr_state/ci_status remain null.
-        let (pr_number, pr_state, ci_status) = {
-            let branch_clone = branch.clone();
-            let gh_fut = tokio::process::Command::new("gh")
-                .args([
-                    "pr",
-                    "list",
-                    "--head",
-                    &branch_clone,
-                    "--json",
-                    "number,state,statusCheckRollup",
-                    "--limit",
-                    "1",
-                    "--state",
-                    "all",
-                ])
-                .output();
-            let out = match tokio::time::timeout(std::time::Duration::from_secs(2), gh_fut).await {
-                Ok(r) => r,
-                Err(_) => Err(std::io::Error::other("gh pr list timeout >2s")),
-            };
-            match out {
-                Ok(o) if o.status.success() => {
-                    if let Ok(arr) = serde_json::from_slice::<Vec<serde_json::Value>>(&o.stdout) {
-                        if let Some(pr) = arr.first() {
-                            let num = pr.get("number").and_then(|v| v.as_u64());
-                            let state = pr
-                                .get("state")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_lowercase());
-                            // Aggregate CI: SUCCESS / FAILURE / PENDING / unknown
-                            let ci = pr.get("statusCheckRollup").and_then(|v| v.as_array()).map(
-                                |checks| {
-                                    let has_fail = checks.iter().any(|c| {
-                                        c.get("conclusion")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s == "FAILURE")
-                                            .unwrap_or(false)
-                                    });
-                                    let has_pending = checks.iter().any(|c| {
-                                        c.get("status")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s == "IN_PROGRESS" || s == "QUEUED")
-                                            .unwrap_or(false)
-                                    });
-                                    let all_success = checks.iter().all(|c| {
-                                        c.get("conclusion")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s == "SUCCESS" || s == "SKIPPED")
-                                            .unwrap_or(false)
-                                    });
-                                    if has_fail {
-                                        "failure"
-                                    } else if has_pending {
-                                        "pending"
-                                    } else if all_success && !checks.is_empty() {
-                                        "success"
-                                    } else {
-                                        "unknown"
-                                    }
-                                    .to_string()
-                                },
-                            );
-                            (num, state, ci)
-                        } else {
-                            (None, None, None)
-                        }
-                    } else {
+    // Phase 2: gh pr list — parallel async calls, each with a per-call timeout.
+    // INFRA-1464: 25 sequential calls → fan-out, all fire simultaneously.
+    let gh_timeout_secs: u64 = std::env::var("CHUMP_FLEET_STATUS_GH_TIMEOUT_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2);
+
+    /// Parse gh pr list JSON output into (pr_number, pr_state, ci_status).
+    fn parse_gh_pr_list(stdout: &[u8]) -> (Option<u64>, Option<String>, Option<String>) {
+        let Ok(arr) = serde_json::from_slice::<Vec<serde_json::Value>>(stdout) else {
+            return (None, None, None);
+        };
+        let Some(pr) = arr.first() else {
+            return (None, None, None);
+        };
+        let num = pr.get("number").and_then(|v| v.as_u64());
+        let state = pr
+            .get("state")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_lowercase());
+        let ci = pr
+            .get("statusCheckRollup")
+            .and_then(|v| v.as_array())
+            .map(|checks| {
+                let has_fail = checks.iter().any(|c| {
+                    c.get("conclusion")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == "FAILURE")
+                        .unwrap_or(false)
+                });
+                let has_pending = checks.iter().any(|c| {
+                    c.get("status")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == "IN_PROGRESS" || s == "QUEUED")
+                        .unwrap_or(false)
+                });
+                let all_success = checks.iter().all(|c| {
+                    c.get("conclusion")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == "SUCCESS" || s == "SKIPPED")
+                        .unwrap_or(false)
+                });
+                if has_fail {
+                    "failure"
+                } else if has_pending {
+                    "pending"
+                } else if all_success && !checks.is_empty() {
+                    "success"
+                } else {
+                    "unknown"
+                }
+                .to_string()
+            });
+        (num, state, ci)
+    }
+
+    let pr_futures: Vec<_> = lease_infos
+        .iter()
+        .map(|info| {
+            let branch = info.branch.clone();
+            let timeout_dur = std::time::Duration::from_secs(gh_timeout_secs);
+            async move {
+                let cmd = tokio::process::Command::new("gh")
+                    .args([
+                        "pr",
+                        "list",
+                        "--head",
+                        &branch,
+                        "--json",
+                        "number,state,statusCheckRollup",
+                        "--limit",
+                        "1",
+                        "--state",
+                        "all",
+                    ])
+                    .output();
+                match tokio::time::timeout(timeout_dur, cmd).await {
+                    Ok(Ok(o)) if o.status.success() => parse_gh_pr_list(&o.stdout),
+                    Ok(Ok(_)) | Ok(Err(_)) => (None, None, None),
+                    Err(_) => {
+                        // Timeout: gh call exceeded per-call deadline. INFRA-1464.
+                        tracing::warn!(
+                            target: "infra_1464",
+                            branch = %branch,
+                            timeout_s = gh_timeout_secs,
+                            "fleet_status_gh_timeout: gh pr list timed out"
+                        );
                         (None, None, None)
                     }
                 }
-                _ => (None, None, None),
             }
-        };
+        })
+        .collect();
 
-        sessions.push(serde_json::json!({
-            "session_id": session_id,
-            "gap_id": gap_id,
-            "gap_title": gap_title,
-            "gap_priority": gap_priority,
-            "gap_effort": gap_effort,
-            "branch": branch,
-            "worktree_path": worktree_path,
-            "taken_at": taken_at,
-            "expires_at": expires_at,
-            "heartbeat_at": heartbeat_at,
-            "pr_number": pr_number,
-            "pr_state": pr_state,
-            "ci_status": ci_status,
-        }));
-    }
+    // Fan-out: all gh calls fire simultaneously. Total wall-clock ≈ max(individual
+    // timeouts) instead of sum — 25 × 2s sequential → 2s parallel. INFRA-1464.
+    let pr_results = futures_util::future::join_all(pr_futures).await;
+
+    let mut sessions: Vec<serde_json::Value> = lease_infos
+        .into_iter()
+        .zip(pr_results)
+        .map(|(info, (pr_number, pr_state, ci_status))| {
+            serde_json::json!({
+                "session_id": info.session_id,
+                "gap_id": info.gap_id,
+                "gap_title": info.gap_title,
+                "gap_priority": info.gap_priority,
+                "gap_effort": info.gap_effort,
+                "branch": info.branch,
+                "worktree_path": info.worktree_path,
+                "taken_at": info.taken_at,
+                "expires_at": info.expires_at,
+                "heartbeat_at": info.heartbeat_at,
+                "pr_number": pr_number,
+                "pr_state": pr_state,
+                "ci_status": ci_status,
+            })
+        })
+        .collect();
 
     // Sort newest-first by taken_at
     sessions.sort_by(|a, b| {
@@ -6697,6 +6943,401 @@ async fn spawn_gap_workflow_inner(
     }
 }
 
+// ── PRODUCT-080: Stuck Items API ─────────────────────────────────────────────
+
+/// Stuck-item severity derived from ambient event kind.
+fn stuck_severity(kind: &str) -> &'static str {
+    match kind {
+        "fleet_wedge" | "disk_critical" => "HIGH",
+        "pr_stuck" | "silent_agent" | "lease_expired_server" => "MED",
+        "fat_worktree" | "reaper_silent" => "LOW",
+        _ => "LOW",
+    }
+}
+
+/// Suggested rescue action for each stuck kind.
+fn stuck_rescue_action(kind: &str) -> &'static str {
+    match kind {
+        "pr_stuck" => "Run pr-rescue.sh to rebase and re-arm auto-merge",
+        "silent_agent" => "Release stale lease and requeue gap",
+        "lease_expired_server" => "Reap expired lease via stale-lease-reaper.sh",
+        "fat_worktree" => "Prune stale worktrees via worktree-prune.sh",
+        "disk_critical" => "Free disk space; run worktree-prune.sh --execute",
+        "reaper_silent" => "Restart ghost-gap-reaper daemon",
+        "fleet_wedge" => "Drop to 2 workers; investigate pr_stuck cluster",
+        _ => "Inspect ambient log for details",
+    }
+}
+
+/// Script and args to invoke for a given rescue kind.
+fn rescue_script(
+    kind: &str,
+    repo_root: &std::path::Path,
+) -> Option<(std::path::PathBuf, Vec<String>)> {
+    match kind {
+        "pr_stuck" => {
+            let script = repo_root.join("scripts/coord/pr-rescue.sh");
+            Some((script, vec![]))
+        }
+        "fat_worktree" | "disk_critical" => {
+            let script = repo_root.join("scripts/coord/worktree-prune.sh");
+            Some((script, vec!["--execute".to_string()]))
+        }
+        "lease_expired_server" | "silent_agent" => {
+            let script = repo_root.join("scripts/coord/stale-lease-reaper.sh");
+            Some((script, vec![]))
+        }
+        "reaper_silent" => {
+            let script = repo_root.join("scripts/coord/ghost-gap-reaper.sh");
+            Some((script, vec!["--once".to_string()]))
+        }
+        _ => None,
+    }
+}
+
+/// Emit an ambient event directly to ambient.jsonl.
+fn emit_stuck_ambient(kind: &str, extra_fields: &[(&str, &str)]) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: kind.to_string(),
+        source: Some("pwa_stuck_api".to_string()),
+        fields: extra_fields
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        ..Default::default()
+    });
+}
+
+/// PRODUCT-080: GET /api/stuck — aggregate stuck items from ambient.jsonl.
+///
+/// Returns a JSON list of stuck items with type, severity, age, and rescue action.
+/// Queries last 1000 events; de-duplicates by kind so only the freshest per-kind
+/// surfaces (except pr_stuck which may have multiple distinct PRs).
+async fn handle_stuck_list(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let path = ambient_log_path();
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    // Kinds we surface as stuck items — sorted by priority.
+    const STUCK_KINDS: &[&str] = &[
+        "fleet_wedge",
+        "disk_critical",
+        "pr_stuck",
+        "silent_agent",
+        "lease_expired_server",
+        "fat_worktree",
+        "reaper_silent",
+    ];
+
+    // PR-stuck threshold: 4 hours in seconds.
+    const PR_STUCK_THRESHOLD_SECS: u64 = 4 * 60 * 60;
+
+    // Parse last 1000 events.
+    let events: Vec<serde_json::Value> = content
+        .lines()
+        .rev()
+        .take(1000)
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+
+    let mut items: Vec<serde_json::Value> = Vec::new();
+    // Track which (kind, pr_number) pairs we've already emitted to avoid dups.
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    // Also track the most recent resolved fleet_wedge timestamp for empty-state.
+    let mut last_wedge_resolved_secs: Option<u64> = None;
+
+    for ev in &events {
+        let kind = ev
+            .get("kind")
+            .or_else(|| ev.get("event"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        // Track resolved wedges for empty-state.
+        if kind == "fleet_wedge_resolved" {
+            if let Some(ts_str) = ev.get("ts").and_then(|v| v.as_str()) {
+                if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(ts_str) {
+                    let ts_secs = ts.timestamp() as u64;
+                    match last_wedge_resolved_secs {
+                        None => last_wedge_resolved_secs = Some(ts_secs),
+                        Some(prev) if ts_secs > prev => last_wedge_resolved_secs = Some(ts_secs),
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if !STUCK_KINDS.contains(&kind) {
+            continue;
+        }
+
+        // Parse event timestamp.
+        let event_ts_secs: u64 = ev
+            .get("ts")
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|dt| dt.timestamp() as u64)
+            .unwrap_or(0);
+
+        let age_secs = now_secs.saturating_sub(event_ts_secs);
+
+        // pr_stuck: only surface if >= 4 hours old; deduplicate per (kind, pr).
+        if kind == "pr_stuck" {
+            if age_secs < PR_STUCK_THRESHOLD_SECS {
+                continue;
+            }
+            let pr_num = ev
+                .get("pr")
+                .and_then(|v| {
+                    v.as_str()
+                        .map(|s| s.to_string())
+                        .or_else(|| v.as_u64().map(|n| n.to_string()))
+                })
+                .unwrap_or_default();
+            let dedup_key = format!("{}:{}", kind, pr_num);
+            if !seen.insert(dedup_key.clone()) {
+                continue;
+            }
+            // Generate a stable ID from kind + pr + event_ts.
+            let id = format!("{}_{}_{}", kind, pr_num, event_ts_secs);
+            items.push(serde_json::json!({
+                "id": id,
+                "kind": kind,
+                "severity": stuck_severity(kind),
+                "age_secs": age_secs,
+                "rescue_action": stuck_rescue_action(kind),
+                "pr": pr_num,
+                "raw": ev,
+            }));
+        } else {
+            // For non-pr_stuck kinds, only surface the most recent occurrence (dedup by kind).
+            if !seen.insert(kind.to_string()) {
+                continue;
+            }
+            let id = format!("{}_{}", kind, event_ts_secs);
+            items.push(serde_json::json!({
+                "id": id,
+                "kind": kind,
+                "severity": stuck_severity(kind),
+                "age_secs": age_secs,
+                "rescue_action": stuck_rescue_action(kind),
+                "raw": ev,
+            }));
+        }
+    }
+
+    // Sort: HIGH first, then MED, then LOW; within group by age descending.
+    items.sort_by(|a, b| {
+        let sev_rank = |s: &str| match s {
+            "HIGH" => 0u8,
+            "MED" => 1,
+            _ => 2,
+        };
+        let sa = a.get("severity").and_then(|v| v.as_str()).unwrap_or("LOW");
+        let sb = b.get("severity").and_then(|v| v.as_str()).unwrap_or("LOW");
+        sev_rank(sa).cmp(&sev_rank(sb)).then_with(|| {
+            let aa = b.get("age_secs").and_then(|v| v.as_u64()).unwrap_or(0);
+            let ab = a.get("age_secs").and_then(|v| v.as_u64()).unwrap_or(0);
+            aa.cmp(&ab)
+        })
+    });
+
+    // Build empty-state message if needed.
+    let empty_state_msg = if items.is_empty() {
+        let resolved_note = last_wedge_resolved_secs
+            .map(|ts| {
+                let ago_secs = now_secs.saturating_sub(ts);
+                let ago_h = ago_secs / 3600;
+                format!("Last wedge resolved {}h ago.", ago_h)
+            })
+            .unwrap_or_else(|| "No wedge events recorded.".to_string());
+        Some(format!("Nothing stuck. {}", resolved_note))
+    } else {
+        None
+    };
+
+    Ok(Json(serde_json::json!({
+        "items": items,
+        "count": items.len(),
+        "empty_state": empty_state_msg,
+    })))
+}
+
+#[derive(serde::Deserialize)]
+struct RescueRequest {
+    /// The stuck-item kind (pr_stuck, fat_worktree, etc.) — used to look up the script.
+    kind: String,
+    /// Optional PR number for pr_stuck rescue.
+    #[serde(default)]
+    pr: Option<String>,
+}
+
+/// PRODUCT-080: POST /api/stuck/rescue/{id} — execute a rescue script for a stuck item.
+///
+/// Requires CSRF token (x-csrf-token header). Emits operator_rescue_invoked + rescue_result
+/// to ambient.jsonl. Returns {ok, message, rescue_id}.
+async fn handle_stuck_rescue(
+    headers: HeaderMap,
+    axum::extract::Path(item_id): axum::extract::Path<String>,
+    Json(body): Json<RescueRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    if !check_csrf(&headers) {
+        return Err((StatusCode::FORBIDDEN, "CSRF token required".to_string()));
+    }
+
+    // Validate kind — must be one of our known stuck kinds.
+    const ALLOWED_KINDS: &[&str] = &[
+        "pr_stuck",
+        "silent_agent",
+        "lease_expired_server",
+        "fat_worktree",
+        "disk_critical",
+        "reaper_silent",
+        "fleet_wedge",
+    ];
+    if !ALLOWED_KINDS.contains(&body.kind.as_str()) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("unknown kind: {}", body.kind),
+        ));
+    }
+
+    // Validate item_id — only alphanumeric + underscore + hyphen.
+    if !item_id
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err((StatusCode::BAD_REQUEST, "invalid item_id".to_string()));
+    }
+
+    let rescue_id = format!(
+        "rescue_{}_{}",
+        body.kind,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    );
+
+    // Emit pre-action event.
+    emit_stuck_ambient(
+        "operator_rescue_invoked",
+        &[
+            ("item_id", item_id.as_str()),
+            ("kind", body.kind.as_str()),
+            ("rescue_id", rescue_id.as_str()),
+        ],
+    );
+
+    let repo_root = crate::repo_path::runtime_base();
+
+    let (script_path, script_args) = match rescue_script(&body.kind, &repo_root) {
+        Some(pair) => pair,
+        None => {
+            // No script — emit failure and return.
+            emit_stuck_ambient(
+                "rescue_result",
+                &[
+                    ("rescue_id", rescue_id.as_str()),
+                    ("kind", body.kind.as_str()),
+                    ("success", "false"),
+                    ("message", "no rescue script for this kind"),
+                ],
+            );
+            return Ok(Json(serde_json::json!({
+                "ok": false,
+                "message": format!("No rescue script configured for kind: {}", body.kind),
+                "rescue_id": rescue_id,
+            })));
+        }
+    };
+
+    if !script_path.exists() {
+        let msg = format!("rescue script missing: {}", script_path.display());
+        emit_stuck_ambient(
+            "rescue_result",
+            &[
+                ("rescue_id", rescue_id.as_str()),
+                ("kind", body.kind.as_str()),
+                ("success", "false"),
+                ("message", &msg),
+            ],
+        );
+        return Ok(Json(serde_json::json!({
+            "ok": false,
+            "message": msg,
+            "rescue_id": rescue_id,
+        })));
+    }
+
+    let mut cmd = std::process::Command::new("bash");
+    cmd.arg(&script_path);
+    for arg in &script_args {
+        cmd.arg(arg);
+    }
+    // For pr_stuck, pass --pr <number> if provided.
+    if body.kind == "pr_stuck" {
+        if let Some(ref pr) = body.pr {
+            if !pr.is_empty() {
+                cmd.args(["--pr", pr.as_str()]);
+            }
+        }
+    }
+    cmd.current_dir(&repo_root);
+
+    let result = cmd.output();
+    let (ok, message) = match result {
+        Ok(out) if out.status.success() => {
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            (
+                true,
+                if stdout.is_empty() {
+                    "rescue completed".to_string()
+                } else {
+                    stdout
+                },
+            )
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            (false, format!("exit {}: {}", out.status, stderr))
+        }
+        Err(e) => (false, format!("spawn error: {e}")),
+    };
+
+    emit_stuck_ambient(
+        "rescue_result",
+        &[
+            ("rescue_id", rescue_id.as_str()),
+            ("kind", body.kind.as_str()),
+            ("success", if ok { "true" } else { "false" }),
+            ("message", message.as_str()),
+        ],
+    );
+
+    Ok(Json(serde_json::json!({
+        "ok": ok,
+        "message": message,
+        "rescue_id": rescue_id,
+    })))
+}
+
+// ── End PRODUCT-080 ───────────────────────────────────────────────────────────
+
 fn build_api_router() -> Router {
     Router::new()
         .route("/favicon.ico", get(routes::health::handle_favicon))
@@ -6847,6 +7488,9 @@ fn build_api_router() -> Router {
         .route("/api/ambient/stream", get(handle_ambient_stream))
         .route("/api/ambient/recent", get(handle_ambient_recent))
         .route("/api/ambient/emit", post(handle_ambient_emit))
+        // PRODUCT-080: stuck items alerter
+        .route("/api/stuck", get(handle_stuck_list))
+        .route("/api/stuck/rescue/{id}", post(handle_stuck_rescue))
         .route("/api/fleet-status", get(handle_fleet_status))
         .route("/api/telemetry/cost", get(handle_telemetry_cost))
         .route("/api/health/pillars", get(handle_health_pillars))
@@ -6855,6 +7499,12 @@ fn build_api_router() -> Router {
         // PRODUCT-085: diff + AC-fit for inline PWA diff renderer.
         .route("/api/pr/{number}/diff", get(handle_pr_diff))
         .route("/api/pr/{number}/ac-fit", get(handle_pr_ac_fit))
+        .route(
+            "/api/prs/{number}/request-changes",
+            post(handle_pr_request_changes),
+        )
+        .route("/api/prs/{number}/comment", post(handle_pr_comment))
+        .route("/api/prs/{number}/revert", post(handle_pr_revert))
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gaps/search", get(handle_gaps_search))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
@@ -6863,7 +7513,8 @@ fn build_api_router() -> Router {
         .route("/api/gap/{id}/stream", get(handle_gap_workflow_stream))
         .route("/api/gap/work/{id}", post(handle_gap_work))
         .route("/api/gap/work/{id}/retry", post(handle_gap_work_retry))
-        // PRODUCT-127: cockpit Gap-store drift card [Repair drift] action.
+        // PRODUCT-127: cockpit Gap-store drift card — status query + repair action.
+        .route("/api/gap/drift-status", get(handle_gap_drift_status))
         .route("/api/gap/dep-clean", post(handle_gap_dep_clean))
         // PRODUCT-129: cockpit Lock-contention card [Release expired leases].
         .route(

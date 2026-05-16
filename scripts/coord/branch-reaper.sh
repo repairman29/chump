@@ -38,23 +38,27 @@ REAPER_NAME="${REAPER_NAME:-branch-reaper}"
 REAPER_REPO_ROOT="$REPO_ROOT"
 export REAPER_REPO_ROOT
 
-AMBIENT="$LOCK_DIR/ambient.jsonl"
+AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 DRY_RUN=1   # default: dry-run mode (safe)
 MIN_AGE_DAYS=7
 EXTRA_KEEP=""
+EMIT_ANYWAY=0   # INFRA-1453: emit ambient events even in dry-run (for CI + observability tests)
+REAPER_RUN_ID="reaper-$$-$(date +%s)"
+REAPER_START_S=$(date +%s)
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)    DRY_RUN=1 ;;
         --act)        DRY_RUN=0 ;;
+        --emit-anyway) EMIT_ANYWAY=1 ;;  # INFRA-1453: force emit in dry-run
         --min-age-days)
             shift; MIN_AGE_DAYS="$1" ;;
         --keep-list)
             shift; EXTRA_KEEP="$1" ;;
         --help|-h)
-            echo "Usage: branch-reaper.sh [--dry-run|--act] [--min-age-days N] [--keep-list b1,b2]"
+            echo "Usage: branch-reaper.sh [--dry-run|--act] [--emit-anyway] [--min-age-days N] [--keep-list b1,b2]"
             exit 0 ;;
         *)
             echo "Unknown flag: $1" >&2
@@ -104,12 +108,23 @@ _is_protected() {
 CUTOFF_EPOCH=$(( $(date -u +%s) - MIN_AGE_DAYS * 86400 ))
 
 # ── Emit ambient event ────────────────────────────────────────────────────────
+# INFRA-1453: emit kind=branch_reaped (new) per deletion.
+# Backwards-compat: also emits legacy kind=branch_reaper_pruned so existing
+# fleet-brief consumers keep working until they migrate to branch_reaped.
 _emit_pruned() {
     local branch="$1" pr_num="$2" age_days="$3" mode="$4"
-    local ts
+    local ts dry_bool
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    dry_bool="$( [[ "$mode" == "dry" ]] && echo "true" || echo "false")"
+    # New canonical kind (INFRA-1453).
+    if [[ "$mode" != "dry" ]] || [[ "$EMIT_ANYWAY" -eq 1 ]]; then
+        printf '{"ts":"%s","kind":"branch_reaped","branch_name":"%s","age_days":%s,"repo":"%s","reaper_run_id":"%s"}\n' \
+            "$ts" "$branch" "$age_days" "$REPO" "$REAPER_RUN_ID" \
+            >> "$AMBIENT" 2>/dev/null || true
+    fi
+    # Legacy kind — kept for compat; will be deprecated after fleet-brief migrates.
     printf '{"ts":"%s","kind":"branch_reaper_pruned","branch":"%s","pr":%s,"age_days":%s,"dry_run":%s}\n' \
-        "$ts" "$branch" "$pr_num" "$age_days" "$( [[ "$mode" == "dry" ]] && echo "true" || echo "false")" \
+        "$ts" "$branch" "$pr_num" "$age_days" "$dry_bool" \
         >> "$AMBIENT" 2>/dev/null || true
 }
 
@@ -208,3 +223,13 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     echo
     echo "[branch-reaper] Run with --act to execute deletions."
 fi
+
+# INFRA-1453: end-of-run summary event (always emitted).
+_reaper_end_s=$(date +%s)
+_duration_s=$(( _reaper_end_s - REAPER_START_S ))
+printf '{"ts":"%s","kind":"branch_reaper_run_summary","reaped_count":%d,"skipped_open_pr_count":%d,"skipped_fresh_count":%d,"duration_s":%d,"dry_run":%s,"reaper_run_id":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    "$PRUNED" "$SKIPPED" "0" "$_duration_s" \
+    "$( [[ "$DRY_RUN" -eq 1 ]] && echo "true" || echo "false")" \
+    "$REAPER_RUN_ID" \
+    >> "$AMBIENT" 2>/dev/null || true

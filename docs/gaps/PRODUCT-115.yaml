@@ -1,7 +1,7 @@
 - id: PRODUCT-115
   domain: PRODUCT
   title: "\"EFFECTIVE: PWA autopilot toggle in header — wire /api/autopilot/{start,stop,status} so operator can flip fleet on/off from any view\""
-  status: open
+  status: done
   priority: P0
   effort: xs
   description: |
@@ -18,4 +18,5 @@
     - Test scripts/ci/test-pwa-autopilot-toggle.sh 13 assertions all pass
   notes: |
     [2026-05-15T04:28:26Z] PWA phase: 1 (Cockpit-MVP) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+  closed_date: '2026-05-15'
 

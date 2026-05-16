@@ -1,0 +1,15 @@
+- id: INFRA-1525
+  domain: INFRA
+  title: "ZERO-WASTE: pr-rebase-daemon (INFRA-1406) circuit-breaker — skip PRs with N>=3 consecutive same-fail attempts in last 12h; reclaim 15-20% CI capacity"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - pr-rebase-daemon (INFRA-1406) tracks each PR's last 5 CI run conclusions in .chump/pr-rebase-attempts.db (pr_number, sha, conclusion, attempted_at)
+    - "Before rebasing a PR, check: if same FAILURE name has appeared in >=3 of last 5 attempts AND last attempt <12h ago, SKIP rebase (don't re-trigger CI on a doomed PR)"
+    - Emit kind=pr_rebase_circuit_open {pr, fail_name, consecutive_count, last_attempt}
+    - "Manual override: --force flag on chump pr rebase, OR PR label 'force-rebase'"
+    - "Auto-recovery: if PR head SHA changes (new commit pushed by author), reset counter"
+    - "Smoke test scripts/ci/test-pr-rebase-circuit.sh: stub 3 consecutive same-fail runs, assert next rebase is SKIPPED with kind emit"
+    - "Today's signal: #2069/#2068/#2109/#2100/#2161 all 15-21h old, multiple persistent fails, INFRA-1406 daemon keeps rebasing them every cycle → ~5 hours/day CI burn for no convergence"
+

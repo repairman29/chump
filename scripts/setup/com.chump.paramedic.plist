@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.paramedic.plist — INFRA-1397
+  Launchd user agent that keeps chump paramedic daemon running at all times.
+
+  Install:  scripts/setup/install-paramedic.sh
+  Uninstall: scripts/setup/install-paramedic.sh --uninstall
+  Status:   launchctl print gui/$(id -u)/com.chump.paramedic
+  Logs:     ~/Library/Logs/Chump/paramedic.out.log
+
+  Tunable env vars (set in launchctl setenv or .env.local):
+    CHUMP_PARAMEDIC_INTERVAL_SECS  (default 600 — how often to triage)
+    CHUMP_PARAMEDIC_BUDGET_SECS    (default 90  — per-PR action budget)
+    CHUMP_PARAMEDIC_DRY_RUN        (set to 1 to observe without acting)
+    CHUMP_NATS_URL                 (optional — for leader election)
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.paramedic</string>
+
+    <!-- Run immediately on load and keep running if it exits. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Back off 10s on crash rather than tight-loop. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- The command: chump paramedic daemon -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>CHUMP_BIN_PLACEHOLDER</string>
+        <string>paramedic</string>
+        <string>daemon</string>
+        <string>--interval-secs</string>
+        <string>600</string>
+    </array>
+
+    <!-- Inherit PATH from launchd environment so gh / git are found. -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <!-- Logs -->
+    <key>StandardOutPath</key>
+    <string>CHUMP_LOG_DIR_PLACEHOLDER/paramedic.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>CHUMP_LOG_DIR_PLACEHOLDER/paramedic.err.log</string>
+
+    <!-- Limit max restarts per interval to avoid runaway. -->
+    <key>StartInterval</key>
+    <integer>600</integer>
+</dict>
+</plist>

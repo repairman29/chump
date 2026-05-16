@@ -1,0 +1,13 @@
+- id: INFRA-1528
+  domain: INFRA
+  title: "RESILIENT: auto-merge-armer doesn't fire on CLEAN state — #2150 sat CLEAN with armed auto-merge for unknown time; manual gh pr merge --squash fired immediately"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "Paramedic daemon (INFRA-1375) new rule CLEAN_PR_FORCE_MERGE: every 60s scan open PRs where mergeStateStatus=CLEAN AND autoMergeRequest is set; if not merged within 5 min of reaching CLEAN, fire 'gh pr merge <pr> --squash' directly (skipping armer)"
+    - Emit kind=auto_merge_armer_bypass {pr, time_in_clean_state, armer_method, manual_method}
+    - "Today's signal: #2150 sat CLEAN with squash armer attached since 02:04Z; ~16h until I manually fired the merge at 17:56Z and it landed instantly. GitHub's auto-merge sometimes doesn't fire on CLEAN state without explicit poke"
+    - "Smoke test scripts/ci/test-clean-pr-force-merge.sh: stub PR in CLEAN state for >5min, assert paramedic fires manual merge"
+    - "Note: the autoMergeRequest object IS armed; the underlying GitHub auto-merge service appears to be eventually-consistent. Paramedic provides liveness guarantee"
+
