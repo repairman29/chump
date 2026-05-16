@@ -86,27 +86,58 @@ done
 # ── Step 3: append env vars to each runner's .env (idempotent) ───────────────
 say "step 3/5: inject env vars into each runner's .env"
 ENV_MARKER="# INFRA-1540 cache env"
+PATH_MARKER="# INFRA-1540 PATH (brew coreutils for timeout/jq/etc.)"
+# Default PATH includes Homebrew + system. Override via CHUMP_RUNNER_PATH.
+RUNNER_PATH="${CHUMP_RUNNER_PATH:-/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
 for rdir in "${RUNNER_DIRS[@]}"; do
     envfile="$rdir/.env"
+    cache_done=0
+    path_done=0
     if [[ -f "$envfile" ]] && grep -q "$ENV_MARKER" "$envfile" 2>/dev/null; then
-        say "  $rdir/.env  ALREADY HAS marker, skipping"
+        cache_done=1
+    fi
+    if [[ -f "$envfile" ]] && grep -q "INFRA-1540 PATH" "$envfile" 2>/dev/null; then
+        path_done=1
+    fi
+    if [[ $cache_done -eq 1 && $path_done -eq 1 ]]; then
+        say "  $rdir/.env  ALREADY HAS cache+PATH, skipping"
         continue
     fi
     # actions-runner reads .env as KEY=VALUE (NOT shell script). Append
     # bare KEY=VALUE lines (no `export`, no `source`).
     if [[ $DRY_RUN -eq 1 ]]; then
         echo "[dry-run] would append to $envfile:"
-        echo "    $ENV_MARKER"
-        echo "    CARGO_TARGET_DIR=$TARGET_DIR"
-        echo "    CHUMP_RUNNER_CACHE_ROOT=$CACHE_ROOT"
+        [[ $cache_done -eq 0 ]] && {
+            echo "    $ENV_MARKER"
+            echo "    CARGO_TARGET_DIR=$TARGET_DIR"
+            echo "    CHUMP_RUNNER_CACHE_ROOT=$CACHE_ROOT"
+        }
+        [[ $path_done -eq 0 ]] && {
+            echo "    $PATH_MARKER"
+            echo "    PATH=$RUNNER_PATH"
+        }
     else
-        {
-            echo ""
-            echo "$ENV_MARKER (do not edit — managed by install-self-hosted-runners-all-local.sh)"
-            echo "CARGO_TARGET_DIR=$TARGET_DIR"
-            echo "CHUMP_RUNNER_CACHE_ROOT=$CACHE_ROOT"
-        } >> "$envfile"
-        say "  $envfile  WROTE 2 env vars"
+        if [[ $cache_done -eq 0 ]]; then
+            {
+                echo ""
+                echo "$ENV_MARKER (do not edit — managed by install-self-hosted-runners-all-local.sh)"
+                echo "CARGO_TARGET_DIR=$TARGET_DIR"
+                echo "CHUMP_RUNNER_CACHE_ROOT=$CACHE_ROOT"
+            } >> "$envfile"
+        fi
+        if [[ $path_done -eq 0 ]]; then
+            # PATH is critical: without /opt/homebrew/bin, actions-runner jobs
+            # can't find `timeout`, `gtimeout`, `jq` (if not in /usr/bin), etc.
+            # Fixed an ACP smoke test failure 2026-05-16: test fell through to
+            # sleep-kill branch because timeout wasn't on PATH; chump --acp got
+            # killed before flushing stdout → empty TMPOUT → FAIL.
+            {
+                echo ""
+                echo "$PATH_MARKER"
+                echo "PATH=$RUNNER_PATH"
+            } >> "$envfile"
+        fi
+        say "  $envfile  WROTE $([[ $cache_done -eq 0 ]] && echo cache) $([[ $path_done -eq 0 ]] && echo PATH)"
     fi
 done
 
