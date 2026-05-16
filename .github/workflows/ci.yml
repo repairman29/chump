@@ -775,7 +775,8 @@ jobs:
   clippy:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
-    runs-on: ubuntu-latest
+    # INFRA-1534/1535 stage 1: self-hosted routing
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     steps:
       - uses: actions/checkout@v6
