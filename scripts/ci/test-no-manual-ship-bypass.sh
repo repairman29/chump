@@ -71,15 +71,18 @@ else
     FAIL=$((FAIL + 1))
 fi
 
-# ── Test 2: CHUMP_BYPASS_BOT_MERGE=1 → allowed ───────────────────────────────
+# ── Test 2: CHUMP_BYPASS_BOT_MERGE=1 without trailer → blocked (INFRA-1441) ──
+# INFRA-1441: CHUMP_BYPASS_BOT_MERGE=1 alone is no longer sufficient;
+# the HEAD commit must also carry a `Bot-Merge-Bypass: <reason>` trailer.
+# Current HEAD commit does not have that trailer, so exit 1 is expected.
 echo ""
-echo "Test 2: CHUMP_BYPASS_BOT_MERGE=1 → exit 0"
+echo "Test 2: CHUMP_BYPASS_BOT_MERGE=1 (no trailer) → exit 1 (INFRA-1441: trailer required)"
 rc=$(run_hook "CHUMP_BYPASS_BOT_MERGE=1" "$ZERO_SHA" "chump/infra-999-claim")
-if [[ "$rc" -eq 0 ]]; then
-    echo "[PASS] bypass accepted"
+if [[ "$rc" -eq 1 ]]; then
+    echo "[PASS] blocked as expected (trailer missing)"
     PASS=$((PASS + 1))
 else
-    echo "[FAIL] expected exit 0, got $rc"
+    echo "[FAIL] expected exit 1 (trailer required), got $rc"
     FAIL=$((FAIL + 1))
 fi
 
