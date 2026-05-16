@@ -213,3 +213,4 @@ fixture_commit_dropped  # reason: planned by INFRA-1408 #2179 pre-push fixture d
 merge_preview_dirty     # reason: planned kind (no emitter yet); allowlist until emitter ships to unblock audit cluster
 gap_dup_archived       # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
 operator_pr_action     # reason: emitted but not registered; allowlist while EVENT_REGISTRY entry is drafted
+bot_merge_bypassed      # reason: emitted from scripts/git-hooks/pre-push (shell); not in PROD_PATHS scanned by coverage check
