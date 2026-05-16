@@ -1221,6 +1221,40 @@ add `continue-on-error: true` to prevent it from blocking fleet-wide auto-merge.
 **Workaround when already blocked:** Re-trigger the flaky check.
 If it fails again: `gh pr merge <N> --squash --admin` to bypass.
 
+## gap reserve + state.db drift → orphan-PR-closer kills in-flight work (INFRA-1354, 2026-05-15)
+
+**Incident:** On 2026-05-15, two `chump gap reserve` calls wrote gap YAMLs only
+into local `state.db`. The orphan-PR-closer job (which detects PRs whose gap
+YAML is absent from `main`) killed PR #2063 (~840 LOC of work) and two other
+in-flight PRs. Recovery required two rescue PRs (#2071, #2077) just to staple
+the YAMLs into `main`.
+
+**Root cause:** `chump gap reserve` already wrote `docs/gaps/<ID>.yaml` and
+called `git add` on it (INFRA-484). But in one path the `git add` silently
+failed (ran in a context where `worktree_root` wasn't the linked worktree's
+CWD), so the YAML rode in `state.db` only and never reached `origin/main`.
+Any PR filed from a different worktree (or any fleet worker picking the gap
+after the PR) would find the YAML absent and the orphan-closer would kill the
+PR.
+
+**Fix (INFRA-1354):**
+- `git add` now checks its exit code; on failure it prints a visible warning:
+  `[reserve] warning: git add … exited …; yaml is written but unstaged —
+  commit manually to avoid orphan-PR-closer killing in-flight PRs`
+- The warning surfaces in normal (non-`--quiet`) reserve output so operators
+  see it before filing a PR.
+- `CHUMP_RESERVE_NO_AUTOSTAGE=1` remains available to disable staging in
+  genuine detached / read-only workflows.
+
+**What to do when you see the warning:**
+```bash
+git add docs/gaps/<ID>.yaml
+git commit -m "chore: stage <ID>.yaml (missed by reserve auto-stage)"
+```
+File that commit on your branch before the PR is created, or the orphan-closer
+may kill the PR within minutes of merge.
+
+**Smoke test:** `scripts/ci/test-gap-reserve-auto-stages.sh`
 ## Secondary-mutation gag — per-user GitHub rate-limit exhaustion (INFRA-1076, 2026-05-14)
 
 **Symptom:** `gh pr merge --auto` and `gh pr update-branch` silently 429
