@@ -4561,7 +4561,7 @@ fn emit_operator_pr_action(action: &str, pr: u32, session_id: Option<&str>) -> R
         .create(true)
         .append(true)
         .open(&path)?;
-    writeln!(file, "{}", event.to_string())?;
+    writeln!(file, "{}", event)?;
     Ok(())
 }
 
