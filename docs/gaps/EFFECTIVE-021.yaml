@@ -1,0 +1,9 @@
+- id: EFFECTIVE-021
+  domain: EFFECTIVE
+  title: "EFFECTIVE: SessionStart auto-digest dispatch/cascade/funnel summaries — delta-only output"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - "[\"Backlog-promoted 2026-05-16: SessionStart hook already prints fleet brief + ambient digest (~30 lines). Adding three more digests (dispatch, cascade, funnel CLIs) at SessionStart risks signal-to-noise collapse.\",\"Pattern: DELTA-ONLY output. Each digest writes its last-rendered state to ~/.chump/session-digest-cache/<name>.json. Next SessionStart compares current vs cached; only emit section if delta exceeds threshold (configurable, default: 1 new event / 5% rate change).\",\"If no delta = OMIT entirely. SessionStart should stay under 40 lines total or operators stop reading.\",\"Three digests to wire up: chump dispatch summary, chump cascade summary, chump funnel summary. Each gets a wrapper that does the diff math.\",\"SessionStart hook integration: add to scripts/hooks/session-start.sh after fleet brief. Hook output goes to system-reminder; respect 40-line cap by tail-truncating with \\\"(N more, run chump fleet digest --full)\\\".\",\"Smoke test scripts/ci/test-session-start-digest-delta.sh: seed cache, drive 0-delta path (no output) AND positive-delta path (output present), assert behavior.\",\"Pair with INFRA-TBD-1547 war-room hook gap — that gap is broader; this is the narrow SessionStart wiring.\",\"Telemetry: emit kind=session_start_digest_rendered {digests:[names], lines_added}.\",\"Out of scope: full war-room dashboard (separate gap).\"]"
+

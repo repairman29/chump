@@ -1,28 +1,42 @@
 ---
 doc_tag: canonical
 owner_gap:
-last_audited: 2026-05-03
+last_audited: 2026-05-16
 ---
 
 # Roadmap index
 
-Navigation guide to all roadmap docs. Use this as your entry point; each linked doc is
-self-contained. Source files kept in place (index-only merge — sources not deleted).
+Navigation guide to all roadmap docs. **`docs/ROADMAP.md` is the canonical
+top-level entry point** for "what is chump working on right now." This index
+exists for navigation across the focused horizon docs.
 
 ---
 
 ## Which doc to read
 
+### Start here
 | Question | Doc |
 |----------|-----|
-| "What should I work on right now?" | [ROADMAP.md](ROADMAP.md) — operational backlog, checked/unchecked items |
-| "What's shipping this sprint?" | [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) — two-week sprint slices (S1 current) |
+| **"What is chump working on right now?"** | **[../ROADMAP.md](../ROADMAP.md) — canonical top-level entry, updated 2026-05-16** |
+
+### Focused horizon docs (added 2026-05-16)
+| Question | Doc |
+|----------|-----|
+| "How do we get to 50 PRs/hour?" | [ROADMAP_50_PER_HOUR.md](ROADMAP_50_PER_HOUR.md) — 15-day infra-throughput push |
+| "What experience are we building for Marcus?" | [ROADMAP_MARCUS.md](ROADMAP_MARCUS.md) — customer arc, 5 milestones (M-A → M-E) |
+| "What's in the design-conversation backlog?" | [ROADMAP_BACKLOG.md](ROADMAP_BACKLOG.md) — 8 items decided 2026-05-16 |
+
+### Reference / horizon docs
+| Question | Doc |
+|----------|-----|
+| "What's shipping this sprint?" | [ROADMAP_SPRINTS.md](ROADMAP_SPRINTS.md) — two-week sprint slices |
 | "What's the Q2 2026 cut?" | [ROADMAP_PRAGMATIC.md](ROADMAP_PRAGMATIC.md) — unblocked P1/P2 items only |
 | "Show me all gaps (open + done)" | [ROADMAP_FULL.md](ROADMAP_FULL.md) — complete multi-horizon view |
 | "What is the north-star architecture?" | [ROADMAP_UNIVERSAL_POWER.md](ROADMAP_UNIVERSAL_POWER.md) — long-horizon capability bets |
 | "What's the product vision / user stories?" | [PRODUCT_ROADMAP_CHIEF_OF_STAFF.md](PRODUCT_ROADMAP_CHIEF_OF_STAFF.md) — Chief of Staff vision |
 | "How does Mabel evolve?" | [ROADMAP_MABEL_DRIVER.md](ROADMAP_MABEL_DRIVER.md) — fleet-monitor → Sentinel path |
 | "Competitive benchmarking / Hermes?" | [HERMES_COMPETITIVE_ROADMAP.md](HERMES_COMPETITIVE_ROADMAP.md) — redirects to current analysis |
+| "What's the mission / north star?" | [NORTH_STAR.md](NORTH_STAR.md) — mission + 4 pillars |
 
 ---
 

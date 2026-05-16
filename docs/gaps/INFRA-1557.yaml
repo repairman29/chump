@@ -1,0 +1,11 @@
+- id: INFRA-1557
+  domain: INFRA
+  title: "EFFECTIVE: lessons effectiveness loop — Wilson-twin score with time decay + agent-outcome re-rate"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\"Backlog-promoted 2026-05-16: lessons in agent memory tier (CLAUDE.md persistent files, docs/process/CLAUDE_GOTCHAS.md, gap notes) decay in relevance as the codebase moves. After a fix lands the lesson is fresh; 30 days later it may be stale. Need decay + re-rate so retrieval surfaces actionable lessons, not historic ones.\",\"Each lesson record carries TWO scores side-by-side (Wilson-twin pattern): (a) RAW = Wilson lower bound on positive-vote rate across all evidence ever, (b) DECAYED = same but with exponential half-life (default 30d, tunable via CHUMP_LESSON_HALF_LIFE_DAYS).\",\"Divergence between RAW and DECAYED IS the staleness signal. UI/logs surface both; agents prefer DECAYED for retrieval ranking.\",\"Decay function: exp(-ln(2) * age_days / half_life). Each new evidence event resets the decay clock for that lesson. No evidence for half_life days → DECAYED halves vs RAW.\",\"Re-rate trigger: every time an agent retrieves a lesson from memory, the agent emits kind=lesson_outcome {lesson_id, gap_id, outcome:applied"
+    - stale
+    - "harmful} after gap close. That event becomes a vote on the lesson.\",\"Schema: lessons table in .chump/state.db with (id, kind, text, raw_score, decayed_score, last_evidence_at, votes_count). Wilson formula: lower = (p + z²/2n - z·sqrt(p(1-p)/n + z²/4n²)) / (1 + z²/n), z=1.96 for 95% CI.\",\"CLI: chump lessons --show-stale [--min-age 30d] surfaces lessons where divergence > threshold so operator can review/prune.\",\"CI test scripts/ci/test-lesson-decay-twin.sh: seed lesson with 10 positive votes, age it 60 days with no new votes, assert DECAYED < RAW/4 and surfaced by --show-stale.\",\"DEPENDENCY: blocks on routing brain gap (TBD-INFRA-1545 placeholder) shipping first, because routing IS the consumer that uses DECAYED score for selection. File-and-park P2 until that lands.\",\"Out of scope: cross-team lesson sharing (Marcus M-D team-vector-space, INFRA-1473 handles).\"]"
+

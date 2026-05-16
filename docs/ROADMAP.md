@@ -1,12 +1,52 @@
-# Chump Roadmap — 30 days (2026-05-06 → 2026-06-06)
+# Chump Roadmap — current cycle
 
-> **What this is.** The explicit plan that gaps implement, not the other way
-> around. Read this before filing new work; if your gap doesn't serve a stated
-> outcome, it probably belongs in the backlog (P2/P3) not the active queue.
+> **What this is.** The single canonical entry point for "what is chump
+> working on, in what order, why." Gaps implement the roadmap, not the
+> other way around.
 >
-> **Cadence.** Reviewed by the operator weekly (Sundays). Updated by the
-> Mission Driver session (see [`CLAUDE.md` → Mission Driver](../CLAUDE.md#mission-driver--every-session-not-just-when-asked))
-> when an outcome lands or a week ends.
+> **Cadence.** Reviewed by the operator weekly. Updated by the Mission
+> Driver session (see [`CLAUDE.md` → Mission Driver](../CLAUDE.md#mission-driver--every-session-not-just-when-asked))
+> when an outcome lands or framing shifts.
+
+## TL;DR for a returning operator (2026-05-16 reality)
+
+Three parallel workstreams. Each has its own focused doc; this page is the
+index + "this week's bets."
+
+| Workstream | Doc | Horizon | Outcome |
+|---|---|---|---|
+| **🚀 50 PRs/hour push** | [strategy/ROADMAP_50_PER_HOUR.md](strategy/ROADMAP_50_PER_HOUR.md) | 15 days (→ 2026-06-01) | sustain 50 PRs/hr via fleet+CI capacity work |
+| **👤 Marcus customer arc** | [strategy/ROADMAP_MARCUS.md](strategy/ROADMAP_MARCUS.md) | 5 milestones (M-A → M-E) | deliver the experience Persona-1 named in 2026-05-15 interview |
+| **🛠️ Backlog decisions** | [strategy/ROADMAP_BACKLOG.md](strategy/ROADMAP_BACKLOG.md) | design queue | 8 items decided 2026-05-16 — what's build, defer, fold |
+
+**Framing reset 2026-05-16:** Infra IS the product. GitHub is where users
+live. "Offline-first" is a tier-3 differentiator, not the spine. The fleet's
+behavior (reliable auto-merge, conflict-resolving rebases, healing CI gates)
+IS what customers like Marcus pay for.
+
+## Today's bets (week of 2026-05-16)
+
+| Bet | Gap(s) | Status |
+|---|---|---|
+| Hit 50 PRs/hr by end of May | INFRA-1540 + INFRA-1542 | shipping today (#2245, #2247) |
+| Marcus trust gate (per-gap budgets) | [INFRA-1486](gaps/INFRA-1486.yaml) P0 | open, next pickup |
+| Self-hosted runners actually serve CI | INFRA-1540 ghost-ship recovery | shipping today |
+| 4 follow-up gaps for full INFRA-1534 closure | INFRA-1542 / 1543 / 1544 + CREDIBLE-069 | #2246 armed |
+| Marcus canonical demo interface | [INFRA-1483](gaps/INFRA-1483.yaml) | next P1 after 50/hr push gives breathing room |
+
+## Operator action checkpoints in next 15 days
+
+- **Day +1** (tomorrow): observe cache hit-rate on a heavy job once #2245 lands
+- **Day +10** (~2026-05-26): rack 1+ Raspberry Pi for linux-arm64 lane (INFRA-1543)
+- **Day +14** (~2026-05-30): 50/hr sustained for 4 consecutive hours = green
+
+---
+
+## Historical 30-day plan (2026-05-06 → 2026-06-06)
+
+This section reflects the cycle plan filed 2026-05-06. The TL;DR above
+supersedes the framing where they conflict; the gap progress and shipped
+list below remain valid.
 
 ## 4-pillar mission & current cycle thrusts
 
