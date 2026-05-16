@@ -4425,6 +4425,261 @@ async fn handle_pr_detail(
     Ok(Json(payload))
 }
 
+// ── PRODUCT-084: PR list view ──────────────────────────────────────────────────────────────────
+
+/// Server-side cache for `/api/prs` — TTL 30s.
+static PR_LIST_CACHE: std::sync::OnceLock<
+    std::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>>,
+> = std::sync::OnceLock::new();
+
+fn pr_list_cache() -> &'static std::sync::Mutex<Option<(std::time::Instant, serde_json::Value)>> {
+    PR_LIST_CACHE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// GET /api/prs — PR list for PRODUCT-084 PWA view.
+///
+/// Returns three sections:
+///   - `open`:        all open PRs (newest first)
+///   - `just_merged`: PRs merged in last 24 h
+///   - `stuck`:       open PRs with mergeStateStatus DIRTY or BLOCKED, age > 4 h
+///
+/// Each row: number, title, author, age_s, merge_state, ci_ok, url.
+/// Result cached server-side for 30 s. gh unavailable → 503.
+async fn handle_pr_list(headers: HeaderMap) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    // Serve from cache if fresh.
+    const TTL_SECS: u64 = 30;
+    {
+        if let Ok(guard) = pr_list_cache().lock() {
+            if let Some((ts, ref v)) = *guard {
+                if ts.elapsed().as_secs() < TTL_SECS {
+                    return Ok(Json(v.clone()));
+                }
+            }
+        }
+    }
+
+    let fresh = fetch_pr_list().await;
+    match fresh {
+        Ok(v) => {
+            if let Ok(mut guard) = pr_list_cache().lock() {
+                *guard = Some((std::time::Instant::now(), v.clone()));
+            }
+            tracing::info!(
+                open_count = v["open"].as_array().map(|a| a.len()).unwrap_or(0),
+                merged_count = v["just_merged"].as_array().map(|a| a.len()).unwrap_or(0),
+                stuck_count = v["stuck"].as_array().map(|a| a.len()).unwrap_or(0),
+                "PRODUCT-084: PR list fetched"
+            );
+            Ok(Json(v))
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "PRODUCT-084: gh pr list failed");
+            Err(StatusCode::SERVICE_UNAVAILABLE)
+        }
+    }
+}
+
+/// Shape a single PR row for the list.  Shared by open + merged sections.
+fn pr_row(pr: &serde_json::Value, now_secs: u64) -> serde_json::Value {
+    let number = pr["number"].as_u64().unwrap_or(0);
+    let title = pr["title"].as_str().unwrap_or("").to_string();
+    let author = pr["author"]["login"]
+        .as_str()
+        .or_else(|| pr["author"].as_str())
+        .unwrap_or("")
+        .to_string();
+    let url = pr["url"].as_str().unwrap_or("").to_string();
+
+    // Parse createdAt / mergedAt → age_s
+    let ts_str = pr["mergedAt"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| pr["createdAt"].as_str().unwrap_or(""));
+    let age_s = parse_iso8601_age_secs(ts_str, now_secs);
+
+    let merge_state = pr["mergeStateStatus"]
+        .as_str()
+        .unwrap_or("UNKNOWN")
+        .to_string();
+
+    // Quick CI summary: count successes vs failures in statusCheckRollup
+    let checks = pr["statusCheckRollup"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let (pass, fail) = checks.iter().fold((0u32, 0u32), |(p, f), c| {
+        match c["conclusion"]
+            .as_str()
+            .unwrap_or("")
+            .to_uppercase()
+            .as_str()
+        {
+            "SUCCESS" => (p + 1, f),
+            "FAILURE" => (p, f + 1),
+            _ => (p, f),
+        }
+    });
+    let ci_ok = fail == 0 && pass > 0;
+
+    serde_json::json!({
+        "number":      number,
+        "title":       title,
+        "author":      author,
+        "age_s":       age_s,
+        "merge_state": merge_state,
+        "ci_ok":       ci_ok,
+        "ci_pass":     pass,
+        "ci_fail":     fail,
+        "url":         url,
+    })
+}
+
+/// Parse an ISO-8601 UTC timestamp string into seconds-since-epoch.
+/// Returns `now_secs` (age 0) on failure.
+fn parse_iso8601_age_secs(ts: &str, now_secs: u64) -> u64 {
+    // Expected format: "2026-05-14T18:30:00Z" or "2026-05-14T18:30:00+00:00"
+    if ts.len() < 19 {
+        return 0;
+    }
+    let (date, time_rest) = ts.split_once('T').unwrap_or(("", ""));
+    let time = time_rest.trim_end_matches('Z').trim_end_matches("+00:00");
+    let parts_d: Vec<&str> = date.split('-').collect();
+    let parts_t: Vec<&str> = time.split(':').collect();
+    if parts_d.len() < 3 || parts_t.len() < 2 {
+        return 0;
+    }
+    let y: u64 = parts_d[0].parse().unwrap_or(0);
+    let mo: u64 = parts_d[1].parse().unwrap_or(0);
+    let d: u64 = parts_d[2].parse().unwrap_or(0);
+    let h: u64 = parts_t[0].parse().unwrap_or(0);
+    let m: u64 = parts_t[1].parse().unwrap_or(0);
+    let s: u64 = parts_t.get(2).and_then(|v| v.parse().ok()).unwrap_or(0);
+
+    // Rough days-since-epoch (no leap-second precision needed; display only).
+    let days = days_since_epoch(y, mo, d);
+    let ts_secs = days * 86400 + h * 3600 + m * 60 + s;
+    now_secs.saturating_sub(ts_secs)
+}
+
+fn days_since_epoch(y: u64, mo: u64, d: u64) -> u64 {
+    // Algorithm: days from 1970-01-01. Good enough for age display.
+    if y < 1970 {
+        return 0;
+    }
+    let months = [0u64, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let m_idx = (mo.saturating_sub(1)) as usize;
+    let m_days = months.get(m_idx).copied().unwrap_or(0);
+    let year_days = (y - 1970) * 365 + (y - 1969) / 4; // close enough
+    year_days + m_days + d.saturating_sub(1)
+}
+
+async fn fetch_pr_list() -> anyhow::Result<serde_json::Value> {
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let merge_cutoff_secs: u64 = 24 * 3600;
+    let stuck_cutoff_secs: u64 = 4 * 3600;
+
+    // ── Open PRs ────────────────────────────────────────────────────────────
+    let open_out = std::process::Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--limit",
+            "50",
+            "--json",
+            "number,title,author,createdAt,mergeStateStatus,statusCheckRollup,url",
+        ])
+        .output()?;
+    if !open_out.status.success() {
+        anyhow::bail!(
+            "gh pr list --state open failed: {}",
+            String::from_utf8_lossy(&open_out.stderr)
+        );
+    }
+    let open_raw: serde_json::Value = serde_json::from_slice(&open_out.stdout)?;
+    let open_prs: Vec<serde_json::Value> = open_raw
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .map(|pr| pr_row(pr, now_secs))
+        .collect();
+
+    // Stuck = open, state DIRTY or BLOCKED, and age > 4h
+    let stuck_prs: Vec<serde_json::Value> = open_raw
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .iter()
+        .filter(|pr| {
+            let ms = pr["mergeStateStatus"].as_str().unwrap_or("").to_uppercase();
+            let is_dirty = ms == "DIRTY" || ms == "BLOCKED";
+            if !is_dirty {
+                return false;
+            }
+            let row = pr_row(pr, now_secs);
+            row["age_s"].as_u64().unwrap_or(0) > stuck_cutoff_secs
+        })
+        .map(|pr| pr_row(pr, now_secs))
+        .collect();
+
+    // ── Merged PRs (last 24 h) ───────────────────────────────────────────────
+    let merged_out = std::process::Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "merged",
+            "--limit",
+            "30",
+            "--json",
+            "number,title,author,mergedAt,url",
+        ])
+        .output()?;
+    // Merged list failure is best-effort; don't abort entire endpoint.
+    let merged_prs: Vec<serde_json::Value> = if merged_out.status.success() {
+        serde_json::from_slice::<serde_json::Value>(&merged_out.stdout)
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|pr| pr_row(&pr, now_secs))
+            .filter(|row| row["age_s"].as_u64().unwrap_or(u64::MAX) <= merge_cutoff_secs)
+            .collect()
+    } else {
+        vec![]
+    };
+
+    // Empty state metadata for just_merged section
+    let last_ship_ago_s: Option<u64> = if merged_prs.is_empty() {
+        // Find the most recently merged PR regardless of cutoff
+        serde_json::from_slice::<serde_json::Value>(&merged_out.stdout)
+            .ok()
+            .and_then(|v| v.as_array().cloned())
+            .and_then(|arr| arr.into_iter().next())
+            .map(|pr| pr_row(&pr, now_secs)["age_s"].as_u64().unwrap_or(0))
+    } else {
+        None
+    };
+
+    Ok(serde_json::json!({
+        "open":           open_prs,
+        "just_merged":    merged_prs,
+        "stuck":          stuck_prs,
+        "last_ship_ago_s": last_ship_ago_s,
+        "fetched_at_s":   now_secs,
+        "ttl_s":          30,
+    }))
+}
+
 // ── PRODUCT-085: PR diff + AC-fit endpoints ───────────────────────────────────────────────────
 
 /// GET /api/pr/{number}/diff — streams `gh pr diff <N>` as plain text.
@@ -8022,6 +8277,7 @@ fn build_api_router() -> Router {
         .route("/api/health/pillars", get(handle_health_pillars))
         .route("/api/health/doctor", get(handle_doctor_health))
         .route("/api/pr/{number}", get(handle_pr_detail))
+        .route("/api/prs", get(handle_pr_list))
         // PRODUCT-085: diff + AC-fit for inline PWA diff renderer.
         .route("/api/pr/{number}/diff", get(handle_pr_diff))
         .route("/api/pr/{number}/ac-fit", get(handle_pr_ac_fit))
