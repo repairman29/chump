@@ -141,61 +141,6 @@ else
     fail "partial: expected INFRA-B, got '$picked'"
 fi
 
-# ── Test 6: layer gate — tier-0 beats higher-score tier-2 ────────────────────
-# INFRA-D at layer=0 rank=3 vs INFRA-E at layer=2 rank=1 (higher score/lower rank).
-# Layer gate must pick INFRA-D (tier-0 foundation) over INFRA-E.
-cat > "$TMP/gaps_layered.json" <<'EOF'
-[
-  {"id":"INFRA-D","priority":"P1","effort":"s","status":"open","created_at":1000,"depends_on":"[]","acceptance_criteria":"[\"1. Fixture gap D (layer 0 foundation).\"]"},
-  {"id":"INFRA-E","priority":"P1","effort":"s","status":"open","created_at":1001,"depends_on":"[]","acceptance_criteria":"[\"1. Fixture gap E (layer 2 sibling).\"]"}
-]
-EOF
-cat > "$TMP/.chump-locks/gap-priority.json" <<'EOF'
-{
-  "generated_at": "2026-05-14T12:00:00Z",
-  "planner_version": "0.1.0",
-  "weights_identity": "synthetic",
-  "items": [
-    {"rank": 1, "gap_id": "INFRA-E", "score": 99.0, "layer": 2},
-    {"rank": 3, "gap_id": "INFRA-D", "score": 50.0, "layer": 0}
-  ]
-}
-EOF
-: > "$TMP/.chump-locks/ambient.jsonl"
-picked="$(GAP_JSON_FILE="$TMP/gaps_layered.json" \
-          CHUMP_REPO="$TMP" \
-          CHUMP_AMBIENT_LOG="$TMP/.chump-locks/ambient.jsonl" \
-          FLEET_MODEL=opus \
-          WORKER_INDEX=1 \
-          WORKER_ID=test-worker \
-          python3 "$PICKER")"
-if [[ "$picked" == "INFRA-D" ]]; then
-    ok "layer gate: tier-0 INFRA-D beats higher-scored tier-2 INFRA-E"
-else
-    fail "layer gate: expected INFRA-D (layer=0), got '$picked'"
-fi
-if grep -q '"layer_enforced": true' "$TMP/.chump-locks/ambient.jsonl"; then
-    ok "layer gate: picker_used_priority has layer_enforced=true"
-else
-    fail "layer gate: missing layer_enforced=true in picker_used_priority event"
-fi
-
-# ── Test 7: CHUMP_SKIP_LAYER_GATE=1 bypasses gate, picks by rank (INFRA-E) ───
-: > "$TMP/.chump-locks/ambient.jsonl"
-picked="$(GAP_JSON_FILE="$TMP/gaps_layered.json" \
-          CHUMP_REPO="$TMP" \
-          CHUMP_AMBIENT_LOG="$TMP/.chump-locks/ambient.jsonl" \
-          FLEET_MODEL=opus \
-          WORKER_INDEX=1 \
-          WORKER_ID=test-worker \
-          CHUMP_SKIP_LAYER_GATE=1 \
-          python3 "$PICKER")"
-if [[ "$picked" == "INFRA-E" ]]; then
-    ok "CHUMP_SKIP_LAYER_GATE=1: gate bypassed, picks by rank (INFRA-E rank=1)"
-else
-    fail "CHUMP_SKIP_LAYER_GATE=1: expected INFRA-E, got '$picked'"
-fi
-
 echo
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then

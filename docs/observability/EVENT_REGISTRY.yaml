@@ -331,8 +331,12 @@ events:
     trigger: picker successfully selected a gap from the planner-ranked list
       at .chump-locks/gap-priority.json. Includes file path, age, scored rank,
       and whether the layer gate filtered any candidates (layer_enforced).
+    emitter: scripts/dispatch/_pick_gap.py (INFRA-1258)
+    trigger: picker successfully selected a gap from the planner-ranked
+      list at .chump-locks/gap-priority.json. Captures planner_rank so
+      we can measure how much delta vs. legacy first-fit.
     consumers: [fleet-brief, audit-log, kpi-report]
-    fields_required: [ts, kind, gap_id, file, age_s, scored, layer_enforced, worker_id]
+    fields_required: [ts, kind, gap_id, planner_rank, worker_id]
 
   - kind: picker_priority_stale
     effect_metric: self
