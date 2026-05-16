@@ -663,7 +663,8 @@ pub async fn run(repo_root: &Path) -> Result<()> {
                     println!("  [{}]\n  {}\n", cmd, result);
                 }
                 // Classify tool execution failures (INFRA-796).
-                if result.contains("error") || result.contains("Error") || result.contains("failed") {
+                if result.contains("error") || result.contains("Error") || result.contains("failed")
+                {
                     had_failure = true;
                     failure_classes.push(classify_failure(&result));
                 }
