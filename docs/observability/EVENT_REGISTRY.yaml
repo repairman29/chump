@@ -3188,3 +3188,12 @@ events:
       degraded mode without log spam.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, criticality, reason, expected_file]
+
+  # ── PRODUCT-078: PWA Daily Brief ─────────────────────────────────────────
+  - kind: pwa_brief_loaded
+    emitter: web/v2/daily-brief.js ChumpViewBrief._load (PRODUCT-078)
+    trigger: operator opens the Daily Brief tab or returns to a tab after absence;
+      sendBeacon POST /api/ambient/emit fires after the /api/brief response is
+      rendered, recording since_ago_secs and per-bucket counts for usage analytics
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, kind, source, since_ago_secs, done, needs_judgment, alerts]

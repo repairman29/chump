@@ -4408,6 +4408,183 @@ fn ambient_log_path() -> PathBuf {
         })
 }
 
+/// GET /api/brief?since=<unix_ts_secs> — structured JSON summary of ambient events
+/// since the given timestamp. Defaults to the last 8 hours. Events are
+/// categorised into three buckets: done, needs_judgment, and alerts.
+/// PRODUCT-078.
+async fn handle_brief(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let now_ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    let default_since = now_ts.saturating_sub(8 * 3600);
+    let since_ts: u64 = params
+        .get("since")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default_since);
+
+    let since_ago_secs = now_ts.saturating_sub(since_ts);
+
+    // Convert since_ts to an RFC3339 string for string-based timestamp comparison.
+    // Timestamps in ambient.jsonl are RFC3339 so lexicographic compare is valid.
+    let since_dt = chrono::DateTime::<chrono::Utc>::from_timestamp(since_ts as i64, 0)
+        .unwrap_or_else(chrono::Utc::now);
+    let since_str = since_dt.to_rfc3339();
+
+    let generated_at = chrono::Utc::now().to_rfc3339();
+
+    let path = ambient_log_path();
+    let content = std::fs::read_to_string(&path).unwrap_or_default();
+
+    let mut done: Vec<serde_json::Value> = Vec::new();
+    let mut needs_judgment: Vec<serde_json::Value> = Vec::new();
+    let mut alerts: Vec<serde_json::Value> = Vec::new();
+
+    for line in content.lines() {
+        let v: serde_json::Value = match serde_json::from_str(line) {
+            Ok(val) => val,
+            Err(_) => continue,
+        };
+
+        // Filter by timestamp using string comparison (RFC3339 is lexicographically ordered).
+        let ts_str = v.get("ts").and_then(|t| t.as_str()).unwrap_or("");
+        if ts_str < since_str.as_str() {
+            continue;
+        }
+
+        let kind = v
+            .get("kind")
+            .and_then(|k| k.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let summary = match kind.as_str() {
+            "pr_merged" => {
+                let id = v
+                    .get("pr")
+                    .or_else(|| v.get("gap_id"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("?");
+                format!("PR #{} merged", id)
+            }
+            "gap_shipped" => {
+                let gap_id = v.get("gap_id").and_then(|x| x.as_str()).unwrap_or("?");
+                let closed_pr = v.get("closed_pr").and_then(|x| x.as_str()).unwrap_or("?");
+                format!("Gap {} shipped (PR #{})", gap_id, closed_pr)
+            }
+            "cycle_end" => {
+                let rc = v.get("rc").and_then(|x| x.as_i64()).unwrap_or(1);
+                if rc != 0 {
+                    continue; // only rc=0 goes into done
+                }
+                "Cycle completed successfully".to_string()
+            }
+            "pr_stuck" => {
+                let pr = v.get("pr").and_then(|x| x.as_str()).unwrap_or("?");
+                let reason = v
+                    .get("reason")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("unknown");
+                format!("PR #{} stuck: {}", pr, reason)
+            }
+            "silent_agent" => {
+                let session = v.get("session").and_then(|x| x.as_str()).unwrap_or("?");
+                format!("Silent agent: session {}", session)
+            }
+            "fleet_wedge" => "Fleet wedge detected".to_string(),
+            "gap_drift_orphan" => {
+                let gap_id = v.get("gap_id").and_then(|x| x.as_str()).unwrap_or("?");
+                format!("Gap drift orphan: {}", gap_id)
+            }
+            "slo_breach" => {
+                let slo_name = v.get("slo_name").and_then(|x| x.as_str()).unwrap_or("?");
+                format!("SLO breach: {}", slo_name)
+            }
+            "fleet_paused_disk_critical" => {
+                let free_gb = v.get("free_gb").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                format!("Disk critical: {}GB free", free_gb)
+            }
+            "graphql_exhausted" => "GitHub GraphQL quota exhausted".to_string(),
+            "fleet_auth_unrecoverable" => "Fleet auth unrecoverable".to_string(),
+            "waste_spike_detected" => {
+                let rate = v.get("rate").and_then(|x| x.as_f64()).unwrap_or(0.0);
+                format!("Waste spike: {}%", rate)
+            }
+            other => other.to_string(),
+        };
+
+        let url = v.get("url").and_then(|x| x.as_str()).map(|s| s.to_string());
+
+        let mut item = serde_json::json!({
+            "kind": kind,
+            "ts": ts_str,
+            "summary": summary,
+        });
+        if let Some(u) = url {
+            item["url"] = serde_json::Value::String(u);
+        }
+
+        match kind.as_str() {
+            "pr_merged" | "gap_shipped" | "cycle_end" => {
+                if done.len() < 50 {
+                    done.push(item);
+                }
+            }
+            "pr_stuck" | "silent_agent" | "fleet_wedge" | "gap_drift_orphan" => {
+                if needs_judgment.len() < 50 {
+                    needs_judgment.push(item);
+                }
+            }
+            "slo_breach"
+            | "fleet_paused_disk_critical"
+            | "graphql_exhausted"
+            | "fleet_auth_unrecoverable"
+            | "waste_spike_detected" => {
+                if alerts.len() < 50 {
+                    alerts.push(item);
+                }
+            }
+            _ => {} // uncategorised events are silently dropped
+        }
+    }
+
+    let done_count = done.len();
+    let nj_count = needs_judgment.len();
+    let alert_count = alerts.len();
+
+    tracing::debug!(
+        "handle_brief: since={}s ago, done={}, needs_judgment={}, alerts={}",
+        since_ago_secs,
+        done_count,
+        nj_count,
+        alert_count,
+    );
+
+    Ok(Json(serde_json::json!({
+        "since_ts": since_ts,
+        "since_ago_secs": since_ago_secs,
+        "generated_at": generated_at,
+        "buckets": {
+            "done": done,
+            "needs_judgment": needs_judgment,
+            "alerts": alerts,
+        },
+        "counts": {
+            "done": done_count,
+            "needs_judgment": nj_count,
+            "alerts": alert_count,
+        },
+    })))
+}
+
 /// GET /api/ambient/recent?n=100&kind=fleet_wedge — returns last N ambient events.
 /// Optional `kind` param filters to a specific event kind.
 /// PRODUCT-091.
@@ -6640,6 +6817,7 @@ fn build_api_router() -> Router {
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),
         )
+        .route("/api/brief", get(handle_brief))
         .route("/api/ambient/stream", get(handle_ambient_stream))
         .route("/api/ambient/recent", get(handle_ambient_recent))
         .route("/api/ambient/emit", post(handle_ambient_emit))
