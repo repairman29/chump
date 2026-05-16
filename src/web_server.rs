@@ -4170,7 +4170,6 @@ async fn handle_pr_detail(
     Ok(Json(payload))
 }
 
-<<<<<<< HEAD
 // ── PRODUCT-085: PR diff + AC-fit endpoints ───────────────────────────────────────────────────
 
 /// GET /api/pr/{number}/diff — streams `gh pr diff <N>` as plain text.
@@ -4252,112 +4251,12 @@ struct AcBullet {
 ///
 /// PRODUCT-085.
 async fn handle_pr_ac_fit(
-=======
-// ── PRODUCT-086: PR action endpoints (approve, request-changes, comment, revert) ──────────
-
-#[derive(serde::Deserialize)]
-struct PrActionRequest {
-    body: Option<String>,
-}
-
-/// POST /api/prs/{number}/approve — Approve a PR with optional comment (PRODUCT-086).
-async fn handle_pr_approve(
-    headers: HeaderMap,
-    axum::extract::Path(number): axum::extract::Path<u32>,
-    Json(req): Json<PrActionRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    if !check_auth(&headers) {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-    let session_id = get_session_id(&headers);
-    let mut cmd = std::process::Command::new("gh");
-    cmd.args(["pr", "review", &number.to_string(), "--approve"]);
-    if let Some(body) = &req.body {
-        cmd.args(["--body", body]);
-    }
-    let out = cmd.output().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    if !out.status.success() {
-        eprintln!(
-            "gh pr review --approve failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    }
-    // Emit operator_pr_action event to ambient.
-    emit_operator_pr_action("approve", number, session_id.as_deref()).ok();
-    Ok(Json(serde_json::json!({ "status": "approved" })))
-}
-
-/// POST /api/prs/{number}/request-changes — Request changes on a PR (PRODUCT-086).
-async fn handle_pr_request_changes(
-    headers: HeaderMap,
-    axum::extract::Path(number): axum::extract::Path<u32>,
-    Json(req): Json<PrActionRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    if !check_auth(&headers) {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-    let session_id = get_session_id(&headers);
-    let body = req.body.unwrap_or_default();
-    let out = std::process::Command::new("gh")
-        .args([
-            "pr",
-            "review",
-            &number.to_string(),
-            "--request-changes",
-            "--body",
-            &body,
-        ])
-        .output()
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    if !out.status.success() {
-        eprintln!(
-            "gh pr review --request-changes failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    }
-    emit_operator_pr_action("request_changes", number, session_id.as_deref()).ok();
-    Ok(Json(serde_json::json!({ "status": "requested_changes" })))
-}
-
-/// POST /api/prs/{number}/comment — Add a comment to a PR (PRODUCT-086).
-async fn handle_pr_comment(
-    headers: HeaderMap,
-    axum::extract::Path(number): axum::extract::Path<u32>,
-    Json(req): Json<PrActionRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
-    if !check_auth(&headers) {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-    let session_id = get_session_id(&headers);
-    let body = req.body.unwrap_or_default();
-    let out = std::process::Command::new("gh")
-        .args(["pr", "comment", &number.to_string(), "--body", &body])
-        .output()
-        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
-    if !out.status.success() {
-        eprintln!(
-            "gh pr comment failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
-    }
-    emit_operator_pr_action("comment", number, session_id.as_deref()).ok();
-    Ok(Json(serde_json::json!({ "status": "commented" })))
-}
-
-/// POST /api/prs/{number}/revert — Revert a merged PR by creating a new PR with the revert (PRODUCT-086).
-/// Note: gh pr revert doesn't exist natively, so we call a helper script.
-async fn handle_pr_revert(
->>>>>>> 6bc3b069 (PRODUCT-086: EFFECTIVE — PWA PR action panel (approve/request-changes/comment/revert))
     headers: HeaderMap,
     axum::extract::Path(number): axum::extract::Path<u32>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     if !check_auth(&headers) {
         return Err(StatusCode::UNAUTHORIZED);
     }
-<<<<<<< HEAD
 
     // 1. Fetch PR title from gh.
     let title_out = std::process::Command::new("gh")
@@ -4519,7 +4418,111 @@ async fn handle_pr_revert(
         "pr_title": pr_title,
         "ac_bullets": bullets,
     })))
-=======
+}
+
+// ── PRODUCT-086: PR action endpoints (approve, request-changes, comment, revert) ──────────
+
+#[derive(serde::Deserialize)]
+struct PrActionRequest {
+    body: Option<String>,
+}
+
+/// POST /api/prs/{number}/approve — Approve a PR with optional comment (PRODUCT-086).
+async fn handle_pr_approve(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+    Json(req): Json<PrActionRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let session_id = get_session_id(&headers);
+    let mut cmd = std::process::Command::new("gh");
+    cmd.args(["pr", "review", &number.to_string(), "--approve"]);
+    if let Some(body) = &req.body {
+        cmd.args(["--body", body]);
+    }
+    let out = cmd.output().map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if !out.status.success() {
+        eprintln!(
+            "gh pr review --approve failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    // Emit operator_pr_action event to ambient.
+    emit_operator_pr_action("approve", number, session_id.as_deref()).ok();
+    Ok(Json(serde_json::json!({ "status": "approved" })))
+}
+
+/// POST /api/prs/{number}/request-changes — Request changes on a PR (PRODUCT-086).
+async fn handle_pr_request_changes(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+    Json(req): Json<PrActionRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let session_id = get_session_id(&headers);
+    let body = req.body.unwrap_or_default();
+    let out = std::process::Command::new("gh")
+        .args([
+            "pr",
+            "review",
+            &number.to_string(),
+            "--request-changes",
+            "--body",
+            &body,
+        ])
+        .output()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if !out.status.success() {
+        eprintln!(
+            "gh pr review --request-changes failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    emit_operator_pr_action("request_changes", number, session_id.as_deref()).ok();
+    Ok(Json(serde_json::json!({ "status": "requested_changes" })))
+}
+
+/// POST /api/prs/{number}/comment — Add a comment to a PR (PRODUCT-086).
+async fn handle_pr_comment(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+    Json(req): Json<PrActionRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let session_id = get_session_id(&headers);
+    let body = req.body.unwrap_or_default();
+    let out = std::process::Command::new("gh")
+        .args(["pr", "comment", &number.to_string(), "--body", &body])
+        .output()
+        .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
+    if !out.status.success() {
+        eprintln!(
+            "gh pr comment failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        return Err(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    emit_operator_pr_action("comment", number, session_id.as_deref()).ok();
+    Ok(Json(serde_json::json!({ "status": "commented" })))
+}
+
+/// POST /api/prs/{number}/revert — Revert a merged PR by creating a new PR with the revert (PRODUCT-086).
+/// Note: gh pr revert doesn't exist natively, so we call a helper script.
+async fn handle_pr_revert(
+    headers: HeaderMap,
+    axum::extract::Path(number): axum::extract::Path<u32>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
     let session_id = get_session_id(&headers);
     // Call helper script scripts/coord/pr-revert.sh if it exists, else use gh directly.
     let script_path = std::path::PathBuf::from("scripts/coord/pr-revert.sh");
@@ -4560,7 +4563,6 @@ fn emit_operator_pr_action(action: &str, pr: u32, session_id: Option<&str>) -> R
         .open(&path)?;
     writeln!(file, "{}", event.to_string())?;
     Ok(())
->>>>>>> 6bc3b069 (PRODUCT-086: EFFECTIVE — PWA PR action panel (approve/request-changes/comment/revert))
 }
 
 // ── PRODUCT-091 / PRODUCT-094: ambient event viewer + notification center endpoints ──────────
@@ -6825,19 +6827,15 @@ fn build_api_router() -> Router {
         .route("/api/health/pillars", get(handle_health_pillars))
         .route("/api/health/doctor", get(handle_doctor_health))
         .route("/api/pr/{number}", get(handle_pr_detail))
-<<<<<<< HEAD
         // PRODUCT-085: diff + AC-fit for inline PWA diff renderer.
         .route("/api/pr/{number}/diff", get(handle_pr_diff))
         .route("/api/pr/{number}/ac-fit", get(handle_pr_ac_fit))
-=======
-        .route("/api/prs/{number}/approve", post(handle_pr_approve))
         .route(
             "/api/prs/{number}/request-changes",
             post(handle_pr_request_changes),
         )
         .route("/api/prs/{number}/comment", post(handle_pr_comment))
         .route("/api/prs/{number}/revert", post(handle_pr_revert))
->>>>>>> 6bc3b069 (PRODUCT-086: EFFECTIVE — PWA PR action panel (approve/request-changes/comment/revert))
         .route("/api/gap-queue", get(handle_gap_queue))
         .route("/api/gaps/search", get(handle_gaps_search))
         .route("/api/gap/claim/{id}", post(handle_gap_claim))
