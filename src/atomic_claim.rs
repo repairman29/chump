@@ -2004,7 +2004,11 @@ fn check_hot_file_overlap(
         .filter(|f| {
             // Match both the full path and just the filename component for flexibility.
             let f_lower = f.to_lowercase();
-            let filename = f.split('/').last().unwrap_or(f.as_str()).to_lowercase();
+            let filename = f
+                .split('/')
+                .next_back()
+                .unwrap_or(f.as_str())
+                .to_lowercase();
             ac_lower.contains(&f_lower) || ac_lower.contains(&filename)
         })
         .map(|f| f.as_str())
