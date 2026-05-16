@@ -341,6 +341,15 @@ events:
     trigger: pre-commit gate matched Rust-first criteria on a new shell
       file but commit body had 'Rust-First-Bypass:' trailer — bypass
       logged for audit.
+  - kind: rust_first_blocked
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-commit-rust-first.sh (INFRA-1448)
+    trigger: pre-commit gate matched Rust-first criteria on a new shell
+      file AND no 'Rust-First-Bypass:' trailer was present — commit
+      rejected. Fields. files=comma-separated paths, reasons=pipe-separated
+      per-file reasons (hot-path|state-mutator|>200 LOC|long-lived).
+    fields_required: [ts, kind, files, reasons]
+    consumers: [fleet-brief, audit-log, META-064-effectiveness]
   - kind: redundancy_bypass_used
     effect_metric: self
     emitter: scripts/git-hooks/pre-commit-redundancy.sh (META-063)
