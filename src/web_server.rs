@@ -4943,10 +4943,24 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
         }
     }
 
-    // ── Enrich with gap_store metadata ───────────────────────────────────────
+    // ── Enrich with gap_store metadata (synchronous — local SQLite, fast) ──────
     let gap_store = crate::gap_store::GapStore::open(&repo_root).ok();
 
-    let mut sessions: Vec<serde_json::Value> = Vec::new();
+    // Phase 1: extract all metadata synchronously so gap_store (non-Send) stays
+    // on this thread. gh CLI calls happen in phase 2, in parallel.
+    struct LeaseInfo {
+        gap_id: String,
+        session_id: String,
+        taken_at: String,
+        expires_at: String,
+        heartbeat_at: String,
+        worktree_path: String,
+        branch: String,
+        gap_title: String,
+        gap_priority: String,
+        gap_effort: String,
+    }
+    let mut lease_infos: Vec<LeaseInfo> = Vec::new();
     for lease in leases {
         let gap_id = lease
             .get("gap_id")
@@ -4980,10 +4994,7 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-
-        // Conventional branch name: chump/<gap-id-lowercase>-claim
         let branch = format!("chump/{}-claim", gap_id.to_lowercase().replace('_', "-"));
-
         let (gap_title, gap_priority, gap_effort) = if let Some(ref store) = gap_store {
             match store.get(&gap_id) {
                 Ok(Some(gap)) => (gap.title.clone(), gap.priority.clone(), gap.effort.clone()),
@@ -4992,103 +5003,139 @@ async fn handle_fleet_status(headers: HeaderMap) -> Result<Json<serde_json::Valu
         } else {
             (String::new(), String::new(), String::new())
         };
+        lease_infos.push(LeaseInfo {
+            gap_id,
+            session_id,
+            taken_at,
+            expires_at,
+            heartbeat_at,
+            worktree_path,
+            branch,
+            gap_title,
+            gap_priority,
+            gap_effort,
+        });
+    }
 
-        // ── Best-effort PR lookup via gh CLI ─────────────────────────────────
-        // INFRA-1485: was std::process::Command (blocking) — moved to
-        // tokio::process::Command + tokio::time::timeout to prevent tokio
-        // worker starvation when called per-lease (N=25 sequential blocking
-        // calls used to wedge the whole web server). 2s per-call timeout;
-        // on timeout pr_number/pr_state/ci_status remain null.
-        let (pr_number, pr_state, ci_status) = {
-            let branch_clone = branch.clone();
-            let gh_fut = tokio::process::Command::new("gh")
-                .args([
-                    "pr",
-                    "list",
-                    "--head",
-                    &branch_clone,
-                    "--json",
-                    "number,state,statusCheckRollup",
-                    "--limit",
-                    "1",
-                    "--state",
-                    "all",
-                ])
-                .output();
-            let out = match tokio::time::timeout(std::time::Duration::from_secs(2), gh_fut).await {
-                Ok(r) => r,
-                Err(_) => Err(std::io::Error::other("gh pr list timeout >2s")),
-            };
-            match out {
-                Ok(o) if o.status.success() => {
-                    if let Ok(arr) = serde_json::from_slice::<Vec<serde_json::Value>>(&o.stdout) {
-                        if let Some(pr) = arr.first() {
-                            let num = pr.get("number").and_then(|v| v.as_u64());
-                            let state = pr
-                                .get("state")
-                                .and_then(|v| v.as_str())
-                                .map(|s| s.to_lowercase());
-                            // Aggregate CI: SUCCESS / FAILURE / PENDING / unknown
-                            let ci = pr.get("statusCheckRollup").and_then(|v| v.as_array()).map(
-                                |checks| {
-                                    let has_fail = checks.iter().any(|c| {
-                                        c.get("conclusion")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s == "FAILURE")
-                                            .unwrap_or(false)
-                                    });
-                                    let has_pending = checks.iter().any(|c| {
-                                        c.get("status")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s == "IN_PROGRESS" || s == "QUEUED")
-                                            .unwrap_or(false)
-                                    });
-                                    let all_success = checks.iter().all(|c| {
-                                        c.get("conclusion")
-                                            .and_then(|v| v.as_str())
-                                            .map(|s| s == "SUCCESS" || s == "SKIPPED")
-                                            .unwrap_or(false)
-                                    });
-                                    if has_fail {
-                                        "failure"
-                                    } else if has_pending {
-                                        "pending"
-                                    } else if all_success && !checks.is_empty() {
-                                        "success"
-                                    } else {
-                                        "unknown"
-                                    }
-                                    .to_string()
-                                },
-                            );
-                            (num, state, ci)
-                        } else {
-                            (None, None, None)
-                        }
-                    } else {
+    // Phase 2: gh pr list — parallel async calls, each with a per-call timeout.
+    // INFRA-1464: 25 sequential calls → fan-out, all fire simultaneously.
+    let gh_timeout_secs: u64 = std::env::var("CHUMP_FLEET_STATUS_GH_TIMEOUT_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2);
+
+    /// Parse gh pr list JSON output into (pr_number, pr_state, ci_status).
+    fn parse_gh_pr_list(stdout: &[u8]) -> (Option<u64>, Option<String>, Option<String>) {
+        let Ok(arr) = serde_json::from_slice::<Vec<serde_json::Value>>(stdout) else {
+            return (None, None, None);
+        };
+        let Some(pr) = arr.first() else {
+            return (None, None, None);
+        };
+        let num = pr.get("number").and_then(|v| v.as_u64());
+        let state = pr
+            .get("state")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_lowercase());
+        let ci = pr
+            .get("statusCheckRollup")
+            .and_then(|v| v.as_array())
+            .map(|checks| {
+                let has_fail = checks.iter().any(|c| {
+                    c.get("conclusion")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == "FAILURE")
+                        .unwrap_or(false)
+                });
+                let has_pending = checks.iter().any(|c| {
+                    c.get("status")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == "IN_PROGRESS" || s == "QUEUED")
+                        .unwrap_or(false)
+                });
+                let all_success = checks.iter().all(|c| {
+                    c.get("conclusion")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == "SUCCESS" || s == "SKIPPED")
+                        .unwrap_or(false)
+                });
+                if has_fail {
+                    "failure"
+                } else if has_pending {
+                    "pending"
+                } else if all_success && !checks.is_empty() {
+                    "success"
+                } else {
+                    "unknown"
+                }
+                .to_string()
+            });
+        (num, state, ci)
+    }
+
+    let pr_futures: Vec<_> = lease_infos
+        .iter()
+        .map(|info| {
+            let branch = info.branch.clone();
+            let timeout_dur = std::time::Duration::from_secs(gh_timeout_secs);
+            async move {
+                let cmd = tokio::process::Command::new("gh")
+                    .args([
+                        "pr",
+                        "list",
+                        "--head",
+                        &branch,
+                        "--json",
+                        "number,state,statusCheckRollup",
+                        "--limit",
+                        "1",
+                        "--state",
+                        "all",
+                    ])
+                    .output();
+                match tokio::time::timeout(timeout_dur, cmd).await {
+                    Ok(Ok(o)) if o.status.success() => parse_gh_pr_list(&o.stdout),
+                    Ok(Ok(_)) | Ok(Err(_)) => (None, None, None),
+                    Err(_) => {
+                        // Timeout: gh call exceeded per-call deadline. INFRA-1464.
+                        tracing::warn!(
+                            target: "infra_1464",
+                            branch = %branch,
+                            timeout_s = gh_timeout_secs,
+                            "fleet_status_gh_timeout: gh pr list timed out"
+                        );
                         (None, None, None)
                     }
                 }
-                _ => (None, None, None),
             }
-        };
+        })
+        .collect();
 
-        sessions.push(serde_json::json!({
-            "session_id": session_id,
-            "gap_id": gap_id,
-            "gap_title": gap_title,
-            "gap_priority": gap_priority,
-            "gap_effort": gap_effort,
-            "branch": branch,
-            "worktree_path": worktree_path,
-            "taken_at": taken_at,
-            "expires_at": expires_at,
-            "heartbeat_at": heartbeat_at,
-            "pr_number": pr_number,
-            "pr_state": pr_state,
-            "ci_status": ci_status,
-        }));
-    }
+    // Fan-out: all gh calls fire simultaneously. Total wall-clock ≈ max(individual
+    // timeouts) instead of sum — 25 × 2s sequential → 2s parallel. INFRA-1464.
+    let pr_results = futures_util::future::join_all(pr_futures).await;
+
+    let mut sessions: Vec<serde_json::Value> = lease_infos
+        .into_iter()
+        .zip(pr_results)
+        .map(|(info, (pr_number, pr_state, ci_status))| {
+            serde_json::json!({
+                "session_id": info.session_id,
+                "gap_id": info.gap_id,
+                "gap_title": info.gap_title,
+                "gap_priority": info.gap_priority,
+                "gap_effort": info.gap_effort,
+                "branch": info.branch,
+                "worktree_path": info.worktree_path,
+                "taken_at": info.taken_at,
+                "expires_at": info.expires_at,
+                "heartbeat_at": info.heartbeat_at,
+                "pr_number": pr_number,
+                "pr_state": pr_state,
+                "ci_status": ci_status,
+            })
+        })
+        .collect();
 
     // Sort newest-first by taken_at
     sessions.sort_by(|a, b| {
