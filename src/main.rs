@@ -23,6 +23,7 @@ mod approval_resolver;
 mod asi_telemetry;
 mod ask_jeff_db;
 mod ask_jeff_tool;
+mod assertion;
 mod atomic_claim;
 mod auth;
 mod autonomy_fsm;
