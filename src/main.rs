@@ -92,6 +92,7 @@ use chump_gap_store as gap_store;
 // INFRA-1229: explicit linkage declaration so Cargo always links chump-ship
 // even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
 extern crate chump_ship;
+mod audit;
 mod completion;
 mod gen;
 mod genai_conv;
@@ -947,6 +948,94 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
         }
+    }
+
+    // `chump audit aha-sweep [--json] [--window-days N] [--emit]` (INFRA-1370).
+    // Walks every kind in EVENT_REGISTRY.yaml, reads its effect_metric +
+    // expected_min_per_day declarations (INFRA-1371), and compares against the
+    // last-N-days emit count in .chump-locks/ambient.jsonl. Surfaces "registered
+    // but silent" kinds (alert) and "below floor" kinds (warn) as
+    // kind=audit_finding events. Exit non-zero on any alert.
+    if args.get(1).map(String::as_str) == Some("audit") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("--help");
+        if sub == "--help" || sub == "help" || sub.is_empty() {
+            println!("Usage: chump audit <subcommand> [options]");
+            println!();
+            println!("Subcommands:");
+            println!("  aha-sweep   walk code/runtime/effect triangle for every registered kind");
+            println!();
+            println!("Run 'chump audit aha-sweep --help' for sweep options.");
+            return Ok(());
+        }
+        if sub != "aha-sweep" {
+            eprintln!("chump audit: unknown subcommand '{}'", sub);
+            eprintln!("Run 'chump audit --help' for the list.");
+            std::process::exit(2);
+        }
+        let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+        if rest.iter().any(|a| *a == "--help" || *a == "help") {
+            println!("Usage: chump audit aha-sweep [--json] [--window-days N] [--flag-silent-self] [--emit]");
+            println!();
+            println!("Walks every kind in EVENT_REGISTRY.yaml and verifies the recent ambient");
+            println!("stream actually contains emits consistent with the declared effect_metric +");
+            println!("expected_min_per_day floor.");
+            println!();
+            println!("Options:");
+            println!("  --json               output JSON instead of text");
+            println!("  --window-days N      look back window in days (default 7)");
+            println!("  --flag-silent-self   also warn on effect_metric=self kinds with 0 emits");
+            println!("  --emit               write kind=audit_finding to ambient.jsonl for non-ok findings");
+            println!();
+            println!("Exits non-zero when any finding has severity=alert.");
+            return Ok(());
+        }
+        let want_json = rest.contains(&"--json");
+        let flag_silent_self = rest.contains(&"--flag-silent-self");
+        let do_emit = rest.contains(&"--emit");
+        let window_days: u64 = {
+            let mut it = rest.iter().peekable();
+            let mut n = 7u64;
+            while let Some(a) = it.next() {
+                if *a == "--window-days" {
+                    if let Some(v) = it.next() {
+                        if let Ok(parsed) = v.parse::<u64>() {
+                            n = parsed.clamp(1, 90);
+                        }
+                    }
+                }
+            }
+            n
+        };
+        let repo_root = repo_path::repo_root();
+        let cfg = audit::SweepConfig {
+            repo_root: repo_root.clone(),
+            window: std::time::Duration::from_secs(window_days * 24 * 3600),
+            flag_silent_self,
+        };
+        let findings = match audit::sweep_event_registry(&cfg) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("chump audit aha-sweep: {}", e);
+                std::process::exit(1);
+            }
+        };
+        if do_emit {
+            if let Err(e) = audit::emit_findings(&repo_root, &findings) {
+                eprintln!("chump audit aha-sweep: emit warning: {}", e);
+            }
+        }
+        if want_json {
+            println!("{}", audit::render_json(&findings));
+        } else {
+            print!("{}", audit::render_text(&findings));
+        }
+        let any_alert = findings
+            .iter()
+            .any(|f| f.severity == audit::AuditSeverity::Alert);
+        if any_alert {
+            std::process::exit(1);
+        }
+        return Ok(());
     }
 
     // `chump mission-grade [--json]` (INFRA-599) — auto-emit 4-pillar scorecard.
