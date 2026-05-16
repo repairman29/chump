@@ -434,13 +434,19 @@ jobs:
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.scripts == 'true' || github.event_name == 'push' || github.event_name == 'merge_group'
     timeout-minutes: 15  # fmt + JS self-tests + ~30s bash guards; target wall-clock < 5 min, cap at 15m
-    runs-on: ubuntu-latest
+    # INFRA-1534: opt-in routing to self-hosted runner when CHUMP_SELF_HOSTED_ENABLED=true.
+    # Defaults to ubuntu-latest so this is a safe no-op until the var is flipped via
+    #   gh variable set CHUMP_SELF_HOSTED_ENABLED --body true -R repairman29/chump
+    # See docs/process/SELF_HOSTED_RUNNERS.md.
+    runs-on: ${{ vars.CHUMP_SELF_HOSTED_ENABLED == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v6
 
       # INFRA-CI-DISKSPACE: ubuntu-latest ships with ~14 GB free. Strip ~20 GB
       # of pre-installed SDKs we don't use so the disk can breathe. Costs ~15s.
+      # Self-hosted macOS skips this — no GH-shipped SDKs to remove (INFRA-1534).
       - name: Free disk space
+        if: runner.os == 'Linux'
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
