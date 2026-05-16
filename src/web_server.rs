@@ -3862,19 +3862,31 @@ async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
     };
 
     // ── Fleet SLO breach count via chump health --slo-check --json ───────────
+    // Wrapped in tokio::time::timeout to prevent blocking the async runtime
+    // (INFRA-1466). Timeout is configurable via CHUMP_FLEET_STATUS_GH_TIMEOUT_S
+    // (default 3s).
     let mut fleet_breaches: u32 = 0;
-    if let Ok(out) = std::process::Command::new(
-        std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump")),
-    )
-    .args(["health", "--slo-check", "--json"])
-    .current_dir(&repo_root)
-    .output()
-    {
-        if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
-            fleet_breaches = parsed
-                .get("slo_breaches")
-                .and_then(|v| v.as_u64())
-                .unwrap_or(0) as u32;
+    let mut health_timed_out = false;
+    let timeout_secs: u64 = std::env::var("CHUMP_FLEET_STATUS_GH_TIMEOUT_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3);
+    let exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("chump"));
+    let health_future = tokio::process::Command::new(&exe)
+        .args(["health", "--slo-check", "--json"])
+        .current_dir(&repo_root)
+        .output();
+    match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), health_future).await {
+        Ok(Ok(out)) => {
+            if let Ok(parsed) = serde_json::from_slice::<serde_json::Value>(&out.stdout) {
+                fleet_breaches = parsed
+                    .get("slo_breaches")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+            }
+        }
+        Ok(Err(_)) | Err(_) => {
+            health_timed_out = true;
         }
     }
     let fleet_grade = match fleet_breaches {
@@ -3940,6 +3952,7 @@ async fn handle_health_pillars(headers: HeaderMap) -> Json<serde_json::Value> {
         "fleet_grade": fleet_grade,
         "fleet_slo_breaches": fleet_breaches,
         "pillars": pillars,
+        "health_timed_out": health_timed_out,
     }))
 }
 

@@ -561,6 +561,9 @@ jobs:
       - name: pre-commit merge driver smoke (INFRA-310)
         run: bash scripts/ci/test-merge-driver-pre-commit.sh
 
+      - name: /api/health/pillars async timeout wiring (INFRA-1466)
+        run: bash scripts/ci/test-api-health-pillars-timeout.sh
+
       - name: subagent-shipping-epilogue reference guard (INFRA-332)
         run: bash scripts/ci/test-subagent-epilogue-ref.sh
 
