@@ -2663,13 +2663,20 @@ mod tests {
     /// Write an executable bash shim at `path` that exits with `rc` and
     /// writes `stderr_msg` to stderr.
     fn write_coord_shim(path: &Path, rc: i32, stderr_msg: &str) {
+        use std::io::Write as _;
         use std::os::unix::fs::PermissionsExt;
         let body = format!(
             "#!/usr/bin/env bash\n>&2 printf '%s\\n' \"{}\"\nexit {}\n",
             stderr_msg.replace('"', "\\\""),
             rc
         );
-        std::fs::write(path, body).unwrap();
+        // sync_all() + explicit drop before chmod avoids ETXTBSY (os error 26)
+        // on Linux when the kernel still sees the inode open for writing at exec time.
+        {
+            let mut f = std::fs::File::create(path).unwrap();
+            f.write_all(body.as_bytes()).unwrap();
+            f.sync_all().unwrap();
+        }
         let mut perms = std::fs::metadata(path).unwrap().permissions();
         perms.set_mode(0o755);
         std::fs::set_permissions(path, perms).unwrap();
