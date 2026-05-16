@@ -559,6 +559,22 @@ events:
     consumers: [fleet-brief]
     fields_required: [lock, session]
 
+  - kind: target_artifact_reaped
+    effect_metric: self
+    emitter: scripts/coord/target-dir-reaper.sh (INFRA-1349)
+    trigger: cargo target/ directory deleted from idle worktree under disk pressure;
+      normal mode (idle threshold respected)
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, path, freed_gb, worktree_age_h]
+
+  - kind: target_artifact_critical_reap
+    effect_metric: self
+    emitter: scripts/coord/target-dir-reaper.sh (INFRA-1431)
+    trigger: cargo target/ directory deleted in critical-pressure mode (free disk <
+      CHUMP_REAPER_CRITICAL_GB); idle threshold bypassed; active lease still protected
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, path, freed_gb, worktree_age_h]
+
   - kind: stale_bot_merge_killed
     effect_metric: self
     emitter: scripts/ops/stale-bot-merge-reaper.sh (INFRA-673)

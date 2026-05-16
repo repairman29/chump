@@ -202,6 +202,7 @@ integration_test_pass      # reason: emitted by scripts/ci/test-system-integrati
 integration_test_fail      # reason: emitted by scripts/ci/test-system-integration.sh which is excluded from PROD_PATHS (CI scripts legitimately mention events without standard emit pattern)
 
 target_artifact_reaped  # reason: INFRA-1349 target/ artifact reaper kind; emitted when build dirs are cleaned under disk pressure
+target_artifact_critical_reap  # reason: INFRA-1431 critical-mode variant; emitted via shell variable $_event_kind in target-dir-reaper.sh (not a grep-scannable literal); same emit site as target_artifact_reaped
 
 pr_rebase_daemon_run    # reason: INFRA-1406 pr-rebase-daemon heartbeat
 pr_rebase_failed        # reason: INFRA-1406 pr-rebase-daemon rebase failure
