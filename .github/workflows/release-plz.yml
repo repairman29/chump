@@ -27,6 +27,12 @@ env:
   RUST_BACKTRACE: 1
   CARGO_TERM_COLOR: always
 
+# INFRA-1378: workflow-level group, do NOT cancel — release PRs serialize and
+# must finish to keep crates.io publish state consistent.
+concurrency:
+  group: release-plz
+  cancel-in-progress: false
+
 jobs:
   test:
     name: Test and verify
