@@ -86,10 +86,14 @@ pub struct RegistryEntry {
 /// We intentionally avoid pulling in serde_yaml here — the registry has a
 /// uniform "block per kind" shape and a tiny hand-rolled parser keeps the
 /// dependency surface small. Lines like:
+///
+/// ```text
 ///   - kind: foo
 ///     effect_metric: bar
 ///     expected_min_per_day: 10
 ///     status: stable
+/// ```
+///
 /// are recognised; everything else is ignored.
 pub fn parse_event_registry(path: &Path) -> Result<Vec<RegistryEntry>, String> {
     let raw =
