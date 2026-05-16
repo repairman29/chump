@@ -2402,6 +2402,22 @@ print(f"{incomplete} {failed} {total}")
                                     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                                     "$TARGET_PR" "$_rd_gap_str" "$_rd_sha" "$_rd_total" \
                                     >> "$_rd_amb" 2>/dev/null || true
+                                # INFRA-1413: verify branch was deleted by repo setting; fall back to DELETE if not.
+                                # The repo-level delete-branch-on-merge=true setting handles this automatically,
+                                # but the setting may lag a newly-forked repo or a race between merge and cleanup.
+                                _bdom_ref="refs/heads/${BRANCH}"
+                                if gh api "repos/${_rd_nwo}/git/${_bdom_ref}" >/dev/null 2>&1; then
+                                    if gh api "repos/${_rd_nwo}/git/${_bdom_ref}" -X DELETE >/dev/null 2>&1; then
+                                        info "INFRA-1413: branch ${BRANCH} deleted (fallback — repo setting lagged)."
+                                        printf '{"ts":"%s","kind":"branch_deleted_fallback","pr":%s,"branch":"%s","note":"INFRA-1413"}\n' \
+                                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TARGET_PR" "$BRANCH" \
+                                            >> "$_rd_amb" 2>/dev/null || true
+                                    else
+                                        info "INFRA-1413: branch ${BRANCH} deletion fallback failed (may need manual cleanup)."
+                                    fi
+                                else
+                                    info "INFRA-1413: branch ${BRANCH} already deleted by repo setting."
+                                fi
                             else
                                 info "INFRA-1166: REST PUT merge failed (guard/review requirement?) — falling back to auto-merge arm."
                             fi
